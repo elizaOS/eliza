@@ -1,25 +1,19 @@
 /**
  * ViewCatalog — the "Views" tab content.
  *
- * Shows a searchable grid of registered views fetched from GET /api/views.
- * While the /api/views endpoint is not yet live the page renders gracefully
- * by falling back to an empty list.
- *
- * This page is navigated to via the "Views" (formerly "Apps") bottom nav tab
- * or via the `eliza:navigate:view` custom event dispatched by VIEWS actions.
+ * A minimal launcher: a grid of icon tiles for every registered view, plus a
+ * "Get more" row for installable apps not yet loaded. Search is the floating
+ * chat composer (no in-page search box). Navigated to via the "Views" nav tab
+ * or the `eliza:navigate:view` event dispatched by VIEWS actions.
  */
 
 import {
   ArrowDownAZ,
-  ArrowUpRight,
-  Boxes,
   Clock3,
-  Layers,
   type LucideIcon,
   Pencil,
   Pin,
   Plus,
-  RefreshCw,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -62,6 +56,8 @@ const VIEW_LOADING_SKELETON_KEYS = [
   "view-skeleton-4",
   "view-skeleton-5",
   "view-skeleton-6",
+  "view-skeleton-7",
+  "view-skeleton-8",
 ];
 
 type ViewSortMode = "recommended" | "name" | "recent";
@@ -76,57 +72,22 @@ const VIEW_SORT_OPTIONS: Array<{
   { mode: "recent", label: "Recent", icon: Clock3 },
 ];
 
-/** A small uppercase metadata chip. */
-function MetaChip({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="max-w-full truncate rounded-sm border border-border/60 bg-bg-accent px-2 py-1 text-[11px] font-semibold leading-none text-muted-strong">
-      {children}
-    </span>
-  );
-}
-
-/** A "Loaded" status chip with an explicit text label instead of an icon. */
-function LoadedChip({ label }: { label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-sm border border-[#1f7a3b]/45 bg-[#11351f]/70 px-2 py-1 text-[11px] font-bold uppercase leading-none tracking-wide text-[#3ddc6d]">
-      <span className="h-1.5 w-1.5 rounded-full bg-[#3ddc6d]" />
-      {label}
-    </span>
-  );
-}
-
-/** Compact section header: icon + uppercase label + count chip. */
-function SectionHeader({
-  icon: Icon,
-  title,
-  count,
+/** A quiet, sentence-case section label. No eyebrow, no count chip. */
+function SectionLabel({
+  children,
   testId,
 }: {
-  icon: LucideIcon;
-  title: string;
-  count: number;
+  children: React.ReactNode;
   testId?: string;
 }) {
   return (
     <h2
-      className="mb-2.5 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-strong"
+      className="mb-3 px-1 text-xs font-medium text-muted"
       data-testid={testId}
     >
-      <Icon className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
-      <span>{title}</span>
-      <span className="rounded-full bg-muted/15 px-1.5 py-0.5 text-[9px] font-semibold tabular-nums text-muted">
-        {count}
-      </span>
+      {children}
     </h2>
   );
-}
-
-function sourceLabel(entry: Pick<ViewRegistryEntry, "builtin" | "pluginName">) {
-  return entry.builtin ? "Core" : "Plugin";
-}
-
-function routeLabel(entry: Pick<ViewRegistryEntry, "id" | "path">) {
-  return entry.path ?? `/apps/${entry.id}`;
 }
 
 function ViewVisual({
@@ -135,21 +96,16 @@ function ViewVisual({
   label,
   heroUrl,
   showHero,
-  compact = false,
 }: {
   id: string;
   icon?: string | null;
   label: string;
   heroUrl?: string | null;
   showHero: boolean;
-  compact?: boolean;
 }) {
-  const sizeClass = compact ? "h-14 w-14" : "h-[68px] w-[68px]";
   if (showHero && heroUrl) {
     return (
-      <div
-        className={`${sizeClass} shrink-0 overflow-hidden rounded-md border border-border/70 bg-bg-accent`}
-      >
+      <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-bg-accent">
         <img
           src={heroUrl}
           alt=""
@@ -162,16 +118,10 @@ function ViewVisual({
 
   return (
     <div
-      className={`${sizeClass} shrink-0 rounded-md border border-accent/35 bg-accent-subtle text-accent shadow-[inset_0_0_0_1px_rgba(var(--accent-rgb),0.08)]`}
+      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent-subtle text-accent transition-colors group-hover:bg-accent group-hover:text-accent-foreground"
       data-view-visual={id}
     >
-      <div className="flex h-full w-full items-center justify-center">
-        <ViewIcon
-          icon={icon}
-          label={label}
-          className={compact ? "h-6 w-6" : "h-7 w-7"}
-        />
-      </div>
+      <ViewIcon icon={icon} label={label} id={id} className="h-6 w-6" />
     </div>
   );
 }
@@ -237,6 +187,7 @@ function sortCatalogEntriesForMode(entries: ViewEntry[], mode: ViewSortMode) {
   return [...entries].sort(compareLabels);
 }
 
+/** Icon-only sort toggle. Tooltips carry the labels — no on-screen text. */
 function SortControls({
   sortMode,
   onSortModeChange,
@@ -245,11 +196,9 @@ function SortControls({
   onSortModeChange: (mode: ViewSortMode) => void;
 }) {
   const { t } = useTranslation();
-  const label = t("viewmanager.sort.aria", {
-    defaultValue: "Sort views",
-  });
+  const label = t("viewmanager.sort.aria", { defaultValue: "Sort views" });
   return (
-    <fieldset className="flex w-fit max-w-full shrink-0 flex-wrap gap-1.5">
+    <fieldset className="flex shrink-0 items-center gap-1">
       <legend className="sr-only">{label}</legend>
       {VIEW_SORT_OPTIONS.map(({ icon: Icon, label, mode }) => {
         const active = sortMode === mode;
@@ -258,15 +207,16 @@ function SortControls({
             key={mode}
             type="button"
             onClick={() => onSortModeChange(mode)}
-            className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold transition-colors ${
+            title={label}
+            aria-label={label}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
               active
-                ? "border-accent/45 bg-accent-subtle text-accent"
-                : "border-border bg-card text-muted hover:border-accent/35 hover:bg-bg-accent hover:text-txt"
+                ? "bg-accent-subtle text-accent"
+                : "text-muted hover:bg-bg-accent hover:text-txt"
             }`}
             aria-pressed={active}
           >
-            <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-            {label}
+            <Icon className="h-4 w-4" aria-hidden="true" />
           </button>
         );
       })}
@@ -304,7 +254,7 @@ function ViewCardPinButton({
         e.stopPropagation();
         onPin(view);
       }}
-      className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex h-6 w-6 items-center justify-center rounded-md bg-card/80 text-muted hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={t("viewmanager.card.pinAria", {
         label: view.label,
         defaultValue: "Pin {{label}} as desktop tab",
@@ -346,7 +296,7 @@ function ViewCardEditButton({
         e.stopPropagation();
         onEdit(view);
       }}
-      className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex h-6 w-6 items-center justify-center rounded-md bg-card/80 text-muted hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={t("viewmanager.card.editAria", {
         label: view.label,
         defaultValue: "Edit {{label}}",
@@ -388,7 +338,7 @@ function ViewCardDeleteButton({
         e.stopPropagation();
         onDelete(view);
       }}
-      className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted hover:border-destructive hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex h-6 w-6 items-center justify-center rounded-md bg-card/80 text-muted hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={t("viewmanager.card.deleteAria", {
         label: view.label,
         defaultValue: "Delete {{label}}",
@@ -422,7 +372,7 @@ function ViewCardOpenButton({
       ref={ref}
       type="button"
       onClick={() => onClick(view)}
-      className="min-w-0 flex-1 text-left focus:outline-none"
+      className="w-full focus:outline-none"
       {...agentProps}
     >
       {children}
@@ -430,44 +380,29 @@ function ViewCardOpenButton({
   );
 }
 
+/** A launcher tile: icon chip + label. No border, no description, no chips. */
 function ViewCard({
   view,
   onClick,
   onPin,
   onEdit,
   onDelete,
-  compact = false,
 }: {
   view: ViewRegistryEntry;
   onClick: (view: ViewRegistryEntry) => void;
   onPin?: (view: ViewRegistryEntry) => void;
   onEdit?: (view: ViewRegistryEntry) => void;
   onDelete?: (view: ViewRegistryEntry) => void;
-  compact?: boolean;
 }) {
-  const { t } = useTranslation();
   const isDesktop = isElectrobunRuntime();
   const showPinButton = isDesktop && view.desktopTabEnabled !== false && onPin;
   const showManagementButtons = Boolean(onEdit || onDelete);
   const showHero = Boolean(view.hasHeroImage && view.heroImageUrl);
-  const modality = view.viewType ?? "gui";
-  const path = routeLabel(view);
-  const description =
-    view.description ??
-    t("viewmanager.card.fallbackDescription", {
-      label: view.label,
-      defaultValue: "Open {{label}}.",
-    });
 
   return (
-    <div
-      className={`group relative flex min-w-0 overflow-hidden rounded-lg border border-border/55 bg-card text-left shadow-sm transition-[background-color,border-color,box-shadow] hover:border-accent/55 hover:bg-bg-accent/70 hover:shadow-[0_8px_28px_-24px_rgba(var(--accent-rgb),0.5)] ${
-        compact ? "min-h-[8.25rem] p-3" : "min-h-[9.25rem] p-3.5"
-      }`}
-      data-testid={`view-card-${view.id}`}
-    >
+    <div className="group relative" data-testid={`view-card-${view.id}`}>
       {(showPinButton || showManagementButtons) && (
-        <div className="absolute right-2 top-2 z-20 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+        <div className="absolute right-1.5 top-1.5 z-20 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           {showPinButton && <ViewCardPinButton view={view} onPin={onPin} />}
           {onEdit && <ViewCardEditButton view={view} onEdit={onEdit} />}
           {onDelete && <ViewCardDeleteButton view={view} onDelete={onDelete} />}
@@ -475,46 +410,17 @@ function ViewCard({
       )}
 
       <ViewCardOpenButton view={view} onClick={onClick}>
-        <div className="flex min-w-0 gap-3">
+        <div className="flex flex-col items-center gap-2 rounded-2xl px-2 py-4 text-center transition-colors hover:bg-bg-accent/70">
           <ViewVisual
             id={view.id}
             icon={view.icon}
             label={view.label}
             heroUrl={view.heroImageUrl}
             showHero={showHero}
-            compact={compact}
           />
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-start gap-2">
-              <h3 className="min-w-0 flex-1 truncate text-sm font-semibold leading-5 text-txt transition-colors group-hover:text-accent">
-                {view.label}
-              </h3>
-              {!compact && (
-                <ArrowUpRight
-                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted transition-colors group-hover:text-accent"
-                  aria-hidden="true"
-                />
-              )}
-            </div>
-            <p
-              className={`mt-1 text-sm leading-5 text-muted ${
-                compact ? "line-clamp-2" : "line-clamp-2"
-              }`}
-            >
-              {description}
-            </p>
-            <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5">
-              <LoadedChip
-                label={t("viewmanager.chip.loaded", { defaultValue: "Loaded" })}
-              />
-              <MetaChip>{sourceLabel(view)}</MetaChip>
-              <MetaChip>{modality.toUpperCase()}</MetaChip>
-              {!compact && view.pluginName && (
-                <MetaChip>{view.pluginName}</MetaChip>
-              )}
-              {!compact && <MetaChip>{path}</MetaChip>}
-            </div>
-          </div>
+          <span className="line-clamp-2 max-w-full text-xs font-medium leading-4 text-txt transition-colors group-hover:text-accent">
+            {view.label}
+          </span>
         </div>
       </ViewCardOpenButton>
     </div>
@@ -524,7 +430,7 @@ function ViewCard({
 function ViewsEmptyState({ hasQuery }: { hasQuery: boolean }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 py-20 text-center">
       <p className="text-sm font-medium text-muted">
         {hasQuery
           ? t("viewmanager.empty.noMatch", {
@@ -534,25 +440,17 @@ function ViewsEmptyState({ hasQuery }: { hasQuery: boolean }) {
               defaultValue: "No views available",
             })}
       </p>
-      {!hasQuery && (
-        <p className="max-w-xs text-xs text-muted/60">
-          {t("viewmanager.empty.hint", {
-            defaultValue:
-              "Views are registered by plugins. Install a plugin that provides a view to see it here.",
-          })}
-        </p>
-      )}
     </div>
   );
 }
 
 function ViewsLoadingSkeleton() {
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
       {VIEW_LOADING_SKELETON_KEYS.map((key) => (
         <div
           key={key}
-          className="h-36 animate-pulse rounded-lg border border-border/40 bg-muted/20"
+          className="h-[7.5rem] animate-pulse rounded-2xl bg-muted/15"
           aria-hidden
         />
       ))}
@@ -561,7 +459,7 @@ function ViewsLoadingSkeleton() {
 }
 
 /**
- * Card for a not-loaded catalog entry: hero/icon + label + a Get action that
+ * Tile for a not-loaded catalog entry: icon + label + a Get action that
  * installs/loads the app (its view appears once the plugin registers).
  */
 function CatalogGetCard({
@@ -581,61 +479,38 @@ function CatalogGetCard({
       ? t("viewmanager.catalog.retry", { defaultValue: "Retry" })
       : t("viewmanager.catalog.get", { defaultValue: "Get" });
   return (
-    <div
-      className="group relative flex min-h-[9.25rem] overflow-hidden rounded-lg border border-border/55 bg-card p-3.5 text-left shadow-sm transition-[background-color,border-color,box-shadow] hover:border-accent/55 hover:bg-bg-accent/70 hover:shadow-[0_8px_28px_-24px_rgba(var(--accent-rgb),0.5)]"
+    <button
+      type="button"
+      onClick={() => onGet(entry)}
+      disabled={busy}
       data-testid={`view-card-${entry.id}`}
+      aria-label={t("viewmanager.catalog.getAria", {
+        label: entry.label,
+        defaultValue: "Get {{label}}",
+      })}
+      className="group flex flex-col items-center gap-2 rounded-2xl px-2 py-4 text-center transition-colors hover:bg-bg-accent/70 focus:outline-none disabled:cursor-not-allowed"
     >
-      <button
-        type="button"
-        onClick={() => onGet(entry)}
-        disabled={busy}
-        aria-label={t("viewmanager.catalog.getAria", {
-          label: entry.label,
-          defaultValue: "Get {{label}}",
-        })}
-        className="flex min-w-0 flex-1 gap-3 text-left focus:outline-none disabled:cursor-not-allowed"
+      <ViewVisual
+        id={entry.id}
+        icon={entry.icon}
+        label={entry.label}
+        heroUrl={entry.heroUrl}
+        showHero={showHero}
+      />
+      <span className="line-clamp-2 max-w-full text-xs font-medium leading-4 text-txt">
+        {entry.label}
+      </span>
+      <span
+        data-testid={`view-get-${entry.id}`}
+        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+          errored
+            ? "bg-destructive/15 text-destructive"
+            : "bg-accent-subtle text-accent group-hover:bg-accent group-hover:text-accent-foreground"
+        } ${busy ? "opacity-70" : ""}`}
       >
-        <ViewVisual
-          id={entry.id}
-          icon={entry.icon}
-          label={entry.label}
-          heroUrl={entry.heroUrl}
-          showHero={showHero}
-        />
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-start gap-2">
-            <h3 className="min-w-0 flex-1 truncate text-sm font-semibold leading-5 text-txt transition-colors group-hover:text-accent">
-              {entry.label}
-            </h3>
-            <ArrowUpRight
-              className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted transition-colors group-hover:text-accent"
-              aria-hidden="true"
-            />
-          </div>
-          {entry.description && (
-            <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted">
-              {entry.description}
-            </p>
-          )}
-          <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5">
-            {entry.category && <MetaChip>{entry.category}</MetaChip>}
-            <MetaChip>{entry.kind}</MetaChip>
-            <MetaChip>{(entry.modality ?? "gui").toUpperCase()}</MetaChip>
-            {entry.appName && <MetaChip>{entry.appName}</MetaChip>}
-          </div>
-        </div>
-        <span
-          data-testid={`view-get-${entry.id}`}
-          className={`ml-auto mt-auto shrink-0 rounded-sm px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide transition-colors ${
-            errored
-              ? "border border-destructive/35 bg-destructive/15 text-destructive"
-              : "border border-accent/45 bg-accent-subtle text-accent group-hover:bg-accent group-hover:text-accent-foreground"
-          } ${busy ? "opacity-70" : ""}`}
-        >
-          {actionLabel}
-        </span>
-      </button>
-    </div>
+        {actionLabel}
+      </span>
+    </button>
   );
 }
 
@@ -650,14 +525,9 @@ function CatalogSection({
 }) {
   if (entries.length === 0) return null;
   return (
-    <div className="mb-6" data-testid="views-catalog-section">
-      <SectionHeader
-        icon={Sparkles}
-        title={title}
-        count={entries.length}
-        testId="views-catalog-header"
-      />
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div className="mb-7" data-testid="views-catalog-section">
+      <SectionLabel testId="views-catalog-header">{title}</SectionLabel>
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
         {entries.map((entry) => (
           <CatalogGetCard key={entry.key} entry={entry} onGet={onGet} />
         ))}
@@ -668,26 +538,26 @@ function CatalogSection({
 
 function ViewSection({
   title,
-  icon,
   views,
   onViewClick,
   onViewPin,
   onViewEdit,
   onViewDelete,
+  testId,
 }: {
-  title: string;
-  icon: LucideIcon;
+  title?: string;
   views: ViewRegistryEntry[];
   onViewClick: (view: ViewRegistryEntry) => void;
   onViewPin: (view: ViewRegistryEntry) => void;
   onViewEdit?: (view: ViewRegistryEntry) => void;
   onViewDelete?: (view: ViewRegistryEntry) => void;
+  testId?: string;
 }) {
   if (views.length === 0) return null;
   return (
-    <div className="mb-6">
-      <SectionHeader icon={icon} title={title} count={views.length} />
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div className="mb-7" data-testid={testId}>
+      {title ? <SectionLabel>{title}</SectionLabel> : null}
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
         {views.map((view) => (
           <ViewCard
             key={viewCatalogKey(view)}
@@ -696,48 +566,6 @@ function ViewSection({
             onPin={onViewPin}
             onEdit={onViewEdit}
             onDelete={onViewDelete}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TopViewsSection({
-  views,
-  onViewClick,
-  onViewPin,
-  onViewEdit,
-  onViewDelete,
-}: {
-  views: ViewRegistryEntry[];
-  onViewClick: (view: ViewRegistryEntry) => void;
-  onViewPin: (view: ViewRegistryEntry) => void;
-  onViewEdit?: (view: ViewRegistryEntry) => void;
-  onViewDelete?: (view: ViewRegistryEntry) => void;
-}) {
-  const { t } = useTranslation();
-  if (views.length === 0) return null;
-  return (
-    <div className="mb-6" data-testid="views-top-section">
-      <SectionHeader
-        icon={Pin}
-        title={t("viewmanager.section.quickAccess", {
-          defaultValue: "Quick access",
-        })}
-        count={views.length}
-        testId="views-top-header"
-      />
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {views.map((view) => (
-          <ViewCard
-            key={viewCatalogKey(view)}
-            view={view}
-            onClick={onViewClick}
-            onPin={onViewPin}
-            onEdit={onViewEdit}
-            onDelete={onViewDelete}
-            compact
           />
         ))}
       </div>
@@ -919,13 +747,11 @@ export function ViewCatalog() {
     () => [...builtinViews, ...pluginViews],
     [builtinViews, pluginViews],
   );
-  const sortedBuiltinViews = useMemo(
-    () => sortViewsForMode(builtinViews, sortMode, recentViewIds),
-    [builtinViews, recentViewIds, sortMode],
-  );
-  const sortedPluginViews = useMemo(
-    () => sortViewsForMode(pluginViews, sortMode, recentViewIds),
-    [pluginViews, recentViewIds, sortMode],
+  // Core + plugin views read as one flat launcher grid — the source split is
+  // dev metadata the user doesn't need.
+  const sortedAllViews = useMemo(
+    () => sortViewsForMode(visibleViews, sortMode, recentViewIds),
+    [visibleViews, recentViewIds, sortMode],
   );
   const topViews = useMemo(() => {
     const byId = new Map(visibleViews.map((view) => [view.id, view]));
@@ -961,24 +787,18 @@ export function ViewCatalog() {
     [recentViewIds, sortMode, topViews],
   );
 
-  const totalVisible = builtinViews.length + pluginViews.length;
+  const totalVisible = visibleViews.length;
   const hasQuery = query.trim().length > 0;
   const topViewKeys = useMemo(
     () => new Set(topViews.map((view) => viewCatalogKey(view))),
     [topViews],
   );
-  const sectionBuiltinViews = useMemo(() => {
-    if (hasQuery) return sortedBuiltinViews;
-    return sortedBuiltinViews.filter(
+  const sectionViews = useMemo(() => {
+    if (hasQuery) return sortedAllViews;
+    return sortedAllViews.filter(
       (view) => !topViewKeys.has(viewCatalogKey(view)),
     );
-  }, [hasQuery, sortedBuiltinViews, topViewKeys]);
-  const sectionPluginViews = useMemo(() => {
-    if (hasQuery) return sortedPluginViews;
-    return sortedPluginViews.filter(
-      (view) => !topViewKeys.has(viewCatalogKey(view)),
-    );
-  }, [hasQuery, sortedPluginViews, topViewKeys]);
+  }, [hasQuery, sortedAllViews, topViewKeys]);
   const isSearching = searchLoading && hasQuery;
   const availableEntries = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -1130,71 +950,21 @@ export function ViewCatalog() {
   return (
     <ShellViewAgentSurface viewId="views">
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="shrink-0 border-b border-border/50 bg-bg px-5 pb-4 pt-5">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <h1 className="text-3xl font-semibold leading-tight text-txt">
-                  {t("viewmanager.title", { defaultValue: "Views" })}
-                </h1>
-                <p className="mt-1 max-w-2xl text-sm leading-5 text-muted">
-                  {t("viewmanager.subtitle", {
-                    defaultValue:
-                      "Apps and interfaces for your ElizaOS system.",
-                  })}
-                </p>
-                <div className="mt-3 flex min-w-0 flex-wrap gap-1.5">
-                  <MetaChip>
-                    {t("viewmanager.summary.views", {
-                      count: totalVisible,
-                      defaultValue: "{{count}} views",
-                    })}
-                  </MetaChip>
-                  <MetaChip>
-                    {t("viewmanager.summary.core", {
-                      count: builtinViews.length,
-                      defaultValue: "{{count}} core",
-                    })}
-                  </MetaChip>
-                  <MetaChip>
-                    {t("viewmanager.summary.plugins", {
-                      count: pluginViews.length,
-                      defaultValue: "{{count}} plugin",
-                    })}
-                  </MetaChip>
-                  <MetaChip>{activeModality.toUpperCase()}</MetaChip>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                <SortControls
-                  sortMode={sortMode}
-                  onSortModeChange={setSortMode}
-                />
-                <button
-                  type="button"
-                  onClick={() => void refresh()}
-                  disabled={loading}
-                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-semibold text-txt transition-colors hover:border-accent/50 hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
-                  aria-label={t("viewmanager.refresh", {
-                    defaultValue: "Refresh views",
-                  })}
-                >
-                  <RefreshCw
-                    className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-                    aria-hidden="true"
-                  />
-                  {t("viewmanager.refreshShort", { defaultValue: "Refresh" })}
-                </button>
-              </div>
-            </div>
-
+        <div className="shrink-0 border-b border-border/40 bg-bg px-5 pb-3 pt-5">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-2xl font-semibold leading-tight text-txt">
+              {t("viewmanager.title", { defaultValue: "Views" })}
+            </h1>
+            <SortControls sortMode={sortMode} onSortModeChange={setSortMode} />
+          </div>
+          <div className="mt-2">
             <ChatSearchHint noun="views" query={query} />
           </div>
         </div>
 
         {canManageDynamicViews && (
           <form
-            className="shrink-0 border-y border-border/40 px-4 py-3"
+            className="shrink-0 border-b border-border/40 px-4 py-3"
             aria-label={t("viewmanager.management.aria", {
               defaultValue: "Dynamic view management",
             })}
@@ -1204,7 +974,7 @@ export function ViewCatalog() {
             }}
           >
             <div className="mb-2 flex items-center justify-between gap-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted/70">
+              <h2 className="text-xs font-medium text-muted">
                 {t("viewmanager.management.heading", {
                   defaultValue: "Dynamic view management",
                 })}
@@ -1297,7 +1067,15 @@ export function ViewCatalog() {
             <ViewsEmptyState hasQuery={query.trim().length > 0} />
           ) : (
             <>
-              <TopViewsSection
+              <ViewSection
+                testId="views-top-section"
+                title={
+                  sortedTopViews.length > 0
+                    ? t("viewmanager.section.quickAccess", {
+                        defaultValue: "Quick access",
+                      })
+                    : undefined
+                }
                 views={sortedTopViews}
                 onViewClick={handleViewClick}
                 onViewPin={handleViewPin}
@@ -1309,18 +1087,12 @@ export function ViewCatalog() {
                 }
               />
               <ViewSection
-                title={t("viewmanager.section.core", { defaultValue: "Core" })}
-                icon={Boxes}
-                views={sectionBuiltinViews}
-                onViewClick={handleViewClick}
-                onViewPin={handleViewPin}
-              />
-              <ViewSection
-                title={t("viewmanager.section.plugins", {
-                  defaultValue: "Plugins",
-                })}
-                icon={Layers}
-                views={sectionPluginViews}
+                title={
+                  sortedTopViews.length > 0
+                    ? t("viewmanager.section.all", { defaultValue: "All" })
+                    : undefined
+                }
+                views={sectionViews}
                 onViewClick={handleViewClick}
                 onViewPin={handleViewPin}
                 onViewEdit={
