@@ -401,10 +401,18 @@ function PillHandle({
   binding,
   onOpen,
   glow,
+  pilled,
 }: {
   binding: PullGestureBinding;
   onOpen: () => void;
   glow: boolean;
+  // Interactive ONLY while pilled. The handle's hit zone (`px-16 pt-10`) is tall
+  // and wide and sits directly over the composer textarea; if it kept
+  // `pointer-events-auto` while NOT pilled it would intercept the tap meant for
+  // the input (the parent's `pointer-events:none` can't override a child that
+  // opts back in), so the keyboard would never open. Gate on `pilled` so taps
+  // pass through to the textarea once the input has formed.
+  pilled: boolean;
 }): React.JSX.Element {
   return (
     <button
@@ -419,10 +427,16 @@ function PillHandle({
         }
       }}
       {...binding}
+      tabIndex={pilled ? undefined : -1}
+      aria-hidden={pilled ? undefined : true}
       className={cn(
         // The bar hugs the BOTTOM (small pb) where the collapsed input sat — not
         // floating mid-air; the tall pt keeps a generous upward grab/flick zone.
-        "pointer-events-auto flex cursor-grab touch-none select-none items-end justify-center px-16 pb-1.5 pt-10 active:cursor-grabbing",
+        "flex cursor-grab touch-none select-none items-end justify-center px-16 pb-1.5 pt-10 active:cursor-grabbing",
+        // Interactive only while pilled. When NOT pilled the (faded) handle must
+        // let taps fall through to the composer textarea below it — otherwise its
+        // tall hit zone steals the tap and the keyboard never opens.
+        pilled ? "pointer-events-auto" : "pointer-events-none",
         "focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50",
       )}
     >
@@ -2626,6 +2640,7 @@ export function ContinuousChatOverlay({
               binding={pullBinding}
               onOpen={openFromPill}
               glow={listening || responding}
+              pilled={pilled}
             />
           </motion.div>
         </motion.fieldset>

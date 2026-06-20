@@ -1964,7 +1964,18 @@ function composeNarration(
   data: unknown,
   changeSet?: WorkspaceChangeSet,
 ): string {
-  const header = `[sub-agent: ${label} (${session.agentType}) — ${event}]`;
+  // For task_complete the LABEL is the original (often imperative) task text —
+  // e.g. "Use the webfetch tool on this exact URL: …". A literal planner reads
+  // that leading imperative as a fresh instruction and re-spawns the SAME task
+  // whose completion triggered this turn, looping (observed live: the claude
+  // backend spawned 6 sessions for one BTC price and never relayed the answer
+  // that each sub-agent had already returned). The directive below is INSIDE
+  // the bracketed header, so every `[sub-agent:`-prefix stripper (user-facing
+  // reply, deliverable extraction) still removes it — only the planner sees it.
+  const header =
+    event === "task_complete"
+      ? `[sub-agent: ${label} (${session.agentType}) — task_complete — this delegated task is DONE; the result is below, relay it to the user as the answer, do NOT start another sub-agent for it]`
+      : `[sub-agent: ${label} (${session.agentType}) — ${event}]`;
   if (event === QUESTION_FOR_TASK_CREATOR) {
     const message =
       pickPayloadString(data, "question") ??
