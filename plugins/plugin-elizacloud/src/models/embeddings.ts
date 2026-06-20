@@ -48,9 +48,16 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
   return { embeddingModelName, embeddingDimension };
 }
 
-function createErrorVector(dimension: number, marker: number): number[] {
+/**
+ * The init probe vector. `runtime.ensureEmbeddingDimension()` calls the handler
+ * with `null` purely to learn the vector length; it only inspects `.length`, so
+ * a deterministic non-zero[0] marker vector is the correct, legitimate response.
+ * This is the ONLY place a synthetic vector is returned — every real failure
+ * throws so it can never be persisted as a corrupt embedding (Commandment 8).
+ */
+function createInitProbeVector(dimension: number): number[] {
   const vector = Array(dimension).fill(0);
-  vector[0] = marker;
+  vector[0] = 0.1;
   return vector;
 }
 
@@ -66,7 +73,7 @@ export async function handleTextEmbedding(
 
   if (params === null) {
     logger.debug("Creating test embedding for initialization");
-    return createErrorVector(embeddingDimension, 0.1);
+    return createInitProbeVector(embeddingDimension);
   }
 
   let text: string;
@@ -75,13 +82,14 @@ export async function handleTextEmbedding(
   } else if (typeof params === "object" && params.text) {
     text = params.text;
   } else {
-    logger.warn("Invalid input format for embedding");
-    return createErrorVector(embeddingDimension, 0.2);
+    // A malformed request is a programming error, not a recoverable runtime
+    // state. Throw instead of returning a marker vector that would silently
+    // corrupt the embedding store (Commandment 8).
+    throw new Error("Invalid input format for embedding: expected string or { text: string }");
   }
 
   if (!text.trim()) {
-    logger.warn("Empty text for embedding");
-    return createErrorVector(embeddingDimension, 0.3);
+    throw new Error("Cannot generate embedding for empty text");
   }
 
   const results = await handleBatchTextEmbedding(runtime, [text]);
@@ -103,26 +111,22 @@ export async function handleBatchTextEmbedding(
   const client = createCloudApiClient(runtime, true);
 
   if (!texts || texts.length === 0) {
-    logger.warn("[BatchEmbeddings] Empty texts array");
     return [];
   }
 
+  // Every text must be non-empty: an empty input cannot produce a meaningful
+  // vector, and a marker/zero vector would silently corrupt the store. Surface
+  // the bad input to the caller (Commandment 8) instead of papering over it.
   const validTexts: { text: string; originalIndex: number }[] = [];
-  const results: number[][] = new Array(texts.length);
-
   for (let i = 0; i < texts.length; i++) {
     const text = texts[i]?.trim();
-    if (text) {
-      validTexts.push({ text, originalIndex: i });
-    } else {
-      results[i] = createErrorVector(embeddingDimension, 0.3);
+    if (!text) {
+      throw new Error(`Cannot generate embedding for empty text at index ${i}`);
     }
+    validTexts.push({ text, originalIndex: i });
   }
 
-  if (validTexts.length === 0) {
-    logger.warn("[BatchEmbeddings] All texts were empty");
-    return results;
-  }
+  const results: number[][] = new Array(texts.length);
 
   for (let batchStart = 0; batchStart < validTexts.length; batchStart += MAX_BATCH_SIZE) {
     const batchEnd = Math.min(batchStart + MAX_BATCH_SIZE, validTexts.length);
@@ -162,58 +166,56 @@ export async function handleBatchTextEmbedding(
         });
 
         if (!retryResponse.ok) {
-          logger.error(`[BatchEmbeddings] Retry failed: ${retryResponse.status}`);
-          for (const item of batch) {
-            results[item.originalIndex] = createErrorVector(embeddingDimension, 0.4);
-          }
-          continue;
+          // The post-backoff retry still failed: this batch has no embeddings.
+          // Throw so the router can fall through to another provider rather than
+          // persisting marker vectors that corrupt the store (Commandment 8).
+          throw new Error(
+            `[BatchEmbeddings] Rate-limit retry failed (${retryResponse.status} ${retryResponse.statusText})`
+          );
         }
 
         const retryData = (await retryResponse.json()) as {
-          data: Array<{ embedding: number[]; index: number }>;
+          data?: Array<{ embedding: number[]; index: number }>;
         };
 
-        if (retryData?.data) {
-          for (const item of retryData.data) {
-            const originalIndex = batch[item.index].originalIndex;
-            results[originalIndex] = item.embedding;
-          }
-          logger.info(`[BatchEmbeddings] Retry successful for ${batch.length} embeddings`);
+        if (!retryData?.data || !Array.isArray(retryData.data)) {
+          throw new Error("[BatchEmbeddings] Rate-limit retry returned invalid structure");
         }
+
+        for (const item of retryData.data) {
+          const originalIndex = batch[item.index].originalIndex;
+          results[originalIndex] = item.embedding;
+        }
+        logger.info(`[BatchEmbeddings] Retry successful for ${batch.length} embeddings`);
         continue;
       }
 
       if (!response.ok) {
-        // Auth errors (401/403) are non-recoverable with the current key —
-        // throw so the router can fall through to the next provider (e.g.
-        // local inference) instead of silently returning zero-vectors that
-        // corrupt the embedding store. Commandment 8: don't hide broken
-        // pipelines behind fallback values.
+        // Auth errors (401/403) are non-recoverable with the current key.
+        // Every other non-OK status is just as fatal for this batch — neither
+        // can produce real vectors. Throw in both cases so the router falls
+        // through to the next provider (e.g. local inference) instead of
+        // silently persisting marker/zero vectors that corrupt the embedding
+        // store. Commandment 8: don't hide broken pipelines behind fallbacks.
         if (response.status === 401 || response.status === 403) {
           throw new Error(
             `[BatchEmbeddings] Authentication failed (${response.status}). ` +
-            `Check ELIZAOS_CLOUD_API_KEY or ELIZAOS_CLOUD_EMBEDDING_API_KEY — ` +
-            `the current key is not authorized for the embedding endpoint.`
+              `Check ELIZAOS_CLOUD_API_KEY or ELIZAOS_CLOUD_EMBEDDING_API_KEY — ` +
+              `the current key is not authorized for the embedding endpoint.`
           );
         }
-        logger.error(`[BatchEmbeddings] API error: ${response.status} - ${response.statusText}`);
-        for (const item of batch) {
-          results[item.originalIndex] = createErrorVector(embeddingDimension, 0.4);
-        }
-        continue;
+        throw new Error(
+          `[BatchEmbeddings] API error: ${response.status} ${response.statusText}`
+        );
       }
 
       const data = (await response.json()) as {
-        data: Array<{ embedding: number[]; index: number }>;
+        data?: Array<{ embedding: number[]; index: number }>;
         usage?: { prompt_tokens: number; total_tokens: number };
       };
 
       if (!data?.data || !Array.isArray(data.data)) {
-        logger.error("[BatchEmbeddings] API returned invalid structure");
-        for (const item of batch) {
-          results[item.originalIndex] = createErrorVector(embeddingDimension, 0.5);
-        }
-        continue;
+        throw new Error("[BatchEmbeddings] API returned invalid response structure");
       }
 
       for (const item of data.data) {
@@ -234,16 +236,13 @@ export async function handleBatchTextEmbedding(
         `[BatchEmbeddings] Got ${batch.length} embeddings (${embeddingDimension}d), remaining: ${rateLimitInfo.remainingRequests ?? "unknown"}`
       );
     } catch (error) {
+      // Any failure in this batch (HTTP error, transport error, malformed body)
+      // means we have no real vectors for it. Log context and re-throw so the
+      // router can fall through to another provider; never persist marker/zero
+      // vectors that would corrupt the embedding store (Commandment 8).
       const message = error instanceof Error ? error.message : String(error);
-      // Re-throw auth errors so the router can fall through to another
-      // provider instead of silently inserting zero-vectors.
-      if (message.includes("Authentication failed")) {
-        throw error;
-      }
-      logger.error(`[BatchEmbeddings] Error: ${message}`);
-      for (const item of batch) {
-        results[item.originalIndex] = createErrorVector(embeddingDimension, 0.6);
-      }
+      logger.error(`[BatchEmbeddings] Batch failed: ${message}`);
+      throw error instanceof Error ? error : new Error(message);
     }
   }
 

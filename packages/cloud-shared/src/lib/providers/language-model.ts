@@ -382,6 +382,9 @@ export function getLanguageModel(model: string) {
   }
 
   // Cerebras-native default IDs (gpt-oss-120b, zai-glm-4.7) → Cerebras direct.
+  // Cerebras-only by design: a free-tier 429 must surface so the chat path can
+  // return the graceful "model provider rate-limited" reply rather than silently
+  // failing over to OpenRouter on a different provider.
   if (isCerebrasNativeModel(model) && getProviderKey("CEREBRAS_API_KEY")) {
     return getCerebrasClient().chat(normalizeCerebrasModelId(model));
   }
