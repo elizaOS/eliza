@@ -169,6 +169,10 @@ describe("CapacitorLlamaAdapter.generateStream", () => {
     expect(result.promptTokens).toBe(2);
     expect(result.outputTokens).toBe(2);
     expect(result.durationMs).toBe(30);
+    // TTFT (wall-clock to first token) is captured for prefill/decode
+    // differencing once at least one token has been observed.
+    expect(typeof result.ttftMs).toBe("number");
+    expect(result.ttftMs as number).toBeGreaterThanOrEqual(0);
   });
 
   it("accepts samplerStages without throwing while native bridge support is pending", async () => {

@@ -112,3 +112,93 @@ export function defaultsForNoBinding(): InferenceCapabilities {
 		platform: "unknown",
 	};
 }
+
+// ---------------------------------------------------------------------------
+// Sampled resource snapshot + thermal-throttle decision
+// ---------------------------------------------------------------------------
+
+/**
+ * A live, *sampled* device-resource snapshot from the native probe
+ * (iOS `getResourceSnapshot`, Android `ResourceProbe.getResourceSnapshot`) — as
+ * opposed to the one-shot `InferenceCapabilities` probe. The Mobile Resource
+ * Workbench (issue #8800) samples these on an interval across a sustained
+ * workload to build a thermal/RSS/battery timeline. Every numeric field is
+ * `null` when the platform could not measure it — never a fabricated zero.
+ */
+export interface ResourceSnapshot {
+	/** Current thermal state; `"unknown"` on platforms without a thermal API. */
+	thermalState: ThermalState | "unknown";
+	/** Whether the OS low-power / battery-saver mode is engaged, or null. */
+	lowPowerMode: boolean | null;
+	/** Process resident set size in MB, or null. */
+	residentMemoryMb: number | null;
+	/** Device-wide available RAM in MB, or null. */
+	availableRamMb: number | null;
+	/** Cumulative process CPU time in ms, or null. */
+	cpuTimeMs: number | null;
+	/** Battery level 0..100, or null. */
+	batteryLevelPct: number | null;
+	/** Sample timestamp in ms (epoch). */
+	capturedAtMs: number;
+}
+
+export interface ThermalThrottleDecision {
+	/**
+	 * Whether speculative decoding (MTP) should be disabled for the next step.
+	 * MTP burns extra compute for a latency win; under heat that trade flips.
+	 */
+	throttleSpeculativeDecode: boolean;
+	/**
+	 * Whether to proactively shed load (shrink batch / context, pause warmups)
+	 * because the device is at the top of the thermal range.
+	 */
+	reduceLoad: boolean;
+	reason: string;
+}
+
+const THROTTLE_SEVERITY: Record<ThermalState, number> = {
+	nominal: 0,
+	fair: 1,
+	serious: 2,
+	critical: 3,
+};
+
+/**
+ * Decide whether to throttle on-device inference for the current thermal /
+ * power state. Pure and synchronous so the streaming path can call it per token
+ * (the `ProcessInfo.thermalState` throttle hook the iOS streaming bridge still
+ * lists as a TODO) and the workbench can assert the policy without a device.
+ *
+ *   - `serious` / `critical` thermal → stop speculative decoding (matches the
+ *     existing one-shot MTP gate in `probeCapabilities`).
+ *   - `critical` thermal → additionally shed load.
+ *   - low-power mode → stop speculative decoding (honour the user's power intent).
+ *   - `unknown` thermal with no low-power signal → do not throttle (don't
+ *     penalise a device that simply lacks a thermal API).
+ */
+export function thermalThrottleDecision(input: {
+	thermalState: ThermalState | "unknown";
+	lowPowerMode?: boolean | null;
+}): ThermalThrottleDecision {
+	const lowPower = input.lowPowerMode === true;
+	if (input.thermalState === "unknown") {
+		return {
+			throttleSpeculativeDecode: lowPower,
+			reduceLoad: false,
+			reason: lowPower
+				? "low-power mode (thermal state unknown)"
+				: "thermal state unknown — no throttle",
+		};
+	}
+	const severity = THROTTLE_SEVERITY[input.thermalState];
+	const thermalThrottles = severity >= THROTTLE_SEVERITY.serious;
+	const reduceLoad = severity >= THROTTLE_SEVERITY.critical;
+	const throttleSpeculativeDecode = thermalThrottles || lowPower;
+	let reason: string;
+	if (reduceLoad) reason = `thermal ${input.thermalState} — shed load`;
+	else if (thermalThrottles)
+		reason = `thermal ${input.thermalState} — throttle speculative decode`;
+	else if (lowPower) reason = "low-power mode — throttle speculative decode";
+	else reason = `thermal ${input.thermalState} — nominal, no throttle`;
+	return { throttleSpeculativeDecode, reduceLoad, reason };
+}

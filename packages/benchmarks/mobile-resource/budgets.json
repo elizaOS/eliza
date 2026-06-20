@@ -1,0 +1,60 @@
+{
+  "_comment": "Mobile Resource Workbench budgets, keyed by device class × Eliza-1 tier. Mirrors the loadperf budgets/results/gate discipline. min* keys are throughput floors (measured value must be >= budget); max* keys are latency/memory/battery ceilings (measured <= budget). A null budget means 'no baseline measured yet' — recorded but never fails the gate; ratchet it in once a stable on-device baseline lands (see BASELINE.md). maxPeakRssMb / maxSteadyRssMb here are PROVISIONAL ceilings derived from each tier's GGUF footprint + runtime overhead and the device jetsam/foreground ceiling — they are limits, not measured values. Throughput, TTFT, and battery budgets are null until a physical-device baseline exists, because those cannot be honestly pre-filled. The rssLeak gate is always active.",
+  "leakGrowthMbThreshold": 256,
+  "deviceClasses": {
+    "ios-phone": {
+      "_note": "iPhone tier (baseline device TBD per #8800 open question). Jetsam ceiling ~3-4 GB phys_footprint.",
+      "eliza-1-0_8b": {
+        "minDecodeTokensPerSecond": null,
+        "minPrefillTokensPerSecond": null,
+        "maxTtftMs": null,
+        "maxPeakRssMb": 1400,
+        "maxSteadyRssMb": 1200,
+        "maxBatteryDrainPct": null
+      },
+      "eliza-1-2b": {
+        "minDecodeTokensPerSecond": null,
+        "minPrefillTokensPerSecond": null,
+        "maxTtftMs": null,
+        "maxPeakRssMb": 2600,
+        "maxSteadyRssMb": 2300,
+        "maxBatteryDrainPct": null
+      },
+      "eliza-1-4b": {
+        "minDecodeTokensPerSecond": null,
+        "minPrefillTokensPerSecond": null,
+        "maxTtftMs": null,
+        "maxPeakRssMb": 3600,
+        "maxSteadyRssMb": 3300,
+        "maxBatteryDrainPct": null
+      }
+    },
+    "android-phone": {
+      "_note": "Self-hosted arm64 device runner (Pixel-class per android-device-e2e.yml). Foreground-service memory ceiling is OEM-dependent.",
+      "eliza-1-0_8b": {
+        "minDecodeTokensPerSecond": null,
+        "minPrefillTokensPerSecond": null,
+        "maxTtftMs": null,
+        "maxPeakRssMb": 1400,
+        "maxSteadyRssMb": 1200,
+        "maxBatteryDrainPct": null
+      },
+      "eliza-1-2b": {
+        "minDecodeTokensPerSecond": null,
+        "minPrefillTokensPerSecond": null,
+        "maxTtftMs": null,
+        "maxPeakRssMb": 2600,
+        "maxSteadyRssMb": 2300,
+        "maxBatteryDrainPct": null
+      },
+      "eliza-1-4b": {
+        "minDecodeTokensPerSecond": null,
+        "minPrefillTokensPerSecond": null,
+        "maxTtftMs": null,
+        "maxPeakRssMb": 3600,
+        "maxSteadyRssMb": 3300,
+        "maxBatteryDrainPct": null
+      }
+    }
+  }
+}
