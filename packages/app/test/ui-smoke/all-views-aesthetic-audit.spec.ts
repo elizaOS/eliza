@@ -201,21 +201,45 @@ function renderManualReviewStub(finding: ViewFinding): string {
   return lines.join("\n");
 }
 
+// Views where the surface IS the experience (the chat overlay itself, a phone
+// dialer, or a fullscreen game/canvas), per the #8796 open questions: only the
+// chrome is in scope, so they're exempt from the readable-content + floating-
+// overlay-clearance + light-surface checks. They still must not crash, log
+// console errors, render fully blank, or use blue.
+const OVERLAY_NATIVE_OR_CANVAS_SLUGS = new Set([
+  "builtin-chat",
+  "builtin-phone",
+  "builtin-messages",
+  "builtin-camera",
+  "plugin-phone-gui",
+  "plugin-messages-gui",
+  "plugin-scape-gui",
+  "plugin-2004scape-gui",
+  "plugin-clawville-gui",
+  "plugin-hyperscape-gui",
+  "plugin-defense-of-the-agents-gui",
+]);
+
 function computeVerdict(
   finding: Omit<ViewFinding, "verdict">,
 ): ViewFinding["verdict"] {
+  const exempt =
+    finding.viewType === "tui" ||
+    OVERLAY_NATIVE_OR_CANVAS_SLUGS.has(finding.slug);
+  // Hard failures apply to every view. Overlay-native/canvas views legitimately
+  // render little chrome text, so the readable-content floor is waived for them.
   if (
     finding.consoleErrors.length > 0 ||
     finding.qualityIssues.length > 0 ||
-    finding.readableChars < 10
+    (!exempt && finding.readableChars < 10)
   ) {
     return "broken";
   }
-  // TUI views are intentionally dark terminals (#8796 open question): exempt
-  // them from the light-surface blue/hover heuristics and the floating-overlay
-  // requirement — they pass once they render with no console errors.
-  if (finding.viewType === "tui") {
-    return "good";
+  // TUI terminals + overlay-native/canvas surfaces are exempt from the
+  // floating-overlay + hover heuristics (they own their surface), but the
+  // no-blue rule still holds everywhere.
+  if (exempt) {
+    return finding.blueColors.length > 0 ? "needs-work" : "good";
   }
   if (
     finding.blueColors.length > 0 ||
