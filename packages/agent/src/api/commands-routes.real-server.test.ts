@@ -26,6 +26,7 @@ const VALID_CLIENT_ACTIONS: ReadonlySet<ClientCommandAction> = new Set([
   "toggle-fullscreen",
   "open-command-palette",
   "show-commands",
+  "toggle-transcription",
 ]);
 
 function jsonResponder(
