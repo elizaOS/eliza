@@ -2,7 +2,12 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
-import type { WorkflowDefinition, WorkflowExecution, WorkflowNode } from '../types/index';
+import type {
+  WorkflowDefinition,
+  WorkflowExecution,
+  WorkflowExecutionEngineMetrics,
+  WorkflowNode,
+} from '../types/index';
 
 declare const Bun: {
   spawn(
@@ -53,16 +58,7 @@ export interface SmithersWorkflowRunOptions {
   ) => Promise<SmithersNodeExecutionData[][]>;
 }
 
-interface SmithersRunMetrics {
-  nodes: number;
-  levels: number;
-  maxConcurrency: number;
-  started: number;
-  finished: number;
-  failed: number;
-  skipped: number;
-  retries: number;
-}
+type SmithersRunMetrics = Omit<WorkflowExecutionEngineMetrics, 'provider'>;
 
 interface SmithersProtocolRequest {
   type: 'executeNode';
@@ -471,6 +467,30 @@ export async function runWorkflowWithSmithers({
   if (!executionResult) {
     throw new Error('Smithers workflow execution completed without returning a workflow result');
   }
+  const completedExecution = executionResult as WorkflowExecution;
+  const completedMetrics = runMetrics as SmithersRunMetrics | null;
+  const executionWithMetrics: WorkflowExecution = completedMetrics
+    ? {
+        ...completedExecution,
+        data: {
+          ...completedExecution.data,
+          resultData: {
+            ...completedExecution.data?.resultData,
+            engine: {
+              provider: 'smithers',
+              nodes: completedMetrics.nodes,
+              levels: completedMetrics.levels,
+              maxConcurrency: completedMetrics.maxConcurrency,
+              started: completedMetrics.started,
+              finished: completedMetrics.finished,
+              failed: completedMetrics.failed,
+              skipped: completedMetrics.skipped,
+              retries: completedMetrics.retries,
+            },
+          },
+        },
+      }
+    : completedExecution;
 
   logger.info(
     {
@@ -482,5 +502,5 @@ export async function runWorkflowWithSmithers({
     'workflow executed'
   );
 
-  return executionResult;
+  return executionWithMetrics;
 }

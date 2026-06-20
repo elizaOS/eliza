@@ -142,6 +142,18 @@ export interface WorkflowCredential {
   updatedAt: string;
 }
 
+export interface WorkflowExecutionEngineMetrics {
+  provider: 'smithers';
+  nodes: number;
+  levels: number;
+  maxConcurrency: number;
+  started: number;
+  finished: number;
+  failed: number;
+  skipped: number;
+  retries: number;
+}
+
 export interface WorkflowExecution {
   id: string;
   finished: boolean;
@@ -168,6 +180,7 @@ export interface WorkflowExecution {
     resultData?: {
       runData?: Record<string, unknown[]>;
       lastNodeExecuted?: string;
+      engine?: WorkflowExecutionEngineMetrics;
       error?: {
         message: string;
         stack?: string;

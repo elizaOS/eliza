@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock3,
+  Copy,
   Pause,
   PlayCircle,
   Power,
@@ -43,6 +44,8 @@ import {
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useModalState } from "../../hooks/useModalState";
 import {
+  buildWorkflowExecutionDiagnostics,
+  formatWorkflowEngineMetrics,
   getWorkflowExecutionRunRows,
   summarizeWorkflowExecution,
 } from "../../utils/workflow-executions";
@@ -98,6 +101,8 @@ export function WorkflowEditor({
   const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(
     null,
   );
+  const [diagnosticsCopying, setDiagnosticsCopying] = useState(false);
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const [revisions, setRevisions] = useState<WorkflowRevision[]>([]);
   const [currentVersionId, setCurrentVersionId] = useState<string | null>(
     () => initial?.versionId ?? null,
@@ -132,6 +137,8 @@ export function WorkflowEditor({
     setExecutionError(null);
     setExecutions([]);
     setSelectedExecutionId(null);
+    setDiagnosticsCopying(false);
+    setDiagnosticsCopied(false);
     setRevisions([]);
     setCurrentVersionId(initial?.versionId ?? null);
     setRevisionsError(null);
@@ -222,8 +229,6 @@ export function WorkflowEditor({
     void refreshRevisions();
   }, [refreshRevisions]);
 
-  const latestRevision = revisions[0] ?? null;
-
   const handleFormat = useCallback(() => {
     const result = parseWorkflowJson(text);
     if (result.ok) {
@@ -303,6 +308,7 @@ export function WorkflowEditor({
         ...current.filter((item) => item.id !== execution.id),
       ]);
       setSelectedExecutionId(execution.id);
+      setDiagnosticsCopied(false);
     } catch (e) {
       setExecutionError(
         e instanceof Error ? e.message : "Failed to run workflow.",
@@ -360,36 +366,56 @@ export function WorkflowEditor({
     loadRevisionsForWorkflow,
   ]);
 
-  const handleRestoreLatestRevision = useCallback(async () => {
-    if (!persistedWorkflowId || !latestRevision) return;
-    setSaving(true);
-    setSaveError(null);
-    setRevisionsError(null);
+  const handleRestoreRevision = useCallback(
+    async (versionId: string) => {
+      if (!persistedWorkflowId) return;
+      setSaving(true);
+      setSaveError(null);
+      setRevisionsError(null);
+      try {
+        const restored = await client.restoreWorkflowRevision(
+          persistedWorkflowId,
+          versionId,
+        );
+        setCurrentVersionId(restored.versionId ?? null);
+        setLastValidWorkflow(restored);
+        setText(workflowToJsonText(restored));
+        onSaved?.(restored);
+        void refreshExecutions();
+        void refreshRevisions();
+      } catch (e) {
+        setRevisionsError(
+          e instanceof Error
+            ? e.message
+            : "Failed to restore workflow version.",
+        );
+      } finally {
+        setSaving(false);
+      }
+    },
+    [persistedWorkflowId, onSaved, refreshExecutions, refreshRevisions],
+  );
+
+  const handleCopyDiagnostics = useCallback(async () => {
+    if (!selectedExecution) return;
+    setDiagnosticsCopying(true);
+    setExecutionError(null);
     try {
-      const restored = await client.restoreWorkflowRevision(
-        persistedWorkflowId,
-        latestRevision.versionId,
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard is not available in this browser.");
+      }
+      await navigator.clipboard.writeText(
+        buildWorkflowExecutionDiagnostics(selectedExecution),
       );
-      setCurrentVersionId(restored.versionId ?? null);
-      setLastValidWorkflow(restored);
-      setText(workflowToJsonText(restored));
-      onSaved?.(restored);
-      void refreshExecutions();
-      void refreshRevisions();
+      setDiagnosticsCopied(true);
     } catch (e) {
-      setRevisionsError(
-        e instanceof Error ? e.message : "Failed to restore workflow version.",
+      setExecutionError(
+        e instanceof Error ? e.message : "Failed to copy workflow diagnostics.",
       );
     } finally {
-      setSaving(false);
+      setDiagnosticsCopying(false);
     }
-  }, [
-    persistedWorkflowId,
-    latestRevision,
-    onSaved,
-    refreshExecutions,
-    refreshRevisions,
-  ]);
+  }, [selectedExecution]);
 
   const lineErrorBanner = useMemo(() => {
     if (parseState.ok) return null;
@@ -400,6 +426,9 @@ export function WorkflowEditor({
 
   const selectedExecutionSummary = selectedExecution
     ? summarizeWorkflowExecution(selectedExecution)
+    : null;
+  const selectedEngineMetrics = selectedExecution
+    ? formatWorkflowEngineMetrics(selectedExecution)
     : null;
   const selectedRunRows = selectedExecution
     ? getWorkflowExecutionRunRows(selectedExecution)
@@ -476,14 +505,19 @@ export function WorkflowEditor({
     onActivate: () => void refreshExecutions(),
   });
 
-  const restorePreviousButton = useAgentElement<HTMLButtonElement>({
-    id: "restore-previous-version",
+  const copyDiagnosticsButton = useAgentElement<HTMLButtonElement>({
+    id: "copy-run-diagnostics",
     role: "button",
-    label: "Restore previous workflow version",
-    group: "workflow-history",
-    description: "Restore the most recent saved workflow version.",
-    status: saving ? "busy" : latestRevision ? "active" : "inactive",
-    onActivate: () => void handleRestoreLatestRevision(),
+    label: "Copy run diagnostics",
+    group: "workflow-executions",
+    description:
+      "Copy the selected workflow run status, node output, and error details.",
+    status: diagnosticsCopying
+      ? "busy"
+      : selectedExecution
+        ? "active"
+        : "inactive",
+    onActivate: () => void handleCopyDiagnostics(),
   });
 
   const closeButton = useAgentElement<HTMLButtonElement>({
@@ -722,7 +756,10 @@ export function WorkflowEditor({
                           className={`flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left hover:bg-bg-accent/50 ${
                             selected ? "bg-bg-accent" : ""
                           }`}
-                          onClick={() => setSelectedExecutionId(execution.id)}
+                          onClick={() => {
+                            setSelectedExecutionId(execution.id);
+                            setDiagnosticsCopied(false);
+                          }}
                         >
                           {summary.tone === "success" ? (
                             <CheckCircle2
@@ -772,6 +809,27 @@ export function WorkflowEditor({
                         {selectedExecutionSummary.nodeCount === 1 ? "" : "s"} /{" "}
                         {selectedExecutionSummary.durationLabel}
                       </span>
+                      {selectedEngineMetrics && (
+                        <span className="text-2xs text-muted-strong">
+                          / {selectedEngineMetrics}
+                        </span>
+                      )}
+                      <Button
+                        ref={copyDiagnosticsButton.ref}
+                        {...copyDiagnosticsButton.agentProps}
+                        variant="ghost"
+                        size="sm"
+                        className="ml-auto h-7 px-2 text-2xs"
+                        onClick={() => void handleCopyDiagnostics()}
+                        disabled={!selectedExecution || diagnosticsCopying}
+                      >
+                        {diagnosticsCopying ? (
+                          <Spinner className="mr-1.5 h-3.5 w-3.5" />
+                        ) : (
+                          <Copy className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                        )}
+                        {diagnosticsCopied ? "Copied" : "Copy diagnostics"}
+                      </Button>
                     </div>
                     {selectedExecutionSummary.error && (
                       <div className="rounded-sm border border-danger/20 bg-danger/10 p-2 text-xs text-danger">
@@ -834,17 +892,6 @@ export function WorkflowEditor({
                     : "Unsaved draft"}
                 </div>
               </div>
-              <Button
-                ref={restorePreviousButton.ref}
-                {...restorePreviousButton.agentProps}
-                variant="ghost"
-                size="sm"
-                onClick={() => void handleRestoreLatestRevision()}
-                disabled={!persistedWorkflowId || !latestRevision || saving}
-              >
-                <RotateCcw className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-                Restore previous
-              </Button>
             </div>
             {revisionsError && (
               <div className="border-b border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger">
@@ -864,18 +911,12 @@ export function WorkflowEditor({
               ) : (
                 <div className="space-y-1.5">
                   {revisions.slice(0, 4).map((revision) => (
-                    <div
+                    <WorkflowRevisionRow
                       key={revision.id}
-                      className="flex min-w-0 items-center gap-2 text-xs"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-txt">
-                        {revision.name}
-                      </span>
-                      <span className="shrink-0 text-2xs text-muted-strong">
-                        {revision.operation} /{" "}
-                        {new Date(revision.capturedAt).toLocaleString()}
-                      </span>
-                    </div>
+                      revision={revision}
+                      disabled={!persistedWorkflowId || saving}
+                      onRestore={handleRestoreRevision}
+                    />
                   ))}
                 </div>
               )}
@@ -940,6 +981,51 @@ export function WorkflowEditor({
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function WorkflowRevisionRow({
+  revision,
+  disabled,
+  onRestore,
+}: {
+  revision: WorkflowRevision;
+  disabled: boolean;
+  onRestore: (versionId: string) => void;
+}) {
+  const capturedAt = new Date(revision.capturedAt).toLocaleString();
+  const versionLabel = revision.versionId.slice(0, 8);
+  const restoreAction = useAgentElement<HTMLButtonElement>({
+    id: `restore-workflow-version-${versionLabel}`,
+    role: "button",
+    label: `Restore ${revision.name}`,
+    group: "workflow-history",
+    description: `Restore workflow version ${versionLabel} captured after ${revision.operation}.`,
+    status: disabled ? "inactive" : "active",
+    onActivate: () => onRestore(revision.versionId),
+  });
+
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-sm px-1 py-1 text-xs hover:bg-bg-accent/40">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-txt">{revision.name}</div>
+        <div className="truncate text-2xs text-muted-strong">
+          {revision.operation} / {capturedAt} / {versionLabel}
+        </div>
+      </div>
+      <Button
+        ref={restoreAction.ref}
+        {...restoreAction.agentProps}
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 shrink-0"
+        onClick={() => onRestore(revision.versionId)}
+        disabled={disabled}
+        aria-label={`Restore ${revision.name}`}
+      >
+        <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+      </Button>
     </div>
   );
 }
