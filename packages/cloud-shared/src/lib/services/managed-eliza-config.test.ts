@@ -169,4 +169,51 @@ describe("managed Eliza environment", () => {
       "https://custom.example.com/api/v1",
     );
   });
+
+  test("defaults new managed agents to local in-container PGlite state (#8696)", async () => {
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
+
+    const result = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-1",
+    });
+
+    expect(result.environmentVars.ELIZA_AGENT_LOCAL_STATE).toBe("1");
+    expect(result.environmentVars.PGLITE_DATA_DIR).toBe("/root/.eliza/.pgdata");
+  });
+
+  test("honors the ELIZA_AGENT_LOCAL_STATE=0 escape hatch and a custom PGLITE_DATA_DIR", async () => {
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
+
+    const result = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-1",
+      existingEnv: {
+        ELIZA_AGENT_LOCAL_STATE: "0",
+        PGLITE_DATA_DIR: "/custom/pgdata",
+      },
+    });
+
+    expect(result.environmentVars.ELIZA_AGENT_LOCAL_STATE).toBe("0");
+    expect(result.environmentVars.PGLITE_DATA_DIR).toBe("/custom/pgdata");
+  });
+
+  test("strips an inherited DATABASE_URL so the control-plane DB cannot leak into a local-state agent", async () => {
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
+
+    const result = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-1",
+      existingEnv: {
+        DATABASE_URL: "postgres://control-plane-leak/db",
+        ELIZA_MANAGED_DATABASE_URL: "postgres://leak2/db",
+      },
+    });
+
+    expect(result.environmentVars.DATABASE_URL).toBeUndefined();
+    expect(result.environmentVars.ELIZA_MANAGED_DATABASE_URL).toBeUndefined();
+  });
 });

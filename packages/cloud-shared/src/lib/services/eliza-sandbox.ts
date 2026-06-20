@@ -886,13 +886,18 @@ export class ElizaSandboxService {
         // DATABASE_URL — the normal managed-agent path, byte-identical to before.
         const callerSuppliedDatabaseUrl =
           typeof callerEnv.DATABASE_URL === "string" && callerEnv.DATABASE_URL.trim().length > 0;
+        // ELIZA_AGENT_LOCAL_STATE=1 agents run on PGlite. Keep the managed shared
+        // DB out of DATABASE_URL for them (expose it only as the opt-in
+        // ELIZA_MANAGED_DATABASE_URL), so a local-state agent is never forced onto
+        // the remote shared Railway Postgres — the dominant dedicated-chat latency.
+        const wantsLocalState = callerEnv.ELIZA_AGENT_LOCAL_STATE === "1";
         handle = await (await this.getProvider()).create({
           agentId: rec.id,
           agentName: rec.agent_name ?? "CloudAgent",
           organizationId: rec.organization_id,
           environmentVars: {
             ...callerEnv,
-            ...(callerSuppliedDatabaseUrl
+            ...(callerSuppliedDatabaseUrl || wantsLocalState
               ? { ELIZA_MANAGED_DATABASE_URL: dbUri }
               : { DATABASE_URL: dbUri }),
           },

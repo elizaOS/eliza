@@ -197,6 +197,20 @@ export async function prepareManagedElizaBaseEnvironment(
   params: PrepareManagedElizaSharedEnvironmentParams,
 ): Promise<ManagedElizaBaseEnvironmentResult> {
   const existingEnv = { ...(params.existingEnv ?? {}) };
+  // DATABASE_URL / ELIZA_MANAGED_DATABASE_URL are managed reserved keys; the
+  // sandbox layer (the DB-env block in eliza-sandbox.ts) is the SOLE authority on
+  // the agent's DB env. Strip any inherited value here so the control-plane's OWN
+  // DATABASE_URL — which the cloud Worker / provisioning daemon carries in its
+  // process env and which spreads in through params.existingEnv — cannot leak
+  // into the agent and silently override ELIZA_AGENT_LOCAL_STATE=1. That leak
+  // forced every "local-state" agent onto the remote shared Railway Postgres
+  // (~166ms/query x dozens of serial reads+writes per turn = the dominant
+  // dedicated-chat latency, plus the shared-DB blast radius). With these removed,
+  // a local-state agent gets only PGlite (+ opt-in ELIZA_MANAGED_DATABASE_URL),
+  // while a shared-DB agent (ELIZA_AGENT_LOCAL_STATE=0) still has DATABASE_URL
+  // re-injected by the sandbox layer.
+  delete existingEnv.DATABASE_URL;
+  delete existingEnv.ELIZA_MANAGED_DATABASE_URL;
   const { plainKey: agentApiKey } = await apiKeysService.createForAgent({
     organizationId: params.organizationId,
     userId: params.userId,
@@ -249,6 +263,18 @@ export async function prepareManagedElizaBaseEnvironment(
         existingEnv.ELIZAOS_CLOUD_SMALL_MODEL ?? CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
       ELIZAOS_CLOUD_LARGE_MODEL:
         existingEnv.ELIZAOS_CLOUD_LARGE_MODEL ?? CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+      // New managed agents keep agent-state in a LOCAL in-container DB (PGlite on
+      // the persistent /root/.eliza volume) instead of the shared cloud Postgres;
+      // auth + discovery still flow through the cloud API (ELIZAOS_CLOUD_* above).
+      // This removes the shared-Postgres connection hot path that caused the
+      // "too many clients" incident (#8696). The flag is read at container-create
+      // time (eliza-sandbox.ts): only agents PROVISIONED with it set go local, so
+      // existing agents keep their shared-DB state untouched — a forward cutover
+      // with no migration. Set ELIZA_AGENT_LOCAL_STATE=0 to provision a new agent
+      // on the shared DB instead. PGLITE_DATA_DIR is pinned under the persistent
+      // mount so local state survives container restarts.
+      ELIZA_AGENT_LOCAL_STATE: existingEnv.ELIZA_AGENT_LOCAL_STATE ?? "1",
+      PGLITE_DATA_DIR: existingEnv.PGLITE_DATA_DIR ?? "/root/.eliza/.pgdata",
       // Lean multi-tenant Postgres pool. Every dedicated agent container pools
       // against the shared cloud Postgres, so the default per-agent pool
       // (max 20 / min 2) exhausts the server's max_connections at scale (50
