@@ -2,6 +2,8 @@
  * WORKFLOW — single umbrella action for workflow lifecycle ops.
  *
  * Action-based dispatch (provide `action` parameter):
+ *   list          — list deployed workflows for the current user
+ *   get           — fetch one deployed workflow definition by id
  *   create        — generate + deploy a new workflow from a seed prompt
  *   modify        — load a deployed workflow into the draft editor by id
  *   activate      — activate a workflow by id
@@ -42,6 +44,8 @@ import type {
 const WORKFLOW_ACTION = 'WORKFLOW';
 
 const WORKFLOW_OPS = [
+  'list',
+  'get',
   'create',
   'modify',
   'activate',
@@ -113,12 +117,92 @@ function summarizeWorkflow(
   id: string;
   name: string;
   active: boolean;
+  nodeCount?: number;
 } {
+  const nodes = (workflow as { nodes?: unknown[]; nodeCount?: number }).nodes;
+  const nodeCount =
+    typeof (workflow as { nodeCount?: unknown }).nodeCount === 'number'
+      ? (workflow as { nodeCount: number }).nodeCount
+      : Array.isArray(nodes)
+        ? nodes.length
+        : undefined;
   return {
     id: String((workflow as { id?: string }).id ?? ''),
     name: String(workflow.name),
     active: Boolean((workflow as { active?: boolean }).active),
+    ...(typeof nodeCount === 'number' ? { nodeCount } : {}),
   };
+}
+
+async function handleListWorkflows(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  message: Memory,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const limit = Math.min(Math.max(1, readNumber(params.limit) ?? 20), 50);
+  try {
+    const workflows = await service.listWorkflows(String(message.entityId));
+    const summaries = workflows.slice(0, limit).map(summarizeWorkflow);
+    const text =
+      summaries.length === 0
+        ? 'No workflows found.'
+        : `Found ${summaries.length} workflow${summaries.length === 1 ? '' : 's'}.`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: { count: summaries.length },
+      });
+    }
+    return {
+      success: true,
+      text,
+      values: { count: summaries.length },
+      data: { workflows: summaries, total: workflows.length },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:list' }, message);
+    return { success: false, text: message };
+  }
+}
+
+async function handleGetWorkflow(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const workflowId = readString(params.workflowId);
+  if (!workflowId) {
+    return { success: false, text: 'workflowId is required to review a workflow.' };
+  }
+  try {
+    const workflow = await service.getWorkflow(workflowId);
+    const text = `Fetched workflow "${workflow.name}" for review.`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: { workflowId, workflowName: workflow.name },
+      });
+    }
+    return {
+      success: true,
+      text,
+      values: {
+        workflowId,
+        workflowName: workflow.name,
+        active: Boolean(workflow.active),
+        nodeCount: workflow.nodes.length,
+      },
+      data: { workflow },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:get' }, message);
+    return { success: false, text: message };
+  }
 }
 
 async function handleCreate(
@@ -439,6 +523,10 @@ export const workflowAction: Action = {
   contextGate: { anyOf: [...WORKFLOW_CONTEXTS] },
   roleGate: { minRole: 'OWNER' },
   similes: [
+    'LIST_WORKFLOWS',
+    'SHOW_WORKFLOWS',
+    'GET_WORKFLOW',
+    'REVIEW_WORKFLOW',
     'CREATE_WORKFLOW',
     'DELETE_WORKFLOW',
     'RUN_WORKFLOW',
@@ -470,15 +558,15 @@ export const workflowAction: Action = {
   ],
   description:
     'Manage workflows. Action-based dispatch - provide an `action` parameter:\n' +
-    '  create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore.\n' +
+    '  list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore.\n' +
     'For creating/updating scheduled triggers (including promoting a task to a workflow), use the TRIGGER action.',
   descriptionCompressed:
-    'workflow create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore',
+    'workflow list|get|create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore',
   parameters: [
     {
       name: 'action',
       description:
-        'Operation: create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore.',
+        'Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore.',
       required: true,
       schema: { type: 'string' as const, enum: [...WORKFLOW_OPS] },
     },
@@ -548,6 +636,10 @@ export const workflowAction: Action = {
       return { success: false, text: 'Workflow service is not registered.' };
     }
     switch (op) {
+      case 'list':
+        return handleListWorkflows(service, params, message, callback);
+      case 'get':
+        return handleGetWorkflow(service, params, callback);
       case 'create':
         return handleCreate(runtime, service, params, message, callback);
       case 'modify':
@@ -571,6 +663,34 @@ export const workflowAction: Action = {
     }
   },
   examples: [
+    [
+      {
+        name: '{{name1}}',
+        content: { text: 'Show my workflows.', source: 'chat' },
+      },
+      {
+        name: '{{agentName}}',
+        content: {
+          text: 'Fetching workflows.',
+          actions: ['WORKFLOW'],
+          thought: 'Workflow inventory maps to WORKFLOW op=list.',
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
+        content: { text: 'Review workflow wf-123.', source: 'chat' },
+      },
+      {
+        name: '{{agentName}}',
+        content: {
+          text: 'Fetching the workflow definition.',
+          actions: ['WORKFLOW'],
+          thought: 'Workflow review maps to WORKFLOW op=get with workflowId=wf-123.',
+        },
+      },
+    ],
     [
       {
         name: '{{name1}}',
