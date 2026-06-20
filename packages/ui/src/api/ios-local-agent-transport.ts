@@ -1,4 +1,4 @@
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { isStoreBuild } from "../build-variant";
 import {
   isMobileLocalAgentUrl as isConfiguredMobileLocalAgentUrl,
@@ -460,8 +460,18 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
     try {
       const mod = (await import(
         "@elizaos/capacitor-bun-runtime"
-      )) as FullBunRuntimeModule;
-      const runtime = wrapFullBunRuntime(mod.ElizaBunRuntime);
+      )) as Partial<FullBunRuntimeModule>;
+      // The dynamic import can resolve to a module WITHOUT the ElizaBunRuntime
+      // export when the package is externalized in the native web bundle — yet
+      // the native plugin is still registered under "ElizaBunRuntime" (the
+      // availability check above passed). Re-create the Capacitor plugin proxy
+      // directly in that case, instead of crashing with "undefined is not an
+      // object (evaluating 'e.start')" — which otherwise blocks iOS
+      // remote-connect and the on-device runtime entirely.
+      const plugin =
+        mod.ElizaBunRuntime ??
+        registerPlugin<FullBunRuntimePlugin>("ElizaBunRuntime");
+      const runtime = wrapFullBunRuntime(plugin);
       const currentStatus = await runtime.getStatus().catch(() => null);
       if (currentStatus?.ready && currentStatus.engine === "bun") {
         return runtime;
