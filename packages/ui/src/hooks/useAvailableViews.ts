@@ -10,8 +10,14 @@
  * plugins are installed or uninstalled at runtime.
  */
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { fetchWithCsrf } from "../api/csrf-client";
+import {
+  type AppShellPageRegistration,
+  getAppShellPageRegistrySnapshot,
+  listAppShellPages,
+  subscribeAppShellPages,
+} from "../app-shell-registry";
 import { getFrontendPlatform } from "../platform/platform-guards";
 import { startPolling } from "./resource-cache";
 import { useCachedResource } from "./useCachedResource";
@@ -137,6 +143,77 @@ async function fetchViews(): Promise<ViewRegistryEntry[]> {
 
 const VIEWS_CACHE_KEY = "views:available";
 
+const EMPTY_VIEWS: ViewRegistryEntry[] = [];
+
+/**
+ * Map an in-process app-shell page (registered by a plugin via
+ * `registerAppShellPage`) to a view-registry entry. On iOS/Android the agent's
+ * `/api/views` strips every view that has a dynamic `bundleUrl` (no remote JS
+ * allowed by store policy), so a plugin view whose component is bundled into
+ * the renderer would never appear in the manager even though it renders fine
+ * in-process. Surfacing the registry here makes those views loadable: the card
+ * navigates to the registered path and the shell mounts the bundled component.
+ */
+function appShellPageToViewEntry(
+  page: AppShellPageRegistration,
+): ViewRegistryEntry {
+  return {
+    id: page.id,
+    label: page.label,
+    viewType: "gui",
+    icon: page.icon,
+    path: page.path,
+    available: true,
+    pluginName: page.pluginId,
+    developerOnly: page.developerOnly,
+    visibleInManager: true,
+    builtin: false,
+  };
+}
+
+// Version-cached snapshot of the app-shell registry as view entries.
+// useSyncExternalStore requires getSnapshot to return a referentially stable
+// value between renders, so we only rebuild the array when the registry's
+// version actually changes.
+let cachedAppShellVersion = -1;
+let cachedAppShellViewEntries: ViewRegistryEntry[] = EMPTY_VIEWS;
+
+function getAppShellViewEntriesSnapshot(): ViewRegistryEntry[] {
+  const version = getAppShellPageRegistrySnapshot();
+  if (version !== cachedAppShellVersion) {
+    cachedAppShellVersion = version;
+    // The registry holds GUI nav pages, but some plugins also register `.tui` /
+    // `.xr` variants of a page under a suffixed id. The view manager is the GUI
+    // surface, so skip those non-GUI variants (the base `.id` GUI page stays).
+    const pages = listAppShellPages().filter((p) => !/\.(tui|xr)$/.test(p.id));
+    cachedAppShellViewEntries =
+      pages.length === 0 ? EMPTY_VIEWS : pages.map(appShellPageToViewEntry);
+  }
+  return cachedAppShellViewEntries;
+}
+
+/**
+ * Merge the agent's network views with the in-process app-shell registry,
+ * deduped by `viewType:id`. Network entries win (richer metadata: hero, bundle)
+ * — app-shell pages only fill ids the network didn't return, which on mobile is
+ * every dynamically-bundled plugin view the route filtered out.
+ */
+function mergeWithAppShellViews(
+  networkViews: ViewRegistryEntry[],
+  appShellViews: ViewRegistryEntry[],
+): ViewRegistryEntry[] {
+  if (appShellViews.length === 0) return networkViews;
+  const byKey = new Map<string, ViewRegistryEntry>();
+  for (const view of networkViews) {
+    byKey.set(`${view.viewType ?? "gui"}:${view.id}`, view);
+  }
+  for (const entry of appShellViews) {
+    const key = `${entry.viewType ?? "gui"}:${entry.id}`;
+    if (!byKey.has(key)) byKey.set(key, entry);
+  }
+  return [...byKey.values()];
+}
+
 export function useAvailableViews(): UseAvailableViewsResult {
   // All mounts share one cache slot, so the router and the desktop-tab consumer
   // (which both mount this hook) issue a single request and paint instantly on
@@ -156,8 +233,24 @@ export function useAvailableViews(): UseAvailableViewsResult {
     return startPolling(VIEWS_CACHE_KEY, fetchViews, POLL_INTERVAL_MS);
   }, []);
 
+  // In-process plugin views (registered via registerAppShellPage) are merged in
+  // so they appear in the manager even when the agent route filtered them out
+  // (mobile strips dynamic-bundle views). The snapshot is version-cached, so
+  // this only re-renders when a plugin (un)registers a page.
+  const appShellViews = useSyncExternalStore(
+    subscribeAppShellPages,
+    getAppShellViewEntriesSnapshot,
+    getAppShellViewEntriesSnapshot,
+  );
+  const networkViews =
+    resource.status === "success" ? resource.data : EMPTY_VIEWS;
+  const views = useMemo(
+    () => mergeWithAppShellViews(networkViews, appShellViews),
+    [networkViews, appShellViews],
+  );
+
   return {
-    views: resource.status === "success" ? resource.data : [],
+    views,
     loading: resource.status === "loading",
     error: resource.status === "error" ? resource.error : null,
     refresh: refetch,
