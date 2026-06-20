@@ -71,13 +71,12 @@ const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
 
 const APP_HERO_REGISTRY_CACHE_TTL_MS = 30_000;
 
-const appHeroRegistryCache = new WeakMap<
-  PluginManagerLike,
-  {
-    expiresAt: number;
-    promise: Promise<Map<string, RegistryPluginInfo>>;
-  }
->();
+type AppHeroRegistryCache = {
+  expiresAt: number;
+  promise: Promise<Map<string, RegistryPluginInfo>>;
+};
+
+const appHeroRegistryCache = new WeakMap<object, AppHeroRegistryCache>();
 
 async function rewriteAppActionText(args: {
   runtime: IAgentRuntime;
@@ -359,21 +358,22 @@ type ResolvedAppHero =
   | { kind: "generated"; svg: string };
 
 function refreshAppHeroRegistry(
+  cacheOwner: object,
   pluginManager: PluginManagerLike,
 ): Promise<Map<string, RegistryPluginInfo>> {
   const now = Date.now();
-  const cached = appHeroRegistryCache.get(pluginManager);
+  const cached = appHeroRegistryCache.get(cacheOwner);
   if (cached && cached.expiresAt > now) {
     return cached.promise;
   }
 
   const promise = pluginManager.refreshRegistry().catch((error: unknown) => {
-    if (appHeroRegistryCache.get(pluginManager)?.promise === promise) {
-      appHeroRegistryCache.delete(pluginManager);
+    if (appHeroRegistryCache.get(cacheOwner)?.promise === promise) {
+      appHeroRegistryCache.delete(cacheOwner);
     }
     throw error;
   });
-  appHeroRegistryCache.set(pluginManager, {
+  appHeroRegistryCache.set(cacheOwner, {
     expiresAt: now + APP_HERO_REGISTRY_CACHE_TTL_MS,
     promise,
   });
@@ -381,10 +381,11 @@ function refreshAppHeroRegistry(
 }
 
 async function resolveAppHero(
+  cacheOwner: object,
   pluginManager: PluginManagerLike,
   slug: string,
 ): Promise<ResolvedAppHero | null> {
-  const registry = await refreshAppHeroRegistry(pluginManager);
+  const registry = await refreshAppHeroRegistry(cacheOwner, pluginManager);
   for (const entry of registry.values()) {
     const entrySlugs = new Set<string>();
     const nameSlug = packageNameToAppRouteSlug(entry.name);
@@ -880,7 +881,7 @@ export async function handleAppsRoutes(
       return true;
     }
     const pluginManager = getPluginManager();
-    const resolved = await resolveAppHero(pluginManager, slug);
+    const resolved = await resolveAppHero(appManager, pluginManager, slug);
     if (!resolved) {
       error(res, `Hero image for "${slug}" is not available`, 404);
       return true;
