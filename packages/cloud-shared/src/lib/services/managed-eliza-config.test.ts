@@ -169,4 +169,39 @@ describe("managed Eliza environment", () => {
       "https://custom.example.com/api/v1",
     );
   });
+
+  test("defaults new agents to local in-container state + lean chat plugins (#8696/#8434)", async () => {
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
+
+    const result = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-1",
+    });
+
+    // Local agent-state on the persistent volume — no shared-DB hot path.
+    expect(result.environmentVars.ELIZA_AGENT_LOCAL_STATE).toBe("1");
+    expect(result.environmentVars.PGLITE_DATA_DIR).toBe("/root/.eliza/.pgdata");
+    // Lean chat plugin set for fast cold-start.
+    expect(result.environmentVars.ELIZA_PLUGIN_SET).toBe("lean-chat");
+  });
+
+  test("honors escape hatches: shared DB + custom plugin set + custom pglite dir", async () => {
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
+
+    const result = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-1",
+      existingEnv: {
+        ELIZA_AGENT_LOCAL_STATE: "0",
+        ELIZA_PLUGIN_SET: "full",
+        PGLITE_DATA_DIR: "/custom/pgdata",
+      },
+    });
+
+    expect(result.environmentVars.ELIZA_AGENT_LOCAL_STATE).toBe("0");
+    expect(result.environmentVars.ELIZA_PLUGIN_SET).toBe("full");
+    expect(result.environmentVars.PGLITE_DATA_DIR).toBe("/custom/pgdata");
+  });
 });

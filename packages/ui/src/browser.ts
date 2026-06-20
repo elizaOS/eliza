@@ -52,6 +52,7 @@ export {
 // the root index.ts too; keep both in sync. Missing here breaks
 // `packages/app build:web` (plugin-task-coordinator/register-slots.ts).
 export { registerTaskWidget } from "./components/chat/widgets/task-widget.tsx";
+export { DiffReviewPanel } from "./components/composites/code/index.ts";
 export { PagePanel } from "./components/composites/page-panel/index.ts";
 export { SidebarContent } from "./components/composites/sidebar/sidebar-content.tsx";
 export { SidebarPanel } from "./components/composites/sidebar/sidebar-panel.tsx";

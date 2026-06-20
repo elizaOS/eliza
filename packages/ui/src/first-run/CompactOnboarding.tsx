@@ -46,6 +46,25 @@ export function CompactOnboarding(): React.ReactElement {
     void finishAndMaybeClose();
   }, [c, finishAndMaybeClose]);
 
+  // Cloud-only hosts — the hosted app.elizacloud.ai web bundle and the
+  // desktop/native "cloud" runtime builds — can ONLY run on Eliza Cloud: there
+  // is no local / on-device choice to make, and therefore no inference
+  // sub-choice either. Skip the "How should Eliza run?" picker entirely and hand
+  // off straight to the cloud sign-in on first paint. The cloud-login flow's own
+  // fallback surfaces a tappable "Open sign-in page" CTA if it cannot auto-open.
+  const cloudOnlyAutoStarted = React.useRef(false);
+  React.useEffect(() => {
+    if (
+      cloudOnly &&
+      !cloudOnlyAutoStarted.current &&
+      step === "runtime" &&
+      !submitting
+    ) {
+      cloudOnlyAutoStarted.current = true;
+      chooseCloud();
+    }
+  }, [cloudOnly, step, submitting, chooseCloud]);
+
   // Local runtime needs an inference sub-choice (cloud vs on-device) before it
   // can finish — advance to that step instead of provisioning immediately.
   const chooseLocal = React.useCallback(() => {

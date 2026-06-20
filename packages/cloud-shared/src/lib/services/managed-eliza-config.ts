@@ -249,11 +249,28 @@ export async function prepareManagedElizaBaseEnvironment(
         existingEnv.ELIZAOS_CLOUD_SMALL_MODEL ?? CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
       ELIZAOS_CLOUD_LARGE_MODEL:
         existingEnv.ELIZAOS_CLOUD_LARGE_MODEL ?? CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
-      // Lean multi-tenant Postgres pool. Every dedicated agent container pools
-      // against the shared cloud Postgres, so the default per-agent pool
-      // (max 20 / min 2) exhausts the server's max_connections at scale (50
-      // idle agents × min 2 = 100 connections). Cap bursts at 8 and let idle
-      // agents release ALL connections (min 0). plugin-sql reads POSTGRES_POOL_*.
+      // New managed agents keep agent-state in a LOCAL in-container DB (PGlite on
+      // the persistent /root/.eliza volume) instead of the shared cloud Postgres;
+      // auth + discovery still flow through the cloud API (ELIZAOS_CLOUD_* above).
+      // This removes the shared-Postgres connection hot path that caused the
+      // "too many clients" incident (#8696). The flag is read at container-create
+      // time (eliza-sandbox.ts): only agents PROVISIONED with it set go local, so
+      // existing agents keep their shared-DB state untouched — a forward cutover
+      // with no migration. Set ELIZA_AGENT_LOCAL_STATE=0 to provision a new agent
+      // on the shared DB instead. PGLITE_DATA_DIR is pinned under the persistent
+      // mount so local state survives container restarts.
+      ELIZA_AGENT_LOCAL_STATE: existingEnv.ELIZA_AGENT_LOCAL_STATE ?? "1",
+      PGLITE_DATA_DIR: existingEnv.PGLITE_DATA_DIR ?? "/root/.eliza/.pgdata",
+      // New dedicated agents boot the lean chat plugin set (no shell/coding-tools/
+      // browser/orchestrator) for fast cold-start (#8434). Override per agent by
+      // pinning ELIZA_PLUGIN_SET to another value at create.
+      ELIZA_PLUGIN_SET: existingEnv.ELIZA_PLUGIN_SET ?? "lean-chat",
+      // Lean Postgres pool — only applies to agents still on the SHARED DB
+      // (existing agents, or new agents provisioned with ELIZA_AGENT_LOCAL_STATE=0).
+      // The default per-agent pool (max 20 / min 2) exhausts the server's
+      // max_connections at scale (50 idle agents × min 2 = 100). Cap bursts at 8
+      // and let idle agents release ALL connections (min 0). plugin-sql reads
+      // POSTGRES_POOL_*; harmless (unused) under local PGlite.
       POSTGRES_POOL_MAX: existingEnv.POSTGRES_POOL_MAX ?? "8",
       POSTGRES_POOL_MIN: existingEnv.POSTGRES_POOL_MIN ?? "0",
       POSTGRES_POOL_IDLE_TIMEOUT_MS: existingEnv.POSTGRES_POOL_IDLE_TIMEOUT_MS ?? "15000",

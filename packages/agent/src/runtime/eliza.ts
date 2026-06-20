@@ -250,6 +250,7 @@ import {
   BLOCKING_CORE_PLUGINS,
   CORE_PLUGINS,
   DEFERRED_CORE_PLUGINS,
+  LEAN_CHAT_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
 } from "./core-plugins.ts";
 import { seedBundledDocuments } from "./default-documents.ts";
@@ -1555,6 +1556,7 @@ export {
   BLOCKING_CORE_PLUGINS,
   CORE_PLUGINS,
   DEFERRED_CORE_PLUGINS,
+  LEAN_CHAT_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
 };
 

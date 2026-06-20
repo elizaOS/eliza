@@ -5483,7 +5483,7 @@
   "automationsfeed.taskOption": "Task (simple prompt)",
   "automationsfeed.taskOptionDesc": "One prompt, run once or on a schedule. Pick this if you're not sure.",
   "automationsfeed.workflowOption": "Workflow (node graph)",
-  "automationsfeed.workflowOptionDesc": "Multi-step. Trigger → actions → integrations. Edit JSON or generate from a prompt.",
+  "automationsfeed.workflowOptionDesc": "Multi-step. Draft in chat, then review the graph, run it, and inspect logs.",
   "automationsfeed.workflowLoadError": "Failed to load workflow.",
   "automationsfeed.back": "Back",
   "bootstrapstep.errorRateLimited": "Too many attempts — wait a minute and try again.",

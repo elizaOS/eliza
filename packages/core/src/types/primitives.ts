@@ -212,6 +212,13 @@ export interface Media {
 
 	/** Content type */
 	contentType?: ContentType;
+
+	/**
+	 * Optional downscaled preview URL for images, used for the inline chat tile
+	 * while `url` holds the full-resolution original (opened in the lightbox).
+	 * Generated client-side on upload; absent for small/remote/generated media.
+	 */
+	thumbnailUrl?: string;
 }
 
 export const ContentType = {

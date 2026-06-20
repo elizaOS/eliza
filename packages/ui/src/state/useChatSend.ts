@@ -752,6 +752,11 @@ export function useChatSend(deps: UseChatSendDeps) {
             ...(img.name ? { title: img.name } : {}),
             mimeType: img.mimeType,
             source: "client_chat",
+            ...(img.thumbnail
+              ? {
+                  thumbnailUrl: `data:${img.thumbnail.mimeType};base64,${img.thumbnail.data}`,
+                }
+              : {}),
           }))
         : undefined;
 

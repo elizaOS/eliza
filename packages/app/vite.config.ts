@@ -45,6 +45,23 @@ const bunLinkedPackageCacheRoot = path.join(
   ".bun/install/cache/links",
 );
 
+let reactPath: string;
+let reactDomPath: string;
+try {
+  const lucidePath = _require.resolve("lucide-react");
+  const lucideReq = createRequire(lucidePath);
+  reactPath = path.dirname(lucideReq.resolve("react/package.json"));
+  reactDomPath = path.dirname(lucideReq.resolve("react-dom/package.json"));
+} catch {
+  reactPath = path.dirname(_require.resolve("react/package.json"));
+  reactDomPath = path.dirname(_require.resolve("react-dom/package.json"));
+}
+const reactEntry = path.join(reactPath, "index.js");
+const reactJsxRuntimeEntry = path.join(reactPath, "jsx-runtime.js");
+const reactJsxDevRuntimeEntry = path.join(reactPath, "jsx-dev-runtime.js");
+const reactDomEntry = path.join(reactDomPath, "index.js");
+const reactDomClientEntry = path.join(reactDomPath, "client.js");
+
 // Authoritative PascalCase-icon-name → kebab-file map, parsed from lucide's own
 // ESM barrel so there is zero name-guessing. Used to rewrite the app's
 // `import { X } from "lucide-react"` into per-icon deep imports so only the
@@ -2035,6 +2052,22 @@ export const INVALID_TRACER_PROVIDER = {};
       "@opentelemetry/api",
     ],
     alias: [
+      { find: /^react$/, replacement: reactEntry },
+      { find: /^react\/index\.js$/, replacement: reactEntry },
+      { find: /^react\/jsx-runtime$/, replacement: reactJsxRuntimeEntry },
+      { find: /^react\/jsx-runtime\.js$/, replacement: reactJsxRuntimeEntry },
+      {
+        find: /^react\/jsx-dev-runtime$/,
+        replacement: reactJsxDevRuntimeEntry,
+      },
+      {
+        find: /^react\/jsx-dev-runtime\.js$/,
+        replacement: reactJsxDevRuntimeEntry,
+      },
+      { find: /^react-dom$/, replacement: reactDomEntry },
+      { find: /^react-dom\/index\.js$/, replacement: reactDomEntry },
+      { find: /^react-dom\/client$/, replacement: reactDomClientEntry },
+      { find: /^react-dom\/client\.js$/, replacement: reactDomClientEntry },
       ...(otelApiEntry
         ? [{ find: /^@opentelemetry\/api$/, replacement: otelApiEntry }]
         : []),

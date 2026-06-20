@@ -1,15 +1,14 @@
 /**
  * AI provider implementations and singleton access.
  *
- * BitRouter is the principal non-Groq provider. Per-family direct
- * providers (OpenAI, Anthropic) are wired as failover targets via
- * `getProviderForModelWithFallback` when their respective API keys
- * are configured.
+ * The Worker calls each provider DIRECTLY when we hold its native key (Groq,
+ * Vast, OpenAI, Anthropic). OpenRouter (BYOK) is the backup: it serves models we
+ * have no native key for, and is the per-family failover target via
+ * `getProviderForModelWithFallback`.
  */
 
 import { isGroqNativeModel, isVastNativeModel } from "../models";
 import { AnthropicDirectProvider } from "./anthropic-direct";
-import { BitRouterProvider } from "./bitrouter";
 import { GroqProvider } from "./groq";
 import { OpenAIDirectProvider } from "./openai-direct";
 import { OpenRouterProvider } from "./openrouter";
@@ -24,7 +23,6 @@ export { AnthropicDirectProvider } from "./anthropic-direct";
 // as public API. Whitespace-only env values (e.g. "   ") will throw at startup rather than
 // silently disable thinking - this is intentional fail-fast behavior.
 export * from "./anthropic-thinking";
-export { BitRouterProvider } from "./bitrouter";
 export { withProviderFallback } from "./failover";
 export { GroqProvider } from "./groq";
 export { OpenAIDirectProvider } from "./openai-direct";
@@ -43,42 +41,12 @@ interface OpenAIDirectProviderSingleton extends ProviderSingleton {
   baseUrl?: string;
 }
 
-interface BitRouterProviderSingleton extends ProviderSingleton {
-  baseUrl?: string;
-}
-
-let bitRouterProviderInstance: BitRouterProviderSingleton | null = null;
 let groqProviderInstance: ProviderSingleton | null = null;
 let openAIDirectProviderInstance: OpenAIDirectProviderSingleton | null = null;
 let anthropicDirectProviderInstance: ProviderSingleton | null = null;
 let openRouterProviderInstance: OpenAIDirectProviderSingleton | null = null;
 let vercelAIGatewayProviderInstance: ProviderSingleton | null = null;
 let vastProviderInstances = new Map<string, AIProvider>();
-
-/**
- * Gets the principal AI provider instance (BitRouter).
- *
- * Lazy initialized on first call.
- *
- * @returns BitRouter provider instance.
- * @throws Error if BITROUTER_API_KEY is not configured.
- */
-export function getProvider(): AIProvider {
-  const apiKey = getRequiredProviderKey("BITROUTER_API_KEY");
-  const baseUrl = getProviderKey("BITROUTER_BASE_URL") ?? undefined;
-  if (
-    !bitRouterProviderInstance ||
-    bitRouterProviderInstance.apiKey !== apiKey ||
-    bitRouterProviderInstance.baseUrl !== baseUrl
-  ) {
-    bitRouterProviderInstance = {
-      apiKey,
-      baseUrl,
-      provider: new BitRouterProvider(apiKey, baseUrl),
-    };
-  }
-  return bitRouterProviderInstance.provider;
-}
 
 export function hasGroqProviderConfigured(): boolean {
   return Boolean(getProviderKey("GROQ_API_KEY"));
@@ -94,14 +62,6 @@ export function getGroqProvider(): AIProvider {
   }
 
   return groqProviderInstance.provider;
-}
-
-export function hasBitRouterProviderConfigured(): boolean {
-  return Boolean(getProviderKey("BITROUTER_API_KEY"));
-}
-
-export function getBitRouterProvider(): AIProvider {
-  return getProvider();
 }
 
 function hasOpenAIDirectConfigured(): boolean {
@@ -145,9 +105,8 @@ export function hasOpenRouterProviderConfigured(): boolean {
 }
 
 /**
- * OpenRouter direct provider — the BYOK fallback used when the primary router
- * (BitRouter) returns a retryable upstream error. See
- * `getProviderForModelWithFallback`.
+ * OpenRouter direct provider (BYOK) — the backup for models we have no native
+ * key for, and the per-family failover target. See `getProviderForModelWithFallback`.
  */
 export function getOpenRouterProvider(): AIProvider {
   const apiKey = getRequiredProviderKey("OPENROUTER_API_KEY");
@@ -221,36 +180,34 @@ export function getProviderForModel(model: string): AIProvider {
     return getVastProvider(model);
   }
 
-  if (hasBitRouterProviderConfigured()) {
-    return getProvider();
+  if (model.startsWith("openai/") && hasOpenAIDirectConfigured()) {
+    return getOpenAIDirectProvider();
   }
 
-  if (hasVercelAIGatewayProviderConfigured()) {
-    return getVercelAIGatewayProvider();
+  if (model.startsWith("anthropic/") && hasAnthropicDirectConfigured()) {
+    return getAnthropicDirectProvider();
   }
 
-  return getProvider();
+  if (hasOpenRouterProviderConfigured()) {
+    return getOpenRouterProvider();
+  }
+
+  return getVercelAIGatewayProvider();
 }
 
 /**
- * Returns primary + fallback providers for a model.
+ * Returns primary + fallback providers for a model. Routes (chat/completions,
+ * responses, embeddings, apps/[id]/chat) use this for automatic 402/429 failover
+ * via `withProviderFallback`.
  *
- * Routes used by chat/completions, responses, embeddings, and apps/[id]/chat
- * call this to enable automatic 402/429 failover via `withProviderFallback`.
- *
- * Fallback rules:
- *   - Groq native models: no fallback (Groq runs through its own provider).
- *   - Vast native models: fallback to a smaller dedicated Vast endpoint when
- *     configured (27B -> 9B -> 2B by default).
- *   - `openai/*`: OpenAI direct fallback when OPENAI_API_KEY is set.
- *   - `anthropic/*`: Anthropic direct fallback when ANTHROPIC_API_KEY is set.
- *   - All other models (xai, google, mistral, …): OpenRouter (BYOK) fallback
- *     when OPENROUTER_API_KEY is set, else no fallback.
- *
- * OpenRouter is the universal backup when BitRouter fails: per-family direct
- * providers win (they use our own keys against the upstream), and OpenRouter
- * covers everything else (xai, google, mistral, …) that previously had no
- * fallback at all.
+ * Direct-first: native providers serve their own models (no hop); OpenRouter
+ * (BYOK) is the backup.
+ *   - Groq native: no fallback.
+ *   - Vast native: fallback to a smaller Vast endpoint (27B -> 9B -> 2B).
+ *   - `openai/*` (+ OPENAI_API_KEY): OpenAI direct, OpenRouter on-error fallback.
+ *   - `anthropic/*` (+ ANTHROPIC_API_KEY): Anthropic direct, OpenRouter fallback.
+ *   - Everything else (no native key — xai, google, mistral, …): OpenRouter is
+ *     the direct gateway (no further fallback), else the dev Vercel gateway.
  */
 export function getProviderForModelWithFallback(model: string): {
   primary: AIProvider;
@@ -268,18 +225,20 @@ export function getProviderForModelWithFallback(model: string): {
     };
   }
 
-  const primary = hasBitRouterProviderConfigured() ? getProvider() : getVercelAIGatewayProvider();
+  const openRouterBackup = hasOpenRouterProviderConfigured() ? getOpenRouterProvider() : null;
 
   if (model.startsWith("openai/") && hasOpenAIDirectConfigured()) {
-    return { primary, fallback: getOpenAIDirectProvider() };
+    return { primary: getOpenAIDirectProvider(), fallback: openRouterBackup };
   }
 
   if (model.startsWith("anthropic/") && hasAnthropicDirectConfigured()) {
-    return { primary, fallback: getAnthropicDirectProvider() };
+    return { primary: getAnthropicDirectProvider(), fallback: openRouterBackup };
   }
 
-  return {
-    primary,
-    fallback: hasOpenRouterProviderConfigured() ? getOpenRouterProvider() : null,
-  };
+  // No native key for this model: OpenRouter is the direct gateway.
+  if (openRouterBackup) {
+    return { primary: openRouterBackup, fallback: null };
+  }
+
+  return { primary: getVercelAIGatewayProvider(), fallback: null };
 }

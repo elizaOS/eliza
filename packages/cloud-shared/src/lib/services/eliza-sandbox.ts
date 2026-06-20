@@ -186,6 +186,33 @@ class BridgeRouteUnavailableError extends Error {
   }
 }
 
+/**
+ * Decide how the shared managed DB URL is exposed to an agent container (#8696).
+ *
+ * - A self-contained image that shipped its OWN `DATABASE_URL` keeps it; the
+ *   managed URL is exposed under `ELIZA_MANAGED_DATABASE_URL` so it can opt in.
+ * - A local-state agent (provisioned with `ELIZA_AGENT_LOCAL_STATE=1`) keeps
+ *   agent-state in a local in-container PGlite DB on the persistent volume and
+ *   uses the shared DB only for auth/discovery via the cloud API. The managed URL
+ *   is exposed as `ELIZA_MANAGED_DATABASE_URL` (opt-in) and `DATABASE_URL` is left
+ *   UNSET so plugin-sql falls back to local PGlite — removing the shared-Postgres
+ *   connection hot path.
+ * - Otherwise (existing agents with no flag) the managed URL is injected as
+ *   `DATABASE_URL`, byte-identical to the prior behavior — a forward cutover with
+ *   no migration.
+ */
+export function computeManagedAgentDbEnv(
+  callerEnv: Record<string, string>,
+  dbUri: string,
+): Record<string, string> {
+  const callerSuppliedDatabaseUrl =
+    typeof callerEnv.DATABASE_URL === "string" && callerEnv.DATABASE_URL.trim().length > 0;
+  const wantsLocalState = callerEnv.ELIZA_AGENT_LOCAL_STATE === "1";
+  return callerSuppliedDatabaseUrl || wantsLocalState
+    ? { ELIZA_MANAGED_DATABASE_URL: dbUri }
+    : { DATABASE_URL: dbUri };
+}
+
 export class ElizaSandboxService {
   private _provider?: SandboxProvider;
   private _providerPromise?: Promise<SandboxProvider>;
@@ -884,17 +911,14 @@ export class ElizaSandboxService {
         // name (ELIZA_MANAGED_DATABASE_URL) so the image can opt in. Only when
         // the caller did NOT supply one do we inject the managed URL as
         // DATABASE_URL — the normal managed-agent path, byte-identical to before.
-        const callerSuppliedDatabaseUrl =
-          typeof callerEnv.DATABASE_URL === "string" && callerEnv.DATABASE_URL.trim().length > 0;
+        const dbEnv = computeManagedAgentDbEnv(callerEnv, dbUri);
         handle = await (await this.getProvider()).create({
           agentId: rec.id,
           agentName: rec.agent_name ?? "CloudAgent",
           organizationId: rec.organization_id,
           environmentVars: {
             ...callerEnv,
-            ...(callerSuppliedDatabaseUrl
-              ? { ELIZA_MANAGED_DATABASE_URL: dbUri }
-              : { DATABASE_URL: dbUri }),
+            ...dbEnv,
           },
           // Path A: pass the persisted character so the container boots AS
           // this agent (see docker-sandbox-provider ELIZA_AGENT_CHARACTER_JSON
