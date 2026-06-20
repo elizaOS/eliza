@@ -14,6 +14,7 @@
 
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { OrphanReconcileResult } from "@elizaos/cloud-shared/lib/services/docker-node-workloads";
 import {
   type ProvisioningJobType,
   resolveJobTypesForLanes,
@@ -45,6 +46,10 @@ type WorkerAgentSandboxesRepository =
   typeof import("@elizaos/cloud-shared/db/repositories/agent-sandboxes").agentSandboxesRepository;
 type WorkerJobsRepository =
   typeof import("@elizaos/cloud-shared/db/repositories/jobs").jobsRepository;
+type WorkerReconcileOrphanContainers =
+  typeof import("@elizaos/cloud-shared/lib/services/docker-node-workloads").reconcileOrphanContainersOnNodes;
+type WorkerWithTimeout =
+  typeof import("@elizaos/cloud-shared/lib/utils/with-timeout").withTimeout;
 
 interface PreflightKmsClient {
   getOrCreateKey(keyId: string): Promise<unknown>;
@@ -65,6 +70,8 @@ interface WorkerDeps {
   resolveImageDigest: WorkerResolveImageDigest;
   agentSandboxesRepository: WorkerAgentSandboxesRepository;
   jobsRepository: WorkerJobsRepository;
+  reconcileOrphanContainersOnNodes: WorkerReconcileOrphanContainers;
+  withTimeout: WorkerWithTimeout;
 }
 
 export interface ProvisioningWorkerConfig {
@@ -80,6 +87,30 @@ export interface ProvisioningWorkerConfig {
    * reach the private tenant DB to run.
    */
   jobTypes: readonly ProvisioningJobType[];
+  /**
+   * When true (default), a watchdog-wedged worker exits with code 1 after
+   * `watchdogConsecutiveTicks` consecutive stale heartbeat ticks so systemd
+   * `Restart=always` relaunches it. Gated by `PROVISIONING_WORKER_SELF_RESTART`
+   * (set to `0`/`false` to disable, e.g. during planned infra maintenance).
+   */
+  selfRestartEnabled: boolean;
+  /**
+   * Number of consecutive heartbeat ticks the watchdog must stay tripped before
+   * the worker self-restarts. The watchdog trips at WATCHDOG_MAX_CYCLE_MS of no
+   * completed cycle, and restart fires on the K-th consecutive tick after, so
+   * the time from the last good cycle to exit(1) is
+   * ≈ WATCHDOG_MAX_CYCLE_MS + (K-1) * HEARTBEAT_INTERVAL_MS (≈315s at K=2). The
+   * extra ticks keep a one-off slow cycle from restart-looping; they are NOT a
+   * "~2x window" multiplier.
+   */
+  watchdogConsecutiveTicks: number;
+  /**
+   * When true, the low-cadence orphan-container reconciler sweeps HEALTHY nodes
+   * for `agent-<id>` containers with no live DB row and force-removes them.
+   * Gated OFF by default via `ORPHAN_RECONCILER_ENABLED=1` because it issues
+   * `docker rm -f` and should be armed deliberately.
+   */
+  orphanReconcilerEnabled: boolean;
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
@@ -91,6 +122,14 @@ const DEFAULT_BATCH_SIZE = 3;
  */
 const DEFAULT_NODE_HEALTH_INTERVAL_MS = 5 * 60_000;
 
+/**
+ * Default consecutive-tick threshold for the self-restart watchdog. At K=2 with
+ * the 15s heartbeat tick and the 5min watchdog window, the worker restarts
+ * ≈ WATCHDOG_MAX_CYCLE_MS + (K-1) * HEARTBEAT_INTERVAL_MS ≈ 315s after the last
+ * good cycle (the watchdog window plus one extra 15s tick), not ~2x the window.
+ */
+const DEFAULT_WATCHDOG_CONSECUTIVE_TICKS = 2;
+
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
   const parsed = Number.parseInt(value, 10);
@@ -99,6 +138,13 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
 
 function hasFlag(argv: readonly string[], flag: string): boolean {
   return argv.includes(flag);
+}
+
+/** Parse an opt-OUT boolean env flag: anything but `0`/`false` keeps the default-on. */
+function parseBooleanDefaultTrue(value: string | undefined): boolean {
+  if (value === undefined) return true;
+  const normalized = value.trim().toLowerCase();
+  return normalized !== "0" && normalized !== "false";
 }
 
 export function readWorkerConfig(
@@ -117,6 +163,14 @@ export function readWorkerConfig(
       DEFAULT_NODE_HEALTH_INTERVAL_MS,
     ),
     jobTypes: resolveJobTypesForLanes(env.PROVISIONING_JOB_LANES),
+    selfRestartEnabled: parseBooleanDefaultTrue(
+      env.PROVISIONING_WORKER_SELF_RESTART,
+    ),
+    watchdogConsecutiveTicks: parsePositiveInt(
+      env.PROVISIONING_WORKER_WATCHDOG_TICKS,
+      DEFAULT_WATCHDOG_CONSECUTIVE_TICKS,
+    ),
+    orphanReconcilerEnabled: env.ORPHAN_RECONCILER_ENABLED === "1",
   };
 }
 
@@ -137,6 +191,8 @@ async function loadDeps(): Promise<WorkerDeps> {
       import("@elizaos/cloud-shared/lib/services/containers/registry-probe"),
       import("@elizaos/cloud-shared/db/repositories/agent-sandboxes"),
       import("@elizaos/cloud-shared/db/repositories/jobs"),
+      import("@elizaos/cloud-shared/lib/services/docker-node-workloads"),
+      import("@elizaos/cloud-shared/lib/utils/with-timeout"),
     ]).then(
       ([
         jobsModule,
@@ -149,6 +205,8 @@ async function loadDeps(): Promise<WorkerDeps> {
         registryProbeModule,
         agentSandboxesModule,
         jobsRepoModule,
+        nodeWorkloadsModule,
+        withTimeoutModule,
       ]) => ({
         provisioningJobService: jobsModule.provisioningJobService,
         logger: loggerModule.logger,
@@ -161,6 +219,9 @@ async function loadDeps(): Promise<WorkerDeps> {
         resolveImageDigest: registryProbeModule.resolveImageDigest,
         agentSandboxesRepository: agentSandboxesModule.agentSandboxesRepository,
         jobsRepository: jobsRepoModule.jobsRepository,
+        reconcileOrphanContainersOnNodes:
+          nodeWorkloadsModule.reconcileOrphanContainersOnNodes,
+        withTimeout: withTimeoutModule.withTimeout,
       }),
     );
   }
@@ -235,9 +296,7 @@ async function processHeartbeatCycle(
   return provisioningJobService.processRunningHeartbeats(concurrency);
 }
 
-async function processRecoveryCycle(
-  concurrency = 5,
-): Promise<RecoveryResult> {
+async function processRecoveryCycle(concurrency = 5): Promise<RecoveryResult> {
   const { provisioningJobService } = await loadDeps();
   return provisioningJobService.processDisconnectedRecovery(concurrency);
 }
@@ -493,6 +552,17 @@ async function processPoolDrainIdleCycle(): Promise<PoolDrainSummary> {
   return { drained: result.drained.length };
 }
 
+/**
+ * FIX 3: sweep HEALTHY nodes for `agent-<id>` containers with no live DB row
+ * (or a terminal-state row) and force-remove them. The reconciler itself only
+ * touches nodes whose status is `healthy`, which the preceding node-health
+ * check just refreshed, so a transient SSH blip can never reap live containers.
+ */
+async function processOrphanReconcilerCycle(): Promise<OrphanReconcileResult> {
+  const { reconcileOrphanContainersOnNodes } = await loadDeps();
+  return reconcileOrphanContainersOnNodes();
+}
+
 let running = true;
 let lastInfraMaintenanceAt = 0;
 
@@ -511,14 +581,85 @@ const HEARTBEAT_INTERVAL_MS = 15_000;
  * heartbeat so cloud-api fails CLOSED — `checkProvisioningWorkerHealth` sees
  * the stale key and 503s new provisions instead of routing them to a worker
  * that can't make progress — and the loud error log flags it for a human.
- * This does NOT itself restart the process (systemd `Restart=always` only
- * fires on process exit, and nothing kills us on a stale key); true
- * auto-recovery via `process.exit(1)` is a deliberate follow-up that first
- * needs a threshold comfortably above worst-case infra-maintenance on a large
- * fleet, else a slow-but-healthy cycle would restart-loop. P1 keeps a
- * *progressing* worker healthy; the watchdog fails a *wedged* one closed.
+ *
+ * On top of failing-closed, the worker self-restarts: once the watchdog stays
+ * tripped for `watchdogConsecutiveTicks` consecutive heartbeat ticks, it logs
+ * loudly and `process.exit(1)`s so systemd `Restart=always` relaunches it. The
+ * K-tick gate keeps a slow-but-healthy cycle from restart-looping. Gated by
+ * `PROVISIONING_WORKER_SELF_RESTART` (default on) so it can be disabled.
+ *
+ * Timing (FIX G): the watchdog trips once a cycle has not completed for
+ * WATCHDOG_MAX_CYCLE_MS. The self-restart then fires on the K-th consecutive
+ * heartbeat tick AFTER it trips, so the wall-clock from the last good cycle to
+ * exit(1) is
+ *   ≈ WATCHDOG_MAX_CYCLE_MS + (K-1) * HEARTBEAT_INTERVAL_MS
+ * For the defaults (300s + (2-1)*15s) that is ≈ 315s — NOT ~600s / "~2x the
+ * window". The first wedged tick only arms the counter (no restart); the K-th
+ * tick fires it.
  */
 const WATCHDOG_MAX_CYCLE_MS = 5 * 60_000;
+
+/**
+ * Per-phase wall-clock budget. Each cycle phase (provisioning, node health,
+ * autoscale, …) is wrapped in `withTimeout` so a single hung phase — a Neon
+ * stall or an unresponsive node's SSH probe — frees fast instead of running
+ * unbounded. `withTimeout` only frees the awaiter — every leaf already has its
+ * own hard SSH/HTTP/Redis timeout, so a freed phase leaves no truly-unbounded
+ * I/O. This is the fast per-phase wedge signal; the cycle-wide budget below is
+ * what actually keeps the watchdog invariant from being violated.
+ */
+const PHASE_TIMEOUT_MS = 60_000;
+
+/**
+ * Whole-WORK-cycle wall-clock budget (FIX E). The 4 WORK phases run on the
+ * watchdog's critical path, so SUM(their budgets) + the poll interval MUST stay
+ * below WATCHDOG_MAX_CYCLE_MS — otherwise a slow-but-progressing cycle could
+ * exceed the window and the worker would self-restart (the exact false positive
+ * the design claims to prevent: 4 × 90s = 360s > 300s under the old per-phase
+ * 90s budgets). Instead of summing N per-phase timeouts, the whole WORK group
+ * is bounded ONCE by this budget. Picked comfortably below the watchdog window:
+ *   WORK_CYCLE_TIMEOUT_MS + DEFAULT_POLL_INTERVAL_MS = 240s + 30s = 270s < 300s.
+ * Adding a 5th WORK phase therefore cannot re-break the invariant — the group
+ * budget is fixed. `assertWatchdogInvariant()` pins this at module load and the
+ * unit test pins it too (FIX F).
+ */
+const WORK_CYCLE_TIMEOUT_MS = 4 * 60_000;
+
+/**
+ * The watchdog invariant, surfaced for the unit test (FIX F) so adding a phase
+ * or bumping a timeout can't silently violate it. The work cycle is bounded as
+ * a GROUP by WORK_CYCLE_TIMEOUT_MS, so that single budget (plus the poll gap)
+ * is what must fit inside the watchdog window — not the per-phase budgets.
+ */
+export const WORKER_TIMING = {
+  watchdogMaxCycleMs: WATCHDOG_MAX_CYCLE_MS,
+  workCycleTimeoutMs: WORK_CYCLE_TIMEOUT_MS,
+  phaseTimeoutMs: PHASE_TIMEOUT_MS,
+  heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
+  defaultPollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
+} as const;
+
+/**
+ * Guard the watchdog invariant at module load: the WORK cycle's wall-clock
+ * budget plus the time the loop sleeps between cycles must finish well before
+ * the watchdog declares the worker wedged. A future edit that bumps
+ * WORK_CYCLE_TIMEOUT_MS or lowers WATCHDOG_MAX_CYCLE_MS into violation throws
+ * loudly at startup instead of shipping a worker that self-restarts mid-cycle.
+ */
+function assertWatchdogInvariant(): void {
+  if (
+    WORK_CYCLE_TIMEOUT_MS + DEFAULT_POLL_INTERVAL_MS >=
+    WATCHDOG_MAX_CYCLE_MS
+  ) {
+    throw new Error(
+      "[provisioning-worker] watchdog invariant violated: " +
+        `WORK_CYCLE_TIMEOUT_MS (${WORK_CYCLE_TIMEOUT_MS}) + DEFAULT_POLL_INTERVAL_MS ` +
+        `(${DEFAULT_POLL_INTERVAL_MS}) must be < WATCHDOG_MAX_CYCLE_MS (${WATCHDOG_MAX_CYCLE_MS}). ` +
+        "A slow-but-progressing work cycle would otherwise trip the watchdog and self-restart.",
+    );
+  }
+}
+assertWatchdogInvariant();
 
 /**
  * Liveness gate. The heartbeat interval publishes ONLY when this is true.
@@ -533,6 +674,33 @@ let lastCycleCompletedAt = Date.now();
 
 /** In-flight guard so a hung Redis write can't pile up unresolved publishes. */
 let heartbeatPublishInFlight = false;
+
+/**
+ * Consecutive heartbeat ticks the watchdog has been tripped. Reset to 0 on any
+ * tick where the work cycle is progressing. Drives the self-restart decision.
+ */
+let consecutiveWatchdogTicks = 0;
+
+/**
+ * Pure decision for FIX 1's self-restart: given how many consecutive ticks the
+ * watchdog has been tripped, whether the feature is enabled, and the K
+ * threshold, decide whether the worker should exit(1) now. Exported for unit
+ * testing the K-consecutive-tick trigger without spawning a process.
+ */
+export function evaluateSelfRestart(deps: {
+  watchdogTripped: boolean;
+  consecutiveTicks: number;
+  selfRestartEnabled: boolean;
+  threshold: number;
+}): { nextConsecutiveTicks: number; shouldRestart: boolean } {
+  if (!deps.watchdogTripped) {
+    return { nextConsecutiveTicks: 0, shouldRestart: false };
+  }
+  const nextConsecutiveTicks = deps.consecutiveTicks + 1;
+  const shouldRestart =
+    deps.selfRestartEnabled && nextConsecutiveTicks >= deps.threshold;
+  return { nextConsecutiveTicks, shouldRestart };
+}
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -595,24 +763,195 @@ export async function maybePublishHeartbeat(
 }
 
 /**
+ * Loudly log and exit so systemd `Restart=always` relaunches the worker. Split
+ * out so the side-effecting `process.exit` is in one place and the rest of the
+ * tick logic stays pure/testable. Allows injecting `exit` in tests.
+ */
+function triggerSelfRestart(
+  logger: WorkerLogger,
+  consecutiveTicks: number,
+  exit: (code: number) => never = process.exit,
+): never {
+  logger.error(
+    "[provisioning-worker] WATCHDOG self-restart: work cycle wedged for " +
+      `${consecutiveTicks} consecutive heartbeat ticks (>=${Math.round(
+        WATCHDOG_MAX_CYCLE_MS / 1000,
+      )}s stale). Exiting(1) so systemd relaunches a fresh worker.`,
+    {
+      event: "worker.self_restart",
+      consecutiveWatchdogTicks: consecutiveTicks,
+      lastCycleCompletedAt: new Date(lastCycleCompletedAt).toISOString(),
+    },
+  );
+  return exit(1);
+}
+
+/**
  * Start the independent heartbeat timer. Decoupled from `pollCycle` so a slow
  * work item can never starve the liveness key. The in-flight guard skips a
  * tick rather than queueing a second publish behind a hung Redis write.
+ *
+ * Each tick also advances the self-restart watchdog: when the heartbeat is
+ * withheld because the work cycle is wedged, the consecutive-tick counter
+ * climbs; once it crosses `config.watchdogConsecutiveTicks`, the worker
+ * self-restarts (FIX 1).
  */
-function startHeartbeatInterval(logger: WorkerLogger): NodeJS.Timeout {
+function startHeartbeatInterval(
+  logger: WorkerLogger,
+  config: ProvisioningWorkerConfig,
+): NodeJS.Timeout {
   const tick = () => {
     if (heartbeatPublishInFlight) return;
     heartbeatPublishInFlight = true;
     void maybePublishHeartbeat(logger, {
       preflightOk,
       lastCycleCompletedAt,
-    }).finally(() => {
-      heartbeatPublishInFlight = false;
-    });
+    })
+      .then(({ watchdogTripped }) => {
+        const { nextConsecutiveTicks, shouldRestart } = evaluateSelfRestart({
+          watchdogTripped,
+          consecutiveTicks: consecutiveWatchdogTicks,
+          selfRestartEnabled: config.selfRestartEnabled,
+          threshold: config.watchdogConsecutiveTicks,
+        });
+        consecutiveWatchdogTicks = nextConsecutiveTicks;
+        // Don't self-restart (exit 1) while draining: a SIGTERM that flips
+        // `running` should exit 0, not be turned into a wedge-restart.
+        if (shouldRestart && running) {
+          triggerSelfRestart(logger, nextConsecutiveTicks);
+        }
+      })
+      .finally(() => {
+        heartbeatPublishInFlight = false;
+      });
   };
   const timer = setInterval(tick, HEARTBEAT_INTERVAL_MS);
   timer.unref();
   return timer;
+}
+
+/**
+ * Run one cycle phase under a hard wall-clock budget (FIX 2). The phase is
+ * wrapped in `withTimeout` (so a hung phase frees the cycle) and its result is
+ * handed to `onResult` for logging; any throw — including the timeout — is
+ * caught and logged so one phase failing never aborts the rest of the cycle.
+ */
+async function runBoundedPhase<T>(
+  logger: WorkerLogger,
+  label: string,
+  phase: () => Promise<T>,
+  onResult: (result: T) => void,
+): Promise<void> {
+  const { withTimeout } = await loadDeps();
+  try {
+    const result = await withTimeout(
+      phase(),
+      PHASE_TIMEOUT_MS,
+      `[provisioning-worker] ${label}`,
+    );
+    onResult(result);
+  } catch (error) {
+    logger.error(`[provisioning-worker] ${label} failed`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * Run the 4 WORK phases (claim/complete jobs, agent heartbeats, recovery, fleet
+ * upgrade) as a single group bounded by WORK_CYCLE_TIMEOUT_MS (FIX E). Bounding
+ * the group once — rather than summing N per-phase 90s timeouts (4 × 90s = 360s
+ * > the 300s watchdog window) — keeps the critical-path budget below
+ * WATCHDOG_MAX_CYCLE_MS, so a slow-but-progressing cycle can't self-restart. The
+ * group timeout is caught and logged so it frees the cycle without aborting the
+ * rest of pollCycle; the per-phase timeouts inside still give a fast,
+ * per-phase wedge signal.
+ */
+async function runWorkCycle(
+  logger: WorkerLogger,
+  config: ProvisioningWorkerConfig,
+): Promise<void> {
+  const { withTimeout } = await loadDeps();
+  const work = (async () => {
+    await runBoundedPhase(
+      logger,
+      "cycle",
+      () => processProvisioningWorkerCycle(config.batchSize, config.jobTypes),
+      (result) => {
+        if (result.claimed > 0 || result.failed > 0) {
+          logger.info(
+            "[provisioning-worker] cycle complete",
+            resultContext(result),
+          );
+        }
+      },
+    );
+
+    await runBoundedPhase(
+      logger,
+      "heartbeat cycle",
+      () => processHeartbeatCycle(),
+      (heartbeats) => {
+        if (heartbeats.total > 0) {
+          logger.info("[provisioning-worker] heartbeat cycle complete", {
+            total: heartbeats.total,
+            succeeded: heartbeats.succeeded,
+            failed: heartbeats.failed,
+          });
+        }
+      },
+    );
+
+    await runBoundedPhase(
+      logger,
+      "recovery cycle",
+      () => processRecoveryCycle(),
+      (recovery) => {
+        if (recovery.total > 0) {
+          logger.info("[provisioning-worker] recovery cycle complete", {
+            total: recovery.total,
+            recovered: recovery.recovered,
+            reprovisioned: recovery.reprovisioned,
+            failed: recovery.failed,
+          });
+        }
+      },
+    );
+
+    await runBoundedPhase(
+      logger,
+      "fleet upgrade cycle",
+      () => processFleetUpgradeCycle(),
+      (decision) => {
+        if (decision.action !== "noop") {
+          logger.info("[provisioning-worker] fleet upgrade cycle complete", {
+            action: decision.action,
+            configuredImage: decision.configuredImage,
+            targetDigest: decision.targetDigest,
+            candidates: decision.candidates,
+            enqueued: decision.enqueued,
+            inFlight: decision.inFlight,
+            detail: decision.detail,
+          });
+        }
+      },
+    );
+  })();
+
+  try {
+    await withTimeout(
+      work,
+      WORK_CYCLE_TIMEOUT_MS,
+      "[provisioning-worker] work cycle",
+    );
+  } catch (error) {
+    // A group-level timeout frees the cycle (every leaf is independently
+    // bounded) so the watchdog clock advances and infra maintenance still runs.
+    logger.error("[provisioning-worker] work cycle exceeded its budget", {
+      error: error instanceof Error ? error.message : String(error),
+      workCycleTimeoutMs: WORK_CYCLE_TIMEOUT_MS,
+    });
+  }
 }
 
 async function pollCycle(
@@ -636,81 +975,34 @@ async function pollCycle(
     );
     return;
   }
-  try {
-    const result = await processProvisioningWorkerCycle(
-      config.batchSize,
-      config.jobTypes,
-    );
-    if (result.claimed > 0 || result.failed > 0) {
-      logger.info(
-        "[provisioning-worker] cycle complete",
-        resultContext(result),
-      );
-    }
-  } catch (error) {
-    logger.error("[provisioning-worker] cycle failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+  // ── WORK phases (on the watchdog's critical path) ────────────────────────
+  // The WHOLE group is bounded ONCE by WORK_CYCLE_TIMEOUT_MS (FIX E) so the
+  // critical-path budget stays below WATCHDOG_MAX_CYCLE_MS no matter how many
+  // phases there are — 4 × per-phase 90s used to sum to 360s and could trip the
+  // 300s watchdog on a slow-but-progressing cycle. Each phase keeps its own
+  // (now-shorter) per-phase timeout as a fast individual-wedge signal; the group
+  // bound is the authoritative one. A group-level timeout frees the cycle and is
+  // logged, never aborting the rest of pollCycle (infra maintenance still runs).
+  await runWorkCycle(logger, config);
 
-  try {
-    const heartbeats = await processHeartbeatCycle();
-    if (heartbeats.total > 0) {
-      logger.info("[provisioning-worker] heartbeat cycle complete", {
-        total: heartbeats.total,
-        succeeded: heartbeats.succeeded,
-        failed: heartbeats.failed,
-      });
-    }
-  } catch (error) {
-    logger.error("[provisioning-worker] heartbeat cycle failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+  // Mark progress for the watchdog HERE — after the WORK cycle, BEFORE infra
+  // maintenance (FIX 2). Infra maintenance (SSH + Docker probes across the
+  // whole fleet) is slow and off the critical liveness path: a node-health or
+  // orphan-reconcile sweep that drags on must not make a worker that is still
+  // claiming and completing jobs look wedged. As long as the WORK cycle keeps
+  // advancing this, the heartbeat interval keeps the worker healthy.
+  lastCycleCompletedAt = Date.now();
 
-  try {
-    const recovery = await processRecoveryCycle();
-    if (recovery.total > 0) {
-      logger.info("[provisioning-worker] recovery cycle complete", {
-        total: recovery.total,
-        recovered: recovery.recovered,
-        reprovisioned: recovery.reprovisioned,
-        failed: recovery.failed,
-      });
-    }
-  } catch (error) {
-    logger.error("[provisioning-worker] recovery cycle failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-
-  try {
-    const decision = await processFleetUpgradeCycle();
-    if (decision.action !== "noop") {
-      logger.info("[provisioning-worker] fleet upgrade cycle complete", {
-        action: decision.action,
-        configuredImage: decision.configuredImage,
-        targetDigest: decision.targetDigest,
-        candidates: decision.candidates,
-        enqueued: decision.enqueued,
-        inFlight: decision.inFlight,
-        detail: decision.detail,
-      });
-    }
-  } catch (error) {
-    logger.error("[provisioning-worker] fleet upgrade cycle failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-
-  // Infra maintenance cycle runs on a longer interval than the heartbeat
-  // (SSH + Docker probes per node are expensive). Bundles every job that
-  // used to be forwarded from CF crons to the now-deprecated control-plane:
+  // ── Infra maintenance (off the watchdog path) ────────────────────────────
+  // Runs on a longer interval than the heartbeat (SSH + Docker probes per node
+  // are expensive). Bundles every job that used to be forwarded from CF crons
+  // to the now-deprecated control-plane:
   //   - node health check  (was: /api/v1/cron/agent-hot-pool — healthCheckAll)
   //   - alloc reconciliation (was: agent-hot-pool — syncAllocatedCounts)
   //   - pre-pull warm image (was: agent-hot-pool — prePullAgentImageOnAvailableNodes)
   //   - node autoscale     (was: /api/v1/cron/node-autoscale)
   //   - warm pool drain    (was: /api/v1/cron/pool-drain-idle)
+  //   - orphan reconcile   (FIX 3, gated by ORPHAN_RECONCILER_ENABLED)
   // Folding them together avoids 3 parallel writers fighting over the same
   // docker_nodes rows and means there's exactly one host that owns the
   // truth: the orchestrator (this daemon). `lastInfraMaintenanceAt`
@@ -719,80 +1011,102 @@ async function pollCycle(
   const now = Date.now();
   if (now - lastInfraMaintenanceAt >= config.nodeHealthIntervalMs) {
     lastInfraMaintenanceAt = now;
-    await runInfraMaintenanceCycle(logger);
+    await runInfraMaintenanceCycle(logger, config);
   }
-
-  // Mark progress for the watchdog. As long as this advances, the heartbeat
-  // interval keeps the worker healthy even across long cycles.
-  lastCycleCompletedAt = Date.now();
 }
 
-async function runInfraMaintenanceCycle(logger: WorkerLogger): Promise<void> {
-  try {
-    const summary = await processNodeHealthCheckCycle();
-    logger.info("[provisioning-worker] node health check cycle complete", {
-      total: summary.total,
-      healthy: summary.healthy,
-      unhealthy: summary.unhealthy,
-    });
-  } catch (error) {
-    logger.error("[provisioning-worker] node health check cycle failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-
-  try {
-    const changes = await processSyncAllocatedCountsCycle();
-    if (changes > 0) {
-      logger.info("[provisioning-worker] alloc reconcile cycle complete", {
-        changed: changes,
+async function runInfraMaintenanceCycle(
+  logger: WorkerLogger,
+  config: ProvisioningWorkerConfig,
+): Promise<void> {
+  // Every phase is bounded by PHASE_TIMEOUT_MS via runBoundedPhase so an
+  // unresponsive node's SSH probe can never stall the whole sweep.
+  await runBoundedPhase(
+    logger,
+    "node health check cycle",
+    () => processNodeHealthCheckCycle(),
+    (summary) => {
+      logger.info("[provisioning-worker] node health check cycle complete", {
+        total: summary.total,
+        healthy: summary.healthy,
+        unhealthy: summary.unhealthy,
       });
-    }
-  } catch (error) {
-    logger.error("[provisioning-worker] alloc reconcile cycle failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+    },
+  );
 
-  try {
-    const summary = await processPrePullImagesCycle();
-    if (summary) {
-      logger.info("[provisioning-worker] pre-pull images cycle complete", {
-        attempted: summary.attempted,
-        failed: summary.failed,
-      });
-    }
-  } catch (error) {
-    logger.error("[provisioning-worker] pre-pull images cycle failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+  await runBoundedPhase(
+    logger,
+    "alloc reconcile cycle",
+    () => processSyncAllocatedCountsCycle(),
+    (changes) => {
+      if (changes > 0) {
+        logger.info("[provisioning-worker] alloc reconcile cycle complete", {
+          changed: changes,
+        });
+      }
+    },
+  );
 
-  try {
-    const decision = await processNodeAutoscaleCycle();
-    if (decision.action !== "noop") {
-      logger.info("[provisioning-worker] node autoscale cycle complete", {
-        action: decision.action,
-        detail: decision.detail,
-      });
-    }
-  } catch (error) {
-    logger.error("[provisioning-worker] node autoscale cycle failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+  await runBoundedPhase(
+    logger,
+    "pre-pull images cycle",
+    () => processPrePullImagesCycle(),
+    (summary) => {
+      if (summary) {
+        logger.info("[provisioning-worker] pre-pull images cycle complete", {
+          attempted: summary.attempted,
+          failed: summary.failed,
+        });
+      }
+    },
+  );
 
-  try {
-    const result = await processPoolDrainIdleCycle();
-    if (result.drained > 0) {
-      logger.info("[provisioning-worker] warm pool drain cycle complete", {
-        drained: result.drained,
-      });
-    }
-  } catch (error) {
-    logger.error("[provisioning-worker] warm pool drain cycle failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
+  await runBoundedPhase(
+    logger,
+    "node autoscale cycle",
+    () => processNodeAutoscaleCycle(),
+    (decision) => {
+      if (decision.action !== "noop") {
+        logger.info("[provisioning-worker] node autoscale cycle complete", {
+          action: decision.action,
+          detail: decision.detail,
+        });
+      }
+    },
+  );
+
+  await runBoundedPhase(
+    logger,
+    "warm pool drain cycle",
+    () => processPoolDrainIdleCycle(),
+    (result) => {
+      if (result.drained > 0) {
+        logger.info("[provisioning-worker] warm pool drain cycle complete", {
+          drained: result.drained,
+        });
+      }
+    },
+  );
+
+  // FIX 3: orphan-container reconciliation. Runs LAST so it sees the fresh
+  // node-status from the health check above — the reconciler only touches
+  // HEALTHY nodes, so a node that just failed its probe is excluded and a
+  // transient SSH blip never reaps live containers. Gated OFF by default.
+  if (config.orphanReconcilerEnabled) {
+    await runBoundedPhase(
+      logger,
+      "orphan reconciler cycle",
+      () => processOrphanReconcilerCycle(),
+      (result) => {
+        logger.info("[provisioning-worker] orphan reconciler cycle complete", {
+          event: "orphan_reconciler.reaped",
+          nodesScanned: result.nodesScanned,
+          nodesSkipped: result.nodesSkipped,
+          reaped: result.reaped,
+          reapFailed: result.reapFailed,
+        });
+      },
+    );
   }
 }
 
@@ -850,6 +1164,9 @@ async function main(): Promise<void> {
     // When a dedicated apps daemon ships, pin this one to `agent`.
     jobLanes: process.env.PROVISIONING_JOB_LANES || "(all)",
     jobTypeCount: config.jobTypes.length,
+    selfRestartEnabled: config.selfRestartEnabled,
+    watchdogConsecutiveTicks: config.watchdogConsecutiveTicks,
+    orphanReconcilerEnabled: config.orphanReconcilerEnabled,
   });
 
   await assertProvisioningWorkerPreflight();
@@ -875,7 +1192,7 @@ async function main(): Promise<void> {
   // cycle takes. Publish once immediately so there's no cold gap before the
   // first tick.
   await publishHeartbeat(logger);
-  const heartbeatTimer = startHeartbeatInterval(logger);
+  const heartbeatTimer = startHeartbeatInterval(logger, config);
 
   try {
     while (running) {
