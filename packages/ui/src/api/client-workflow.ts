@@ -14,6 +14,7 @@ import type {
   WorkflowDefinitionResolveClarificationRequest,
   WorkflowDefinitionWriteRequest,
   WorkflowExecution,
+  WorkflowRevision,
   WorkflowStatusResponse,
 } from "./client-types-chat";
 
@@ -48,6 +49,17 @@ declare module "./client-base" {
       limit?: number,
     ): Promise<WorkflowExecution[]>;
     getWorkflowExecution(id: string): Promise<WorkflowExecution>;
+    getWorkflowRevisions(
+      id: string,
+      limit?: number,
+    ): Promise<{
+      currentVersionId: string | null;
+      revisions: WorkflowRevision[];
+    }>;
+    restoreWorkflowRevision(
+      id: string,
+      versionId: string,
+    ): Promise<WorkflowDefinition>;
   }
 }
 
@@ -212,4 +224,37 @@ ElizaClient.prototype.getWorkflowExecution = async function (
     );
   }
   return result.execution;
+};
+
+ElizaClient.prototype.getWorkflowRevisions = async function (
+  this: ElizaClient,
+  id: string,
+  limit = 20,
+): Promise<{
+  currentVersionId: string | null;
+  revisions: WorkflowRevision[];
+}> {
+  const result = await this.fetch<{
+    currentVersionId?: string | null;
+    revisions?: WorkflowRevision[];
+  }>(
+    `/api/workflow/workflows/${encodeURIComponent(id)}/revisions?limit=${limit}`,
+  );
+  return {
+    currentVersionId: result.currentVersionId ?? null,
+    revisions: result.revisions ?? [],
+  };
+};
+
+ElizaClient.prototype.restoreWorkflowRevision = async function (
+  this: ElizaClient,
+  id: string,
+  versionId: string,
+): Promise<WorkflowDefinition> {
+  return this.fetch<WorkflowDefinition>(
+    `/api/workflow/workflows/${encodeURIComponent(id)}/revisions/${encodeURIComponent(
+      versionId,
+    )}/restore`,
+    { method: "POST" },
+  );
 };

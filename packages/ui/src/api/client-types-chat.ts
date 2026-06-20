@@ -624,12 +624,34 @@ export interface WorkflowDefinition {
   id: string;
   name: string;
   active: boolean;
+  versionId?: string;
   description?: string;
   nodeCount?: number;
   nodes?: WorkflowDefinitionNode[];
   lastExecutionAt?: string;
   /** Connection graph. Present on single-workflow GET; absent on list. */
   connections?: WorkflowConnectionMap;
+}
+
+export type WorkflowRevisionOperation =
+  | "update"
+  | "activate"
+  | "deactivate"
+  | "tags"
+  | "restore"
+  | "delete";
+
+export interface WorkflowRevision {
+  id: string;
+  workflowId: string;
+  versionId: string;
+  name: string;
+  active: boolean;
+  workflow?: WorkflowDefinition;
+  createdAt: string;
+  updatedAt: string;
+  capturedAt: string;
+  operation: WorkflowRevisionOperation;
 }
 
 export interface WorkflowExecution {

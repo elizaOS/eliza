@@ -25,6 +25,7 @@ import {
   PlayCircle,
   Power,
   RefreshCw,
+  RotateCcw,
   Save,
   Sparkles,
   Wand2,
@@ -37,6 +38,7 @@ import {
   type WorkflowDefinition,
   type WorkflowDefinitionGenerateResponse,
   type WorkflowExecution,
+  type WorkflowRevision,
 } from "../../api/client-types-chat";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useModalState } from "../../hooks/useModalState";
@@ -96,6 +98,12 @@ export function WorkflowEditor({
   const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(
     null,
   );
+  const [revisions, setRevisions] = useState<WorkflowRevision[]>([]);
+  const [currentVersionId, setCurrentVersionId] = useState<string | null>(
+    () => initial?.versionId ?? null,
+  );
+  const [revisionsLoading, setRevisionsLoading] = useState(false);
+  const [revisionsError, setRevisionsError] = useState<string | null>(null);
   const [generatorPrompt, setGeneratorPrompt] = useState("");
   const generatorModal = useModalState();
   const generatorOpen = generatorModal.state.status !== "closed";
@@ -124,6 +132,9 @@ export function WorkflowEditor({
     setExecutionError(null);
     setExecutions([]);
     setSelectedExecutionId(null);
+    setRevisions([]);
+    setCurrentVersionId(initial?.versionId ?? null);
+    setRevisionsError(null);
   }, [initial]);
 
   // Re-parse on debounced text change.
@@ -167,6 +178,52 @@ export function WorkflowEditor({
     executions[0] ??
     null;
 
+  const loadRevisionsForWorkflow = useCallback(
+    async (workflowId: string | null, fallbackVersionId?: string | null) => {
+      if (!workflowId) {
+        setRevisions([]);
+        setCurrentVersionId(fallbackVersionId ?? null);
+        return;
+      }
+      setRevisionsLoading(true);
+      setRevisionsError(null);
+      try {
+        const next = await client.getWorkflowRevisions(workflowId, 10);
+        setCurrentVersionId(next.currentVersionId);
+        setRevisions(next.revisions);
+      } catch (e) {
+        setRevisionsError(
+          e instanceof Error ? e.message : "Failed to load workflow history.",
+        );
+      } finally {
+        setRevisionsLoading(false);
+      }
+    },
+    [],
+  );
+
+  const refreshRevisions = useCallback(async () => {
+    if (!persistedWorkflowId) {
+      setRevisions([]);
+      setCurrentVersionId(lastValidWorkflow?.versionId ?? null);
+      return;
+    }
+    await loadRevisionsForWorkflow(
+      persistedWorkflowId,
+      lastValidWorkflow?.versionId ?? null,
+    );
+  }, [
+    persistedWorkflowId,
+    lastValidWorkflow?.versionId,
+    loadRevisionsForWorkflow,
+  ]);
+
+  useEffect(() => {
+    void refreshRevisions();
+  }, [refreshRevisions]);
+
+  const latestRevision = revisions[0] ?? null;
+
   const handleFormat = useCallback(() => {
     const result = parseWorkflowJson(text);
     if (result.ok) {
@@ -188,16 +245,24 @@ export function WorkflowEditor({
         ? await client.updateWorkflowDefinition(persistedWorkflowId, req)
         : await client.createWorkflowDefinition(req);
       setPersistedWorkflowId(saved.id);
+      setCurrentVersionId(saved.versionId ?? null);
       setLastValidWorkflow(saved);
       setText(workflowToJsonText(saved));
       onSaved?.(saved);
       void refreshExecutions();
+      void loadRevisionsForWorkflow(saved.id, saved.versionId ?? null);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Failed to save workflow.");
     } finally {
       setSaving(false);
     }
-  }, [parseState, persistedWorkflowId, onSaved, refreshExecutions]);
+  }, [
+    parseState,
+    persistedWorkflowId,
+    onSaved,
+    refreshExecutions,
+    loadRevisionsForWorkflow,
+  ]);
 
   const handleToggleActive = useCallback(async () => {
     if (!persistedWorkflowId) {
@@ -210,8 +275,10 @@ export function WorkflowEditor({
       const updated = workflowIsActive
         ? await client.deactivateWorkflowDefinition(persistedWorkflowId)
         : await client.activateWorkflowDefinition(persistedWorkflowId);
+      setCurrentVersionId(updated.versionId ?? null);
       setLastValidWorkflow(updated);
       setText(workflowToJsonText(updated));
+      void refreshRevisions();
     } catch (e) {
       setSaveError(
         e instanceof Error ? e.message : "Failed to update workflow state.",
@@ -219,7 +286,7 @@ export function WorkflowEditor({
     } finally {
       setSaving(false);
     }
-  }, [persistedWorkflowId, workflowIsActive]);
+  }, [persistedWorkflowId, workflowIsActive, refreshRevisions]);
 
   const handleRunNow = useCallback(async () => {
     if (!persistedWorkflowId) {
@@ -274,13 +341,55 @@ export function WorkflowEditor({
       }
       const definition = res as WorkflowDefinition;
       setPersistedWorkflowId(definition.id);
+      setCurrentVersionId(definition.versionId ?? null);
       setLastValidWorkflow(definition);
       setText(workflowToJsonText(definition));
       setGeneratorPrompt("");
       void refreshExecutions();
+      void loadRevisionsForWorkflow(
+        definition.id,
+        definition.versionId ?? null,
+      );
       return definition;
     });
-  }, [generatorPrompt, generatorModal, persistedWorkflowId, refreshExecutions]);
+  }, [
+    generatorPrompt,
+    generatorModal,
+    persistedWorkflowId,
+    refreshExecutions,
+    loadRevisionsForWorkflow,
+  ]);
+
+  const handleRestoreLatestRevision = useCallback(async () => {
+    if (!persistedWorkflowId || !latestRevision) return;
+    setSaving(true);
+    setSaveError(null);
+    setRevisionsError(null);
+    try {
+      const restored = await client.restoreWorkflowRevision(
+        persistedWorkflowId,
+        latestRevision.versionId,
+      );
+      setCurrentVersionId(restored.versionId ?? null);
+      setLastValidWorkflow(restored);
+      setText(workflowToJsonText(restored));
+      onSaved?.(restored);
+      void refreshExecutions();
+      void refreshRevisions();
+    } catch (e) {
+      setRevisionsError(
+        e instanceof Error ? e.message : "Failed to restore workflow version.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    persistedWorkflowId,
+    latestRevision,
+    onSaved,
+    refreshExecutions,
+    refreshRevisions,
+  ]);
 
   const lineErrorBanner = useMemo(() => {
     if (parseState.ok) return null;
@@ -365,6 +474,16 @@ export function WorkflowEditor({
     description: "Reload recent workflow executions.",
     status: executionsLoading ? "busy" : undefined,
     onActivate: () => void refreshExecutions(),
+  });
+
+  const restorePreviousButton = useAgentElement<HTMLButtonElement>({
+    id: "restore-previous-version",
+    role: "button",
+    label: "Restore previous workflow version",
+    group: "workflow-history",
+    description: "Restore the most recent saved workflow version.",
+    status: saving ? "busy" : latestRevision ? "active" : "inactive",
+    onActivate: () => void handleRestoreLatestRevision(),
   });
 
   const closeButton = useAgentElement<HTMLButtonElement>({
@@ -699,6 +818,67 @@ export function WorkflowEditor({
                   </div>
                 )}
               </div>
+            </div>
+          </PagePanel>
+
+          <PagePanel
+            variant="inset"
+            className="flex min-h-[132px] flex-col overflow-hidden rounded-sm"
+          >
+            <div className="flex flex-wrap items-center gap-2 border-b border-border/40 px-3 py-2">
+              <div className="mr-auto min-w-0">
+                <div className="text-xs font-medium text-txt">History</div>
+                <div className="truncate text-2xs text-muted-strong">
+                  {currentVersionId
+                    ? `Current ${currentVersionId.slice(0, 8)}`
+                    : "Unsaved draft"}
+                </div>
+              </div>
+              <Button
+                ref={restorePreviousButton.ref}
+                {...restorePreviousButton.agentProps}
+                variant="ghost"
+                size="sm"
+                onClick={() => void handleRestoreLatestRevision()}
+                disabled={!persistedWorkflowId || !latestRevision || saving}
+              >
+                <RotateCcw className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                Restore previous
+              </Button>
+            </div>
+            {revisionsError && (
+              <div className="border-b border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger">
+                {revisionsError}
+              </div>
+            )}
+            <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
+              {revisionsLoading ? (
+                <div className="flex items-center gap-2 text-xs text-muted-strong">
+                  <Spinner className="h-3.5 w-3.5" />
+                  Loading history
+                </div>
+              ) : revisions.length === 0 ? (
+                <div className="text-xs text-muted-strong">
+                  Save an edit to create a restorable version.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {revisions.slice(0, 4).map((revision) => (
+                    <div
+                      key={revision.id}
+                      className="flex min-w-0 items-center gap-2 text-xs"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-txt">
+                        {revision.name}
+                      </span>
+                      <span className="shrink-0 text-2xs text-muted-strong">
+                        {revision.operation} /{" "}
+                        {new Date(revision.capturedAt).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </PagePanel>
         </div>
