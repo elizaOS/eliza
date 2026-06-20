@@ -737,27 +737,19 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
   });
 
-  // ── Transcribe header button is gated on voice being on (#8789) ────────────
-  // The sheet header (Maximize/Clear/[Transcribe]) shows at the HALF detent and
-  // up; one pull-up of the grabber reveals it.
-  const openHeader = () => {
-    const grabber = screen.getByTestId("chat-sheet-grabber");
-    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
-    fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
-    fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
-  };
-
-  it("hides the transcribe header button while voice is off", () => {
+  // ── Transcribe button lives in the composer beside the mic, gated on voice
+  // being on (#8789). It's part of the always-present composer trailing cluster,
+  // so it shows at any detent (no need to open the sheet header).
+  it("hides the transcribe button while voice is off", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    openHeader();
-    // Header is present (Maximize/Clear render), but with no active voice
-    // session the transcribe control is not offered.
-    expect(screen.getByTestId("chat-full-maximize")).toBeTruthy();
-    expect(screen.queryByTestId("chat-full-transcribe")).toBeNull();
+    // The mic is present, but with no active voice session the transcribe
+    // control is not offered next to it.
+    expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
+    expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
     expect(screen.queryByTestId("chat-transcribing-badge")).toBeNull();
   });
 
-  it("reveals the transcribe header button while a hands-free voice session is active", () => {
+  it("reveals the transcribe button beside the mic while a hands-free voice session is active", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -767,10 +759,11 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    openHeader();
-    const btn = screen.getByTestId("chat-full-transcribe");
+    const btn = screen.getByTestId("chat-composer-transcribe");
     expect(btn.getAttribute("aria-label")).toBe("transcription mode");
     expect(btn.getAttribute("aria-pressed")).toBe("false");
+    // It sits next to the mic (both in the composer trailing cluster).
+    expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
   });
 
   it("reveals the transcribe button while the mic is open (push-to-talk recording)", () => {
@@ -783,11 +776,10 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    openHeader();
-    expect(screen.getByTestId("chat-full-transcribe")).toBeTruthy();
+    expect(screen.getByTestId("chat-composer-transcribe")).toBeTruthy();
   });
 
-  it("keeps the transcribe button (as Stop) + shows the badge while transcribing, and wires the toggle", () => {
+  it("shows the transcribe button as Stop (pressed) while transcribing, and wires the toggle", () => {
     const toggleTranscriptionMode = vi.fn();
     render(
       <ContinuousChatOverlay
@@ -797,11 +789,9 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    openHeader();
-    const btn = screen.getByTestId("chat-full-transcribe");
+    const btn = screen.getByTestId("chat-composer-transcribe");
     expect(btn.getAttribute("aria-label")).toBe("stop transcription");
     expect(btn.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByTestId("chat-transcribing-badge")).toBeTruthy();
     fireEvent.click(btn);
     expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
   });
