@@ -45,6 +45,39 @@ export function buildStewardOAuthRedirectUri(origin: string): string {
   return `${origin}/login`;
 }
 
+/**
+ * The redirect_uri used for native (Capacitor iOS / Android) OAuth.
+ *
+ * On native, `window.location.origin` is `capacitor://localhost`, so the web
+ * redirect (`capacitor://localhost/login`) is invalid and navigating the
+ * embedded WKWebView to the provider black-screens the app. Instead OAuth runs
+ * in the system browser and returns via the app's custom URL scheme. The host
+ * is `login` (no path) so `new URL(NATIVE_OAUTH_REDIRECT_URI).host === "login"`,
+ * which the deep-link return handler matches.
+ *
+ * This value MUST be on Steward's redirect allowlist for the tenant.
+ */
+export const NATIVE_OAUTH_REDIRECT_URI = "elizaos://login";
+
+export function buildNativeOAuthRedirectUri(): string {
+  return NATIVE_OAUTH_REDIRECT_URI;
+}
+
+/**
+ * The single redirect_uri value to use for OAuth authorize + exchange. Returns
+ * the native custom-scheme URI on Capacitor and `${origin}/login` on web.
+ * Computing it once and reusing it in BOTH places guarantees the authorize and
+ * exchange redirect_uri match exactly (Steward rejects mismatches).
+ */
+export function resolveOAuthRedirectUri(
+  native: boolean,
+  origin: string,
+): string {
+  return native
+    ? NATIVE_OAUTH_REDIRECT_URI
+    : buildStewardOAuthRedirectUri(origin);
+}
+
 export function buildStewardOAuthAuthorizeUrl(
   provider: StewardOAuthProvider,
   origin: string,
@@ -52,13 +85,20 @@ export function buildStewardOAuthAuthorizeUrl(
     stewardApiUrl?: string;
     stewardTenantId?: string;
     codeChallenge?: string;
+    /**
+     * Override the redirect_uri sent to Steward. Defaults to the web
+     * `${origin}/login`. Native callers pass {@link NATIVE_OAUTH_REDIRECT_URI}
+     * so OAuth returns through the app's custom URL scheme. Whatever value is
+     * passed here MUST be reused verbatim at exchange time.
+     */
+    redirectUri?: string;
   },
 ): string {
   const stewardApiUrl =
     options?.stewardApiUrl ?? resolveBrowserStewardApiUrl(origin);
   return buildStewardOAuthAuthorizeUrlCore(
     provider,
-    buildStewardOAuthRedirectUri(origin),
+    options?.redirectUri ?? buildStewardOAuthRedirectUri(origin),
     {
       stewardApiUrl,
       stewardTenantId: options?.stewardTenantId ?? DEFAULT_STEWARD_TENANT_ID,

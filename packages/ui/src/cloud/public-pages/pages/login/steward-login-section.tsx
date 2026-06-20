@@ -35,6 +35,8 @@ import {
 import { toast } from "sonner";
 import { DiscordIcon } from "../../../../cloud-ui/components/icons";
 import { Alert, AlertDescription } from "../../../../components/primitives";
+import { isNative } from "../../../../platform/init";
+import { openExternalUrl } from "../../../../utils/openExternalUrl";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { resolveBrowserStewardApiUrl } from "../../../shell/steward-url";
 import { getErrorMessage } from "../../lib/error-message";
@@ -45,9 +47,9 @@ import {
 } from "../../lib/login-return-to";
 import {
   buildStewardOAuthAuthorizeUrl,
-  buildStewardOAuthRedirectUri,
   consumeStewardPkceVerifier,
   createStewardPkcePair,
+  resolveOAuthRedirectUri,
   type StewardOAuthProvider,
   storeStewardPkceVerifier,
 } from "../../lib/steward-oauth-url";
@@ -255,7 +257,7 @@ export default function StewardLoginSection() {
     if (code) {
       const codeVerifier = consumeStewardPkceVerifier() ?? undefined;
       exchangeStewardCodeViaApi(code, {
-        redirectUri: buildStewardOAuthRedirectUri(window.location.origin),
+        redirectUri: resolveOAuthRedirectUri(isNative, window.location.origin),
         tenantId: STEWARD_TENANT_ID,
         codeVerifier,
       })
@@ -511,11 +513,24 @@ export default function StewardLoginSection() {
       return;
     }
     storePendingOAuthReturnTo(searchParams);
-    window.location.href = buildStewardOAuthAuthorizeUrl(
-      provider,
-      oauthOrigin,
-      { stewardApiUrl, stewardTenantId: STEWARD_TENANT_ID, codeChallenge },
-    );
+    const authorizeUrl = buildStewardOAuthAuthorizeUrl(provider, oauthOrigin, {
+      stewardApiUrl,
+      stewardTenantId: STEWARD_TENANT_ID,
+      codeChallenge,
+      redirectUri: resolveOAuthRedirectUri(isNative, oauthOrigin),
+    });
+
+    if (isNative) {
+      // On Capacitor (iOS / Android) the embedded WKWebView cannot host the
+      // OAuth flow — Google blocks OAuth in embedded webviews and the redirect
+      // would resolve to the invalid `capacitor://localhost/login`. Open the
+      // system browser instead; the provider returns to `elizaos://login`,
+      // which the app's deep-link handler routes back into this page.
+      await openExternalUrl(authorizeUrl);
+      return;
+    }
+
+    window.location.href = authorizeUrl;
   }
 
   if (redirectTo) {
