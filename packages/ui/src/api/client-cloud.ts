@@ -8,6 +8,11 @@ import {
   readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
 } from "@elizaos/shared/steward-session-client";
+import {
+  type AgentReadinessProbe,
+  type AuthedAgentFetch,
+  startCloudConversationHandoff,
+} from "../cloud/handoff/cloud-handoff-supervisor";
 import { getBootConfig } from "../config/boot-config";
 import {
   buildCloudSharedAgentApiBase,
@@ -1304,6 +1309,26 @@ declare module "./client-base" {
       bridgeUrl: string | null;
       created: boolean;
     }>;
+    /**
+     * Background shared→personal handoff for a freshly provisioned cloud agent:
+     * once the dedicated container is reachable, copy the conversation the user
+     * built on the shared adapter into it and switch the live client over.
+     * Best-effort and non-blocking — failure leaves the user on the (working)
+     * shared adapter.
+     */
+    startCloudAgentHandoff(options: {
+      agentId: string;
+      sharedApiBase: string;
+      conversationId: string;
+      cloudApiBase: string;
+      authToken: string;
+      onSwitch: (containerBase: string) => void | Promise<void>;
+      intervalMs?: number;
+      timeoutMs?: number;
+      log?: (message: string) => void;
+    }): Promise<
+      import("../cloud/handoff/conversation-handoff").ConversationHandoffResult
+    >;
     checkBugReportInfo(): Promise<{
       nodeVersion?: string;
       platform?: string;
@@ -2969,6 +2994,83 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     bridgeUrl: detailAgent?.bridge_url ?? null,
     created: true,
   };
+};
+
+ElizaClient.prototype.startCloudAgentHandoff = function (
+  this: ElizaClient,
+  options,
+) {
+  const {
+    agentId,
+    sharedApiBase,
+    conversationId,
+    cloudApiBase,
+    authToken,
+    onSwitch,
+    intervalMs,
+    timeoutMs,
+    log,
+  } = options;
+  const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
+
+  // Authed JSON fetch against a specific agent base (shared adapter OR the
+  // dedicated container subdomain). Both accept the cloud session token —
+  // the dedicated-agent proxy swaps it for the container's own token.
+  const authedFetch: AuthedAgentFetch = async (base, path, init) => {
+    const res = await fetch(`${base}${path}`, {
+      method: init?.method ?? "GET",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      ...(init?.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+      signal: AbortSignal.timeout(20_000),
+    });
+    let json: unknown = null;
+    try {
+      json = await res.json();
+    } catch {
+      json = null;
+    }
+    return { status: res.status, json };
+  };
+
+  const readiness: AgentReadinessProbe = {
+    resolveReadyBase: async () => {
+      const detail = await this.getCloudCompatAgent(agentId).catch(() => null);
+      const agent = detail?.success ? detail.data : null;
+      if (!agent) return null;
+      // The container is "ready" only once the record exposes a dedicated base
+      // (bridge/web-ui subdomain) AND reports running — until then the user is
+      // served by the shared adapter.
+      const hasDedicatedUrl = Boolean(
+        agent.bridge_url || agent.web_ui_url || agent.webUiUrl,
+      );
+      if (!hasDedicatedUrl) return null;
+      if (agent.status && agent.status !== "running") return null;
+      const base = resolveCloudAgentApiBase({
+        bridgeUrl: agent.bridge_url,
+        webUiUrl: agent.web_ui_url ?? agent.webUiUrl,
+        agentId,
+        cloudApiBase: resolvedCloudApiBase,
+      });
+      // Never "switch" onto the shared adapter (no migration target there).
+      if (isDirectCloudSharedAgentBase(base)) return null;
+      return base;
+    },
+  };
+
+  return startCloudConversationHandoff({
+    sharedApiBase,
+    conversationId,
+    readiness,
+    authedFetch,
+    onSwitch,
+    ...(typeof intervalMs === "number" ? { intervalMs } : {}),
+    ...(typeof timeoutMs === "number" ? { timeoutMs } : {}),
+    ...(log ? { log } : {}),
+  });
 };
 
 /** Strip a `/pair?token=…` redirect down to the agent's own origin. */

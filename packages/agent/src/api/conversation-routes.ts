@@ -1038,6 +1038,7 @@ type SerializedMessageAttachment = {
   source?: string;
   text?: string;
   mimeType?: string;
+  thumbnailUrl?: string;
 };
 
 /**
@@ -1071,6 +1072,7 @@ export function serializeMessageAttachments(
       ...(str(a.source) ? { source: str(a.source) } : {}),
       ...(str(a.text) ? { text: str(a.text) } : {}),
       ...(str(a.mimeType) ? { mimeType: str(a.mimeType) } : {}),
+      ...(str(a.thumbnailUrl) ? { thumbnailUrl: str(a.thumbnailUrl) } : {}),
     });
   }
   return out.length > 0 ? out : undefined;
@@ -1599,6 +1601,158 @@ export async function handleConversationRoutes(
     return true;
   }
 
+  // ── POST /api/conversations/:id/import ──────────────────────────────
+  // Silent bulk-insert of prior messages into a conversation WITHOUT running
+  // inference. Powers the shared→personal cloud handoff: the user's freshly
+  // provisioned personal container imports the conversation they already had
+  // on the shared agent so the switch is seamless. Keyed by the provided
+  // conversation id (so the client re-opens the same conversation after the
+  // switch) and idempotent per conversation — re-import onto an already
+  // populated room is a no-op, never a duplicate.
+  if (
+    method === "POST" &&
+    /^\/api\/conversations\/[^/]+\/import$/.test(pathname)
+  ) {
+    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const rawImport = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawImport === null) return true;
+    const rawMessages = rawImport.messages;
+    if (!Array.isArray(rawMessages)) {
+      error(res, "Body must include a `messages` array", 400);
+      return true;
+    }
+    const importMessages = rawMessages
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") return null;
+        const rec = entry as Record<string, unknown>;
+        const role =
+          rec.role === "assistant"
+            ? "assistant"
+            : rec.role === "user"
+              ? "user"
+              : null;
+        const rawText =
+          typeof rec.text === "string"
+            ? rec.text
+            : typeof rec.content === "string"
+              ? rec.content
+              : "";
+        const text = rawText.trim();
+        if (!role || !text) return null;
+        const timestamp =
+          typeof rec.timestamp === "number" && Number.isFinite(rec.timestamp)
+            ? rec.timestamp
+            : undefined;
+        return { role, text, timestamp } as const;
+      })
+      .filter(
+        (
+          m,
+        ): m is {
+          readonly role: "user" | "assistant";
+          readonly text: string;
+          readonly timestamp: number | undefined;
+        } => m !== null,
+      );
+
+    const runtime = await resolveRuntimeForChatTurn(state);
+    if (!runtime) {
+      error(res, "Agent is not running", 503);
+      return true;
+    }
+    await waitForConversationRestore(state);
+
+    let conv = state.conversations.get(convId);
+    if (!conv) {
+      const now = new Date().toISOString();
+      conv = {
+        id: convId,
+        title:
+          typeof rawImport.title === "string" && rawImport.title.trim()
+            ? rawImport.title.trim()
+            : "New Chat",
+        roomId: stringToUuid(`web-conv-${convId}`),
+        createdAt: now,
+        updatedAt: now,
+      };
+      state.conversations.set(convId, conv);
+      evictOldestConversation(state.conversations, 500);
+    }
+
+    const caller = resolveConversationCaller(req, state);
+    try {
+      await ensureConversationRoom(state, conv, caller);
+    } catch (err) {
+      error(
+        res,
+        `Failed to initialize conversation room: ${getErrorMessage(err)}`,
+        500,
+      );
+      return true;
+    }
+
+    // Idempotency: a populated room means the handoff already ran (or the user
+    // chatted here). Never double-import.
+    const existing = await runtime.getMemories({
+      roomId: conv.roomId,
+      tableName: "messages",
+      limit: 1,
+    });
+    if (existing.length > 0) {
+      json(res, {
+        conversationId: convId,
+        inserted: 0,
+        skipped: importMessages.length,
+        alreadyPopulated: true,
+      });
+      return true;
+    }
+
+    // Preserve original ordering: assign strictly increasing timestamps,
+    // anchored to the provided ones when present.
+    let inserted = 0;
+    const anchor = Date.now() - importMessages.length;
+    for (let i = 0; i < importMessages.length; i += 1) {
+      const m = importMessages[i];
+      const entityId =
+        m.role === "assistant" ? runtime.agentId : caller.entityId;
+      const createdAt = m.timestamp ?? anchor + i;
+      try {
+        const memory = createMessageMemory({
+          id: crypto.randomUUID() as UUID,
+          entityId,
+          roomId: conv.roomId,
+          content: {
+            text: m.text,
+            channelType: ChannelType.DM,
+            source: "handoff_import",
+          },
+        }) as ReturnType<typeof createMessageMemory> & {
+          createdAt?: number;
+          metadata?: Record<string, unknown>;
+        };
+        memory.createdAt = createdAt;
+        if (memory.metadata && typeof memory.metadata === "object") {
+          memory.metadata.timestamp = createdAt;
+        }
+        await persistConversationMemory(runtime, memory);
+        inserted += 1;
+      } catch (err) {
+        logger.warn(
+          `[conversations] import: failed to persist message ${i}: ${getErrorMessage(err)}`,
+        );
+      }
+    }
+    conv.updatedAt = new Date().toISOString();
+    state.broadcastWs?.({ type: "conversation-updated", conversation: conv });
+    json(res, {
+      conversationId: convId,
+      inserted,
+      skipped: importMessages.length - inserted,
+    });
+    return true;
+  }
+
   // ── POST /api/conversations/:id/messages/truncate ──────────────────
   if (
     method === "POST" &&
@@ -1731,7 +1885,7 @@ export async function handleConversationRoutes(
       return true;
     }
 
-    const { userMessage, messageToStore } = buildUserMessages({
+    const { userMessage, messageToStore } = await buildUserMessages({
       images,
       prompt,
       userId,
@@ -2075,7 +2229,7 @@ export async function handleConversationRoutes(
       return true;
     }
 
-    const { userMessage, messageToStore } = buildUserMessages({
+    const { userMessage, messageToStore } = await buildUserMessages({
       images,
       prompt,
       userId,
