@@ -2293,15 +2293,17 @@ ElizaClient.prototype.getCloudCompatAgentLogs = async function (
 };
 
 /**
- * Normalize a cloud lifecycle (restart/suspend/resume) response into the
+ * Normalize a cloud lifecycle (suspend/resume) response into the
  * `{ success, data: { jobId, status, message } }` shape the UI expects. The
  * direct cloud routes return a 202 `{ success, data: { jobId, status,
  * message } }` async-job envelope; the legacy proxy returns the same shape.
+ * A few routes carry the human message at the envelope top level, so read both.
  */
 function normalizeCloudLifecycleResponse(
   response: {
     success?: boolean;
     data?: { jobId?: string; status?: string; message?: string };
+    message?: string;
     error?: string;
   },
   fallbackVerb: string,
@@ -2315,6 +2317,7 @@ function normalizeCloudLifecycleResponse(
       status: response.data?.status ?? (success ? "queued" : "error"),
       message:
         response.data?.message ??
+        response.message ??
         (success
           ? `Agent ${fallbackVerb} enqueued`
           : (response.error ?? `Agent ${fallbackVerb} failed`)),
@@ -2323,16 +2326,21 @@ function normalizeCloudLifecycleResponse(
 }
 
 /**
- * Drive a cloud agent lifecycle action (restart/suspend/resume) through the
+ * Drive a cloud agent lifecycle action (suspend/resume) through the
  * direct-cloud ladder — direct token request → native-auth-missing guard →
  * direct-cloud-base same-origin fetch → legacy `/api/cloud/compat` proxy.
  * Mirrors `deleteCloudCompatAgent` so the Power/Start buttons work on
  * phone/web (which have no local API server proxying `/api/cloud/compat/...`).
+ *
+ * Only suspend/resume go through this ladder: the cloud-api exposes
+ * `/api/v1/eliza/agents/:id/{suspend,resume}` (also sleep/wake) but NOT a
+ * `restart` route, so restart stays on its legacy `/api/cloud/compat` proxy
+ * (see `restartCloudCompatAgent`).
  */
 async function runCloudLifecycleAction(
   client: ElizaClient,
   agentId: string,
-  action: "restart" | "suspend" | "resume",
+  action: "suspend" | "resume",
 ): Promise<{ success: boolean; error?: string; data: LifecycleResult }> {
   const encoded = encodeURIComponent(agentId);
   const directPath = `/api/v1/eliza/agents/${encoded}/${action}`;
@@ -2376,7 +2384,13 @@ ElizaClient.prototype.restartCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
 ) {
-  return runCloudLifecycleAction(this, agentId, "restart");
+  // Restart has no `/api/v1/eliza/agents/:id/restart` route (unlike
+  // suspend/resume), so it stays on the legacy compat proxy rather than the
+  // direct-cloud ladder, preserving its prior behavior.
+  return this.fetch(
+    `/api/cloud/compat/agents/${encodeURIComponent(agentId)}/restart`,
+    { method: "POST" },
+  );
 };
 
 ElizaClient.prototype.suspendCloudCompatAgent = async function (

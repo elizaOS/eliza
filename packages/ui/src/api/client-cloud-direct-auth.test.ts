@@ -429,36 +429,9 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
-  it("restarts Cloud agents through the direct Cloud API host on native", async () => {
-    capacitorMocks.request.mockResolvedValue({
-      status: 202,
-      data: {
-        success: true,
-        data: { jobId: "job-restart", status: "queued" },
-      },
-    });
-
-    const client = new ElizaClient(undefined, "cloud-api-key");
-    const result = await client.restartCloudCompatAgent("agent-1");
-
-    expect(capacitorMocks.request).toHaveBeenCalledWith(
-      expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/restart",
-        method: "POST",
-      }),
-    );
-    // The route omits a message, so the client fills in a sensible default.
-    expect(result).toEqual(
-      expect.objectContaining({
-        success: true,
-        data: expect.objectContaining({
-          jobId: "job-restart",
-          status: "queued",
-        }),
-      }),
-    );
-    expectNoLocalPersistOrStatusProbe();
-  });
+  // Note: restart is intentionally NOT part of the direct-cloud ladder — the
+  // cloud-api has no `/api/v1/eliza/agents/:id/restart` route, so
+  // `restartCloudCompatAgent` stays on the legacy `/api/cloud/compat` proxy.
 
   it("surfaces the Cloud error body when a native suspend is rejected", async () => {
     capacitorMocks.request.mockResolvedValue({
