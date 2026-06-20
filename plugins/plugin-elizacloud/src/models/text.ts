@@ -1084,8 +1084,13 @@ async function streamNativeChatCompletion(
   // Drive the SSE feed off the response body. Buffer across reads so an event
   // split over two chunks is parsed once whole. Release the permit + emit usage
   // exactly once when the feed ends (cleanly or with an error).
+  // Hoisted so the iterator's return() can cancel the in-flight read when the
+  // consumer breaks early (abort / turn-supersede / downstream error) — see the
+  // textStream return() below.
+  let readerRef: ReadableStreamDefaultReader<Uint8Array> | null = null;
   const pump = (async () => {
     const reader = body.getReader();
+    readerRef = reader;
     const decoder = new TextDecoder();
     let buffer = "";
     try {
@@ -1160,6 +1165,20 @@ async function streamNativeChatCompletion(
           return new Promise<IteratorResult<string>>((resolve, reject) => {
             pendingResolve = resolve;
             pendingReject = reject;
+          });
+        },
+        // The consumer stopped early — `for await … break` (runtime abort,
+        // turn-supersede, a downstream throw) invokes this. Cancel the SSE
+        // reader so the underlying connection tears down instead of draining the
+        // whole reply, and release the shared #8757 native permit immediately so
+        // an abort burst can't pin all N concurrency slots on abandoned streams.
+        // The pump's finally also releases, but release() is idempotent.
+        return(): Promise<IteratorResult<string>> {
+          void readerRef?.cancel().catch(() => {});
+          permit.release();
+          return Promise.resolve({
+            value: undefined as unknown as string,
+            done: true,
           });
         },
       };

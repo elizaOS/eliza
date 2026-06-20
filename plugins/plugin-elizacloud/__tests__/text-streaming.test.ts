@@ -125,6 +125,28 @@ function controllableSseResponse(frames: string[]): {
   return { response, emit };
 }
 
+/**
+ * A streaming Response that emits the given raw byte-chunks verbatim and in
+ * order — deliberately NOT frame-aligned — so a single SSE event can be split
+ * mid-line across two `reader.read()`s, the way real TCP segmentation splits a
+ * socket. Exercises the pump's cross-read buffering.
+ */
+function rawChunkResponse(chunks: string[]): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) {
+      for (const chunk of chunks) {
+        c.enqueue(encoder.encode(chunk));
+      }
+      c.close();
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  });
+}
+
 /** A plain (non-stream) JSON Response, for buffered-path assertions. */
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -217,6 +239,35 @@ describe("elizacloud streaming plain-prompt text", () => {
     expect(usage?.promptTokens).toBe(3);
     expect(usage?.completionTokens).toBe(4);
     expect(usage?.totalTokens).toBe(7);
+  });
+
+  it("reassembles an SSE frame split mid-line across two reads (TCP segmentation)", async () => {
+    // One delta frame carrying "Hello world", sliced mid-JSON so the event
+    // straddles two reader.read()s the way real socket segmentation splits it,
+    // then the [DONE] sentinel tacked onto the tail chunk.
+    const frame = deltaEvent("Hello world");
+    const splitAt = Math.floor(frame.length / 2);
+    // Sanity: the slice point is genuinely mid-line (no newline in the head).
+    expect(frame.slice(0, splitAt)).not.toContain("\n");
+    const chunks = [frame.slice(0, splitAt), `${frame.slice(splitAt)}data: [DONE]\n\n`];
+    responseQueue = [() => rawChunkResponse(chunks)];
+
+    const result = (await handleTextLarge(fakeRuntime(), {
+      prompt: "hi",
+      stream: true,
+    } as never)) as TextStreamResult;
+
+    expect(isStreamResult(result)).toBe(true);
+
+    const collected: string[] = [];
+    for await (const chunk of result.textStream) {
+      collected.push(chunk);
+    }
+
+    // The split frame parsed EXACTLY ONCE into the whole token — not garbled,
+    // dropped, or double-counted across the read boundary.
+    expect(collected).toEqual(["Hello world"]);
+    expect(await result.text).toBe("Hello world");
   });
 
   it("uses the buffered /chat/completions path for native-transport calls even when stream is requested", async () => {
@@ -346,6 +397,45 @@ describe("elizacloud streaming plain-prompt text", () => {
     await flush();
 
     // Permit freed despite the error -> the queued caller ran.
+    expect(secondEntered).toBe(true);
+    await secondCall;
+  });
+
+  it("releases the native permit when the consumer breaks early (abort)", async () => {
+    process.env.ELIZAOS_CLOUD_NATIVE_CONCURRENCY = "1";
+    __resetNativeChatLimiterForTests();
+
+    const frames = [deltaEvent("a"), deltaEvent("b"), usageEvent(), "data: [DONE]\n\n"];
+    const { response, emit } = controllableSseResponse(frames);
+    responseQueue = [() => response];
+
+    const result = (await handleTextLarge(fakeRuntime(), {
+      prompt: "hi",
+      stream: true,
+    } as never)) as TextStreamResult;
+
+    // A second native call sharing the cap=1 limiter is queued while the stream
+    // holds the only permit.
+    let secondEntered = false;
+    const secondCall = withNativeChatLimit(async () => {
+      secondEntered = true;
+      return "ok";
+    });
+    await flush();
+    expect(secondEntered).toBe(false);
+
+    // Pull one chunk, then ABANDON the stream mid-flight — a `for await … break`
+    // / runtime abort invokes the iterator's return(). We never drain to the
+    // natural end.
+    emit(1);
+    const iterator = result.textStream[Symbol.asyncIterator]();
+    const first = await iterator.next();
+    expect(first.value).toBe("a");
+    await iterator.return?.();
+    await flush();
+
+    // The early break released the permit (didn't pin it until natural end) ->
+    // the queued caller ran.
     expect(secondEntered).toBe(true);
     await secondCall;
   });
