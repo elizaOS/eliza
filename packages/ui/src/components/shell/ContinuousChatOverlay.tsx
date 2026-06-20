@@ -1284,7 +1284,16 @@ export function ContinuousChatOverlay({
   // The thread (flex-shrink) gives way to this cap, scrolling instead of pushing
   // the panel off-screen. Maximized drops the top margin so it reaches the top.
   const topMargin = fullBleed ? 0 : SHEET_TOP_MARGIN;
-  const panelMaxH = Math.max(200, viewportH - bottomPad - topMargin);
+  // Full-bleed drops the overlay's own bottom padding (its `paddingBottom` is 0
+  // edge-to-edge — the composer carries the home-gesture clearance itself), so
+  // the panel must fill the ENTIRE viewport height. Subtracting the (bottom-anchored)
+  // `bottomPad` here would shrink the panel by the gesture inset and float it a
+  // gesture-inset BELOW the top — the gap that left a hard-cut glass seam under
+  // the status bar and pushed the safe-area-padded header buttons down.
+  const panelMaxH = Math.max(
+    200,
+    viewportH - (fullBleed ? 0 : bottomPad) - topMargin,
+  );
 
   // History-height detents: COLLAPSED (0) → HALF → FULL — the thread's ideal
   // flex-basis; flex-shrink clamps the real height to fit. FULL == panelMaxH so
@@ -2339,8 +2348,13 @@ export function ContinuousChatOverlay({
                 // can't be clicked or read.
                 inert={!headerVisible || undefined}
                 style={{
-                  opacity: headerOpacity,
-                  maxHeight: headerMaxH,
+                  // Full-bleed is always fully open: show the header at full
+                  // opacity and UNCAP its height. The reveal lerp tops out at
+                  // 100px, but the safe-area top padding (status-bar height +
+                  // 0.5rem) plus the button row exceeds that, so a 100px cap
+                  // clipped the buttons — uncap it edge-to-edge.
+                  opacity: fullBleed ? 1 : headerOpacity,
+                  maxHeight: fullBleed ? "none" : headerMaxH,
                   // Collapsed → 0 top padding (no leaked margin above the
                   // composer); opens to ~10px as the header reveals. Maximized
                   // goes edge-to-edge under the status bar, so the header insets

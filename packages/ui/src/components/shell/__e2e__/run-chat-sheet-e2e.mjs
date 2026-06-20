@@ -1228,6 +1228,59 @@ try {
     await p.close();
   }
 
+  // ── MAXIMIZE WITH A BOTTOM GESTURE INSET (regression): on Android the home-
+  // gesture inset feeds the overlay's bottom padding, which is cached into
+  // `bottomPad`. Full-bleed drops that padding to 0 (the composer carries the
+  // clearance), so the panel must fill the WHOLE viewport. The bug: panelMaxH
+  // still subtracted the stale bottomPad, so the maximized panel floated a
+  // gesture-inset BELOW the top — a hard-cut glass seam under the status bar and
+  // the safe-area-padded header pushed down. Assert: panel reaches y≈0 AND the
+  // header buttons sit at the safe area, not a gesture-inset lower.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(600);
+    // Simulate the Android insets, then fire a resize so the overlay samples its
+    // (now gesture-inset-padded) bottom padding into bottomPad while NOT maximized.
+    await p.evaluate(() => {
+      const r = document.documentElement.style;
+      r.setProperty("--android-gesture-inset-bottom", "32px");
+      r.setProperty("--safe-area-top", "30px");
+      window.dispatchEvent(new Event("resize"));
+    });
+    await p.waitForTimeout(120);
+    await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 }); // → half
+    await p.waitForTimeout(SETTLE);
+    await p.getByTestId("chat-full-maximize").click(); // → full-bleed
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await p
+        .locator('[data-testid="chat-sheet"][data-maximized="true"]')
+        .count()) === 1,
+      "MAX-INSET: maximized full-bleed",
+    );
+    const box = await p.getByTestId("chat-sheet").boundingBox();
+    assert(
+      !!box && box.y <= 2,
+      `MAX-INSET: maximized panel fills to the TOP despite the bottom inset (y=${Math.round(
+        box?.y ?? -1,
+      )}) — no status-bar seam`,
+    );
+    const btn = await p.getByTestId("chat-full-maximize").boundingBox();
+    // Header padding = safe-area-top (30) + 0.5rem (8); buttons must sit ~there,
+    // NOT a whole gesture inset (~36px) lower (the old "bad space" margin).
+    assert(
+      !!btn && btn.y <= 30 + 8 + 20,
+      `MAX-INSET: header buttons sit at the safe area, not pushed down by a gap (y=${Math.round(
+        btn?.y ?? -1,
+      )})`,
+    );
+    await snap(p, "state-maximized-with-inset");
+    await p.close();
+  }
+
   // ── ALL FIVE CHATSTATES (the canonical machine) — assert data-chat-state + the
   // header-button gate, screenshot each (the user asked for a shot of every
   // state). Driven by real gestures on the grabber + the pill.
