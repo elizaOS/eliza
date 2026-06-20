@@ -128,8 +128,8 @@ function platformFlags(backend) {
     case "metal":
       return ["-DGGML_METAL=ON", "-DGGML_BLAS=OFF"];
     case "cuda":
-      // Pin a buildable CUDA arch (see build-whisper.mjs): ggml's auto-detect
-      // emits compute_120 on Blackwell, which nvcc < 12.8 rejects fatally.
+      // Pin a buildable CUDA arch: ggml's auto-detect emits compute_120 on
+      // Blackwell, which nvcc < 12.8 rejects fatally.
       return [
         "-DGGML_CUDA=ON",
         "-DGGML_NATIVE=ON",

@@ -107,16 +107,10 @@ vi.mock("@elizaos/ui/agent-surface", () => uiMock);
 vi.mock("@elizaos/app-core", () => uiMock);
 vi.mock("@elizaos/app-core/ui-compat", () => uiMock);
 
-import { TwoThousandFourScapeTuiView } from "../../../../plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface";
-import { interact as interact2004scape } from "../../../../plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.interact";
 import { ClawvilleTuiView } from "../../../../plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface";
 import { interact as interactClawville } from "../../../../plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.interact";
 import { DefenseAgentsTuiView } from "../../../../plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface";
 import { interact as interactDefense } from "../../../../plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.interact";
-import { HyperscapeTuiView } from "../../../../plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface";
-import { interact as interactHyperscape } from "../../../../plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.interact";
-import { ScapeTuiView } from "../../../../plugins/plugin-scape/src/ui/ScapeOperatorSurface";
-import { interact as interactScape } from "../../../../plugins/plugin-scape/src/ui/ScapeOperatorSurface.interact";
 
 const baseRun = {
   runId: "run-1",
@@ -194,54 +188,6 @@ describe("game TUI mounted surfaces", () => {
           telemetry: { heroClass: "mage", heroLane: "mid", heroLevel: 2 },
         },
       },
-      {
-        ...baseRun,
-        appName: "@elizaos/plugin-hyperscape",
-        session: {
-          canSendCommands: true,
-          sessionId: "hyper-session",
-          suggestedPrompts: ["look around"],
-          followEntity: "agent-1",
-        },
-      },
-      {
-        ...baseRun,
-        appName: "@elizaos/plugin-scape",
-        session: {
-          canSendCommands: true,
-          status: "running",
-          suggestedPrompts: ["check status"],
-          telemetry: {
-            connectionStatus: "connected",
-            agent: { name: "scape-agent", position: { x: 1, z: 2 } },
-            activeGoal: {
-              id: "goal-1",
-              title: "Train",
-              status: "active",
-              source: "operator",
-            },
-          },
-        },
-      },
-      {
-        ...baseRun,
-        appName: "@elizaos/plugin-2004scape",
-        session: {
-          canSendCommands: true,
-          status: "running",
-          suggestedPrompts: ["continue tutorial"],
-          telemetry: {
-            player: {
-              name: "bot",
-              worldX: 3200,
-              worldZ: 3201,
-              hp: 9,
-              maxHp: 10,
-            },
-            tutorial: { active: true },
-          },
-        },
-      },
     ];
 
     expect(renderState(React.createElement(ClawvilleTuiView))).toMatchObject({
@@ -259,32 +205,6 @@ describe("game TUI mounted surfaces", () => {
       viewId: "defense-of-the-agents",
       heroLane: "mid",
       canSend: true,
-    });
-    cleanupSurfaces();
-
-    expect(renderState(React.createElement(HyperscapeTuiView))).toMatchObject({
-      viewId: "hyperscape",
-      sessionId: "hyper-session",
-      followEntity: "agent-1",
-      canSend: true,
-    });
-    cleanupSurfaces();
-
-    expect(renderState(React.createElement(ScapeTuiView))).toMatchObject({
-      viewId: "scape",
-      connectionStatus: "connected",
-      canSend: true,
-      agent: { name: "scape-agent", position: { x: 1, z: 2 } },
-    });
-    cleanupSurfaces();
-
-    expect(
-      renderState(React.createElement(TwoThousandFourScapeTuiView)),
-    ).toMatchObject({
-      viewId: "2004scape",
-      canSend: true,
-      player: { name: "bot", worldX: 3200, worldZ: 3201 },
-      tutorialActive: true,
     });
   });
 
@@ -333,22 +253,6 @@ describe("game TUI mounted surfaces", () => {
       interactDefense("terminal-defense-command", {
         runId: "run-1",
         content: "review strategy",
-      }),
-    ).resolves.toMatchObject({ viewType: "tui" });
-    await expect(
-      interactHyperscape("terminal-hyperscape-control", {
-        runId: "run-1",
-        action: "pause",
-      }),
-    ).resolves.toMatchObject({ viewType: "tui" });
-    await expect(interactScape("terminal-scape-state")).resolves.toMatchObject({
-      viewType: "tui",
-      appName: "@elizaos/plugin-scape",
-    });
-    await expect(
-      interact2004scape("terminal-2004scape-command", {
-        runId: "run-1",
-        content: "continue tutorial",
       }),
     ).resolves.toMatchObject({ viewType: "tui" });
   });

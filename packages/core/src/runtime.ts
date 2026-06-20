@@ -3494,6 +3494,7 @@ export class AgentRuntime implements IAgentRuntime {
 		includeList: string[] | null = null,
 		onlyInclude = false,
 		skipCache = false,
+		refreshProviders: string[] | null = null,
 	): Promise<State> {
 		const trajectoryStepIdFromMessage =
 			typeof message.metadata === "object" &&
@@ -3593,13 +3594,40 @@ export class AgentRuntime implements IAgentRuntime {
 				(a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name),
 		);
 
+		// `refreshProviders` lets a caller REUSE cached provider results for the
+		// requested set and re-run only the named providers (plus any not yet in
+		// the cache) — e.g. the planner pass refreshes only RECENT_MESSAGES (which
+		// changes after an early reply) and reuses everything the first compose
+		// already ran for this message.id. The full requested set still drives the
+		// rendered text/order below (pulled from `currentProviderResults`, which
+		// merges cache + fresh); only the run-set shrinks. No-op (run everything)
+		// when `refreshProviders` is null or there is no cached state.
+		const refreshSet =
+			refreshProviders && refreshProviders.length > 0
+				? new Set(refreshProviders)
+				: null;
+		const cachedProviderNames = refreshSet
+			? new Set(
+					Object.keys(
+						(cachedState.data.providers as
+							| Record<string, unknown>
+							| undefined) ?? {},
+					),
+				)
+			: null;
+		const providersToRun = refreshSet
+			? providersToGet.filter(
+					(p) => refreshSet.has(p.name) || !cachedProviderNames?.has(p.name),
+				)
+			: providersToGet;
+
 		// Optional trajectory logging service; absent unless configured.
 		const trajLogger = (await this._ensureServiceStarted("trajectories")) as
 			| (Service & TrajectoryProviderAccessLogger)
 			| null;
 		const composeStartedAt = Date.now();
 		const providerData = await Promise.all(
-			providersToGet.map(async (provider) => {
+			providersToRun.map(async (provider) => {
 				const start = Date.now();
 				let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 				let timedOut = false;
@@ -3671,7 +3699,8 @@ export class AgentRuntime implements IAgentRuntime {
 			}),
 		);
 		recordInferenceSpan("composeState", Date.now() - composeStartedAt, {
-			providers: providersToGet.length,
+			providers: providersToRun.length,
+			reused: providersToGet.length - providersToRun.length,
 		});
 
 		if (trajectoryStepId && trajLogger) {
@@ -6241,6 +6270,39 @@ ${section_end}`;
 					}
 
 					extractor.reset();
+				}
+
+				// Repair reroll: when the extractor didn't produce a targeted retry
+				// context (the common case — contextLevel 2, no streaming extractor,
+				// or no validated fields), feed the model the CONCRETE reason its last
+				// output was rejected + the (redacted, truncated) bad output, so the
+				// reroll is corrective instead of a blind re-roll of the same prompt.
+				// Goes in the same `_smartRetryContext` field, which is rendered as a
+				// `stable:false` segment (prompt-cache safe) and cleared on
+				// success/abort. Correctness-neutral: it only changes the prompt of a
+				// retry that was already going to run; it never skips a validation.
+				if (!smartRetryContextNext) {
+					const repairIssues =
+						validationIssues.length > 0
+							? validationIssues
+							: parseErrorMessage
+								? [parseErrorMessage]
+								: [];
+					if (repairIssues.length > 0) {
+						const priorOutput = this.redactSecrets(cleanResponse).slice(
+							0,
+							AgentRuntime.STRUCTURED_FAILURE_PREVIEW_LIMIT,
+						);
+						const issueList = repairIssues
+							.slice(0, 8)
+							.map((issue) => `- ${issue}`)
+							.join("\n");
+						smartRetryContextNext = `\n\n[REPAIR] Your previous response was rejected because it did not satisfy the required schema. Fix exactly these problems and return a corrected response:\n${issueList}${
+							priorOutput
+								? `\n\nYour previous (invalid) output was:\n${priorOutput}`
+								: ""
+						}`;
+					}
 				}
 
 				if (smartRetryContextNext) {

@@ -396,6 +396,38 @@ describe("ElizaSandboxService wake", () => {
   );
 });
 
+describe("ElizaSandboxService snapshot — endpoint capability", () => {
+  test("a 404 from /api/snapshot (V2 image) returns the unsupported sentinel, not a hard failure", async () => {
+    const { ElizaSandboxService, SNAPSHOT_ENDPOINT_UNSUPPORTED } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const rec = customSandbox();
+    const findRunningSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      rec,
+    );
+    const createBackupSpy = spyOn(agentSandboxesRepository, "createBackup");
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = fetchUrl(input);
+      if (url.includes("/api/snapshot")) {
+        return new Response("not found", { status: 404 });
+      }
+      return new Response("{}", { status: 200 });
+    });
+    try {
+      const res = await new ElizaSandboxService().snapshot(rec.id, rec.organization_id, "auto");
+      expect(res).toEqual({
+        success: false,
+        error: SNAPSHOT_ENDPOINT_UNSUPPORTED,
+      });
+      // A skipped snapshot must NOT create a backup row.
+      expect(createBackupSpy).not.toHaveBeenCalled();
+    } finally {
+      findRunningSpy.mockRestore();
+      createBackupSpy.mockRestore();
+    }
+  });
+});
+
 describe("ElizaSandboxService recoverDisconnected", () => {
   function disconnectedSandbox(): AgentSandbox {
     return { ...customSandbox(), status: "disconnected" };

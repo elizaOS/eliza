@@ -459,9 +459,9 @@ export interface ElizaInferenceFfi {
 
 	/**
 	 * True when this build has a working streaming ASR decoder (false for
-	 * the stub / an ASR-disabled build). Callers pick the streaming path
-	 * vs the whisper.cpp interim adapter off this flag — they do not have
-	 * to open a session and catch `ELIZA_ERR_NOT_IMPLEMENTED`.
+	 * the stub / an ASR-disabled build). Callers pick the fused streaming
+	 * path vs the fused batch interim adapter off this flag — they do not
+	 * have to open a session and catch `ELIZA_ERR_NOT_IMPLEMENTED`.
 	 */
 	asrStreamSupported(): boolean;
 	/** Open a streaming ASR session. The handle is closed via `asrStreamClose`. */

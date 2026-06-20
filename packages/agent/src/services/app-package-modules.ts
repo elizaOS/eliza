@@ -436,29 +436,43 @@ async function importLocalAppPluginModule(
   let firstModule: AppPluginModule | null = null;
   let lastError: unknown = null;
   for (const localPath of localPaths) {
+    // Prefer the plugin's React-free `plugin` entry over the package barrel.
+    // The barrel (`index.ts`) re-exports the plugin's React view components, and
+    // importing those into the Node agent fails to transpile/resolve (JSX
+    // runtime, `@elizaos/app-core/ui-compat`, …). The agent only needs the
+    // Plugin object's view *declarations* to register the views, and those live
+    // in `plugin.ts` free of any UI imports. `index.*` stays as a fallback for
+    // plugins that define their Plugin object inline in the barrel.
     const candidatePaths = [
+      path.join(localPath, "src", "plugin.ts"),
+      path.join(localPath, "src", "plugin.js"),
+      path.join(localPath, "dist", "plugin.js"),
       path.join(localPath, "src", "index.ts"),
       path.join(localPath, "src", "index.js"),
       path.join(localPath, "dist", "index.js"),
     ];
-    let mod: AppPluginModule | null = null;
-    try {
-      mod = await importFirstExistingModule<AppPluginModule>(candidatePaths);
-    } catch (err) {
-      lastError = err;
-      logger.warn(
-        `[app-package-modules] Failed to import plugin from ${localPath}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-      continue;
-    }
-    if (!mod) continue;
-    if (firstModule === null) {
-      firstModule = mod;
-    }
-    if (resolvePluginExport(mod, packageName)) {
-      return mod;
+    for (const candidatePath of candidatePaths) {
+      if (!fs.existsSync(candidatePath)) continue;
+      let mod: AppPluginModule;
+      try {
+        mod = (await import(
+          pathToFileURL(candidatePath).href
+        )) as AppPluginModule;
+      } catch (err) {
+        lastError = err;
+        logger.warn(
+          `[app-package-modules] Failed to import plugin entry ${candidatePath}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        continue;
+      }
+      if (firstModule === null) {
+        firstModule = mod;
+      }
+      if (resolvePluginExport(mod, packageName)) {
+        return mod;
+      }
     }
   }
   if (firstModule) {
@@ -586,6 +600,24 @@ export async function importAppPlugin(
 ): Promise<Plugin | null> {
   if (isMobileBundleRuntime() && isSelfAgentPackage(packageName)) {
     return null;
+  }
+
+  // Prefer the package's React-free `./plugin` subpath imported BY NAME so the
+  // package's export conditions (eliza-source/bun → src) are applied. A file-URL
+  // import (importLocalAppPluginModule, below) does not apply those conditions
+  // to nested bare specifiers, which mis-resolves condition-gated deps such as
+  // `@elizaos/agent/services/app-session-gate` to their `.d.ts` and breaks the
+  // import. Plugins that don't expose `./plugin` simply fall through.
+  try {
+    const subpathModule = (await import(
+      /* webpackIgnore: true */ `${packageName}/plugin`
+    )) as AppPluginModule;
+    const plugin = resolvePluginExport(subpathModule, packageName);
+    if (plugin) {
+      return plugin;
+    }
+  } catch {
+    // No `./plugin` subpath export — fall through to the local/by-name imports.
   }
 
   try {

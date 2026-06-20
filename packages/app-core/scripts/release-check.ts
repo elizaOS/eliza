@@ -39,11 +39,6 @@ const orchestratorPluginPackageJsonPathCandidates = [
     "package.json",
   ),
 ] as const;
-const autonomousServerPathCandidates = [
-  "node_modules/@elizaos/agent/src/api/server.js",
-  "packages/agent/src/api/server.ts",
-  "eliza/packages/agent/src/api/server.ts",
-] as const;
 const autonomousElizaPathCandidates = [
   "node_modules/@elizaos/agent/src/runtime/eliza.js",
   "packages/agent/src/runtime/eliza.ts",
@@ -120,10 +115,6 @@ const requiredWorkflowSnippets = [
   `bun install failed on attempt \${attempt}; retrying in 15 seconds`,
   "name: Ensure avatar assets",
   "node packages/app-core/scripts/ensure-avatars.mjs",
-  "name: Prepare Whisper model artifact",
-  "bash packages/app-core/platforms/electrobun/scripts/ensure-whisper-gguf.sh base.en",
-  "name: Upload Whisper model artifact",
-  "name: whisper-model-base-en",
   "Install quiet macOS packaging wrappers",
   "packages/app-core/platforms/electrobun/scripts/hdiutil-wrapper.sh",
   "packages/app-core/platforms/electrobun/scripts/xcrun-wrapper.sh",
@@ -1323,32 +1314,6 @@ function assertMacSmokeScriptLaunchesPackagedLauncherDirectly() {
   }
 }
 
-function assertServerDynamicHyperscapeImport() {
-  const serverSource = readExistingReleaseCheckFile(
-    "autonomous API server source",
-    autonomousServerPathCandidates,
-  );
-
-  // @hyperscape/plugin-hyperscape must never be a static top-level import. The
-  // API server has to remain bootable when the optional app package is not
-  // installed (for example in Windows smoke and release validation runs).
-  const lines = serverSource.split("\n");
-  const staticImports = lines.filter(
-    (line) =>
-      /^\s*import\s/.test(line) &&
-      line.includes("@hyperscape/plugin-hyperscape"),
-  );
-  if (staticImports.length > 0) {
-    console.error(
-      "release-check: server.ts must NOT have a static import of @hyperscape/plugin-hyperscape/routes. Use a dynamic import inside a try-catch.",
-    );
-    for (const line of staticImports) {
-      console.error(`  - ${line.trim()}`);
-    }
-    process.exit(1);
-  }
-}
-
 function assertStartApiServerCatchBlockSafety() {
   const elizaSource = readExistingReleaseCheckFile(
     "autonomous runtime source",
@@ -1485,7 +1450,6 @@ function main() {
   assertInnoBuildScriptHasTimeoutAndHeartbeat();
   assertInnoTemplateTargetsBundledLauncher();
   assertMacSmokeScriptLaunchesPackagedLauncherDirectly();
-  assertServerDynamicHyperscapeImport();
   assertStartApiServerCatchBlockSafety();
   assertStaticAssetManifestIsCurrent();
   assertHomepageReleaseDataUsesCurrentAssetRoot();

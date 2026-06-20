@@ -430,7 +430,12 @@ function PillHandle({
       type="button"
       data-testid="chat-pill"
       aria-label="open chat"
-      onClick={onOpen}
+      // No onClick: the pull-gesture binding is the single tap authority (a tap
+      // routes through onPointerUp → onTap → openFromPill), matching the
+      // SheetGrabber. A native onClick would ALSO fire on every tap, opening the
+      // pill twice in one gesture (double haptic + a stale focus-suppress flag
+      // that swallowed the next focus→expand). Keyboard activation still routes
+      // through onKeyDown below.
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " " || e.key === "ArrowUp") {
           e.preventDefault();
@@ -816,9 +821,16 @@ export function ContinuousChatOverlay({
   // leave-full transition resets it.
   const [maximized, setMaximized] = React.useState(false);
   // Whether the sheet was collapsed when the composer last gained focus — so
-  // dismissing the keyboard (tap the handle) returns to the prior resting state
-  // (collapsed) instead of leaving the sheet hanging open.
+  // dismissing the keyboard (tap the handle, tap the scrim, tap outside) returns
+  // to the prior resting state (collapsed → input) instead of leaving the sheet
+  // hanging open, while a sheet that was ALREADY open before focus stays open.
   const preFocusCollapsedRef = React.useRef(true);
+  // Snapshot of "was the composer focused (keyboard up) at the last pointerdown".
+  // The browser can auto-blur the input between a scrim pointerdown and its
+  // click, so the scrim's click handler can't read live focus — it reads this to
+  // tell a FIRST tap (keyboard up → just dismiss + restore) from a SECOND tap
+  // (keyboard already down → close the chat).
+  const composerFocusedAtPressRef = React.useRef(false);
   // Composer focus ⟺ the soft keyboard is up on mobile. This is the reliable
   // keyboard signal: Capacitor's resize:"body" shrinks innerHeight too, so a
   // visualViewport-derived keyboardInset reads 0 and can't gate the layout.
@@ -1272,7 +1284,16 @@ export function ContinuousChatOverlay({
   // The thread (flex-shrink) gives way to this cap, scrolling instead of pushing
   // the panel off-screen. Maximized drops the top margin so it reaches the top.
   const topMargin = fullBleed ? 0 : SHEET_TOP_MARGIN;
-  const panelMaxH = Math.max(200, viewportH - bottomPad - topMargin);
+  // Full-bleed drops the overlay's own bottom padding (its `paddingBottom` is 0
+  // edge-to-edge — the composer carries the home-gesture clearance itself), so
+  // the panel must fill the ENTIRE viewport height. Subtracting the (bottom-anchored)
+  // `bottomPad` here would shrink the panel by the gesture inset and float it a
+  // gesture-inset BELOW the top — the gap that left a hard-cut glass seam under
+  // the status bar and pushed the safe-area-padded header buttons down.
+  const panelMaxH = Math.max(
+    200,
+    viewportH - (fullBleed ? 0 : bottomPad) - topMargin,
+  );
 
   // History-height detents: COLLAPSED (0) → HALF → FULL — the thread's ideal
   // flex-basis; flex-shrink clamps the real height to fit. FULL == panelMaxH so
@@ -1538,6 +1559,18 @@ export function ContinuousChatOverlay({
     inputRef.current?.blur();
   }, [closeSheet]);
 
+  // Dismiss the keyboard and return to the resting state from BEFORE the composer
+  // was focused — the single restore path shared by every "drop the keyboard"
+  // gesture (tap the grabber, tap the scrim, tap outside the panel). A sheet that
+  // was COLLAPSED before focus re-collapses (back to the input bar); one that was
+  // ALREADY OPEN stays open and springs back to its detent size as the keyboard
+  // retracts (the viewport grows → the [baseH] effect re-animates the height).
+  // Never a surprise full close.
+  const dismissKeyboardToPriorState = React.useCallback(() => {
+    inputRef.current?.blur();
+    if (preFocusCollapsedRef.current) collapse();
+  }, [collapse]);
+
   // Focusing or typing in the composer opens the chat (keyboard + history) when
   // there's a thread to show. Opens to HALF — the conversation is visible above
   // the keyboard without a full-screen takeover; the maximize button is for that.
@@ -1687,7 +1720,14 @@ export function ContinuousChatOverlay({
     if (typeof document === "undefined") return undefined;
     const onPointerDown = (event: PointerEvent) => {
       const input = inputRef.current;
-      if (!input || document.activeElement !== input) return;
+      const focused = !!input && document.activeElement === input;
+      // Record the keyboard state at PRESS time: the scrim's click handler reads
+      // this (focus may be gone by the time the click fires) to tell a first
+      // "dismiss the keyboard" tap from a second "close the chat" tap.
+      composerFocusedAtPressRef.current = focused;
+      // Keyboard already down → outside taps do nothing here (the chat only
+      // closes via a pull-down, the scrim, or Escape).
+      if (!focused) return;
       const target = event.target as Node | null;
       if (target && panelRef.current?.contains(target)) return;
       // Leave a tap on the GRABBER to onTap, which both drops the keyboard AND
@@ -1698,12 +1738,14 @@ export function ContinuousChatOverlay({
       ) {
         return;
       }
-      input.blur();
+      // Any other outside tap (incl. the dimming scrim) drops the keyboard and
+      // returns to the pre-focus resting state — never a surprise full close.
+      dismissKeyboardToPriorState();
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     return () =>
       document.removeEventListener("pointerdown", onPointerDown, true);
-  }, []);
+  }, [dismissKeyboardToPriorState]);
 
   // Escape collapses the chat from ANY open state, even a free-drag open with no
   // focused element (the element-level handlers on the textarea/thread only fire
@@ -1739,23 +1781,37 @@ export function ContinuousChatOverlay({
   // openProgress → 1 directly so the open never depends on that effect's timing.
   const openFromPill = React.useCallback(() => {
     draggingRef.current = false;
-    setMode("input");
+    // A pill tap OPENS the chat. With a conversation to show, go straight to the
+    // HALF detent — a tap reveals the thread exactly like a flick-up, so a SINGLE
+    // tap always opens the chat (never the old "tap lands on a bare input bar,
+    // tap again to actually open" two-step). Mark it deliberately open so
+    // dismissing the keyboard then KEEPS it at half (preFocusCollapsedRef gates
+    // that). With no thread yet, there's nothing to open into — just form the
+    // bare input bar, and treat a later keyboard dismiss as a re-collapse.
+    if (hasThread) {
+      goToDetent("half");
+      preFocusCollapsedRef.current = false;
+    } else {
+      setMode("input");
+      preFocusCollapsedRef.current = true;
+      detentHaptic();
+    }
     if (reduce) openProgress.set(1);
     else animate(openProgress, 1, OPEN_SPRING);
-    detentHaptic();
     // Raise the keyboard on the SAME tap that opens the pill. While pilled, the
     // composer content is `inert`, and React only clears that on the next
     // render — too late for iOS WebKit, which honors focus() only synchronously
     // inside the originating user gesture AND only on a non-inert element. So
     // clear inert imperatively now and focus immediately; otherwise the first
     // tap opens a composer that silently refuses keyboard input until a second
-    // tap (the reported "chat input doesn't accept text on iOS" bug). Rest on
-    // the bare input bar — suppress the focus→expand so an existing history
-    // thread doesn't fling open to half on what should be a "type here" tap.
+    // tap (the reported "chat input doesn't accept text on iOS" bug). Suppress
+    // the focus→expand: the target detent is already set above, and letting
+    // expand run would clobber preFocusCollapsedRef with the (pre-render, still
+    // pilled) sheet state and treat this deliberate open as a re-collapse.
     contentRef.current?.removeAttribute("inert");
     suppressExpandOnFocusRef.current = true;
     inputRef.current?.focus();
-  }, [openProgress, reduce]);
+  }, [openProgress, reduce, hasThread, goToDetent]);
 
   // --- Pull gesture --------------------------------------------------------
   // The grabber is the draggable handle. A live drag sets the threadHeight motion
@@ -1868,10 +1924,11 @@ export function ContinuousChatOverlay({
         const composerFocused =
           typeof document !== "undefined" &&
           document.activeElement === inputRef.current;
-        if (composerFocused) {
-          inputRef.current?.blur();
-          if (preFocusCollapsedRef.current) collapse();
-        }
+        // Keyboard up → drop it and return to the pre-focus resting state (an
+        // already-open sheet stays open; an auto-opened one re-collapses).
+        // Keyboard down → the grabber is just the open chat's top bar; a tap
+        // there does nothing (collapse is a pull-down / Escape / scrim tap).
+        if (composerFocused) dismissKeyboardToPriorState();
         return;
       }
       inputRef.current?.focus();
@@ -1977,7 +2034,21 @@ export function ContinuousChatOverlay({
         aria-hidden="true"
         data-testid="chat-sheet-backdrop"
         data-active={sheetOpen ? "true" : "false"}
-        onClick={sheetOpen ? collapse : undefined}
+        onClick={
+          sheetOpen
+            ? () => {
+                // First tap with the keyboard up only dismisses it (the
+                // pointerdown handler already dropped the keyboard and restored
+                // the pre-focus detent) — don't ALSO collapse. A tap with the
+                // keyboard already down closes the chat back to the input.
+                if (composerFocusedAtPressRef.current) {
+                  composerFocusedAtPressRef.current = false;
+                  return;
+                }
+                collapse();
+              }
+            : undefined
+        }
         className="fixed inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.06)_0%,rgba(8,10,18,0.55)_46%,rgba(0,0,0,0.66)_100%)]"
         // Opacity follows the live history height (motion value) — no re-render
         // during a drag. Capture clicks only once open.
@@ -2277,8 +2348,13 @@ export function ContinuousChatOverlay({
                 // can't be clicked or read.
                 inert={!headerVisible || undefined}
                 style={{
-                  opacity: headerOpacity,
-                  maxHeight: headerMaxH,
+                  // Full-bleed is always fully open: show the header at full
+                  // opacity and UNCAP its height. The reveal lerp tops out at
+                  // 100px, but the safe-area top padding (status-bar height +
+                  // 0.5rem) plus the button row exceeds that, so a 100px cap
+                  // clipped the buttons — uncap it edge-to-edge.
+                  opacity: fullBleed ? 1 : headerOpacity,
+                  maxHeight: fullBleed ? "none" : headerMaxH,
                   // Collapsed → 0 top padding (no leaked margin above the
                   // composer); opens to ~10px as the header reveals. Maximized
                   // goes edge-to-edge under the status bar, so the header insets

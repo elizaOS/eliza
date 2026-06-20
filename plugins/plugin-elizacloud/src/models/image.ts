@@ -1,6 +1,11 @@
 import type { IAgentRuntime, ImageDescriptionParams, ImageGenerationParams } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { getImageDescriptionModel, getImageGenerationModel, getSetting } from "../utils/config";
+import {
+  getImageDescriptionModel,
+  getImageGenerationModel,
+  getSetting,
+  resolveCloudTimeoutMs,
+} from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { parseImageDescriptionResponse } from "../utils/helpers";
 import { createElizaCloudClient } from "../utils/sdk-client";
@@ -116,6 +121,7 @@ export async function handleImageDescription(
     for (let attempt = 0; attempt < 2; attempt++) {
       const attemptResponse = await client.routes.postApiV1ChatCompletionsRaw({
         json: requestBody,
+        timeoutMs: resolveCloudTimeoutMs("ELIZAOS_CLOUD_IMAGE_TIMEOUT_MS", 120_000),
       });
       if (!attemptResponse) {
         continue;

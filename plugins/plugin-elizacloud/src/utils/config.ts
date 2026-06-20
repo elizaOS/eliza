@@ -172,3 +172,22 @@ export function getExperimentalTelemetry(runtime: IAgentRuntime): boolean {
   const setting = getSetting(runtime, "ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY", "false");
   return String(setting).toLowerCase() === "true";
 }
+
+/**
+ * Resolve a client-side timeout (ms) for a cloud model round-trip from `envKey`,
+ * falling back to `defaultMs`. `0`/negative/non-numeric → undefined (opt out).
+ *
+ * cloud-sdk applies NO default timeout (a fetch with no signal hangs until the
+ * platform default), so turn-blocking calls (TTS/STT in a voice turn, deep
+ * research) need an explicit ceiling or a stalled gateway hangs the turn.
+ */
+export function resolveCloudTimeoutMs(
+  envKey: string,
+  defaultMs: number
+): number | undefined {
+  const raw = typeof process !== "undefined" ? process.env[envKey] : undefined;
+  if (raw === undefined || raw.trim() === "") return defaultMs;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return defaultMs;
+  return parsed <= 0 ? undefined : parsed;
+}

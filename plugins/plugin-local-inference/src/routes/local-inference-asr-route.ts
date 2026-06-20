@@ -1,8 +1,5 @@
 import type http from "node:http";
 import { type AgentRuntime, ModelType } from "@elizaos/core";
-import { decodeMonoPcm16Wav } from "../services/voice";
-import { createStreamingTranscriber } from "../services/voice/transcriber";
-import { resolveWhisperCppRuntime } from "../services/voice/whisper-cpp-asr";
 import {
 	type CompatRuntimeState,
 	ensureRouteAuthorized,
@@ -130,41 +127,6 @@ async function useLocalInferenceAsr(
 	throw new Error("No local-inference TRANSCRIPTION provider is registered");
 }
 
-async function usePackagedWhisperAsr(
-	audio: Uint8Array,
-	signal?: AbortSignal,
-): Promise<string | null> {
-	if (!resolveWhisperCppRuntime()) return null;
-	const decoded = decodeMonoPcm16Wav(audio);
-	const transcriber = createStreamingTranscriber({
-		prefer: "whisper-cpp",
-		allowWhisperCpp: true,
-	});
-	try {
-		throwIfAborted(signal);
-		transcriber.feed({
-			pcm: decoded.pcm,
-			sampleRate: decoded.sampleRate,
-			timestampMs: Date.now(),
-		});
-		throwIfAborted(signal);
-		const update = await transcriber.flush();
-		throwIfAborted(signal);
-		const text = update.partial.trim();
-		if (!text) throw new Error("Whisper ASR returned an empty transcript");
-		return text;
-	} finally {
-		transcriber.dispose();
-	}
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-	if (!signal?.aborted) return;
-	throw signal.reason instanceof Error
-		? signal.reason
-		: new DOMException("Aborted", "AbortError");
-}
-
 function isClosed(res: http.ServerResponse): boolean {
 	return res.destroyed || res.writableEnded;
 }
@@ -178,17 +140,16 @@ export async function handleLocalInferenceAsrRoute(
 	const url = new URL(req.url ?? "/", "http://localhost");
 	if (method === "GET" && url.pathname === "/api/asr/local-inference/status") {
 		if (!(await ensureRouteAuthorized(req, res, state))) return true;
-		const whisper = resolveWhisperCppRuntime();
-		// The POST handler also falls back to the runtime TRANSCRIPTION model
-		// handler (e.g. the on-device aosp-llama loader), so report ready when
-		// EITHER whisper-cpp OR a registered TRANSCRIPTION handler can serve it.
+		// Transcription runs through the registered TRANSCRIPTION model handler,
+		// which is backed by the fused libelizainference ASR runtime. Report ready
+		// when a TRANSCRIPTION handler is registered.
 		const getModel = state.current?.getModel;
 		const runtimeAsr =
 			typeof getModel === "function" &&
 			Boolean(getModel.call(state.current, ModelType.TRANSCRIPTION));
 		sendJson(res, 200, {
-			ready: whisper !== null || runtimeAsr,
-			provider: whisper ? "whisper-cpp" : runtimeAsr ? "local-inference" : null,
+			ready: runtimeAsr,
+			provider: runtimeAsr ? "local-inference" : null,
 		});
 		return true;
 	}
@@ -219,15 +180,6 @@ export async function handleLocalInferenceAsrRoute(
 	res.on("close", abortOnClose);
 
 	try {
-		const packagedWhisperText = await usePackagedWhisperAsr(
-			audio,
-			abortController.signal,
-		);
-		if (packagedWhisperText) {
-			completed = true;
-			sendJson(res, 200, { text: packagedWhisperText });
-			return true;
-		}
 		const runtime = state.current;
 		if (!runtime) {
 			completed = true;

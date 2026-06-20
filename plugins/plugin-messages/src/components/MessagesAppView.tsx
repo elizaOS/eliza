@@ -4,7 +4,7 @@ import { System, type SystemStatus } from "@elizaos/capacitor-system";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { consumePendingMessageRecipient } from "@elizaos/ui/app-navigate-view";
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
-import { PermissionRecoveryCallout } from "@elizaos/ui/components/permissions/PermissionRecoveryCallout";
+import { PermissionRecoveryCallout } from "@elizaos/ui/components";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Input } from "@elizaos/ui/components/ui/input";
 import { Textarea } from "@elizaos/ui/components/ui/textarea";

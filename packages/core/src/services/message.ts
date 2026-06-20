@@ -6052,10 +6052,16 @@ export async function runV5MessageRuntimeStage1(args: {
 		});
 		const recomposedPlannerState =
 			typeof args.runtime.composeState === "function"
-				? await args.runtime.composeState(
+				? // Reuse what the Stage-1 compose already ran for this message;
+					// refresh ONLY RECENT_MESSAGES, which changes after an early reply
+					// (the planner must see the just-sent reply). Any planner-only
+					// context-gated providers not yet cached are composed too.
+					await args.runtime.composeState(
 						args.message,
 						plannerProviderNames,
 						true,
+						false,
+						["RECENT_MESSAGES"],
 					)
 				: args.state;
 		const selectedContextRoutingState =

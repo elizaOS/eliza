@@ -118,10 +118,6 @@ const LEVELS = [
     file: "plugins/plugin-vector-browser/src/VectorBrowserView.tsx",
   },
   {
-    name: "plugin view 2004scape",
-    file: "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx",
-  },
-  {
     name: "plugin view feed",
     file: "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx",
   },
@@ -136,14 +132,6 @@ const LEVELS = [
   {
     name: "plugin view defense",
     file: "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx",
-  },
-  {
-    name: "plugin view hyperscape",
-    file: "plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.tsx",
-  },
-  {
-    name: "plugin view scape",
-    file: "plugins/plugin-scape/src/ui/ScapeOperatorSurface.tsx",
   },
   {
     name: "plugin view screenshare",

@@ -22,12 +22,13 @@
  *
  * Audio pipeline (mirrors voice-first-run-routes.ts):
  *   1. Decode base64 → Buffer → Float32 PCM (assumes 16 kHz, mono).
- *   2. Encode via WespeakerEncoder → 256-dim centroid.
+ *   2. Encode via the fused `FusedSpeakerEncoder` → 256-dim centroid.
  *   3. Store in VoiceProfileStore (non-OWNER entity binding).
  *
- * Graceful degradation: when the WeSpeaker GGUF is unavailable the route
- * returns a 503. The client-side adapter (`VoiceProfilesClient`) falls back
- * to a client-side pending profile so the UI flow is not blocked.
+ * Graceful degradation: when the fused libelizainference (or its speaker ABI)
+ * is unavailable the route returns a 503. The client-side adapter
+ * (`VoiceProfilesClient`) falls back to a client-side pending profile so the UI
+ * flow is not blocked.
  *
  * The `family_of` relationship edge is recorded in profile metadata so a
  * runtime-level consumer (e.g. voice-first-run-complete handler) can create
@@ -46,6 +47,8 @@ import {
 	sendJson,
 	sendJsonError,
 } from "@elizaos/core";
+import { resolveFusedLibraryPath } from "../services/desktop-fused-ffi-backend-runtime.js";
+import { loadElizaInferenceFfi } from "../services/voice/ffi-bindings.js";
 import { VoiceProfileStore } from "../services/voice/profile-store.js";
 import {
 	type SpeakerEncoder,
@@ -54,8 +57,8 @@ import {
 	WESPEAKER_MIN_SAMPLES,
 	WESPEAKER_RESNET34_LM_INT8_MODEL_ID,
 	WESPEAKER_SAMPLE_RATE,
-	WespeakerEncoder,
 } from "../services/voice/speaker/encoder.js";
+import { FusedSpeakerEncoder } from "../services/voice/speaker/encoder-fused.js";
 
 // ---------------------------------------------------------------------------
 // Injectable test hooks (mirrors voice-first-run-routes.ts)
@@ -91,17 +94,34 @@ async function loadEncoder(): Promise<SpeakerEncoder> {
 		cachedEncoder = await encoderFactoryOverride();
 		return cachedEncoder;
 	}
-	const modelPath = path.join(
-		resolveStateDir(),
-		"voice-profiles",
-		"models",
-		"wespeaker-resnet34-lm-int8.gguf",
-	);
-	cachedEncoder = await WespeakerEncoder.load(
-		modelPath,
-		WESPEAKER_RESNET34_LM_INT8_MODEL_ID,
-	);
+	cachedEncoder = await loadFusedSpeakerEncoder();
 	return cachedEncoder;
+}
+
+/**
+ * Load the fused speaker encoder through the `eliza_inference_speaker_*` ABI —
+ * the sole on-device speaker runtime. Probes the speaker ABI up front: a build
+ * that lacks it raises a structured `SpeakerEncoderUnavailableError` (the route
+ * surfaces a 503) rather than degrading silently. No standalone-lib fallback.
+ */
+async function loadFusedSpeakerEncoder(): Promise<SpeakerEncoder> {
+	const bundleRoot = path.join(resolveStateDir(), "voice-profiles");
+	const libPath = resolveFusedLibraryPath(bundleRoot);
+	if (!libPath) {
+		throw new SpeakerEncoderUnavailableError(
+			"library-missing",
+			"[family-member-route] fused libelizainference not found. Set $ELIZA_INFERENCE_LIBRARY (exact path) or $ELIZA_INFERENCE_LIB_DIR, or build it via packages/app-core/scripts/build-llama-cpp-mtp.mjs.",
+		);
+	}
+	const ffi = loadElizaInferenceFfi(libPath);
+	if (!FusedSpeakerEncoder.isSupported(ffi)) {
+		throw new SpeakerEncoderUnavailableError(
+			"native-missing",
+			`[family-member-route] the fused libelizainference at ${libPath} (ABI v${ffi.libraryAbiVersion}) lacks the speaker ABI (eliza_inference_speaker_supported() == 0). Rebuild with the WeSpeaker forward graph linked in.`,
+		);
+	}
+	const ctx = ffi.create(bundleRoot);
+	return FusedSpeakerEncoder.load({ ffi, ctx });
 }
 
 async function getProfileStore(): Promise<VoiceProfileStore> {

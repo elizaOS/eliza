@@ -369,7 +369,6 @@ function extractViewId(text: string): string {
     "contacts",
     "messages",
     "feed",
-    "2004scape",
     "defense-of-the-agents",
   ];
   for (const id of known) {

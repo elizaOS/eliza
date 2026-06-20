@@ -205,9 +205,12 @@ describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () =
       expect(enqueueSpy).toHaveBeenCalledTimes(2);
       expect(enqueueSpy.mock.calls.map((c) => c[0].agentId)).toEqual(["a1", "a2"]);
 
-      // The query selects status='deletion_failed' older than the cutoff.
+      // The query recovers BOTH deletion_failed and orphaned deletion_pending
+      // rows (the latter guarded by NOT EXISTS an active agent_delete job).
       const sql = new PgDialect().sqlToQuery(capturedSelectWhere as SQL);
-      expect(sql.params).toContain("deletion_failed");
+      expect(sql.sql).toContain("deletion_failed");
+      expect(sql.sql).toContain("deletion_pending");
+      expect(sql.params).toContain("agent_delete");
     } finally {
       enqueueSpy.mockRestore();
     }

@@ -303,3 +303,14 @@ export type VoiceRuntimeHandoffResult = {
   streamId?: string;
   raw?: JsonValue;
 };
+
+/**
+ * Callbacks for the streaming runtime handoff. `onTextDelta` fires per token
+ * delta as the reply streams (the incremental chunk + the accumulated text);
+ * `onDone` fires once when generation completes. Used by the phrase-by-phrase
+ * voice path so synthesis can begin before the whole reply is generated.
+ */
+export type VoiceRuntimeStreamHandlers = {
+  onTextDelta: (delta: string, fullText: string) => void;
+  onDone?: (result: { fullText: string; agentName?: string }) => void;
+};

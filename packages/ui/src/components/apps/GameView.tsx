@@ -678,9 +678,6 @@ export function GameView() {
     [activeGameApp],
   );
   const hasOperatorSurface = Boolean(OperatorSurface);
-  const openOperatorPanelByDefault =
-    activeGameApp !== "@hyperscape/plugin-hyperscape" &&
-    activeGameApp !== "@elizaos/plugin-hyperscape";
   const resolvedActiveGameViewerUrl = useMemo(
     () => resolveEmbeddedViewerUrl(activeGameViewerUrl),
     [activeGameViewerUrl],
@@ -689,8 +686,7 @@ export function GameView() {
     () => resolveEmbeddedViewerUrl(activeGameRun?.launchUrl ?? ""),
     [activeGameRun?.launchUrl],
   );
-  const dashboardPanelEnabled =
-    !hasOperatorSurface || openOperatorPanelByDefault;
+  const dashboardPanelEnabled = true;
   const hasActiveRun = Boolean(activeGameRun);
   const hasViewer = Boolean(activeGameRun?.viewer?.url);
   const viewerAttached = activeGameRun?.viewerAttachment === "attached";

@@ -11,6 +11,7 @@ import type {
   VoiceRuntimeHandoffParams,
   VoiceRuntimeHandoffResult,
   VoiceRuntimeStatus,
+  VoiceRuntimeStreamHandlers,
   VoiceSynthesisResult,
   VoiceSynthesizeSpeechParams,
   VoiceTestMode,
@@ -45,6 +46,10 @@ export interface VoiceRuntimeAdapter {
   playAudio?(params: VoicePlayAudioParams): Promise<VoicePlaybackEvent>;
   sendRuntimeMessage?(
     params: VoiceRuntimeHandoffParams,
+  ): Promise<VoiceRuntimeHandoffResult>;
+  sendRuntimeMessageStream?(
+    params: VoiceRuntimeHandoffParams,
+    handlers: VoiceRuntimeStreamHandlers,
   ): Promise<VoiceRuntimeHandoffResult>;
 }
 
@@ -336,15 +341,7 @@ export class RuntimeHttpVoiceAdapter implements VoiceRuntimeAdapter {
     );
   }
 
-  async sendRuntimeMessage(
-    params: VoiceRuntimeHandoffParams,
-  ): Promise<VoiceRuntimeHandoffResult> {
-    if (!this.liveRuntimeEnabled()) {
-      throw new VoiceError(
-        "VOICE_LOCAL_INFERENCE_UNAVAILABLE",
-        "Runtime handoff is disabled. Set ELIZA_VOICE_LIVE_RUNTIME=1 to enable it.",
-      );
-    }
+  private async createVoiceConversation(): Promise<string> {
     const conversation = await this.jsonRequest("POST", "/api/conversations", {
       title: "Voice",
     });
@@ -358,6 +355,19 @@ export class RuntimeHttpVoiceAdapter implements VoiceRuntimeAdapter {
         conversation,
       );
     }
+    return conversationId;
+  }
+
+  async sendRuntimeMessage(
+    params: VoiceRuntimeHandoffParams,
+  ): Promise<VoiceRuntimeHandoffResult> {
+    if (!this.liveRuntimeEnabled()) {
+      throw new VoiceError(
+        "VOICE_LOCAL_INFERENCE_UNAVAILABLE",
+        "Runtime handoff is disabled. Set ELIZA_VOICE_LIVE_RUNTIME=1 to enable it.",
+      );
+    }
+    const conversationId = await this.createVoiceConversation();
     const message = await this.jsonRequest(
       "POST",
       `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
@@ -374,6 +384,76 @@ export class RuntimeHttpVoiceAdapter implements VoiceRuntimeAdapter {
       firstTokenText: responseText ? responseText.slice(0, 32) : undefined,
       responseText: responseText ?? undefined,
       raw: message,
+    };
+  }
+
+  /**
+   * Streaming runtime handoff: consumes the `/messages/stream` SSE endpoint and
+   * fires `onTextDelta` per token as the reply streams, so the caller can begin
+   * phrase-by-phrase synthesis before the whole reply is generated (vs.
+   * `sendRuntimeMessage`, which awaits the full JSON body). Falls back to the
+   * buffered path at the call site if this throws.
+   */
+  async sendRuntimeMessageStream(
+    params: VoiceRuntimeHandoffParams,
+    handlers: VoiceRuntimeStreamHandlers,
+  ): Promise<VoiceRuntimeHandoffResult> {
+    if (!this.liveRuntimeEnabled()) {
+      throw new VoiceError(
+        "VOICE_LOCAL_INFERENCE_UNAVAILABLE",
+        "Runtime handoff is disabled. Set ELIZA_VOICE_LIVE_RUNTIME=1 to enable it.",
+      );
+    }
+    const conversationId = await this.createVoiceConversation();
+    const response = await this.streamRequest(
+      "POST",
+      `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
+      { text: params.text },
+    );
+    if (!response.ok || !response.body) {
+      const text = await response.text().catch(() => "");
+      throw new VoiceError(
+        "VOICE_LOCAL_INFERENCE_UNAVAILABLE",
+        `Voice runtime stream route failed: ${response.status}`,
+        { status: response.status, body: text },
+      );
+    }
+
+    let fullText = "";
+    let agentName: string | undefined;
+    let messageId: string | undefined;
+    for await (const frame of parseVoiceSseStream(response.body)) {
+      const type = stringField(frame, "type");
+      if (type === "token") {
+        // Raw (un-trimmed) delta — inter-token whitespace is significant.
+        const delta = rawStringField(frame, "text") ?? "";
+        fullText = rawStringField(frame, "fullText") ?? fullText + delta;
+        if (delta) handlers.onTextDelta(delta, fullText);
+      } else if (type === "done") {
+        fullText = rawStringField(frame, "fullText") ?? fullText;
+        agentName = stringField(frame, "agentName") ?? agentName;
+        messageId = readId(frame, ["messageId", "id"]) ?? messageId;
+        handlers.onDone?.({
+          fullText,
+          ...(agentName ? { agentName } : {}),
+        });
+        break;
+      } else if (type === "error") {
+        const message =
+          stringField(frame, "message") ?? "Voice runtime stream error";
+        throw new VoiceError(
+          "VOICE_LOCAL_INFERENCE_UNAVAILABLE",
+          message,
+          frame,
+        );
+      }
+    }
+
+    return {
+      conversationId,
+      ...(messageId ? { messageId } : {}),
+      firstTokenText: fullText ? fullText.slice(0, 32) : undefined,
+      responseText: fullText || undefined,
     };
   }
 
@@ -441,6 +521,39 @@ export class RuntimeHttpVoiceAdapter implements VoiceRuntimeAdapter {
     }
   }
 
+  /**
+   * Like {@link request} but for SSE: requests `text/event-stream` and uses a
+   * generous total timeout (the 10s `request` timeout would abort a long
+   * streamed generation mid-reply). `ELIZA_VOICE_STREAM_TIMEOUT_MS` overrides.
+   */
+  private async streamRequest(
+    method: HttpMethod,
+    path: string,
+    body: JsonRecord,
+  ): Promise<Response> {
+    const headers: Record<string, string> = {
+      Accept: "text/event-stream",
+      "Content-Type": "application/json",
+      ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+    };
+    const controller = new AbortController();
+    const timeoutMs =
+      Number(this.env.ELIZA_VOICE_STREAM_TIMEOUT_MS) > 0
+        ? Number(this.env.ELIZA_VOICE_STREAM_TIMEOUT_MS)
+        : 120_000;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await this.fetchImpl(`${stripSlash(this.apiBase)}${path}`, {
+        method,
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   private register<T>(set: Set<Listener<T>>, handler: Listener<T>): () => void {
     set.add(handler);
     return () => {
@@ -495,4 +608,61 @@ function readNestedId(
   if (!isRecord(value)) return null;
   const nested = value[field];
   return readId(nested, idFields);
+}
+
+/** Read a string field WITHOUT trimming (token deltas carry significant
+ *  whitespace, unlike {@link stringField} which trims). */
+function rawStringField(value: JsonValue, field: string): string | undefined {
+  if (!isRecord(value)) return undefined;
+  const found = value[field];
+  return typeof found === "string" ? found : undefined;
+}
+
+/**
+ * Parse an SSE byte stream into each `data:` line's decoded JSON object.
+ * Buffers across read() boundaries; ignores comment/blank/non-JSON lines and
+ * the terminal `[DONE]`. The voice runtime wire format is
+ * `data: {"type":"token","text":<delta>,"fullText":<acc>}` … then
+ * `data: {"type":"done","fullText":<final>,"agentName":…}`.
+ */
+export async function* parseVoiceSseStream(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<JsonRecord> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const handle = (line: string): JsonRecord | null => {
+    const trimmed = line.trimStart();
+    if (!trimmed.startsWith("data:")) return null;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === "[DONE]") return null;
+    try {
+      const parsed = JSON.parse(payload) as JsonValue;
+      return isRecord(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, nl);
+        buffer = buffer.slice(nl + 1);
+        const frame = handle(line);
+        if (frame) yield frame;
+      }
+    }
+    const tail = handle(buffer);
+    if (tail) yield tail;
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // Reader already released by an upstream cancel.
+    }
+  }
 }

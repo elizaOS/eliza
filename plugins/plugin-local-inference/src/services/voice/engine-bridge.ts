@@ -93,6 +93,10 @@ import { FusedDiarizer } from "./speaker/diarizer-fused";
 import type { SpeakerEncoder } from "./speaker/encoder";
 import { FusedSpeakerEncoder } from "./speaker/encoder-fused";
 import {
+	SPEAKER_GGML_EMBEDDING_DIM,
+	SPEAKER_GGML_SAMPLE_RATE,
+} from "./speaker/encoder-ggml";
+import {
 	DEFAULT_VOICE_PRESET_REL_PATH,
 	SpeakerPresetCache,
 } from "./speaker-preset-cache";
@@ -612,6 +616,13 @@ export interface EngineVoiceBridgeOptions {
 	 */
 	kokoroOnly?: KokoroEngineDiscoveryResult;
 	/**
+	 * Optional pre-loaded fused inference handle for the `kokoroOnly` path. When
+	 * set, the Kokoro FFI runtime reuses it instead of dlopen-ing a second copy
+	 * of `libelizainference` (tests inject a stub; production may share the
+	 * engine's handle).
+	 */
+	kokoroFfi?: ElizaInferenceFfi;
+	/**
 	 * Optional voice-profile store for speaker-attribution. When set, the
 	 * bridge constructs a `VoiceAttributionPipeline` and runs attribution
 	 * in parallel with ASR on every turn via `runVoiceTurn`. Callers receive
@@ -698,28 +709,20 @@ export interface LiveAttributionConfig {
 
 export function createKokoroTtsBackend(
 	kokoro: KokoroEngineDiscoveryResult,
-	opts: { bundleRoot?: string } = {},
+	opts: { bundleRoot?: string; ffi?: ElizaInferenceFfi } = {},
 ): KokoroTtsBackend {
-	const forkUrl =
-		process.env.ELIZA_KOKORO_FORK_URL?.trim() ||
-		process.env.ELIZA_GATEWAY_URL?.trim() ||
-		"http://127.0.0.1:18789";
-	const forkModelId =
-		process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0";
-	// In-process FFI is the preferred default on every platform — it is the
-	// only Kokoro path that ships on iOS / Google Play (no local TCP socket).
-	// The HTTP `fork` path stays as an explicit dev/desktop opt-in
-	// (`KOKORO_BACKEND=fork`); it is never resolved unless requested.
+	// In-process FFI is the sole Kokoro synthesis path on every platform — it
+	// runs inside the fused libelizainference handle, the only path that ships
+	// on iOS / Google Play (no local TCP socket). The legacy HTTP `fork`
+	// (llama-server /v1/audio/speech) runtime was removed. An already-loaded
+	// fused handle may be injected (`opts.ffi`) so Kokoro reuses it instead of
+	// dlopen-ing a second copy of the lib.
 	const decision = pickKokoroRuntimeBackend({
 		defaultBackend: "ffi",
 		ffi: {
 			layout: kokoro.layout,
 			bundleRoot: opts.bundleRoot,
-		},
-		fork: {
-			serverUrl: forkUrl,
-			modelId: forkModelId,
-			sampleRate: kokoro.layout.sampleRate,
+			...(opts.ffi ? { ffi: opts.ffi } : {}),
 		},
 	});
 	logger.info(
@@ -1130,39 +1133,49 @@ export class EngineVoiceBridge {
 			defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiContextRef);
 		const lifecycle = new VoiceLifecycle({ registry, loaders });
 
-		// Wire speaker-attribution when a profile store is provided.
-		// The attribution pipeline wraps the encoder + diarizer + profile-store;
-		// encoder errors (SpeakerEncoderGgmlUnavailableError) are caught at the
-		// runVoiceTurn level and treated as attribution-miss rather than turn
-		// failure (AGENTS.md §3: attribution is best-effort, voice turn is not).
-		// The GGML encoder is loaded lazily on first encode() call.
+		// Wire speaker-attribution when a profile store is provided. The
+		// attribution pipeline wraps the fused encoder + diarizer + profile-store.
+		// Both run through the ONE fused `libelizainference` handle via its
+		// `eliza_inference_speaker_*` / `_diariz_*` ABI — there is no standalone
+		// `libvoice_classifier` runtime.
+		//
+		// Fail-fast at ARM time: the fused speaker ABI is probed synchronously
+		// here (`FusedSpeakerEncoder.isSupported`). When the build does not
+		// advertise it, this throws `VoiceStartupError` rather than silently
+		// degrading attribution to "unknown speaker" on the first turn. The
+		// native session `load()` runs lazily on first encode/diarize, but the
+		// capability is decided up front.
 		let attributionPipeline: VoiceAttributionPipeline | null = null;
 		if (opts.profileStore) {
-			const bundleRootForEncoder = opts.bundleRoot;
 			const fusedFfi = ffiHandle;
 			const fusedCtx = ffiContextRef;
-			// Lazy encoder: resolves on first encode() call. Prefers the FUSED
-			// `eliza_inference_speaker_*` path off the same `ffi`/`ctx` as
-			// VAD / TTS / ASR (the user directive: one native engine, no separate
-			// bun:ffi-musl libs). Falls back to the standalone
-			// `SpeakerEncoderGgmlImpl` (`voice/speaker-encoder/...gguf` via
-			// libvoice_classifier) only when the fused build does not advertise
-			// the speaker ABI.
-			let resolvedEncoder: import("./speaker/encoder").SpeakerEncoder | null =
-				null;
+			if (!fusedFfi || !fusedCtx) {
+				throw new VoiceStartupError(
+					"missing-fused-build",
+					"[voice] Speaker-attribution requires the fused libelizainference handle (useFfiBackend). No standalone speaker runtime exists.",
+				);
+			}
+			if (!FusedSpeakerEncoder.isSupported(fusedFfi)) {
+				throw new VoiceStartupError(
+					"missing-fused-build",
+					"[voice] The loaded libelizainference build lacks the speaker ABI (eliza_inference_speaker_supported() == 0). Rebuild with the WeSpeaker forward graph linked in (eliza_inference_speaker_* symbols).",
+				);
+			}
+			// Fused encoder: probe passed above; the native session opens lazily
+			// on first encode() so voice-off does not keep the model resident.
+			let resolvedEncoder: SpeakerEncoder | null = null;
 			let encoderLoadError: Error | null = null;
-			const lazyEncoder: import("./speaker/encoder").SpeakerEncoder = {
-				embeddingDim: 256,
-				sampleRate: 16_000,
+			const lazyEncoder: SpeakerEncoder = {
+				embeddingDim: SPEAKER_GGML_EMBEDDING_DIM,
+				sampleRate: SPEAKER_GGML_SAMPLE_RATE,
 				async encode(pcm: Float32Array): Promise<Float32Array> {
 					if (encoderLoadError) throw encoderLoadError;
 					if (!resolvedEncoder) {
 						try {
-							resolvedEncoder = await resolveSpeakerEncoder(
-								fusedFfi,
-								fusedCtx,
-								bundleRootForEncoder,
-							);
+							resolvedEncoder = await FusedSpeakerEncoder.load({
+								ffi: fusedFfi,
+								ctx: () => fusedCtx.ensure(),
+							});
 						} catch (err) {
 							encoderLoadError =
 								err instanceof Error ? err : new Error(String(err));
@@ -1175,31 +1188,27 @@ export class EngineVoiceBridge {
 					await resolvedEncoder?.dispose();
 				},
 			};
-			// Lazy diarizer. Prefers the FUSED `eliza_inference_diariz_*` path off
-			// the shared `ffi`/`ctx`; only when the fused build lacks it does it
-			// fall back to the standalone `PyannoteDiarizer`
-			// (`voice/diarizer/...gguf` via libvoice_classifier), and only when
-			// that GGUF is on disk. The diarizer is optional — a single-speaker
-			// turn collapses to one segment without it (attribution-pipeline's
-			// localSpeakerId=0 fallback).
-			const diarizerGgufPath = `${opts.bundleRoot}/voice/diarizer/pyannote-segmentation-3.0.gguf`;
-			const fusedDiarizerAvailable = FusedDiarizer.isSupported(fusedFfi);
+			// Fused diarizer (optional). When the build does not advertise the
+			// diarizer ABI, attribution runs without it — a single-speaker turn
+			// collapses to one segment (the attribution-pipeline localSpeakerId=0
+			// path). The diarizer is NOT a fail-fast gate (unlike the encoder):
+			// it refines multi-speaker windows, it is not required to attribute a
+			// single speaker.
 			let lazyDiarizer: Diarizer | undefined;
-			if (fusedDiarizerAvailable || existsSync(diarizerGgufPath)) {
+			if (FusedDiarizer.isSupported(fusedFfi)) {
 				let resolvedDiarizer: Diarizer | null = null;
 				let diarizerLoadError: Error | null = null;
 				lazyDiarizer = {
 					modelId: PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
-					sampleRate: 16_000,
+					sampleRate: SPEAKER_GGML_SAMPLE_RATE,
 					async diarizeWindow(pcm: Float32Array) {
 						if (diarizerLoadError) throw diarizerLoadError;
 						if (!resolvedDiarizer) {
 							try {
-								resolvedDiarizer = await resolveDiarizer(
-									fusedFfi,
-									fusedCtx,
-									diarizerGgufPath,
-								);
+								resolvedDiarizer = await FusedDiarizer.load({
+									ffi: fusedFfi,
+									ctx: () => fusedCtx.ensure(),
+								});
 							} catch (err) {
 								diarizerLoadError =
 									err instanceof Error ? err : new Error(String(err));
@@ -1281,6 +1290,7 @@ export class EngineVoiceBridge {
 				opts.bundleRoot && existsSync(opts.bundleRoot)
 					? opts.bundleRoot
 					: undefined,
+			...(opts.kokoroFfi ? { ffi: opts.kokoroFfi } : {}),
 		});
 
 		const phraseCache = new PhraseCache();
@@ -1998,48 +2008,11 @@ function ensureContext(
 }
 
 /**
- * Resolve the speaker encoder, preferring the FUSED `libelizainference`
- * path (`eliza_inference_speaker_*`) off the same `ffi`/`ctx` the rest of the
- * voice pipeline uses. Only when the fused build does not advertise the
- * speaker ABI does it fall back to the standalone `SpeakerEncoderGgmlImpl`
- * (libvoice_classifier), and only when that GGUF is on disk.
- */
-async function resolveSpeakerEncoder(
-	ffi: ElizaInferenceFfi | null,
-	ctxRef: FfiContextRef | null,
-	bundleRoot: string | undefined,
-): Promise<SpeakerEncoder> {
-	if (ffi && ctxRef && FusedSpeakerEncoder.isSupported(ffi)) {
-		return FusedSpeakerEncoder.load({ ffi, ctx: () => ctxRef.ensure() });
-	}
-	const { SpeakerEncoderGgmlImpl } = await import("./speaker/encoder-ggml");
-	const ggufPath = `${bundleRoot}/voice/speaker-encoder/wespeaker-resnet34-lm.gguf`;
-	return new SpeakerEncoderGgmlImpl({ ggufPath });
-}
-
-/**
- * Resolve the diarizer, preferring the FUSED `libelizainference` path
- * (`eliza_inference_diariz_*`). Falls back to the standalone `PyannoteDiarizer`
- * (libvoice_classifier) when the fused build lacks the diarizer ABI.
- */
-async function resolveDiarizer(
-	ffi: ElizaInferenceFfi | null,
-	ctxRef: FfiContextRef | null,
-	standaloneGgufPath: string,
-): Promise<Diarizer> {
-	if (ffi && ctxRef && FusedDiarizer.isSupported(ffi)) {
-		return FusedDiarizer.load({ ffi, ctx: () => ctxRef.ensure() });
-	}
-	const { PyannoteDiarizer } = await import("./speaker/diarizer");
-	return PyannoteDiarizer.load(standaloneGgufPath);
-}
-
-/**
  * No-op lifecycle loaders for the Kokoro-only bridge. ORT owns the
  * model memory; nothing to mmap-acquire or evict. ASR is not served
  * from this path — callers that need ASR construct
- * `createStreamingTranscriber` directly (the chain in `transcriber.ts`
- * supports `openvino-whisper` and `whisper.cpp` without a bundle).
+ * `createStreamingTranscriber` directly (the fused-only chain in
+ * `transcriber.ts`: fused streaming → fused batch → AsrUnavailableError).
  */
 function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
 	const noopMmap = (id: string): MmapRegionHandle => ({

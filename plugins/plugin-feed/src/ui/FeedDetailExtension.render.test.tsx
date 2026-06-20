@@ -5,8 +5,7 @@
 // component against a fake useApp/selectLatestRunForApp and passthrough Surface
 // primitives, asserting the header, the four telemetry-derived Metric rows, the
 // ActivityList rows (from recentEvents + session.activity), the no-run empty
-// state, and the empty-activity fallback. Harness mirrors the sibling
-// plugin-2004scape detail-extension test.
+// state, and the empty-activity fallback.
 
 import { existsSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";

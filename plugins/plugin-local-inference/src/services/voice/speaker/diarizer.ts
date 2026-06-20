@@ -1,12 +1,15 @@
 /**
  * pyannote-segmentation-3.0 shared types and pure segmentation logic.
  *
- * The ONNX-backed `PyannoteDiarizer` was removed when `onnxruntime-node`
- * was dropped. The GGML implementation lives in `diarizer-ggml.ts`.
+ * Diarization runs EXCLUSIVELY through the fused `libelizainference`
+ * `eliza_inference_diariz_*` ABI (`FusedDiarizer` in `diarizer-fused.ts`).
+ * The standalone `libvoice_classifier` binding has been removed — there is one
+ * on-device voice runtime.
  *
- * This file retains shared types (`Diarizer`, `LocalSpeakerSegment`,
- * `DiarizerOutput`) and the pure `classifyFramesToSegments` function so
- * callers don't need simultaneous updates.
+ * This file holds the shared types (`Diarizer`, `LocalSpeakerSegment`,
+ * `DiarizerOutput`), the model-id / window constants, the structured
+ * `DiarizerUnavailableError`, and the pure `classifyFramesToSegments` reducer
+ * the fused diarizer feeds its per-frame labels through.
  */
 
 export const PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID =
@@ -65,24 +68,6 @@ export class DiarizerUnavailableError extends Error {
 	}
 }
 
-const DIARIZER_UNAVAILABLE_CODES = new Set<string>([
-	"ort-missing",
-	"native-missing",
-	"library-missing",
-	"model-missing",
-	"model-unavailable",
-	"model-load-failed",
-	"model-shape-mismatch",
-	"forward-not-implemented",
-	"invalid-input",
-]);
-
-function coerceDiarizerCode(code: unknown): DiarizerUnavailableError["code"] {
-	return typeof code === "string" && DIARIZER_UNAVAILABLE_CODES.has(code)
-		? (code as DiarizerUnavailableError["code"])
-		: "model-load-failed";
-}
-
 /**
  * One speaker-tagged span within a diarized window. `localSpeakerId` is
  * **window-local** (0..2): the same physical speaker gets different
@@ -113,76 +98,6 @@ export interface Diarizer {
 	/** Process one ~5 s window of PCM. */
 	diarizeWindow(pcm: Float32Array): Promise<DiarizerOutput>;
 	dispose(): Promise<void>;
-}
-
-type DiarizerGgmlFacade = {
-	segment(pcm: Float32Array): Promise<{ labels: ArrayLike<number> }>;
-	dispose(): Promise<void>;
-};
-
-/**
- * Backward-compatible pyannote facade. The ONNX implementation has been
- * replaced by the GGML binding, but several callers still import
- * `PyannoteDiarizer` from this module.
- */
-export class PyannoteDiarizer implements Diarizer {
-	readonly sampleRate = PYANNOTE_SAMPLE_RATE;
-
-	private constructor(
-		private readonly impl: DiarizerGgmlFacade,
-		readonly modelId: PyannoteDiarizerModelId,
-	) {}
-
-	static async load(
-		ggufPath: string,
-		modelId: PyannoteDiarizerModelId = PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
-	): Promise<PyannoteDiarizer> {
-		const { existsSync } = await import("node:fs");
-		if (!existsSync(ggufPath)) {
-			throw new DiarizerUnavailableError(
-				"model-missing",
-				`[pyannote] GGUF not found at ${ggufPath}`,
-			);
-		}
-		const { DiarizerGgml } = await import("./diarizer-ggml");
-		return new PyannoteDiarizer(new DiarizerGgml({ ggufPath }), modelId);
-	}
-
-	async diarizeWindow(pcm: Float32Array): Promise<DiarizerOutput> {
-		try {
-			const out = await this.impl.segment(pcm);
-			const probs = new Float32Array(out.labels.length * PYANNOTE_CLASS_COUNT);
-			for (let frame = 0; frame < out.labels.length; frame += 1) {
-				const label = out.labels[frame] ?? -1;
-				if (label < 0 || label >= PYANNOTE_CLASS_COUNT) {
-					throw new DiarizerUnavailableError(
-						"model-load-failed",
-						`[pyannote] GGML emitted invalid class ${label} at frame ${frame}`,
-					);
-				}
-				probs[frame * PYANNOTE_CLASS_COUNT + label] = 1;
-			}
-			return classifyFramesToSegments(
-				probs,
-				out.labels.length,
-				PYANNOTE_CLASS_COUNT,
-				0,
-				PYANNOTE_FRAME_STRIDE_MS,
-			);
-		} catch (err) {
-			if (err instanceof Error && err.name === "DiarizerGgmlUnavailableError") {
-				throw new DiarizerUnavailableError(
-					coerceDiarizerCode((err as { code?: unknown }).code),
-					err.message,
-				);
-			}
-			throw err;
-		}
-	}
-
-	async dispose(): Promise<void> {
-		await this.impl.dispose();
-	}
 }
 
 /** Numerically-stable softmax over the last axis. */

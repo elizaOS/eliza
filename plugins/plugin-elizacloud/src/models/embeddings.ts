@@ -10,6 +10,45 @@ import { emitModelUsageEvent } from "../utils/events";
 import { createCloudApiClient } from "../utils/sdk-client";
 
 const MAX_BATCH_SIZE = 100;
+
+// ── Bounded retry/backoff for the /embeddings round-trip ──────────────────
+// Embeddings are off the turn's critical path (queueEmbeddingGeneration is
+// fire-and-forget), so a stall here delays the embedding QUEUE, not a reply.
+// The old behaviour — one blind 30s (or full retry-after) sleep then a single
+// retry — could park the queue for 30s+ on a transient 429. Replaced with
+// bounded exponential backoff + jitter, a CAP on any single wait (so a large
+// server retry-after can't stall the queue indefinitely), and a per-request
+// client-side timeout (the endpoint had none, so a hung gateway hung the
+// queue forever).
+//
+// Handler retries are deliberately SMALL: the EmbeddingGenerationService
+// BatchQueue already wraps generateEmbedding in its own multi-attempt backoff,
+// so this layer absorbs only a single transient burst (one quick retry) and
+// defers sustained pressure to the queue — otherwise the two backoffs compound.
+const EMBED_MAX_ATTEMPTS = 2;
+const EMBED_BACKOFF_BASE_MS = 1_000;
+const EMBED_BACKOFF_CAP_MS = 8_000;
+const EMBED_REQUEST_TIMEOUT_MS = 60_000;
+
+/**
+ * Backoff before the next embedding attempt. Exponential (base·2^attempt) as a
+ * floor, honoring the server's `retry-after` when present, but never longer
+ * than {@link EMBED_BACKOFF_CAP_MS}; ±25% jitter spreads retries from a burst.
+ */
+function embeddingBackoffMs(attempt: number, retryAfterSec?: number): number {
+  const exp = EMBED_BACKOFF_BASE_MS * 2 ** attempt;
+  const serverHint =
+    typeof retryAfterSec === "number" && retryAfterSec > 0
+      ? retryAfterSec * 1000
+      : 0;
+  const base = Math.min(EMBED_BACKOFF_CAP_MS, Math.max(exp, serverHint));
+  return Math.round(base * (1 + Math.random() * 0.25));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function extractRateLimitInfo(response: Response): {
   remainingRequests?: number;
   remainingTokens?: number;
@@ -146,62 +185,57 @@ export async function handleBatchTextEmbedding(
       // Records a `cloud.embedding` span on the active per-turn timer when an
       // embedding happens to be on a turn's critical path (most are queued /
       // detached, so this is a no-op there — which is exactly what proves they
-      // don't add to turn latency).
-      const response = await timeInferenceSpan(
-        "cloud.embedding",
-        () =>
-          client.requestRaw("POST", "/embeddings", {
-            json: {
-              model: embeddingModelName,
-              input: batchTexts,
-            },
-          }),
-        { batch: batchTexts.length }
-      );
-
-      const rateLimitInfo = extractRateLimitInfo(response);
-
-      if (rateLimitInfo.remainingRequests !== undefined && rateLimitInfo.remainingRequests < 50) {
-        logger.warn(
-          `[BatchEmbeddings] Rate limit: ${rateLimitInfo.remainingRequests}/${rateLimitInfo.limitRequests} requests remaining`
+      // don't add to turn latency). Retries transient throttling/5xx with
+      // bounded exponential backoff (see EMBED_* constants) instead of a single
+      // 30s blind sleep.
+      let response: Response | null = null;
+      for (let attempt = 0; attempt < EMBED_MAX_ATTEMPTS; attempt++) {
+        const resp = await timeInferenceSpan(
+          "cloud.embedding",
+          () =>
+            client.requestRaw("POST", "/embeddings", {
+              json: {
+                model: embeddingModelName,
+                input: batchTexts,
+              },
+              timeoutMs: EMBED_REQUEST_TIMEOUT_MS,
+            }),
+          { batch: batchTexts.length, attempt }
         );
-      }
 
-      if (response.status === 429) {
-        const retryAfter = rateLimitInfo.retryAfter || 30;
-        logger.warn(`[BatchEmbeddings] Rate limited, waiting ${retryAfter}s...`);
-        await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
-
-        const retryResponse = await client.requestRaw("POST", "/embeddings", {
-          json: {
-            model: embeddingModelName,
-            input: batchTexts,
-          },
-        });
-
-        if (!retryResponse.ok) {
-          // The post-backoff retry still failed: this batch has no embeddings.
-          // Throw so the router can fall through to another provider rather than
-          // persisting marker vectors that corrupt the store (Commandment 8).
-          throw new Error(
-            `[BatchEmbeddings] Rate-limit retry failed (${retryResponse.status} ${retryResponse.statusText})`
+        const rateLimitInfo = extractRateLimitInfo(resp);
+        if (
+          rateLimitInfo.remainingRequests !== undefined &&
+          rateLimitInfo.remainingRequests < 50
+        ) {
+          logger.warn(
+            `[BatchEmbeddings] Rate limit: ${rateLimitInfo.remainingRequests}/${rateLimitInfo.limitRequests} requests remaining`
           );
         }
 
-        const retryData = (await retryResponse.json()) as {
-          data?: Array<{ embedding: number[]; index: number }>;
-        };
-
-        if (!retryData?.data || !Array.isArray(retryData.data)) {
-          throw new Error("[BatchEmbeddings] Rate-limit retry returned invalid structure");
+        const transient =
+          resp.status === 429 ||
+          resp.status === 502 ||
+          resp.status === 503 ||
+          resp.status === 504;
+        if (transient && attempt < EMBED_MAX_ATTEMPTS - 1) {
+          const delay = embeddingBackoffMs(attempt, rateLimitInfo.retryAfter);
+          logger.warn(
+            `[BatchEmbeddings] ${resp.status} (attempt ${attempt + 1}/${EMBED_MAX_ATTEMPTS}) — backing off ${delay}ms`
+          );
+          // Drain the body so the underlying connection can be reused.
+          await resp.text().catch(() => undefined);
+          await sleep(delay);
+          continue;
         }
+        response = resp;
+        break;
+      }
 
-        for (const item of retryData.data) {
-          const originalIndex = batch[item.index].originalIndex;
-          results[originalIndex] = item.embedding;
-        }
-        logger.info(`[BatchEmbeddings] Retry successful for ${batch.length} embeddings`);
-        continue;
+      // Type guard: the loop assigns `response` on its final iteration, so this
+      // is unreachable in practice.
+      if (!response) {
+        throw new Error("[BatchEmbeddings] No response after retry loop");
       }
 
       if (!response.ok) {
@@ -247,7 +281,7 @@ export async function handleBatchTextEmbedding(
       }
 
       logger.debug(
-        `[BatchEmbeddings] Got ${batch.length} embeddings (${embeddingDimension}d), remaining: ${rateLimitInfo.remainingRequests ?? "unknown"}`
+        `[BatchEmbeddings] Got ${batch.length} embeddings (${embeddingDimension}d)`
       );
     } catch (error) {
       // Any failure in this batch (HTTP error, transport error, malformed body)

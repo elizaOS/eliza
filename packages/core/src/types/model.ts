@@ -698,6 +698,48 @@ export interface TextStreamResult {
 }
 
 /**
+ * Result of a streaming text-to-speech request. Lets a caller play audio as it
+ * is synthesized instead of waiting for the whole clip. Returned by a
+ * TEXT_TO_SPEECH handler when `TextToSpeechParams.audioStream` is true; the
+ * buffered `Uint8Array`/`Buffer` shape is still returned otherwise.
+ *
+ * @example
+ * ```typescript
+ * const result = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
+ *   text: "hello", audioStream: true,
+ * }) as AudioStreamResult;
+ * for await (const chunk of result.audioStream) sink.write(chunk);
+ * const full = await result.bytes; // complete audio after the stream ends
+ * ```
+ */
+export interface AudioStreamResult {
+	/** Async iterable of audio byte chunks as they are synthesized. */
+	audioStream: AsyncIterable<Uint8Array>;
+	/** Resolves to the complete concatenated audio after streaming finishes. */
+	bytes: Promise<Uint8Array>;
+	/** MIME type of the audio (e.g. "audio/mpeg", "audio/wav", "audio/pcm"). */
+	mimeType: string;
+}
+
+/**
+ * Duck-types an {@link AudioStreamResult} off a model result so consumers can
+ * branch between the streamed and buffered TTS shapes.
+ */
+export function isAudioStreamResult(
+	value: unknown,
+): value is AudioStreamResult {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"audioStream" in value &&
+		"bytes" in value &&
+		"mimeType" in value &&
+		typeof (value as AudioStreamResult).audioStream?.[Symbol.asyncIterator] ===
+			"function"
+	);
+}
+
+/**
  * Options for the simplified generateText API.
  * Extends GenerateTextParams with additional configuration for character context.
  */
@@ -796,6 +838,20 @@ export interface TextToSpeechParams {
 	voice?: string;
 	speed?: number;
 	signal?: AbortSignal;
+	/**
+	 * Explicit opt-in for streamed audio: when true, the handler MAY return an
+	 * {@link AudioStreamResult} (audio chunks as they synthesize) instead of the
+	 * full buffer, so playback can start before the whole clip is ready.
+	 * Handlers without streaming support ignore it and return the buffered shape.
+	 *
+	 * This is intentionally a DISTINCT flag from the generic `stream` (which
+	 * `AgentRuntime.useModel` auto-injects from an ambient text-streaming
+	 * context): a TTS call made inside a streaming reply turn (e.g. the
+	 * GENERATE_MEDIA action) must keep returning bytes unless the caller
+	 * explicitly consumes a stream. Only callers that handle `AudioStreamResult`
+	 * set `audioStream: true`.
+	 */
+	audioStream?: boolean;
 }
 
 /**
@@ -1157,12 +1213,20 @@ export type StreamableModelType =
 	| typeof ModelType.TEXT_COMPLETION;
 
 /**
- * Result type for plugin model handlers - includes TextStreamResult for streamable models
+ * Model types whose handlers may return a streamed-audio result.
+ */
+export type StreamableAudioModelType = typeof ModelType.TEXT_TO_SPEECH;
+
+/**
+ * Result type for plugin model handlers — includes TextStreamResult for
+ * streamable text models and AudioStreamResult for streamable audio (TTS).
  */
 export type PluginModelResult<K extends keyof ModelResultMap> =
 	K extends StreamableModelType
 		? ModelResultMap[K] | TextStreamResult
-		: ModelResultMap[K];
+		: K extends StreamableAudioModelType
+			? ModelResultMap[K] | AudioStreamResult
+			: ModelResultMap[K];
 
 /**
  * Type guard to check if a model type supports streaming.

@@ -49,7 +49,7 @@ import type {
 
 /**
  * A `StreamingTranscriber` that hard-fails: used when no ASR backend is
- * available (no fused streaming decoder, no whisper.cpp binary/model, no
+ * available (no fused streaming decoder, no fused batch decoder, no
  * bundled ASR region) but a voice turn was requested. AGENTS.md §3 —
  * missing required voice backend in voice mode is a thrown
  * `VoiceStartupError`, never a silent fallback. The bridge returns this

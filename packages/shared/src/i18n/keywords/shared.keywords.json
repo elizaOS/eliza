@@ -3917,13 +3917,13 @@
       "tl": ["app", "aplikasyon", "programa"]
     },
     "action.appControl.knownApp": {
-      "base": ["shopify", "vincent", "companion", "hyperscape", "feed"],
-      "zh-CN": ["shopify", "vincent", "companion", "hyperscape", "feed"],
-      "ko": ["shopify", "vincent", "companion", "hyperscape", "feed"],
-      "es": ["shopify", "vincent", "companion", "hyperscape", "feed"],
-      "pt": ["shopify", "vincent", "companion", "hyperscape", "feed"],
-      "vi": ["shopify", "vincent", "companion", "hyperscape", "feed"],
-      "tl": ["shopify", "vincent", "companion", "hyperscape", "feed"]
+      "base": ["shopify", "vincent", "companion", "feed"],
+      "zh-CN": ["shopify", "vincent", "companion", "feed"],
+      "ko": ["shopify", "vincent", "companion", "feed"],
+      "es": ["shopify", "vincent", "companion", "feed"],
+      "pt": ["shopify", "vincent", "companion", "feed"],
+      "vi": ["shopify", "vincent", "companion", "feed"],
+      "tl": ["shopify", "vincent", "companion", "feed"]
     },
     "action.terminal.commandVerb": {
       "base": ["run", "execute", "start", "do"],

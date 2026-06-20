@@ -36,16 +36,6 @@ const arbiterState = vi.hoisted(() => ({
 		description: "A tiny synthetic image.",
 	})),
 }));
-const asrState = vi.hoisted(() => ({
-	createStreamingTranscriber: vi.fn(),
-	dispose: vi.fn(),
-	feed: vi.fn(),
-	flush: vi.fn(async () => ({
-		partial: "standalone transcript",
-		isFinal: true,
-	})),
-}));
-
 vi.mock("../services/active-model", () => ({
 	resolveLocalInferenceLoadArgs: vi.fn(async (target) => target),
 }));
@@ -99,19 +89,6 @@ vi.mock("../services/voice", () => ({
 		sampleRate: 16_000,
 	})),
 }));
-
-vi.mock("../services/voice/transcriber", () => {
-	class AsrUnavailableError extends Error {
-		constructor(message: string) {
-			super(message);
-			this.name = "AsrUnavailableError";
-		}
-	}
-	return {
-		AsrUnavailableError,
-		createStreamingTranscriber: asrState.createStreamingTranscriber,
-	};
-});
 
 import { installRouterHandler } from "../services/router-handler";
 import { VoiceStartupError } from "../services/voice/errors";
@@ -180,15 +157,6 @@ beforeEach(() => {
 	engineState.available.mockResolvedValue(true);
 	engineState.currentModelPath.mockReturnValue(null);
 	engineState.hasLoadedModel.mockReturnValue(false);
-	asrState.createStreamingTranscriber.mockReturnValue({
-		dispose: asrState.dispose,
-		feed: asrState.feed,
-		flush: asrState.flush,
-	});
-	asrState.flush.mockResolvedValue({
-		partial: "standalone transcript",
-		isFinal: true,
-	});
 	arbiterState.hasCapability.mockImplementation(
 		(capability: string) => capability === "vision-describe",
 	);
@@ -435,14 +403,16 @@ describe("ensureLocalInferenceHandler", () => {
 		).resolves.toBe("transcribed");
 
 		expect(engineState.ensureActiveBundleVoiceReady).toHaveBeenCalledTimes(1);
-		expect(asrState.createStreamingTranscriber).not.toHaveBeenCalled();
 		expect(engineState.transcribePcm).toHaveBeenCalledWith(
 			{ pcm: new Float32Array([0]), sampleRate: 16_000 },
 			undefined,
 		);
 	});
 
-	it("uses standalone Whisper ASR when no voice bundle is loaded", async () => {
+	it("fails fast when the fused voice bundle is unavailable (no whisper fallback)", async () => {
+		// The fused libelizainference ASR runtime is the sole on-device
+		// transcriber. A startup failure must propagate (AGENTS.md §3) — there is
+		// no whisper.cpp second attempt and no silent empty transcript.
 		engineState.ensureActiveBundleVoiceReady.mockRejectedValueOnce(
 			new VoiceStartupError("missing-bundle-root", "no bundle"),
 		);
@@ -462,19 +432,8 @@ describe("ensureLocalInferenceHandler", () => {
 
 		await expect(
 			handler?.(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
-		).resolves.toBe("standalone transcript");
+		).rejects.toThrow(VoiceStartupError);
 
-		expect(asrState.createStreamingTranscriber).toHaveBeenCalledWith({
-			prefer: "whisper-cpp",
-			allowWhisperCpp: true,
-		});
-		expect(asrState.feed).toHaveBeenCalledWith(
-			expect.objectContaining({
-				pcm: new Float32Array([0]),
-				sampleRate: 16_000,
-			}),
-		);
-		expect(asrState.dispose).toHaveBeenCalledTimes(1);
 		expect(engineState.transcribePcm).not.toHaveBeenCalled();
 	});
 

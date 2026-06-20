@@ -1,13 +1,14 @@
 /**
- * Smoke tests for the pyannote-segmentation-3.0 ONNX diarizer.
+ * Tests for the shared pyannote-segmentation-3.0 diarizer surface: the model
+ * constants (matching the upstream model card), the powerset class table, and
+ * the pure `classifyFramesToSegments` reducer that turns per-frame powerset
+ * labels into speaker segments.
  *
- * The encoder itself needs the actual model file + onnxruntime-node; CI
- * doesn't have either. So this suite covers:
- *  - the constants matching the upstream model card,
- *  - the pure `classifyFramesToSegments` function (the hot path of the
- *    diarizer that turns raw class-logits into segments),
- *  - structured failure when the model can't load,
- *  - the powerset class table matches the pyannote-3 head spec.
+ * The diarizer itself runs EXCLUSIVELY through the fused `libelizainference`
+ * `eliza_inference_diariz_*` ABI (`FusedDiarizer`); its real-FFI coverage lives
+ * in `src/services/voice/speaker/diarizer-fused.real.test.ts` (gated on a built
+ * `libelizainference`). The fused diarizer feeds its native labels through the
+ * `classifyFramesToSegments` reducer covered here.
  */
 
 import { describe, expect, it } from "vitest";
@@ -22,7 +23,6 @@ import {
 	PYANNOTE_SEGMENTATION_3_FP32_MODEL_ID,
 	PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
 	PYANNOTE_WINDOW_SECONDS,
-	PyannoteDiarizer,
 } from "../src/services/voice/speaker/diarizer";
 
 describe("Pyannote diarizer — module constants", () => {
@@ -50,14 +50,6 @@ describe("Pyannote diarizer — module constants", () => {
 	it("declares stable int8 + fp32 model ids", () => {
 		expect(PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID).toBe("pyannote-segmentation-3.0-int8");
 		expect(PYANNOTE_SEGMENTATION_3_FP32_MODEL_ID).toBe("pyannote-segmentation-3.0-fp32");
-	});
-});
-
-describe("PyannoteDiarizer.load — graceful failure", () => {
-	it("raises DiarizerUnavailableError when the model file can't be loaded", async () => {
-		await expect(
-			PyannoteDiarizer.load("/nonexistent/path/pyannote.onnx"),
-		).rejects.toBeInstanceOf(DiarizerUnavailableError);
 	});
 });
 

@@ -19,7 +19,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 
 import { jobsRepository } from "../../db/repositories/jobs";
 import type { Job } from "../../db/schemas/jobs";
-import { elizaSandboxService } from "./eliza-sandbox";
+import { elizaSandboxService, SNAPSHOT_ENDPOINT_UNSUPPORTED } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
 import { provisioningJobService } from "./provisioning-jobs";
 
@@ -152,6 +152,31 @@ describe("ProvisioningJobService — auto snapshot of an idle agent is a termina
       expect(completed?.[2]?.result).toMatchObject({
         skipped: true,
         reason: "Sandbox is not running",
+      });
+      expect(ctx.incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      svcSpy.mockRestore();
+      ctx.restore();
+    }
+  });
+
+  test("auto + snapshot-endpoint-unsupported (V2 image 404) → completed-as-skipped, no retry", async () => {
+    const ctx = withClaimedJob(JOB_TYPES.AGENT_SNAPSHOT, { snapshotType: "auto" });
+    const svcSpy = spyOn(elizaSandboxService, "executeSnapshot").mockResolvedValue({
+      success: false,
+      error: SNAPSHOT_ENDPOINT_UNSUPPORTED,
+    } as never);
+    try {
+      const res = await provisioningJobService.processPendingJobs(1, {
+        jobTypes: [JOB_TYPES.AGENT_SNAPSHOT],
+      });
+      expect(res.succeeded).toBe(1);
+      expect(res.failed).toBe(0);
+      const completed = ctx.updateStatusSpy.mock.calls.find((call) => call[1] === "completed");
+      expect(completed).toBeDefined();
+      expect(completed?.[2]?.result).toMatchObject({
+        skipped: true,
+        reason: SNAPSHOT_ENDPOINT_UNSUPPORTED,
       });
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
     } finally {

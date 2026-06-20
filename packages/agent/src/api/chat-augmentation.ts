@@ -395,7 +395,15 @@ export async function maybeAugmentChatMessageWithDocuments(
       .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
       .slice(0, CHAT_DOCUMENTS_LIMIT);
 
-    if (relevantMatches.length === 0) {
+    // Only spend an LLM round-trip recovering search queries when the corpus
+    // actually returned candidates that merely fell below the relevance
+    // threshold — i.e. there ARE documents and a better query might surface
+    // them. When the initial search returns NOTHING at all (no documents
+    // indexed, or — on hosts forced onto zero/low-dim embeddings, e.g. cloud
+    // agents pinned to local gte-small — nothing ever clears retrieval), the
+    // recovery call is guaranteed to match nothing too: it just burns one full
+    // generate-text round-trip on every plain-chat turn. Skip it.
+    if (relevantMatches.length === 0 && initialMatches.matches.length > 0) {
       const recoveredQueries = await recoverDocumentSearchQueriesWithLlm();
       for (const query of recoveredQueries) {
         const recovered = await loadMatchesAcrossScopes(query);

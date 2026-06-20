@@ -13,20 +13,11 @@
       ],
       "@elizaos/core": ["./src/type-stubs/core/index.d.ts"],
       "@elizaos/shared": ["./src/type-stubs/shared/index.d.ts"],
-      "@elizaos/plugin-2004scape": [
-        "../../../../../../plugins/plugin-2004scape/src/index.ts"
-      ],
       "@elizaos/plugin-feed": [
         "../../../../../../plugins/plugin-feed/src/index.ts"
       ],
       "@elizaos/plugin-defense-of-the-agents": [
         "../../../../../../plugins/plugin-defense-of-the-agents/src/index.ts"
-      ],
-      "@elizaos/plugin-hyperscape": [
-        "../../../../../../plugins/plugin-hyperscape/src/index.ts"
-      ],
-      "@elizaos/plugin-scape": [
-        "../../../../../../plugins/plugin-scape/src/index.ts"
       ],
       "@elizaos/plugin-task-coordinator": [
         "../../../../../../plugins/plugin-task-coordinator/src/index.ts"

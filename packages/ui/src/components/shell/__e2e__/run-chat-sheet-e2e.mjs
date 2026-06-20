@@ -21,6 +21,7 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
+import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -49,6 +50,36 @@ const stubPromptSuggestions = {
     }));
   },
 };
+// The overlay's import graph transitively reaches server-only @elizaos/core
+// features (working-memory, todos, …) that import node builtins — DEAD code in
+// the browser (never executed at render). Stub every node builtin to a no-op
+// Proxy so the browser bundle builds; if any of it actually ran at module load
+// the page-error guard below would catch it.
+const nodeBuiltins = new Set([
+  ...builtinModules,
+  ...builtinModules.map((m) => `node:${m}`),
+]);
+const stubNodeBuiltins = {
+  name: "stub-node-builtins",
+  setup(b) {
+    b.onResolve({ filter: /.*/ }, (args) => {
+      const bare = args.path.replace(/^node:/, "").split("/")[0];
+      if (
+        args.path.startsWith("node:") ||
+        nodeBuiltins.has(args.path) ||
+        builtinModules.includes(bare)
+      ) {
+        return { path: args.path, namespace: "node-stub" };
+      }
+      return null;
+    });
+    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
+      contents:
+        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
+      loader: "js",
+    }));
+  },
+};
 const result = await build({
   entryPoints: [join(here, "chat-sheet-fixture.tsx")],
   bundle: true,
@@ -57,7 +88,7 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubPromptSuggestions],
+  plugins: [stubPromptSuggestions, stubNodeBuiltins],
   write: false,
 });
 const js = result.outputFiles[0].text;
@@ -989,7 +1020,8 @@ try {
   }
 
   // PILL: pull DOWN from the input collapses the whole chat into a small pill at
-  // the bottom (input hidden); tapping the pill brings the input back.
+  // the bottom (input hidden). Slow-drag and flick both pill it; the composer
+  // stays mounted but hidden + inert. (A pill TAP opens the chat — see PILL-TAP.)
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -1002,10 +1034,11 @@ try {
     await gesture(p, -90, { pointer: "touch", slow: true, steps: 12 });
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "pill", "PILL: slow drag-down collapses the input → pill");
-    // recover, then verify a quick FLICK down pills it too.
-    await p.getByTestId("chat-pill").click();
-    await p.waitForTimeout(SETTLE);
-    assert((await detent(p)) === "collapsed", "PILL: recovered to input before flick check");
+    // Reset to the input peek and verify a quick FLICK down pills it too.
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
+    await p.waitForTimeout(500);
+    assert((await detent(p)) === "collapsed", "PILL: reset to the input peek before flick check");
     await gesture(p, -90, { pointer: "touch", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "pill", "PILL: flick-down collapses the input → pill");
@@ -1029,25 +1062,15 @@ try {
       );
     }
     await snap(p, "state-pill");
-    await p.getByTestId("chat-pill").click();
-    await p.waitForTimeout(SETTLE);
-    assert(
-      (await detent(p)) === "collapsed",
-      "PILL: tapping the pill recovers the input",
-    );
-    assert(
-      (await p.getByTestId("chat-composer-textarea").count()) === 1,
-      "PILL: input is back after recovery",
-    );
     await p.close();
   }
 
-  // ── PILL TAP morphs to input (regression): a real TAP (pointerdown+up, no
-  // move) routes through the gesture's onDrag(0) → onTap path, which previously
-  // left draggingRef set so openProgress stayed STUCK at 0 (a visible-but-inert
-  // pill, no input). A synthetic .click() missed it because data-detent flipped
-  // to "collapsed" while the morph never animated — so assert the actual content
-  // opacity reaches ~1 (the input is really formed), not just the detent label.
+  // ── PILL TAP opens the chat to HALF (regression for the reported bug): a real
+  // TAP (pointerdown+up, no move) routes through the gesture's onDrag(0) → onTap
+  // path. It must open the chat in ONE tap straight to the HALF detent (the
+  // conversation is visible) — NOT blink to a bare input bar that needs a second
+  // tap. Assert the detent is half/open AND the content actually formed (opacity
+  // ~1), not just a detent label with a stuck-at-0 morph.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -1082,12 +1105,13 @@ try {
       .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
     assert(
       openedOpacity > 0.9,
-      `PILL-TAP: tap animates pill → input, content fully formed (opacity ${openedOpacity})`,
+      `PILL-TAP: tap animates pill → chat, content fully formed (opacity ${openedOpacity})`,
     );
     assert(
-      (await detent(p)) === "collapsed",
-      "PILL-TAP: lands in the input (collapsed) state",
+      (await detent(p)) === "half",
+      `PILL-TAP: a SINGLE tap opens the chat to half (got ${await detent(p)})`,
     );
+    assert((await variant(p)) === "open", "PILL-TAP: the chat is open after one tap");
     await snap(p, "state-pill-tap-opened");
     await p.close();
   }
@@ -1201,6 +1225,59 @@ try {
         box?.y ?? -1,
       )}, bottom=${Math.round((box?.y ?? 0) + (box?.height ?? 0))}, vh=${vh})`,
     );
+    await p.close();
+  }
+
+  // ── MAXIMIZE WITH A BOTTOM GESTURE INSET (regression): on Android the home-
+  // gesture inset feeds the overlay's bottom padding, which is cached into
+  // `bottomPad`. Full-bleed drops that padding to 0 (the composer carries the
+  // clearance), so the panel must fill the WHOLE viewport. The bug: panelMaxH
+  // still subtracted the stale bottomPad, so the maximized panel floated a
+  // gesture-inset BELOW the top — a hard-cut glass seam under the status bar and
+  // the safe-area-padded header pushed down. Assert: panel reaches y≈0 AND the
+  // header buttons sit at the safe area, not a gesture-inset lower.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(600);
+    // Simulate the Android insets, then fire a resize so the overlay samples its
+    // (now gesture-inset-padded) bottom padding into bottomPad while NOT maximized.
+    await p.evaluate(() => {
+      const r = document.documentElement.style;
+      r.setProperty("--android-gesture-inset-bottom", "32px");
+      r.setProperty("--safe-area-top", "30px");
+      window.dispatchEvent(new Event("resize"));
+    });
+    await p.waitForTimeout(120);
+    await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 }); // → half
+    await p.waitForTimeout(SETTLE);
+    await p.getByTestId("chat-full-maximize").click(); // → full-bleed
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await p
+        .locator('[data-testid="chat-sheet"][data-maximized="true"]')
+        .count()) === 1,
+      "MAX-INSET: maximized full-bleed",
+    );
+    const box = await p.getByTestId("chat-sheet").boundingBox();
+    assert(
+      !!box && box.y <= 2,
+      `MAX-INSET: maximized panel fills to the TOP despite the bottom inset (y=${Math.round(
+        box?.y ?? -1,
+      )}) — no status-bar seam`,
+    );
+    const btn = await p.getByTestId("chat-full-maximize").boundingBox();
+    // Header padding = safe-area-top (30) + 0.5rem (8); buttons must sit ~there,
+    // NOT a whole gesture inset (~36px) lower (the old "bad space" margin).
+    assert(
+      !!btn && btn.y <= 30 + 8 + 20,
+      `MAX-INSET: header buttons sit at the safe area, not pushed down by a gap (y=${Math.round(
+        btn?.y ?? -1,
+      )})`,
+    );
+    await snap(p, "state-maximized-with-inset");
     await p.close();
   }
 

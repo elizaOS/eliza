@@ -5,15 +5,13 @@
  * Drives the native pyannote diarizer through the single fused-FFI
  * `libelizainference` handle (the merged llama.cpp fork — see
  * `plugins/plugin-local-inference/native/CLAUDE.md` §1) via the
- * `eliza_inference_diariz_*` ABI, replacing the standalone
- * `libvoice_classifier` (`diarizer-ggml.ts`) FFI path. The same `ffi`/`ctx`
- * pair powers VAD / wake-word / speaker / TTS / ASR.
+ * `eliza_inference_diariz_*` ABI. This is the SOLE on-device diarizer runtime —
+ * the same `ffi`/`ctx` pair powers VAD / wake-word / speaker / TTS / ASR.
  *
  * The native call returns a per-frame powerset-label sequence (293 int8
  * labels per 5 s window, each in `[0, 7)`). Agglomerative clustering and the
  * frame→segment reduction stay JS-side: this class one-hots the labels and
- * feeds them through the shared pure `classifyFramesToSegments` reducer, the
- * same path `PyannoteDiarizer.diarizeWindow` uses for the standalone binding.
+ * feeds them through the shared pure `classifyFramesToSegments` reducer.
  *
  * No silent fallback: when the fused build does not export the diarizer ABI
  * (`eliza_inference_diariz_supported() == 0`) `load()` throws a structured

@@ -333,10 +333,13 @@ function deliverableFromMetadata(message: Memory): string | undefined {
 // step-aside-for-follow-up routing.
 const SHORT_CLEAN_COMPLETION_BODY_MAX_CHARS = 120;
 
-// Fresh-spawn actions: starting a NEW sub-agent session. Re-issuing one after a
-// task already completed with a clean answer is a loop. NOT TASKS_SEND_TO_AGENT
-// (continue the existing session), which is a legitimate follow-up.
-const FRESH_SPAWN_ACTIONS = new Set(["TASKS_SPAWN_AGENT", "TASKS_CREATE"]);
+// Continuing the EXISTING session (TASKS_SEND_TO_AGENT / TASKS_SEND) is the only
+// legitimate reason not to relay a completed task's short clean answer: the
+// agent is feeding the same sub-agent more input (a real blocker/missing
+// detail). Any other follow-up after a clean answer — a fresh spawn, a
+// re-create, or no hint at all (the planner re-issued TASKS directly without
+// populating candidateActions) — is a re-spawn loop, so relay instead.
+const SESSION_CONTINUE_ACTIONS = new Set(["TASKS_SEND_TO_AGENT", "TASKS_SEND"]);
 
 function isShortCleanCompletionBody(completionText: string): boolean {
   const body = userFacingCompletionBody(completionText).trim();
@@ -345,7 +348,7 @@ function isShortCleanCompletionBody(completionText: string): boolean {
   return !looksLikeRawToolTranscript(body);
 }
 
-function planRequestsFreshSpawn(plan: {
+function planContinuesExistingSession(plan: {
   candidateActions?: readonly string[];
   parentActionHints?: readonly string[];
 }): boolean {
@@ -353,7 +356,7 @@ function planRequestsFreshSpawn(plan: {
     ...normalizedActionHints(plan.candidateActions),
     ...normalizedActionHints(plan.parentActionHints),
   ];
-  return hints.some((hint) => FRESH_SPAWN_ACTIONS.has(hint));
+  return hints.some((hint) => SESSION_CONTINUE_ACTIONS.has(hint));
 }
 
 function isSuccessfulSubAgentCompletion(message: Memory): boolean {
@@ -489,20 +492,23 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     if (hasVerifiedCompletionReply(currentReply, completionText, verifiedUrls))
       return true;
     if (hasCleanFinalProseAfterToolOutput(completionText)) return true;
-    // A SHORT, CLEAN completion body whose only planned follow-up is a FRESH
-    // re-spawn IS the answer being looped on: some ACP adapters (notably
-    // claude-agent-acp) return a one-shot lookup result as bare final text —
-    // "$1,708.31" — never wrapped in a [tool output:…] envelope, so it isn't
-    // captured as a deliverable and matches none of the checks above. The
-    // planner then reads the original imperative task label and re-spawns the
-    // SAME lookup, looping forever without relaying the value (observed live on
-    // claude: 6 spawns, no answer). Gate on a fresh-spawn action only —
-    // TASKS_SEND_TO_AGENT (continue the session for a genuine blocker/missing
-    // detail) stays a legitimate follow-up — and bound the body tightly so
-    // multi-step coding completions keep the existing routing.
+    // A SHORT, CLEAN completion body IS the answer being looped on when the
+    // planner's follow-up is anything but continuing the same session: some ACP
+    // adapters (notably claude-agent-acp) return a one-shot lookup result as
+    // bare final text — "$1,708.31", "Tokyo: +74°F" — never wrapped in a
+    // [tool output:…] envelope, so it isn't captured as a deliverable and
+    // matches none of the checks above. The planner then re-issues a fresh
+    // TASKS spawn/create (sometimes without even populating candidateActions),
+    // re-spawning the SAME lookup, looping and re-posting "working on it" acks
+    // without relaying the value (observed live: claude 6 spawns / cerebras
+    // weather 3 spawns). Relay unless the plan continues the EXISTING session
+    // (TASKS_SEND_TO_AGENT — feeding a real blocker/missing detail back to the
+    // running sub-agent), which is the one legitimate non-relay follow-up.
+    // Bound the body tightly so multi-step coding completions keep the existing
+    // routing.
     if (
       isShortCleanCompletionBody(completionText) &&
-      planRequestsFreshSpawn(messageHandler.plan)
+      !planContinuesExistingSession(messageHandler.plan)
     ) {
       return true;
     }

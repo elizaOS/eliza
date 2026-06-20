@@ -1,8 +1,8 @@
 /**
  * Tests for the `TRANSCRIPTION` model handler priority + provider hint
  * semantics on `AgentRuntime`. These exercise the same `registerModel`
- * machinery used by plugin-elizacloud (remote Whisper) and the local
- * Qwen3-ASR / OpenVINO Whisper handler so callers know exactly:
+ * machinery used by plugin-elizacloud (remote OpenAI Whisper API) and the
+ * local fused Qwen3-ASR handler so callers know exactly:
  *
  *   - which handler wins when priorities tie (first-registered),
  *   - how an explicit `priority` overrides that,

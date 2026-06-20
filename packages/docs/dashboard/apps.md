@@ -42,7 +42,6 @@ Click the arrow on any app card to open the detail view:
 - **Metadata** — launch type, latest version, launch URL, repository link
 - **Capabilities** — tags describing what the app can do
 - **Viewer config** — URL, postMessage auth status, sandbox policy
-- **Hyperscape Controls** — for `@hyperscape/plugin-hyperscape` apps, an expandable panel with embedded agent management, messaging, commands, and goal tracking
 
 ## Game View
 

@@ -358,7 +358,7 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Actual app cloud keyless browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/cloud-provisioning-startup.spec.ts test/ui-smoke/cloud-wallet-import.spec.ts test/ui-smoke/live-agent-chat.spec.ts test/ui-smoke/remote-capability-view.spec.ts --project=chromium
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/cloud-provisioning-startup.spec.ts test/ui-smoke/cloud-agent-lifecycle.spec.ts test/ui-smoke/cloud-wallet-import.spec.ts test/ui-smoke/live-agent-chat.spec.ts test/ui-smoke/remote-capability-view.spec.ts --project=chromium
 
       - name: Upload app browser cloud keyless artifacts
         if: always()
