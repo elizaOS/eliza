@@ -136,6 +136,21 @@ function isLiveOrRealE2E(filePath) {
   );
 }
 
+// A test that boots a real runtime against the deterministic mock LLM counts as
+// deterministic E2E coverage regardless of filename — `@elizaos/test-harness`'s
+// `withMockLlmRuntime()` / the deterministic LLM proxy are the canonical
+// mock-LLM-backed e2e entrypoints.
+const MOCK_LLM_E2E_MARKERS =
+  /withMockLlmRuntime|@elizaos\/test-harness|createDeterministicLlmProxyPlugin/;
+
+function usesMockLlmHarness(filePath) {
+  if (!isTestFile(filePath)) {
+    return false;
+  }
+  const text = readTextIfExists(filePath);
+  return text !== undefined && MOCK_LLM_E2E_MARKERS.test(text);
+}
+
 function isDeterministicE2EFile(filePath) {
   const normalized = normalizeRepoPath(filePath);
   const name = path.basename(filePath);
@@ -146,6 +161,9 @@ function isDeterministicE2EFile(filePath) {
     return true;
   }
   if (isScenarioFile(filePath)) {
+    return true;
+  }
+  if (usesMockLlmHarness(filePath)) {
     return true;
   }
   return /(?:^|\/)(?:e2e|ui-smoke|playwright)(?:\/|$)/.test(normalized);
@@ -326,7 +344,9 @@ function loadAllowlist(allowlistPath, pluginNames) {
   const errors = [];
 
   if (!Array.isArray(rawEntries)) {
-    errors.push(`allowlist:${allowlistPath}: expected array or { entries: [] }`);
+    errors.push(
+      `allowlist:${allowlistPath}: expected array or { entries: [] }`,
+    );
   }
 
   rawEntries.forEach((entry, index) => {
@@ -402,12 +422,7 @@ function issue(plugin, code, message, extra = {}) {
   return { plugin: plugin.name, code, message, ...extra };
 }
 
-function analyzePlugin({
-  repoRoot,
-  envTestKeys,
-  plugin,
-  scenarioFiles,
-}) {
+function analyzePlugin({ repoRoot, envTestKeys, plugin, scenarioFiles }) {
   const files = collectPluginFiles(plugin.dir);
   const externalScenarios = scenarioFiles.filter((scenarioPath) =>
     scenarioMentionsPlugin(repoRoot, scenarioPath, plugin),
@@ -574,10 +589,7 @@ function discoverPlugins(repoRoot) {
         packageName,
         dir,
         packageJson,
-        matchTerms: [
-          entry.name,
-          packageName,
-        ].filter(Boolean),
+        matchTerms: [entry.name, packageName].filter(Boolean),
       };
     })
     .filter(Boolean)
@@ -633,14 +645,12 @@ export function analyzeLaneCoverage(options = {}) {
     allowlistErrors,
     summary: {
       pluginCount: pluginResults.length,
-      pluginsWithNoTests: pluginResults.filter(
-        (row) =>
-          row.issues.some((entry) => entry.code === ISSUE_CODES.MISSING_TESTS),
+      pluginsWithNoTests: pluginResults.filter((row) =>
+        row.issues.some((entry) => entry.code === ISSUE_CODES.MISSING_TESTS),
       ).length,
       pluginsWithNoDeterministicE2E: pluginResults.filter((row) =>
         row.issues.some(
-          (entry) =>
-            entry.code === ISSUE_CODES.MISSING_DETERMINISTIC_E2E,
+          (entry) => entry.code === ISSUE_CODES.MISSING_DETERMINISTIC_E2E,
         ),
       ).length,
       pluginsWithActions: pluginResults.filter((row) => row.surfaces.hasActions)
@@ -663,7 +673,8 @@ export function formatCoverageReport(result, options = {}) {
   const lines = [];
   const dryRun = Boolean(options.dryRun);
   const statusLabel =
-    result.unsuppressedIssues.length === 0 && result.allowlistErrors.length === 0
+    result.unsuppressedIssues.length === 0 &&
+    result.allowlistErrors.length === 0
       ? "PASS"
       : dryRun
         ? "DRY-RUN"
@@ -781,7 +792,7 @@ function printHelp() {
       "  --help                    Show this help.",
       "",
       "Allowlist format:",
-      "  { \"entries\": [{ \"plugin\": \"plugin-name\", \"issues\": [\"missing-deterministic-e2e\"], \"reason\": \"tracked in ISSUE-123\" }] }",
+      '  { "entries": [{ "plugin": "plugin-name", "issues": ["missing-deterministic-e2e"], "reason": "tracked in ISSUE-123" }] }',
       "",
     ].join("\n"),
   );

@@ -9306,22 +9306,27 @@ export const allActionsSpec = {
 				{
 					name: "action",
 					description:
-						"Operation: create, modify, activate, deactivate, toggle_active, delete, executions.",
+						"Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore.",
 					required: true,
 					schema: {
 						type: "string",
 						enum: [
+							"list",
+							"get",
 							"create",
 							"modify",
 							"activate",
 							"deactivate",
 							"toggle_active",
 							"delete",
+							"run",
 							"executions",
+							"revisions",
+							"restore",
 						],
 					},
 					descriptionCompressed:
-						"Operation: create, modify, activate, deactivate, toggle_active, delete, executions.",
+						"Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore.",
 				},
 				{
 					name: "workflowId",
@@ -9373,21 +9378,35 @@ export const allActionsSpec = {
 				},
 				{
 					name: "limit",
-					description:
-						"Max executions to return for action=executions (default 10).",
+					description: "Max executions/revisions to return (default 10).",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					descriptionCompressed:
-						"Max executions to return for action=executions (default 10).",
+						"Max executions/revisions to return (default 10).",
+				},
+				{
+					name: "versionId",
+					description: "Workflow version id for action=restore.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Workflow version id for action=restore.",
 				},
 			],
 			descriptionCompressed:
-				"workflow create|modify|activate|deactivate|toggle_active|delete|executions",
+				"workflow list|get|create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore",
 			similes: [
+				"LIST_WORKFLOWS",
+				"SHOW_WORKFLOWS",
+				"GET_WORKFLOW",
+				"REVIEW_WORKFLOW",
 				"CREATE_WORKFLOW",
 				"DELETE_WORKFLOW",
+				"RUN_WORKFLOW",
+				"RUN_WORKFLOW_NOW",
 				"TOGGLE_WORKFLOW_ACTIVE",
 				"ACTIVATE_WORKFLOW",
 				"DEACTIVATE_WORKFLOW",
@@ -9408,6 +9427,10 @@ export const allActionsSpec = {
 				"EXECUTION_HISTORY",
 				"WORKFLOW_RUNS",
 				"WORKFLOW_EXECUTIONS",
+				"WORKFLOW_REVISIONS",
+				"RESTORE_WORKFLOW",
+				"ROLL_BACK_WORKFLOW",
+				"ROLLBACK_WORKFLOW",
 			],
 			exampleCalls: [
 				{
@@ -9415,13 +9438,14 @@ export const allActionsSpec = {
 					actions: ["WORKFLOW"],
 					params: {
 						WORKFLOW: {
-							action: "create",
+							action: "list",
 							workflowId: "example",
 							workflowName: "example",
 							seedPrompt: "example",
 							name: "example",
 							active: false,
 							limit: 1,
+							versionId: "example",
 						},
 					},
 				},

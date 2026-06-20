@@ -58,7 +58,10 @@ let hoverMediaQueryUnsubscribe: (() => void) | null = null;
 
 function getHoverMediaQuery(): MediaQueryList | null {
   if (hoverMediaQuery) return hoverMediaQuery;
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
     return null;
   }
   hoverMediaQuery = window.matchMedia(HOVER_MEDIA_QUERY);

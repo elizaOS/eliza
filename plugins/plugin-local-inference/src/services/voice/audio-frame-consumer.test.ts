@@ -254,8 +254,8 @@ describe("AudioFrameConsumer", () => {
 		}
 		await consumer.flush();
 		expect(signal).not.toBeNull();
-		expect(signal!.agentShouldSpeak).toBe(true);
-		expect(signal!.nextSpeaker).toBe("agent");
+		expect(signal?.agentShouldSpeak).toBe(true);
+		expect(signal?.nextSpeaker).toBe("agent");
 	});
 
 	it("stamps the signal onto the attribution output turn metadata", async () => {

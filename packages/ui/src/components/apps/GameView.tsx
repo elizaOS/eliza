@@ -888,7 +888,7 @@ export function GameView() {
   useEffect(() => {
     setShowLogsPanel(dashboardPanelEnabled);
     setMobileSurface("game");
-  }, [dashboardPanelEnabled]);
+  }, []);
 
   useEffect(() => {
     if (!activeGameRunId && !activeGameSession?.sessionId) return;

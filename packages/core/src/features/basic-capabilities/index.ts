@@ -88,6 +88,7 @@ export {
 } from "./prompt-runner-task.ts";
 export * from "./providers/index.ts";
 
+import { describeImageCached } from "../../media/index.ts";
 import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
 // Import advanced capabilities
 import {
@@ -112,7 +113,6 @@ import { choiceAction } from "./actions/choice.ts";
 import { ignoreAction } from "./actions/ignore.ts";
 import { noneAction } from "./actions/none.ts";
 import { replyAction } from "./actions/reply.ts";
-import { describeImageCached } from "../../media/index.ts";
 import { linkExtractionEvaluator } from "./evaluators/link-extraction.ts";
 import { actionStateProvider } from "./providers/actionState.ts";
 import { actionsProvider } from "./providers/actions.ts";

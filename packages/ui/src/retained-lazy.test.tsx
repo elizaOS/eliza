@@ -41,12 +41,14 @@ describe("RetainedLazyComponent", () => {
 
   it("retains an inactive module and cleans it up under memory pressure", async () => {
     const cleanupModule = vi.fn();
-    const loader = vi.fn(async (): Promise<RetainedLazyModule<TestProps>> => ({
-      default: function TestPanel({ label }: TestProps) {
-        return <div>{label}</div>;
-      },
-      cleanup: cleanupModule,
-    }));
+    const loader = vi.fn(
+      async (): Promise<RetainedLazyModule<TestProps>> => ({
+        default: function TestPanel({ label }: TestProps) {
+          return <div>{label}</div>;
+        },
+        cleanup: cleanupModule,
+      }),
+    );
 
     const rendered = render(
       <RetainedLazyComponent
@@ -64,12 +66,14 @@ describe("RetainedLazyComponent", () => {
 
   it("does not evict an active module during memory pressure", async () => {
     const cleanupModule = vi.fn();
-    const loader = vi.fn(async (): Promise<RetainedLazyModule<TestProps>> => ({
-      default: function TestPanel({ label }: TestProps) {
-        return <div>{label}</div>;
-      },
-      cleanup: cleanupModule,
-    }));
+    const loader = vi.fn(
+      async (): Promise<RetainedLazyModule<TestProps>> => ({
+        default: function TestPanel({ label }: TestProps) {
+          return <div>{label}</div>;
+        },
+        cleanup: cleanupModule,
+      }),
+    );
 
     const rendered = render(
       <RetainedLazyComponent
@@ -127,18 +131,18 @@ describe("RetainedLazyComponent", () => {
   it("evicts inactive modules on app pause and emits cache telemetry", async () => {
     const events: ModuleCacheTelemetryEvent[] = [];
     const onTelemetry = (event: Event) => {
-      events.push(
-        (event as CustomEvent<ModuleCacheTelemetryEvent>).detail,
-      );
+      events.push((event as CustomEvent<ModuleCacheTelemetryEvent>).detail);
     };
     window.addEventListener(MODULE_CACHE_TELEMETRY_EVENT, onTelemetry);
     const cleanupModule = vi.fn();
-    const loader = vi.fn(async (): Promise<RetainedLazyModule<TestProps>> => ({
-      default: function TestPanel({ label }: TestProps) {
-        return <div>{label}</div>;
-      },
-      cleanup: cleanupModule,
-    }));
+    const loader = vi.fn(
+      async (): Promise<RetainedLazyModule<TestProps>> => ({
+        default: function TestPanel({ label }: TestProps) {
+          return <div>{label}</div>;
+        },
+        cleanup: cleanupModule,
+      }),
+    );
 
     const rendered = render(
       <RetainedLazyComponent

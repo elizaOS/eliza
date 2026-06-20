@@ -19,8 +19,9 @@ export interface RetainedLazyModule<TProps extends object> {
   cleanup?: RetainedCleanup;
 }
 
-export type RetainedLazyLoader<TProps extends object> =
-  () => Promise<RetainedLazyModule<TProps>>;
+export type RetainedLazyLoader<TProps extends object> = () => Promise<
+  RetainedLazyModule<TProps>
+>;
 
 interface RetainedModuleEntry<TProps extends object> {
   loader: RetainedLazyLoader<TProps>;
@@ -314,9 +315,9 @@ export function acquireRetainedLazyModule<TProps extends object>(
 export function invalidateRetainedLazyModule<TProps extends object>(
   loader: RetainedLazyLoader<TProps>,
 ): void {
-  const entry = retainedModuleCache.get(
-    loader as RetainedLazyLoader<object>,
-  ) as RetainedModuleEntry<object> | undefined;
+  const entry = retainedModuleCache.get(loader as RetainedLazyLoader<object>) as
+    | RetainedModuleEntry<object>
+    | undefined;
   if (!entry) return;
   retainedModuleCache.delete(loader as RetainedLazyLoader<object>);
   if (entry.refCount === 0) cleanupEntry(entry, "invalidate");

@@ -5,8 +5,8 @@ import {
   type MobileSignalsPermissionStatus,
   type MobileSignalsSetupAction,
 } from "../../bridge/native-plugins";
-import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { useBootConfig } from "../../config/boot-config-react.hooks";
+import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import {
   isDesktopPlatform,
   isNative,

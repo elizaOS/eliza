@@ -963,10 +963,7 @@ function RemotePasswordSection({
       <form onSubmit={handleSubmit} className="flex flex-col gap-3" noValidate>
         {setupMode && (
           <div className="flex flex-col gap-1.5">
-            <Label
-              htmlFor={displayNameId}
-              className="text-xs text-muted"
-            >
+            <Label htmlFor={displayNameId} className="text-xs text-muted">
               {t("security.password.field.displayName", {
                 defaultValue: "Display name",
               })}
@@ -990,10 +987,7 @@ function RemotePasswordSection({
 
         {currentPasswordRequired && (
           <div className="flex flex-col gap-1.5">
-            <Label
-              htmlFor={currentPasswordId}
-              className="text-xs text-muted"
-            >
+            <Label htmlFor={currentPasswordId} className="text-xs text-muted">
               {t("security.password.field.current", {
                 defaultValue: "Current password",
               })}
@@ -1016,10 +1010,7 @@ function RemotePasswordSection({
         )}
 
         <div className="flex flex-col gap-1.5">
-          <Label
-            htmlFor={newPasswordId}
-            className="text-xs text-muted"
-          >
+          <Label htmlFor={newPasswordId} className="text-xs text-muted">
             {t("security.password.field.new", {
               defaultValue: "New password",
             })}
@@ -1044,10 +1035,7 @@ function RemotePasswordSection({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label
-            htmlFor={confirmPasswordId}
-            className="text-xs text-muted"
-          >
+          <Label htmlFor={confirmPasswordId} className="text-xs text-muted">
             {t("security.password.field.confirm", {
               defaultValue: "Confirm new password",
             })}

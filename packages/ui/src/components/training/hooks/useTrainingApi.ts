@@ -228,7 +228,11 @@ export function useInferenceStats(
       mountedRef.current = false;
     };
   }, [fetchStats]);
-  useIntervalWhenDocumentVisible(fetchStats, pollIntervalMs, pollIntervalMs > 0);
+  useIntervalWhenDocumentVisible(
+    fetchStats,
+    pollIntervalMs,
+    pollIntervalMs > 0,
+  );
 
   return state;
 }

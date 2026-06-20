@@ -281,7 +281,8 @@ function platformSettingsLabel(
 ): string {
   if (platform === "darwin") return "System Settings > Privacy & Security";
   if (platform === "ios") return `Settings > ${appName}`;
-  if (platform === "android") return `Settings > Apps > ${appName} > Permissions`;
+  if (platform === "android")
+    return `Settings > Apps > ${appName} > Permissions`;
   if (platform === "win32") return "Windows privacy settings";
   if (platform === "linux") return "system privacy settings";
   return "browser settings";

@@ -315,11 +315,7 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     };
   }, [refresh]);
 
-  useIntervalWhenDocumentVisible(
-    () => void refresh(),
-    pollMs,
-    pollMs > 0,
-  );
+  useIntervalWhenDocumentVisible(() => void refresh(), pollMs, pollMs > 0);
 
   return {
     data,

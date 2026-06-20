@@ -9,7 +9,8 @@ export const ELIZA_DEFAULT_THEME: ThemeDefinition = {
   id: "eliza-default",
   name: "Eliza",
   description: "Default Eliza theme",
-  preview: "linear-gradient(135deg, #1d91e8 0%, #47b8ff 58%, #ff8a24 100%)",
+  // Brand rule (#8796): no blue anywhere. Orange accent → neutral, no blue stop.
+  preview: "linear-gradient(135deg, #ffb066 0%, #ff8a24 55%, #0b0e11 100%)",
   light: {
     bg: "#eef8ff",
     bgAccent: "#dff2ff",
@@ -47,9 +48,10 @@ export const ELIZA_DEFAULT_THEME: ThemeDefinition = {
     warnMuted: "rgba(255, 138, 36, 0.72)",
     warnSubtle: "rgba(255, 138, 36, 0.16)",
     danger: "#f6465d",
-    info: "#1d91e8",
-    statusInfo: "#1d91e8",
-    statusInfoBg: "rgba(29, 145, 232, 0.12)",
+    // No blue (#8796): info/secondary states use a neutral gray.
+    info: "#6f6f73",
+    statusInfo: "#6f6f73",
+    statusInfoBg: "rgba(111, 111, 115, 0.12)",
     focus: "rgba(255, 138, 36, 0.18)",
     focusRing: "0 0 0 2px rgba(255, 138, 36, 0.42)",
     scrollbarTrack: "#edf1f4",
@@ -119,9 +121,10 @@ export const ELIZA_DEFAULT_THEME: ThemeDefinition = {
     warnMuted: "rgba(240, 185, 11, 0.7)",
     warnSubtle: "rgba(255, 138, 36, 0.16)",
     danger: "hsl(0 84.2% 60.2%)",
-    info: "#1d91e8",
-    statusInfo: "#60a5fa",
-    statusInfoBg: "rgba(96, 165, 250, 0.12)",
+    // No blue (#8796): info/secondary states use a neutral gray.
+    info: "#9a9aa0",
+    statusInfo: "#9a9aa0",
+    statusInfoBg: "rgba(154, 154, 160, 0.12)",
     focus: "rgba(240, 185, 11, 0.18)",
     focusRing: "0 0 0 2px rgba(240, 185, 11, 0.44)",
     scrollbarTrack: "transparent",

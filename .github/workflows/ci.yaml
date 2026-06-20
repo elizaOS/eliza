@@ -247,6 +247,12 @@ jobs:
       - name: Run lint
         run: bun run lint
 
+      # Per-plugin mock-LLM e2e coverage. Warn-first (--dry-run exits 0) while
+      # the backlog is burned down; flip to enforcing (drop --dry-run, allowlist
+      # justified N/A) once plugins carry a withMockLlmRuntime e2e. (#8801)
+      - name: Per-plugin e2e coverage (warn-only)
+        run: node packages/scripts/lint-lane-coverage.mjs --dry-run
+
   # Build job
   build:
     # Skip duplicate runs: run on push to main, or on pull_request events only

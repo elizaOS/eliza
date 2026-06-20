@@ -17,9 +17,9 @@ import type {
   ConversationMessage,
   ImageAttachment,
 } from "../../api/client-types";
+import { useBranding } from "../../config/branding";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useContinuousChat } from "../../hooks/useContinuousChat";
-import { useBranding } from "../../config/branding";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import { consumeAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import { useApp } from "../../state";

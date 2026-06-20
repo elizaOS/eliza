@@ -31,10 +31,7 @@ export function AdvancedSettingsDisclosure({
     <details
       open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
-      className={cn(
-        "group rounded-sm bg-card/45 px-3 py-2",
-        className,
-      )}
+      className={cn("group rounded-sm bg-card/45 px-3 py-2", className)}
     >
       <summary className="cursor-pointer select-none list-none text-xs font-medium text-muted transition-colors hover:text-txt">
         {title}

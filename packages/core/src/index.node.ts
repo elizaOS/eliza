@@ -251,11 +251,11 @@ export * from "./sensitive-requests";
 export * from "./services";
 export * from "./services/agentEvent";
 export * from "./services/approval";
-export * from "./services/notification";
 export * from "./services/evaluator";
 export * from "./services/evaluator-priorities";
 export * from "./services/hook";
 export * from "./services/message";
+export * from "./services/notification";
 export * from "./services/optimized-prompt";
 export { resolveOptimizedPromptForRuntime } from "./services/optimized-prompt-resolver";
 export * from "./services/pairing";
@@ -307,8 +307,8 @@ export {
 	ConnectorAuthMethod,
 } from "./types";
 export * from "./types/agentEvent";
-export * from "./types/notification";
 export * from "./types/message-service";
+export * from "./types/notification";
 export * from "./types/plugin-manifest";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 // Export setup types and utilities
