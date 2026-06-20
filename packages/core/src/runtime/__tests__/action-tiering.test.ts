@@ -156,6 +156,50 @@ describe("action tiering", () => {
 		);
 	});
 
+	it("keeps a near-certain non-candidate match on the surface (Stage-1 omission safety)", () => {
+		const catalog = buildActionCatalog(actions);
+		const music = catalog.parentByName.get("MUSIC");
+		const email = catalog.parentByName.get("EMAIL");
+		if (!music || !email) {
+			throw new Error("missing parents");
+		}
+
+		// Stage 1 narrowed to EMAIL, but retrieval matched MUSIC at a near-perfect
+		// 1.0. A dominant match must still reach the surface so the planner can
+		// choose it (the live "weather"/"btc price" → WEB_FETCH-at-1.0 case Stage 1
+		// narrowed to VIEWS).
+		const surface = tierActionResults({
+			catalog,
+			results: [resultFor(music, 1), resultFor(email, 0.5)],
+			narrowToCandidateActions: ["SEND_EMAIL"],
+		});
+
+		expect(surface.exposedActionNames).toEqual(
+			expect.arrayContaining(["MUSIC", "EMAIL", "SEND_EMAIL"]),
+		);
+	});
+
+	it("still demotes a merely-good non-candidate match below the override score", () => {
+		const catalog = buildActionCatalog(actions);
+		const music = catalog.parentByName.get("MUSIC");
+		const email = catalog.parentByName.get("EMAIL");
+		if (!music || !email) {
+			throw new Error("missing parents");
+		}
+
+		// 0.8 is a solid tier-A hit but NOT near-certain — Stage-1's narrow stands.
+		const surface = tierActionResults({
+			catalog,
+			results: [resultFor(music, 0.8), resultFor(email, 0.5)],
+			narrowToCandidateActions: ["SEND_EMAIL"],
+		});
+
+		expect(surface.exposedActionNames).not.toContain("MUSIC");
+		expect(surface.exposedActionNames).toEqual(
+			expect.arrayContaining(["EMAIL"]),
+		);
+	});
+
 	it("promotes a Tier B candidate to Tier A and restores its children", () => {
 		const catalog = buildActionCatalog(actions);
 		const calendar = catalog.parentByName.get("CALENDAR");
