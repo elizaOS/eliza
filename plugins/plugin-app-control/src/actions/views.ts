@@ -146,15 +146,20 @@ const MODES: readonly ViewsMode[] = [
 	"tile",
 ] as const;
 
+// NOTE: a declared context is also turned into KEYWORD-RETRIEVAL terms by the
+// action catalog, so listing a live-data domain here (web/crypto/finance/...)
+// makes VIEWS retrievable by that domain's keywords ("price", "current",
+// "latest", "news") and hijacks live-info turns away from WEB_FETCH. VIEWS only
+// *displays panels* — it does not fetch live data — so the pure lookup/
+// live-data contexts (research, web, browser, finance, payments, crypto) are
+// intentionally omitted. Keep only contexts that map to an actual navigable
+// view/app surface.
 const VIEW_ACTION_CONTEXTS = [
 	"simple",
 	"general",
 	"memory",
 	"documents",
 	"knowledge",
-	"research",
-	"web",
-	"browser",
 	"code",
 	"files",
 	"terminal",
@@ -167,10 +172,7 @@ const VIEW_ACTION_CONTEXTS = [
 	"health",
 	"screen_time",
 	"subscriptions",
-	"finance",
-	"payments",
 	"wallet",
-	"crypto",
 	"messaging",
 	"phone",
 	"social",
