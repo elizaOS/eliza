@@ -779,7 +779,11 @@ function stageNativeLlamaAssetsForAbi({ androidAbi, abiAssetsDir, log }) {
     copied += 1;
   }
 
-  const required = ["libllama.so", "libeliza-llama-shim.so"];
+  // The fused libelizainference.so is the activation lib (ElizaAgentService
+  // gates ELIZA_LOCAL_LLAMA on it); it carries a runtime DT_NEEDED on
+  // libllama.so + the libggml* family, so libllama.so must stage alongside it.
+  // The eliza-llama-shim was retired with the libllama TS adapter.
+  const required = ["libelizainference.so", "libllama.so"];
   const missing = required.filter(
     (name) => !fs.existsSync(path.join(abiAssetsDir, name)),
   );
