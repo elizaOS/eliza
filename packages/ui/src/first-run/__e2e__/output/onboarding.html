@@ -16767,10 +16767,12 @@
   // packages/ui/src/components/ui/status-badge.helpers.ts
   function statusToneForState(status) {
     const normalized = status.trim().toLowerCase();
-    if (normalized === "success" || normalized === "completed" || normalized === "connected" || normalized === "approved" || normalized === "signed" || normalized === "broadcast" || normalized === "confirmed" || normalized === "ready") {
+    if (normalized === "success" || normalized === "completed" || normalized === "connected" || normalized === "approved" || normalized === "signed" || normalized === "broadcast" || normalized === "confirmed" || normalized === "ready" || // Agent lifecycle: a live container.
+    normalized === "running") {
       return "success";
     }
-    if (normalized === "warning" || normalized === "pending") {
+    if (normalized === "warning" || normalized === "pending" || // Agent lifecycle: transitional states (showing the spinning badge).
+    normalized === "provisioning" || normalized === "starting" || normalized === "stopping" || normalized === "resuming" || normalized === "suspending") {
       return "warning";
     }
     if (normalized === "error" || normalized === "failed" || normalized === "denied" || normalized === "rejected") {

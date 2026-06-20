@@ -19,6 +19,8 @@ import { describe, expect, it } from "vitest";
  *      hard dependency named, OR
  *   3. tracked keyless debt — fixture-capable and *should* run keyless but is not
  *      yet wired. This bucket is a ratchet: it may only shrink.
+ *   4. dedicated tool — deliberately excluded from default smoke because it is
+ *      a long-running reporting/audit harness with its own package script.
  *
  * A new spec that is wired nowhere and classified nowhere fails test #1. Growing
  * the debt bucket past its recorded ceiling fails test #2. Wiring a debt spec
@@ -80,6 +82,18 @@ const LIVE_ONLY: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Specs that are intentionally not default smoke tests. They are still runnable,
+ * but only through a named package script because they emit manual-review
+ * artifacts or run a broad reporting walk instead of a narrow PR assertion.
+ */
+const DEDICATED_TOOL: Readonly<Record<string, string>> = {
+  "all-views-aesthetic-audit.spec.ts":
+    "runs via `bun run --cwd packages/app audit:app`; it walks every app view " +
+    "at desktop and mobile, captures artifacts, and writes manual-review " +
+    "stubs, so it is a deliberate visual-audit tool rather than default smoke.",
+};
+
+/**
  * Fixture-capable specs that SHOULD run in keyless CI but are not yet wired into
  * scenario-pr.yml. RATCHET: this list may only shrink. To wire one, add a
  * Playwright step for it in scenario-pr.yml, delete it here, and decrement
@@ -121,17 +135,21 @@ function keylessWiredSpecs(): Set<string> {
 }
 
 describe("ui-smoke spec coverage gate", () => {
-  it("every ui-smoke spec is wired keyless, live-only, or tracked debt", () => {
+  it("every ui-smoke spec is wired keyless, live-only, tracked debt, or a dedicated tool", () => {
     const wired = keylessWiredSpecs();
     const unclassified = specFileNames().filter(
       (name) =>
-        !wired.has(name) && !(name in LIVE_ONLY) && !(name in KEYLESS_DEBT),
+        !wired.has(name) &&
+        !(name in LIVE_ONLY) &&
+        !(name in KEYLESS_DEBT) &&
+        !(name in DEDICATED_TOOL),
     );
 
     expect(
       unclassified,
       `Unclassified ui-smoke specs (wire into .github/workflows/scenario-pr.yml, ` +
-        `or record in LIVE_ONLY with its hard dependency, or in KEYLESS_DEBT): ` +
+        `or record in LIVE_ONLY with its hard dependency, in KEYLESS_DEBT, ` +
+        `or in DEDICATED_TOOL): ` +
         `${unclassified.join(", ")}`,
     ).toEqual([]);
   });
@@ -189,13 +207,50 @@ describe("ui-smoke spec coverage gate", () => {
     ).toBe(true);
   });
 
-  it("no spec is classified in more than one bucket", () => {
-    const inBoth = Object.keys(LIVE_ONLY).filter(
-      (name) => name in KEYLESS_DEBT,
+  it("dedicated tool entries are real specs and excluded from the keyless gate", () => {
+    const wired = keylessWiredSpecs();
+    const specs = new Set(specFileNames());
+    const dedicated = Object.keys(DEDICATED_TOOL);
+
+    const stale = dedicated.filter((name) => !specs.has(name));
+    expect(
+      stale,
+      `DEDICATED_TOOL references specs that no longer exist: ${stale.join(", ")}`,
+    ).toEqual([]);
+
+    const wiredDedicated = dedicated.filter((name) => wired.has(name));
+    expect(
+      wiredDedicated,
+      `DEDICATED_TOOL specs must not be in the keyless workflow (they run via ` +
+        `their own package script): ${wiredDedicated.join(", ")}`,
+    ).toEqual([]);
+
+    const everyDedicatedHasReason = dedicated.every(
+      (name) => DEDICATED_TOOL[name]?.trim().length,
     );
     expect(
+      everyDedicatedHasReason,
+      "Every DEDICATED_TOOL entry must name its package-script path",
+    ).toBe(true);
+  });
+
+  it("no spec is classified in more than one bucket", () => {
+    const classified = new Map<string, string[]>();
+    for (const [bucketName, bucket] of Object.entries({
+      LIVE_ONLY,
+      KEYLESS_DEBT,
+      DEDICATED_TOOL,
+    })) {
+      for (const name of Object.keys(bucket)) {
+        classified.set(name, [...(classified.get(name) ?? []), bucketName]);
+      }
+    }
+    const inBoth = [...classified.entries()]
+      .filter(([, buckets]) => buckets.length > 1)
+      .map(([name, buckets]) => `${name} (${buckets.join(", ")})`);
+    expect(
       inBoth,
-      `Specs in both LIVE_ONLY and KEYLESS_DEBT: ${inBoth.join(", ")}`,
+      `Specs in more than one classification bucket: ${inBoth.join(", ")}`,
     ).toEqual([]);
   });
 
