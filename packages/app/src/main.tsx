@@ -84,6 +84,7 @@ import {
   isAppWindowRoute,
 } from "@elizaos/ui/navigation/index";
 import type { ShareTargetPayload } from "@elizaos/ui/platform";
+import { resolveAndroidRuntimeMode } from "@elizaos/ui/platform";
 import {
   applyLaunchConnection,
   applyLaunchConnectionFromUrl,
@@ -378,11 +379,21 @@ const APP_BRANDING: Partial<BrandingConfig> = {
   // backend should control first-run capabilities instead — UNLESS the desktop
   // shell explicitly opted into cloud-only mode (desktopRuntimeMode === "cloud"),
   // which forces cloud-only regardless of the injected loopback proxy base.
+  //
+  // The `android-cloud` Play-Store build is also cloud-only: it ships no
+  // on-device agent (VITE_ELIZA_ANDROID_RUNTIME_MODE === "cloud"), so first-run
+  // must skip the runtime picker rather than offer a "This device" option that
+  // would provision an agent that physically isn't in the APK. The default
+  // sideload/AOSP builds resolve to "local" here and keep the full 3-way picker.
   cloudOnly: shouldUseCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
     injectedApiBase:
       typeof window === "undefined" ? undefined : getInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
+    nativeRuntimeMode:
+      Capacitor.getPlatform() === "android"
+        ? resolveAndroidRuntimeMode(import.meta.env)
+        : undefined,
     desktopRuntimeMode: getInjectedDesktopRuntimeMode(),
   }),
 };
