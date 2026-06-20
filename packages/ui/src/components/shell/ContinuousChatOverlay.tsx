@@ -122,6 +122,17 @@ export type ChatState =
   | "OPEN_HALF_OR_OVER"
   | "MAXIMIZED";
 
+/**
+ * The chat's openness as a SINGLE source of truth — one ordered state machine
+ * instead of separate `pilled` boolean + `detent` enum that had to be hand-kept
+ * in sync. `pill` (collapsed to the bottom capsule) sits below `input` (bare
+ * composer bar), then `half`/`full` open the thread. `pilled`, `sheetOpen`,
+ * `expanded`, and the `detent` height read are all derived from this; `freeH`
+ * (a transient free-drag height) and `maximized` (the full-bleed variant of
+ * `full`) remain orthogonal overrides.
+ */
+export type ChatMode = "pill" | "input" | "half" | "full";
+
 /** Push-to-talk lifecycle. idle → pending (timer armed) → holding (dictating) →
  *  idle. A release while still `pending` is a quick tap (no capture started). */
 type PttPhase =
@@ -772,16 +783,14 @@ export function ContinuousChatOverlay({
   // open" combos). `pilled` sits BELOW input; `maximized` drops the inset at full.
   // Grabber pulls step through the detents (each cross haptics); programmatic
   // opens (send/focus) go full.
-  const [detent, setDetent] = React.useState<"input" | "half" | "full">(
-    "input",
-  );
-  const sheetOpen = detent !== "input";
-  const expanded = detent === "full";
-  // PILL is the detent BELOW input: the whole chat collapses to a small pill at
-  // the bottom (input hidden) so it can get out of the way entirely, yet stays
-  // one flick away. Pull down from input → pill; flick/pull up from pill → input
-  // → chat. `pilled` overrides sheetOpen/expanded while true.
-  const [pilled, setPilled] = React.useState(false);
+  // ONE openness state machine (see ChatMode). pilled / sheetOpen / expanded /
+  // detent are all DERIVED from it — so the impossible "open but not open" or
+  // pilled-and-full combos can't exist and no transition has to hand-sync two
+  // separate states (which is what bred the old stuck states).
+  const [mode, setMode] = React.useState<ChatMode>("input");
+  const pilled = mode === "pill";
+  const sheetOpen = mode === "half" || mode === "full";
+  const expanded = mode === "full";
   // Free-drag rest height (px): when set, the sheet rests exactly where the user
   // released a deliberate drag instead of snapping to a detent. Cleared whenever
   // a detent is taken (tap/flick/focus/collapse) so the detents stay the
@@ -981,10 +990,12 @@ export function ContinuousChatOverlay({
       } else {
         send(trimmed);
       }
-      // Programmatic open → FULL detent (see the reply). Clear any free-rest so
-      // the height can't stay pinned below full.
+      // Open the thread to show the conversation + the streaming reply, the same
+      // HALF detent focusing/typing uses — NOT a full-screen takeover on every
+      // send (that shoved the messages up too high). Keep a taller detent if the
+      // user already opened one; clear any free-rest so the height matches.
       setFreeH(null);
-      setDetent("full");
+      setMode((m) => (m === "half" || m === "full" ? m : "half"));
       detentHaptic();
       inputRef.current?.focus();
     },
@@ -1002,8 +1013,9 @@ export function ContinuousChatOverlay({
       if (!canSend) return;
       setDraft("");
       send(text);
+      // Open to HALF (conversation above the keyboard), not a full-screen jump.
       setFreeH(null);
-      setDetent("full");
+      setMode((m) => (m === "half" || m === "full" ? m : "half"));
       detentHaptic();
       inputRef.current?.focus();
     },
@@ -1423,7 +1435,7 @@ export function ContinuousChatOverlay({
     draggingRef.current = false;
     setFreeH(null);
     setMaximized(false);
-    setDetent("input");
+    setMode("input");
   }, []);
 
   // Leaving the chat for Settings/Home: animate OUT of maximize and collapse the
@@ -1456,7 +1468,7 @@ export function ContinuousChatOverlay({
     draggingRef.current = false;
     openProgress.set(1);
     setFreeH(null);
-    setDetent("full");
+    setMode("full");
     setMaximized(true);
   }, [maximized, openProgress]);
 
@@ -1487,7 +1499,7 @@ export function ContinuousChatOverlay({
     setFreeH(null);
     if (to !== "full") setMaximized(false);
     // "collapsed" is the input peek (sheet closed); half/full open the thread.
-    setDetent(to === "collapsed" ? "input" : to);
+    setMode(to === "collapsed" ? "input" : to);
     // Stepping all the way down closes the keyboard (the chat is dismissed).
     if (to === "collapsed") inputRef.current?.blur();
     detentHaptic();
@@ -1522,8 +1534,8 @@ export function ContinuousChatOverlay({
     if (!hasThread) return;
     preFocusCollapsedRef.current = !sheetOpen;
     setFreeH(null);
-    // Open to at least HALF; if already at half/full, keep the taller detent.
-    setDetent((d) => (d === "input" ? "half" : d));
+    // Open to at least HALF; if already at half/full, keep the taller mode.
+    setMode((m) => (m === "half" || m === "full" ? m : "half"));
   }, [hasThread, sheetOpen]);
 
   // Interactive tour control: the tutorial drives the chat into a clean, known
@@ -1537,30 +1549,27 @@ export function ContinuousChatOverlay({
       if (!detail) return;
       switch (detail.action) {
         case "pill":
-          closeSheet();
-          setPilled(true);
+          setMode("pill");
           inputRef.current?.blur();
           break;
         case "rest":
-          setPilled(false);
+          // goToDetent("collapsed") → input mode, which un-pills.
           goToDetent("collapsed");
           break;
         case "expand":
-          setPilled(false);
           goToDetent("full");
           break;
         case "prefill":
-          setPilled(false);
+          setMode((m) => (m === "pill" ? "input" : m));
           setDraft(detail.text ?? "");
           requestAnimationFrame(() => inputRef.current?.focus());
           break;
         case "reset":
           // Tour ended (cancel / complete): restore a normal interactive chat.
           // A frame may have collapsed it to the pill, where the composer is
-          // `inert` — un-pill AND clear inert imperatively (React clears it only
-          // on the next render, too late to matter for the stranded input) so
-          // the user can click/type again, and drop the tour's prefilled draft.
-          setPilled(false);
+          // `inert` — clear inert imperatively (React clears it only on the next
+          // render, too late for the stranded input), drop the tour's prefilled
+          // draft, and goToDetent("collapsed") un-pills back to the input bar.
           contentRef.current?.removeAttribute("inert");
           setDraft("");
           goToDetent("collapsed");
@@ -1570,7 +1579,7 @@ export function ContinuousChatOverlay({
     window.addEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
     return () =>
       window.removeEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
-  }, [closeSheet, goToDetent]);
+  }, [goToDetent]);
 
   // Push-to-talk dictation drops its final transcript into the composer draft
   // (no send): register the sink with the controller while this overlay is
@@ -1716,7 +1725,7 @@ export function ContinuousChatOverlay({
   // openProgress → 1 directly so the open never depends on that effect's timing.
   const openFromPill = React.useCallback(() => {
     draggingRef.current = false;
-    setPilled(false);
+    setMode("input");
     if (reduce) openProgress.set(1);
     else animate(openProgress, 1, OPEN_SPRING);
     detentHaptic();
@@ -1786,11 +1795,12 @@ export function ContinuousChatOverlay({
         // reach the chat (no hard stop at the bare input). Releasing draggingRef
         // first lets the pilled→openProgress effect spring the morph 0→1.
         draggingRef.current = false;
-        setPilled(false);
         if (hasThread) {
           focusThreadRef.current = true;
           goToDetent("half");
         } else {
+          // Pill → bare input bar (no thread to open into).
+          setMode("input");
           if (reduce) threadHeight.set(0);
           else animate(threadHeight, 0, SHEET_SPRING);
           detentHaptic();
@@ -1821,7 +1831,7 @@ export function ContinuousChatOverlay({
         goToDetent("collapsed");
       } else {
         // INPUT → PILL: collapse the input away into a pill at the bottom.
-        setPilled(true);
+        setMode("pill");
         setMaximized(false);
         draggingRef.current = false;
         inputRef.current?.blur();
@@ -1865,17 +1875,18 @@ export function ContinuousChatOverlay({
         // input state straight to half on a short slow pull.
         const opened = direction === "up" && openProgress.get() >= 0.5;
         if (!opened) {
-          settleDrag(); // springs openProgress → 0 (pilled still true) + thread → 0
+          settleDrag(); // springs openProgress → 0 (mode stays "pill") + thread → 0
           return;
         }
-        setPilled(false);
+        // Leaving the pill: fall through to the magnetism below, which sets the
+        // mode (input / half / full) from where the drag was released — so pill →
+        // input → chat reads as one continuum.
         if (hasThread) focusThreadRef.current = true;
-        // fall through to the magnetism ↓ (threadHeight decides input vs half/full)
       }
       // From the collapsed input, a downward drag has nothing to "size" below
       // it — collapse straight to the pill (matches the flick-down path).
       if (!sheetOpen && direction === "down") {
-        setPilled(true);
+        setMode("pill");
         inputRef.current?.blur();
         detentHaptic();
         return;
@@ -1900,7 +1911,7 @@ export function ContinuousChatOverlay({
         // In a gap between detents → rest exactly where released. `half` is the
         // open base; `freeH` overrides the actual height to where the finger left.
         setFreeH(h);
-        setDetent("half");
+        setMode("half");
       }
     },
   });

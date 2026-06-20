@@ -164,13 +164,13 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
-  it("opens straight to FULL when sending (not the stepped HALF)", () => {
+  it("opens to HALF when sending (conversation above the keyboard, not a full-screen takeover)", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const input = screen.getByLabelText("message");
     fireEvent.change(input, { target: { value: "ping" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
   it("exposes the mic control with a stable test id at rest", () => {
