@@ -49,7 +49,9 @@ export function resolveAppDeployConfig(): AppDeployConfig {
   const requested = readConfigEnvKey("ELIZA_APP_DEPLOY_TARGET")
     ?.trim()
     .toLowerCase();
-  const agentHomeAppsDir = readConfigEnvKey("ELIZA_AGENT_HOME_APPS_DIR")?.trim();
+  const agentHomeAppsDir = readConfigEnvKey(
+    "ELIZA_AGENT_HOME_APPS_DIR",
+  )?.trim();
   const agentHomeBaseUrl = readConfigEnvKey("ELIZA_AGENT_HOME_BASE_URL")
     ?.trim()
     .replace(/\/+$/, "");

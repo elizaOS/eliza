@@ -83,15 +83,12 @@ describe("runtimeModelContextProvider", () => {
 		// codex-cli registers every slot against one CODEX_MODEL rather than the
 		// per-slot *_MODEL keys, and CODEX_MODEL is an ENV var getSetting doesn't
 		// expose — so without the env fallback the slot rendered its raw name.
-		const runtime = makeRuntime(
-			{},
-			{
-				models: new Map([
-					[ModelType.RESPONSE_HANDLER, [{ provider: "codex-cli" }]],
-					[ModelType.ACTION_PLANNER, [{ provider: "codex-cli" }]],
-				]),
-			} as Partial<IAgentRuntime>,
-		);
+		const runtime = makeRuntime({}, {
+			models: new Map([
+				[ModelType.RESPONSE_HANDLER, [{ provider: "codex-cli" }]],
+				[ModelType.ACTION_PLANNER, [{ provider: "codex-cli" }]],
+			]),
+		} as Partial<IAgentRuntime>);
 
 		const prev = process.env.CODEX_MODEL;
 		process.env.CODEX_MODEL = "gpt-5.5";

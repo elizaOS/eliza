@@ -1033,7 +1033,7 @@ describe("SubAgentRouter", () => {
       await SubAgentRouter.start(runtime);
 
       acp.emit(SESSION_ID, "error", {
-        message: 'Method not found: terminal/create',
+        message: "Method not found: terminal/create",
         code: -32601,
       });
       await new Promise((r) => setTimeout(r, 200));
@@ -1087,7 +1087,7 @@ describe("SubAgentRouter", () => {
       await SubAgentRouter.start(runtime);
 
       acp.emit(SESSION_ID, "error", {
-        message: 'session/prompt failed',
+        message: "session/prompt failed",
         code: -32601,
       });
       await new Promise((r) => setTimeout(r, 200));
