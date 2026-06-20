@@ -9,6 +9,28 @@ import {
 const SUB_AGENT_SOURCE = "sub_agent";
 const EMPTY_COMPLETION_PLACEHOLDER =
   "sub-agent reports task complete (no captured output).";
+// Typed session-event values the router stamps on a sub-agent memory when the
+// run ends without a delivered result. These are the structural ground truth a
+// failure relay gates on — never prose. Mirrors the `subAgentEvent` values
+// produced in services/sub-agent-router.ts (`error`, `blocked`,
+// `state_lost_exhausted`, `round_trip_cap_exceeded`).
+const SUB_AGENT_FAILURE_EVENTS = new Set([
+  "error",
+  "blocked",
+  "state_lost_exhausted",
+  "round_trip_cap_exceeded",
+]);
+// Concrete TASKS-family actions that genuinely re-engage a sub-agent session
+// (start, continue, or relay a follow-up). A failure relay only yields to
+// conversational routing when one of these is the planned, tool-backed retry —
+// the bare `TASKS` / `SPAWN_AGENT` hints in `hasOnlyStaleCompletionHints` are
+// the stale completion echoes, not a real retry.
+const TASKS_RETRY_ACTIONS = new Set([
+  "TASKS_SPAWN_AGENT",
+  "TASKS_SEND_TO_AGENT",
+  "TASKS_SEND",
+  "TASKS_CREATE",
+]);
 // When the evaluator routes back to TASKS_SEND_TO_AGENT or TASKS_SPAWN_AGENT,
 // the active context must satisfy their contextGate. TASKS declares coding /
 // automation / agent-internal contexts, so we set `automation` — picking a
@@ -333,10 +355,13 @@ function deliverableFromMetadata(message: Memory): string | undefined {
 // step-aside-for-follow-up routing.
 const SHORT_CLEAN_COMPLETION_BODY_MAX_CHARS = 120;
 
-// Fresh-spawn actions: starting a NEW sub-agent session. Re-issuing one after a
-// task already completed with a clean answer is a loop. NOT TASKS_SEND_TO_AGENT
-// (continue the existing session), which is a legitimate follow-up.
-const FRESH_SPAWN_ACTIONS = new Set(["TASKS_SPAWN_AGENT", "TASKS_CREATE"]);
+// Continuing the EXISTING session (TASKS_SEND_TO_AGENT / TASKS_SEND) is the only
+// legitimate reason not to relay a completed task's short clean answer: the
+// agent is feeding the same sub-agent more input (a real blocker/missing
+// detail). Any other follow-up after a clean answer — a fresh spawn, a
+// re-create, or no hint at all (the planner re-issued TASKS directly without
+// populating candidateActions) — is a re-spawn loop, so relay instead.
+const SESSION_CONTINUE_ACTIONS = new Set(["TASKS_SEND_TO_AGENT", "TASKS_SEND"]);
 
 function isShortCleanCompletionBody(completionText: string): boolean {
   const body = userFacingCompletionBody(completionText).trim();
@@ -345,7 +370,7 @@ function isShortCleanCompletionBody(completionText: string): boolean {
   return !looksLikeRawToolTranscript(body);
 }
 
-function planRequestsFreshSpawn(plan: {
+function planContinuesExistingSession(plan: {
   candidateActions?: readonly string[];
   parentActionHints?: readonly string[];
 }): boolean {
@@ -353,7 +378,7 @@ function planRequestsFreshSpawn(plan: {
     ...normalizedActionHints(plan.candidateActions),
     ...normalizedActionHints(plan.parentActionHints),
   ];
-  return hints.some((hint) => FRESH_SPAWN_ACTIONS.has(hint));
+  return hints.some((hint) => SESSION_CONTINUE_ACTIONS.has(hint));
 }
 
 function isSuccessfulSubAgentCompletion(message: Memory): boolean {
@@ -365,6 +390,67 @@ function isSuccessfulSubAgentCompletion(message: Memory): boolean {
   if (textOf(metadata.subAgentEvent) !== "task_complete") return false;
   if (metadata.subAgentCapExceeded === true) return false;
   return !completionHasVerificationFailure(textOf(content.text));
+}
+
+function isSubAgentMessage(message: Memory): boolean {
+  const content = contentRecord(message);
+  const metadata = metadataRecord(message);
+  if (!content || !metadata) return false;
+  const source = textOf(content.source).toLowerCase();
+  return source === SUB_AGENT_SOURCE || metadata.subAgent === true;
+}
+
+function subAgentFailureEvent(message: Memory): string | undefined {
+  if (!isSubAgentMessage(message)) return undefined;
+  const event = textOf(metadataRecord(message)?.subAgentEvent);
+  return SUB_AGENT_FAILURE_EVENTS.has(event) ? event : undefined;
+}
+
+// Structural check: did Stage 1 plan a genuine, tool-backed TASKS retry this
+// turn? Requires `requiresTool` AND a concrete TASKS-family candidate/hint that
+// re-engages the session (per TASKS_RETRY_ACTIONS) — not a stale completion
+// echo. When true, the conversational ack is honest (a real spawn/send will
+// run); when false, the ack is fabricated and must be replaced.
+function hasToolBackedTasksRetry(plan: {
+  requiresTool?: boolean;
+  candidateActions?: readonly string[];
+  parentActionHints?: readonly string[];
+}): boolean {
+  if (plan.requiresTool !== true) return false;
+  const hints = [
+    ...normalizedActionHints(plan.candidateActions),
+    ...normalizedActionHints(plan.parentActionHints),
+  ];
+  return hints.some((hint) => TASKS_RETRY_ACTIONS.has(hint));
+}
+
+function failureRelayPhrase(event: string): string {
+  switch (event) {
+    case "blocked":
+      return "is blocked and needs more information before it can continue";
+    case "state_lost_exhausted":
+      return "lost its session state and could not recover after repeated retries";
+    case "round_trip_cap_exceeded":
+      return "hit its round-trip limit and was stopped before finishing";
+    default:
+      return "failed before finishing";
+  }
+}
+
+// Build an honest, third-person relay from the event's structural fields. No
+// prose from the sub-agent is trusted; the relay reports the typed outcome and
+// is explicit that no retry has been started.
+function buildFailureRelay(message: Memory): string {
+  const metadata = metadataRecord(message);
+  const event = textOf(metadata?.subAgentEvent);
+  const label = textOf(metadata?.subAgentLabel);
+  const agentType = textOf(metadata?.subAgentAgentType);
+  const subject = label || (agentType ? `the ${agentType} sub-agent` : "");
+  const lead = subject ? `${subject} ${failureRelayPhrase(event)}` : "";
+  const sentence = lead
+    ? `${lead.charAt(0).toUpperCase()}${lead.slice(1)}.`
+    : `The sub-agent ${failureRelayPhrase(event)}.`;
+  return `${sentence} I haven't started a retry — let me know how you'd like to proceed.`;
 }
 
 function replyPatchFromCompletion(
@@ -489,20 +575,23 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     if (hasVerifiedCompletionReply(currentReply, completionText, verifiedUrls))
       return true;
     if (hasCleanFinalProseAfterToolOutput(completionText)) return true;
-    // A SHORT, CLEAN completion body whose only planned follow-up is a FRESH
-    // re-spawn IS the answer being looped on: some ACP adapters (notably
-    // claude-agent-acp) return a one-shot lookup result as bare final text —
-    // "$1,708.31" — never wrapped in a [tool output:…] envelope, so it isn't
-    // captured as a deliverable and matches none of the checks above. The
-    // planner then reads the original imperative task label and re-spawns the
-    // SAME lookup, looping forever without relaying the value (observed live on
-    // claude: 6 spawns, no answer). Gate on a fresh-spawn action only —
-    // TASKS_SEND_TO_AGENT (continue the session for a genuine blocker/missing
-    // detail) stays a legitimate follow-up — and bound the body tightly so
-    // multi-step coding completions keep the existing routing.
+    // A SHORT, CLEAN completion body IS the answer being looped on when the
+    // planner's follow-up is anything but continuing the same session: some ACP
+    // adapters (notably claude-agent-acp) return a one-shot lookup result as
+    // bare final text — "$1,708.31", "Tokyo: +74°F" — never wrapped in a
+    // [tool output:…] envelope, so it isn't captured as a deliverable and
+    // matches none of the checks above. The planner then re-issues a fresh
+    // TASKS spawn/create (sometimes without even populating candidateActions),
+    // re-spawning the SAME lookup, looping and re-posting "working on it" acks
+    // without relaying the value (observed live: claude 6 spawns / cerebras
+    // weather 3 spawns). Relay unless the plan continues the EXISTING session
+    // (TASKS_SEND_TO_AGENT — feeding a real blocker/missing detail back to the
+    // running sub-agent), which is the one legitimate non-relay follow-up.
+    // Bound the body tightly so multi-step coding completions keep the existing
+    // routing.
     if (
       isShortCleanCompletionBody(completionText) &&
-      planRequestsFreshSpawn(messageHandler.plan)
+      !planContinuesExistingSession(messageHandler.plan)
     ) {
       return true;
     }
@@ -640,6 +729,45 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
       ...(reply ? { reply } : {}),
       debug: [
         "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    };
+  },
+};
+
+export const subAgentFailureResponseEvaluator: ResponseHandlerEvaluator = {
+  name: "agent-orchestrator.sub-agent-failure",
+  description:
+    "Gates structurally on typed sub-agent failure events (error/blocked/state_lost_exhausted/round_trip_cap_exceeded) so Stage 1 cannot answer with a fabricated 'I'll retry…' ack when no spawn ran; replaces the ack with an honest third-person failure relay unless a real tool-backed TASKS retry is planned.",
+  priority: 10,
+  shouldRun: ({ message, messageHandler }) => {
+    if (messageHandler.processMessage === "STOP") return false;
+    return subAgentFailureEvent(message) !== undefined;
+  },
+  evaluate: ({ message, messageHandler }) => {
+    const event = subAgentFailureEvent(message);
+    if (event === undefined) return undefined;
+    // A genuine tool-backed retry keeps conversational routing: the plan has
+    // `requiresTool` and a concrete TASKS-family action that re-engages the
+    // session, so the ack is honest and the planner loop will run the spawn.
+    if (hasToolBackedTasksRetry(messageHandler.plan)) {
+      return {
+        debug: [
+          `sub-agent failure (${event}) with a tool-backed TASKS retry planned; leaving conversational routing intact`,
+        ],
+      };
+    }
+    // Otherwise no retry is running: any conversational ack the planner drafted
+    // (e.g. "Got it, I'll retry…") is fabricated. Clear it and relay the typed
+    // failure honestly in third person, explicit that no retry has started.
+    return {
+      ...respondIfNeeded(messageHandler),
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply: buildFailureRelay(message),
+      debug: [
+        `sub-agent failure (${event}) with no tool-backed retry planned; clearing fabricated ack and relaying the typed failure`,
       ],
     };
   },
