@@ -59,12 +59,12 @@ import { VoiceLifecycleError } from "./lifecycle";
  * v9: the last text-adjacent modalities move onto the fused handle. Three
  *     additive surfaces + probes: text embeddings (`embed` / `embedSupported`),
  *     mmproj vision describe (`describeImage` / `visionSupported`), and the
- *     tokenizer (`tokenize` / `detokenize` / `tokenizeSupported`). They retire
- *     the node-llama-cpp embedding path, the libllama+shim mmproj vision path,
- *     and the desktop libllama tokenizer sidecar respectively. A v8 library
- *     lacks these symbols, so the probes report unsupported and the consumers
- *     keep their existing paths. v8 callers that never touched the new entries
- *     are source-compatible (the new probes simply return false on a v8 lib).
+ *     tokenizer (`tokenize` / `detokenize` / `tokenizeSupported`). With these,
+ *     libllama is fully retired: text, embeddings, vision, and tokenization all
+ *     run through the fused handle. A pre-v9 library lacks these symbols, so the
+ *     probes report unsupported and the fused runtime refuses (there is no
+ *     libllama fallback). v8 callers that never touched the new entries remain
+ *     source-compatible (the new probes simply return false on a v8 lib).
  */
 export const ELIZA_INFERENCE_ABI_VERSION = 9 as const;
 
@@ -581,8 +581,8 @@ export interface ElizaInferenceFfi {
 
 	/**
 	 * True when this build exposes the tokenizer over the loaded text vocab
-	 * (`eliza_inference_tokenize`). A v8 library returns false, so the desktop
-	 * fused runtime keeps the libllama tokenizer sidecar.
+	 * (`eliza_inference_tokenize`). A pre-v9 library returns false, so the
+	 * desktop fused runtime refuses (libllama is retired — no tokenizer sidecar).
 	 */
 	tokenizeSupported?(): boolean;
 	/**

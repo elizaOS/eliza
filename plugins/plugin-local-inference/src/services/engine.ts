@@ -39,7 +39,7 @@ import {
 	type ConversationHandle,
 	conversationRegistry,
 } from "./conversation-registry";
-import { desktopGatedFfiBackendRuntime } from "./desktop-gated-ffi-backend-runtime";
+import { desktopFusedFfiBackendRuntime } from "./desktop-fused-ffi-backend-runtime";
 import { FfiStreamingBackend } from "./ffi-streaming-backend";
 import { MemoryMonitor } from "./memory-monitor";
 import { listInstalledModels } from "./registry";
@@ -254,20 +254,20 @@ function toBackendLoadOverrides(
  */
 export class LocalInferenceEngine {
 	/**
-	 * In-process FFI backend — the sole text runtime. The gate
-	 * (`desktop-gated-ffi-backend-runtime.ts`) picks, per load, between the
-	 * FUSED `libelizainference` text path (preferred when its ABI-v9 MTP +
-	 * KV-quant probes pass) and the libllama + eliza-llama-shim runtime (the
-	 * optimization-carrying fallback, and the vision-describe path). The fused
-	 * lib lacking MTP/KV-quant is refused → falls back to libllama, never to
-	 * an unoptimized fused loop. There is no server fallback for Eliza-1.
+	 * In-process FFI backend — the sole text runtime, served by the FUSED
+	 * `libelizainference` (`desktop-fused-ffi-backend-runtime.ts`). Text gen,
+	 * same-file MTP speculative decoding, KV-cache quant, native tokenization,
+	 * and vision-describe all run through the one fused lib the voice subsystem
+	 * already loads (ABI v9). libllama has been retired: a fused lib that is
+	 * absent or lacks the v9 capabilities is a loud `LocalInferenceUnavailable`
+	 * error, never a silent fallback. There is no server fallback for Eliza-1.
 	 */
 	private readonly ffiBackend = new FfiStreamingBackend(
-		desktopGatedFfiBackendRuntime,
+		desktopFusedFfiBackendRuntime,
 	);
 	private readonly dispatcher = new BackendDispatcher(
 		this.ffiBackend,
-		() => desktopGatedFfiBackendRuntime.supported(),
+		() => desktopFusedFfiBackendRuntime.supported(),
 		() => null,
 	);
 	/**

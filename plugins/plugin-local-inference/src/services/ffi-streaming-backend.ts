@@ -37,11 +37,10 @@ import { resolveGuidedDecodeForParams } from "./structured-output";
  *      `generate()` against the requested model, plus a tokenizer that
  *      matches that model's vocab. `release()` tears everything down.
  *
- * Production runtime implementations:
- *   - libelizainference path → wraps `ElizaInferenceFfi` via
- *     `wrapElizaInferenceFfi()` from `services/llm-streaming-binding.ts`.
- *   - desktop libllama+shim path → mirrors the AOSP adapter pattern and is
- *     provided by `desktop-ffi-backend-runtime.ts`.
+ * Production runtime implementation: the fused libelizainference path
+ * (`desktop-fused-ffi-backend-runtime.ts`), which wraps `ElizaInferenceFfi`
+ * via `wrapElizaInferenceFfi()` from `services/llm-streaming-binding.ts`.
+ * libllama has been retired — there is no second runtime behind this slot.
  */
 export interface FfiBackendRuntime {
 	supported(): boolean;

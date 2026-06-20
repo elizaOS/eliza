@@ -1,52 +1,35 @@
 /**
- * Desktop production `FfiBackendRuntime` over the FUSED `libelizainference`.
+ * Desktop production `FfiBackendRuntime` over the FUSED `libelizainference` —
+ * the SOLE desktop text runtime now that libllama has been retired.
  *
- * The sibling of `desktop-ffi-backend-runtime.ts` (which drives the separate
- * libllama + eliza-llama-shim pair). This runtime routes desktop text
- * generation through the now-feature-complete fused library — the same
- * `eliza_inference_llm_stream_*` ABI (v8) the voice subsystem already loads —
+ * Desktop text generation runs through the fused library: the same
+ * `eliza_inference_llm_stream_*` ABI (v9) the voice subsystem already loads,
  * so text + voice share one native lib, one GGML pin, and one resident text
  * model.
  *
- * Why this exists separately from the libllama runtime:
  *   - The fused lib's `eliza_inference_llm_stream_open` loads the bundle's text
  *     GGUF (`<bundleRoot>/text/*.gguf`) and applies same-file MTP speculative
- *     decoding + KV-cache quant + per-load GPU layers natively (ABI v8). The
- *     libllama path does the same through the shim; this routes through the
- *     fused lib instead, gated on the v8 capability probes
+ *     decoding + KV-cache quant + per-load GPU layers natively (ABI v9). The
+ *     path is gated on the capability probes
  *     (`llmStreamSupported && llmMtpSupported && llmKvQuantSupported`).
- *   - A fused lib that lacks MTP / KV-quant (a v7 build) MUST be refused so the
- *     engine falls back to libllama (which has those optimizations) — never to
- *     an unoptimized fused loop. `supported()` enforces that refusal.
+ *   - A fused lib that lacks MTP / KV-quant / native tokenize is REFUSED by
+ *     `supported()` → the engine raises LocalInferenceUnavailable. There is no
+ *     libllama fallback and never an unoptimized fused loop.
  *
- * Tokenization seam:
- *   - ABI v9 exposes `eliza_inference_tokenize` over the fused handle's
- *     resident text vocab, so this runtime tokenizes through the SAME lib and
- *     loads no second model: the fused `create()` + first `llmStreamOpen`
- *     already made the text vocab resident. `tokenizeSupported()` gates this.
- *   - On an older fused lib (v8, no tokenize symbol) the runtime falls back to
- *     a libllama tokenizer sidecar (`loadDesktopLlama`) on the SAME text GGUF,
- *     used only for `tokenize()`. Both loads point at the identical file so the
- *     vocab matches exactly; the sidecar is loaded with `gpuLayers: 0` and a
- *     tiny context, and `mmap` shares the read-only weight pages with the fused
- *     load via the OS page cache, so the overhead is just the small tokenizer
- *     context, not a second copy of the weights.
+ * Tokenization runs over the fused handle's resident text vocab via ABI-v9
+ * `eliza_inference_tokenize`: the fused `create()` + first `llmStreamOpen`
+ * already made the text vocab resident, so no second model is loaded.
+ * `tokenizeSupported()` gates this; a pre-v9 lib without the symbol is refused.
  *
- * Lifecycle mirrors the libllama runtime: one fused context (+ a tokenizer
- * sidecar only on a pre-v9 lib) per loaded model; `acquire()` builds them,
- * `release()` tears both down. A throwing native free poisons the runtime (no
- * new allocation over leaked resources) exactly as the libllama runtime does.
+ * Lifecycle: one fused context per loaded model; `acquire()` builds it,
+ * `release()` tears it down. A throwing native free poisons the runtime so no
+ * new allocation happens over leaked resources.
  */
 
 import fs from "node:fs";
 import path from "node:path";
 
 import type { BackendPlan } from "./backend";
-import {
-	type DesktopLlamaAdapter,
-	desktopLlamaDylibsPresent,
-	loadDesktopLlama,
-} from "./desktop-llama-adapter";
 import type {
 	FfiBackendRuntime,
 	FfiBackendSession,
@@ -77,8 +60,8 @@ function fusedLibraryFilenames(): string[] {
  *   1. `ELIZA_INFERENCE_LIBRARY` — an explicit absolute path.
  *   2. `<bundleRoot>/lib/<name>` — the bundle-local lib.
  *   3. `ELIZA_INFERENCE_LIB_DIR/<name>` — an explicit lib directory.
- * Returns null when none of the candidates exist on disk — the engine-side
- * gate then falls through to the libllama runtime.
+ * Returns null when none of the candidates exist on disk — `supported()` then
+ * reports unavailable and the engine raises LocalInferenceUnavailable.
  */
 export function resolveFusedLibraryPath(
 	bundleRoot: string | null,
@@ -114,13 +97,6 @@ function bundleRootForPlan(plan: BackendPlan): string {
 interface ActiveFusedSession {
 	ffi: ElizaInferenceFfi;
 	ctx: ElizaInferenceContextHandle;
-	/**
-	 * libllama sidecar held open only for `tokenize()` — null when the fused
-	 * lib exposes `eliza_inference_tokenize` (ABI v9), in which case
-	 * tokenization runs over the fused handle's resident text vocab and no
-	 * second libllama load happens.
-	 */
-	tokenizer: DesktopLlamaAdapter | null;
 	session: FfiBackendSession;
 }
 
@@ -133,11 +109,12 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 	/**
 	 * Viable only when:
 	 *   - bun:ffi resolves on the current runtime,
-	 *   - the fused dylib is present AND reports ABI-v8 capability: the
-	 *     streaming-LLM surface plus same-file MTP plus KV-cache quant.
-	 * A v7 (or older) fused lib reports the probes as unsupported → refused so
-	 * the engine falls back to libllama. The libllama tokenizer sidecar must
-	 * also be present (we need its vocab to tokenize the prompt).
+	 *   - the fused dylib is present AND reports ABI-v9 capability: the
+	 *     streaming-LLM surface, same-file MTP, KV-cache quant, AND native
+	 *     tokenization (`eliza_inference_tokenize`).
+	 * A pre-v9 fused lib reports the probes as unsupported → refused, and the
+	 * engine raises LocalInferenceUnavailable. libllama has been retired; there
+	 * is no fallback runtime and no tokenizer sidecar.
 	 */
 	supported(): boolean {
 		if (this.supportedCache !== null) return this.supportedCache;
@@ -171,16 +148,17 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 				typeof ffi.llmKvQuantSupported === "function" &&
 				ffi.llmKvQuantSupported() === true;
 			if (!llmOk) return false;
-			// The tokenizer seam needs the libllama dylib pair on disk ONLY when
-			// the fused lib lacks the v9 native tokenizer. A v9 build tokenizes
-			// over its own resident text vocab, so libllama is not required.
+			// Native tokenization over the fused handle's resident text vocab
+			// (ABI v9) is required: libllama has been retired, so there is no
+			// tokenizer sidecar. A pre-v9 fused lib without `eliza_inference_tokenize`
+			// is refused → the engine raises LocalInferenceUnavailable.
 			const fusedTokenize =
 				typeof ffi.tokenizeSupported === "function" &&
 				ffi.tokenizeSupported() === true;
-			if (!fusedTokenize && !desktopLlamaDylibsPresent()) return false;
+			if (!fusedTokenize) return false;
 			return true;
 		} catch {
-			// dlopen / ABI-mismatch / non-Bun runtime → not viable; fall back.
+			// dlopen / ABI-mismatch / non-Bun runtime → not viable.
 			return false;
 		} finally {
 			ffi?.close();
@@ -220,44 +198,26 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 			throw err;
 		}
 
-		// 2. Tokenization seam. ABI v9 exposes `eliza_inference_tokenize` over the
-		//    fused handle's resident text vocab, so we tokenize through the same
-		//    lib and skip the second libllama load entirely. Only when the fused
-		//    lib is older (v8, no tokenize symbol) do we stand up the libllama
-		//    tokenizer sidecar on the SAME text GGUF (gpuLayers: 0, tiny context;
-		//    mmap shares the read-only weight pages with the fused load).
-		const fusedTokenize =
-			typeof ffi.tokenizeSupported === "function" &&
-			ffi.tokenizeSupported() === true &&
-			typeof ffi.tokenize === "function";
-		let tokenizer: DesktopLlamaAdapter | null = null;
-		let tokenizeFn: (prompt: string) => Int32Array;
+		// 2. Tokenization over the fused handle's resident text vocab via ABI-v9
+		//    `eliza_inference_tokenize` — no second model load. `supported()`
+		//    already refused a pre-v9 lib, so the symbol is present here; this
+		//    guard turns any surprise absence into a loud failure (the session is
+		//    torn down) rather than a silent tokenizer gap. libllama is retired.
 		const fusedTokenizeFn = ffi.tokenize;
-		if (fusedTokenize && fusedTokenizeFn) {
-			tokenizeFn = (prompt) => fusedTokenizeFn({ ctx, text: prompt });
-		} else {
-			try {
-				const loaded = await loadDesktopLlama({
-					modelPath: plan.modelPath,
-					contextSize: 256,
-					gpuLayers: 0,
-					useMmap: true,
-				});
-				if (!loaded) {
-					throw new Error(
-						"[desktop-fused-ffi-runtime] loadDesktopLlama returned null while building the tokenizer sidecar — " +
-							"bun:ffi unavailable or libllama dylibs missing.",
-					);
-				}
-				tokenizer = loaded.adapter;
-			} catch (err) {
-				ffi.destroy(ctx);
-				ffi.close();
-				throw err;
-			}
-			const sidecar = tokenizer;
-			tokenizeFn = (prompt) => sidecar.tokenize(prompt);
+		if (
+			typeof ffi.tokenizeSupported !== "function" ||
+			ffi.tokenizeSupported() !== true ||
+			typeof fusedTokenizeFn !== "function"
+		) {
+			ffi.destroy(ctx);
+			ffi.close();
+			throw new Error(
+				"[desktop-fused-ffi-runtime] fused lib lacks eliza_inference_tokenize (pre-v9). " +
+					"libllama has been retired; rebuild the fused lib with the v9 tokenizer ABI.",
+			);
 		}
+		const tokenizeFn = (prompt: string): Int32Array =>
+			fusedTokenizeFn({ ctx, text: prompt });
 
 		const binding = wrapElizaInferenceFfi(ffi);
 		const runner = new FfiStreamingRunner(binding, ctx);
@@ -270,8 +230,8 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 			mtp: plan.catalog?.runtime?.mtp ?? null,
 			draftModelPath: overrides?.draftModelPath ?? null,
 			mmprojPath: overrides?.mmprojPath ?? null,
-			// The fused path applies these at its first `llmStreamOpen`. Mirror
-			// the libllama load decision: gpuLayers + KV-cache quant types.
+			// The fused path applies these at its first `llmStreamOpen`:
+			// gpuLayers + KV-cache quant types from the session config.
 			loadConfig: {
 				gpuLayers:
 					typeof overrides?.gpuLayers === "number"
@@ -281,38 +241,14 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 				cacheTypeV: overrides?.cacheTypeV ?? null,
 			},
 		};
-		this.active = { ffi, ctx, tokenizer, session };
+		this.active = { ffi, ctx, session };
 		return session;
 	}
 
 	parallelSlots(): number {
-		return this.active?.tokenizer?.parallelSlots?.() ?? 1;
-	}
-
-	/**
-	 * True when the loaded fused lib was compiled with vision
-	 * (`-DELIZA_ENABLE_VISION`) and exposes `eliza_inference_describe_image`
-	 * (ABI v9). Static lib capability — independent of whether a session is
-	 * live — so the gate can decide whether a vision load can stay on the fused
-	 * runtime instead of routing to libllama.
-	 */
-	visionSupportedStatic(): boolean {
-		if (!this.supported()) return false;
-		const libPath = resolveFusedLibraryPath(null);
-		if (!libPath) return false;
-		let ffi: ElizaInferenceFfi | null = null;
-		try {
-			ffi = loadElizaInferenceFfi(libPath);
-			return (
-				typeof ffi.visionSupported === "function" &&
-				ffi.visionSupported() === true &&
-				typeof ffi.describeImage === "function"
-			);
-		} catch {
-			return false;
-		} finally {
-			ffi?.close();
-		}
+		// The fused runtime holds one resident text context per loaded model;
+		// multi-slot parallelism is not exposed by the fused ABI.
+		return 1;
 	}
 
 	/**
@@ -332,8 +268,8 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 	/**
 	 * Vision describe through the fused `eliza_inference_describe_image`
 	 * (ABI v9). Reuses the mtmd machinery linked for ASR over the bundle's text
-	 * model + the passed mmproj projector. Mirrors the libllama runtime's
-	 * `describeImage` shape so the gate forwards transparently.
+	 * model + the passed mmproj projector. The `FfiStreamingBackend` forwards
+	 * `describeImage`/`visionSupported` to this runtime by duck-typing.
 	 */
 	async describeImage(args: {
 		imageBytes: Uint8Array;
@@ -356,8 +292,8 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 		) {
 			throw new Error(
 				"[desktop-fused-ffi-runtime] describeImage: fused lib was built without " +
-					"vision (eliza_inference_vision_supported() == 0). Build with " +
-					"-DELIZA_ENABLE_VISION=ON or route vision to the libllama runtime.",
+					"vision (eliza_inference_vision_supported() == 0). Rebuild the fused " +
+					"lib with -DELIZA_ENABLE_VISION=ON (verify-fused-symbols requires it).",
 			);
 		}
 		const startedAt = Date.now();
@@ -372,13 +308,11 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 
 	async release(): Promise<void> {
 		if (!this.active) return;
-		const { ffi, ctx, tokenizer } = this.active;
-		// Free both native handles. A throwing free poisons the runtime so a new
+		const { ffi, ctx } = this.active;
+		// Free the native handles. A throwing free poisons the runtime so a new
 		// model cannot be allocated over leaked resources. Clear `active` in the
-		// finally so a throwing free can't wedge the live-session guard. The
-		// tokenizer sidecar is null when the fused lib tokenizes natively (v9).
+		// finally so a throwing free can't wedge the live-session guard.
 		try {
-			tokenizer?.close();
 			ffi.destroy(ctx);
 			ffi.close();
 		} catch (err) {
@@ -391,9 +325,9 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 }
 
 /**
- * Convenience singleton — the engine constructs one per process and gates the
- * dispatcher's FFI slot between this fused runtime and the libllama runtime via
- * the v8 capability probes.
+ * Process singleton — the engine wires this as the sole `FfiBackendRuntime` for
+ * the dispatcher's `"llama-cpp"` slot. The ABI-v9 capability probes in
+ * `supported()` gate whether the fused lib serves text at all.
  */
 export const desktopFusedFfiBackendRuntime =
 	new DesktopFusedFfiBackendRuntime();

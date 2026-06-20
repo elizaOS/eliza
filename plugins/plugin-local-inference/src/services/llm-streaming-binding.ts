@@ -112,7 +112,7 @@ export function wrapElizaInferenceFfi(
 			"[llm-streaming-binding] The loaded libelizainference does not expose " +
 				"the streaming-LLM symbol set (llmStreamSupported/Open/Prefill/Next/" +
 				"Cancel/Close). Rebuild the omnivoice fuse against the current " +
-				"eliza-inference-ffi.h, or use the desktop libllama path instead.",
+				"eliza-inference-ffi.h (verify-fused-symbols requires this set).",
 		);
 	}
 	// Narrowed function references so the returned object types are
