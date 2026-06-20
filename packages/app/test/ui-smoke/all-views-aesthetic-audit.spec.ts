@@ -226,12 +226,14 @@ function computeVerdict(
   const exempt =
     finding.viewType === "tui" ||
     OVERLAY_NATIVE_OR_CANVAS_SLUGS.has(finding.slug);
-  // Hard failures apply to every view. Overlay-native/canvas views legitimately
-  // render little chrome text, so the readable-content floor is waived for them.
+  // A console error (a real crash signal) is broken for every view. Overlay-
+  // native/canvas/terminal surfaces legitimately render little chrome text and
+  // screenshot near-one-color (an overlay over a solid bg, an empty canvas), so
+  // the readable-content + blank-screenshot floors are waived for them.
   if (
     finding.consoleErrors.length > 0 ||
-    finding.qualityIssues.length > 0 ||
-    (!exempt && finding.readableChars < 10)
+    (!exempt &&
+      (finding.qualityIssues.length > 0 || finding.readableChars < 10))
   ) {
     return "broken";
   }
