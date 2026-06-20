@@ -13,8 +13,6 @@ import {
   DetachedShellRoot,
 } from "@elizaos/app-core";
 import {
-  type IosLocalAgentNativeRequestOptions,
-  type IosLocalAgentNativeRequestResult,
   installIosLocalAgentFetchBridge,
   installIosLocalAgentNativeRequestBridge,
   primeIosFullBunRuntime,
@@ -36,9 +34,9 @@ import {
 } from "@elizaos/ui/bridge";
 import { initializeCapacitorBridge } from "@elizaos/ui/bridge/capacitor-bridge";
 import { initializeStorageBridge } from "@elizaos/ui/bridge/storage-bridge";
+import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
 import { CharacterEditor } from "@elizaos/ui/components/character/CharacterEditor";
-import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import type {
   BrandingConfig,
   CodingAgentTasksPanelProps,
@@ -144,9 +142,6 @@ declare global {
     __ELIZA_APP_SHARE_QUEUE__?: ShareTargetPayload[];
     __ELIZA_APP_CHARACTER_EDITOR__?: typeof CharacterEditor;
     __ELIZA_APP_API_BASE__?: string;
-    __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: (
-      options: IosLocalAgentNativeRequestOptions,
-    ) => Promise<IosLocalAgentNativeRequestResult>;
     __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (event: Record<string, unknown>) => void;
   }
 }
@@ -175,7 +170,8 @@ function importAppCore() {
 function importCompanionAppRegistration() {
   return cachedDynamicImport(
     "@elizaos/plugin-companion/components/companion/companion-app",
-    () => import("@elizaos/plugin-companion/components/companion/companion-app"),
+    () =>
+      import("@elizaos/plugin-companion/components/companion/companion-app"),
   );
 }
 
@@ -275,16 +271,17 @@ const InferenceCloudAlertButton = lazyNamedComponent<{
   notice: CompanionInferenceNotice;
   onClick: () => void;
   onPointerDown?: (...args: unknown[]) => unknown;
-}>(async () =>
-  (
-    await cachedDynamicImport(
-      "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton",
-      () =>
-        import(
-          "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton"
-        ),
-    )
-  ).InferenceCloudAlertButton,
+}>(
+  async () =>
+    (
+      await cachedDynamicImport(
+        "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton",
+        () =>
+          import(
+            "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton"
+          ),
+      )
+    ).InferenceCloudAlertButton,
 );
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
