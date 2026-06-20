@@ -239,3 +239,16 @@ description = "eliza-1 smoke SFT corpus (synthetic/captured-public tokens, not c
 paths = [
   '''(^|/)packages/training/data/final-eliza1-smoke/.*\.jsonl$''',
 ]
+
+# eliza-1 smoke SFT corpus (final-eliza1-smoke/*.jsonl): a ~400-row e2e pipeline
+# validator DELIBERATELY kept in git (see packages/training/.gitignore negations)
+# so the SFT pipeline can be smoke-tested from a fresh clone. Its synthetic
+# training rows include captured Daytona/Node sandbox env dumps — GPG_KEY is the
+# Node base image's PUBLIC release-key fingerprint, DAYTONA_SANDBOX_* are ids —
+# and dummy api-key examples (sk_live_abc123xyz). Generated content, not
+# credentials. Scoped to the corpus jsonl only.
+[[allowlists]]
+description = "eliza-1 smoke SFT corpus (synthetic training rows, not credentials)"
+paths = [
+  '''(^|/)packages/training/data/final-eliza1-smoke/.*\.jsonl$''',
+]
