@@ -316,6 +316,7 @@ import {
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
 import { persistConfigEnv } from "./config-env.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
+import { computeCanRespond } from "./health-routes.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
 import { createRuntimeReadyGate } from "./runtime-ready-gate.ts";
 import {
@@ -4427,6 +4428,11 @@ export async function startApiServer(opts?: {
             state: state.agentState,
             agentName: state.agentName,
             model: state.model,
+            // Same server-authoritative readiness signal as broadcastStatus and
+            // /api/status. Without it on the initial-connect status, every WS
+            // (re)connect delivers canRespond: undefined and re-gates the chat
+            // composer back to "waking up" until the next 5s broadcast.
+            canRespond: computeCanRespond(state.runtime, state.agentState),
             startedAt: state.startedAt,
             startup: state.startup,
             pendingRestart: state.pendingRestartReasons.length > 0,
@@ -4656,6 +4662,11 @@ export async function startApiServer(opts?: {
       state: state.agentState,
       agentName: state.agentName,
       model: state.model,
+      // Carry the same server-authoritative readiness signal `/api/status`
+      // returns. Without it, every 5s WS status broadcast resets the client's
+      // `agentStatus.canRespond` to undefined, re-gating the chat composer back
+      // to "waking up" even though the agent is fully ready and replying.
+      canRespond: computeCanRespond(state.runtime, state.agentState),
       startedAt: state.startedAt,
       startup: state.startup,
       pendingRestart: state.pendingRestartReasons.length > 0,
