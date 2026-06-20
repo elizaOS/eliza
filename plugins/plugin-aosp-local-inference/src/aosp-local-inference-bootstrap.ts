@@ -2476,7 +2476,10 @@ function tokenizeFused(
         "[aosp-local-inference] bun:ffi toArrayBuffer unavailable; cannot read fused tokens",
       );
     }
-    const view = ffi.toArrayBuffer(tokensRaw, 0, n * 4);
+    // bun:ffi `toArrayBuffer` takes a NUMBER pointer (the `Pointer` type), not a
+    // bigint — passing the bigint `tokensRaw` throws "Unable to convert <n> to a
+    // pointer". `tokensRaw` is a real heap address (< 2^53) so Number() is exact.
+    const view = ffi.toArrayBuffer(Number(tokensRaw), 0, n * 4);
     return new Int32Array(new Uint8Array(view).slice(0, n * 4).buffer);
   } finally {
     freeTokens(tokensRaw);
