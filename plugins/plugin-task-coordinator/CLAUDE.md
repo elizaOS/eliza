@@ -38,9 +38,8 @@ Calls `registerTaskCoordinatorSlots` from `@elizaos/ui` with:
 
 ### App shell pages (`src/register.ts`)
 
-Registers three pages in the `developer` group via `registerAppShellPage` from `@elizaos/ui/app-shell-registry`:
+Registers two pages in the `developer` group via `registerAppShellPage` from `@elizaos/ui/app-shell-registry`:
 
-- `/odysseus` (order 69, `fullBleed: true`) — the `OdysseusShell` chat UI (see `src/odysseus/`).
 - `/orchestrator` (order 70, `fullBleed: true`) — the `OrchestratorWorkbench`.
 - `/orchestrator/tui` (order 71) — the TUI variant.
 
@@ -51,7 +50,7 @@ Registers three pages in the `developer` group via `registerAppShellPage` from `
 ```
 src/
   index.ts                         Plugin definition — views + capabilities declared here
-  register.ts                      App-shell page registration (/odysseus, /orchestrator, /orchestrator/tui)
+  register.ts                      App-shell page registration (/orchestrator, /orchestrator/tui)
   register-slots.ts                Slot registry fills for ui empty-slot defaults
   register-terminal-view.tsx       Registers OrchestratorSpatialView in the @elizaos/tui terminal registry
   CodingAgentTasksPanel.tsx        Task thread list + PTY session panel; re-exports OrchestratorWorkbench
@@ -86,19 +85,6 @@ src/
   pty-status-dots.ts               Re-exports PULSE_STATUSES + STATUS_DOT from @elizaos/ui
   components/
     OrchestratorSpatialView.tsx    Spatial-vocabulary orchestrator workbench; renders in GUI/XR and TUI
-  odysseus/                        Odysseus-style orchestrator chat UI (full-bleed /odysseus page)
-    OdysseusShell.tsx              Root shell: sidebar/rail, composer, tool-window host
-    SessionSidebar.tsx IconRail.tsx  Labeled nav sidebar + its collapsed 48px icon rail
-    Composer.tsx ChatContainer.tsx ChatMessages.tsx MessageBubble.tsx ChatTopBar.tsx  Chat column
-    MemoryPanel.tsx SkillsPanel.tsx NotesPanel.tsx SettingsPanel.tsx PresetsPanel.tsx ThemeMenu.tsx  Panels
-    TasksView/ModelsView/EmailView/CalendarView/GroupChatView/AdminView/GalleryView/
-      GalleryEditorView/CompareView/ResearchView/VoiceView/CookbookView/DocumentLibraryView.tsx  Tool views
-    WindowManager.tsx WindowManager.context.ts  Cross-view window registry + context
-    MinimizedDock.tsx ResizeHandles.tsx  Minimize dock + resize handles
-    SearchPalette.tsx EmojiPicker.tsx Spinner.tsx BgEffect.tsx  Misc UI
-    odysseus-theme.ts              ODYSSEUS_CSS — the theme stylesheet (CSS-in-template-literal)
-    hooks/                         useWindowControls, useKeyboardShortcuts, useTaskRoom, useChatSubmit, useEscapeClose
-    util/storage.ts                Namespaced localStorage helpers
   api/
     coding-agents-auth-sanitize.ts       Sanitizes triggerAuth() responses (whitelist + URL scheme check)
     coding-agents-preflight-normalize.ts Normalizes preflight auth field to typed NormalizedPreflightAuth

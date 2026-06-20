@@ -15,23 +15,6 @@ registerAppShellPage({
     })),
 });
 
-// odysseus 1:1 port — rendered at /odysseus while iterated; folds into
-// /orchestrator once approved.
-registerAppShellPage({
-  id: "odysseus",
-  pluginId: "@elizaos/plugin-task-coordinator",
-  label: "Odysseus",
-  icon: "MessageSquare",
-  path: "/odysseus",
-  order: 69,
-  group: "developer",
-  fullBleed: true,
-  loader: () =>
-    import("./odysseus/OdysseusShell").then((module) => ({
-      default: module.OdysseusShell,
-    })),
-});
-
 registerAppShellPage({
   id: "orchestrator.tui",
   pluginId: "@elizaos/plugin-task-coordinator",

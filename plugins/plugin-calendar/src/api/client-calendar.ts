@@ -2,7 +2,7 @@
  * Calendar client methods — side-effect augmentation of the `@elizaos/ui`
  * `ElizaClient` prototype. Importing this module attaches the calendar feed /
  * event CRUD methods onto every `client` instance, so any surface that depends
- * on `@elizaos/ui` (the LifeOps dashboard, the Odysseus task-coordinator
+ * on `@elizaos/ui` (the LifeOps dashboard, the task-coordinator
  * CalendarView, …) can call them after a single side-effect import.
  *
  * The HTTP routes are still mounted under `/api/lifeops/calendar/*`; the paths
