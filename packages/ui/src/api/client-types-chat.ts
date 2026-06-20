@@ -691,6 +691,58 @@ export interface WorkflowExecution {
   };
 }
 
+export interface WorkflowEvaluationSampleNode {
+  name: string;
+  status: "success" | "error" | "unknown";
+  itemCount: number;
+  executionTimeMs?: number;
+  error?: string;
+  preview?: string;
+}
+
+export interface WorkflowEvaluationSample {
+  id: string;
+  workflowId: string;
+  workflowName: string;
+  workflowVersionId?: string;
+  executionId: string;
+  createdAt: string;
+  input: {
+    mode: string;
+    triggerData?: Record<string, unknown>;
+  };
+  expected: {
+    status: WorkflowExecution["status"];
+    passed: boolean;
+    lastNodeExecuted?: string;
+    engine?: WorkflowExecutionEngineMetrics;
+    error?: string;
+    nodes: WorkflowEvaluationSampleNode[];
+  };
+  score: {
+    pass: boolean;
+    value: number;
+    reason: string;
+  };
+  tags: string[];
+}
+
+export interface WorkflowEvaluationSuite {
+  workflowId: string;
+  workflowName: string;
+  workflowVersionId?: string;
+  generatedAt: string;
+  sampleCount: number;
+  samples: WorkflowEvaluationSample[];
+  jsonl: string;
+  optimizer: {
+    engine: "smithers-gepa";
+    target: "workflow-generation";
+    recommendedCommand: string;
+    notes: string[];
+  };
+}
+
 /**
  * One missing credential entry on a workflow generate response. `authUrl` is
  * a `eliza://settings/connectors/<provider>` deep-link the UI may surface.

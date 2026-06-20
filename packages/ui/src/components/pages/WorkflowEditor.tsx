@@ -20,6 +20,7 @@
 import {
   AlertTriangle,
   CheckCircle2,
+  ClipboardList,
   Clock3,
   Copy,
   Pause,
@@ -103,6 +104,9 @@ export function WorkflowEditor({
   );
   const [diagnosticsCopying, setDiagnosticsCopying] = useState(false);
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const [evaluationSamplesCopying, setEvaluationSamplesCopying] =
+    useState(false);
+  const [evaluationSamplesCopied, setEvaluationSamplesCopied] = useState(false);
   const [revisions, setRevisions] = useState<WorkflowRevision[]>([]);
   const [currentVersionId, setCurrentVersionId] = useState<string | null>(
     () => initial?.versionId ?? null,
@@ -139,6 +143,8 @@ export function WorkflowEditor({
     setSelectedExecutionId(null);
     setDiagnosticsCopying(false);
     setDiagnosticsCopied(false);
+    setEvaluationSamplesCopying(false);
+    setEvaluationSamplesCopied(false);
     setRevisions([]);
     setCurrentVersionId(initial?.versionId ?? null);
     setRevisionsError(null);
@@ -309,6 +315,7 @@ export function WorkflowEditor({
       ]);
       setSelectedExecutionId(execution.id);
       setDiagnosticsCopied(false);
+      setEvaluationSamplesCopied(false);
     } catch (e) {
       setExecutionError(
         e instanceof Error ? e.message : "Failed to run workflow.",
@@ -417,6 +424,32 @@ export function WorkflowEditor({
     }
   }, [selectedExecution]);
 
+  const handleCopyEvaluationSamples = useCallback(async () => {
+    if (!persistedWorkflowId) return;
+    setEvaluationSamplesCopying(true);
+    setExecutionError(null);
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard is not available in this browser.");
+      }
+      const suite = await client.getWorkflowEvaluationSamples(
+        persistedWorkflowId,
+        10,
+      );
+      if (suite.sampleCount === 0) {
+        throw new Error("Run this workflow before copying eval samples.");
+      }
+      await navigator.clipboard.writeText(suite.jsonl);
+      setEvaluationSamplesCopied(true);
+    } catch (e) {
+      setExecutionError(
+        e instanceof Error ? e.message : "Failed to copy eval samples.",
+      );
+    } finally {
+      setEvaluationSamplesCopying(false);
+    }
+  }, [persistedWorkflowId]);
+
   const lineErrorBanner = useMemo(() => {
     if (parseState.ok) return null;
     const invalid = parseState as Extract<WorkflowJsonResult, { ok: false }>;
@@ -518,6 +551,21 @@ export function WorkflowEditor({
         ? "active"
         : "inactive",
     onActivate: () => void handleCopyDiagnostics(),
+  });
+
+  const copyEvaluationSamplesButton = useAgentElement<HTMLButtonElement>({
+    id: "copy-eval-samples",
+    role: "button",
+    label: "Copy eval samples",
+    group: "workflow-executions",
+    description:
+      "Copy JSONL workflow evaluation samples for Smithers eval and GEPA optimization.",
+    status: evaluationSamplesCopying
+      ? "busy"
+      : persistedWorkflowId && executions.length > 0
+        ? "active"
+        : "inactive",
+    onActivate: () => void handleCopyEvaluationSamples(),
   });
 
   const closeButton = useAgentElement<HTMLButtonElement>({
@@ -714,6 +762,29 @@ export function WorkflowEditor({
                     : "Save before running"}
                 </div>
               </div>
+              <Button
+                ref={copyEvaluationSamplesButton.ref}
+                {...copyEvaluationSamplesButton.agentProps}
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-2xs"
+                onClick={() => void handleCopyEvaluationSamples()}
+                disabled={
+                  !persistedWorkflowId ||
+                  executions.length === 0 ||
+                  evaluationSamplesCopying
+                }
+                aria-label="Copy eval samples"
+              >
+                {evaluationSamplesCopying ? (
+                  <Spinner className="mr-1.5 h-3.5 w-3.5" />
+                ) : (
+                  <ClipboardList className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                )}
+                <span className="hidden sm:inline">
+                  {evaluationSamplesCopied ? "Copied" : "Copy samples"}
+                </span>
+              </Button>
               <Button
                 ref={refreshRunsButton.ref}
                 {...refreshRunsButton.agentProps}

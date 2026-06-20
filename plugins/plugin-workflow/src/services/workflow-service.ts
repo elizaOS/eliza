@@ -8,6 +8,7 @@ import type {
   WorkflowCredentialStoreApi,
   WorkflowDefinition,
   WorkflowDefinitionResponse,
+  WorkflowEvaluationSuite,
   WorkflowExecution,
   WorkflowRevision,
 } from '../types/index';
@@ -24,6 +25,7 @@ import { filterNodesByIntegrationSupport, searchNodes } from '../utils/catalog';
 import { CATALOG_CLARIFICATION_SUFFIX, isCatalogClarification } from '../utils/clarification';
 import { getUserTagName } from '../utils/context';
 import { resolveCredentials } from '../utils/credentialResolver';
+import { buildWorkflowEvaluationSuite } from '../utils/evaluation-samples';
 import {
   assessFeasibility,
   collectExistingNodeDefinitions,
@@ -923,6 +925,17 @@ export class WorkflowService extends Service {
     const client = this.getClient();
     const response = await client.listExecutions({ workflowId, limit });
     return response.data;
+  }
+
+  async getWorkflowEvaluationSuite(
+    workflowId: string,
+    limit?: number
+  ): Promise<WorkflowEvaluationSuite> {
+    const [workflow, executions] = await Promise.all([
+      this.getWorkflow(workflowId),
+      this.getWorkflowExecutions(workflowId, limit),
+    ]);
+    return buildWorkflowEvaluationSuite(workflow, executions, { limit });
   }
 
   async listExecutions(params?: {

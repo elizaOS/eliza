@@ -419,6 +419,17 @@ async function handleListExecutions(
   sendJson(ctx, 200, { executions: response.data });
 }
 
+async function handleEvaluationSamples(
+  ctx: WorkflowRouteContext,
+  service: WorkflowService,
+  id: string
+): Promise<void> {
+  const url = new URL(`http://x${ctx.req.url ?? ''}`);
+  const rawLimit = url.searchParams.get('limit');
+  const limit = Math.min(Math.max(1, Number(rawLimit) || 10), 50);
+  sendJson(ctx, 200, await service.getWorkflowEvaluationSuite(id, limit));
+}
+
 async function handleRunWorkflow(
   ctx: WorkflowRouteContext,
   service: WorkflowService,
@@ -529,6 +540,14 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
     }
     if (id && method === 'POST' && path === `/workflows/${encodeURIComponent(id)}/run`) {
       await handleRunWorkflow(ctx, service, id);
+      return;
+    }
+    if (
+      id &&
+      method === 'GET' &&
+      path === `/workflows/${encodeURIComponent(id)}/evaluation-samples`
+    ) {
+      await handleEvaluationSamples(ctx, service, id);
       return;
     }
     if (id && method === 'GET' && path === `/workflows/${encodeURIComponent(id)}/executions`) {

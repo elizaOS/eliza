@@ -197,4 +197,55 @@ describe('workflowAction chat operations', () => {
       },
     });
   });
+
+  test('generates evaluation samples from workflow executions for chat optimization', async () => {
+    const getWorkflowEvaluationSuite = mock(() =>
+      Promise.resolve({
+        workflowId: 'wf-1',
+        workflowName: 'Daily summary',
+        workflowVersionId: 'v-1',
+        generatedAt: '2026-06-20T12:00:00.000Z',
+        sampleCount: 1,
+        samples: [
+          {
+            id: 'wf-1:exec-1',
+            workflowId: 'wf-1',
+            workflowName: 'Daily summary',
+            workflowVersionId: 'v-1',
+            executionId: 'exec-1',
+            createdAt: '2026-06-20T12:00:00.000Z',
+            input: { mode: 'manual' as const },
+            expected: { status: 'success' as const, passed: true, nodes: [] },
+            score: { pass: true, value: 1, reason: 'Execution completed successfully.' },
+            tags: ['smithers'],
+          },
+        ],
+        jsonl: '{"id":"wf-1:exec-1"}',
+        optimizer: {
+          engine: 'smithers-gepa' as const,
+          target: 'workflow-generation' as const,
+          recommendedCommand:
+            'bunx smithers-orchestrator eval <workflow.tsx> --cases evals/daily-summary.jsonl --suite daily-summary',
+          notes: [],
+        },
+      })
+    );
+
+    const result = await runAction({ getWorkflowEvaluationSuite } as Partial<WorkflowService>, {
+      action: 'eval_samples',
+      workflowId: 'wf-1',
+      limit: 5,
+    });
+
+    expect(getWorkflowEvaluationSuite).toHaveBeenCalledWith('wf-1', 5);
+    expect(result.success).toBe(true);
+    expect(result.values).toEqual({ workflowId: 'wf-1', count: 1 });
+    expect(result.data).toEqual({
+      suite: expect.objectContaining({
+        workflowId: 'wf-1',
+        sampleCount: 1,
+        jsonl: '{"id":"wf-1:exec-1"}',
+      }),
+    });
+  });
 });

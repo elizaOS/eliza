@@ -145,6 +145,12 @@ const workflowRouteList: Route[] = [
     rawPath: true,
     handler: workflowHandler,
   },
+  {
+    type: 'GET',
+    path: '/api/workflow/workflows/:id/evaluation-samples',
+    rawPath: true,
+    handler: workflowHandler,
+  },
   // Cross-cutting `/api/automations` surface — combines workflows, triggers,
   // workbench tasks, and draft conversations into a single list view.
   {

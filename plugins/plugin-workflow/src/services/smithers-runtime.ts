@@ -135,6 +135,24 @@ function toErrorPayload(error: unknown): { message: string; stack?: string } {
   return { message: String(error) };
 }
 
+function buildSmithersWorkerEnv(payload: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, ELIZA_SMITHERS_RUN_PAYLOAD: payload };
+  for (const key of Object.keys(env)) {
+    const normalized = key.toUpperCase();
+    if (
+      normalized === 'NODE_V8_COVERAGE' ||
+      normalized === 'BUN_TEST' ||
+      normalized.startsWith('BUN_TEST_') ||
+      normalized.startsWith('VITEST') ||
+      normalized.startsWith('NYC_') ||
+      normalized.includes('COVERAGE')
+    ) {
+      delete env[key];
+    }
+  }
+  return env;
+}
+
 /**
  * Source for the per-run Smithers subprocess. Each workflow run executes in a
  * fresh Bun process so the global Smithers singleton + SQLite state stay isolated
@@ -384,7 +402,7 @@ export async function runWorkflowWithSmithers({
   const pluginRoot = await resolvePluginRoot();
   const proc = Bun.spawn([process.execPath, '-e', createSmithersScript()], {
     cwd: pluginRoot,
-    env: { ...process.env, ELIZA_SMITHERS_RUN_PAYLOAD: payload },
+    env: buildSmithersWorkerEnv(payload),
     stdin: 'pipe',
     stdout: 'pipe',
     stderr: 'pipe',
@@ -392,6 +410,13 @@ export async function runWorkflowWithSmithers({
   const byName = new Map(plan.enabledNodes.map((node) => [node.name, node]));
   let executionResult: WorkflowExecution | null = null;
   let runMetrics: SmithersRunMetrics | null = null;
+  let stdinEnded = false;
+
+  const endStdin = (): void => {
+    if (stdinEnded) return;
+    stdinEnded = true;
+    proc.stdin.end();
+  };
 
   const writeResponse = (response: SmithersProtocolResponse): void => {
     proc.stdin.write(`${JSON.stringify(response)}\n`);
@@ -414,6 +439,7 @@ export async function runWorkflowWithSmithers({
     if (message.type === 'workflowResult') {
       executionResult = message.execution;
       runMetrics = message.metrics ?? null;
+      endStdin();
       return;
     }
     if (message.type !== 'executeNode') return;
@@ -459,7 +485,7 @@ export async function runWorkflowWithSmithers({
   const stderr = await stderrPromise;
   const exitCode = await exitPromise;
 
-  proc.stdin.end();
+  endStdin();
 
   if (exitCode !== 0) {
     throw new Error(`Smithers workflow execution failed: ${stderr.trim() || `exit ${exitCode}`}`);
