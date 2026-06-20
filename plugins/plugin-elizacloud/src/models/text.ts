@@ -414,30 +414,60 @@ function unwrapJsonSchema(value: unknown): unknown {
   return record.schema ?? record.jsonSchema ?? value;
 }
 
-function normalizeNativeTools(tools: unknown): unknown[] | undefined {
+// Normalize a single tool entry into the OpenAI `{ type, function }` wire
+// shape. Accepts BOTH the already-nested form (`{ type: "function", function:
+// { name, parameters } }`) and core's FLAT `ToolDefinition` envelope
+// (`{ name, type: "function", parameters }`, e.g. createHandleResponseTool /
+// the action planner). Returning the flat form verbatim made the cloud gateway
+// read `tool.function.name` on an undefined `function` → "Cannot read
+// properties of undefined (reading 'name')". Returns undefined for entries with
+// no resolvable name so they are dropped rather than crashing downstream.
+function normalizeNativeToolEntry(
+  rawTool: unknown,
+  fallbackName?: string
+): Record<string, unknown> | undefined {
+  const tool = asRecord(rawTool);
+  const nested = asRecord(tool.function);
+  const name = firstString(nested.name, tool.name, fallbackName);
+  if (!name) {
+    return undefined;
+  }
+  const description = firstString(nested.description, tool.description);
+  const inputSchema = unwrapJsonSchema(
+    nested.parameters ??
+      tool.inputSchema ??
+      tool.parameters ??
+      tool.schema ?? { type: "object" }
+  );
+  return {
+    type: "function",
+    function: {
+      name,
+      ...(description ? { description } : {}),
+      parameters: inputSchema,
+    },
+  };
+}
+
+export function normalizeNativeTools(tools: unknown): unknown[] | undefined {
   if (!tools) {
     return undefined;
   }
 
   if (Array.isArray(tools)) {
-    return tools;
+    const normalized = tools
+      .map((tool) => normalizeNativeToolEntry(tool))
+      .filter((tool): tool is Record<string, unknown> => tool !== undefined);
+    return normalized.length > 0 ? normalized : undefined;
   }
 
   const toolSet = asRecord(tools);
   const normalized: unknown[] = [];
   for (const [name, rawTool] of Object.entries(toolSet)) {
-    const tool = asRecord(rawTool);
-    const inputSchema = unwrapJsonSchema(
-      tool.inputSchema ?? tool.parameters ?? tool.schema ?? { type: "object" }
-    );
-    normalized.push({
-      type: "function",
-      function: {
-        name,
-        ...(typeof tool.description === "string" ? { description: tool.description } : {}),
-        parameters: inputSchema,
-      },
-    });
+    const entry = normalizeNativeToolEntry(rawTool, name);
+    if (entry) {
+      normalized.push(entry);
+    }
   }
 
   return normalized.length > 0 ? normalized : undefined;

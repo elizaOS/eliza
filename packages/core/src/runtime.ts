@@ -175,6 +175,7 @@ import type { AgentContext } from "./types/contexts";
 import type { IMessageService } from "./types/message-service";
 import {
 	afterMemoryPersistedPipelineHookContext,
+	composeStateProvidersPipelineHookContext,
 	modelStreamChunkPipelineHookContext,
 	modelStreamEndPipelineHookContext,
 	PIPELINE_HOOK_DEBUG_LOG_MS,
@@ -1411,6 +1412,30 @@ export class AgentRuntime implements IAgentRuntime {
 					this.stateCache.delete(messageId);
 					this.stateCache.delete(`${messageId}_action_results`);
 				}
+				return;
+			}
+			case "compose_state_providers": {
+				if (!hasHooks) {
+					return;
+				}
+				const c = ctx as Extract<
+					PipelineHookContext,
+					{ phase: "compose_state_providers" }
+				>;
+				const md = c.message.content.metadata;
+				const meta =
+					typeof md === "object" && md !== null
+						? (md as Record<string, unknown>)
+						: null;
+				if (meta?.skipComposeStateProviderHooks === true) {
+					return;
+				}
+				await this.invokePipelineHooks(
+					phase,
+					c,
+					"Compose-state provider pipeline hook",
+					hookTelemetry,
+				);
 				return;
 			}
 			case "pre_should_respond": {
@@ -3521,6 +3546,40 @@ export class AgentRuntime implements IAgentRuntime {
 		if (!filterList && includeList && includeList.length > 0) {
 			for (const name of includeList) {
 				providerNames.add(name);
+			}
+		}
+		// Opt-in provider-selection hook: lets a host app filter, extend, or
+		// reorder the provider set per message intent before any provider runs.
+		// Guarded so the default (no-hook) path stays allocation-free.
+		if (this.hooksForPhase("compose_state_providers").length > 0) {
+			const selection = composeStateProvidersPipelineHookContext({
+				message,
+				providers: { current: [...providerNames] },
+				activeContexts,
+				onlyInclude,
+				includeList,
+			});
+			await this.applyPipelineHooks("compose_state_providers", selection);
+			// Boundary validation: a buggy hook may replace `current` with a
+			// non-array (or throw mid-mutation). Only adopt a well-formed list;
+			// otherwise keep the pre-hook selection rather than crash the turn.
+			const selected = selection.providers.current;
+			if (Array.isArray(selected)) {
+				providerNames.clear();
+				for (const name of selected) {
+					if (typeof name === "string" && name.length > 0) {
+						providerNames.add(name);
+					}
+				}
+			} else {
+				this.logger.warn(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						phase: "compose_state_providers",
+					},
+					"compose_state_providers hook left providers.current non-array; keeping pre-hook selection",
+				);
 			}
 		}
 		const providersToGet: Provider[] = [];

@@ -240,6 +240,7 @@ app.post("/", async (c) => {
     const chatRequest = buildChatRequest(c.req.raw, body, messages);
     const chatResponse = await handleChatCompletionsPOST(chatRequest, {
       skipOrgRateLimit: true,
+      executionCtx: c.executionCtx,
     });
 
     if (!chatResponse.ok) {

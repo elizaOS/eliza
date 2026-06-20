@@ -1,3 +1,4 @@
+import type { AgentContext } from "./contexts";
 import type { Room } from "./environment";
 import type { Memory } from "./memory";
 import {
@@ -71,6 +72,25 @@ export const PIPELINE_HOOK_ERROR_LOG_MS = 2000;
  */
 export type PipelineHookPhase =
 	| "incoming_before_compose"
+	/**
+	 * Inside `composeState`, after the runtime selects the provider NAMES for the
+	 * turn (default selection + context routing, or an explicit include-list) but
+	 * before any provider's `get()` runs. Hooks reassign `providers.current` to
+	 * filter, extend, or reorder the set — letting a host app shape context per
+	 * message intent (e.g. drop heavy wallet/ledger providers on a greeting, add
+	 * `CRYPTO_SWAP` when transaction keywords appear). Opt-in: zero cost and
+	 * identical behavior when no hook is registered. Mutator phase (serial,
+	 * `mutatesPrimary`), so multiple hooks compose in `position` order.
+	 *
+	 * Contract: reassign `providers.current` to a `string[]`; a non-array value is
+	 * ignored and the pre-hook selection is kept (a thrown hook is swallowed and
+	 * continues, like every phase). Keep selection **deterministic for a given
+	 * message** — `composeState` caches by `message.id`. The hook also fires for
+	 * curated/internal calls (`onlyInclude === true`, e.g. response composition);
+	 * those pass an exact list the runtime depends on, so gate on `onlyInclude` and
+	 * no-op unless you mean to override them.
+	 */
+	| "compose_state_providers"
 	| "pre_should_respond"
 	/**
 	 * Overlaps the should-respond phase (heuristics + optional classifier). **All** hooks for this
@@ -154,6 +174,30 @@ export type PipelineHookSchedule = "serial" | "concurrent";
 
 export type PipelineHookContext =
 	| ({ phase: "incoming_before_compose" } & PipelineMessageTurnFields)
+	| {
+			phase: "compose_state_providers";
+			/** The message state is being composed for (read-only). */
+			message: Memory;
+			/**
+			 * The provider NAMES the runtime selected for this turn. Reassign
+			 * `providers.current` to filter, extend, or reorder the set. Only names
+			 * matching a registered provider take effect; final execution order is
+			 * still governed by each provider's `position`. Adding a name pulls in
+			 * that provider even if it is `dynamic`/`private` (explicit selection),
+			 * mirroring `composeState`'s include-list. Same `current`-replacement
+			 * convention as `post_model`'s `result.current`.
+			 */
+			providers: { current: string[] };
+			/** Routing contexts the classifier selected for this turn (read-only). */
+			activeContexts: readonly AgentContext[];
+			/**
+			 * True when the caller demanded an exact include-list (curated/internal
+			 * `composeState` calls). Well-behaved hooks usually no-op when set.
+			 */
+			onlyInclude: boolean;
+			/** The raw include-list passed to `composeState`, if any (read-only). */
+			includeList: readonly string[] | null;
+	  }
 	| ({ phase: "pre_should_respond" } & PipelineMessageTurnFields & {
 				state: State;
 				isAutonomous: boolean;
@@ -258,6 +302,7 @@ export function defaultPipelineHookSchedule(
 
 const PIPELINE_PHASE_MUTATES_PRIMARY_DEFAULT = new Set<PipelineHookPhase>([
 	"incoming_before_compose",
+	"compose_state_providers",
 	"outgoing_before_deliver",
 	"pre_model",
 	"post_model",
@@ -277,6 +322,8 @@ export function pipelineHookMetricRoomId(ctx: PipelineHookContext): UUID {
 		case "parallel_with_should_respond":
 		case "outgoing_before_deliver":
 			return ctx.roomId;
+		case "compose_state_providers":
+			return ctx.message.roomId;
 		case "pre_model":
 		case "post_model":
 			return ctx.roomId ?? DEFAULT_UUID;
@@ -342,6 +389,12 @@ export function incomingPipelineHookContext(
 		message,
 		...correlation,
 	});
+}
+
+export function composeStateProvidersPipelineHookContext(
+	fields: Omit<PipelineHookContextForPhase<"compose_state_providers">, "phase">,
+): PipelineHookContextForPhase<"compose_state_providers"> {
+	return withPipelinePhase("compose_state_providers", fields);
 }
 
 export function preShouldRespondPipelineHookContext(
