@@ -30,6 +30,71 @@ async function runAction(
 }
 
 describe('workflowAction chat operations', () => {
+  test('lists workflows for chat review and selection', async () => {
+    const listWorkflows = mock(() =>
+      Promise.resolve([
+        {
+          id: 'wf-1',
+          versionId: 'v-1',
+          name: 'Daily summary',
+          active: true,
+          nodes: [{ id: 'n1', name: 'Manual Trigger', type: 'manual', parameters: {} }],
+          connections: {},
+          createdAt: '2026-06-20T12:00:00.000Z',
+          updatedAt: '2026-06-20T12:00:00.000Z',
+        },
+      ])
+    );
+
+    const result = await runAction({ listWorkflows } as Partial<WorkflowService>, {
+      action: 'list',
+      limit: 5,
+    });
+
+    expect(listWorkflows).toHaveBeenCalledWith('user-test');
+    expect(result.success).toBe(true);
+    expect(result.values).toEqual({ count: 1 });
+    expect(result.data).toEqual({
+      workflows: [{ id: 'wf-1', name: 'Daily summary', active: true, nodeCount: 1 }],
+      total: 1,
+    });
+  });
+
+  test('gets a workflow definition for chat review', async () => {
+    const getWorkflow = mock(() =>
+      Promise.resolve({
+        id: 'wf-1',
+        versionId: 'v-1',
+        name: 'Daily summary',
+        active: true,
+        nodes: [
+          { id: 'trigger', name: 'Manual Trigger', type: 'manual', parameters: {} },
+          { id: 'set', name: 'Set Summary', type: 'set', parameters: {} },
+        ],
+        connections: {},
+        createdAt: '2026-06-20T12:00:00.000Z',
+        updatedAt: '2026-06-20T12:00:00.000Z',
+      })
+    );
+
+    const result = await runAction({ getWorkflow } as Partial<WorkflowService>, {
+      action: 'get',
+      workflowId: 'wf-1',
+    });
+
+    expect(getWorkflow).toHaveBeenCalledWith('wf-1');
+    expect(result.success).toBe(true);
+    expect(result.values).toEqual({
+      workflowId: 'wf-1',
+      workflowName: 'Daily summary',
+      active: true,
+      nodeCount: 2,
+    });
+    expect(result.data).toEqual({
+      workflow: expect.objectContaining({ id: 'wf-1', name: 'Daily summary' }),
+    });
+  });
+
   test('runs a workflow immediately and returns execution details', async () => {
     const runWorkflow = mock(() =>
       Promise.resolve({
@@ -124,7 +189,12 @@ describe('workflowAction chat operations', () => {
       versionId: 'v-old',
     });
     expect(result.data).toEqual({
-      workflow: { id: 'wf-1', name: 'Restored workflow', active: true },
+      workflow: {
+        id: 'wf-1',
+        name: 'Restored workflow',
+        active: true,
+        nodeCount: 0,
+      },
     });
   });
 });

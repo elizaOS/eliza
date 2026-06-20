@@ -578,10 +578,10 @@ export function WorkflowEditor({
           size="sm"
           onClick={generatorModal.open}
           disabled={generating}
-          className="hidden sm:inline-flex"
         >
           <Sparkles className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-          Generate from prompt
+          <span className="hidden sm:inline">Generate from prompt</span>
+          <span className="sm:hidden">Generate</span>
         </Button>
         <Button
           ref={formatButton.ref}
