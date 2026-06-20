@@ -158,8 +158,8 @@ function bunOnPath(): string | null {
 }
 
 describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
-	it("ELIZA_INFERENCE_ABI_VERSION is 10 (Kokoro-82M TTS folded in-process)", () => {
-		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(10);
+	it("ELIZA_INFERENCE_ABI_VERSION is 11 (in-process end-of-turn scoring)", () => {
+		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(11);
 	});
 
 	it("loadElizaInferenceFfi throws VoiceLifecycleError when FFI is unavailable", () => {

@@ -36,6 +36,16 @@ export const CORS_ALLOW_HEADER_NAMES = [
   // browser CORS preflight rejects requests that send them.
   "Idempotency-Key",
   "X-Affiliate-Code",
+  // The Eliza app's agent-API client (packages/ui/src/api/client-base.ts) ALWAYS
+  // sends these to a shared-runtime agent's REST surface
+  // (/api/v1/eliza/agents/:id/api/...). Without them in the allow-list the
+  // browser CORS preflight rejects every shared-agent request from the Capacitor
+  // WebView. Mirrors the dedicated-agent allow-headers in
+  // packages/agent/src/api/server-helpers-auth.ts (CORS_ALLOWED_HEADERS).
+  "X-ElizaOS-Client-Id",
+  "X-Eliza-Client-Id",
+  "X-ElizaOS-UI-Language",
+  "X-Eliza-UI-Language",
 ] as const;
 
 export const CORS_ALLOW_HEADERS = CORS_ALLOW_HEADER_NAMES.join(", ");
@@ -52,3 +62,17 @@ export const CORS_ALLOW_METHOD_NAMES = [
 export const CORS_ALLOW_METHODS = CORS_ALLOW_METHOD_NAMES.join(", ");
 
 export const CORS_MAX_AGE = "86400";
+
+/**
+ * The Eliza app WebView / local-dev origins that authenticate with credentials
+ * (cookies / native fetch) and therefore get the origin reflected +
+ * `Access-Control-Allow-Credentials: true` (a wildcard `*` is invalid for a
+ * credentialed cross-origin read such as an SSE chat stream). EXACT-ANCHORED —
+ * never a suffix/`endsWith` match. Single source of truth so the Hono-CORS and
+ * proxy-CORS allowlists cannot drift. Mirrors the dedicated-agent allow-list in
+ * packages/agent/src/api/server-helpers-auth.ts.
+ */
+export const APP_LOCAL_ORIGIN_RE =
+  /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|\[0:0:0:0:0:0:0:1\])(:\d+)?$/i;
+export const APP_SCHEME_ORIGIN_RE =
+  /^(capacitor|capacitor-electron|app|tauri|file|electrobun):\/\/.*$/i;

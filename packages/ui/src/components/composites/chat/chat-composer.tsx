@@ -431,6 +431,10 @@ export function ChatComposer({
         size="icon"
         className="h-8 w-8 shrink-0 rounded-sm bg-txt p-0 text-bg shadow-none transition-transform active:scale-95 disabled:opacity-40"
         onClick={onSend}
+        // Keep the textarea focused through the tap: without this, tapping the
+        // send button blurs the composer (the keyboard starts to dismiss) and the
+        // send handler then re-focuses it — the keyboard "flips" closed/open.
+        onMouseDown={(e) => e.preventDefault()}
         disabled={isComposerLocked || !hasDraft}
         title={actionButtonLabel}
         aria-label={actionButtonLabel}
@@ -754,6 +758,9 @@ export function ChatComposer({
                 : "ml-1 h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt transition-colors select-none active:scale-95 disabled:ring-0 disabled:opacity-40"
           }
           onClick={onSend}
+          // Keep the textarea focused through the tap so the keyboard doesn't
+          // flicker closed/open on send (see the inline send button).
+          onMouseDown={(e) => e.preventDefault()}
           disabled={isComposerLocked || !hasDraft}
           title={actionButtonLabel}
           aria-label={actionButtonLabel}

@@ -77,7 +77,7 @@ import { VoiceLifecycleError } from "./lifecycle";
  *     degraded capability: its voice/ASR/VAD/LLM/text surface is unchanged and
  *     Kokoro just probes unsupported on it.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 10 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 11 as const;
 
 /**
  * Pooling strategies for `embed`. Mirror `enum llama_pooling_type` and the
@@ -620,6 +620,27 @@ export interface ElizaInferenceFfi {
 		maxTextBytes?: number;
 	}): string;
 
+	/* ---- End-of-turn scoring (ABI v11) -------------------------- */
+
+	/**
+	 * True when this build wires the fused end-of-turn scorer
+	 * (`eliza_inference_llm_eot_score`). A v10 library returns false (symbol
+	 * absent), so the composite EOT classifier uses the heuristic-only signal.
+	 */
+	eotSupported?(): boolean;
+	/**
+	 * Single causal forward pass over `tokens` (a tokenized partial transcript)
+	 * returning the next-token softmax probability of `targetTokenId` (the
+	 * end-of-turn marker, e.g. `<|im_end|>`), plus the argmax next token and its
+	 * probability. Runs on a dedicated scoring context over the loaded text
+	 * model; KV is cleared per call so scores are independent.
+	 */
+	eotScore?(args: {
+		ctx: ElizaInferenceContextHandle;
+		tokens: Int32Array;
+		targetTokenId: number;
+	}): { targetProb: number; topToken: number; topProb: number };
+
 	/* ---- Kokoro TTS (ABI v10) ----------------------------------- */
 
 	/**
@@ -937,6 +958,20 @@ interface BunFfiSymbols {
 		maxTextBytes: bigint | number,
 		outErr: unknown,
 	) => number;
+	// End-of-turn scoring (ABI v11). Optional — absent on v10 builds (the probe
+	// then reports unsupported and the composite EOT classifier uses the
+	// heuristic-only signal).
+	eliza_inference_llm_eot_supported?: () => number;
+	eliza_inference_llm_eot_score?: (
+		ctx: bigint,
+		tokenIds: unknown,
+		numTokens: bigint | number,
+		targetTokenId: number,
+		outTargetProb: unknown,
+		outTopToken: unknown,
+		outTopProb: unknown,
+		outErr: unknown,
+	) => number;
 	// Kokoro TTS (ABI v10). Optional — absent on v9 builds (the probe then
 	// reports unsupported and the Kokoro FFI runtime refuses).
 	eliza_inference_kokoro_supported?: () => number;
@@ -1241,6 +1276,21 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 		eliza_inference_kokoro_sample_rate: { args: [T.ptr], returns: T.i32 },
 	};
+	// End-of-turn scoring (ABI v11): a single causal forward pass over a
+	// pre-tokenized partial transcript returns P(end-of-turn token). Layered on
+	// top of the v10 surface; the cascade peels it when a v10 library is loaded
+	// (the `eotSupported()` probe then reports false and the composite EOT
+	// classifier falls back to the heuristic-only signal).
+	let eotSymbolsAvailable = true;
+	const eotDefs = {
+		eliza_inference_llm_eot_supported: { args: [], returns: T.i32 },
+		eliza_inference_llm_eot_score: {
+			// ctx, token_ids, num_tokens, target_token_id,
+			// out_target_prob, out_top_token, out_top_prob, out_error
+			args: [T.ptr, T.ptr, T.usize, T.i32, T.ptr, T.ptr, T.ptr, T.ptr],
+			returns: T.i32,
+		},
+	};
 	const coreDefs = {
 		eliza_inference_abi_version: { args: [], returns: T.cstring },
 		eliza_inference_create: {
@@ -1316,6 +1366,30 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// `*Supported()` reports false instead of calling an unbound symbol.
 	const classifierDefs = { ...speakerDefs, ...diarizDefs };
 	const attempts = [
+		{
+			// Full v11 surface (v10 + the in-process end-of-turn scorer).
+			defs: {
+				...coreDefs,
+				...referenceEncodeDefs,
+				...nativeVadDefs,
+				...wakewordDefs,
+				...classifierDefs,
+				...llmStreamDefs,
+				...llmCapabilityDefs,
+				...textModalitiesDefs,
+				...kokoroDefs,
+				...eotDefs,
+			},
+			referenceEncode: true,
+			nativeVad: true,
+			wakeword: true,
+			classifiers: true,
+			llmStream: true,
+			llmCapability: true,
+			textModalities: true,
+			kokoro: true,
+			eot: true,
+		},
 		{
 			// Full v10 surface (v9 + the in-process Kokoro block).
 			defs: {
@@ -1498,6 +1572,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				(attempt as { textModalities?: boolean }).textModalities ?? false;
 			kokoroSymbolsAvailable =
 				(attempt as { kokoro?: boolean }).kokoro ?? false;
+			eotSymbolsAvailable = (attempt as { eot?: boolean }).eot ?? false;
 			break;
 		} catch (err) {
 			lastOpenError = err;
@@ -1541,7 +1616,8 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// tokenizer), accepted only when those are absent too.
 	const abiOk =
 		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
-		(reported === "9" && !kokoroSymbolsAvailable) ||
+		(reported === "10" && !eotSymbolsAvailable) ||
+		(reported === "9" && !kokoroSymbolsAvailable && !eotSymbolsAvailable) ||
 		(reported === "8" &&
 			!kokoroSymbolsAvailable &&
 			!textModalitiesSymbolsAvailable) ||
@@ -2705,6 +2781,56 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			return Buffer.from(outText.buffer, outText.byteOffset, len).toString(
 				"utf8",
 			);
+		},
+
+		/* ---- End-of-turn scoring (ABI v11) ------------------------- */
+
+		eotSupported(): boolean {
+			const probe = loadedLib.symbols.eliza_inference_llm_eot_supported;
+			return (
+				eotSymbolsAvailable && typeof probe === "function" && probe() === 1
+			);
+		},
+
+		eotScore({ ctx, tokens, targetTokenId }) {
+			const score = loadedLib.symbols.eliza_inference_llm_eot_score;
+			if (!eotSymbolsAvailable || typeof score !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_llm_eot_score is not exported by this build (pre-v11)",
+				);
+			}
+			if (tokens.length === 0) {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_llm_eot_score requires a non-empty token sequence",
+				);
+			}
+			const err = makeOutErr();
+			const outTargetProb = new Float32Array(1);
+			const outTopToken = new Int32Array(1);
+			const outTopProb = new Float32Array(1);
+			const rc = score(
+				ctx,
+				ffi.ptr(tokens),
+				BigInt(tokens.length),
+				targetTokenId,
+				ffi.ptr(outTargetProb),
+				ffi.ptr(outTopToken),
+				ffi.ptr(outTopProb),
+				err.ptr,
+			);
+			if (rc !== ELIZA_OK) {
+				const message =
+					takeError(err.buf) ??
+					`[ffi-bindings] eliza_inference_llm_eot_score rc=${rc}`;
+				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+			return {
+				targetProb: outTargetProb[0] ?? 0,
+				topToken: outTopToken[0] ?? -1,
+				topProb: outTopProb[0] ?? 0,
+			};
 		},
 
 		/* ---- Kokoro TTS (ABI v10) ---------------------------------- */

@@ -19,27 +19,33 @@ const CORS_METHODS = "GET, POST, OPTIONS";
 
 const app = new Hono<AppEnv>();
 
-app.options("/", () => handleCorsOptions(CORS_METHODS));
+app.options("/", (c) =>
+  handleCorsOptions(CORS_METHODS, c.req.header("origin")),
+);
 
 app.get("/", async (c) => {
+  const origin = c.req.header("origin");
   const r = await resolveSharedAgent(c);
   if ("error" in r) {
     return applyCorsHeaders(
       Response.json({ success: false, error: r.error }, { status: r.status }),
       CORS_METHODS,
+      origin,
     );
   }
   const conversationId = c.req.param("conversationId") ?? r.agentId;
   const body = await sharedRestMessagesGet(r.agentId, conversationId);
-  return applyCorsHeaders(Response.json(body), CORS_METHODS);
+  return applyCorsHeaders(Response.json(body), CORS_METHODS, origin);
 });
 
 app.post("/", async (c) => {
+  const origin = c.req.header("origin");
   const r = await resolveSharedAgent(c);
   if ("error" in r) {
     return applyCorsHeaders(
       Response.json({ success: false, error: r.error }, { status: r.status }),
       CORS_METHODS,
+      origin,
     );
   }
   const conversationId = c.req.param("conversationId") ?? r.agentId;
@@ -57,6 +63,7 @@ app.post("/", async (c) => {
         { status: 400 },
       ),
       CORS_METHODS,
+      origin,
     );
   }
   const result = await sharedRestMessageSend(
@@ -66,7 +73,7 @@ app.post("/", async (c) => {
     text,
     r.agentName,
   );
-  return applyCorsHeaders(Response.json(result), CORS_METHODS);
+  return applyCorsHeaders(Response.json(result), CORS_METHODS, origin);
 });
 
 export default app;

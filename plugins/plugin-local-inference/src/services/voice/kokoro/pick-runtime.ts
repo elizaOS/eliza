@@ -5,16 +5,14 @@
  *
  *   ffi   (default)  → KokoroFfiRuntime → in-process synthesis through the
  *                       fused `libelizainference` handle (ABI v10
- *                       `eliza_inference_kokoro_*`). This is the only path that
- *                       ships on iOS / Google Play — those platforms forbid the
- *                       app opening a local TCP socket, so the llama-server
- *                       `/v1/audio/speech` route cannot be used there.
- *   fork / server    → KokoroGgufRuntime → POST /v1/audio/speech on the
- *                       running llama-server. Dev/desktop opt-in only; NEVER
- *                       resolved on the mobile path.
+ *                       `eliza_inference_kokoro_*`). This is the SOLE synthesis
+ *                       path on every platform.
  *   mock             → KokoroMockRuntime. Tests only.
  *
- * The "onnx" value is no longer accepted — `onnxruntime-node` was removed.
+ * The legacy `fork` / `server` value (POST `/v1/audio/speech` on a running
+ * llama-server) was removed — Kokoro is folded into the fused lib, so there is
+ * one runtime, not a duplicate HTTP transport. The "onnx" value was removed
+ * earlier with `onnxruntime-node`.
  */
 
 import {
@@ -22,14 +20,12 @@ import {
 	type KokoroFfiRuntimeOptions,
 } from "./kokoro-ffi-runtime";
 import {
-	KokoroGgufRuntime,
-	type KokoroGgufRuntimeOptions,
 	KokoroMockRuntime,
 	type KokoroMockRuntimeOptions,
 	type KokoroRuntime,
 } from "./kokoro-runtime";
 
-export type KokoroBackendId = "ffi" | "fork" | "mock";
+export type KokoroBackendId = "ffi" | "mock";
 
 export interface KokoroBackendInputs {
 	/** Override the env-resolved backend (tests / programmatic selection). */
@@ -40,8 +36,6 @@ export interface KokoroBackendInputs {
 	defaultBackend?: KokoroBackendId;
 	/** Construction options for the in-process FFI path. Used iff backend === "ffi". */
 	ffi?: KokoroFfiRuntimeOptions;
-	/** Construction options for the fork (HTTP) path. Used iff backend === "fork". */
-	fork?: KokoroGgufRuntimeOptions;
 	/** Construction options for the mock path. */
 	mock?: KokoroMockRuntimeOptions;
 	/** Override the process.env source. */
@@ -58,17 +52,24 @@ export interface KokoroBackendDecision {
 /**
  * Resolve the `KOKORO_BACKEND` env variable. Throws on an unrecognized value
  * — silent fallback would hide a misconfiguration (AGENTS.md §3 "no silent
- * fallback"). `server` is accepted as an alias for the `fork` (HTTP) path.
+ * fallback"). The legacy `fork` / `server` (HTTP) value is rejected with a
+ * pointer to the in-process path.
  */
 export function readKokoroBackendFromEnv(
 	env: NodeJS.ProcessEnv = process.env,
 ): KokoroBackendId | undefined {
 	const raw = env.KOKORO_BACKEND?.trim().toLowerCase();
 	if (!raw) return undefined;
-	if (raw === "ffi" || raw === "fork" || raw === "mock") return raw;
-	if (raw === "server") return "fork";
+	if (raw === "ffi" || raw === "mock") return raw;
+	if (raw === "fork" || raw === "server") {
+		throw new Error(
+			"[voice/kokoro] KOKORO_BACKEND='fork'/'server' (llama-server HTTP) was " +
+				"removed — Kokoro runs in-process through the fused libelizainference. " +
+				"Use 'ffi' (default).",
+		);
+	}
 	throw new Error(
-		`[voice/kokoro] KOKORO_BACKEND must be one of 'ffi', 'fork' ('server' alias), 'mock' (got '${raw}')`,
+		`[voice/kokoro] KOKORO_BACKEND must be one of 'ffi', 'mock' (got '${raw}')`,
 	);
 }
 
@@ -110,27 +111,6 @@ export function pickKokoroRuntimeBackend(
 						? "model layout default → ffi (in-process fused libelizainference)"
 						: "default → ffi (in-process fused libelizainference)",
 			runtime: new KokoroFfiRuntime(inputs.ffi),
-		};
-	}
-
-	if (backend === "fork") {
-		if (!inputs.fork) {
-			throw new Error(
-				"[voice/kokoro] KOKORO_BACKEND=fork requires `inputs.fork` " +
-					"(serverUrl + modelId + sampleRate). Configure llama-server " +
-					"with --kokoro-model and pass its base URL.",
-			);
-		}
-		return {
-			backend,
-			reason: inputs.backend
-				? "explicit backend=fork (llama-server /v1/audio/speech)"
-				: fromEnv
-					? `KOKORO_BACKEND=${fromEnv} → fork (llama-server /v1/audio/speech)`
-					: fromDefault && inputs.defaultBackend === "fork"
-						? "model layout default → fork (llama-server /v1/audio/speech)"
-						: "default → fork (llama-server /v1/audio/speech)",
-			runtime: new KokoroGgufRuntime(inputs.fork),
 		};
 	}
 

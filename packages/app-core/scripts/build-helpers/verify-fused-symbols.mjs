@@ -307,6 +307,15 @@ export const REQUIRED_ELIZA_INFERENCE_SYMBOLS = Object.freeze([
   "eliza_inference_kokoro_load",
   "eliza_inference_kokoro_synthesize",
   "eliza_inference_kokoro_sample_rate",
+  // ABI v11 — end-of-turn scoring folded in-process. A single causal forward
+  // pass over the tokenized partial transcript reads P(end-of-turn token),
+  // replacing the retired node-llama-cpp controlledEvaluate() the EOT
+  // classifiers needed. The model-based turn detector now runs through the
+  // fused lib instead of a JS-only heuristic, so a fused build missing these is
+  // a hard error (the heuristic is a degraded last resort, not a parallel
+  // runtime). `_supported` always returns 1 for a v11 build.
+  "eliza_inference_llm_eot_supported",
+  "eliza_inference_llm_eot_score",
 ]);
 
 function hasExportedSymbol(symbols, name) {

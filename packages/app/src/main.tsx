@@ -36,9 +36,9 @@ import {
 } from "@elizaos/ui/bridge";
 import { initializeCapacitorBridge } from "@elizaos/ui/bridge/capacitor-bridge";
 import { initializeStorageBridge } from "@elizaos/ui/bridge/storage-bridge";
-import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
 import { CharacterEditor } from "@elizaos/ui/components/character/CharacterEditor";
+import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import type {
   BrandingConfig,
   CodingAgentTasksPanelProps,
@@ -84,7 +84,6 @@ import {
   isAppWindowRoute,
 } from "@elizaos/ui/navigation/index";
 import type { ShareTargetPayload } from "@elizaos/ui/platform";
-import { resolveAndroidRuntimeMode } from "@elizaos/ui/platform";
 import {
   applyLaunchConnection,
   applyLaunchConnectionFromUrl,
@@ -176,8 +175,7 @@ function importAppCore() {
 function importCompanionAppRegistration() {
   return cachedDynamicImport(
     "@elizaos/plugin-companion/components/companion/companion-app",
-    () =>
-      import("@elizaos/plugin-companion/components/companion/companion-app"),
+    () => import("@elizaos/plugin-companion/components/companion/companion-app"),
   );
 }
 
@@ -277,17 +275,16 @@ const InferenceCloudAlertButton = lazyNamedComponent<{
   notice: CompanionInferenceNotice;
   onClick: () => void;
   onPointerDown?: (...args: unknown[]) => unknown;
-}>(
-  async () =>
-    (
-      await cachedDynamicImport(
-        "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton",
-        () =>
-          import(
-            "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton"
-          ),
-      )
-    ).InferenceCloudAlertButton,
+}>(async () =>
+  (
+    await cachedDynamicImport(
+      "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton",
+      () =>
+        import(
+          "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton"
+        ),
+    )
+  ).InferenceCloudAlertButton,
 );
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
@@ -381,21 +378,11 @@ const APP_BRANDING: Partial<BrandingConfig> = {
   // backend should control first-run capabilities instead — UNLESS the desktop
   // shell explicitly opted into cloud-only mode (desktopRuntimeMode === "cloud"),
   // which forces cloud-only regardless of the injected loopback proxy base.
-  //
-  // The `android-cloud` Play-Store build is also cloud-only: it ships no
-  // on-device agent (VITE_ELIZA_ANDROID_RUNTIME_MODE === "cloud"), so first-run
-  // must skip the runtime picker rather than offer a "This device" option that
-  // would provision an agent that physically isn't in the APK. The default
-  // sideload/AOSP builds resolve to "local" here and keep the full 3-way picker.
   cloudOnly: shouldUseCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
     injectedApiBase:
       typeof window === "undefined" ? undefined : getInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
-    nativeRuntimeMode:
-      Capacitor.getPlatform() === "android"
-        ? resolveAndroidRuntimeMode(import.meta.env)
-        : undefined,
     desktopRuntimeMode: getInjectedDesktopRuntimeMode(),
   }),
 };
@@ -892,18 +879,9 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     requested = false;
   }
   try {
-    // The QA harness seeds the request flag into native Preferences
-    // (UserDefaults). On a cold launch the Capacitor Preferences bridge may not
-    // be registered yet when this runs, so a single bounded read can time out
-    // and miss a flag that is genuinely set — which silently skips the entire
-    // smoke (the symptom: harness reports "Last result: <none>"). Retry the
-    // native read a few times so the deliberate request is reliably detected.
-    for (let attempt = 0; !requested && attempt < 10; attempt += 1) {
+    if (!requested) {
       requested =
         (await boundedPreferenceGet(IOS_FULL_BUN_SMOKE_REQUEST_KEY)) === "1";
-      if (!requested) {
-        await new Promise((resolve) => window.setTimeout(resolve, 500));
-      }
     }
   } catch {
     // Keep the localStorage result from the storage bridge hydration.
@@ -2521,6 +2499,23 @@ async function main(): Promise<void> {
 
   injectWaifuChatAccessToken();
 
+  // The iOS full-Bun backend smoke is a headless QA gate that must run BEFORE
+  // any window-shell / popout routing. First-run renders onboarding through a
+  // non-"main" window-shell route, whose branch returns before the main boot
+  // path — so the smoke (previously only wired into the main path) was
+  // structurally unreachable whenever onboarding was showing, and its request
+  // flag silently no-op'd. Run it (and the iOS local-agent bridges it needs)
+  // up front; when requested it takes over the WebView and returns.
+  if (isIOS) {
+    await initializeStorageBridge();
+    initializeCapacitorBridge();
+    installIosLocalAgentNativeRequestBridge();
+    installIosLocalAgentFetchBridge();
+    if (await runIosFullBunSmokeIfRequested()) {
+      return;
+    }
+  }
+
   if (isPopoutWindow()) {
     injectPopoutApiBase();
     mountReactApp();
@@ -2544,9 +2539,6 @@ async function main(): Promise<void> {
     initializeCapacitorBridge();
     installIosLocalAgentNativeRequestBridge();
     installIosLocalAgentFetchBridge();
-    if (await runIosFullBunSmokeIfRequested()) {
-      return;
-    }
   } else if (isAndroid) {
     initializeCapacitorBridge();
     installAndroidNativeAgentFetchBridge();

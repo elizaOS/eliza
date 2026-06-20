@@ -8,9 +8,15 @@ import type {
   ResearchResult,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { getResearchModel } from "../utils/config";
+import { getResearchModel, resolveCloudTimeoutMs } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { createCloudApiClient } from "../utils/sdk-client";
+
+// Deep research is a long-running, TURN-BLOCKING call; without a timeout a
+// stalled gateway hangs the turn forever (cloud-sdk applies no default). The
+// default is deliberately generous (10 min) so a legitimately slow run isn't
+// aborted; `ELIZAOS_CLOUD_RESEARCH_TIMEOUT_MS=0` opts out.
+const DEFAULT_RESEARCH_TIMEOUT_MS = 600_000;
 
 interface ResponsesAPIOutput {
   id: string;
@@ -221,6 +227,10 @@ export async function handleResearch(
 
   const response = await createCloudApiClient(runtime).requestRaw("POST", "/responses", {
     json: requestBody,
+    timeoutMs: resolveCloudTimeoutMs(
+      "ELIZAOS_CLOUD_RESEARCH_TIMEOUT_MS",
+      DEFAULT_RESEARCH_TIMEOUT_MS
+    ),
   });
 
   if (!response.ok) {

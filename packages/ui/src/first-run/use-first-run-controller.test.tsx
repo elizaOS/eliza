@@ -214,7 +214,22 @@ describe("useFirstRunController cloud first-run", () => {
     mocks.cloudAuthenticated = false;
     mocks.addAgentProfile.mockClear();
     mocks.completeFirstRun.mockClear();
-    mocks.createPersistedActiveServer.mockClear();
+    // mockReset (not mockClear): individual tests install custom
+    // implementations (e.g. a never-resolving provisioning promise, or an
+    // agent-x record). mockClear keeps those implementations, so they leak into
+    // the next test — a never-resolving selectOrProvisionCloudAgent then hangs
+    // the following test for the full 5s timeout and cascades. Reset + restore
+    // the hoisted default so every test starts clean.
+    mocks.createPersistedActiveServer.mockReset();
+    mocks.createPersistedActiveServer.mockImplementation(
+      (args: ActiveServerArgs): ActiveServerRecord => ({
+        id: "cloud:agent-1",
+        kind: "cloud",
+        label: "Demo Agent",
+        ...(args.apiBase ? { apiBase: args.apiBase } : {}),
+        ...(args.accessToken ? { accessToken: args.accessToken } : {}),
+      }),
+    );
     mocks.getCloudStatus.mockReset();
     mocks.getCloudStatus.mockImplementation(async () => ({
       connected: mocks.cloudAuthenticated,
@@ -237,7 +252,14 @@ describe("useFirstRunController cloud first-run", () => {
     mocks.loadPersistedActiveServer.mockReturnValue(null);
     mocks.persistMobileRuntimeModeForServerTarget.mockClear();
     mocks.preOpenWindow.mockClear();
-    mocks.selectOrProvisionCloudAgent.mockClear();
+    mocks.selectOrProvisionCloudAgent.mockReset();
+    mocks.selectOrProvisionCloudAgent.mockImplementation(async () => ({
+      agentId: "agent-1",
+      agentName: "Demo Agent",
+      apiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1",
+      bridgeUrl: null,
+      created: true,
+    }));
     mocks.startCloudAgentHandoff.mockClear();
     mocks.savePersistedActiveServer.mockClear();
     mocks.setBaseUrl.mockClear();

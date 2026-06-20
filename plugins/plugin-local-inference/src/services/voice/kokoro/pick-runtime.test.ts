@@ -53,32 +53,15 @@ describe("pickKokoroRuntimeBackend", () => {
 		expect(decision.reason).toMatch(/KOKORO_BACKEND=ffi/);
 	});
 
-	it("uses the HTTP fork only when KOKORO_BACKEND=fork is set via env", () => {
-		const decision = pickKokoroRuntimeBackend({
-			env: { KOKORO_BACKEND: "fork" },
-			fork: {
-				serverUrl: "http://127.0.0.1:18789",
-				modelId: "kokoro-v1.0",
-				sampleRate: 24_000,
-			},
-		});
-
-		expect(decision.backend).toBe("fork");
-		expect(decision.runtime.id).toBe("gguf");
-		expect(decision.reason).toMatch(/KOKORO_BACKEND=fork/);
-	});
-
-	it("accepts KOKORO_BACKEND=server as a fork alias", () => {
-		const decision = pickKokoroRuntimeBackend({
-			env: { KOKORO_BACKEND: "server" },
-			fork: {
-				serverUrl: "http://127.0.0.1:18789",
-				modelId: "kokoro-v1.0",
-				sampleRate: 24_000,
-			},
-		});
-
-		expect(decision.backend).toBe("fork");
+	it("rejects the removed HTTP fork/server backend with an actionable error", () => {
+		for (const value of ["fork", "server"]) {
+			expect(() =>
+				pickKokoroRuntimeBackend({
+					env: { KOKORO_BACKEND: value },
+					ffi: { layout: LAYOUT, ffi: fakeKokoroFfi(), ctx: 1n },
+				}),
+			).toThrow(/llama-server HTTP\) was removed/);
+		}
 	});
 
 	it("uses mock when KOKORO_BACKEND=mock is set via env", () => {

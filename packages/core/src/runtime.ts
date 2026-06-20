@@ -11,6 +11,12 @@ import {
 	type CapabilityConfig,
 	createBasicCapabilitiesPlugin,
 } from "./features/basic-capabilities/index";
+import {
+	INFERENCE_MARKS,
+	markInference,
+	recordInferenceSpan,
+	setInferenceModelProvider,
+} from "./inference-timing";
 import { createLogger } from "./logger";
 import { simpleHash } from "./optimization/ab-analysis";
 import { getOptimizationRootDir } from "./optimization-root-dir";
@@ -169,6 +175,7 @@ import type { AgentContext } from "./types/contexts";
 import type { IMessageService } from "./types/message-service";
 import {
 	afterMemoryPersistedPipelineHookContext,
+	composeStateProvidersPipelineHookContext,
 	modelStreamChunkPipelineHookContext,
 	modelStreamEndPipelineHookContext,
 	PIPELINE_HOOK_DEBUG_LOG_MS,
@@ -1405,6 +1412,30 @@ export class AgentRuntime implements IAgentRuntime {
 					this.stateCache.delete(messageId);
 					this.stateCache.delete(`${messageId}_action_results`);
 				}
+				return;
+			}
+			case "compose_state_providers": {
+				if (!hasHooks) {
+					return;
+				}
+				const c = ctx as Extract<
+					PipelineHookContext,
+					{ phase: "compose_state_providers" }
+				>;
+				const md = c.message.content.metadata;
+				const meta =
+					typeof md === "object" && md !== null
+						? (md as Record<string, unknown>)
+						: null;
+				if (meta?.skipComposeStateProviderHooks === true) {
+					return;
+				}
+				await this.invokePipelineHooks(
+					phase,
+					c,
+					"Compose-state provider pipeline hook",
+					hookTelemetry,
+				);
 				return;
 			}
 			case "pre_should_respond": {
@@ -3517,6 +3548,40 @@ export class AgentRuntime implements IAgentRuntime {
 				providerNames.add(name);
 			}
 		}
+		// Opt-in provider-selection hook: lets a host app filter, extend, or
+		// reorder the provider set per message intent before any provider runs.
+		// Guarded so the default (no-hook) path stays allocation-free.
+		if (this.hooksForPhase("compose_state_providers").length > 0) {
+			const selection = composeStateProvidersPipelineHookContext({
+				message,
+				providers: { current: [...providerNames] },
+				activeContexts,
+				onlyInclude,
+				includeList,
+			});
+			await this.applyPipelineHooks("compose_state_providers", selection);
+			// Boundary validation: a buggy hook may replace `current` with a
+			// non-array (or throw mid-mutation). Only adopt a well-formed list;
+			// otherwise keep the pre-hook selection rather than crash the turn.
+			const selected = selection.providers.current;
+			if (Array.isArray(selected)) {
+				providerNames.clear();
+				for (const name of selected) {
+					if (typeof name === "string" && name.length > 0) {
+						providerNames.add(name);
+					}
+				}
+			} else {
+				this.logger.warn(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						phase: "compose_state_providers",
+					},
+					"compose_state_providers hook left providers.current non-array; keeping pre-hook selection",
+				);
+			}
+		}
 		const providersToGet: Provider[] = [];
 		for (const provider of this.providers) {
 			if (providerNames.has(provider.name)) {
@@ -3532,6 +3597,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const trajLogger = (await this._ensureServiceStarted("trajectories")) as
 			| (Service & TrajectoryProviderAccessLogger)
 			| null;
+		const composeStartedAt = Date.now();
 		const providerData = await Promise.all(
 			providersToGet.map(async (provider) => {
 				const start = Date.now();
@@ -3560,6 +3626,10 @@ export class AgentRuntime implements IAgentRuntime {
 						}),
 					]);
 					const duration = Date.now() - start;
+
+					if (!timedOut) {
+						recordInferenceSpan(`provider:${provider.name}`, duration);
+					}
 
 					// Only log slow successful providers. Timed-out providers already logged above.
 					if (!timedOut && duration > 100) {
@@ -3600,6 +3670,9 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 			}),
 		);
+		recordInferenceSpan("composeState", Date.now() - composeStartedAt, {
+			providers: providersToGet.length,
+		});
 
 		if (trajectoryStepId && trajLogger) {
 			const userText =
@@ -4312,6 +4385,19 @@ export class AgentRuntime implements IAgentRuntime {
 		provider: string | undefined,
 		response: unknown,
 	): void {
+		// Per-turn latency breakdown: attribute this model round-trip to the
+		// active inference timer (no-op when none is active). `elapsedTime` is the
+		// already-measured handler+stream duration, so every return path that
+		// funnels through here is covered exactly once.
+		const resolvedProvider =
+			provider || this.models.get(modelKey)?.[0]?.provider || "unknown";
+		recordInferenceSpan(`model:${modelType}`, elapsedTime, {
+			modelKey,
+			provider: resolvedProvider,
+		});
+		if (modelType !== ModelType.TEXT_EMBEDDING) {
+			setInferenceModelProvider(resolvedProvider);
+		}
 		// Log to database
 		const responseValue =
 			Array.isArray(response) && response.every((x) => typeof x === "number")
@@ -4663,6 +4749,9 @@ export class AgentRuntime implements IAgentRuntime {
 		let streamedText = "";
 		const deliverModelStreamChunk = async (chunk: string): Promise<void> => {
 			if (abortSignal?.aborted) return;
+			if (streamedText === "" && chunk.length > 0) {
+				markInference(INFERENCE_MARKS.firstToken);
+			}
 			streamedText += chunk;
 			const trajStream = getTrajectoryContext();
 			await this.invokePipelineHooks(
