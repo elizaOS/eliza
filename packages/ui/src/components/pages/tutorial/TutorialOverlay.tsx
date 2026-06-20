@@ -108,6 +108,18 @@ export function TutorialOverlay(): React.ReactElement | null {
     return () => setNavLock(null);
   }, [active, step]);
 
+  // When the tour ends — skip, complete, or unmount — restore the chat to a
+  // normal interactive state. A frame may have collapsed it to the pill, where
+  // the composer is `inert` (not clickable); without this reset, cancelling the
+  // tour on the "open chat" frame leaves the input dead until the pill is
+  // tapped. Fires on the active→inactive transition via the effect cleanup.
+  React.useEffect(() => {
+    if (!active) return undefined;
+    return () => {
+      dispatchTutorialChatControl({ action: "reset" });
+    };
+  }, [active]);
+
   // The tour never auto-launches. It only starts on an explicit user action —
   // the home "Tutorial" tile or the launcher view (both call startTutorial()).
 

@@ -1527,6 +1527,17 @@ export function ContinuousChatOverlay({
           setDraft(detail.text ?? "");
           requestAnimationFrame(() => inputRef.current?.focus());
           break;
+        case "reset":
+          // Tour ended (cancel / complete): restore a normal interactive chat.
+          // A frame may have collapsed it to the pill, where the composer is
+          // `inert` — un-pill AND clear inert imperatively (React clears it only
+          // on the next render, too late to matter for the stranded input) so
+          // the user can click/type again, and drop the tour's prefilled draft.
+          setPilled(false);
+          contentRef.current?.removeAttribute("inert");
+          setDraft("");
+          goToDetent("collapsed");
+          break;
       }
     };
     window.addEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
