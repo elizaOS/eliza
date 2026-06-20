@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "twilio.call.outbound-with-confirmation",
   title: "Agent places outbound Twilio call after confirmation",
   domain: "gateway",

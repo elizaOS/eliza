@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "escalation.neutral.list.017",
   title: "escalation :: less_chatty :: neutral :: list :: 3-turn (17)",
   domain: "personality",

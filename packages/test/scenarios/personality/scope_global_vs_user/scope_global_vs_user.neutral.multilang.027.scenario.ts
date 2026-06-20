@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "scope_global_vs_user.neutral.multilang.027",
   title:
     "scope :: admin_global_terse_user_verbose :: neutral :: multilang :: 4-turn (27)",

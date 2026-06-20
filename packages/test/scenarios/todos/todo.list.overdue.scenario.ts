@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "todo.list.overdue",
   title: "List overdue todos",
   domain: "todos",

@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.events.itinerary-brief-with-links",
   title: "Build an event-day itinerary brief with links and times",
   domain: "executive-assistant",

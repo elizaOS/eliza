@@ -57,6 +57,7 @@ function checkAgentSurfacesFalsePositive(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.spam-quarantine-review",
   title:
     "Spam quarantine review surfaces likely false-positive among real spam",

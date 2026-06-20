@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "travel.partial-day-trip-no-hotel",
   title: "Same-day trip books flight only, does not auto-include a hotel",
   domain: "lifeops.travel",

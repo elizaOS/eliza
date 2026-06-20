@@ -36,6 +36,7 @@ function checkCommuteBufferHandled(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "travel-buffer.commute-time-from-google-maps",
   title:
     "Cross-town offsite — buffer reflects real commute estimate or surface limit",

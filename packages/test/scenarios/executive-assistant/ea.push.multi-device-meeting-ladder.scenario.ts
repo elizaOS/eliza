@@ -8,6 +8,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.push.multi-device-meeting-ladder",
   title: "Send a multi-device reminder ladder before important meetings",
   domain: "executive-assistant",

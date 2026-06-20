@@ -39,6 +39,7 @@ function checkBackoffSurfaced(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.rate-limit-backoff",
   title: "Gmail 429 surfaces rate-limit / backoff and does not claim success",
   domain: "lifeops.gmail",

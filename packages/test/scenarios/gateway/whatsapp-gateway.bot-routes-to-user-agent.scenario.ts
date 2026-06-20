@@ -5,6 +5,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "whatsapp-gateway.bot-routes-to-user-agent",
   title: "WhatsApp gateway bot routes to the active assistant",
   domain: "gateway",

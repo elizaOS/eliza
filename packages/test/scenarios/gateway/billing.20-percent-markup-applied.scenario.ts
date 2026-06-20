@@ -46,6 +46,7 @@ function assertTwilioBillingResult(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "billing.20-percent-markup-applied",
   title: "Gateway SMS usage is billed with 20% markup",
   domain: "gateway",

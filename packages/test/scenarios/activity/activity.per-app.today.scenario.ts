@@ -6,6 +6,7 @@ import {
 import { seedScreenTimeSessions } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "activity.per-app.today",
   title: "Per-app usage report for today",
   domain: "activity",

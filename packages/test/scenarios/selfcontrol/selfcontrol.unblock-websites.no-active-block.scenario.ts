@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "selfcontrol.unblock-websites.no-active-block",
   title: "Unblock request is a clean no-op when nothing is blocked",
   domain: "selfcontrol",

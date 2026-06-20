@@ -64,6 +64,7 @@ async function seedHealthGoalProgress(ctx: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "goal.health.track-progress",
   title: "Health goal review returns a structured progress summary",
   domain: "goals",

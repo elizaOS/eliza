@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hold_style.frank.allcaps.033",
   title: "hold_style :: terse_one_sentence :: frank :: allcaps :: 2-turn (33)",
   domain: "personality",

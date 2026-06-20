@@ -46,6 +46,7 @@ async function seedRelationshipProgress(ctx: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "goal.relationship.track-progress",
   title: "Relationship progress returns a structured days-since result",
   domain: "goals",

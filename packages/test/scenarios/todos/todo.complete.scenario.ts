@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "todo.complete",
   title: "Mark a seeded todo as done",
   domain: "todos",

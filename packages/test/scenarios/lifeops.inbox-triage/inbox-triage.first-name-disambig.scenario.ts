@@ -64,6 +64,7 @@ function checkAgentDisambiguated(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.first-name-disambig",
   title: "Ambiguous first name (two Jills) → agent clarifies, does not send",
   domain: "lifeops.inbox-triage",

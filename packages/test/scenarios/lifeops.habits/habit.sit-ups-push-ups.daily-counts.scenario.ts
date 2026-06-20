@@ -6,6 +6,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "habit.sit-ups-push-ups.daily-counts",
   title: "Daily push-ups and sit-ups habit",
   domain: "habits",

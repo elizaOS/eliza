@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.meeting-reminder-T-1h",
   title: "Schedule a T-1h meeting reminder on desktop + mobile",
   domain: "lifeops.push",

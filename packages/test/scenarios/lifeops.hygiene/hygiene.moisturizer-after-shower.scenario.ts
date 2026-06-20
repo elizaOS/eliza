@@ -7,6 +7,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.moisturizer-after-shower",
   title: "Moisturizer after every shower",
   domain: "lifeops.hygiene",

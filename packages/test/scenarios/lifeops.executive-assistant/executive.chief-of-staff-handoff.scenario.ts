@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.chief-of-staff-handoff",
   title: "Chief-of-staff handoff compresses priorities, owners, and risks",
   domain: "lifeops.executive-assistant",

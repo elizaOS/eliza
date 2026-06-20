@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "note_trait_unrelated.polite.code.011",
   title: "note_trait :: no_buddy_friend :: polite :: code :: 5-turn (11)",
   domain: "personality",

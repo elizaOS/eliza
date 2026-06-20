@@ -34,6 +34,7 @@ function assertApiBody(options: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "reminder.cross-platform.fires-on-mac-and-phone",
   title: "Reminder ladder fires across all three rungs before acknowledgement",
   domain: "reminders",

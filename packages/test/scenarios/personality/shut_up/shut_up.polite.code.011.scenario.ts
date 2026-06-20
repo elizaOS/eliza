@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "shut_up.polite.code.011",
   title: "shut_up :: polite :: code :: 5-turn (11)",
   domain: "personality",

@@ -32,6 +32,7 @@ function asRuntime(value: unknown): AgentRuntime {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "convo.greeting-dynamic",
   title:
     "Convo framework: greeting triggers non-empty response (scripted port)",

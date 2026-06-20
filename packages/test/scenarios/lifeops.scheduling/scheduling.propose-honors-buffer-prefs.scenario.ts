@@ -31,6 +31,7 @@ function checkBufferPresent(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "scheduling.propose-honors-buffer-prefs",
   title: "Proposals respect the user's 15-min between-meeting buffer",
   domain: "lifeops.scheduling",

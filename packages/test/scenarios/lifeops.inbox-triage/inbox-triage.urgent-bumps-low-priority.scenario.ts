@@ -67,6 +67,7 @@ function checkUrgentBeforeLow(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.urgent-bumps-low-priority",
   title:
     "Urgent triage item surfaces before low-priority regardless of arrival order",

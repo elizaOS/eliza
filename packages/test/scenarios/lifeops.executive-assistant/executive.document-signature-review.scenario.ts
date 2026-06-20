@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.document-signature-review",
   title: "Document review finds signatures, redlines, and approvals",
   domain: "lifeops.executive-assistant",

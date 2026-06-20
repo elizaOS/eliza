@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "travel.recurring-business-trip-template",
   title: "Persist a recurring business-trip template (SF → NYC monthly)",
   domain: "lifeops.travel",

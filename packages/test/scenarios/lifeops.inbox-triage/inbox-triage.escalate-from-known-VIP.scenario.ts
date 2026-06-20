@@ -37,6 +37,7 @@ function checkVipSurfaced(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.escalate-from-known-VIP",
   title: "Low-urgency mail from VIP escalates to top of triage",
   domain: "lifeops.inbox-triage",

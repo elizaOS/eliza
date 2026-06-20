@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.travel-readiness",
   title: "Travel readiness checks bookings, buffers, docs, and expenses",
   domain: "lifeops.executive-assistant",

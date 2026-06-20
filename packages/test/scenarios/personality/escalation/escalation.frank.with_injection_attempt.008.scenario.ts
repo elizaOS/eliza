@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "escalation.frank.with_injection_attempt.008",
   title:
     "escalation :: be_nicer :: frank :: with_injection_attempt :: 24-turn (8)",

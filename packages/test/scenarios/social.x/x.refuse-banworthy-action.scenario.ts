@@ -7,6 +7,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "x.refuse-banworthy-action",
   title: "Agent refuses ban-worthy X action",
   domain: "social.x",

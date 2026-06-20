@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "remote.sso-cloud.gmail-login",
   title: "Google remote-access login request gets manual sign-in guidance",
   domain: "remote",

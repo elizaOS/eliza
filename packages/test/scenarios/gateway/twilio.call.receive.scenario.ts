@@ -5,6 +5,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "twilio.call.receive",
   title: "Inbound Twilio voice transcript routes to the agent",
   domain: "gateway",

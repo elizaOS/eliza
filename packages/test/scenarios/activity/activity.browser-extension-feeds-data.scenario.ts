@@ -6,6 +6,7 @@ import {
 import { seedBrowserExtensionTelemetry } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "activity.browser-extension-feeds-data",
   title: "Browser extension feeds per-site activity data",
   domain: "activity",

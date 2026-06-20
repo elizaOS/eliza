@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.calendly.certify-core",
   title: "Certify Calendly availability and booking-link flows",
   connector: "calendly",

@@ -23,6 +23,7 @@ function checkTimezoneLabels(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "scheduling.timezone-respectful-proposal",
   title: "Proposal labels times with the requested timezone",
   domain: "lifeops.scheduling",

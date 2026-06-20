@@ -7,6 +7,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "cross.ambiguity.agent-asks-clarifying-question",
   title: "Ambiguous contact name triggers a clarifying question",
   domain: "cross-cutting",

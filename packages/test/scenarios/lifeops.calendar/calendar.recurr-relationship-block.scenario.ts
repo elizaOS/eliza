@@ -42,6 +42,7 @@ function checkRecurringAndRelationshipReferenced(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.recurr-relationship-block",
   title: "Daily 1hr 'time with Jill' block creates a recurring event",
   domain: "lifeops.calendar",

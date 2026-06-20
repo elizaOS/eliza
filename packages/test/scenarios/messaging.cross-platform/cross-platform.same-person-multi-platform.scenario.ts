@@ -14,6 +14,7 @@ import {
 const PERSON_NAME = "Priya Rao";
 
 export default scenario({
+  lane: "live-only",
   id: "cross-platform.same-person-multi-platform",
   title: "Recognize one person across Gmail, Signal, Telegram, and WhatsApp",
   domain: "messaging.cross-platform",

@@ -8,6 +8,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { seedLifeOpsDefinition } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "habits.cross-platform-habit-via-imessage",
   title: "Habit completion ack from iMessage updates the same definition",
   domain: "lifeops.habits",

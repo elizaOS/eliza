@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "note_trait_unrelated.neutral.multilang.027",
   title: "note_trait :: metric_units :: neutral :: multilang :: 3-turn (27)",
   domain: "personality",

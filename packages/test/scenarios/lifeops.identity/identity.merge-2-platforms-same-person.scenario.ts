@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "identity.merge-2-platforms-same-person",
   title: "Merge gmail + telegram identities for the same person",
   domain: "lifeops.identity",

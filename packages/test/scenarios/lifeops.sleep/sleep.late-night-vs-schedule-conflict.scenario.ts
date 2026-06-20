@@ -20,6 +20,7 @@ const LATE_BEDTIME_UTC = "2025-11-04T08:00:00.000Z"; // 01:00 Pacific
 const SHORT_SLEEP_SEC = 4 * 3600;
 
 export default scenario({
+  lane: "live-only",
   id: "sleep.late-night-vs-schedule-conflict",
   title: "Late-night sleep + early meeting — agent surfaces conflict",
   domain: "lifeops.sleep",

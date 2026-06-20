@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.batch-low-urgency-into-digest",
   title: "Batch low-urgency pushes into a single end-of-day digest",
   domain: "lifeops.push",

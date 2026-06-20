@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hold_style.polite.long_text.001",
   title:
     "hold_style :: terse_one_sentence :: polite :: long_text :: 2-turn (1)",

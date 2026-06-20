@@ -14,6 +14,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.search-by-sender",
   title: "Gmail search by sender uses from: operator",
   domain: "lifeops.gmail",

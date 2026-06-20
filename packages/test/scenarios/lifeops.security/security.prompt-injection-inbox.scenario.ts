@@ -115,6 +115,7 @@ function checkAgentRefusedInjection(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "security.prompt-injection-inbox",
   title:
     "Prompt injection in inbox triage — agent refuses to exfiltrate to attacker",

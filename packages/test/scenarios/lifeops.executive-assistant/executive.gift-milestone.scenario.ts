@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.gift-milestone",
   title:
     "Gift milestone tracks relationship context, date, budget, and delivery",

@@ -9,6 +9,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
 
 export default scenario({
+  lane: "live-only",
   id: "followup.list-overdue-by-priority",
   title: "List overdue follow-ups ordered by VIP priority, not age alone",
   domain: "lifeops.followup",

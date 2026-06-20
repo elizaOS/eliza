@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "whatsapp.reply",
   title: "Reply to WhatsApp message with confirmation",
   domain: "messaging.whatsapp",

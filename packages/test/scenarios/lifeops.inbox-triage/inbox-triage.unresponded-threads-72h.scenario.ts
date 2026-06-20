@@ -48,6 +48,7 @@ function checkStaleThreadsSurfaced(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.unresponded-threads-72h",
   title: "Stale unresponded threads (>72h) surface in triage",
   domain: "lifeops.inbox-triage",

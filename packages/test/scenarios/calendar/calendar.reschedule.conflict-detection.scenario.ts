@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.reschedule.conflict-detection",
   title: "Reschedule that conflicts with another event surfaces a warning",
   domain: "calendar",

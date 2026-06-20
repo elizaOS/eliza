@@ -31,6 +31,7 @@ function checkDeepWorkProtected(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.protect-deep-work-block",
   title: "Refuses to schedule over an existing deep-work block by default",
   domain: "lifeops.calendar",

@@ -15,6 +15,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.brush-teeth-twice-daily",
   title: "Brush teeth twice a day at 8am and 9pm",
   domain: "lifeops.hygiene",

@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.google-calendar.certify-core",
   title: "Certify Google Calendar availability and lifecycle actions",
   connector: "google-calendar",

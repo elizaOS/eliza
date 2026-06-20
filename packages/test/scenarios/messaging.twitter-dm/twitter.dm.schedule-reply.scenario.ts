@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "twitter.dm.schedule-reply",
   title: "Schedule a Twitter/X DM reply for later delivery",
   domain: "messaging.twitter-dm",

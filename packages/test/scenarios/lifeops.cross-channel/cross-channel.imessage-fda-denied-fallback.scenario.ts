@@ -49,6 +49,7 @@ function checkImessageDeniedHandled(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "cross-channel.imessage-fda-denied-fallback",
   title:
     "iMessage FDA-denied → agent surfaces and falls back to other channels",

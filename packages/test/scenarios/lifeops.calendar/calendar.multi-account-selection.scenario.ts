@@ -29,6 +29,7 @@ function checkAgentAsksWhichAccount(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.multi-account-selection",
   title: "Two connected calendars triggers a clarification before write",
   domain: "lifeops.calendar",

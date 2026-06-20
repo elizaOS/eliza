@@ -34,6 +34,7 @@ function checkEventCreated(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "scheduling.confirm-time-creates-event",
   title: "User confirms a proposed slot — agent creates the event",
   domain: "lifeops.scheduling",

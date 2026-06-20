@@ -23,6 +23,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "cross-channel.unanswered-decision-bump",
   title: "Unanswered question gets bumped (resend / escalate) after waiting",
   domain: "lifeops.cross-channel",

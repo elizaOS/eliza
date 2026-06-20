@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "identity.merge-after-handle-rename",
   title: "User confirms a Telegram rename and the agent commits the merge",
   domain: "lifeops.identity",

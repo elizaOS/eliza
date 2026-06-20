@@ -40,6 +40,7 @@ function checkStatusReply(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "cross-channel.group-chat-handoff-status",
   title: "Handoff status query returns honest no-active state when none exists",
   domain: "lifeops.cross-channel",

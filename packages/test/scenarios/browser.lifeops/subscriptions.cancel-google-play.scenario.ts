@@ -6,6 +6,7 @@ import {
 import { expectScenarioBrowserTask } from "../_helpers/browser-task-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "subscriptions.cancel-google-play",
   title: "Cancel a Google Play subscription",
   domain: "browser.lifeops",

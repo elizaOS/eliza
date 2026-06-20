@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.telegram.certify-auth-expired",
   title: "Certify Telegram expired-auth degradation handling",
   connector: "telegram",

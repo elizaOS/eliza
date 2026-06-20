@@ -42,6 +42,7 @@ function checkRecovery(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.recovery-after-failure",
   title: "Agent retries transient connector failure and completes triage",
   domain: "lifeops.inbox-triage",

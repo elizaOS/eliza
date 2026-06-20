@@ -33,6 +33,7 @@ function checkProposalNamesBothTimezones(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.cross-tz-attendee",
   title: "Proposing times for a Denver-Tokyo meeting names both timezones",
   domain: "lifeops.calendar",

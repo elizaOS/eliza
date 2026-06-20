@@ -39,6 +39,7 @@ function checkProposalSuggestsBundling(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.bundle-city-meetings",
   title: "Bundles NYC meetings compactly during a one-day visit",
   domain: "lifeops.calendar",

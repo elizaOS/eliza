@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "selfcontrol.nighttime-wind-down",
   title: "Nightly wind-down request asks which apps to block",
   domain: "selfcontrol",

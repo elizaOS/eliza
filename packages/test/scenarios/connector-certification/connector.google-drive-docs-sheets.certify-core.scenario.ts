@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.google-drive-docs-sheets.certify-core",
   title: "Certify Google Drive, Docs, and Sheets document ops",
   connector: "google-drive-docs-sheets",

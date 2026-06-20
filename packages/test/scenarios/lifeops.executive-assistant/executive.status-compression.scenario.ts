@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.status-compression",
   title: "Status compression turns noisy app state into icons and decisions",
   domain: "lifeops.executive-assistant",

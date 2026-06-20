@@ -6,6 +6,7 @@ import {
 import { seedXReadFixtures } from "../_helpers/x-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "twitter.dm.read-unread",
   title: "Read unread Twitter DMs",
   domain: "messaging.twitter-dm",

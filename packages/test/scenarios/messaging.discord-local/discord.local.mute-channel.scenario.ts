@@ -3,6 +3,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectTurnToCallAction } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "discord.local.mute-channel",
   title: "Discord mute request updates the live room mute state",
   domain: "messaging.discord-local",

@@ -8,6 +8,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.followup.bump-unanswered-decision",
   title: "Bump an unanswered decision that is blocking other people",
   domain: "executive-assistant",

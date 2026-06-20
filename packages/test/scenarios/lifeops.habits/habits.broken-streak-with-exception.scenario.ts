@@ -8,6 +8,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { seedCheckinDefinition } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "habits.broken-streak-with-exception",
   title: "Streak with sick-day exception is preserved",
   domain: "lifeops.habits",

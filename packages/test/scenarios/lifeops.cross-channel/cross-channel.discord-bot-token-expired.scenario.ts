@@ -37,6 +37,7 @@ function checkDiscordExpirySurfaced(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "cross-channel.discord-bot-token-expired",
   title: "Discord bot token expired surfaces explicit reauth prompt",
   domain: "lifeops.cross-channel",

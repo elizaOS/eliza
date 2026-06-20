@@ -8,6 +8,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.sunscreen-daily-with-weather-context",
   title: "Sunscreen every morning with weather context",
   domain: "lifeops.hygiene",

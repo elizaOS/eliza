@@ -34,6 +34,7 @@ const COMPLETION_A_UTC = "2025-11-04T06:00:00.000Z";
 const COMPLETION_B_UTC = "2025-11-04T07:00:00.000Z";
 
 export default scenario({
+  lane: "live-only",
   id: "habits.timezone-drift-during-travel",
   title: "Cross-TZ same-day completion does not double-count",
   domain: "lifeops.habits",

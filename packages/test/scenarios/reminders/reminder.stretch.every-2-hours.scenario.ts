@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "reminder.stretch.every-2-hours",
   title: "Stretch every two hours during the day",
   domain: "reminders",

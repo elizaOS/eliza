@@ -7,6 +7,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { seedLifeOpsDefinition } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "habits.fitness-streak-target-counts",
   title: "Fitness target habit credits partial completion",
   domain: "lifeops.habits",

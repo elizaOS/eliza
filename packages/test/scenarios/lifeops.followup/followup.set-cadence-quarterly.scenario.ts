@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "followup.set-cadence-quarterly",
   title: "Set a quarterly check-in cadence on a specific relationship",
   domain: "lifeops.followup",

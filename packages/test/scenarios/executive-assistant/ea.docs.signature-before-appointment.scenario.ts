@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.docs.signature-before-appointment",
   title: "Chase signature forms before an appointment",
   domain: "executive-assistant",

@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "browser.computer-use.click-captcha-via-user",
   title: "Agent escalates CAPTCHA to user for manual help",
   domain: "browser.lifeops",

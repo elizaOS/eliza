@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.intro-routing",
   title: "Intro routing decides accept, delegate, decline, or schedule",
   domain: "lifeops.executive-assistant",

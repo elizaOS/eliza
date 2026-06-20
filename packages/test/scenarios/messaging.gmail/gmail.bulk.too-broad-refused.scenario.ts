@@ -2,6 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.bulk.too-broad-refused",
   title: "Refuse or clarify broad destructive Gmail cleanup",
   domain: "messaging.gmail",

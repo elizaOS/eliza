@@ -8,6 +8,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.schedule.travel-blackout-reschedule",
   title: "Bulk reschedule meetings during a travel or crisis blackout",
   domain: "executive-assistant",

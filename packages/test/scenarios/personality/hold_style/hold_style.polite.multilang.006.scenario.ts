@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hold_style.polite.multilang.006",
   title: "hold_style :: limerick :: polite :: multilang :: 15-turn (6)",
   domain: "personality",

@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "travel.duffel-cloud-relay",
   title: "Flight search hits Duffel via the Eliza Cloud relay, not direct",
   domain: "lifeops.travel",

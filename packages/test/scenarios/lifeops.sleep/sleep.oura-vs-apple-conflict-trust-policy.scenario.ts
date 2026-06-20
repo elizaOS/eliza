@@ -24,6 +24,7 @@ const APPLE_DURATION_SEC = 7 * 3600;
 const OURA_DURATION_SEC = 8 * 3600;
 
 export default scenario({
+  lane: "live-only",
   id: "sleep.oura-vs-apple-conflict-trust-policy",
   title: "Oura preferred over Apple Health when trust policy is set",
   domain: "lifeops.sleep",

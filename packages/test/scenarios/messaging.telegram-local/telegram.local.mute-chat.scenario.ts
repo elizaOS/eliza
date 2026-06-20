@@ -8,6 +8,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "telegram.local.mute-chat",
   title: "Mute a named Telegram chat and queue an automatic unmute",
   domain: "messaging.telegram-local",

@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.ntfy-delivery-receipt",
   title:
     "ntfy delivery receipt is persisted so the ladder knows not to escalate",

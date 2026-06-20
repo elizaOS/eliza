@@ -7,6 +7,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "habits.morning-routine-stack-3-habits",
   title: "Morning routine stack: brush, water, meditate",
   domain: "lifeops.habits",

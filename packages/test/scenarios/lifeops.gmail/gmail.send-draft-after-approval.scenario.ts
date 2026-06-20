@@ -13,6 +13,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.send-draft-after-approval",
   title: "Draft → explicit approval → Gmail send fires",
   domain: "lifeops.gmail",

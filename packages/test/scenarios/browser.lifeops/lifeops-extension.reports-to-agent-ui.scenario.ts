@@ -13,6 +13,7 @@ import {
 import { seedBrowserExtensionTelemetry } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "lifeops-extension.reports-to-agent-ui",
   title: "Extension pushes telemetry to agent UI",
   domain: "browser.lifeops",

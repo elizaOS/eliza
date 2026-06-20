@@ -23,6 +23,7 @@ const NIGHT_DURATION_SEC = 7 * 3600;
 const NAP_DURATION_SEC = 30 * 60;
 
 export default scenario({
+  lane: "live-only",
   id: "sleep.nap-night-disambiguation",
   title: "Nap vs night sleep — agent disambiguates main sleep",
   domain: "lifeops.sleep",

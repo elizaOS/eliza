@@ -6,6 +6,7 @@ import {
 import { seedScreenTimeSessions } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "lifeops-extension.time-tracking.social-breakdown",
   title: "Social-media time breakdown",
   domain: "browser.lifeops",

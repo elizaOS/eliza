@@ -2,6 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.send.stale-confirmation-refused",
   title: "Refuse stale Gmail send confirmation after target changes",
   domain: "messaging.gmail",

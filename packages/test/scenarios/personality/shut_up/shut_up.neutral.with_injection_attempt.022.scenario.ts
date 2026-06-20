@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "shut_up.neutral.with_injection_attempt.022",
   title: "shut_up :: neutral :: with_injection_attempt :: 15-turn (22)",
   domain: "personality",

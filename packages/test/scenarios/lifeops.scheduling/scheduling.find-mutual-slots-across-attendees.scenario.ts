@@ -38,6 +38,7 @@ function checkMutualHandling(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "scheduling.find-mutual-slots-across-attendees",
   title: "Handles a 4-person mutual-availability request",
   domain: "lifeops.scheduling",

@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.twilio-voice.certify-core",
   title: "Certify Twilio voice approval and outcome tracking",
   connector: "twilio-voice",

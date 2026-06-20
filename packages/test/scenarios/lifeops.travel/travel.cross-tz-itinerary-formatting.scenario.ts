@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "travel.cross-tz-itinerary-formatting",
   title: "Cross-timezone itinerary shows times in destination + home TZ",
   domain: "lifeops.travel",
