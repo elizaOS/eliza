@@ -13,6 +13,7 @@ import type {
   WorkflowDefinitionGenerateResponse,
   WorkflowDefinitionResolveClarificationRequest,
   WorkflowDefinitionWriteRequest,
+  WorkflowEvaluationSuite,
   WorkflowExecution,
   WorkflowRevision,
   WorkflowStatusResponse,
@@ -49,6 +50,10 @@ declare module "./client-base" {
       limit?: number,
     ): Promise<WorkflowExecution[]>;
     getWorkflowExecution(id: string): Promise<WorkflowExecution>;
+    getWorkflowEvaluationSamples(
+      id: string,
+      limit?: number,
+    ): Promise<WorkflowEvaluationSuite>;
     getWorkflowRevisions(
       id: string,
       limit?: number,
@@ -224,6 +229,18 @@ ElizaClient.prototype.getWorkflowExecution = async function (
     );
   }
   return result.execution;
+};
+
+ElizaClient.prototype.getWorkflowEvaluationSamples = async function (
+  this: ElizaClient,
+  id: string,
+  limit = 10,
+): Promise<WorkflowEvaluationSuite> {
+  return this.fetch<WorkflowEvaluationSuite>(
+    `/api/workflow/workflows/${encodeURIComponent(
+      id,
+    )}/evaluation-samples?limit=${limit}`,
+  );
 };
 
 ElizaClient.prototype.getWorkflowRevisions = async function (

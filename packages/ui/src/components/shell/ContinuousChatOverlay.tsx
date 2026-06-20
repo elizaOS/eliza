@@ -2415,19 +2415,6 @@ export function ContinuousChatOverlay({
                     onClick={() => clearConversation()}
                     testId="chat-full-clear"
                   />
-                  {voiceActive ? (
-                    <HeaderButton
-                      icon={FileText}
-                      label={
-                        transcriptionMode
-                          ? "stop transcription"
-                          : "transcription mode"
-                      }
-                      active={transcriptionMode}
-                      onClick={toggleTranscriptionMode}
-                      testId="chat-full-transcribe"
-                    />
-                  ) : null}
                 </div>
                 {transcriptionMode ? (
                   <div
@@ -2745,65 +2732,84 @@ export function ContinuousChatOverlay({
                 {agentName} is waking up — you can type now; your message sends
                 and the reply arrives in a moment.
               </span>
-              {/* One trailing control, ChatGPT-style: mic when there's nothing to
-              send (or while recording, to stop), swapping to send once the user
-              starts typing or attaches an image. It morphs IN PLACE (one
-              persistent <div>, no `key`): React reconciles the SoftButton's
-              glyph/label/handlers without a remount, so there's no scale/fade
-              pop on every keystroke that crosses the draft boundary. */}
-              <div className="shrink-0">
-                {(hasDraft || hasImages) && !recording ? (
+              {/* Trailing controls. The transcribe toggle sits directly LEFT of
+              the mic — it's a voice control, so it appears only while voice is on
+              (voiceActive), giving record-only long-form capture next to the
+              audio button. */}
+              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                {voiceActive ? (
                   <SoftButton
-                    icon={SendHorizontal}
+                    icon={FileText}
                     label={
-                      !canSend
-                        ? "send (agent stopped)"
-                        : responding
-                          ? "send another"
-                          : "send"
+                      transcriptionMode
+                        ? "stop transcription"
+                        : "transcription mode"
                     }
-                    disabled={!canSend}
-                    // Keep focus in the textarea on tap: without this the
-                    // button steals focus, the textarea blurs, the keyboard
-                    // retracts and the composer relayouts between pointerdown
-                    // and click — so the first tap only dismissed the keyboard
-                    // and a second tap was needed to actually send. Chromium
-                    // still dispatches click after a preventDefaulted
-                    // pointerdown, so onClick fires on the first tap and the
-                    // keyboard stays up for the next message.
-                    onPointerDown={(e) => e.preventDefault()}
-                    onClick={submit}
-                    testId="chat-composer-action"
+                    active={transcriptionMode}
+                    onClick={toggleTranscriptionMode}
+                    testId="chat-composer-transcribe"
                   />
-                ) : !recording && responding ? (
-                  // While a reply is streaming and nothing is typed, the mic becomes a
-                  // stop control so the user can interrupt a runaway generation.
-                  <SoftButton
-                    glyph={STOP_GLYPH}
-                    label="stop generating"
-                    onClick={() => stop()}
-                    testId="chat-composer-stop"
-                  />
-                ) : (
-                  <SoftButton
-                    icon={Mic}
-                    label={
-                      pttHolding
-                        ? "release to send"
-                        : handsFree
-                          ? "end conversation"
-                          : recording
-                            ? "stop listening"
-                            : "talk"
-                    }
-                    active={recording || handsFree}
-                    onClick={handleMicClick}
-                    onPointerDown={beginPushToTalkPress}
-                    onPointerUp={(e) => finishPushToTalkPress(e, false)}
-                    onPointerCancel={(e) => finishPushToTalkPress(e, true)}
-                    testId="chat-composer-mic"
-                  />
-                )}
+                ) : null}
+                {/* One trailing control, ChatGPT-style: mic when there's nothing
+                to send (or while recording, to stop), swapping to send once the
+                user starts typing or attaches an image. It morphs IN PLACE (one
+                persistent <div>, no `key`): React reconciles the SoftButton's
+                glyph/label/handlers without a remount, so there's no scale/fade
+                pop on every keystroke that crosses the draft boundary. */}
+                <div className="shrink-0">
+                  {(hasDraft || hasImages) && !recording ? (
+                    <SoftButton
+                      icon={SendHorizontal}
+                      label={
+                        !canSend
+                          ? "send (agent stopped)"
+                          : responding
+                            ? "send another"
+                            : "send"
+                      }
+                      disabled={!canSend}
+                      // Keep focus in the textarea on tap: without this the
+                      // button steals focus, the textarea blurs, the keyboard
+                      // retracts and the composer relayouts between pointerdown
+                      // and click — so the first tap only dismissed the keyboard
+                      // and a second tap was needed to actually send. Chromium
+                      // still dispatches click after a preventDefaulted
+                      // pointerdown, so onClick fires on the first tap and the
+                      // keyboard stays up for the next message.
+                      onPointerDown={(e) => e.preventDefault()}
+                      onClick={submit}
+                      testId="chat-composer-action"
+                    />
+                  ) : !recording && responding ? (
+                    // While a reply is streaming and nothing is typed, the mic becomes a
+                    // stop control so the user can interrupt a runaway generation.
+                    <SoftButton
+                      glyph={STOP_GLYPH}
+                      label="stop generating"
+                      onClick={() => stop()}
+                      testId="chat-composer-stop"
+                    />
+                  ) : (
+                    <SoftButton
+                      icon={Mic}
+                      label={
+                        pttHolding
+                          ? "release to send"
+                          : handsFree
+                            ? "end conversation"
+                            : recording
+                              ? "stop listening"
+                              : "talk"
+                      }
+                      active={recording || handsFree}
+                      onClick={handleMicClick}
+                      onPointerDown={beginPushToTalkPress}
+                      onPointerUp={(e) => finishPushToTalkPress(e, false)}
+                      onPointerCancel={(e) => finishPushToTalkPress(e, true)}
+                      testId="chat-composer-mic"
+                    />
+                  )}
+                </div>
               </div>
             </div>
           </motion.div>

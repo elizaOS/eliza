@@ -21,6 +21,7 @@ vi.mock("../../api", () => ({
     createWorkflowDefinition: vi.fn(),
     deactivateWorkflowDefinition: vi.fn(),
     generateWorkflowDefinition: vi.fn(),
+    getWorkflowEvaluationSamples: vi.fn(),
     getWorkflowExecutions: vi.fn(),
     getWorkflowRevisions: vi.fn(),
     runWorkflowDefinition: vi.fn(),
@@ -34,6 +35,7 @@ const clientMock = client as unknown as {
   createWorkflowDefinition: ReturnType<typeof vi.fn>;
   deactivateWorkflowDefinition: ReturnType<typeof vi.fn>;
   generateWorkflowDefinition: ReturnType<typeof vi.fn>;
+  getWorkflowEvaluationSamples: ReturnType<typeof vi.fn>;
   getWorkflowExecutions: ReturnType<typeof vi.fn>;
   getWorkflowRevisions: ReturnType<typeof vi.fn>;
   runWorkflowDefinition: ReturnType<typeof vi.fn>;
@@ -150,6 +152,22 @@ beforeEach(() => {
     value: { writeText: clipboardWriteText },
   });
   clientMock.getWorkflowExecutions.mockResolvedValue([]);
+  clientMock.getWorkflowEvaluationSamples.mockResolvedValue({
+    workflowId: "workflow-1",
+    workflowName: "Cerebras review workflow",
+    workflowVersionId: "version-current",
+    generatedAt: "2026-06-20T12:00:00.000Z",
+    sampleCount: 1,
+    samples: [],
+    jsonl: '{"id":"workflow-1:execution-1"}',
+    optimizer: {
+      engine: "smithers-gepa",
+      target: "workflow-generation",
+      recommendedCommand:
+        "bunx smithers-orchestrator eval <workflow.tsx> --cases evals/cerebras-review-workflow.jsonl --suite cerebras-review-workflow",
+      notes: [],
+    },
+  });
   clientMock.getWorkflowRevisions.mockResolvedValue({
     currentVersionId: "version-current",
     revisions: [],
@@ -195,6 +213,19 @@ describe("WorkflowEditor", () => {
     );
     expect(clipboardWriteText.mock.calls[0]?.[0]).toContain(
       "Add Review Fields: success; 1 item",
+    );
+
+    clipboardWriteText.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: /copy eval samples/i }));
+
+    await waitFor(() => {
+      expect(clientMock.getWorkflowEvaluationSamples).toHaveBeenCalledWith(
+        "workflow-1",
+        10,
+      );
+    });
+    expect(clipboardWriteText).toHaveBeenCalledWith(
+      '{"id":"workflow-1:execution-1"}',
     );
   });
 

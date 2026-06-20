@@ -14,6 +14,7 @@
  *   executions    — fetch recent executions for a workflow id
  *   revisions     — fetch restorable workflow versions
  *   restore       — restore a workflow by version id
+ *   eval_samples  — generate JSONL evaluation samples from recent executions
  *
  * All actions talk to the in-process `WorkflowService` via
  * `runtime.getService(WORKFLOW_SERVICE_TYPE)`. There is no HTTP boundary.
@@ -56,6 +57,7 @@ const WORKFLOW_OPS = [
   'executions',
   'revisions',
   'restore',
+  'eval_samples',
 ] as const;
 type WorkflowOp = (typeof WORKFLOW_OPS)[number];
 
@@ -517,6 +519,45 @@ async function handleRestoreRevision(
   }
 }
 
+async function handleEvaluationSamples(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const workflowId = readString(params.workflowId);
+  if (!workflowId) {
+    return {
+      success: false,
+      text: 'workflowId is required to generate workflow evaluation samples.',
+    };
+  }
+  const limit = readNumber(params.limit) ?? 10;
+  try {
+    const suite = await service.getWorkflowEvaluationSuite(workflowId, limit);
+    const text =
+      suite.sampleCount === 0
+        ? `No executions found for workflow ${workflowId}; run it before generating eval samples.`
+        : `Generated ${suite.sampleCount} workflow eval sample${suite.sampleCount === 1 ? '' : 's'} for ${workflowId}.`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: { workflowId, count: suite.sampleCount },
+      });
+    }
+    return {
+      success: true,
+      text,
+      values: { workflowId, count: suite.sampleCount },
+      data: { suite },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:eval_samples' }, msg);
+    return { success: false, text: msg };
+  }
+}
+
 export const workflowAction: Action = {
   name: WORKFLOW_ACTION,
   contexts: [...WORKFLOW_CONTEXTS],
@@ -555,18 +596,23 @@ export const workflowAction: Action = {
     'RESTORE_WORKFLOW',
     'ROLL_BACK_WORKFLOW',
     'ROLLBACK_WORKFLOW',
+    'WORKFLOW_EVAL_SAMPLES',
+    'GENERATE_WORKFLOW_TRAINING_SAMPLES',
+    'GENERATE_WORKFLOW_EVAL_CASES',
+    'GEPA_WORKFLOW_SAMPLES',
+    'OPTIMIZE_WORKFLOW_SAMPLES',
   ],
   description:
     'Manage workflows. Action-based dispatch - provide an `action` parameter:\n' +
-    '  list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore.\n' +
+    '  list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, eval_samples.\n' +
     'For creating/updating scheduled triggers (including promoting a task to a workflow), use the TRIGGER action.',
   descriptionCompressed:
-    'workflow list|get|create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore',
+    'workflow list|get|create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore|eval_samples',
   parameters: [
     {
       name: 'action',
       description:
-        'Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore.',
+        'Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, eval_samples.',
       required: true,
       schema: { type: 'string' as const, enum: [...WORKFLOW_OPS] },
     },
@@ -602,7 +648,7 @@ export const workflowAction: Action = {
     },
     {
       name: 'limit',
-      description: 'Max executions/revisions to return (default 10).',
+      description: 'Max executions/revisions/evaluation samples to return (default 10).',
       required: false,
       schema: { type: 'number' as const },
     },
@@ -660,6 +706,8 @@ export const workflowAction: Action = {
         return handleRevisions(service, params, callback);
       case 'restore':
         return handleRestoreRevision(service, params, callback);
+      case 'eval_samples':
+        return handleEvaluationSamples(service, params, callback);
     }
   },
   examples: [
@@ -751,6 +799,24 @@ export const workflowAction: Action = {
           actions: ['WORKFLOW'],
           thought:
             'Rollback maps to WORKFLOW op=restore with workflowId=wf-123 and versionId=v-old.',
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
+        content: {
+          text: 'Create eval samples from the last 10 runs of workflow wf-123.',
+          source: 'chat',
+        },
+      },
+      {
+        name: '{{agentName}}',
+        content: {
+          text: 'Generating workflow eval samples.',
+          actions: ['WORKFLOW'],
+          thought:
+            'Eval sample generation maps to WORKFLOW op=eval_samples with workflowId=wf-123 and limit=10.',
         },
       },
     ],

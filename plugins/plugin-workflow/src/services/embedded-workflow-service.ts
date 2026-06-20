@@ -2436,6 +2436,14 @@ export class EmbeddedWorkflowService extends Service {
       startedAt: startedAt.toISOString(),
       workflowId: workflowData.id ?? '',
       status: 'running',
+      ...(triggerData || idempotencyKey
+        ? {
+            customData: {
+              ...(triggerData ? { triggerData } : {}),
+              ...(idempotencyKey ? { idempotencyKey } : {}),
+            },
+          }
+        : {}),
     };
     await this.saveExecution(pending, idempotencyKey);
 

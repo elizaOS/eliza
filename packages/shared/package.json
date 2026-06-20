@@ -138,6 +138,16 @@
       "import": "./dist/voice-wer.js",
       "default": "./dist/voice-wer.js"
     },
+    "./transcripts": {
+      "types": "./dist/transcripts.d.ts",
+      "eliza-source": {
+        "types": "./src/transcripts.ts",
+        "import": "./src/transcripts.ts",
+        "default": "./src/transcripts.ts"
+      },
+      "import": "./dist/transcripts.js",
+      "default": "./dist/transcripts.js"
+    },
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",
