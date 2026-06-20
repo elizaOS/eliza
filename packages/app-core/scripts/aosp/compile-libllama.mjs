@@ -1437,60 +1437,72 @@ export function buildLibllamaForAbi({
   // libllama.so so the dynamic linker resolves the whole graph from the
   // per-ABI asset dir at runtime (LD_LIBRARY_PATH set by
   // ElizaAgentService.java).
-  const builtLlama = locateBuiltLib(buildDir, "libllama.so");
-  if (!builtLlama) {
-    throw new Error(
-      `[compile-libllama] Could not locate built libllama.so anywhere under ${buildDir}.`,
-    );
-  }
-  const builtGgmlLibs = locateBuiltGgmlLibs(buildDir);
-  if (builtGgmlLibs.length === 0) {
-    throw new Error(
-      `[compile-libllama] Could not locate any libggml*.so under ${buildDir}. ` +
-        `libllama.so has NEEDED entries for the ggml family; without co-copying ` +
-        `them the runtime dlopen will fail. Check that BUILD_SHARED_LIBS=ON took effect.`,
-    );
-  }
-  const builtRuntimeSiblingLibs = ["libllama-common.so", "libmtmd.so"]
-    .map((name) => locateBuiltLib(buildDir, name))
-    .filter(Boolean);
+  // Static-fuse (BUILD_SHARED_LIBS=OFF — the `*-fused` targets): llama/ggml/
+  // mtmd build as STATIC `.a` archives folded into a self-contained
+  // libelizainference.so (no DT_NEEDED on libllama.so/libggml*.so). So the
+  // legacy co-copy of the shared libllama.so + ggml family is both impossible
+  // (.so don't exist) and unnecessary (nothing dlopens them) — skip it. The
+  // non-fused (BUILD_SHARED_LIBS=ON) bulk `--abi` path keeps staging the shared
+  // family verbatim for its libllama.so-loading consumers.
+  const isStaticFused = extraCmakeFlags.some((f) =>
+    /BUILD_SHARED_LIBS\s*=\s*OFF/i.test(String(f)),
+  );
 
   fs.mkdirSync(abiAssetDir, { recursive: true });
-  const llamaOut = path.join(abiAssetDir, "libllama.so");
-  fs.copyFileSync(builtLlama, llamaOut);
-  const ggmlOuts = builtGgmlLibs.map((src) => {
-    const dst = path.join(abiAssetDir, path.basename(src));
-    fs.copyFileSync(src, dst);
-    return dst;
-  });
-  const runtimeSiblingOuts = builtRuntimeSiblingLibs.map((src) => {
-    const dst = path.join(abiAssetDir, path.basename(src));
-    fs.copyFileSync(src, dst);
-    return dst;
-  });
-
-  // The apothic fork builds with SONAME chains: libllama.so has
-  // SONAME=libllama.so.0 and NEEDED entries pointing at SONAME (e.g.
-  // "libggml.so.0"), not at the unversioned filename. The dynamic linker
-  // matches NEEDED against on-disk SONAME, so we must ship a copy at
-  // libfoo.so.0 (or the linker fails to resolve and dlopen returns NULL).
-  // We do NOT ship the .so.X.Y.Z versioned tail — only the SONAME alias
-  // that NEEDED references.
-  //
-  // Cost: ~5MB per ABI of duplicated content (the .so and .so.0 are
-  // identical). APK build dedupes identical files automatically; even
-  // without dedup this is well under the per-ABI .so budget.
-  const sonameAliases = [];
-  for (const out of [llamaOut, ...ggmlOuts, ...runtimeSiblingOuts]) {
-    const soname = readSoname(out);
-    if (soname && soname !== path.basename(out)) {
-      const aliasPath = path.join(abiAssetDir, soname);
-      fs.copyFileSync(out, aliasPath);
-      sonameAliases.push(aliasPath);
-      log(
-        `[compile-libllama] Copied ${path.basename(out)} -> ${soname} ` +
-          `(NEEDED-resolution alias for ${abi}).`,
+  let llamaOut = null;
+  let ggmlOuts = [];
+  let runtimeSiblingOuts = [];
+  let sonameAliases = [];
+  if (!isStaticFused) {
+    const builtLlama = locateBuiltLib(buildDir, "libllama.so");
+    if (!builtLlama) {
+      throw new Error(
+        `[compile-libllama] Could not locate built libllama.so anywhere under ${buildDir}.`,
       );
+    }
+    const builtGgmlLibs = locateBuiltGgmlLibs(buildDir);
+    if (builtGgmlLibs.length === 0) {
+      throw new Error(
+        `[compile-libllama] Could not locate any libggml*.so under ${buildDir}. ` +
+          `libllama.so has NEEDED entries for the ggml family; without co-copying ` +
+          `them the runtime dlopen will fail. Check that BUILD_SHARED_LIBS=ON took effect.`,
+      );
+    }
+    const builtRuntimeSiblingLibs = ["libllama-common.so", "libmtmd.so"]
+      .map((name) => locateBuiltLib(buildDir, name))
+      .filter(Boolean);
+
+    llamaOut = path.join(abiAssetDir, "libllama.so");
+    fs.copyFileSync(builtLlama, llamaOut);
+    ggmlOuts = builtGgmlLibs.map((src) => {
+      const dst = path.join(abiAssetDir, path.basename(src));
+      fs.copyFileSync(src, dst);
+      return dst;
+    });
+    runtimeSiblingOuts = builtRuntimeSiblingLibs.map((src) => {
+      const dst = path.join(abiAssetDir, path.basename(src));
+      fs.copyFileSync(src, dst);
+      return dst;
+    });
+
+    // The apothic fork builds with SONAME chains: libllama.so has
+    // SONAME=libllama.so.0 and NEEDED entries pointing at SONAME (e.g.
+    // "libggml.so.0"), not at the unversioned filename. The dynamic linker
+    // matches NEEDED against on-disk SONAME, so we must ship a copy at
+    // libfoo.so.0 (or the linker fails to resolve and dlopen returns NULL).
+    // We do NOT ship the .so.X.Y.Z versioned tail — only the SONAME alias
+    // that NEEDED references.
+    for (const out of [llamaOut, ...ggmlOuts, ...runtimeSiblingOuts]) {
+      const soname = readSoname(out);
+      if (soname && soname !== path.basename(out)) {
+        const aliasPath = path.join(abiAssetDir, soname);
+        fs.copyFileSync(out, aliasPath);
+        sonameAliases.push(aliasPath);
+        log(
+          `[compile-libllama] Copied ${path.basename(out)} -> ${soname} ` +
+            `(NEEDED-resolution alias for ${abi}).`,
+        );
+      }
     }
   }
 
@@ -1541,6 +1553,15 @@ export function buildLibllamaForAbi({
       `[compile-libllama] Copied libelizainference.so for ${abi} (${(fs.statSync(fusedLibOut).size / (1024 * 1024)).toFixed(2)} MB).`,
     );
   }
+  // Under static-fuse the self-contained libelizainference.so is the ONLY
+  // shipped native lib (no libllama.so/libggml*.so), so its absence is fatal.
+  if (isStaticFused && !fusedLibOut) {
+    throw new Error(
+      `[compile-libllama] static-fuse build for ${abi} produced no libelizainference.so ` +
+        `under ${buildDir}. The fused self-contained lib is the only artifact this ` +
+        `target ships — verify the elizainference cmake target built.`,
+    );
+  }
   const fusedServerSrcCandidates = [
     path.join(buildDir, "bin", "llama-omnivoice-server"),
     path.join(buildDir, "llama-omnivoice-server"),
@@ -1561,7 +1582,7 @@ export function buildLibllamaForAbi({
     ...runtimeSiblingOuts,
     llamaOut,
     ...sonameAliases,
-  ];
+  ].filter(Boolean); // llamaOut is null under static-fuse (no shared libllama.so)
   if (llamaServerOut) stripTargets.push(llamaServerOut);
   if (fusedLibOut) stripTargets.push(fusedLibOut);
   if (fusedServerOut) stripTargets.push(fusedServerOut);
