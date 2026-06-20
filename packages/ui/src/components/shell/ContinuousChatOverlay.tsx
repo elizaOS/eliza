@@ -1119,13 +1119,18 @@ export function ContinuousChatOverlay({
   // overlay above it. `bottomPad` is the overlay's own safe-area/nav padding,
   // reserved when bounding the panel height.
   const readViewport = React.useCallback(() => {
-    if (typeof window === "undefined") return { height: 800, keyboardInset: 0 };
+    if (typeof window === "undefined")
+      return { height: 800, keyboardInset: 0, innerHeight: 800 };
     const vv = window.visualViewport;
-    const height = vv?.height ?? window.innerHeight;
+    const innerHeight = window.innerHeight;
+    const height = vv?.height ?? innerHeight;
     const keyboardInset = vv
-      ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+      ? Math.max(0, innerHeight - vv.height - vv.offsetTop)
       : 0;
-    return { height, keyboardInset };
+    // innerHeight is the LAYOUT viewport: on Android it shrinks (adjustResize)
+    // when the keyboard opens, on iOS (`resize: "body"`) it does not. The lift
+    // math below uses that to avoid double-counting the keyboard.
+    return { height, keyboardInset, innerHeight };
   }, []);
   const [viewport, setViewport] = React.useState(readViewport);
   const [bottomPad, setBottomPad] = React.useState(0);
@@ -1206,8 +1211,30 @@ export function ContinuousChatOverlay({
       for (const handle of handles) handle.remove();
     };
   }, []);
-  // The composer lifts above whichever the platform actually reports.
-  const effectiveKeyboardInset = Math.max(keyboardInset, nativeKeyboardHeight);
+  // Track the layout-viewport height with the keyboard DOWN. On Android the
+  // WebView window shrinks (adjustResize) when the keyboard opens, so the fixed
+  // overlay's `bottom: 0` already rises with it; on iOS (`resize: "body"`) the
+  // layout height is unchanged and the fixed composer stays behind the keyboard.
+  const baseInnerHeightRef = React.useRef(viewport.innerHeight);
+  React.useEffect(() => {
+    if (nativeKeyboardHeight === 0) {
+      baseInnerHeightRef.current = viewport.innerHeight;
+    }
+  }, [nativeKeyboardHeight, viewport.innerHeight]);
+
+  // Lift the composer above the keyboard by ONLY the part the layout didn't
+  // already absorb. On Android the window shrank by ~the keyboard height
+  // (layoutShrink ≈ keyboardHeight), so the extra native lift is ~0 — without
+  // this the chat double-counts and jumps a whole keyboard height too high. On
+  // iOS the layout doesn't shrink (layoutShrink = 0), so the full native height
+  // lifts the fixed composer above the keyboard. Web (no native plugin) keeps
+  // the visualViewport-derived inset.
+  const layoutShrink = Math.max(
+    0,
+    baseInnerHeightRef.current - viewport.innerHeight,
+  );
+  const nativeLift = Math.max(0, nativeKeyboardHeight - layoutShrink);
+  const effectiveKeyboardInset = Math.max(keyboardInset, nativeLift);
 
   // FULL-SCREEN derived gate: maximized only takes effect AT the full detent, so
   // a stale flag can never leak into half/collapsed/pill. Drives the edge-to-edge
