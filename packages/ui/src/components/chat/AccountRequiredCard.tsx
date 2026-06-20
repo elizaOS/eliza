@@ -5,6 +5,7 @@ import {
   type ConnectorReconnectPhase,
   useConnectorReconnect,
 } from "../../hooks/useConnectorReconnect";
+import { useBranding } from "../../config/branding";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
@@ -125,7 +126,7 @@ export function AccountRequiredCard({
   connectBusy = false,
   confirmBusy = false,
   confirmLabel = "Confirm account",
-  description = "Choose the connector account Eliza should use before this write is sent.",
+  description,
   loading = false,
   selectedAccount,
   sourceLabel = "connector",
@@ -136,6 +137,10 @@ export function AccountRequiredCard({
   onSelectAccount,
   retryAction,
 }: AccountRequiredCardProps) {
+  const { appName } = useBranding();
+  const resolvedDescription =
+    description ??
+    `Choose the connector account ${appName} should use before this write is sent.`;
   // Always read the freshest account list when polling so the loop sees the
   // status flip the parent's polling source pushes in via the `accounts` prop.
   const accountsRef = useRef(accounts);
@@ -176,7 +181,9 @@ export function AccountRequiredCard({
         <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-txt">{title}</div>
-          <div className="mt-0.5 leading-5 text-muted">{description}</div>
+          <div className="mt-0.5 leading-5 text-muted">
+            {resolvedDescription}
+          </div>
         </div>
       </div>
 

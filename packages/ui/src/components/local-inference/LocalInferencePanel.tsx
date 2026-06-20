@@ -10,6 +10,7 @@ import type {
   InstalledModel,
   ModelHubSnapshot,
 } from "../../api/client-local-inference";
+import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
 import { useApp } from "../../state";
@@ -40,6 +41,7 @@ type HubTab = "curated" | "search" | "downloads";
 export function LocalInferencePanel() {
   useRenderGuard("LocalInferencePanel");
   const { setActionNotice, t } = useApp();
+  const branding = useBranding();
   const [hub, setHub] = useState<ModelHubSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -491,7 +493,9 @@ function ExternalInstalledSummary({
         <h3
           className="text-[10px] font-medium uppercase tracking-wider text-muted"
           title={t("localinference.discoveredTooltip", {
-            defaultValue: "Eliza can load these models without re-downloading.",
+            defaultValue:
+              "{{appName}} can load these models without re-downloading.",
+            ...appNameInterpolationVars(branding),
           })}
         >
           {t("localinference.discoveredTitle", {
