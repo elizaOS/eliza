@@ -3058,6 +3058,36 @@ async function handleDirectCoreRoute(
 		});
 	}
 
+	if (method === "GET" && pathname === "/api/auth/me") {
+		// The post-startup auth probe hits /api/auth/me; the in-process local
+		// agent has no remote auth, so report a local machine session (mirrors
+		// the WebView kernel shim). Without it the probe fails and the app shows
+		// "Backend Unreachable — auth probe could not reach /api/auth/me".
+		return jsonResponse(200, {
+			identity: {
+				id: "local-agent",
+				displayName: "Local Agent",
+				kind: "machine",
+			},
+			session: { id: "local", kind: "local", expiresAt: null },
+			access: {
+				mode: "local",
+				passwordConfigured: false,
+				ownerConfigured: false,
+			},
+		});
+	}
+
+	if (method === "GET" && pathname === "/api/auth/status") {
+		return jsonResponse(200, {
+			required: false,
+			pairingEnabled: false,
+			expiresAt: null,
+			authenticated: true,
+			localAccess: true,
+		});
+	}
+
 	if (method === "POST" && pathname === "/api/dev/model-grind") {
 		const report = await runModelGrind({
 			callIosHost,

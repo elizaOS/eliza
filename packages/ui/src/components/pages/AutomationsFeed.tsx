@@ -21,8 +21,8 @@ import {
   Clock,
   History,
   Layers,
-  Pause,
   Play,
+  PlayCircle,
   Plus,
   Workflow,
   Zap,
@@ -67,8 +67,6 @@ import {
 
 export type { FeedFilter } from "../../utils/automation-feed-filter";
 
-type ChooserState = "closed" | "task" | "workflow";
-
 type EditorState =
   | { kind: "none" }
   | { kind: "task"; taskId: string | null }
@@ -106,6 +104,8 @@ const FILTER_ICONS: Record<FeedFilter, ReactNode> = {
   inactive: <CircleSlash className="h-3.5 w-3.5" aria-hidden />,
 };
 const NEW_AUTOMATION_LINK_ID = "__new__";
+const CHAT_PREFILL_EVENT = "eliza:chat:prefill";
+const NEW_AUTOMATION_PROMPT = "Create an automation that ";
 
 interface FeedRow {
   key: string;
@@ -176,17 +176,25 @@ export function AutomationsFeed({
   const [loading, setLoading] = useState(!cachedAutomations);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FeedFilter>("all");
-  const [chooser, setChooser] = useState<ChooserState>("closed");
   const { link, setLink } = useAutomationDeepLink();
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+
+  const focusAutomationChat = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent(CHAT_PREFILL_EVENT, {
+        detail: { text: NEW_AUTOMATION_PROMPT, select: false },
+      }),
+    );
+  }, []);
 
   const newAgent = useAgentElement<HTMLButtonElement>({
     id: "action-new",
     role: "button",
     label: t("automationsfeed.new", { defaultValue: "New" }),
     group: "automations-actions",
-    description: "Create a new automation",
-    onActivate: () => setChooser("task"),
+    description: "Focus Automations chat to create a task or workflow",
+    onActivate: focusAutomationChat,
   });
 
   const editor: EditorState = useMemo(() => {
@@ -298,6 +306,32 @@ export function AutomationsFeed({
     [allRows],
   );
 
+  const overviewStats = useMemo(
+    () => [
+      {
+        key: "total",
+        label: t("automationsfeed.statTotal", { defaultValue: "Total" }),
+        value: allRows.length,
+      },
+      {
+        key: "active",
+        label: t("automationsfeed.statActive", { defaultValue: "Active" }),
+        value: filterCounts.active,
+      },
+      {
+        key: "passed",
+        label: t("automationsfeed.statPassed", { defaultValue: "Passed" }),
+        value: allRows.filter((row) => row.lastRunStatus === "success").length,
+      },
+      {
+        key: "failed",
+        label: t("automationsfeed.statFailed", { defaultValue: "Failed" }),
+        value: allRows.filter((row) => row.lastRunStatus === "error").length,
+      },
+    ],
+    [allRows, filterCounts.active, t],
+  );
+
   // Editor mode
   if (editor.kind === "task") {
     const existing =
@@ -358,12 +392,23 @@ export function AutomationsFeed({
             ref={newAgent.ref}
             variant="default"
             size="sm"
-            onClick={() => setChooser("task")}
+            onClick={focusAutomationChat}
             {...newAgent.agentProps}
           >
             <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
             {t("automationsfeed.new", { defaultValue: "New" })}
           </Button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {overviewStats.map((stat) => (
+            <OverviewStat
+              key={stat.key}
+              statKey={stat.key}
+              label={stat.label}
+              value={stat.value}
+            />
+          ))}
         </div>
 
         {/* Filter chips */}
@@ -408,11 +453,7 @@ export function AutomationsFeed({
                   })}
                 </p>
               </div>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => setChooser("task")}
-              >
+              <Button variant="default" size="sm" onClick={focusAutomationChat}>
                 <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
                 {t("automationsfeed.createFirst", {
                   defaultValue: "Create your first automation",
@@ -465,26 +506,35 @@ export function AutomationsFeed({
             </ul>
           )}
         </PagePanel>
-
-        {/* Chooser */}
-        {chooser !== "closed" && (
-          <ChooserSheet
-            onChooseTask={() => {
-              setChooser("closed");
-              setEditor({ kind: "task", taskId: null });
-            }}
-            onChooseWorkflow={() => {
-              setChooser("closed");
-              setEditor({ kind: "workflow", workflowId: null });
-            }}
-            onClose={() => setChooser("closed")}
-          />
-        )}
       </div>
     </ShellViewAgentSurface>
   );
 
   return feedContent;
+}
+
+function OverviewStat({
+  statKey,
+  label,
+  value,
+}: {
+  statKey: string;
+  label: string;
+  value: number;
+}) {
+  return (
+    <div
+      className="rounded-sm border border-border/40 bg-bg-accent/25 px-3 py-2"
+      data-testid={`automation-stat-${statKey}`}
+    >
+      <div className="text-2xs font-medium uppercase tracking-normal text-muted-strong">
+        {label}
+      </div>
+      <div className="mt-1 text-lg font-semibold leading-none tabular-nums text-txt">
+        {value}
+      </div>
+    </div>
+  );
 }
 
 function FilterChipButton({
@@ -558,6 +608,16 @@ function FeedRowItem({
   const medallionClasses = isWorkflow
     ? "border-accent/30 bg-gradient-to-br from-accent/20 to-accent/5 text-accent"
     : "border-border/60 bg-bg-accent text-muted-strong";
+  const workflowId = row.source.workflowId ?? row.source.id;
+  const runAction = useAgentElement<HTMLButtonElement>({
+    id: `run-workflow-${workflowId}`,
+    role: "button",
+    label: `Run ${row.title}`,
+    group: "automations-actions",
+    description: "Run this workflow now and refresh its latest status.",
+    status: isWorkflow ? "active" : "inactive",
+    onActivate: onRunNow,
+  });
   return (
     <li
       ref={registerRef}
@@ -628,24 +688,17 @@ function FeedRowItem({
       </button>
       {row.kind === "workflow" && (
         <button
+          ref={runAction.ref}
           type="button"
-          aria-label={
-            row.active
-              ? t("automationsfeed.deactivateWorkflow", {
-                  defaultValue: "Deactivate workflow",
-                })
-              : t("automationsfeed.activateWorkflow", {
-                  defaultValue: "Activate workflow",
-                })
-          }
+          aria-label={t("automationsfeed.runWorkflowNow", {
+            name: row.title,
+            defaultValue: "Run {{name}} now",
+          })}
           onClick={onRunNow}
-          className="rounded-sm border border-border/40 px-2 py-1 text-xs text-muted-strong opacity-0 transition-opacity hover:border-border group-hover:opacity-100 focus:opacity-100"
+          className="rounded-sm border border-border/40 p-1.5 text-muted-strong transition-colors hover:border-border hover:bg-bg-accent focus:bg-bg-accent"
+          {...runAction.agentProps}
         >
-          {row.active ? (
-            <Pause className="h-3 w-3" aria-hidden />
-          ) : (
-            <Play className="h-3 w-3" aria-hidden />
-          )}
+          <PlayCircle className="h-3.5 w-3.5" aria-hidden />
         </button>
       )}
     </li>
@@ -763,87 +816,6 @@ function AutomationEmptyIllustration() {
         />
       </g>
     </svg>
-  );
-}
-
-function ChooserSheet({
-  onChooseTask,
-  onChooseWorkflow,
-  onClose,
-}: {
-  onChooseTask: () => void;
-  onChooseWorkflow: () => void;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 lg:items-center">
-      <button
-        type="button"
-        aria-label={t("automationsfeed.close", { defaultValue: "Close" })}
-        onClick={onClose}
-        className="absolute inset-0 cursor-default"
-      />
-      <dialog
-        open
-        className="relative m-0 w-full max-w-md rounded-sm border border-border/40 bg-bg p-4 "
-        aria-modal="true"
-      >
-        <h3 className="mb-3 text-base font-semibold text-txt">
-          {t("automationsfeed.chooserTitle", {
-            defaultValue: "What do you want to create?",
-          })}
-        </h3>
-        <div className="grid gap-2">
-          <button
-            type="button"
-            onClick={onChooseTask}
-            className="flex items-start gap-3 rounded-sm border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
-          >
-            <CheckCircle2
-              className="mt-0.5 h-5 w-5 shrink-0 text-muted-strong"
-              aria-hidden
-            />
-            <div>
-              <div className="text-sm font-medium text-txt">
-                {t("automationsfeed.taskOption", {
-                  defaultValue: "Task (simple prompt)",
-                })}
-              </div>
-              <div className="text-xs text-muted-strong">
-                {t("automationsfeed.taskOptionDesc", {
-                  defaultValue:
-                    "One prompt, run once or on a schedule. Pick this if you're not sure.",
-                })}
-              </div>
-            </div>
-          </button>
-          <button
-            type="button"
-            onClick={onChooseWorkflow}
-            className="flex items-start gap-3 rounded-sm border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
-          >
-            <Workflow
-              className="mt-0.5 h-5 w-5 shrink-0 text-accent"
-              aria-hidden
-            />
-            <div>
-              <div className="text-sm font-medium text-txt">
-                {t("automationsfeed.workflowOption", {
-                  defaultValue: "Workflow (node graph)",
-                })}
-              </div>
-              <div className="text-xs text-muted-strong">
-                {t("automationsfeed.workflowOptionDesc", {
-                  defaultValue:
-                    "Multi-step. Draft in chat, then review the graph, run it, and inspect logs.",
-                })}
-              </div>
-            </div>
-          </button>
-        </div>
-      </dialog>
-    </div>
   );
 }
 
