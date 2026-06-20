@@ -743,4 +743,22 @@ describe("ContinuousChatOverlay — bug (b): keyboard dismiss restores prior sta
     expect(detentOf()).toBe("half"); // deliberate open survives (bug b)
     assertInvariants("bug-ab-pill-then-dismiss");
   });
+
+  it("SENDING commits to open: tap input → send → dismiss keyboard KEEPS the chat open", () => {
+    // Tap into the collapsed input (auto-opens to half, keyboard up), send a
+    // message, then drop the keyboard. The conversation must stay visible — NOT
+    // collapse back to the bare input peek, which would hide the chat you just
+    // had. (Contrast: tapping in and dismissing WITHOUT sending re-collapses.)
+    const controller = makeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    expect(detentOf()).toBe("collapsed");
+    focusReal(); // tap into the input
+    expect(detentOf()).toBe("half");
+    fireEvent.change(input(), { target: { value: "hello" } });
+    fireEvent.keyDown(input(), { key: "Enter" }); // send
+    expect(controller.send).toHaveBeenCalled();
+    tap(grabber() as Element, 180); // dismiss the keyboard
+    expect(detentOf()).toBe("half"); // stays open — conversation preserved
+    assertInvariants("send-commits-open");
+  });
 });
