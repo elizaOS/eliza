@@ -34,9 +34,13 @@
  * // ...drive the turn, assert it did NOT silently succeed...
  * ```
  */
-import { ModelType } from "@elizaos/core";
+
 import type { JsonValue } from "@elizaos/core";
-import type { LlmProxyFixture, LlmProxyResponse } from "../mocks/helpers/llm-proxy-plugin.ts";
+import { ModelType } from "@elizaos/core";
+import type {
+  LlmProxyFixture,
+  LlmProxyResponse,
+} from "../mocks/helpers/llm-proxy-plugin.ts";
 import {
   actionSlug,
   matchesScenarioInput,
@@ -57,7 +61,8 @@ export type AdversarialKind = (typeof ADVERSARIAL_KINDS)[number];
 /** Human-readable description of what each adversarial kind models. */
 export const ADVERSARIAL_KIND_DESCRIPTIONS: Record<AdversarialKind, string> = {
   "malformed-json": "planner output that is not parseable JSON",
-  "wrong-tool": "a valid tool-call naming a different (real) action than intended",
+  "wrong-tool":
+    "a valid tool-call naming a different (real) action than intended",
   "hallucinated-tool": "a tool-call naming an action that does not exist",
   empty: "an empty model response",
   truncated: "a response cut off mid-JSON (finishReason: 'length')",
@@ -91,7 +96,7 @@ function adversarialPlannerResponse(
   switch (kind) {
     case "malformed-json":
       // Not valid JSON — a parser MUST reject this rather than guess.
-      return '{ "toolCalls": [ { "name": "' + spec.intendedAction + '", ,, ]';
+      return `{ "toolCalls": [ { "name": "${spec.intendedAction}", ,, ]`;
     case "wrong-tool":
       return {
         finishReason: "tool-calls",

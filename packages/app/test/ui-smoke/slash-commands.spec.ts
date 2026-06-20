@@ -108,58 +108,80 @@ test("slash menu: typing / lists the catalog commands and filters by token", asy
   await expect(composer).toHaveValue("/set");
 });
 
+/**
+ * Count outgoing chat sends (POST to the conversation message endpoint). This is
+ * the robust differential between an agent command (which sends) and a
+ * navigate/client command (which is consumed locally) — focusing the composer
+ * springs the pull-up chat open regardless of send, so `data-open` cannot tell
+ * them apart, but the network does.
+ */
+function trackChatSends(page: import("@playwright/test").Page): () => number {
+  let sends = 0;
+  page.on("request", (req) => {
+    if (req.method() !== "POST") return;
+    if (
+      /\/api\/conversations\/[^/]+\/messages(?:\/stream)?(?:\?|$)/.test(
+        req.url(),
+      )
+    ) {
+      sends += 1;
+    }
+  });
+  return () => sends;
+}
+
 test("slash menu: an agent command sends through the chat pipeline", async ({
   page,
 }) => {
+  const sendCount = trackChatSends(page);
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
-  await expect(overlay).toBeVisible({ timeout: 60_000 });
-  await expect(overlay).not.toHaveAttribute("data-open", "true");
-
   const composer = page.getByTestId("chat-composer-textarea");
+  await expect(composer).toBeVisible({ timeout: 60_000 });
+
   await composer.fill("/help");
   await expect(page.getByTestId("slash-command-menu")).toBeVisible();
   // Enter on an agent-target command routes the text through the message
-  // pipeline, which springs the chat open (the same effect as pressing send).
+  // pipeline — a real chat send fires.
   await composer.press("Enter");
-  await expect(overlay).toHaveAttribute("data-open", "true", {
-    timeout: 15_000,
-  });
+  await expect.poll(() => sendCount(), { timeout: 15_000 }).toBeGreaterThan(0);
   await expect(composer).toHaveValue("");
 });
 
 test("slash menu: a client command runs locally without sending a message", async ({
   page,
 }) => {
+  const sendCount = trackChatSends(page);
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
-  await expect(overlay).toBeVisible({ timeout: 60_000 });
-
   const composer = page.getByTestId("chat-composer-textarea");
+  await expect(composer).toBeVisible({ timeout: 60_000 });
+
   await composer.fill("/clear");
   await expect(page.getByTestId("slash-command-menu")).toBeVisible();
   // A client command (clear-chat) consumes the draft and runs locally — it must
-  // NOT send a chat message, so the collapsed overlay stays collapsed.
+  // NOT post a chat message.
   await composer.press("Enter");
   await expect(page.getByTestId("slash-command-menu")).toBeHidden();
   await expect(composer).toHaveValue("");
-  await expect(overlay).not.toHaveAttribute("data-open", "true");
+  // Give any (erroneous) send a chance to fire, then assert none did.
+  await page.waitForTimeout(500);
+  expect(sendCount()).toBe(0);
 });
 
 test("slash menu: a navigate command consumes the draft instead of sending it", async ({
   page,
 }) => {
+  const sendCount = trackChatSends(page);
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
-  await expect(overlay).toBeVisible({ timeout: 60_000 });
-
   const composer = page.getByTestId("chat-composer-textarea");
+  await expect(composer).toBeVisible({ timeout: 60_000 });
+
   await composer.fill("/settings");
   await expect(page.getByTestId("slash-command-menu")).toBeVisible();
   // A navigate command resolves to an in-app destination; it is consumed, not
-  // sent as chat, so the composer clears and no message springs the chat open.
+  // sent as chat.
   await composer.press("Enter");
   await expect(page.getByTestId("slash-command-menu")).toBeHidden();
   await expect(composer).toHaveValue("");
-  await expect(overlay).not.toHaveAttribute("data-open", "true");
+  await page.waitForTimeout(500);
+  expect(sendCount()).toBe(0);
 });

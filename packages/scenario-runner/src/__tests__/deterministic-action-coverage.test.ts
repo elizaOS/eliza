@@ -1127,8 +1127,11 @@ describe("deterministic action coverage", () => {
         problems.push(`${id}: source file was not found`);
         continue;
       }
+      // `_helpers/strict-llm-action-fixtures.ts` re-exports the canonical
+      // template from `@elizaos/test-harness`; read that file for the fixture
+      // literals (RESPONSE_HANDLER / ACTION_PLANNER / register call).
       const fixtureSource = source.includes("registerStrictActionRouteFixtures")
-        ? `${source}\n${readFileSync(resolve(scenarioDir, "_helpers/strict-llm-action-fixtures.ts"), "utf8")}`
+        ? `${source}\n${readFileSync(resolve(repoRoot, "packages/test/harness/action-route-fixtures.ts"), "utf8")}`
         : source;
 
       const messageTurns = messageTurnCount(scenario);

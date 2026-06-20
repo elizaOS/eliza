@@ -63,6 +63,25 @@ export interface ConnectorCommand {
 	description: string;
 	target: ConnectorCommandTarget;
 	options: ConnectorCommandOption[];
+	/**
+	 * View ids this command is scoped to (#8798): present only while one of these
+	 * views is the active surface. Omitted = globally available.
+	 */
+	views?: string[];
+}
+
+/**
+ * Whether a command with the given `views` scoping is visible for the active
+ * view. Global commands (no `views`, or an empty list) are always visible;
+ * view-scoped commands appear only when their view is foreground. (#8798)
+ */
+export function commandVisibleForView(
+	views: readonly string[] | undefined,
+	activeViewId: string | null | undefined,
+): boolean {
+	if (!views || views.length === 0) return true;
+	if (!activeViewId) return false;
+	return views.includes(activeViewId);
 }
 
 /**
@@ -101,6 +120,9 @@ function mapRegistryCommand(command: CommandDefinition): ConnectorCommand {
 		description: command.description,
 		target: { kind: "agent" },
 		options,
+		...(command.views && command.views.length > 0
+			? { views: command.views }
+			: {}),
 	};
 }
 
@@ -239,8 +261,14 @@ function navigationCommands(): ConnectorCommand[] {
  * to run them on.
  *
  * @param surface the target surface ("gui" | "tui" | "discord" | "telegram").
+ * @param options.activeViewId when set, view-scoped commands (#8798) are
+ *   included only if this is one of their views; global commands always appear.
+ *   When unset, view-scoped commands are filtered out entirely (no foreground).
  */
-export function getConnectorCommands(surface: string): ConnectorCommand[] {
+export function getConnectorCommands(
+	surface: string,
+	options: { activeViewId?: string | null } = {},
+): ConnectorCommand[] {
 	const agentCommands = DEFAULT_COMMANDS.filter(
 		(command) => command.enabled !== false && isConnectorScoped(command),
 	).map(mapRegistryCommand);
@@ -256,5 +284,7 @@ export function getConnectorCommands(surface: string): ConnectorCommand[] {
 		(command) => !navigationNames.has(command.name),
 	);
 
-	return [...agentOnly, ...navigation];
+	return [...agentOnly, ...navigation].filter((command) =>
+		commandVisibleForView(command.views, options.activeViewId),
+	);
 }

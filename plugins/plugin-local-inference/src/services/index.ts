@@ -45,21 +45,12 @@ export {
 	makeCloudFallbackHandler,
 } from "./cloud-fallback";
 export {
+	buildDeviceResourceMetricsDevPayload,
 	type DeviceBridgeStatus,
-	deviceBridge,
 	type DeviceGenerationMetrics,
+	type DeviceResourceMetricsDevPayload,
+	deviceBridge,
 } from "./device-bridge";
-export {
-	classifyDeviceTier,
-	DEVICE_TIER_ORDER,
-	DEVICE_TIER_THRESHOLDS,
-	type DeviceTier,
-	type DeviceTierAssessment,
-	effectiveModelMemoryGb,
-	type RecommendedMode,
-	TIER_WARNING_COPY,
-	totalRamMb,
-} from "./device-tier";
 export {
 	type BatterySummary,
 	DeviceResourceMetrics,
@@ -73,15 +64,16 @@ export {
 	type ThermalTransition,
 } from "./device-resource-metrics";
 export {
-	type CapabilityProbes,
-	defaultsForNoBinding,
-	type InferenceCapabilities,
-	probeCapabilities,
-	type ResourceSnapshot,
-	type ThermalState,
-	type ThermalThrottleDecision,
-	thermalThrottleDecision,
-} from "./inference-capabilities";
+	classifyDeviceTier,
+	DEVICE_TIER_ORDER,
+	DEVICE_TIER_THRESHOLDS,
+	type DeviceTier,
+	type DeviceTierAssessment,
+	effectiveModelMemoryGb,
+	type RecommendedMode,
+	TIER_WARNING_COPY,
+	totalRamMb,
+} from "./device-tier";
 export {
 	LocalInferenceEngine,
 	localInferenceEngine,
@@ -100,6 +92,16 @@ export {
 	type ImageDescriptionRuntime,
 	type ImageDescriptionRuntimeOptions,
 } from "./image-description-runtime";
+export {
+	type CapabilityProbes,
+	defaultsForNoBinding,
+	type InferenceCapabilities,
+	probeCapabilities,
+	type ResourceSnapshot,
+	type ThermalState,
+	type ThermalThrottleDecision,
+	thermalThrottleDecision,
+} from "./inference-capabilities";
 export {
 	InferenceTelemetry,
 	inferenceTelemetry,

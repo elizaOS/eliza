@@ -10,12 +10,14 @@ import {
   ACTIVE_VIEW_ELEMENT_RENDER_CAP,
   applyActiveViewAwareness,
   clearActiveViewContext,
+  findViewsWithoutActionAffinity,
   getActiveViewContext,
   renderActiveViewContextBlock,
   setActiveViewContext,
   setActiveViewElements,
   VIEW_ACTION_MAP,
   validateViewActionMap,
+  validateViewCoverage,
   viewScopedActionNames,
 } from "./view-action-affinity.ts";
 
@@ -104,6 +106,37 @@ describe("view-action-affinity", () => {
     const warnings: string[] = [];
     validateViewActionMap([...allMapped], { warn: (m) => warnings.push(m) });
     expect(warnings).toHaveLength(0);
+  });
+
+  // ── #8798: view-coverage completeness ─────────────────────────────────────
+
+  it("documents view has a domain-action affinity entry", () => {
+    // documents was the one CONTEXT_VIEWS surface previously missing from the
+    // map; #8798 added OWNER_DOCUMENTS.
+    expect(VIEW_ACTION_MAP.documents).toContain("OWNER_DOCUMENTS");
+  });
+
+  it("findViewsWithoutActionAffinity flags only unmapped registered views", () => {
+    const missing = findViewsWithoutActionAffinity([
+      "wallet", // mapped
+      "calendar", // mapped
+      "screenshare", // not mapped
+      "social-alpha", // not mapped
+    ]);
+    expect(missing).toEqual(["screenshare", "social-alpha"]);
+  });
+
+  it("validateViewCoverage warns for a registered view with no affinity and no capabilities", () => {
+    const warnings: string[] = [];
+    const uncovered = validateViewCoverage(
+      ["wallet", "screenshare", "feed"],
+      ["feed"], // feed declares ViewCapability → covered
+      { warn: (m) => warnings.push(m) },
+    );
+    // wallet is mapped, feed has capabilities → only screenshare is uncovered.
+    expect(uncovered).toEqual(["screenshare"]);
+    expect(warnings.some((w) => w.includes("screenshare"))).toBe(true);
+    expect(warnings.some((w) => w.includes("wallet"))).toBe(false);
   });
 
   it("renders an awareness block describing the active view", () => {
@@ -212,7 +245,11 @@ describe("VIEW_ACTION_MAP names resolve to declared actions in source", () => {
         [
           "grep",
           "-hoE",
-          `name: "(${escaped.join("|")})"`,
+          // Accept both an inline `name: "X"` and an action name pulled from a
+          // hoisted const (`const ACTION_NAME = "X"` then `name: ACTION_NAME`,
+          // as plugin-documents does). The leading `name:`/`=` keeps this from
+          // matching the VIEW_ACTION_MAP arrays themselves (`["X"]`).
+          `(name:|=) "(${escaped.join("|")})"`,
           "--",
           "plugins",
           "packages/agent/src",
@@ -227,7 +264,9 @@ describe("VIEW_ACTION_MAP names resolve to declared actions in source", () => {
       // git grep exits 1 (no match) → declaredNames stays empty → each
       // assertion below fails with its per-name message.
     }
-    return new Set([...out.matchAll(/name: "([^"]+)"/g)].map((m) => m[1]));
+    return new Set(
+      [...out.matchAll(/(?:name:|=) "([^"]+)"/g)].map((m) => m[1]),
+    );
   })();
 
   it.each(names)("action %s is declared somewhere in source", (name) => {

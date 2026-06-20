@@ -1,7 +1,12 @@
-import { type Action, type Memory, ModelType, type Plugin } from "@elizaos/core";
+import {
+  type Action,
+  type Memory,
+  ModelType,
+  type Plugin,
+} from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { adversarialActionRouteFixtures } from "../negative-fixtures.ts";
 import { type MockLlmRuntime, withMockLlmRuntime } from "../index.ts";
+import { adversarialActionRouteFixtures } from "../negative-fixtures.ts";
 
 const cleanups: Array<() => Promise<void>> = [];
 

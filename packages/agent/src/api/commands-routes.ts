@@ -23,6 +23,7 @@ import {
   type ConnectorCommandOption,
   getConnectorCommands,
 } from "@elizaos/plugin-commands";
+import { getCurrentViewState } from "./views-routes.js";
 
 const VALID_SURFACES: ReadonlySet<string> = new Set([
   "gui",
@@ -71,6 +72,8 @@ interface SlashCommandCatalogItem {
   requiresElevated: boolean;
   target: SlashCommandTarget;
   source: "builtin";
+  /** View ids this command is scoped to (#8798); omitted when global. */
+  views?: string[];
 }
 
 export interface CommandsRouteContext {
@@ -131,6 +134,9 @@ function toCatalogItem(command: ConnectorCommand): SlashCommandCatalogItem {
     requiresElevated: false,
     target: mapTarget(command.target),
     source: "builtin",
+    ...(command.views && command.views.length > 0
+      ? { views: command.views }
+      : {}),
   };
 }
 
@@ -150,10 +156,19 @@ export async function handleCommandsRoutes(
       ? (surfaceParam as CommandSurface)
       : null;
 
-  const commands = getConnectorCommands(surface ?? "gui").map(toCatalogItem);
+  // View-scoped commands (#8798) appear only when their view is foreground.
+  // Prefer an explicit ?view= (the client knows what it is rendering), else fall
+  // back to the agent's server-side current view.
+  const activeViewId =
+    url.searchParams.get("view") ?? getCurrentViewState()?.viewId ?? null;
+
+  const commands = getConnectorCommands(surface ?? "gui", { activeViewId }).map(
+    toCatalogItem,
+  );
   json(res, {
     commands,
     surface,
+    activeViewId,
     agentId: runtime?.agentId ?? null,
     generatedAt: new Date().toISOString(),
   });

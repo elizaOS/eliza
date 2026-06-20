@@ -366,6 +366,10 @@ export class DeviceBridge {
 	/** The most recent successful generation's metrics, or null. */
 	private lastGenerationMetrics: DeviceGenerationMetrics | null = null;
 
+	/** Bounded ring buffer of recent generation metrics for the dev endpoint. */
+	private readonly recentGenerations: DeviceGenerationMetrics[] = [];
+	private static readonly RECENT_GENERATIONS_CAP = 200;
+
 	private readonly expectedPairingToken: string | null =
 		process.env.ELIZA_DEVICE_PAIRING_TOKEN?.trim() || null;
 
@@ -459,8 +463,18 @@ export class DeviceBridge {
 		return this.lastGenerationMetrics;
 	}
 
+	/** Most recent generation metrics (newest last), capped at `limit`. */
+	recentGenerationMetrics(limit = 50): DeviceGenerationMetrics[] {
+		const n = Math.max(0, Math.trunc(limit));
+		return this.recentGenerations.slice(-n);
+	}
+
 	private emitGenerationMetrics(metrics: DeviceGenerationMetrics): void {
 		this.lastGenerationMetrics = metrics;
+		this.recentGenerations.push(metrics);
+		if (this.recentGenerations.length > DeviceBridge.RECENT_GENERATIONS_CAP) {
+			this.recentGenerations.shift();
+		}
 		for (const listener of this.generationMetricsListeners) {
 			try {
 				listener(metrics);
@@ -1167,6 +1181,31 @@ export class DeviceBridge {
 }
 
 export const deviceBridge = new DeviceBridge();
+
+/** Shape returned by `GET /api/dev/device-resource-metrics`. */
+export interface DeviceResourceMetricsDevPayload {
+	generatedAtEpochMs: number;
+	status: DeviceBridgeStatus;
+	latest: DeviceGenerationMetrics | null;
+	recentGenerations: DeviceGenerationMetrics[];
+}
+
+/**
+ * Build the JSON body for `GET /api/dev/device-resource-metrics` — the Mobile
+ * Resource Workbench reads this to harvest per-generation prefill/decode tok/s
+ * (already differenced by the bridge) without driving the device WebView.
+ */
+export function buildDeviceResourceMetricsDevPayload(
+	bridge: DeviceBridge = deviceBridge,
+	limit = 50,
+): DeviceResourceMetricsDevPayload {
+	return {
+		generatedAtEpochMs: Date.now(),
+		status: bridge.status(),
+		latest: bridge.latestGenerationMetrics(),
+		recentGenerations: bridge.recentGenerationMetrics(limit),
+	};
+}
 
 export function registerDeviceBridgeLoader(
 	runtime: AgentRuntime & {

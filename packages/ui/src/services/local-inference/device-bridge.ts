@@ -36,15 +36,15 @@ import path from "node:path";
 import type { Duplex } from "node:stream";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
+import {
+  computeGenerationThroughput,
+  type GenerationThroughput,
+} from "@elizaos/shared/local-inference";
 import type {
   LocalInferenceLoadArgs,
   LocalInferenceLoader,
 } from "./active-model";
 import { localInferenceRoot } from "./paths";
-import {
-  computeGenerationThroughput,
-  type GenerationThroughput,
-} from "@elizaos/shared/local-inference";
 
 const DEFAULT_CALL_TIMEOUT_MS = 60_000;
 const DEFAULT_LOAD_TIMEOUT_MS = 120_000;

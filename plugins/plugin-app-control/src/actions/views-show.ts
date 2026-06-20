@@ -231,6 +231,15 @@ const INTENT_VIEW_RULES: ReadonlyArray<{ re: RegExp; viewId: string }> = [
 ];
 
 /**
+ * All view ids any `INTENT_VIEW_RULES` rule can resolve to. Exported for the
+ * cross-list drift guard (#8797) so a passive intent can never target a view the
+ * matcher cannot also reach by explicit command.
+ */
+export const INTENT_VIEW_IDS: readonly string[] = [
+	...new Set(INTENT_VIEW_RULES.map((rule) => rule.viewId)),
+];
+
+/**
  * Map a passive domain intent to a concrete view id, or null when no rule
  * matches. Used both as a `runViewsShow` fallback (when normal resolution
  * fails) and by `inferMode` to route intent-only utterances to `show`.

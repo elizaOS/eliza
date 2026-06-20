@@ -11,8 +11,9 @@
  * This module is the single source of truth — `@elizaos/scenario-runner`'s
  * `_helpers/strict-llm-action-fixtures.ts` re-exports it.
  */
-import { ModelType } from "@elizaos/core";
+
 import type { JsonValue } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import type { LlmProxyFixture } from "../mocks/helpers/llm-proxy-plugin.ts";
 
 type JsonRecord = Record<string, JsonValue>;

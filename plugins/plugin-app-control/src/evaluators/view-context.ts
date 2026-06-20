@@ -13,8 +13,9 @@ const NONE = "none";
 
 // The user-facing domain surfaces a situation can map to. Kept as a fixed enum
 // so the model output is constrained; the processor still confirms the id is an
-// actually-registered view before navigating.
-const CONTEXT_VIEWS = [
+// actually-registered view before navigating. Exported so the cross-list drift
+// guard (#8797) can assert every contextual view is also matcher-resolvable.
+export const CONTEXT_VIEWS = [
 	"calendar",
 	"inbox",
 	"wallet",

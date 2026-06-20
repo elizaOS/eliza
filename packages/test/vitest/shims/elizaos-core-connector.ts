@@ -11,9 +11,26 @@ export {
 export { readRequestedConnectorRole } from "../../../core/src/connectors/oauth-role.ts";
 export type {
   IAgentRuntime,
+  PaymentEnabledRoute,
   Plugin,
+  Route,
 } from "../../../core/src/types/index.ts";
 export { Service } from "../../../core/src/types/service.ts";
+
+// Real (unstubbed) HTTP + state-dir + route-context helpers. Plugin route-e2e
+// tests boot the genuine runtime-plugin-route dispatcher, which imports these
+// from "@elizaos/core"; the dispatcher's behavior is under test, so these must
+// be the real implementations, not stubs.
+export {
+  isJsonObjectBody,
+  readRequestBodyBuffer,
+  writeJsonError,
+} from "../../../core/src/api/http-helpers.ts";
+export { resolveStateDir } from "../../../core/src/utils/state-dir.ts";
+export {
+  type RuntimeRouteHostContext,
+  setRuntimeRouteHostContext,
+} from "../../../core/src/runtime-route-context.ts";
 
 type LogFn = (...args: unknown[]) => void;
 

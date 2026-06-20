@@ -985,7 +985,9 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     if (level === "major") {
       this.tokenListeners.clear();
     }
-    console.debug(`[capacitor-llama] trimMemory(${level}) — bridge hook unavailable`);
+    console.debug(
+      `[capacitor-llama] trimMemory(${level}) — bridge hook unavailable`,
+    );
   }
 
   async cancelGenerate(): Promise<void> {

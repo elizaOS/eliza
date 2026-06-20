@@ -1,0 +1,159 @@
+name: mobile-resource-workbench
+
+# On-device resource profiling for local inference (issue #8800): battery, RSS,
+# prefill/decode tok/s, TTFT, thermal timeline — per-tier budgets + a report.
+#
+# Layered like local-inference-bench, because the device lanes are slow and
+# hardware-bound:
+#
+#   1. harness-smoke  (PR path-filtered + nightly + dispatch): runs the pure
+#      aggregation/budget unit tests and the runner's off-device skip path on a
+#      GitHub-hosted runner. Fast, no device — the only lane that can touch PRs,
+#      and only when the workbench files change.
+#   2. android-device (dispatch only): builds the WebView-debuggable APK and runs
+#      the workbench against a real arm64 device on the self-hosted pool, then
+#      uploads the report + raw results.
+#   3. ios-sim        (dispatch only): boots a simulator, runs the workbench
+#      (RSS/tok-s/TTFT; battery/thermal are physical-only), pulls MetricKit, and
+#      uploads the report.
+#
+# Device lanes are kept OFF PR-blocking lanes until per-device baselines in
+# budgets.json are stable (most budgets are still `null` = no-baseline).
+
+on:
+  schedule:
+    # 05:30 UTC — after the nightly publish window, like local-inference-bench.
+    - cron: "30 5 * * *"
+  pull_request:
+    paths:
+      - "packages/benchmarks/mobile-resource/**"
+      - ".github/workflows/mobile-resource-workbench.yml"
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "Eliza-1 tier to profile"
+        type: choice
+        options: [eliza-1-0_8b, eliza-1-2b, eliza-1-4b]
+        default: eliza-1-0_8b
+      run_android:
+        description: "Run the Android device lane (self-hosted arm64)."
+        type: boolean
+        default: false
+      run_ios_sim:
+        description: "Run the iOS simulator lane."
+        type: boolean
+        default: false
+      android_runner:
+        description: "runs-on label set for the Android device lane (JSON array)."
+        default: '["self-hosted","linux","arm64","android-device"]'
+
+concurrency:
+  group: mobile-resource-workbench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  harness-smoke:
+    name: harness smoke (no device)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Unit tests (aggregation + budgets)
+        run: node --test packages/benchmarks/mobile-resource/metrics.test.mjs
+      - name: Runner off-device skip path
+        run: |
+          set -e
+          # No device + unreachable agent → must record { skipped } and exit 2.
+          set +e
+          MOBILE_RESOURCE_BASE_URL=http://127.0.0.1:59999 \
+            node packages/benchmarks/mobile-resource/run-workbench.mjs --platform=android
+          code=$?
+          set -e
+          if [ "$code" != "2" ]; then
+            echo "expected exit 2 (skipped) off-device, got $code"; exit 1
+          fi
+      - name: Report generation
+        run: node packages/benchmarks/mobile-resource/report.mjs
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-resource-report-smoke
+          path: packages/benchmarks/mobile-resource/results/report/
+          if-no-files-found: ignore
+
+  android-device:
+    name: android device profile
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_android == 'true' }}
+    runs-on: ${{ fromJSON(github.event.inputs.android_runner) }}
+    timeout-minutes: 120
+    env:
+      ELIZA_MOBILE_REPO_ROOT: ${{ github.workspace }}
+      ELIZA_WEBVIEW_DEBUG: "1"
+      MOBILE_RESOURCE_TIER: ${{ github.event.inputs.tier }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v4
+      - name: Install workspace
+        run: bun install
+      - name: Build WebView-debuggable APK
+        run: bun run --cwd packages/app build:android
+      - name: Run workbench (Android device)
+        run: |
+          node packages/benchmarks/mobile-resource/run-workbench.mjs \
+            --platform=android --tier="$MOBILE_RESOURCE_TIER" \
+            --device-class=android-phone || true
+      - name: Report
+        if: always()
+        run: node packages/benchmarks/mobile-resource/report.mjs
+      - name: Upload report + results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-resource-android-${{ github.event.inputs.tier }}
+          path: packages/benchmarks/mobile-resource/results/
+          if-no-files-found: ignore
+
+  ios-sim:
+    name: ios simulator profile
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_ios_sim == 'true' }}
+    runs-on: [self-hosted, eliza-e2e-macos]
+    timeout-minutes: 120
+    env:
+      MOBILE_RESOURCE_TIER: ${{ github.event.inputs.tier }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: oven-sh/setup-bun@v2
+      - name: Install workspace
+        run: bun install
+      - name: Boot a simulator
+        run: |
+          xcrun simctl boot "iPhone 16 Pro" || true
+          xcrun simctl list devices booted
+      - name: Run workbench (iOS simulator)
+        run: |
+          node packages/benchmarks/mobile-resource/run-workbench.mjs \
+            --platform=ios --tier="$MOBILE_RESOURCE_TIER" \
+            --device-class=ios-phone || true
+      - name: Report
+        if: always()
+        run: node packages/benchmarks/mobile-resource/report.mjs
+      - name: Upload report + results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-resource-ios-${{ github.event.inputs.tier }}
+          path: packages/benchmarks/mobile-resource/results/
+          if-no-files-found: ignore

@@ -8,6 +8,7 @@
   "exports": {
     ".": "./harness/index.ts",
     "./llm-proxy": "./mocks/helpers/llm-proxy-plugin.ts",
+    "./action-route-fixtures": "./harness/action-route-fixtures.ts",
     "./negative-fixtures": "./harness/negative-fixtures.ts"
   },
   "scripts": {

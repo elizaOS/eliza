@@ -431,9 +431,7 @@ export class DeviceBridgeClient {
           ...(typeof lowPowerMode === "boolean" ? { lowPowerMode } : {}),
           ...(thermalState ? { thermalState } : {}),
           mtpSupported: hardware.mtpSupported,
-          ...(hardware.mtpReason
-            ? { mtpReason: hardware.mtpReason }
-            : {}),
+          ...(hardware.mtpReason ? { mtpReason: hardware.mtpReason } : {}),
         },
         loadedPath: loaded.modelPath,
       },

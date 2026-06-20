@@ -93,6 +93,7 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
+    "@elizaos/test-harness": "workspace:*",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   }
