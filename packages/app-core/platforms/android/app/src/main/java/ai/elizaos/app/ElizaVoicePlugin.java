@@ -164,6 +164,54 @@ public class ElizaVoicePlugin extends Plugin {
         }
     }
 
+    // ── Text generation (LLM) — GPU-accelerated path in the bionic app process ──
+
+    /**
+     * Capability probe for the text path. With the dynamic-Vulkan
+     * libelizainference staged, llmStream is supported and runs on the Mali GPU
+     * in THIS process (the musl bun agent can't reach libvulkan).
+     */
+    @PluginMethod
+    public void llmAbiProbe(PluginCall call) {
+        if (!ensureLoadedOrReject(call)) return;
+        try {
+            JSObject r = new JSObject();
+            r.put("loaded", true);
+            r.put("abi", ElizaVoiceNative.nativeVoiceAbiVersion());
+            r.put("llmStream", ElizaVoiceNative.nativeLlmStreamSupported());
+            r.put("embed", ElizaVoiceNative.nativeEmbedSupported());
+            r.put("eot", ElizaVoiceNative.nativeEotSupported());
+            Log.i(TAG, "llmAbiProbe " + r.toString());
+            call.resolve(r);
+        } catch (Throwable e) {
+            call.reject("llmAbiProbe failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * KEYSTONE proof: run a whole greedy generation in one native call, in the
+     * bionic app process. ggml-vulkan logs the Mali device + layer offload to
+     * logcat; the returned JSON carries {ok, text, tokens, ms, tokS}.
+     */
+    @PluginMethod
+    public void llmSelfTest(PluginCall call) {
+        if (!ensureLoadedOrReject(call)) return;
+        String bundleDir = resolveBundleDir(call.getString("bundleDir"));
+        String prompt = call.getString("prompt",
+            "<|im_start|>user\nWrite one sentence about the ocean.<|im_end|>\n<|im_start|>assistant\n");
+        Integer maxTokens = call.getInt("maxTokens", 48);
+        try {
+            String json = ElizaVoiceNative.nativeLlmSelfTest(
+                bundleDir, prompt, maxTokens != null ? maxTokens : 48);
+            Log.i(TAG, "llmSelfTest(" + bundleDir + ") -> " + json);
+            JSObject r = new JSObject();
+            r.put("result", json);
+            call.resolve(r);
+        } catch (Throwable e) {
+            call.reject("llmSelfTest failed: " + e.getMessage());
+        }
+    }
+
     private String resolveBundleDir(String requested) {
         if (requested != null && !requested.isEmpty()) return requested;
         Context context = getContext();
