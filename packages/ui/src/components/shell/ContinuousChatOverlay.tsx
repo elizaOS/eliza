@@ -1588,6 +1588,34 @@ export function ContinuousChatOverlay({
     if (preFocusCollapsedRef.current) collapse();
   }, [collapse]);
 
+  // The composer overlay floats over every view and survives tab changes, so
+  // navigating away from a focused composer (chat → Settings / Home / …) would
+  // otherwise leave the textarea holding DOM focus on the new view (its
+  // collapsed/resting look is gated on sheet state, not on document focus). On
+  // iOS that strands the keyboard input-accessory bar (the ‹ › chevrons +
+  // "Done") at the bottom of the screen with no keyboard while the composer
+  // reads as inactive. Drop composer focus whenever the active view changes to a
+  // non-chat tab; an intentional tap to focus the composer on that view (no tab
+  // change) is left untouched. Keyboard.hide() guarantees iOS dismisses the
+  // accessory bar, not just the soft keyboard.
+  React.useEffect(() => {
+    if (currentTab === "chat") return;
+    const input = inputRef.current;
+    if (
+      typeof document === "undefined" ||
+      !input ||
+      document.activeElement !== input
+    ) {
+      return;
+    }
+    input.blur();
+    void import("@capacitor/keyboard")
+      .then(({ Keyboard }) => Keyboard.hide())
+      .catch(() => {
+        // Web/desktop or no native bridge — blur() above already dropped focus.
+      });
+  }, [currentTab]);
+
   // Focusing or typing in the composer opens the chat (keyboard + history) when
   // there's a thread to show. Opens to HALF — the conversation is visible above
   // the keyboard without a full-screen takeover; the maximize button is for that.
