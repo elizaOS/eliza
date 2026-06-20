@@ -780,10 +780,18 @@ function stageNativeLlamaAssetsForAbi({ androidAbi, abiAssetsDir, log }) {
   }
 
   // The fused libelizainference.so is the activation lib (ElizaAgentService
-  // gates ELIZA_LOCAL_LLAMA on it); it carries a runtime DT_NEEDED on
-  // libllama.so + the libggml* family, so libllama.so must stage alongside it.
-  // The eliza-llama-shim was retired with the libllama TS adapter.
-  const required = ["libelizainference.so", "libllama.so"];
+  // gates ELIZA_LOCAL_LLAMA on it). As of the static-fuse build recipe
+  // (BUILD_SHARED_LIBS=OFF + CMAKE_POSITION_INDEPENDENT_CODE=ON in
+  // build-helpers/omnivoice-merged.mjs fusedExtraCmakeFlags + the bionic JNI
+  // builder) it is SELF-CONTAINED: llama/ggml/mtmd are folded in as static
+  // archives, so its only DT_NEEDED entries are libc/libm/libdl — there is no
+  // runtime libllama.so / libggml*.so sibling to resolve via LD_LIBRARY_PATH.
+  // So only libelizainference.so is required. A non-fused bulk build may still
+  // emit libllama.so + the libggml* family as a byproduct; if present they
+  // stage harmlessly via shouldStageNativeLlamaAsset() above, but they are no
+  // longer a hard requirement for the fused activation path. The
+  // eliza-llama-shim was retired with the libllama TS adapter.
+  const required = ["libelizainference.so"];
   const missing = required.filter(
     (name) => !fs.existsSync(path.join(abiAssetsDir, name)),
   );

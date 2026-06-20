@@ -292,6 +292,21 @@ export const REQUIRED_ELIZA_INFERENCE_SYMBOLS = Object.freeze([
   "eliza_inference_tokenize",
   "eliza_inference_vision_supported",
   "eliza_inference_describe_image",
+  // ABI v10 — Kokoro-82M TTS folded in-process. The static-fuse recipe sets
+  // LLAMA_BUILD_KOKORO=ON so kokoro_lib (its own GGUF reader + iSTFT decoder)
+  // links into libelizainference under the ELIZA_ENABLE_KOKORO define. These
+  // exports prove the fold took effect — a fused lib that built omnivoice but
+  // dropped kokoro (e.g. a target-ordering miss where kokoro_lib was not a
+  // defined target when elizainference's `if(TARGET kokoro_lib)` evaluated) is
+  // a half-fused artifact, not a tolerable fallback. Device-proven on a real
+  // Pixel: kokoro_supported()==1 + 2.36s of synthesized PCM. The `*_supported`
+  // entry is always exported (returns 0 when the build lacked kokoro_lib); the
+  // `_load`/`_synthesize`/`_sample_rate` entries are exported by the v10 FFI
+  // surface regardless, so requiring all four asserts the v10 ABI is present.
+  "eliza_inference_kokoro_supported",
+  "eliza_inference_kokoro_load",
+  "eliza_inference_kokoro_synthesize",
+  "eliza_inference_kokoro_sample_rate",
 ]);
 
 function hasExportedSymbol(symbols, name) {
