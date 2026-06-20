@@ -23,18 +23,21 @@ function isNativeDirectCloudApiUrl(url: string): boolean {
 }
 
 /**
- * Any managed cloud HTTPS endpoint on a native build — the central
- * `api.elizacloud.ai` host or a dedicated agent subdomain
- * (`<agentId>.elizacloud.ai`). Used to decide whether the SSE-streaming bypass
- * applies; non-streaming requests still route exactly as before.
+ * A dedicated agent subdomain (`<agentId>.elizacloud.ai`) on a native build —
+ * NOT the central `api.elizacloud.ai` host. Only these serve CORS for the app
+ * origin (verified: `access-control-allow-origin: <webview origin>` +
+ * `X-ElizaOS-Client-Id` in allow-headers), so the native browser fetch can read
+ * an SSE stream cross-origin. The central `api.elizacloud.ai` does NOT allow the
+ * app origin (it relies on CapacitorHttp's CORS bypass), so its SSE — e.g.
+ * `computer-use/approvals/stream` — must stay on CapacitorHttp.
  */
-function isNativeCloudHttpsUrl(url: string): boolean {
+function isNativeCloudAgentSubdomain(url: string): boolean {
   const parsed = parseUrl(url);
   if (!parsed) return false;
   if (!Capacitor.isNativePlatform()) return false;
   if (parsed.protocol !== "https:") return false;
   const host = parsed.hostname.toLowerCase();
-  return host === "api.elizacloud.ai" || host.endsWith(CLOUD_HOST_SUFFIX);
+  return host !== "api.elizacloud.ai" && host.endsWith(CLOUD_HOST_SUFFIX);
 }
 
 /**
@@ -63,9 +66,8 @@ type NativeWebFetch = (
 /**
  * The original, un-patched browser `fetch` that Capacitor preserves as
  * `CapacitorWebFetch` when its HTTP plugin patches the global `fetch`. Using it
- * bypasses `CapacitorHttp` so SSE responses stream token-by-token. The managed
- * cloud agent serves CORS for the app origin, so the WebView fetch is allowed
- * cross-origin.
+ * bypasses `CapacitorHttp` so SSE responses stream token-by-token. Only used for
+ * dedicated agent subdomains, which serve CORS for the app origin.
  */
 function nativeWebFetch(): NativeWebFetch | null {
   const candidate = (globalThis as { CapacitorWebFetch?: unknown })
@@ -104,12 +106,16 @@ function responseBody(data: unknown): string {
 
 const nativeCloudHttpTransport: AgentRequestTransport = {
   async request(url, init, context) {
-    // SSE chat streams must bypass CapacitorHttp (which buffers the whole
-    // response) and use the native browser fetch so `response.body` streams
-    // incrementally — first token in ~2s instead of the full reply landing as
-    // one blob after generation finishes. Covers both `api.elizacloud.ai` and
-    // dedicated agent subdomains.
-    if (isNativeCloudHttpsUrl(url) && isStreamingRequest(url, init.headers)) {
+    // SSE chat streams to a dedicated agent subdomain must bypass CapacitorHttp
+    // (which buffers the whole response) and use the native browser fetch so
+    // `response.body` streams incrementally — first token in ~2s instead of the
+    // full reply landing as one blob after generation finishes. Scoped to agent
+    // subdomains only: they serve CORS for the app origin. The central
+    // `api.elizacloud.ai` does not, so its SSE stays on CapacitorHttp below.
+    if (
+      isNativeCloudAgentSubdomain(url) &&
+      isStreamingRequest(url, init.headers)
+    ) {
       const webFetch = nativeWebFetch();
       if (webFetch) {
         return webFetch(url, init);
@@ -153,11 +159,11 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
 export function nativeCloudHttpTransportForUrl(
   url: string,
 ): AgentRequestTransport | null {
-  // Claim direct cloud API calls (CapacitorHttp path) and any native cloud
-  // HTTPS URL (so an SSE stream to an agent subdomain can take the
-  // CapacitorWebFetch path). Non-streaming agent-subdomain calls fall through
-  // to the patched global fetch inside `request`, preserving prior behavior.
+  // Claim direct cloud API calls (CapacitorHttp path) and dedicated agent
+  // subdomains (so an SSE stream there can take the CapacitorWebFetch path).
+  // Non-streaming agent-subdomain calls fall through to the patched global fetch
+  // inside `request`, preserving prior behavior.
   if (isNativeDirectCloudApiUrl(url)) return nativeCloudHttpTransport;
-  if (isNativeCloudHttpsUrl(url)) return nativeCloudHttpTransport;
+  if (isNativeCloudAgentSubdomain(url)) return nativeCloudHttpTransport;
   return null;
 }

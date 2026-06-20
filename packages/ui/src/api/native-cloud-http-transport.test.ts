@@ -101,29 +101,34 @@ describe("SSE streaming bypass", () => {
     expect(capacitorHttpRequestMock).not.toHaveBeenCalled();
   });
 
-  it("streams SSE to the central cloud API via the native browser fetch", async () => {
-    const sseApiUrl = "https://api.elizacloud.ai/api/chat/stream";
+  it("does NOT use the native fetch for SSE to the central cloud API (CORS blocks the app origin there)", async () => {
+    // api.elizacloud.ai does not serve CORS to the app origin, so its SSE
+    // (e.g. computer-use/approvals/stream) must stay on CapacitorHttp's
+    // CORS-bypass path — switching it to the native fetch would break it.
+    const sseApiUrl =
+      "https://api.elizacloud.ai/api/computer-use/approvals/stream";
     const transport = nativeCloudHttpTransportForUrl(sseApiUrl);
     await transport?.request(sseApiUrl, {
-      method: "POST",
+      method: "GET",
       headers: { Accept: "text/event-stream" },
-      body: "{}",
     });
-    expect(webFetchMock).toHaveBeenCalledTimes(1);
-    expect(capacitorHttpRequestMock).not.toHaveBeenCalled();
+    expect(webFetchMock).not.toHaveBeenCalled();
+    expect(capacitorHttpRequestMock).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to CapacitorHttp for SSE to the central API when the native fetch is unavailable", async () => {
+  it("falls back to CapacitorHttp for SSE to an agent subdomain when the native fetch is unavailable", async () => {
     (globalThis as { CapacitorWebFetch?: unknown }).CapacitorWebFetch =
       undefined;
-    const sseApiUrl = "https://api.elizacloud.ai/api/chat/stream";
-    const transport = nativeCloudHttpTransportForUrl(sseApiUrl);
-    await transport?.request(sseApiUrl, {
+    const transport = nativeCloudHttpTransportForUrl(AGENT_URL);
+    await transport?.request(AGENT_URL, {
       method: "POST",
       headers: { Accept: "text/event-stream" },
       body: "{}",
     });
-    expect(capacitorHttpRequestMock).toHaveBeenCalledTimes(1);
+    // No native fetch available → falls through to the global (patched) fetch,
+    // since an agent subdomain is not a "direct cloud API" host.
+    expect(globalFetchMock).toHaveBeenCalledTimes(1);
+    expect(capacitorHttpRequestMock).not.toHaveBeenCalled();
   });
 });
 
