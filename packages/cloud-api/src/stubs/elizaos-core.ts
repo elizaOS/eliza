@@ -223,6 +223,29 @@ export function runWithTrajectoryContext<T>(
   return fn();
 }
 
+type InferenceTimingMeta = Record<string, string | number | boolean>;
+
+/**
+ * Worker-safe `timeInferenceSpan`: in @elizaos/core this records a span on the
+ * active turn timer, but the timing context manager lives on the agent sidecar.
+ * No timer is ever active in the Worker bundle, so just run `fn` (matching the
+ * core no-op-when-no-timer path). Pulled in transitively via plugin-elizacloud.
+ */
+export async function timeInferenceSpan<T>(
+  _name: string,
+  fn: () => Promise<T>,
+  _meta?: InferenceTimingMeta,
+): Promise<T> {
+  return fn();
+}
+
+/** Worker-safe `recordInferenceSpan`: no active timer in the Worker, so no-op. */
+export function recordInferenceSpan(
+  _name: string,
+  _durationMs: number,
+  _meta?: InferenceTimingMeta,
+): void {}
+
 /**
  * Worker-safe `parseJsonModelRecord`: mirrors @elizaos/core — strip a leading
  * `<think>…</think>` block and a fenced code block, JSON.parse, and accept only

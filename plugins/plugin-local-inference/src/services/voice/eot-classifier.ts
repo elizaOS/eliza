@@ -496,7 +496,11 @@ export class CompositeEotClassifier implements EotClassifier {
 			await this.model.score(partialTranscript);
 		const blended =
 			modelP * (1 - heuristicConfidence) + heuristicP * heuristicConfidence;
-		return { probability: clampProbability(blended), latencyMs, usedModel: true };
+		return {
+			probability: clampProbability(blended),
+			latencyMs,
+			usedModel: true,
+		};
 	}
 
 	async score(partialTranscript: string): Promise<number> {
