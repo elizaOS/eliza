@@ -530,6 +530,34 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
  * a small loading fallback until the import resolves. Plugins can avoid this
  * path by self-registering with `registerAppShellPage` at boot.
  */
+/**
+ * Props every app-shell page view receives, mirroring the OverlayAppContext that
+ * `DynamicViewLoader` injects on web/desktop. Overlay-app views (polymarket,
+ * vincent, …) read `t` / `exitToApps` from props and crash ("t is not a
+ * function") if mounted with none — which is exactly what happens on iOS/Android
+ * where these views render through the in-process app-shell path instead of
+ * DynamicViewLoader. Views that read translations from hooks ignore the extras.
+ */
+function exitAppShellPageToViews(): void {
+  if (typeof window !== "undefined") {
+    window.history.pushState(null, "", "/views");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
+}
+const APP_SHELL_VIEW_PROPS = {
+  exitToApps: exitAppShellPageToViews,
+  t: (
+    key: string,
+    options?: { defaultValue?: string } | Record<string, unknown>,
+  ): string =>
+    typeof options === "object" &&
+    options !== null &&
+    "defaultValue" in options &&
+    typeof options.defaultValue === "string"
+      ? options.defaultValue
+      : key,
+};
+
 function RegisteredAppShellPage({
   registration,
 }: {
@@ -543,7 +571,7 @@ function RegisteredAppShellPage({
     return (
       <RetainedLazyComponent
         loader={registration.loader}
-        componentProps={{}}
+        componentProps={APP_SHELL_VIEW_PROPS}
         fallback={
           <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
             Loading {registration.label}…
