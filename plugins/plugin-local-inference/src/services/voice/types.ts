@@ -407,9 +407,9 @@ export interface VerifierStreamEvent {
 //      decides "is there acoustic activity right now". A rising edge wakes
 //      the response pipeline (KV-prefill, drafter preload, first-filler
 //      pre-generation) speculatively.
-//   2. The Silero VAD GGUF (via silero-vad-cpp FFI) is the *authoritative*
-//      speech/no-speech signal. It gates ASR (skip silent frames) and
-//      drives turn-taking.
+//   2. The fused Silero VAD (via the `libelizainference` native VAD ABI) is
+//      the *authoritative* speech/no-speech signal. It gates ASR (skip silent
+//      frames) and drives turn-taking.
 //
 // Both run on every mic frame. The RMS gate never substitutes for Silero —
 // if the native VAD runtime is unavailable that is a hard "VAD unavailable"
@@ -678,10 +678,11 @@ export type VoiceSchedulerTelemetryListener = (
 
 // ---------------------------------------------------------------------------
 // Shared interfaces extracted here to break circular dependencies between
-// vad.ts ↔ vad-ggml.ts and wake-word.ts ↔ wake-word-ggml.ts.
+// vad.ts and its consumers, and wake-word.ts ↔ wake-word-ggml.ts.
 // ---------------------------------------------------------------------------
 
-/** Minimal VAD model contract consumed by SileroVadGgml and qwen-toolkit adapter. */
+/** Minimal VAD model contract consumed by the fused `GgmlSileroVad` and the
+ *  optional injected qwen-toolkit adapter. */
 export interface VadLike {
 	readonly windowSamples: number;
 	readonly sampleRate: number;

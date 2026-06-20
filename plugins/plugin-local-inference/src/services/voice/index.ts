@@ -359,7 +359,6 @@ export {
 	resolveSileroVadPath,
 	resolveVadProvider,
 	rms,
-	SILERO_VAD_BUNDLE_REL_PATH,
 	VadDetector,
 	type VadDetectorConfig,
 	type VadLike,

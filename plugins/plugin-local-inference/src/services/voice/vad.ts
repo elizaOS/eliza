@@ -8,29 +8,24 @@
  *            substitutes for the model VAD — it only decides "is there
  *            acoustic activity right now".
  *
- *   Tier 2 — a model VAD provider. Resolver order is Qwen toolkit adapter
- *            when supplied, otherwise the standalone `silero-vad-cpp` GGUF
- *            backend (`vad/silero-vad-v5.gguf` in the Eliza-1 bundle layout),
- *            then the legacy fused libelizainference VAD ABI. 512-sample
- *            windows at 16 kHz (32 ms hop), one speech probability per window.
- *            This is the *authoritative* speech/no-speech signal — it gates
- *            ASR and drives turn-taking.
+ *   Tier 2 — a model VAD provider. Resolver order is an optional injected
+ *            Qwen toolkit adapter when supplied, otherwise the fused
+ *            `libelizainference` Silero v5 VAD ABI (`eliza_inference_vad_*`,
+ *            backend id `silero-ggml`). 512-sample windows at 16 kHz (32 ms
+ *            hop), one speech probability per window. This is the
+ *            *authoritative* speech/no-speech signal — it gates ASR and drives
+ *            turn-taking. The fused engine is the sole on-device VAD runtime;
+ *            there is no standalone VAD library.
  *
  *   `VadDetector` wires both together and emits the `VadEvent` stream
  *   (`speech-start` / `speech-active` / `speech-pause` / `speech-end` /
  *   `blip`) plus the raw `EnergyGateEvent` stream.
  *
- * No fallback sludge: if no model VAD provider can be loaded,
- * `createVadDetector()` throws `VadUnavailableError`. The caller surfaces
- * "VAD unavailable — voice features degrade" — there is no silent downgrade to
- * the RMS gate (AGENTS.md §3).
- *
- * Native VAD migration: the runtime VAD used to be Silero v5 in ONNX
- * (`silero-vad-int8.onnx`) loaded via `onnxruntime-node`. That dependency is
- * gone. The preferred path is now `silero-vad-cpp`: a standalone Bun FFI
- * binding to `libsilero_vad` that loads `vad/silero-vad-v5.gguf`, produced by
- * `packages/native/plugins/silero-vad-cpp/scripts/silero_vad_to_gguf.py`.
- * The older libelizainference VAD ABI remains as a temporary fallback only.
+ * No fallback sludge: if the fused VAD ABI is unavailable (and no injected
+ * adapter is supplied), `createVadDetector()` throws `VadUnavailableError`. The
+ * caller surfaces "VAD unavailable — voice features degrade" — there is no
+ * silent downgrade to the RMS gate, and no standalone-library fallback
+ * (AGENTS.md §3).
  */
 
 import { existsSync } from "node:fs";
@@ -48,7 +43,6 @@ import type {
 	VadEvent,
 	VadEventListener,
 } from "./types";
-import { SileroVadGgml, VadGgmlUnavailableError } from "./vad-ggml";
 
 /** Thrown when the Silero VAD backend cannot be loaded — the native VAD FFI
  *  is missing or ABI-only, the model file is absent, or the model is corrupt.
@@ -67,23 +61,12 @@ export class VadUnavailableError extends Error {
 	}
 }
 
-/** Relative path of the preferred Silero v5 GGUF VAD model inside an Eliza-1
- *  bundle. The file is produced by
- *  `packages/native/plugins/silero-vad-cpp/scripts/silero_vad_to_gguf.py`. */
-export const SILERO_VAD_BUNDLE_REL_PATH = path.join(
-	"vad",
-	"silero-vad-v5.gguf",
-);
-
-/** Legacy fused-libelizainference VAD artifact. Kept only for the temporary
- *  `silero-ggml` fallback ABI. */
-const LEGACY_SILERO_VAD_GGML_REL_PATH = path.join(
-	"vad",
-	"silero-vad-v5.1.2.ggml.bin",
-);
+/** Relative path of the fused Silero v5 GGML VAD model inside an Eliza-1
+ *  bundle. The file is read by `libelizainference`'s native VAD ABI. */
+const SILERO_VAD_GGML_REL_PATH = path.join("vad", "silero-vad-v5.1.2.ggml.bin");
 
 /**
- * Resolve the legacy fused-libelizainference Silero GGML model on disk. An
+ * Resolve the fused-libelizainference Silero GGML VAD model on disk. An
  * explicit `modelPath` is honored exactly — if it is set but missing, the
  * result is `null` (no silent substitution of a different model). When
  * `modelPath` is not given the search order is:
@@ -91,8 +74,6 @@ const LEGACY_SILERO_VAD_GGML_REL_PATH = path.join(
  *   2. `<state-dir>/local-inference/vad/silero-vad-v5.1.2.ggml.bin`
  *   3. `$ELIZA_VAD_MODEL_PATH`
  * Returns `null` when none exist.
- *
- * @deprecated Prefer {@link resolveSileroVadCppGgufPath}.
  */
 export function resolveSileroVadPath(opts: {
 	modelPath?: string;
@@ -103,50 +84,10 @@ export function resolveSileroVadPath(opts: {
 	}
 	const candidates: Array<string | undefined> = [
 		opts.bundleRoot
-			? path.join(opts.bundleRoot, LEGACY_SILERO_VAD_GGML_REL_PATH)
+			? path.join(opts.bundleRoot, SILERO_VAD_GGML_REL_PATH)
 			: undefined,
-		path.join(localInferenceRoot(), LEGACY_SILERO_VAD_GGML_REL_PATH),
+		path.join(localInferenceRoot(), SILERO_VAD_GGML_REL_PATH),
 		process.env.ELIZA_VAD_MODEL_PATH?.trim() || undefined,
-	];
-	for (const c of candidates) {
-		if (c && existsSync(c)) return path.resolve(c);
-	}
-	return null;
-}
-
-/** @deprecated `SILERO_VAD_BUNDLE_REL_PATH` is now the standalone GGUF. */
-export const SILERO_VAD_CPP_BUNDLE_REL_PATH = SILERO_VAD_BUNDLE_REL_PATH;
-
-/** Resolve the standalone silero-vad-cpp GGUF on disk. Search order
- *  mirrors the bundle/state-dir/env fallback order:
- *    1. `opts.modelPath` if supplied (no fallback if missing).
- *    2. `<bundleRoot>/vad/silero-vad-v5.gguf`.
- *    3. `<state-dir>/local-inference/vad/silero-vad-v5.gguf`.
- *    4. `$ELIZA_SILERO_VAD_GGUF`.
- *    5. The repo-local CMake build output
- *       (`packages/native/plugins/silero-vad-cpp/build/silero-vad-v5.gguf`).
- *  Returns `null` when none exist. */
-export function resolveSileroVadCppGgufPath(opts: {
-	modelPath?: string;
-	bundleRoot?: string;
-}): string | null {
-	if (opts.modelPath) {
-		return existsSync(opts.modelPath) ? path.resolve(opts.modelPath) : null;
-	}
-	const candidates: Array<string | undefined> = [
-		opts.bundleRoot
-			? path.join(opts.bundleRoot, SILERO_VAD_BUNDLE_REL_PATH)
-			: undefined,
-		path.join(localInferenceRoot(), SILERO_VAD_BUNDLE_REL_PATH),
-		process.env.ELIZA_SILERO_VAD_GGUF?.trim() || undefined,
-		path.join(
-			process.cwd(),
-			"packages",
-			"native-plugins",
-			"silero-vad-cpp",
-			"build",
-			"silero-vad-v5.gguf",
-		),
 	];
 	for (const c of candidates) {
 		if (c && existsSync(c)) return path.resolve(c);
@@ -166,11 +107,11 @@ function validateSileroSampleRate(sampleRate: number): void {
 }
 
 /**
- * Legacy libelizainference-backed Silero v5 GGML VAD. The model
- * (`silero-vad-v5.1.2.ggml.bin`) is loaded by the shared ggml context owned
- * by the FFI; `process()` runs one 512-sample 16 kHz window through the native
- * VAD and returns the speech probability. `reset()` clears the recurrent state
- * at utterance boundaries.
+ * Fused libelizainference-backed Silero v5 GGML VAD — the sole on-device VAD
+ * runtime. The model (`silero-vad-v5.1.2.ggml.bin`) is loaded by the shared
+ * ggml context owned by the FFI; `process()` runs one 512-sample 16 kHz window
+ * through the native VAD and returns the speech probability. `reset()` clears
+ * the recurrent state at utterance boundaries.
  */
 export class GgmlSileroVad {
 	readonly sampleRate: number;
@@ -430,7 +371,7 @@ export type { VadLike } from "./types.js";
 
 import type { VadLike } from "./types.js";
 
-export type VadProviderId = "qwen-toolkit" | "silero-cpp" | "silero-ggml";
+export type VadProviderId = "qwen-toolkit" | "silero-ggml";
 export type VadProviderPreference = "auto" | VadProviderId;
 
 export interface QwenToolkitVadAdapter {
@@ -451,30 +392,17 @@ export interface CreateVadDetectorOptions {
 	qwenToolkitVad?: QwenToolkitVadAdapter | null;
 	config?: VadDetectorConfig;
 	prefer?: VadProviderPreference;
-	/** Optional explicit path to the standalone Silero VAD GGUF
-	 *  produced by `packages/native/plugins/silero-vad-cpp/scripts/silero_vad_to_gguf.py`.
-	 *  Resolved via `resolveSileroVadCppGgufPath` when omitted. */
-	sileroCppGgufPath?: string;
-	/** Optional override path to `libsilero_vad.{so,dylib,dll}`. Falls
-	 *  back to the env var `ELIZA_SILERO_VAD_LIB` then the repo-local
-	 *  CMake build dir. */
-	sileroCppLibraryPath?: string;
-	/** Repo root for resolving `silero-cpp` artifacts. Defaults to `process.cwd()`. */
-	sileroCppRepoRoot?: string;
 }
 
 export function vadProviderOrder(
 	prefer: VadProviderPreference = "auto",
 ): VadProviderId[] {
 	if (prefer !== "auto") return [prefer];
-	// `silero-ggml` is the fused `libelizainference` VAD ABI — the single
-	// native engine the whole voice pipeline runs through (the user directive:
-	// no separate bun:ffi-musl libs). It is preferred whenever the fused FFI
-	// handle is available and advertises VAD support. `silero-cpp` (the
-	// standalone GGUF-backed `packages/native/plugins/silero-vad-cpp` runtime)
-	// remains only as a guarded fallback for paths that do not thread the fused
-	// handle (e.g. a desktop test harness with no engine bridge).
-	return ["qwen-toolkit", "silero-ggml", "silero-cpp"];
+	// `silero-ggml` is the fused `libelizainference` VAD ABI — the sole
+	// on-device VAD runtime. The optional injected `qwen-toolkit` adapter is
+	// tried first only when a caller supplies one; otherwise the fused engine
+	// is the single path, and an unavailable fused VAD fails fast.
+	return ["qwen-toolkit", "silero-ggml"];
 }
 
 export async function resolveVadProvider(
@@ -502,34 +430,6 @@ export async function resolveVadProvider(
 					vad: await opts.qwenToolkitVad.loadVad({ sampleRate }),
 				};
 			}
-			case "silero-cpp": {
-				tried.push(provider);
-				const ggufPath = resolveSileroVadCppGgufPath({
-					modelPath: opts.sileroCppGgufPath,
-					bundleRoot: opts.bundleRoot,
-				});
-				if (!ggufPath) {
-					reasons.push(
-						"silero-cpp: GGUF not found (looked for silero-vad-v5.gguf in bundle/state-dir; set ELIZA_SILERO_VAD_GGUF or run scripts/silero_vad_to_gguf.py)",
-					);
-					break;
-				}
-				try {
-					const vad = await SileroVadGgml.load({
-						ggufPath,
-						libraryPath: opts.sileroCppLibraryPath,
-						repoRoot: opts.sileroCppRepoRoot,
-						sampleRate,
-					});
-					return { id: provider, vad };
-				} catch (e) {
-					if (e instanceof VadGgmlUnavailableError) {
-						reasons.push(`silero-cpp: ${e.code} — ${e.message}`);
-						break;
-					}
-					throw e;
-				}
-			}
 			case "silero-ggml": {
 				tried.push(provider);
 				if (!opts.ffi || !opts.ctx) {
@@ -544,7 +444,7 @@ export async function resolveVadProvider(
 					);
 					break;
 				}
-				// Ensure the bundled GGML model is on disk before opening the
+				// Ensure the fused GGML model is on disk before opening the
 				// native session. This keeps the failure mode "no model file"
 				// distinct from a build with an ABI-only VAD.
 				const modelPath = resolveSileroVadPath({
@@ -554,7 +454,7 @@ export async function resolveVadProvider(
 				if (!modelPath) {
 					throw new VadUnavailableError(
 						"model-missing",
-						`[voice] Legacy Silero v5 GGML VAD model not found. Looked for ${LEGACY_SILERO_VAD_GGML_REL_PATH} in the Eliza-1 bundle and under ${localInferenceRoot()}. Prefer staging ${SILERO_VAD_BUNDLE_REL_PATH} for silero-cpp, or set ELIZA_VAD_MODEL_PATH for the legacy fallback.`,
+						`[voice] Fused Silero v5 GGML VAD model not found. Looked for ${SILERO_VAD_GGML_REL_PATH} in the Eliza-1 bundle and under ${localInferenceRoot()}, or set ELIZA_VAD_MODEL_PATH.`,
 					);
 				}
 				return {
