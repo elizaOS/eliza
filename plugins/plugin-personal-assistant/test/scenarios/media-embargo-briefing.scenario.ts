@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "media-embargo-briefing",
   title: "Assistant coordinates media embargo briefing",
   domain: "executive.messaging",

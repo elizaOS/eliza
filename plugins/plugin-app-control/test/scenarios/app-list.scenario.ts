@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
 	id: "app-list",
 	title: "APP action list sub-mode reports installed and running apps",
 	domain: "app-control",

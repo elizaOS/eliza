@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "passport-renewal-travel-readiness",
   title: "Assistant catches passport risk before international travel",
   domain: "executive.travel",

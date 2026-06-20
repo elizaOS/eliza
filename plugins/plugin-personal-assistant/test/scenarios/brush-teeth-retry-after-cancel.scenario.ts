@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "brush-teeth-retry-after-cancel",
   title: "Brush teeth retry after backing out",
   domain: "tasks",

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "household-staff-payroll-correction",
   title: "Assistant corrects household staff payroll issue",
   domain: "executive.household",

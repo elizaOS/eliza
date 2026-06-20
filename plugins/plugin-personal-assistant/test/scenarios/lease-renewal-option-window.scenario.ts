@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "lease-renewal-option-window",
   title: "Assistant protects lease renewal option window",
   domain: "executive.household",

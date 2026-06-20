@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "philanthropy-grant-diligence",
   title: "Assistant coordinates philanthropy grant diligence and approval",
   domain: "executive.documents",

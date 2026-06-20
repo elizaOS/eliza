@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "utility-outage-reimbursement",
   title: "Assistant coordinates utility outage reimbursement",
   domain: "executive.household",

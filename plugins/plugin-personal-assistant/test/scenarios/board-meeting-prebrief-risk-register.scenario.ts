@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "board-meeting-prebrief-risk-register",
   title: "Assistant prepares a board prebrief with risk register and decisions",
   domain: "executive.briefing",

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "goal-sleep-basic",
   title: "Sleep goal save flow",
   domain: "goals",

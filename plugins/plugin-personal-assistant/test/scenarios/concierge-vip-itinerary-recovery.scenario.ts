@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "concierge-vip-itinerary-recovery",
   title: "Assistant recovers a VIP itinerary after a concierge vendor miss",
   domain: "executive.vendor",

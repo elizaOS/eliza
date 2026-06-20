@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
 	id: "views-show",
 	title: "VIEWS action show mode navigates to a named view",
 	domain: "app-control",

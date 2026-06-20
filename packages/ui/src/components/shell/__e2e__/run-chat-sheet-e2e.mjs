@@ -1437,6 +1437,51 @@ try {
     await p.close();
   }
 
+  // ── INPUT → PILL liquid-glass morph (regression for the dead collapse drag):
+  // dragging the input peek DOWN toward the pill must morph it LIVE under the
+  // finger — the input bar fades + scales into the pill capsule — instead of
+  // staying fully formed (content opacity 1, pill 0) and only snapping to the
+  // pill on release (the unresponsive gesture). Mirrors the pill→input morph.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
+    await p.waitForTimeout(600);
+    assert(
+      (await detent(p)) === "collapsed",
+      "INPUT-PILL-MORPH: starts at the input peek",
+    );
+    // Slow drag DOWN ~90px (of the 120px morph distance) and HOLD — mid-drag the
+    // input should be ~3/4 morphed to the pill: content well below opacity 1, the
+    // pill capsule clearly fading in.
+    await gesture(p, -90, { pointer: "mouse", slow: true, hold: true, steps: 8 });
+    const contentMid = await p
+      .getByTestId("chat-content")
+      .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
+    const pillMid = await p
+      .getByTestId("chat-pill")
+      .evaluate((el) =>
+        Number.parseFloat(getComputedStyle(el.parentElement).opacity),
+      );
+    assert(
+      contentMid < 0.95,
+      `INPUT-PILL-MORPH: the input fades mid-drag (content opacity ${contentMid})`,
+    );
+    assert(
+      pillMid > 0.05,
+      `INPUT-PILL-MORPH: the pill capsule fades in mid-drag (pill opacity ${pillMid})`,
+    );
+    await snap(p, "transition-input-to-pill-mid-drag");
+    await release(p, "mouse");
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await detent(p)) === "pill",
+      "INPUT-PILL-MORPH: settles to the pill on release",
+    );
+    await p.close();
+  }
+
   // ── PILL → INPUT on a short SLOW pull: a slow drag up from the pill that only
   // forms the input bar (past the halfway-open mark but short of the thread)
   // must settle at the INPUT state, NOT overshoot to the half detent. Regression

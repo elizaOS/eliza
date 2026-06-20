@@ -1,7 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { type Page, expect, test } from "@playwright/test";
-import { VIEW_CASES } from "./plugin-view-cases";
+import { expect, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -12,6 +11,7 @@ import {
   type ScreenshotQuality,
   screenshotQualityIssues,
 } from "./helpers/screenshot-quality";
+import { VIEW_CASES } from "./plugin-view-cases";
 
 /**
  * App-side all-views aesthetic audit (#8796) — the agent app's equivalent of
@@ -65,7 +65,12 @@ interface AuditCase {
 function buildAuditCases(): AuditCase[] {
   const cases: AuditCase[] = [];
   for (const [id, viewPath] of Object.entries(BUILTIN_TAB_PATHS)) {
-    cases.push({ slug: `builtin-${id}`, path: viewPath, viewType: "gui", kind: "builtin" });
+    cases.push({
+      slug: `builtin-${id}`,
+      path: viewPath,
+      viewType: "gui",
+      kind: "builtin",
+    });
   }
   for (const view of VIEW_CASES) {
     cases.push({
@@ -125,6 +130,9 @@ interface ViewFinding {
   hoverViolations: string[];
   borderRadiusViolations: string[];
   overlayPresent: boolean;
+  viewType: "gui" | "tui";
+  /** Readable text length in the view root; ~0 means the view never painted. */
+  readableChars: number;
   quality: ScreenshotQuality | null;
   qualityIssues: string[];
   verdict: "good" | "needs-work" | "broken";
@@ -181,6 +189,7 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **blue colors (banned):** ${finding.blueColors.length ? finding.blueColors.join(", ") : "none"}`,
     `- **orange↔black hover violations:** ${finding.hoverViolations.length ? finding.hoverViolations.join("; ") : "none"}`,
     `- **floating chat overlay present:** ${finding.overlayPresent ? "yes" : "NO"}`,
+    `- **readable content chars:** ${finding.readableChars}`,
     `- **screenshot quality issues:** ${finding.qualityIssues.length ? finding.qualityIssues.join("; ") : "none"}`,
     "",
     "## Notes",
@@ -192,9 +201,21 @@ function renderManualReviewStub(finding: ViewFinding): string {
   return lines.join("\n");
 }
 
-function computeVerdict(finding: Omit<ViewFinding, "verdict">): ViewFinding["verdict"] {
-  if (finding.consoleErrors.length > 0 || finding.qualityIssues.length > 0) {
+function computeVerdict(
+  finding: Omit<ViewFinding, "verdict">,
+): ViewFinding["verdict"] {
+  if (
+    finding.consoleErrors.length > 0 ||
+    finding.qualityIssues.length > 0 ||
+    finding.readableChars < 10
+  ) {
     return "broken";
+  }
+  // TUI views are intentionally dark terminals (#8796 open question): exempt
+  // them from the light-surface blue/hover heuristics and the floating-overlay
+  // requirement — they pass once they render with no console errors.
+  if (finding.viewType === "tui") {
+    return "good";
   }
   if (
     finding.blueColors.length > 0 ||
@@ -233,8 +254,21 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         await installDefaultAppRoutes(page);
         await openAppPath(page, view.path);
 
-        const viewRoot = page.locator("main").first();
-        await expect(viewRoot).toBeVisible({ timeout: 60_000 });
+        // Best-effort readiness: most views render <main>, but chat/phone/etc.
+        // render straight into #root with no <main>. Wait for whichever appears
+        // (short, non-fatal) so the audit walks EVERY view — a view that never
+        // paints readable content is recorded as a finding, not a hard failure.
+        const viewRoot = page.locator("main, #root").first();
+        await viewRoot
+          .waitFor({ state: "visible", timeout: 15_000 })
+          .catch(() => {});
+        const readableChars = await viewRoot
+          .evaluate(
+            (root) =>
+              (root as HTMLElement).innerText.trim().replace(/\s+/g, " ")
+                .length,
+          )
+          .catch(() => 0);
 
         // Floating chat overlay must integrate over every view (#8796 item 3).
         const overlayPresent = await page
@@ -247,24 +281,31 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           .catch(() => false);
 
         const restPath = path.join(shotDir, `${view.slug}.png`);
-        const buffer = await page.screenshot({ path: restPath, fullPage: false });
+        const buffer = await page.screenshot({
+          path: restPath,
+          fullPage: false,
+        });
         const quality = await analyzeScreenshot(buffer).catch(() => null);
         const qualityIssues = quality
           ? screenshotQualityIssues(`${view.slug} ${vp.name}`, quality)
           : [];
 
         const blueColors = await collectBlueColors(page).catch(() => []);
-        const hoverViolations = await collectHoverViolations(page).catch(() => []);
+        const hoverViolations = await collectHoverViolations(page).catch(
+          () => [],
+        );
 
         const base = {
           slug: view.slug,
           viewport: vp.name,
           path: view.path,
+          viewType: view.viewType,
           consoleErrors,
           blueColors,
           hoverViolations,
           borderRadiusViolations: [],
           overlayPresent,
+          readableChars,
           quality,
           qualityIssues,
         };

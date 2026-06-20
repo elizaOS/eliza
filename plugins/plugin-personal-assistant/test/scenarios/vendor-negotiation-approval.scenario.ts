@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "vendor-negotiation-approval",
   title: "Assistant drafts a vendor negotiation without bypassing approval",
   domain: "executive.vendor",

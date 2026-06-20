@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "release-branch-war-room",
   title: "Assistant runs release branch war-room coordination",
   domain: "executive.delegation",

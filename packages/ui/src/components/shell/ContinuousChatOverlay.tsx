@@ -1033,6 +1033,12 @@ export function ContinuousChatOverlay({
       // user already opened one; clear any free-rest so the height matches.
       setFreeH(null);
       setMode((m) => (m === "half" || m === "full" ? m : "half"));
+      // Sending COMMITS to the open chat: a deliberate message means this is now
+      // an active conversation, so dismissing the keyboard afterwards keeps the
+      // thread open (preFocusCollapsedRef gates that) instead of collapsing the
+      // whole conversation back to the bare input peek — even when the chat was
+      // opened by tapping the collapsed input.
+      preFocusCollapsedRef.current = false;
       detentHaptic();
       inputRef.current?.focus();
     },
@@ -1843,6 +1849,18 @@ export function ContinuousChatOverlay({
         openProgress.set(Math.min(1, up / PILL_OPEN_DISTANCE));
         const excess = up - PILL_OPEN_DISTANCE;
         threadHeight.set(excess > 0 ? clampHeight(excess) : 0);
+        return;
+      }
+      // INPUT → PILL drag (collapsed, dragging DOWN): the mirror of the pill
+      // drag — map the downward travel to the input→pill morph (openProgress
+      // 1 → 0) so the input bar visibly scales down into the pill capsule under
+      // the finger, instead of staying fully formed and snapping to the pill only
+      // on release (the dead, unresponsive collapse gesture). The thread stays at
+      // 0 (nothing to size below the input).
+      if (!sheetOpen && offset < 0) {
+        const down = -offset;
+        openProgress.set(Math.max(0, 1 - down / PILL_OPEN_DISTANCE));
+        threadHeight.set(0);
         return;
       }
       // Pin the dead direction at each end so the panel feels held: collapsed →

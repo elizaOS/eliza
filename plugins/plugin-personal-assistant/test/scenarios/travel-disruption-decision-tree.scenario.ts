@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "travel-disruption-decision-tree",
   title: "Assistant builds a travel disruption decision tree before acting",
   domain: "executive.travel",

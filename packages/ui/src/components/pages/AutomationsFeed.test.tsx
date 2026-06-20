@@ -9,8 +9,6 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { client } from "../../api";
-import type { WorkflowExecution } from "../../api/client-types-chat";
 import type {
   AutomationItem,
   AutomationListResponse,
@@ -18,28 +16,23 @@ import type {
 import { invalidate } from "../../hooks/resource-cache";
 import { AutomationsFeed } from "./AutomationsFeed";
 
-vi.mock("../../api", () => ({
-  client: {
-    listAutomations: vi.fn(),
-    runWorkflowDefinition: vi.fn(),
-  },
+const clientMock = vi.hoisted(() => ({
+  listAutomations: vi.fn(),
+  runWorkflowDefinition: vi.fn(),
 }));
 
-const clientMock = client as unknown as {
-  listAutomations: ReturnType<typeof vi.fn>;
-  runWorkflowDefinition: ReturnType<typeof vi.fn>;
-};
+vi.mock("../../api", () => ({
+  client: clientMock,
+}));
 
-function workflowItem(
-  overrides: Partial<AutomationItem> & { id: string; title: string },
+function automationItem(
+  overrides: Partial<AutomationItem> = {},
 ): AutomationItem {
-  const { id, title, ...rest } = overrides;
-  const workflowId = overrides.workflowId ?? id.replace("auto-", "");
   return {
-    id,
+    id: "automation-1",
     type: "workflow",
     source: "workflow",
-    title,
+    title: "Nightly review",
     description: "",
     status: "active",
     enabled: true,
@@ -47,74 +40,49 @@ function workflowItem(
     isDraft: false,
     hasBackingWorkflow: true,
     updatedAt: "2026-06-20T12:00:00.000Z",
-    workflowId,
-    workflow: {
-      id: workflowId,
-      name: title,
-      active: true,
-      nodes: [],
-      connections: {},
-    },
+    workflowId: "workflow-1",
     schedules: [],
-    room: null,
-    ...rest,
+    lastExecution: {
+      status: "success",
+      startedAt: "2026-06-20T12:00:00.000Z",
+      stoppedAt: "2026-06-20T12:00:01.000Z",
+    },
+    ...overrides,
   };
 }
 
-function listResponse(): AutomationListResponse {
+function responseFixture(): AutomationListResponse {
   const automations = [
-    workflowItem({
-      id: "auto-nightly",
-      title: "Nightly report",
-      workflowId: "workflow-nightly",
-      schedules: [
-        {
-          id: "trigger-nightly",
-          taskId: "task-nightly",
-          displayName: "Daily report",
-          instructions: "",
-          triggerType: "cron",
-          enabled: true,
-          wakeMode: "inject_now",
-          createdBy: "test",
-          cronExpression: "0 9 * * *",
-          runCount: 3,
-        },
-      ],
-      lastExecution: {
-        status: "success",
-        startedAt: "2026-06-20T12:00:00.000Z",
-        stoppedAt: "2026-06-20T12:00:01.000Z",
-      },
-    }),
-    workflowItem({
-      id: "auto-slack",
-      title: "Slack escalation",
-      workflowId: "workflow-slack",
-      enabled: false,
-      status: "paused",
-      workflow: {
-        id: "workflow-slack",
-        name: "Slack escalation",
-        active: false,
-        nodes: [],
-        connections: {},
-      },
+    automationItem(),
+    automationItem({
+      id: "automation-2",
+      title: "Broken workflow",
+      workflowId: "workflow-2",
       lastExecution: {
         status: "error",
-        startedAt: "2026-06-20T12:05:00.000Z",
-        stoppedAt: "2026-06-20T12:05:01.000Z",
-        errorMessage: "Missing Slack credential",
+        startedAt: "2026-06-20T13:00:00.000Z",
+        errorMessage: "HTTP request failed",
       },
+    }),
+    automationItem({
+      id: "task-1",
+      type: "coordinator_text",
+      source: "workbench_task",
+      title: "Simple reminder",
+      status: "paused",
+      enabled: false,
+      hasBackingWorkflow: false,
+      workflowId: undefined,
+      lastExecution: undefined,
     }),
   ];
   return {
     automations,
     summary: {
       total: automations.length,
-      coordinatorCount: 0,
-      workflowCount: automations.length,
-      scheduledCount: 1,
+      coordinatorCount: 1,
+      workflowCount: 2,
+      scheduledCount: 0,
       draftCount: 0,
     },
     workflowStatus: null,
@@ -122,59 +90,77 @@ function listResponse(): AutomationListResponse {
   };
 }
 
-function executionFixture(): WorkflowExecution {
-  return {
-    id: "execution-nightly",
-    workflowId: "workflow-nightly",
-    mode: "manual",
-    status: "success",
-    startedAt: "2026-06-20T12:10:00.000Z",
-    stoppedAt: "2026-06-20T12:10:01.000Z",
-  };
-}
-
 beforeEach(() => {
-  vi.clearAllMocks();
-  invalidate("automations:list");
   window.location.hash = "#automations";
-  clientMock.listAutomations.mockResolvedValue(listResponse());
-  clientMock.runWorkflowDefinition.mockResolvedValue(executionFixture());
+  clientMock.listAutomations.mockResolvedValue(responseFixture());
+  clientMock.runWorkflowDefinition.mockResolvedValue({ id: "execution-1" });
 });
 
 afterEach(() => {
   cleanup();
   invalidate("automations:list");
+  vi.clearAllMocks();
 });
 
 describe("AutomationsFeed", () => {
-  it("renders workflow health and exposes a row run action", async () => {
+  it("shows a compact status overview and truthful workflow run action", async () => {
     render(<AutomationsFeed />);
 
-    const nightly = await screen.findByText("Nightly report");
-    expect(nightly).toBeTruthy();
+    expect(await screen.findByText("Nightly review")).toBeTruthy();
 
-    const overview = screen.getByLabelText(/automation overview/i);
-    expect(overview.textContent).toContain("2 workflows");
-    expect(overview.textContent).toContain("1 active");
-    expect(overview.textContent).toContain("1 need attention");
-    expect(overview.textContent).toContain("1 scheduled");
-    expect(screen.getByText("Failed: Missing Slack credential")).toBeTruthy();
+    expect(
+      within(screen.getByTestId("automation-stat-total")).getByText("3"),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId("automation-stat-active")).getByText("2"),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId("automation-stat-passed")).getByText("1"),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId("automation-stat-failed")).getByText("1"),
+    ).toBeTruthy();
+    expect(screen.getByText("Failed: HTTP request failed")).toBeTruthy();
 
-    const row = nightly.closest("li");
-    expect(row).toBeTruthy();
-    const runButton = within(row as HTMLElement).getByRole("button", {
-      name: "Run Nightly report now",
+    expect(
+      screen.queryByRole("button", { name: /activate workflow/i }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /deactivate workflow/i }),
+    ).toBeNull();
+
+    const runButton = screen.getByRole("button", {
+      name: "Run Nightly review now",
     });
     expect(runButton.getAttribute("data-agent-id")).toBe(
-      "run-workflow-workflow-nightly",
+      "run-workflow-workflow-1",
     );
 
     fireEvent.click(runButton);
 
     await waitFor(() => {
       expect(clientMock.runWorkflowDefinition).toHaveBeenCalledWith(
-        "workflow-nightly",
+        "workflow-1",
       );
     });
+    expect(clientMock.listAutomations).toHaveBeenCalledTimes(2);
+  });
+
+  it("routes new automation creation into the Automations chat", async () => {
+    const prefill = vi.fn();
+    window.addEventListener("eliza:chat:prefill", prefill as EventListener);
+    render(<AutomationsFeed />);
+
+    await screen.findByText("Nightly review");
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+
+    expect(prefill).toHaveBeenCalledOnce();
+    const event = prefill.mock.calls[0]?.[0] as CustomEvent;
+    expect(event.detail).toEqual({
+      text: "Create an automation that ",
+      select: false,
+    });
+
+    window.removeEventListener("eliza:chat:prefill", prefill as EventListener);
   });
 });

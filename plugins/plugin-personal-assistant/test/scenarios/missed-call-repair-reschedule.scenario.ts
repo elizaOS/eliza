@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "missed-call-repair-reschedule",
   title: "Missed call repair drafts apology and proposes new times",
   domain: "executive.followup",

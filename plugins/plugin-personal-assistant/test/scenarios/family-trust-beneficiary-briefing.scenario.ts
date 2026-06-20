@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "family-trust-beneficiary-briefing",
   title: "Assistant prepares a family trust beneficiary briefing",
   domain: "executive.family",

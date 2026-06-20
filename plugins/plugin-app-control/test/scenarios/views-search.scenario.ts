@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
 	id: "views-search",
 	title: "VIEWS action search mode returns matching views with descriptions",
 	domain: "app-control",

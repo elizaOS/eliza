@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "brush-teeth-night-owl",
   title: "Brush teeth for a night-owl phrasing",
   domain: "habits",

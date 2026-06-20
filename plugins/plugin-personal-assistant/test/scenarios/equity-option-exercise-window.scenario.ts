@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "equity-option-exercise-window",
   title: "Assistant protects equity option exercise window",
   domain: "executive.money",

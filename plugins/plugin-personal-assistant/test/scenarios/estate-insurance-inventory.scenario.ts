@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "estate-insurance-inventory",
   title: "Assistant prepares estate insurance inventory",
   domain: "executive.household",

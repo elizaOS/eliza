@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "priority-triage-mixed-sources",
   title: "Priority triage ranks blockers across messages, tasks, and decisions",
   domain: "executive.prioritization",

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "private-aviation-crew-swap",
   title: "Assistant recovers private aviation crew logistics",
   domain: "executive.travel",

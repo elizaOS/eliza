@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "product-launch-media-travel-brief",
   title: "Assistant reconciles launch travel, media prep, and stakeholder briefings",
   domain: "executive.briefing",

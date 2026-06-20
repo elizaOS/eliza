@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "delegation-map-status-compression",
   title: "Assistant builds a delegation map and compresses status for review",
   domain: "executive.delegation",

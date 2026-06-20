@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "kid-camp-medical-form-deadline",
   title: "Assistant coordinates camp medical form deadline",
   domain: "executive.family",
