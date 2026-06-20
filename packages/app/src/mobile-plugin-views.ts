@@ -5,15 +5,20 @@
  * runtime) and the agent strips `bundleUrl` views from `GET /api/views`, so
  * these bundled plugin views have no render path and show up as unloadable
  * "Get more" cards in the view catalog. Their React components ARE shipped in
- * the renderer bundle (the plugins are imported via `plugin-registrations.ts` /
- * `main.tsx`), so we register them as in-process app-shell pages — the same
- * mechanism `orchestrator` / `wallet.inventory` / `facewear` use — so they load
- * directly from the view catalog on device.
+ * the renderer bundle (the plugins are imported via `main.tsx`), so we register
+ * them as in-process app-shell pages — the same mechanism
+ * `orchestrator` / `wallet.inventory` / `facewear` use — so they load directly
+ * from the view catalog on device.
  *
- * Web/desktop keep loading these via `DynamicViewLoader` from the agent-served
- * bundle, so the registration is native-only and changes nothing off-device.
- * Each loader uses a static import specifier so the bundler can code-split the
- * view component and only fetch it when the page is opened.
+ * This module only covers plugins the app resolves to their `index.ts` barrel
+ * (vincent / companion / steward). Plugins the app aliases to their `register.ts`
+ * (polymarket, hyperliquid, shopify, trajectory-logger, waifu-*) register their
+ * own app-shell page inside that `register.ts` instead, so the lazy loader can
+ * import the view component directly and stay code-split.
+ *
+ * Web/desktop keep loading every one of these via `DynamicViewLoader` from the
+ * agent-served bundle (deduped by view id), so the registration is native-only
+ * and changes nothing off-device.
  */
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 import { getFrontendPlatform } from "@elizaos/ui/platform";
@@ -21,54 +26,6 @@ import { getFrontendPlatform } from "@elizaos/ui/platform";
 const platform = getFrontendPlatform();
 
 if (platform === "android" || platform === "ios") {
-  registerAppShellPage({
-    id: "trajectory-logger",
-    pluginId: "@elizaos/plugin-trajectory-logger",
-    label: "Trajectory Logger",
-    icon: "Activity",
-    path: "/trajectory-logger",
-    loader: () =>
-      import("@elizaos/plugin-trajectory-logger").then((m) => ({
-        default: m.TrajectoryLoggerView,
-      })),
-  });
-
-  registerAppShellPage({
-    id: "polymarket",
-    pluginId: "@elizaos/plugin-polymarket-app",
-    label: "Polymarket",
-    icon: "BarChart2",
-    path: "/polymarket",
-    loader: () =>
-      import("@elizaos/plugin-polymarket-app").then((m) => ({
-        default: m.PolymarketAppView,
-      })),
-  });
-
-  registerAppShellPage({
-    id: "hyperliquid",
-    pluginId: "@elizaos/plugin-hyperliquid-app",
-    label: "Hyperliquid",
-    icon: "TrendingUp",
-    path: "/hyperliquid",
-    loader: () =>
-      import("@elizaos/plugin-hyperliquid-app").then((m) => ({
-        default: m.HyperliquidAppView,
-      })),
-  });
-
-  registerAppShellPage({
-    id: "shopify",
-    pluginId: "@elizaos/plugin-shopify-ui",
-    label: "Shopify",
-    icon: "ShoppingBag",
-    path: "/shopify",
-    loader: () =>
-      import("@elizaos/plugin-shopify-ui").then((m) => ({
-        default: m.ShopifyAppView,
-      })),
-  });
-
   registerAppShellPage({
     id: "vincent",
     pluginId: "@elizaos/plugin-vincent",
@@ -102,30 +59,6 @@ if (platform === "android" || platform === "ios") {
     loader: () =>
       import("@elizaos/plugin-steward-app").then((m) => ({
         default: m.StewardView,
-      })),
-  });
-
-  registerAppShellPage({
-    id: "waifu-imagegen",
-    pluginId: "@elizaos/plugin-waifu-imagegen-app",
-    label: "Image Generation",
-    icon: "Image",
-    path: "/waifu-imagegen",
-    loader: () =>
-      import("@elizaos/plugin-waifu-imagegen-app").then((m) => ({
-        default: m.ImageGenAppView,
-      })),
-  });
-
-  registerAppShellPage({
-    id: "waifu-swap",
-    pluginId: "@elizaos/plugin-waifu-swap-app",
-    label: "Swap",
-    icon: "ArrowLeftRight",
-    path: "/waifu-swap",
-    loader: () =>
-      import("@elizaos/plugin-waifu-swap-app").then((m) => ({
-        default: m.SwapAppView,
       })),
   });
 }
