@@ -185,6 +185,26 @@ describe("WorkflowEditor", () => {
       "Manual Trigger -> Add Review Fields",
     );
     expect(screen.getByRole("button", { name: /run now/i })).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /generate from prompt/i }),
+    ).toBeNull();
+
+    const editPrefill = vi.fn();
+    window.addEventListener("eliza:chat:prefill", editPrefill as EventListener);
+    fireEvent.click(screen.getByRole("button", { name: /edit in chat/i }));
+    expect(editPrefill).toHaveBeenCalledTimes(1);
+    const editEvent = editPrefill.mock.calls[0]?.[0] as CustomEvent<{
+      text: string;
+      select: boolean;
+    }>;
+    expect(editEvent.detail.select).toBe(false);
+    expect(editEvent.detail.text).toBe(
+      "Modify workflow workflow-1 (Cerebras review workflow). ",
+    );
+    window.removeEventListener(
+      "eliza:chat:prefill",
+      editPrefill as EventListener,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /run now/i }));
 
