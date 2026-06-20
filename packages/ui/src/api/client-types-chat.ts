@@ -124,6 +124,14 @@ export type ChatFailureKind =
   | "provider_issue"
   | "local_inference";
 
+export interface ChatActionResultSummary {
+  actionName?: string;
+  success: boolean;
+  text?: string;
+  error?: string;
+  values?: Record<string, unknown>;
+}
+
 export type LocalInferenceChatStatus =
   | "missing"
   | "downloading"
