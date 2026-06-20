@@ -816,6 +816,15 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // heartbeat re-run the first-post path and post a SECOND ack. Keying ack
   // suppression on this set instead makes it exactly one ack per session.
   const ackedSessions = new Set<string>();
+  // Last "ack"-mode spawn ACK time per ROOM (`${source}::${roomId}`). One user
+  // turn frequently fans out into several sub-agent sessions — a re-spawn, or a
+  // multi-file build that spawns more than once — and ackedSessions is per
+  // SESSION, so each would post its own "working on it now." (the duplicate-ack
+  // nubs saw). Suppressing a sibling session's ACK when the room already acked
+  // within this window collapses one turn to a single ACK; a genuinely new
+  // request after the window still gets its own.
+  const roomAckAt = new Map<string, number>();
+  const ACK_ROOM_DEDUP_MS = 60_000;
   // Cache threads by (source, roomId, label) so a rate-limit retry, a
   // mid-flight crash recovery, or a follow-up spawn for the same logical
   // project reuses the existing thread instead of creating a duplicate.
@@ -1261,6 +1270,27 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
       // (catch). No `await` may sit between this check and the send.
       if (!state) {
         if (firstPostInFlight.has(sessionId)) return;
+        // ack mode posts exactly one ACK per ROOM per window — a sibling
+        // sub-agent session spawned by the SAME user turn must not post a second
+        // "working on it now.". Checked synchronously before the claim/await so
+        // a concurrent sibling bails here. (Per-session suppression below still
+        // guards the heartbeat / narration re-entry for this one session.)
+        if (progressPolicy.mode === "ack") {
+          const roomAckKey = `${target.source}::${target.roomId}`;
+          const now = Date.now();
+          const lastRoomAck = roomAckAt.get(roomAckKey);
+          if (
+            lastRoomAck !== undefined &&
+            now - lastRoomAck < ACK_ROOM_DEDUP_MS
+          ) {
+            return;
+          }
+          roomAckAt.set(roomAckKey, now);
+          if (roomAckAt.size > 512) {
+            const oldest = roomAckAt.keys().next().value;
+            if (oldest !== undefined) roomAckAt.delete(oldest);
+          }
+        }
         firstPostInFlight.add(sessionId);
         // ack mode posts exactly one ACK per session — claim it here,
         // synchronously, so the heartbeat / narration flush / a trailing
