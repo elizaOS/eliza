@@ -1,3 +1,9 @@
+export {
+  computeGenerationThroughput,
+  type GenerationCounters,
+  type GenerationThroughput,
+  isGenerationCounters,
+} from "@elizaos/shared/local-inference";
 export type { LocalInferenceLoader } from "./active-model";
 export {
   ELIZA_1_PLACEHOLDER_IDS,
@@ -37,6 +43,12 @@ export {
   selectRecommendedModelForSlot,
   selectRecommendedModels,
 } from "./recommendation";
+export {
+  type DeviceResourceSnapshot,
+  getDeviceResourceSnapshot,
+  normalizeResourceSnapshot,
+  type SnapshotThermalState,
+} from "./resource-snapshot-bridge";
 export { LocalInferenceService, localInferenceService } from "./service";
 export type {
   ActiveModelState,
