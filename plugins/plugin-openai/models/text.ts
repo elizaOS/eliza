@@ -74,6 +74,7 @@ interface GenerateTextParamsWithOpenAIOptions
     GenerateTextParams,
     "messages" | "tools" | "toolChoice" | "responseSchema" | "providerOptions"
   > {
+  model?: string;
   attachments?: ChatAttachment[];
   messages?: unknown[];
   tools?: unknown;
@@ -137,6 +138,16 @@ const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as ModelTypeName;
 const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as ModelTypeName;
 const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as ModelTypeName;
 const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as ModelTypeName;
+
+function resolveRequestedModelName(
+  params: GenerateTextParamsWithOpenAIOptions,
+  runtime: IAgentRuntime,
+  getModelFn: ModelNameGetter
+): string {
+  return typeof params.model === "string" && params.model.trim().length > 0
+    ? params.model.trim()
+    : getModelFn(runtime);
+}
 
 function buildUserContent(params: GenerateTextParamsWithOpenAIOptions): UserContent {
   const content: Array<
@@ -955,7 +966,7 @@ async function generateTextByModelType(
 ): Promise<string | TextStreamResult> {
   const paramsWithAttachments = params as GenerateTextParamsWithOpenAIOptions;
   const openai = createOpenAIClient(runtime);
-  const modelName = getModelFn(runtime);
+  const modelName = resolveRequestedModelName(paramsWithAttachments, runtime, getModelFn);
 
   logger.debug(`[OpenAI] Using ${modelType} model: ${modelName}`);
   const providerOptions = resolveProviderOptions(params, runtime, modelName);
