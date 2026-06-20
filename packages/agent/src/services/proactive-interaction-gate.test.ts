@@ -30,8 +30,11 @@ describe("ProactiveInteractionGate — UX governance (#8792)", () => {
     expect(r.reason).toContain("global cooldown");
     // After the global cooldown passes, a new surface is admitted.
     expect(
-      g.tryAdmit({ surface: "calendar", text: "b", now: SUBTLE.globalCooldownMs })
-        .admitted,
+      g.tryAdmit({
+        surface: "calendar",
+        text: "b",
+        now: SUBTLE.globalCooldownMs,
+      }).admitted,
     ).toBe(true);
   });
 

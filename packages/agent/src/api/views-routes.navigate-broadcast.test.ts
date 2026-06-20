@@ -7,8 +7,8 @@ import {
   unregisterPluginViews,
 } from "./views-registry.ts";
 import {
-  clearCurrentViewState,
   type CurrentViewState,
+  clearCurrentViewState,
   getCurrentViewState,
   handleViewsRoutes,
   isViewSwitchFresh,
@@ -394,7 +394,9 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
       vi.setSystemTime(new Date("2026-01-01T00:00:04.000Z"));
       const third = makeNavigateCtx("character", {});
       await handleViewsRoutes(third.ctx);
-      expect(getCurrentViewState()?.switchedAt).toBe("2026-01-01T00:00:04.000Z");
+      expect(getCurrentViewState()?.switchedAt).toBe(
+        "2026-01-01T00:00:04.000Z",
+      );
     } finally {
       vi.useRealTimers();
     }

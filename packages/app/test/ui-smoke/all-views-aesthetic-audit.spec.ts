@@ -237,9 +237,15 @@ function computeVerdict(
   ) {
     return "broken";
   }
-  // TUI terminals + overlay-native/canvas surfaces are exempt from the
-  // floating-overlay + hover heuristics (they own their surface), but the
-  // no-blue rule still holds everywhere.
+  // TUI terminals are exempt from ALL color/light-surface rules (#8796 open
+  // question): a terminal renders an ANSI/slate palette by design, so blue-gray
+  // there is the terminal aesthetic, not a brand violation. They pass once they
+  // render with no real console errors.
+  if (finding.viewType === "tui") {
+    return "good";
+  }
+  // Overlay-native/canvas surfaces waive the floating-overlay + hover heuristics
+  // (they own their surface), but the no-blue brand rule still holds.
   if (exempt) {
     return finding.blueColors.length > 0 ? "needs-work" : "good";
   }

@@ -10,9 +10,7 @@ import {
   ProactiveInteractionGate,
 } from "./proactive-interaction-gate.ts";
 
-function payload(
-  over: Partial<ViewSwitchedPayload> = {},
-): ViewSwitchedPayload {
+function payload(over: Partial<ViewSwitchedPayload> = {}): ViewSwitchedPayload {
   return {
     runtime: {} as IAgentRuntime,
     viewId: "wallet",
@@ -62,9 +60,16 @@ describe("decideProactiveComment (#8792)", () => {
     const gate = new ProactiveInteractionGate(configForChattiness("subtle"));
     const judge = async () => "offer A";
     // First user switch is admitted.
-    expect((await decideProactiveComment({ payload: payload(), gate, judge, now: 0 })).text).toBe(
-      "offer A",
-    );
+    expect(
+      (
+        await decideProactiveComment({
+          payload: payload(),
+          gate,
+          judge,
+          now: 0,
+        })
+      ).text,
+    ).toBe("offer A");
     // A second switch to a different surface within the global cooldown is gated.
     const res = await decideProactiveComment({
       payload: payload({ viewId: "calendar", viewLabel: "Calendar" }),
@@ -100,9 +105,9 @@ describe("parseProactiveJudgeOutput", () => {
     expect(parseProactiveJudgeOutput({ comment: "do the thing" })).toBe(
       "do the thing",
     );
-    expect(
-      parseProactiveJudgeOutput('```json\n{"comment":"x"}\n```'),
-    ).toBe("x");
+    expect(parseProactiveJudgeOutput('```json\n{"comment":"x"}\n```')).toBe(
+      "x",
+    );
   });
 
   it("treats none/null/empty/garbage as no offer", () => {

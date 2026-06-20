@@ -85,13 +85,15 @@ export async function decideProactiveComment(
 
 const JUDGE_INSTRUCTION = [
   "The user just switched to an app view. Decide if there is ONE specific, helpful thing you can proactively offer about that view right now.",
-  "Examples: switched to wallet → \"Want me to pull your latest balances?\"; opened task-coordinator → \"Want me to summarize your open tasks?\".",
+  'Examples: switched to wallet → "Want me to pull your latest balances?"; opened task-coordinator → "Want me to summarize your open tasks?".',
   "Stay silent (return none) for ambiguous or low-value switches, settings/config screens, or anything where a comment would be noise.",
   'Respond as JSON: {"comment": <a short offer, or null>}.',
 ].join("\n");
 
 /** Build the small-model judge prompt for a view switch. */
-export function buildProactiveJudgePrompt(payload: ViewSwitchedPayload): string {
+export function buildProactiveJudgePrompt(
+  payload: ViewSwitchedPayload,
+): string {
   const where = payload.viewLabel ?? payload.viewId;
   return `${JUDGE_INSTRUCTION}\nThe user just opened the ${where} view.`;
 }

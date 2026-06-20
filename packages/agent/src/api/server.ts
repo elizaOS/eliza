@@ -288,12 +288,6 @@ import {
   importAgent,
 } from "../services/agent-export.ts";
 import { registerClientChatSendHandler } from "../services/client-chat-sender.ts";
-import {
-  PROACTIVE_INTERACTION_SOURCE,
-  registerProactiveInteractionDecider,
-} from "../services/proactive-interaction-decider.ts";
-import { ProactiveInteractionGate } from "../services/proactive-interaction-gate.ts";
-import { routeAutonomyTextToUser as routeProactiveText } from "./server-helpers-swarm.ts";
 import { createConfigPluginManager } from "../services/config-plugin-manager.ts";
 import {
   type CoreManagerLike,
@@ -301,6 +295,11 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.ts";
+import {
+  PROACTIVE_INTERACTION_SOURCE,
+  registerProactiveInteractionDecider,
+} from "../services/proactive-interaction-decider.ts";
+import { ProactiveInteractionGate } from "../services/proactive-interaction-gate.ts";
 import {
   executeTriggerTask,
   getTriggerHealthSnapshot,
@@ -332,6 +331,7 @@ import {
   isUuidLike,
   patchTouchesProviderSelection,
 } from "./server-helpers.ts";
+import { routeAutonomyTextToUser as routeProactiveText } from "./server-helpers-swarm.ts";
 import {
   createConnectorHealthMonitor,
   extractConversationMetadataFromRoom,
