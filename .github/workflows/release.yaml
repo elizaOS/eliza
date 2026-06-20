@@ -603,6 +603,7 @@ jobs:
 
           # Configure npm for authentication
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          echo "access=public" >> ~/.npmrc
 
           # Publish with appropriate dist-tag
           # Commit workspace reference changes so lerna doesn't complain about uncommitted files
