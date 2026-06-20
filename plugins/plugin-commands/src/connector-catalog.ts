@@ -34,7 +34,8 @@ export type ClientCommandAction =
 	| "new-conversation"
 	| "toggle-fullscreen"
 	| "open-command-palette"
-	| "show-commands";
+	| "show-commands"
+	| "toggle-transcription";
 
 /** Where a connector command executes. */
 export type ConnectorCommandTarget =
@@ -221,6 +222,13 @@ function navigationCommands(): ConnectorCommand[] {
 			name: "fullscreen",
 			description: "Toggle full-screen chat",
 			target: { kind: "client", clientAction: "toggle-fullscreen" },
+			options: [],
+		},
+		{
+			name: "transcribe",
+			description:
+				"Toggle long-form transcription mode (record-only; agent stays silent until an exit phrase)",
+			target: { kind: "client", clientAction: "toggle-transcription" },
 			options: [],
 		},
 	];

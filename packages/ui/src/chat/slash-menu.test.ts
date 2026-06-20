@@ -239,6 +239,7 @@ describe("runSlashExecution", () => {
       toggleFullscreen: vi.fn(),
       openCommandPalette: vi.fn(),
       showCommands: vi.fn(),
+      toggleTranscription: vi.fn(),
       send: vi.fn(),
     };
   }
@@ -262,6 +263,12 @@ describe("runSlashExecution", () => {
 
     runSlashExecution({ kind: "client", clientAction: "toggle-fullscreen" }, d);
     expect(d.toggleFullscreen).toHaveBeenCalled();
+
+    runSlashExecution(
+      { kind: "client", clientAction: "toggle-transcription" },
+      d,
+    );
+    expect(d.toggleTranscription).toHaveBeenCalled();
 
     runSlashExecution({ kind: "send", text: "/model x" }, d);
     expect(d.send).toHaveBeenCalledWith("/model x");

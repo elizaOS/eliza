@@ -47,6 +47,7 @@ const STATUS_DOT_CLASS: Record<VoiceContinuousStatus, string> = {
   thinking: "bg-warn animate-pulse",
   speaking: "bg-accent",
   interrupting: "bg-danger animate-pulse",
+  transcribing: "bg-accent animate-pulse",
 };
 
 const STATUS_LABEL: Record<VoiceContinuousStatus, string> = {
@@ -55,6 +56,7 @@ const STATUS_LABEL: Record<VoiceContinuousStatus, string> = {
   thinking: "Thinking",
   speaking: "Speaking",
   interrupting: "Interrupting",
+  transcribing: "Transcribing",
 };
 
 function latencyTone(

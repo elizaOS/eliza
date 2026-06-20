@@ -106,7 +106,8 @@ export type VoiceContinuousStatus =
   | "listening"
   | "thinking"
   | "speaking"
-  | "interrupting";
+  | "interrupting"
+  | "transcribing";
 
 export interface VoiceSpeakerMetadata {
   /** Stable app/runtime entity id for the speaker when a connector can provide one. */

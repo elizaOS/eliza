@@ -1656,6 +1656,27 @@ function voiceTurnSignalSuppressesAgent(
 	);
 }
 
+/**
+ * Read the transcription-mode flag off a turn. Mirrors
+ * {@link getVoiceTurnSignalMetadata}: chat clients nest custom fields under
+ * `content.metadata` (where the conversation route persists a request's
+ * `metadata`), while in-process callers may set `content.transcriptionMode`
+ * at top level — read both. Transcription mode records the user turn into the
+ * conversation but suppresses the agent's reply (long-form "transcribe, agent
+ * stays silent until an exit phrase").
+ */
+export function transcriptionModeActive(
+	message: Pick<Memory, "content">,
+): boolean {
+	const content = message.content;
+	if (content?.transcriptionMode === true) return true;
+	const metadata = content?.metadata;
+	if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
+		return (metadata as Record<string, unknown>).transcriptionMode === true;
+	}
+	return false;
+}
+
 function normalizeVisibleTextForDuplicateCheck(text: string): string {
 	return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
@@ -2762,7 +2783,7 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
-const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
+export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
 		{
 			name: "core.voice_turn_signal",
@@ -2783,6 +2804,19 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 					],
 				};
 			},
+		},
+		{
+			name: "core.transcription_mode",
+			description:
+				"Suppresses the agent's reply while transcription mode is active (the user turn is still persisted), so long-form recording lands in the conversation silently until an exit phrase turns the mode off.",
+			priority: 0,
+			shouldRun: ({ message }) => transcriptionModeActive(message),
+			evaluate: () => ({
+				processMessage: "IGNORE",
+				requiresTool: false,
+				clearReply: true,
+				debug: ["transcription mode active — reply suppressed, turn recorded"],
+			}),
 		},
 		{
 			name: "core.simple_registered_action_request",
