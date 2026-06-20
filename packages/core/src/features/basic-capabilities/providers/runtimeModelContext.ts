@@ -5,6 +5,7 @@ import type {
 	Provider,
 } from "../../../types/index.ts";
 import { getModelFallbackChain, ModelType } from "../../../types/model.ts";
+import { readEnv } from "../../../utils/read-env.ts";
 
 type RuntimeWithModelHelpers = IAgentRuntime & {
 	resolveProviderModelString?: (
@@ -76,9 +77,17 @@ const CODING_AGENT_CONTEXT_TERMS = new Set([
 
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
 	const value = runtime.getSetting(key);
-	if (typeof value !== "string") return undefined;
-	const trimmed = value.trim();
-	return trimmed.length > 0 ? trimmed : undefined;
+	if (typeof value === "string") {
+		const trimmed = value.trim();
+		if (trimmed.length > 0) return trimmed;
+	}
+	// Many runtime model knobs (CODEX_MODEL, ELIZA_DEFAULT_AGENT_TYPE, opencode
+	// model/base-url) are provided as ENV vars, which `getSetting` does not
+	// expose — without this fallback every model slot rendered its raw slot name
+	// ("TEXT_LARGE") and "what model are you using" leaked internals instead of
+	// the real model (gpt-5.5 via codex).
+	const fromEnv = readEnv(key)?.trim();
+	return fromEnv && fromEnv.length > 0 ? fromEnv : undefined;
 }
 
 function fallbackModelString(
@@ -100,10 +109,24 @@ function configuredModelString(
 	runtime: RuntimeWithModelHelpers,
 	modelType: ModelTypeName,
 ): string {
-	if (typeof runtime.resolveProviderModelString === "function") {
-		return runtime.resolveProviderModelString(modelType);
+	const resolved =
+		typeof runtime.resolveProviderModelString === "function"
+			? runtime.resolveProviderModelString(modelType)
+			: fallbackModelString(runtime, modelType);
+	// Subscription backends (codex) register every model slot against one
+	// underlying model configured via their own setting (CODEX_MODEL) rather
+	// than the per-slot *_MODEL keys the resolver checks — so the resolver
+	// returns the raw slot name ("TEXT_LARGE"). Only fall back to the codex
+	// model when that slot is actually served by the codex-cli adapter, so a
+	// stale CODEX_MODEL env on a non-codex backend can't mislabel the slot.
+	if (!resolved || resolved === String(modelType)) {
+		const provider = registeredProviderFor(runtime, modelType);
+		if (provider === "codex-cli") {
+			const codexModel = readSetting(runtime, "CODEX_MODEL");
+			if (codexModel) return codexModel;
+		}
 	}
-	return fallbackModelString(runtime, modelType);
+	return resolved;
 }
 
 function registeredProviderFor(
