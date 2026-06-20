@@ -24,6 +24,7 @@ import {
  * - `GET /api/dev/cursor-screenshot`
  * - `GET /api/dev/console-log`
  * - `GET /api/dev/voice-latency`
+ * - `GET /api/dev/inference-timing`
  * - `GET /api/dev/boot-history` (alias `GET /api/dev/health`)
  * - `GET /api/dev/route-timings` (perf instrumentation; ELIZA_PERF_INSTRUMENT=1)
  */
@@ -204,6 +205,32 @@ export async function handleDevCompatRoutes(
     );
     const payload = buildVoiceLatencyDevPayload(
       undefined,
+      Number.isFinite(limit) && (limit as number) > 0
+        ? (limit as number)
+        : undefined,
+    );
+    sendJsonResponse(res, 200, payload);
+    return true;
+  }
+
+  // ── GET /api/dev/inference-timing ───────────────────────────────────
+  // Recent per-turn text/cloud inference latency breakdowns + per-span
+  // p50/p90/p99 histograms (composeState, model round-trips, cloud HTTP +
+  // semaphore wait, embeddings) and derived ttreply/ttft/total. Loopback only,
+  // same convention as the other dev observability routes. `?limit=N` caps the
+  // turns returned (default 50).
+  if (method === "GET" && url.pathname === "/api/dev/inference-timing") {
+    if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
+      sendJsonErrorResponse(res, 403, "loopback only");
+      return true;
+    }
+    if (!(await ensureRouteAuthorized(req, res, state))) {
+      return true;
+    }
+    const limitRaw = url.searchParams.get("limit");
+    const limit = limitRaw ? Number(limitRaw) : undefined;
+    const { buildInferenceTimingDevPayload } = await import("@elizaos/core");
+    const payload = buildInferenceTimingDevPayload(
       Number.isFinite(limit) && (limit as number) > 0
         ? (limit as number)
         : undefined,

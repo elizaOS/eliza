@@ -9,12 +9,10 @@
 // once no DB rows reference them.
 //
 // Intentionally NOT in this list:
-//   - `.milady.ai`  — resolves to GitHub Pages (static front, no agent
-//     sandbox infra was ever served from this domain)
 //   - `.shad0w.xyz` — personal handle from the 0xSolace stack, never
 //     served real production sandbox URLs
-// Both are part of the "0 legacy" cleanup goal; old bookmarks under those
-// domains will fail Origin validation, which is the intended outcome.
+// Retired domains are part of the "0 legacy" cleanup goal; old bookmarks
+// under them will fail Origin validation, which is the intended outcome.
 //
 // Pure data + pure function — extracted from `pairing-token.ts` so the
 // alias logic stays unit-testable without pulling the Postgres repository

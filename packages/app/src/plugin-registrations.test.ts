@@ -4,9 +4,6 @@ import { describe, expect, it } from "vitest";
 
 const EXPECTED_SIDE_EFFECT_MODULES = [
   "@elizaos/plugin-feed",
-  "@elizaos/plugin-scape",
-  "@elizaos/plugin-hyperscape",
-  "@elizaos/plugin-2004scape",
   "@elizaos/plugin-defense-of-the-agents",
   "@elizaos/plugin-clawville",
   "@elizaos/plugin-trajectory-logger",

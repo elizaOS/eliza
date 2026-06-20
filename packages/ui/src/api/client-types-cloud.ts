@@ -1088,6 +1088,21 @@ export interface CodingAgentTaskSessionRecord {
   updatedAt: string;
 }
 
+/**
+ * The real git change set a coding sub-agent produced, captured from git at
+ * `task_complete` and surfaced on a session record's `metadata.lastChangeSet`
+ * (`CodingAgentTaskSessionRecord.metadata`). Structurally mirrors the
+ * orchestrator plugin's `WorkspaceChangeSet`; consumed read-only by
+ * `DiffReviewPanel`.
+ */
+export interface ChangeSetData {
+  changedFiles: string[];
+  diffStat: string;
+  diff: string;
+  truncated: boolean;
+  capturedAt: number;
+}
+
 export interface CodingAgentTaskDecisionRecord {
   id: string;
   threadId: string;

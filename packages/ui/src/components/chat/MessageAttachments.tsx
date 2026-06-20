@@ -132,10 +132,12 @@ function TileButton({
 function ImageTile({
   att,
   src,
+  thumbSrc,
   onExpand,
 }: {
   att: MessageAttachment;
   src: string;
+  thumbSrc: string;
   onExpand: () => void;
 }): React.JSX.Element {
   const label = attachmentLabel(att);
@@ -148,7 +150,7 @@ function ImageTile({
         aria-label={`Expand image ${label}`}
       >
         <img
-          src={src}
+          src={thumbSrc}
           alt={att.description?.trim() || label}
           loading="lazy"
           className="block h-auto max-h-80 w-full object-cover"
@@ -310,12 +312,16 @@ export function MessageAttachments({
         if (!src) return null;
         const label = attachmentLabel(att);
         switch (kind) {
-          case "image":
+          case "image": {
+            const thumbSrc = att.thumbnailUrl
+              ? resolveAttachmentUrl(att.thumbnailUrl)
+              : src;
             return (
               <ImageTile
                 key={att.id}
                 att={att}
                 src={src}
+                thumbSrc={thumbSrc || src}
                 onExpand={() =>
                   setLightbox({
                     src,
@@ -325,6 +331,7 @@ export function MessageAttachments({
                 }
               />
             );
+          }
           case "audio":
             return (
               <div

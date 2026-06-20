@@ -56,7 +56,7 @@ These are the independent applications listed above. Each is a complete, pre-bui
 
 ### App Plugins (Game/Experience Apps)
 
-These are elizaOS plugins with names like `@hyperscape/plugin-hyperscape` that are installed through the Dashboard's **Apps** browser. When launched:
+These are elizaOS plugins published with the `@elizaos/app-*` naming convention that are installed through the Dashboard's **Apps** browser. When launched:
 
 1. The plugin is installed into the agent runtime
 2. The agent connects to an external service (e.g., a metaverse, a game server)
@@ -70,7 +70,7 @@ These are elizaOS plugins with names like `@hyperscape/plugin-hyperscape` that a
 │  │  iframe (sandboxed)         │    │
 │  │  ┌───────────────────────┐  │    │
 │  │  │  External Service UI  │  │    │
-│  │  │  (e.g., Hyperscape)   │  │    │
+│  │  │  (External Service)   │  │    │
 │  │  └───────────────────────┘  │    │
 │  └─────────────────────────────┘    │
 │  ┌─────────────────────────────┐    │
@@ -93,7 +93,6 @@ Plugins do **not** inject custom UI components into the Dashboard. Plugin config
 | **How you get them** | Install once (binary/extension) | Install from Apps browser in Dashboard |
 | **UI location** | Independent window/app | Embedded iframe in Dashboard |
 | **Runtime relationship** | Connects to runtime via API | Runs inside the runtime as a plugin |
-| **Examples** | Desktop, Mobile, Dashboard | Hyperscape, 2004scape |
 | **Package naming** | N/A | `@elizaos/app-*` |
 
 ## Choosing a Standalone App

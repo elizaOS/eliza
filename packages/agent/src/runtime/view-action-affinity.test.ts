@@ -61,8 +61,6 @@ describe("view-action-affinity", () => {
       true,
     );
     expect(viewScopedActionNames("facewear").has("XR_OPEN_VIEW")).toBe(true);
-    expect(viewScopedActionNames("scape").has("SCAPE")).toBe(true);
-    expect(viewScopedActionNames("2004scape").has("RS_2004")).toBe(true);
     expect(viewScopedActionNames("steward").has("WALLET")).toBe(true);
   });
 

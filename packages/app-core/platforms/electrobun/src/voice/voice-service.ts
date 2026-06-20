@@ -746,6 +746,24 @@ export class VoiceService {
     await this.handoffToRuntime(text);
   }
 
+  private async markModelFirstToken(
+    firstTokenText: string,
+    raw: JsonValue = null,
+  ): Promise<VoiceLatencyMark> {
+    await this.updateTurn("model_first_token");
+    const modelMark = await this.mark("model", "first_token", {
+      text: firstTokenText,
+    });
+    await this.trace(
+      "model-first-token",
+      "Model first token",
+      firstTokenText,
+      modelMark,
+      { token: firstTokenText, raw },
+    );
+    return modelMark;
+  }
+
   private async handoffToRuntime(text: string): Promise<void> {
     this.statusValue = "thinking";
     await this.updateTurn("runtime_started");
@@ -755,6 +773,53 @@ export class VoiceService {
     await this.trace("runtime-started", "Runtime handoff", text, runtimeMark, {
       text,
     });
+
+    // Streaming handoff: consume the reply token-by-token so the first_token
+    // mark reflects the true time-to-first-token (not full-reply latency) and
+    // so a future phrase-by-phrase synth can begin before generation finishes.
+    // Gated (default off) + falls back to the buffered handoff on any error,
+    // since the full audio-overlap win is renderer + on-device work. Only the
+    // local-runtime/live-audio modes have a real runtime to stream from.
+    const streamFn = this.runtimeAdapter.sendRuntimeMessageStream;
+    const canStream =
+      (this.mode === "local-runtime" || this.mode === "live-audio") &&
+      isTruthy(this.env.ELIZA_VOICE_STREAMING) &&
+      typeof streamFn === "function";
+    if (canStream && streamFn) {
+      try {
+        let firstMarked = false;
+        let accumulated = "";
+        const result = await streamFn.call(
+          this.runtimeAdapter,
+          { text },
+          {
+            onTextDelta: (_delta: string, fullText: string) => {
+              accumulated = fullText;
+              if (!firstMarked) {
+                firstMarked = true;
+                // Mark at first-delta wall time (mark() stamps now()).
+                void this.markModelFirstToken(fullText.slice(0, 32) || "…");
+              }
+            },
+            onDone: ({ fullText }: { fullText: string }) => {
+              if (fullText) accumulated = fullText;
+            },
+          },
+        );
+        const responseText = result.responseText ?? accumulated;
+        if (!firstMarked) {
+          await this.markModelFirstToken(responseText.slice(0, 32) || "…");
+        }
+        if (responseText) {
+          this.requireActiveTurn().responseText = responseText;
+        }
+        return;
+      } catch {
+        // Streaming endpoint unavailable / transport error — fall through to
+        // the buffered handoff so voice still works.
+      }
+    }
+
     let firstTokenText = "mock";
     let responseText: string | undefined;
     let raw: JsonValue | undefined;
@@ -767,16 +832,9 @@ export class VoiceService {
       responseText = result.responseText;
       raw = result.raw;
     }
-    await this.updateTurn("model_first_token");
-    const modelMark = await this.mark("model", "first_token", {
-      text: firstTokenText,
-    });
-    await this.trace(
-      "model-first-token",
-      "Model first token",
+    const modelMark = await this.markModelFirstToken(
       firstTokenText,
-      modelMark,
-      { token: firstTokenText, raw: raw ?? null },
+      raw ?? null,
     );
     if (responseText) {
       this.requireActiveTurn().responseText = responseText;

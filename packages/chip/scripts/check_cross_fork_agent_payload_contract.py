@@ -31,7 +31,7 @@ BUN_RISCV64_DOCKERFILE = APP_CORE / "scripts/bun-riscv64/Dockerfile"
 BUN_RISCV64_BUILD = APP_CORE / "scripts/bun-riscv64/build.sh"
 ANDROID_STAGE = APP_CORE / "scripts/lib/stage-android-agent.mjs"
 ANDROID_AGENT_SERVICE = (
-    APP_CORE / "platforms/android/app/src/main/java/ai/milady/milady/ElizaAgentService.java"
+    APP_CORE / "platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java"
 )
 ANDROID_AGENT_SERVICE_CANDIDATES = (
     ANDROID_AGENT_SERVICE,

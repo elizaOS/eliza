@@ -5,6 +5,7 @@ import {
   type MobileSignalsPermissionStatus,
   type MobileSignalsSetupAction,
 } from "../../bridge/native-plugins";
+import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { useBootConfig } from "../../config/boot-config-react.hooks";
 import {
   isDesktopPlatform,
@@ -121,6 +122,7 @@ function mobileSettingsPlatform(): "ios" | "android" | "web" {
 
 function MobileSystemPermissionsPanel() {
   const { t } = useApp();
+  const branding = useBranding();
   const mobilePlatform = mobileSettingsPlatform();
   const registry = useMemo(() => createMobileSignalsPermissionsRegistry(), []);
   const permissionDefs = useMemo(
@@ -251,7 +253,8 @@ function MobileSystemPermissionsPanel() {
       }
       footer={t("permissionssection.MobilePermissionGrantNote", {
         defaultValue:
-          "If a permission was denied, open Settings and enable it for Eliza, then return here and refresh.",
+          "If a permission was denied, open Settings and enable it for {{appName}}, then return here and refresh.",
+        ...appNameInterpolationVars(branding),
       })}
     >
       {permissionDefs.map((def) => {

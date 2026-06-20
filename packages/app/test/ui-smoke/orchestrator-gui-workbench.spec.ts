@@ -531,7 +531,7 @@ function richOrchestratorFixture() {
     latestSessionId: "session-codex",
     latestSessionLabel: "Codex Builder",
     latestWorkdir: "/tmp/orchestrator-kanban",
-    latestRepo: "/home/shaw/milady/eliza",
+    latestRepo: "/home/example/eliza",
     latestActivityAt: Date.parse(NOW),
     acceptanceCriteria: [
       "Planner renders three workflow columns",
@@ -583,7 +583,7 @@ function richOrchestratorFixture() {
         originalTask:
           "Generate the planner shell and persist card movement locally.",
         workdir: "/tmp/orchestrator-kanban",
-        repo: "/home/shaw/milady/eliza",
+        repo: "/home/example/eliza",
         activeTool: "write",
         usageState: "estimated",
         totalTokens: 2100,
@@ -601,7 +601,7 @@ function richOrchestratorFixture() {
         originalTask:
           "Review the planner visual affordances and interaction model.",
         workdir: "/tmp/orchestrator-kanban",
-        repo: "/home/shaw/milady/eliza",
+        repo: "/home/example/eliza",
         activeTool: "review",
         usageState: "measured",
         totalTokens: 12_345,

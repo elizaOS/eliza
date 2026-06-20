@@ -22,6 +22,7 @@
  * Parallels `ensure-text-to-speech-handler.ts` — same shape, same guards.
  */
 
+import { existsSync, linkSync, mkdirSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import {
 	type AgentRuntime,
@@ -37,7 +38,6 @@ import {
 	type TranscriptionParams,
 	type UUID,
 } from "@elizaos/core";
-import type { CapacitorLlamaContext } from "../adapters/capacitor-llama/types";
 import { LocalInferenceUnavailableError } from "../provider";
 import {
 	type LocalInferenceLoader,
@@ -65,15 +65,7 @@ import {
 } from "../services/structured-output";
 import type { AgentModelSlot } from "../services/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
-import { VoiceStartupError } from "../services/voice/errors";
-import {
-	AsrUnavailableError,
-	createStreamingTranscriber,
-} from "../services/voice/transcriber";
-import {
-	DEFAULT_MODELS_DIR,
-	embeddingGgufFilePresent,
-} from "./embedding-manager-support";
+import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
 import { EMBEDDING_PRESETS } from "./embedding-presets";
 import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
 
@@ -566,16 +558,6 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 	};
 }
 
-/**
- * Lazily-created desktop embedding context. The canonical capacitor approach
- * (`initCapacitorLlama` → desktop bun:ffi → libllama) loads the compact,
- * SQL-safe gte-small GGUF in embeddings mode (non-causal single-ubatch, MEAN
- * pooling) and serves `ctx.embedding()`. One process-wide context —
- * embeddings aren't slot-aware. Cleared on failure so a later call retries
- * (e.g. after the boot warmup finishes downloading the GGUF).
- */
-let desktopEmbeddingCtxPromise: Promise<CapacitorLlamaContext> | null = null;
-
 interface DesktopEmbeddingConfig {
 	modelsDir: string;
 	model: string;
@@ -608,57 +590,151 @@ function resolveDesktopEmbeddingConfig(): DesktopEmbeddingConfig {
 	return { modelsDir, model, contextSize, gpuLayers };
 }
 
-async function getDesktopEmbeddingContext(): Promise<CapacitorLlamaContext> {
-	if (desktopEmbeddingCtxPromise) return desktopEmbeddingCtxPromise;
-	const promise = (async () => {
-		const cfg = resolveDesktopEmbeddingConfig();
-		if (!embeddingGgufFilePresent(cfg.modelsDir, cfg.model)) {
-			throw new Error(
-				`[local-inference] Embedding model "${cfg.model}" not present in ${cfg.modelsDir} (boot warmup may still be downloading) — falling through to next provider`,
-			);
+/**
+ * Resolve (or stage) the bundle root the fused `eliza_inference_embed` should
+ * anchor at for the dedicated embedding model. The fused C side embeds over the
+ * single GGUF under `<root>/text/`, so we must point it at an isolated bundle
+ * that contains ONLY the embedding model — never the chat bundle's text model
+ * (whose decoder-as-embedder output has a different dimension). Resolution:
+ *   1. `ELIZA_EMBED_BUNDLE_ROOT` — explicit override.
+ *   2. The model already lives under a `text/` dir (`<root>/text/<model>.gguf`).
+ *   3. `<modelsDir>/text/<model>` exists → anchor at `<modelsDir>`.
+ *   4. Otherwise STAGE the dedicated embedding GGUF as the sole entry under
+ *      `<modelsDir>/.eliza-embed-bundle/text/` (hardlink, symlink fallback) so
+ *      the fused lib loads gte-small (384-dim bi-encoder, SQL dim384) — the
+ *      same model the retired libllama path used, now through the fused lib.
+ * Returns null only when the embedding GGUF is not present (boot warmup may
+ * still be downloading) — the handler then raises LocalInferenceUnavailable and
+ * the runtime falls through to the next embedding provider.
+ */
+function resolveFusedEmbedBundleRoot(
+	cfg: DesktopEmbeddingConfig,
+): string | null {
+	const override = process.env.ELIZA_EMBED_BUNDLE_ROOT?.trim();
+	if (override && existsSync(path.join(override, "text"))) return override;
+	const modelPath = path.resolve(cfg.modelsDir, cfg.model);
+	const parent = path.dirname(modelPath);
+	if (path.basename(parent) === "text" && existsSync(modelPath)) {
+		return path.dirname(parent);
+	}
+	if (existsSync(path.join(cfg.modelsDir, "text", cfg.model))) {
+		return cfg.modelsDir;
+	}
+	if (!existsSync(modelPath)) return null;
+	const root = path.join(cfg.modelsDir, ".eliza-embed-bundle");
+	const textDir = path.join(root, "text");
+	const staged = path.join(textDir, path.basename(cfg.model));
+	try {
+		mkdirSync(textDir, { recursive: true });
+		if (!existsSync(staged)) {
+			try {
+				linkSync(modelPath, staged);
+			} catch {
+				symlinkSync(modelPath, staged);
+			}
 		}
-		const { initCapacitorLlama } = await import(
-			"../adapters/capacitor-llama/loader"
+		return root;
+	} catch (err) {
+		logger.warn(
+			`[local-inference] could not stage the fused embed bundle for "${cfg.model}": ${String(err)}`,
 		);
-		const ctx = await initCapacitorLlama({
-			model: path.resolve(cfg.modelsDir, cfg.model),
-			n_ctx: cfg.contextSize,
-			n_gpu_layers: cfg.gpuLayers,
-			embedding: true,
-			pooling_type: "mean",
-		});
-		logger.info(
-			`[local-inference] Desktop embedding context ready via capacitor FFI: ${cfg.model} (${ctx.model.nEmbd} dims)`,
-		);
-		return ctx;
-	})();
-	desktopEmbeddingCtxPromise = promise;
-	// On failure, drop the cached promise so the next call retries (the GGUF
-	// may still be downloading during boot warmup).
-	promise.catch(() => {
-		if (desktopEmbeddingCtxPromise === promise) {
-			desktopEmbeddingCtxPromise = null;
-		}
-	});
-	return promise;
+		return null;
+	}
 }
 
 /**
- * Desktop TEXT_EMBEDDING handler. Routes through the canonical capacitor
- * contract — `initCapacitorLlama(...).embedding()` over the bun:ffi →
- * libllama backend — using the compact gte-small GGUF (384-dim, an exact
- * match for plugin-sql's dim384 column). This is the same
- * `CapacitorLlamaContext.embedding()` path the mobile loader serves, so
- * desktop and mobile share one embedding implementation. Throws when the
- * GGUF can't be loaded so the runtime falls through to the
- * operator-configured provider — no silent zero-vector (Commandment 8).
+ * Lazily-resolved fused embedding handle. When the fused `libelizainference`
+ * (ABI v9) is present, reports `embedSupported()`, and a `<root>/text/` bundle
+ * root resolves for the embedding model, the desktop TEXT_EMBEDDING handler
+ * computes embeddings through `eliza_inference_embed` over the fused handle's
+ * resident text vocab — retiring the node-llama-cpp / libllama embedding path.
+ * `null` once resolution fails (the handler then falls back).
  */
-function makeCapacitorEmbeddingHandler(): EmbeddingHandler {
+let fusedEmbedHandlePromise: Promise<{
+	ffi: import("../services/voice/ffi-bindings").ElizaInferenceFfi;
+	ctx: import("../services/voice/ffi-bindings").ElizaInferenceContextHandle;
+	embed: NonNullable<
+		import("../services/voice/ffi-bindings").ElizaInferenceFfi["embed"]
+	>;
+} | null> | null;
+
+async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
+	embed: (text: string) => Float32Array;
+} | null> {
+	if (fusedEmbedHandlePromise === null) {
+		fusedEmbedHandlePromise = (async () => {
+			try {
+				require.resolve("bun:ffi");
+			} catch {
+				return null;
+			}
+			const { resolveFusedLibraryPath } = await import(
+				"../services/desktop-fused-ffi-backend-runtime"
+			);
+			const bundleRoot = resolveFusedEmbedBundleRoot(cfg);
+			if (!bundleRoot) return null;
+			const libPath = resolveFusedLibraryPath(bundleRoot);
+			if (!libPath) return null;
+			const { loadElizaInferenceFfi } = await import(
+				"../services/voice/ffi-bindings"
+			);
+			const ffi = loadElizaInferenceFfi(libPath);
+			if (
+				typeof ffi.embedSupported !== "function" ||
+				ffi.embedSupported() !== true ||
+				typeof ffi.embed !== "function"
+			) {
+				ffi.close();
+				return null;
+			}
+			const ctx = ffi.create(bundleRoot);
+			logger.info(
+				`[local-inference] Desktop embeddings via fused libelizainference (eliza_inference_embed) anchored at ${bundleRoot} — node-llama-cpp embedding path retired`,
+			);
+			return { ffi, ctx, embed: ffi.embed };
+		})().catch(() => {
+			fusedEmbedHandlePromise = null;
+			return null;
+		});
+	}
+	const handle = await fusedEmbedHandlePromise;
+	if (!handle) return null;
+	// gte-small / BERT bi-encoders use MEAN pooling; a decoder-as-embedder
+	// (`--pooling last`) is selected via ELIZA_EMBED_POOLING=last.
+	const pooling =
+		process.env.ELIZA_EMBED_POOLING?.trim().toLowerCase() === "last" ? 3 : 1;
+	return {
+		embed: (text: string) => handle.embed({ ctx: handle.ctx, text, pooling }),
+	};
+}
+
+/**
+ * Desktop TEXT_EMBEDDING handler over the FUSED `libelizainference`
+ * (`eliza_inference_embed`, ABI v9). The dedicated embedding GGUF (gte-small,
+ * 384-dim — an exact match for plugin-sql's dim384 column) is staged as the
+ * sole entry of an isolated fused embed bundle (see `resolveFusedEmbedBundleRoot`)
+ * so the fused lib loads it directly. libllama is retired: there is no
+ * capacitor/libllama fallback. When the fused embed cannot resolve (no bun:ffi,
+ * no fused lib, or the embedding GGUF is still downloading) this throws so the
+ * runtime falls through to the operator-configured provider — never a silent
+ * zero-vector (Commandment 8).
+ */
+function makeFusedEmbeddingHandler(): EmbeddingHandler {
 	return async (_runtime, params) => {
-		const ctx = await getDesktopEmbeddingContext();
 		const text = extractEmbeddingText(params);
-		const result = await ctx.embedding(text, { embd_normalize: 2 });
-		return result.embedding;
+		const cfg = resolveDesktopEmbeddingConfig();
+		const fused = await getFusedEmbeddingHandle(cfg);
+		if (!fused) {
+			throw new LocalInferenceUnavailableError(
+				ModelType.TEXT_EMBEDDING,
+				"backend_unavailable",
+				`[local-inference] TEXT_EMBEDDING unavailable: the fused libelizainference ` +
+					`embed path could not resolve for "${cfg.model}" (needs bun:ffi, the fused ` +
+					`lib, and the embedding GGUF present). libllama is retired — falling through ` +
+					`to the next embedding provider.`,
+			);
+		}
+		return Array.from(fused.embed(text));
 	};
 }
 
@@ -762,54 +838,19 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 		: new DOMException("Aborted", "AbortError");
 }
 
-async function transcribeWithStandaloneAsr(
-	audio: TranscriptionAudio,
-	signal: AbortSignal | undefined,
-): Promise<string> {
-	const transcriber = createStreamingTranscriber({
-		prefer: "whisper-cpp",
-		allowWhisperCpp: true,
-	});
-	try {
-		throwIfAborted(signal);
-		transcriber.feed({
-			pcm: audio.pcm,
-			sampleRate: audio.sampleRate,
-			timestampMs: Date.now(),
-		});
-		throwIfAborted(signal);
-		const update = await transcriber.flush();
-		throwIfAborted(signal);
-		return update.partial.trim();
-	} finally {
-		transcriber.dispose();
-	}
-}
-
-function shouldRetryWithStandaloneAsr(error: unknown): boolean {
-	return (
-		error instanceof VoiceStartupError || error instanceof AsrUnavailableError
-	);
-}
-
 function makeTranscriptionHandler(): TranscriptionHandler {
 	return async (_runtime, params) => {
 		const signal = extractTranscriptionSignal(params);
 		throwIfAborted(signal);
 		const audio = extractTranscriptionAudio(params);
-		try {
-			await localInferenceEngine.ensureActiveBundleVoiceReady();
-			throwIfAborted(signal);
-			const transcript = await localInferenceEngine.transcribePcm(
-				audio,
-				signal,
-			);
-			throwIfAborted(signal);
-			return transcript;
-		} catch (error) {
-			if (!shouldRetryWithStandaloneAsr(error)) throw error;
-			return transcribeWithStandaloneAsr(audio, signal);
-		}
+		// The fused libelizainference ASR runtime is the sole on-device
+		// transcriber. A startup/availability failure propagates (AGENTS.md §3) —
+		// there is no whisper.cpp second attempt and no silent empty transcript.
+		await localInferenceEngine.ensureActiveBundleVoiceReady();
+		throwIfAborted(signal);
+		const transcript = await localInferenceEngine.transcribePcm(audio, signal);
+		throwIfAborted(signal);
+		return transcript;
 	};
 }
 
@@ -949,28 +990,29 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
 }
 
 /**
- * AOSP / generic-FFI path: load `libllama.so` directly into the bun process
- * via `bun:ffi`. The adapter stays inactive at runtime when neither
- * `ELIZA_LOCAL_LLAMA === "1"` nor `process.arch === "riscv64"` is true (see
- * `isAospEnabled` in `aosp-llama-adapter.ts`), so the dynamic import below
- * is safe on every platform; we only attempt registration when one of the
- * triggers fires.
+ * AOSP / generic-FFI path: load the fused `libelizainference.so` into the bun
+ * process via `bun:ffi` (the AOSP plugin's loader; libllama is retired). The
+ * loader stays inactive at runtime when neither `ELIZA_LOCAL_LLAMA === "1"`
+ * (kept as the legacy opt-in env name) nor `process.arch === "riscv64"` is
+ * true (see `isAospEnabled` in `@elizaos/plugin-aosp-local-inference`), so the
+ * dynamic import below is safe on every platform; we only attempt registration
+ * when one of the triggers fires.
  *
  * riscv64 rationale: `capacitor-llama` ships prebuilts only for
- * linux-{x64,arm64}, darwin-arm64, win-x64. Riscv64 hosts have no native
- * NAPI binding option; the vendored `libllama.so` cross-built by Wave 2 is
- * the only in-process llama.cpp path. The FFI loader satisfies the same
+ * linux-{x64,arm64}, darwin-arm64, win-x64. Riscv64 hosts have no native NAPI
+ * binding option; the cross-built fused `libelizainference.so` is the only
+ * in-process llama.cpp path. The FFI loader satisfies the same
  * `localInferenceLoader` service contract, so the rest of the engine —
  * model handlers, embedding routing, response handler — works unchanged.
  *
  * The `try`/`catch` is justified because the AOSP build can ship the .so on
  * one ABI but be invoked on another (e.g. cuttlefish_x86_64 reporting both
  * x86_64 and arm64-v8a). When `ELIZA_LOCAL_LLAMA=1` is set but registration
- * fails, the adapter logs at `error` level — we must NOT silently fall
+ * fails, the loader logs at `error` level — we must NOT silently fall
  * through to the device-bridge or stock engine: the operator opted in and
  * deserves the failure surfaced clearly. The riscv64 auto-trigger uses the
- * same path; if the bundled libllama.so is missing the failure is logged
- * but inference falls through to Cloud routing (per CLAUDE.md deployment
+ * same path; if the bundled `libelizainference.so` is missing the failure is
+ * logged but inference falls through to Cloud routing (per CLAUDE.md deployment
  * topologies — local-only is supported but Cloud is an acceptable fallback
  * when the on-device backend is unavailable).
  */
@@ -1250,9 +1292,9 @@ export async function ensureLocalInferenceHandler(
 	//   - AOSP / device-bridge loaders expose `embed()` on the
 	//     `localInferenceLoader` service → route through that.
 	//   - Desktop has no `localInferenceLoader`; it serves embeddings through
-	//     the canonical capacitor contract (`initCapacitorLlama(...).embedding()`
-	//     over bun:ffi → libllama) using the compact gte-small GGUF — the same
-	//     `CapacitorLlamaContext.embedding()` path the mobile loader uses.
+	//     the fused `libelizainference` (`eliza_inference_embed`) over the
+	//     dedicated gte-small GGUF staged as an isolated embed bundle. libllama
+	//     is retired — there is no capacitor/libllama embedding fallback.
 	// Neither path registers a handler that would serve a silent zero-vector:
 	// both throw when there's nothing real to call, so the runtime falls
 	// through to the operator-configured provider (Commandment 8).
@@ -1267,7 +1309,7 @@ export async function ensureLocalInferenceHandler(
 		: loaderForEmbed && typeof loaderForEmbed.embed === "function"
 			? makeEmbeddingHandler()
 			: provider === LOCAL_INFERENCE_PROVIDER
-				? makeCapacitorEmbeddingHandler()
+				? makeFusedEmbeddingHandler()
 				: null;
 	if (embeddingHandler) {
 		try {
@@ -1302,8 +1344,8 @@ export async function ensureLocalInferenceHandler(
 		// TRANSCRIPTION is registered default-on at the local-inference floor
 		// priority (0). It is the last-resort handler: any cloud / other-plugin
 		// TRANSCRIPTION handler registers above 0 and wins. When the handler
-		// does run, it drives the streaming ASR adapter chain (fused
-		// Qwen3-ASR via libelizainference → whisper.cpp interim →
+		// does run, it drives the fused libelizainference ASR runtime — the sole
+		// on-device transcriber (Qwen3-ASR streaming → fused batch interim →
 		// AsrUnavailableError) via the engine's armed voice bridge — see
 		// makeTranscriptionHandler / EngineVoiceBridge.createStreamingTranscriber.
 		// (The old ELIZA_LOCAL_TRANSCRIPTION env gate is removed — voice is a

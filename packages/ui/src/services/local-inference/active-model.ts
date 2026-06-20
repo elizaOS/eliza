@@ -329,6 +329,34 @@ function resolveMtpDrafterPath(
   return existsSync(candidate) ? candidate : undefined;
 }
 
+const DEFAULT_MOBILE_CONTEXT_CEILING = 8192;
+
+/**
+ * Whether on-device inference is running on a memory-constrained mobile
+ * platform (iOS/Android), where the agent runs inside the embedded engine and
+ * `process.env` carries the platform marker the host injects at start. Returns
+ * false on desktop/server/web (no marker, or no `process`).
+ */
+function isMobileLocalInferenceRuntime(): boolean {
+  if (typeof process === "undefined" || !process.env) return false;
+  const platform = (
+    process.env.ELIZA_MOBILE_PLATFORM ||
+    process.env.ELIZA_PLATFORM ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  return platform === "ios" || platform === "android";
+}
+
+function mobileContextCeiling(): number {
+  const raw = process.env?.ELIZA_MOBILE_CONTEXT_CEILING?.trim();
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isInteger(parsed) && parsed >= 256
+    ? parsed
+    : DEFAULT_MOBILE_CONTEXT_CEILING;
+}
+
 export async function resolveLocalInferenceLoadArgs(
   installed: InstalledModel,
   overrides?: LocalInferenceLoadOverrides,
@@ -364,6 +392,25 @@ export async function resolveLocalInferenceLoadArgs(
   }
 
   mergeOverrides(args, overrides);
+
+  // Mobile context ceiling. A 128k-trained model's catalog `contextLength`
+  // (e.g. 131072) implies a multi-GB KV cache — loading at that width on a
+  // phone/simulator is impractically slow and OOMs, so the on-device agent's
+  // first reply never lands. On iOS/Android, clamp the window (and any
+  // speculative draft window) to a mobile-sane ceiling so local inference is
+  // actually usable; desktop/server keep the full catalog ceiling. Override
+  // with ELIZA_MOBILE_CONTEXT_CEILING for capable devices.
+  if (args.contextSize !== undefined && isMobileLocalInferenceRuntime()) {
+    const ceiling = mobileContextCeiling();
+    if (args.contextSize > ceiling) args.contextSize = ceiling;
+    if (
+      args.draftContextSize !== undefined &&
+      args.draftContextSize > ceiling
+    ) {
+      args.draftContextSize = ceiling;
+    }
+  }
+
   if (args.cacheTypeK) args.cacheTypeK = args.cacheTypeK.trim().toLowerCase();
   if (args.cacheTypeV) args.cacheTypeV = args.cacheTypeV.trim().toLowerCase();
 

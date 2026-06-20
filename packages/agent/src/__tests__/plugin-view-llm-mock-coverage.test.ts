@@ -120,7 +120,7 @@ describe("plugin view LLM mock coverage", () => {
       (view) => view.viewType === "xr",
     );
 
-    expect(xrCases.length).toBe(26);
+    expect(xrCases.length).toBe(27);
     expect(new Set(xrCases.map(caseKey))).toEqual(
       new Set(xrMockCases.map(caseKey)),
     );
@@ -137,7 +137,7 @@ describe("plugin view LLM mock coverage", () => {
       ]),
     );
 
-    expect(PLUGIN_VIEW_LLM_MOCK_CASES.length).toBe(89);
+    expect(PLUGIN_VIEW_LLM_MOCK_CASES.length).toBe(90);
     expect(PLUGIN_VIEW_LLM_MOCK_JOURNEYS).toHaveLength(
       PLUGIN_VIEW_LLM_MOCK_CASES.length,
     );

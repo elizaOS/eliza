@@ -103,7 +103,7 @@ describe("Android Assistant and App Actions routing source", () => {
     expect(shortcuts).toContain(
       "elizaos://lifeops/task/new?source=android-static-shortcut",
     );
-    expect(shortcuts).not.toContain("milady://");
+    expect(shortcuts).not.toContain("example://");
     expect(shortcuts.toLowerCase()).not.toContain("notification");
     expect(shortcuts).not.toContain("assistant/open");
     expect(shortcuts).not.toContain("android.intent.action.ASSIST");

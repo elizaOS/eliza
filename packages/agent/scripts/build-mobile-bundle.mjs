@@ -574,7 +574,6 @@ const corePackages = [
   "@elizaos/shared-brand",
   "@elizaos/ui",
   "@elizaos/plugin-sql",
-  "@elizaos/plugin-omnivoice",
   "@elizaos/plugin-ollama",
   "@elizaos/plugin-wallet",
 ];
@@ -638,17 +637,6 @@ const dedupeTargets = {
     "plugin-sql",
     "src",
     "index.node.ts",
-  ),
-  // The current @elizaos/plugin-omnivoice dist build can emit an
-  // undeclared default-export alias under Bun 1.3.x. The source entry is
-  // small and already mobile-safe (`bun:ffi` remains a dynamic import), so
-  // bundle it from source to keep Android local TTS on the checked-out tree.
-  "@elizaos/plugin-omnivoice": path.resolve(
-    repoRoot,
-    "plugins",
-    "plugin-omnivoice",
-    "src",
-    "index.ts",
   ),
   "@elizaos/plugin-ollama": path.resolve(
     repoRoot,

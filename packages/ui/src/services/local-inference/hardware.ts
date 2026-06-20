@@ -1,13 +1,12 @@
 /**
  * Hardware probe for local inference sizing.
  *
- * Uses `node-llama-cpp` when available to read GPU backend + VRAM. Falls back
- * to Node's `os` module when the binding isn't installed — we don't require
- * the plugin to be loaded for the probe endpoint to return useful data.
- *
- * Dynamic import is intentional: the binding pulls a native prebuilt that we
- * don't want eagerly required at module-load time (breaks CI environments
- * without the trusted-dependency flag).
+ * Reads total/free RAM, CPU cores, and Apple-silicon / OpenVINO device
+ * presence from Node's `os` module + filesystem probes. GPU/VRAM accounting
+ * is owned by the active inference backend (the AOSP bun:ffi loader or the
+ * device-bridge), which runs in the agent — not here. This shared UI library
+ * ships in the browser/WebView where no Node-native llama binding can load, so
+ * the probe is OS-level only.
  */
 
 import fs from "node:fs";
@@ -27,7 +26,6 @@ import type {
 } from "./types";
 
 const BYTES_PER_GB = 1024 ** 3;
-const NODE_LLAMA_CPP_MODULE_ID = "node-llama-cpp";
 
 function bytesToGb(bytes: number): number {
   return Math.round((bytes / BYTES_PER_GB) * 10) / 10;
@@ -56,43 +54,9 @@ function recommendBucket(
   return "small";
 }
 
-type LlamaBindingGpu = "cuda" | "metal" | "vulkan" | false;
-
-interface LlamaBinding {
-  gpu: LlamaBindingGpu;
-  getVramState(): Promise<{ total: number; used: number; free: number }>;
-  dispose?(): Promise<void>;
-}
-
-interface LlamaBindingModule {
-  getLlama(options?: { gpu?: "auto" | false }): Promise<LlamaBinding>;
-}
-
 export function hasUsableArmCpuBackend(probe: HardwareProbe): boolean {
   if (probe.arch !== "arm64" && probe.arch !== "arm") return true;
   return probe.cpuFeatures?.neon !== false;
-}
-
-async function loadLlamaBinding(): Promise<LlamaBindingModule | null> {
-  try {
-    const mod = (await import(
-      /* @vite-ignore */ NODE_LLAMA_CPP_MODULE_ID
-    )) as unknown;
-    if (
-      mod &&
-      typeof mod === "object" &&
-      "getLlama" in mod &&
-      typeof (mod as { getLlama: unknown }).getLlama === "function"
-    ) {
-      return mod as LlamaBindingModule;
-    }
-    return null;
-  } catch {
-    // Binding not installed or prebuilt missing. That's an expected case when
-    // the local-ai plugin is not enabled; we return null so the probe falls
-    // back to OS-level detection.
-    return null;
-  }
 }
 
 const OPENVINO_LINUX_GPU_PACKAGES = [
@@ -227,8 +191,15 @@ export function detectOpenVinoDevices(
 }
 
 /**
- * Read current system + GPU state. Cheap enough to call per-request; no
- * internal caching so the UI always reflects live VRAM usage.
+ * Read current system state for model sizing. Cheap enough to call
+ * per-request; no internal caching so the UI always reflects live RAM.
+ *
+ * GPU/VRAM accounting is owned by the active inference backend (the AOSP
+ * bun:ffi loader / device-bridge), which runs in the agent and surfaces VRAM
+ * per loaded context. This shared library has no standalone hardware-probe
+ * binding, so the probe is OS-level (RAM, CPU cores, Apple-silicon, OpenVINO
+ * device presence) with `gpu: null`. On Apple Silicon shared memory still
+ * makes mid-sized models viable, which `recommendBucket` handles.
  */
 export async function probeHardware(): Promise<HardwareProbe> {
   const totalRamBytes = os.totalmem();
@@ -238,65 +209,18 @@ export async function probeHardware(): Promise<HardwareProbe> {
   const arch = process.arch;
   const appleSilicon = platform === "darwin" && arch === "arm64";
   const openvino = detectOpenVinoDevices();
-
-  const binding = await loadLlamaBinding();
-
-  if (!binding) {
-    // OS-only fallback: we cannot detect GPU without the binding, so treat as
-    // CPU-only. On Apple Silicon shared memory still makes mid-sized models
-    // viable, which `recommendBucket` handles.
-    const totalRamGb = bytesToGb(totalRamBytes);
-    return {
-      totalRamGb,
-      freeRamGb: bytesToGb(freeRamBytes),
-      gpu: null,
-      cpuCores,
-      platform,
-      arch,
-      appleSilicon,
-      recommendedBucket: recommendBucket(totalRamGb, 0, appleSilicon),
-      source: "os-fallback",
-      openvino,
-    };
-  }
-
-  const llama = await binding.getLlama({ gpu: "auto" });
   const totalRamGb = bytesToGb(totalRamBytes);
-  const freeRamGb = bytesToGb(freeRamBytes);
-
-  if (llama.gpu === false) {
-    return {
-      totalRamGb,
-      freeRamGb,
-      gpu: null,
-      cpuCores,
-      platform,
-      arch,
-      appleSilicon,
-      recommendedBucket: recommendBucket(totalRamGb, 0, appleSilicon),
-      source: "capacitor-llama",
-      openvino,
-    };
-  }
-
-  const vram = await llama.getVramState();
-  const totalVramGb = bytesToGb(vram.total);
-  const freeVramGb = bytesToGb(vram.free);
 
   return {
     totalRamGb,
-    freeRamGb,
-    gpu: {
-      backend: llama.gpu,
-      totalVramGb,
-      freeVramGb,
-    },
+    freeRamGb: bytesToGb(freeRamBytes),
+    gpu: null,
     cpuCores,
     platform,
     arch,
     appleSilicon,
-    recommendedBucket: recommendBucket(totalRamGb, totalVramGb, appleSilicon),
-    source: "capacitor-llama",
+    recommendedBucket: recommendBucket(totalRamGb, 0, appleSilicon),
+    source: "os-fallback",
     openvino,
   };
 }

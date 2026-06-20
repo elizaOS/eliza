@@ -612,6 +612,13 @@ export interface EngineVoiceBridgeOptions {
 	 */
 	kokoroOnly?: KokoroEngineDiscoveryResult;
 	/**
+	 * Optional pre-loaded fused inference handle for the `kokoroOnly` path. When
+	 * set, the Kokoro FFI runtime reuses it instead of dlopen-ing a second copy
+	 * of `libelizainference` (tests inject a stub; production may share the
+	 * engine's handle).
+	 */
+	kokoroFfi?: ElizaInferenceFfi;
+	/**
 	 * Optional voice-profile store for speaker-attribution. When set, the
 	 * bridge constructs a `VoiceAttributionPipeline` and runs attribution
 	 * in parallel with ASR on every turn via `runVoiceTurn`. Callers receive
@@ -698,19 +705,20 @@ export interface LiveAttributionConfig {
 
 export function createKokoroTtsBackend(
 	kokoro: KokoroEngineDiscoveryResult,
+	opts: { bundleRoot?: string; ffi?: ElizaInferenceFfi } = {},
 ): KokoroTtsBackend {
-	const forkUrl =
-		process.env.ELIZA_KOKORO_FORK_URL?.trim() ||
-		process.env.ELIZA_GATEWAY_URL?.trim() ||
-		"http://127.0.0.1:18789";
-	const forkModelId =
-		process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0";
+	// In-process FFI is the sole Kokoro synthesis path on every platform — it
+	// runs inside the fused libelizainference handle, the only path that ships
+	// on iOS / Google Play (no local TCP socket). The legacy HTTP `fork`
+	// (llama-server /v1/audio/speech) runtime was removed. An already-loaded
+	// fused handle may be injected (`opts.ffi`) so Kokoro reuses it instead of
+	// dlopen-ing a second copy of the lib.
 	const decision = pickKokoroRuntimeBackend({
-		defaultBackend: "fork",
-		fork: {
-			serverUrl: forkUrl,
-			modelId: forkModelId,
-			sampleRate: kokoro.layout.sampleRate,
+		defaultBackend: "ffi",
+		ffi: {
+			layout: kokoro.layout,
+			bundleRoot: opts.bundleRoot,
+			...(opts.ffi ? { ffi: opts.ffi } : {}),
 		},
 	});
 	logger.info(
@@ -1265,7 +1273,15 @@ export class EngineVoiceBridge {
 		// bytes fields are ignored on this path (voice cloning is OmniVoice-only).
 		const preset = createKokoroSpeakerPreset(kokoro);
 
-		const backend = createKokoroTtsBackend(kokoro);
+		// Anchor the in-process Kokoro FFI ctx at the Eliza-1 bundle root when
+		// one is present; otherwise the runtime anchors at the Kokoro model root.
+		const backend = createKokoroTtsBackend(kokoro, {
+			bundleRoot:
+				opts.bundleRoot && existsSync(opts.bundleRoot)
+					? opts.bundleRoot
+					: undefined,
+			...(opts.kokoroFfi ? { ffi: opts.kokoroFfi } : {}),
+		});
 
 		const phraseCache = new PhraseCache();
 		for (const entry of opts.prewarmedPhrases ?? []) {
@@ -2022,8 +2038,8 @@ async function resolveDiarizer(
  * No-op lifecycle loaders for the Kokoro-only bridge. ORT owns the
  * model memory; nothing to mmap-acquire or evict. ASR is not served
  * from this path — callers that need ASR construct
- * `createStreamingTranscriber` directly (the chain in `transcriber.ts`
- * supports `openvino-whisper` and `whisper.cpp` without a bundle).
+ * `createStreamingTranscriber` directly (the fused-only chain in
+ * `transcriber.ts`: fused streaming → fused batch → AsrUnavailableError).
  */
 function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
 	const noopMmap = (id: string): MmapRegionHandle => ({

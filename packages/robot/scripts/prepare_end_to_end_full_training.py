@@ -292,9 +292,9 @@ write_files:
       fi
       aws --endpoint-url "${NEBIUS_S3_ENDPOINT}" s3 cp "${NEBIUS_TRAINING_S3_URI%/}/payload.tar.gz" /root/robot-full/payload.tar.gz --only-show-errors
       tar -xzf /root/robot-full/payload.tar.gz -C /root
-      mkdir -p /root/eliza/packages /home/shaw/milady
+      mkdir -p /root/eliza/packages /root/workspace
       ln -sfn /root/robot /root/eliza/packages/robot
-      ln -sfn /root/eliza /home/shaw/milady/eliza
+      ln -sfn /root/eliza /root/workspace/eliza
       cd "${ELIZA_ROBOT_PACKAGE_ROOT}"
       chmod +x evidence/full_training_preflight/scripts/*.sh evidence/full_training_preflight/asimov_1_brax_mjx_baseline/run_full_training.sh || true
       uv sync --extra gpu || uv sync --all-extras || uv sync

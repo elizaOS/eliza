@@ -594,7 +594,7 @@ export function resolveWebSocketUpgradeRejection(
 // State dir safety check
 // ---------------------------------------------------------------------------
 
-const RESET_STATE_ALLOWED_SEGMENTS = new Set(["eliza", "milady"]);
+const RESET_STATE_ALLOWED_SEGMENTS = new Set(["eliza"]);
 
 function hasAllowedResetSegment(resolvedState: string): boolean {
   return resolvedState

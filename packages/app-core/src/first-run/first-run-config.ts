@@ -281,7 +281,11 @@ export function buildFirstRunRuntimeConfig(
     linkedAccounts: hasLinkedAccounts ? linkedAccounts : undefined,
     serviceRouting: hasServiceRouting ? serviceRouting : undefined,
     credentialInputs: hasCredentialInputs ? credentialInputs : undefined,
-    needsProviderSetup: !serviceRouting.llmText,
+    // An intentionally omitted runtime provider (on-device inference — local
+    // model downloads in the background; remote-connect — the remote agent owns
+    // its provider) is not "needs setup". Only a non-omitted target with no
+    // resolved LLM route still needs the user to pick a provider.
+    needsProviderSetup: !serviceRouting.llmText && !args.omitRuntimeProvider,
     featureSetup,
   };
 }

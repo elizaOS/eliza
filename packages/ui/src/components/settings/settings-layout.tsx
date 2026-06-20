@@ -53,7 +53,7 @@ export function SettingsGroup({
   return (
     <section className={cn("flex flex-col gap-2.5", className)} {...props}>
       {hasHeader ? (
-        <div className="flex items-end justify-between gap-3 px-1">
+        <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
           <div className="min-w-0">
             {title ? (
               <h3 className="text-sm font-medium text-txt-strong">{title}</h3>

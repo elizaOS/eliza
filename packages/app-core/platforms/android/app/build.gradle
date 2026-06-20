@@ -26,7 +26,8 @@ android {
         // Capacitor APK build path (`bun run build:android`) leaves it
         // unset and the field stays false. ElizaAgentService reads this
         // to decide whether to export ELIZA_LOCAL_LLAMA=1 to the bun
-        // process so the AOSP-only libllama.so loader takes over inference.
+        // process so the AOSP-only fused libelizainference.so loader takes
+        // over inference.
         buildConfigField "boolean", "AOSP_BUILD", "${project.findProperty('elizaAospBuild') ?: 'false'}"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -47,11 +48,25 @@ android {
         }
     }
 
-    externalNativeBuild {
-        cmake {
-            path "src/main/elizavoice-jni/CMakeLists.txt"
-            version "3.22.1"
+    // Only wire the Phase 3a elizavoice-jni native build when the prebuilt
+    // libelizainference.so actually exports the fused-voice FFI entrypoints
+    // (wakeword/speaker/diariz). That .so is rebuilt out-of-band by
+    // stage-elizavoice-lib.mjs; when it predates those symbols the bridge fails
+    // to link and would block the entire APK. Skip it instead — the Java
+    // ElizaVoiceNative.ensureLoaded() already degrades to "unavailable" when the
+    // bridge .so is absent. Re-enables automatically once the .so is rebuilt.
+    def elizavoicePrebuilt = file("src/main/jniLibs/arm64-v8a/libelizainference.so")
+    def elizavoiceReady = elizavoicePrebuilt.exists() &&
+        new String(elizavoicePrebuilt.readBytes(), "ISO-8859-1").contains("eliza_inference_wakeword_supported")
+    if (elizavoiceReady) {
+        externalNativeBuild {
+            cmake {
+                path "src/main/elizavoice-jni/CMakeLists.txt"
+                version "3.22.1"
+            }
         }
+    } else {
+        logger.warn("[elizavoice-jni] prebuilt libelizainference.so lacks fused-voice symbols (wakeword/speaker/diariz); skipping Phase 3a JNI bridge so the APK still builds. Rebuild via stage-elizavoice-lib.mjs to re-enable.")
     }
 
     ndkVersion "28.2.13676358"

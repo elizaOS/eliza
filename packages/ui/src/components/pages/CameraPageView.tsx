@@ -5,6 +5,7 @@ import {
 } from "@elizaos/capacitor-camera";
 import { AlertTriangle, Loader2, RotateCcw, SwitchCamera } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { PermissionRecoveryCallout } from "../permissions/PermissionRecoveryCallout";
 import { Button } from "../ui/button";
@@ -46,6 +47,7 @@ function isPermissionDeniedError(err: unknown): boolean {
 
 export function CameraPageView(): React.JSX.Element {
   const { t } = useTranslation();
+  const branding = useBranding();
   const previewRef = useRef<HTMLDivElement | null>(null);
   const [facing, setFacing] = useState<CameraDirection>("back");
   const [status, setStatus] = useState<PreviewStatus>("starting");
@@ -185,7 +187,8 @@ export function CameraPageView(): React.JSX.Element {
             })}
             description={t("camera.denied", {
               defaultValue:
-                "Enable camera access for Eliza, then return here to start the preview.",
+                "Enable camera access for {{appName}}, then return here to start the preview.",
+              ...appNameInterpolationVars(branding),
             })}
             retryLabel={t("camera.retry", { defaultValue: "Try again" })}
             settingsLabel={t("camera.openSettings", {

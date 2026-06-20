@@ -18,11 +18,22 @@ export function statusToneForState(status: string): StatusVariant {
     normalized === "signed" ||
     normalized === "broadcast" ||
     normalized === "confirmed" ||
-    normalized === "ready"
+    normalized === "ready" ||
+    // Agent lifecycle: a live container.
+    normalized === "running"
   ) {
     return "success";
   }
-  if (normalized === "warning" || normalized === "pending") {
+  if (
+    normalized === "warning" ||
+    normalized === "pending" ||
+    // Agent lifecycle: transitional states (showing the spinning badge).
+    normalized === "provisioning" ||
+    normalized === "starting" ||
+    normalized === "stopping" ||
+    normalized === "resuming" ||
+    normalized === "suspending"
+  ) {
     return "warning";
   }
   if (
@@ -33,6 +44,8 @@ export function statusToneForState(status: string): StatusVariant {
   ) {
     return "danger";
   }
+  // Agent lifecycle stopped/suspended/sleeping (and unknown) fall through to the
+  // neutral "muted" tone.
   return "muted";
 }
 

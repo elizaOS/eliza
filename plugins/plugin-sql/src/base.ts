@@ -1503,10 +1503,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .where(and(...conditions))
           .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
         const rows = await (async () => {
-          if (params.count && offset !== undefined && offset > 0) {
-            return baseQuery.limit(params.count).offset(offset);
-          } else if (params.count) {
-            return baseQuery.limit(params.count);
+          // Honor `effectiveLimit` (params.limit ?? params.count), matching the
+          // no-embedding branch below. Gating the LIMIT on `params.count` alone
+          // meant any caller passing only `limit` got NO limit clause and the
+          // whole table back (e.g. evaluator recent-message fetches returning
+          // thousands of rows instead of 10).
+          if (effectiveLimit && offset !== undefined && offset > 0) {
+            return baseQuery.limit(effectiveLimit).offset(offset);
+          } else if (effectiveLimit) {
+            return baseQuery.limit(effectiveLimit);
           } else if (offset !== undefined && offset > 0) {
             return baseQuery.offset(offset);
           } else {

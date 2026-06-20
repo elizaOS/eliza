@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-openrouter",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.0",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -120,7 +120,7 @@
         "type": "string",
         "description": "Overrides the default small language model used for text/object generation.",
         "required": false,
-        "default": "google/gemini-2.0-flash-001",
+        "default": "google/gemini-2.5-flash-lite",
         "sensitive": false
       },
       "OPENROUTER_LARGE_MODEL": {
@@ -134,7 +134,7 @@
         "type": "string",
         "description": "General fallback environment variable for the small model name when OPENROUTER_SMALL_MODEL is not set.",
         "required": false,
-        "default": "google/gemini-2.0-flash-001",
+        "default": "google/gemini-2.5-flash-lite",
         "sensitive": false
       },
       "LARGE_MODEL": {

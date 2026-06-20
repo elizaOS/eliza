@@ -76,6 +76,19 @@ function isEncryptedV2(value: string): boolean {
  * @returns {string} The salt for the agent.
  */
 export function getSalt(): string {
+	const now = Date.now();
+
+	// Fast path: within the TTL, trust the cached salt WITHOUT re-clearing the
+	// whole environment cache. getSalt runs on every getSetting string-decrypt,
+	// and the old unconditional `getEnvironment().clearCache()` made each of
+	// those force a full env re-read. SECRET_SALT is a boot-time constant; a
+	// runtime change is picked up at the next cache refresh (<= TTL) or via the
+	// explicit clearSaltCache() seam tests use.
+	if (saltCache !== null && now - saltCache.timestamp < SALT_CACHE_TTL_MS) {
+		return saltCache.value;
+	}
+
+	// Cache miss / expired: re-read the environment from scratch.
 	getEnvironment().clearCache();
 	const currentEnvSalt = getEnv("SECRET_SALT", "secretsalt") || "secretsalt";
 	const nodeEnv = (getEnv("NODE_ENV", "") || "").toLowerCase();
@@ -83,15 +96,6 @@ export function getSalt(): string {
 	const allowDefaultSaltRaw =
 		getEnv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "") || "";
 	const allowDefaultSalt = allowDefaultSaltRaw.toLowerCase() === "true";
-	const now = Date.now();
-
-	// Return cached value only if still valid AND matches current env
-	if (saltCache !== null) {
-		const cacheFresh = now - saltCache.timestamp < SALT_CACHE_TTL_MS;
-		if (cacheFresh && saltCache.value === currentEnvSalt) {
-			return saltCache.value;
-		}
-	}
 
 	if (isProduction && currentEnvSalt === "secretsalt" && !allowDefaultSalt) {
 		throw new Error(

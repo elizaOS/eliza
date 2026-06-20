@@ -241,9 +241,9 @@ describe("forced provider route pricing ids", () => {
   });
 
   test("adds synthetic Cerebras pricing rows to the BitRouter catalog", async () => {
-    const previousApiKey = process.env.BITROUTER_API_KEY;
+    const previousApiKey = process.env.OPENROUTER_API_KEY;
     const previousFetch = globalThis.fetch;
-    process.env.BITROUTER_API_KEY = "test-bitrouter-key";
+    process.env.OPENROUTER_API_KEY = "test-openrouter-key";
     globalThis.fetch = async () =>
       new Response(
         JSON.stringify({
@@ -274,9 +274,9 @@ describe("forced provider route pricing ids", () => {
       expect(glmOutput?.unitPrice).toBe(0.00000275);
     } finally {
       if (previousApiKey === undefined) {
-        delete process.env.BITROUTER_API_KEY;
+        delete process.env.OPENROUTER_API_KEY;
       } else {
-        process.env.BITROUTER_API_KEY = previousApiKey;
+        process.env.OPENROUTER_API_KEY = previousApiKey;
       }
       globalThis.fetch = previousFetch;
     }
@@ -290,9 +290,9 @@ describe("forced provider route pricing ids", () => {
     // "Pricing unavailable for language:input openai/gpt-oss-120b". The
     // variant stripper in candidate-selection collapses :nitro / :free onto
     // the base, so one base entry covers every variant.
-    const previousApiKey = process.env.BITROUTER_API_KEY;
+    const previousApiKey = process.env.OPENROUTER_API_KEY;
     const previousFetch = globalThis.fetch;
-    process.env.BITROUTER_API_KEY = "test-bitrouter-key";
+    process.env.OPENROUTER_API_KEY = "test-openrouter-key";
     globalThis.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
 
     try {
@@ -310,9 +310,9 @@ describe("forced provider route pricing ids", () => {
       expect(output?.unitPrice).toBe(0.0000005);
     } finally {
       if (previousApiKey === undefined) {
-        delete process.env.BITROUTER_API_KEY;
+        delete process.env.OPENROUTER_API_KEY;
       } else {
-        process.env.BITROUTER_API_KEY = previousApiKey;
+        process.env.OPENROUTER_API_KEY = previousApiKey;
       }
       globalThis.fetch = previousFetch;
     }
@@ -326,9 +326,9 @@ describe("forced provider route pricing ids", () => {
     // plugin-sql writes zero-vectors. The forced row at priority -1 supplies
     // the missing price without overriding a real BitRouter row if one
     // ever materializes.
-    const previousApiKey = process.env.BITROUTER_API_KEY;
+    const previousApiKey = process.env.OPENROUTER_API_KEY;
     const previousFetch = globalThis.fetch;
-    process.env.BITROUTER_API_KEY = "test-bitrouter-key";
+    process.env.OPENROUTER_API_KEY = "test-openrouter-key";
     globalThis.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
 
     try {
@@ -343,9 +343,9 @@ describe("forced provider route pricing ids", () => {
       expect(input?.priority).toBe(-1);
     } finally {
       if (previousApiKey === undefined) {
-        delete process.env.BITROUTER_API_KEY;
+        delete process.env.OPENROUTER_API_KEY;
       } else {
-        process.env.BITROUTER_API_KEY = previousApiKey;
+        process.env.OPENROUTER_API_KEY = previousApiKey;
       }
       globalThis.fetch = previousFetch;
     }
@@ -356,9 +356,9 @@ describe("forced provider route pricing ids", () => {
     // form. Both prefixed and bare ids are needed because the cloud-api
     // routes by raw model id without normalizing, and the two plugins
     // emit different shapes.
-    const previousApiKey = process.env.BITROUTER_API_KEY;
+    const previousApiKey = process.env.OPENROUTER_API_KEY;
     const previousFetch = globalThis.fetch;
-    process.env.BITROUTER_API_KEY = "test-bitrouter-key";
+    process.env.OPENROUTER_API_KEY = "test-openrouter-key";
     globalThis.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
 
     try {
@@ -373,9 +373,9 @@ describe("forced provider route pricing ids", () => {
       expect(input?.priority).toBe(-1);
     } finally {
       if (previousApiKey === undefined) {
-        delete process.env.BITROUTER_API_KEY;
+        delete process.env.OPENROUTER_API_KEY;
       } else {
-        process.env.BITROUTER_API_KEY = previousApiKey;
+        process.env.OPENROUTER_API_KEY = previousApiKey;
       }
       globalThis.fetch = previousFetch;
     }

@@ -6,8 +6,8 @@ import { X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
-  lazy,
   type LazyExoticComponent,
+  lazy,
   type ReactNode,
   Suspense,
   useCallback,
@@ -1137,10 +1137,13 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
 }
 
 function routedShellMainClass(tab: string): string {
+  // One tight page gutter for every routed view: minimal top so headers sit
+  // right under the chrome, a small side gutter, modest bottom. Views that own
+  // their full surface (browser/apps/views) still get zero padding.
   const pagePadding =
     tab === "browser" || tab === "apps" || tab === "views"
       ? ""
-      : "px-3 xl:px-5 py-4 xl:py-6";
+      : "px-2 sm:px-3 pt-2 pb-4";
   const mobilePadding = tab === "browser" ? "" : MOBILE_NAV_PADDING_CLASS;
   return `flex flex-1 min-h-0 min-w-0 overflow-hidden ${pagePadding} ${mobilePadding}`;
 }
@@ -1173,7 +1176,7 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
 
 /**
  * Edge-to-edge surface for pages that register `fullBleed` — no tab bar, no
- * padding. The page owns its full window (e.g. the odysseus orchestrator).
+ * padding. The page owns its full window (e.g. the orchestrator).
  */
 function FullBleedShellContent(props: ShellContentProps): ReactNode {
   return (
@@ -1774,7 +1777,13 @@ export function App() {
   return (
     <BugReportProvider value={bugReport}>
       <ShellControllerProvider>
-        <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden">
+        <div
+          className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
+          // Reserve the status-bar safe area so view headers + back buttons sit
+          // below the status bar. Top banners bleed their bg back up through it
+          // via `.mobile-top-banner:first-child` (see styles.css). No-op on web.
+          style={{ paddingTop: "var(--safe-area-top, 0px)" }}
+        >
           <ConnectionFailedBanner />
           <SystemWarningBanner />
           <ActionBanner />
@@ -1821,19 +1830,12 @@ export function App() {
             only when the tutorial is active (launched from the home Tutorial
             tile or the Help view). */}
         <TutorialOverlay />
-        {/* Persistent notification center — a floating bell + unread badge,
-            top-right, reachable from every view. Self-boots the notification
-            store (hydrate + live stream) and routes interrupt toasts through
-            ActionNotice. HomePill owns bottom-center, so top-right is free. */}
-        <div
-          className="fixed right-2 top-2 z-40"
-          style={{
-            top: "max(0.5rem, env(safe-area-inset-top))",
-            right: "max(0.5rem, env(safe-area-inset-right))",
-          }}
-        >
-          <NotificationCenter />
-        </div>
+        {/* Notification center, headless for now: the visible bell is hidden,
+            but this still self-boots the notification store (hydrate + live
+            stream) and routes interrupt toasts through ActionNotice. Restore
+            the floating bell by rendering <NotificationCenter /> in a
+            top-right fixed wrapper again (HomePill owns bottom-center). */}
+        <NotificationCenter headless />
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}

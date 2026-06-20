@@ -114,7 +114,7 @@ export function SecretsManagerSection() {
           icon={KeyRound}
           label={
             <span className="flex flex-wrap items-center gap-2">
-              <span className="truncate">
+              <span className="min-w-0">
                 {primary?.label ?? "Local (encrypted)"}
               </span>
               {primary ? (

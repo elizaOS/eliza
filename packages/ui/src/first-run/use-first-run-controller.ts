@@ -635,6 +635,17 @@ export function useFirstRunController(): FirstRunController {
             label: apiBase,
             apiBase,
           });
+          // Persist the remote as the ACTIVE SERVER too (not just an agent
+          // profile). After the user enters the code, handlePairingSubmit →
+          // persistPairedToken attaches the minted token to the active server
+          // and reloads; without an active server here that reload boots into
+          // fresh onboarding instead of the now-paired remote agent.
+          savePersistedActiveServer({
+            id: `remote:${apiBase}`,
+            kind: "remote",
+            label: apiBase,
+            apiBase,
+          });
           persistMobileRuntimeModeForServerTarget("remote");
           setState("firstRunRuntimeTarget", "remote");
           setState("firstRunRemoteApiBase", apiBase);
@@ -699,7 +710,7 @@ export function useFirstRunController(): FirstRunController {
         uiLanguage,
       });
       const name =
-        typeof plan.payload.name === "string" ? plan.payload.name : "Milady";
+        typeof plan.payload.name === "string" ? plan.payload.name : "Eliza";
       const bio = Array.isArray(plan.payload.bio)
         ? plan.payload.bio.filter(
             (entry): entry is string => typeof entry === "string",
@@ -760,8 +771,49 @@ export function useFirstRunController(): FirstRunController {
       clearPersistedFirstRunState();
       setBusyText(null);
       completeFirstRun("chat", { launchCompanionOverlay: true });
+
+      // Seamless shared→personal handoff. A freshly created cloud agent serves
+      // the user from the shared REST adapter while its dedicated container
+      // boots (selectedAgent.created with no bridge URL yet). In the background,
+      // once the container is reachable, copy the conversation the user built on
+      // the shared adapter into it and switch the live client over — no waiting,
+      // no lost history. Best-effort: on failure the user stays on the shared
+      // adapter, which keeps working.
+      if (selectedAgent.created && !selectedAgent.bridgeUrl) {
+        void client
+          .startCloudAgentHandoff({
+            agentId: selectedAgent.agentId,
+            sharedApiBase: cloudAgentApiBase,
+            // The shared adapter keeps one canonical conversation per agent id.
+            conversationId: selectedAgent.agentId,
+            cloudApiBase:
+              getBootConfig().cloudApiBase || "https://www.elizacloud.ai",
+            authToken,
+            onSwitch: (containerBase) => {
+              client.setBaseUrl(containerBase);
+              client.setToken(authToken);
+              const switched = createPersistedActiveServer({
+                kind: "cloud",
+                id: `cloud:${selectedAgent.agentId}`,
+                apiBase: containerBase,
+                accessToken: authToken,
+              });
+              savePersistedActiveServer(switched);
+              const profile = addAgentProfile({
+                kind: "cloud",
+                label: switched.label,
+                apiBase: containerBase,
+                accessToken: authToken,
+              });
+              switchAgentProfile(profile.id);
+            },
+          })
+          .catch(() => {
+            // Handoff is best-effort; the shared adapter remains usable.
+          });
+      }
     },
-    [completeFirstRun, uiLanguage],
+    [completeFirstRun, switchAgentProfile, uiLanguage],
   );
 
   const finishCloud = React.useCallback(

@@ -85,7 +85,7 @@ export function LoadContentPackForm() {
       className="gap-2"
       title={t("startupshell.LoadPack", { defaultValue: "Load content pack" })}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <SettingsInput
           ref={urlInputRef}
           variant="filter"
@@ -94,50 +94,52 @@ export function LoadContentPackForm() {
           })}
           value={urlInput}
           onChange={(e) => setUrlInput(e.target.value)}
-          className="h-9 flex-1"
+          className="h-9 w-full sm:flex-1"
           onKeyDown={(e) => {
             if (e.key === "Enter") handleLoadFromUrl();
           }}
           {...urlInputAgentProps}
         />
-        <Button
-          ref={loadUrlRef}
-          variant="outline"
-          size="sm"
-          className="h-9 rounded-sm"
-          onClick={handleLoadFromUrl}
-          disabled={!urlInput.trim()}
-          {...loadUrlAgentProps}
-        >
-          {t("settings.appearance.load", { defaultValue: "Load" })}
-        </Button>
-        {canPickDirectory && (
-          <>
-            <Button
-              ref={loadFolderRef}
-              variant="ghost"
-              size="sm"
-              className="h-9 rounded-sm text-xs text-muted hover:text-txt"
-              onClick={() => fileInputRef.current?.click()}
-              title={t("settings.appearance.loadFromFolder", {
-                defaultValue: "From folder",
-              })}
-              {...loadFolderAgentProps}
-            >
-              <FolderOpen className="h-3.5 w-3.5" aria-hidden />
-              {t("settings.appearance.loadFromFolder", {
-                defaultValue: "From folder",
-              })}
-            </Button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              multiple
-              className="hidden"
-              onChange={handleFolderSelected}
-            />
-          </>
-        )}
+        <div className="flex items-center gap-2">
+          <Button
+            ref={loadUrlRef}
+            variant="outline"
+            size="sm"
+            className="h-9 flex-1 rounded-sm sm:flex-none"
+            onClick={handleLoadFromUrl}
+            disabled={!urlInput.trim()}
+            {...loadUrlAgentProps}
+          >
+            {t("settings.appearance.load", { defaultValue: "Load" })}
+          </Button>
+          {canPickDirectory && (
+            <>
+              <Button
+                ref={loadFolderRef}
+                variant="ghost"
+                size="sm"
+                className="h-9 rounded-sm text-xs text-muted hover:text-txt"
+                onClick={() => fileInputRef.current?.click()}
+                title={t("settings.appearance.loadFromFolder", {
+                  defaultValue: "From folder",
+                })}
+                {...loadFolderAgentProps}
+              >
+                <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+                {t("settings.appearance.loadFromFolder", {
+                  defaultValue: "From folder",
+                })}
+              </Button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                multiple
+                className="hidden"
+                onChange={handleFolderSelected}
+              />
+            </>
+          )}
+        </div>
       </div>
       {packLoadError && <p className="text-xs text-danger">{packLoadError}</p>}
       {activePack && (

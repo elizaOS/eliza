@@ -30,14 +30,15 @@ export const PARENT_AGENT_BROKER_MANIFEST_ENTRY = {
   description:
     "Task-scoped bridge for asking the running parent Eliza agent to use its loaded capabilities, actions, providers, connectors, and confirmation flow.",
   guidance:
-    'Use when workspace context is not enough and the parent agent should do something with its own capabilities. Examples: `USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}`, `USE_SKILL parent-agent {"mode":"list-actions","query":"github"}`, `USE_SKILL parent-agent {"mode":"list-cloud-commands"}`, or `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}`. Mutating, paid, or destructive Cloud commands require an explicit user yes on a follow-up turn (not LLM `confirmed`). For paid self-spend commands (e.g. `domains.buy`, `containers.create`), pass `params.spendEstimateUsd` (such as the price from `domains.check`) so they auto-authorize within the configured agent spend cap instead of stalling.',
+    'Use when workspace context is not enough and the parent agent should do something with its own capabilities. Examples: `USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}`, `USE_SKILL parent-agent {"mode":"list-actions","query":"github"}`, `USE_SKILL parent-agent {"mode":"list-cloud-commands"}`, or `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}`. Mutating, paid, or destructive Cloud commands require an explicit user yes on a follow-up turn (not LLM `confirmed`). For paid self-spend commands (e.g. `domains.buy`, `containers.create`), pass `params.spendEstimateUsd` (such as the price from `domains.check`) so they auto-authorize within the configured agent spend cap instead of stalling. To delegate part of your work to a NEW parallel sub-agent on this same task, use `USE_SKILL parent-agent {"mode":"spawn-sub-agent","task":"<instruction for the child>","label":"<optional name>"}` — it spawns a child sub-agent (bounded nesting depth) whose progress shows in this task\'s thread; keep working, do not block waiting on it.',
 } as const;
 
 type ParentAgentMode =
   | "ask"
   | "list-actions"
   | "list-cloud-commands"
-  | "cloud-command";
+  | "cloud-command"
+  | "spawn-sub-agent";
 
 type CloudCommandRisk =
   | "read"
@@ -62,6 +63,11 @@ interface ParentAgentBrokerArgs {
   limit: number;
   command?: string;
   params?: Record<string, unknown>;
+  // spawn-sub-agent mode: the child sub-agent's instruction + optional routing.
+  task?: string;
+  label?: string;
+  framework?: string;
+  workdir?: string;
 }
 
 interface RuntimeWithActions {
@@ -677,6 +683,14 @@ function normalizeMode(value: unknown): ParentAgentMode {
   if (normalized === "cloud-command" || normalized === "cloud") {
     return "cloud-command";
   }
+  if (
+    normalized === "spawn-sub-agent" ||
+    normalized === "spawn" ||
+    normalized === "spawn-agent" ||
+    normalized === "sub-agent"
+  ) {
+    return "spawn-sub-agent";
+  }
   return "ask";
 }
 
@@ -708,6 +722,17 @@ function normalizeArgs(raw: unknown): ParentAgentBrokerArgs {
       normalizeString(record.action) ??
       normalizeString(record.cloudCommand),
     params,
+    task:
+      normalizeString(record.task) ??
+      normalizeString(record.prompt) ??
+      normalizeString(record.instruction),
+    label:
+      normalizeString(record.label) ??
+      normalizeString(record.agentName) ??
+      normalizeString(record.name),
+    framework:
+      normalizeString(record.framework) ?? normalizeString(record.agentType),
+    workdir: normalizeString(record.workdir),
   };
 }
 
@@ -1300,6 +1325,132 @@ async function askParentAgent(request: {
   return "Parent agent completed the request without visible output.";
 }
 
+const ORCHESTRATOR_TASK_SERVICE_NAME = "ORCHESTRATOR_TASK_SERVICE";
+
+/**
+ * Structural view of the orchestrator task service. Used instead of importing
+ * `OrchestratorTaskService` because that module imports THIS broker
+ * (PARENT_AGENT_BROKER_MANIFEST_ENTRY), so a value/type import here would create
+ * a cycle.
+ */
+interface SpawnCapableTaskService {
+  spawnAgentForTask(
+    taskId: string,
+    opts: {
+      task?: string;
+      label?: string;
+      framework?: string;
+      workdir?: string;
+      nestingDepth?: number;
+    },
+  ): Promise<unknown>;
+}
+
+/**
+ * `spawn-sub-agent` mode: let a running sub-agent spawn its OWN child sub-agent
+ * on the same task, reusing the existing orchestrator spawn path (no new API).
+ * The child's nesting depth is parent depth + 1; the orchestrator enforces the
+ * max-depth cap (and throws past it, surfaced here as text to the child).
+ */
+async function runSpawnSubAgent(request: {
+  runtime: IAgentRuntime;
+  sessionId: string;
+  session?: SessionInfo;
+  task?: string;
+  label?: string;
+  framework?: string;
+  workdir?: string;
+}): Promise<{
+  success: boolean;
+  text: string;
+  data?: Record<string, unknown>;
+}> {
+  const log = getLogger(request.runtime);
+  const data = {
+    actionName: PARENT_AGENT_BROKER_SLUG,
+    mode: "spawn-sub-agent" as const,
+  };
+  const metadata = request.session?.metadata as
+    | Record<string, unknown>
+    | undefined;
+  const parentTaskId = normalizeString(metadata?.taskId);
+  if (!parentTaskId) {
+    return {
+      success: false,
+      text: "spawn-sub-agent can only be used from inside a coding task (no taskId on this session).",
+      data,
+    };
+  }
+  const prompt = normalizeString(request.task);
+  if (!prompt) {
+    return {
+      success: false,
+      text: 'spawn-sub-agent requires a `task` — the instruction for the child sub-agent, e.g. USE_SKILL parent-agent {"mode":"spawn-sub-agent","task":"add unit tests for src/foo.ts"}.',
+      data,
+    };
+  }
+  const parentDepth =
+    typeof metadata?.nestingDepth === "number" ? metadata.nestingDepth : 0;
+  const childDepth = parentDepth + 1;
+  const service = request.runtime.getService?.(
+    ORCHESTRATOR_TASK_SERVICE_NAME,
+  ) as SpawnCapableTaskService | null | undefined;
+  if (!service || typeof service.spawnAgentForTask !== "function") {
+    return {
+      success: false,
+      text: "Orchestrator task service is unavailable; cannot spawn a sub-agent.",
+      data,
+    };
+  }
+  try {
+    const result = await service.spawnAgentForTask(parentTaskId, {
+      task: prompt,
+      label: request.label,
+      framework: request.framework,
+      workdir: request.workdir,
+      nestingDepth: childDepth,
+    });
+    if (!result) {
+      return {
+        success: false,
+        text: `Failed to spawn sub-agent: parent task ${parentTaskId} not found.`,
+        data,
+      };
+    }
+    log?.info?.(
+      {
+        src: LOG_PREFIX,
+        event: "spawn_sub_agent",
+        sessionId: request.sessionId,
+        parentTaskId,
+        nestingDepth: childDepth,
+      },
+      `${LOG_PREFIX} spawned nested sub-agent at depth ${childDepth}`,
+    );
+    return {
+      success: true,
+      text: `Spawned a sub-agent (depth ${childDepth}) on task ${parentTaskId}${request.label ? ` named "${request.label}"` : ""}. It runs in parallel on: ${truncate(prompt, 200)}. Its progress appears in this task's thread — check back rather than blocking on it.`,
+      data: { ...data, parentTaskId, nestingDepth: childDepth },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log?.error?.(
+      {
+        src: LOG_PREFIX,
+        event: "spawn_sub_agent_error",
+        sessionId: request.sessionId,
+        error: message,
+      },
+      `${LOG_PREFIX} spawn sub-agent failed`,
+    );
+    return {
+      success: false,
+      text: `Failed to spawn sub-agent: ${message}`,
+      data,
+    };
+  }
+}
+
 export async function runParentAgentBroker(
   request: ParentAgentBrokerRequest,
 ): Promise<{ success: boolean; text: string; data?: Record<string, unknown> }> {
@@ -1375,6 +1526,18 @@ export async function runParentAgentBroker(
         },
       };
     }
+  }
+
+  if (args.mode === "spawn-sub-agent") {
+    return await runSpawnSubAgent({
+      runtime: request.runtime,
+      sessionId: request.sessionId,
+      session: request.session,
+      task: args.task,
+      label: args.label,
+      framework: args.framework,
+      workdir: args.workdir,
+    });
   }
 
   if (!args.request) {

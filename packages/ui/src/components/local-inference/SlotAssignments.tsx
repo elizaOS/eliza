@@ -5,6 +5,7 @@ import type {
   InstalledModel,
   ModelAssignments,
 } from "../../api/client-local-inference";
+import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { LOCAL_INFERENCE_SLOT_DESCRIPTORS } from "./slot-metadata";
@@ -28,6 +29,7 @@ export function SlotAssignments({
 }: SlotAssignmentsProps) {
   useRenderGuard("SlotAssignments");
   const { t } = useTranslation();
+  const branding = useBranding();
   const requestSeqRef = useRef(new Map<AgentModelSlot, number>());
   const [busySlots, setBusySlots] = useState<Set<AgentModelSlot>>(
     () => new Set(),
@@ -88,7 +90,8 @@ export function SlotAssignments({
       <p className="text-xs text-muted-foreground">
         {t("slotassignments.description", {
           defaultValue:
-            "Eliza defaults both text routes to the largest installed local model so only one model has to stay in memory. Override a slot only when you explicitly want a different local model.",
+            "{{appName}} defaults both text routes to the largest installed local model so only one model has to stay in memory. Override a slot only when you explicitly want a different local model.",
+          ...appNameInterpolationVars(branding),
         })}
       </p>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

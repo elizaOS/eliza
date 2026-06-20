@@ -100,8 +100,6 @@ export function setActiveViewElements(
  *   hyperliquid — plugins/plugin-hyperliquid-app/src/actions/perpetual-market.ts
  *   steward     — plugin-steward-app re-exports plugin-wallet's WALLET action
  *   facewear    — plugins/plugin-facewear/src/index.ts (FACEWEAR_, SMARTGLASSES_, XR_ actions)
- *   scape       — plugins/plugin-scape/src/actions (SCAPE)
- *   2004scape   — plugins/plugin-2004scape/src/actions (RS_2004, RS_2004_INVENTORY)
  *
  * Verified action names + view ids (2026-06-18) — each LifeOps/utility view's
  * own domain actions, so they are emphasised (not just universally
@@ -155,8 +153,6 @@ export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
     "XR_RESIZE_VIEW",
     "XR_QUERY_VISION",
   ],
-  scape: ["SCAPE"],
-  "2004scape": ["RS_2004", "RS_2004_INVENTORY"],
   calendar: ["CALENDAR", "CONFLICT_DETECT"],
   health: ["OWNER_HEALTH", "OWNER_SCREENTIME"],
   focus: ["BLOCK"],

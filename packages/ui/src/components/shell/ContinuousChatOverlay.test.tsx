@@ -164,13 +164,13 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
-  it("opens straight to FULL when sending (not the stepped HALF)", () => {
+  it("opens to HALF when sending (conversation above the keyboard, not a full-screen takeover)", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const input = screen.getByLabelText("message");
     fireEvent.change(input, { target: { value: "ping" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
   it("exposes the mic control with a stable test id at rest", () => {
@@ -386,10 +386,14 @@ describe("ContinuousChatOverlay", () => {
 
     const root = screen.getByTestId("continuous-chat-overlay");
     expect(root.className).toContain("pointer-events-none");
+    expect(root.className).not.toContain("pointer-events-auto");
 
-    const interactiveRegions = root.querySelectorAll(".pointer-events-auto");
-    expect(interactiveRegions.length).toBeGreaterThan(0);
-    expect(Array.from(interactiveRegions)).not.toContain(root);
+    // The overlay still has a LIVE interactive region: the composer fieldset
+    // re-enables pointer events (inline, gated on !pilled) so taps land on the
+    // input while the rest of the surface passes through to the view behind it.
+    const composer = screen.getByTestId("chat-sheet");
+    expect(composer.style.pointerEvents).toBe("auto");
+    expect(composer).not.toBe(root);
   });
 
   it("exposes the canonical chat composer test id on the overlay input only", () => {
@@ -458,13 +462,16 @@ describe("ContinuousChatOverlay", () => {
     expect(scrollIntoView).toHaveBeenCalled();
   });
 
-  it("does NOT close on a pointer-down outside the sheet (no click-out dismiss)", () => {
+  it("does NOT close on an outside pointer-down while the keyboard is DOWN", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
+    // fireEvent.focus drives the React open state but does NOT move
+    // document.activeElement in jsdom — i.e. the composer isn't really focused
+    // (no soft keyboard). An outside tap in that state must NOT close the chat;
+    // closing is a pull-down, the scrim, or Escape.
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    // Clicking the live view behind (here, the bare body) must NOT close it —
-    // the only dismiss paths are a pull-down drag and Escape.
+    expect(document.activeElement).not.toBe(screen.getByLabelText("message"));
     fireEvent.pointerDown(document.body);
     fireEvent.click(document.body);
     expect(sheet.getAttribute("data-variant")).toBe("open");
@@ -615,7 +622,46 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getByTestId("chat-content").hasAttribute("inert")).toBe(true);
   });
 
-  it("recovers from the pill back to the input on tap", () => {
+  it("keeps the collapsed pill handle non-interactive while the input is formed", () => {
+    // The pill handle is always mounted over the (faded) composer so it can
+    // crossfade pill→input. Its hit zone (px-16/pt-10) sits over the textarea, so
+    // while NOT pilled it must be pointer-events-none — otherwise it intercepts
+    // the tap meant for the composer and the mobile keyboard never opens.
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+    const pill = screen.getByTestId("chat-pill");
+    expect(pill.className).toContain("pointer-events-none");
+    expect(pill.className).not.toContain("pointer-events-auto");
+    // Kept out of the tab order / a11y tree while it's not the active handle.
+    expect(pill.getAttribute("tabindex")).toBe("-1");
+    expect(pill.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("makes the pill handle interactive (drag-to-open) once collapsed to the pill", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    // Collapse the input down into the pill.
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("pill");
+
+    const pill = screen.getByTestId("chat-pill");
+    // Now the handle owns the gesture: it re-enables pointer events so the user
+    // can grab/drag it open (verified by the flick-up recovery test below).
+    expect(pill.className).toContain("pointer-events-auto");
+    expect(pill.className).not.toContain("pointer-events-none");
+    expect(pill.getAttribute("aria-hidden")).toBeNull();
+  });
+
+  it("opens the chat to HALF on a SINGLE pill tap (not the bare input bar)", () => {
+    // Regression: a tap on the pill used to land on the bare input bar (the
+    // chat "blinked" without opening) and needed a SECOND tap to reach half.
+    // With a conversation to show, ONE tap must open straight to half — exactly
+    // like a flick-up.
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
@@ -623,9 +669,54 @@ describe("ContinuousChatOverlay", () => {
     fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
     const pill = screen.getByTestId("chat-pill");
-    fireEvent.click(pill);
+    // A tap = pointer down + up with no travel. The pill has no onClick; the
+    // pull-gesture binding is the single tap authority (onPointerUp → onTap).
+    fireEvent.pointerDown(pill, { clientY: 400, pointerId: 1 });
+    fireEvent.pointerUp(pill, { clientY: 400, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    const textarea = screen.getByTestId("chat-composer-textarea");
+    expect(textarea).toBeTruthy();
+    // The pill tap must focus the composer (so iOS raises the keyboard on the
+    // first tap) and clear the `inert` it carried while pilled — without that,
+    // the composer silently refuses keyboard input until a second tap.
+    expect(document.activeElement).toBe(textarea);
+    expect(screen.getByTestId("chat-content").hasAttribute("inert")).toBe(
+      false,
+    );
+  });
+
+  it("opens a thread-less pill tap to the bare input bar (nothing to open into)", () => {
+    // With no conversation yet there's no thread to reveal, so a pill tap forms
+    // the input bar (and raises the keyboard) rather than an empty half sheet.
+    render(
+      <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+    const pill = screen.getByTestId("chat-pill");
+    fireEvent.pointerDown(pill, { clientY: 400, pointerId: 1 });
+    fireEvent.pointerUp(pill, { clientY: 400, pointerId: 1 });
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
-    expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
+    expect(document.activeElement).toBe(
+      screen.getByTestId("chat-composer-textarea"),
+    );
+  });
+
+  it("opens the pill on keyboard activation (Enter)", () => {
+    // Keyboard users still open the pill via onKeyDown even though the native
+    // onClick was removed in favour of the gesture binding.
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("pill");
+    fireEvent.keyDown(screen.getByTestId("chat-pill"), { key: "Enter" });
+    expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
   it("flicks UP from the pill to recover the input", () => {

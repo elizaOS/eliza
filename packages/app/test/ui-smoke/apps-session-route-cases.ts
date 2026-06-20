@@ -213,12 +213,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "odysseus app shell page",
-    path: "/odysseus",
-    selector: '[data-testid="odysseus-shell"]',
-    timeoutMs: 90_000,
-  },
-  {
     name: "orchestrator tui app shell page",
     path: "/orchestrator/tui",
     readyChecks: [
@@ -244,7 +238,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
 ];
 
 const managerVisibleViewTileCases = [
-  { viewId: "2004scape", path: "/2004scape" },
   { viewId: "calendar", path: "/calendar" },
   { viewId: "clawville", path: "/clawville" },
   { viewId: "companion", path: "/companion" },
@@ -258,7 +251,6 @@ const managerVisibleViewTileCases = [
   { viewId: "goals", path: "/goals" },
   { viewId: "health", path: "/health" },
   { viewId: "hyperliquid", path: "/hyperliquid" },
-  { viewId: "hyperscape", path: "/hyperscape" },
   { viewId: "inbox", path: "/inbox" },
   { viewId: "messages", path: "/messages" },
   { viewId: "model-tester", path: "/model-tester" },
@@ -266,7 +258,6 @@ const managerVisibleViewTileCases = [
   { viewId: "phone", path: "/phone" },
   { viewId: "polymarket", path: "/polymarket" },
   { viewId: "relationships", path: "/relationships" },
-  { viewId: "scape", path: "/scape" },
   { viewId: "screenshare", path: "/screenshare" },
   { viewId: "shopify", path: "/shopify" },
   { viewId: "smartglasses", path: "/apps/smartglasses" },
@@ -278,6 +269,8 @@ const managerVisibleViewTileCases = [
   { viewId: "trajectory-logger", path: "/trajectory-logger" },
   { viewId: "views-manager", path: "/views" },
   { viewId: "vincent", path: "/vincent" },
+  { viewId: "waifu-imagegen", path: "/waifu-imagegen" },
+  { viewId: "waifu-swap", path: "/waifu-swap" },
   { viewId: "wallet", path: "/wallet" },
   { viewId: "vector-browser", path: "/vector-browser" },
 ];

@@ -37,11 +37,10 @@ import { resolveGuidedDecodeForParams } from "./structured-output";
  *      `generate()` against the requested model, plus a tokenizer that
  *      matches that model's vocab. `release()` tears everything down.
  *
- * Production runtime implementations:
- *   - libelizainference path → wraps `ElizaInferenceFfi` via
- *     `wrapElizaInferenceFfi()` from `services/llm-streaming-binding.ts`.
- *   - desktop libllama+shim path → mirrors the AOSP adapter pattern and is
- *     provided by `desktop-ffi-backend-runtime.ts`.
+ * Production runtime implementation: the fused libelizainference path
+ * (`desktop-fused-ffi-backend-runtime.ts`), which wraps `ElizaInferenceFfi`
+ * via `wrapElizaInferenceFfi()` from `services/llm-streaming-binding.ts`.
+ * libllama has been retired — there is no second runtime behind this slot.
  */
 export interface FfiBackendRuntime {
 	supported(): boolean;
@@ -96,6 +95,19 @@ export interface FfiBackendSession {
 	 * vision — `describeImage` then throws an actionable error.
 	 */
 	readonly mmprojPath: string | null;
+	/**
+	 * Per-load runtime config the fused libelizainference path applies at its
+	 * first `llmStreamOpen` (gpuLayers + KV-cache quant types). The desktop
+	 * libllama runtime applies these at `loadModel()` instead and leaves this
+	 * `null` — the backend forwards them into the runner's per-call config only
+	 * when present, so the fused path mirrors the libllama load decision without
+	 * the libllama path double-applying them.
+	 */
+	readonly loadConfig?: {
+		gpuLayers?: number;
+		cacheTypeK?: string | null;
+		cacheTypeV?: string | null;
+	} | null;
 }
 
 /**
@@ -159,7 +171,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 					"the FFI session has not been acquired.",
 			);
 		}
-		const { runner, tokenize, mtp, draftModelPath } = this.session;
+		const { runner, tokenize, mtp, draftModelPath, loadConfig } = this.session;
 		// Force the structured-reply envelope: compile the GBNF from the
 		// caller's `responseSkeleton` / explicit `grammar` (precedence handled
 		// by `resolveGuidedDecodeForParams`, mirroring `engine.ts`'s
@@ -180,6 +192,9 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			draftMax: mtp?.draftMax ?? 0,
 			draftModelPath,
 			gbnfGrammar,
+			gpuLayers: loadConfig?.gpuLayers,
+			cacheTypeK: loadConfig?.cacheTypeK,
+			cacheTypeV: loadConfig?.cacheTypeV,
 			signal: args.signal,
 			onTextChunk: args.onTextChunk,
 			onVerifierEvent: args.onVerifierEvent,
@@ -204,9 +219,8 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 
 	/**
 	 * Persist the active session's KV state to a per-conversation file.
-	 * v1 uses `llama_state_seq_save_file` against seq_id=0 — see
-	 * `desktop-llama-adapter.ts`'s `saveSlot`. The on-disk file path
-	 * mirrors `ffi-streaming-backend.ts`'s conversation-keyed slot layout
+	 * v1 uses `llama_state_seq_save_file` against seq_id=0. The on-disk file
+	 * path mirrors `ffi-streaming-backend.ts`'s conversation-keyed slot layout
 	 * (`<cacheDir>/<conversationId>/<slotId>.kv`) so a switch between
 	 * FFI and subprocess can resume each other's slots — once both
 	 * paths agree on the file format.
@@ -250,7 +264,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		opts: { slotId: number; cacheKey: string },
 	): Promise<boolean> {
 		if (!this.session || promptPrefix.length === 0) return false;
-		const { runner, tokenize, mtp, draftModelPath } = this.session;
+		const { runner, tokenize, mtp, draftModelPath, loadConfig } = this.session;
 		await runner.generateWithUsage({
 			promptTokens: tokenize(promptPrefix),
 			slotId: opts.slotId,
@@ -263,6 +277,9 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			draftMin: mtp?.draftMin ?? 0,
 			draftMax: mtp?.draftMax ?? 0,
 			draftModelPath,
+			gpuLayers: loadConfig?.gpuLayers,
+			cacheTypeK: loadConfig?.cacheTypeK,
+			cacheTypeV: loadConfig?.cacheTypeV,
 		});
 		return true;
 	}

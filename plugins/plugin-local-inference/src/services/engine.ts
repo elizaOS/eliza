@@ -1,19 +1,16 @@
 /**
  * Standalone llama.cpp engine.
  *
- * Owns one `Llama` binding instance, at most one loaded `LlamaModel`, and
- * a cached `LlamaChatSession` that wraps it. Model swap is unload-then-load
- * so we never double-allocate VRAM.
+ * Fronts the in-process FFI backend (fused `libelizainference`, or the
+ * libllama + eliza-llama-shim fallback) via the `BackendDispatcher`. At most
+ * one model is loaded at a time — model swap is unload-then-load so we never
+ * double-allocate VRAM.
  *
  * Two consumption paths:
  *   1. The Model Hub UI calls `load()` / `unload()` to make "Activate" work.
  *   2. The agent runtime calls `generate()` via the registered
  *      `ModelType.TEXT_SMALL` / `TEXT_LARGE` handlers (see
  *      `ensure-local-inference-handler.ts`).
- *
- * Dynamic import keeps the binding optional: if `node-llama-cpp` is not
- * installed, `available()` returns false and callers surface a clear error
- * instead of crashing the process.
  */
 
 import path from "node:path";
@@ -29,10 +26,9 @@ import type {
 	GenerateArgs as BackendGenerateArgs,
 	BackendPlan,
 	LocalGenerateWithUsageResult,
-	LocalInferenceBackend,
 	LocalRuntimeLoadConfig,
 } from "./backend";
-import { BackendDispatcher, gpuLayersForKvOffload } from "./backend";
+import { BackendDispatcher } from "./backend";
 import {
 	ELIZA_1_PLACEHOLDER_IDS,
 	type Eliza1TierId,
@@ -42,16 +38,11 @@ import {
 	type ConversationHandle,
 	conversationRegistry,
 } from "./conversation-registry";
-import { desktopFfiBackendRuntime } from "./desktop-ffi-backend-runtime";
+import { desktopFusedFfiBackendRuntime } from "./desktop-fused-ffi-backend-runtime";
 import { FfiStreamingBackend } from "./ffi-streaming-backend";
 import { MemoryMonitor } from "./memory-monitor";
 import { listInstalledModels } from "./registry";
-import {
-	DEFAULT_SESSION_KEY,
-	resolveDefaultPoolSize,
-	SessionPool,
-} from "./session-pool";
-import { resolveGuidedDecodeForParams } from "./structured-output";
+import { resolveDefaultPoolSize } from "./session-pool";
 import type { InstalledModel } from "./types";
 import type { CoordinatorRuntime } from "./voice/cancellation-coordinator";
 import {
@@ -215,22 +206,6 @@ function resolveDirectEliza1Bundle(
 }
 
 /**
- * Map a friendly KV cache type name (`"f16"`, `"q8_0"`, `"bf16"`, etc.) to
- * the `keyof typeof GgmlType` shape node-llama-cpp expects for its
- * experimental KV cache options. The binding's `resolveGgmlTypeOption`
- * accepts case-sensitive keys (`F16`, `Q8_0`, `BF16`), so we uppercase
- * the input.
- *
- * AOSP fork additions (`tbq3_0`, `tbq4_0`, `qjl1_256`) are caught by the
- * desktop-only validation in active-model.ts before they reach here; this
- * helper is intentionally agnostic so the same mapping can be reused if
- * the in-process binding ever ships with the fork's GGML type table.
- */
-function normalizeKvCacheTypeForBinding(name: string): string {
-	return name.trim().toUpperCase();
-}
-
-/**
  * Project a fully-resolved `LocalInferenceLoadArgs` onto the subset that
  * the dispatcher cares about. Keeps `BackendLoadOverrides` framework-free
  * (no dependency on active-model.ts here) so backend.ts and engine.ts stay
@@ -263,582 +238,6 @@ function toBackendLoadOverrides(
 	return overrides;
 }
 
-interface LlamaContextSequence {
-	dispose(): Promise<void>;
-	clearHistory(): Promise<void>;
-	controlledEvaluate(
-		input: Array<
-			| number
-			| [
-					token: number,
-					options: {
-						generateNext?: { probabilities?: boolean; confidence?: boolean };
-					},
-			  ]
-		>,
-		options?: { evaluationPriority?: number },
-	): Promise<
-		Array<
-			| {
-					next: {
-						token?: number | null;
-						confidence?: number;
-						probabilities?: Map<number, number>;
-					};
-			  }
-			| undefined
-		>
-	>;
-}
-
-interface LlamaContext {
-	getSequence(options?: object): LlamaContextSequence;
-	dispose(): Promise<void>;
-}
-
-/**
- * Resolve the GBNF source for a node-llama-cpp constrained-decode call.
- * Precedence: an explicit `grammar` string, then an `elizaSchema`'s grammar,
- * then a compiled forced skeleton (single-value enums collapsed to literals).
- * Returns null when none is set — generation is unconstrained as before.
- * node-llama-cpp has no `grammar_lazy` and no token-splice prefill plan, so a
- * lazy grammar from the skeleton is applied eagerly here (still correct — the
- * leading literal is the trigger) and the prefill plan is ignored (the leading
- * literal still gets seeded via `args.prefill`/`elizaSchema` upstream).
- */
-function resolveBindingGrammarSource(args: GenerateArgs): string | null {
-	const grammar = resolveGuidedDecodeForParams(args).grammar;
-	return grammar ? grammar.source : null;
-}
-
-interface LlamaGrammar {
-	// Opaque to us — passed straight back to `session.prompt({ grammar })`.
-	readonly _grammarBrand?: never;
-}
-
-interface LlamaGrammarCtor {
-	new (
-		llama: Llama,
-		options: { grammar: string; rootRuleName?: string },
-	): LlamaGrammar;
-}
-
-interface LlamaChatSession {
-	prompt(
-		text: string,
-		options?: {
-			maxTokens?: number;
-			temperature?: number;
-			topP?: number;
-			stopOnAbortSignal?: AbortSignal;
-			customStopTriggers?: string[];
-			grammar?: LlamaGrammar;
-			onTextChunk?: (chunk: string) => void;
-		},
-	): Promise<string>;
-	/**
-	 * Reset the accumulated chat history. Agent model handlers are stateless
-	 * per-call; without this, `LlamaChatSession.prompt()` would thread prior
-	 * turns into each new generation and gradually derail outputs.
-	 */
-	resetChatHistory?(): void | Promise<void>;
-	dispose?(): void | Promise<void>;
-}
-
-interface ChatWrapperLike {
-	readonly wrapperName?: string;
-}
-
-interface ChatWrapperCtor {
-	new (...args: unknown[]): ChatWrapperLike;
-}
-
-interface LlamaChatSessionCtor {
-	new (args: {
-		contextSequence: LlamaContextSequence;
-		chatWrapper?: ChatWrapperLike;
-		systemPrompt?: string;
-	}): LlamaChatSession;
-}
-
-/**
- * KV cache type names accepted by the in-process binding. We pass the
- * lowercase string name through to node-llama-cpp's `experimentalKvCache*`
- * options — the binding's `resolveGgmlTypeOption` accepts either the enum
- * value or the `keyof typeof GgmlType` string. Stock builds reject the
- * apothic fork additions (`tbq3_0`, `tbq4_0`, `qjl1_256`); validation in
- * `validateLocalInferenceLoadArgs` rejects those before they reach this
- * layer on desktop.
- */
-type StockKvCacheTypeName = string;
-
-interface LlamaModel {
-	createContext(args?: {
-		contextSize?: number | "auto" | { min?: number; max?: number };
-		/**
-		 * Per-context sequence count. Each `LlamaChatSession` lives on its own
-		 * sequence, and the session pool needs at least `poolSize` sequences
-		 * available — otherwise `getSequence()` throws once the pool is full.
-		 */
-		sequences?: number;
-		flashAttention?: boolean;
-		/**
-		 * Experimental KV cache key/value type override. node-llama-cpp 3.18.x
-		 * exposes these as deprecated/experimental on `LlamaContextOptions`;
-		 * we rely on them so the desktop path can honour `cacheTypeK/V`.
-		 * Stock builds only accept entries from the `GgmlType` enum.
-		 */
-		experimentalKvCacheKeyType?: StockKvCacheTypeName;
-		experimentalKvCacheValueType?: StockKvCacheTypeName;
-		/**
-		 * Optional LoRA adapter(s) attached to this context only. The voice
-		 * EOT scorer uses this to layer a fine-tuned EOT head onto the base
-		 * weights without shipping a separate model.
-		 */
-		lora?: string | { adapters: Array<{ filePath: string; scale?: number }> };
-	}): Promise<LlamaContext>;
-	/**
-	 * Tokenize text using the model's vocab. `specialTokens=true` resolves
-	 * tokens like `<|im_end|>` to their dedicated IDs. Used by the EOT
-	 * scorer to find the `<|im_end|>` token id once at startup.
-	 */
-	tokenize(text: string, specialTokens?: boolean): readonly number[];
-	dispose(): Promise<void>;
-}
-
-interface Llama {
-	loadModel(args: {
-		modelPath: string;
-		gpuLayers?: number | "max" | "auto";
-		useMmap?: boolean;
-		useMlock?: boolean;
-		defaultContextFlashAttention?: boolean;
-	}): Promise<LlamaModel>;
-}
-
-interface LlamaBindingModule {
-	getLlama(options?: {
-		gpu?: "auto" | false;
-		logger?: (level: string, message: string) => void;
-	}): Promise<Llama>;
-	LlamaChatSession: LlamaChatSessionCtor;
-	LlamaGrammar: LlamaGrammarCtor;
-	ChatMLChatWrapper?: ChatWrapperCtor;
-}
-
-/**
- * In-process llama.cpp backend backed by `node-llama-cpp` 3.18.1.
- *
- * Stock GGUF only. Does NOT support `--lookahead`, n-gram drafter, MoE
- * expert offload (`-ot`), `--parallel` continuous batching, or MTP
- * speculative decoding. Models that declare any of those in their catalog
- * `runtime.optimizations` must route to optimized llama.cpp via the dispatcher.
- *
- * `useMmap`, `useMlock`, and `defaultContextFlashAttention` are honored
- * when present in the catalog optimizations block — those map cleanly onto
- * `LlamaModelOptions`.
- */
-export class NodeLlamaCppBackend implements LocalInferenceBackend {
-	readonly id = "capacitor-llama" as const;
-
-	private llama: Llama | null = null;
-	private loadedModel: LlamaModel | null = null;
-	private loadedContext: LlamaContext | null = null;
-	private loadedPath: string | null = null;
-	private bindingChecked = false;
-	private bindingModule: LlamaBindingModule | null = null;
-	/**
-	 * Most recent error-level message emitted by the native llama.cpp logger.
-	 * node-llama-cpp collapses every load failure into a bare
-	 * `Error("Failed to load model")`; the actionable cause (e.g.
-	 * `missing tensor 'blk.24.ssm_conv1d.weight'` for a malformed MTP graft)
-	 * only reaches the logger. We capture it here so `load()` can attach it to
-	 * the thrown error instead of leaving callers — and the nightly inference
-	 * bench — with an opaque message.
-	 */
-	private lastNativeLoadError: string | null = null;
-	/** Serialises generate calls so concurrent requests don't corrupt session state. */
-	private generationQueue: Promise<unknown> = Promise.resolve();
-	/**
-	 * Per-cache-key chat sessions. Created on first use, LRU-evicted, and
-	 * torn down on `unload()`. The `_default` slot is reset every turn so
-	 * callers without a `cacheKey` see the historical stateless behaviour.
-	 */
-	private sessionPool: SessionPool<LlamaChatSession> | null = null;
-
-	async available(): Promise<boolean> {
-		if (!this.bindingChecked) {
-			this.bindingModule = await this.loadBinding();
-			this.bindingChecked = true;
-		}
-		return this.bindingModule !== null;
-	}
-
-	currentModelPath(): string | null {
-		return this.loadedPath;
-	}
-
-	hasLoadedModel(): boolean {
-		return this.loadedModel !== null;
-	}
-
-	/**
-	 * Expose the in-process `LlamaModel` for auxiliary scoring paths that
-	 * need a forward pass without going through `LlamaChatSession` — most
-	 * notably the voice EOT scorer (`voice/eliza1-eot-scorer.ts`). Returns
-	 * `null` when no model is loaded or this is not the active backend.
-	 */
-	getLoadedLlamaModel(): LlamaModel | null {
-		return this.loadedModel;
-	}
-
-	async unload(): Promise<void> {
-		if (!this.loadedModel) return;
-		const pool = this.sessionPool;
-		const context = this.loadedContext;
-		const model = this.loadedModel;
-		this.sessionPool = null;
-		this.loadedContext = null;
-		this.loadedModel = null;
-		this.loadedPath = null;
-		// Dispose bottom-up: every cached session first, then the context,
-		// then the model. Pool.close() drains its own dispose() failures.
-		if (pool) await pool.close();
-		try {
-			await context?.dispose();
-		} catch {
-			// Best effort: the underlying context may already be released; we
-			// still need to dispose the model below.
-		}
-		await model.dispose();
-	}
-
-	async load(plan: BackendPlan): Promise<void> {
-		const modelPath = plan.modelPath;
-		if (this.loadedPath === modelPath && this.loadedModel) return;
-
-		if (!(await this.available()) || !this.bindingModule) {
-			throw new Error(
-				"node-llama-cpp is not installed in this build; add it as a dependency to enable local inference",
-			);
-		}
-
-		if (this.loadedModel) {
-			await this.unload();
-		}
-
-		if (!this.llama) {
-			this.llama = await this.bindingModule.getLlama({
-				gpu: "auto",
-				logger: (level, message) => {
-					// Keep the FIRST error-level line of a failed load: llama.cpp
-					// emits the root cause (e.g. `missing tensor '…'`) before the
-					// generic `failed to load model` summary that would otherwise
-					// overwrite it. `load()` resets this to null before each attempt.
-					if (
-						(level === "error" || level === "fatal") &&
-						this.lastNativeLoadError === null
-					) {
-						this.lastNativeLoadError = message.trim();
-					}
-				},
-			});
-		}
-
-		// Catalog-driven node-llama-cpp load options. The binding only exposes
-		// a subset of the fork's optimizations (no MoE offload, no lookahead,
-		// no n-gram drafter) — those force the dispatcher to optimized llama.cpp
-		// instead. mmap/mlock/flash-attention flow through cleanly here.
-		const optimizations =
-			plan.catalog?.runtime?.optimizations ??
-			(plan.modelId
-				? findCatalogModel(plan.modelId)?.runtime?.optimizations
-				: undefined);
-		const overrides = plan.overrides;
-
-		// Resolve gpuLayers. Per-load override wins over `useGpu` opt-out
-		// (explicit `gpuLayers: N` from the API beats both the env default
-		// and the implicit "GPU on for chat models" assumption).
-		let gpuLayers: number | "max" | "auto" = "auto";
-		if (overrides?.gpuLayers !== undefined) {
-			gpuLayers = overrides.gpuLayers;
-		} else if (overrides?.kvOffload !== undefined) {
-			gpuLayers = gpuLayersForKvOffload(overrides.kvOffload);
-		} else if (overrides?.useGpu === false) {
-			gpuLayers = 0;
-		}
-
-		const loadOptions: {
-			modelPath: string;
-			gpuLayers: number | "max" | "auto";
-			useMmap?: boolean;
-			useMlock?: boolean;
-			defaultContextFlashAttention?: boolean;
-		} = {
-			modelPath,
-			gpuLayers,
-		};
-		// Per-load overrides win over catalog defaults. The validation in
-		// `validateLocalInferenceLoadArgs` (called from active-model.ts)
-		// already rejected illegal values, so any value reaching here is
-		// safe to forward.
-		if (overrides?.mmap !== undefined) {
-			loadOptions.useMmap = overrides.mmap;
-		} else if (optimizations?.noMmap) {
-			loadOptions.useMmap = false;
-		}
-		if (overrides?.mlock !== undefined) {
-			loadOptions.useMlock = overrides.mlock;
-		} else if (optimizations?.mlock) {
-			loadOptions.useMlock = true;
-		}
-		if (overrides?.flashAttention !== undefined) {
-			loadOptions.defaultContextFlashAttention = overrides.flashAttention;
-		} else if (optimizations?.flashAttention !== undefined) {
-			loadOptions.defaultContextFlashAttention = optimizations.flashAttention;
-		}
-
-		const poolSize = resolveDefaultPoolSize(
-			process.env.ELIZA_LOCAL_SESSION_POOL_SIZE,
-		);
-		this.lastNativeLoadError = null;
-		let model: LlamaModel;
-		try {
-			model = await this.llama.loadModel(loadOptions);
-		} catch (error) {
-			const detail = this.lastNativeLoadError;
-			if (detail) {
-				throw new Error(
-					`${error instanceof Error ? error.message : String(error)} (llama.cpp: ${detail}) [${modelPath}]`,
-				);
-			}
-			throw error;
-		}
-		// Reserve one sequence per pool slot. node-llama-cpp throws on
-		// `getSequence()` once `sequencesLeft` hits 0, so the context must
-		// be sized to the pool from the start.
-		//
-		// contextSize: thread the per-load override into the binding's
-		// `LlamaContextOptions.contextSize`. Without this, the binding falls
-		// back to `"auto"` which adapts to current VRAM but never exceeds
-		// the smallest fitting size — a 128k-trained model loaded on a host
-		// with plenty of RAM would still get a 4-8k window. That was the
-		// exact "claims-128k-but-actually-8k" larp this task is fixing.
-		const ctxOptions: {
-			sequences: number;
-			contextSize?: number;
-			flashAttention?: boolean;
-			experimentalKvCacheKeyType?: string;
-			experimentalKvCacheValueType?: string;
-		} = { sequences: poolSize };
-		if (overrides?.contextSize !== undefined) {
-			ctxOptions.contextSize = overrides.contextSize;
-		}
-		if (overrides?.flashAttention !== undefined) {
-			ctxOptions.flashAttention = overrides.flashAttention;
-		}
-		if (overrides?.cacheTypeK !== undefined) {
-			ctxOptions.experimentalKvCacheKeyType = normalizeKvCacheTypeForBinding(
-				overrides.cacheTypeK,
-			);
-		}
-		if (overrides?.cacheTypeV !== undefined) {
-			ctxOptions.experimentalKvCacheValueType = normalizeKvCacheTypeForBinding(
-				overrides.cacheTypeV,
-			);
-		}
-		const context = await model.createContext(ctxOptions);
-
-		const bindingModule = this.bindingModule;
-		const sessionPool = new SessionPool<LlamaChatSession>({
-			maxSize: poolSize,
-			factory: async () => {
-				const sequence = context.getSequence();
-				// Eliza-1 GGUFs ship a Qwen-VL Jinja chat template that auto-
-				// inserts `<think>\n\n</think>\n\n` when `enable_thinking` is
-				// not passed (and node-llama-cpp's default wrapper renders the
-				// template with that flag unset). The resulting empty `<think>`
-				// pair causes the model to emit EOS immediately on the first
-				// generation, returning an empty string. The model was actually
-				// fine-tuned on plain ChatML, so override to the explicit
-				// ChatMLChatWrapper when the binding exposes it. Falls back to
-				// the default wrapper on bindings that don't have the class
-				// (older node-llama-cpp builds) — those won't hit the bug
-				// because they also don't honour the Jinja template.
-				const ChatMLChatWrapper = bindingModule.ChatMLChatWrapper;
-				return new bindingModule.LlamaChatSession({
-					contextSequence: sequence,
-					...(ChatMLChatWrapper
-						? { chatWrapper: new ChatMLChatWrapper() }
-						: {}),
-				});
-			},
-		});
-
-		this.loadedModel = model;
-		this.loadedContext = context;
-		this.sessionPool = sessionPool;
-		this.loadedPath = modelPath;
-	}
-
-	/**
-	 * Generate text from the loaded model. Serialised — a new call waits
-	 * for any in-flight generation to finish so chat session state stays
-	 * consistent. When `args.cacheKey` is set, repeated calls with the
-	 * same key reuse the underlying `LlamaChatSession` (and therefore the
-	 * KV cache) so the prefix doesn't have to be re-prefilled. Calls
-	 * without a cache key share the synthetic `_default` slot, which is
-	 * reset every turn to preserve the historical stateless behaviour.
-	 */
-	async generate(args: GenerateArgs): Promise<string> {
-		const pool = this.sessionPool;
-		if (!pool) {
-			throw new Error(
-				"No local model is active. Select one in Settings → Local models before using local inference.",
-			);
-		}
-		const cacheKey =
-			args.cacheKey && args.cacheKey.length > 0
-				? args.cacheKey
-				: DEFAULT_SESSION_KEY;
-		// Resolve a grammar from `args.grammar` (explicit GBNF) or a forced
-		// skeleton. node-llama-cpp does constrained decoding AND per-token
-		// streaming together — `session.prompt({ grammar, onTextChunk })` fires
-		// `onTextChunk` for every accepted token even while the grammar
-		// constrains them. The streamed envelope is parsed incrementally by the
-		// runtime's structured-field extractor, so `streamStructured` surfaces
-		// `replyText` deltas as they arrive (it does NOT degrade to one final
-		// chunk on this backend).
-		const grammarSource = resolveBindingGrammarSource(args);
-		const grammar =
-			grammarSource && this.bindingModule && this.llama
-				? new this.bindingModule.LlamaGrammar(this.llama, {
-						grammar: grammarSource,
-					})
-				: undefined;
-		const run = async (): Promise<string> => {
-			const session = await pool.acquire(cacheKey);
-			// Default slot mirrors the historical "stateless per call" semantics
-			// — no cache hint means the caller does not want prefix reuse.
-			// Keyed slots intentionally retain history so the prefix KV stays
-			// hot across turns.
-			if (cacheKey === DEFAULT_SESSION_KEY) {
-				await session.resetChatHistory?.();
-			}
-			const promptOpts: {
-				maxTokens?: number;
-				temperature?: number;
-				topP?: number;
-				stopOnAbortSignal?: AbortSignal;
-				customStopTriggers?: string[];
-				grammar?: LlamaGrammar;
-				onTextChunk?: (chunk: string) => void;
-			} = {
-				maxTokens: args.maxTokens ?? 2048,
-				temperature: args.temperature ?? 0.7,
-				topP: args.topP ?? 0.9,
-			};
-			if (args.stopSequences) {
-				promptOpts.customStopTriggers = args.stopSequences;
-			}
-			if (args.signal) {
-				// node-llama-cpp's `stopOnAbortSignal` aborts the generation loop
-				// on the next sampler tick when the signal is aborted. Wiring this
-				// is the canonical way to make local inference cancellable.
-				promptOpts.stopOnAbortSignal = args.signal;
-			}
-			if (grammar) promptOpts.grammar = grammar;
-			// Assistant-turn prefill: node-llama-cpp has no first-class "continue
-			// this assistant message" knob, so we seed the prompt text with the
-			// partial assistant turn and re-prepend it to the result so callers
-			// see the full assistant message. The prefill is an explicit
-			// `args.prefill` or the leading literal run of an `elizaSchema`'s
-			// prefill plan (resolved by the same helper the server path uses).
-			const prefill = resolveGuidedDecodeForParams(args).prefill ?? "";
-			const promptText =
-				prefill.length > 0 ? `${args.prompt}\n${prefill}` : args.prompt;
-			if (args.onTextChunk || args.onVerifierEvent) {
-				let idx = 0;
-				if (prefill.length > 0) {
-					await args.onVerifierEvent?.({
-						kind: "accept",
-						tokens: [{ index: idx++, text: prefill }],
-					});
-					await args.onTextChunk?.(prefill);
-				}
-				promptOpts.onTextChunk = (chunk: string) => {
-					if (chunk.length === 0) return;
-					void args.onVerifierEvent?.({
-						kind: "accept",
-						tokens: [{ index: idx++, text: chunk }],
-					});
-					// Deliver synchronously so each token reaches the structured
-					// extractor in order. node-llama-cpp's `onTextChunk` is sync;
-					// the downstream callback returns a promise we intentionally
-					// don't await here (the binding can't await it anyway), but the
-					// extractor's `push` is synchronous so deltas stay ordered.
-					void args.onTextChunk?.(chunk);
-				};
-				const tail = await session.prompt(promptText, promptOpts);
-				return prefill + tail;
-			}
-			// No callbacks were supplied (the `if` above returned otherwise) — plain
-			// string return, no per-token fan-out.
-			const tail = await session.prompt(promptText, promptOpts);
-			return prefill + tail;
-		};
-		const job = this.generationQueue.then(run, run);
-		this.generationQueue = job.catch(() => {
-			// Swallow upstream rejection so the queue stays usable; the failed
-			// job's caller still sees the original error via its own promise.
-		});
-		return job;
-	}
-
-	/**
-	 * Diagnostic snapshot of in-process session-pool state. Returns null
-	 * when no model is active so callers can distinguish "no pool" from
-	 * "empty pool".
-	 */
-	describeSessionPool(): {
-		size: number;
-		maxSize: number;
-		keys: string[];
-	} | null {
-		const pool = this.sessionPool;
-		if (!pool) return null;
-		return {
-			size: pool.size(),
-			maxSize: this.sessionPoolMaxSize(),
-			keys: pool.keys(),
-		};
-	}
-
-	private sessionPoolMaxSize(): number {
-		return resolveDefaultPoolSize(process.env.ELIZA_LOCAL_SESSION_POOL_SIZE);
-	}
-
-	private async loadBinding(): Promise<LlamaBindingModule | null> {
-		try {
-			const mod = (await import("node-llama-cpp")) as unknown;
-			if (
-				mod &&
-				typeof mod === "object" &&
-				"getLlama" in mod &&
-				"LlamaChatSession" in mod &&
-				"LlamaGrammar" in mod &&
-				typeof (mod as { getLlama: unknown }).getLlama === "function"
-			) {
-				// ChatMLChatWrapper is optional — older builds don't have it.
-				return mod as LlamaBindingModule;
-			}
-			return null;
-		} catch {
-			return null;
-		}
-	}
-}
-
 /**
  * Public engine facade.
  *
@@ -853,23 +252,21 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
  * or when the catalog prefers optimized llama.cpp.
  */
 export class LocalInferenceEngine {
-	private readonly nodeBackend = new NodeLlamaCppBackend();
 	/**
-	 * In-process FFI backend (libllama + eliza-llama-shim via bun:ffi).
-	 * Production wiring of the desktop adapter — see
-	 * `services/desktop-llama-adapter.ts` +
-	 * `services/desktop-ffi-backend-runtime.ts`. When the desktop dylib
-	 * pair is present on disk AND bun:ffi resolves, this is the active
-	 * path for `decideBackend() === "llama-cpp"`. There is no server
-	 * fallback for Eliza-1.
+	 * In-process FFI backend — the sole text runtime, served by the FUSED
+	 * `libelizainference` (`desktop-fused-ffi-backend-runtime.ts`). Text gen,
+	 * same-file MTP speculative decoding, KV-cache quant, native tokenization,
+	 * and vision-describe all run through the one fused lib the voice subsystem
+	 * already loads (ABI v9). libllama has been retired: a fused lib that is
+	 * absent or lacks the v9 capabilities is a loud `LocalInferenceUnavailable`
+	 * error, never a silent fallback. There is no server fallback for Eliza-1.
 	 */
 	private readonly ffiBackend = new FfiStreamingBackend(
-		desktopFfiBackendRuntime,
+		desktopFusedFfiBackendRuntime,
 	);
 	private readonly dispatcher = new BackendDispatcher(
-		this.nodeBackend,
 		this.ffiBackend,
-		() => desktopFfiBackendRuntime.supported(),
+		() => desktopFusedFfiBackendRuntime.supported(),
 		() => null,
 	);
 	/**
@@ -1035,9 +432,9 @@ export class LocalInferenceEngine {
 	 * high-water mark has outgrown the configured slot count AND there's RAM
 	 * headroom for the extra KV slots, resize/restart llama.cpp with the larger
 	 * value so new conversations get their own slot instead of thrashing.
-	 * Returns `true` when a resize was performed. No-op on the node-llama-cpp
-	 * backend (its session pool sizes itself). Best-effort: a failed restart
-	 * leaves the old `--parallel` in place and logs.
+	 * Returns `true` when a resize was performed. No-op when the FFI backend
+	 * isn't loaded. Best-effort: a failed restart leaves the old `--parallel`
+	 * in place and logs.
 	 */
 	async maybeAutoResizeParallel(): Promise<boolean> {
 		if (this.activeBackendId() !== "llama-cpp") return false;
@@ -1082,7 +479,7 @@ export class LocalInferenceEngine {
 		return this.dispatcher.hasLoadedModel();
 	}
 
-	activeBackendId(): "capacitor-llama" | "node-llama-cpp" | "llama-cpp" | null {
+	activeBackendId(): "capacitor-llama" | "llama-cpp" | null {
 		return this.dispatcher.activeBackendId();
 	}
 
@@ -1145,39 +542,12 @@ export class LocalInferenceEngine {
 			overrides,
 		};
 
-		try {
-			await this.dispatcher.load(plan);
-			this.startBackgroundManagement();
-			return;
-		} catch (err) {
-			// Fall back to node-llama-cpp when the FFI backend is unavailable.
-			// There are two cases:
-			//   1. FFI runtime is entirely absent (no bun:ffi in dev mode) — always
-			//      fall back regardless of kernel requirements, since there's no FFI
-			//      to run the kernels on anyway.
-			//   2. FFI is available but the decision was a soft preference/default —
-			//      fall back so dev builds work without custom kernels.
-			// Only block fallback when FFI IS available but the catalog mandates
-			// specific kernels (kernel-required) — that's the production Eliza-1
-			// contract that should not be silently degraded.
-			const decision = this.dispatcher.decide(plan);
-			const ffiAvailable = desktopFfiBackendRuntime.supported();
-			const canFallback =
-				!ffiAvailable ||
-				(decision.backend === "llama-cpp" &&
-					(decision.reason === "preferred-backend" ||
-						decision.reason === "default"));
-			if (canFallback) {
-				console.warn(
-					"[local-inference] optimized llama.cpp backend unavailable; falling back to node-llama-cpp:",
-					err instanceof Error ? err.message : String(err),
-				);
-				await this.nodeBackend.load(plan);
-				this.startBackgroundManagement();
-				return;
-			}
-			throw err;
-		}
+		// The in-process FFI runtime (fused libelizainference, or the
+		// libllama + eliza-llama-shim fallback) is the sole text backend. A
+		// load failure surfaces directly — there is no second runtime to fall
+		// back to.
+		await this.dispatcher.load(plan);
+		this.startBackgroundManagement();
 	}
 
 	async generate(args: GenerateArgs): Promise<string> {
@@ -1189,10 +559,8 @@ export class LocalInferenceEngine {
 	}
 
 	/**
-	 * Vision describe via the running llama.cpp mtmd path. Requires
-	 * the optimized llama.cpp backend (the in-process node-llama-cpp adapter
-	 * does not expose mmproj; see `services/vision/node-llama-cpp.ts`
-	 * for the mtmd binding path). The mmproj GGUF must have been
+	 * Vision describe via the running llama.cpp mtmd path. Requires the FFI
+	 * backend with an mmproj-loaded bundle. The mmproj GGUF must have been
 	 * declared by the active catalog tier and present on disk under the
 	 * bundle root; if not, the active backend throws.
 	 *
@@ -1213,8 +581,8 @@ export class LocalInferenceEngine {
 	}> {
 		this.markActivity();
 		// The dispatcher throws an actionable error if the active backend
-		// doesn't implement describeImage (e.g. node-llama-cpp or a later
-		// FFI backend without mmproj parity). No need for a pre-check.
+		// doesn't implement describeImage (e.g. an FFI backend without mmproj
+		// parity). No need for a pre-check.
 		return this.dispatcher.describeImage(args);
 	}
 
@@ -1226,16 +594,16 @@ export class LocalInferenceEngine {
 	}
 
 	/**
-	 * Diagnostic snapshot of in-process node-llama-cpp session-pool state.
-	 * Returns null when no node-backend pool is active (model not loaded,
-	 * or running on the optimized llama.cpp backend).
+	 * Diagnostic snapshot of an in-process JS session pool. Always null on the
+	 * FFI runtime — its KV slots live in the native backend (C), not in a JS
+	 * session pool. Retained so the API cache-stats panel keeps a stable shape.
 	 */
 	describeSessionPool(): {
 		size: number;
 		maxSize: number;
 		keys: string[];
 	} | null {
-		return this.nodeBackend.describeSessionPool();
+		return null;
 	}
 
 	/**
@@ -1264,8 +632,7 @@ export class LocalInferenceEngine {
 		// Lazy-restore previously-persisted KV state for this conversation.
 		// Fire-and-forget — a missing or unreadable file just means the
 		// conversation cold-prefills on the next request, which is the
-		// pre-restore default. Only meaningful for the optimized llama.cpp backend;
-		// node-llama-cpp owns its own session pool.
+		// pre-restore default. Only meaningful once the FFI backend is loaded.
 		if (this.activeBackendId() === "llama-cpp") {
 			void this.dispatcher
 				.restoreConversationKv(args.conversationId, handle.slotId)
@@ -1284,9 +651,7 @@ export class LocalInferenceEngine {
 	 *
 	 * Returns the Anthropic-shape `LocalUsageBlock` alongside the text so
 	 * agentic callers can surface cache-hit telemetry without re-scraping
-	 * `/metrics` themselves. Falls back to a zero-counter usage block on
-	 * the node-llama-cpp backend (which doesn't expose Prometheus
-	 * metrics).
+	 * `/metrics` themselves.
 	 */
 	async generateInConversation(
 		handle: ConversationHandle,
@@ -1328,10 +693,9 @@ export class LocalInferenceEngine {
 				slotId: result.slotId ?? handle.slotId,
 			};
 		}
-		// node-llama-cpp path: forward via the dispatcher and synthesize a
-		// zero-counter usage block. The session pool already pins by
-		// cacheKey, so cache reuse still works — we just don't have
-		// observability on this backend.
+		// No FFI backend loaded yet: forward via the dispatcher (which throws an
+		// actionable "no backend loaded" error) and synthesize a zero-counter
+		// usage block for the shape.
 		const text = await this.dispatcher.generate({
 			...streaming.args,
 			cacheKey,
@@ -1361,10 +725,9 @@ export class LocalInferenceEngine {
 	 * the handle's slot) or a raw conversation id (a handle is opened on the
 	 * fly so the slot derivation matches the real request). Idempotent /
 	 * cheap to call repeatedly: `cache_prompt: true` reuses the prefix so a
-	 * second call is a no-op forward pass. Only meaningful on the
-	 * optimized llama.cpp backend — the node-llama-cpp session pool already pins
-	 * by cache key, so this is a no-op (returns false) there. Returns true
-	 * when a pre-warm request was issued.
+	 * second call is a no-op forward pass. Only meaningful once the FFI
+	 * backend is loaded — returns false otherwise. Returns true when a
+	 * pre-warm request was issued.
 	 */
 	async prewarmConversation(
 		conversationOrId: ConversationHandle | string,
@@ -1448,8 +811,8 @@ export class LocalInferenceEngine {
 	/**
 	 * Emit a one-line warning when the running `--parallel` slot count is
 	 * below the recommended value (high-water mark + headroom). Returns true
-	 * when a warning was emitted. No-op for the node-llama-cpp backend (its
-	 * session pool sizes itself). The actual resize is `maybeAutoResizeParallel()`
+	 * when a warning was emitted. No-op when the FFI backend isn't loaded.
+	 * The actual resize is `maybeAutoResizeParallel()`
 	 * — kept separate from this hot-path check so a `useModel` call never
 	 * blocks on (or is interrupted by) a server restart; the auto-resize is
 	 * opted into via `ELIZA_LOCAL_AUTO_RESIZE_PARALLEL=1`, in which case this
@@ -1637,7 +1000,9 @@ export class LocalInferenceEngine {
 								bundleRoot: bundle.root,
 								useFfiBackend: true,
 								speakerPresetOverride: createKokoroSpeakerPreset(kokoro),
-								ttsBackendOverride: createKokoroTtsBackend(kokoro),
+								ttsBackendOverride: createKokoroTtsBackend(kokoro, {
+									bundleRoot: bundle.root,
+								}),
 							});
 						} else if (mode !== "omnivoice") {
 							throw new VoiceStartupError(
@@ -1687,8 +1052,8 @@ export class LocalInferenceEngine {
 	 *   - a `MicSource` (caller-supplied, or `DesktopMicSource` under Electrobun),
 	 *   - a Silero v5 GGML VAD (caller-supplied detector, or `createSileroVadDetector()` — runs through libelizainference's native VAD ABI),
 	 *   - a working ASR (the bridge's `createStreamingTranscriber` throws
-	 *     `AsrUnavailableError` when neither the fused decoder nor whisper.cpp
-	 *     is available),
+	 *     `AsrUnavailableError` when the fused decoder is unavailable — the
+	 *     fused build is the sole on-device ASR runtime),
 	 *   - a real OmniVoice TTS backend on the bridge (the `StubOmniVoiceBackend`
 	 *     is rejected — it emits zeros).
 	 * Any missing piece fails loudly with the specific component named.
@@ -1824,9 +1189,9 @@ export class LocalInferenceEngine {
 					: undefined,
 			}));
 
-		// ASR — throws `AsrUnavailableError` when neither the fused decoder nor
-		// whisper.cpp is present. Gated on the VAD so silent frames aren't
-		// decoded.
+		// ASR — throws `AsrUnavailableError` when the fused decoder is
+		// unavailable (the fused build is the sole on-device ASR runtime). Gated
+		// on the VAD so silent frames aren't decoded.
 		const transcriber = bridge.createStreamingTranscriber({ vad });
 		// Voice Wave 2 (2026-05-14): tier-aware turn-detector revision selection.
 		// `0_8b` / `2b` ship the ~66 MB EN-only SmolLM2-135M distill
@@ -1854,13 +1219,38 @@ export class LocalInferenceEngine {
 		if (eliza1EotSelected === "force" && !eliza1EotClassifier) {
 			throw new VoiceStartupError(
 				"missing-turn-detector",
-				"[voice] useEliza1Eot:true requested but the in-process text model is not loaded — load a node-llama-cpp model before starting the voice session, or set useEliza1Eot:false.",
+				"[voice] useEliza1Eot:true requested but the in-process Eliza-1 EOT scorer is unavailable on the FFI runtime — use the GGUF turn detector by setting useEliza1Eot:false.",
 			);
 		}
-		// Resolver order: prefer Eliza-1 in-process scorer, then GGUF (node-llama-cpp),
-		// then heuristic fallback. The ONNX path was removed.
+		// Fused end-of-turn scorer (ABI v11): the model-based turn detector now
+		// runs in-process through libelizainference — a composite of the fused
+		// semantic scorer (P(<|im_end|>) over the loaded text model) and the
+		// heuristic syntactic co-signal. Built only when the loaded fused build
+		// wires the v11 EOT symbol; null on a pre-v11 library, in which case the
+		// resolver falls through to the heuristic-only classifier.
+		const bridgeFfi = bridge.ffi;
+		const fusedEot =
+			opts.turnDetector === false || !bridgeFfi
+				? null
+				: eotMod.tryBuildFusedEotClassifier({
+						ffi: bridgeFfi,
+						getContext: () => {
+							const ctx = bridge.ffiCtx;
+							if (ctx === null) {
+								throw new VoiceStartupError(
+									"missing-ffi",
+									"[voice] Cannot initialize fused EOT scorer: FFI context is not loaded.",
+								);
+							}
+							return ctx;
+						},
+					});
+		// Resolver order: prefer the fused composite EOT (v11), then the legacy
+		// in-process Eliza-1 scorer + GGUF turn detector (both null on the FFI
+		// runtime — they needed node-llama controlledEvaluate), then the
+		// heuristic. The ONNX path was removed.
 		const ggmlTurnDetector =
-			opts.turnDetector === false
+			opts.turnDetector === false || fusedEot
 				? undefined
 				: await eotGgmlMod
 						.createBundledLiveKitGgmlTurnDetector({
@@ -1874,6 +1264,7 @@ export class LocalInferenceEngine {
 			opts.turnDetector === false
 				? undefined
 				: (opts.turnDetector ??
+					fusedEot ??
 					eliza1EotClassifier ??
 					ggmlTurnDetector ??
 					new eotMod.HeuristicEotClassifier());
@@ -2441,39 +1832,27 @@ export class LocalInferenceEngine {
 	}
 
 	/**
-	 * Active llama.cpp parallel slot count, or 1 when no optimized llama.cpp
-	 * backend is running (the node-llama-cpp path has its own pool).
+	 * Active llama.cpp parallel slot count from the running FFI backend, or
+	 * the configured default pool size when no model is loaded yet.
 	 */
 	private activeParallel(): number {
 		if (this.activeBackendId() === "llama-cpp") {
 			return this.dispatcher.parallelSlots();
 		}
-		// node-llama-cpp: each session pool slot is effectively a "parallel"
-		// for slot allocation purposes.
 		return resolveDefaultPoolSize(process.env.ELIZA_LOCAL_SESSION_POOL_SIZE);
 	}
 
 	/**
-	 * Build the eliza-1 EOT classifier when the in-process backend is
-	 * active and a text model is loaded. Returns `null` when the
-	 * preconditions aren't met (e.g. the active backend is optimized llama.cpp,
-	 * or no model is loaded yet). Callers fall back to the LiveKit /
-	 * heuristic chain when null.
+	 * The in-process `Eliza1EotClassifier` required a node-bound `LlamaModel`
+	 * forward pass, which the FFI runtime does not expose. Always null now —
+	 * callers fall through to the GGUF (FFI) turn-detector and then the
+	 * heuristic chain.
 	 */
 	private tryBuildEliza1EotClassifier(
 		_mode: "prefer" | "force",
-		loraPath: string | undefined,
+		_loraPath: string | undefined,
 	): import("./voice/eot-classifier").Eliza1EotClassifier | null {
-		if (this.dispatcher.activeBackendId() !== "capacitor-llama") return null;
-		const model = this.nodeBackend.getLoadedLlamaModel();
-		if (!model) return null;
-		const eotMod =
-			require("./voice/eot-classifier") as typeof import("./voice/eot-classifier");
-		return new eotMod.Eliza1EotClassifier({
-			model,
-			...(loraPath ? { loraPath } : {}),
-			modelLabel: `eliza-1${loraPath ? "+eot-lora" : ""}:${this.nodeBackend.currentModelPath() ?? "loaded"}`,
-		});
+		return null;
 	}
 }
 

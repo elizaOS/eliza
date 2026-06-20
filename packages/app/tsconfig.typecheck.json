@@ -41,11 +41,6 @@
         "../../plugins/plugin-wallet-ui/dist/index.d.ts"
       ],
       "@elizaos/plugin-feed": ["./src/types/side-effect-app-modules.d.ts"],
-      "@elizaos/plugin-scape": ["./src/types/side-effect-app-modules.d.ts"],
-      "@elizaos/plugin-hyperscape": [
-        "./src/types/side-effect-app-modules.d.ts"
-      ],
-      "@elizaos/plugin-2004scape": ["./src/types/side-effect-app-modules.d.ts"],
       "@elizaos/plugin-defense-of-the-agents": [
         "./src/types/side-effect-app-modules.d.ts"
       ],

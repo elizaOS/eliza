@@ -358,7 +358,7 @@ export function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
 // State dir safety
 // ---------------------------------------------------------------------------
 
-const RESET_STATE_ALLOWED_SEGMENTS = new Set(["eliza", "milady"]);
+const RESET_STATE_ALLOWED_SEGMENTS = new Set(["eliza"]);
 
 function hasAllowedResetSegment(resolvedState: string): boolean {
   return resolvedState

@@ -77,8 +77,8 @@ can override them when invoking it manually).
 | --- | --- | --- |
 | `AOSP_ADB_SERIAL` | empty | adb serial of the live CVD; required if multiple devices are attached. |
 | `AOSP_AGENT_APK` | (required) | Host path to the riscv64 Eliza agent APK. |
-| `AOSP_AGENT_PACKAGE` | `ai.milady.milady` | Android package whose pid is polled to confirm the service is alive. |
-| `AOSP_AGENT_SERVICE` | `ai.milady.milady/.ElizaAgentService` | Component name passed to `am start-foreground-service`. |
+| `AOSP_AGENT_PACKAGE` | `ai.elizaos.app` | Android package whose pid is polled to confirm the service is alive. |
+| `AOSP_AGENT_SERVICE` | `ai.elizaos.app/.ElizaAgentService` | Component name passed to `am start-foreground-service`. |
 | `AOSP_AGENT_HOST_PORT` | `31337` | Host loopback port for the `adb forward` HTTP probes. |
 | `AOSP_AGENT_DEVICE_PORT` | `31337` | Device-side port the agent binds. |
 | `AOSP_AGENT_SERVICE_WAIT_SECONDS` | `90` | Max wait for `pidof <package>` to return non-empty. |

@@ -28,22 +28,22 @@ kill_elizaos_processes() {
     user_systemctl kill --kill-whom=all --signal=TERM \
         elizaos-agent.service \
         elizaos-renderer.service \
-        milady.service
+        elizaos.service
     sleep 2
     user_systemctl kill --kill-whom=all --signal=KILL \
         elizaos-agent.service \
         elizaos-renderer.service \
-        milady.service
+        elizaos.service
 }
 
 start_elizaos_units() {
     user_systemctl reset-failed \
         elizaos-agent.service \
         elizaos-renderer.service \
-        milady.service
+        elizaos.service
     user_systemctl start --no-block elizaos-agent.service
     user_systemctl start --no-block elizaos-renderer.service
-    user_systemctl start --no-block milady.service
+    user_systemctl start --no-block elizaos.service
 }
 
 case "${1:-}" in

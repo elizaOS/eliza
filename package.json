@@ -211,7 +211,8 @@
     "publish:dry-run": "bun packages/scripts/publish-from-dist.mjs",
     "publish:packages": "bun packages/scripts/publish-from-dist.mjs --apply",
     "typecheck:dist": "NODE_OPTIONS='--max-old-space-size=8192' tsc --noEmit -p tsconfig.dist-paths.json",
-    "sync:artifacts": "bun packages/scripts/sync-artifacts.mjs"
+    "sync:artifacts": "bun packages/scripts/sync-artifacts.mjs",
+    "check:view-bundles": "bun packages/scripts/view-bundle-import-guard.mjs"
   },
   "packageManager": "bun@1.4.0-canary.1",
   "workspaces": [
@@ -429,7 +430,6 @@
     "@nestjs/core",
     "@openapitools/openapi-generator-cli",
     "@swc/core",
-    "@tensorflow/tfjs-node",
     "bigint-buffer",
     "bufferutil",
     "canvas",

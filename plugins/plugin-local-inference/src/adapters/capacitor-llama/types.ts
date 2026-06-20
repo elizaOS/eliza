@@ -8,8 +8,8 @@
  *
  * Shape rationale: the interface mirrors `llama-cpp-capacitor`'s
  * `LlamaContext` class verbatim so the mobile path can implement it with a
- * straight pass-through. The desktop path adapts the lower-level
- * `DesktopLlamaAdapter` (bun:ffi → libllama.so) into the same vocabulary.
+ * straight pass-through. The loader is mobile-only — libllama is retired, so
+ * there is no desktop façade (desktop runs the fused `libelizainference`).
  *
  * Why a TS interface rather than `import type { LlamaContext } from
  * "llama-cpp-capacitor"`? The Capacitor package is mobile-only at install time

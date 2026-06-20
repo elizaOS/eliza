@@ -170,12 +170,14 @@ const FORCED_BITROUTER_PRICING: ReadonlyArray<{
 ];
 
 function bitRouterModelsUrl(): string {
-  const baseUrl = (getProviderKey("BITROUTER_BASE_URL") ?? "https://api.bitrouter.ai/v1").replace(
+  // The model + pricing catalog comes from OpenRouter (same catalog BitRouter
+  // proxied; `pricing.prompt`/`pricing.completion` are per-token USD).
+  const baseUrl = (getProviderKey("OPENROUTER_BASE_URL") ?? "https://openrouter.ai/api/v1").replace(
     /\/+$/,
     "",
   );
   const apiBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
-  return `${apiBaseUrl}/models?output_modalities=all`;
+  return `${apiBaseUrl}/models`;
 }
 
 function inferBitRouterProductFamily(model: BitRouterCatalogModel): PricingProductFamily {
@@ -336,14 +338,16 @@ function buildForcedBitRouterPricingEntries(): PreparedPricingEntry[] {
 }
 
 async function fetchBitRouterJson<T>(url: string): Promise<T> {
-  const apiKey = getProviderKey("BITROUTER_API_KEY");
+  const apiKey = getProviderKey("OPENROUTER_API_KEY");
   if (!apiKey) {
-    throw new Error("BITROUTER_API_KEY environment variable is required");
+    throw new Error("OPENROUTER_API_KEY environment variable is required");
   }
 
   const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://eliza.cloud",
+      "X-Title": "Eliza Cloud",
       "User-Agent": "ElizaCloudPricingBot/1.0",
       Accept: "application/json",
     },

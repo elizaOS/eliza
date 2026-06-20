@@ -10,7 +10,7 @@ import {
 } from "@elizaos/agent";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/shared";
 
-const PACKAGE_ROOT_NAMES = new Set(["eliza", "elizaai", "elizaos", "milady"]);
+const PACKAGE_ROOT_NAMES = new Set(["eliza", "elizaai", "elizaos"]);
 
 export function isSafeResetStateDir(
   ...args: Parameters<typeof upstreamIsSafeResetStateDir>

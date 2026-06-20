@@ -18,6 +18,12 @@ export const TIER0_PROTOCOL_ACTIONS = [
 
 export type Tier0ProtocolAction = (typeof TIER0_PROTOCOL_ACTIONS)[number];
 
+// A retrieval score at/above this is treated as a near-certain match that must
+// stay on the planner surface even when Stage-1's candidate narrow omits it.
+// Set just below a perfect 1.0 so only an overwhelmingly dominant match (not a
+// merely good tier-A hit) overrides Stage-1's routing judgement.
+const RETRIEVAL_OVERRIDE_SCORE = 0.97;
+
 export type ActionTier = "tier0" | "tierA" | "tierB" | "tierC";
 
 export type TieredParentAction = {
@@ -195,7 +201,19 @@ export function tierActionResults(
 		const kept: TieredParentAction[] = [];
 		const demotedFromTierA: TieredParentAction[] = [];
 		for (const parent of tierAParents) {
-			if (matchesCandidate(parent)) {
+			// Keep a parent the candidates named, OR one the retrieval matched so
+			// strongly it is a near-certain fit (score >= RETRIEVAL_OVERRIDE_SCORE).
+			// Stage-1's candidate list is a model judgement and sometimes OMITS the
+			// obviously-relevant action — observed live: "current bitcoin price" /
+			// "weather in tokyo" retrieved WEB_FETCH at score 1.0, but Stage-1
+			// narrowed to [MESSAGE_SEARCH, VIEWS], so WEB_FETCH was demoted out of
+			// the surface and the planner could only show a VIEWS panel instead of
+			// fetching. A top-scoring match must still reach the planner so it can
+			// choose it; this does not force the choice, only keeps it available.
+			if (
+				matchesCandidate(parent) ||
+				parent.score >= RETRIEVAL_OVERRIDE_SCORE
+			) {
 				kept.push(parent);
 			} else {
 				demotedFromTierA.push(parent);

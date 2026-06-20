@@ -22,7 +22,7 @@ import { withTimeout } from "../utils/with-timeout";
 import { ensureRegistryAccess } from "./containers/hetzner-client/registry";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
 import { resolveImageDigest } from "./containers/registry-probe";
-import { isAlreadyGoneMessage } from "./docker-error-classifier";
+import { isAlreadyGoneMessage, isNodeUnreachableMessage } from "./docker-error-classifier";
 import { dockerNodeManager } from "./docker-node-manager";
 import { getUsedDockerHostPorts } from "./docker-port-allocation";
 import {
@@ -1622,15 +1622,42 @@ export class DockerSandboxProvider implements SandboxProvider {
       // container is absent (SSH down, Docker daemon hung, etc.).
       const stopIsGone = isAlreadyGoneMessage(stopMsg);
       const rmIsGone = isAlreadyGoneMessage(rmMsg);
-      if (!stopIsGone && !rmIsGone) {
+      // An UNREACHABLE node (SSH connect timeout, refused/unreachable socket,
+      // DNS failure on BOTH legs) is treated as TERMINAL: the delete is
+      // completed instead of re-queued. Re-queuing an unreachable delete re-runs
+      // the ~20-65s stop path every cycle, eventually pushing the work cycle
+      // past the 300s watchdog so the liveness heartbeat is withheld and the
+      // cloud-api fails closed (agents API hangs).
+      //
+      // TRADE-OFF / HONEST LIMITATION: completing the delete here ABANDONS the
+      // container. There is currently NO automatic reclaimer — no orphan-sweep /
+      // node-reconcile job exists that lists actual containers on a node and
+      // removes ones with no DB row. So if the node later returns, the container
+      // (and its headscale registration, if cleanup was skipped) can LEAK until
+      // such a sweeper is built or it is reclaimed by hand. We accept that leak
+      // to keep the work cycle bounded; the lifecycle/capacity owner should add
+      // a node-reconcile sweep (and revisit the allocated_count decrement below)
+      // when one lands. Do NOT claim a reconciler already reclaims it.
+      const unreachable = isNodeUnreachableMessage(stopMsg) && isNodeUnreachableMessage(rmMsg);
+      if (!stopIsGone && !rmIsGone && !unreachable) {
         throw new Error(
           `Failed to stop container ${meta.containerName} on ${meta.hostname}: ` +
             `docker stop -> ${stopMsg}; docker rm -f -> ${rmMsg}`,
         );
       }
-      logger.info(
-        `[docker-sandbox] Container ${meta.containerName} already absent on ${meta.hostname}`,
-      );
+      if (unreachable) {
+        logger.warn(
+          `[docker-sandbox] Node ${meta.hostname} unreachable during stop of ${meta.containerName}; ` +
+            `completing delete and ABANDONING the container — it will LEAK until reclaimed ` +
+            `(no automatic orphan-sweep / node-reconcile job exists yet) — ` +
+            `docker stop -> ${stopMsg}; docker rm -f -> ${rmMsg}`,
+          { nodeId: meta.nodeId, containerName: meta.containerName },
+        );
+      } else {
+        logger.info(
+          `[docker-sandbox] Container ${meta.containerName} already absent on ${meta.hostname}`,
+        );
+      }
     }
 
     // Decrement allocated_count on the node

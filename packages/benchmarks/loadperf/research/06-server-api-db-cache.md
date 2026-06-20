@@ -481,7 +481,7 @@ All commands below were run on this machine; outputs quoted are real.
 
 ### D.0 Boot a headless server (shared prerequisite)
 ```bash
-cd /home/shaw/milady/eliza
+cd /path/to/eliza
 ELIZA_HEADLESS=1 ELIZA_API_PORT=31355 \
   node --conditions=eliza-source --import tsx \
   packages/app-core/src/runtime/dev-server.ts > /tmp/loadperf-server.log 2>&1 &

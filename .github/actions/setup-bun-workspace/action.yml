@@ -84,6 +84,17 @@ runs:
           echo "protoc already installed: $(protoc --version)"
           exit 0
         fi
+        # GitHub-hosted Ubuntu images include Microsoft feeds that are unrelated
+        # to our protoc install. If those feeds return 403, apt-get update fails
+        # before it can use the Ubuntu repositories we actually need.
+        while IFS= read -r source_file; do
+          if [[ "${source_file}" == *.disabled ]]; then
+            echo "Microsoft apt source already disabled: ${source_file}"
+            continue
+          fi
+          echo "Disabling unrelated Microsoft apt source: ${source_file}"
+          sudo mv "${source_file}" "${source_file}.disabled"
+        done < <(grep -RIl "packages.microsoft.com" /etc/apt/sources.list.d 2>/dev/null || true)
         APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
         for attempt in 1 2 3; do
           if sudo apt-get "${APT_ARGS[@]}" update && \
@@ -103,7 +114,17 @@ runs:
       shell: bash
       run: |
         # Some CI runners intermittently fail reaching Ubuntu mirrors over IPv6.
-        # Force IPv4 and retry apt commands so CI setup is resilient.
+        # Force IPv4 and retry apt commands so CI setup is resilient. Also
+        # disable unrelated Microsoft feeds because their 403s make apt-get
+        # update fail before Ubuntu packages can install.
+        while IFS= read -r source_file; do
+          if [[ "${source_file}" == *.disabled ]]; then
+            echo "Microsoft apt source already disabled: ${source_file}"
+            continue
+          fi
+          echo "Disabling unrelated Microsoft apt source: ${source_file}"
+          sudo mv "${source_file}" "${source_file}.disabled"
+        done < <(grep -RIl "packages.microsoft.com" /etc/apt/sources.list.d 2>/dev/null || true)
         APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
         for attempt in 1 2 3; do
           if sudo apt-get "${APT_ARGS[@]}" update && \

@@ -1,28 +1,25 @@
 /**
- * Standalone llama.cpp engine.
+ * Local-inference engine surface for the shared UI library.
  *
- * Owns one `Llama` binding instance, at most one loaded `LlamaModel`, and
- * a cached `LlamaChatSession` that wraps it. Model swap is unload-then-load
- * so we never double-allocate VRAM.
+ * Text inference runs in the bun AGENT — reached from the renderer through
+ * the device-bridge / API client, or in-process through a runtime-registered
+ * `localInferenceLoader` service (the AOSP bun:ffi loader or the device-bridge
+ * loader). The shared `@elizaos/ui` library ships in the WebView/browser where
+ * no Node-native llama binding can load, so this module owns NO inference
+ * binding. It is a typed no-op surface kept so `active-model.ts` and its
+ * consumers (the Settings UI, the active-model SSE) keep a stable fallback to
+ * resolve against when no runtime loader is registered.
  *
- * Two consumption paths:
- *   1. The Model Hub UI calls `load()` / `unload()` to make "Activate" work.
- *   2. The agent runtime calls `generate()` via the registered
- *      `ModelType.TEXT_SMALL` / `TEXT_LARGE` handlers (see
- *      `ensure-local-inference-handler.ts`).
- *
- * Dynamic import keeps the binding optional: if `node-llama-cpp` is not
- * installed, `available()` returns false and callers surface a clear error
- * instead of crashing the process.
+ * The fallback always reports unavailable; `load()` / `generate()` fail with a
+ * clear message instead of pretending to run a model in the renderer.
  */
 
 import type { LocalInferenceLoadArgs } from "./load-args";
 
-const NODE_LLAMA_CPP_MODULE_ID = "node-llama-cpp";
-
-function normalizeKvCacheTypeForBinding(name: string): string {
-  return name.trim().toUpperCase();
-}
+const UNAVAILABLE_MESSAGE =
+  "Local inference runs in the Eliza agent, not the UI renderer. " +
+  "Register a `localInferenceLoader` service (AOSP bun:ffi or device-bridge) " +
+  "to drive local models.";
 
 type ResolvedGpuLayers = number | "max" | "auto";
 
@@ -57,212 +54,29 @@ export interface GenerateArgs {
   topP?: number;
 }
 
-interface LlamaContextSequence {
-  dispose(): Promise<void>;
-}
-
-interface LlamaContext {
-  getSequence(): LlamaContextSequence;
-  dispose(): Promise<void>;
-}
-
-interface LlamaChatSession {
-  prompt(
-    text: string,
-    options?: {
-      maxTokens?: number;
-      temperature?: number;
-      topP?: number;
-      stopOnAbortSignal?: AbortSignal;
-      customStopTriggers?: string[];
-    },
-  ): Promise<string>;
-  /**
-   * Reset the accumulated chat history. Agent model handlers are stateless
-   * per-call; without this, `LlamaChatSession.prompt()` would thread prior
-   * turns into each new generation and gradually derail outputs.
-   */
-  resetChatHistory?(): void | Promise<void>;
-  dispose?(): void | Promise<void>;
-}
-
-interface LlamaChatSessionCtor {
-  new (args: { contextSequence: LlamaContextSequence }): LlamaChatSession;
-}
-
-interface LlamaModel {
-  createContext(args?: {
-    contextSize?: number | "auto" | { min?: number; max?: number };
-    flashAttention?: boolean;
-    experimentalKvCacheKeyType?: string;
-    experimentalKvCacheValueType?: string;
-  }): Promise<LlamaContext>;
-  dispose(): Promise<void>;
-}
-
-interface Llama {
-  loadModel(args: {
-    modelPath: string;
-    gpuLayers?: number | "max" | "auto";
-    useMmap?: boolean;
-    useMlock?: boolean;
-    defaultContextFlashAttention?: boolean;
-  }): Promise<LlamaModel>;
-}
-
-interface LlamaBindingModule {
-  getLlama(options?: { gpu?: "auto" | false }): Promise<Llama>;
-  LlamaChatSession: LlamaChatSessionCtor;
-}
-
 export class LocalInferenceEngine {
-  private llama: Llama | null = null;
-  private loadedModel: LlamaModel | null = null;
-  private loadedContext: LlamaContext | null = null;
-  private loadedSession: LlamaChatSession | null = null;
-  private loadedPath: string | null = null;
-  private bindingChecked = false;
-  private bindingModule: LlamaBindingModule | null = null;
-  /** Serialises generate calls so concurrent requests don't corrupt session state. */
-  private generationQueue: Promise<unknown> = Promise.resolve();
-
-  async available(): Promise<boolean> {
-    if (!this.bindingChecked) {
-      this.bindingModule = await this.loadBinding();
-      this.bindingChecked = true;
-    }
-    return this.bindingModule !== null;
+  available(): Promise<boolean> {
+    return Promise.resolve(false);
   }
 
   currentModelPath(): string | null {
-    return this.loadedPath;
+    return null;
   }
 
   hasLoadedModel(): boolean {
-    return this.loadedModel !== null;
+    return false;
   }
 
-  async unload(): Promise<void> {
-    if (!this.loadedModel) return;
-    const session = this.loadedSession;
-    const context = this.loadedContext;
-    const model = this.loadedModel;
-    this.loadedSession = null;
-    this.loadedContext = null;
-    this.loadedModel = null;
-    this.loadedPath = null;
-    // Dispose bottom-up: session first, then context, then the model. Each
-    // dispose is wrapped because a partial failure must not strand state.
-    try {
-      await session?.dispose?.();
-    } catch {
-      /* best effort */
-    }
-    try {
-      await context?.dispose();
-    } catch {
-      /* best effort */
-    }
-    await model.dispose();
+  unload(): Promise<void> {
+    return Promise.resolve();
   }
 
-  async load(
-    modelPath: string,
-    resolved?: LocalInferenceLoadArgs,
-  ): Promise<void> {
-    if (this.loadedPath === modelPath && this.loadedModel) return;
-
-    if (!(await this.available()) || !this.bindingModule) {
-      throw new Error(
-        "node-llama-cpp is not installed in this build; add it as a dependency to enable local inference",
-      );
-    }
-
-    if (this.loadedModel) {
-      await this.unload();
-    }
-
-    if (!this.llama) {
-      this.llama = await this.bindingModule.getLlama({ gpu: "auto" });
-    }
-
-    const model = await this.llama.loadModel({
-      modelPath,
-      gpuLayers: resolveGpuLayersForLoad(resolved),
-      useMmap: resolved?.mmap,
-      useMlock: resolved?.mlock,
-      defaultContextFlashAttention: resolved?.flashAttention,
-    });
-    const context = await model.createContext({
-      contextSize: resolved?.contextSize,
-      flashAttention: resolved?.flashAttention,
-      experimentalKvCacheKeyType: resolved?.cacheTypeK
-        ? normalizeKvCacheTypeForBinding(resolved.cacheTypeK)
-        : undefined,
-      experimentalKvCacheValueType: resolved?.cacheTypeV
-        ? normalizeKvCacheTypeForBinding(resolved.cacheTypeV)
-        : undefined,
-    });
-    const sequence = context.getSequence();
-    const session = new this.bindingModule.LlamaChatSession({
-      contextSequence: sequence,
-    });
-
-    this.loadedModel = model;
-    this.loadedContext = context;
-    this.loadedSession = session;
-    this.loadedPath = modelPath;
+  load(_modelPath: string, _resolved?: LocalInferenceLoadArgs): Promise<void> {
+    return Promise.reject(new Error(UNAVAILABLE_MESSAGE));
   }
 
-  /**
-   * Generate text from the loaded model. Serialised — a new call waits for
-   * any in-flight generation to finish so the chat session's internal state
-   * stays consistent.
-   */
-  async generate(args: GenerateArgs): Promise<string> {
-    if (!this.loadedSession) {
-      throw new Error(
-        "No local model is active. Select one in Settings → Local models before using local inference.",
-      );
-    }
-    const session = this.loadedSession;
-    const run = async (): Promise<string> => {
-      // Agent model handlers are stateless per call. Drop any prior chat
-      // history so sequential prompts don't thread through accumulated
-      // context and drift output quality.
-      await session.resetChatHistory?.();
-      return session.prompt(args.prompt, {
-        maxTokens: args.maxTokens ?? 2048,
-        temperature: args.temperature ?? 0.7,
-        topP: args.topP ?? 0.9,
-        customStopTriggers: args.stopSequences,
-      });
-    };
-    const job = this.generationQueue.then(run, run);
-    this.generationQueue = job.catch(() => {
-      /* swallow so queue remains usable after a failure */
-    });
-    return job;
-  }
-
-  private async loadBinding(): Promise<LlamaBindingModule | null> {
-    try {
-      const mod = (await import(
-        /* @vite-ignore */ NODE_LLAMA_CPP_MODULE_ID
-      )) as unknown;
-      if (
-        mod &&
-        typeof mod === "object" &&
-        "getLlama" in mod &&
-        "LlamaChatSession" in mod &&
-        typeof (mod as { getLlama: unknown }).getLlama === "function"
-      ) {
-        return mod as LlamaBindingModule;
-      }
-      return null;
-    } catch {
-      return null;
-    }
+  generate(_args: GenerateArgs): Promise<string> {
+    return Promise.reject(new Error(UNAVAILABLE_MESSAGE));
   }
 }
 

@@ -263,6 +263,40 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
+  it("accepts an async-provisioning create response that returns agentId without id", async () => {
+    // The cloud agent-create async branch (202) returns the new agent's id
+    // under `agentId` only — no `id` field. The client must read it instead of
+    // throwing "Eliza Cloud response missing data.id" (the new-user dedicated
+    // onboarding crash).
+    capacitorMocks.request.mockResolvedValueOnce({
+      status: 202,
+      data: {
+        success: true,
+        created: true,
+        data: {
+          agentId: "agent-async-1",
+          agentName: "My Agent",
+          status: "provisioning",
+          jobId: "job-async-1",
+        },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const create = await client.createCloudCompatAgent({ agentName: "My Agent" });
+
+    expect(create).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          agentId: "agent-async-1",
+          status: "provisioning",
+        }),
+      }),
+    );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
   it("gets pairing tokens and deletes Cloud agents directly on native", async () => {
     capacitorMocks.request
       .mockResolvedValueOnce({
@@ -314,6 +348,154 @@ describe("ElizaClient direct Cloud auth on native", () => {
         jobId: "",
         status: "deleted",
         message: "Agent delete complete",
+      },
+    });
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("suspends Cloud agents through the direct Cloud API host on native", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 202,
+      data: {
+        success: true,
+        data: {
+          agentId: "agent-1",
+          action: "suspend",
+          jobId: "job-suspend",
+          status: "queued",
+          message: "Suspend job created.",
+        },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const result = await client.suspendCloudCompatAgent("agent-1");
+
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/suspend",
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer cloud-api-key",
+        }),
+      }),
+    );
+    expect(result).toEqual({
+      success: true,
+      data: {
+        jobId: "job-suspend",
+        status: "queued",
+        message: "Suspend job created.",
+      },
+    });
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("resumes Cloud agents through the direct Cloud API host on native", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 202,
+      data: {
+        success: true,
+        data: {
+          agentId: "agent-1",
+          action: "resume",
+          jobId: "job-resume",
+          status: "queued",
+          message: "Resume job created.",
+        },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const result = await client.resumeCloudCompatAgent("agent-1");
+
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/resume",
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer cloud-api-key",
+        }),
+      }),
+    );
+    expect(result).toEqual({
+      success: true,
+      data: {
+        jobId: "job-resume",
+        status: "queued",
+        message: "Resume job created.",
+      },
+    });
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  // Note: restart is intentionally NOT part of the direct-cloud ladder — the
+  // cloud-api has no `/api/v1/eliza/agents/:id/restart` route, so
+  // `restartCloudCompatAgent` stays on the legacy `/api/cloud/compat` proxy.
+
+  it("surfaces the Cloud error body when a native suspend is rejected", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 404,
+      data: { success: false, error: "Agent not found" },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+
+    await expect(client.suspendCloudCompatAgent("agent-1")).rejects.toThrow(
+      "Cloud request failed (404): Agent not found",
+    );
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/suspend",
+        method: "POST",
+      }),
+    );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("returns the auth-missing result for native lifecycle calls with no Cloud token", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("native lifecycle must not fetch"));
+
+    const client = new ElizaClient("http://localhost:31337");
+    const result = await client.resumeCloudCompatAgent("agent-1");
+
+    expect(result).toEqual({
+      success: false,
+      error: "Eliza Cloud login session is missing. Sign in again.",
+      data: {
+        jobId: "",
+        status: "auth-missing",
+        message: "Eliza Cloud login session is missing. Sign in again.",
+      },
+    });
+    expect(capacitorMocks.request).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("threads the 202 jobId through a native direct delete", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 202,
+      data: {
+        success: true,
+        data: {
+          jobId: "job-delete",
+          status: "deleting",
+          message: "Delete job created.",
+        },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const result = await client.deleteCloudCompatAgent("agent-1");
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        jobId: "job-delete",
+        status: "deleting",
+        message: "Delete job created.",
       },
     });
     expectNoLocalPersistOrStatusProbe();

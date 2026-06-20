@@ -813,6 +813,14 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		includeList?: string[],
 		onlyInclude?: boolean,
 		skipCache?: boolean,
+		/**
+		 * When set, REUSE cached provider results for the requested set and re-run
+		 * only the named providers (plus any not yet cached for this message.id).
+		 * The full requested set still drives the rendered text/order. Used to
+		 * refresh only the providers that changed mid-turn (e.g. RECENT_MESSAGES
+		 * after an early reply) instead of recomposing everything.
+		 */
+		refreshProviders?: string[] | null,
 	): Promise<State>;
 
 	/**

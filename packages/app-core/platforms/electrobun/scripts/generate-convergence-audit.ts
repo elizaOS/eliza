@@ -212,7 +212,6 @@ const MODEL_NAMES = new Set([
   "plugin-lmstudio",
   "plugin-native-llama",
   "plugin-ollama",
-  "plugin-omnivoice",
   "plugin-rlm",
 ]);
 
@@ -220,7 +219,6 @@ const VOICE_NAMES = new Set([
   "plugin-edge-tts",
   "plugin-elevenlabs",
   "plugin-native-talkmode",
-  "plugin-omnivoice",
 ]);
 
 const DATA_NAMES = new Set([
@@ -235,7 +233,6 @@ const APP_PLUGIN_NAMES = new Set([
   "plugin-app-control",
   "plugin-app-manager",
   "plugin-browser",
-  "plugin-2004scape",
   "plugin-feed",
   "plugin-clawville",
   "plugin-companion",
@@ -247,7 +244,6 @@ const APP_PLUGIN_NAMES = new Set([
   "plugin-form",
   "plugin-health",
   "plugin-hyperliquid-app",
-  "plugin-hyperscape",
   "plugin-personal-assistant",
   "plugin-minecraft",
   "plugin-music",
@@ -256,7 +252,6 @@ const APP_PLUGIN_NAMES = new Set([
   "plugin-phone",
   "plugin-polymarket-app",
   "plugin-roblox",
-  "plugin-scape",
   "plugin-shopify-ui",
   "plugin-steward-app",
   "plugin-suno",

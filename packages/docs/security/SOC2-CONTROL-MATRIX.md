@@ -1,4 +1,4 @@
-> **Mirror.** Authoritative copy lives in the outer milady monorepo at `milady/docs/security/SOC2-CONTROL-MATRIX.md`. Relative links below (`../../POLICIES/...`) resolve in the outer monorepo, not inside this submodule.
+> **Mirror.** Authoritative copy lives in the outer monorepo at `../docs/security/SOC2-CONTROL-MATRIX.md`. Relative links below (`../../POLICIES/...`) resolve in the outer monorepo, not inside this submodule.
 
 # SOC2 Control Matrix — Eliza Stack
 

@@ -19,6 +19,7 @@ import type {
 } from "../../api/client-types";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useContinuousChat } from "../../hooks/useContinuousChat";
+import { useBranding } from "../../config/branding";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import { consumeAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import { useApp } from "../../state";
@@ -182,6 +183,7 @@ export function PageScopedChatPane({
   const effectiveSystemAddendum = systemAddendumOverride ?? copy.systemAddendum;
   const placeholder = placeholderOverride ?? "Message";
   const app = useApp();
+  const { appName } = useBranding();
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -864,7 +866,7 @@ export function PageScopedChatPane({
             }`}
           >
             <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
-              {message.role === "user" ? "You" : "Eliza"}
+              {message.role === "user" ? "You" : appName}
             </div>
             {message.images?.length ? (
               <div className="mb-2 flex flex-wrap gap-2">

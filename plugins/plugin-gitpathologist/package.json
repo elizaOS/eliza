@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-gitpathologist",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.0",
   "description": "Forensic git-history analysis for elizaOS agents: per-surface health timeline, drift inflection detection, rot post-mortem.",
   "type": "module",
   "main": "dist/node/index.js",
@@ -93,7 +93,7 @@
       },
       "GITPATHOLOGIST_CACHE_DIR": {
         "type": "string",
-        "description": "Override directory for cached pathology reports. Default <workspace>/.milady/gitpathology.",
+        "description": "Override directory for cached pathology reports. Default <workspace>/.eliza/gitpathology.",
         "required": false,
         "sensitive": false
       }

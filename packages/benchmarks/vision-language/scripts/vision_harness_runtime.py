@@ -180,7 +180,7 @@ def _write_image_input(raw_url: str, tmpdir: Path) -> str:
 
 
 def _eliza_state_dir() -> Path:
-    explicit = os.environ.get("ELIZA_STATE_DIR") or os.environ.get("MILADY_STATE_DIR")
+    explicit = os.environ.get("ELIZA_STATE_DIR")
     if explicit:
         return Path(explicit).expanduser()
     ns = os.environ.get("ELIZA_NAMESPACE") or "eliza"

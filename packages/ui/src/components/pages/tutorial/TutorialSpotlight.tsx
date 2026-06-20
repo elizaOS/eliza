@@ -30,8 +30,13 @@ export interface SpotlightCardProps {
 export interface TutorialSpotlightProps extends SpotlightCardProps {
   /** CSS selector for the element to spotlight, or null for a centered card. */
   targetSelector: string | null;
-  /** Dim the whole screen behind a centered card. */
-  blockOutside: boolean;
+  /**
+   * Dim the screen around the target while the step is in progress. PURELY
+   * VISUAL — the dim never captures pointer events, so the real UI underneath
+   * (the chat input, the mic, every control) always stays tappable. Only the
+   * instruction card is interactive.
+   */
+  dimOutside: boolean;
 }
 
 interface Rect {
@@ -52,7 +57,7 @@ function measure(selector: string | null): Rect | null {
 
 export function TutorialSpotlight({
   targetSelector,
-  blockOutside,
+  dimOutside,
   ...card
 }: TutorialSpotlightProps): React.ReactPortal | null {
   const [rect, setRect] = React.useState<Rect | null>(() =>
@@ -124,31 +129,33 @@ export function TutorialSpotlight({
       <style>{SPOTLIGHT_KEYFRAMES}</style>
 
       {/* Dim everything except the target so it pops on ANY background — the
-          bright-orange /chat ambient would otherwise swallow an orange glow ring.
-          With a target: four rects framing a hole (the target stays clickable,
-          and a drag started on it keeps pointer capture); without one: a single
-          full-screen dim behind the centered card. */}
-      {blockOutside &&
+          bright-orange /chat ambient would otherwise swallow the glow. This dim
+          is PURELY VISUAL: every layer is pointer-events:none, so the chat
+          input, the mic, and every control underneath stay tappable. The
+          capability lock (nav-lock in TutorialOverlay) — not a click-blocker —
+          is what keeps the user from drifting off the expected tab. */}
+      {dimOutside &&
         (hole ? (
           <BackdropWithHole hole={hole} />
         ) : (
           <div
             className="absolute inset-0 bg-black/55"
-            style={{ pointerEvents: "auto" }}
+            style={{ pointerEvents: "none" }}
           />
         ))}
 
-      {/* The breathing glow ring around the target. */}
+      {/* The breathing orange glow around the target (soft halo, not a hard
+          outlined box). */}
       {hole && (
         <div
-          className="absolute rounded-xl"
+          className="absolute rounded-2xl"
           style={{
             top: hole.top,
             left: hole.left,
             width: hole.width,
             height: hole.height,
             pointerEvents: "none",
-            boxShadow: `0 0 0 2px ${BRAND}, 0 0 0 9999px rgba(0,0,0,0)`,
+            boxShadow: "0 0 18px 5px rgba(255,88,0,0.5)",
             animation: "tutorial-glow 1.6s ease-in-out infinite",
           }}
         />
@@ -165,21 +172,22 @@ function clampLeft(left: number): number {
   return Math.min(Math.max(14, left), window.innerWidth - w - 14);
 }
 
-/** Four dim rects framing the target hole; each blocks clicks. The hole is left
- *  open so only the intended control is interactive. */
+/** Four dim rects framing the target hole — a purely visual cut-out so the
+ *  target pops. Every rect is pointer-events:none: nothing here blocks input,
+ *  so the whole UI underneath (including the chat textarea) stays tappable. */
 function BackdropWithHole({ hole }: { hole: Rect }): React.ReactElement {
   const dim = "absolute bg-black/55";
-  const block: React.CSSProperties = { pointerEvents: "auto" };
+  const passThrough: React.CSSProperties = { pointerEvents: "none" };
   return (
     <>
       <div
         className={dim}
-        style={{ ...block, top: 0, left: 0, right: 0, height: hole.top }}
+        style={{ ...passThrough, top: 0, left: 0, right: 0, height: hole.top }}
       />
       <div
         className={dim}
         style={{
-          ...block,
+          ...passThrough,
           top: hole.top + hole.height,
           left: 0,
           right: 0,
@@ -189,7 +197,7 @@ function BackdropWithHole({ hole }: { hole: Rect }): React.ReactElement {
       <div
         className={dim}
         style={{
-          ...block,
+          ...passThrough,
           top: hole.top,
           left: 0,
           width: hole.left,
@@ -199,7 +207,7 @@ function BackdropWithHole({ hole }: { hole: Rect }): React.ReactElement {
       <div
         className={dim}
         style={{
-          ...block,
+          ...passThrough,
           top: hole.top,
           left: hole.left + hole.width,
           right: 0,
@@ -283,8 +291,8 @@ function SpotlightCard({
 
 const SPOTLIGHT_KEYFRAMES = `
 @keyframes tutorial-glow {
-  0%, 100% { box-shadow: 0 0 0 2px ${BRAND}, 0 0 14px 3px rgba(255,88,0,0.55); }
-  50%      { box-shadow: 0 0 0 3px ${BRAND}, 0 0 26px 8px rgba(255,88,0,0.85); }
+  0%, 100% { box-shadow: 0 0 16px 4px rgba(255,88,0,0.45); }
+  50%      { box-shadow: 0 0 30px 11px rgba(255,88,0,0.8); }
 }
 @media (prefers-reduced-motion: reduce) {
   [style*="tutorial-glow"] { animation: none !important; }

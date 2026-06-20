@@ -10,18 +10,6 @@ export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[
       load: () => import("@elizaos/plugin-feed"),
     },
     {
-      key: "@elizaos/plugin-scape",
-      load: () => import("@elizaos/plugin-scape"),
-    },
-    {
-      key: "@elizaos/plugin-hyperscape",
-      load: () => import("@elizaos/plugin-hyperscape"),
-    },
-    {
-      key: "@elizaos/plugin-2004scape",
-      load: () => import("@elizaos/plugin-2004scape"),
-    },
-    {
       key: "@elizaos/plugin-defense-of-the-agents",
       load: () => import("@elizaos/plugin-defense-of-the-agents"),
     },

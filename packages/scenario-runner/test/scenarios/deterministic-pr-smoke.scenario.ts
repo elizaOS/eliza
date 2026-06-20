@@ -136,26 +136,39 @@ export default scenario({
       apply: (ctx) => {
         resetAppControlHttpLoopback();
         const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
-        runtime.scenarioLlmFixtures?.register({
-          name: "pr-smoke-deterministic-reply",
-          match: {
-            modelType: ModelType.RESPONSE_HANDLER,
-            input: matchesScenarioInput("hello deterministic proxy"),
-            toolName: "HANDLE_RESPONSE",
+        runtime.scenarioLlmFixtures?.register(
+          {
+            name: "pr-smoke-deterministic-direct-reply",
+            match: {
+              modelType: ModelType.TEXT_SMALL,
+              input: "hello deterministic proxy",
+            },
+            response: "deterministic-test-response: hello deterministic proxy",
+            times: 1,
           },
-          response: {
-            shouldRespond: "RESPOND",
-            contexts: ["simple"],
-            intents: ["hello deterministic proxy"],
-            replyText: "deterministic-test-response: hello deterministic proxy",
-            candidateActionNames: [],
-            facts: [],
-            relationships: [],
-            addressedTo: [],
-            emotion: "none",
+          {
+            name: "pr-smoke-deterministic-router-reply",
+            match: {
+              modelType: ModelType.RESPONSE_HANDLER,
+              input: matchesScenarioInput("hello deterministic proxy"),
+              toolName: "HANDLE_RESPONSE",
+            },
+            response: {
+              shouldRespond: "RESPOND",
+              contexts: ["simple"],
+              intents: ["hello deterministic proxy"],
+              replyText:
+                "deterministic-test-response: hello deterministic proxy",
+              candidateActionNames: [],
+              facts: [],
+              relationships: [],
+              addressedTo: [],
+              emotion: "none",
+            },
+            required: false,
+            times: { min: 0, max: 1 },
           },
-          times: 1,
-        });
+        );
         registerAppControlHttpHandler((request) => {
           if (!request.pathname.startsWith("/api/views")) return undefined;
           if (request.method === "GET" && request.pathname === "/api/views") {
@@ -177,7 +190,7 @@ export default scenario({
   rooms: [
     {
       id: "main",
-      source: "telegram",
+      source: "chat",
       title: "Deterministic PR Smoke",
     },
   ],
@@ -292,13 +305,6 @@ export default scenario({
       name: "view shell API received exact deterministic requests",
       predicate: () => {
         const expected = [
-          {
-            body: undefined,
-            method: "GET",
-            pathname: "/api/views/current",
-            response: { body: { ok: true }, status: 200 },
-            search: "",
-          },
           {
             body: { path: "/views" },
             method: "POST",

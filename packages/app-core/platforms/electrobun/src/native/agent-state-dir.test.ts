@@ -7,27 +7,19 @@ import {
 } from "./agent";
 
 describe("desktop agent state dir", () => {
-  it("uses the Milady XDG state root by default", () => {
+  it("uses the namespaced XDG state root by default", () => {
     expect(
       resolveDesktopChildStateDir({
-        env: { ELIZA_NAMESPACE: "milady" } as NodeJS.ProcessEnv,
+        env: { ELIZA_NAMESPACE: "example" } as NodeJS.ProcessEnv,
         homedir: "/Users/example",
       }),
-    ).toBe("/Users/example/.local/state/milady");
+    ).toBe("/Users/example/.local/state/example");
   });
 
-  it("honors explicit Milady and elizaOS state dir overrides", () => {
+  it("honors an explicit elizaOS state dir override", () => {
     expect(
       resolveDesktopChildStateDir({
-        env: { MILADY_STATE_DIR: "/tmp/milady-state" } as NodeJS.ProcessEnv,
-      }),
-    ).toBe("/tmp/milady-state");
-    expect(
-      resolveDesktopChildStateDir({
-        env: {
-          ELIZA_STATE_DIR: "/tmp/eliza-state",
-          MILADY_STATE_DIR: "/tmp/milady-state",
-        } as NodeJS.ProcessEnv,
+        env: { ELIZA_STATE_DIR: "/tmp/eliza-state" } as NodeJS.ProcessEnv,
       }),
     ).toBe("/tmp/eliza-state");
   });
@@ -84,8 +76,8 @@ describe("desktop child launch env", () => {
 
   it("does not let the shared eliza default override a branded package namespace", () => {
     expect(
-      resolveDesktopChildNamespace({ ELIZA_NAMESPACE: "eliza" }, "milady"),
-    ).toBe("milady");
+      resolveDesktopChildNamespace({ ELIZA_NAMESPACE: "eliza" }, "example"),
+    ).toBe("example");
   });
 
   it("prepends Bun directory even when PATH is absent", () => {

@@ -144,7 +144,7 @@ const RecommendationDetails: React.FC<RecommendationDetailsProps> = ({
 													className={cn(
 														"font-bold",
 														rec.metrics.potentialProfitPercent >= 0
-															? "text-green-500"
+															? "text-foreground"
 															: "text-red-500",
 													)}
 												>
@@ -241,15 +241,11 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({ data }) => {
 							<TableCell
 								className={cn(
 									"text-right font-bold text-lg py-4",
-									entry.trustScore > 50
-										? "text-green-500"
-										: entry.trustScore > 5
-											? "text-green-600/80"
-											: entry.trustScore < -50
-												? "text-red-500"
-												: entry.trustScore < -5
-													? "text-red-600/80"
-													: "text-foreground/70",
+									entry.trustScore < -50
+										? "text-red-500"
+										: entry.trustScore < -5
+											? "text-red-500"
+											: "text-foreground",
 								)}
 							>
 								{entry.trustScore.toFixed(2)}

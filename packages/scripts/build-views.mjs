@@ -96,3 +96,22 @@ if (failures.length > 0) {
   const exitStatus = failures.find((failure) => failure.status > 0)?.status ?? 1;
   process.exit(exitStatus);
 }
+
+// Every freshly built bundle must import only specifiers DynamicViewLoader can
+// rewrite at runtime — otherwise the view ships but fails to load in the
+// browser ("Failed to resolve module specifier"). Fail the build on drift.
+const { validateViewBundles } = await import("./view-bundle-import-guard.mjs");
+const { violations } = await validateViewBundles();
+if (violations.length > 0) {
+  console.error(
+    `[build-views] ${violations.length} view bundle(s) import specifiers the host cannot rewrite:`,
+  );
+  for (const v of violations) {
+    console.error(`  ✗ ${v.plugin}: ${v.specifier}`);
+  }
+  console.error(
+    "[build-views] Import these from a host-provided specifier (e.g. the " +
+      "`@elizaos/ui/components` barrel) instead of a deep subpath.",
+  );
+  process.exit(1);
+}

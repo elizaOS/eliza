@@ -99,13 +99,13 @@ class AndroidSystemApkPayloadTests(unittest.TestCase):
                 ["AndroidManifest.xml"],
             )
             outer_apk = make_apk(
-                root / "outer/os/android/vendor/milady/apps/Milady/Milady.apk",
+                root / "outer/os/android/vendor/eliza/apps/Eliza/Eliza.apk",
                 ["AndroidManifest.xml"],
             )
             app_config = root / "outer/apps/app/app.config.ts"
             app_config.parent.mkdir(parents=True, exist_ok=True)
             app_config.write_text(
-                'export default { vendorDir: "milady", appName: "Milady" };\n',
+                'export default { vendorDir: "eliza", appName: "Eliza" };\n',
                 encoding="utf-8",
             )
             original_workspace = gate.WORKSPACE
@@ -176,7 +176,7 @@ class AndroidSystemApkPayloadTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             apk = make_complete_apk(
                 Path(tmpdir) / "Eliza.apk",
-                provenance_overrides={"apk_name": "Milady.apk"},
+                provenance_overrides={"apk_name": "Stale.apk"},
             )
             report = gate.run_check(
                 Namespace(apk=str(apk), allow_missing_aapt=True),

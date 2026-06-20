@@ -102,16 +102,20 @@ const LEVELS = [
     file: "plugins/plugin-vincent/src/VincentAppView.tsx",
   },
   {
+    name: "plugin view waifu-imagegen",
+    file: "plugins/plugin-waifu-imagegen-app/src/ImageGenAppView.tsx",
+  },
+  {
+    name: "plugin view waifu-swap",
+    file: "plugins/plugin-waifu-swap-app/src/SwapAppView.tsx",
+  },
+  {
     name: "plugin view wallet",
     file: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
   },
   {
     name: "plugin view vector-browser",
     file: "plugins/plugin-vector-browser/src/VectorBrowserView.tsx",
-  },
-  {
-    name: "plugin view 2004scape",
-    file: "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx",
   },
   {
     name: "plugin view feed",
@@ -128,14 +132,6 @@ const LEVELS = [
   {
     name: "plugin view defense",
     file: "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx",
-  },
-  {
-    name: "plugin view hyperscape",
-    file: "plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.tsx",
-  },
-  {
-    name: "plugin view scape",
-    file: "plugins/plugin-scape/src/ui/ScapeOperatorSurface.tsx",
   },
   {
     name: "plugin view screenshare",

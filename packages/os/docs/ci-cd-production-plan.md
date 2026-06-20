@@ -207,5 +207,5 @@ the build step**.
 ## Living-doc references
 
 - HANDOFF (session memory): `~/.claude/projects/-home-nubs-Git-iqlabs/memory/HANDOFF_2026-05-25_phase2_done_phase3_plan.md`
-- Stale-cache bug note: `~/.claude/projects/-home-nubs-Git-iqlabs/memory/milady_outer_node_modules_stale_cache_bug.md`
+- Stale-cache bug note: an internal stale-cache investigation note
 - Distribution channels overview: `packages/os/CLAUDE.md`

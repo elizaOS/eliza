@@ -223,7 +223,6 @@ The shared Capacitor configuration lives in `capacitor.config.ts`. Mobile target
       "localhost", "127.0.0.1",
       "*.elizacloud.ai", "app.eliza.ai", "cloud.eliza.ai", "*.eliza.ai",
       "rs-sdk-demo.fly.dev", "*.fly.dev",
-      "hyperscape.gg", "*.hyperscape.gg",
     ],
   },
   plugins: {

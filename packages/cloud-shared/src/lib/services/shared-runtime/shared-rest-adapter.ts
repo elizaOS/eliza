@@ -202,9 +202,13 @@ export function sharedRestViews(viewType?: string): {
  *  - `websocket: false` — no per-agent socket to connect; the client skips the
  *    WS (avoiding the doomed reconnect loop + "Lost backend connection" overlay
  *    that otherwise paints over a working chat).
- *  - `streaming: false` — no token-by-token SSE chat stream
- *    (`/messages/stream`); the client uses the non-stream `POST .../messages`
- *    (which returns the full reply) cleanly, without probing a 404 first.
+ *  - `streaming: false` — kept conservative. A shared agent runs its turn in a
+ *    single in-Worker call (no token-by-token generation), so even though
+ *    `/messages/stream` IS now reachable (it emits the full reply as one SSE
+ *    chunk via bridgeStream — see the messages/stream route), there is no
+ *    incremental token stream to gain. Declaring `false` keeps the client on the
+ *    non-stream `POST .../messages` (which returns the full reply) cleanly; flip
+ *    to `true` only once the shared turn emits real token chunks.
  * The client still reads the rest of the object defensively (`ui`/`cloud`) and
  * falls back. These flags let the app delete its per-base special-casing.
  */

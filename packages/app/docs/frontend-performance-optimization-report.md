@@ -103,8 +103,8 @@ Findings:
   config, forcing heavy 3D dependencies into startup.
 - Wallet app registration imported `InventoryView.tsx`, a large full-dashboard
   page, just to register `/inventory`.
-- Task coordinator page registration imported the orchestrator workbench,
-  Odysseus shell, and TUI page eagerly.
+- Task coordinator page registration imported the orchestrator workbench and
+  TUI page eagerly.
 
 Implemented:
 

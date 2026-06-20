@@ -1,7 +1,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { OpenAITranscriptionParams } from "../types";
-import { getSetting } from "../utils/config";
+import { getSetting, resolveCloudTimeoutMs } from "../utils/config";
 import { detectAudioMimeType } from "../utils/helpers";
 import { createElizaCloudClient } from "../utils/sdk-client";
 
@@ -81,6 +81,7 @@ export async function handleTranscription(
   try {
     const response = await createElizaCloudClient(runtime).routes.postApiV1VoiceSttRaw({
       body: formData,
+      timeoutMs: resolveCloudTimeoutMs("ELIZAOS_CLOUD_STT_TIMEOUT_MS", 60_000),
     });
 
     if (!response.ok) {

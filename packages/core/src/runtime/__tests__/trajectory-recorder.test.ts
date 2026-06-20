@@ -308,7 +308,7 @@ describe("JsonFileTrajectoryRecorder", () => {
 	});
 
 	it("round-trips empty-object tool args + empty schema properties as {} not '[object Object]'", async () => {
-		// Live regression (milady dog-site session, 2026-05-28): a recorded
+		// Live regression (dog-site session, 2026-05-28): a recorded
 		// HANDLE_RESPONSE tool call surfaced as args="[object Object]" because
 		// sanitizeForRecord did String(value) on an empty object. That corrupts
 		// any trajectory analysis / eval / training that reads

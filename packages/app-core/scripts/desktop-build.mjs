@@ -193,24 +193,13 @@ const buildVariant = resolveBuildVariant(
 );
 const buildEnv = getArgValue(args, "env") ?? process.env.BUILD_ENV ?? "";
 const stageMacosReleaseApp = getBooleanArg(args, "stage-macos-release-app");
-// Whisper builds are default-on: skipped only when explicitly disabled via env
-// (ELIZA_DESKTOP_BUILD_WHISPER="0"). Since `env !== "0"` is already true when the
-// var is unset, the `|| --build-whisper` arm only matters when the env opt-out is
-// in play; it is the explicit-request path, captured separately by
-// whisperExplicitlyRequested below.
-const buildWhisper =
-  process.env.ELIZA_DESKTOP_BUILD_WHISPER !== "0" ||
-  getBooleanArg(args, "build-whisper");
-// "Explicitly requested" is the narrower signal: it decides whether missing
-// native tooling is a hard failure (CI passes --build-whisper on a tooled
-// runner) or a graceful skip (out-of-box dev build).
-const whisperExplicitlyRequested =
-  getBooleanArg(args, "build-whisper") ||
-  process.env.ELIZA_DESKTOP_BUILD_WHISPER === "1";
-const whisperModelName =
-  getArgValue(args, "whisper-model") ??
-  process.env.ELIZA_DESKTOP_WHISPER_MODEL ??
-  "base.en";
+// The macOS native-effects dylib build shells to `xcrun clang++` (Xcode CLT).
+// "Explicitly requested" decides whether missing native tooling is a hard
+// failure (CI passes --build-native-effects on a tooled runner) or a graceful
+// skip (out-of-box dev build).
+const nativeEffectsExplicitlyRequested =
+  getBooleanArg(args, "build-native-effects") ||
+  process.env.ELIZA_DESKTOP_BUILD_NATIVE_EFFECTS === "1";
 
 function resolveBuildVariant(raw) {
   if (raw === "store" || raw === "direct") return raw;
@@ -264,13 +253,6 @@ function which(commandName) {
   }
 
   return null;
-}
-
-// Returns the list of required tools that are missing from PATH. A native build
-// stage uses this to decide between a hard failure (stage explicitly requested)
-// and a graceful skip (default-on stage on a machine without the toolchain).
-function missingTools(toolNames) {
-  return toolNames.filter((name) => !which(name));
 }
 
 function getArgValue(argvItems, name) {
@@ -488,11 +470,6 @@ function resolveBunBinary() {
     }
   }
   return bun;
-}
-
-function runNode(commandArgs, options = {}) {
-  const node = which("node") ?? process.execPath;
-  run(node, commandArgs, options);
 }
 
 function runPackageBinary(binary, binaryArgs, options = {}) {
@@ -889,139 +866,13 @@ function ensureUiGeneratedAssets() {
   });
 }
 
-function platformSharedLibraryExtension() {
-  if (process.platform === "darwin") return ".dylib";
-  if (process.platform === "win32") return ".dll";
-  return ".so";
-}
-
-function platformWhisperAdapterName() {
-  if (process.platform === "darwin") return "libwhisper_eliza_adapter.dylib";
-  if (process.platform === "win32") return "whisper_eliza_adapter.dll";
-  return "libwhisper_eliza_adapter.so";
-}
-
-function resolveWhisperBuildDir() {
-  const buildDir = process.env.WHISPER_BUILD_DIR ?? "build-whisper";
-  return path.isAbsolute(buildDir)
-    ? buildDir
-    : path.join(PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR, "native", buildDir);
-}
-
-function findFiles(root, predicate, depth = 0) {
-  if (!fs.existsSync(root) || depth > 6) return [];
-  const out = [];
-  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-    const fullPath = path.join(root, entry.name);
-    if (entry.isDirectory()) {
-      out.push(...findFiles(fullPath, predicate, depth + 1));
-    } else if (
-      (entry.isFile() || entry.isSymbolicLink()) &&
-      predicate(entry.name, fullPath)
-    ) {
-      out.push(fullPath);
-    }
-  }
-  return out;
-}
-
-function copyRuntimeFile(src, dstDir) {
-  fs.mkdirSync(dstDir, { recursive: true });
-  const dst = path.join(dstDir, path.basename(src));
-  fs.copyFileSync(src, dst);
-  return dst;
-}
-
-function ensureDarwinLoaderPathRpath(file) {
-  if (process.platform !== "darwin" || !file.endsWith(".dylib")) return;
-
-  const result = runCapture("otool", ["-l", file]);
-  if (result.status !== 0) {
-    fail(
-      `Failed to inspect rpaths for ${file}: ${result.stderr || result.stdout}`,
-    );
-  }
-  if (/path\s+@loader_path\s+\(offset\s+\d+\)/.test(result.stdout)) return;
-
-  run("install_name_tool", ["-add_rpath", "@loader_path", file], {
-    label: `Adding packaged rpath to ${path.basename(file)}`,
-  });
-}
-
-function stageBundledWhisperRuntime() {
-  const bundleDir = path.join(ROOT, "dist", "voice", "whisper");
-  fs.mkdirSync(bundleDir, { recursive: true });
-
-  run(
-    "bash",
-    [
-      path.join(ELECTROBUN_DIR, "scripts", "ensure-whisper-gguf.sh"),
-      whisperModelName,
-    ],
-    {
-      cwd: ROOT,
-      env: {
-        ...process.env,
-        ELIZA_WHISPER_MODEL_DIR: bundleDir,
-      },
-      label: `Preparing bundled Whisper ASR model (${whisperModelName})`,
-    },
-  );
-
-  runNode(
-    [
-      path.join(
-        PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR,
-        "native",
-        "build-whisper.mjs",
-      ),
-    ],
-    {
-      cwd: ROOT,
-      label: "Building bundled Whisper ASR adapter",
-    },
-  );
-
-  const buildDir = resolveWhisperBuildDir();
-  const adapterName = platformWhisperAdapterName();
-  const adapter = findFiles(buildDir, (name) => name === adapterName)[0];
-  if (!adapter) {
-    fail(
-      `Whisper adapter build did not produce ${adapterName} under ${buildDir}`,
-    );
-  }
-  const stagedLibraries = new Set([copyRuntimeFile(adapter, bundleDir)]);
-
-  const sharedExt = platformSharedLibraryExtension();
-  const libraries = findFiles(buildDir, (name) => {
-    if (!name.endsWith(sharedExt)) return false;
-    return (
-      name === adapterName ||
-      name.startsWith("libwhisper") ||
-      name === "whisper.dll" ||
-      name.startsWith("libggml") ||
-      name.startsWith("ggml")
-    );
-  });
-  for (const lib of libraries) {
-    stagedLibraries.add(copyRuntimeFile(lib, bundleDir));
-  }
-  for (const lib of stagedLibraries) {
-    ensureDarwinLoaderPathRpath(lib);
-  }
-}
-
 function desktopRendererBuildEnv() {
   const env = {
     ...process.env,
     VITE_APP_VARIANT: variant,
     ELIZA_BUILD_VARIANT: buildVariant,
   };
-  if (
-    env.MILADY_SKIP_LOCAL_UPSTREAMS !== "1" &&
-    env.ELIZA_SKIP_LOCAL_UPSTREAMS !== "1"
-  ) {
-    env.MILADY_FORCE_LOCAL_UPSTREAMS = "1";
+  if (env.ELIZA_SKIP_LOCAL_UPSTREAMS !== "1") {
     env.ELIZA_FORCE_LOCAL_UPSTREAMS = "1";
   }
   return env;
@@ -1051,6 +902,26 @@ function formatGiB(bytes) {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GiB`;
 }
 
+function directorySizeBytes(dir) {
+  if (!fs.existsSync(dir)) return 0;
+
+  let total = 0;
+  const visit = (currentDir) => {
+    for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+      const entryPath = path.join(currentDir, entry.name);
+      const stat = fs.lstatSync(entryPath);
+      if (stat.isDirectory()) {
+        visit(entryPath);
+        continue;
+      }
+      total += stat.size;
+    }
+  };
+
+  visit(dir);
+  return total;
+}
+
 function assertRuntimeCopyDiskHeadroom() {
   if (typeof fs.statfsSync !== "function") return;
 
@@ -1063,9 +934,21 @@ function assertRuntimeCopyDiskHeadroom() {
   if (!Number.isFinite(minimumBytes) || minimumBytes <= 0) return;
   if (availableBytes >= minimumBytes) return;
 
+  const existingRuntimeNodeModules = path.join(ROOT, "dist", "node_modules");
+  const recyclableBytes = directorySizeBytes(existingRuntimeNodeModules);
+  const effectiveAvailableBytes = availableBytes + recyclableBytes;
+  if (effectiveAvailableBytes >= minimumBytes) {
+    if (recyclableBytes > 0) {
+      console.log(
+        `[desktop-build] Runtime copy has ${formatGiB(availableBytes)} free plus ${formatGiB(recyclableBytes)} recyclable generated node_modules output.`,
+      );
+    }
+    return;
+  }
+
   fail(
     [
-      `Desktop runtime bundling needs at least ${formatGiB(minimumBytes)} free before copying node_modules; only ${formatGiB(availableBytes)} is available.`,
+      `Desktop runtime bundling needs at least ${formatGiB(minimumBytes)} free before copying node_modules; only ${formatGiB(availableBytes)} is available (${formatGiB(effectiveAvailableBytes)} after replacing generated dist/node_modules).`,
       "Free disk space, remove stale build outputs such as dist/.turbo, or rerun with ELIZA_DESKTOP_MIN_FREE_BYTES=0 if you intentionally want to risk a partial copy.",
     ].join(" "),
   );
@@ -1118,24 +1001,6 @@ function stageDesktopBuild() {
 
   copyRuntimeNodeModulesWithRetry();
 
-  if (buildWhisper) {
-    const missingWhisperTools = missingTools(["bash", "cmake"]);
-    if (missingWhisperTools.length > 0) {
-      if (whisperExplicitlyRequested) {
-        fail(
-          `Whisper build was requested but required tooling is missing from PATH: ${missingWhisperTools.join(", ")}. ` +
-            "Install it, or build without --build-whisper / ELIZA_DESKTOP_BUILD_WHISPER=1.",
-        );
-      }
-      console.warn(
-        `[desktop-build] Skipping bundled Whisper ASR (missing tooling: ${missingWhisperTools.join(", ")}). ` +
-          "Request it explicitly with --build-whisper to make this a hard error.",
-      );
-    } else {
-      stageBundledWhisperRuntime();
-    }
-  }
-
   // `bun install` for these workspaces can emit benign EEXIST errors when
   // file: deps overlap with manually-linked @elizaos/* symlinks. The links
   // get created successfully; bun exits non-zero only because of the dup
@@ -1169,22 +1034,22 @@ function stageDesktopBuild() {
     // build:native-effects shells to `xcrun clang++` (Xcode Command Line
     // Tools). On a dev machine without the CLT the compile would hard-fail
     // deep in the stage; skip gracefully unless the build was explicitly asked
-    // for the native bits (CI passes --build-whisper on a tooled runner).
+    // for the native bits (CI passes --build-native-effects on a tooled runner).
     const clangAvailable =
       which("xcrun") && runCapture("xcrun", ["-f", "clang++"]).status === 0;
     if (!clangAvailable) {
-      if (whisperExplicitlyRequested) {
+      if (nativeEffectsExplicitlyRequested) {
         fail(
           "Native macOS effects build requires the Xcode Command Line Tools " +
             "(xcrun clang++), which are missing. Install them with " +
-            "`xcode-select --install`, or omit --build-whisper / " +
-            "ELIZA_DESKTOP_BUILD_WHISPER=1.",
+            "`xcode-select --install`, or omit --build-native-effects / " +
+            "ELIZA_DESKTOP_BUILD_NATIVE_EFFECTS=1.",
         );
       }
       console.warn(
         "[desktop-build] Skipping native macOS effects dylib — Xcode Command " +
           "Line Tools (xcrun clang++) not found. Request the native build " +
-          "explicitly with --build-whisper to make this a hard error.",
+          "explicitly with --build-native-effects to make this a hard error.",
       );
     } else {
       runBun(["run", "build:native-effects"], {
@@ -1508,8 +1373,7 @@ Options:
   --env <channel>                  Electrobun build env (e.g. canary, stable)
   --stage-macos-release-app        Stage a direct macOS .app + DMG from the Electrobun build output
   --exclude-optional-pack <name>   Exclude a manifest-classified optional capability pack during staging
-  --build-whisper                  Build and stage packaged local Whisper ASR artifacts
-  --whisper-model <name>           Whisper model for --build-whisper (default: base.en)
+  --build-native-effects           Require the native macOS effects dylib build (hard-fail if Xcode CLT is missing)
   --verify-mas                     After MAS codesign, walk the bundle and verify the tightened
                                    entitlements via mas-smoke.mjs. Off by default; ELIZA_VERIFY_MAS=1
                                    also enables it.

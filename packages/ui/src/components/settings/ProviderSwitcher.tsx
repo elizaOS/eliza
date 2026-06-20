@@ -23,6 +23,7 @@ import { useProviderBootstrap } from "./useProviderBootstrap";
 import {
   computeAvailableProviderIds,
   type PluginInfo,
+  type ProviderListEntry,
   sortAiProviders,
   useProviderEntries,
 } from "./useProviderEntries";
@@ -124,6 +125,11 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
   const { visibleProviderPanelId, resolvedSelectedId } = selection;
 
+  const activeEntry = useMemo(
+    () => providerEntries.find((entry) => entry.current) ?? null,
+    [providerEntries],
+  );
+
   const selectedPanelProvider = useMemo(() => {
     if (
       visibleProviderPanelId === "__cloud__" ||
@@ -180,7 +186,10 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         })}
         bare
       >
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {activeEntry ? (
+          <ActiveProviderSummary entry={activeEntry} t={t} />
+        ) : null}
+        <div className="flex flex-wrap gap-2">
           {providerEntries.map((entry) => (
             <ProviderCard
               key={entry.id}
@@ -284,5 +293,36 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         </AdvancedSettingsDisclosure>
       </SettingsGroup>
     </SettingsStack>
+  );
+}
+
+/**
+ * The provider currently routing this agent's intelligence, surfaced as a single
+ * anchored summary above the chip cloud so "what's powering me right now" is
+ * answered without scanning every chip for the filled/active state.
+ */
+function ActiveProviderSummary({
+  entry,
+  t,
+}: {
+  entry: ProviderListEntry;
+  t: (key: string, vars?: Record<string, unknown>) => string;
+}) {
+  const Icon = entry.icon;
+  return (
+    <div className="mb-3 flex items-center gap-3 rounded-lg border border-accent/30 bg-accent/8 px-3 py-2.5">
+      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-accent/12 text-accent ring-1 ring-accent/20">
+        <Icon className="h-[18px] w-[18px]" aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-accent">
+          {t("providerswitcher.activeProvider", { defaultValue: "Active" })}
+        </p>
+        <p className="truncate text-sm font-medium leading-5 text-txt-strong">
+          {entry.label}
+        </p>
+      </div>
+      <span className="shrink-0 text-xs text-muted">{entry.status.label}</span>
+    </div>
   );
 }

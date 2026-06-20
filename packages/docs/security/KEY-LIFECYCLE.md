@@ -1,4 +1,4 @@
-> **Mirror.** Authoritative copy lives in the outer milady monorepo at `milady/docs/security/KEY-LIFECYCLE.md`. Relative links below (`../../POLICIES/...`) resolve in the outer monorepo, not inside this submodule.
+> **Mirror.** Authoritative copy lives in the outer monorepo at `../docs/security/KEY-LIFECYCLE.md`. Relative links below (`../../POLICIES/...`) resolve in the outer monorepo, not inside this submodule.
 
 # Key Lifecycle
 

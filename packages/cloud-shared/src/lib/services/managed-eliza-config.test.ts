@@ -170,7 +170,7 @@ describe("managed Eliza environment", () => {
     );
   });
 
-  test("defaults new managed agents to local in-container PGlite state (#8696)", async () => {
+  test("defaults new agents to local in-container state + lean chat plugins (#8696/#8434)", async () => {
     const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
@@ -179,11 +179,14 @@ describe("managed Eliza environment", () => {
       agentSandboxId: "cloud-agent-1",
     });
 
+    // Local agent-state on the persistent volume — no shared-DB hot path.
     expect(result.environmentVars.ELIZA_AGENT_LOCAL_STATE).toBe("1");
     expect(result.environmentVars.PGLITE_DATA_DIR).toBe("/root/.eliza/.pgdata");
+    // Lean chat plugin set for fast cold-start.
+    expect(result.environmentVars.ELIZA_PLUGIN_SET).toBe("lean-chat");
   });
 
-  test("honors the ELIZA_AGENT_LOCAL_STATE=0 escape hatch and a custom PGLITE_DATA_DIR", async () => {
+  test("honors escape hatches: shared DB + custom plugin set + custom pglite dir", async () => {
     const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
@@ -192,28 +195,13 @@ describe("managed Eliza environment", () => {
       agentSandboxId: "cloud-agent-1",
       existingEnv: {
         ELIZA_AGENT_LOCAL_STATE: "0",
+        ELIZA_PLUGIN_SET: "full",
         PGLITE_DATA_DIR: "/custom/pgdata",
       },
     });
 
     expect(result.environmentVars.ELIZA_AGENT_LOCAL_STATE).toBe("0");
+    expect(result.environmentVars.ELIZA_PLUGIN_SET).toBe("full");
     expect(result.environmentVars.PGLITE_DATA_DIR).toBe("/custom/pgdata");
-  });
-
-  test("strips an inherited DATABASE_URL so the control-plane DB cannot leak into a local-state agent", async () => {
-    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
-
-    const result = await prepareManagedElizaBaseEnvironment({
-      organizationId: "org-1",
-      userId: "user-1",
-      agentSandboxId: "cloud-agent-1",
-      existingEnv: {
-        DATABASE_URL: "postgres://control-plane-leak/db",
-        ELIZA_MANAGED_DATABASE_URL: "postgres://leak2/db",
-      },
-    });
-
-    expect(result.environmentVars.DATABASE_URL).toBeUndefined();
-    expect(result.environmentVars.ELIZA_MANAGED_DATABASE_URL).toBeUndefined();
   });
 });

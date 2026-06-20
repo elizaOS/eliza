@@ -47,7 +47,7 @@ def test_run_checker_sanitizes_host_local_output() -> None:
         returncode=1,
         stdout=(
             "TEE policy valid: "
-            "/home/shaw/milady/eliza/packages/chip/docs/spec-db/tee-core-target.yaml\n"
+            "/path/to/eliza/packages/chip/docs/spec-db/tee-core-target.yaml\n"
         ),
         stderr="",
     )

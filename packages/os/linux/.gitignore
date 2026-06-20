@@ -19,7 +19,6 @@ tails/*.iso
 tails/*.img
 tails/tails-build-env.list
 
-# the prebuilt elizaOS app artifact staged for the 9100-install-milady hook
+# the prebuilt elizaOS app artifact staged for the 9100-install-elizaos hook
 # (Phase 4 — built by `just elizaos-app`, far too large to commit)
-tails/config/chroot_local-includes/usr/share/milady-tails/elizaos-app/
 tails/config/chroot_local-includes/usr/share/elizaos/elizaos-app/

@@ -15,14 +15,27 @@ const clientMock = vi.hoisted(() => ({
   getFirstRunStatus: vi.fn(),
   getFirstRunOptions: vi.fn(),
   getConfig: vi.fn(),
+  getCloudCompatAgent: vi.fn(),
   hasToken: vi.fn(),
   getBaseUrl: vi.fn(() => ""),
   setBaseUrl: vi.fn(),
   setToken: vi.fn(),
 }));
 
+const cloudMock = vi.hoisted(() => ({
+  getCloudAuthToken: vi.fn(() => null as string | null),
+}));
+
 vi.mock("../api", () => ({
   client: clientMock,
+}));
+
+vi.mock("../api/client-cloud", () => ({
+  getCloudAuthToken: cloudMock.getCloudAuthToken,
+  // isDirectCloudSharedAgentBase is also imported by the module under test.
+  isDirectCloudSharedAgentBase: (url: string | null | undefined) =>
+    !!url &&
+    /\/api\/v1\/eliza\/agents\/[^/]+(?:\/bridge)?\/?$/.test(url.trim()),
 }));
 
 vi.mock("../platform", async (importOriginal) => ({
@@ -115,8 +128,13 @@ beforeEach(() => {
   });
   clientMock.getFirstRunOptions.mockResolvedValue(firstRunOptions());
   clientMock.getConfig.mockResolvedValue({});
+  clientMock.getCloudCompatAgent.mockResolvedValue({
+    success: true,
+    data: { agent_id: "agent-123" },
+  });
   clientMock.hasToken.mockReturnValue(false);
   clientMock.getBaseUrl.mockReturnValue("");
+  cloudMock.getCloudAuthToken.mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -481,6 +499,340 @@ describe("runPollingBackend", () => {
 
     expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_AUTH_REQUIRED" });
     expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+  });
+
+  it("on Capacitor native, a pairing-enabled REMOTE 401 exits to the pairing gate instead of looping (iOS remote-connect)", async () => {
+    // Regression: on iOS native, a 401 without a token was always assumed to be
+    // the transient local-agent token-injection race and fell through to the
+    // retry loop. For a REMOTE target the 401 is terminal pairing-required, so
+    // the app polled it forever and never reached PairingView. The base URL is
+    // not the in-process local agent, so we must exit to the pairing gate like
+    // desktop does.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "capacitor://localhost", protocol: "capacitor:" },
+    };
+    (globalThis as Record<string, unknown>).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    clientMock.getBaseUrl.mockReturnValue("http://192.168.0.137:31337");
+    clientMock.hasToken.mockReturnValue(false);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockResolvedValue({
+      required: true,
+      authenticated: false,
+      pairingEnabled: true,
+      expiresAt: null,
+    });
+    clientMock.getFirstRunStatus.mockReset();
+    clientMock.getFirstRunStatus.mockRejectedValue(
+      Object.assign(new Error("Unauthorized"), {
+        status: 401,
+        path: "/api/first-run-status",
+      }),
+    );
+    const remote = {
+      id: "remote:lan",
+      kind: "remote" as const,
+      label: "lan-remote",
+      apiBase: "http://192.168.0.137:31337",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: remote,
+      restoredActiveServer: remote,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+
+    try {
+      await runPollingBackend(
+        deps,
+        dispatch,
+        {
+          supportsLocalRuntime: true,
+          backendTimeoutMs: 1000,
+          agentReadyTimeoutMs: 1000,
+          probeForExistingInstall: true,
+          defaultTarget: "embedded-local",
+        },
+        ctx,
+        1,
+        { current: 1 },
+        { current: false },
+        { current: null },
+      );
+
+      expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_AUTH_REQUIRED" });
+      expect(deps.setPairingEnabled).toHaveBeenCalledWith(true);
+    } finally {
+      delete (globalThis as Record<string, unknown>).Capacitor;
+    }
+  });
+
+  it("routes a DELETED dedicated cloud agent to agent selection instead of Backend Unreachable (outer 404)", async () => {
+    // Regression: a deleted/unreachable dedicated cloud agent
+    // (<id>.elizacloud.ai) 404'd the first auth poll and dead-ended on
+    // BACKEND_NOT_FOUND ("Backend Unreachable"). With a cloud token present and
+    // the control-plane confirming the agent is gone, clear the dead saved
+    // server and route to first-run agent selection.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    clientMock.getBaseUrl.mockReturnValue("https://agent-123.elizacloud.ai");
+    clientMock.hasToken.mockReturnValue(true);
+    cloudMock.getCloudAuthToken.mockReturnValue("cloud-token");
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Not Found"), {
+        kind: "http",
+        status: 404,
+        path: "/api/auth/status",
+      }),
+    );
+    // Control-plane confirms the agent no longer exists.
+    clientMock.getCloudCompatAgent.mockRejectedValue(
+      Object.assign(new Error("Not Found"), { kind: "http", status: 404 }),
+    );
+
+    const staleAgent = {
+      id: "cloud:agent-123",
+      kind: "cloud" as const,
+      label: "Dedicated agent",
+      apiBase: "https://agent-123.elizacloud.ai",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: staleAgent,
+      restoredActiveServer: staleAgent,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clientMock.getCloudCompatAgent).toHaveBeenCalledWith("agent-123");
+    expect(clearPersistedActiveServer).toHaveBeenCalledTimes(1);
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(null);
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_NOT_FOUND" });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
+  });
+
+  it("treats a STILL-EXISTING dedicated cloud agent's 404 as first-run-complete (outer 404)", async () => {
+    // Guard: when the control-plane confirms the dedicated agent still exists,
+    // the first-run-shell 404 means "no shell on a cloud agent" (first-run is
+    // done) — go to chat, do NOT clear the saved server.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    clientMock.getBaseUrl.mockReturnValue("https://agent-123.elizacloud.ai");
+    clientMock.hasToken.mockReturnValue(true);
+    cloudMock.getCloudAuthToken.mockReturnValue("cloud-token");
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Not Found"), {
+        kind: "http",
+        status: 404,
+        path: "/api/auth/status",
+      }),
+    );
+    clientMock.getCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { agent_id: "agent-123" },
+    });
+
+    const agent = {
+      id: "cloud:agent-123",
+      kind: "cloud" as const,
+      label: "Dedicated agent",
+      apiBase: "https://agent-123.elizacloud.ai",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: agent,
+      restoredActiveServer: agent,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clientMock.getCloudCompatAgent).toHaveBeenCalledWith("agent-123");
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_NOT_FOUND" });
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(true);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
+    });
+  });
+
+  it("does NOT strand on Backend Unreachable when the agent lookup is inconclusive (no cloud token)", async () => {
+    // Without a cloud token we cannot verify the dedicated agent. Rather than
+    // wrongly clearing the saved server, fall back to the prior behaviour: the
+    // 404 is treated as first-run-complete (a dedicated cloud agent has no shell),
+    // never a hard "Backend Unreachable" dead-end.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    clientMock.getBaseUrl.mockReturnValue("https://agent-123.elizacloud.ai");
+    clientMock.hasToken.mockReturnValue(true);
+    cloudMock.getCloudAuthToken.mockReturnValue(null);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Not Found"), {
+        kind: "http",
+        status: 404,
+        path: "/api/auth/status",
+      }),
+    );
+
+    const agent = {
+      id: "cloud:agent-123",
+      kind: "cloud" as const,
+      label: "Dedicated agent",
+      apiBase: "https://agent-123.elizacloud.ai",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: agent,
+      restoredActiveServer: agent,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clientMock.getCloudCompatAgent).not.toHaveBeenCalled();
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_NOT_FOUND" });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
+    });
+  });
+
+  it("routes a DELETED dedicated cloud agent to agent selection from the options-fetch 404 (inner 404)", async () => {
+    // The inner first-run-options loop has its own 404 branch. A dedicated cloud
+    // agent that returns auth:ok + firstRun incomplete but 404s on options must
+    // verify + recover the same way as the outer catch.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    clientMock.getBaseUrl.mockReturnValue("https://agent-123.elizacloud.ai");
+    clientMock.hasToken.mockReturnValue(true);
+    cloudMock.getCloudAuthToken.mockReturnValue("cloud-token");
+    clientMock.getAuthStatus.mockResolvedValue({
+      required: false,
+      authenticated: true,
+      pairingEnabled: false,
+      expiresAt: null,
+    });
+    clientMock.getFirstRunStatus.mockResolvedValue({
+      complete: false,
+      cloudProvisioned: false,
+    });
+    clientMock.getFirstRunOptions.mockRejectedValue(
+      Object.assign(new Error("Not Found"), {
+        kind: "http",
+        status: 404,
+        path: "/api/first-run/options",
+      }),
+    );
+    clientMock.getCloudCompatAgent.mockRejectedValue(
+      Object.assign(new Error("Not Found"), { kind: "http", status: 404 }),
+    );
+
+    const staleAgent = {
+      id: "cloud:agent-123",
+      kind: "cloud" as const,
+      label: "Dedicated agent",
+      apiBase: "https://agent-123.elizacloud.ai",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: staleAgent,
+      restoredActiveServer: staleAgent,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clientMock.getCloudCompatAgent).toHaveBeenCalledWith("agent-123");
+    expect(clearPersistedActiveServer).toHaveBeenCalledTimes(1);
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_NOT_FOUND" });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
   });
 });
 

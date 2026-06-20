@@ -7,7 +7,7 @@ hold before release candidates move beyond static gates.
 
 - A fresh packaged desktop install starts the sidecar runtime without a remote
   launch dependency.
-- First-run state is created under `~/.local/state/milady`.
+- First-run state is created under `~/.local/state/eliza`.
 - The renderer reaches the live API base before leaving the startup shell.
 - Voice input is driven through packaged local ASR readiness, not the browser
   speech recognition service.

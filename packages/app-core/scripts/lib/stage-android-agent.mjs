@@ -334,10 +334,7 @@ function firstEnvValue(names) {
 }
 
 function riscv64BunSha256() {
-  const configured = firstEnvValue([
-    "ELIZA_BUN_RISCV64_SHA256",
-    "MILADY_BUN_RISCV64_SHA256",
-  ]);
+  const configured = firstEnvValue(["ELIZA_BUN_RISCV64_SHA256"]);
   return normalizeSha256(
     configured?.value,
     configured?.name ?? "ELIZA_BUN_RISCV64_SHA256",
@@ -355,20 +352,14 @@ function defaultRiscv64BunArtifactPath() {
 }
 
 function riscv64BunFilePath() {
-  const configured = firstEnvValue([
-    "ELIZA_BUN_RISCV64_FILE",
-    "MILADY_BUN_RISCV64_FILE",
-  ]);
+  const configured = firstEnvValue(["ELIZA_BUN_RISCV64_FILE"]);
   if (configured) return path.resolve(configured.value);
   const defaultPath = defaultRiscv64BunArtifactPath();
   return fs.existsSync(defaultPath) ? defaultPath : null;
 }
 
 function riscv64BunUrl() {
-  return (
-    firstEnvValue(["ELIZA_BUN_RISCV64_URL", "MILADY_BUN_RISCV64_URL"])?.value ??
-    null
-  );
+  return firstEnvValue(["ELIZA_BUN_RISCV64_URL"])?.value ?? null;
 }
 
 function riscv64BunArtifactSource() {
@@ -549,8 +540,8 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
     if (!sourceFile && !url) {
       throw new Error(
         "Bun riscv64 artifact not available: upstream Bun has no riscv64-linux-musl release. " +
-          "Set ELIZA_BUN_RISCV64_FILE (or MILADY_BUN_RISCV64_FILE) to a local " +
-          "self-built zip, or set ELIZA_BUN_RISCV64_URL (or MILADY_BUN_RISCV64_URL) " +
+          "Set ELIZA_BUN_RISCV64_FILE to a local " +
+          "self-built zip, or set ELIZA_BUN_RISCV64_URL " +
           "to a hosted zip produced by packages/app-core/scripts/bun-riscv64/build.sh, " +
           "or set ELIZA_BUN_RISCV64_OPTIONAL=1 for local non-objective builds.",
       );
@@ -558,7 +549,6 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
     if (!expectedRiscv64Sha256) {
       throw new Error(
         "Bun riscv64 artifact hash is required: set ELIZA_BUN_RISCV64_SHA256 " +
-          "(or MILADY_BUN_RISCV64_SHA256) " +
           "to the SHA-256 of bun-linux-riscv64-musl.zip.",
       );
     }
@@ -789,7 +779,19 @@ function stageNativeLlamaAssetsForAbi({ androidAbi, abiAssetsDir, log }) {
     copied += 1;
   }
 
-  const required = ["libllama.so", "libeliza-llama-shim.so"];
+  // The fused libelizainference.so is the activation lib (ElizaAgentService
+  // gates ELIZA_LOCAL_LLAMA on it). As of the static-fuse build recipe
+  // (BUILD_SHARED_LIBS=OFF + CMAKE_POSITION_INDEPENDENT_CODE=ON in
+  // build-helpers/omnivoice-merged.mjs fusedExtraCmakeFlags + the bionic JNI
+  // builder) it is SELF-CONTAINED: llama/ggml/mtmd are folded in as static
+  // archives, so its only DT_NEEDED entries are libc/libm/libdl — there is no
+  // runtime libllama.so / libggml*.so sibling to resolve via LD_LIBRARY_PATH.
+  // So only libelizainference.so is required. A non-fused bulk build may still
+  // emit libllama.so + the libggml* family as a byproduct; if present they
+  // stage harmlessly via shouldStageNativeLlamaAsset() above, but they are no
+  // longer a hard requirement for the fused activation path. The
+  // eliza-llama-shim was retired with the libllama TS adapter.
+  const required = ["libelizainference.so"];
   const missing = required.filter(
     (name) => !fs.existsSync(path.join(abiAssetsDir, name)),
   );

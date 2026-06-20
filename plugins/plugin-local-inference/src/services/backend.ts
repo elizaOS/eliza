@@ -55,15 +55,6 @@ export interface BackendLoadOverrides {
 	manifestPath?: string;
 }
 
-export function gpuLayersForKvOffload(
-	mode: NonNullable<BackendLoadOverrides["kvOffload"]>,
-): number | "auto" | "max" {
-	if (mode === "cpu") return 0;
-	if (mode === "gpu") return "max";
-	if (mode === "split") return "auto";
-	return mode.gpuLayers;
-}
-
 export interface BackendPlan {
 	/** Absolute path to the GGUF on disk. */
 	modelPath: string;
@@ -95,22 +86,17 @@ export interface GenerateArgs extends StructuredGenerateParams {
 	topP?: number;
 	/**
 	 * Optional cache key from the runtime's `ProviderCachePlan`. Identical
-	 * keys reuse the same KV cache prefix in both backends:
-	 *   - `capacitor-llama` → routes to a pooled `LlamaChatSession` that
-	 *     retains chat history (and therefore the KV) across calls.
-	 *   - `llama-cpp`      → derives a deterministic slot so requests
-	 *     with the same key land on the same persisted KV state.
-	 * Empty / absent keys fall through to the historical stateless path.
+	 * keys reuse the same KV cache prefix: the `llama-cpp` FFI backend derives
+	 * a deterministic slot so requests with the same key land on the same
+	 * persisted KV state. Empty / absent keys fall through to the historical
+	 * stateless path.
 	 */
 	cacheKey?: string;
 	/**
-	 * Per-request abort signal. Backends honour it cooperatively:
-	 *   - `capacitor-llama` passes it to `LlamaChatSession.prompt()` as
-	 *     `stopOnAbortSignal`, so the binding bails out of the generation
-	 *     loop on the next sampler tick.
-	 *   - `llama-cpp`      cancels the active FFI stream.
-	 * Callers that want hard cancel for things like app pause / kill-switch
-	 * pass the same signal here that they pass into `runtime.useModel`.
+	 * Per-request abort signal. The `llama-cpp` FFI backend honours it
+	 * cooperatively by cancelling the active FFI stream. Callers that want
+	 * hard cancel for things like app pause / kill-switch pass the same signal
+	 * here that they pass into `runtime.useModel`.
 	 */
 	signal?: AbortSignal;
 	/**
@@ -121,9 +107,8 @@ export interface GenerateArgs extends StructuredGenerateParams {
 	 */
 	requestTimeoutMs?: number;
 	/**
-	 * Incremental accepted text from the backend. Both backends call this as
-	 * accepted chunks arrive: the FFI path per `llmStreamNext` step, and
-	 * node-llama-cpp per token via `session.prompt({ onTextChunk })` (which
+	 * Incremental accepted text from the backend. The `llama-cpp` FFI backend
+	 * calls this as accepted chunks arrive, per `llmStreamNext` step (it
 	 * streams even when a `grammar` is set).
 	 */
 	onTextChunk?: (chunk: string) => void | Promise<void>;
@@ -167,7 +152,7 @@ export interface LocalRuntimeLoadConfig {
 	gpuLayers: number | null;
 	parallel: number;
 	binaryPath: string | null;
-	backend: "capacitor-llama" | "node-llama-cpp" | "llama-cpp" | null;
+	backend: "capacitor-llama" | "llama-cpp" | null;
 	mtp: {
 		specType: "draft-mtp";
 		draftMin: number;
@@ -184,7 +169,7 @@ export interface LocalRuntimeLoadConfig {
  */
 export interface LocalInferenceBackend {
 	/** Identifier for the concrete backend implementation. */
-	readonly id: "capacitor-llama" | "node-llama-cpp" | "llama-cpp";
+	readonly id: "capacitor-llama" | "llama-cpp";
 	available(): Promise<boolean>;
 	load(plan: BackendPlan): Promise<void>;
 	unload(): Promise<void>;
@@ -421,9 +406,10 @@ export function resolveCatalogForPlan(
 }
 
 /**
- * Dispatcher that fronts both backends behind the `LocalInferenceBackend`
- * contract. Holds at most one active backend at a time — load() unloads
- * the previous backend before loading the new one if they differ.
+ * Dispatcher that fronts the in-process FFI llama.cpp backend behind the
+ * `LocalInferenceBackend` contract. Holds at most one active backend at a
+ * time — load() unloads the previous backend before loading the new one if
+ * they differ.
  */
 export class BackendDispatcher implements LocalInferenceBackend {
 	readonly id = "capacitor-llama" as const;
@@ -433,7 +419,6 @@ export class BackendDispatcher implements LocalInferenceBackend {
 	private active: LocalInferenceBackend | null = null;
 
 	constructor(
-		private readonly nodeLlamaCpp: LocalInferenceBackend,
 		private readonly ffiStreaming: LocalInferenceBackend,
 		private readonly probeFfiAvailable: () => boolean,
 		/**
@@ -450,12 +435,10 @@ export class BackendDispatcher implements LocalInferenceBackend {
 	) {}
 
 	async available(): Promise<boolean> {
-		const a = await this.nodeLlamaCpp.available();
-		if (a) return true;
 		return this.ffiStreaming.available();
 	}
 
-	activeBackendId(): "capacitor-llama" | "node-llama-cpp" | "llama-cpp" | null {
+	activeBackendId(): "capacitor-llama" | "llama-cpp" | null {
 		return this.active ? this.active.id : null;
 	}
 
@@ -512,8 +495,7 @@ export class BackendDispatcher implements LocalInferenceBackend {
 					"server backends are not supported.",
 			);
 		}
-		const target =
-			decision.backend === "llama-cpp" ? this.ffiStreaming : this.nodeLlamaCpp;
+		const target = this.ffiStreaming;
 		if (this.active && this.active !== target) {
 			await this.active.unload();
 		}

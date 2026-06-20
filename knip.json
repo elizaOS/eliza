@@ -213,11 +213,6 @@
       "project": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "plugins/plugin-2004scape": {
-      "entry": ["src/index.ts", "vite.config.views.ts"],
-      "project": ["src/**/*.{ts,tsx}", "vite.config.views.ts"],
-      "ignore": ["dist/**", ".turbo/**"]
-    },
     "plugins/plugin-agent-skills": {
       "entry": [
         "src/index.ts",

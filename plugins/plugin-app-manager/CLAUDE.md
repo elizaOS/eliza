@@ -87,8 +87,6 @@ bun run --cwd plugins/plugin-app-manager clean       # rm -rf dist
 |---|---|---|
 | `ELIZA_APPS_REGISTRY_REFRESH_TIMEOUT_MS` | No | Override the 5 s timeout for registry refresh during `listInstalled`. Min 250 ms. |
 | `ELIZA_ENABLE_LEGACY_APPS_WORKSPACE_DISCOVERY` | No | Set to `1`/`true` to also scan `apps/app-<slug>` dirs when resolving hero images (disabled by default). |
-| `BOT_NAME` / `BOT_PASSWORD` | No | Fallback template values substituted into `RS_SDK_BOT_NAME` / `RS_SDK_BOT_PASSWORD` in app launch URLs. |
-| `NODE_ENV` | No | `"production"` swaps Hyperscape client URL from `localhost:3333` to `https://hyperscape.gg`. |
 
 The state-dir path used by `readAppRunStore` / `writeAppRunStore` comes from `@elizaos/agent/config/paths#resolveStateDir`. Override it by passing the `stateDir` option to `new AppManager({ stateDir })`.
 

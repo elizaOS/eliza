@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import * as React from "react";
 
+import { useBranding } from "../../config/branding";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import type { ShellPhase } from "./shell-state";
 
@@ -34,6 +35,7 @@ export function AssistantOverlay({
   onClose,
   children,
 }: AssistantOverlayProps): React.JSX.Element | null {
+  const { appName } = useBranding();
   const isOpen =
     phase === "summoned" || phase === "listening" || phase === "responding";
   const dialogRef = React.useRef<HTMLDivElement | null>(null);
@@ -112,7 +114,7 @@ export function AssistantOverlay({
       tabIndex={-1}
       role="dialog"
       aria-modal="true"
-      aria-label="Eliza assistant"
+      aria-label={`${appName} assistant`}
       data-testid="shell-assistant-overlay"
       data-phase={phase}
       // Sits one tick above the pill so the drawer covers it on open.

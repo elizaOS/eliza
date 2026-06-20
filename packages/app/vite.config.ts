@@ -2278,15 +2278,6 @@ export const INVALID_TRACER_PROVIDER = {};
       // UI surfaces/pages. Route handlers and runtime services stay server-side.
       ...[
         ["@elizaos/plugin-feed", "plugins/plugin-feed/src/ui/index.ts"],
-        ["@elizaos/plugin-scape", "plugins/plugin-scape/src/ui/index.ts"],
-        [
-          "@elizaos/plugin-hyperscape",
-          "plugins/plugin-hyperscape/src/ui/index.ts",
-        ],
-        [
-          "@elizaos/plugin-2004scape",
-          "plugins/plugin-2004scape/src/ui/index.ts",
-        ],
         [
           "@elizaos/plugin-defense-of-the-agents",
           "plugins/plugin-defense-of-the-agents/src/ui/index.ts",

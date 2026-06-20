@@ -1,8 +1,8 @@
 import type { Readable } from "node:stream";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { AudioStreamResult, IAgentRuntime } from "@elizaos/core";
 import { isCloudConnected, logger, toRuntimeSettings } from "@elizaos/core";
 import type { OpenAITextToSpeechParams } from "../types";
-import { getSetting, isBrowser } from "../utils/config";
+import { getSetting, isBrowser, resolveCloudTimeoutMs } from "../utils/config";
 import { webStreamToNodeStream } from "../utils/helpers";
 import { createElizaCloudClient } from "../utils/sdk-client";
 
@@ -15,6 +15,7 @@ export interface CloudTtsClient {
     postApiV1VoiceTts<T = unknown>(options: {
       headers?: Record<string, unknown>;
       json: { text: string; voiceId?: string; modelId?: string };
+      timeoutMs?: number;
     }): Promise<T>;
   };
 }
@@ -138,6 +139,7 @@ async function fetchTextToSpeech(
         ...(voiceId ? { voiceId } : {}),
         ...(modelId ? { modelId } : {}),
       },
+      timeoutMs: resolveCloudTimeoutMs("ELIZAOS_CLOUD_TTS_TIMEOUT_MS", 60_000),
     })) as Response;
 
     if (!res.ok) {
@@ -219,6 +221,54 @@ async function ttsStreamToBytes(
 }
 
 /**
+ * Wrap the upstream TTS byte stream as an {@link AudioStreamResult}: `audioStream`
+ * yields each chunk as it arrives (so playback can start on the first byte
+ * instead of draining the whole clip via {@link ttsStreamToBytes}), and `bytes`
+ * resolves to the full concatenated audio once the stream is consumed.
+ */
+function buildAudioStreamResult(
+  stream: ReadableStream<Uint8Array> | Readable,
+  mimeType: string,
+): AudioStreamResult {
+  const collected: Uint8Array[] = [];
+  let resolveBytes!: (value: Uint8Array) => void;
+  let rejectBytes!: (reason: unknown) => void;
+  const bytes = new Promise<Uint8Array>((resolve, reject) => {
+    resolveBytes = resolve;
+    rejectBytes = reject;
+  });
+  async function* generate(): AsyncGenerator<Uint8Array> {
+    try {
+      if (isReadableStream(stream)) {
+        const reader = stream.getReader();
+        try {
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            const chunk = toUint8Array(value);
+            collected.push(chunk);
+            yield chunk;
+          }
+        } finally {
+          reader.releaseLock();
+        }
+      } else {
+        for await (const value of stream) {
+          const chunk = toUint8Array(value);
+          collected.push(chunk);
+          yield chunk;
+        }
+      }
+      resolveBytes(concatChunks(collected));
+    } catch (err) {
+      rejectBytes(err);
+      throw err;
+    }
+  }
+  return { audioStream: generate(), bytes, mimeType };
+}
+
+/**
  * TEXT_TO_SPEECH handler for plugin-elizacloud.
  *
  * Behavior:
@@ -235,7 +285,7 @@ async function ttsStreamToBytes(
 export async function handleTextToSpeech(
   runtime: IAgentRuntime,
   input: string | CloudTextToSpeechParams | OpenAITextToSpeechParams,
-): Promise<Uint8Array> {
+): Promise<Uint8Array | AudioStreamResult> {
   if (!isCloudConnected(toRuntimeSettings(runtime))) {
     throw new CloudTtsUnavailableError(
       "Eliza Cloud is not connected — falling through to next TTS handler",
@@ -243,6 +293,13 @@ export async function handleTextToSpeech(
   }
 
   const options = normalizeTextInput(input);
+  // Explicit opt-in only (NOT the generic `stream` that useModel auto-injects
+  // from an ambient text-streaming turn) so byte-expecting callers like the
+  // GENERATE_MEDIA action keep getting a buffer.
+  const wantsStream =
+    typeof input === "object" &&
+    input !== null &&
+    (input as { audioStream?: boolean }).audioStream === true;
 
   const resolvedModel =
     options.modelId ||
@@ -251,6 +308,11 @@ export async function handleTextToSpeech(
   logger.log(`[ELIZAOS_CLOUD] Using TEXT_TO_SPEECH model: ${resolvedModel}`);
   try {
     const speechStream = await fetchTextToSpeech(runtime, options);
+    if (wantsStream) {
+      const format = options.format || "mp3";
+      const mimeType = format === "mp3" ? "audio/mpeg" : `audio/${format}`;
+      return buildAudioStreamResult(speechStream, mimeType);
+    }
     return ttsStreamToBytes(speechStream);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

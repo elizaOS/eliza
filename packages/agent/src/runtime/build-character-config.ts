@@ -70,8 +70,18 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     agentEntry?.advancedMemory ??
     config.agents?.defaults?.advancedMemory ??
     true;
+  // Lean cloud chat agents (ELIZA_PLUGIN_SET=lean-chat) skip advanced
+  // capabilities. The reflection/fact/relationship/identity evaluators they
+  // register fan out a SERIAL cloud-embedding call per extracted item every
+  // turn (measured ~7 x ~1.5s = the bulk of a dedicated chat agent's wall-clock
+  // after the DB-locality fix). A purely conversational agent still keeps raw
+  // message/reply memory; it just doesn't run the structured post-turn
+  // extraction. Scoped strictly to the lean-chat flag, so desktop/mobile/
+  // non-cloud agents (no ELIZA_PLUGIN_SET) keep advanced capabilities on.
   const advancedCapabilitiesEnabled =
-    resolveAdvancedCapabilitiesEnabled(config);
+    process.env.ELIZA_PLUGIN_SET?.trim().toLowerCase() === "lean-chat"
+      ? false
+      : resolveAdvancedCapabilitiesEnabled(config);
   const settings = applyAdvancedCapabilitySettings(
     {
       MEMORY_SUMMARY_MODEL_TYPE:

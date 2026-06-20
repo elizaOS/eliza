@@ -58,7 +58,6 @@ import {
   type InstalledAppInfo,
   normalizeElizaCuratedAppName,
   packageNameToAppDisplayName,
-  packageNameToAppRouteSlug,
 } from "@elizaos/shared";
 import { readAppRunStore, writeAppRunStore } from "./app-run-store.ts";
 
@@ -74,19 +73,8 @@ export type {
 } from "@elizaos/shared";
 
 const DEFAULT_VIEWER_SANDBOX = "allow-scripts allow-same-origin allow-popups";
-const DEFAULT_RS_SDK_SERVER_URL = "https://rs-sdk-demo.fly.dev";
-const HYPERSCAPE_APP_ROUTE_SLUG = "hyperscape";
-const LOCAL_DEV_HYPERSCAPE_CLIENT_URL = "http://localhost:3333";
-const PRODUCTION_HYPERSCAPE_CLIENT_URL = "https://hyperscape.gg";
 const SAFE_APP_URL_PROTOCOLS = new Set(["http:", "https:"]);
-const SAFE_APP_TEMPLATE_ENV_KEYS = new Set([
-  "BOT_NAME",
-  "HYPERSCAPE_CHARACTER_ID",
-  "HYPERSCAPE_CLIENT_URL",
-  "RS_SDK_BOT_NAME",
-  "RS_SDK_BOT_PASSWORD",
-  "RS_SDK_SERVER_URL",
-]);
+const SAFE_APP_TEMPLATE_ENV_KEYS = new Set<string>();
 const RUN_REFRESH_MIN_INTERVAL_MS = 5_000;
 const MAX_RUN_EVENTS = 20;
 /**
@@ -132,10 +120,6 @@ function restoreAgentsListAfterAppLaunchIfNeeded(
   logger.warn(
     `[app-manager] Restored agents.list after ${appName} ${phase}; app launch must not replace the user's active character config.`,
   );
-}
-
-function isProductionRuntime(): boolean {
-  return process.env.NODE_ENV === "production";
 }
 
 function resolveRegistryRefreshTimeoutMs(): number {
@@ -221,10 +205,6 @@ function isAppRegistryPlugin(
   return hasAppInterface(plugin);
 }
 
-function isHyperscapeAppName(appName: string): boolean {
-  return packageNameToAppRouteSlug(appName) === HYPERSCAPE_APP_ROUTE_SLUG;
-}
-
 function resolveDisplayViewerInfo(
   viewer: RegistryPluginInfo["viewer"],
 ): RegistryPluginInfo["viewer"] {
@@ -307,9 +287,8 @@ function canonicalizeCuratedRegistryPlugin<T extends RegistryPluginInfo>(
   const next = cloneRegistryPluginInfo(appInfo);
   next.name = canonicalName;
   // Only rewrite npm.package if it was derived from the name (no separate
-  // runtime plugin). When npm.package differs from name (e.g. Hyperscape:
-  // app=@hyperscape/plugin-hyperscape, plugin=@elizaos/plugin-hyperscape),
-  // preserve the original so resolvePluginPackageName stays correct.
+  // runtime plugin). When npm.package differs from name, preserve the
+  // original so resolvePluginPackageName stays correct.
   if (!next.npm.package || next.npm.package === appInfo.name) {
     next.npm = {
       ...next.npm,
@@ -596,27 +575,6 @@ function isLocalPlugin(appInfo: RegistryPluginInfo): boolean {
   return false;
 }
 
-function getTemplateFallbackValue(key: string): string | undefined {
-  if (key === "RS_SDK_BOT_NAME") {
-    const runtimeBotName = process.env.BOT_NAME?.trim();
-    if (runtimeBotName && runtimeBotName.length > 0) {
-      return runtimeBotName;
-    }
-    return undefined;
-  }
-  if (key === "RS_SDK_BOT_PASSWORD") {
-    const runtimeBotPassword = process.env.BOT_PASSWORD?.trim();
-    if (runtimeBotPassword && runtimeBotPassword.length > 0) {
-      return runtimeBotPassword;
-    }
-    return undefined;
-  }
-  if (key === "RS_SDK_SERVER_URL") {
-    return DEFAULT_RS_SDK_SERVER_URL;
-  }
-  return undefined;
-}
-
 function resolveSettingLike(
   runtime: IAgentRuntime | null | undefined,
   key: string,
@@ -646,25 +604,15 @@ function substituteTemplateVars(
   raw: string,
   options?: {
     preserveUnknown?: boolean;
-    /** Resolve `{HYPERSCAPE_CLIENT_URL}` for launch (not for catalog display). */
-    hyperscapeClientDefault?: boolean;
     runtime?: IAgentRuntime | null;
   },
 ): string {
   const preserveUnknown = options?.preserveUnknown ?? true;
-  const hyperscapeClientDefault = options?.hyperscapeClientDefault === true;
   return raw.replace(/\{([A-Z0-9_]+)\}/g, (_full, key: string) => {
     const value =
       (SAFE_APP_TEMPLATE_ENV_KEYS.has(key)
         ? resolveSettingLike(options?.runtime, key)
-        : undefined) ??
-      readSafeTemplateEnv(key) ??
-      (hyperscapeClientDefault && key === "HYPERSCAPE_CLIENT_URL"
-        ? isProductionRuntime()
-          ? PRODUCTION_HYPERSCAPE_CLIENT_URL
-          : LOCAL_DEV_HYPERSCAPE_CLIENT_URL
-        : undefined) ??
-      getTemplateFallbackValue(key);
+        : undefined) ?? readSafeTemplateEnv(key);
     if (value !== undefined) {
       return value;
     }
@@ -680,13 +628,11 @@ function buildViewerUrl(
   if (!embedParams || Object.keys(embedParams).length === 0) {
     return substituteTemplateVars(baseUrl, {
       preserveUnknown: false,
-      hyperscapeClientDefault: true,
       runtime,
     });
   }
   const resolvedBaseUrl = substituteTemplateVars(baseUrl, {
     preserveUnknown: false,
-    hyperscapeClientDefault: true,
     runtime,
   });
   const [beforeHash, hashPartRaw] = resolvedBaseUrl.split("#", 2);
@@ -695,7 +641,6 @@ function buildViewerUrl(
   for (const [key, rawValue] of Object.entries(embedParams)) {
     const nextValue = substituteTemplateVars(rawValue, {
       preserveUnknown: false,
-      hyperscapeClientDefault: true,
       runtime,
     }).trim();
     if (!nextValue) {
@@ -720,7 +665,6 @@ function resolveViewerEmbedParams(
         key,
         substituteTemplateVars(value, {
           preserveUnknown: false,
-          hyperscapeClientDefault: true,
           runtime,
         }).trim(),
       ])
@@ -860,11 +804,7 @@ function buildAppSession(
   }
   const canSendCommands =
     features.has("commands") || features.has("suggestions");
-  const characterId =
-    authMessage?.characterId ??
-    (isHyperscapeAppName(appInfo.name)
-      ? resolveSettingLike(runtime, "HYPERSCAPE_CHARACTER_ID")
-      : undefined);
+  const characterId = authMessage?.characterId;
   const followEntity = authMessage?.followEntity ?? characterId ?? undefined;
 
   return {
@@ -1032,12 +972,6 @@ function isRuntimePluginReady(
 ): boolean {
   if (!isRuntimePluginActive(appInfo, runtime)) {
     return false;
-  }
-  if (isHyperscapeAppName(appInfo.name)) {
-    return Boolean(
-      runtime?.hasService?.("hyperscapeService") ||
-        runtime?.getService?.("hyperscapeService"),
-    );
   }
   return true;
 }
@@ -2025,7 +1959,6 @@ export class AppManager {
       ? normalizeSafeAppUrl(
           substituteTemplateVars(appInfo.launchUrl, {
             preserveUnknown: false,
-            hyperscapeClientDefault: true,
           }),
         )
       : null;
@@ -2045,7 +1978,6 @@ export class AppManager {
     const resolvedLaunchUrl = appInfo.launchUrl
       ? substituteTemplateVars(appInfo.launchUrl, {
           preserveUnknown: false,
-          hyperscapeClientDefault: true,
         })
       : null;
     const launchUrl = resolvedLaunchUrl

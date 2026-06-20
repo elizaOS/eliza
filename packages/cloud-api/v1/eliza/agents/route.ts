@@ -513,6 +513,11 @@ app.post("/", async (c) => {
         message:
           "Agent created. Provisioning job started — poll the job endpoint for status.",
         data: {
+          // `id` keeps parity with every other create branch (shared,
+          // non-eager, warm-pool) so clients can always read `data.id`. The
+          // async-provisioning branch previously returned only `agentId`,
+          // which crashed the onboarding client with "missing data.id".
+          id: agent.id,
           agentId: agent.id,
           agentName: agent.agent_name,
           status: job.status,
