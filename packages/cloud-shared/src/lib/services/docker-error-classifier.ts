@@ -22,3 +22,31 @@ export function isAlreadyGoneMessage(message: string): boolean {
     normalized.includes("no longer exists")
   );
 }
+
+/**
+ * Matches network-level error messages that mean "the node hosting the
+ * container is UNREACHABLE" — SSH connect/exec timeouts, refused/unreachable
+ * sockets, DNS failure. Used by `DockerSandboxProvider.stop()` to treat an
+ * unreachable-node delete as TERMINAL ("container gone") rather than a
+ * retryable failure: re-queuing such a delete re-runs the ~20-65s stop path
+ * every cycle and can push the work cycle past the 300s watchdog, withholding
+ * the liveness heartbeat so the cloud-api fails closed and the agents API
+ * hangs.
+ *
+ * Kept deliberately NARROW (network-level tokens only) so it never swallows a
+ * legitimate Docker-daemon error — do NOT add generic words like "error".
+ */
+export function isNodeUnreachableMessage(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("timed out") ||
+    normalized.includes("timeout") ||
+    normalized.includes("econnrefused") ||
+    normalized.includes("ehostunreach") ||
+    normalized.includes("enetunreach") ||
+    normalized.includes("connection error") ||
+    normalized.includes("connect to host") ||
+    normalized.includes("getaddrinfo") ||
+    normalized.includes("no route to host")
+  );
+}
