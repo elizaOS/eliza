@@ -272,7 +272,20 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         const pageErrors: string[] = [];
         page.on("pageerror", (e) => pageErrors.push(e.message));
         page.on("console", (msg) => {
-          if (msg.type() === "error") consoleErrors.push(msg.text());
+          if (msg.type() !== "error") return;
+          const text = msg.text();
+          // The deterministic stub backend answers some routes with 501 / no
+          // network; those console errors are EXPECTED in this harness (same
+          // rationale as builtin-views-visual.spec) and are not a quality
+          // signal — only real, non-network console errors count.
+          if (
+            /\b501\b|failed to (load|fetch)|net::err|networkerror|status (of )?50\d|err_/i.test(
+              text,
+            )
+          ) {
+            return;
+          }
+          consoleErrors.push(text);
         });
 
         await page.setViewportSize({ width: vp.width, height: vp.height });
@@ -280,38 +293,59 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         await installDefaultAppRoutes(page);
         await openAppPath(page, view.path);
 
-        // Best-effort readiness: most views render <main>, but chat/phone/etc.
-        // render straight into #root with no <main>. Wait for whichever appears
-        // (short, non-fatal) so the audit walks EVERY view — a view that never
-        // paints readable content is recorded as a finding, not a hard failure.
+        // Robust readiness under sustained sequential load: most views render
+        // <main>, but chat/phone/etc. render straight into #root with no <main>.
+        // Poll for the view to actually PAINT (readable content or the floating
+        // overlay) rather than sampling a still-blank frame — a single shared
+        // dev server slows late in the walk, so a fixed short wait yields false
+        // blanks. Non-fatal: a view that never paints is recorded as a finding.
         const viewRoot = page.locator("main, #root").first();
         await viewRoot
           .waitFor({ state: "visible", timeout: 15_000 })
           .catch(() => {});
-        const readableChars = await viewRoot
-          .evaluate(
-            (root) =>
-              (root as HTMLElement).innerText.trim().replace(/\s+/g, " ")
-                .length,
-          )
-          .catch(() => 0);
+        const overlaySelector =
+          "[data-continuous-chat-overlay], [data-testid='continuous-chat-overlay']";
+        const readPaint = async (): Promise<{
+          readableChars: number;
+          overlayPresent: boolean;
+        }> => {
+          const readableChars = await viewRoot
+            .evaluate(
+              (root) =>
+                (root as HTMLElement).innerText.trim().replace(/\s+/g, " ")
+                  .length,
+            )
+            .catch(() => 0);
+          const overlayPresent = await page
+            .locator(overlaySelector)
+            .first()
+            .count()
+            .then((c) => c > 0)
+            .catch(() => false);
+          return { readableChars, overlayPresent };
+        };
+        let paint = await readPaint();
+        for (let attempt = 0; attempt < 12 && paint.readableChars < 10 && !paint.overlayPresent; attempt += 1) {
+          await page.waitForTimeout(1000);
+          paint = await readPaint();
+        }
+        const { readableChars, overlayPresent } = paint;
 
-        // Floating chat overlay must integrate over every view (#8796 item 3).
-        const overlayPresent = await page
-          .locator(
-            "[data-continuous-chat-overlay], [data-testid='continuous-chat-overlay']",
-          )
-          .first()
-          .count()
-          .then((c) => c > 0)
-          .catch(() => false);
-
+        // Screenshot with a blank-retry (mirrors captureScreenshotWithQualityRetry):
+        // re-sample a few times so a momentarily-unpainted frame is not recorded
+        // as a one-color "broken".
         const restPath = path.join(shotDir, `${view.slug}.png`);
-        const buffer = await page.screenshot({
-          path: restPath,
-          fullPage: false,
-        });
-        const quality = await analyzeScreenshot(buffer).catch(() => null);
+        let buffer = await page.screenshot({ path: restPath, fullPage: false });
+        let quality = await analyzeScreenshot(buffer).catch(() => null);
+        for (
+          let attempt = 0;
+          attempt < 3 && quality && quality.colorBuckets <= 1;
+          attempt += 1
+        ) {
+          await page.waitForTimeout(800);
+          buffer = await page.screenshot({ path: restPath, fullPage: false });
+          quality = await analyzeScreenshot(buffer).catch(() => null);
+        }
         const qualityIssues = quality
           ? screenshotQualityIssues(`${view.slug} ${vp.name}`, quality)
           : [];
