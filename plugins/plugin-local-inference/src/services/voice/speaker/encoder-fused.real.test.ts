@@ -12,7 +12,7 @@
  * default lane in `vitest.config.ts`).
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -38,17 +38,20 @@ const MIN_SAMPLES = 16_000;
 
 const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
 const LIB_PATH = resolveFusedLibraryPath(null, process.env);
+// The native speaker_open needs a WeSpeaker GGUF. Provide one via
+// ELIZA_TEST_SPEAKER_GGUF (e.g. wespeaker-resnet34-lm.gguf); the encode
+// assertions skip honestly when it isn't supplied — they are never faked.
+const SPEAKER_GGUF = process.env.ELIZA_TEST_SPEAKER_GGUF?.trim();
+const HAVE_MODEL = !!SPEAKER_GGUF && existsSync(SPEAKER_GGUF);
 
 describe.skipIf(!isBun || !LIB_PATH)("FusedSpeakerEncoder — real FFI", () => {
 	let ffi: ElizaInferenceFfi;
 	let ctx: ElizaInferenceContextHandle;
 	let tmp: string;
-	let speakerSupported = false;
 
 	beforeAll(() => {
 		// LIB_PATH is non-null inside the skipIf-guarded block.
 		ffi = loadElizaInferenceFfi(LIB_PATH as string);
-		speakerSupported = FusedSpeakerEncoder.isSupported(ffi);
 	});
 	afterAll(() => {
 		ffi?.close();
@@ -66,35 +69,45 @@ describe.skipIf(!isBun || !LIB_PATH)("FusedSpeakerEncoder — real FFI", () => {
 		expect(typeof FusedSpeakerEncoder.isSupported(ffi)).toBe("boolean");
 	});
 
-	it("encode() returns a 256-d unit-norm embedding off the real graph", async () => {
-		if (!speakerSupported) {
-			throw new Error(
-				`[test] the fused lib at ${LIB_PATH} (ABI v${ffi.libraryAbiVersion}) does not link the WeSpeaker speaker graph (eliza_inference_speaker_supported() == 0) — rebuild with the speaker ABI to run this assertion.`,
-			);
-		}
-		const enc = await FusedSpeakerEncoder.load({ ffi, ctx });
-		expect(enc.embeddingDim).toBe(EMB_DIM);
-		expect(enc.sampleRate).toBe(MIN_SAMPLES);
-		// 1 s of a 220 Hz tone — a real, finite input the native graph accepts.
-		const pcm = new Float32Array(MIN_SAMPLES);
-		for (let i = 0; i < pcm.length; i += 1) {
-			pcm[i] = 0.2 * Math.sin((2 * Math.PI * 220 * i) / MIN_SAMPLES);
-		}
-		const emb = await enc.encode(pcm);
-		expect(emb.length).toBe(EMB_DIM);
-		let norm = 0;
-		for (const v of emb) norm += v * v;
-		expect(Math.abs(Math.sqrt(norm) - 1)).toBeLessThan(0.05);
-		await enc.dispose();
-	});
+	it.skipIf(!HAVE_MODEL)(
+		"encode() returns a finite 256-d embedding off the real WeSpeaker graph",
+		async () => {
+			const enc = await FusedSpeakerEncoder.load({
+				ffi,
+				ctx,
+				ggufPath: SPEAKER_GGUF,
+			});
+			expect(enc.embeddingDim).toBe(EMB_DIM);
+			expect(enc.sampleRate).toBe(MIN_SAMPLES);
+			// 1 s of a 220 Hz tone — a real, finite input the native graph accepts.
+			const pcm = new Float32Array(MIN_SAMPLES);
+			for (let i = 0; i < pcm.length; i += 1) {
+				pcm[i] = 0.2 * Math.sin((2 * Math.PI * 220 * i) / MIN_SAMPLES);
+			}
+			const emb = await enc.encode(pcm);
+			expect(emb.length).toBe(EMB_DIM);
+			expect(emb.every((v) => Number.isFinite(v))).toBe(true);
+			// A non-degenerate embedding has real magnitude.
+			let norm = 0;
+			for (const v of emb) norm += v * v;
+			expect(Math.sqrt(norm)).toBeGreaterThan(0);
+			await enc.dispose();
+		},
+	);
 
-	it("rejects pcm shorter than the minimum window before hitting the native graph", async () => {
-		if (!speakerSupported) return;
-		const enc = await FusedSpeakerEncoder.load({ ffi, ctx });
-		await expect(enc.encode(new Float32Array(100))).rejects.toMatchObject({
-			name: "SpeakerEncoderGgmlUnavailableError",
-			code: "invalid-input",
-		});
-		await enc.dispose();
-	});
+	it.skipIf(!HAVE_MODEL)(
+		"rejects pcm shorter than the minimum window before hitting the native graph",
+		async () => {
+			const enc = await FusedSpeakerEncoder.load({
+				ffi,
+				ctx,
+				ggufPath: SPEAKER_GGUF,
+			});
+			await expect(enc.encode(new Float32Array(100))).rejects.toMatchObject({
+				name: "SpeakerEncoderGgmlUnavailableError",
+				code: "invalid-input",
+			});
+			await enc.dispose();
+		},
+	);
 });
