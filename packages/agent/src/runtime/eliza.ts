@@ -4908,6 +4908,24 @@ export async function startEliza(
     await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
     startAgentSkillsWarmup();
     startEmbeddingWarmup();
+    // Re-probe the embedding dimension now that the deferred plugin waves have
+    // registered the cloud TEXT_EMBEDDING handler (plugin-elizacloud). The probe
+    // in runtime.initialize() runs ~38s earlier — before that deferred handler
+    // exists — so on a cloud agent it finds no TEXT_EMBEDDING model and the SQL
+    // adapter keeps its hardcoded dim384 default; every 1536-dim cloud vector is
+    // then dropped on a "dimension mismatch with configured column (dim384)".
+    // ensureEmbeddingDimension() is public, idempotent, and self-guarding (it
+    // no-ops when no handler is registered, e.g. cloud-proxied agents), so this
+    // safely snaps the column to dim1536 and lets memory embeddings persist.
+    try {
+      await runtime.ensureEmbeddingDimension();
+    } catch (err) {
+      logger.warn(
+        `[eliza] deferred embedding-dimension re-probe failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
     // Trigger the lazy wallet singleton fire-and-forget. This is a safety net
     // — if no wallet route or signing flow triggers it earlier, wallets are
     // still generated here. The singleton keeps this harmless if already
