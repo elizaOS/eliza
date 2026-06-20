@@ -2,7 +2,9 @@
  * Pre-seed the AOSP ElizaOS APK when the device itself is the local agent.
  */
 
+import { isAndroidCloudBuild } from "../platform/android-runtime";
 import { isAospElizaUserAgent } from "../platform/aosp-user-agent";
+import { getFrontendPlatform } from "../platform/platform-guards";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
   ANDROID_LOCAL_AGENT_LABEL,
@@ -60,21 +62,30 @@ function isBrandedAndroidDevice(): boolean {
 }
 
 /**
+ * The stock-phone local sideload build (`android` / `android-system`, renderer
+ * mode `local`) ships the on-device agent — that IS its backend. The
+ * `android-cloud` Play-Store build is a thin cloud client with no on-device
+ * agent, so it must never seed local. iOS/desktop/web are not android and
+ * resolve to a non-cloud mode by default, so gate on the native platform too.
+ */
+function isAndroidLocalSideloadBuild(): boolean {
+  return getFrontendPlatform() === "android" && !isAndroidCloudBuild();
+}
+
+/**
  * Whether to pre-seed the on-device local agent as the active server.
  *
- * Branded ElizaOS device images (carrying the `ElizaOS/<tag>` UA marker) are
- * dedicated local-agent hardware, so they auto-seed local.
- *
- * Stock-phone sideloads do NOT auto-seed: the first-run 3-way chooser
- * (CompactOnboarding's "Local models" card) now offers local explicitly, so
- * auto-seeding only did harm — it skipped the chooser, auto-started the slow
- * on-device agent foreground service (triggering the POST_NOTIFICATIONS prompt
- * at launch), and left the dashboard stuck "connecting to backend" while that
- * agent booted. Letting the chooser render instead is faster, prompts nothing
- * on launch, and still reaches local in one tap.
+ * Fires for branded ElizaOS device images AND the stock-phone local sideload
+ * build (the on-device-agent APK). Both run the on-device agent as their
+ * backend, so a fresh launch should default to it instead of falling back to
+ * cloud-connect. Gating only on the branded `ElizaOS/<tag>` UA marker (as
+ * before) excluded the stock sideload and left it stuck on cloud onboarding —
+ * which is exactly the bug the caller in `main.tsx` documents. The explicit
+ * cloud/remote-choice and existing-active-server guards in
+ * `preSeedAndroidLocalRuntimeIfFresh` still respect a user who picked cloud.
  */
 function shouldPreSeedLocalRuntime(): boolean {
-  return isBrandedAndroidDevice();
+  return isBrandedAndroidDevice() || isAndroidLocalSideloadBuild();
 }
 
 export function preSeedAndroidLocalRuntimeIfFresh(): boolean {

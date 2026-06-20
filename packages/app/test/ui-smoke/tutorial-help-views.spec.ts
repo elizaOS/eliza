@@ -1,9 +1,5 @@
 import { expect, test } from "@playwright/test";
-import {
-  installDefaultAppRoutes,
-  openAppPath,
-  seedAppStorage,
-} from "./helpers";
+import { installDefaultAppRoutes, openAppPath } from "./helpers";
 
 /**
  * Verifies the two new home-pinned views:
@@ -11,12 +7,10 @@ import {
  *  - The Tutorial tile opens the launcher, and Start activates the interactive
  *    spotlight overlay (the tour card) that survives navigation.
  *  - The Help view searches the knowledge base and shows matching answers.
- *  - The tour auto-launches once for a brand-new user.
+ *  - The tour NEVER auto-launches — it only starts from the tile / launcher.
  */
 
 test("Tutorial + Help are pinned to home and both work", async ({ page }) => {
-  // Mark the tour already auto-launched so it doesn't pop during the tile flow.
-  await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
   await installDefaultAppRoutes(page);
   await openAppPath(page, "/chat"); // the home screen (tiles)
 
@@ -62,14 +56,18 @@ test("Tutorial + Help are pinned to home and both work", async ({ page }) => {
   await expect(entry).toContainText(/AI Model/i);
 });
 
-test("the tour auto-launches once for a first-time user", async ({ page }) => {
-  // No seed: a brand-new user with no tutorial flags set.
+test("the tour does not auto-launch for a first-time user", async ({
+  page,
+}) => {
+  // A brand-new user with no tutorial flags set: the tour must stay closed and
+  // only ever open from an explicit action (the home Tutorial tile / launcher).
   await installDefaultAppRoutes(page);
   await openAppPath(page, "/chat");
 
-  // The tour card appears on its own (auto-launch, after a short beat).
-  await expect(page.getByTestId("tutorial-card")).toBeVisible({
+  // Wait past the beat the old auto-launch used (1.5s), then assert nothing popped.
+  await expect(page.getByTestId("home-tile-tutorial")).toBeVisible({
     timeout: 25_000,
   });
-  await expect(page.getByTestId("tutorial-card")).toContainText(/Meet Eliza/i);
+  await page.waitForTimeout(2500);
+  await expect(page.getByTestId("tutorial-card")).toHaveCount(0);
 });

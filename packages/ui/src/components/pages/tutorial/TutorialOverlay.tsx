@@ -1,5 +1,5 @@
 import * as React from "react";
-
+import { useBranding } from "../../../config/branding";
 import { dispatchTutorialChatControl } from "../../../events";
 import type { Tab } from "../../../navigation";
 import { setNavLock } from "../../../navigation/nav-lock";
@@ -7,20 +7,12 @@ import { useApp } from "../../../state";
 import { useShellControllerContext } from "../../shell/ShellControllerContext.hooks";
 import { TutorialNarrator } from "./TutorialNarrator";
 import { TutorialSpotlight } from "./TutorialSpotlight";
-import {
-  goToStep,
-  markTutorialAutoLaunched,
-  shouldAutoLaunchTutorial,
-  startTutorial,
-  stopTutorial,
-  useTutorial,
-} from "./tutorial-controller";
+import { goToStep, stopTutorial, useTutorial } from "./tutorial-controller";
 import {
   buildTutorialSteps,
   type ChatDetent,
   type TutorialObservable,
 } from "./tutorial-steps";
-import { useBranding } from "../../../config/branding";
 
 /**
  * The always-mounted interactive tour engine. When active it drives the real
@@ -65,7 +57,9 @@ export function TutorialOverlay(): React.ReactElement | null {
   // during the advance render — which would fire the next frame's
   // `navigateOnDone` before the user ever acts on it.
   const [doneStepId, setDoneStepId] = React.useState<string | null>(null);
-  const [secondsOnStep, setSecondsOnStep] = React.useState(0);
+  // The late "Skip" only needs a single boolean flip once a frame stalls — not
+  // a per-tick seconds counter, which would re-render the overlay 5×/second.
+  const [lateSkip, setLateSkip] = React.useState(false);
   const [muted, setMuted] = React.useState(false);
 
   const step = active ? steps[stepIndex] : undefined;
@@ -90,7 +84,7 @@ export function TutorialOverlay(): React.ReactElement | null {
   React.useEffect(() => {
     setBeat(1);
     setDoneStepId(null);
-    setSecondsOnStep(0);
+    setLateSkip(false);
     sawPrefillRef.current = false;
     stepStartRef.current = Date.now();
     if (!step) return;
@@ -114,24 +108,29 @@ export function TutorialOverlay(): React.ReactElement | null {
     return () => setNavLock(null);
   }, [active, step]);
 
-  // First-run auto-launch: once ever, the first time a brand-new user lands on
-  // the home base. Gating on the home tab keeps it out of onboarding/pairing.
+  // When the tour ends — skip, complete, or unmount — restore the chat to a
+  // normal interactive state. A frame may have collapsed it to the pill, where
+  // the composer is `inert` (not clickable); without this reset, cancelling the
+  // tour on the "open chat" frame leaves the input dead until the pill is
+  // tapped. Fires on the active→inactive transition via the effect cleanup.
   React.useEffect(() => {
-    if (active || tab !== "chat" || !shouldAutoLaunchTutorial()) return;
-    const t = window.setTimeout(() => {
-      if (!shouldAutoLaunchTutorial()) return;
-      markTutorialAutoLaunched();
-      startTutorial();
-    }, 1500);
-    return () => window.clearTimeout(t);
-  }, [active, tab]);
+    if (!active) return undefined;
+    return () => {
+      dispatchTutorialChatControl({ action: "reset" });
+    };
+  }, [active]);
+
+  // The tour never auto-launches. It only starts on an explicit user action —
+  // the home "Tutorial" tile or the launcher view (both call startTutorial()).
 
   // Sample live UI state and auto-detect completion of the current beat.
   React.useEffect(() => {
     if (!active || !step || doneStepId === step.id) return undefined;
     const id = window.setInterval(() => {
       const secs = (Date.now() - stepStartRef.current) / 1000;
-      setSecondsOnStep(secs);
+      // Reveal the late "Skip" once, when a frame stalls. setState bails out
+      // once it's already true, so this stops re-rendering after the first flip.
+      if (secs >= LATE_SKIP_SEC) setLateSkip(true);
       const composerText = readComposerText();
       if (step.prefill && composerText === step.prefill) {
         sawPrefillRef.current = true;
@@ -175,7 +174,7 @@ export function TutorialOverlay(): React.ReactElement | null {
   const succeeded = doneStepId === step.id;
   const current = beat === 2 && step.beat2 ? step.beat2 : step;
   const isLast = stepIndex >= steps.length - 1;
-  const showContinue = step.manualContinue || secondsOnStep >= LATE_SKIP_SEC;
+  const showContinue = step.manualContinue || lateSkip;
   const continueLabel = step.manualContinue
     ? (step.continueLabel ?? "Continue")
     : "Skip";
@@ -191,7 +190,7 @@ export function TutorialOverlay(): React.ReactElement | null {
       )}
       <TutorialSpotlight
         targetSelector={step.targetSelector}
-        blockOutside={!succeeded}
+        dimOutside={!succeeded}
         title={step.title}
         body={succeeded ? (step.doneBody ?? current.body) : current.body}
         muted={muted}

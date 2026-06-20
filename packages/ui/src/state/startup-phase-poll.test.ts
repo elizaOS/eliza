@@ -482,6 +482,75 @@ describe("runPollingBackend", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_AUTH_REQUIRED" });
     expect(clearPersistedActiveServer).not.toHaveBeenCalled();
   });
+
+  it("on Capacitor native, a pairing-enabled REMOTE 401 exits to the pairing gate instead of looping (iOS remote-connect)", async () => {
+    // Regression: on iOS native, a 401 without a token was always assumed to be
+    // the transient local-agent token-injection race and fell through to the
+    // retry loop. For a REMOTE target the 401 is terminal pairing-required, so
+    // the app polled it forever and never reached PairingView. The base URL is
+    // not the in-process local agent, so we must exit to the pairing gate like
+    // desktop does.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "capacitor://localhost", protocol: "capacitor:" },
+    };
+    (globalThis as Record<string, unknown>).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    clientMock.getBaseUrl.mockReturnValue("http://192.168.0.137:31337");
+    clientMock.hasToken.mockReturnValue(false);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockResolvedValue({
+      required: true,
+      authenticated: false,
+      pairingEnabled: true,
+      expiresAt: null,
+    });
+    clientMock.getFirstRunStatus.mockReset();
+    clientMock.getFirstRunStatus.mockRejectedValue(
+      Object.assign(new Error("Unauthorized"), {
+        status: 401,
+        path: "/api/first-run-status",
+      }),
+    );
+    const remote = {
+      id: "remote:lan",
+      kind: "remote" as const,
+      label: "lan-remote",
+      apiBase: "http://192.168.0.137:31337",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: remote,
+      restoredActiveServer: remote,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+
+    try {
+      await runPollingBackend(
+        deps,
+        dispatch,
+        {
+          supportsLocalRuntime: true,
+          backendTimeoutMs: 1000,
+          agentReadyTimeoutMs: 1000,
+          probeForExistingInstall: true,
+          defaultTarget: "embedded-local",
+        },
+        ctx,
+        1,
+        { current: 1 },
+        { current: false },
+        { current: null },
+      );
+
+      expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_AUTH_REQUIRED" });
+      expect(deps.setPairingEnabled).toHaveBeenCalledWith(true);
+    } finally {
+      delete (globalThis as Record<string, unknown>).Capacitor;
+    }
+  });
 });
 
 describe("shouldFallBackToLocalOrigin", () => {

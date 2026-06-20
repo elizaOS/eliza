@@ -11,6 +11,7 @@ import { getStylePresets } from "@elizaos/shared";
 import type { FirstRunOptions } from "../api";
 import { client } from "../api";
 import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
+import { isIosInProcessLocalAgentBase } from "../api/ios-local-agent-transport";
 import { getBackendStartupTimeoutMs, scanProviderCredentials } from "../bridge";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
@@ -505,7 +506,17 @@ export async function runPollingBackend(
         // through to the retry loop so the next iteration picks up the token.
         // On non-Capacitor runtimes there is no injection race — exit to the
         // pairing gate immediately as before.
-        if (!isCapacitorNative()) {
+        //
+        // The async-injection race only exists for the on-device LOCAL agent
+        // (the native Agent plugin injects its token). For a REMOTE target
+        // (remote-connect onboarding to e.g. http://192.168.0.137:31337) a 401
+        // is terminal pairing-required, never a transient race — so on native
+        // we must still exit to the pairing gate when the base is not the local
+        // agent, otherwise iOS polls the 401 forever and never reaches pairing.
+        if (
+          !isCapacitorNative() ||
+          !isIosInProcessLocalAgentBase(client.getBaseUrl())
+        ) {
           deps.setAuthRequired(true);
           deps.setPairingEnabled(latestAuth.pairingEnabled);
           deps.setPairingExpiresAt(latestAuth.expiresAt);
