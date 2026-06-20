@@ -102,6 +102,20 @@ describe("DockerSandboxProvider.stop() terminal policy on unreachable node", () 
     await expect(provider.stop(SANDBOX_ID)).rejects.toThrow(/Failed to stop container/);
   });
 
+  test("still THROWS on a per-command timeout (reachable-but-slow node, NOT terminal)", async () => {
+    // A docker-ssh PER-COMMAND timeout means the SSH channel opened (node
+    // reachable) but the docker command was slow (daemon hung/overloaded,
+    // container ignoring SIGTERM, disk-I/O stall). The container may still be
+    // running, so this must ESCALATE/retry — it must NOT be terminally deleted.
+    nextExecError = new Error(
+      "[docker-ssh] Command timed out after 25000ms on host: docker [redacted]",
+    );
+    const provider = new DockerSandboxProvider();
+    seedContainer(provider);
+
+    await expect(provider.stop(SANDBOX_ID)).rejects.toThrow(/Failed to stop container/);
+  });
+
   test("RESOLVES when the container is already gone (existing behavior preserved)", async () => {
     nextExecError = new Error("Error response from daemon: No such container: agent-x");
     const provider = new DockerSandboxProvider();

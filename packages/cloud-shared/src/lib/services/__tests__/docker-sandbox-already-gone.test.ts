@@ -72,10 +72,25 @@ describe("isNodeUnreachableMessage", () => {
     ).toBe(true);
   });
 
-  test("recognizes a docker-ssh command timeout", () => {
-    expect(isNodeUnreachableMessage("[docker-ssh] Command timed out after 25000ms on host")).toBe(
-      true,
-    );
+  // FALSE-POSITIVE GUARD: the docker-ssh PER-COMMAND timeout fires on a
+  // REACHABLE-but-slow node (daemon hung/overloaded, container ignoring
+  // SIGTERM, disk-I/O stall). It must NOT classify as unreachable — otherwise a
+  // live container would be terminally deleted. Only CONNECT-phase timeouts
+  // ("Connection to <host>:<port> timed out") count as unreachable.
+  test("does NOT classify a per-command timeout as unreachable (reachable-but-slow node)", () => {
+    expect(
+      isNodeUnreachableMessage(
+        "[docker-ssh] Command timed out after 25000ms on host: docker [redacted]",
+      ),
+    ).toBe(false);
+  });
+
+  test("still classifies a connect timeout as unreachable", () => {
+    expect(
+      isNodeUnreachableMessage(
+        "[docker-ssh] Connection to 138.201.80.125:22 timed out after 10000ms",
+      ),
+    ).toBe(true);
   });
 
   test("recognizes ECONNREFUSED", () => {
@@ -99,7 +114,9 @@ describe("isNodeUnreachableMessage", () => {
   });
 
   test("is case-insensitive", () => {
-    expect(isNodeUnreachableMessage("CONNECTION TIMED OUT")).toBe(true);
+    expect(
+      isNodeUnreachableMessage("[DOCKER-SSH] CONNECTION TO 1.2.3.4:22 TIMED OUT AFTER 10000MS"),
+    ).toBe(true);
   });
 
   // The whole point of keeping the list NARROW: a real Docker-daemon error must
