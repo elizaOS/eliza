@@ -145,9 +145,9 @@ describe("FinancesView", () => {
       />,
     );
     expect(await screen.findByTestId("finances-populated")).toBeTruthy();
-    expect(
-      screen.getByTestId("finances-proactive-note").textContent,
-    ).toMatch(/1 bill due this week/);
+    expect(screen.getByTestId("finances-proactive-note").textContent).toMatch(
+      /1 bill due this week/,
+    );
   });
 
   it("flags a negative balance over a due-soon bill (urgency precedence)", async () => {
@@ -183,9 +183,9 @@ describe("FinancesView", () => {
       />,
     );
     expect(await screen.findByTestId("finances-populated")).toBeTruthy();
-    expect(
-      screen.getByTestId("finances-proactive-note").textContent,
-    ).toMatch(/Balance is negative/);
+    expect(screen.getByTestId("finances-proactive-note").textContent).toMatch(
+      /Balance is negative/,
+    );
   });
 
   it("renders no proactive note when nothing is due soon and the balance is healthy", async () => {
