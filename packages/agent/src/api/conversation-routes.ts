@@ -2109,7 +2109,10 @@ export async function handleConversationRoutes(
           }
         } else {
           logger.warn(
-            { err: getErrorMessage(err) },
+            {
+              err: getErrorMessage(err),
+              stack: err instanceof Error ? err.stack : undefined,
+            },
             "Chat generation failed with no streamed text",
           );
           const alreadyPersistedVisibleAssistantTurn =

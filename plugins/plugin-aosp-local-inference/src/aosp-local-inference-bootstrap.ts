@@ -2388,9 +2388,14 @@ function makeFusedFfiHelpers(
   symbols: Record<string, (...args: unknown[]) => unknown>,
 ): AospFfiPointerHelpers {
   return {
+    // bun:ffi `FFIType.ptr` arguments take a NUMBER `Pointer`, not a bigint —
+    // handing a bigint throws "Unable to convert <addr> to a pointer". Return
+    // bun's native `ptr()` result verbatim (a number); only the explicit
+    // `usize`/`u64` args (text_len, the stream handle) are widened to bigint at
+    // their call sites. (create() worked because it used ffi.ptr directly.)
     ptr: (view: ArrayBufferView) => {
       const p = ffi.ptr(view);
-      return typeof p === "bigint" ? p : BigInt(p);
+      return typeof p === "bigint" ? Number(p) : p;
     },
     takeError: (buf: Buffer) => {
       const raw = readFfiPointer(ffi, buf, 0);
