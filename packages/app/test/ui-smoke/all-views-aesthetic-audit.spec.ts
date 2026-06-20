@@ -325,7 +325,11 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           return { readableChars, overlayPresent };
         };
         let paint = await readPaint();
-        for (let attempt = 0; attempt < 12 && paint.readableChars < 10 && !paint.overlayPresent; attempt += 1) {
+        for (
+          let attempt = 0;
+          attempt < 12 && paint.readableChars < 10 && !paint.overlayPresent;
+          attempt += 1
+        ) {
           await page.waitForTimeout(1000);
           paint = await readPaint();
         }

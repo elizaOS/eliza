@@ -1,10 +1,5 @@
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
-import {
-  createElement,
-  type ComponentType,
-  useEffect,
-  useState,
-} from "react";
+import { type ComponentType, createElement, useEffect, useState } from "react";
 
 type DeferredViewComponent = ComponentType<Record<string, unknown>>;
 type DeferredViewModule = { default: DeferredViewComponent };
@@ -54,8 +49,9 @@ function deferredComponent(loader: DeferredViewLoader): DeferredViewComponent {
   }
 
   return function DeferredComponent(props: Record<string, unknown>) {
-    const [Component, setComponent] =
-      useState<DeferredViewComponent | null>(cached);
+    const [Component, setComponent] = useState<DeferredViewComponent | null>(
+      cached,
+    );
 
     useEffect(() => {
       if (Component) return;

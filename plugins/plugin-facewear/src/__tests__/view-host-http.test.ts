@@ -169,10 +169,7 @@ describe("viewHostRoute — real HTTP server integration", () => {
   });
 
   it("view-host pages with special characters in id (defense-of-the-agents) serve correctly", async () => {
-    const specialIds = [
-      "defense-of-the-agents",
-      "task-coordinator",
-    ];
+    const specialIds = ["defense-of-the-agents", "task-coordinator"];
     for (const id of specialIds) {
       const res = await fetch(
         `${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`,
