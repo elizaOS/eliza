@@ -36,6 +36,10 @@ import path from "node:path";
 import type { Duplex } from "node:stream";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import {
+	computeGenerationThroughput,
+	type GenerationThroughput,
+} from "@elizaos/shared/local-inference";
 import type {
 	LocalInferenceLoadArgs,
 	LocalInferenceLoader,
@@ -92,6 +96,12 @@ type DeviceOutbound =
 			promptTokens: number;
 			outputTokens: number;
 			durationMs: number;
+			/**
+			 * Time-to-first-token in ms, when the device measured it. Equals the
+			 * prefill wall-clock; lets the agent difference prefill vs decode tok/s.
+			 * Optional — absent on the non-streaming path (older device clients).
+			 */
+			ttftMs?: number;
 	  }
 	| { type: "generateResult"; correlationId: string; ok: false; error: string }
 	| {
@@ -278,6 +288,25 @@ interface PersistedGenerateRequest {
 }
 
 /**
+ * One on-device generation's measured resource signal, emitted to
+ * `subscribeGenerationMetrics` listeners after every successful `generateResult`.
+ * The Mobile Resource Workbench folds these into a `DeviceResourceMetrics`
+ * accumulator (prefill/decode tok/s, TTFT, per-tier aggregation). All
+ * throughput fields are `null` when the device could not measure the inputs.
+ */
+export interface DeviceGenerationMetrics {
+	deviceId: string;
+	platform: DeviceCapabilities["platform"] | null;
+	/** Device model identifier (e.g. `iPhone17,2`) for per-device baselines. */
+	deviceModel: string | null;
+	promptTokens: number;
+	outputTokens: number;
+	durationMs: number;
+	ttftMs: number | null;
+	throughput: GenerationThroughput;
+}
+
+/**
  * Scoring function — pick the most powerful device available.
  * Pure, synchronous, and easy to test.
  */
@@ -329,6 +358,17 @@ export class DeviceBridge {
 	private readonly statusListeners = new Set<
 		(status: DeviceBridgeStatus) => void
 	>();
+
+	private readonly generationMetricsListeners = new Set<
+		(metrics: DeviceGenerationMetrics) => void
+	>();
+
+	/** The most recent successful generation's metrics, or null. */
+	private lastGenerationMetrics: DeviceGenerationMetrics | null = null;
+
+	/** Bounded ring buffer of recent generation metrics for the dev endpoint. */
+	private readonly recentGenerations: DeviceGenerationMetrics[] = [];
+	private static readonly RECENT_GENERATIONS_CAP = 200;
 
 	private readonly expectedPairingToken: string | null =
 		process.env.ELIZA_DEVICE_PAIRING_TOKEN?.trim() || null;
@@ -400,6 +440,46 @@ export class DeviceBridge {
 				listener(snapshot);
 			} catch {
 				this.statusListeners.delete(listener);
+			}
+		}
+	}
+
+	/**
+	 * Subscribe to per-generation throughput metrics. Fires once per successful
+	 * on-device generation with the differenced prefill/decode tok/s. Returns an
+	 * unsubscribe function.
+	 */
+	subscribeGenerationMetrics(
+		listener: (metrics: DeviceGenerationMetrics) => void,
+	): () => void {
+		this.generationMetricsListeners.add(listener);
+		return () => {
+			this.generationMetricsListeners.delete(listener);
+		};
+	}
+
+	/** The most recent successful generation's measured metrics, or null. */
+	latestGenerationMetrics(): DeviceGenerationMetrics | null {
+		return this.lastGenerationMetrics;
+	}
+
+	/** Most recent generation metrics (newest last), capped at `limit`. */
+	recentGenerationMetrics(limit = 50): DeviceGenerationMetrics[] {
+		const n = Math.max(0, Math.trunc(limit));
+		return this.recentGenerations.slice(-n);
+	}
+
+	private emitGenerationMetrics(metrics: DeviceGenerationMetrics): void {
+		this.lastGenerationMetrics = metrics;
+		this.recentGenerations.push(metrics);
+		if (this.recentGenerations.length > DeviceBridge.RECENT_GENERATIONS_CAP) {
+			this.recentGenerations.shift();
+		}
+		for (const listener of this.generationMetricsListeners) {
+			try {
+				listener(metrics);
+			} catch {
+				this.generationMetricsListeners.delete(listener);
 			}
 		}
 	}
@@ -716,6 +796,29 @@ export class DeviceBridge {
 			if (msg.ok === false) {
 				pending.reject(new Error(msg.error));
 			} else {
+				// Difference the raw counters into prefill/decode tok/s and surface
+				// them to profiling subscribers. The loader contract is unchanged —
+				// callers still get the text; metrics are a side channel.
+				const ttftMs = typeof msg.ttftMs === "number" ? msg.ttftMs : null;
+				const throughput = computeGenerationThroughput({
+					promptTokens: msg.promptTokens,
+					outputTokens: msg.outputTokens,
+					durationMs: msg.durationMs,
+					ttftMs,
+				});
+				const device = pending.routedDeviceId
+					? this.devices.get(pending.routedDeviceId)
+					: null;
+				this.emitGenerationMetrics({
+					deviceId: pending.routedDeviceId ?? "unknown",
+					platform: device?.capabilities.platform ?? null,
+					deviceModel: device?.capabilities.deviceModel ?? null,
+					promptTokens: msg.promptTokens,
+					outputTokens: msg.outputTokens,
+					durationMs: msg.durationMs,
+					ttftMs,
+					throughput,
+				});
 				pending.resolve(msg.text);
 			}
 			return;
@@ -1078,6 +1181,31 @@ export class DeviceBridge {
 }
 
 export const deviceBridge = new DeviceBridge();
+
+/** Shape returned by `GET /api/dev/device-resource-metrics`. */
+export interface DeviceResourceMetricsDevPayload {
+	generatedAtEpochMs: number;
+	status: DeviceBridgeStatus;
+	latest: DeviceGenerationMetrics | null;
+	recentGenerations: DeviceGenerationMetrics[];
+}
+
+/**
+ * Build the JSON body for `GET /api/dev/device-resource-metrics` — the Mobile
+ * Resource Workbench reads this to harvest per-generation prefill/decode tok/s
+ * (already differenced by the bridge) without driving the device WebView.
+ */
+export function buildDeviceResourceMetricsDevPayload(
+	bridge: DeviceBridge = deviceBridge,
+	limit = 50,
+): DeviceResourceMetricsDevPayload {
+	return {
+		generatedAtEpochMs: Date.now(),
+		status: bridge.status(),
+		latest: bridge.latestGenerationMetrics(),
+		recentGenerations: bridge.recentGenerationMetrics(limit),
+	};
+}
 
 export function registerDeviceBridgeLoader(
 	runtime: AgentRuntime & {

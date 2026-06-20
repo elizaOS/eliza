@@ -61,6 +61,13 @@ export interface GenerateResult {
   promptTokens: number;
   outputTokens: number;
   durationMs: number;
+  /**
+   * Time-to-first-token in ms — wall-clock from the generate() call to the
+   * first decoded token event. Equals the on-device prefill wall-clock, so the
+   * agent can difference prefill vs decode throughput. Omitted when no token
+   * was observed (empty generation).
+   */
+  ttftMs?: number;
 }
 
 /**

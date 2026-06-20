@@ -111,6 +111,27 @@ export interface WorkflowDefinitionResponse extends WorkflowDefinition {
   versionId: string;
 }
 
+export type WorkflowRevisionOperation =
+  | 'update'
+  | 'activate'
+  | 'deactivate'
+  | 'tags'
+  | 'restore'
+  | 'delete';
+
+export interface WorkflowRevision {
+  id: string;
+  workflowId: string;
+  versionId: string;
+  name: string;
+  active: boolean;
+  workflow: WorkflowDefinition;
+  createdAt: string;
+  updatedAt: string;
+  capturedAt: string;
+  operation: WorkflowRevisionOperation;
+}
+
 export interface WorkflowCredential {
   id: string;
   name: string;
@@ -119,6 +140,18 @@ export interface WorkflowCredential {
   isResolvable?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WorkflowExecutionEngineMetrics {
+  provider: 'smithers';
+  nodes: number;
+  levels: number;
+  maxConcurrency: number;
+  started: number;
+  finished: number;
+  failed: number;
+  skipped: number;
+  retries: number;
 }
 
 export interface WorkflowExecution {
@@ -147,6 +180,7 @@ export interface WorkflowExecution {
     resultData?: {
       runData?: Record<string, unknown[]>;
       lastNodeExecuted?: string;
+      engine?: WorkflowExecutionEngineMetrics;
       error?: {
         message: string;
         stack?: string;

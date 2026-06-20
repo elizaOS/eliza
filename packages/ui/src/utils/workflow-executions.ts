@@ -159,3 +159,53 @@ export function summarizeWorkflowExecution(
     error: getWorkflowExecutionError(execution),
   };
 }
+
+export function formatWorkflowEngineMetrics(
+  execution: WorkflowExecution,
+): string | null {
+  const engine = execution.data?.resultData?.engine;
+  if (!engine) return null;
+  const skipped = engine.skipped > 0 ? ` / ${engine.skipped} skipped` : "";
+  const retries = engine.retries > 0 ? ` / ${engine.retries} retries` : "";
+  return `${engine.nodes} nodes / ${engine.levels} levels / ${engine.maxConcurrency} max parallel${skipped}${retries}`;
+}
+
+export function buildWorkflowExecutionDiagnostics(
+  execution: WorkflowExecution,
+): string {
+  const summary = summarizeWorkflowExecution(execution);
+  const rows = getWorkflowExecutionRunRows(execution);
+  const engineMetrics = formatWorkflowEngineMetrics(execution);
+  const lines = [
+    `Workflow execution ${execution.id}`,
+    `Status: ${summary.statusLabel}`,
+    `Workflow: ${execution.workflowId ?? "unknown"}`,
+    `Mode: ${execution.mode ?? "unknown"}`,
+    `Started: ${execution.startedAt}`,
+    `Stopped: ${execution.stoppedAt ?? "still running"}`,
+    `Duration: ${summary.durationLabel}`,
+    summary.lastNode ? `Last node: ${summary.lastNode}` : null,
+    engineMetrics ? `Engine: ${engineMetrics}` : null,
+    summary.error ? `Error: ${summary.error}` : null,
+  ].filter((line): line is string => Boolean(line));
+
+  if (rows.length === 0) {
+    lines.push("Nodes: none recorded");
+    return lines.join("\n");
+  }
+
+  lines.push("Nodes:");
+  for (const row of rows) {
+    const elapsed =
+      typeof row.executionTimeMs === "number"
+        ? `${row.executionTimeMs} ms`
+        : "unknown";
+    const result = row.error ? `error=${row.error}` : `preview=${row.preview}`;
+    lines.push(
+      `- ${row.nodeName}: ${row.status}; ${row.itemCount} item${
+        row.itemCount === 1 ? "" : "s"
+      }; ${elapsed}; ${result}`,
+    );
+  }
+  return lines.join("\n");
+}

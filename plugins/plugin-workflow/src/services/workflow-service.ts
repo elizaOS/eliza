@@ -9,6 +9,7 @@ import type {
   WorkflowDefinition,
   WorkflowDefinitionResponse,
   WorkflowExecution,
+  WorkflowRevision,
 } from '../types/index';
 import {
   isCredentialProvider,
@@ -70,6 +71,8 @@ type WorkflowDefinitionClient = Pick<
   | 'deleteWorkflow'
   | 'activateWorkflow'
   | 'deactivateWorkflow'
+  | 'listWorkflowRevisions'
+  | 'restoreWorkflowRevision'
   | 'executeWorkflow'
   | 'updateWorkflowTags'
   | 'createCredential'
@@ -882,6 +885,20 @@ export class WorkflowService extends Service {
   async getWorkflow(workflowId: string): Promise<WorkflowDefinitionResponse> {
     const client = this.getClient();
     return client.getWorkflow(workflowId);
+  }
+
+  async listWorkflowRevisions(workflowId: string, limit?: number): Promise<WorkflowRevision[]> {
+    const client = this.getClient();
+    const response = await client.listWorkflowRevisions(workflowId, limit);
+    return response.data;
+  }
+
+  async restoreWorkflowRevision(
+    workflowId: string,
+    versionId: string
+  ): Promise<WorkflowDefinitionResponse> {
+    const client = this.getClient();
+    return client.restoreWorkflowRevision(workflowId, versionId);
   }
 
   async runWorkflow(

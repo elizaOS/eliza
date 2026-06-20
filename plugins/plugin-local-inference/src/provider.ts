@@ -626,7 +626,9 @@ function createTextToSpeechHandler() {
 				return normalizeAudioBytes(result);
 			}
 			if (typeof service.synthesizeSpeech === "function") {
-				return normalizeAudioBytes(await service.synthesizeSpeech(text, signal));
+				return normalizeAudioBytes(
+					await service.synthesizeSpeech(text, signal),
+				);
 			}
 			if (typeof service.textToSpeech === "function") {
 				return normalizeAudioBytes(

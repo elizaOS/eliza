@@ -273,8 +273,12 @@ export interface HistogramSummary {
  * Bounded-sample running histogram for one derived metric. Keeps the last
  * `capacity` samples (FIFO) and computes percentiles on demand. Bounded so
  * a long-running process does not grow without limit.
+ *
+ * Exported so sibling accumulators (e.g. the Mobile Resource Workbench's
+ * `DeviceResourceMetrics`) reuse the same percentile logic instead of
+ * re-implementing it.
  */
-class BoundedHistogram {
+export class BoundedHistogram {
 	private readonly samples: number[] = [];
 	constructor(private readonly capacity: number) {}
 

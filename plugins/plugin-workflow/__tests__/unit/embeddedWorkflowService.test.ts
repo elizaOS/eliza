@@ -175,6 +175,66 @@ describe('EmbeddedWorkflowService', () => {
     await rm(dir, { recursive: true, force: true });
   }, 60_000);
 
+  test('captures workflow revisions and restores a previous version', async () => {
+    const harness = await persistentRuntime();
+    const service = await EmbeddedWorkflowService.start(harness.runtime);
+    try {
+      const created = await service.createWorkflow({
+        name: 'Revision base',
+        nodes: [
+          {
+            id: 'manual',
+            name: 'Manual Trigger',
+            type: 'workflows-nodes-base.manualTrigger',
+            typeVersion: 1,
+            position: [0, 0],
+            parameters: {},
+          },
+        ],
+        connections: {},
+      });
+      const updated = await service.updateWorkflow(created.id, {
+        ...created,
+        name: 'Revision updated',
+        nodes: [
+          ...(created.nodes ?? []),
+          {
+            id: 'set',
+            name: 'Set',
+            type: 'workflows-nodes-base.set',
+            typeVersion: 3.4,
+            position: [200, 0],
+            parameters: {
+              assignments: { assignments: [{ name: 'restored', value: false }] },
+            },
+          },
+        ],
+        connections: {
+          'Manual Trigger': { main: [[{ node: 'Set', type: 'main', index: 0 }]] },
+        },
+      });
+
+      const beforeRestore = await service.listWorkflowRevisions(created.id);
+      expect(beforeRestore.data).toHaveLength(1);
+      expect(beforeRestore.data[0].name).toBe('Revision base');
+      expect(beforeRestore.data[0].versionId).toBe(created.versionId);
+      expect(beforeRestore.data[0].operation).toBe('update');
+
+      const restored = await service.restoreWorkflowRevision(created.id, created.versionId);
+      expect(restored.name).toBe('Revision base');
+      expect(restored.nodes.map((node) => node.name)).toEqual(['Manual Trigger']);
+      expect(restored.versionId).not.toBe(created.versionId);
+      expect(restored.versionId).not.toBe(updated.versionId);
+
+      const afterRestore = await service.listWorkflowRevisions(created.id);
+      expect(afterRestore.data[0].name).toBe('Revision updated');
+      expect(afterRestore.data[0].operation).toBe('restore');
+    } finally {
+      await service.stop();
+      await harness.close();
+    }
+  }, 60_000);
+
   test('runs Code node in the QuickJS sandbox', async () => {
     const pluginRoot = join(import.meta.dir, '../..');
     const resultDir = await mkdtemp(join(tmpdir(), 'embedded-workflows-code-result-'));
@@ -324,6 +384,7 @@ describe('EmbeddedWorkflowService', () => {
 
         const execution = await service.executeWorkflow(created.id);
         const item = execution.data?.resultData?.runData?.Set?.[0]?.data?.main?.[0]?.[0]?.json;
+        const engine = execution.data?.resultData?.engine;
         smithersDbPath = join(process.cwd(), '.eliza', 'smithers', created.id + '.sqlite');
         const smithersDb = new Database(smithersDbPath, { readonly: true });
         try {
@@ -339,6 +400,7 @@ describe('EmbeddedWorkflowService', () => {
             JSON.stringify({
               status: execution.status,
               item,
+              engine,
               tables,
               persistedSetRowsLength: persistedSetRows.length,
             })
@@ -377,11 +439,18 @@ describe('EmbeddedWorkflowService', () => {
       const result = JSON.parse(await readFile(resultPath, 'utf8')) as {
         status?: string;
         item?: { smithersRecorded?: boolean };
+        engine?: { provider?: string; nodes?: number; levels?: number; maxConcurrency?: number };
         tables?: string[];
         persistedSetRowsLength?: number;
       };
       expect(result.status).toBe('success');
       expect(result.item?.smithersRecorded).toBe(true);
+      expect(result.engine).toMatchObject({
+        provider: 'smithers',
+        nodes: 2,
+        levels: 2,
+        maxConcurrency: 1,
+      });
       expect(result.tables).toContain('smithers_0000_manual');
       expect(result.tables).toContain('smithers_0001_set');
       expect(result.tables).toContain('smithers_eliza_workflow_result');

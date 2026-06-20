@@ -22,7 +22,9 @@ vi.mock("../../api", () => ({
     deactivateWorkflowDefinition: vi.fn(),
     generateWorkflowDefinition: vi.fn(),
     getWorkflowExecutions: vi.fn(),
+    getWorkflowRevisions: vi.fn(),
     runWorkflowDefinition: vi.fn(),
+    restoreWorkflowRevision: vi.fn(),
     updateWorkflowDefinition: vi.fn(),
   },
 }));
@@ -33,9 +35,13 @@ const clientMock = client as unknown as {
   deactivateWorkflowDefinition: ReturnType<typeof vi.fn>;
   generateWorkflowDefinition: ReturnType<typeof vi.fn>;
   getWorkflowExecutions: ReturnType<typeof vi.fn>;
+  getWorkflowRevisions: ReturnType<typeof vi.fn>;
   runWorkflowDefinition: ReturnType<typeof vi.fn>;
+  restoreWorkflowRevision: ReturnType<typeof vi.fn>;
   updateWorkflowDefinition: ReturnType<typeof vi.fn>;
 };
+
+const clipboardWriteText = vi.fn();
 
 vi.mock("./WorkflowGraphViewer", () => ({
   WorkflowGraphViewer: ({
@@ -54,6 +60,7 @@ function workflowFixture(): WorkflowDefinition {
     id: "workflow-1",
     name: "Cerebras review workflow",
     active: false,
+    versionId: "version-current",
     nodes: [
       {
         id: "manual",
@@ -99,6 +106,17 @@ function executionFixture(
     stoppedAt: "2026-06-19T19:01:01.500Z",
     data: {
       resultData: {
+        engine: {
+          provider: "smithers",
+          nodes: 2,
+          levels: 2,
+          maxConcurrency: 1,
+          started: 2,
+          finished: 2,
+          failed: 0,
+          skipped: 0,
+          retries: 0,
+        },
         runData: {
           "Add Review Fields": [
             {
@@ -127,7 +145,15 @@ function executionFixture(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: clipboardWriteText },
+  });
   clientMock.getWorkflowExecutions.mockResolvedValue([]);
+  clientMock.getWorkflowRevisions.mockResolvedValue({
+    currentVersionId: "version-current",
+    revisions: [],
+  });
   clientMock.runWorkflowDefinition.mockResolvedValue(executionFixture());
 });
 
@@ -153,6 +179,23 @@ describe("WorkflowEditor", () => {
     expect(
       screen.getByText('{"source":"cerebras","verified":true}'),
     ).toBeTruthy();
+    expect(
+      screen.getByText(/2 nodes \/ 2 levels \/ 1 max parallel/),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /copy diagnostics/i }));
+
+    await waitFor(() => {
+      expect(clipboardWriteText).toHaveBeenCalledWith(
+        expect.stringContaining("Workflow execution execution-1"),
+      );
+    });
+    expect(clipboardWriteText.mock.calls[0]?.[0]).toContain(
+      "Engine: 2 nodes / 2 levels / 1 max parallel",
+    );
+    expect(clipboardWriteText.mock.calls[0]?.[0]).toContain(
+      "Add Review Fields: success; 1 item",
+    );
   });
 
   it("keeps the editor open after saving a new workflow so it can be inspected", async () => {
@@ -174,5 +217,56 @@ describe("WorkflowEditor", () => {
     expect(
       await screen.findByRole("button", { name: /run now/i }),
     ).toBeTruthy();
+  });
+
+  it("restores a selected saved workflow version from history", async () => {
+    const restored = {
+      ...workflowFixture(),
+      name: "Restored workflow",
+      versionId: "version-restored",
+    };
+    clientMock.getWorkflowRevisions.mockResolvedValue({
+      currentVersionId: "version-current",
+      revisions: [
+        {
+          id: "revision-2",
+          workflowId: "workflow-1",
+          versionId: "version-newer",
+          name: "Newer workflow",
+          active: false,
+          createdAt: "2026-06-19T19:00:00.000Z",
+          updatedAt: "2026-06-19T19:02:00.000Z",
+          capturedAt: "2026-06-19T19:07:00.000Z",
+          operation: "activate",
+        },
+        {
+          id: "revision-1",
+          workflowId: "workflow-1",
+          versionId: "version-previous",
+          name: "Previous workflow",
+          active: false,
+          createdAt: "2026-06-19T19:00:00.000Z",
+          updatedAt: "2026-06-19T19:00:00.000Z",
+          capturedAt: "2026-06-19T19:05:00.000Z",
+          operation: "update",
+        },
+      ],
+    });
+    clientMock.restoreWorkflowRevision.mockResolvedValue(restored);
+
+    render(<WorkflowEditor initial={workflowFixture()} />);
+
+    const restoreButton = await screen.findByRole("button", {
+      name: "Restore Previous workflow",
+    });
+    fireEvent.click(restoreButton);
+
+    await waitFor(() => {
+      expect(clientMock.restoreWorkflowRevision).toHaveBeenCalledWith(
+        "workflow-1",
+        "version-previous",
+      );
+    });
+    expect(await screen.findByText("Restored workflow")).toBeTruthy();
   });
 });
