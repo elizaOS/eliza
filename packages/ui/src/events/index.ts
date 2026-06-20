@@ -66,6 +66,41 @@ export const FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT =
 // ── Sidebar sync ─────────────────────────────────────────────────────────
 export const SELF_STATUS_SYNC_EVENT = "eliza:self-status-refresh" as const;
 
+// ── Shared → dedicated cloud-agent handoff ───────────────────────────────
+/**
+ * First-run provisions a personal cloud agent and lands the user in chat on the
+ * shared REST adapter while the dedicated container boots; a background
+ * supervisor then copies the conversation into the container and swaps the live
+ * client over. That swap used to be silent (`.catch(() => {})`). This event is
+ * the typed seam onto which the handoff's lifecycle is surfaced so chat-state /
+ * a progress indicator can render it instead of the user seeing nothing.
+ */
+export const CLOUD_HANDOFF_PHASE_EVENT = "eliza:cloud-handoff-phase" as const;
+
+/**
+ * `migrating` — personal container is provisioning; user is on the shared
+ * adapter. `switched` — conversation copied and the live client moved to the
+ * dedicated container (`switched-empty` when there was nothing to copy yet).
+ * `timed-out` / `failed` — the container never became ready (or an I/O step
+ * threw); the user safely stays on the working shared adapter. Mirrors
+ * `ConversationHandoffStatus` plus the `migrating` in-flight phase.
+ */
+export type CloudHandoffPhase =
+  | "migrating"
+  | "switched"
+  | "switched-empty"
+  | "timed-out"
+  | "failed";
+
+export interface CloudHandoffPhaseDetail {
+  agentId: string;
+  phase: CloudHandoffPhase;
+  /** Messages copied into the dedicated container on `switched`. */
+  imported?: number;
+  /** Error message on `failed`. */
+  error?: string;
+}
+
 // ── Tutorial ─────────────────────────────────────────────────────────────
 /**
  * The interactive tour drives the floating chat into a known state at the start
@@ -137,7 +172,8 @@ export type ElizaWindowEventName =
   | typeof VRM_TELEPORT_COMPLETE_EVENT
   | typeof FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT
   | typeof SELF_STATUS_SYNC_EVENT
-  | typeof TUTORIAL_CHAT_CONTROL_EVENT;
+  | typeof TUTORIAL_CHAT_CONTROL_EVENT
+  | typeof CLOUD_HANDOFF_PHASE_EVENT;
 
 export type ElizaEventName = ElizaDocumentEventName | ElizaWindowEventName;
 
@@ -169,6 +205,17 @@ export function dispatchElizaCloudStatusUpdated(
   detail: ElizaCloudStatusUpdatedDetail,
 ): void {
   dispatchWindowEvent(ELIZA_CLOUD_STATUS_UPDATED_EVENT, detail);
+}
+
+/**
+ * Surface a shared→dedicated handoff phase. Replaces the silent
+ * `startCloudAgentHandoff(...).catch(() => {})` discard so the typed
+ * {@link ConversationHandoffResult} reaches the UI.
+ */
+export function dispatchCloudHandoffPhase(
+  detail: CloudHandoffPhaseDetail,
+): void {
+  dispatchWindowEvent(CLOUD_HANDOFF_PHASE_EVENT, detail);
 }
 
 export function readPendingFocusConnector(): string | null {
