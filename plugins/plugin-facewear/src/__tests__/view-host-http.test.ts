@@ -9,7 +9,7 @@
  *   - URL parameter extraction works correctly
  *   - Route handler serializes the HTML response over a real socket
  *   - Content-Type and Content-Security-Policy headers are present in HTTP
- *   - All 26 registered XR view IDs produce valid HTTP 200 responses
+ *   - All 23 registered XR view IDs produce valid HTTP 200 responses
  */
 
 import { createServer } from "node:http";
@@ -17,7 +17,7 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { viewHostRoute } from "../routes/view-host.ts";
 
-// All 26 registered XR view IDs
+// All 23 registered XR view IDs
 const ALL_VIEW_IDS = [
   "wallet",
   "companion",
@@ -33,13 +33,10 @@ const ALL_VIEW_IDS = [
   "contacts",
   "messages",
   "feed",
-  "2004scape",
   "defense-of-the-agents",
   "clawville",
   "hyperliquid",
-  "hyperscape",
   "lifeops",
-  "scape",
   "screenshare",
   "trajectory-logger",
   "model-tester",
@@ -171,9 +168,8 @@ describe("viewHostRoute — real HTTP server integration", () => {
     expect(failures).toEqual([]);
   });
 
-  it("view-host pages with special characters in id (2004scape, defense-of-the-agents) serve correctly", async () => {
+  it("view-host pages with special characters in id (defense-of-the-agents) serve correctly", async () => {
     const specialIds = [
-      "2004scape",
       "defense-of-the-agents",
       "task-coordinator",
     ];
@@ -189,7 +185,7 @@ describe("viewHostRoute — real HTTP server integration", () => {
     }
   });
 
-  it("all 26 view-host pages embed the correct bundle URL for the elizaOS views API", async () => {
+  it("all 23 view-host pages embed the correct bundle URL for the elizaOS views API", async () => {
     const failures: string[] = [];
     for (const id of ALL_VIEW_IDS) {
       const res = await fetch(
@@ -207,7 +203,7 @@ describe("viewHostRoute — real HTTP server integration", () => {
     expect(failures).toEqual([]);
   });
 
-  it("all 26 view-host pages load React from CDN importmap (not bundled)", async () => {
+  it("all 23 view-host pages load React from CDN importmap (not bundled)", async () => {
     const failures: string[] = [];
     for (const id of ALL_VIEW_IDS) {
       const res = await fetch(
@@ -246,7 +242,7 @@ describe("viewHostRoute — real HTTP server integration", () => {
     expect(failures).toEqual([]);
   });
 
-  it("concurrent requests for all 26 view ids resolve correctly in parallel", async () => {
+  it("concurrent requests for all 23 view ids resolve correctly in parallel", async () => {
     // Proves the server handles concurrent requests without state corruption
     const responses = await Promise.all(
       ALL_VIEW_IDS.map((id) =>

@@ -94,16 +94,12 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: "https",
     iosScheme: "https",
-    // Allow the webview to connect to the embedded API server and game servers
+    // Allow the webview to connect to the embedded API server
     allowNavigation: [
       ...localNavigationHosts,
       "*.elizacloud.ai",
       "eliza.app",
       "*.eliza.app",
-      "rs-sdk-demo.fly.dev",
-      "*.fly.dev",
-      "hyperscape.gg",
-      "*.hyperscape.gg",
     ],
   },
   plugins: {

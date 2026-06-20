@@ -227,7 +227,6 @@
         "@elizaos/capacitor-websiteblocker": "workspace:*",
         "@elizaos/capacitor-wifi": "workspace:*",
         "@elizaos/logger": "workspace:*",
-        "@elizaos/plugin-2004scape": "workspace:*",
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
         "@elizaos/plugin-background-runner": "workspace:*",
         "@elizaos/plugin-blocker": "workspace:*",
@@ -240,12 +239,10 @@
         "@elizaos/plugin-facewear": "workspace:*",
         "@elizaos/plugin-feed": "workspace:*",
         "@elizaos/plugin-hyperliquid-app": "workspace:*",
-        "@elizaos/plugin-hyperscape": "workspace:*",
         "@elizaos/plugin-messages": "workspace:*",
         "@elizaos/plugin-personal-assistant": "workspace:*",
         "@elizaos/plugin-phone": "workspace:*",
         "@elizaos/plugin-polymarket-app": "workspace:*",
-        "@elizaos/plugin-scape": "workspace:*",
         "@elizaos/plugin-shopify-ui": "workspace:*",
         "@elizaos/plugin-steward-app": "workspace:*",
         "@elizaos/plugin-task-coordinator": "workspace:*",
@@ -2941,26 +2938,6 @@
         "vitest": "^4.1.5",
       },
     },
-    "plugins/plugin-2004scape": {
-      "name": "@elizaos/plugin-2004scape",
-      "version": "2.0.3-beta.14",
-      "dependencies": {
-        "@elizaos/agent": "workspace:*",
-        "@elizaos/app-core": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-      },
-      "devDependencies": {
-        "tsup": "^8.5.1",
-        "typescript": "^6.0.3",
-        "vite": "^8.0.0",
-      },
-      "peerDependencies": {
-        "@elizaos/core": "workspace:*",
-        "react": "^19.0.0",
-      },
-    },
     "plugins/plugin-agent-orchestrator": {
       "name": "@elizaos/plugin-agent-orchestrator",
       "version": "2.0.3-beta.14",
@@ -4000,24 +3977,6 @@
         "vitest": "^4.1.5",
       },
     },
-    "plugins/plugin-hyperscape": {
-      "name": "@elizaos/plugin-hyperscape",
-      "version": "2.0.3-beta.14",
-      "dependencies": {
-        "@elizaos/app-core": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-        "react": "^19.0.0",
-      },
-      "devDependencies": {
-        "tsup": "^8.5.1",
-        "vite": "^8.0.0",
-      },
-      "peerDependencies": {
-        "@elizaos/core": "workspace:*",
-      },
-    },
     "plugins/plugin-imessage": {
       "name": "@elizaos/plugin-imessage",
       "version": "2.0.3-beta.14",
@@ -5013,22 +4972,6 @@
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
         "vitest": "^4.1.4",
-      },
-    },
-    "plugins/plugin-scape": {
-      "name": "@elizaos/plugin-scape",
-      "version": "2.0.3-beta.14",
-      "dependencies": {
-        "@elizaos/agent": "workspace:*",
-        "@elizaos/app-core": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-        "react": "^19.0.0",
-      },
-      "devDependencies": {
-        "tsup": "^8.5.1",
-        "vite": "^8.0.0",
       },
     },
     "plugins/plugin-scheduling": {
@@ -6681,8 +6624,6 @@
 
     "@elizaos/os-usb-installer": ["@elizaos/os-usb-installer@workspace:packages/os/usb-installer"],
 
-    "@elizaos/plugin-2004scape": ["@elizaos/plugin-2004scape@workspace:plugins/plugin-2004scape"],
-
     "@elizaos/plugin-agent-orchestrator": ["@elizaos/plugin-agent-orchestrator@workspace:plugins/plugin-agent-orchestrator"],
 
     "@elizaos/plugin-agent-skills": ["@elizaos/plugin-agent-skills@workspace:plugins/plugin-agent-skills"],
@@ -6793,8 +6734,6 @@
 
     "@elizaos/plugin-hyperliquid-app": ["@elizaos/plugin-hyperliquid-app@workspace:plugins/plugin-hyperliquid-app"],
 
-    "@elizaos/plugin-hyperscape": ["@elizaos/plugin-hyperscape@workspace:plugins/plugin-hyperscape"],
-
     "@elizaos/plugin-imessage": ["@elizaos/plugin-imessage@workspace:plugins/plugin-imessage"],
 
     "@elizaos/plugin-inbox": ["@elizaos/plugin-inbox@workspace:plugins/plugin-inbox"],
@@ -6862,8 +6801,6 @@
     "@elizaos/plugin-rlm": ["@elizaos/plugin-rlm@workspace:plugins/plugin-rlm"],
 
     "@elizaos/plugin-roblox": ["@elizaos/plugin-roblox@workspace:plugins/plugin-roblox"],
-
-    "@elizaos/plugin-scape": ["@elizaos/plugin-scape@workspace:plugins/plugin-scape"],
 
     "@elizaos/plugin-scheduling": ["@elizaos/plugin-scheduling@workspace:plugins/plugin-scheduling"],
 

@@ -90,7 +90,6 @@
       "@elizaos/core/testing": ["./packages/core/src/testing/index.ts"],
       "@elizaos/core/*": ["./packages/core/src/*"],
       "@elizaos/logger": ["./packages/logger/src/index.ts"],
-      "@elizaos/plugin-2004scape": ["./plugins/plugin-2004scape/src/index.ts"],
       "@elizaos/plugin-agent-orchestrator": [
         "./plugins/plugin-agent-orchestrator/src/index.ts"
       ],
@@ -141,9 +140,6 @@
       "@elizaos/plugin-hyperliquid-app": [
         "./plugins/plugin-hyperliquid-app/src/index.ts"
       ],
-      "@elizaos/plugin-hyperscape": [
-        "./plugins/plugin-hyperscape/src/index.ts"
-      ],
       "@elizaos/plugin-imessage": ["./plugins/plugin-imessage/src/index.ts"],
       "@elizaos/plugin-personal-assistant": ["./plugins/plugin-personal-assistant/src/index.ts"],
       "@elizaos/plugin-local-inference": [
@@ -168,7 +164,6 @@
       "@elizaos/plugin-remote-manifest": [
         "./packages/plugin-remote-manifest/src/index.ts"
       ],
-      "@elizaos/plugin-scape": ["./plugins/plugin-scape/src/index.ts"],
       "@elizaos/plugin-shell": ["./plugins/plugin-shell/index.ts"],
       "@elizaos/plugin-shopify-ui": [
         "./plugins/plugin-shopify-ui/src/index.ts"

@@ -59,7 +59,6 @@ not injectable need that refactor first.
 | Hyperliquid | api.hyperliquid.xyz/info | yes | **validated** | `plugin-hyperliquid-app/src/routes.{contract,real}.test.ts`. |
 | ClawVille | api.clawville.world | yes | **contract-tested** | `plugin-clawville/src/routes.test.ts` (recorded REAL_CONNECT/perception). Fixed stale building ids via perception-aware resolution. Next: live-drift test. |
 | Defense of the Agents | defenseoftheagents.com | yes | **contract-tested** | `plugin-defense-of-the-agents/src/routes.contract.test.ts`. Next: live-drift. |
-| Scape | scape backend | partial | **contract-tested** | `plugin-scape/src/routes.telemetry.test.ts` (real-shaped telemetry parser). |
 | Shopify | Admin GraphQL 2025-04 | no (store token) | **contract-tested** | `plugin-shopify-ui/src/routes.contract.test.ts` + customer fields fixed to `numberOfOrders`/`amountSpent` (verified vs live 2025-04 docs). Next: gated live-refresh. |
 | Steward | KMS/anvil bridge | no | **contract-tested** | `plugin-steward-app/src/steward-bridge.contract.test.ts`. |
 | Vincent | heyvincent.ai OAuth | no (OAuth) | **contract-tested** | `plugin-vincent/src/vincent-oauth-parser.contract.test.ts`. Next: gated live OAuth-profile capture. |

@@ -270,30 +270,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["defense-of-the-agents", "defense-command", "chatContent"],
     },
   ],
-  "2004scape": [
-    {
-      spec: "packages/app/test/ui-smoke/game-operator-gui-interactions.spec.ts",
-      proves:
-        "Launches the operator game app, validates viewer load, suggested prompts, control routes, and chat message flow.",
-      signals: ["2004scape-live-operator-surface", "controlAction"],
-    },
-  ],
-  hyperscape: [
-    {
-      spec: "packages/app/test/ui-smoke/game-operator-gui-interactions.spec.ts",
-      proves:
-        "Launches the Hyperscape host, validates viewer load, diagnostics, and the exposed session-control route.",
-      signals: ["hostOnly", "game-session-control", "controlAction"],
-    },
-  ],
-  scape: [
-    {
-      spec: "packages/app/test/ui-smoke/game-operator-gui-interactions.spec.ts",
-      proves:
-        "Launches the operator game app, validates viewer load, suggested prompts, control routes, and chat message flow.",
-      signals: ["scape-live-operator-surface", "controlAction"],
-    },
-  ],
   orchestrator: [
     {
       spec: "packages/app/test/ui-smoke/orchestrator-gui-workbench.spec.ts",
@@ -457,7 +433,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(63);
+    expect(visualCases.length).toBe(57);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

@@ -205,18 +205,6 @@ declare module "@elizaos/app-feed" {
   export {};
 }
 
-declare module "@elizaos/app-scape" {
-  export {};
-}
-
-declare module "@elizaos/app-hyperscape" {
-  export {};
-}
-
-declare module "@elizaos/app-2004scape" {
-  export {};
-}
-
 declare module "@elizaos/app-defense-of-the-agents" {
   export {};
 }

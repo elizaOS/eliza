@@ -12,8 +12,7 @@
 // Asserts populated DATA across every section (Live Status / Market Watch /
 // Team / Steering + live chips), and drives every control (Hero + Steering
 // Pause/Resume -> client.controlAppRun, suggested-prompt -> sendAppRunMessage),
-// plus the no-run waiting state. The React-instance pinning mirrors the sibling
-// plugin-2004scape operator-surface harness.
+// plus the no-run waiting state.
 
 import { existsSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";

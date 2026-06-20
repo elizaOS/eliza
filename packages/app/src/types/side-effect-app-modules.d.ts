@@ -1,7 +1,4 @@
 declare module "@elizaos/plugin-feed";
-declare module "@elizaos/plugin-scape";
-declare module "@elizaos/plugin-hyperscape";
-declare module "@elizaos/plugin-2004scape";
 declare module "@elizaos/plugin-defense-of-the-agents";
 declare module "@elizaos/plugin-clawville";
 declare module "@elizaos/plugin-trajectory-logger";

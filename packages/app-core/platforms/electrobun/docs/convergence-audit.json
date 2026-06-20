@@ -1,9 +1,212 @@
 {
-  "generatedAt": "2026-05-17T17:53:44.862Z",
-  "branch": "codex/phase-11-event-bridge-wip",
-  "aheadBehind": "22\t0",
+  "generatedAt": "2026-06-20T19:58:51.166Z",
+  "branch": "develop",
+  "aheadBehind": "1\t0",
   "dirtyStatus": [
-    "M packages/app-core/platforms/electrobun/scripts/generate-convergence-audit.ts"
+    "M bun.lock",
+    "M knip.json",
+    "M packages/agent/src/__tests__/game-tui-mounted-surfaces.test.tsx",
+    "M packages/agent/src/__tests__/plugin-tui-view-coverage.test.ts",
+    "M packages/agent/src/__tests__/view-agent-surface-coverage.test.ts",
+    "M packages/agent/src/__tests__/view-bundle-lifecycle.test.ts",
+    "M packages/agent/src/__tests__/view-user-journeys.ts",
+    "M packages/agent/src/runtime/view-action-affinity.test.ts",
+    "M packages/agent/src/runtime/view-action-affinity.ts",
+    "M packages/agent/src/services/app-package-modules.ts",
+    "M packages/agent/src/services/registry-client-app-meta.ts",
+    "M packages/app-core/platforms/android/app/capacitor.build.gradle",
+    "M packages/app-core/platforms/android/capacitor.settings.gradle",
+    "M packages/app-core/platforms/electrobun/docs/convergence-audit.json",
+    "M packages/app-core/platforms/electrobun/docs/convergence-audit.md",
+    "M packages/app-core/platforms/electrobun/scripts/generate-convergence-audit.ts",
+    "M packages/app-core/platforms/electrobun/src/native/canvas.ts",
+    "M packages/app-core/scripts/playwright-ui-smoke-api-stub.mjs",
+    "M packages/app-core/scripts/release-check.ts",
+    "D packages/app-core/src/registry/entries/apps/2004scape.json",
+    "D packages/app-core/src/registry/entries/apps/hyperscape.json",
+    "D packages/app-core/src/registry/entries/apps/scape.json",
+    "M packages/app/capacitor.config.ts",
+    "M packages/app/docs/EXTERNAL_API_MOCK_VALIDATION.md",
+    "M packages/app/package.json",
+    "M packages/app/src/plugin-registrations.test.ts",
+    "M packages/app/src/plugin-registrations.ts",
+    "M packages/app/src/types/app-plugin-modules.d.ts",
+    "M packages/app/src/types/side-effect-app-modules.d.ts",
+    "M packages/app/test/electrobun-packaged/mock-api.ts",
+    "M packages/app/test/external-api-mock-validation.test.ts",
+    "M packages/app/test/fixtures/plugin-view-visual-review.md",
+    "M packages/app/test/hmr/hmr-dependency-levels.spec.ts",
+    "M packages/app/test/route-coverage.test.ts",
+    "M packages/app/test/ui-smoke/apps-session-route-cases.ts",
+    "D  packages/app/test/ui-smoke/game-operator-gui-interactions.spec.ts",
+    "M packages/app/test/ui-smoke/plugin-view-cases.ts",
+    "M packages/app/test/view-interaction-coverage.test.ts",
+    "M packages/app/tsconfig.typecheck.json",
+    "M packages/app/vite.config.ts",
+    "M packages/cloud-shared/src/lib/services/eliza-sandbox.ts",
+    "M packages/cloud-shared/src/lib/services/provisioning-jobs-delete-enqueue.test.ts",
+    "M packages/cloud-shared/src/lib/services/provisioning-jobs.ts",
+    "M packages/core/src/generated/action-docs.ts",
+    "M packages/core/src/runtime.ts",
+    "M packages/core/src/services/message.ts",
+    "M packages/core/src/types/runtime.ts",
+    "M packages/docs/action-catalog.md",
+    "M packages/docs/apps/mobile.md",
+    "M packages/docs/apps/overview.md",
+    "M packages/docs/dashboard/apps.md",
+    "M packages/elizaos/templates/project/apps/app/capacitor.config.ts",
+    "M packages/elizaos/templates/project/apps/app/test/electrobun-packaged/mock-api.ts",
+    "M packages/elizaos/templates/project/apps/app/tsconfig.json",
+    "M packages/prompts/specs/actions/plugins.generated.json",
+    "M packages/shared/src/contracts/apps.ts",
+    "M packages/shared/src/i18n/keywords/action-search.generated.keywords.json",
+    "M packages/shared/src/i18n/keywords/shared.keywords.json",
+    "M packages/ui/src/components/apps/GameView.tsx",
+    "M packages/ui/src/components/apps/helpers.ts",
+    "M packages/ui/src/components/shell/ContinuousChatOverlay.test.tsx",
+    "M packages/ui/src/components/shell/ContinuousChatOverlay.tsx",
+    "M packages/ui/src/components/views/ViewIcon.tsx",
+    "D plugins/plugin-2004scape/AGENTS.md",
+    "D plugins/plugin-2004scape/CLAUDE.md",
+    "D plugins/plugin-2004scape/README.md",
+    "D plugins/plugin-2004scape/package.json",
+    "D plugins/plugin-2004scape/src/__tests__/detail-extension.test.tsx",
+    "D plugins/plugin-2004scape/src/__tests__/fixtures.ts",
+    "D plugins/plugin-2004scape/src/__tests__/interact.test.ts",
+    "D plugins/plugin-2004scape/src/__tests__/operator-surface.test.tsx",
+    "D plugins/plugin-2004scape/src/__tests__/telemetry-parser.contract.test.ts",
+    "D plugins/plugin-2004scape/src/__tests__/tui-view.test.tsx",
+    "D plugins/plugin-2004scape/src/actions/game-service.ts",
+    "D plugins/plugin-2004scape/src/actions/index.ts",
+    "D plugins/plugin-2004scape/src/actions/rs2004.ts",
+    "D plugins/plugin-2004scape/src/components/TwoThousandFourScapeSpatialView.test.tsx",
+    "D plugins/plugin-2004scape/src/components/TwoThousandFourScapeSpatialView.tsx",
+    "D plugins/plugin-2004scape/src/gateway/index.ts",
+    "D plugins/plugin-2004scape/src/index.ts",
+    "D plugins/plugin-2004scape/src/providers/bot-state.ts",
+    "D plugins/plugin-2004scape/src/providers/goals.ts",
+    "D plugins/plugin-2004scape/src/providers/index.ts",
+    "D plugins/plugin-2004scape/src/providers/map-area.ts",
+    "D plugins/plugin-2004scape/src/providers/service-access.ts",
+    "D plugins/plugin-2004scape/src/providers/world-knowledge.ts",
+    "D plugins/plugin-2004scape/src/register-terminal-view.tsx",
+    "D plugins/plugin-2004scape/src/routes.ts",
+    "D plugins/plugin-2004scape/src/sdk/actions-helpers.ts",
+    "D plugins/plugin-2004scape/src/sdk/actions.ts",
+    "D plugins/plugin-2004scape/src/sdk/index.ts",
+    "D plugins/plugin-2004scape/src/sdk/types.ts",
+    "D plugins/plugin-2004scape/src/services/autonomous-loop-prompt.ts",
+    "D plugins/plugin-2004scape/src/services/bot-manager.ts",
+    "D plugins/plugin-2004scape/src/services/game-service.ts",
+    "D plugins/plugin-2004scape/src/shared-state.ts",
+    "D plugins/plugin-2004scape/src/ui/2004scape-view-bundle.ts",
+    "D plugins/plugin-2004scape/src/ui/TwoThousandFourScapeDetailExtension.tsx",
+    "D plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.helpers.ts",
+    "D plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.interact.ts",
+    "D plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx",
+    "D plugins/plugin-2004scape/src/ui/game-surface-shell.tsx",
+    "D plugins/plugin-2004scape/src/ui/index.ts",
+    "D plugins/plugin-2004scape/tsconfig.build.json",
+    "D plugins/plugin-2004scape/tsconfig.json",
+    "D plugins/plugin-2004scape/vite.config.views.ts",
+    "D plugins/plugin-2004scape/vitest.config.ts",
+    "M plugins/plugin-app-manager/AGENTS.md",
+    "M plugins/plugin-app-manager/CLAUDE.md",
+    "M plugins/plugin-app-manager/src/api/apps-routes.ts",
+    "M plugins/plugin-app-manager/src/services/app-manager.ts",
+    "M plugins/plugin-facewear/app-xr/e2e/all-views-crud.spec.ts",
+    "M plugins/plugin-facewear/src/__tests__/feature-parity.test.ts",
+    "M plugins/plugin-facewear/src/__tests__/view-host-http.test.ts",
+    "M plugins/plugin-facewear/src/__tests__/view-host.test.ts",
+    "M plugins/plugin-facewear/src/actions/view-actions.ts",
+    "M plugins/plugin-facewear/src/actions/xr-view-actions.ts",
+    "M plugins/plugin-feed/src/ui/FeedDetailExtension.render.test.tsx",
+    "M plugins/plugin-feed/src/ui/FeedOperatorSurface.render.test.tsx",
+    "D plugins/plugin-hyperscape/AGENTS.md",
+    "D plugins/plugin-hyperscape/CLAUDE.md",
+    "D plugins/plugin-hyperscape/README.md",
+    "D plugins/plugin-hyperscape/package.json",
+    "D plugins/plugin-hyperscape/src/components/HyperscapeSpatialView.test.tsx",
+    "D plugins/plugin-hyperscape/src/components/HyperscapeSpatialView.tsx",
+    "D plugins/plugin-hyperscape/src/index.ts",
+    "D plugins/plugin-hyperscape/src/register-terminal-view.tsx",
+    "D plugins/plugin-hyperscape/src/routes.contract.test.ts",
+    "D plugins/plugin-hyperscape/src/routes.ts",
+    "D plugins/plugin-hyperscape/src/ui/HyperscapeDetailExtension.test.tsx",
+    "D plugins/plugin-hyperscape/src/ui/HyperscapeDetailExtension.tsx",
+    "D plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.interact.test.ts",
+    "D plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.interact.ts",
+    "D plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.test.tsx",
+    "D plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.tsx",
+    "D plugins/plugin-hyperscape/src/ui/HyperscapeTuiView.test.tsx",
+    "D plugins/plugin-hyperscape/src/ui/hyperscape-view-bundle.ts",
+    "D plugins/plugin-hyperscape/src/ui/index.ts",
+    "D plugins/plugin-hyperscape/src/ui/test-support.ts",
+    "D plugins/plugin-hyperscape/tsconfig.build.json",
+    "D plugins/plugin-hyperscape/tsconfig.json",
+    "D plugins/plugin-hyperscape/vite.config.views.ts",
+    "D plugins/plugin-hyperscape/vitest.config.ts",
+    "D plugins/plugin-scape/AGENTS.md",
+    "D plugins/plugin-scape/CLAUDE.md",
+    "D plugins/plugin-scape/README.md",
+    "D plugins/plugin-scape/elizaos.plugin.json",
+    "D plugins/plugin-scape/package.json",
+    "D plugins/plugin-scape/src/actions/index.ts",
+    "D plugins/plugin-scape/src/actions/param-parser.ts",
+    "D plugins/plugin-scape/src/actions/scape.ts",
+    "D plugins/plugin-scape/src/components/ScapeSpatialView.test.tsx",
+    "D plugins/plugin-scape/src/components/ScapeSpatialView.tsx",
+    "D plugins/plugin-scape/src/index.ts",
+    "D plugins/plugin-scape/src/journal/journal-store.ts",
+    "D plugins/plugin-scape/src/journal/types.ts",
+    "D plugins/plugin-scape/src/providers/bot-state.ts",
+    "D plugins/plugin-scape/src/providers/goals.ts",
+    "D plugins/plugin-scape/src/providers/index.ts",
+    "D plugins/plugin-scape/src/providers/inventory.ts",
+    "D plugins/plugin-scape/src/providers/journal.ts",
+    "D plugins/plugin-scape/src/providers/nearby.ts",
+    "D plugins/plugin-scape/src/register-terminal-view.tsx",
+    "D plugins/plugin-scape/src/routes.telemetry.test.ts",
+    "D plugins/plugin-scape/src/routes.ts",
+    "D plugins/plugin-scape/src/sdk/index.ts",
+    "D plugins/plugin-scape/src/sdk/json.ts",
+    "D plugins/plugin-scape/src/sdk/types.ts",
+    "D plugins/plugin-scape/src/services/agent-identity.ts",
+    "D plugins/plugin-scape/src/services/autonomous-loop-prompt.ts",
+    "D plugins/plugin-scape/src/services/bot-manager.ts",
+    "D plugins/plugin-scape/src/services/game-service.ts",
+    "D plugins/plugin-scape/src/services/journal-service.ts",
+    "D plugins/plugin-scape/src/shared-state.ts",
+    "D plugins/plugin-scape/src/ui/ScapeOperatorSurface.interact.test.ts",
+    "D plugins/plugin-scape/src/ui/ScapeOperatorSurface.interact.ts",
+    "D plugins/plugin-scape/src/ui/ScapeOperatorSurface.test.tsx",
+    "D plugins/plugin-scape/src/ui/ScapeOperatorSurface.tsx",
+    "D plugins/plugin-scape/src/ui/ScapeTuiView.test.tsx",
+    "D plugins/plugin-scape/src/ui/game-surface-shell.tsx",
+    "D plugins/plugin-scape/src/ui/index.ts",
+    "D plugins/plugin-scape/src/ui/scape-view-bundle.ts",
+    "D plugins/plugin-scape/src/ui/test-support.ts",
+    "D plugins/plugin-scape/tsconfig.build.json",
+    "D plugins/plugin-scape/tsconfig.json",
+    "D plugins/plugin-scape/vite.config.views.ts",
+    "D plugins/plugin-scape/vitest.config.ts",
+    "M plugins/plugin-trajectory-logger/package.json",
+    "M plugins/plugin-trajectory-logger/src/index.ts",
+    "M plugins/plugin-xr/src/__tests__/xr-bundle-coverage.test.ts",
+    "M plugins/plugin-xr/src/__tests__/xr-feature-parity.test.ts",
+    "M plugins/plugin-xr/src/__tests__/xr-functional-parity.test.ts",
+    "M plugins/plugin-xr/src/__tests__/xr-view-host-http.test.ts",
+    "M plugins/plugin-xr/src/__tests__/xr-view-host.test.ts",
+    "M plugins/plugin-xr/src/actions/xr-view-actions.ts",
+    "M scripts/spatial-convert-plugin-views.workflow.js",
+    "M tsconfig.dist-paths.json",
+    "M tsconfig.json",
+    "?? _railway_errors.mjs",
+    "?? _railway_inspect.mjs",
+    "?? a.out",
+    "?? packages/core/src/__tests__/compose-state-refresh-providers.test.ts",
+    "?? packages/ui/src/components/shell/ContinuousChatOverlay.fuzz.test.tsx",
+    "?? plugins/plugin-trajectory-logger/src/plugin.ts"
   ],
   "entries": [
     {
@@ -17,7 +220,9 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["dynamic-views"],
+      "relatedLayers": [
+        "dynamic-views"
+      ],
       "recommendedNextAction": "add-dynamic-view-manifest",
       "risk": "medium",
       "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
@@ -33,8 +238,13 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.fs"],
-      "relatedLayers": ["electrobun-shell", "agent-runtime"],
+      "relatedRemotes": [
+        "eliza.fs"
+      ],
+      "relatedLayers": [
+        "electrobun-shell",
+        "agent-runtime"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "low",
       "notes": "Already a desktop/system capability provider. Keep scoped and brokered through host APIs."
@@ -50,8 +260,13 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.git"],
-      "relatedLayers": ["electrobun-shell", "agent-runtime"],
+      "relatedRemotes": [
+        "eliza.git"
+      ],
+      "relatedLayers": [
+        "electrobun-shell",
+        "agent-runtime"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "low",
       "notes": "Already a desktop/system capability provider. Keep scoped and brokered through host APIs."
@@ -67,8 +282,13 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.local-model"],
-      "relatedLayers": ["electrobun-shell", "agent-runtime"],
+      "relatedRemotes": [
+        "eliza.local-model"
+      ],
+      "relatedLayers": [
+        "electrobun-shell",
+        "agent-runtime"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "low",
       "notes": "Already a desktop/system capability provider. Keep scoped and brokered through host APIs."
@@ -84,8 +304,13 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.pty"],
-      "relatedLayers": ["electrobun-shell", "agent-runtime"],
+      "relatedRemotes": [
+        "eliza.pty"
+      ],
+      "relatedLayers": [
+        "electrobun-shell",
+        "agent-runtime"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "low",
       "notes": "Already a desktop/system capability provider. Keep scoped and brokered through host APIs."
@@ -101,8 +326,13 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.runtime"],
-      "relatedLayers": ["electrobun-shell", "agent-runtime"],
+      "relatedRemotes": [
+        "eliza.runtime"
+      ],
+      "relatedLayers": [
+        "electrobun-shell",
+        "agent-runtime"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "low",
       "notes": "Already a desktop/system capability provider. Keep scoped and brokered through host APIs."
@@ -118,8 +348,13 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.runtime"],
-      "relatedLayers": ["dynamic-views", "trace"],
+      "relatedRemotes": [
+        "eliza.runtime"
+      ],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "medium",
       "notes": "Dev/admin only. Do not turn into production UI."
@@ -135,7 +370,11 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["electrobun-shell", "trace", "dynamic-views"],
+      "relatedLayers": [
+        "electrobun-shell",
+        "trace",
+        "dynamic-views"
+      ],
       "recommendedNextAction": "needs-owner-decision",
       "risk": "medium",
       "ownerDecisionNeeded": true,
@@ -152,7 +391,9 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["agent-runtime"],
+      "relatedLayers": [
+        "agent-runtime"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "low",
       "notes": "AgentManager/Electrobun may own lifecycle, but agent runtime code stays in runtime packages."
@@ -168,7 +409,9 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["production-app"],
+      "relatedLayers": [
+        "production-app"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "low",
       "notes": "Hard no-migration item. Do not replace with eliza.surface or fixed dynamic-view panels."
@@ -184,7 +427,10 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["production-app", "electrobun-shell"],
+      "relatedLayers": [
+        "production-app",
+        "electrobun-shell"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "low",
       "notes": "Hard no-migration item. Electrobun platform code can add host docs, not absorb app-core ownership."
@@ -200,7 +446,11 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["electrobun-shell", "dynamic-views", "trace"],
+      "relatedLayers": [
+        "electrobun-shell",
+        "dynamic-views",
+        "trace"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "low",
       "notes": "Electrobun is the shell, not the agent runtime. Keep AgentManager as runtime lifecycle owner."
@@ -216,7 +466,10 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["dynamic-views", "electrobun-shell"],
+      "relatedLayers": [
+        "dynamic-views",
+        "electrobun-shell"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "low",
       "notes": "Contextual view substrate only. Do not convert into dashboard navigation."
@@ -232,7 +485,10 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace", "dynamic-views"],
+      "relatedLayers": [
+        "trace",
+        "dynamic-views"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "low",
       "notes": "Observability spine. Plugins should emit trace events; trace should not become a static dashboard."
@@ -248,7 +504,12 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["voice", "trace", "dynamic-views", "local-inference"],
+      "relatedLayers": [
+        "voice",
+        "trace",
+        "dynamic-views",
+        "local-inference"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "low",
       "notes": "Voice is a pipeline. Keep live behavior gated and report through trace."
@@ -264,7 +525,9 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["agent-runtime"],
+      "relatedLayers": [
+        "agent-runtime"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "low",
       "notes": "Hard no-migration item. Runtime semantics stay here."
@@ -273,14 +536,16 @@
       "id": "packages/electrobun-remote-plugins",
       "path": "packages/electrobun-remote-plugins",
       "category": "desktop-shell",
-      "currentPurpose": "Eliza-flavored remote plugin runtime primitives for Electrobun desktop shells.",
+      "currentPurpose": "Electrobun module/Remote package substrate.",
       "keepAs": "core",
       "shouldBecomeRemote": false,
       "shouldRegisterDynamicViews": false,
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["electrobun-shell"],
+      "relatedLayers": [
+        "electrobun-shell"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "low",
       "notes": "Keep as module runtime substrate. Do not turn into a second plugin system."
@@ -296,26 +561,16 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedRemotes": ["eliza.local-model"],
-      "relatedLayers": ["local-inference", "voice"],
+      "relatedRemotes": [
+        "eliza.local-model"
+      ],
+      "relatedLayers": [
+        "local-inference",
+        "voice"
+      ],
       "recommendedNextAction": "connect-to-local-model",
       "risk": "medium",
       "notes": "Source of truth for Eliza-1 and voice metadata. Do not duplicate in Electrobun."
-    },
-    {
-      "id": "plugin-2004scape",
-      "path": "plugins/plugin-2004scape",
-      "category": "app-plugin",
-      "currentPurpose": "2004scape game service — autonomous RS agent with SDK WebSocket layer",
-      "keepAs": "app-plugin",
-      "shouldBecomeRemote": false,
-      "shouldRegisterDynamicViews": false,
-      "shouldEmitTraceEvents": false,
-      "shouldUseRuntimeBroker": false,
-      "shouldStayOutOfElectrobun": true,
-      "recommendedNextAction": "add-trace-hooks",
-      "risk": "medium",
-      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
       "id": "plugin-action-bench",
@@ -343,7 +598,10 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["dynamic-views", "trace"],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
       "recommendedNextAction": "add-dynamic-view-manifest",
       "risk": "medium",
       "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
@@ -359,10 +617,29 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["dynamic-views", "trace"],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
       "recommendedNextAction": "add-dynamic-view-manifest",
       "risk": "medium",
       "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
+    },
+    {
+      "id": "plugin-ainex",
+      "path": "plugins/plugin-ainex",
+      "category": "unknown",
+      "currentPurpose": "Drives Hiwonder AiNex (and other) humanoid robots via a websocket bridge; integrates camera into plugin-vision and exposes joystick + servo + action-group control to the agent.",
+      "keepAs": "needs-review",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
       "id": "plugin-anthropic",
@@ -405,8 +682,12 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.local-model"],
-      "relatedLayers": ["local-inference"],
+      "relatedRemotes": [
+        "eliza.local-model"
+      ],
+      "relatedLayers": [
+        "local-inference"
+      ],
       "recommendedNextAction": "connect-to-local-model",
       "risk": "medium",
       "notes": "Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers."
@@ -431,21 +712,6 @@
       "path": "plugins/plugin-app-manager",
       "category": "app-plugin",
       "currentPurpose": "App lifecycle plugin for elizaOS: hosted-app launch / list / close, run-state store, and the /api/apps/* route surface. Extracted from @elizaos/agent (Phase 4G).",
-      "keepAs": "app-plugin",
-      "shouldBecomeRemote": false,
-      "shouldRegisterDynamicViews": false,
-      "shouldEmitTraceEvents": false,
-      "shouldUseRuntimeBroker": false,
-      "shouldStayOutOfElectrobun": true,
-      "recommendedNextAction": "add-trace-hooks",
-      "risk": "medium",
-      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
-    },
-    {
-      "id": "plugin-feed",
-      "path": "plugins/plugin-feed",
-      "category": "app-plugin",
-      "currentPurpose": "Eliza app integration for Feed prediction market game.",
       "keepAs": "app-plugin",
       "shouldBecomeRemote": false,
       "shouldRegisterDynamicViews": false,
@@ -487,6 +753,22 @@
       "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
+      "id": "plugin-blocker",
+      "path": "plugins/plugin-blocker",
+      "category": "unknown",
+      "currentPurpose": "Focus / distraction control: website blocking via SelfControl hosts file + macOS app blocking. Schedules, allow-lists, override approval. Exposes the BLOCK action, websiteBlockerProvider + appBlockerProvider, a WebsiteBlockerService, drizzle pgSchema('app_blocker'), and a Focus overlay view.",
+      "keepAs": "needs-review",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
       "id": "plugin-bluebubbles",
       "path": "plugins/plugin-bluebubbles",
       "category": "connector-plugin",
@@ -497,7 +779,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -513,7 +797,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -529,11 +815,32 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.runtime"],
-      "relatedLayers": ["dynamic-views", "trace"],
+      "relatedRemotes": [
+        "eliza.runtime"
+      ],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
       "recommendedNextAction": "add-dynamic-view-manifest",
       "risk": "medium",
       "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
+    },
+    {
+      "id": "plugin-calendar",
+      "path": "plugins/plugin-calendar",
+      "category": "unknown",
+      "currentPurpose": "First-class calendar plugin for elizaOS agents: Google + Apple calendar feed, event CRUD, scheduling, and owner-facing calendar views. Consumed by @elizaos/plugin-personal-assistant and the task-coordinator surface.",
+      "keepAs": "needs-review",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
       "id": "plugin-calendly",
@@ -546,7 +853,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -562,7 +871,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -608,8 +919,15 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.runtime", "eliza.fs", "eliza.pty", "eliza.git"],
-      "relatedLayers": ["trace"],
+      "relatedRemotes": [
+        "eliza.runtime",
+        "eliza.fs",
+        "eliza.pty",
+        "eliza.git"
+      ],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -625,8 +943,16 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.runtime", "eliza.fs", "eliza.pty", "eliza.git"],
-      "relatedLayers": ["dynamic-views", "trace"],
+      "relatedRemotes": [
+        "eliza.runtime",
+        "eliza.fs",
+        "eliza.pty",
+        "eliza.git"
+      ],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
       "recommendedNextAction": "add-dynamic-view-manifest",
       "risk": "medium",
       "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
@@ -672,8 +998,13 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.runtime"],
-      "relatedLayers": ["dynamic-views", "trace"],
+      "relatedRemotes": [
+        "eliza.runtime"
+      ],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
       "recommendedNextAction": "add-dynamic-view-manifest",
       "risk": "medium",
       "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
@@ -689,7 +1020,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -720,8 +1053,12 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.fs"],
-      "relatedLayers": ["trace"],
+      "relatedRemotes": [
+        "eliza.fs"
+      ],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -737,7 +1074,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -753,7 +1092,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -769,7 +1110,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -785,7 +1128,10 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["dynamic-views", "trace"],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
       "recommendedNextAction": "add-dynamic-view-manifest",
       "risk": "medium",
       "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
@@ -801,7 +1147,9 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["voice"],
+      "relatedLayers": [
+        "voice"
+      ],
       "recommendedNextAction": "connect-to-voice-pipeline",
       "risk": "medium",
       "notes": "Keep as a runtime voice participant. Wire availability, ASR/TTS/turn events, and latency into eliza.voice and trace."
@@ -817,7 +1165,9 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["voice"],
+      "relatedLayers": [
+        "voice"
+      ],
       "recommendedNextAction": "connect-to-voice-pipeline",
       "risk": "medium",
       "notes": "Keep as a runtime voice participant. Wire availability, ASR/TTS/turn events, and latency into eliza.voice and trace."
@@ -868,6 +1218,22 @@
       "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
+      "id": "plugin-facewear",
+      "path": "plugins/plugin-facewear",
+      "category": "unknown",
+      "currentPurpose": "Unified facewear plugin — Meta Quest 3, XReal, Even Realities G1/G2, Apple Vision Pro. Bidirectional voice+camera streaming, smartglasses display, view panels, device management.",
+      "keepAs": "needs-review",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
       "id": "plugin-farcaster",
       "path": "plugins/plugin-farcaster",
       "category": "connector-plugin",
@@ -878,10 +1244,27 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-feed",
+      "path": "plugins/plugin-feed",
+      "category": "app-plugin",
+      "currentPurpose": "Eliza app integration for Feed prediction market game.",
+      "keepAs": "app-plugin",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
       "id": "plugin-feishu",
@@ -894,10 +1277,28 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-finances",
+      "path": "plugins/plugin-finances",
+      "category": "unknown",
+      "currentPurpose": "Owner finances overlay app: finance dashboard, transactions, recurring charges. Hooks into other finance providers later.",
+      "keepAs": "needs-review",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
       "id": "plugin-form",
@@ -925,10 +1326,45 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["dynamic-views", "trace"],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
       "recommendedNextAction": "add-dynamic-view-manifest",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-gitpathologist",
+      "path": "plugins/plugin-gitpathologist",
+      "category": "unknown",
+      "currentPurpose": "Forensic git-history analysis for elizaOS agents: per-surface health timeline, drift inflection detection, rot post-mortem.",
+      "keepAs": "needs-review",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-goals",
+      "path": "plugins/plugin-goals",
+      "category": "unknown",
+      "currentPurpose": "Life direction plugin: owner-set long-horizon goals, recurring routines, reminders, alarms, daily check-ins, plus a self-care/mood/journal panel.",
+      "keepAs": "needs-review",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
       "id": "plugin-google",
@@ -941,7 +1377,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -957,7 +1395,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -988,7 +1428,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -1039,21 +1481,6 @@
       "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
-      "id": "plugin-hyperscape",
-      "path": "plugins/plugin-hyperscape",
-      "category": "app-plugin",
-      "currentPurpose": "Hyperscape game session resolvers — spectate-and-steer agent sessions with live data from the Hyperscape API",
-      "keepAs": "app-plugin",
-      "shouldBecomeRemote": false,
-      "shouldRegisterDynamicViews": false,
-      "shouldEmitTraceEvents": false,
-      "shouldUseRuntimeBroker": false,
-      "shouldStayOutOfElectrobun": true,
-      "recommendedNextAction": "add-trace-hooks",
-      "risk": "medium",
-      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
-    },
-    {
       "id": "plugin-imessage",
       "path": "plugins/plugin-imessage",
       "category": "connector-plugin",
@@ -1064,10 +1491,28 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-inbox",
+      "path": "plugins/plugin-inbox",
+      "category": "unknown",
+      "currentPurpose": "Unified cross-channel inbox triage with unresolved-item tracking, snooze, archive, and follow-up watcher. Drives the inbox-zero workflow across email/Discord/Telegram/WhatsApp/X/Slack and other non-SMS channels.",
+      "keepAs": "needs-review",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
       "id": "plugin-inmemorydb",
@@ -1095,25 +1540,12 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
-    },
-    {
-      "id": "plugin-personal-assistant",
-      "path": "plugins/plugin-personal-assistant",
-      "category": "app-plugin",
-      "currentPurpose": "LifeOps app plugin: routines, goals, Google Workspace, Apple Calendar, Apple Reminders, Twilio, browser companion control, hosts-file blocking (self-control), and related agent surfaces.",
-      "keepAs": "app-plugin",
-      "shouldBecomeRemote": false,
-      "shouldRegisterDynamicViews": false,
-      "shouldEmitTraceEvents": false,
-      "shouldUseRuntimeBroker": false,
-      "shouldStayOutOfElectrobun": true,
-      "recommendedNextAction": "add-trace-hooks",
-      "risk": "medium",
-      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
       "id": "plugin-line",
@@ -1126,7 +1558,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -1142,7 +1576,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -1158,7 +1594,9 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["local-inference"],
+      "relatedLayers": [
+        "local-inference"
+      ],
       "recommendedNextAction": "connect-to-local-model",
       "risk": "medium",
       "notes": "Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers."
@@ -1174,8 +1612,13 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.local-model"],
-      "relatedLayers": ["trace", "local-inference"],
+      "relatedRemotes": [
+        "eliza.local-model"
+      ],
+      "relatedLayers": [
+        "trace",
+        "local-inference"
+      ],
       "recommendedNextAction": "connect-to-local-model",
       "risk": "medium",
       "notes": "Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers."
@@ -1221,7 +1664,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -1237,7 +1682,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -1253,7 +1700,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -1272,22 +1721,6 @@
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
-    },
-    {
-      "id": "plugin-mlx",
-      "path": "plugins/plugin-mlx",
-      "category": "model-plugin",
-      "currentPurpose": "Plugin package plugin-mlx.",
-      "keepAs": "model-pipeline-participant",
-      "shouldBecomeRemote": false,
-      "shouldRegisterDynamicViews": false,
-      "shouldEmitTraceEvents": false,
-      "shouldUseRuntimeBroker": false,
-      "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["local-inference"],
-      "recommendedNextAction": "connect-to-local-model",
-      "risk": "medium",
-      "notes": "Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers."
     },
     {
       "id": "plugin-music",
@@ -1330,7 +1763,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1346,7 +1781,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1362,7 +1799,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1378,7 +1817,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1394,7 +1835,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1410,8 +1853,12 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.runtime"],
-      "relatedLayers": ["trace"],
+      "relatedRemotes": [
+        "eliza.runtime"
+      ],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1427,7 +1874,10 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["dynamic-views", "trace"],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
       "recommendedNextAction": "add-dynamic-view-manifest",
       "risk": "medium",
       "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
@@ -1443,7 +1893,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1459,7 +1911,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1475,7 +1929,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1491,7 +1947,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1507,8 +1965,12 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.local-model"],
-      "relatedLayers": ["local-inference"],
+      "relatedRemotes": [
+        "eliza.local-model"
+      ],
+      "relatedLayers": [
+        "local-inference"
+      ],
       "recommendedNextAction": "connect-to-local-model",
       "risk": "medium",
       "notes": "Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers."
@@ -1524,7 +1986,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1540,7 +2004,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1556,7 +2022,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1572,7 +2040,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1588,7 +2058,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1604,7 +2076,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1620,8 +2094,28 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
+      "risk": "medium",
+      "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
+    },
+    {
+      "id": "plugin-native-reminders",
+      "path": "plugins/plugin-native-reminders",
+      "category": "native-semantic-plugin",
+      "currentPurpose": "macOS Apple Reminders native bridge policy helpers for Eliza runtimes.",
+      "keepAs": "plugin",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": true,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedLayers": [
+        "trace"
+      ],
+      "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
     },
@@ -1636,8 +2130,13 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.runtime"],
-      "relatedLayers": ["dynamic-views", "trace"],
+      "relatedRemotes": [
+        "eliza.runtime"
+      ],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
       "recommendedNextAction": "add-dynamic-view-manifest",
       "risk": "medium",
       "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
@@ -1653,7 +2152,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1669,7 +2170,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1685,7 +2188,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1701,7 +2206,10 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace", "voice"],
+      "relatedLayers": [
+        "trace",
+        "voice"
+      ],
       "recommendedNextAction": "connect-to-voice-pipeline",
       "risk": "medium",
       "notes": "Keep as a runtime voice participant. Wire availability, ASR/TTS/turn events, and latency into eliza.voice and trace."
@@ -1717,7 +2225,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1733,10 +2243,28 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
+    },
+    {
+      "id": "plugin-nearai",
+      "path": "plugins/plugin-nearai",
+      "category": "unknown",
+      "currentPurpose": "Plugin package plugin-nearai.",
+      "keepAs": "needs-review",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
       "id": "plugin-ngrok",
@@ -1749,7 +2277,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -1765,7 +2295,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -1781,27 +2313,15 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.local-model"],
-      "relatedLayers": ["local-inference"],
+      "relatedRemotes": [
+        "eliza.local-model"
+      ],
+      "relatedLayers": [
+        "local-inference"
+      ],
       "recommendedNextAction": "connect-to-local-model",
       "risk": "medium",
       "notes": "Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers."
-    },
-    {
-      "id": "plugin-omnivoice",
-      "path": "plugins/plugin-omnivoice",
-      "category": "voice-plugin",
-      "currentPurpose": "Local TTS via omnivoice.cpp (k2-fsa OmniVoice) — voice cloning, voice design, and emotion-aware synthesis on CPU/Metal/CUDA/Vulkan.",
-      "keepAs": "voice-pipeline-participant",
-      "shouldBecomeRemote": false,
-      "shouldRegisterDynamicViews": false,
-      "shouldEmitTraceEvents": false,
-      "shouldUseRuntimeBroker": false,
-      "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["voice", "local-inference"],
-      "recommendedNextAction": "connect-to-voice-pipeline",
-      "risk": "medium",
-      "notes": "Keep as a runtime voice participant. Wire availability, ASR/TTS/turn events, and latency into eliza.voice and trace."
     },
     {
       "id": "plugin-openai",
@@ -1838,6 +2358,21 @@
       "path": "plugins/plugin-pdf",
       "category": "app-plugin",
       "currentPurpose": "Plugin package plugin-pdf.",
+      "keepAs": "app-plugin",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-personal-assistant",
+      "path": "plugins/plugin-personal-assistant",
+      "category": "app-plugin",
+      "currentPurpose": "Personal-assistant orchestration plugin: BRIEF, PRIORITIZE, PERSONAL_ASSISTANT cross-domain orchestration, scheduled-task owner CRUD, and default-pack composition. Slimmed from the legacy plugin-lifeops; domain-specific surfaces have moved to plugin-inbox, plugin-goals, plugin-calendar, plugin-blocker, plugin-finances, plugin-relationships, etc.",
       "keepAs": "app-plugin",
       "shouldBecomeRemote": false,
       "shouldRegisterDynamicViews": false,
@@ -1894,6 +2429,54 @@
       "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
+      "id": "plugin-relationships",
+      "path": "plugins/plugin-relationships",
+      "category": "unknown",
+      "currentPurpose": "Entity and relationship knowledge graph for Eliza agents. Provides the ENTITY umbrella action (person/org/place/project/concept CRUD), EntityStore with identity merge engine, RelationshipStore for typed edges, voice-observer-bridge, and an entity-graph context provider. Backed by drizzle pgSchema('app_relationships').",
+      "keepAs": "needs-review",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-reminders",
+      "path": "plugins/plugin-reminders",
+      "category": "unknown",
+      "currentPurpose": "Reminder delivery + escalation data layer for elizaOS agents: owns the app_reminders schema (reminder plans, per-channel delivery attempts, escalation states) carved out of @elizaos/plugin-personal-assistant, with a non-destructive migration from app_lifeops. The delivery/escalation engine is host-wired during the decomposition.",
+      "keepAs": "needs-review",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-remote-desktop",
+      "path": "plugins/plugin-remote-desktop",
+      "category": "unknown",
+      "currentPurpose": "Remote desktop session control for Eliza agents. REMOTE_DESKTOP umbrella action (start/status/end/list/revoke) over Tailscale VNC/SSH and ngrok backends with pairing-code confirmation. Extracted from @elizaos/plugin-personal-assistant.",
+      "keepAs": "needs-review",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
       "id": "plugin-rlm",
       "path": "plugins/plugin-rlm",
       "category": "model-plugin",
@@ -1904,7 +2487,9 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["local-inference"],
+      "relatedLayers": [
+        "local-inference"
+      ],
       "recommendedNextAction": "connect-to-local-model",
       "risk": "medium",
       "notes": "Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers."
@@ -1925,18 +2510,19 @@
       "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
-      "id": "plugin-scape",
-      "path": "plugins/plugin-scape",
-      "category": "app-plugin",
-      "currentPurpose": "'scape — first-class agent integration for xRSPS. Autonomous RuneScape-alike agent with JSON-encoded state, Scape Journal, and directed-prompt operator control.",
-      "keepAs": "app-plugin",
+      "id": "plugin-scheduling",
+      "path": "plugins/plugin-scheduling",
+      "category": "unknown",
+      "currentPurpose": "Scheduling spine for elizaOS agents: the storage-agnostic ScheduledTask state machine — trigger evaluation (cron/interval/once/event/after_task/relative_to_anchor/during_window), gate + completion-check + escalation-ladder + anchor + consolidation registries, the due/next-fire-at math, and the runner. Persistence + owner/channel/connector deps are injected by the host (e.g. @elizaos/plugin-personal-assistant). Reminders register a tick-hook via the ports here.",
+      "keepAs": "needs-review",
       "shouldBecomeRemote": false,
       "shouldRegisterDynamicViews": false,
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
-      "shouldStayOutOfElectrobun": true,
-      "recommendedNextAction": "add-trace-hooks",
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "needs-owner-decision",
       "risk": "medium",
+      "ownerDecisionNeeded": true,
       "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
@@ -1950,8 +2536,12 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.runtime"],
-      "relatedLayers": ["trace"],
+      "relatedRemotes": [
+        "eliza.runtime"
+      ],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1967,8 +2557,12 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedRemotes": ["eliza.pty"],
-      "relatedLayers": ["trace"],
+      "relatedRemotes": [
+        "eliza.pty"
+      ],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -1984,7 +2578,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -2015,7 +2611,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -2031,7 +2629,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -2047,7 +2647,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -2123,7 +2725,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -2139,7 +2743,10 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["dynamic-views", "trace"],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
       "recommendedNextAction": "add-dynamic-view-manifest",
       "risk": "medium",
       "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
@@ -2170,7 +2777,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -2201,7 +2810,10 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["dynamic-views", "trace"],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
       "recommendedNextAction": "add-dynamic-view-manifest",
       "risk": "medium",
       "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
@@ -2232,7 +2844,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -2248,10 +2862,47 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-undesirables",
+      "path": "plugins/plugin-undesirables",
+      "category": "unknown",
+      "currentPurpose": "ElizaOS plugin — Personality-as-Code for AI agents. Live TCG market data from 370K+ products, passive market intelligence evaluator, 24 skills, 9 actions, and zero-config demo soul. NFT holders get unique Big Five psychology profiles. Oracle API integration for card grading, Monte Carlo simulations, and arbitrage scanning.",
+      "keepAs": "needs-review",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-vector-browser",
+      "path": "plugins/plugin-vector-browser",
+      "category": "unknown",
+      "currentPurpose": "Plugin package plugin-vector-browser.",
+      "keepAs": "needs-review",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "relatedRemotes": [
+        "eliza.runtime"
+      ],
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
       "id": "plugin-video",
@@ -2279,7 +2930,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -2289,6 +2942,36 @@
       "path": "plugins/plugin-vision",
       "category": "app-plugin",
       "currentPurpose": "Vision plugin for ElizaOS - provides camera integration and visual awareness",
+      "keepAs": "app-plugin",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-waifu-imagegen-app",
+      "path": "plugins/plugin-waifu-imagegen-app",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package plugin-waifu-imagegen-app.",
+      "keepAs": "app-plugin",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": true,
+      "recommendedNextAction": "add-trace-hooks",
+      "risk": "medium",
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
+    },
+    {
+      "id": "plugin-waifu-swap-app",
+      "path": "plugins/plugin-waifu-swap-app",
+      "category": "app-plugin",
+      "currentPurpose": "Plugin package plugin-waifu-swap-app.",
       "keepAs": "app-plugin",
       "shouldBecomeRemote": false,
       "shouldRegisterDynamicViews": false,
@@ -2340,7 +3023,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -2356,7 +3041,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -2372,7 +3059,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -2388,7 +3077,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
       "notes": "Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed."
@@ -2404,7 +3095,10 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["dynamic-views", "trace"],
+      "relatedLayers": [
+        "dynamic-views",
+        "trace"
+      ],
       "recommendedNextAction": "add-dynamic-view-manifest",
       "risk": "medium",
       "notes": "Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard."
@@ -2420,7 +3114,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -2436,7 +3132,9 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
@@ -2467,10 +3165,28 @@
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": true,
-      "relatedLayers": ["trace"],
+      "relatedLayers": [
+        "trace"
+      ],
       "recommendedNextAction": "add-trace-hooks",
       "risk": "medium",
       "notes": "Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful."
+    },
+    {
+      "id": "plugin-xr",
+      "path": "plugins/plugin-xr",
+      "category": "unknown",
+      "currentPurpose": "WebXR audio/video streaming for elizaOS — Quest 3 and XReal glasses",
+      "keepAs": "needs-review",
+      "shouldBecomeRemote": false,
+      "shouldRegisterDynamicViews": false,
+      "shouldEmitTraceEvents": false,
+      "shouldUseRuntimeBroker": false,
+      "shouldStayOutOfElectrobun": false,
+      "recommendedNextAction": "needs-owner-decision",
+      "risk": "medium",
+      "ownerDecisionNeeded": true,
+      "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
       "id": "plugin-zai",
@@ -2498,7 +3214,9 @@
       "shouldEmitTraceEvents": false,
       "shouldUseRuntimeBroker": false,
       "shouldStayOutOfElectrobun": false,
-      "relatedLayers": ["agent-runtime"],
+      "relatedLayers": [
+        "agent-runtime"
+      ],
       "recommendedNextAction": "leave-alone",
       "risk": "low",
       "notes": "Keep as workspace root. Do not use Electrobun convergence to change global repo ownership."
@@ -2566,29 +3284,29 @@
       "core-runtime": 4,
       "desktop-shell": 5,
       "production-ui": 1,
-      "app-plugin": 36,
+      "app-plugin": 35,
       "connector-plugin": 35,
-      "model-plugin": 8,
-      "voice-plugin": 4,
-      "native-semantic-plugin": 35,
+      "model-plugin": 7,
+      "voice-plugin": 3,
+      "native-semantic-plugin": 36,
       "desktop-capability": 6,
       "data-memory-plugin": 4,
       "dev-tooling": 12,
       "provider-plugin": 8,
       "obsolete-or-duplicate": 0,
-      "unknown": 0
+      "unknown": 16
     },
     "byRecommendedNextAction": {
       "leave-alone": 37,
       "add-trace-hooks": 74,
       "add-dynamic-view-manifest": 13,
       "route-through-runtime-broker": 21,
-      "connect-to-voice-pipeline": 4,
-      "connect-to-local-model": 8,
+      "connect-to-voice-pipeline": 3,
+      "connect-to-local-model": 7,
       "dedupe-with-existing-plugin": 0,
       "deprecate": 0,
       "delete-after-confirmation": 0,
-      "needs-owner-decision": 1
+      "needs-owner-decision": 17
     },
     "hardNoMigration": [
       "packages/app",
@@ -2610,7 +3328,9 @@
       "eliza.runtime",
       "eliza.surface"
     ],
-    "futureRemoteCandidates": ["future.eliza.computer"],
+    "futureRemoteCandidates": [
+      "future.eliza.computer"
+    ],
     "traceFirstCandidates": [
       "future.eliza.computer",
       "packages/app-core/platforms/electrobun/src/trace",
@@ -2664,6 +3384,7 @@
       "plugin-native-mobile-signals",
       "plugin-native-network-policy",
       "plugin-native-phone",
+      "plugin-native-reminders",
       "plugin-native-screencapture",
       "plugin-native-shared-types",
       "plugin-native-swabble",
@@ -2722,11 +3443,9 @@
       "plugin-elevenlabs",
       "plugin-lmstudio",
       "plugin-local-inference",
-      "plugin-mlx",
       "plugin-native-llama",
       "plugin-native-talkmode",
       "plugin-ollama",
-      "plugin-omnivoice",
       "plugin-rlm"
     ],
     "runtimeBrokerCandidates": [
@@ -2763,6 +3482,24 @@
       "plugin-shell",
       "plugin-wifi"
     ],
-    "ownerDecisionItems": ["future.eliza.computer"]
+    "ownerDecisionItems": [
+      "future.eliza.computer",
+      "plugin-ainex",
+      "plugin-blocker",
+      "plugin-calendar",
+      "plugin-facewear",
+      "plugin-finances",
+      "plugin-gitpathologist",
+      "plugin-goals",
+      "plugin-inbox",
+      "plugin-nearai",
+      "plugin-relationships",
+      "plugin-reminders",
+      "plugin-remote-desktop",
+      "plugin-scheduling",
+      "plugin-undesirables",
+      "plugin-vector-browser",
+      "plugin-xr"
+    ]
   }
 }
