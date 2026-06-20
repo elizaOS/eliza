@@ -147,9 +147,10 @@ test("settings connects a remote capability endpoint and opens its view", async 
     await openAppPath(page, "/settings");
     await openSettingsSection(page, /^Capabilities\b/);
 
-    await page
-      .getByLabel("Capability endpoint provider")
-      .selectOption("home-machine");
+    // "Capability endpoint provider" migrated from a native <select> to a Radix
+    // combobox button — open it and click the option from the listbox.
+    await page.getByLabel("Capability endpoint provider").click();
+    await page.getByRole("option", { name: "Home machine" }).click();
     await page
       .getByLabel("Capability router endpoint URL")
       .fill(remote.baseUrl);
