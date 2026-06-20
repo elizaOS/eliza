@@ -484,7 +484,7 @@ function contentToText(content: GatewayChatMessage["content"]): string {
 // `tool.function.name` unconditionally threw "Cannot read properties of
 // undefined (reading 'name')" and surfaced as an opaque 500 for any caller that
 // sent the flat form.
-function normalizeToolFunction(tool: unknown): {
+export function normalizeToolFunction(tool: unknown): {
   name?: string;
   description?: unknown;
   parameters?: unknown;
@@ -498,7 +498,7 @@ function normalizeToolFunction(tool: unknown): {
   };
 }
 
-function toGatewayTools(tools: NonNullable<OpenAIChatRequest["tools"]>) {
+export function toGatewayTools(tools: NonNullable<OpenAIChatRequest["tools"]>) {
   return Object.fromEntries(
     tools
       .map((tool) => {
@@ -509,9 +509,7 @@ function toGatewayTools(tools: NonNullable<OpenAIChatRequest["tools"]>) {
         return [
           name,
           {
-            ...(typeof description === "string" && description
-              ? { description }
-              : {}),
+            ...(typeof description === "string" && description ? { description } : {}),
             inputSchema: jsonSchema(
               (parameters as Parameters<typeof jsonSchema>[0] | undefined) ?? {
                 type: "object",
