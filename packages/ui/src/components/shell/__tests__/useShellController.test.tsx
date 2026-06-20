@@ -406,3 +406,89 @@ describe("useShellController — voice capture routing", () => {
     ).toBe("vad-gated");
   });
 });
+
+// ── Transcription mode (#8789): record-only until an exit phrase ─────────────
+
+describe("useShellController — transcription mode", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    lastCaptureOpts = null;
+    captureHandles = [];
+    createVoiceCaptureMock.mockReset();
+    installFakeCapture();
+    voiceOutputMock.speaking = false;
+    appMock.value.agentStatus = { ...READY_STATUS };
+    appMock.value.sendChatText.mockClear();
+    try {
+      window.localStorage.clear();
+    } catch {}
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("records every final VERBATIM as a silent DM carrying transcriptionMode", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleTranscriptionMode();
+    });
+    expect(result.current.transcriptionMode).toBe(true);
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+
+    // Unlike converse, a trailing mid-clause utterance is NOT held by the EOT
+    // aggregator — it is recorded verbatim.
+    act(() => fireFinalTranscript("schedule a meeting with"));
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe(
+      "schedule a meeting with",
+    );
+    expect(appMock.value.sendChatText.mock.calls[0]?.[1]).toMatchObject({
+      channelType: "DM",
+      metadata: { transcriptionMode: true },
+    });
+  });
+
+  it("an exit phrase turns the mode OFF and is not itself sent", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleTranscriptionMode();
+    });
+    act(() => fireFinalTranscript("first paragraph of my notes"));
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+
+    act(() => fireFinalTranscript("exit transcription mode"));
+    expect(result.current.transcriptionMode).toBe(false);
+    // The bare exit utterance produced no additional send.
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+  });
+
+  it("commits the text preceding an inline exit phrase, then exits", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleTranscriptionMode();
+    });
+    act(() => fireFinalTranscript("wrap up here stop transcription"));
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe("wrap up here");
+    expect(appMock.value.sendChatText.mock.calls[0]?.[1]).toMatchObject({
+      channelType: "DM",
+      metadata: { transcriptionMode: true },
+    });
+    expect(result.current.transcriptionMode).toBe(false);
+  });
+
+  it("toggling it off stops the capture and disables hands-free", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleTranscriptionMode();
+    });
+    expect(result.current.transcriptionMode).toBe(true);
+    expect(result.current.handsFree).toBe(false);
+
+    await act(async () => {
+      result.current.toggleTranscriptionMode();
+    });
+    expect(result.current.transcriptionMode).toBe(false);
+    expect(captureHandles[0]?.stop).toHaveBeenCalled();
+  });
+});

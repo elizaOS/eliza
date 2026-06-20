@@ -299,6 +299,7 @@ export interface SlashExecutionDeps {
   toggleFullscreen: () => void;
   openCommandPalette: () => void;
   showCommands: () => void;
+  toggleTranscription: () => void;
   send: (text: string) => void;
 }
 
@@ -333,6 +334,9 @@ export function runSlashExecution(
           return;
         case "show-commands":
           deps.showCommands();
+          return;
+        case "toggle-transcription":
+          deps.toggleTranscription();
           return;
       }
       return;

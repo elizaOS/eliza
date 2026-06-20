@@ -282,6 +282,16 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 			},
 		],
 	},
+	{
+		key: "transcribe",
+		nativeName: "transcribe",
+		description:
+			"Toggle long-form transcription mode (record-only; agent stays silent until an exit phrase)",
+		textAliases: ["/transcribe", "/transcription", "/dictate"],
+		scope: "both",
+		category: "media",
+		acceptsArgs: false,
+	},
 
 	// Tools commands
 	{

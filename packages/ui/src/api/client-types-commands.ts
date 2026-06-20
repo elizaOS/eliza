@@ -19,7 +19,8 @@ export type ClientCommandAction =
   | "new-conversation"
   | "toggle-fullscreen"
   | "open-command-palette"
-  | "show-commands";
+  | "show-commands"
+  | "toggle-transcription";
 
 export interface SlashCommandArg {
   name: string;

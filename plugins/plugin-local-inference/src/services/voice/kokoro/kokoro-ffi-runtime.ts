@@ -1,6 +1,9 @@
 /**
  * In-process Kokoro-82M runtime over the fused `libelizainference` FFI
- * (ABI v10 `eliza_inference_kokoro_*`).
+ * (the `eliza_inference_kokoro_*` exports — introduced at ABI v10; the fused
+ * library is currently ABI v11, which adds EOT on top, so these symbols are
+ * present in every current build — see `ELIZA_INFERENCE_ABI_VERSION` in
+ * ffi-bindings.ts).
  *
  * This is the canonical Kokoro execution path on every platform. It replaces
  * the local-TCP `KokoroGgufRuntime` (POST `/v1/audio/speech` on a running

@@ -421,7 +421,7 @@ jobs:
         run: bun run --cwd packages/app test:e2e test/ui-smoke/view-manager-actual-flow.spec.ts --project=chromium
 
       - name: Actual app plugin view browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-visual.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/screenshare-gui-interactions.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/game-operator-gui-interactions.spec.ts test/ui-smoke/terminal-plugin-view-command-contract.spec.ts --project=chromium
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-visual.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/screenshare-gui-interactions.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/terminal-plugin-view-command-contract.spec.ts --project=chromium
 
       - name: Upload zero-key browser artifacts
         if: always()

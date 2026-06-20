@@ -760,6 +760,8 @@ export function ContinuousChatOverlay({
     stopRecording,
     handsFree,
     toggleHandsFree,
+    transcriptionMode,
+    toggleTranscriptionMode,
     setDictationSink,
     setComposerHasDraft,
     transcript,
@@ -772,6 +774,15 @@ export function ContinuousChatOverlay({
     stop,
     modelStatus,
   } = controller;
+
+  // The transcribe control is a voice feature, so it only belongs in the header
+  // while voice is actually on — a hands-free conversation, the mic open, or an
+  // in-progress transcription. When voice is off it's hidden (the `/transcribe`
+  // command still starts transcription from cold). `transcriptionMode` is part
+  // of the predicate so the button (then "stop transcription") and its badge
+  // stay put across the re-listen gaps where `recording` momentarily drops
+  // between utterances.
+  const voiceActive = Boolean(recording || handsFree || transcriptionMode);
 
   // Copy an assistant answer (press-and-hold on its bubble). Stable identity so
   // the memoized ThreadLine isn't re-rendered every parent tick.
@@ -1695,13 +1706,14 @@ export function ContinuousChatOverlay({
         toggleFullscreen: toggleMaximize,
         openCommandPalette: slash.openCommandPalette,
         showCommands: slash.openCommandPalette,
+        toggleTranscription: toggleTranscriptionMode,
         send: (text) => submitText(text),
       });
       setDraft("");
       setSlashDismissed(true);
       inputRef.current?.focus();
     },
-    [slash, controller, submitText, toggleMaximize],
+    [slash, controller, submitText, toggleMaximize, toggleTranscriptionMode],
   );
 
   const pickSlashItem = React.useCallback(
@@ -2385,7 +2397,28 @@ export function ContinuousChatOverlay({
                     onClick={() => clearConversation()}
                     testId="chat-full-clear"
                   />
+                  {voiceActive ? (
+                    <HeaderButton
+                      icon={FileText}
+                      label={
+                        transcriptionMode
+                          ? "stop transcription"
+                          : "transcription mode"
+                      }
+                      active={transcriptionMode}
+                      onClick={toggleTranscriptionMode}
+                      testId="chat-full-transcribe"
+                    />
+                  ) : null}
                 </div>
+                {transcriptionMode ? (
+                  <div
+                    data-testid="chat-transcribing-badge"
+                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-[var(--brand-orange,#ff6a00)]/15 px-2.5 py-0.5 text-[11px] font-medium text-[var(--brand-orange,#ff6a00)]"
+                  >
+                    Transcribing — say “exit transcription mode” to stop
+                  </div>
+                ) : null}
                 <div className="flex items-center gap-1.5">
                   {currentTab !== "chat" ? (
                     <HeaderButton

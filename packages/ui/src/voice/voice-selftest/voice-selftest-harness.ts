@@ -16,6 +16,7 @@
  * false-greens.
  */
 
+import { wordErrorRate } from "@elizaos/shared/voice-wer";
 import type { ElizaClient } from "../../api/client-base";
 import { fetchWithCsrf } from "../../api/csrf-client";
 import { resolveApiUrl } from "../../utils";
@@ -24,6 +25,9 @@ import {
   isLocalInferenceAsrReady,
   transcribeLocalInferenceWav,
 } from "../local-asr-transcribe";
+
+/** Re-exported from the single source of truth (`@elizaos/shared/voice-wer`). */
+export { wordErrorRate };
 
 export type StageStatus = "pass" | "fail" | "skipped";
 export type VoiceSelfTestMode =
@@ -73,37 +77,6 @@ export interface VoiceSelfTestOptions {
   client: ElizaClient;
   audioCtx: AudioContext;
   signal?: AbortSignal;
-}
-
-function normalizeWords(s: string): string[] {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9 ]/g, "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-}
-
-/** Levenshtein word-error-rate of `hyp` against `ref`. No dependencies. */
-export function wordErrorRate(ref: string, hyp: string): number {
-  const r = normalizeWords(ref);
-  const h = normalizeWords(hyp);
-  if (r.length === 0) return h.length === 0 ? 0 : 1;
-  const d: number[][] = Array.from({ length: r.length + 1 }, () =>
-    new Array<number>(h.length + 1).fill(0),
-  );
-  for (let i = 0; i <= r.length; i += 1) d[i][0] = i;
-  for (let j = 0; j <= h.length; j += 1) d[0][j] = j;
-  for (let i = 1; i <= r.length; i += 1) {
-    for (let j = 1; j <= h.length; j += 1) {
-      d[i][j] = Math.min(
-        d[i - 1][j] + 1,
-        d[i][j - 1] + 1,
-        d[i - 1][j - 1] + (r[i - 1] === h[j - 1] ? 0 : 1),
-      );
-    }
-  }
-  return d[r.length][h.length] / r.length;
 }
 
 /**

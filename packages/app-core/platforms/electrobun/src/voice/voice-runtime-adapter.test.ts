@@ -160,3 +160,54 @@ describe("RuntimeHttpVoiceAdapter.sendRuntimeMessageStream", () => {
     ).rejects.toBeInstanceOf(VoiceError);
   });
 });
+
+describe("RuntimeHttpVoiceAdapter.sendRuntimeMessage — voice semantics (#8786)", () => {
+  function makeBufferedAdapter() {
+    const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
+    const fetchImpl = (async (
+      url: string | URL | Request,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const path = String(url);
+      const body = init?.body
+        ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+        : {};
+      calls.push({ path, body });
+      if (path.endsWith("/api/conversations")) {
+        return new Response(JSON.stringify({ id: "conv-1" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      // Buffered /messages reply.
+      return new Response(JSON.stringify({ id: "m1", text: "hi back" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+    const adapter = new RuntimeHttpVoiceAdapter({
+      apiBase: "http://test",
+      env: { ELIZA_VOICE_LIVE_RUNTIME: "1" },
+      fetchImpl,
+    });
+    return { adapter, calls };
+  }
+
+  it("sends a VOICE_DM carrying turn-signal metadata (not a plain DM)", async () => {
+    const { adapter, calls } = makeBufferedAdapter();
+    await adapter.sendRuntimeMessage({
+      text: "what's the weather",
+      metadata: { voiceTurnSignal: { agentShouldSpeak: true } },
+    });
+    const messagePost = calls.find((c) =>
+      /\/messages$/.test(c.path.split("?")[0]),
+    );
+    expect(messagePost).toBeDefined();
+    expect(messagePost?.body.channelType).toBe("VOICE_DM");
+    // The caller's turn signal + a voiceSource are carried in metadata.
+    expect(messagePost?.body.metadata).toMatchObject({
+      voiceSource: "electrobun",
+      voiceTurnSignal: { agentShouldSpeak: true },
+    });
+  });
+});

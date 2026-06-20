@@ -127,6 +127,16 @@ export interface HandleLiveVoiceAttributionOptions {
 	endOfTurnProbability?: number;
 	/** True when a wake word fired within the recent listen window. */
 	wakeWordActive?: boolean;
+	/**
+	 * The ASR transcript for this turn, joined from the streaming-ASR path. When
+	 * provided it rides on `VOICE_TURN_OBSERVED` (and the turn signal) so the
+	 * merge engine's name/partner extraction (`VoiceObserver.ingestTurn`) runs
+	 * from LIVE audio — previously this was hardcoded `""`, so live recognition
+	 * could identify *who* spoke but never *what* they said (#8786). Diarization-
+	 * only callers (audio-frame path) leave it unset; the in-process voice engine
+	 * (which has both ASR + diarization) passes the real transcript.
+	 */
+	transcript?: string;
 }
 
 /**
@@ -234,13 +244,16 @@ export async function handleLiveVoiceAttribution(
 	opts: HandleLiveVoiceAttributionOptions = {},
 ): Promise<VoiceTurnSignal> {
 	const standing = resolveSpeakerStanding(output, opts);
+	// Carry the real ASR transcript when the caller joined it (in-process engine);
+	// fall back to a base-signal transcript, else "" for diarization-only callers.
+	const transcript = opts.transcript ?? opts.baseSignal?.transcript ?? "";
 
 	if (output.observation) {
 		const obs = output.observation;
 		try {
 			await emitVoiceTurnObserved(runtime, {
 				turnId: output.turnId,
-				text: "",
+				text: transcript,
 				imprintClusterId: obs.imprintClusterId,
 				matchConfidence: obs.confidence,
 				matchedEntityId: obs.entityId,
@@ -263,7 +276,7 @@ export async function handleLiveVoiceAttribution(
 		nextSpeaker: "unknown",
 		agentShouldSpeak: null,
 		source: "custom",
-		transcript: "",
+		transcript,
 	};
 
 	const signal = foldSpeakerIntoSignal(base, standing, opts);

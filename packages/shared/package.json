@@ -128,6 +128,16 @@
       "import": "./dist/utils/permission-deep-links.js",
       "default": "./dist/utils/permission-deep-links.js"
     },
+    "./voice-wer": {
+      "types": "./dist/voice-wer.d.ts",
+      "eliza-source": {
+        "types": "./src/voice-wer.ts",
+        "import": "./src/voice-wer.ts",
+        "default": "./src/voice-wer.ts"
+      },
+      "import": "./dist/voice-wer.js",
+      "default": "./dist/voice-wer.js"
+    },
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",

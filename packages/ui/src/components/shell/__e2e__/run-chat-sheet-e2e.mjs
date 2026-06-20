@@ -1334,7 +1334,16 @@ try {
     const halfH = Math.round(vh * 0.46);
 
     // OPEN_UNDER_HALF — a slow short pull from INPUT rests in the gap below half.
-    await gesture(p, Math.round(halfH * 0.5), { pointer: "mouse", slow: true });
+    // Use MANY steps so the drag is unambiguously slow: this pull travels ~half
+    // the half-detent (~200px), and at the default step count its velocity lands
+    // right on the 0.5 px/ms flick threshold — a hair over and it snaps to the
+    // half detent instead of free-resting (the intermittent failure). More steps
+    // ⇒ longer elapsed ⇒ velocity well under the threshold ⇒ deterministic settle.
+    await gesture(p, Math.round(halfH * 0.5), {
+      pointer: "mouse",
+      slow: true,
+      steps: 30,
+    });
     await p.waitForTimeout(SETTLE);
     assert(
       (await chatState(p)) === "OPEN_UNDER_HALF",
