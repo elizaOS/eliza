@@ -228,7 +228,25 @@ describe("first-run flow", () => {
       },
     });
     expect(plan.payload).not.toHaveProperty("ownerName");
-    expect(plan.runtimeConfig.needsProviderSetup).toBe(true);
+    // On-device inference intentionally omits the runtime provider (the local
+    // model downloads in the background and the local-inference handler serves
+    // it), so the user must NOT be nagged to "choose a model provider in
+    // Settings" right after picking On-device.
+    expect(plan.runtimeConfig.needsProviderSetup).toBe(false);
+  });
+
+  it("does not nag for a provider on remote-connect (the remote agent owns it)", () => {
+    const plan = buildFirstRunSubmitPlan({
+      uiLanguage: "en",
+      draft: {
+        agentName: "Eliza",
+        runtime: "remote",
+        localInference: "all-local",
+        remoteApiBase: "https://agent.example.com",
+        remoteToken: "",
+      },
+    });
+    expect(plan.runtimeConfig.needsProviderSetup).toBe(false);
   });
 
   it("routes local + cloud-inference to the hybrid target with a cloud provider", () => {

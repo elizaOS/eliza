@@ -20,6 +20,7 @@ import type http from "node:http";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import { resolveStateDir } from "../config/paths.ts";
+import { generateThumbnailBytes } from "./media-thumbnail.ts";
 
 const EXT_BY_MIME: Record<string, string> = {
   "image/png": "png",
@@ -239,9 +240,154 @@ export function isStoredMediaUrl(url: string): boolean {
   return url.startsWith(MEDIA_URL_PREFIX);
 }
 
+/** Extract the stored filename (`<sha256>.<ext>`) from a served media URL, else null. */
+export function mediaFileNameFromUrl(url: string): string | null {
+  if (typeof url !== "string" || !url.startsWith(MEDIA_URL_PREFIX)) return null;
+  const name = url.slice(MEDIA_URL_PREFIX.length).split(/[?#]/)[0] ?? "";
+  return MEDIA_FILE_NAME.test(name) ? name : null;
+}
+
+// Orphan GC grace: never delete files younger than this, so media that was just
+// persisted but not yet referenced by a saved message (or just served) survives.
+const GC_MIN_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * Delete stored media files not referenced by any live attachment. `referenced`
+ * is the set of `<sha256>.<ext>` filenames still in use (built from message
+ * attachment URLs via {@link mediaFileNameFromUrl}). Files younger than the
+ * grace window are kept. Best-effort; returns counts.
+ */
+export function gcUnreferencedMedia(referenced: Set<string>): {
+  removed: number;
+  scanned: number;
+} {
+  let removed = 0;
+  let scanned = 0;
+  try {
+    const dir = mediaDir();
+    const now = Date.now();
+    for (const name of fs.readdirSync(dir)) {
+      if (!MEDIA_FILE_NAME.test(name)) continue;
+      scanned += 1;
+      if (referenced.has(name)) continue;
+      try {
+        const stat = fs.statSync(path.join(dir, name));
+        if (now - stat.mtimeMs < GC_MIN_AGE_MS) continue; // grace window
+        fs.unlinkSync(path.join(dir, name));
+        removed += 1;
+      } catch {
+        // ignore individual file errors
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      `[media-store] GC scan failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (removed > 0) {
+    logger.info(
+      `[media-store] GC removed ${removed} unreferenced file(s) of ${scanned}`,
+    );
+  }
+  return { removed, scanned };
+}
+
 function mimeForFile(fileName: string): string {
   const ext = fileName.split(".").pop()?.toLowerCase() ?? "bin";
   return MIME_BY_EXT[ext] ?? "application/octet-stream";
+}
+
+// Touch-on-serve → LRU: bump the file's mtime when it's served so eviction
+// (oldest-mtime-first) keeps frequently-viewed media and drops the truly cold
+// files. Throttled per file so a burst of range requests doesn't thrash the fs.
+const TOUCH_THROTTLE_MS = 60_000;
+const lastTouchedAt = new Map<string, number>();
+
+function touchOnServe(filePath: string): void {
+  const now = Date.now();
+  if (now - (lastTouchedAt.get(filePath) ?? 0) < TOUCH_THROTTLE_MS) return;
+  lastTouchedAt.set(filePath, now);
+  try {
+    const stamp = new Date(now);
+    fs.utimesSync(filePath, stamp, stamp);
+  } catch {
+    // best-effort — atime/mtime updates can fail on some filesystems
+  }
+}
+
+interface ResolvedMediaFile {
+  filePath: string;
+  size: number;
+  contentType: string;
+}
+
+/**
+ * Validate a `/api/media/<name>` path and stat the file, bumping its mtime for
+ * LRU. Returns the resolved file or an HTTP status (400 bad name, 404 missing).
+ * Shared by the HTTP serve path and the in-process (iOS IPC) route handler.
+ */
+function resolveMediaFile(
+  pathname: string,
+): ResolvedMediaFile | { error: number } {
+  let name: string;
+  try {
+    name = decodeURIComponent(pathname.slice(MEDIA_URL_PREFIX.length));
+  } catch {
+    return { error: 400 };
+  }
+  if (!MEDIA_FILE_NAME.test(name)) return { error: 400 };
+  const filePath = path.join(mediaDir(), name);
+  // Defence in depth against traversal — name is already pattern-validated.
+  if (path.dirname(filePath) !== mediaDir()) return { error: 400 };
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(filePath);
+    if (!stat.isFile()) throw new Error("not a file");
+  } catch {
+    return { error: 404 };
+  }
+  touchOnServe(filePath);
+  return { filePath, size: stat.size, contentType: mimeForFile(name) };
+}
+
+/**
+ * Serve a media file for the IN-PROCESS route path (iOS, where no HTTP server
+ * runs and requests are dispatched over `runtime.routes`). Returns a
+ * RouteHandlerResult-shaped object with a `Buffer` body; the native bridge
+ * base64-encodes it losslessly. No Range support — the in-process path buffers
+ * the whole file, which is fine for local on-device media.
+ */
+export function handleMediaRouteRequest(
+  pathname: string,
+  method: string,
+): { status: number; headers: Record<string, string>; body?: Buffer } {
+  const TEXT = { "Content-Type": "text/plain; charset=utf-8" };
+  if (method !== "GET" && method !== "HEAD") {
+    return {
+      status: 405,
+      headers: TEXT,
+      body: Buffer.from("Method not allowed"),
+    };
+  }
+  const resolved = resolveMediaFile(pathname);
+  if ("error" in resolved) {
+    return {
+      status: resolved.error,
+      headers: TEXT,
+      body: Buffer.from(
+        resolved.error === 400 ? "Bad media name" : "Not found",
+      ),
+    };
+  }
+  const headers: Record<string, string> = {
+    "Content-Type": resolved.contentType,
+    "Cache-Control": "public, max-age=31536000, immutable",
+    "Content-Length": String(resolved.size),
+  };
+  if (method === "HEAD") return { status: 200, headers };
+  return { status: 200, headers, body: fs.readFileSync(resolved.filePath) };
 }
 
 /**
@@ -259,32 +405,16 @@ export function serveMediaFile(
   const method = req.method ?? "GET";
   if (method !== "GET" && method !== "HEAD") return false;
 
-  const name = decodeURIComponent(pathname.slice(MEDIA_URL_PREFIX.length));
-  if (!MEDIA_FILE_NAME.test(name)) {
-    res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Bad media name");
+  const resolved = resolveMediaFile(pathname);
+  if ("error" in resolved) {
+    res.writeHead(resolved.error, {
+      "Content-Type": "text/plain; charset=utf-8",
+    });
+    res.end(resolved.error === 400 ? "Bad media name" : "Not found");
     return true;
   }
+  const { filePath, size, contentType } = resolved;
 
-  const filePath = path.join(mediaDir(), name);
-  // Defence in depth against traversal — name is already pattern-validated.
-  if (path.dirname(filePath) !== mediaDir()) {
-    res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Bad media path");
-    return true;
-  }
-
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(filePath);
-    if (!stat.isFile()) throw new Error("not a file");
-  } catch {
-    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Not found");
-    return true;
-  }
-
-  const contentType = mimeForFile(name);
   const baseHeaders: Record<string, string | number> = {
     "Content-Type": contentType,
     "Cache-Control": "public, max-age=31536000, immutable",
@@ -295,7 +425,6 @@ export function serveMediaFile(
   if (range && method === "GET") {
     const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
     if (match) {
-      const size = stat.size;
       const startRaw = match[1];
       const endRaw = match[2];
       let start = startRaw ? Number.parseInt(startRaw, 10) : 0;
@@ -329,13 +458,51 @@ export function serveMediaFile(
     }
   }
 
-  res.writeHead(200, { ...baseHeaders, "Content-Length": stat.size });
+  res.writeHead(200, { ...baseHeaders, "Content-Length": size });
   if (method === "HEAD") {
     res.end();
     return true;
   }
   fs.createReadStream(filePath).pipe(res);
   return true;
+}
+
+/**
+ * Generate a downscaled thumbnail from raw image bytes and persist it as its
+ * own store entry. Returns the thumbnail's served URL, or null when the image
+ * isn't thumbnailable / already small / the resizer is unavailable. Best-effort.
+ */
+export async function persistImageThumbnail(
+  source: Buffer,
+  srcMimeType: string,
+): Promise<string | null> {
+  try {
+    const thumb = await generateThumbnailBytes(source, srcMimeType);
+    if (!thumb) return null;
+    return persistMediaBytes(thumb.buffer, thumb.mimeType).url;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pre-compute a thumbnail for an already-stored image file (e.g. an
+ * agent-generated image just persisted from a data: URL). Reads the stored
+ * bytes, downscales, and persists the thumbnail. Returns its served URL or null.
+ */
+export async function ensureThumbnailForStoredFile(
+  fileName: string,
+): Promise<string | null> {
+  if (!MEDIA_FILE_NAME.test(fileName)) return null;
+  const srcMime = mimeForFile(fileName);
+  if (!srcMime.startsWith("image/")) return null;
+  let buffer: Buffer;
+  try {
+    buffer = fs.readFileSync(path.join(mediaDir(), fileName));
+  } catch {
+    return null;
+  }
+  return persistImageThumbnail(buffer, srcMime);
 }
 
 /** Best-effort: convert a `data:` URL on an attachment to a stored served URL. */

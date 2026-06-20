@@ -26,6 +26,11 @@ import { runtimeAction } from "../actions/runtime.ts";
 import { settingsAction } from "../actions/settings-actions.ts";
 import { terminalAction } from "../actions/terminal.ts";
 import { triggerAction } from "../actions/trigger.ts";
+import {
+  mediaFileRoute,
+  registerMediaGcTask,
+  registerMediaPipelineHook,
+} from "../api/media-runtime.ts";
 import { adminPanelProvider } from "../providers/admin-panel.ts";
 import { adminTrustProvider } from "../providers/admin-trust.ts";
 import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.ts";
@@ -130,6 +135,10 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
       registerTriggerTaskWorker(runtime);
       setCustomActionsRuntime(runtime);
+      // Media store: persist inline data: URLs out of context/history, and
+      // sweep orphaned files daily. The serving route is declared below.
+      registerMediaPipelineHook(runtime);
+      registerMediaGcTask(runtime);
       const registerSkillsAsCommands = async () => {
         try {
           const skillsService = runtime.getService("AGENT_SKILLS_SERVICE");
@@ -208,6 +217,10 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       roleBackfillProvider,
       escalationTriggerProvider,
     ],
+
+    // Public media route — only reached on iOS (in-process dispatch, no HTTP
+    // server). HTTP platforms serve media via the pre-auth handler in server.ts.
+    routes: [mediaFileRoute],
 
     actions: [
       terminalAction,

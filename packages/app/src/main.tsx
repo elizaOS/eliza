@@ -36,9 +36,9 @@ import {
 } from "@elizaos/ui/bridge";
 import { initializeCapacitorBridge } from "@elizaos/ui/bridge/capacitor-bridge";
 import { initializeStorageBridge } from "@elizaos/ui/bridge/storage-bridge";
+import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
 import { CharacterEditor } from "@elizaos/ui/components/character/CharacterEditor";
-import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import type {
   BrandingConfig,
   CodingAgentTasksPanelProps,
@@ -176,7 +176,8 @@ function importAppCore() {
 function importCompanionAppRegistration() {
   return cachedDynamicImport(
     "@elizaos/plugin-companion/components/companion/companion-app",
-    () => import("@elizaos/plugin-companion/components/companion/companion-app"),
+    () =>
+      import("@elizaos/plugin-companion/components/companion/companion-app"),
   );
 }
 
@@ -276,16 +277,17 @@ const InferenceCloudAlertButton = lazyNamedComponent<{
   notice: CompanionInferenceNotice;
   onClick: () => void;
   onPointerDown?: (...args: unknown[]) => unknown;
-}>(async () =>
-  (
-    await cachedDynamicImport(
-      "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton",
-      () =>
-        import(
-          "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton"
-        ),
-    )
-  ).InferenceCloudAlertButton,
+}>(
+  async () =>
+    (
+      await cachedDynamicImport(
+        "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton",
+        () =>
+          import(
+            "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton"
+          ),
+      )
+    ).InferenceCloudAlertButton,
 );
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
@@ -890,9 +892,18 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     requested = false;
   }
   try {
-    if (!requested) {
+    // The QA harness seeds the request flag into native Preferences
+    // (UserDefaults). On a cold launch the Capacitor Preferences bridge may not
+    // be registered yet when this runs, so a single bounded read can time out
+    // and miss a flag that is genuinely set — which silently skips the entire
+    // smoke (the symptom: harness reports "Last result: <none>"). Retry the
+    // native read a few times so the deliberate request is reliably detected.
+    for (let attempt = 0; !requested && attempt < 10; attempt += 1) {
       requested =
         (await boundedPreferenceGet(IOS_FULL_BUN_SMOKE_REQUEST_KEY)) === "1";
+      if (!requested) {
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+      }
     }
   } catch {
     // Keep the localStorage result from the storage bridge hydration.

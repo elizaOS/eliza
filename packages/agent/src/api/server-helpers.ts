@@ -45,7 +45,7 @@ import {
   type PluginManagerLike,
 } from "../services/plugin-manager-types.ts";
 import { extractCompatTextContent } from "./compat-utils.ts";
-import { persistMediaBytes } from "./media-store.ts";
+import { persistImageThumbnail, persistMediaBytes } from "./media-store.ts";
 import { isBlockedObjectKey } from "./server-helpers-config.ts";
 import type {
   ChatAttachmentWithData,
@@ -520,6 +520,26 @@ export function validateChatImages(images: unknown): string | null {
       return "Each attachment must have a name string";
     if (name.length > MAX_IMAGE_NAME_LENGTH)
       return `Attachment name too long (max ${MAX_IMAGE_NAME_LENGTH} characters)`;
+    const thumbnail = (img as Record<string, unknown>).thumbnail;
+    if (thumbnail !== undefined) {
+      if (!thumbnail || typeof thumbnail !== "object")
+        return "Attachment thumbnail must be an object";
+      const { data: tData, mimeType: tMime } = thumbnail as Record<
+        string,
+        unknown
+      >;
+      if (typeof tData !== "string" || !tData || tData.startsWith("data:"))
+        return "Thumbnail data must be raw base64";
+      if (tData.length > MAX_IMAGE_DATA_BYTES)
+        return `Thumbnail too large (max ${MAX_IMAGE_DATA_BYTES / 1_048_576} MB)`;
+      if (!BASE64_RE.test(tData))
+        return "Thumbnail data contains invalid base64 characters";
+      if (
+        typeof tMime !== "string" ||
+        !tMime.toLowerCase().startsWith("image/")
+      )
+        return "Thumbnail mimeType must be an image type";
+    }
   }
   return null;
 }
@@ -541,42 +561,60 @@ export function normalizeIncomingChatPrompt(
 // Chat attachments
 // ---------------------------------------------------------------------------
 
-export function buildChatAttachments(
+export async function buildChatAttachments(
   images: ChatImageAttachment[] | undefined,
-): {
+): Promise<{
   attachments: ChatAttachmentWithData[] | undefined;
   compactAttachments: Media[] | undefined;
-} {
+}> {
   if (!images?.length)
     return { attachments: undefined, compactAttachments: undefined };
-  const attachments: ChatAttachmentWithData[] = images.map((img, i) => {
-    // Persist the uploaded bytes to the content-addressed media store so the
-    // attachment carries a durable served URL (renderable from chat history),
-    // not a throwaway `attachment:img-N` placeholder. `_data` is retained for
-    // the in-memory vision/description pass so it needs no re-fetch.
-    let url = `attachment:img-${i}`;
-    try {
-      url = persistMediaBytes(
-        Buffer.from(img.data, "base64"),
-        img.mimeType,
-      ).url;
-    } catch (err) {
-      logger.warn(
-        `[buildChatAttachments] failed to persist uploaded image: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-    }
-    return {
-      id: `img-${i}`,
-      url,
-      title: img.name,
-      source: "client_chat",
-      contentType: contentTypeForUploadMime(img.mimeType),
-      _data: img.data,
-      _mimeType: img.mimeType,
-    };
-  });
+  const attachments: ChatAttachmentWithData[] = await Promise.all(
+    images.map(async (img, i) => {
+      // Persist the uploaded bytes to the content-addressed media store so the
+      // attachment carries a durable served URL (renderable from chat history),
+      // not a throwaway `attachment:img-N` placeholder. `_data` is retained for
+      // the in-memory vision/description pass so it needs no re-fetch.
+      let url = `attachment:img-${i}`;
+      let thumbnailUrl: string | undefined;
+      try {
+        url = persistMediaBytes(
+          Buffer.from(img.data, "base64"),
+          img.mimeType,
+        ).url;
+        if (img.thumbnail?.data) {
+          // Client already produced a thumbnail (browser/webview canvas) — persist it.
+          thumbnailUrl = persistMediaBytes(
+            Buffer.from(img.thumbnail.data, "base64"),
+            img.thumbnail.mimeType || "image/jpeg",
+          ).url;
+        } else if (img.mimeType.toLowerCase().startsWith("image/")) {
+          // No client thumbnail (non-webview client) — pre-compute one server-side.
+          thumbnailUrl =
+            (await persistImageThumbnail(
+              Buffer.from(img.data, "base64"),
+              img.mimeType,
+            )) ?? undefined;
+        }
+      } catch (err) {
+        logger.warn(
+          `[buildChatAttachments] failed to persist uploaded image: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+      return {
+        id: `img-${i}`,
+        url,
+        title: img.name,
+        source: "client_chat",
+        contentType: contentTypeForUploadMime(img.mimeType),
+        ...(thumbnailUrl ? { thumbnailUrl } : {}),
+        _data: img.data,
+        _mimeType: img.mimeType,
+      };
+    }),
+  );
   const compactAttachments: Media[] = attachments.map(
     ({ _data: _d, _mimeType: _m, ...rest }) => rest,
   );
@@ -589,7 +627,7 @@ type MessageMemory = ReturnType<typeof createMessageMemory>;
  * Constructs the in-memory user message (with image data for action handlers)
  * and the persistence-safe counterpart (image data stripped).
  */
-export function buildUserMessages(params: {
+export async function buildUserMessages(params: {
   images: ChatImageAttachment[] | undefined;
   prompt: string;
   userId: UUID;
@@ -598,7 +636,7 @@ export function buildUserMessages(params: {
   channelType: ChannelType;
   messageSource?: string;
   metadata?: Record<string, unknown>;
-}): { userMessage: MessageMemory; messageToStore: MessageMemory } {
+}): Promise<{ userMessage: MessageMemory; messageToStore: MessageMemory }> {
   const {
     images,
     prompt,
@@ -610,7 +648,8 @@ export function buildUserMessages(params: {
     metadata,
   } = params;
   const source = messageSource?.trim() || "client_chat";
-  const { attachments, compactAttachments } = buildChatAttachments(images);
+  const { attachments, compactAttachments } =
+    await buildChatAttachments(images);
   const id = crypto.randomUUID() as UUID;
   const userMessage = createMessageMemory({
     id,
