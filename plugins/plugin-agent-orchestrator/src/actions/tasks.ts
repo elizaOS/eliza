@@ -37,6 +37,7 @@ import type {
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
+import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
 import {
@@ -558,11 +559,12 @@ async function runCreate(
         explicitWorkdir,
         { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
       );
-      const taskWithRouteHints = taskWithResolvedRoute(
-        task,
-        route,
-        sessionWorkdir,
-        swarmRoomMetadata,
+      // This path spawns WITHOUT `initialTask` and delivers the task via
+      // sendPrompt (smithers or direct), so the AcpService initialTask deploy
+      // injection never fires here. Re-attach the contract on the task text
+      // itself; the helper is gated + idempotent so non-app tasks pass through.
+      const taskWithRouteHints = augmentTaskWithDeployGuidance(
+        taskWithResolvedRoute(task, route, sessionWorkdir, swarmRoomMetadata),
       );
       const session = await service.spawnSession({
         agentType,
