@@ -62,7 +62,7 @@ describe("useDefaultProviderPresets", () => {
     expect(last?.runtimeMode).toBe("local");
   });
 
-  it("mobile + local mode picks Eliza Cloud for both TTS+ASR", async () => {
+  it("mobile + local mode picks on-device TTS with Cloud ASR", async () => {
     fetchMock.mockResolvedValueOnce({
       mode: "local",
       deploymentRuntime: "local",
@@ -82,7 +82,7 @@ describe("useDefaultProviderPresets", () => {
     });
     const last = seen[seen.length - 1];
     expect(last?.defaults).toEqual({
-      tts: "elevenlabs",
+      tts: "local-inference",
       asr: "eliza-cloud",
     });
     expect(last?.platform).toBe("mobile");

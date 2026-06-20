@@ -93,6 +93,37 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
       wallet: {},
     });
   });
+  await page.route("**/api/cloud/login", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      ok: true,
+      sessionId: "assistant-flow-cloud-login",
+      browserUrl:
+        "https://www.elizacloud.ai/auth/cli-login?session=assistant-flow-cloud-login",
+    });
+  });
+  await page.route("**/api/cloud/login/status**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      status: "authenticated",
+      token: "assistant-flow-cloud-token",
+      organizationId: "assistant-flow-org",
+      userId: "assistant-flow-user",
+    });
+  });
+  await page.route("**/api/cloud/login/persist", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, { success: true });
+  });
   await page.route("**/api/stream/settings", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -704,8 +735,9 @@ test.describe("assistant home app flow", () => {
     await screenshot(page, "05-views-with-pill");
 
     await openAppPath(page, "/wallet");
+    await expect(page.getByRole("button", { name: /Tokens/i })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Refresh wallet" }),
+      page.getByRole("button", { name: /Open RPC settings/i }),
     ).toBeVisible();
     await screenshot(page, "07-wallet-view-with-pill");
   });
@@ -812,14 +844,16 @@ test.describe("assistant home app flow", () => {
 
     await openReadyChat(page, "/chat");
 
-    // The home dashboard renders behind the floating chat: clock + widgets +
-    // the pinned tile grid.
+    // The home dashboard renders behind the floating chat: clock + pinned
+    // tile grid.
     await expect(page.getByTestId("home-screen")).toBeVisible({
       timeout: 15_000,
     });
     await expect(page.getByTestId("home-clock")).toBeVisible();
-    await expect(page.getByTestId("home-widget-activity")).toBeVisible();
-    for (const id of ["settings", "orchestrator", "workflows", "views"]) {
+    await expect(
+      page.getByRole("navigation", { name: "Pinned views" }),
+    ).toBeVisible();
+    for (const id of ["tutorial", "help", "settings", "views"]) {
       await expect(page.getByTestId(`home-tile-${id}`)).toBeVisible();
     }
 

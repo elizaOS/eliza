@@ -27,7 +27,9 @@ export function getFrontendPlatform(): FrontendPlatform {
   ) {
     return "desktop";
   }
-  const p = Capacitor.getPlatform();
+  const getPlatform = (Capacitor as { getPlatform?: () => unknown })
+    .getPlatform;
+  const p = typeof getPlatform === "function" ? getPlatform() : "web";
   if (p === "ios") return "ios";
   if (p === "android") return "android";
   return "web";
