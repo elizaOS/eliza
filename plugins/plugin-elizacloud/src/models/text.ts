@@ -8,15 +8,14 @@ import {
   buildCanonicalSystemPrompt,
   logger,
   ModelType,
+  recordInferenceSpan,
   renderChatMessagesForPrompt,
   resolveEffectiveSystemPrompt,
   Semaphore,
+  timeInferenceSpan,
 } from "@elizaos/core";
-import type { LanguageModel } from "ai";
-import { createOpenAIClient } from "../providers/openai";
 import {
   getActionPlannerModel,
-  getExperimentalTelemetry,
   getLargeModel,
   getMediumModel,
   getMegaModel,
@@ -70,6 +69,25 @@ const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER")
 const NATIVE_CONCURRENCY_ENV = "ELIZAOS_CLOUD_NATIVE_CONCURRENCY";
 const DEFAULT_NATIVE_CONCURRENCY = 8;
 
+/**
+ * Client-side timeout for cloud text round-trips. Without this the handler
+ * passes no `timeoutMs`/`signal` to `requestRaw`, so a hung/slow gateway holds
+ * the concurrency permit AND stalls the whole turn until fetch's own (very
+ * long) default. `ELIZAOS_CLOUD_TEXT_TIMEOUT_MS` overrides; `0`/negative opts
+ * out (no client-side timeout).
+ */
+const TEXT_TIMEOUT_ENV = "ELIZAOS_CLOUD_TEXT_TIMEOUT_MS";
+const DEFAULT_TEXT_TIMEOUT_MS = 120_000;
+
+export function resolveTextTimeoutMs(): number | undefined {
+  const raw =
+    typeof process !== "undefined" ? process.env[TEXT_TIMEOUT_ENV] : undefined;
+  if (raw === undefined || raw.trim() === "") return DEFAULT_TEXT_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_TEXT_TIMEOUT_MS;
+  return parsed <= 0 ? undefined : parsed;
+}
+
 let nativeChatLimiter: Semaphore | null = null;
 
 function resolveNativeConcurrency(): number {
@@ -95,12 +113,25 @@ function getNativeChatLimiter(): Semaphore {
  * `/responses`) so every cerebras text call shares one budget.
  *
  * Exported for unit tests that drive the shared cap directly.
+ *
+ * `label` (e.g. `responses` / `chat/completions`) tags the latency spans this
+ * records on the active per-turn inference timer: `cloud.semaphore-wait` (time
+ * spent queued for a permit — non-zero means the cap is serializing) and
+ * `cloud.http:<label>` (the network round-trip). Both are no-ops when no turn
+ * timer is active.
  */
-export async function withNativeChatLimit<T>(fn: () => Promise<T>): Promise<T> {
+export async function withNativeChatLimit<T>(
+  fn: () => Promise<T>,
+  label = "native"
+): Promise<T> {
   const limiter = getNativeChatLimiter();
+  const waitStartedAt = Date.now();
   await limiter.acquire();
+  recordInferenceSpan("cloud.semaphore-wait", Date.now() - waitStartedAt, {
+    route: label,
+  });
   try {
-    return await fn();
+    return await timeInferenceSpan(`cloud.http:${label}`, fn, { route: label });
   } finally {
     limiter.release();
   }
@@ -139,7 +170,6 @@ const REASONING_MODEL_PATTERNS = [
   "claude-opus-4-7",
   "gpt-5",
 ] as const;
-const RESPONSES_ROUTED_PREFIXES = ["openai/", "anthropic/"] as const;
 type ChatAttachment = {
   data: string | Uint8Array | URL;
   mediaType: string;
@@ -198,29 +228,6 @@ type ChatCompletionsResponse = Record<string, unknown> & {
   }>;
   usage?: Record<string, unknown>;
 };
-
-function buildUserContent(params: GenerateTextParamsWithAttachments) {
-  const content: Array<
-    | { type: "text"; text: string }
-    | {
-        type: "file";
-        data: string | Uint8Array | URL;
-        mediaType: string;
-        filename?: string;
-      }
-  > = [{ type: "text", text: params.prompt ?? "" }];
-
-  for (const attachment of params.attachments ?? []) {
-    content.push({
-      type: "file",
-      data: attachment.data,
-      mediaType: attachment.mediaType,
-      ...(attachment.filename ? { filename: attachment.filename } : {}),
-    });
-  }
-
-  return content;
-}
 
 /**
  * Eliza-Cloud-hosted `eliza-1` model ids that run a fork of llama-server (or
@@ -303,11 +310,6 @@ function extractCostUsd(
 function isReasoningModel(modelName: string): boolean {
   const lower = modelName.toLowerCase();
   return REASONING_MODEL_PATTERNS.some((pattern) => lower.includes(pattern));
-}
-
-function supportsStopSequences(modelName: string): boolean {
-  const lower = modelName.toLowerCase();
-  return !RESPONSES_ROUTED_PREFIXES.some((prefix) => lower.startsWith(prefix));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -412,30 +414,60 @@ function unwrapJsonSchema(value: unknown): unknown {
   return record.schema ?? record.jsonSchema ?? value;
 }
 
-function normalizeNativeTools(tools: unknown): unknown[] | undefined {
+// Normalize a single tool entry into the OpenAI `{ type, function }` wire
+// shape. Accepts BOTH the already-nested form (`{ type: "function", function:
+// { name, parameters } }`) and core's FLAT `ToolDefinition` envelope
+// (`{ name, type: "function", parameters }`, e.g. createHandleResponseTool /
+// the action planner). Returning the flat form verbatim made the cloud gateway
+// read `tool.function.name` on an undefined `function` → "Cannot read
+// properties of undefined (reading 'name')". Returns undefined for entries with
+// no resolvable name so they are dropped rather than crashing downstream.
+function normalizeNativeToolEntry(
+  rawTool: unknown,
+  fallbackName?: string
+): Record<string, unknown> | undefined {
+  const tool = asRecord(rawTool);
+  const nested = asRecord(tool.function);
+  const name = firstString(nested.name, tool.name, fallbackName);
+  if (!name) {
+    return undefined;
+  }
+  const description = firstString(nested.description, tool.description);
+  const inputSchema = unwrapJsonSchema(
+    nested.parameters ??
+      tool.inputSchema ??
+      tool.parameters ??
+      tool.schema ?? { type: "object" }
+  );
+  return {
+    type: "function",
+    function: {
+      name,
+      ...(description ? { description } : {}),
+      parameters: inputSchema,
+    },
+  };
+}
+
+export function normalizeNativeTools(tools: unknown): unknown[] | undefined {
   if (!tools) {
     return undefined;
   }
 
   if (Array.isArray(tools)) {
-    return tools;
+    const normalized = tools
+      .map((tool) => normalizeNativeToolEntry(tool))
+      .filter((tool): tool is Record<string, unknown> => tool !== undefined);
+    return normalized.length > 0 ? normalized : undefined;
   }
 
   const toolSet = asRecord(tools);
   const normalized: unknown[] = [];
   for (const [name, rawTool] of Object.entries(toolSet)) {
-    const tool = asRecord(rawTool);
-    const inputSchema = unwrapJsonSchema(
-      tool.inputSchema ?? tool.parameters ?? tool.schema ?? { type: "object" }
-    );
-    normalized.push({
-      type: "function",
-      function: {
-        name,
-        ...(typeof tool.description === "string" ? { description: tool.description } : {}),
-        parameters: inputSchema,
-      },
-    });
+    const entry = normalizeNativeToolEntry(rawTool, name);
+    if (entry) {
+      normalized.push(entry);
+    }
   }
 
   return normalized.length > 0 ? normalized : undefined;
@@ -760,40 +792,24 @@ function getModelNameForType(runtime: IAgentRuntime, modelType: TextModelType): 
   }
 }
 
+/**
+ * Resolve the model name, rendered prompt, and effective system prompt for a
+ * cloud text call.
+ *
+ * This used to also construct a Vercel AI-SDK `LanguageModel` (`openai.chat()`)
+ * plus a full `generateParams` object — but the handlers below call the cloud
+ * HTTP API directly (`requestRaw` → `/responses` / `/chat/completions`), so that
+ * AI-SDK client + params object was built and immediately discarded on every
+ * single text generation. Removed: it was pure per-call overhead and a
+ * misleading code path when reasoning about which transport actually runs.
+ */
 function buildGenerateParams(
   runtime: IAgentRuntime,
   modelType: TextModelType,
   params: GenerateTextParams
 ) {
-  const paramsWithAttachments = params as GenerateTextParamsWithAttachments;
   const prompt = params.prompt ?? "";
-  const maxTokens = params.maxTokens ?? 8192;
-
-  const openai = createOpenAIClient(runtime);
   const modelName = getModelNameForType(runtime, modelType);
-  const experimentalTelemetry = getExperimentalTelemetry(runtime);
-  const userContent =
-    (paramsWithAttachments.attachments?.length ?? 0) > 0
-      ? buildUserContent(paramsWithAttachments)
-      : undefined;
-
-  // Use openai.chat() (Chat Completions API) instead of openai.languageModel()
-  // (Responses API). The Responses API unconditionally rejects presencePenalty,
-  // frequencyPenalty, and stopSequences for ALL models, emitting noisy warnings.
-  // The Chat Completions API supports these features natively and handles
-  // reasoning models gracefully when the params are omitted.
-  const model = openai.chat(modelName) as LanguageModel;
-
-  // Reasoning models don't support temperature, frequency/presence penalties,
-  // or stopSequences. Detect via model name patterns.
-  const reasoning = isReasoningModel(modelName);
-  const stopSequences =
-    !reasoning &&
-    supportsStopSequences(modelName) &&
-    Array.isArray(params.stopSequences) &&
-    params.stopSequences.length > 0
-      ? params.stopSequences
-      : undefined;
   const systemPrompt = resolveEffectiveSystemPrompt({
     params,
     fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
@@ -803,20 +819,7 @@ function buildGenerateParams(
       omitDuplicateSystem: systemPrompt,
     }) ?? prompt;
 
-  const generateParams = {
-    model,
-    ...(userContent
-      ? { messages: [{ role: "user" as const, content: userContent }] }
-      : { prompt: promptText }),
-    system: systemPrompt,
-    ...(stopSequences ? { stopSequences } : {}),
-    maxOutputTokens: maxTokens,
-    experimental_telemetry: {
-      isEnabled: experimentalTelemetry,
-    },
-  };
-
-  return { generateParams, modelName, modelType, prompt: promptText, systemPrompt };
+  return { modelName, modelType, prompt: promptText, systemPrompt };
 }
 
 async function generateTextWithModel(
@@ -886,11 +889,14 @@ async function generateTextWithModel(
   }
   // Same shared cerebras key as the /chat/completions route, so gate this
   // bare-prompt round-trip through the SAME limiter (parsing stays unguarded).
-  const response = await withNativeChatLimit(() =>
-    createCloudApiClient(runtime).requestRaw("POST", "/responses", {
-      headers: responsesHeaders,
-      json: requestBody,
-    })
+  const response = await withNativeChatLimit(
+    () =>
+      createCloudApiClient(runtime).requestRaw("POST", "/responses", {
+        headers: responsesHeaders,
+        json: requestBody,
+        timeoutMs: resolveTextTimeoutMs(),
+      }),
+    "responses"
   );
   const responseText = await response.text();
   let data: ResponsesApiResponse = {};
@@ -989,11 +995,14 @@ export async function generateNativeChatCompletion(
   // calls don't overrun the one shared cerebras key's concurrent limit (-> 429
   // -> retries -> 30-63s). The permit is held only across the network
   // round-trip; the text()/JSON parse below runs unguarded.
-  const response = await withNativeChatLimit(() =>
-    createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
-      headers,
-      json: requestBody,
-    })
+  const response = await withNativeChatLimit(
+    () =>
+      createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
+        headers,
+        json: requestBody,
+        timeoutMs: resolveTextTimeoutMs(),
+      }),
+    "chat/completions"
   );
   const responseText = await response.text();
   let data: ChatCompletionsResponse = {};

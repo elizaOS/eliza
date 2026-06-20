@@ -2,13 +2,11 @@ import { Brain, ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { MarkdownText } from "./orchestrator-markdown";
 
-// Luminance-sweep shimmer keyframes for the streaming reasoning cell. This is
-// the canonical copy of the rule that also lives in ODYSSEUS_CSS
-// (odysseus/odysseus-theme.ts) for the /odysseus shell. The cell renders in two
-// surfaces — the standalone OrchestratorWorkbench timeline (/orchestrator),
-// which does NOT inject ODYSSEUS_CSS, and the odysseus shell, which does — so
-// the cell carries the rule itself rather than assuming the shell stylesheet is
-// present. It is emitted via a React-hoistable <style href precedence> (below):
+// Luminance-sweep shimmer keyframes for the streaming reasoning cell. The cell
+// renders in the OrchestratorWorkbench timeline (/orchestrator), which injects
+// no shared stylesheet, so the cell carries the rule itself rather than
+// assuming an ambient stylesheet is present. It is emitted via a
+// React-hoistable <style href precedence> (below):
 // React lifts it to <head> and DEDUPLICATES every identical href to a single
 // DOM node, so N cells across any number of renders inject the rule exactly
 // once (the per-instance <style> this replaces injected one tag per cell). The

@@ -1222,11 +1222,35 @@ export class LocalInferenceEngine {
 				"[voice] useEliza1Eot:true requested but the in-process Eliza-1 EOT scorer is unavailable on the FFI runtime — use the GGUF turn detector by setting useEliza1Eot:false.",
 			);
 		}
-		// Resolver order: prefer Eliza-1 in-process scorer (always null on the
-		// FFI runtime), then the GGUF turn detector, then heuristic fallback.
-		// The ONNX path was removed.
+		// Fused end-of-turn scorer (ABI v11): the model-based turn detector now
+		// runs in-process through libelizainference — a composite of the fused
+		// semantic scorer (P(<|im_end|>) over the loaded text model) and the
+		// heuristic syntactic co-signal. Built only when the loaded fused build
+		// wires the v11 EOT symbol; null on a pre-v11 library, in which case the
+		// resolver falls through to the heuristic-only classifier.
+		const bridgeFfi = bridge.ffi;
+		const fusedEot =
+			opts.turnDetector === false || !bridgeFfi
+				? null
+				: eotMod.tryBuildFusedEotClassifier({
+						ffi: bridgeFfi,
+						getContext: () => {
+							const ctx = bridge.ffiCtx;
+							if (ctx === null) {
+								throw new VoiceStartupError(
+									"missing-ffi",
+									"[voice] Cannot initialize fused EOT scorer: FFI context is not loaded.",
+								);
+							}
+							return ctx;
+						},
+					});
+		// Resolver order: prefer the fused composite EOT (v11), then the legacy
+		// in-process Eliza-1 scorer + GGUF turn detector (both null on the FFI
+		// runtime — they needed node-llama controlledEvaluate), then the
+		// heuristic. The ONNX path was removed.
 		const ggmlTurnDetector =
-			opts.turnDetector === false
+			opts.turnDetector === false || fusedEot
 				? undefined
 				: await eotGgmlMod
 						.createBundledLiveKitGgmlTurnDetector({
@@ -1240,6 +1264,7 @@ export class LocalInferenceEngine {
 			opts.turnDetector === false
 				? undefined
 				: (opts.turnDetector ??
+					fusedEot ??
 					eliza1EotClassifier ??
 					ggmlTurnDetector ??
 					new eotMod.HeuristicEotClassifier());

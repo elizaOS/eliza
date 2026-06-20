@@ -1852,25 +1852,29 @@ export function ContinuousChatOverlay({
         detentHaptic();
       }
     },
-    // A tap (no drag) on the handle. When collapsed the handle's hit zone covers
-    // the composer's center, so a tap there focuses the input to type. While the
-    // keyboard is up (composer focused), a tap on the handle DISMISSES it and
-    // returns to the pre-focus resting state (collapsed if that's where we came
-    // from). A tap on the pill brings the input back.
+    // A tap (no drag) on the handle. A tap on the PILL brings the input back.
+    // When OPEN, the handle is the bar ABOVE the thread, so tapping it with the
+    // keyboard up dismisses it and returns to the pre-focus resting state.
+    // When COLLAPSED the handle's hit zone OVERLAPS the composer, so a tap there
+    // is just "focus to type" — it must only focus the input, never dismiss or
+    // collapse (the native focus already raised the keyboard, and the tap pierces
+    // through to the input). Tapping OUTSIDE the panel is what drops the keyboard.
     onTap: () => {
       if (pilled) {
         openFromPill();
         return;
       }
-      const composerFocused =
-        typeof document !== "undefined" &&
-        document.activeElement === inputRef.current;
-      if (composerFocused) {
-        inputRef.current?.blur();
-        if (preFocusCollapsedRef.current) collapse();
+      if (sheetOpen) {
+        const composerFocused =
+          typeof document !== "undefined" &&
+          document.activeElement === inputRef.current;
+        if (composerFocused) {
+          inputRef.current?.blur();
+          if (preFocusCollapsedRef.current) collapse();
+        }
         return;
       }
-      if (!sheetOpen) inputRef.current?.focus();
+      inputRef.current?.focus();
     },
     // A deliberate (slow) drag: REST exactly where released instead of snapping
     // to a detent — drag the sheet to any size and it stays.

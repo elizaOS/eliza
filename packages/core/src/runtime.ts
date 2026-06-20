@@ -11,6 +11,12 @@ import {
 	type CapabilityConfig,
 	createBasicCapabilitiesPlugin,
 } from "./features/basic-capabilities/index";
+import {
+	INFERENCE_MARKS,
+	markInference,
+	recordInferenceSpan,
+	setInferenceModelProvider,
+} from "./inference-timing";
 import { createLogger } from "./logger";
 import { simpleHash } from "./optimization/ab-analysis";
 import { getOptimizationRootDir } from "./optimization-root-dir";
@@ -3591,6 +3597,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const trajLogger = (await this._ensureServiceStarted("trajectories")) as
 			| (Service & TrajectoryProviderAccessLogger)
 			| null;
+		const composeStartedAt = Date.now();
 		const providerData = await Promise.all(
 			providersToGet.map(async (provider) => {
 				const start = Date.now();
@@ -3619,6 +3626,10 @@ export class AgentRuntime implements IAgentRuntime {
 						}),
 					]);
 					const duration = Date.now() - start;
+
+					if (!timedOut) {
+						recordInferenceSpan(`provider:${provider.name}`, duration);
+					}
 
 					// Only log slow successful providers. Timed-out providers already logged above.
 					if (!timedOut && duration > 100) {
@@ -3659,6 +3670,9 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 			}),
 		);
+		recordInferenceSpan("composeState", Date.now() - composeStartedAt, {
+			providers: providersToGet.length,
+		});
 
 		if (trajectoryStepId && trajLogger) {
 			const userText =
@@ -4371,6 +4385,19 @@ export class AgentRuntime implements IAgentRuntime {
 		provider: string | undefined,
 		response: unknown,
 	): void {
+		// Per-turn latency breakdown: attribute this model round-trip to the
+		// active inference timer (no-op when none is active). `elapsedTime` is the
+		// already-measured handler+stream duration, so every return path that
+		// funnels through here is covered exactly once.
+		const resolvedProvider =
+			provider || this.models.get(modelKey)?.[0]?.provider || "unknown";
+		recordInferenceSpan(`model:${modelType}`, elapsedTime, {
+			modelKey,
+			provider: resolvedProvider,
+		});
+		if (modelType !== ModelType.TEXT_EMBEDDING) {
+			setInferenceModelProvider(resolvedProvider);
+		}
 		// Log to database
 		const responseValue =
 			Array.isArray(response) && response.every((x) => typeof x === "number")
@@ -4722,6 +4749,9 @@ export class AgentRuntime implements IAgentRuntime {
 		let streamedText = "";
 		const deliverModelStreamChunk = async (chunk: string): Promise<void> => {
 			if (abortSignal?.aborted) return;
+			if (streamedText === "" && chunk.length > 0) {
+				markInference(INFERENCE_MARKS.firstToken);
+			}
 			streamedText += chunk;
 			const trajStream = getTrajectoryContext();
 			await this.invokePipelineHooks(

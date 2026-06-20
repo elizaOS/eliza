@@ -1137,10 +1137,13 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
 }
 
 function routedShellMainClass(tab: string): string {
+  // One tight page gutter for every routed view: minimal top so headers sit
+  // right under the chrome, a small side gutter, modest bottom. Views that own
+  // their full surface (browser/apps/views) still get zero padding.
   const pagePadding =
     tab === "browser" || tab === "apps" || tab === "views"
       ? ""
-      : "px-3 xl:px-5 py-4 xl:py-6";
+      : "px-2 sm:px-3 pt-2 pb-4";
   const mobilePadding = tab === "browser" ? "" : MOBILE_NAV_PADDING_CLASS;
   return `flex flex-1 min-h-0 min-w-0 overflow-hidden ${pagePadding} ${mobilePadding}`;
 }
@@ -1173,7 +1176,7 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
 
 /**
  * Edge-to-edge surface for pages that register `fullBleed` — no tab bar, no
- * padding. The page owns its full window (e.g. the odysseus orchestrator).
+ * padding. The page owns its full window (e.g. the orchestrator).
  */
 function FullBleedShellContent(props: ShellContentProps): ReactNode {
   return (
