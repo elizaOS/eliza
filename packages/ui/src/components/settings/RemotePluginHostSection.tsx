@@ -24,6 +24,7 @@ import {
   subscribeDesktopRemotePluginWorkerChanged,
   uninstallDesktopRemotePlugin,
 } from "../../bridge/electrobun-rpc";
+import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import {
   type TranslationContextValue,
   useTranslation,
@@ -311,6 +312,7 @@ function RemotePluginRow({
 
 export function RemotePluginHostSection() {
   const { t } = useTranslation();
+  const branding = useBranding();
   const [snapshot, setSnapshot] =
     useState<DesktopRemotePluginStoreSnapshot | null>(null);
   const [statuses, setStatuses] = useState<WorkerStatusMap>({});
@@ -513,7 +515,8 @@ export function RemotePluginHostSection() {
               </span>{" "}
               {t("remotepluginhost.authTokenDesc", {
                 defaultValue:
-                  "a remote plugin can request your API token and call Eliza's HTTP API as you. Only install remote plugins from sources you trust.",
+                  "a remote plugin can request your API token and call {{appName}}'s HTTP API as you. Only install remote plugins from sources you trust.",
+                ...appNameInterpolationVars(branding),
               })}
             </p>
             {storeRoot ? (

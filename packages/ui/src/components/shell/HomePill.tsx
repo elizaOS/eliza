@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { useBranding } from "../../config/branding";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import type { ShellPhase } from "./shell-state";
@@ -21,6 +22,7 @@ export function HomePill({
   onOpen,
   onClose,
 }: HomePillProps): React.JSX.Element {
+  const { appName } = useBranding();
   const isOpen =
     phase === "summoned" || phase === "listening" || phase === "responding";
   const isInteractive = phase !== "booting";
@@ -34,7 +36,7 @@ export function HomePill({
     <button
       type="button"
       disabled={!isInteractive}
-      aria-label={isOpen ? "Close Eliza" : "Open Eliza"}
+      aria-label={isOpen ? `Close ${appName}` : `Open ${appName}`}
       aria-pressed={isOpen}
       data-phase={phase}
       data-testid="shell-home-pill"

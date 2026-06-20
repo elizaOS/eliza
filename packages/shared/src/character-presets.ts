@@ -87,10 +87,40 @@ const CHARACTER_DEFINITION_BY_AVATAR_INDEX = new Map(
   ]),
 );
 
+// The first/default character ("eliza") is the app's default agent. A
+// white-label app rebrands that default to its own app name (e.g. "Milady")
+// via setDefaultAgentName(), set once at boot from app.config.ts. Only the
+// default preset is renamed — the other named personas (Chen, Jin, …) keep
+// their identities. The character bio/system use {{name}}, so the rename
+// cascades when the character is built. A null/empty/"Eliza" override is a
+// no-op, so the canonical Eliza app is unaffected.
+const DEFAULT_PRESET_ID = "eliza";
+let DEFAULT_AGENT_NAME_OVERRIDE: string | null = null;
+
+export function setDefaultAgentName(name: string | null | undefined): void {
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  DEFAULT_AGENT_NAME_OVERRIDE =
+    trimmed && trimmed.toLowerCase() !== "eliza" ? trimmed : null;
+}
+
+export function getDefaultAgentName(): string {
+  return DEFAULT_AGENT_NAME_OVERRIDE ?? "Eliza";
+}
+
+function applyDefaultAgentName(preset: StylePreset): StylePreset {
+  if (!DEFAULT_AGENT_NAME_OVERRIDE || preset.id !== DEFAULT_PRESET_ID) {
+    return preset;
+  }
+  return { ...preset, name: DEFAULT_AGENT_NAME_OVERRIDE };
+}
+
 export function getStylePresets(
   language: unknown = DEFAULT_LANGUAGE,
 ): StylePreset[] {
-  return STYLE_PRESET_CACHE[normalizeCharacterLanguage(language)];
+  const presets = STYLE_PRESET_CACHE[normalizeCharacterLanguage(language)];
+  return DEFAULT_AGENT_NAME_OVERRIDE
+    ? presets.map((preset) => applyDefaultAgentName(preset))
+    : presets;
 }
 
 export const STYLE_PRESETS: StylePreset[] =
@@ -116,7 +146,7 @@ export function resolveStylePresetById(
   const normalized = normalizeCharacterLanguage(language);
   const definition = CHARACTER_DEFINITION_BY_ID.get(id.toLowerCase());
   return definition
-    ? resolveCharacterVariant(definition, normalized)
+    ? applyDefaultAgentName(resolveCharacterVariant(definition, normalized))
     : undefined;
 }
 
@@ -128,9 +158,17 @@ export function resolveStylePresetByName(
     return undefined;
   }
   const normalized = normalizeCharacterLanguage(language);
-  const definition = CHARACTER_DEFINITION_BY_NAME.get(name.toLowerCase());
+  // The rebranded default agent ("Milady") is the "eliza" preset renamed, so a
+  // lookup by the override name must resolve to it (the by-name map only knows
+  // the original "eliza" key).
+  const lookupName =
+    DEFAULT_AGENT_NAME_OVERRIDE &&
+    name.toLowerCase() === DEFAULT_AGENT_NAME_OVERRIDE.toLowerCase()
+      ? DEFAULT_PRESET_ID
+      : name.toLowerCase();
+  const definition = CHARACTER_DEFINITION_BY_NAME.get(lookupName);
   return definition
-    ? resolveCharacterVariant(definition, normalized)
+    ? applyDefaultAgentName(resolveCharacterVariant(definition, normalized))
     : undefined;
 }
 
@@ -144,7 +182,7 @@ export function resolveStylePresetByAvatarIndex(
   const normalized = normalizeCharacterLanguage(language);
   const definition = CHARACTER_DEFINITION_BY_AVATAR_INDEX.get(avatarIndex);
   return definition
-    ? resolveCharacterVariant(definition, normalized)
+    ? applyDefaultAgentName(resolveCharacterVariant(definition, normalized))
     : undefined;
 }
 
@@ -202,7 +240,11 @@ export function buildElizaCharacterCatalog(): {
     voicePresetId?: string;
   }>;
 } {
-  const assets = STYLE_PRESETS.slice()
+  // Use getStylePresets() (not the STYLE_PRESETS const) so the default-agent
+  // rename from setDefaultAgentName() is reflected in the white-label catalog.
+  const presets = getStylePresets(DEFAULT_LANGUAGE);
+  const assets = presets
+    .slice()
     .sort((left, right) => left.avatarIndex - right.avatarIndex)
     .map((preset) => ({
       id: preset.avatarIndex,
@@ -211,7 +253,7 @@ export function buildElizaCharacterCatalog(): {
       sourceName: preset.name,
     }));
 
-  const injectedCharacters = STYLE_PRESETS.map((preset) => ({
+  const injectedCharacters = presets.map((preset) => ({
     catchphrase: preset.catchphrase,
     name: preset.name,
     avatarAssetId: preset.avatarIndex,

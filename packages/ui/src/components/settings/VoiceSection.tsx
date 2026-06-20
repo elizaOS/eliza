@@ -8,6 +8,7 @@ import { Cloud, Database, Mic, Shield, Sliders, Timer } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { VoiceProfilesClient } from "../../api/client-voice-profiles";
+import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
@@ -153,6 +154,7 @@ export function VoiceSection({
   className,
 }: VoiceSectionProps): React.ReactElement {
   const { t } = useTranslation();
+  const branding = useBranding();
   const updatePrefs = React.useCallback(
     (patch: Partial<VoiceSectionPrefs>) => {
       onPrefsChange({ ...prefs, ...patch });
@@ -258,7 +260,8 @@ export function VoiceSection({
             label={t("voicesection.wakeWord", { defaultValue: "Wake word" })}
             description={t("voicesection.wakeWordDesc", {
               defaultValue:
-                "Listen for a phrase like 'Hey Eliza' before opening the mic.",
+                "Listen for a phrase like 'Hey {{appName}}' before opening the mic.",
+              ...appNameInterpolationVars(branding),
             })}
             control={
               <label

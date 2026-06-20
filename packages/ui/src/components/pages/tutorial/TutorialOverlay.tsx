@@ -16,10 +16,11 @@ import {
   useTutorial,
 } from "./tutorial-controller";
 import {
+  buildTutorialSteps,
   type ChatDetent,
-  TUTORIAL_STEPS,
   type TutorialObservable,
 } from "./tutorial-steps";
+import { useBranding } from "../../../config/branding";
 
 /**
  * The always-mounted interactive tour engine. When active it drives the real
@@ -54,6 +55,9 @@ export function TutorialOverlay(): React.ReactElement | null {
   const { active, stepIndex } = useTutorial();
   const { tab, setTab } = useApp();
   const controller = useShellControllerContext();
+  // Brand the tour copy ("Meet Milady", "Hi, I'm Milady") with the app name.
+  const { appName } = useBranding();
+  const steps = React.useMemo(() => buildTutorialSteps(appName), [appName]);
 
   const [beat, setBeat] = React.useState<1 | 2>(1);
   // The id of the step whose action has been completed. Tracked by id (not a
@@ -64,7 +68,7 @@ export function TutorialOverlay(): React.ReactElement | null {
   const [secondsOnStep, setSecondsOnStep] = React.useState(0);
   const [muted, setMuted] = React.useState(false);
 
-  const step = active ? TUTORIAL_STEPS[stepIndex] : undefined;
+  const step = active ? steps[stepIndex] : undefined;
 
   // Live values read by the (closure-stable) sampling interval via refs, so it
   // never captures a stale tab/transcript.
@@ -76,9 +80,9 @@ export function TutorialOverlay(): React.ReactElement | null {
   const sawPrefillRef = React.useRef(false);
 
   const advance = React.useCallback(() => {
-    if (stepIndex >= TUTORIAL_STEPS.length - 1) stopTutorial();
+    if (stepIndex >= steps.length - 1) stopTutorial();
     else goToStep(stepIndex + 1);
-  }, [stepIndex]);
+  }, [stepIndex, steps.length]);
 
   // Frame enter: reset per-frame state and drive the chat into the clean state
   // this frame needs (pill / rest / expand) or pre-fill the staged command.
@@ -170,7 +174,7 @@ export function TutorialOverlay(): React.ReactElement | null {
 
   const succeeded = doneStepId === step.id;
   const current = beat === 2 && step.beat2 ? step.beat2 : step;
-  const isLast = stepIndex >= TUTORIAL_STEPS.length - 1;
+  const isLast = stepIndex >= steps.length - 1;
   const showContinue = step.manualContinue || secondsOnStep >= LATE_SKIP_SEC;
   const continueLabel = step.manualContinue
     ? (step.continueLabel ?? "Continue")
