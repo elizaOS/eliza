@@ -464,6 +464,7 @@ export function LocalInferencePanel() {
             active={hub.active}
             busy={busy}
             t={t}
+            branding={branding}
           />
         </div>
       </AdvancedSettingsDisclosure>
@@ -477,12 +478,14 @@ function ExternalInstalledSummary({
   active,
   busy,
   t,
+  branding,
 }: {
   installed: InstalledModel[];
   onActivate: (id: string) => void;
   active: ActiveModelState;
   busy: boolean;
   t: TranslationContextValue["t"];
+  branding: ReturnType<typeof useBranding>;
 }) {
   const external = installed.filter((m) => m.source === "external-scan");
   if (external.length === 0) return null;
