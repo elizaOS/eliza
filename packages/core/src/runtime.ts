@@ -6243,6 +6243,39 @@ ${section_end}`;
 					extractor.reset();
 				}
 
+				// Repair reroll: when the extractor didn't produce a targeted retry
+				// context (the common case — contextLevel 2, no streaming extractor,
+				// or no validated fields), feed the model the CONCRETE reason its last
+				// output was rejected + the (redacted, truncated) bad output, so the
+				// reroll is corrective instead of a blind re-roll of the same prompt.
+				// Goes in the same `_smartRetryContext` field, which is rendered as a
+				// `stable:false` segment (prompt-cache safe) and cleared on
+				// success/abort. Correctness-neutral: it only changes the prompt of a
+				// retry that was already going to run; it never skips a validation.
+				if (!smartRetryContextNext) {
+					const repairIssues =
+						validationIssues.length > 0
+							? validationIssues
+							: parseErrorMessage
+								? [parseErrorMessage]
+								: [];
+					if (repairIssues.length > 0) {
+						const priorOutput = this.redactSecrets(cleanResponse).slice(
+							0,
+							AgentRuntime.STRUCTURED_FAILURE_PREVIEW_LIMIT,
+						);
+						const issueList = repairIssues
+							.slice(0, 8)
+							.map((issue) => `- ${issue}`)
+							.join("\n");
+						smartRetryContextNext = `\n\n[REPAIR] Your previous response was rejected because it did not satisfy the required schema. Fix exactly these problems and return a corrected response:\n${issueList}${
+							priorOutput
+								? `\n\nYour previous (invalid) output was:\n${priorOutput}`
+								: ""
+						}`;
+					}
+				}
+
 				if (smartRetryContextNext) {
 					(state as Record<string, unknown>)._smartRetryContext =
 						smartRetryContextNext;
