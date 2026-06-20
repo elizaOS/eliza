@@ -41,6 +41,8 @@ const clientMock = client as unknown as {
   updateWorkflowDefinition: ReturnType<typeof vi.fn>;
 };
 
+const clipboardWriteText = vi.fn();
+
 vi.mock("./WorkflowGraphViewer", () => ({
   WorkflowGraphViewer: ({
     workflow,
@@ -104,6 +106,17 @@ function executionFixture(
     stoppedAt: "2026-06-19T19:01:01.500Z",
     data: {
       resultData: {
+        engine: {
+          provider: "smithers",
+          nodes: 2,
+          levels: 2,
+          maxConcurrency: 1,
+          started: 2,
+          finished: 2,
+          failed: 0,
+          skipped: 0,
+          retries: 0,
+        },
         runData: {
           "Add Review Fields": [
             {
@@ -132,6 +145,10 @@ function executionFixture(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: clipboardWriteText },
+  });
   clientMock.getWorkflowExecutions.mockResolvedValue([]);
   clientMock.getWorkflowRevisions.mockResolvedValue({
     currentVersionId: "version-current",
@@ -162,6 +179,23 @@ describe("WorkflowEditor", () => {
     expect(
       screen.getByText('{"source":"cerebras","verified":true}'),
     ).toBeTruthy();
+    expect(
+      screen.getByText(/2 nodes \/ 2 levels \/ 1 max parallel/),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /copy diagnostics/i }));
+
+    await waitFor(() => {
+      expect(clipboardWriteText).toHaveBeenCalledWith(
+        expect.stringContaining("Workflow execution execution-1"),
+      );
+    });
+    expect(clipboardWriteText.mock.calls[0]?.[0]).toContain(
+      "Engine: 2 nodes / 2 levels / 1 max parallel",
+    );
+    expect(clipboardWriteText.mock.calls[0]?.[0]).toContain(
+      "Add Review Fields: success; 1 item",
+    );
   });
 
   it("keeps the editor open after saving a new workflow so it can be inspected", async () => {
@@ -185,7 +219,7 @@ describe("WorkflowEditor", () => {
     ).toBeTruthy();
   });
 
-  it("restores the previous saved workflow version from history", async () => {
+  it("restores a selected saved workflow version from history", async () => {
     const restored = {
       ...workflowFixture(),
       name: "Restored workflow",
@@ -194,6 +228,17 @@ describe("WorkflowEditor", () => {
     clientMock.getWorkflowRevisions.mockResolvedValue({
       currentVersionId: "version-current",
       revisions: [
+        {
+          id: "revision-2",
+          workflowId: "workflow-1",
+          versionId: "version-newer",
+          name: "Newer workflow",
+          active: false,
+          createdAt: "2026-06-19T19:00:00.000Z",
+          updatedAt: "2026-06-19T19:02:00.000Z",
+          capturedAt: "2026-06-19T19:07:00.000Z",
+          operation: "activate",
+        },
         {
           id: "revision-1",
           workflowId: "workflow-1",
@@ -212,7 +257,7 @@ describe("WorkflowEditor", () => {
     render(<WorkflowEditor initial={workflowFixture()} />);
 
     const restoreButton = await screen.findByRole("button", {
-      name: /restore previous/i,
+      name: "Restore Previous workflow",
     });
     fireEvent.click(restoreButton);
 

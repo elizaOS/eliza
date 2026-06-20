@@ -384,6 +384,7 @@ describe('EmbeddedWorkflowService', () => {
 
         const execution = await service.executeWorkflow(created.id);
         const item = execution.data?.resultData?.runData?.Set?.[0]?.data?.main?.[0]?.[0]?.json;
+        const engine = execution.data?.resultData?.engine;
         smithersDbPath = join(process.cwd(), '.eliza', 'smithers', created.id + '.sqlite');
         const smithersDb = new Database(smithersDbPath, { readonly: true });
         try {
@@ -399,6 +400,7 @@ describe('EmbeddedWorkflowService', () => {
             JSON.stringify({
               status: execution.status,
               item,
+              engine,
               tables,
               persistedSetRowsLength: persistedSetRows.length,
             })
@@ -437,11 +439,18 @@ describe('EmbeddedWorkflowService', () => {
       const result = JSON.parse(await readFile(resultPath, 'utf8')) as {
         status?: string;
         item?: { smithersRecorded?: boolean };
+        engine?: { provider?: string; nodes?: number; levels?: number; maxConcurrency?: number };
         tables?: string[];
         persistedSetRowsLength?: number;
       };
       expect(result.status).toBe('success');
       expect(result.item?.smithersRecorded).toBe(true);
+      expect(result.engine).toMatchObject({
+        provider: 'smithers',
+        nodes: 2,
+        levels: 2,
+        maxConcurrency: 1,
+      });
       expect(result.tables).toContain('smithers_0000_manual');
       expect(result.tables).toContain('smithers_0001_set');
       expect(result.tables).toContain('smithers_eliza_workflow_result');

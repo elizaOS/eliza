@@ -654,6 +654,18 @@ export interface WorkflowRevision {
   operation: WorkflowRevisionOperation;
 }
 
+export interface WorkflowExecutionEngineMetrics {
+  provider: "smithers";
+  nodes: number;
+  levels: number;
+  maxConcurrency: number;
+  started: number;
+  finished: number;
+  failed: number;
+  skipped: number;
+  retries: number;
+}
+
 export interface WorkflowExecution {
   id: string;
   status:
@@ -674,6 +686,7 @@ export interface WorkflowExecution {
       runData?: Record<string, unknown[]>;
       error?: { message?: string; stack?: string };
       lastNodeExecuted?: string;
+      engine?: WorkflowExecutionEngineMetrics;
     };
   };
 }

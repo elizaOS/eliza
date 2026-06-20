@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { WorkflowExecution } from "../api/client-types-chat";
 import {
+  buildWorkflowExecutionDiagnostics,
+  formatWorkflowEngineMetrics,
   formatWorkflowExecutionDuration,
   getWorkflowExecutionError,
   getWorkflowExecutionRunRows,
@@ -16,6 +18,17 @@ const SUCCESS_EXECUTION: WorkflowExecution = {
   mode: "manual",
   data: {
     resultData: {
+      engine: {
+        provider: "smithers",
+        nodes: 2,
+        levels: 2,
+        maxConcurrency: 1,
+        started: 2,
+        finished: 2,
+        failed: 0,
+        skipped: 0,
+        retries: 1,
+      },
       lastNodeExecuted: "Set",
       runData: {
         Trigger: [
@@ -52,6 +65,9 @@ describe("workflow execution helpers", () => {
     expect(rows.map((row) => row.nodeName)).toEqual(["Trigger", "Set"]);
     expect(rows[1].itemCount).toBe(2);
     expect(rows[1].preview).toContain('"ok":true');
+    expect(formatWorkflowEngineMetrics(SUCCESS_EXECUTION)).toBe(
+      "2 nodes / 2 levels / 1 max parallel / 1 retries",
+    );
   });
 
   it("surfaces top-level and per-node errors", () => {
@@ -96,5 +112,18 @@ describe("workflow execution helpers", () => {
         "2026-06-19T12:03:02.000Z",
       ),
     ).toBe("3 min");
+  });
+
+  it("builds copyable diagnostics for chat-assisted troubleshooting", () => {
+    const diagnostics = buildWorkflowExecutionDiagnostics(SUCCESS_EXECUTION);
+
+    expect(diagnostics).toContain("Workflow execution exec-1");
+    expect(diagnostics).toContain("Status: Succeeded");
+    expect(diagnostics).toContain("Last node: Set");
+    expect(diagnostics).toContain(
+      "Engine: 2 nodes / 2 levels / 1 max parallel / 1 retries",
+    );
+    expect(diagnostics).toContain("- Set: success; 2 items; 7 ms;");
+    expect(diagnostics).toContain('preview={"ok":true}');
   });
 });
