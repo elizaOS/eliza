@@ -263,6 +263,40 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
+  it("accepts an async-provisioning create response that returns agentId without id", async () => {
+    // The cloud agent-create async branch (202) returns the new agent's id
+    // under `agentId` only — no `id` field. The client must read it instead of
+    // throwing "Eliza Cloud response missing data.id" (the new-user dedicated
+    // onboarding crash).
+    capacitorMocks.request.mockResolvedValueOnce({
+      status: 202,
+      data: {
+        success: true,
+        created: true,
+        data: {
+          agentId: "agent-async-1",
+          agentName: "My Agent",
+          status: "provisioning",
+          jobId: "job-async-1",
+        },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const create = await client.createCloudCompatAgent({ agentName: "My Agent" });
+
+    expect(create).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          agentId: "agent-async-1",
+          status: "provisioning",
+        }),
+      }),
+    );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
   it("gets pairing tokens and deletes Cloud agents directly on native", async () => {
     capacitorMocks.request
       .mockResolvedValueOnce({

@@ -680,7 +680,11 @@ function parseDirectCloudAgentCreateData(
   const data = recordOrNull(value);
   if (!data) throw new Error("Eliza Cloud response missing data");
   return {
-    id: requireString(data.id, "data.id"),
+    // The cloud create response carries the new agent's id under `id` in most
+    // branches but only `agentId` in the async-provisioning (202) branch.
+    // Accept either — both are `agent.id` — so a provisioning agent (the common
+    // new-user path) doesn't crash onboarding against an un-redeployed worker.
+    id: requireString(data.id ?? data.agentId, "data.id"),
     agentName: stringOrNull(data.agentName) ?? fallbackAgentName,
     status: stringOrNull(data.status) ?? "pending",
   };
