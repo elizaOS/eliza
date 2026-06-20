@@ -1,7 +1,9 @@
 import { describe, expect, it, mock } from "bun:test";
 import {
   assertProvisioningWorkerPreflight,
+  evaluateSelfRestart,
   maybePublishHeartbeat,
+  readWorkerConfig,
 } from "./provisioning-worker";
 
 type WorkerLogger = Parameters<typeof maybePublishHeartbeat>[0];
@@ -106,5 +108,147 @@ describe("maybePublishHeartbeat (liveness gate)", () => {
     expect(publish).not.toHaveBeenCalled();
     expect(result).toEqual({ published: false, watchdogTripped: true });
     expect(logger.error).toHaveBeenCalled();
+  });
+});
+
+describe("evaluateSelfRestart (FIX 1 — K-consecutive-tick trigger)", () => {
+  it("resets the counter and never restarts while the cycle is progressing", () => {
+    const result = evaluateSelfRestart({
+      watchdogTripped: false,
+      consecutiveTicks: 1,
+      selfRestartEnabled: true,
+      threshold: 2,
+    });
+    expect(result).toEqual({ nextConsecutiveTicks: 0, shouldRestart: false });
+  });
+
+  it("does NOT restart on the first wedged tick (K=2)", () => {
+    const result = evaluateSelfRestart({
+      watchdogTripped: true,
+      consecutiveTicks: 0,
+      selfRestartEnabled: true,
+      threshold: 2,
+    });
+    expect(result).toEqual({ nextConsecutiveTicks: 1, shouldRestart: false });
+  });
+
+  it("restarts on the K-th consecutive wedged tick (K=2)", () => {
+    const result = evaluateSelfRestart({
+      watchdogTripped: true,
+      consecutiveTicks: 1,
+      selfRestartEnabled: true,
+      threshold: 2,
+    });
+    expect(result).toEqual({ nextConsecutiveTicks: 2, shouldRestart: true });
+  });
+
+  it("a single wedged tick between healthy ticks never reaches the threshold", () => {
+    // tick 1: wedged (counter 0 -> 1, no restart)
+    let state = evaluateSelfRestart({
+      watchdogTripped: true,
+      consecutiveTicks: 0,
+      selfRestartEnabled: true,
+      threshold: 2,
+    });
+    expect(state.shouldRestart).toBe(false);
+    // tick 2: progressing again -> counter resets
+    state = evaluateSelfRestart({
+      watchdogTripped: false,
+      consecutiveTicks: state.nextConsecutiveTicks,
+      selfRestartEnabled: true,
+      threshold: 2,
+    });
+    expect(state.nextConsecutiveTicks).toBe(0);
+    // tick 3: wedged again -> back to 1, still no restart
+    state = evaluateSelfRestart({
+      watchdogTripped: true,
+      consecutiveTicks: state.nextConsecutiveTicks,
+      selfRestartEnabled: true,
+      threshold: 2,
+    });
+    expect(state).toEqual({ nextConsecutiveTicks: 1, shouldRestart: false });
+  });
+
+  it("never restarts when the feature is disabled, even past the threshold", () => {
+    const result = evaluateSelfRestart({
+      watchdogTripped: true,
+      consecutiveTicks: 5,
+      selfRestartEnabled: false,
+      threshold: 2,
+    });
+    expect(result).toEqual({ nextConsecutiveTicks: 6, shouldRestart: false });
+  });
+
+  it("honors a higher threshold (K=3)", () => {
+    expect(
+      evaluateSelfRestart({
+        watchdogTripped: true,
+        consecutiveTicks: 1,
+        selfRestartEnabled: true,
+        threshold: 3,
+      }).shouldRestart,
+    ).toBe(false);
+    expect(
+      evaluateSelfRestart({
+        watchdogTripped: true,
+        consecutiveTicks: 2,
+        selfRestartEnabled: true,
+        threshold: 3,
+      }).shouldRestart,
+    ).toBe(true);
+  });
+});
+
+describe("readWorkerConfig (resilience knobs)", () => {
+  it("defaults: self-restart on, K=2, orphan reconciler off", () => {
+    const c = readWorkerConfig({} as NodeJS.ProcessEnv, []);
+    expect(c.selfRestartEnabled).toBe(true);
+    expect(c.watchdogConsecutiveTicks).toBe(2);
+    expect(c.orphanReconcilerEnabled).toBe(false);
+  });
+
+  it("PROVISIONING_WORKER_SELF_RESTART=0 / false disables self-restart", () => {
+    expect(
+      readWorkerConfig(
+        { PROVISIONING_WORKER_SELF_RESTART: "0" } as NodeJS.ProcessEnv,
+        [],
+      ).selfRestartEnabled,
+    ).toBe(false);
+    expect(
+      readWorkerConfig(
+        { PROVISIONING_WORKER_SELF_RESTART: "false" } as NodeJS.ProcessEnv,
+        [],
+      ).selfRestartEnabled,
+    ).toBe(false);
+  });
+
+  it("ORPHAN_RECONCILER_ENABLED=1 arms the reconciler; other values keep it off", () => {
+    expect(
+      readWorkerConfig(
+        { ORPHAN_RECONCILER_ENABLED: "1" } as NodeJS.ProcessEnv,
+        [],
+      ).orphanReconcilerEnabled,
+    ).toBe(true);
+    expect(
+      readWorkerConfig(
+        { ORPHAN_RECONCILER_ENABLED: "true" } as NodeJS.ProcessEnv,
+        [],
+      ).orphanReconcilerEnabled,
+    ).toBe(false);
+  });
+
+  it("PROVISIONING_WORKER_WATCHDOG_TICKS overrides K; garbage falls back to 2", () => {
+    expect(
+      readWorkerConfig(
+        { PROVISIONING_WORKER_WATCHDOG_TICKS: "4" } as NodeJS.ProcessEnv,
+        [],
+      ).watchdogConsecutiveTicks,
+    ).toBe(4);
+    expect(
+      readWorkerConfig(
+        { PROVISIONING_WORKER_WATCHDOG_TICKS: "nope" } as NodeJS.ProcessEnv,
+        [],
+      ).watchdogConsecutiveTicks,
+    ).toBe(2);
   });
 });
