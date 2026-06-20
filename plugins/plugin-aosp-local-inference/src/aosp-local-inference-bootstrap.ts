@@ -2069,7 +2069,7 @@ function readFfiStringAndFree(
   if (!raw || raw === 0n) return "(no diagnostic)";
   let text = "(unreadable diagnostic)";
   try {
-    text = ffi.CString ? new ffi.CString(raw).toString() : "(no CString)";
+    text = ffi.CString ? new ffi.CString(Number(raw)).toString() : "(no CString)";
   } catch {}
   try {
     symbols.eliza_inference_free_string?.(raw);
@@ -2397,7 +2397,7 @@ function makeFusedFfiHelpers(
       if (!raw || raw === 0n) return null;
       let text: string | null = null;
       try {
-        text = ffi.CString ? new ffi.CString(raw).toString() : null;
+        text = ffi.CString ? new ffi.CString(Number(raw)).toString() : null;
       } catch {
         text = null;
       }
