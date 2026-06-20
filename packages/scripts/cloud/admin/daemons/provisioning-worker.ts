@@ -96,9 +96,12 @@ export interface ProvisioningWorkerConfig {
   selfRestartEnabled: boolean;
   /**
    * Number of consecutive heartbeat ticks the watchdog must stay tripped before
-   * the worker self-restarts. K=2 means the work cycle has been stale for ~2x
-   * `WATCHDOG_MAX_CYCLE_MS` (the worst-case infra-maintenance window) before we
-   * give up and restart, so a slow-but-healthy cycle never restart-loops.
+   * the worker self-restarts. The watchdog trips at WATCHDOG_MAX_CYCLE_MS of no
+   * completed cycle, and restart fires on the K-th consecutive tick after, so
+   * the time from the last good cycle to exit(1) is
+   * ≈ WATCHDOG_MAX_CYCLE_MS + (K-1) * HEARTBEAT_INTERVAL_MS (≈315s at K=2). The
+   * extra ticks keep a one-off slow cycle from restart-looping; they are NOT a
+   * "~2x window" multiplier.
    */
   watchdogConsecutiveTicks: number;
   /**
@@ -121,9 +124,9 @@ const DEFAULT_NODE_HEALTH_INTERVAL_MS = 5 * 60_000;
 
 /**
  * Default consecutive-tick threshold for the self-restart watchdog. At K=2 with
- * the 15s heartbeat tick and the 5min watchdog window, a worker that has been
- * wedged for the watchdog window across two ticks (~2x the window from the last
- * good cycle) restarts itself.
+ * the 15s heartbeat tick and the 5min watchdog window, the worker restarts
+ * ≈ WATCHDOG_MAX_CYCLE_MS + (K-1) * HEARTBEAT_INTERVAL_MS ≈ 315s after the last
+ * good cycle (the watchdog window plus one extra 15s tick), not ~2x the window.
  */
 const DEFAULT_WATCHDOG_CONSECUTIVE_TICKS = 2;
 
@@ -580,25 +583,83 @@ const HEARTBEAT_INTERVAL_MS = 15_000;
  * that can't make progress — and the loud error log flags it for a human.
  *
  * On top of failing-closed, the worker self-restarts: once the watchdog stays
- * tripped for `watchdogConsecutiveTicks` consecutive heartbeat ticks (~2x this
- * window from the last good cycle, comfortably above worst-case infra
- * maintenance on a large fleet), it logs loudly and `process.exit(1)`s so
- * systemd `Restart=always` relaunches it. The K-tick gate keeps a
- * slow-but-healthy cycle from restart-looping. Gated by
+ * tripped for `watchdogConsecutiveTicks` consecutive heartbeat ticks, it logs
+ * loudly and `process.exit(1)`s so systemd `Restart=always` relaunches it. The
+ * K-tick gate keeps a slow-but-healthy cycle from restart-looping. Gated by
  * `PROVISIONING_WORKER_SELF_RESTART` (default on) so it can be disabled.
+ *
+ * Timing (FIX G): the watchdog trips once a cycle has not completed for
+ * WATCHDOG_MAX_CYCLE_MS. The self-restart then fires on the K-th consecutive
+ * heartbeat tick AFTER it trips, so the wall-clock from the last good cycle to
+ * exit(1) is
+ *   ≈ WATCHDOG_MAX_CYCLE_MS + (K-1) * HEARTBEAT_INTERVAL_MS
+ * For the defaults (300s + (2-1)*15s) that is ≈ 315s — NOT ~600s / "~2x the
+ * window". The first wedged tick only arms the counter (no restart); the K-th
+ * tick fires it.
  */
 const WATCHDOG_MAX_CYCLE_MS = 5 * 60_000;
 
 /**
- * Per-phase wall-clock budget (FIX 2). Each cycle phase (provisioning, node
- * health, autoscale, …) is wrapped in `withTimeout` so a single hung phase —
- * a Neon stall or an unresponsive node's SSH probe — can't run unbounded and
- * trip the watchdog. 90s is comfortably below `WATCHDOG_MAX_CYCLE_MS` so even
- * the longest phase frees the cycle long before the worker would be declared
- * wedged. `withTimeout` only frees the awaiter — every leaf already has its own
- * hard SSH/HTTP/Redis timeout, so a freed phase leaves no truly-unbounded I/O.
+ * Per-phase wall-clock budget. Each cycle phase (provisioning, node health,
+ * autoscale, …) is wrapped in `withTimeout` so a single hung phase — a Neon
+ * stall or an unresponsive node's SSH probe — frees fast instead of running
+ * unbounded. `withTimeout` only frees the awaiter — every leaf already has its
+ * own hard SSH/HTTP/Redis timeout, so a freed phase leaves no truly-unbounded
+ * I/O. This is the fast per-phase wedge signal; the cycle-wide budget below is
+ * what actually keeps the watchdog invariant from being violated.
  */
-const PHASE_TIMEOUT_MS = 90_000;
+const PHASE_TIMEOUT_MS = 60_000;
+
+/**
+ * Whole-WORK-cycle wall-clock budget (FIX E). The 4 WORK phases run on the
+ * watchdog's critical path, so SUM(their budgets) + the poll interval MUST stay
+ * below WATCHDOG_MAX_CYCLE_MS — otherwise a slow-but-progressing cycle could
+ * exceed the window and the worker would self-restart (the exact false positive
+ * the design claims to prevent: 4 × 90s = 360s > 300s under the old per-phase
+ * 90s budgets). Instead of summing N per-phase timeouts, the whole WORK group
+ * is bounded ONCE by this budget. Picked comfortably below the watchdog window:
+ *   WORK_CYCLE_TIMEOUT_MS + DEFAULT_POLL_INTERVAL_MS = 240s + 30s = 270s < 300s.
+ * Adding a 5th WORK phase therefore cannot re-break the invariant — the group
+ * budget is fixed. `assertWatchdogInvariant()` pins this at module load and the
+ * unit test pins it too (FIX F).
+ */
+const WORK_CYCLE_TIMEOUT_MS = 4 * 60_000;
+
+/**
+ * The watchdog invariant, surfaced for the unit test (FIX F) so adding a phase
+ * or bumping a timeout can't silently violate it. The work cycle is bounded as
+ * a GROUP by WORK_CYCLE_TIMEOUT_MS, so that single budget (plus the poll gap)
+ * is what must fit inside the watchdog window — not the per-phase budgets.
+ */
+export const WORKER_TIMING = {
+  watchdogMaxCycleMs: WATCHDOG_MAX_CYCLE_MS,
+  workCycleTimeoutMs: WORK_CYCLE_TIMEOUT_MS,
+  phaseTimeoutMs: PHASE_TIMEOUT_MS,
+  heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
+  defaultPollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
+} as const;
+
+/**
+ * Guard the watchdog invariant at module load: the WORK cycle's wall-clock
+ * budget plus the time the loop sleeps between cycles must finish well before
+ * the watchdog declares the worker wedged. A future edit that bumps
+ * WORK_CYCLE_TIMEOUT_MS or lowers WATCHDOG_MAX_CYCLE_MS into violation throws
+ * loudly at startup instead of shipping a worker that self-restarts mid-cycle.
+ */
+function assertWatchdogInvariant(): void {
+  if (
+    WORK_CYCLE_TIMEOUT_MS + DEFAULT_POLL_INTERVAL_MS >=
+    WATCHDOG_MAX_CYCLE_MS
+  ) {
+    throw new Error(
+      "[provisioning-worker] watchdog invariant violated: " +
+        `WORK_CYCLE_TIMEOUT_MS (${WORK_CYCLE_TIMEOUT_MS}) + DEFAULT_POLL_INTERVAL_MS ` +
+        `(${DEFAULT_POLL_INTERVAL_MS}) must be < WATCHDOG_MAX_CYCLE_MS (${WATCHDOG_MAX_CYCLE_MS}). ` +
+        "A slow-but-progressing work cycle would otherwise trip the watchdog and self-restart.",
+    );
+  }
+}
+assertWatchdogInvariant();
 
 /**
  * Liveness gate. The heartbeat interval publishes ONLY when this is true.
@@ -794,6 +855,103 @@ async function runBoundedPhase<T>(
   }
 }
 
+/**
+ * Run the 4 WORK phases (claim/complete jobs, agent heartbeats, recovery, fleet
+ * upgrade) as a single group bounded by WORK_CYCLE_TIMEOUT_MS (FIX E). Bounding
+ * the group once — rather than summing N per-phase 90s timeouts (4 × 90s = 360s
+ * > the 300s watchdog window) — keeps the critical-path budget below
+ * WATCHDOG_MAX_CYCLE_MS, so a slow-but-progressing cycle can't self-restart. The
+ * group timeout is caught and logged so it frees the cycle without aborting the
+ * rest of pollCycle; the per-phase timeouts inside still give a fast,
+ * per-phase wedge signal.
+ */
+async function runWorkCycle(
+  logger: WorkerLogger,
+  config: ProvisioningWorkerConfig,
+): Promise<void> {
+  const { withTimeout } = await loadDeps();
+  const work = (async () => {
+    await runBoundedPhase(
+      logger,
+      "cycle",
+      () => processProvisioningWorkerCycle(config.batchSize, config.jobTypes),
+      (result) => {
+        if (result.claimed > 0 || result.failed > 0) {
+          logger.info(
+            "[provisioning-worker] cycle complete",
+            resultContext(result),
+          );
+        }
+      },
+    );
+
+    await runBoundedPhase(
+      logger,
+      "heartbeat cycle",
+      () => processHeartbeatCycle(),
+      (heartbeats) => {
+        if (heartbeats.total > 0) {
+          logger.info("[provisioning-worker] heartbeat cycle complete", {
+            total: heartbeats.total,
+            succeeded: heartbeats.succeeded,
+            failed: heartbeats.failed,
+          });
+        }
+      },
+    );
+
+    await runBoundedPhase(
+      logger,
+      "recovery cycle",
+      () => processRecoveryCycle(),
+      (recovery) => {
+        if (recovery.total > 0) {
+          logger.info("[provisioning-worker] recovery cycle complete", {
+            total: recovery.total,
+            recovered: recovery.recovered,
+            reprovisioned: recovery.reprovisioned,
+            failed: recovery.failed,
+          });
+        }
+      },
+    );
+
+    await runBoundedPhase(
+      logger,
+      "fleet upgrade cycle",
+      () => processFleetUpgradeCycle(),
+      (decision) => {
+        if (decision.action !== "noop") {
+          logger.info("[provisioning-worker] fleet upgrade cycle complete", {
+            action: decision.action,
+            configuredImage: decision.configuredImage,
+            targetDigest: decision.targetDigest,
+            candidates: decision.candidates,
+            enqueued: decision.enqueued,
+            inFlight: decision.inFlight,
+            detail: decision.detail,
+          });
+        }
+      },
+    );
+  })();
+
+  try {
+    await withTimeout(
+      work,
+      WORK_CYCLE_TIMEOUT_MS,
+      "[provisioning-worker] work cycle",
+    );
+  } catch (error) {
+    // A group-level timeout frees the cycle (every leaf is independently
+    // bounded) so the watchdog clock advances and infra maintenance still runs.
+    logger.error("[provisioning-worker] work cycle exceeded its budget", {
+      error: error instanceof Error ? error.message : String(error),
+      workCycleTimeoutMs: WORK_CYCLE_TIMEOUT_MS,
+    });
+  }
+}
+
 async function pollCycle(
   logger: WorkerLogger,
   config: ProvisioningWorkerConfig,
@@ -816,71 +974,14 @@ async function pollCycle(
     return;
   }
   // ── WORK phases (on the watchdog's critical path) ────────────────────────
-  // Each is bounded by PHASE_TIMEOUT_MS so a single hung phase frees the cycle
-  // long before the watchdog would declare the worker wedged.
-  await runBoundedPhase(
-    logger,
-    "cycle",
-    () => processProvisioningWorkerCycle(config.batchSize, config.jobTypes),
-    (result) => {
-      if (result.claimed > 0 || result.failed > 0) {
-        logger.info(
-          "[provisioning-worker] cycle complete",
-          resultContext(result),
-        );
-      }
-    },
-  );
-
-  await runBoundedPhase(
-    logger,
-    "heartbeat cycle",
-    () => processHeartbeatCycle(),
-    (heartbeats) => {
-      if (heartbeats.total > 0) {
-        logger.info("[provisioning-worker] heartbeat cycle complete", {
-          total: heartbeats.total,
-          succeeded: heartbeats.succeeded,
-          failed: heartbeats.failed,
-        });
-      }
-    },
-  );
-
-  await runBoundedPhase(
-    logger,
-    "recovery cycle",
-    () => processRecoveryCycle(),
-    (recovery) => {
-      if (recovery.total > 0) {
-        logger.info("[provisioning-worker] recovery cycle complete", {
-          total: recovery.total,
-          recovered: recovery.recovered,
-          reprovisioned: recovery.reprovisioned,
-          failed: recovery.failed,
-        });
-      }
-    },
-  );
-
-  await runBoundedPhase(
-    logger,
-    "fleet upgrade cycle",
-    () => processFleetUpgradeCycle(),
-    (decision) => {
-      if (decision.action !== "noop") {
-        logger.info("[provisioning-worker] fleet upgrade cycle complete", {
-          action: decision.action,
-          configuredImage: decision.configuredImage,
-          targetDigest: decision.targetDigest,
-          candidates: decision.candidates,
-          enqueued: decision.enqueued,
-          inFlight: decision.inFlight,
-          detail: decision.detail,
-        });
-      }
-    },
-  );
+  // The WHOLE group is bounded ONCE by WORK_CYCLE_TIMEOUT_MS (FIX E) so the
+  // critical-path budget stays below WATCHDOG_MAX_CYCLE_MS no matter how many
+  // phases there are — 4 × per-phase 90s used to sum to 360s and could trip the
+  // 300s watchdog on a slow-but-progressing cycle. Each phase keeps its own
+  // (now-shorter) per-phase timeout as a fast individual-wedge signal; the group
+  // bound is the authoritative one. A group-level timeout frees the cycle and is
+  // logged, never aborting the rest of pollCycle (infra maintenance still runs).
+  await runWorkCycle(logger, config);
 
   // Mark progress for the watchdog HERE — after the WORK cycle, BEFORE infra
   // maintenance (FIX 2). Infra maintenance (SSH + Docker probes across the

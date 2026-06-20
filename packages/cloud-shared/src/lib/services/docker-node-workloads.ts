@@ -178,7 +178,12 @@ export interface OrphanReconcilerNode {
    * misread an empty list as "no containers" and reap live work.
    */
   listAgentContainers(): Promise<NodeContainerRef[] | null>;
-  /** Force-remove a container by id over SSH. */
+  /**
+   * Force-remove a container by its IMMUTABLE id over SSH. Must take the id, not
+   * the name: the id pins the exact container observed in the listing, so a
+   * concurrent recreate of the same `agent-<id>` name cannot be reaped by
+   * mistake. Implementations must NOT switch to `docker rm -f <name>`.
+   */
   removeContainer(containerId: string): Promise<void>;
 }
 
@@ -247,6 +252,15 @@ export async function reconcileOrphanContainers(
 
     for (const orphan of orphans) {
       try {
+        // Reap by the IMMUTABLE container ID (`orphan.id`), never the name. The
+        // id was captured in the same SSH listing that found the orphan, so it
+        // pins THAT exact container. This is what makes the reap safe against a
+        // concurrent recreate: if an agent_delete + a fresh provision race and a
+        // new `agent-<id>` container is created between the listing and the rm,
+        // `docker rm -f <id>` still targets the dead container we observed and
+        // leaves the live one alone. A future refactor to `docker rm -f <name>`
+        // would reintroduce the live-container-reap race (the name resolves to
+        // whichever container holds it NOW, i.e. the new live one) — DO NOT.
         await node.removeContainer(orphan.id);
         result.reaped += 1;
         logger.info("[orphan-reconciler] Reaped orphan container", {
@@ -350,6 +364,9 @@ export async function reconcileOrphanContainersOnNodes(): Promise<OrphanReconcil
       async removeContainer(containerId: string): Promise<void> {
         const client = ssh();
         await client.connect();
+        // rm by the immutable container ID (see OrphanReconcilerNode.removeContainer
+        // and the reap loop): targeting the name would race a concurrent recreate
+        // of the same agent and could reap a live container. Keep this `<id>`.
         await client.exec(`docker rm -f ${shellQuote(containerId)}`, ORPHAN_RM_TIMEOUT_MS);
       },
     };

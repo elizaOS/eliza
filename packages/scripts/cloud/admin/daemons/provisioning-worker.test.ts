@@ -4,6 +4,7 @@ import {
   evaluateSelfRestart,
   maybePublishHeartbeat,
   readWorkerConfig,
+  WORKER_TIMING,
 } from "./provisioning-worker";
 
 type WorkerLogger = Parameters<typeof maybePublishHeartbeat>[0];
@@ -196,6 +197,43 @@ describe("evaluateSelfRestart (FIX 1 — K-consecutive-tick trigger)", () => {
         threshold: 3,
       }).shouldRestart,
     ).toBe(true);
+  });
+});
+
+describe("watchdog timing invariant (FIX E/F)", () => {
+  // Pins the core safety property: the WORK cycle's wall-clock budget plus the
+  // gap the loop sleeps between cycles must finish comfortably before the
+  // watchdog declares the worker wedged. If this ever fails, a slow-but-
+  // progressing cycle would self-restart — the exact false positive the design
+  // claims to prevent. Bounding the WORK group ONCE (workCycleTimeoutMs) instead
+  // of summing N per-phase 90s timeouts (4 × 90s = 360s > the 300s window) is
+  // what keeps it true, and keeps it true when a 5th phase is added.
+  it("SUM(work budget) + pollInterval < WATCHDOG_MAX_CYCLE_MS", () => {
+    const { workCycleTimeoutMs, defaultPollIntervalMs, watchdogMaxCycleMs } =
+      WORKER_TIMING;
+    expect(workCycleTimeoutMs + defaultPollIntervalMs).toBeLessThan(
+      watchdogMaxCycleMs,
+    );
+  });
+
+  it("the work-cycle budget itself is below the watchdog window", () => {
+    expect(WORKER_TIMING.workCycleTimeoutMs).toBeLessThan(
+      WORKER_TIMING.watchdogMaxCycleMs,
+    );
+  });
+
+  it("a per-phase timeout never exceeds the whole-cycle budget", () => {
+    // A single phase must not be allowed to outlast the group bound that
+    // protects the watchdog invariant.
+    expect(WORKER_TIMING.phaseTimeoutMs).toBeLessThanOrEqual(
+      WORKER_TIMING.workCycleTimeoutMs,
+    );
+  });
+
+  it("documents the true headroom (defaults: 240s + 30s = 270s < 300s)", () => {
+    expect(WORKER_TIMING.workCycleTimeoutMs).toBe(240_000);
+    expect(WORKER_TIMING.defaultPollIntervalMs).toBe(30_000);
+    expect(WORKER_TIMING.watchdogMaxCycleMs).toBe(300_000);
   });
 });
 
