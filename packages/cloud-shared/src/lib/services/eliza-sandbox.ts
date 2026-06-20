@@ -115,6 +115,16 @@ export interface SnapshotResult {
   error?: string;
 }
 
+/**
+ * Sentinel error for "the running agent image does not serve POST /api/snapshot".
+ * The deployed elizaOS (V2) agent image binds its API to ELIZA_PORT/PORT and
+ * does not expose the bridge `/api/snapshot` route — only the cloud-agent
+ * template image (and the in-memory test double) do. A scheduled (auto) backup
+ * against such an agent is a no-op, not a failure, so the snapshot job treats
+ * this exactly like "Sandbox is not running": skip without burning retries.
+ */
+export const SNAPSHOT_ENDPOINT_UNSUPPORTED = "Snapshot endpoint not supported by agent image";
+
 const MAX_BACKUPS = 10;
 const SHARED_RUNTIME_HISTORY_MAX_MESSAGES = 40;
 // Heartbeat probes the agent over the headscale tailnet. When idle the path
@@ -3163,7 +3173,21 @@ export class ElizaSandboxService {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec?.bridge_url) return { success: false, error: "Sandbox is not running" };
 
-    const { stateData, sizeBytes } = await this.fetchSnapshotState(rec);
+    let stateData: AgentBackupStateData;
+    let sizeBytes: number;
+    try {
+      ({ stateData, sizeBytes } = await this.fetchSnapshotState(rec));
+    } catch (error) {
+      // A bridge that lacks /api/snapshot (V2 image) returns the sentinel; an
+      // auto backup against it is a benign skip, so surface it as a result the
+      // snapshot job recognizes instead of a thrown, retried failure. All other
+      // errors (real fetch/transport failures) still propagate.
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === SNAPSHOT_ENDPOINT_UNSUPPORTED) {
+        return { success: false, error: SNAPSHOT_ENDPOINT_UNSUPPORTED };
+      }
+      throw error;
+    }
 
     const backup = await agentSandboxesRepository.createBackup(
       await this.buildBackupInput(rec.id, type, stateData, sizeBytes),
@@ -4207,6 +4231,12 @@ export class ElizaSandboxService {
       headers: this.getAgentJsonHeaders(rec),
       signal: AbortSignal.timeout(15_000),
     });
+    if (res.status === 404) {
+      // The deployed agent image does not expose POST /api/snapshot (only the
+      // cloud-agent template image does). Surface a recognizable sentinel so an
+      // auto snapshot is skipped, not hard-failed-and-retried.
+      throw new Error(SNAPSHOT_ENDPOINT_UNSUPPORTED);
+    }
     if (!res.ok) {
       throw new Error(`Snapshot fetch failed: HTTP ${res.status}`);
     }

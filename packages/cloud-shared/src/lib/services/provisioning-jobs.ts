@@ -36,7 +36,7 @@ import { appsService } from "./apps";
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { dispatchContainerStopJob } from "./container-stop-job-service";
 import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
-import { elizaSandboxService } from "./eliza-sandbox";
+import { elizaSandboxService, SNAPSHOT_ENDPOINT_UNSUPPORTED } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
 import {
   isWaifuWebhookTargetUrl,
@@ -2201,7 +2201,7 @@ export class ProvisioningJobService {
     if (
       !result.success &&
       data.snapshotType === "auto" &&
-      result.error === "Sandbox is not running"
+      (result.error === "Sandbox is not running" || result.error === SNAPSHOT_ENDPOINT_UNSUPPORTED)
     ) {
       await jobsRepository.updateStatus(job.id, "completed", {
         result: agentSnapshotJobResultToRecord({
@@ -2211,9 +2211,12 @@ export class ProvisioningJobService {
         }),
         completed_at: new Date(),
       });
-      logger.info("[provisioning-jobs] auto snapshot skipped — agent not running", {
+      // Neutral message + reason so the V2-image snapshot-capability gap stays
+      // observable in logs instead of being mislabeled "agent not running".
+      logger.info("[provisioning-jobs] auto snapshot skipped", {
         jobId: job.id,
         agentId: data.agentId,
+        reason: result.error,
       });
       return;
     }
@@ -2457,8 +2460,9 @@ export class ProvisioningJobService {
   }
 
   /**
-   * Re-arm stuck `deletion_failed` sandboxes so a delete that failed only
-   * because the host node was transiently unreachable eventually completes.
+   * Re-arm stuck `deletion_failed` sandboxes (and orphaned `deletion_pending`
+   * rows whose agent_delete job was lost mid-claim) so a delete that failed or
+   * was stranded eventually completes.
    *
    * `deletion_failed` is otherwise a dead-end: the agent_delete job exhausted
    * its retries (e.g. the core was down for a deploy), so the row sits forever
@@ -2506,8 +2510,25 @@ export class ProvisioningJobService {
       .from(agentSandboxes)
       .where(
         and(
-          eq(agentSandboxes.status, "deletion_failed"),
+          // deletion_failed: the agent_delete job exhausted its retries (e.g. a
+          // node was down for a deploy). deletion_pending with NO active
+          // agent_delete job: the worker CLAIMED the delete job then died before
+          // completing it, so recoverStaleJobs marked the JOB failed with no
+          // dependent-row writeback (jobs.ts) — stranding the sandbox in
+          // deletion_pending forever. Re-arm both; enqueueAgentDeleteOnce is
+          // idempotent and re-flips the row to deletion_pending.
+          sql`${agentSandboxes.status} IN ('deletion_failed', 'deletion_pending')`,
           sql`${agentSandboxes.updated_at} < ${cutoff}`,
+          // REQUIRED now that deletion_pending is in scope: never re-arm a delete
+          // that is legitimately in-flight. (deletion_failed rows never have an
+          // active job, so this is a no-op for the original case.)
+          sql`NOT EXISTS (
+            SELECT 1 FROM ${jobs}
+            WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
+            AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
+            AND    ${jobs.type} = ${JOB_TYPES.AGENT_DELETE}
+            AND    ${jobs.status} IN ('pending', 'in_progress')
+          )`,
         ),
       )
       .limit(maxAgents);
