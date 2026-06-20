@@ -65,8 +65,19 @@ import { VoiceLifecycleError } from "./lifecycle";
  *     probes report unsupported and the fused runtime refuses (there is no
  *     libllama fallback). v8 callers that never touched the new entries remain
  *     source-compatible (the new probes simply return false on a v8 lib).
+ *
+ * v10: Kokoro-82M TTS folded in-process. The fused handle gains
+ *     `eliza_inference_kokoro_supported/load/synthesize/sample_rate` so the
+ *     mobile Kokoro path synthesizes through the same dlopen()-ed
+ *     libelizainference as OmniVoice instead of POSTing to the local-TCP
+ *     `llama-server /v1/audio/speech` route (forbidden on iOS / Google Play).
+ *     The four symbols are additive — a v9 library lacks them, so the
+ *     `kokoroSupported()` probe reports false and the Kokoro FFI runtime
+ *     refuses (no TCP fallback on mobile). A v9 library is still accepted at
+ *     degraded capability: its voice/ASR/VAD/LLM/text surface is unchanged and
+ *     Kokoro just probes unsupported on it.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 9 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 10 as const;
 
 /**
  * Pooling strategies for `embed`. Mirror `enum llama_pooling_type` and the
@@ -609,6 +620,42 @@ export interface ElizaInferenceFfi {
 		maxTextBytes?: number;
 	}): string;
 
+	/* ---- Kokoro TTS (ABI v10) ----------------------------------- */
+
+	/**
+	 * True when this build linked Eliza-1's in-process Kokoro engine
+	 * (`eliza_inference_kokoro_*`). A v9 library returns false (symbols
+	 * absent), so the Kokoro FFI runtime refuses rather than falling back to
+	 * the local-TCP `llama-server` route (forbidden on iOS / Google Play).
+	 */
+	kokoroSupported?(): boolean;
+	/**
+	 * Load the Kokoro GGUF at `ggufPath` and the voice preset `.bin` at
+	 * `voiceBinPath` (raw fp32 ref_s, `styleDim` inner dim — 256 for v1.0)
+	 * into `ctx`. Replaces any previously-loaded Kokoro model on the ctx.
+	 * Throws `VoiceLifecycleError` on a negative return with the C diagnostic.
+	 */
+	kokoroLoad?(args: {
+		ctx: ElizaInferenceContextHandle;
+		ggufPath: string;
+		voiceBinPath: string;
+		styleDim?: number;
+	}): void;
+	/**
+	 * Synthesize `text` through the loaded Kokoro model+voice at the model's
+	 * native rate (24 kHz for v1.0). `speed` scales predicted durations
+	 * (default 1.0). Allocates an output buffer of `maxSamples` fp32 samples,
+	 * reads back the count the library wrote, and returns that slice.
+	 */
+	kokoroSynthesize?(args: {
+		ctx: ElizaInferenceContextHandle;
+		text: string;
+		speed?: number;
+		maxSamples: number;
+	}): Float32Array;
+	/** The loaded Kokoro model's audio sample rate (24000 for v1.0). */
+	kokoroSampleRate?(ctx: ElizaInferenceContextHandle): number;
+
 	/** Best-effort dispose for the binding itself (closes the dlopen handle). */
 	close(): void;
 }
@@ -890,6 +937,26 @@ interface BunFfiSymbols {
 		maxTextBytes: bigint | number,
 		outErr: unknown,
 	) => number;
+	// Kokoro TTS (ABI v10). Optional — absent on v9 builds (the probe then
+	// reports unsupported and the Kokoro FFI runtime refuses).
+	eliza_inference_kokoro_supported?: () => number;
+	eliza_inference_kokoro_load?: (
+		ctx: bigint,
+		ggufPath: unknown,
+		voiceBinPath: unknown,
+		styleDim: number,
+		outErr: unknown,
+	) => number;
+	eliza_inference_kokoro_synthesize?: (
+		ctx: bigint,
+		text: unknown,
+		textLen: bigint | number,
+		speed: number,
+		outPcm: unknown,
+		maxSamples: bigint | number,
+		outErr: unknown,
+	) => number;
+	eliza_inference_kokoro_sample_rate?: (ctx: bigint) => number;
 }
 
 interface BunFfiLib {
@@ -1154,6 +1221,26 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 		eliza_inference_free_tokens: { args: [T.usize], returns: T.void },
 	};
+	// Kokoro TTS (ABI v10): the in-process Kokoro engine folded into the fused
+	// handle so the mobile path stops POSTing to the local-TCP llama-server
+	// route. Bound as its own family layered on top of the v9 surface; the
+	// cascade peels it when a v9 library is loaded. `kokoroSupported()` reports
+	// false in that case and the Kokoro FFI runtime refuses (no TCP fallback).
+	let kokoroSymbolsAvailable = true;
+	const kokoroDefs = {
+		eliza_inference_kokoro_supported: { args: [], returns: T.i32 },
+		eliza_inference_kokoro_load: {
+			// ctx, gguf_path, voice_bin_path, style_dim, out_error
+			args: [T.ptr, T.ptr, T.ptr, T.i32, T.ptr],
+			returns: T.i32,
+		},
+		eliza_inference_kokoro_synthesize: {
+			// ctx, text, text_len, speed, out_pcm, max_samples, out_error
+			args: [T.ptr, T.ptr, T.usize, T.f32, T.ptr, T.usize, T.ptr],
+			returns: T.i32,
+		},
+		eliza_inference_kokoro_sample_rate: { args: [T.ptr], returns: T.i32 },
+	};
 	const coreDefs = {
 		eliza_inference_abi_version: { args: [], returns: T.cstring },
 		eliza_inference_create: {
@@ -1230,7 +1317,29 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	const classifierDefs = { ...speakerDefs, ...diarizDefs };
 	const attempts = [
 		{
-			// Full v9 surface.
+			// Full v10 surface (v9 + the in-process Kokoro block).
+			defs: {
+				...coreDefs,
+				...referenceEncodeDefs,
+				...nativeVadDefs,
+				...wakewordDefs,
+				...classifierDefs,
+				...llmStreamDefs,
+				...llmCapabilityDefs,
+				...textModalitiesDefs,
+				...kokoroDefs,
+			},
+			referenceEncode: true,
+			nativeVad: true,
+			wakeword: true,
+			classifiers: true,
+			llmStream: true,
+			llmCapability: true,
+			textModalities: true,
+			kokoro: true,
+		},
+		{
+			// Full v9 surface (no v10 Kokoro block).
 			defs: {
 				...coreDefs,
 				...referenceEncodeDefs,
@@ -1387,6 +1496,8 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			llmCapabilitySymbolsAvailable = attempt.llmCapability ?? false;
 			textModalitiesSymbolsAvailable =
 				(attempt as { textModalities?: boolean }).textModalities ?? false;
+			kokoroSymbolsAvailable =
+				(attempt as { kokoro?: boolean }).kokoro ?? false;
 			break;
 		} catch (err) {
 			lastOpenError = err;
@@ -1421,14 +1532,19 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	//   - v4: additionally no wake-word — JS reports wake-word unsupported.
 	//   - v3: additionally no reference-encode — accepted only when the
 	//     optional reference-encode symbols are absent from the binding.
-	// v9 (current) accepts the full surface. A v8 library has the identical
-	// voice/ASR/VAD/LLM surface but lacks the v9 text-modality symbols
-	// (embeddings, vision, tokenizer), so it is accepted only when those
-	// symbols are absent — the v9 probes then report unsupported and the
-	// consumers keep their node-llama-cpp / libllama paths.
+	// v10 (current) accepts the full surface. A v9 library has the identical
+	// voice/ASR/VAD/LLM/text surface but lacks the v10 Kokoro symbols
+	// (`eliza_inference_kokoro_*`), so it is accepted only when those symbols
+	// are absent — the `kokoroSupported()` probe then reports false and the
+	// Kokoro FFI runtime refuses (no TCP fallback on mobile). A v8 library
+	// additionally lacks the v9 text-modality symbols (embeddings, vision,
+	// tokenizer), accepted only when those are absent too.
 	const abiOk =
 		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
-		(reported === "8" && !textModalitiesSymbolsAvailable) ||
+		(reported === "9" && !kokoroSymbolsAvailable) ||
+		(reported === "8" &&
+			!kokoroSymbolsAvailable &&
+			!textModalitiesSymbolsAvailable) ||
 		reported === "7" ||
 		reported === "6" ||
 		(reported === "5" && !speakerSymbolsAvailable && !diarizSymbolsAvailable) ||
@@ -2589,6 +2705,82 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			return Buffer.from(outText.buffer, outText.byteOffset, len).toString(
 				"utf8",
 			);
+		},
+
+		/* ---- Kokoro TTS (ABI v10) ---------------------------------- */
+
+		kokoroSupported(): boolean {
+			const probe = loadedLib.symbols.eliza_inference_kokoro_supported;
+			return (
+				kokoroSymbolsAvailable && typeof probe === "function" && probe() === 1
+			);
+		},
+
+		kokoroLoad({ ctx, ggufPath, voiceBinPath, styleDim }) {
+			const load = loadedLib.symbols.eliza_inference_kokoro_load;
+			if (!kokoroSymbolsAvailable || typeof load !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_kokoro_load is not exported by this build (pre-v10; Eliza-1 Kokoro engine not linked)",
+				);
+			}
+			const err = makeOutErr();
+			const ggufArg = cstr(ggufPath);
+			const voiceArg = cstr(voiceBinPath);
+			const rc = load(ctx, ggufArg.ptr, voiceArg.ptr, styleDim ?? 256, err.ptr);
+			if (rc !== ELIZA_OK) {
+				const message =
+					takeError(err.buf) ??
+					`[ffi-bindings] eliza_inference_kokoro_load rc=${rc}`;
+				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+		},
+
+		kokoroSynthesize({ ctx, text, speed, maxSamples }) {
+			const synth = loadedLib.symbols.eliza_inference_kokoro_synthesize;
+			if (!kokoroSymbolsAvailable || typeof synth !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_kokoro_synthesize is not exported by this build",
+				);
+			}
+			const err = makeOutErr();
+			const textArg = cstr(text);
+			const outPcm = new Float32Array(maxSamples);
+			const rc = synth(
+				ctx,
+				textArg.ptr,
+				BigInt(textArg.bytes),
+				speed ?? 1.0,
+				ffi.ptr(outPcm),
+				BigInt(maxSamples),
+				err.ptr,
+			);
+			if (rc < 0) {
+				const message =
+					takeError(err.buf) ??
+					`[ffi-bindings] eliza_inference_kokoro_synthesize rc=${rc}`;
+				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+			return outPcm.slice(0, Math.min(rc, maxSamples));
+		},
+
+		kokoroSampleRate(ctx): number {
+			const rate = loadedLib.symbols.eliza_inference_kokoro_sample_rate;
+			if (!kokoroSymbolsAvailable || typeof rate !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_kokoro_sample_rate is not exported by this build",
+				);
+			}
+			const rc = rate(ctx);
+			if (rc < 0) {
+				throw new VoiceLifecycleError(
+					failureCode(rc),
+					`[ffi-bindings] eliza_inference_kokoro_sample_rate rc=${rc} (no Kokoro model loaded on this ctx)`,
+				);
+			}
+			return rc;
 		},
 
 		close(): void {

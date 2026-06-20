@@ -26,7 +26,6 @@ import type {
 	GenerateArgs as BackendGenerateArgs,
 	BackendPlan,
 	LocalGenerateWithUsageResult,
-	LocalInferenceBackend,
 	LocalRuntimeLoadConfig,
 } from "./backend";
 import { BackendDispatcher } from "./backend";
@@ -1001,7 +1000,9 @@ export class LocalInferenceEngine {
 								bundleRoot: bundle.root,
 								useFfiBackend: true,
 								speakerPresetOverride: createKokoroSpeakerPreset(kokoro),
-								ttsBackendOverride: createKokoroTtsBackend(kokoro),
+								ttsBackendOverride: createKokoroTtsBackend(kokoro, {
+									bundleRoot: bundle.root,
+								}),
 							});
 						} else if (mode !== "omnivoice") {
 							throw new VoiceStartupError(

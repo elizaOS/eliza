@@ -8,6 +8,8 @@
 
 export type { KokoroTtsBackendDeps } from "./kokoro-backend";
 export { KokoroTtsBackend } from "./kokoro-backend";
+export type { KokoroFfiRuntimeOptions } from "./kokoro-ffi-runtime";
+export { KokoroFfiRuntime } from "./kokoro-ffi-runtime";
 export type {
 	KokoroGgufRuntimeOptions,
 	KokoroMockRuntimeOptions,

@@ -7,19 +7,18 @@
  * auto-download (AGENTS.md §3). GGUF-only: the ONNX path has been retired
  * (see `runtimeKind` below).
  *
- * TRANSPORT NOTE — Kokoro is a deliberate deviation from the in-process
- * fused-FFI rule. Unlike OmniVoice (which synthesizes in-process via the
- * fused `eliza_inference_tts_*` ABI), Kokoro is a distinct TTS model whose
- * native engine (`tools/kokoro/kokoro_lib`) is linked ONLY into
- * `llama-server`, NOT into the fused `libelizainference` shared library.
- * The GGUF is therefore served over HTTP — `KokoroGgufRuntime` POSTs to a
- * Kokoro-capable llama-server's `/v1/audio/speech` endpoint (the MTP
- * gateway, when launched with `--kokoro-model`). The GGUF is produced by
- * the elizaOS/llama.cpp fork's `tools/kokoro/convert_kokoro_pth_to_gguf.py`.
- * Folding Kokoro into the in-process fused FFI (ABI v10: link `kokoro_lib`
- * into `elizainference`, add `eliza_inference_kokoro_*`, add a
- * `KokoroFfiRuntime`) is a scoped follow-up gated on the native-Kokoro
- * numerical-parity gate — see `tools/kokoro/include/kokoro.h`.
+ * TRANSPORT NOTE — Kokoro synthesizes in-process through the fused
+ * `libelizainference` handle (ABI v10 `eliza_inference_kokoro_*`), the same
+ * dlopen()-ed lib as OmniVoice. The fork links Kokoro's native engine
+ * (`tools/kokoro/kokoro_lib`, its own GGUF reader + iSTFT decoder) into the
+ * fused build, and `KokoroFfiRuntime` drives it via `kokoroLoad` /
+ * `kokoroSynthesize`. This is the canonical path on every platform and the
+ * only one that ships on iOS / Google Play (those forbid the app opening a
+ * local TCP socket). The legacy `KokoroGgufRuntime` — POST `/v1/audio/speech`
+ * on a Kokoro-capable llama-server (the MTP gateway launched with
+ * `--kokoro-model`) — stays as an explicit dev/desktop opt-in
+ * (`KOKORO_BACKEND=fork`) and is never resolved on the mobile path. The GGUF
+ * is produced by the fork's `tools/kokoro/convert_kokoro_pth_to_gguf.py`.
  *
  * Env overrides:
  *   ELIZA_KOKORO_MODEL_DIR        — directory root

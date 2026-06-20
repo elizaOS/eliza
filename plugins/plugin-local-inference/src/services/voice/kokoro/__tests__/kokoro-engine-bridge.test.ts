@@ -55,11 +55,19 @@ function lifecycleLoadersOk(): VoiceLifecycleLoaders {
 
 describe("EngineVoiceBridge — kokoroOnly mode", () => {
 	let tmp: string;
+	let prevBackend: string | undefined;
 	beforeEach(() => {
 		tmp = mkdtempSync(path.join(os.tmpdir(), "kokoro-bridge-test-"));
+		// These tests exercise the bridge lifecycle, not backend selection. The
+		// in-process FFI default loads `libelizainference` eagerly (absent in
+		// CI), so pin the stateless/lazy HTTP `fork` runtime here.
+		prevBackend = process.env.KOKORO_BACKEND;
+		process.env.KOKORO_BACKEND = "fork";
 	});
 	afterEach(() => {
 		rmSync(tmp, { recursive: true, force: true });
+		if (prevBackend === undefined) delete process.env.KOKORO_BACKEND;
+		else process.env.KOKORO_BACKEND = prevBackend;
 	});
 
 	it("constructs a KokoroTtsBackend when kokoroOnly is set, even without a real bundle", () => {
