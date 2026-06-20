@@ -3,6 +3,7 @@ import type {
   IAgentRuntime,
   ModelTypeName,
   TextStreamResult,
+  TokenUsage,
 } from "@elizaos/core";
 import {
   buildCanonicalSystemPrompt,
@@ -86,6 +87,41 @@ export function resolveTextTimeoutMs(): number | undefined {
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed)) return DEFAULT_TEXT_TIMEOUT_MS;
   return parsed <= 0 ? undefined : parsed;
+}
+
+/**
+ * Token-by-token streaming of the native `/chat/completions` round-trip. On by
+ * default so the user-visible reply renders from the first token instead of
+ * waiting for the whole generation. `ELIZAOS_CLOUD_STREAMING=0`/`false`/`off`
+ * forces the buffered path (kill-switch). Streaming only engages when the
+ * runtime actually requests it (`params.stream`), so non-streaming callers
+ * (connectors with no UI stream) are unaffected.
+ */
+const STREAMING_ENV = "ELIZAOS_CLOUD_STREAMING";
+
+export function resolveStreamingEnabled(): boolean {
+  const raw = typeof process !== "undefined" ? process.env[STREAMING_ENV] : undefined;
+  if (raw === undefined) return true;
+  const v = raw.trim().toLowerCase();
+  return v !== "0" && v !== "false" && v !== "off";
+}
+
+/**
+ * Combine the runtime's abort signal with the client-side timeout into one
+ * signal for `requestRaw`. A stream is long-lived, so it should abort on EITHER
+ * a caller cancel OR the timeout — `requestRaw` honors only a single signal, so
+ * merge them here.
+ */
+function buildStreamAbortSignal(
+  abortSignal: AbortSignal | undefined,
+  timeoutMs: number | undefined
+): AbortSignal | undefined {
+  const timeoutSig =
+    typeof timeoutMs === "number" && timeoutMs > 0
+      ? AbortSignal.timeout(timeoutMs)
+      : undefined;
+  if (abortSignal && timeoutSig) return AbortSignal.any([abortSignal, timeoutSig]);
+  return abortSignal ?? timeoutSig;
 }
 
 let nativeChatLimiter: Semaphore | null = null;
@@ -832,16 +868,33 @@ async function generateTextWithModel(
 
   logger.debug(`[ELIZAOS_CLOUD] Generating text with ${modelType} model: ${modelName}`);
 
-  if (params.stream) {
-    logger.debug(
-      "[ELIZAOS_CLOUD] Streaming text disabled for responses compatibility; falling back to buffered response."
-    );
-  }
+  // Stream the user-visible reply token-by-token. Gated to the structured
+  // reply path (`streamStructured`, set only by the RESPONSE_HANDLER stage-1
+  // call): that call carries a responseSkeleton, so the runtime's field
+  // extractor surfaces `replyText` incrementally to the UI. Planner/other
+  // native calls (no responseSkeleton) stay buffered — streaming their raw
+  // envelope would leak internals to the UI stream. The bare `/responses`
+  // route stays buffered too (different SSE schema, not on the reply path).
+  const paramsStreaming = params as {
+    stream?: boolean;
+    streamStructured?: boolean;
+  };
+  const wantsStream =
+    Boolean(paramsStreaming.stream) &&
+    paramsStreaming.streamStructured === true &&
+    resolveStreamingEnabled();
 
   logger.log(`[ELIZAOS_CLOUD] Using ${modelType} model: ${modelName}`);
   logger.log(prompt);
 
   if (hasNativeTransportOptions(paramsWithNative)) {
+    if (wantsStream) {
+      return streamNativeChatCompletion(runtime, modelType, paramsWithNative, {
+        modelName,
+        prompt,
+        systemPrompt,
+      });
+    }
     const nativeResult = await generateNativeChatCompletion(runtime, modelType, paramsWithNative, {
       modelName,
       prompt,
@@ -1061,6 +1114,324 @@ export async function generateNativeChatCompletion(
       modelName: context.modelName,
       usage: data.usage,
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Streaming native /chat/completions (token-by-token, OpenAI-compatible SSE)
+// ---------------------------------------------------------------------------
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+/**
+ * Parse an OpenAI-compatible SSE byte stream into the decoded JSON frame of
+ * each `data:` line. Yields one object per frame; stops at `data: [DONE]`.
+ * Tolerates partial reads (buffers across chunk boundaries) and ignores
+ * non-`data:` lines (comments, blank separators). Exported for unit tests.
+ */
+export async function* parseOpenAiSseStream(
+  body: ReadableStream<Uint8Array>
+): AsyncGenerator<Record<string, unknown>> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const handle = (line: string): Record<string, unknown> | "DONE" | null => {
+    const trimmed = line.trimStart();
+    if (!trimmed.startsWith("data:")) return null;
+    const payload = trimmed.slice(5).trim();
+    if (payload === "") return null;
+    if (payload === "[DONE]") return "DONE";
+    try {
+      return JSON.parse(payload) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  };
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, nl);
+        buffer = buffer.slice(nl + 1);
+        const frame = handle(line);
+        if (frame === "DONE") return;
+        if (frame) yield frame;
+      }
+    }
+    const tail = handle(buffer);
+    if (tail && tail !== "DONE") yield tail;
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // Reader already released by an upstream cancel — nothing to do.
+    }
+  }
+}
+
+interface StreamingToolCallAcc {
+  id?: string;
+  name?: string;
+  args: string;
+}
+
+/** Fold one SSE `delta.tool_calls[]` array into the per-index accumulator. */
+export function accumulateToolCallDeltas(
+  acc: Map<number, StreamingToolCallAcc>,
+  deltas: unknown
+): void {
+  if (!Array.isArray(deltas)) return;
+  for (const raw of deltas) {
+    const d = asRecord(raw);
+    const index = typeof d.index === "number" ? d.index : 0;
+    const cur = acc.get(index) ?? { args: "" };
+    const id = firstString(d.id);
+    if (id) cur.id = id;
+    const fn = recordAt(d, "function");
+    const name = firstString(fn.name);
+    if (name) cur.name = name;
+    if (typeof fn.arguments === "string") cur.args += fn.arguments;
+    acc.set(index, cur);
+  }
+}
+
+/** Materialize accumulated tool-call deltas into the buffered-path shape. */
+export function finalizeStreamedToolCalls(
+  acc: Map<number, StreamingToolCallAcc>
+): NativeToolCall[] {
+  const out: NativeToolCall[] = [];
+  for (const [index, c] of [...acc.entries()].sort((a, b) => a[0] - b[0])) {
+    if (!c.name) continue;
+    out.push({
+      type: "tool-call",
+      toolCallId: c.id ?? `call_${c.name}_${index}`,
+      toolName: c.name,
+      input: parseJsonIfPossible(c.args.trim() === "" ? "{}" : c.args),
+    });
+  }
+  return out;
+}
+
+/**
+ * Streaming variant of {@link generateNativeChatCompletion}: returns a
+ * {@link TextStreamResult} whose `textStream` yields `delta.content` as it
+ * arrives, so `useModel`'s for-await loop streams it to the UI from the first
+ * token. Falls back to a single-chunk buffered result if the gateway answers
+ * non-SSE (self-healing). The shared concurrency permit is held for the whole
+ * stream lifetime (released in the generator's `finally`), not just until
+ * headers arrive — otherwise the cap would under-count in-flight requests.
+ */
+export async function streamNativeChatCompletion(
+  runtime: IAgentRuntime,
+  modelType: TextModelType,
+  params: GenerateTextParamsWithNativeOptions,
+  context: { modelName: string; prompt: string; systemPrompt?: string }
+): Promise<TextStreamResult> {
+  const requestBody = buildNativeRequestBody(
+    params,
+    context.modelName,
+    context.prompt,
+    context.systemPrompt
+  );
+  requestBody.stream = true;
+  // OpenAI-compatible: ask the server to include a final usage-only frame so we
+  // can meter the streamed call accurately.
+  requestBody.stream_options = { include_usage: true };
+
+  const headers: Record<string, string> = {
+    "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
+    "X-Eliza-Model-Type": modelType,
+  };
+  if (isSpanSamplerHonoringModel(context.modelName)) {
+    const samplerHeader = buildSpanSamplerHeader(params.spanSamplerPlan);
+    if (samplerHeader) {
+      headers["x-eliza-span-samplers"] = samplerHeader;
+    }
+  }
+
+  const abortSignal = (params as { signal?: AbortSignal }).signal;
+  const signal = buildStreamAbortSignal(abortSignal, resolveTextTimeoutMs());
+
+  const limiter = getNativeChatLimiter();
+  const waitStartedAt = Date.now();
+  await limiter.acquire();
+  recordInferenceSpan("cloud.semaphore-wait", Date.now() - waitStartedAt, {
+    route: "chat/completions:stream",
+  });
+  let permitReleased = false;
+  const releasePermit = (): void => {
+    if (!permitReleased) {
+      permitReleased = true;
+      limiter.release();
+    }
+  };
+
+  let response: Response;
+  try {
+    response = await createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
+      headers,
+      json: requestBody,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    releasePermit();
+    throw err;
+  }
+
+  if (!response.ok) {
+    let errorBody: { message?: string } | undefined;
+    try {
+      const errText = await response.text();
+      if (errText) {
+        errorBody = (JSON.parse(errText) as ChatCompletionsResponse).error;
+      }
+    } catch {
+      // Non-JSON error body — fall through to the status-coded message.
+    }
+    releasePermit();
+    const message =
+      typeof errorBody?.message === "string" && errorBody.message.trim()
+        ? errorBody.message.trim()
+        : `elizaOS Cloud error ${response.status}`;
+    const requestError = new Error(message) as Error & {
+      status?: number;
+      error?: unknown;
+    };
+    requestError.status = response.status;
+    if (errorBody) requestError.error = errorBody;
+    throw requestError;
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  const isSse = contentType.includes("text/event-stream") && response.body !== null;
+
+  // Self-healing fallback: gateway answered with a buffered JSON body despite
+  // the stream request. Yield it as a single chunk so the streaming contract
+  // (and the structured-field extractor downstream) still works.
+  if (!isSse) {
+    const bufferedText = await response.text();
+    releasePermit();
+    let data: ChatCompletionsResponse = {};
+    if (bufferedText) {
+      try {
+        data = JSON.parse(bufferedText) as ChatCompletionsResponse;
+      } catch (parseErr) {
+        logger.error(
+          `[ELIZAOS_CLOUD] Failed to parse buffered chat completions JSON: ${
+            parseErr instanceof Error ? parseErr.message : String(parseErr)
+          }`
+        );
+      }
+    }
+    const text = extractChatCompletionText(data);
+    const toolCalls = extractNativeToolCalls(data);
+    const usage = convertNativeUsage(data.usage);
+    if (usage) {
+      emitModelUsageEvent(runtime, modelType, context.prompt, usage, {
+        modelName: context.modelName,
+        ...(() => {
+          const costUsd = extractCostUsd(data.usage, response);
+          return typeof costUsd === "number" ? { costUsd } : {};
+        })(),
+      });
+    }
+    if (!text.trim() && toolCalls.length === 0) {
+      throw new Error("elizaOS Cloud returned no text or tool calls");
+    }
+    async function* single(): AsyncGenerator<string> {
+      if (text) yield text;
+    }
+    return {
+      textStream: single(),
+      text: Promise.resolve(text),
+      usage: Promise.resolve(usage),
+      finishReason: Promise.resolve(data.choices?.[0]?.finish_reason),
+      toolCalls: Promise.resolve(toolCalls),
+      providerMetadata: { modelName: context.modelName, usage: data.usage },
+    };
+  }
+
+  const body = response.body as ReadableStream<Uint8Array>;
+  const toolAcc = new Map<number, StreamingToolCallAcc>();
+  let accumulated = "";
+  let nativeUsage: NativeTokenUsage | undefined;
+  let rawUsage: unknown;
+  let finishReason: string | undefined;
+
+  const textD = deferred<string>();
+  const usageD = deferred<TokenUsage | undefined>();
+  const finishD = deferred<string | undefined>();
+  const toolCallsD = deferred<NativeToolCall[]>();
+
+  async function* generate(): AsyncGenerator<string> {
+    try {
+      for await (const frame of parseOpenAiSseStream(body)) {
+        if (frame.error) {
+          const message = asRecord(frame.error).message;
+          throw new Error(
+            typeof message === "string" && message.trim()
+              ? message.trim()
+              : "elizaOS Cloud stream error"
+          );
+        }
+        const choices = Array.isArray(frame.choices) ? frame.choices : [];
+        const choice = asRecord(choices[0]);
+        const delta = recordAt(choice, "delta");
+        // Raw (un-trimmed) content — inter-token whitespace is significant.
+        if (typeof delta.content === "string" && delta.content.length > 0) {
+          accumulated += delta.content;
+          yield delta.content;
+        }
+        if (delta.tool_calls) {
+          accumulateToolCallDeltas(toolAcc, delta.tool_calls);
+        }
+        const fr = firstString(choice.finish_reason);
+        if (fr) finishReason = fr;
+        if (frame.usage) {
+          rawUsage = frame.usage;
+          nativeUsage = convertNativeUsage(frame.usage);
+        }
+      }
+    } finally {
+      releasePermit();
+      const toolCalls = finalizeStreamedToolCalls(toolAcc);
+      textD.resolve(accumulated);
+      usageD.resolve(nativeUsage);
+      finishD.resolve(finishReason);
+      toolCallsD.resolve(toolCalls);
+      if (nativeUsage) {
+        emitModelUsageEvent(runtime, modelType, context.prompt, nativeUsage, {
+          modelName: context.modelName,
+          ...(() => {
+            const costUsd = extractCostUsd(rawUsage, response);
+            return typeof costUsd === "number" ? { costUsd } : {};
+          })(),
+        });
+      }
+    }
+  }
+
+  return {
+    textStream: generate(),
+    text: textD.promise,
+    usage: usageD.promise,
+    finishReason: finishD.promise,
+    toolCalls: toolCallsD.promise,
+    providerMetadata: { modelName: context.modelName },
   };
 }
 
