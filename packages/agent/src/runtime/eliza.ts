@@ -1880,9 +1880,15 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     topology.services.tts || isCloudContainer,
   );
   setCloudUsageEnv("ELIZAOS_CLOUD_USE_MEDIA", topology.services.media);
+  // Cloud containers always use cloud embeddings: the cloud TEXT_EMBEDDING
+  // handler (1536-dim) must win over plugin-local-inference's gte-small
+  // (384-dim CPU GGUF). Without this, a dedicated cloud agent warms up and
+  // serves local 384-dim embeddings while the SQL column is provisioned for the
+  // cloud dimension → every memory insert is dropped on a dimension mismatch,
+  // and the CPU embedding warmup wastes boot time.
   setCloudUsageEnv(
     "ELIZAOS_CLOUD_USE_EMBEDDINGS",
-    topology.services.embeddings,
+    topology.services.embeddings || isCloudContainer,
   );
   setCloudUsageEnv("ELIZAOS_CLOUD_USE_RPC", topology.services.rpc);
 
@@ -2014,7 +2020,7 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   } else {
     delete process.env.ELIZA_CLOUD_MEDIA_DISABLED;
   }
-  if (!topology.services.embeddings) {
+  if (!topology.services.embeddings && !isCloudContainer) {
     process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED = "true";
   } else {
     delete process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED;
