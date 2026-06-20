@@ -204,6 +204,7 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 | `ELIZAOS_CLOUD_ENABLED` | `false` — when true, enables container provisioning, device auth, bridge, and backup services |
 | `ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY` | `false` |
 | `ELIZAOS_CLOUD_APP_VERSION` | `2.0.0-beta.0` |
+| `ELIZAOS_CLOUD_NATIVE_CONCURRENCY` | `1` — per-process cap on CONCURRENT native `/chat/completions` calls (text tiers). A single turn fans providers out via composeState's `Promise.all`, each calling `useModel` -> the native chat path; firing them at once overruns the shared cerebras key's concurrent limit -> 429 -> retries. Default `1` serializes the burst; set `2` for mild parallelism. Embeddings use a separate `/embeddings` route and are NOT gated. |
 
 ### Optional — model tiers (each has a fallback bare env alias)
 

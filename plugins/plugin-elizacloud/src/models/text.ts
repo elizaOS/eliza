@@ -10,6 +10,7 @@ import {
   ModelType,
   renderChatMessagesForPrompt,
   resolveEffectiveSystemPrompt,
+  Semaphore,
 } from "@elizaos/core";
 import type { LanguageModel } from "ai";
 import { createOpenAIClient } from "../providers/openai";
@@ -35,6 +36,47 @@ const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as ModelTypeNa
 const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
   "RESPONSE_HANDLER") as ModelTypeName;
 const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as ModelTypeName;
+
+/**
+ * Per-process cap on CONCURRENT native cerebras `/chat/completions` calls.
+ *
+ * A single chat turn fans providers out via composeState's `Promise.all`
+ * (core runtime.ts), and each provider can call `useModel` -> here. Firing them
+ * all at once overruns the ONE shared cerebras key's concurrent-request limit
+ * -> 429 -> 3 retries x backoff -> 30-63s of latency. Serializing the per-turn
+ * burst through a small semaphore keeps each call ~3s with no 429, without
+ * needing more keys or backend changes.
+ *
+ * Tunable via `ELIZAOS_CLOUD_NATIVE_CONCURRENCY` (integer, default 1 = fully
+ * serialize; set 2 for mild parallelism). Embeddings use a SEPARATE
+ * `/embeddings` route (embeddings.ts) and are intentionally NOT gated here.
+ */
+const NATIVE_CONCURRENCY_ENV = "ELIZAOS_CLOUD_NATIVE_CONCURRENCY";
+const DEFAULT_NATIVE_CONCURRENCY = 1;
+
+let nativeChatLimiter: Semaphore | null = null;
+
+function resolveNativeConcurrency(): number {
+  const raw =
+    typeof process !== "undefined" ? process.env[NATIVE_CONCURRENCY_ENV] : undefined;
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_NATIVE_CONCURRENCY;
+}
+
+function getNativeChatLimiter(): Semaphore {
+  if (!nativeChatLimiter) {
+    nativeChatLimiter = new Semaphore(resolveNativeConcurrency());
+  }
+  return nativeChatLimiter;
+}
+
+/**
+ * Test-only: discard the cached limiter so the next call re-reads the env knob.
+ * Production code never needs this — the knob is read once per process.
+ */
+export function __resetNativeChatLimiterForTests(): void {
+  nativeChatLimiter = null;
+}
 
 type ResponsesApiResponse = Record<string, unknown> & {
   error?: {
@@ -869,7 +911,9 @@ async function generateTextWithModel(
   return text;
 }
 
-async function generateNativeChatCompletion(
+// Exported for unit tests (the concurrency limiter wrapper). Not part of the
+// plugin's public model-handler surface.
+export async function generateNativeChatCompletion(
   runtime: IAgentRuntime,
   modelType: TextModelType,
   params: GenerateTextParamsWithNativeOptions,
@@ -900,10 +944,23 @@ async function generateNativeChatCompletion(
       headers["x-eliza-span-samplers"] = samplerHeader;
     }
   }
-  const response = await createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
-    headers,
-    json: requestBody,
-  });
+  // Serialize the per-turn composeState burst through a small semaphore so N
+  // simultaneous useModel calls don't overrun the one shared cerebras key's
+  // concurrent limit (-> 429 -> retries -> 30-63s). Hold the permit only across
+  // the network round-trip; release the instant the server responds (the
+  // text()/JSON parse below runs unguarded). `finally` frees the permit even on
+  // throw so a failed call never starves the queue.
+  const limiter = getNativeChatLimiter();
+  await limiter.acquire();
+  let response: Response;
+  try {
+    response = await createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
+      headers,
+      json: requestBody,
+    });
+  } finally {
+    limiter.release();
+  }
   const responseText = await response.text();
   let data: ChatCompletionsResponse = {};
   if (responseText) {
