@@ -175,6 +175,25 @@ function schemaRequestLooksUnsupported(error: unknown): boolean {
 	);
 }
 
+// A HIGH-CONFIDENCE signal that the provider STRUCTURALLY rejects schema-
+// constrained output (vs a generic/transient HTTP 400 that merely says "bad
+// request" — rate-limit, malformed prompt, context length, gateway blip). Only
+// a schema-specific rejection like this should arm the lifetime memo on its
+// own; a bare "bad request" still falls back for the turn but is re-attempted
+// next turn so a one-off blip cannot permanently downgrade a schema-capable
+// provider.
+function schemaRejectionLooksPersistent(error: unknown): boolean {
+	const message = (
+		error instanceof Error ? error.message : String(error ?? "")
+	).toLowerCase();
+	return (
+		message.includes("response schema") ||
+		message.includes("responseschema") ||
+		message.includes("json_schema") ||
+		message.includes("structured output")
+	);
+}
+
 // Once a runtime's SMALL model rejects a structured `responseSchema` request,
 // every subsequent request will be rejected the same way — the provider simply
 // does not support schema-constrained output (e.g. the cerebras gpt-oss path on
@@ -183,7 +202,15 @@ function schemaRequestLooksUnsupported(error: unknown): boolean {
 // waste on every turn. Remember the rejection per runtime and, from then on,
 // skip straight to the json_object request. Keyed by the live runtime instance
 // (a WeakSet, so it never leaks across agents).
+//
+// The memo is armed conservatively (see below): a schema-specific rejection
+// arms it immediately, but a bare/generic "bad request" must recur
+// `SCHEMA_UNSUPPORTED_STREAK_THRESHOLD` times in a row — any schema SUCCESS in
+// between resets the streak — so a transient 400 self-heals instead of
+// permanently downgrading a genuinely schema-capable provider.
 const schemaUnsupportedRuntimes = new WeakSet<object>();
+const schemaRejectionStreak = new WeakMap<object, number>();
+const SCHEMA_UNSUPPORTED_STREAK_THRESHOLD = 2;
 
 async function generateEvaluationOutput(params: {
 	runtime: IAgentRuntime;
@@ -229,17 +256,36 @@ async function generateEvaluationOutput(params: {
 	}
 
 	try {
-		return await runtime.useModel(ModelType.TEXT_SMALL, {
+		const result = await runtime.useModel(ModelType.TEXT_SMALL, {
 			messages,
 			responseSchema: schema,
 			responseFormat: { type: "json_object" },
 			temperature: 0,
 		});
+		// Schema worked this turn — clear any prior rejection streak so a stray
+		// earlier 400 never accumulates toward a permanent downgrade.
+		schemaRejectionStreak.delete(runtime);
+		return result;
 	} catch (error) {
 		if (!schemaRequestLooksUnsupported(error)) throw error;
-		// Provider does not support schema-constrained output — remember it so
-		// every subsequent turn skips the schema attempt entirely.
-		schemaUnsupportedRuntimes.add(runtime);
+		// Decide whether this rejection is structural enough to PERMANENTLY skip
+		// the schema attempt from now on. A schema-specific message arms the memo
+		// immediately; a generic "bad request" must recur THRESHOLD times in a row
+		// (a single transient blip self-heals on the next schema success).
+		const streak = (schemaRejectionStreak.get(runtime) ?? 0) + 1;
+		schemaRejectionStreak.set(runtime, streak);
+		if (
+			!schemaUnsupportedRuntimes.has(runtime) &&
+			(schemaRejectionLooksPersistent(error) ||
+				streak >= SCHEMA_UNSUPPORTED_STREAK_THRESHOLD)
+		) {
+			schemaUnsupportedRuntimes.add(runtime);
+			// WARN (not debug) so an erroneous permanent downgrade is observable.
+			runtime.logger.warn(
+				{ src: "service:evaluator", streak },
+				"Post-turn evaluator: provider rejected schema-constrained output; disabling schema requests for this runtime (json_object fallback)",
+			);
+		}
 		runtime.logger.debug(
 			{ src: "service:evaluator" },
 			"Post-turn evaluator schema request rejected; retrying JSON-object fallback",
