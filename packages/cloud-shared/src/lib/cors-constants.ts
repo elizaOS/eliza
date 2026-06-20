@@ -36,6 +36,16 @@ export const CORS_ALLOW_HEADER_NAMES = [
   // browser CORS preflight rejects requests that send them.
   "Idempotency-Key",
   "X-Affiliate-Code",
+  // The Eliza app's agent-API client (packages/ui/src/api/client-base.ts) ALWAYS
+  // sends these to a shared-runtime agent's REST surface
+  // (/api/v1/eliza/agents/:id/api/...). Without them in the allow-list the
+  // browser CORS preflight rejects every shared-agent request from the Capacitor
+  // WebView. Mirrors the dedicated-agent allow-headers in
+  // packages/agent/src/api/server-helpers-auth.ts (CORS_ALLOWED_HEADERS).
+  "X-ElizaOS-Client-Id",
+  "X-Eliza-Client-Id",
+  "X-ElizaOS-UI-Language",
+  "X-Eliza-UI-Language",
 ] as const;
 
 export const CORS_ALLOW_HEADERS = CORS_ALLOW_HEADER_NAMES.join(", ");
