@@ -1175,10 +1175,18 @@ export async function* parseOpenAiSseStream(
     const tail = handle(buffer);
     if (tail && tail !== "DONE") yield tail;
   } finally {
+    // cancel() (not just releaseLock()) tears down the underlying connection,
+    // so an EARLY consumer break (runtime abort / turn-supersede / a downstream
+    // throw closes this generator via .return()) stops the upstream generation
+    // instead of letting it run to its natural end and bill tokens nobody reads.
+    // On natural completion the stream is already done, so this is a no-op; it
+    // also releases the lock. Not threading the abort signal into the fetch on
+    // purpose — cancel() gets the teardown without rejecting an in-flight read
+    // with AbortError and changing the runtime's quiet-stop semantics.
     try {
-      reader.releaseLock();
+      await reader.cancel();
     } catch {
-      // Reader already released by an upstream cancel — nothing to do.
+      // Reader already cancelled/released by an upstream abort — nothing to do.
     }
   }
 }

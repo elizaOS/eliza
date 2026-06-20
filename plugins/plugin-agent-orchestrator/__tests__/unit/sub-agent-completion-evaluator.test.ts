@@ -709,20 +709,19 @@ describe("subAgentCompletionResponseEvaluator", () => {
     expect(result?.reply).toBe("$1,708.31");
   });
 
-  it("relays a short bare value when the only follow-up is a fresh TASKS_CREATE", async () => {
-    // TASKS_CREATE is the path the fresh-spawn guard actually rescues:
-    // TASKS_CREATE is NOT a stale completion hint, so without the guard
-    // hasConcreteFollowUp() is true and the evaluator steps aside, letting the
-    // planner re-spawn the same lookup. The guard must flip shouldRun true and
-    // relay the bare value instead.
+  it("relays a short answer even when the re-spawn carries NO candidateActions hint", async () => {
+    // Live cerebras-weather regression: the planner re-issued TASKS:create
+    // directly without populating candidateActions, so a fresh-spawn-only check
+    // missed it and the lookup re-spawned (the "working on it" x2 UX). Relay
+    // whenever the plan is not continuing the existing session.
     const context = makeContext({
-      text: "[sub-agent: Use the webfetch tool on this exact URL: https://api.example.test/price (claude) — task_complete]\n$1,708.31",
+      text: "[sub-agent: Fetch the current weather in Tokyo (codex) — task_complete]\nTokyo: 🌦️ +74°F",
       messageHandler: {
         plan: {
           contexts: ["general"],
-          reply: "I'll fetch that price.",
+          reply: "Fetching Tokyo weather...",
           requiresTool: true,
-          candidateActions: ["TASKS_CREATE"],
+          // no candidateActions / parentActionHints at all
         },
       },
     });
@@ -731,7 +730,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
     const result = subAgentCompletionResponseEvaluator.evaluate(context);
     expect(result?.requiresTool).toBe(false);
     expect(result?.clearCandidateActions).toBe(true);
-    expect(result?.reply).toBe("$1,708.31");
+    expect(result?.reply).toBe("Tokyo: 🌦️ +74°F");
   });
 
   it("overrides stale concrete action hints when the verified completion already has a URL reply", async () => {

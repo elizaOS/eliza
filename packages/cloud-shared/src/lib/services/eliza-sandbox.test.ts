@@ -334,8 +334,7 @@ describe("ElizaSandboxService wake", () => {
         return Response.json({ ok: true });
       });
       const originalFindByIdAndOrg = agentSandboxesRepository.findByIdAndOrg;
-      const originalFindByIdAndOrgForWrite =
-        agentSandboxesRepository.findByIdAndOrgForWrite;
+      const originalFindByIdAndOrgForWrite = agentSandboxesRepository.findByIdAndOrgForWrite;
       const originalTrySetProvisioning = agentSandboxesRepository.trySetProvisioning;
       const originalGetLatestBackup = agentSandboxesRepository.getLatestBackup;
       const originalGetReconstructedBackupState =
@@ -344,9 +343,7 @@ describe("ElizaSandboxService wake", () => {
       // executeWake reads from the PRIMARY via getAgentForWrite →
       // findByIdAndOrgForWrite; provision() (called next) reads via
       // findByIdAndOrg. Stub both so neither touches the unmigrated test DB.
-      agentSandboxesRepository.findByIdAndOrgForWrite = mock(
-        async () => sleepingSandbox,
-      );
+      agentSandboxesRepository.findByIdAndOrgForWrite = mock(async () => sleepingSandbox);
       agentSandboxesRepository.trySetProvisioning = mock(async () => ({
         ...sleepingSandbox,
         status: "provisioning",
@@ -388,8 +385,7 @@ describe("ElizaSandboxService wake", () => {
         );
       } finally {
         agentSandboxesRepository.findByIdAndOrg = originalFindByIdAndOrg;
-        agentSandboxesRepository.findByIdAndOrgForWrite =
-          originalFindByIdAndOrgForWrite;
+        agentSandboxesRepository.findByIdAndOrgForWrite = originalFindByIdAndOrgForWrite;
         agentSandboxesRepository.trySetProvisioning = originalTrySetProvisioning;
         agentSandboxesRepository.getLatestBackup = originalGetLatestBackup;
         agentSandboxesRepository.getReconstructedBackupState = originalGetReconstructedBackupState;
@@ -668,7 +664,9 @@ describe("ElizaSandboxService.executeResume", () => {
   test("an unknown agent returns not-found without provisioning", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const svc = new ElizaSandboxService();
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(undefined);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      undefined,
+    );
     const provisionSpy = spyOn(svc, "provision");
     try {
       const res = await svc.executeResume(RESUME_AGENT, RESUME_ORG);

@@ -99,7 +99,9 @@ export class FfiEotScorer {
 		const tokenize = this.ffi.tokenize;
 		const eotScore = this.ffi.eotScore;
 		if (!tokenize || !eotScore) {
-			throw new Error("[voice] FfiEotScorer: fused EOT symbols are unavailable.");
+			throw new Error(
+				"[voice] FfiEotScorer: fused EOT symbols are unavailable.",
+			);
 		}
 		const imEndId = this.resolveImEnd(ctx);
 		const formatted = formatEotPrompt(partialTranscript);
