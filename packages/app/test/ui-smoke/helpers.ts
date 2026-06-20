@@ -1851,6 +1851,21 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // Notifications poller — another shell-level GET on every surface. The zero-key
+  // smoke stack returns 501 for it; a fresh agent simply has no notifications, so
+  // an empty list matches real zero-state and keeps the diagnostics guard clean.
+  await page.route("**/api/notifications**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ notifications: [], unreadCount: 0 }),
+    });
+  });
+
   await page.route("**/api/first-run/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
