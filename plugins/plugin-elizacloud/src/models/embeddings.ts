@@ -20,9 +20,14 @@ const MAX_BATCH_SIZE = 100;
 // server retry-after can't stall the queue indefinitely), and a per-request
 // client-side timeout (the endpoint had none, so a hung gateway hung the
 // queue forever).
-const EMBED_MAX_ATTEMPTS = 4;
+//
+// Handler retries are deliberately SMALL: the EmbeddingGenerationService
+// BatchQueue already wraps generateEmbedding in its own multi-attempt backoff,
+// so this layer absorbs only a single transient burst (one quick retry) and
+// defers sustained pressure to the queue — otherwise the two backoffs compound.
+const EMBED_MAX_ATTEMPTS = 2;
 const EMBED_BACKOFF_BASE_MS = 1_000;
-const EMBED_BACKOFF_CAP_MS = 15_000;
+const EMBED_BACKOFF_CAP_MS = 8_000;
 const EMBED_REQUEST_TIMEOUT_MS = 60_000;
 
 /**

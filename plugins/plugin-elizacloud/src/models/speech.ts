@@ -2,7 +2,7 @@ import type { Readable } from "node:stream";
 import type { IAgentRuntime } from "@elizaos/core";
 import { isCloudConnected, logger, toRuntimeSettings } from "@elizaos/core";
 import type { OpenAITextToSpeechParams } from "../types";
-import { getSetting, isBrowser } from "../utils/config";
+import { getSetting, isBrowser, resolveCloudTimeoutMs } from "../utils/config";
 import { webStreamToNodeStream } from "../utils/helpers";
 import { createElizaCloudClient } from "../utils/sdk-client";
 
@@ -15,6 +15,7 @@ export interface CloudTtsClient {
     postApiV1VoiceTts<T = unknown>(options: {
       headers?: Record<string, unknown>;
       json: { text: string; voiceId?: string; modelId?: string };
+      timeoutMs?: number;
     }): Promise<T>;
   };
 }
@@ -138,6 +139,7 @@ async function fetchTextToSpeech(
         ...(voiceId ? { voiceId } : {}),
         ...(modelId ? { modelId } : {}),
       },
+      timeoutMs: resolveCloudTimeoutMs("ELIZAOS_CLOUD_TTS_TIMEOUT_MS", 60_000),
     })) as Response;
 
     if (!res.ok) {
