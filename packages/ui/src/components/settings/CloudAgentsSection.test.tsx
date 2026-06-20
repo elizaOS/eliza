@@ -24,8 +24,25 @@ const clientMock = vi.hoisted(() => ({
   suspendCloudCompatAgent: vi.fn(),
   resumeCloudCompatAgent: vi.fn(),
   getCloudCompatJobStatus: vi.fn(),
+  getCloudCompatAgentStatus: vi.fn(),
   selectOrProvisionCloudAgent: vi.fn(),
 }));
+
+/** A status-poll response shaped like `getCloudCompatAgentStatus` returns. */
+function statusResponse(status: string, suspendedReason: string | null = null) {
+  return {
+    success: true,
+    data: {
+      status,
+      lastHeartbeat: null,
+      bridgeUrl: null,
+      webUiUrl: null,
+      currentNode: null,
+      suspendedReason,
+      databaseStatus: "ready",
+    },
+  };
+}
 
 const persistenceMock = vi.hoisted(() => ({
   loadPersistedActiveServer: vi.fn(),
@@ -265,6 +282,7 @@ function resetClientMocks() {
   clientMock.suspendCloudCompatAgent.mockReset();
   clientMock.resumeCloudCompatAgent.mockReset();
   clientMock.getCloudCompatJobStatus.mockReset();
+  clientMock.getCloudCompatAgentStatus.mockReset();
   persistenceMock.loadPersistedActiveServer.mockReset();
   persistenceMock.savePersistedActiveServer.mockReset();
 }
@@ -281,10 +299,16 @@ describe("CloudAgentsSection lifecycle (suspend/resume)", () => {
       label: "Other",
       accessToken: "tok",
     });
+    // Default the post-action status re-sync poll to a settled state so the
+    // fire-and-forget poll never rejects in tests that don't assert on it.
+    clientMock.getCloudCompatAgentStatus.mockResolvedValue(
+      statusResponse("running"),
+    );
   });
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
   });
 
   it("suspends a running agent via the (direct-path) client call", async () => {
@@ -355,6 +379,204 @@ describe("CloudAgentsSection lifecycle (suspend/resume)", () => {
         expect.any(Number),
       ),
     );
+  });
+
+  it("re-syncs the row status after a suspend via the status poll", async () => {
+    clientMock.suspendCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "job-s", status: "queued", message: "Suspend enqueued" },
+    });
+    // The daemon's job has flipped the agent to "stopped" by the first poll.
+    clientMock.getCloudCompatAgentStatus.mockResolvedValue(
+      statusResponse("stopped"),
+    );
+    await renderWithAgents([agent({ status: "running" })]);
+
+    // Optimistic transition badge first.
+    fireEvent.click(
+      screen.getByLabelText("Shut down Old Name", { selector: "button" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("cloud-agent-status-agent-1").textContent).toBe(
+        "Stopping",
+      ),
+    );
+
+    // The fire-and-forget poll reconciles the row to the real server state
+    // without a manual Refresh.
+    await waitFor(
+      () =>
+        expect(clientMock.getCloudCompatAgentStatus).toHaveBeenCalledWith(
+          "agent-1",
+        ),
+      { timeout: 6000 },
+    );
+    await waitFor(
+      () =>
+        expect(
+          screen.getByTestId("cloud-agent-status-agent-1").textContent,
+        ).toBe("Stopped"),
+      { timeout: 6000 },
+    );
+  });
+
+  it("re-syncs the row status after a resume via the status poll", async () => {
+    clientMock.resumeCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "job-r", status: "queued", message: "Resume enqueued" },
+    });
+    clientMock.getCloudCompatAgentStatus.mockResolvedValue(
+      statusResponse("running"),
+    );
+    await renderWithAgents([agent({ status: "stopped" })]);
+
+    fireEvent.click(
+      screen.getByLabelText("Start Old Name", { selector: "button" }),
+    );
+    await waitFor(
+      () =>
+        expect(clientMock.getCloudCompatAgentStatus).toHaveBeenCalledWith(
+          "agent-1",
+        ),
+      { timeout: 6000 },
+    );
+    await waitFor(
+      () =>
+        expect(
+          screen.getByTestId("cloud-agent-status-agent-1").textContent,
+        ).toBe("Running"),
+      { timeout: 6000 },
+    );
+  });
+});
+
+describe("CloudAgentsSection waking on switch", () => {
+  let reloadSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    appMock.value = { elizaCloudConnected: true, setActionNotice: vi.fn() };
+    resetClientMocks();
+    // A DIFFERENT agent is active so the target row renders a "Use" button.
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      kind: "cloud",
+      id: "cloud:other",
+      label: "Other",
+      accessToken: "tok",
+    });
+    // bindAndReload reboots the app — stub reload so jsdom doesn't error.
+    reloadSpy = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...window.location, reload: reloadSpy },
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it("wakes a suspended agent on switch: resumes, shows waking, then binds once running", async () => {
+    clientMock.resumeCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "job-r", status: "queued", message: "Resume enqueued" },
+    });
+    // First readiness poll still provisioning, second poll running.
+    clientMock.getCloudCompatAgentStatus
+      .mockResolvedValueOnce(statusResponse("provisioning"))
+      .mockResolvedValueOnce(statusResponse("running"));
+    await renderWithAgents([agent({ status: "suspended" })]);
+
+    fireEvent.click(screen.getByText("Use"));
+
+    // The non-running switch must resume the agent.
+    await waitFor(() =>
+      expect(clientMock.resumeCloudCompatAgent).toHaveBeenCalledWith("agent-1"),
+    );
+    // A "Waking <name>…" state shows until readiness.
+    await waitFor(() =>
+      expect(screen.getByText(/Waking Old Name/)).toBeTruthy(),
+    );
+
+    // Once the readiness poll reports running, it binds + reboots.
+    await waitFor(() => expect(reloadSpy).toHaveBeenCalled(), {
+      timeout: 6000,
+    });
+    expect(clientMock.getCloudCompatAgentStatus).toHaveBeenCalledWith(
+      "agent-1",
+    );
+  });
+
+  it("does not wake (resume) a running agent on switch — binds directly", async () => {
+    await renderWithAgents([agent({ status: "running" })]);
+
+    fireEvent.click(screen.getByText("Use"));
+
+    await waitFor(() => expect(reloadSpy).toHaveBeenCalled());
+    expect(clientMock.resumeCloudCompatAgent).not.toHaveBeenCalled();
+    expect(clientMock.getCloudCompatAgentStatus).not.toHaveBeenCalled();
+  });
+
+  it("surfaces an error and does not bind when the resume call is rejected", async () => {
+    clientMock.resumeCloudCompatAgent.mockResolvedValue({
+      success: false,
+      data: { jobId: "", status: "error", message: "no capacity" },
+    });
+    await renderWithAgents([agent({ status: "stopped" })]);
+
+    fireEvent.click(screen.getByText("Use"));
+
+    await waitFor(() =>
+      expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+        expect.any(String),
+        "error",
+        expect.any(Number),
+      ),
+    );
+    expect(reloadSpy).not.toHaveBeenCalled();
+    expect(persistenceMock.savePersistedActiveServer).not.toHaveBeenCalled();
+  });
+});
+
+describe("CloudAgentsSection error surface", () => {
+  beforeEach(() => {
+    appMock.value = { elizaCloudConnected: true, setActionNotice: vi.fn() };
+    resetClientMocks();
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      kind: "cloud",
+      id: "cloud:other",
+      label: "Other",
+      accessToken: "tok",
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders error_message with a danger badge on a failed agent row", async () => {
+    await renderWithAgents([
+      agent({
+        status: "error",
+        error_message: "container OOMKilled at boot",
+      }),
+    ]);
+
+    const detail = screen.getByTestId("cloud-agent-error-agent-1");
+    expect(detail.textContent).toBe("container OOMKilled at boot");
+    // The status badge is danger-toned for an error state.
+    expect(
+      screen.getByTestId("cloud-agent-status-agent-1").dataset.status,
+    ).toBe("danger");
+  });
+
+  it("does not render an error detail for a healthy running agent", async () => {
+    await renderWithAgents([agent({ status: "running", error_message: null })]);
+
+    expect(screen.queryByTestId("cloud-agent-error-agent-1")).toBeNull();
+    expect(
+      screen.getByTestId("cloud-agent-status-agent-1").dataset.status,
+    ).toBe("success");
   });
 });
 
