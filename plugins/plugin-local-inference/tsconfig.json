@@ -64,6 +64,9 @@
 			"@elizaos/plugin-elizacloud": ["../plugin-elizacloud/src/index.node.ts"],
 			"@elizaos/plugin-elizacloud/*": ["../plugin-elizacloud/src/*"],
 			"@elizaos/plugin-workflow": ["../plugin-workflow/src/index.ts"],
+			"@elizaos/plugin-training": [
+				"../../packages/ui/src/types/host-external-modules.ts"
+			],
 			"@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
 			"@elizaos/app-core/*": ["../../packages/app-core/src/*"],
 			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
@@ -76,6 +79,9 @@
 			"@elizaos/cloud-sdk/*": ["../../packages/cloud-sdk/src/*"],
 			"@elizaos/plugin-wallet": ["../plugin-wallet/src/index.ts"],
 			"@elizaos/plugin-wallet/*": ["../plugin-wallet/src/*"],
+			"csstype": [
+				"../../node_modules/.bun/csstype@3.2.3/node_modules/csstype/index.d.ts"
+			],
 			"react": ["../../node_modules/@types/react/index.d.ts"],
 			"react/jsx-runtime": ["../../node_modules/@types/react/jsx-runtime.d.ts"],
 			"react/jsx-dev-runtime": [
