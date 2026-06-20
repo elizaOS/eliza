@@ -18,14 +18,7 @@ import { useConfirm, usePrompt } from "../components/ui/confirm-dialog.hooks";
 import { AppBootContext } from "../config/boot-config-react.hooks";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
-import {
-  isMobileLocalAgentIpcBase,
-  persistMobileRuntimeModeForServerTarget,
-} from "../first-run/mobile-runtime-mode";
-import {
-  activeServerKindToFirstRunRuntimeTarget,
-  type FirstRunRuntimeTarget,
-} from "../first-run/runtime-target";
+import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
 import {
   getWindowNavigationPath,
@@ -33,7 +26,6 @@ import {
   resolveInitialTabForPath,
   type Tab,
 } from "../navigation";
-import { getFrontendPlatform } from "../platform/platform-guards";
 import { applyThemeToDocument } from "../themes/apply-theme";
 import { copyTextToClipboard } from "../utils";
 import { RESYNC_EVENT, type ResyncEventDetail } from "./AppContext.hooks";
@@ -1722,22 +1714,6 @@ function AppProviderInner({
         label: profile.label,
       });
       savePersistedActiveServer(server);
-
-      // On mobile the boot-time reconcile (reconcileMobileRestoredActiveServer)
-      // CLEARS the active server whenever the persisted runtime mode disagrees
-      // with it (`mobileLocal && mode !== "local"` → null). So a profile switch
-      // only survives a reboot if we ALSO persist the matching runtime mode —
-      // otherwise switching to the on-device agent reverts to cloud next boot.
-      // The on-device agent is a `remote` profile whose apiBase is the local IPC
-      // base, so detect that and treat it as "local".
-      const frontendPlatform = getFrontendPlatform();
-      if (frontendPlatform === "android" || frontendPlatform === "ios") {
-        const runtimeTarget: FirstRunRuntimeTarget =
-          server.kind === "local" || isMobileLocalAgentIpcBase(server.apiBase)
-            ? "local"
-            : activeServerKindToFirstRunRuntimeTarget(server.kind);
-        persistMobileRuntimeModeForServerTarget(runtimeTarget);
-      }
 
       if (profile.apiBase) {
         client.setBaseUrl(profile.apiBase);

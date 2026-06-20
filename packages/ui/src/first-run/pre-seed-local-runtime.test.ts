@@ -124,25 +124,20 @@ describe("preSeedAndroidLocalRuntimeIfFresh", () => {
     });
   });
 
-  it("seeds the local agent on the stock-phone local sideload build", () => {
-    // The `android` sideload build ships the on-device agent as its backend, so
-    // a fresh launch should default to it instead of falling back to cloud.
-    // Gating only on the branded `ElizaOS/<tag>` UA marker excluded this build
-    // and left it stuck on cloud onboarding.
+  it("does NOT auto-seed a stock-phone sideload — the first-run chooser offers local instead", () => {
+    // A stock sideload used to auto-seed local, which skipped the 3-way
+    // chooser, auto-started the slow on-device agent (POST_NOTIFICATIONS
+    // prompt + "connecting to backend" hang). The chooser now offers a
+    // "Local models" card, so the fresh install should render the chooser.
     mocks.capacitorPlatform = "android";
     mocks.isAndroidCloudBuild.mockReturnValue(false);
     setUserAgent(STOCK_WEBVIEW_UA);
 
-    expect(preSeedAndroidLocalRuntimeIfFresh()).toBe(true);
-    expect(mocks.persistMobileRuntimeModeForServerTarget).toHaveBeenCalledWith(
-      "local",
-    );
-    expect(readSeededActiveServer()).toEqual({
-      id: ANDROID_LOCAL_AGENT_SERVER_ID,
-      kind: "remote",
-      label: ANDROID_LOCAL_AGENT_LABEL,
-      apiBase: ANDROID_LOCAL_AGENT_IPC_BASE,
-    });
+    expect(preSeedAndroidLocalRuntimeIfFresh()).toBe(false);
+    expect(
+      mocks.persistMobileRuntimeModeForServerTarget,
+    ).not.toHaveBeenCalled();
+    expect(readSeededActiveServer()).toBeNull();
   });
 
   it("does not seed the cloud-locked Android build", () => {

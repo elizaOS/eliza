@@ -149,16 +149,11 @@ function NotificationRow({
  * listing the agent's notifications. Self-contained: reads the notification
  * store, no props required. Mounted once in the app shell's persistent
  * overlay region so it is reachable from every view.
- *
- * `headless` boots the store + toast routing but renders no bell — used to keep
- * interrupt toasts flowing while the visible button is hidden.
  */
 export function NotificationCenter({
   className,
-  headless = false,
 }: {
   className?: string;
-  headless?: boolean;
 }): ReactNode {
   const { notifications, unreadCount } = useNotifications();
   const { setActionNotice } = useApp();
@@ -180,10 +175,6 @@ export function NotificationCenter({
   }, []);
 
   const hasUnread = unreadCount > 0;
-
-  // Hidden for now: keep the store + toast routing live (the effect above) but
-  // render no bell. Drop the `headless` prop to bring the button back.
-  if (headless) return null;
 
   return (
     <Popover>

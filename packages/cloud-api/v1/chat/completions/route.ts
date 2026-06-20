@@ -709,19 +709,6 @@ function getRecoverableProviderErrorStatus(error: unknown): number | null {
 
 interface ChatCompletionsHandlerOptions {
   skipOrgRateLimit?: boolean;
-  /**
-   * Cloudflare ExecutionContext. When present, the post-response billing /
-   * settlement chain (billUsage → settleReservation → reconcileCredits →
-   * recordUsageAnalytics → audit) is deferred via `waitUntil` so it never
-   * blocks the model response. The OpenAI response `usage` is built directly
-   * from the model's reported tokens (the same numbers billUsage derives), so
-   * the client sees identical output and billing amounts are unchanged — only
-   * the *timing* of the reconciliation writes moves off the hot path. This
-   * removes ~0.7–1.1s of serial DB writes from every model call; a dedicated
-   * agent makes ~10 calls/turn, so it is several seconds saved per turn.
-   * Falls back to inline `await` when absent (tests / non-Worker callers).
-   */
-  executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 }
 
 export async function handleChatCompletionsPOST(
@@ -1043,7 +1030,6 @@ export async function handleChatCompletionsPOST(
         effectiveMaxTokens,
         webSearchOptions,
         billingSource,
-        options.executionCtx,
       );
     }
   } catch (error) {
@@ -1455,24 +1441,11 @@ async function handleNonStreamingRequest(
   effectiveMaxTokens: number | undefined,
   webSearchOptions: ReturnType<typeof buildProviderNativeWebSearchTools>,
   billingSource: PricingBillingSource,
-  executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined,
 ) {
   const provider = getProviderFromModel(model);
   const tools = convertTools(request.tools);
   const toolChoice = mapToolChoice(request.tool_choice);
   const experimentalOutput = mapResponseFormat(request.response_format);
-
-  // Run post-response billing/settlement off the hot path when we have a Worker
-  // ExecutionContext (waitUntil keeps the request alive for the writes without
-  // blocking the response). Falls back to inline await otherwise so tests and
-  // non-Worker callers behave exactly as before.
-  const settleOffResponsePath = async (task: () => Promise<void>) => {
-    if (typeof executionCtx?.waitUntil === "function") {
-      executionCtx.waitUntil(task());
-      return;
-    }
-    await task();
-  };
 
   const safeParamsNonStream = getSafeModelParams(model, {
     temperature: request.temperature,
@@ -1504,124 +1477,76 @@ async function handleNonStreamingRequest(
       ...cotOptions,
     } as Parameters<typeof generateText>[0]);
 
-    // Token counts for the OpenAI-compat response come straight from the
-    // model's reported usage — identical to what billUsage normalizes
-    // (inputTokens ?? promptTokens, etc.) — so the entire billing/settlement
-    // chain below can run off the response path without changing the bytes the
-    // client receives.
-    const usageRec = (result.usage ?? {}) as unknown as Record<
-      string,
-      number | undefined
-    >;
-    const responseInputTokens =
-      usageRec.inputTokens ?? usageRec.promptTokens ?? 0;
-    const responseOutputTokens =
-      usageRec.outputTokens ?? usageRec.completionTokens ?? 0;
-    const responseTokens = {
-      inputTokens: responseInputTokens,
-      outputTokens: responseOutputTokens,
-      totalTokens:
-        usageRec.totalTokens ?? responseInputTokens + responseOutputTokens,
+    // Bill using actual usage from SDK response
+    const billingContext = {
+      organizationId: user.organization_id,
+      userId: user.id,
+      apiKeyId: apiKey?.id,
+      model,
+      provider,
+      billingSource,
+      requestId,
+      metadata: buildProviderReconciliationMetadata(
+        provider,
+        model,
+        false,
+        appId,
+      ),
+      affiliateCode,
+      ...buildProviderBillingFields(provider, model),
     };
-    const responseLatencyMs = Date.now() - startTime;
+    const billing = await billUsage(billingContext, result.usage);
+    const reconciliation = await settleReservation(billing.totalCost);
 
-    // Bill using actual usage from SDK response. Deferred via waitUntil so the
-    // ~0.7-1.1s of reconciliation/audit DB writes never block the response.
-    // Same code, same amounts, same reservation — only the timing moves.
-    await settleOffResponsePath(async () => {
+    // Handle app credits
+    if (appCreditsInfo) {
+      await appCreditsService.reconcileCredits({
+        appId: appCreditsInfo.appId,
+        userId: user.id,
+        estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
+        actualBaseCost: billing.totalCost,
+        description: `Chat: ${model}`,
+        metadata: { model, provider, billingSource, streaming: false },
+      });
+    }
+
+    const usageRecord = await recordUsageAnalytics(billingContext, billing, {
+      type: "chat",
+      content: result.text,
+      systemPrompt,
+      prompt: request.messages
+        .map((m) => `[${m.role}] ${getMessageContent(m)}`)
+        .join("\n"),
+      latencyMs: Date.now() - startTime,
+    });
+    if (usageRecord) {
       try {
-        const billingContext = {
-          organizationId: user.organization_id,
-          userId: user.id,
-          apiKeyId: apiKey?.id,
-          model,
-          provider,
-          billingSource,
-          requestId,
-          metadata: buildProviderReconciliationMetadata(
-            provider,
-            model,
-            false,
-            appId,
-          ),
-          affiliateCode,
-          ...buildProviderBillingFields(provider, model),
-        };
-        const billing = await billUsage(billingContext, result.usage);
-        const reconciliation = await settleReservation(billing.totalCost);
-
-        // Handle app credits
-        if (appCreditsInfo) {
-          await appCreditsService.reconcileCredits({
-            appId: appCreditsInfo.appId,
-            userId: user.id,
-            estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
-            actualBaseCost: billing.totalCost,
-            description: `Chat: ${model}`,
-            metadata: { model, provider, billingSource, streaming: false },
-          });
-        }
-
-        const usageRecord = await recordUsageAnalytics(
-          billingContext,
+        await aiBillingRecordsService.record({
+          context: billingContext,
           billing,
-          {
-            type: "chat",
-            content: result.text,
-            systemPrompt,
-            prompt: request.messages
-              .map((m) => `[${m.role}] ${getMessageContent(m)}`)
-              .join("\n"),
-            latencyMs: responseLatencyMs,
-          },
-        );
-        if (usageRecord) {
-          try {
-            await aiBillingRecordsService.record({
-              context: billingContext,
-              billing,
-              usageRecord,
-              idempotencyKey,
-              reconciliation,
-            });
-          } catch (auditError) {
-            logger.error("[Chat Completions] audit record failed (non-fatal)", {
-              error:
-                auditError instanceof Error
-                  ? auditError.message
-                  : String(auditError),
-              cause:
-                auditError instanceof Error && auditError.cause
-                  ? String(
-                      (auditError.cause as Error).message ?? auditError.cause,
-                    )
-                  : undefined,
-            });
-          }
-        }
-
-        logger.info("[Chat Completions] Non-streaming complete", {
-          durationMs: Date.now() - startTime,
-          inputTokens: billing.inputTokens,
-          outputTokens: billing.outputTokens,
-          totalCost: billing.totalCost,
+          usageRecord,
+          idempotencyKey,
+          reconciliation,
         });
-      } catch (billingError) {
-        // Deferred billing failed after the response was already sent: release
-        // the held reservation so credit isn't stuck, and log. idempotencyKey
-        // keeps any later retry safe.
-        try {
-          await settleReservation(0);
-        } catch {
-          // best-effort release
-        }
-        logger.error("[Chat Completions] deferred billing failed", {
+      } catch (auditError) {
+        logger.error("[Chat Completions] audit record failed (non-fatal)", {
           error:
-            billingError instanceof Error
-              ? billingError.message
-              : String(billingError),
+            auditError instanceof Error
+              ? auditError.message
+              : String(auditError),
+          cause:
+            auditError instanceof Error && auditError.cause
+              ? String((auditError.cause as Error).message ?? auditError.cause)
+              : undefined,
         });
       }
+    }
+
+    logger.info("[Chat Completions] Non-streaming complete", {
+      durationMs: Date.now() - startTime,
+      inputTokens: billing.inputTokens,
+      outputTokens: billing.outputTokens,
+      totalCost: billing.totalCost,
     });
 
     // Reasoning-model empty-output guard.
@@ -1683,7 +1608,7 @@ async function handleNonStreamingRequest(
             finish_reason: finishReason,
           },
         ],
-        usage: formatOpenAIUsage(responseTokens, result.usage),
+        usage: formatOpenAIUsage(billing, result.usage),
       }),
     );
   } catch (error) {
@@ -1702,9 +1627,7 @@ honoRouter.options("/", async (c) => {
 });
 honoRouter.post("/", rateLimit(RateLimitPresets.RELAXED), async (c) => {
   try {
-    return await handleChatCompletionsPOST(c.req.raw, {
-      executionCtx: c.executionCtx,
-    });
+    return await handleChatCompletionsPOST(c.req.raw);
   } catch (error) {
     return failureResponse(c, error);
   }
