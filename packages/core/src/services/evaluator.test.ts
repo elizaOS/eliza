@@ -346,4 +346,51 @@ describe("EvaluatorService", () => {
 			}),
 		);
 	});
+
+	it("skips the schema attempt on later turns once the provider rejects it", async () => {
+		const runtime = makeRuntime();
+		const processed: string[] = [];
+
+		runtime.registerEvaluator({
+			name: "ok",
+			description: "ok section",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Extract ok.",
+			parse: (output) => output as never,
+			processors: [
+				{
+					name: "storeOk",
+					process: async () => {
+						processed.push("ok");
+						return { success: true };
+					},
+				},
+			],
+		});
+
+		const useModel = vi
+			.fn()
+			// Turn 1: schema rejected, json_object succeeds (the existing fallback).
+			.mockRejectedValueOnce(new Error("Bad Request"))
+			.mockResolvedValueOnce({ ok: { ok: true } })
+			// Turn 2: must go straight to json_object — no doomed schema attempt.
+			.mockResolvedValueOnce({ ok: { ok: true } });
+		runtime.useModel = useModel as AgentRuntime["useModel"];
+
+		const service = new EvaluatorService(runtime);
+		await service.run(makeMessage());
+		await service.run(makeMessage());
+
+		// Turn 1 = 2 calls (schema + json_object); turn 2 = 1 call (json_object).
+		expect(useModel).toHaveBeenCalledTimes(3);
+		expect(useModel.mock.calls[0]?.[1]).toHaveProperty("responseSchema");
+		expect(useModel.mock.calls[1]?.[1]).not.toHaveProperty("responseSchema");
+		// The whole point: turn 2 never re-sends the doomed schema.
+		expect(useModel.mock.calls[2]?.[1]).not.toHaveProperty("responseSchema");
+		expect(useModel.mock.calls[2]?.[1]?.responseFormat).toEqual({
+			type: "json_object",
+		});
+		expect(processed).toEqual(["ok", "ok"]);
+	});
 });

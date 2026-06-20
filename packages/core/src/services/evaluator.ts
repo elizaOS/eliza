@@ -175,6 +175,16 @@ function schemaRequestLooksUnsupported(error: unknown): boolean {
 	);
 }
 
+// Once a runtime's SMALL model rejects a structured `responseSchema` request,
+// every subsequent request will be rejected the same way — the provider simply
+// does not support schema-constrained output (e.g. the cerebras gpt-oss path on
+// Eliza Cloud). Re-sending the schema each turn burns a full, DOOMED model
+// round-trip before the json_object retry succeeds — measured at ~4.5s of pure
+// waste on every turn. Remember the rejection per runtime and, from then on,
+// skip straight to the json_object request. Keyed by the live runtime instance
+// (a WeakSet, so it never leaks across agents).
+const schemaUnsupportedRuntimes = new WeakSet<object>();
+
 async function generateEvaluationOutput(params: {
 	runtime: IAgentRuntime;
 	prompt: string;
@@ -186,6 +196,38 @@ async function generateEvaluationOutput(params: {
 	// structured extraction/classification pass (all active evaluators share one
 	// merged call), not generation — the large model is wasted cost here,
 	// especially for local-first tiers.
+	const requestJsonObject = (): Promise<unknown> =>
+		runtime.useModel(ModelType.TEXT_SMALL, {
+			messages,
+			responseFormat: { type: "json_object" },
+			temperature: 0,
+		});
+	const requestPlain = (): Promise<unknown> =>
+		runtime.useModel(ModelType.TEXT_SMALL, {
+			messages,
+			temperature: 0,
+		});
+	const afterJsonObjectRejected = async (
+		fallbackError: unknown,
+	): Promise<unknown> => {
+		if (!schemaRequestLooksUnsupported(fallbackError)) throw fallbackError;
+		runtime.logger.debug(
+			{ src: "service:evaluator" },
+			"Post-turn evaluator JSON-object fallback rejected; retrying plain JSON prompt",
+		);
+		return requestPlain();
+	};
+
+	// This runtime already proved its SMALL model rejects schema-constrained
+	// output — don't pay for the doomed schema round-trip again.
+	if (schemaUnsupportedRuntimes.has(runtime)) {
+		try {
+			return await requestJsonObject();
+		} catch (fallbackError) {
+			return afterJsonObjectRejected(fallbackError);
+		}
+	}
+
 	try {
 		return await runtime.useModel(ModelType.TEXT_SMALL, {
 			messages,
@@ -195,26 +237,17 @@ async function generateEvaluationOutput(params: {
 		});
 	} catch (error) {
 		if (!schemaRequestLooksUnsupported(error)) throw error;
+		// Provider does not support schema-constrained output — remember it so
+		// every subsequent turn skips the schema attempt entirely.
+		schemaUnsupportedRuntimes.add(runtime);
 		runtime.logger.debug(
 			{ src: "service:evaluator" },
 			"Post-turn evaluator schema request rejected; retrying JSON-object fallback",
 		);
 		try {
-			return await runtime.useModel(ModelType.TEXT_SMALL, {
-				messages,
-				responseFormat: { type: "json_object" },
-				temperature: 0,
-			});
+			return await requestJsonObject();
 		} catch (fallbackError) {
-			if (!schemaRequestLooksUnsupported(fallbackError)) throw fallbackError;
-			runtime.logger.debug(
-				{ src: "service:evaluator" },
-				"Post-turn evaluator JSON-object fallback rejected; retrying plain JSON prompt",
-			);
-			return await runtime.useModel(ModelType.TEXT_SMALL, {
-				messages,
-				temperature: 0,
-			});
+			return afterJsonObjectRejected(fallbackError);
 		}
 	}
 }
