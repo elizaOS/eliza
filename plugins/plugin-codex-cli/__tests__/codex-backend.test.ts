@@ -134,6 +134,67 @@ describe("CodexBackend", () => {
     ]);
   });
 
+  it("preserves tool-call and tool-result CONTENT PARTS (the planner's transcript format)", () => {
+    // The planner renders prior steps as `tool-call` / `tool-result` content
+    // parts, NOT the `toolCalls` field + plain-text tool message. Dropping
+    // these made codex blind to its own fetches ("I don't have the fetched
+    // contents visible here") and re-issue the same call in a loop.
+    expect(
+      translateMessagesToCodexInput(
+        [
+          { role: "user", content: "newest nodejs version?" },
+          {
+            role: "assistant",
+            content: [
+              { type: "text", text: "Fetching the dist index." },
+              {
+                type: "tool-call",
+                toolCallId: "call_1",
+                toolName: "WEB_FETCH",
+                input: { url: "https://nodejs.org/dist/index.json" },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: [
+              {
+                type: "tool-result",
+                toolCallId: "call_1",
+                toolName: "WEB_FETCH",
+                output: { type: "text", value: 'text: [{"version":"v26.3.1"}]' },
+              },
+            ],
+          },
+        ],
+        "newest nodejs version?"
+      )
+    ).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "newest nodejs version?" }],
+      },
+      {
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Fetching the dist index." }],
+      },
+      {
+        type: "function_call",
+        call_id: "call_1",
+        name: "WEB_FETCH",
+        arguments: '{"url":"https://nodejs.org/dist/index.json"}',
+      },
+      { type: "function_call_output", call_id: "call_1", output: 'text: [{"version":"v26.3.1"}]' },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "newest nodejs version?" }],
+      },
+    ]);
+  });
+
   it("posts codex headers, parses text and function calls", async () => {
     const bodies: unknown[] = [];
     const backend = new CodexBackend({

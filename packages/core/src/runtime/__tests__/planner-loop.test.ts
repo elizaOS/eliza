@@ -676,6 +676,55 @@ describe("v5 planner loop skeleton", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 	});
 
+	it("stops re-executing an identical successful call and forces a terminal synthesis", async () => {
+		// Live regression: gpt-5.5 re-issued the SAME WEB_FETCH (same url) every
+		// iteration; each succeeded, the evaluator said CONTINUE, and the loop ran
+		// until maxTrajectoryPromptTokens aborted the turn with a generic apology.
+		// The redundant-call breaker executes the call once, skips the identical
+		// repeats, and after maxRepeatedToolCalls forces one tool-less synthesis.
+		const sameCall = {
+			id: "fetch-1",
+			name: "WEB_FETCH",
+			arguments: { url: "https://api.example.test/price" },
+		};
+		const runtime = {
+			useModel: vi
+				.fn()
+				// iter 1 (fresh) → executes; iters 2-3 repeat it → redundant
+				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] })
+				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] })
+				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] })
+				// forced synthesis (no tools) → terminal answer
+				.mockResolvedValueOnce(
+					'{"thought":"I already have the price.","messageToUser":"The price is 42.","toolCalls":[]}',
+				),
+			logger: { debug: vi.fn(), warn: vi.fn() },
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "price=42",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "CONTINUE" as const,
+			thought: "Keep going.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "WEB_FETCH", description: "Fetch a URL." }],
+			config: { maxRepeatedToolCalls: 1 },
+			executeToolCall,
+			evaluate,
+		});
+
+		// The identical call ran exactly once; the repeats were skipped, not re-run.
+		expect(executeToolCall).toHaveBeenCalledTimes(1);
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toContain("42");
+	});
+
 	it("does not capture native text fallback as a required-tool refusal", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => ({

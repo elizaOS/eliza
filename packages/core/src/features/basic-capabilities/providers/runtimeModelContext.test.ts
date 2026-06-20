@@ -79,6 +79,34 @@ describe("runtimeModelContextProvider", () => {
 		);
 	});
 
+	it("resolves codex-cli slots to CODEX_MODEL from env (getSetting hides env vars)", async () => {
+		// codex-cli registers every slot against one CODEX_MODEL rather than the
+		// per-slot *_MODEL keys, and CODEX_MODEL is an ENV var getSetting doesn't
+		// expose — so without the env fallback the slot rendered its raw name.
+		const runtime = makeRuntime({}, {
+			models: new Map([
+				[ModelType.RESPONSE_HANDLER, [{ provider: "codex-cli" }]],
+				[ModelType.ACTION_PLANNER, [{ provider: "codex-cli" }]],
+			]),
+		} as Partial<IAgentRuntime>);
+
+		const prev = process.env.CODEX_MODEL;
+		process.env.CODEX_MODEL = "gpt-5.5";
+		try {
+			const result = await runtimeModelContextProvider.get(
+				runtime,
+				makeMessage("what model are you using?"),
+				{} as never,
+			);
+			expect(result.text).toContain("Response handler model: gpt-5.5");
+			expect(result.data?.responseHandlerModel).toBe("gpt-5.5");
+			expect(result.text).not.toContain("RESPONSE_HANDLER");
+		} finally {
+			if (prev === undefined) delete process.env.CODEX_MODEL;
+			else process.env.CODEX_MODEL = prev;
+		}
+	});
+
 	it("stays silent for unrelated live-data questions", async () => {
 		const runtime = makeRuntime({
 			OPENAI_LARGE_MODEL: "gpt-oss-120b",
