@@ -230,20 +230,22 @@ export function AdvancedSection() {
             tone="danger"
             label={t("settings.resetAgent")}
             description={t("settings.resetAgentHint")}
-            control={
+            stacked
+          >
+            <div className="flex sm:justify-end">
               <Button
                 ref={resetOpenRef}
                 variant="destructive"
                 size="sm"
-                className="rounded-sm whitespace-nowrap"
+                className="w-full rounded-sm whitespace-nowrap sm:w-auto"
                 aria-haspopup="dialog"
                 onClick={() => setResetConfirmOpen(true)}
                 {...resetOpenAgentProps}
               >
                 {t("settings.resetEverything")}
               </Button>
-            }
-          />
+            </div>
+          </SettingsRow>
         </SettingsGroup>
       </SettingsStack>
 
