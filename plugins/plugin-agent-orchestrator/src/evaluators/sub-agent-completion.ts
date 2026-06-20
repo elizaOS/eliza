@@ -327,6 +327,35 @@ function deliverableFromMetadata(message: Memory): string | undefined {
   return value.length > 0 ? value : undefined;
 }
 
+// Longest completion body we treat as a bare "answer value" worth relaying over
+// a planner re-spawn. Tight on purpose: a price / short sentence qualifies; a
+// multi-line build report or transcript does not and keeps the existing
+// step-aside-for-follow-up routing.
+const SHORT_CLEAN_COMPLETION_BODY_MAX_CHARS = 120;
+
+// Fresh-spawn actions: starting a NEW sub-agent session. Re-issuing one after a
+// task already completed with a clean answer is a loop. NOT TASKS_SEND_TO_AGENT
+// (continue the existing session), which is a legitimate follow-up.
+const FRESH_SPAWN_ACTIONS = new Set(["TASKS_SPAWN_AGENT", "TASKS_CREATE"]);
+
+function isShortCleanCompletionBody(completionText: string): boolean {
+  const body = userFacingCompletionBody(completionText).trim();
+  if (!body || body.length > SHORT_CLEAN_COMPLETION_BODY_MAX_CHARS)
+    return false;
+  return !looksLikeRawToolTranscript(body);
+}
+
+function planRequestsFreshSpawn(plan: {
+  candidateActions?: readonly string[];
+  parentActionHints?: readonly string[];
+}): boolean {
+  const hints = [
+    ...normalizedActionHints(plan.candidateActions),
+    ...normalizedActionHints(plan.parentActionHints),
+  ];
+  return hints.some((hint) => FRESH_SPAWN_ACTIONS.has(hint));
+}
+
 function isSuccessfulSubAgentCompletion(message: Memory): boolean {
   const content = contentRecord(message);
   const metadata = metadataRecord(message);
@@ -460,6 +489,23 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     if (hasVerifiedCompletionReply(currentReply, completionText, verifiedUrls))
       return true;
     if (hasCleanFinalProseAfterToolOutput(completionText)) return true;
+    // A SHORT, CLEAN completion body whose only planned follow-up is a FRESH
+    // re-spawn IS the answer being looped on: some ACP adapters (notably
+    // claude-agent-acp) return a one-shot lookup result as bare final text —
+    // "$1,708.31" — never wrapped in a [tool output:…] envelope, so it isn't
+    // captured as a deliverable and matches none of the checks above. The
+    // planner then reads the original imperative task label and re-spawns the
+    // SAME lookup, looping forever without relaying the value (observed live on
+    // claude: 6 spawns, no answer). Gate on a fresh-spawn action only —
+    // TASKS_SEND_TO_AGENT (continue the session for a genuine blocker/missing
+    // detail) stays a legitimate follow-up — and bound the body tightly so
+    // multi-step coding completions keep the existing routing.
+    if (
+      isShortCleanCompletionBody(completionText) &&
+      planRequestsFreshSpawn(messageHandler.plan)
+    ) {
+      return true;
+    }
     const hasConcreteFollowUp =
       hasStrings(messageHandler.plan.candidateActions) &&
       !hasOnlyStaleCompletionHints(messageHandler.plan.candidateActions);
