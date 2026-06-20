@@ -362,10 +362,14 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     );
   });
 
-  it("marks source=user when the body reports a user-initiated switch", async () => {
+  it("marks source=user and skips the shell echo for a user-reported switch", async () => {
     const nav = makeNavigateCtx("settings", { source: "user" });
     await handleViewsRoutes(nav.ctx);
+    // State is recorded (so the agent observes the user's manual switch)...
     expect(getCurrentViewState()?.source).toBe("user");
+    // ...but the shell:navigate:view echo is suppressed (the client already
+    // navigated locally — re-broadcasting would loop).
+    expect(nav.broadcastWs).not.toHaveBeenCalled();
   });
 
   it("does not re-stamp switchedAt when re-navigating to the same view", async () => {
