@@ -652,6 +652,7 @@ async function finalMcpCheck(
 
 export default scenario({
   id: "deterministic-mcp-actions-routes",
+  lane: "pr-deterministic",
   title: "Deterministic MCP action and route coverage",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "mcp", "routes"],

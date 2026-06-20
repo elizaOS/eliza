@@ -357,6 +357,7 @@ async function finalWorkflowCheck(
 
 export default scenario({
   id: "deterministic-workflow-actions-routes",
+  lane: "pr-deterministic",
   title: "Deterministic workflow action and route coverage",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "workflow", "routes"],

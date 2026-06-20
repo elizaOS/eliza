@@ -362,6 +362,7 @@ async function finalLedgerCheck(
 
 export default scenario({
   id: "deterministic-coding-tools-actions",
+  lane: "pr-deterministic",
   title: "Deterministic coding-tools action execution",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "coding-tools"],

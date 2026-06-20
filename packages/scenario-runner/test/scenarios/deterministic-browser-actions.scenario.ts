@@ -149,6 +149,7 @@ function expectActionTurn(
 
 export default scenario({
   id: "deterministic-browser-actions",
+  lane: "pr-deterministic",
   title: "Deterministic browser workspace action catalog",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "browser"],

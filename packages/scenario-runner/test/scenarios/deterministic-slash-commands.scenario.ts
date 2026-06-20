@@ -229,6 +229,7 @@ function finalCommandsCheck(ctx: ScenarioContext): string | undefined {
 
 export default scenario({
   id: "deterministic-slash-commands",
+  lane: "pr-deterministic",
   title: "Deterministic slash-command catalog coverage",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "commands", "routes"],

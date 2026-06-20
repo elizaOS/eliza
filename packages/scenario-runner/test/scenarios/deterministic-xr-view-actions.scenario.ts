@@ -611,6 +611,7 @@ function cleanupXrClient(): string | undefined {
 
 export default scenario({
   id: "deterministic-xr-view-actions",
+  lane: "pr-deterministic",
   title: "Deterministic XR view actions with real WebSocket service",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "xr", "views"],

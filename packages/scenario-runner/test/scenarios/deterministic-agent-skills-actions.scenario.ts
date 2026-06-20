@@ -514,6 +514,7 @@ async function finalLedgerCheck(
 
 export default scenario({
   id: "deterministic-agent-skills-actions",
+  lane: "pr-deterministic",
   title: "Deterministic agent-skills action catalog",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "agent-skills"],

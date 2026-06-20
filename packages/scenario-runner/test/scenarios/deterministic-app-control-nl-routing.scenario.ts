@@ -272,6 +272,7 @@ function normalizedRequests() {
 
 export default scenario({
   id: "deterministic-app-control-nl-routing",
+  lane: "pr-deterministic",
   title: "Deterministic app-control natural-language routing",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "app-control", "nl-routing"],
