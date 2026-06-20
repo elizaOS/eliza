@@ -3044,6 +3044,20 @@ async function handleDirectCoreRoute(
 		});
 	}
 
+	if (method === "POST" && pathname === "/api/first-run") {
+		// finishLocal() submits the first-run profile here. The in-process agent
+		// is already booted with its config, so the submit is acknowledged as
+		// complete — without this route the POST 404s ("No iOS local route for
+		// POST /api/first-run") and on-device onboarding can never finish, leaving
+		// the user stuck on "Starting local agent". Companion to the GET
+		// /api/first-run/status route above.
+		return jsonResponse(200, {
+			ok: true,
+			complete: true,
+			deploymentTarget: "local",
+		});
+	}
+
 	if (method === "POST" && pathname === "/api/dev/model-grind") {
 		const report = await runModelGrind({
 			callIosHost,

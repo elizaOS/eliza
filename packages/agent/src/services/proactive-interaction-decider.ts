@@ -158,7 +158,7 @@ export function registerProactiveInteractionDecider(
     }
   };
 
-  runtime.registerEvent(EventType.VIEW_SWITCHED, (payload) => {
+  runtime.registerEvent(EventType.VIEW_SWITCHED, async (payload) => {
     const viewPayload = payload as ViewSwitchedPayload;
     const surface = viewPayload.viewId;
     if (!surface) return;
