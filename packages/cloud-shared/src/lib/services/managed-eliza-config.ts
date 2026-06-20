@@ -197,6 +197,20 @@ export async function prepareManagedElizaBaseEnvironment(
   params: PrepareManagedElizaSharedEnvironmentParams,
 ): Promise<ManagedElizaBaseEnvironmentResult> {
   const existingEnv = { ...(params.existingEnv ?? {}) };
+  // DATABASE_URL / ELIZA_MANAGED_DATABASE_URL are managed reserved keys; the
+  // sandbox layer (the DB-env block in eliza-sandbox.ts) is the SOLE authority on
+  // the agent's DB env. Strip any inherited value here so the control-plane's OWN
+  // DATABASE_URL — which the cloud Worker / provisioning daemon carries in its
+  // process env and which spreads in through params.existingEnv — cannot leak
+  // into the agent and silently override ELIZA_AGENT_LOCAL_STATE=1. That leak
+  // forced every "local-state" agent onto the remote shared Railway Postgres
+  // (~166ms/query x dozens of serial reads+writes per turn = the dominant
+  // dedicated-chat latency, plus the shared-DB blast radius). With these removed,
+  // a local-state agent gets only PGlite (+ opt-in ELIZA_MANAGED_DATABASE_URL),
+  // while a shared-DB agent (ELIZA_AGENT_LOCAL_STATE=0) still has DATABASE_URL
+  // re-injected by the sandbox layer.
+  delete existingEnv.DATABASE_URL;
+  delete existingEnv.ELIZA_MANAGED_DATABASE_URL;
   const { plainKey: agentApiKey } = await apiKeysService.createForAgent({
     organizationId: params.organizationId,
     userId: params.userId,
