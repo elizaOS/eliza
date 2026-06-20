@@ -112,6 +112,17 @@ function assistantMessage(page: Page, hasText?: string | RegExp): Locator {
   return direct.last().or(logged.last()).first();
 }
 
+function assistantMessages(page: Page, hasText: string | RegExp): Locator {
+  return page
+    .locator('[data-testid="chat-message"][data-role="assistant"]')
+    .filter({ hasText })
+    .or(
+      conversationLog(page)
+        .locator('[data-role="assistant"]')
+        .filter({ hasText }),
+    );
+}
+
 async function clickIfVisible(
   locator: Locator,
   timeoutMs = 2_000,
@@ -352,20 +363,32 @@ async function expectDeterministicChatTurn(
   prompt: string,
 ): Promise<void> {
   await expect(userMessage(page, prompt)).toBeVisible();
-  // Target the deterministic fixture reply specifically — a greeting bubble and
-  // cross-viewport stub-conversation state can otherwise make an unfiltered
-  // .last() resolve to a non-JSON assistant bubble (seen only on wide-web).
-  const assistant = assistantMessage(page, /ui-smoke-assistant-v1/);
-  await expect(assistant).toBeVisible({ timeout: 60_000 });
-  const assistantText = (await assistant.textContent())?.trim() ?? "";
-  const parsed = parseAssistantFixtureText(assistantText);
-  expect(parsed).toMatchObject({
-    fixture: "ui-smoke-assistant-v1",
-    transport: "sse",
-    input: {
-      text: prompt,
-    },
-  });
+  await expect
+    .poll(
+      async () => {
+        const assistants = assistantMessages(page, /ui-smoke-assistant-v1/);
+        const matches: DeterministicAssistantFixture[] = [];
+        for (let i = 0; i < (await assistants.count()); i += 1) {
+          const assistantText =
+            (await assistants.nth(i).textContent())?.trim() ?? "";
+          const parsed = parseAssistantFixtureText(assistantText);
+          if (parsed.input.text === prompt) {
+            matches.push(parsed);
+          }
+        }
+        return matches.at(-1) ?? null;
+      },
+      {
+        timeout: 60_000,
+      },
+    )
+    .toMatchObject({
+      fixture: "ui-smoke-assistant-v1",
+      transport: "sse",
+      input: {
+        text: prompt,
+      },
+    });
 }
 
 for (const viewport of VIEWPORTS) {
