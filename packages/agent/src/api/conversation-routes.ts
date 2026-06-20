@@ -2031,6 +2031,9 @@ export async function handleConversationRoutes(
             agentName: result.agentName,
             ...(result.thought ? { thought: result.thought } : {}),
             ...(result.usage ? { usage: result.usage } : {}),
+            ...(result.actionResults?.length
+              ? { actionResults: result.actionResults }
+              : {}),
           });
           deferredPersistence = (async () => {
             if (result.actionCallbackHistory?.length) {
@@ -2065,6 +2068,9 @@ export async function handleConversationRoutes(
             agentName: result.agentName,
             noResponseReason: "ignored",
             ...(result.usage ? { usage: result.usage } : {}),
+            ...(result.actionResults?.length
+              ? { actionResults: result.actionResults }
+              : {}),
           });
         }
       }
@@ -2317,12 +2323,18 @@ export async function handleConversationRoutes(
         json(res, {
           text: resolvedText,
           agentName: result.agentName,
+          ...(result.actionResults?.length
+            ? { actionResults: result.actionResults }
+            : {}),
         });
       } else {
         json(res, {
           text: "",
           agentName: result.agentName,
           noResponseReason: "ignored",
+          ...(result.actionResults?.length
+            ? { actionResults: result.actionResults }
+            : {}),
         });
       }
     } catch (err) {
