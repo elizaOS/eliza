@@ -41,7 +41,7 @@
  *     not second-guess it with its own poll.
  */
 
-import os from "node:os";
+import { readSystemMemory } from "./system-memory.js";
 
 /** Pressure level the arbiter consumes. */
 export type MemoryPressureLevel = "nominal" | "low" | "critical";
@@ -94,7 +94,10 @@ export interface NodeOsPressureConfig {
 }
 
 export interface NodeOsPressureSources {
-	/** OS free/total memory in bytes. Defaults to `os.freemem()/os.totalmem()`. */
+	/**
+	 * Available/total memory in bytes. Defaults to `readSystemMemory()`
+	 * (`/proc/meminfo` `MemAvailable` on Linux/Android, `os.freemem()` elsewhere).
+	 */
 	osMemory?: () => { freeBytes: number; totalBytes: number };
 	/** Optional logger; warnings only. */
 	logger?: { warn?: (m: string) => void };
@@ -136,9 +139,7 @@ export function nodeOsPressureSource(
 			`[memory-pressure] criticalWaterFraction (${config.criticalWaterFraction}) must be < lowWaterFraction (${config.lowWaterFraction})`,
 		);
 	}
-	const probe =
-		sources.osMemory ??
-		(() => ({ freeBytes: os.freemem(), totalBytes: os.totalmem() }));
+	const probe = sources.osMemory ?? (() => readSystemMemory());
 	const now = config.now ?? (() => Date.now());
 	const listeners = new Set<MemoryPressureListener>();
 	let timer: NodeJS.Timeout | null = null;

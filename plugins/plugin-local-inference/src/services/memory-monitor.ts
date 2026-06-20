@@ -20,7 +20,7 @@
  * not pretend it fixed anything.
  */
 
-import os from "node:os";
+import { readSystemMemory } from "./system-memory.js";
 import type {
 	ResidentModelRole,
 	SharedResourceRegistry,
@@ -128,7 +128,10 @@ export function resolveMemoryMonitorConfig(
 
 /** Pluggable sources so the monitor stays unit-testable without OS state. */
 export interface MemoryMonitorSources {
-	/** OS free/total memory in bytes. Defaults to `os.freemem()/os.totalmem()`. */
+	/**
+	 * Available/total memory in bytes. Defaults to `readSystemMemory()`
+	 * (`/proc/meminfo` `MemAvailable` on Linux/Android, `os.freemem()` elsewhere).
+	 */
 	osMemory?: () => { freeBytes: number; totalBytes: number };
 	/** Running external runtime RSS in MB, or null. */
 	serverRssMb?: () => Promise<number | null>;
@@ -162,9 +165,7 @@ export class MemoryMonitor {
 		this.registry = args.registry;
 		this.config = resolveMemoryMonitorConfig(args.config);
 		this.log = args.logger;
-		this.osMemory =
-			args.sources?.osMemory ??
-			(() => ({ freeBytes: os.freemem(), totalBytes: os.totalmem() }));
+		this.osMemory = args.sources?.osMemory ?? (() => readSystemMemory());
 		this.serverRssMb =
 			args.sources?.serverRssMb ?? (async () => defaultServerRssMb());
 	}
