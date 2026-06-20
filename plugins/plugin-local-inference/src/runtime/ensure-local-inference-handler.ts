@@ -612,7 +612,9 @@ function resolveDesktopEmbeddingConfig(): DesktopEmbeddingConfig {
  * still be downloading) — the handler then raises LocalInferenceUnavailable and
  * the runtime falls through to the next embedding provider.
  */
-function resolveFusedEmbedBundleRoot(cfg: DesktopEmbeddingConfig): string | null {
+function resolveFusedEmbedBundleRoot(
+	cfg: DesktopEmbeddingConfig,
+): string | null {
 	const override = process.env.ELIZA_EMBED_BUNDLE_ROOT?.trim();
 	if (override && existsSync(path.join(override, "text"))) return override;
 	const modelPath = path.resolve(cfg.modelsDir, cfg.model);
@@ -661,9 +663,7 @@ let fusedEmbedHandlePromise: Promise<{
 	>;
 } | null> | null;
 
-async function getFusedEmbeddingHandle(
-	cfg: DesktopEmbeddingConfig,
-): Promise<{
+async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 	embed: (text: string) => Float32Array;
 } | null> {
 	if (fusedEmbedHandlePromise === null) {
@@ -707,12 +707,9 @@ async function getFusedEmbeddingHandle(
 	// gte-small / BERT bi-encoders use MEAN pooling; a decoder-as-embedder
 	// (`--pooling last`) is selected via ELIZA_EMBED_POOLING=last.
 	const pooling =
-		process.env.ELIZA_EMBED_POOLING?.trim().toLowerCase() === "last"
-			? 3
-			: 1;
+		process.env.ELIZA_EMBED_POOLING?.trim().toLowerCase() === "last" ? 3 : 1;
 	return {
-		embed: (text: string) =>
-			handle.embed({ ctx: handle.ctx, text, pooling }),
+		embed: (text: string) => handle.embed({ ctx: handle.ctx, text, pooling }),
 	};
 }
 
