@@ -3,6 +3,16 @@ import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
 const DIRECT_CLOUD_API_HOSTS = new Set(["api.elizacloud.ai"]);
 const CLOUD_HOST_SUFFIX = ".elizacloud.ai";
+// Hosts under *.elizacloud.ai that are NOT dedicated agent subdomains: the
+// central API plus the web/auth hosts and the apex. None of these serve CORS
+// for the app origin, so their SSE must stay on CapacitorHttp's bypass path —
+// only `<agentId>.elizacloud.ai` subdomains route through native fetch.
+const NON_AGENT_CLOUD_HOSTS = new Set([
+  "api.elizacloud.ai",
+  "www.elizacloud.ai",
+  "dev.elizacloud.ai",
+  "elizacloud.ai",
+]);
 
 function parseUrl(url: string): URL | null {
   try {
@@ -37,7 +47,7 @@ function isNativeCloudAgentSubdomain(url: string): boolean {
   if (!Capacitor.isNativePlatform()) return false;
   if (parsed.protocol !== "https:") return false;
   const host = parsed.hostname.toLowerCase();
-  return host !== "api.elizacloud.ai" && host.endsWith(CLOUD_HOST_SUFFIX);
+  return !NON_AGENT_CLOUD_HOSTS.has(host) && host.endsWith(CLOUD_HOST_SUFFIX);
 }
 
 /**

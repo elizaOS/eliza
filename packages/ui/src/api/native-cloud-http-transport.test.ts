@@ -73,6 +73,21 @@ describe("nativeCloudHttpTransportForUrl selection", () => {
     ).toBeNull();
   });
 
+  it("does NOT claim the cloud web/auth hosts as agent subdomains", () => {
+    // www/dev/apex are not dedicated agent subdomains and do not serve CORS for
+    // the app origin, so their SSE must not be routed to the native fetch.
+    expect(
+      nativeCloudHttpTransportForUrl(
+        "https://www.elizacloud.ai/api/x/messages/stream",
+      ),
+    ).toBeNull();
+    expect(
+      nativeCloudHttpTransportForUrl(
+        "https://dev.elizacloud.ai/api/x/messages/stream",
+      ),
+    ).toBeNull();
+  });
+
   it("returns null off native platforms", () => {
     capacitorState.isNative = false;
     expect(nativeCloudHttpTransportForUrl(AGENT_URL)).toBeNull();
