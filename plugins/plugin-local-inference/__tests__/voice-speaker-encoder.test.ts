@@ -1,13 +1,13 @@
 /**
- * Smoke tests for `WespeakerEncoder` and `averageEmbeddings`.
+ * Tests for the shared speaker-encoder surface: the stored model-id /
+ * dimension constants and the pure `averageEmbeddings` centroid helper (the
+ * heart of first-run centroid construction).
  *
- * The encoder itself is an ONNX wrapper around the WeSpeaker ResNet34-LM
- * checkpoint. The actual `.onnx` file is shipped as an asset; CI does not
- * include the optional `onnxruntime-node` runtime, so the load path is
- * exercised via the structured `SpeakerEncoderUnavailableError`.
- *
- * The pure-function `averageEmbeddings` helper is fully covered here —
- * it sits at the heart of first-run centroid construction.
+ * The speaker encoder itself runs EXCLUSIVELY through the fused
+ * `libelizainference` `eliza_inference_speaker_*` ABI (`FusedSpeakerEncoder`);
+ * its real-FFI coverage lives in `src/services/voice/speaker/encoder-fused.real.test.ts`
+ * (gated on a built `libelizainference`). There is no standalone encoder to
+ * smoke-test here.
  */
 
 import { describe, expect, it } from "vitest";
@@ -19,10 +19,9 @@ import {
 	WESPEAKER_RESNET34_LM_FP32_MODEL_ID,
 	WESPEAKER_RESNET34_LM_INT8_MODEL_ID,
 	WESPEAKER_SAMPLE_RATE,
-	WespeakerEncoder,
 } from "../src/services/voice/speaker/encoder";
 
-describe("WespeakerEncoder — module constants", () => {
+describe("Speaker encoder — shared module constants", () => {
 	it("declares 256-dim embedding output", () => {
 		expect(WESPEAKER_EMBEDDING_DIM).toBe(256);
 	});
@@ -35,17 +34,6 @@ describe("WespeakerEncoder — module constants", () => {
 	it("declares stable int8 + fp32 model ids", () => {
 		expect(WESPEAKER_RESNET34_LM_INT8_MODEL_ID).toBe("wespeaker-resnet34-lm-int8");
 		expect(WESPEAKER_RESNET34_LM_FP32_MODEL_ID).toBe("wespeaker-resnet34-lm-fp32");
-	});
-});
-
-describe("WespeakerEncoder.load — graceful failure", () => {
-	it("returns a SpeakerEncoderUnavailableError when ORT or model is missing", async () => {
-		// The bundled int8 model is not staged in CI, and onnxruntime-node
-		// is an optional dep. Either failure is surfaced as the structured
-		// error class (no hard crash).
-		await expect(
-			WespeakerEncoder.load("/nonexistent/path/wespeaker.onnx"),
-		).rejects.toBeInstanceOf(SpeakerEncoderUnavailableError);
 	});
 });
 

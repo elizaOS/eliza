@@ -1,12 +1,19 @@
 /**
- * Speaker-embedding encoder — GGML-backed re-export shim.
+ * Speaker-embedding encoder — shared contract, model-id constants, and the
+ * `averageEmbeddings` centroid helper.
  *
- * The ONNX `WespeakerEncoder` was removed when `onnxruntime-node` was
- * dropped. This file re-exports the GGML equivalents under backward-
- * compatible names so callers in `routes/` and `engine-bridge.ts` do not
- * all need simultaneous updates.
+ * The speaker encoder runs EXCLUSIVELY through the fused `libelizainference`
+ * `eliza_inference_speaker_*` ABI (`FusedSpeakerEncoder` in `encoder-fused.ts`).
+ * The standalone `WespeakerEncoder` (`libvoice_classifier`) binding has been
+ * removed — there is one on-device voice runtime.
  *
- * New callers should import from `./encoder-ggml` directly.
+ * This module retains the cross-cutting pieces every encoder caller shares:
+ *   - the `SpeakerEncoder` interface the fused encoder implements,
+ *   - the stored model-id strings (kept stable so existing voice profiles in
+ *     the database stay valid),
+ *   - the canonical dims (re-exported from `encoder-ggml`),
+ *   - the `SpeakerEncoderUnavailableError` the enrollment routes raise,
+ *   - the pure `averageEmbeddings` centroid helper.
  */
 
 import { normalizeVoiceEmbedding } from "../speaker-imprint";
@@ -14,21 +21,12 @@ import {
 	SPEAKER_GGML_EMBEDDING_DIM,
 	SPEAKER_GGML_MIN_SAMPLES,
 	SPEAKER_GGML_SAMPLE_RATE,
-	SpeakerEncoderGgmlImpl,
-	SpeakerEncoderGgmlUnavailableError,
-} from "./encoder-ggml";
-
-export {
-	SpeakerEncoderGgmlImpl,
-	type SpeakerEncoderGgmlOptions,
-	SpeakerEncoderGgmlUnavailableError,
 } from "./encoder-ggml";
 
 // ---------------------------------------------------------------------------
-// Backward-compatible model id constants.
-// The GGUF model replaces the ONNX exports; the model id strings are kept
-// for compatibility with stored profiles (changing them would invalidate
-// any existing voice profiles in the database).
+// Stored model id constants.
+// The model id strings are kept stable for compatibility with stored profiles
+// (changing them would invalidate any existing voice profiles in the database).
 // ---------------------------------------------------------------------------
 
 export const WESPEAKER_RESNET34_LM_INT8_MODEL_ID =
@@ -44,7 +42,7 @@ export const WESPEAKER_SAMPLE_RATE = SPEAKER_GGML_SAMPLE_RATE;
 export const WESPEAKER_MIN_SAMPLES = SPEAKER_GGML_MIN_SAMPLES;
 
 // ---------------------------------------------------------------------------
-// Backward-compatible error class alias.
+// Structured error.
 // ---------------------------------------------------------------------------
 
 export class SpeakerEncoderUnavailableError extends Error {
@@ -64,7 +62,7 @@ export class SpeakerEncoderUnavailableError extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// Backward-compatible SpeakerEncoder interface.
+// SpeakerEncoder interface.
 // ---------------------------------------------------------------------------
 
 /** The minimal contract every speaker encoder honors. */
@@ -77,56 +75,7 @@ export interface SpeakerEncoder {
 }
 
 // ---------------------------------------------------------------------------
-// WespeakerEncoder — now a factory wrapper around SpeakerEncoderGgmlImpl.
-// The model path argument is kept for API compatibility; it now points to
-// a GGUF file (`voice/speaker-encoder/wespeaker-resnet34-lm.gguf`).
-// ---------------------------------------------------------------------------
-
-export class WespeakerEncoder implements SpeakerEncoder {
-	readonly embeddingDim = WESPEAKER_EMBEDDING_DIM;
-	readonly sampleRate = WESPEAKER_SAMPLE_RATE;
-	private readonly impl: SpeakerEncoderGgmlImpl;
-
-	private constructor(ggufPath: string) {
-		this.impl = new SpeakerEncoderGgmlImpl({ ggufPath });
-	}
-
-	static async load(
-		ggufPath: string,
-		_modelId: WespeakerModelId = WESPEAKER_RESNET34_LM_INT8_MODEL_ID,
-	): Promise<WespeakerEncoder> {
-		// Validate the model file is present before returning. The GGML impl
-		// only loads on first encode() call, but the test contract is that
-		// load() raises SpeakerEncoderUnavailableError when the model is
-		// missing — match that contract here.
-		const { existsSync } = await import("node:fs");
-		if (!existsSync(ggufPath)) {
-			throw new SpeakerEncoderUnavailableError(
-				"model-missing",
-				`[wespeaker] model file not found at ${ggufPath}`,
-			);
-		}
-		return new WespeakerEncoder(ggufPath);
-	}
-
-	async encode(pcm: Float32Array): Promise<Float32Array> {
-		try {
-			return await this.impl.encode(pcm);
-		} catch (err) {
-			if (err instanceof SpeakerEncoderGgmlUnavailableError) {
-				throw new SpeakerEncoderUnavailableError(err.code, err.message);
-			}
-			throw err;
-		}
-	}
-
-	async dispose(): Promise<void> {
-		await this.impl.dispose();
-	}
-}
-
-// ---------------------------------------------------------------------------
-// averageEmbeddings — pure helper, unchanged from original encoder.ts.
+// averageEmbeddings — pure centroid helper.
 // ---------------------------------------------------------------------------
 
 export function averageEmbeddings(

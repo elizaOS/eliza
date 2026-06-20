@@ -260,17 +260,6 @@ export {
 	type FusedDiarizerOptions,
 } from "./speaker/diarizer-fused";
 export {
-	DIARIZER_GGML_FRAMES_PER_WINDOW,
-	DIARIZER_GGML_MIN_SAMPLES,
-	DIARIZER_GGML_NUM_CLASSES,
-	DIARIZER_GGML_SAMPLE_RATE,
-	DIARIZER_GGML_WINDOW_SAMPLES,
-	DiarizerGgml,
-	type DiarizerGgmlOptions,
-	type DiarizerGgmlOutput,
-	DiarizerGgmlUnavailableError,
-} from "./speaker/diarizer-ggml";
-export {
 	averageEmbeddings,
 	type SpeakerEncoder,
 	SpeakerEncoderUnavailableError,
@@ -279,7 +268,6 @@ export {
 	WESPEAKER_RESNET34_LM_FP32_MODEL_ID,
 	WESPEAKER_RESNET34_LM_INT8_MODEL_ID,
 	WESPEAKER_SAMPLE_RATE,
-	WespeakerEncoder,
 	type WespeakerModelId,
 } from "./speaker/encoder";
 export {
@@ -290,9 +278,6 @@ export {
 	SPEAKER_GGML_EMBEDDING_DIM,
 	SPEAKER_GGML_MIN_SAMPLES,
 	SPEAKER_GGML_SAMPLE_RATE,
-	type SpeakerEncoderGgml,
-	SpeakerEncoderGgmlImpl,
-	type SpeakerEncoderGgmlOptions,
 	SpeakerEncoderGgmlUnavailableError,
 	voiceSpeakerDistance,
 } from "./speaker/encoder-ggml";

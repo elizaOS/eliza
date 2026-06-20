@@ -5,10 +5,9 @@
  * `libelizainference` library (the merged llama.cpp fork — see
  * `plugins/plugin-local-inference/native/CLAUDE.md` §1). This class drives the
  * WeSpeaker ResNet34-LM speaker encoder through that one native handle via the
- * `eliza_inference_speaker_*` ABI, replacing the standalone
- * `libvoice_classifier` (`encoder-ggml.ts`) FFI path. The same `ffi`/`ctx`
- * pair powers VAD / wake-word / TTS / ASR, so the whole voice pipeline runs
- * through one library.
+ * `eliza_inference_speaker_*` ABI. This is the SOLE on-device speaker-encoder
+ * runtime — the same `ffi`/`ctx` pair powers VAD / wake-word / TTS / ASR, so the
+ * whole voice pipeline runs through one library.
  *
  * Shape mirrors the legacy `encoder.ts::SpeakerEncoder` contract exactly:
  *   - 16 kHz mono fp32 PCM in,

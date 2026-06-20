@@ -37,6 +37,8 @@ import {
 	sendJson,
 	sendJsonError,
 } from "@elizaos/core";
+import { resolveFusedLibraryPath } from "../services/desktop-fused-ffi-backend-runtime";
+import { loadElizaInferenceFfi } from "../services/voice/ffi-bindings";
 import { VoiceProfileStore } from "../services/voice/profile-store";
 import {
 	averageEmbeddings,
@@ -46,8 +48,8 @@ import {
 	WESPEAKER_MIN_SAMPLES,
 	WESPEAKER_RESNET34_LM_INT8_MODEL_ID,
 	WESPEAKER_SAMPLE_RATE,
-	WespeakerEncoder,
 } from "../services/voice/speaker/encoder";
+import { FusedSpeakerEncoder } from "../services/voice/speaker/encoder-fused";
 
 /** Verbatim first-run script (R2-speaker.md §6.2). */
 export interface FirstRunScriptStep {
@@ -162,9 +164,9 @@ function pruneExpiredSessions(now: number): void {
 }
 
 /**
- * Encoder factory. By default the route handlers look for the bundled
- * WeSpeaker ResNet34-LM GGUF in
- * `$ELIZA_STATE_DIR/voice-profiles/models/<model>.gguf`.
+ * Encoder factory. By default the route handlers load the WeSpeaker
+ * ResNet34-LM speaker encoder through the fused `libelizainference`
+ * `eliza_inference_speaker_*` ABI — the sole on-device speaker runtime.
  * Tests inject a fake encoder via `setVoiceFirstRunEncoderFactory()`.
  */
 export type EncoderFactory = () => Promise<SpeakerEncoder>;
@@ -185,17 +187,35 @@ async function loadEncoder(): Promise<SpeakerEncoder> {
 		cachedEncoder = await encoderFactoryOverride();
 		return cachedEncoder;
 	}
-	const modelPath = path.join(
-		resolveStateDir(),
-		"voice-profiles",
-		"models",
-		"wespeaker-resnet34-lm-int8.gguf",
-	);
-	cachedEncoder = await WespeakerEncoder.load(
-		modelPath,
-		WESPEAKER_RESNET34_LM_INT8_MODEL_ID,
-	);
+	cachedEncoder = await loadFusedSpeakerEncoder();
 	return cachedEncoder;
+}
+
+/**
+ * Load the fused speaker encoder. Resolves the fused `libelizainference`,
+ * creates a context anchored at the voice-profiles dir, and probes the speaker
+ * ABI up front: a build that lacks `eliza_inference_speaker_*` raises a
+ * structured `SpeakerEncoderUnavailableError` (the route surfaces it as a 503)
+ * instead of silently degrading. There is no standalone-lib fallback.
+ */
+async function loadFusedSpeakerEncoder(): Promise<SpeakerEncoder> {
+	const bundleRoot = path.join(resolveStateDir(), "voice-profiles");
+	const libPath = resolveFusedLibraryPath(bundleRoot);
+	if (!libPath) {
+		throw new SpeakerEncoderUnavailableError(
+			"library-missing",
+			"[voice-first-run] fused libelizainference not found. Set $ELIZA_INFERENCE_LIBRARY (exact path) or $ELIZA_INFERENCE_LIB_DIR, or build it via packages/app-core/scripts/build-llama-cpp-mtp.mjs.",
+		);
+	}
+	const ffi = loadElizaInferenceFfi(libPath);
+	if (!FusedSpeakerEncoder.isSupported(ffi)) {
+		throw new SpeakerEncoderUnavailableError(
+			"native-missing",
+			`[voice-first-run] the fused libelizainference at ${libPath} (ABI v${ffi.libraryAbiVersion}) lacks the speaker ABI (eliza_inference_speaker_supported() == 0). Rebuild with the WeSpeaker forward graph linked in.`,
+		);
+	}
+	const ctx = ffi.create(bundleRoot);
+	return FusedSpeakerEncoder.load({ ffi, ctx });
 }
 
 let profileStoreOverride: VoiceProfileStore | null = null;
