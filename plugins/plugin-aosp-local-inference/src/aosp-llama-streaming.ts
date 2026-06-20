@@ -173,7 +173,9 @@ export interface AospFusedLlmSymbols {
  */
 export interface AospFfiPointerHelpers {
   /** Pointer (as bigint) to a JS-owned ArrayBufferView. */
-  ptr(view: ArrayBufferView): bigint;
+  // bun:ffi `FFIType.ptr` args take a NUMBER Pointer (not a bigint). Callers
+  // that need the address as a 64-bit value for a struct field BigInt()-wrap it.
+  ptr(view: ArrayBufferView): number;
   /** Read the diagnostic C string out of an `out_error` slot and free it. */
   takeError(outErrorBuffer: Buffer): string | null;
   /** NUL-terminate a UTF-8 string into a Buffer (kept alive by the caller). */
@@ -207,7 +209,9 @@ export function marshalAospLlmStreamConfig(
     if (!value || value.length === 0) return 0n;
     const b = helpers.cString(value);
     keepAlive.push(b);
-    return helpers.ptr(b);
+    // The struct field is a 64-bit pointer slot (writeBigUInt64LE) — widen the
+    // number address back to bigint for the write.
+    return BigInt(helpers.ptr(b));
   };
 
   buf.writeBigUInt64LE(ptrFor(config.promptCacheKey), 24);
@@ -293,8 +297,10 @@ export function createAospStreamingLlmBinding(deps: {
         gpuLayers,
       );
       const err = Buffer.alloc(8);
+      // ctx is the EliInferenceContext* — a `T.ptr` arg, so it must be a NUMBER
+      // (not bigint). `toBig` is only for the `usize` stream handle below.
       const handle = symbols.eliza_inference_llm_stream_open(
-        toBig(ctx),
+        Number(ctx),
         helpers.ptr(struct),
         helpers.ptr(err),
       );
