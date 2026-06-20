@@ -278,6 +278,8 @@ const managerVisibleViewTileCases = [
   { viewId: "trajectory-logger", path: "/trajectory-logger" },
   { viewId: "views-manager", path: "/views" },
   { viewId: "vincent", path: "/vincent" },
+  { viewId: "waifu-imagegen", path: "/waifu-imagegen" },
+  { viewId: "waifu-swap", path: "/waifu-swap" },
   { viewId: "wallet", path: "/wallet" },
   { viewId: "vector-browser", path: "/vector-browser" },
 ];

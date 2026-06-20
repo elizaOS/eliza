@@ -12,15 +12,16 @@
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   assertRequiredBundledPackagesLanded,
+  getWorkspacePackageRuntimeCopyEntries,
   getRuntimeDependencies,
   selectCopyTargetNodeModules,
   shouldCopyPackageEntry,
+  shouldCopyWorkspacePublishEntry,
   shouldSkipPackagedDependency,
 } from "./copy-runtime-node-modules";
 
@@ -44,7 +45,7 @@ function writePackageJson(
 
 describe("assertRequiredBundledPackagesLanded", () => {
   beforeEach(() => {
-    tmpDir = mkdtempSync(path.join(os.tmpdir(), "assert-bundled-"));
+    tmpDir = mkdtempSync(path.join(process.cwd(), ".tmp-assert-bundled-"));
     nodeModulesDir = path.join(tmpDir, "node_modules");
     mkdirSync(nodeModulesDir, { recursive: true });
   });
@@ -364,6 +365,156 @@ describe("assertRequiredBundledPackagesLanded", () => {
         resolvedVersion: "2.0.0",
       }),
     ).toBe(path.join(requesterDestDir, "node_modules"));
+  });
+
+  it("collapses WalletConnect patch drift to avoid duplicate desktop runtime copies", () => {
+    const rootDestDir = path.join(tmpDir, "dist");
+    const targetNodeModules = path.join(rootDestDir, "node_modules");
+    const requesterDestDir = path.join(
+      targetNodeModules,
+      "@reown",
+      "appkit-utils",
+    );
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "@walletconnect/universal-provider",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map([
+          ["@walletconnect/universal-provider", "2.19.0"],
+        ]),
+        resolvedVersion: "2.19.1",
+      }),
+    ).toBe(targetNodeModules);
+  });
+
+  it("keeps WalletConnect minor drift nested so incompatible APIs do not collapse", () => {
+    const rootDestDir = path.join(tmpDir, "dist");
+    const targetNodeModules = path.join(rootDestDir, "node_modules");
+    const requesterDestDir = path.join(
+      targetNodeModules,
+      "@walletconnect",
+      "ethereum-provider",
+    );
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "@walletconnect/universal-provider",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map([
+          ["@walletconnect/universal-provider", "2.19.0"],
+        ]),
+        resolvedVersion: "2.21.1",
+      }),
+    ).toBe(path.join(requesterDestDir, "node_modules"));
+  });
+
+  it("honors workspace package publish files when copying runtime packages", () => {
+    const packageRoot = path.join(tmpDir, "workspace-package");
+    mkdirSync(path.join(packageRoot, "dist"), { recursive: true });
+    mkdirSync(path.join(packageRoot, "src"), { recursive: true });
+    mkdirSync(path.join(packageRoot, "scripts"), { recursive: true });
+    writeFileSync(path.join(packageRoot, "dist", "index.js"), "");
+    writeFileSync(path.join(packageRoot, "src", "index.ts"), "");
+    writeFileSync(path.join(packageRoot, "scripts", "build.mjs"), "");
+    writeFileSync(
+      path.join(packageRoot, "package.json"),
+      JSON.stringify(
+        {
+          name: "@elizaos/example-runtime-package",
+          files: ["dist", "!src"],
+          main: "./dist/index.js",
+        },
+        null,
+        2,
+      ),
+    );
+
+    const allowedEntries = getWorkspacePackageRuntimeCopyEntries(
+      "@elizaos/example-runtime-package",
+      packageRoot,
+    );
+
+    expect(allowedEntries).not.toBeNull();
+    expect(
+      shouldCopyWorkspacePublishEntry(
+        path.join(packageRoot, "dist", "index.js"),
+        packageRoot,
+        allowedEntries!,
+      ),
+    ).toBe(true);
+    expect(
+      shouldCopyWorkspacePublishEntry(
+        path.join(packageRoot, "package.json"),
+        packageRoot,
+        allowedEntries!,
+      ),
+    ).toBe(true);
+    expect(
+      shouldCopyWorkspacePublishEntry(
+        path.join(packageRoot, "src", "index.ts"),
+        packageRoot,
+        allowedEntries!,
+      ),
+    ).toBe(false);
+    expect(
+      shouldCopyWorkspacePublishEntry(
+        path.join(packageRoot, "scripts", "build.mjs"),
+        packageRoot,
+        allowedEntries!,
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps source roots that are exposed through runtime export conditions", () => {
+    const packageRoot = path.join(tmpDir, "bun-source-package");
+    mkdirSync(path.join(packageRoot, "dist"), { recursive: true });
+    mkdirSync(path.join(packageRoot, "src"), { recursive: true });
+    writeFileSync(path.join(packageRoot, "dist", "index.js"), "");
+    writeFileSync(path.join(packageRoot, "src", "index.ts"), "");
+    writeFileSync(
+      path.join(packageRoot, "package.json"),
+      JSON.stringify(
+        {
+          name: "@elizaos/example-bun-source-package",
+          files: ["dist"],
+          exports: {
+            ".": {
+              bun: "./src/index.ts",
+              import: "./dist/index.js",
+              types: "./dist/index.d.ts",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const allowedEntries = getWorkspacePackageRuntimeCopyEntries(
+      "@elizaos/example-bun-source-package",
+      packageRoot,
+    );
+
+    expect(allowedEntries).not.toBeNull();
+    expect(
+      shouldCopyWorkspacePublishEntry(
+        path.join(packageRoot, "src", "index.ts"),
+        packageRoot,
+        allowedEntries!,
+      ),
+    ).toBe(true);
+    expect(
+      shouldCopyWorkspacePublishEntry(
+        path.join(packageRoot, "dist", "index.js"),
+        packageRoot,
+        allowedEntries!,
+      ),
+    ).toBe(true);
   });
 
   it("error message points to the expected on-disk path so ops can investigate", () => {

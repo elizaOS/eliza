@@ -140,8 +140,8 @@ const PROVIDERS: Array<{
 		defaultBaseUrl: "https://openrouter.ai/api/v1",
 		smallModelEnvVar: "OPENROUTER_SMALL_MODEL",
 		largeModelEnvVar: "OPENROUTER_LARGE_MODEL",
-		defaultSmallModel: "google/gemini-2.0-flash-001",
-		defaultLargeModel: "google/gemini-2.0-flash-001",
+		defaultSmallModel: "google/gemini-2.5-flash-lite",
+		defaultLargeModel: "google/gemini-2.5-flash-lite",
 	},
 ];
 

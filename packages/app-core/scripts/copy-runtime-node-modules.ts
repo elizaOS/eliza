@@ -56,7 +56,19 @@ const PUBLISHED_PACKAGE_FETCH_TIMEOUT_MS = 10_000;
 const ALLOW_REGISTRY_FETCH =
   process.env.ELIZA_RUNTIME_COPY_ALLOW_REGISTRY_FETCH === "1";
 const DEP_SKIP = new Set(["typescript", "@types/node"]);
-const ALWAYS_HOISTED_PACKAGES = new Set(["@elizaos/core", "commander", "pg", "pg-pool"]);
+const ALWAYS_HOISTED_PACKAGES = new Set([
+  "@elizaos/core",
+  "commander",
+  "pg",
+  "pg-pool",
+]);
+const PATCH_COMPATIBLE_HOISTED_PACKAGES = new Set([
+  "@walletconnect/core",
+  "@walletconnect/sign-client",
+  "@walletconnect/types",
+  "@walletconnect/universal-provider",
+  "@walletconnect/utils",
+]);
 const PACKAGED_DEPENDENCY_SKIPS = new Map<string, Set<string>>([
   // git-workspace-service declares @octokit/rest as both a dependency (^20)
   // and a peer (>=20). Desktop bundles it via plugin-agent-orchestrator,
@@ -904,6 +916,10 @@ function copyPackageDirSync(
   destIsInsideSource: boolean,
 ): void {
   const sourceDistDir = path.join(sourceDir, "dist");
+  const workspacePublishEntries = getWorkspacePackageRuntimeCopyEntries(
+    name,
+    sourceDir,
+  );
   const maxAttempts = 5;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
@@ -923,6 +939,16 @@ function copyPackageDirSync(
             if (shouldSkipPackagedAppCoreEntry(relativeEntry)) {
               return false;
             }
+          }
+          if (
+            workspacePublishEntries &&
+            !shouldCopyWorkspacePublishEntry(
+              entry,
+              sourceDir,
+              workspacePublishEntries,
+            )
+          ) {
+            return false;
           }
           if (!destIsInsideSource) {
             return true;
@@ -1004,10 +1030,151 @@ function shouldSkipPackagedAppCoreEntry(relativeEntry: string): boolean {
 }
 
 type PackageJsonManifest = {
-  exports?: Record<string, unknown>;
+  exports?: unknown;
+  files?: unknown;
   main?: string;
   module?: string;
 };
+
+const PACKAGE_METADATA_ENTRY_NAMES = new Set([
+  "LICENSE",
+  "LICENSE.md",
+  "LICENSE.txt",
+  "README.md",
+  "package.json",
+]);
+const NON_RUNTIME_EXPORT_CONDITIONS = new Set(["eliza-source", "types"]);
+
+function getTopLevelPublishEntry(rawEntry: string): string | null {
+  if (rawEntry.trim().startsWith("!")) {
+    return null;
+  }
+
+  const normalized = rawEntry
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/\/+$/, "");
+
+  if (!normalized || normalized === ".") {
+    return null;
+  }
+
+  const [topLevel] = normalized.split("/");
+  if (!topLevel || topLevel.includes("*")) {
+    return null;
+  }
+
+  return topLevel;
+}
+
+function addRuntimeManifestEntryTopLevel(
+  entries: Set<string>,
+  entryPath: unknown,
+): void {
+  if (typeof entryPath !== "string" || !entryPath.startsWith("./")) {
+    return;
+  }
+
+  const topLevel = getTopLevelPublishEntry(entryPath);
+  if (topLevel) {
+    entries.add(topLevel);
+  }
+}
+
+function addRuntimeExportTopLevelEntries(
+  entries: Set<string>,
+  exportValue: unknown,
+): void {
+  if (typeof exportValue === "string") {
+    addRuntimeManifestEntryTopLevel(entries, exportValue);
+    return;
+  }
+
+  if (!exportValue || typeof exportValue !== "object") {
+    return;
+  }
+
+  if (Array.isArray(exportValue)) {
+    for (const item of exportValue) {
+      addRuntimeExportTopLevelEntries(entries, item);
+    }
+    return;
+  }
+
+  for (const [condition, value] of Object.entries(exportValue)) {
+    if (NON_RUNTIME_EXPORT_CONDITIONS.has(condition)) {
+      continue;
+    }
+    addRuntimeExportTopLevelEntries(entries, value);
+  }
+}
+
+function isWorkspacePackageSourceDir(sourceDir: string): boolean {
+  const relative = path.relative(ROOT, sourceDir);
+  return (
+    Boolean(relative) &&
+    !relative.startsWith("..") &&
+    !path.isAbsolute(relative) &&
+    !relative.split(path.sep).includes("node_modules")
+  );
+}
+
+export function getWorkspacePackageRuntimeCopyEntries(
+  name: string,
+  sourceDir: string,
+): Set<string> | null {
+  if (!isWorkspacePackageSourceDir(sourceDir)) {
+    return null;
+  }
+
+  const manifestPath = path.join(sourceDir, "package.json");
+  if (!fs.existsSync(manifestPath)) {
+    return null;
+  }
+
+  const manifest = readJson<PackageJsonManifest>(manifestPath);
+  if (
+    !Array.isArray(manifest.files) ||
+    manifest.files.some((entry) => typeof entry !== "string")
+  ) {
+    return null;
+  }
+
+  const entries = new Set(PACKAGE_METADATA_ENTRY_NAMES);
+  for (const fileEntry of manifest.files) {
+    const topLevel = getTopLevelPublishEntry(fileEntry);
+    if (topLevel) {
+      entries.add(topLevel);
+    }
+  }
+
+  addRuntimeManifestEntryTopLevel(entries, manifest.main);
+  addRuntimeManifestEntryTopLevel(entries, manifest.module);
+  addRuntimeExportTopLevelEntries(entries, manifest.exports);
+
+  // @elizaos/agent still exposes Bun runtime source conditions. Keep its
+  // source tree so packaged Bun resolution cannot select a missing entry.
+  if (name === "@elizaos/agent" && fs.existsSync(path.join(sourceDir, "src"))) {
+    entries.add("src");
+  }
+
+  return entries;
+}
+
+export function shouldCopyWorkspacePublishEntry(
+  entry: string,
+  sourceDir: string,
+  allowedTopLevelEntries: ReadonlySet<string>,
+): boolean {
+  const relativeEntry = path.relative(sourceDir, entry);
+  if (!relativeEntry) {
+    return true;
+  }
+
+  const [topLevel] = relativeEntry.split(path.sep);
+  return allowedTopLevelEntries.has(topLevel);
+}
 
 type AgentDeepImportExportEntry = {
   exportKey: string;
@@ -1866,6 +2033,34 @@ function shouldHoistRuntimePackage(name: string): boolean {
   return ALWAYS_HOISTED_PACKAGES.has(name) || name.startsWith("@solana/");
 }
 
+function getMajorMinorVersion(version: string | null): string | null {
+  if (!version) return null;
+  const match = version.match(/^(\d+)\.(\d+)\./);
+  return match ? `${match[1]}.${match[2]}` : null;
+}
+
+function shouldReuseTopLevelRuntimePackage(
+  name: string,
+  topLevelVersion: string | null,
+  resolvedVersion: string | null,
+): boolean {
+  if (topLevelVersion === resolvedVersion) {
+    return true;
+  }
+
+  if (!PATCH_COMPATIBLE_HOISTED_PACKAGES.has(name)) {
+    return false;
+  }
+
+  const topLevelMajorMinor = getMajorMinorVersion(topLevelVersion);
+  const resolvedMajorMinor = getMajorMinorVersion(resolvedVersion);
+  return (
+    topLevelMajorMinor !== null &&
+    resolvedMajorMinor !== null &&
+    topLevelMajorMinor === resolvedMajorMinor
+  );
+}
+
 type CopyTargetOptions = {
   name: string;
   requesterDestDir: string;
@@ -1895,8 +2090,10 @@ export function selectCopyTargetNodeModules({
     return targetNodeModules;
   }
 
-  const topLevelVersion = topLevelVersions.get(name);
-  if (topLevelVersion === resolvedVersion) {
+  const topLevelVersion = topLevelVersions.get(name) ?? null;
+  if (
+    shouldReuseTopLevelRuntimePackage(name, topLevelVersion, resolvedVersion)
+  ) {
     return targetNodeModules;
   }
 

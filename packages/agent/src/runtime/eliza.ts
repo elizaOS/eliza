@@ -332,7 +332,8 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
       );
     }
     if (packageName === "@elizaos/plugin-app-control") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-app-control");
+      const appControlPackageName = packageName;
+      return await import(/* @vite-ignore */ appControlPackageName);
     }
     if (packageName === "@elizaos/plugin-shell") {
       return await import(/* @vite-ignore */ "@elizaos/plugin-shell");

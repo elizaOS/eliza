@@ -1,7 +1,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 
 export const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
-export const DEFAULT_SMALL_MODEL = "google/gemini-2.0-flash-001";
+export const DEFAULT_SMALL_MODEL = "google/gemini-2.5-flash-lite";
 export const DEFAULT_LARGE_MODEL = "google/gemini-2.5-flash";
 export const DEFAULT_IMAGE_MODEL = "x-ai/grok-2-vision-1212";
 export const DEFAULT_IMAGE_GENERATION_MODEL = "google/gemini-2.5-flash-image-preview";

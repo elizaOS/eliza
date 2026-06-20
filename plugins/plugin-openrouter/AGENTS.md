@@ -13,7 +13,7 @@ No actions, services, evaluators, providers, or routes. This plugin registers **
 | `ModelType` | Handler | Default model |
 |---|---|---|
 | `TEXT_NANO` | `handleTextNano` | falls back to small model |
-| `TEXT_SMALL` | `handleTextSmall` | `google/gemini-2.0-flash-001` |
+| `TEXT_SMALL` | `handleTextSmall` | `google/gemini-2.5-flash-lite` |
 | `TEXT_MEDIUM` | `handleTextMedium` | falls back to small model |
 | `TEXT_LARGE` | `handleTextLarge` | `google/gemini-2.5-flash` |
 | `TEXT_MEGA` | `handleTextMega` | falls back to large model |
@@ -78,7 +78,7 @@ Settings are read via `runtime.getSetting(key)` first, then `process.env[key]`. 
 | `OPENROUTER_API_KEY` | **yes** | — | OpenRouter API key. Auto-enable gating key. |
 | `OPENROUTER_BASE_URL` | no | `https://openrouter.ai/api/v1` | API endpoint override. |
 | `OPENROUTER_BROWSER_BASE_URL` | no | — | Proxy URL used in browser builds (no API key in client). |
-| `OPENROUTER_SMALL_MODEL` | no | `google/gemini-2.0-flash-001` | Override for TEXT_SMALL/TEXT_NANO/TEXT_MEDIUM base. |
+| `OPENROUTER_SMALL_MODEL` | no | `google/gemini-2.5-flash-lite` | Override for TEXT_SMALL/TEXT_NANO/TEXT_MEDIUM base. |
 | `OPENROUTER_LARGE_MODEL` | no | `google/gemini-2.5-flash` | Override for TEXT_LARGE/TEXT_MEGA base. |
 | `OPENROUTER_NANO_MODEL` | no | — | Override for TEXT_NANO specifically. |
 | `OPENROUTER_MEDIUM_MODEL` | no | — | Override for TEXT_MEDIUM specifically. |
