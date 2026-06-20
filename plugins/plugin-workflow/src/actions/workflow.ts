@@ -8,7 +8,10 @@
  *   deactivate    — deactivate a workflow by id
  *   toggle_active — explicit active=true|false (preferred when scripting)
  *   delete        — permanently delete a workflow by id
+ *   run           — run a workflow immediately
  *   executions    — fetch recent executions for a workflow id
+ *   revisions     — fetch restorable workflow versions
+ *   restore       — restore a workflow by version id
  *
  * All actions talk to the in-process `WorkflowService` via
  * `runtime.getService(WORKFLOW_SERVICE_TYPE)`. There is no HTTP boundary.
@@ -45,7 +48,10 @@ const WORKFLOW_OPS = [
   'deactivate',
   'toggle_active',
   'delete',
+  'run',
   'executions',
+  'revisions',
+  'restore',
 ] as const;
 type WorkflowOp = (typeof WORKFLOW_OPS)[number];
 
@@ -60,6 +66,7 @@ interface WorkflowActionParameters {
   workflowName?: unknown;
   active?: unknown;
   limit?: unknown;
+  versionId?: unknown;
 }
 
 function readString(value: unknown): string | undefined {
@@ -322,6 +329,110 @@ async function handleExecutions(
   }
 }
 
+async function handleRunWorkflow(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const workflowId = readString(params.workflowId);
+  if (!workflowId) {
+    return { success: false, text: 'workflowId is required to run a workflow.' };
+  }
+  try {
+    const execution = await service.runWorkflow(workflowId, { throwOnError: false });
+    const text = `Ran workflow ${workflowId}: ${execution.status}.`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: { workflowId, executionId: execution.id, status: execution.status },
+      });
+    }
+    return {
+      success: execution.status !== 'error' && execution.status !== 'crashed',
+      text,
+      values: { workflowId, executionId: execution.id, status: execution.status },
+      data: { execution },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:run' }, msg);
+    return { success: false, text: msg };
+  }
+}
+
+async function handleRevisions(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const workflowId = readString(params.workflowId);
+  if (!workflowId) {
+    return { success: false, text: 'workflowId is required to fetch workflow revisions.' };
+  }
+  const limit = readNumber(params.limit) ?? 10;
+  try {
+    const revisions = await service.listWorkflowRevisions(workflowId, limit);
+    const text =
+      revisions.length === 0
+        ? `No revisions found for workflow ${workflowId}.`
+        : `Fetched ${revisions.length} revisions for workflow ${workflowId}.`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: { workflowId, count: revisions.length },
+      });
+    }
+    return {
+      success: true,
+      text,
+      values: { workflowId, count: revisions.length },
+      data: { revisions },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:revisions' }, msg);
+    return { success: false, text: msg };
+  }
+}
+
+async function handleRestoreRevision(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const workflowId = readString(params.workflowId);
+  const versionId = readString(params.versionId);
+  if (!workflowId) {
+    return { success: false, text: 'workflowId is required to restore a workflow revision.' };
+  }
+  if (!versionId) {
+    return { success: false, text: 'versionId is required to restore a workflow revision.' };
+  }
+  try {
+    const workflow = await service.restoreWorkflowRevision(workflowId, versionId);
+    const text = `Restored workflow "${workflow.name}".`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: { workflowId, versionId, workflowName: workflow.name },
+      });
+    }
+    return {
+      success: true,
+      text,
+      values: { workflowId, workflowName: workflow.name, versionId },
+      data: { workflow: summarizeWorkflow(workflow) },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:restore' }, msg);
+    return { success: false, text: msg };
+  }
+}
+
 export const workflowAction: Action = {
   name: WORKFLOW_ACTION,
   contexts: [...WORKFLOW_CONTEXTS],
@@ -330,6 +441,8 @@ export const workflowAction: Action = {
   similes: [
     'CREATE_WORKFLOW',
     'DELETE_WORKFLOW',
+    'RUN_WORKFLOW',
+    'RUN_WORKFLOW_NOW',
     'TOGGLE_WORKFLOW_ACTIVE',
     'ACTIVATE_WORKFLOW',
     'DEACTIVATE_WORKFLOW',
@@ -350,18 +463,22 @@ export const workflowAction: Action = {
     'EXECUTION_HISTORY',
     'WORKFLOW_RUNS',
     'WORKFLOW_EXECUTIONS',
+    'WORKFLOW_REVISIONS',
+    'RESTORE_WORKFLOW',
+    'ROLL_BACK_WORKFLOW',
+    'ROLLBACK_WORKFLOW',
   ],
   description:
     'Manage workflows. Action-based dispatch - provide an `action` parameter:\n' +
-    '  create, modify, activate, deactivate, toggle_active, delete, executions.\n' +
+    '  create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore.\n' +
     'For creating/updating scheduled triggers (including promoting a task to a workflow), use the TRIGGER action.',
   descriptionCompressed:
-    'workflow create|modify|activate|deactivate|toggle_active|delete|executions',
+    'workflow create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore',
   parameters: [
     {
       name: 'action',
       description:
-        'Operation: create, modify, activate, deactivate, toggle_active, delete, executions.',
+        'Operation: create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore.',
       required: true,
       schema: { type: 'string' as const, enum: [...WORKFLOW_OPS] },
     },
@@ -397,9 +514,15 @@ export const workflowAction: Action = {
     },
     {
       name: 'limit',
-      description: 'Max executions to return for action=executions (default 10).',
+      description: 'Max executions/revisions to return (default 10).',
       required: false,
       schema: { type: 'number' as const },
+    },
+    {
+      name: 'versionId',
+      description: 'Workflow version id for action=restore.',
+      required: false,
+      schema: { type: 'string' as const },
     },
   ],
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
@@ -437,8 +560,14 @@ export const workflowAction: Action = {
         return handleToggleActive(service, params, undefined, callback);
       case 'delete':
         return handleDeleteWorkflow(service, params, callback);
+      case 'run':
+        return handleRunWorkflow(service, params, callback);
       case 'executions':
         return handleExecutions(service, params, callback);
+      case 'revisions':
+        return handleRevisions(service, params, callback);
+      case 'restore':
+        return handleRestoreRevision(service, params, callback);
     }
   },
   examples: [
@@ -487,6 +616,21 @@ export const workflowAction: Action = {
           actions: ['WORKFLOW'],
           thought:
             'Execution history maps to WORKFLOW op=executions with workflowId=wf-123 and limit=5.',
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
+        content: { text: 'Roll back workflow wf-123 to version v-old.', source: 'chat' },
+      },
+      {
+        name: '{{agentName}}',
+        content: {
+          text: 'Restoring the workflow version.',
+          actions: ['WORKFLOW'],
+          thought:
+            'Rollback maps to WORKFLOW op=restore with workflowId=wf-123 and versionId=v-old.',
         },
       },
     ],
