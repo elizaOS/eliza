@@ -2147,16 +2147,19 @@ export function ContinuousChatOverlay({
                   opacity: headerOpacity,
                   maxHeight: headerMaxH,
                   // Collapsed → 0 top padding (no leaked margin above the
-                  // composer); opens to ~10px as the header reveals. Full-bleed
-                  // keeps its fixed safe-area inset (it's always fully revealed).
-                  paddingTop: fullBleed ? undefined : headerPadTop,
+                  // composer); opens to ~10px as the header reveals. Maximized
+                  // goes edge-to-edge under the status bar, so the header insets
+                  // its buttons below the safe area (the clock/battery) while the
+                  // sheet bg stays full-bleed — set inline (not a Tailwind
+                  // arbitrary class, whose env(...,0px) comma breaks the parser
+                  // so no padding was generated and the buttons sat under the
+                  // status bar).
+                  paddingTop: fullBleed
+                    ? "calc(var(--safe-area-top, 0px) + 0.5rem)"
+                    : headerPadTop,
                 }}
                 className={cn(
                   "relative z-10 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
-                  // Maximized goes edge-to-edge under the status bar, so the
-                  // buttons must clear the safe-area inset (the clock/battery)
-                  // or they sit under it and become untappable.
-                  fullBleed && "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]",
                 )}
               >
                 <div className="flex items-center gap-1.5">
