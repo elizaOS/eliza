@@ -1166,6 +1166,49 @@ export function ContinuousChatOverlay({
   const viewportH = viewport.height;
   const keyboardInset = viewport.keyboardInset;
 
+  // iOS keyboard avoidance. With Capacitor `resize:"body"`, the software
+  // keyboard shrinks the BODY but NOT the visual viewport's relationship to a
+  // `position: fixed` element, and the visualViewport delta above frequently
+  // reads 0 — so `keyboardInset` alone can't lift the fixed composer and it
+  // ends up hidden BEHIND the keyboard (reported on device + simulator).
+  // Subscribe to the Capacitor Keyboard plugin for the authoritative keyboard
+  // height and lift by whichever inset is larger.
+  const [nativeKeyboardHeight, setNativeKeyboardHeight] = React.useState(0);
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    let cancelled = false;
+    const handles: Array<{ remove: () => void }> = [];
+    void import("@capacitor/keyboard")
+      .then(({ Keyboard }) => {
+        if (cancelled) return;
+        void Keyboard.addListener("keyboardWillShow", (info) => {
+          setNativeKeyboardHeight(info?.keyboardHeight ?? 0);
+        })
+          .then((handle) => {
+            if (cancelled) handle.remove();
+            else handles.push(handle);
+          })
+          .catch(() => {});
+        void Keyboard.addListener("keyboardWillHide", () => {
+          setNativeKeyboardHeight(0);
+        })
+          .then((handle) => {
+            if (cancelled) handle.remove();
+            else handles.push(handle);
+          })
+          .catch(() => {});
+      })
+      .catch(() => {
+        // Web / non-native: no Keyboard plugin; visualViewport handles it.
+      });
+    return () => {
+      cancelled = true;
+      for (const handle of handles) handle.remove();
+    };
+  }, []);
+  // The composer lifts above whichever the platform actually reports.
+  const effectiveKeyboardInset = Math.max(keyboardInset, nativeKeyboardHeight);
+
   // FULL-SCREEN derived gate: maximized only takes effect AT the full detent, so
   // a stale flag can never leak into half/collapsed/pill. Drives the edge-to-edge
   // panel styles + a zero top margin.
@@ -1844,7 +1887,7 @@ export function ContinuousChatOverlay({
       // touching that zone.
       style={{
         zIndex: Z_SHELL_OVERLAY,
-        bottom: keyboardInset,
+        bottom: effectiveKeyboardInset,
         // Full-bleed fills the screen edge-to-edge: NO overlay bottom padding,
         // so the glass panel reaches the true bottom (no orange gap). The
         // gesture-zone clearance moves INSIDE the composer row (below) so the
