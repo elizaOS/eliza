@@ -5,11 +5,7 @@
 // CONNECT event dispatch are injected so the dispatcher stays test-friendly.
 
 import { CONNECT_EVENT, dispatchAppEvent } from "@elizaos/ui/events";
-import {
-  closeOAuthInAppBrowser,
-  routeFirstRunDeepLink,
-  routeOAuthReturnDeepLink,
-} from "@elizaos/ui/first-run/deep-link-handler";
+import { routeFirstRunDeepLink } from "@elizaos/ui/first-run/deep-link-handler";
 import type { ShareTargetPayload } from "@elizaos/ui/platform";
 import { applyLaunchConnection } from "@elizaos/ui/platform/browser-launch";
 import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
@@ -28,11 +24,6 @@ export interface DeepLinkHandlerContext {
 export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
   function handle(url: string): void {
     if (routeFirstRunDeepLink(url, ctx.urlScheme)) {
-      return;
-    }
-
-    if (routeOAuthReturnDeepLink(url, ctx.urlScheme)) {
-      closeOAuthInAppBrowser();
       return;
     }
 

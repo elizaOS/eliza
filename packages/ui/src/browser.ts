@@ -141,10 +141,8 @@ export * from "./config/ui-spec.ts";
 // === Phase 5C: ./desktop-runtime moved to @elizaos/app-core/runtime/desktop ===
 export * from "./events/index.ts";
 export {
-  closeOAuthInAppBrowser,
   installFirstRunDeepLinkListener,
   routeFirstRunDeepLink,
-  routeOAuthReturnDeepLink,
 } from "./first-run/deep-link-handler.ts";
 export * from "./first-run/mobile-runtime-mode.ts";
 export * from "./first-run/pre-seed-local-runtime.ts";

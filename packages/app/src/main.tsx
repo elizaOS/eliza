@@ -70,11 +70,7 @@ import {
   SHARE_TARGET_EVENT,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui/events";
-import {
-  closeOAuthInAppBrowser,
-  routeFirstRunDeepLink,
-  routeOAuthReturnDeepLink,
-} from "@elizaos/ui/first-run/deep-link-handler";
+import { routeFirstRunDeepLink } from "@elizaos/ui/first-run/deep-link-handler";
 import {
   IOS_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
@@ -1529,14 +1525,6 @@ async function initializeNetworkListener(): Promise<void> {
 
 function handleDeepLink(url: string): void {
   if (routeFirstRunDeepLink(url, APP_URL_SCHEME)) {
-    return;
-  }
-
-  if (routeOAuthReturnDeepLink(url, APP_URL_SCHEME)) {
-    // Native OAuth ran in the system browser and returned via the custom
-    // scheme; the parser has navigated the SPA to /login. Dismiss the in-app
-    // browser so the user lands back in the app.
-    closeOAuthInAppBrowser();
     return;
   }
 

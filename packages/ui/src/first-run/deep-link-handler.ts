@@ -104,70 +104,6 @@ export function routeFirstRunDeepLink(url: string, urlScheme: string): boolean {
   return true;
 }
 
-const OAUTH_RETURN_HOSTS = new Set(["login", "oauth-callback"]);
-
-/**
- * Parses the native OAuth return deep link
- * (`<scheme>://login?code=…&state=…` or `<scheme>://login#token=…`, plus the
- * `<scheme>://oauth-callback` alias) and rewrites the in-app `/login` location
- * so the existing Steward login `useEffect` consumes the `?code=` / `#token=`
- * the same way it does on web. Returns `true` when the URL matched an OAuth
- * return contract (so the caller can stop processing and close the in-app
- * browser); returns `false` for anything else.
- *
- * On match it sets `window.location` to `/login` carrying the original query
- * and hash via `history.replaceState`, then dispatches `popstate` so the SPA
- * router (react-router `BrowserRouter`) navigates to `/login` and mounts the
- * Steward login section, whose effect reads `consumeStewardCodeFromQuery()` /
- * `consumeStewardTokensFromHash()`.
- *
- * Defensive behavior mirrors {@link routeFirstRunDeepLink}: malformed URL,
- * wrong scheme, wrong host, or no OAuth payload → `false` with no mutation;
- * SSR (no `window`) → `false`.
- *
- * @param url        The raw URL string from Capacitor's `appUrlOpen` event.
- * @param urlScheme  The app's deep-link scheme without the trailing `:`
- *                   (e.g. `"elizaos"`).
- */
-export function routeOAuthReturnDeepLink(
-  url: string,
-  urlScheme: string,
-): boolean {
-  if (typeof window === "undefined") return false;
-
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return false;
-  }
-
-  if (parsed.protocol !== `${urlScheme}:`) return false;
-  if (!OAUTH_RETURN_HOSTS.has(parsed.host)) return false;
-
-  const search = parsed.search;
-  const hash = parsed.hash;
-  const hasCode = parsed.searchParams.has("code");
-  const hasState = parsed.searchParams.has("state");
-  const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
-  const hasHashToken =
-    hashParams.has("token") || hashParams.has("access_token");
-
-  // Require an actual OAuth payload — a bare `<scheme>://login` with nothing to
-  // hand off is not a return we can complete, so let the caller fall through.
-  if (!hasCode && !hasState && !hasHashToken) return false;
-
-  window.history.replaceState(
-    window.history.state,
-    "",
-    `/login${search}${hash}`,
-  );
-  // Drive the SPA router (react-router listens for `popstate`) to /login so the
-  // Steward login section mounts and its effect consumes the code/token.
-  window.dispatchEvent(new PopStateEvent("popstate"));
-  return true;
-}
-
 /**
  * Wires `App.addListener("appUrlOpen", ...)` (and `App.getLaunchUrl()` for
  * cold-launch links) so first-run deep links route through
@@ -198,22 +134,6 @@ type CapacitorAppShape = {
   getLaunchUrl: () => Promise<{ url?: string } | null | undefined>;
 };
 
-type CapacitorBrowserShape = { close: () => Promise<void> };
-
-/**
- * Dismiss the system in-app browser opened for OAuth after the provider
- * returns via the deep link. `@capacitor/browser` is not a declared dependency
- * of `@elizaos/ui` (the host app supplies the native bridge), so it is loaded
- * with a guarded dynamic import that no-ops on web builds where the package is
- * absent or `Browser.close()` rejects (no active native browser window).
- */
-export function closeOAuthInAppBrowser(): void {
-  const capacitorBrowserPackage = "@capacitor/browser";
-  void import(/* @vite-ignore */ capacitorBrowserPackage)
-    .then((mod) => (mod as { Browser: CapacitorBrowserShape }).Browser.close())
-    .catch(() => {});
-}
-
 export async function installFirstRunDeepLinkListener(options: {
   urlScheme: string;
   onError?: (error: unknown) => void;
@@ -242,12 +162,8 @@ export async function installFirstRunDeepLinkListener(options: {
   }
 
   const handler = (event: AppUrlOpenEvent): void => {
-    if (routeFirstRunDeepLink(event.url, urlScheme)) return;
-    if (routeOAuthReturnDeepLink(event.url, urlScheme)) {
-      closeOAuthInAppBrowser();
-      return;
-    }
-    onUnmatched?.(event.url);
+    const matched = routeFirstRunDeepLink(event.url, urlScheme);
+    if (!matched) onUnmatched?.(event.url);
   };
 
   let listenerHandle: ListenerHandle | undefined;

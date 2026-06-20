@@ -421,10 +421,8 @@ export {
   VRM_TELEPORT_COMPLETE_EVENT,
 } from "./events/index";
 export {
-  closeOAuthInAppBrowser,
   installFirstRunDeepLinkListener,
   routeFirstRunDeepLink,
-  routeOAuthReturnDeepLink,
 } from "./first-run/deep-link-handler";
 export * from "./first-run/first-run-config";
 export * from "./first-run/mobile-runtime-mode";
