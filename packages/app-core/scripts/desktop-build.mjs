@@ -1072,16 +1072,18 @@ function assertRuntimeCopyDiskHeadroom() {
 
   const stat = fs.statfsSync(ROOT);
   const availableBytes = Number(stat.bavail) * Number(stat.bsize);
-  const existingRuntimeNodeModules = path.join(ROOT, "dist", "node_modules");
-  const recyclableBytes = directorySizeBytes(existingRuntimeNodeModules);
-  const effectiveAvailableBytes = availableBytes + recyclableBytes;
   const minimumBytes = Number.parseInt(
     process.env.ELIZA_DESKTOP_MIN_FREE_BYTES ?? `${4 * 1024 * 1024 * 1024}`,
     10,
   );
   if (!Number.isFinite(minimumBytes) || minimumBytes <= 0) return;
+  if (availableBytes >= minimumBytes) return;
+
+  const existingRuntimeNodeModules = path.join(ROOT, "dist", "node_modules");
+  const recyclableBytes = directorySizeBytes(existingRuntimeNodeModules);
+  const effectiveAvailableBytes = availableBytes + recyclableBytes;
   if (effectiveAvailableBytes >= minimumBytes) {
-    if (recyclableBytes > 0 && availableBytes < minimumBytes) {
+    if (recyclableBytes > 0) {
       console.log(
         `[desktop-build] Runtime copy has ${formatGiB(availableBytes)} free plus ${formatGiB(recyclableBytes)} recyclable generated node_modules output.`,
       );
