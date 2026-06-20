@@ -626,7 +626,7 @@ export default scenario({
   rooms: [
     {
       id: "main",
-      source: "telegram",
+      source: "chat",
       title: "Deterministic App Control NL Routing",
     },
   ],

@@ -10,6 +10,7 @@ import {
   ModelType,
   renderChatMessagesForPrompt,
   resolveEffectiveSystemPrompt,
+  Semaphore,
 } from "@elizaos/core";
 import type { LanguageModel } from "ai";
 import { createOpenAIClient } from "../providers/openai";
@@ -35,6 +36,83 @@ const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as ModelTypeNa
 const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
   "RESPONSE_HANDLER") as ModelTypeName;
 const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as ModelTypeName;
+
+/**
+ * Per-process cap on CONCURRENT native cloud text calls.
+ *
+ * Covers BOTH native cloud text routes that share the one cerebras key:
+ * the `/chat/completions` round-trip (native-transport callers) AND the
+ * `/responses` round-trip (bare-`{ prompt }` callers, incl. the primary reply
+ * action). Same model name -> same shared key -> same concurrency budget, so
+ * both routes must funnel through this one semaphore or a bare-prompt call can
+ * still push the key over its limit.
+ *
+ * The per-turn burst that triggers the 429 comes from the prompt BATCHER
+ * (`dynamicPromptExecFromState`, which always sets providerOptions -> native
+ * `/chat/completions`) and the merged evaluator call — NOT from composeState
+ * providers (no provider calls `useModel` during composeState). Firing those
+ * at once overruns the ONE shared cerebras key's concurrent-request limit
+ * -> 429 -> 3 retries x backoff -> 30-63s of latency. Capping in-flight calls
+ * through a small semaphore keeps each call ~3s with no 429, without needing
+ * more keys or backend changes.
+ *
+ * Default is a SAFETY CEILING, not full serialization: the paid cerebras key
+ * (1000 req/min) and leaner per-turn call counts make the 429 risk small, so
+ * the default of 8 leaves the typical 1-3 concurrent calls/turn untouched while
+ * still bounding a pathological burst. The limiter is process-global and keys
+ * on native transport, not the model, so it also bounds non-cerebras native
+ * calls (e.g. zai-glm-4.7) — a high default avoids serializing those. Set
+ * `ELIZAOS_CLOUD_NATIVE_CONCURRENCY` (positive integer) to tighten it (1 = fully
+ * serialize) on a cerebras-bottlenecked single-key deployment, or raise it for
+ * more parallelism. Embeddings use a SEPARATE `/embeddings` route
+ * (embeddings.ts) and are intentionally NOT gated here.
+ */
+const NATIVE_CONCURRENCY_ENV = "ELIZAOS_CLOUD_NATIVE_CONCURRENCY";
+const DEFAULT_NATIVE_CONCURRENCY = 8;
+
+let nativeChatLimiter: Semaphore | null = null;
+
+function resolveNativeConcurrency(): number {
+  const raw =
+    typeof process !== "undefined" ? process.env[NATIVE_CONCURRENCY_ENV] : undefined;
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_NATIVE_CONCURRENCY;
+}
+
+function getNativeChatLimiter(): Semaphore {
+  if (!nativeChatLimiter) {
+    nativeChatLimiter = new Semaphore(resolveNativeConcurrency());
+  }
+  return nativeChatLimiter;
+}
+
+/**
+ * Run a single cerebras-bound network round-trip under the shared per-process
+ * concurrency cap. Hold the permit only across `fn` (the `requestRaw` call);
+ * release the instant the server responds so response-body parsing runs
+ * unguarded. `finally` frees the permit even on throw so a failed call never
+ * starves the queue. Used by BOTH native text routes (`/chat/completions` and
+ * `/responses`) so every cerebras text call shares one budget.
+ *
+ * Exported for unit tests that drive the shared cap directly.
+ */
+export async function withNativeChatLimit<T>(fn: () => Promise<T>): Promise<T> {
+  const limiter = getNativeChatLimiter();
+  await limiter.acquire();
+  try {
+    return await fn();
+  } finally {
+    limiter.release();
+  }
+}
+
+/**
+ * Test-only: discard the cached limiter so the next call re-reads the env knob.
+ * Production code never needs this — the knob is read once per process.
+ */
+export function __resetNativeChatLimiterForTests(): void {
+  nativeChatLimiter = null;
+}
 
 type ResponsesApiResponse = Record<string, unknown> & {
   error?: {
@@ -806,10 +884,14 @@ async function generateTextWithModel(
       responsesHeaders["x-eliza-span-samplers"] = samplerHeader;
     }
   }
-  const response = await createCloudApiClient(runtime).requestRaw("POST", "/responses", {
-    headers: responsesHeaders,
-    json: requestBody,
-  });
+  // Same shared cerebras key as the /chat/completions route, so gate this
+  // bare-prompt round-trip through the SAME limiter (parsing stays unguarded).
+  const response = await withNativeChatLimit(() =>
+    createCloudApiClient(runtime).requestRaw("POST", "/responses", {
+      headers: responsesHeaders,
+      json: requestBody,
+    })
+  );
   const responseText = await response.text();
   let data: ResponsesApiResponse = {};
   if (responseText) {
@@ -869,7 +951,9 @@ async function generateTextWithModel(
   return text;
 }
 
-async function generateNativeChatCompletion(
+// Exported for unit tests (the concurrency limiter wrapper). Not part of the
+// plugin's public model-handler surface.
+export async function generateNativeChatCompletion(
   runtime: IAgentRuntime,
   modelType: TextModelType,
   params: GenerateTextParamsWithNativeOptions,
@@ -900,10 +984,17 @@ async function generateNativeChatCompletion(
       headers["x-eliza-span-samplers"] = samplerHeader;
     }
   }
-  const response = await createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
-    headers,
-    json: requestBody,
-  });
+  // Serialize the per-turn batcher/evaluator burst through the SAME shared
+  // semaphore the /responses route uses, so N simultaneous native cloud text
+  // calls don't overrun the one shared cerebras key's concurrent limit (-> 429
+  // -> retries -> 30-63s). The permit is held only across the network
+  // round-trip; the text()/JSON parse below runs unguarded.
+  const response = await withNativeChatLimit(() =>
+    createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
+      headers,
+      json: requestBody,
+    })
+  );
   const responseText = await response.text();
   let data: ChatCompletionsResponse = {};
   if (responseText) {

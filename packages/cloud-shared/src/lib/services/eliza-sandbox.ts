@@ -11,6 +11,7 @@ import {
   type AgentBackupSnapshotType,
   type AgentSandbox,
   type AgentSandboxBackup,
+  type AgentSandboxStatus,
   agentSandboxesRepository,
   prepareAgentBackupInsertData,
 } from "../../db/repositories/agent-sandboxes";
@@ -746,6 +747,26 @@ export class ElizaSandboxService {
         await apiKeysService.revokeForAgent(agentId);
       } catch (err) {
         logger.warn("[agent-sandbox] Failed to revoke per-agent API key", {
+          agentId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      // Best-effort: drop the shared-runtime (Tier-0) conversation history for
+      // this agent. That table is deliberately decoupled from the sandbox row
+      // (no FK cascade), so the per-channel history rows would otherwise be
+      // orphaned forever after the agent is gone. A failure here leaves stale
+      // rows but never un-deletes the (already gone) sandbox.
+      try {
+        const removed = await sharedRuntimeHistoryRepository.deleteByAgent(agentId);
+        if (removed > 0) {
+          logger.info("[agent-sandbox] Cleaned up shared-runtime history after delete", {
+            agentId,
+            channelsRemoved: removed,
+          });
+        }
+      } catch (err) {
+        logger.warn("[agent-sandbox] Failed to clean up shared-runtime history", {
           agentId,
           error: err instanceof Error ? err.message : String(err),
         });
@@ -3475,7 +3496,7 @@ export class ElizaSandboxService {
     return await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
-      if (!rec)
+      if (!rec || this.isAwaitingDeletion(rec.status))
         return {
           success: false,
           containerStopped: false,
@@ -3526,6 +3547,17 @@ export class ElizaSandboxService {
   }
 
   /**
+   * A row in `deletion_pending` / `deletion_failed` is logically gone — an
+   * agent_delete job owns it. Bringing it back up (resume / wake / restart)
+   * would resurrect a container we are tearing down, so these states are
+   * treated exactly like a missing row: the daemon handler maps "Agent not
+   * found" to a terminal no-op instead of resurrecting the agent.
+   */
+  private isAwaitingDeletion(status: AgentSandboxStatus): boolean {
+    return status === "deletion_pending" || status === "deletion_failed";
+  }
+
+  /**
    * Daemon-side handler for the `agent_resume` job. Delegates to
    * `provision()` which restores `bridge_url` / `health_url` from the
    * provider's sandbox handle and reuses the existing shared DB
@@ -3547,8 +3579,12 @@ export class ElizaSandboxService {
     reprovisioned: boolean;
     error?: string;
   }> {
-    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (!rec)
+    // Read from the PRIMARY: a replica-lagged "Agent not found" / stale status
+    // here would turn a legitimate resume into a terminal no-op (the daemon
+    // maps "Agent not found" to completed), silently dropping the request. The
+    // existence + deletion-state check must be authoritative.
+    const rec = await this.getAgentForWrite(agentId, orgId);
+    if (!rec || this.isAwaitingDeletion(rec.status))
       return {
         success: false,
         containerStarted: false,
@@ -3598,8 +3634,10 @@ export class ElizaSandboxService {
     backupId?: string;
     error?: string;
   }> {
-    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (!rec) return { success: false, containerRemoved: false, error: "Agent not found" };
+    // Primary read: replica lag must not turn a real sleep into a no-op.
+    const rec = await this.getAgentForWrite(agentId, orgId);
+    if (!rec || this.isAwaitingDeletion(rec.status))
+      return { success: false, containerRemoved: false, error: "Agent not found" };
     if (rec.status === "sleeping") return { success: true, containerRemoved: true };
     if (rec.status === "provisioning") {
       return {
@@ -3711,8 +3749,10 @@ export class ElizaSandboxService {
     restoredBackupId?: string;
     error?: string;
   }> {
-    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (!rec) return { success: false, reprovisioned: false, error: "Agent not found" };
+    // Primary read: a replica-lagged "Agent not found" must not no-op a wake.
+    const rec = await this.getAgentForWrite(agentId, orgId);
+    if (!rec || this.isAwaitingDeletion(rec.status))
+      return { success: false, reprovisioned: false, error: "Agent not found" };
     if (rec.status === "running" && rec.bridge_url) {
       return { success: true, reprovisioned: false };
     }
@@ -3753,6 +3793,22 @@ export class ElizaSandboxService {
     healthUrl?: string;
     error?: string;
   }> {
+    // Bail before shutdown()+provision() if the row is being deleted — restart
+    // would otherwise flip a deletion_pending row to `stopped` and rebuild a
+    // container the agent_delete job is tearing down. Reported as not-found so
+    // the daemon handler completes the job as a terminal no-op. Read from the
+    // PRIMARY so a replica-lagged status doesn't bail a legitimate restart (or
+    // miss an in-flight deletion) on stale data.
+    const rec = await this.getAgentForWrite(agentId, orgId);
+    if (!rec || this.isAwaitingDeletion(rec.status)) {
+      return {
+        success: false,
+        containerStopped: false,
+        containerStarted: false,
+        error: "Agent not found",
+      };
+    }
+
     const shutdownResult = await this.shutdown(agentId, orgId);
     if (!shutdownResult.success) {
       if (shutdownResult.error === "Agent not found") {

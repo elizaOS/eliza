@@ -118,6 +118,16 @@
       "import": "./dist/steward-session-client/index.js",
       "default": "./dist/steward-session-client/index.js"
     },
+    "./utils/permission-deep-links": {
+      "types": "./dist/utils/permission-deep-links.d.ts",
+      "eliza-source": {
+        "types": "./src/utils/permission-deep-links.ts",
+        "import": "./src/utils/permission-deep-links.ts",
+        "default": "./src/utils/permission-deep-links.ts"
+      },
+      "import": "./dist/utils/permission-deep-links.js",
+      "default": "./dist/utils/permission-deep-links.js"
+    },
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",

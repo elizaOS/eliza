@@ -692,6 +692,80 @@ describe("ElizaSandboxService.executeResume", () => {
   });
 });
 
+// Lifecycle bring-up (resume / wake / restart) must NOT resurrect a row that an
+// agent_delete job already owns. A row in deletion_pending/deletion_failed is
+// reported as "Agent not found" so the daemon completes the job as a terminal
+// no-op instead of rebuilding a container being torn down.
+describe("ElizaSandboxService deletion-state guards (resume/wake/restart)", () => {
+  const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+  const ORG = "22222222-2222-4222-8222-222222222222";
+
+  function row(status: AgentSandbox["status"]): AgentSandbox {
+    return { ...customSandbox(), id: AGENT, organization_id: ORG, status };
+  }
+
+  for (const status of ["deletion_pending", "deletion_failed"] as const) {
+    test(`executeResume bails on ${status} (not-found, no provision)`, async () => {
+      const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+      const svc = new ElizaSandboxService();
+      const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+        row(status),
+      );
+      const provisionSpy = spyOn(svc, "provision");
+      try {
+        const res = await svc.executeResume(AGENT, ORG);
+        expect(res.success).toBe(false);
+        expect(res.error).toBe("Agent not found");
+        expect(provisionSpy).not.toHaveBeenCalled();
+      } finally {
+        findSpy.mockRestore();
+      }
+    });
+
+    test(`executeWake bails on ${status} (not-found, no provision)`, async () => {
+      const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+      const svc = new ElizaSandboxService();
+      const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+        row(status),
+      );
+      const provisionSpy = spyOn(svc, "provision");
+      try {
+        const res = await svc.executeWake(AGENT, ORG);
+        expect(res.success).toBe(false);
+        expect(res.error).toBe("Agent not found");
+        expect(provisionSpy).not.toHaveBeenCalled();
+      } finally {
+        findSpy.mockRestore();
+      }
+    });
+
+    test(`executeRestart bails on ${status} before shutdown/provision`, async () => {
+      const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+      const svc = new ElizaSandboxService();
+      const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+        row(status),
+      );
+      const shutdownSpy = spyOn(svc, "shutdown");
+      const provisionSpy = spyOn(svc, "provision");
+      try {
+        const res = await svc.executeRestart(AGENT, ORG);
+        expect(res.success).toBe(false);
+        expect(res.error).toBe("Agent not found");
+        // Critically: never starts the stop+rebuild sequence on a doomed row.
+        expect(shutdownSpy).not.toHaveBeenCalled();
+        expect(provisionSpy).not.toHaveBeenCalled();
+      } finally {
+        findSpy.mockRestore();
+      }
+    });
+  }
+});
+
+// FIX 1 (orphaned shared-runtime history on delete) is covered at the repository
+// level in shared-runtime-history.test.ts: deleteAgent runs inside a
+// dbWrite.transaction (a Proxy that can't be spied here) and the cleanup is a
+// best-effort post-commit call to sharedRuntimeHistoryRepository.deleteByAgent.
+
 describe("computeManagedAgentDbEnv (#8696 local agent state)", () => {
   const DB = "postgres://shared.example/railway";
 

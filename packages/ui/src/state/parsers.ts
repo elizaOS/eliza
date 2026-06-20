@@ -36,10 +36,18 @@ export function parseAgentStatusEvent(
     typeof data.startedAt === "number" ? data.startedAt : undefined;
   const uptime = typeof data.uptime === "number" ? data.uptime : undefined;
   const startup = parseAgentStartupDiagnostics(data.startup);
+  // `canRespond` is the server-authoritative readiness signal (deriveAgentReady).
+  // Carry it through from the WS `status` event — dropping it would reset a ready
+  // agent's status to `canRespond: undefined`, which falls back to running+model
+  // and (for a cloud agent with no locally-detected model) wrongly re-gates the
+  // composer back to "waking up".
+  const canRespond =
+    typeof data.canRespond === "boolean" ? data.canRespond : undefined;
   return {
     state: state as AgentStatus["state"],
     agentName,
     model,
+    ...(canRespond !== undefined ? { canRespond } : {}),
     startedAt,
     uptime,
     startup,

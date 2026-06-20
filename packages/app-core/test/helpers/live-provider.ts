@@ -204,8 +204,11 @@ const PROVIDERS: Array<{
     defaultBaseUrl: "https://openrouter.ai/api/v1",
     smallModelEnvVar: "OPENROUTER_SMALL_MODEL",
     largeModelEnvVar: "OPENROUTER_LARGE_MODEL",
-    defaultSmallModel: "google/gemini-2.0-flash-001",
-    defaultLargeModel: "google/gemini-2.0-flash-001",
+    // Keep the dev smoke on a current text model. OpenRouter removed the old
+    // gemini-2.0-flash-001 route, which made live onboarding fail before app
+    // plumbing was exercised.
+    defaultSmallModel: "google/gemini-2.5-flash-lite",
+    defaultLargeModel: "google/gemini-2.5-flash-lite",
   },
   {
     // Local OpenAI-compatible server (mtp llama-server fork or Ollama).

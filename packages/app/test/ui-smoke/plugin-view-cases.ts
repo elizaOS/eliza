@@ -45,6 +45,8 @@ export const VIEW_CASES: ViewCase[] = (
     ["steward", "tui", "/steward/tui"],
     ["vincent", "gui", "/vincent"],
     ["vincent", "tui", "/vincent/tui"],
+    ["waifu-imagegen", "gui", "/waifu-imagegen"],
+    ["waifu-swap", "gui", "/waifu-swap"],
     ["wallet", "gui", "/wallet"],
     ["wallet", "tui", "/wallet/tui"],
     ["vector-browser", "gui", "/vector-browser"],
