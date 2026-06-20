@@ -691,3 +691,29 @@ describe("ElizaSandboxService.executeResume", () => {
     }
   });
 });
+
+describe("computeManagedAgentDbEnv (#8696 local agent state)", () => {
+  const DB = "postgres://shared.example/railway";
+
+  test("local-state agent gets ELIZA_MANAGED_DATABASE_URL and NO DATABASE_URL", async () => {
+    const { computeManagedAgentDbEnv } = await import("./eliza-sandbox.ts?actual");
+    const env = computeManagedAgentDbEnv({ ELIZA_AGENT_LOCAL_STATE: "1" }, DB);
+    expect(env.DATABASE_URL).toBeUndefined();
+    expect(env.ELIZA_MANAGED_DATABASE_URL).toBe(DB);
+  });
+
+  test("existing agent (no flag) keeps the shared DATABASE_URL injection", async () => {
+    const { computeManagedAgentDbEnv } = await import("./eliza-sandbox.ts?actual");
+    const env = computeManagedAgentDbEnv({}, DB);
+    expect(env.DATABASE_URL).toBe(DB);
+    expect(env.ELIZA_MANAGED_DATABASE_URL).toBeUndefined();
+  });
+
+  test("caller-supplied DATABASE_URL is preserved; managed exposed separately", async () => {
+    const { computeManagedAgentDbEnv } = await import("./eliza-sandbox.ts?actual");
+    const env = computeManagedAgentDbEnv({ DATABASE_URL: "postgres://own.example/db" }, DB);
+    // dbEnv never clobbers the caller's DATABASE_URL (it is spread first in create()).
+    expect(env.DATABASE_URL).toBeUndefined();
+    expect(env.ELIZA_MANAGED_DATABASE_URL).toBe(DB);
+  });
+});
