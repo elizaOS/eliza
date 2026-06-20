@@ -1,17 +1,25 @@
 /**
  * On-disk discovery for the Kokoro-only voice mode. Probes
  * `<stateDir>/local-inference/models/kokoro/` (or `$ELIZA_KOKORO_MODEL_DIR`)
- * for a model file (preferred order: fused-GGUF → quantized ONNX → fp32
- * ONNX) plus at least one voice `.bin` under `voices/`. Callers can pass an
- * explicit model root to probe bundle-local Kokoro artifacts first. Returns
- * null when anything is missing — no auto-download (AGENTS.md §3).
+ * for a Kokoro GGUF model file plus at least one voice `.bin` under
+ * `voices/`. Callers can pass an explicit model root to probe bundle-local
+ * Kokoro artifacts first. Returns null when anything is missing — no
+ * auto-download (AGENTS.md §3). GGUF-only: the ONNX path has been retired
+ * (see `runtimeKind` below).
  *
- * The fused-GGUF path is produced by the elizaOS/llama.cpp fork's
- * `omnivoice/tools/convert_kokoro_to_gguf.py` and runs through the same
- * `libelizainference` shared library that already serves OmniVoice + ASR
- * + VAD. When both an ONNX and a GGUF are staged the discovery prefers
- * the GGUF — the ONNX stays around as a fallback for bundles that
- * pre-date the port (see kokoro-llama-cpp-feasibility.md §5).
+ * TRANSPORT NOTE — Kokoro is a deliberate deviation from the in-process
+ * fused-FFI rule. Unlike OmniVoice (which synthesizes in-process via the
+ * fused `eliza_inference_tts_*` ABI), Kokoro is a distinct TTS model whose
+ * native engine (`tools/kokoro/kokoro_lib`) is linked ONLY into
+ * `llama-server`, NOT into the fused `libelizainference` shared library.
+ * The GGUF is therefore served over HTTP — `KokoroGgufRuntime` POSTs to a
+ * Kokoro-capable llama-server's `/v1/audio/speech` endpoint (the MTP
+ * gateway, when launched with `--kokoro-model`). The GGUF is produced by
+ * the elizaOS/llama.cpp fork's `tools/kokoro/convert_kokoro_pth_to_gguf.py`.
+ * Folding Kokoro into the in-process fused FFI (ABI v10: link `kokoro_lib`
+ * into `elizainference`, add `eliza_inference_kokoro_*`, add a
+ * `KokoroFfiRuntime`) is a scoped follow-up gated on the native-Kokoro
+ * numerical-parity gate — see `tools/kokoro/include/kokoro.h`.
  *
  * Env overrides:
  *   ELIZA_KOKORO_MODEL_DIR        — directory root
@@ -39,7 +47,7 @@ export const KOKORO_DEFAULT_SAMPLE_RATE = 24_000;
  * quantization tier, and within ONNX the int8 export beats fp32.
  *
  * The Q4_K_M GGUF is what the elizaOS/llama.cpp fork's
- * `omnivoice/tools/convert_kokoro_to_gguf.py` produces for shipping
+ * `tools/kokoro/convert_kokoro_pth_to_gguf.py` produces for shipping
  * tiers; `kokoro-82m-v1_0.gguf` is the unquantized canonical filename
  * the runtime documents at `kokoro-runtime.ts:KOKORO_GGUF_REL_PATH`.
  */
