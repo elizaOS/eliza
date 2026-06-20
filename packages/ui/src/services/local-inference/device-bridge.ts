@@ -44,7 +44,7 @@ import { localInferenceRoot } from "./paths";
 import {
   computeGenerationThroughput,
   type GenerationThroughput,
-} from "./throughput";
+} from "@elizaos/shared/local-inference";
 
 const DEFAULT_CALL_TIMEOUT_MS = 60_000;
 const DEFAULT_LOAD_TIMEOUT_MS = 120_000;

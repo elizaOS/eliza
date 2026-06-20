@@ -69,6 +69,12 @@ export type {
   RoutingPreferences,
 } from "./routing-preferences.js";
 export {
+  computeGenerationThroughput,
+  type GenerationCounters,
+  type GenerationThroughput,
+  isGenerationCounters,
+} from "./throughput.js";
+export {
   type ActiveModelState,
   AGENT_MODEL_SLOTS,
   type AgentModelSlot,

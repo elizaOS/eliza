@@ -19,6 +19,11 @@
  * (`outputTokens / durationMs`) is filled. Per the repo architecture rules
  * (AGENTS.md §3/§7) a quantity that could not be measured is recorded as `null`,
  * never as a fabricated `0`.
+ *
+ * Shared between the agent-side device bridge
+ * (`@elizaos/plugin-local-inference/services/device-bridge`) and the UI client
+ * (`@elizaos/ui/services/local-inference/device-bridge`) — both hand-synced
+ * copies import this single source rather than re-implementing the math.
  */
 
 /** Raw per-generation counters as carried by the device-bridge wire. */
@@ -116,7 +121,9 @@ export function computeGenerationThroughput(
  * rejected at the boundary (and the metric dropped) rather than silently
  * producing garbage throughput.
  */
-export function isGenerationCounters(value: unknown): value is GenerationCounters {
+export function isGenerationCounters(
+  value: unknown,
+): value is GenerationCounters {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
   return (

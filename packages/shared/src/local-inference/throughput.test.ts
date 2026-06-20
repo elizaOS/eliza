@@ -81,7 +81,7 @@ describe("computeGenerationThroughput", () => {
       ttftMs: 50,
     });
     expect(t.prefillTokensPerSecond).toBeNull();
-    expect(t.decodeTokensPerSecond).toBeCloseTo(16 / (0.35), 5);
+    expect(t.decodeTokensPerSecond).toBeCloseTo(16 / 0.35, 5);
   });
 });
 

@@ -44,7 +44,11 @@ export {
 	type LocalGenerateOutcome,
 	makeCloudFallbackHandler,
 } from "./cloud-fallback";
-export { type DeviceBridgeStatus, deviceBridge } from "./device-bridge";
+export {
+	type DeviceBridgeStatus,
+	deviceBridge,
+	type DeviceGenerationMetrics,
+} from "./device-bridge";
 export {
 	classifyDeviceTier,
 	DEVICE_TIER_ORDER,
@@ -68,6 +72,16 @@ export {
 	type ThermalSummary,
 	type ThermalTransition,
 } from "./device-resource-metrics";
+export {
+	type CapabilityProbes,
+	defaultsForNoBinding,
+	type InferenceCapabilities,
+	probeCapabilities,
+	type ResourceSnapshot,
+	type ThermalState,
+	type ThermalThrottleDecision,
+	thermalThrottleDecision,
+} from "./inference-capabilities";
 export {
 	LocalInferenceEngine,
 	localInferenceEngine,

@@ -43,7 +43,7 @@ export {
   type GenerationCounters,
   type GenerationThroughput,
   isGenerationCounters,
-} from "./throughput";
+} from "@elizaos/shared/local-inference";
 export type {
   ActiveModelState,
   CatalogModel,
