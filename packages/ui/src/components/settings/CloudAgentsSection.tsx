@@ -204,6 +204,15 @@ export function CloudAgentsSection() {
             a.agent_id === agent.agent_id ? { ...a, agent_name: name } : a,
           ),
         );
+        // If we just renamed the agent bound as the active cloud server, refresh
+        // the persisted label so the switcher/header reflect the new name without
+        // waiting for a re-bind (mirrors how switchTo/create set the label).
+        if (agent.agent_id === activeId) {
+          const active = loadPersistedActiveServer();
+          if (active?.kind === "cloud") {
+            savePersistedActiveServer({ ...active, label: name });
+          }
+        }
         setActionNotice(`Renamed to ${name}.`, "success", 3000);
         setEditingId(null);
       } catch (err) {
@@ -216,7 +225,7 @@ export function CloudAgentsSection() {
         setBusyId(null);
       }
     },
-    [editName, setActionNotice],
+    [editName, activeId, setActionNotice],
   );
 
   const setLocalStatus = useCallback((agentId: string, status: string) => {
@@ -331,6 +340,7 @@ export function CloudAgentsSection() {
                     }}
                     className="flex-1"
                     aria-label="Agent name"
+                    data-testid={`cloud-agent-rename-input-${agent.agent_id}`}
                     disabled={busy}
                     autoFocus
                   />
@@ -338,6 +348,7 @@ export function CloudAgentsSection() {
                     variant="default"
                     size="sm"
                     disabled={busy}
+                    data-testid={`cloud-agent-rename-save-${agent.agent_id}`}
                     onClick={() => void saveRename(agent)}
                   >
                     {busy ? "Saving…" : "Save"}
@@ -346,6 +357,7 @@ export function CloudAgentsSection() {
                     variant="ghost"
                     size="sm"
                     disabled={busy}
+                    data-testid={`cloud-agent-rename-cancel-${agent.agent_id}`}
                     onClick={() => setEditingId(null)}
                   >
                     Cancel
@@ -406,6 +418,7 @@ export function CloudAgentsSection() {
                       size="sm"
                       disabled={busy}
                       aria-label={`Rename ${agent.agent_name || agent.agent_id}`}
+                      data-testid={`cloud-agent-rename-${agent.agent_id}`}
                       onClick={() => startRename(agent)}
                     >
                       <Pencil className="h-4 w-4" aria-hidden />
