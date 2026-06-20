@@ -15,12 +15,43 @@
  * `node scripts/generate-view-heroes.mjs` (requires `@elizaos/shared` built).
  */
 
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { VIEW_HERO_ICONS, renderViewHeroSvg } from "@elizaos/shared";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+/**
+ * Discover every plugin that declares an Eliza app surface (`elizaos.app` in its
+ * package.json) by scanning the plugins manifest — the same source the view
+ * catalog reads — so the generator can never silently omit a view-bearing
+ * plugin. Returns the plugin dir names (e.g. "plugin-calendar").
+ */
+function scanAppPluginDirs() {
+  const pluginsRoot = path.join(repoRoot, "plugins");
+  if (!existsSync(pluginsRoot)) return [];
+  const dirs = [];
+  for (const name of readdirSync(pluginsRoot)) {
+    const manifestPath = path.join(pluginsRoot, name, "package.json");
+    if (!existsSync(manifestPath)) continue;
+    try {
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+      if (manifest?.elizaos?.app) dirs.push(name);
+    } catch {
+      // Unparseable manifest — skip; not a regression we own here.
+    }
+  }
+  return dirs.sort();
+}
+
+/** True when a plugin dir already ships a hero asset (svg or png). */
+function pluginHasHeroAsset(pluginDir) {
+  const assetsDir = path.join(repoRoot, "plugins", pluginDir, "assets");
+  if (!existsSync(assetsDir)) return false;
+  return readdirSync(assetsDir).some((f) => /^hero.*\.(svg|png)$/.test(f));
+}
 
 /**
  * Per-view config. Hues are hand-spread across warm/jewel tones (orange, amber,
@@ -64,6 +95,28 @@ async function main() {
     console.log(`${String(entry.bytes).padStart(6)}  ${entry.path}`);
   }
   console.log(`\nWrote ${written.length} hero SVG files.`);
+
+  // Coverage, sourced from the manifest scan (#8796): every plugin that
+  // declares an Eliza app surface must ship a hero asset — either generated
+  // above (curated hue/icon) or committed directly. A plugin without one is a
+  // gap the catalog would render as an icon-only fallback.
+  const curatedDirs = new Set(
+    views.map((v) => v.out.split("/")[1]).filter(Boolean),
+  );
+  const appPlugins = scanAppPluginDirs();
+  const missing = appPlugins.filter(
+    (dir) => !pluginHasHeroAsset(dir) && !curatedDirs.has(dir),
+  );
+  console.log(
+    `\nManifest scan: ${appPlugins.length} app plugins, ${appPlugins.length - missing.length} with a hero asset.`,
+  );
+  if (missing.length > 0) {
+    console.warn(
+      `\n⚠️  ${missing.length} app plugin(s) declare a surface but ship no hero asset:\n${missing
+        .map((d) => `  - plugins/${d}`)
+        .join("\n")}\nAdd a curated entry above or commit plugins/<name>/assets/hero.svg.`,
+    );
+  }
 }
 
 main().catch((err) => {
