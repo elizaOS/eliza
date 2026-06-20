@@ -198,6 +198,117 @@ describe('workflowAction chat operations', () => {
     });
   });
 
+  test('diagnoses the latest failed execution for chat troubleshooting', async () => {
+    const listExecutions = mock(() =>
+      Promise.resolve({
+        data: [
+          {
+            id: 'exec-failed',
+            workflowId: 'wf-1',
+            mode: 'manual' as const,
+            startedAt: '2026-06-20T12:00:00.000Z',
+            stoppedAt: '2026-06-20T12:00:01.000Z',
+            finished: true,
+            status: 'error' as const,
+            data: {
+              resultData: {
+                lastNodeExecuted: 'Send Slack',
+                engine: {
+                  provider: 'smithers' as const,
+                  nodes: 3,
+                  levels: 2,
+                  maxConcurrency: 2,
+                  started: 3,
+                  finished: 2,
+                  failed: 1,
+                  skipped: 0,
+                  retries: 1,
+                },
+                error: { message: 'Missing Slack credential' },
+                runData: {
+                  'Send Slack': [
+                    {
+                      executionTime: 12,
+                      error: { message: 'Missing Slack credential' },
+                      data: { main: [] },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        ],
+      })
+    );
+    const callback = mock(() => Promise.resolve());
+
+    const result = await runAction(
+      { listExecutions } as Partial<WorkflowService>,
+      { action: 'diagnose', workflowId: 'wf-1' },
+      callback as HandlerCallback
+    );
+
+    expect(listExecutions).toHaveBeenCalledWith({ workflowId: 'wf-1', limit: 10 });
+    expect(result.success).toBe(true);
+    expect(result.values).toEqual({
+      workflowId: 'wf-1',
+      executionId: 'exec-failed',
+      status: 'error',
+      error: 'Missing Slack credential',
+    });
+    expect(result.text).toContain('Missing Slack credential');
+    expect(result.data).toEqual({
+      execution: expect.objectContaining({ id: 'exec-failed' }),
+      summary: expect.objectContaining({ statusLabel: 'Failed' }),
+      diagnostics: expect.stringContaining('Engine: 3 nodes / 2 levels / 2 max parallel'),
+    });
+    expect(String((result.data as { diagnostics: string }).diagnostics)).toContain(
+      'Send Slack: error; 0 items; 12 ms; error=Missing Slack credential'
+    );
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          workflowId: 'wf-1',
+          executionId: 'exec-failed',
+          status: 'error',
+        }),
+      })
+    );
+  });
+
+  test('diagnoses an execution directly by id', async () => {
+    const getExecutionDetail = mock(() =>
+      Promise.resolve({
+        id: 'exec-1',
+        workflowId: 'wf-1',
+        mode: 'manual' as const,
+        startedAt: '2026-06-20T12:00:00.000Z',
+        stoppedAt: '2026-06-20T12:00:01.000Z',
+        finished: true,
+        status: 'success' as const,
+        data: { resultData: { runData: {} } },
+      })
+    );
+
+    const result = await runAction({ getExecutionDetail } as Partial<WorkflowService>, {
+      action: 'diagnose',
+      executionId: 'exec-1',
+    });
+
+    expect(getExecutionDetail).toHaveBeenCalledWith('exec-1');
+    expect(result.success).toBe(true);
+    expect(result.values).toEqual({
+      workflowId: 'wf-1',
+      executionId: 'exec-1',
+      status: 'success',
+    });
+    expect(result.data).toEqual({
+      execution: expect.objectContaining({ id: 'exec-1' }),
+      summary: expect.objectContaining({ statusLabel: 'Succeeded' }),
+      diagnostics: expect.stringContaining('Nodes: none recorded'),
+    });
+  });
+
   test('generates evaluation samples from workflow executions for chat optimization', async () => {
     const getWorkflowEvaluationSuite = mock(() =>
       Promise.resolve({
