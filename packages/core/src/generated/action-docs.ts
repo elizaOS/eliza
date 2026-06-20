@@ -9306,7 +9306,7 @@ export const allActionsSpec = {
 				{
 					name: "action",
 					description:
-						"Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore.",
+						"Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, eval_samples.",
 					required: true,
 					schema: {
 						type: "string",
@@ -9323,10 +9323,11 @@ export const allActionsSpec = {
 							"executions",
 							"revisions",
 							"restore",
+							"eval_samples",
 						],
 					},
 					descriptionCompressed:
-						"Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore.",
+						"Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, eval_samples.",
 				},
 				{
 					name: "workflowId",
@@ -9378,13 +9379,14 @@ export const allActionsSpec = {
 				},
 				{
 					name: "limit",
-					description: "Max executions/revisions to return (default 10).",
+					description:
+						"Max executions/revisions/evaluation samples to return (default 10).",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					descriptionCompressed:
-						"Max executions/revisions to return (default 10).",
+						"Max executions/revisions/evaluation samples to return (default 10).",
 				},
 				{
 					name: "versionId",
@@ -9397,7 +9399,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"workflow list|get|create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore",
+				"workflow list|get|create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore|eval_samples",
 			similes: [
 				"LIST_WORKFLOWS",
 				"SHOW_WORKFLOWS",
@@ -9431,6 +9433,11 @@ export const allActionsSpec = {
 				"RESTORE_WORKFLOW",
 				"ROLL_BACK_WORKFLOW",
 				"ROLLBACK_WORKFLOW",
+				"WORKFLOW_EVAL_SAMPLES",
+				"GENERATE_WORKFLOW_TRAINING_SAMPLES",
+				"GENERATE_WORKFLOW_EVAL_CASES",
+				"GEPA_WORKFLOW_SAMPLES",
+				"OPTIMIZE_WORKFLOW_SAMPLES",
 			],
 			exampleCalls: [
 				{
