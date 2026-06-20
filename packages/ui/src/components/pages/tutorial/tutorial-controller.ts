@@ -12,7 +12,6 @@ import * as React from "react";
  */
 
 const COMPLETED_KEY = "eliza:tutorial-completed";
-const AUTOLAUNCH_KEY = "eliza:tutorial-autolaunched";
 
 export interface TutorialState {
   active: boolean;
@@ -59,36 +58,6 @@ export function stopTutorial(): void {
 
 export function goToStep(index: number): void {
   set({ stepIndex: Math.max(0, index) });
-}
-
-export function isTutorialCompleted(): boolean {
-  try {
-    return localStorage.getItem(COMPLETED_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Whether the tour should auto-launch for a first-time user: it has never been
- * auto-launched AND never completed/skipped. Once-ever, so it never nags.
- */
-export function shouldAutoLaunchTutorial(): boolean {
-  try {
-    return (
-      localStorage.getItem(AUTOLAUNCH_KEY) !== "1" && !isTutorialCompleted()
-    );
-  } catch {
-    return false;
-  }
-}
-
-export function markTutorialAutoLaunched(): void {
-  try {
-    localStorage.setItem(AUTOLAUNCH_KEY, "1");
-  } catch {
-    /* storage unavailable — fine */
-  }
 }
 
 export function useTutorial(): TutorialState {
