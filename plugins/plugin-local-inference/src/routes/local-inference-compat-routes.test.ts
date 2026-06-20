@@ -1,6 +1,7 @@
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import type { HardwareProbe } from "../services/types";
 import type { CompatRuntimeState } from "./compat-route-shared";
 
 // ── mocks ──────────────────────────────────────────────────────────────
@@ -419,5 +420,66 @@ describe("POST /api/local-inference/active", () => {
 		const body = res.body() as { modelId: string; status: string };
 		expect(body.modelId).toBe("eliza-1-2b");
 		expect(body.status).toBe("ready");
+	});
+});
+
+describe("GET /api/local-inference/device-tier", () => {
+	beforeAll(async () => {
+		handleLocalInferenceCompatRoutes = (
+			await import("./local-inference-compat-routes")
+		).handleLocalInferenceCompatRoutes;
+	}, 120_000);
+
+	const probe: HardwareProbe = {
+		totalRamGb: 32,
+		freeRamGb: 16,
+		gpu: null,
+		cpuCores: 16,
+		platform: "linux",
+		arch: "x64",
+		appleSilicon: false,
+		recommendedBucket: "mid",
+		source: "capacitor-llama",
+	};
+
+	it("returns the device tier + live memory budget", async () => {
+		const { localInferenceService } = await import("../services/service");
+		vi.mocked(localInferenceService.getHardware).mockResolvedValue(probe);
+		const res = fakeRes();
+		const handled = await handleLocalInferenceCompatRoutes(
+			fakeReq({ method: "GET", pathname: "/api/local-inference/device-tier" }),
+			res.res,
+			STATE,
+		);
+		expect(handled).toBe(true);
+		expect(res.status()).toBe(200);
+		const body = res.body() as {
+			tier: { tier: string };
+			memory: { availableBytes: number; totalBytes: number };
+			resident: unknown;
+		};
+		expect(["MAX", "GOOD", "OKAY", "POOR"]).toContain(body.tier.tier);
+		// Memory comes from the live system reader, not the probe.
+		expect(body.memory.totalBytes).toBeGreaterThan(0);
+		expect(body.memory.availableBytes).toBeGreaterThan(0);
+		expect(body.memory.availableBytes).toBeLessThanOrEqual(
+			body.memory.totalBytes,
+		);
+		// No arbiter configured in this unit context → resident is null, not a throw.
+		expect(body.resident).toBeNull();
+	});
+
+	it("surfaces a 500 when the hardware probe fails", async () => {
+		const { localInferenceService } = await import("../services/service");
+		vi.mocked(localInferenceService.getHardware).mockRejectedValue(
+			new Error("probe boom"),
+		);
+		const res = fakeRes();
+		await handleLocalInferenceCompatRoutes(
+			fakeReq({ method: "GET", pathname: "/api/local-inference/device-tier" }),
+			res.res,
+			STATE,
+		);
+		expect(res.status()).toBe(500);
 	});
 });
