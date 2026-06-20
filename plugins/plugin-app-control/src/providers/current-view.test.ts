@@ -74,7 +74,9 @@ describe("current_view acknowledgement provider (#8788)", () => {
 			data: {},
 			text: "",
 		});
-		expect(r.text).toContain("switched to the Calendar view (/calendar) themselves");
+		expect(r.text).toContain(
+			"switched to the Calendar view (/calendar) themselves",
+		);
 		expect(r.text).not.toContain("You just switched");
 	});
 

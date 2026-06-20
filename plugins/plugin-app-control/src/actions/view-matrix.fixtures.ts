@@ -132,17 +132,19 @@ export const CURATED_MULTILINGUAL: readonly CuratedCase[] = [
  * Per-language phrases that must NEVER navigate (return null). Small talk,
  * trivia, and statements that merely mention a domain word without nav intent.
  */
-export const NEGATIVE_CONTROLS: readonly { lang: MatrixLanguage; phrase: string }[] =
-	[
-		{ lang: "en", phrase: "what's the weather like today" },
-		{ lang: "en", phrase: "tell me a joke" },
-		{ lang: "es", phrase: "cuéntame un chiste" },
-		{ lang: "pt", phrase: "como está o tempo hoje" },
-		{ lang: "fr", phrase: "raconte-moi une blague" },
-		{ lang: "de", phrase: "wie ist das wetter heute" },
-		{ lang: "zh", phrase: "今天天气怎么样" },
-		{ lang: "ja", phrase: "今日の天気はどう" },
-		{ lang: "ko", phrase: "오늘 날씨 어때" },
-		{ lang: "vi", phrase: "hôm nay thời tiết thế nào" },
-		{ lang: "tl", phrase: "kumusta ang panahon ngayon" },
-	];
+export const NEGATIVE_CONTROLS: readonly {
+	lang: MatrixLanguage;
+	phrase: string;
+}[] = [
+	{ lang: "en", phrase: "what's the weather like today" },
+	{ lang: "en", phrase: "tell me a joke" },
+	{ lang: "es", phrase: "cuéntame un chiste" },
+	{ lang: "pt", phrase: "como está o tempo hoje" },
+	{ lang: "fr", phrase: "raconte-moi une blague" },
+	{ lang: "de", phrase: "wie ist das wetter heute" },
+	{ lang: "zh", phrase: "今天天气怎么样" },
+	{ lang: "ja", phrase: "今日の天気はどう" },
+	{ lang: "ko", phrase: "오늘 날씨 어때" },
+	{ lang: "vi", phrase: "hôm nay thời tiết thế nào" },
+	{ lang: "tl", phrase: "kumusta ang panahon ngayon" },
+];

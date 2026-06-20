@@ -1,7 +1,10 @@
 import type { PipelineHookContextForPhase } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { applyCurrentViewComposeHook } from "./current-view-hook.js";
-import { __resetViewSwitchSignal, markViewSwitch } from "./view-switch-signal.js";
+import {
+	__resetViewSwitchSignal,
+	markViewSwitch,
+} from "./view-switch-signal.js";
 
 type Ctx = PipelineHookContextForPhase<"compose_state_providers">;
 

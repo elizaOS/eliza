@@ -15,21 +15,21 @@
 import type { Plugin } from "@elizaos/core";
 import { appAction, createAppAction } from "./actions/app.js";
 import { homescreenAction } from "./actions/homescreen.js";
-import { createViewsClient } from "./actions/views-client.js";
-import {
-	applyCurrentViewComposeHook,
-	CURRENT_VIEW_HOOK_ID,
-} from "./runtime/current-view-hook.js";
 import {
 	closeAllViewsAction,
 	closeViewAction,
 	viewsAction,
 } from "./actions/views.js";
+import { createViewsClient } from "./actions/views-client.js";
 import { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
 import { viewContextEvaluator } from "./evaluators/view-context.js";
 import { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { currentViewProvider } from "./providers/current-view.js";
+import {
+	applyCurrentViewComposeHook,
+	CURRENT_VIEW_HOOK_ID,
+} from "./runtime/current-view-hook.js";
 import { AppRegistryService } from "./services/app-registry-service.js";
 import { AppVerificationService } from "./services/app-verification.js";
 import { AppWorkerHostService } from "./services/app-worker-host-service.js";
@@ -44,6 +44,11 @@ export {
 	createHomescreenAction,
 	homescreenAction,
 } from "./actions/homescreen.js";
+export {
+	__matcherData,
+	MATCHER_VIEW_IDS,
+	matchViewCommand,
+} from "./actions/view-command-matcher.js";
 export type { ViewsMode } from "./actions/views.js";
 export {
 	closeAllViewsAction,
@@ -53,18 +58,16 @@ export {
 	viewsAction,
 } from "./actions/views.js";
 export type { ViewSummary } from "./actions/views-client.js";
+export { INTENT_VIEW_IDS, resolveIntentView } from "./actions/views-show.js";
 export type { AppControlClient } from "./client/api.js";
 export { createAppControlClient } from "./client/api.js";
-export { currentViewProvider } from "./providers/current-view.js";
-export {
-	__matcherData,
-	matchViewCommand,
-	MATCHER_VIEW_IDS,
-} from "./actions/view-command-matcher.js";
-export { INTENT_VIEW_IDS, resolveIntentView } from "./actions/views-show.js";
 export { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
-export { CONTEXT_VIEWS, viewContextEvaluator } from "./evaluators/view-context.js";
+export {
+	CONTEXT_VIEWS,
+	viewContextEvaluator,
+} from "./evaluators/view-context.js";
 export { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
+export { currentViewProvider } from "./providers/current-view.js";
 export {
 	APP_REGISTRY_SERVICE_TYPE,
 	type AppRegistryEntry,
