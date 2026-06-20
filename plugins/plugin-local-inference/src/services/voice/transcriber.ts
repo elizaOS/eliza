@@ -55,6 +55,7 @@ import type {
 import {
 	makeWhisperCppDecoder,
 	resolveWhisperCppRuntime,
+	type WhisperCppRuntime,
 } from "./whisper-cpp-asr";
 
 /** The local voice runtime resamples mic input to 16 kHz mono for ASR. */
@@ -795,6 +796,23 @@ export interface CreateStreamingTranscriberOptions {
 	/** Fused-batch-interim window/step overrides (see `FfiBatchTranscriber`). */
 	ffiBatch?: Omit<FfiBatchTranscriberOptions, "ffi" | "getContext">;
 	/**
+	 * Whisper.cpp runtime resolver. Injection seam mirroring the fused-FFI
+	 * dependency injection (`ffi` / `getContext`): the production default
+	 * probes disk for `libwhisper_eliza_adapter` + a ggml whisper model, but
+	 * tests pass a fixture so the whisper.cpp chain resolution is exercised
+	 * without a real native library. Returns `null` when no runtime resolves.
+	 */
+	resolveWhisperCppRuntime?: () => WhisperCppRuntime | null;
+	/**
+	 * Whisper.cpp decoder factory. Injection seam paired with
+	 * `resolveWhisperCppRuntime`; the production default dlopen()s the adapter
+	 * and binds the flat C ABI, tests inject a fake decoder.
+	 */
+	makeWhisperCppDecoder?: (runtime: WhisperCppRuntime) => {
+		decoder: StreamingPcmDecoder;
+		dispose: () => void;
+	};
+	/**
 	 * Force a specific backend.
 	 *   `"fused"`       → fused streaming ASR only (throws if unavailable),
 	 *   `"ffi-batch"`   → fused batch (interim) only (throws if unavailable),
@@ -835,6 +853,10 @@ export function createStreamingTranscriber(
 	const allowWhisperCpp =
 		prefer === "whisper-cpp" ||
 		(opts.allowWhisperCpp ?? envAllowsWhisperCpp ?? true);
+	const resolveWhisperRuntime =
+		opts.resolveWhisperCppRuntime ?? resolveWhisperCppRuntime;
+	const makeWhisperDecoder =
+		opts.makeWhisperCppDecoder ?? makeWhisperCppDecoder;
 
 	const tryFusedStreaming = (): StreamingTranscriber | null => {
 		if (!opts.ffi || !opts.getContext) return null;
@@ -864,12 +886,12 @@ export function createStreamingTranscriber(
 	};
 
 	const tryWhisperCpp = (): StreamingTranscriber | null => {
-		const runtime = resolveWhisperCppRuntime();
+		const runtime = resolveWhisperRuntime();
 		if (!runtime) return null;
 		let decoder: StreamingPcmDecoder;
 		let dispose: () => void;
 		try {
-			const worker = makeWhisperCppDecoder(runtime);
+			const worker = makeWhisperDecoder(runtime);
 			decoder = worker.decoder;
 			dispose = worker.dispose;
 		} catch (err) {
