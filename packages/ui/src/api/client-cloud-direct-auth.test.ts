@@ -353,6 +353,181 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
+  it("suspends Cloud agents through the direct Cloud API host on native", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 202,
+      data: {
+        success: true,
+        data: {
+          agentId: "agent-1",
+          action: "suspend",
+          jobId: "job-suspend",
+          status: "queued",
+          message: "Suspend job created.",
+        },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const result = await client.suspendCloudCompatAgent("agent-1");
+
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/suspend",
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer cloud-api-key",
+        }),
+      }),
+    );
+    expect(result).toEqual({
+      success: true,
+      data: {
+        jobId: "job-suspend",
+        status: "queued",
+        message: "Suspend job created.",
+      },
+    });
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("resumes Cloud agents through the direct Cloud API host on native", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 202,
+      data: {
+        success: true,
+        data: {
+          agentId: "agent-1",
+          action: "resume",
+          jobId: "job-resume",
+          status: "queued",
+          message: "Resume job created.",
+        },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const result = await client.resumeCloudCompatAgent("agent-1");
+
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/resume",
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer cloud-api-key",
+        }),
+      }),
+    );
+    expect(result).toEqual({
+      success: true,
+      data: {
+        jobId: "job-resume",
+        status: "queued",
+        message: "Resume job created.",
+      },
+    });
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("restarts Cloud agents through the direct Cloud API host on native", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 202,
+      data: {
+        success: true,
+        data: { jobId: "job-restart", status: "queued" },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const result = await client.restartCloudCompatAgent("agent-1");
+
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/restart",
+        method: "POST",
+      }),
+    );
+    // The route omits a message, so the client fills in a sensible default.
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          jobId: "job-restart",
+          status: "queued",
+        }),
+      }),
+    );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("surfaces the Cloud error body when a native suspend is rejected", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 404,
+      data: { success: false, error: "Agent not found" },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+
+    await expect(client.suspendCloudCompatAgent("agent-1")).rejects.toThrow(
+      "Cloud request failed (404): Agent not found",
+    );
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/suspend",
+        method: "POST",
+      }),
+    );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("returns the auth-missing result for native lifecycle calls with no Cloud token", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("native lifecycle must not fetch"));
+
+    const client = new ElizaClient("http://localhost:31337");
+    const result = await client.resumeCloudCompatAgent("agent-1");
+
+    expect(result).toEqual({
+      success: false,
+      error: "Eliza Cloud login session is missing. Sign in again.",
+      data: {
+        jobId: "",
+        status: "auth-missing",
+        message: "Eliza Cloud login session is missing. Sign in again.",
+      },
+    });
+    expect(capacitorMocks.request).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("threads the 202 jobId through a native direct delete", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 202,
+      data: {
+        success: true,
+        data: {
+          jobId: "job-delete",
+          status: "deleting",
+          message: "Delete job created.",
+        },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const result = await client.deleteCloudCompatAgent("agent-1");
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        jobId: "job-delete",
+        status: "deleting",
+        message: "Delete job created.",
+      },
+    });
+    expectNoLocalPersistOrStatusProbe();
+  });
+
   it("launches Cloud agents directly on native and returns the runtime token", async () => {
     capacitorMocks.request.mockResolvedValue({
       status: 200,
