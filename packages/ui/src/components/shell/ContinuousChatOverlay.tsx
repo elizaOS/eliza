@@ -775,6 +775,15 @@ export function ContinuousChatOverlay({
     modelStatus,
   } = controller;
 
+  // The transcribe control is a voice feature, so it only belongs in the header
+  // while voice is actually on — a hands-free conversation, the mic open, or an
+  // in-progress transcription. When voice is off it's hidden (the `/transcribe`
+  // command still starts transcription from cold). `transcriptionMode` is part
+  // of the predicate so the button (then "stop transcription") and its badge
+  // stay put across the re-listen gaps where `recording` momentarily drops
+  // between utterances.
+  const voiceActive = Boolean(recording || handsFree || transcriptionMode);
+
   // Copy an assistant answer (press-and-hold on its bubble). Stable identity so
   // the memoized ThreadLine isn't re-rendered every parent tick.
   const handleCopyMessage = React.useCallback((text: string) => {
@@ -2388,17 +2397,19 @@ export function ContinuousChatOverlay({
                     onClick={() => clearConversation()}
                     testId="chat-full-clear"
                   />
-                  <HeaderButton
-                    icon={FileText}
-                    label={
-                      transcriptionMode
-                        ? "stop transcription"
-                        : "transcription mode"
-                    }
-                    active={transcriptionMode}
-                    onClick={toggleTranscriptionMode}
-                    testId="chat-full-transcribe"
-                  />
+                  {voiceActive ? (
+                    <HeaderButton
+                      icon={FileText}
+                      label={
+                        transcriptionMode
+                          ? "stop transcription"
+                          : "transcription mode"
+                      }
+                      active={transcriptionMode}
+                      onClick={toggleTranscriptionMode}
+                      testId="chat-full-transcribe"
+                    />
+                  ) : null}
                 </div>
                 {transcriptionMode ? (
                   <div
