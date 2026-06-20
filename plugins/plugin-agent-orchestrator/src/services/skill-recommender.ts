@@ -30,8 +30,17 @@ const KEYWORD_CANDIDATE_LIMIT = 10;
 const LLM_SHORT_CIRCUIT_SCORE = 0.9;
 const BUILD_MONETIZED_APP_SLUG = "build-monetized-app";
 const ELIZA_CLOUD_SKILL_SLUG = "eliza-cloud";
-const APP_BUILD_TASK_RE =
-  /\b(build|create|make|ship|write|develop|generate)\b(?:(?!\b(?:article|blog|post)\b)[\s\S]){0,120}\b(app|site|page|tool|game|dashboard|chatbot|chat\s*bot|chat\s+app|assistant|companion)\b/i;
+export const APP_BUILD_TASK_RE =
+  /\b(build|create|make|ship|write|develop|generate|design)\b(?:(?!\b(?:article|blog|post)\b)[\s\S]){0,120}\b(app|application|web\s?site|website|web\s?page|webpage|landing\s?page|site|page|tool|game|dashboard|chat\s?bot|chatbot|chat\s+app|assistant|companion|portfolio|widget)\b/i;
+
+// Narrower than APP_BUILD_TASK_RE. The deploy CONTRACT (host it, report a
+// verified URL) must only attach to builds that produce a hosted WEB surface —
+// not CLI tools, libraries, scripts, bots, or doc "pages" (which the broad
+// regex's `tool`/`page`/`portfolio`/`widget` nouns false-positive). The skill
+// recommender tolerates over-matching (it only suggests a skill); the spawn-
+// time deploy injection rewrites the task contract, so it uses this gate.
+export const APP_DEPLOY_TASK_RE =
+  /\b(build|create|make|ship|deploy|generate|design)\b(?:(?!\b(?:article|blog|post|cli|command[-\s]?line|library|package|script|extension|bot|plugin)\b)[\s\S]){0,120}\b(web\s?app|webapp|web\s?site|website|web\s?page|webpage|landing\s?page|home\s?page|dashboard|micro\s?site|website|app)\b/i;
 // Tokens shorter than this carry no signal — they show up in nearly every
 // task description and would inflate every skill's score equally.
 const MIN_TOKEN_LENGTH = 4;
