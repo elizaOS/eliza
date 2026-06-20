@@ -560,7 +560,11 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       }
     };
     void refresh();
-    const intervalId = window.setInterval(refresh, 3000);
+    // 1.5s while awaiting readiness so a `canRespond` flip clears the "waking
+    // up" banner promptly (the boolean dep flips false the instant we're ready,
+    // tearing this down). Cloud agents warm in seconds; a slower 3s cadence left
+    // the composer visibly gated after the agent was already answering.
+    const intervalId = window.setInterval(refresh, 1500);
     return () => {
       active = false;
       window.clearInterval(intervalId);

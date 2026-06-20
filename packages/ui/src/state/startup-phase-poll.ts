@@ -10,13 +10,19 @@ import { logger } from "@elizaos/logger";
 import { getStylePresets } from "@elizaos/shared";
 import type { FirstRunOptions } from "../api";
 import { client } from "../api";
-import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
+import {
+  getCloudAuthToken,
+  isDirectCloudSharedAgentBase,
+} from "../api/client-cloud";
 import { isIosInProcessLocalAgentBase } from "../api/ios-local-agent-transport";
 import { getBackendStartupTimeoutMs, scanProviderCredentials } from "../bridge";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
 import { isAndroid, isIOS } from "../platform";
-import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
+import {
+  ELIZA_CLOUD_CONTROL_PLANE_HOSTS,
+  isElizaCloudControlPlaneAgentlessBase,
+} from "../utils/cloud-agent-base";
 import {
   asApiLikeError,
   clearPersistedSetupStep,
@@ -123,6 +129,94 @@ export function isRecoverableRemoteBase(args: {
     return false;
   }
   return true;
+}
+
+// Direct elizaCloud control-plane API base, used to verify an agent record when
+// a per-agent base 404s. Mirrors DEFAULT_DIRECT_CLOUD_API_BASE_URL in
+// api/client-cloud.ts and DIRECT_CLOUD_API_BASE in startup-phase-restore.ts;
+// kept inline because that constant is module-private.
+const DIRECT_CLOUD_API_BASE = "https://api.elizacloud.ai";
+
+/**
+ * True when `value` is a DEDICATED cloud agent base — an agent that lives on its
+ * own `<agentId>.elizacloud.ai` subdomain (not the control-plane, not the shared
+ * REST adapter path). Such a base 404s on `/api/first-run*` like the shared
+ * adapter, but unlike the shared adapter it can also vanish entirely when the
+ * agent is deleted or its container is unreachable — in which case the 404 means
+ * "this agent is gone", not "first-run is complete". Mirrors the host-only check
+ * in api/client-base.ts (kept inline because that helper is module-private).
+ */
+function isDedicatedCloudAgentBase(value: string | null | undefined): boolean {
+  if (!value?.trim()) return false;
+  try {
+    const host = new URL(value.trim()).hostname.toLowerCase();
+    return (
+      host.endsWith(".elizacloud.ai") &&
+      !ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(host)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Extract the agent id from a dedicated cloud agent base
+ * (`https://<agentId>.elizacloud.ai`) — the left-most subdomain label. Returns
+ * null for any base that is not a dedicated cloud agent subdomain.
+ */
+function dedicatedCloudAgentIdFromBase(
+  value: string | null | undefined,
+): string | null {
+  if (!isDedicatedCloudAgentBase(value)) return null;
+  try {
+    const host = new URL((value as string).trim()).hostname.toLowerCase();
+    const label = host.slice(0, host.length - ".elizacloud.ai".length);
+    return label.includes(".")
+      ? label.slice(label.lastIndexOf(".") + 1)
+      : label;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A DEDICATED cloud agent base just 404'd on the first-run shell endpoints.
+ * That 404 is ambiguous: it is the normal "no first-run shell on a cloud agent"
+ * signal, OR the agent was deleted / its container is unreachable. Disambiguate
+ * by verifying the agent record against the control-plane with the cloud auth
+ * token (mirrors startup-phase-restore's `backfillCloudApiBase` probe).
+ *
+ * Returns true only when we positively confirm the agent is GONE (the lookup
+ * 404s or reports no agent). In that case the saved server is cleared and the
+ * caller routes to first-run agent selection instead of dead-ending on
+ * "Backend Unreachable". Returns false when the agent still exists (treat the
+ * original 404 as "first-run complete", same as the shared adapter) OR when we
+ * cannot verify (no token / lookup error other than absence) — never strand the
+ * user on an unprovable assumption.
+ */
+async function dedicatedCloudAgentIsGone(base: string): Promise<boolean> {
+  const agentId = dedicatedCloudAgentIdFromBase(base);
+  if (!agentId) return false;
+  if (!getCloudAuthToken(client)) return false;
+
+  const priorBaseUrl = client.getBaseUrl();
+  const priorToken = client.hasToken();
+  // getCloudCompatAgent resolves the control-plane via the client base, so point
+  // the client at the control-plane (the dedicated subdomain is not a direct
+  // cloud base and would route the lookup to the dead agent itself).
+  client.setBaseUrl(DIRECT_CLOUD_API_BASE);
+  try {
+    const res = await client.getCloudCompatAgent(agentId);
+    // success:false / no agent id => the agent record is absent (deleted).
+    return !res.success || !res.data?.agent_id;
+  } catch (err) {
+    // A 404 is the positive "agent is gone" signal. Any other failure
+    // (network blip, 5xx) is inconclusive — do not strand the user.
+    return asApiLikeError(err)?.status === 404;
+  } finally {
+    client.setBaseUrl(priorBaseUrl || null);
+    if (!priorToken) client.setToken(null);
+  }
 }
 
 export interface PollingBackendDeps {
@@ -292,6 +386,24 @@ export async function runPollingBackend(
     deadline = Date.now() + policy.backendTimeoutMs;
     attempts = 0;
     lastErr = null;
+  };
+
+  // Terminal recovery for a deleted/unreachable DEDICATED cloud agent: clear the
+  // dead saved server + per-agent base/token, then route to first-run agent
+  // selection (the user is still signed into Eliza Cloud — the cloud auth token
+  // lives in its own storage and is untouched) instead of dead-ending on
+  // "Backend Unreachable".
+  const recoverToAgentSelection = (why: string) => {
+    logger.warn(
+      { staleBase: client.getBaseUrl(), reason: why },
+      "[startup-phase-poll] abandoning the saved cloud agent; routing to agent selection",
+    );
+    clearPersistedActiveServer();
+    client.setBaseUrl(null);
+    client.setToken(null);
+    deps.setFirstRunComplete(false);
+    deps.setFirstRunLoading(false);
+    dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
   };
 
   while (!cancelled.current && effectRunRef.current === effectRunId) {
@@ -481,6 +593,24 @@ export async function runPollingBackend(
                 dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
                 return;
               }
+              if (isDedicatedCloudAgentBase(client.getBaseUrl())) {
+                // A dedicated cloud agent (<id>.elizacloud.ai) 404s on the
+                // first-run shell like the shared adapter — but it can also have
+                // been DELETED or be unreachable. Verify the record against the
+                // control-plane: if it is gone, clear the dead saved server and
+                // route to agent selection instead of "Backend Unreachable"; if
+                // it still exists, treat the 404 as first-run-complete.
+                if (await dedicatedCloudAgentIsGone(client.getBaseUrl())) {
+                  recoverToAgentSelection(
+                    "saved dedicated cloud agent is deleted / unreachable",
+                  );
+                  return;
+                }
+                deps.setFirstRunComplete(true);
+                deps.setFirstRunLoading(false);
+                dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
+                return;
+              }
               deps.setStartupError(describeBackendFailure(err, false));
               deps.setFirstRunLoading(false);
               dispatch({ type: "BACKEND_NOT_FOUND" });
@@ -585,6 +715,23 @@ export async function runPollingBackend(
           // first-run agent selection instead of "Backend Unreachable".
           deps.setFirstRunLoading(false);
           dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
+          return;
+        }
+        if (isDedicatedCloudAgentBase(client.getBaseUrl())) {
+          // A dedicated cloud agent (<id>.elizacloud.ai) 404s on the first-run
+          // shell — but it can also have been DELETED or be unreachable. Verify
+          // the record against the control-plane: if it is gone, clear the dead
+          // saved server and route to agent selection instead of "Backend
+          // Unreachable"; if it still exists, treat the 404 as first-run-complete.
+          if (await dedicatedCloudAgentIsGone(client.getBaseUrl())) {
+            recoverToAgentSelection(
+              "saved dedicated cloud agent is deleted / unreachable",
+            );
+            return;
+          }
+          deps.setFirstRunComplete(true);
+          deps.setFirstRunLoading(false);
+          dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
           return;
         }
         deps.setStartupError(describeBackendFailure(err, false));

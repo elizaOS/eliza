@@ -293,7 +293,13 @@ export function useLifecycleState(): LifecycleStateHook {
       prev.state === next.state &&
       prev.agentName === next.agentName &&
       prev.model === next.model &&
-      prev.startedAt === next.startedAt
+      prev.startedAt === next.startedAt &&
+      // `canRespond` is the readiness gate (deriveAgentReady) — a status snapshot
+      // that flips ONLY canRespond (false→true, common for a warming cloud agent
+      // whose model is already detected but whose TEXT handler registers a beat
+      // later) MUST update, or the "waking up" banner sticks forever even though
+      // /api/status reports canRespond:true.
+      prev.canRespond === next.canRespond
     ) {
       return;
     }
