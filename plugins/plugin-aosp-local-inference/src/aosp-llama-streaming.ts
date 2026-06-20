@@ -9,26 +9,24 @@
  * know or care which platform is underneath.
  *
  * Why this lives in the AOSP plugin and NOT in app-core:
- *   - `bun:ffi` is the only path to `libllama.so` on the AOSP agent
- *     process; we already dlopen it from `aosp-llama-adapter.ts` to
- *     bind the single-model `llama_*` symbols.
- *   - The fused `libelizainference.so` also lives in the same per-ABI
- *     asset dir on Android (`agent/{abi}/libelizainference.so`), built
- *     by `scripts/elizaos/compile-libelizainference.mjs` (the fused
- *     pipeline driven by `cmake-graft.mjs`).  Putting the binding here
- *     keeps "all native libllama.cpp on Android" co-located.
- *   - It lets us register the same `FfiStreamingRunnerFactory` shape
- *     `aosp-mtp-adapter.ts` already imports from app-core — so the
- *     existing dispatcher stitches mobile streaming through the same
- *     entry point the desktop runner uses.
+ *   - `bun:ffi` is the only path to the native runtime on the AOSP agent
+ *     process; the fused `libelizainference.so` is the sole text/voice
+ *     native library and lives in the per-ABI asset dir on Android
+ *     (`agent/{abi}/libelizainference.so`), built by
+ *     `scripts/elizaos/compile-libelizainference.mjs` (the fused pipeline
+ *     driven by `cmake-graft.mjs`).  Putting the binding here keeps all
+ *     native on-device inference co-located.
+ *   - It lets us register the same `FfiStreamingRunnerFactory` shape the
+ *     dispatcher imports from app-core — so the existing dispatcher
+ *     stitches mobile streaming through the same entry point the desktop
+ *     runner uses.
  *
  * Important: this module does NOT load a model itself.  It binds the
  * streaming-LLM symbols on top of a `libelizainference` handle that was
  * opened by the shared voice-lifecycle FFI service.  When the streaming
- * symbols are missing (older fused build) the loader returns null and
- * the dispatcher falls back to the non-streaming `aosp-llama-adapter.ts`
- * path on text turns.  MTP on mobile then degrades to "target-only,
- * no speculative" (see `aosp-mtp-adapter.ts`).
+ * symbols are missing (older fused build) the loader returns null and the
+ * AOSP text path fails loud (local text inference unavailable) — there is
+ * no libllama fallback.
  */
 
 import { logger } from "@elizaos/core";
@@ -240,8 +238,8 @@ export interface AospFusedKvCacheTypes {
 /**
  * The fused binding plus the ABI-v9 capability probes the text-path gate
  * reads. A v7/v8 library leaves the MTP / KV-quant probe symbols unbound, so
- * the probes return false and the gate refuses the fused text path (falling
- * back to the libllama adapter).
+ * the probes return false and the gate refuses the fused text path (the AOSP
+ * text path then fails loud — there is no libllama fallback).
  */
 export interface AospFusedStreamingLlmBinding extends AospStreamingLlmBinding {
   llmMtpSupported(): boolean;
@@ -648,9 +646,10 @@ export function probeAospCapabilities(
  *   - `llmMtpSupported` && `llmKvQuantSupported` — the MTP + KV-quant
  *     capability probes report 1.
  *
- * A v7/v8 library (probes absent → false) is refused, so the caller falls
- * back to the libllama `AospLlamaAdapter`. Mirrors the desktop fused-vs-
- * libllama gate in `desktop-fused-ffi-backend-runtime.ts`.
+ * A v7/v8 library (probes absent → false) is refused, so the AOSP text path
+ * fails loud (local text inference unavailable) — there is no libllama
+ * fallback. Mirrors the desktop fused gate in
+ * `desktop-fused-ffi-backend-runtime.ts`.
  */
 export function fusedAospTextSupported(
   binding: AospFusedStreamingLlmBinding | null,

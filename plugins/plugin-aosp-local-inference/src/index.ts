@@ -1,39 +1,35 @@
 /**
  * @elizaos/plugin-aosp-local-inference
  *
- * AOSP-only llama.cpp FFI bindings (via `bun:ffi`) and the local-inference
- * bootstrap that wires `TEXT_SMALL` / `TEXT_LARGE` / `TEXT_EMBEDDING` model
- * handlers backed by the AOSP llama loader.
+ * AOSP-only fused-`libelizainference` FFI bootstrap that wires
+ * `TEXT_SMALL` / `TEXT_LARGE` / `TEXT_EMBEDDING` / `TEXT_TO_SPEECH` /
+ * `TRANSCRIPTION` model handlers backed by the single fused native library
+ * (streaming-LLM text + MTP + KV-quant + TTS/ASR). There is no separate
+ * libllama text runtime — the fused lib is the sole text/voice backend.
  *
- * The two exports here are imported (statically, to defeat tree-shaking on
+ * The exports here are imported (statically, to defeat tree-shaking on
  * `Bun.build`) by `@elizaos/agent`'s mobile entrypoint, and dynamically by
  * the local-inference handler in `@elizaos/app-core`.
  *
- * Both modules self-gate on `ELIZA_LOCAL_LLAMA=1` and are no-ops on every
+ * The modules self-gate on `ELIZA_LOCAL_LLAMA=1` and are no-ops on every
  * other platform/runtime, so they are safe to import unconditionally.
  */
 
-export type {
-  AospLlamaLoadOptions,
-  KvCacheTypeName,
-} from "./aosp-llama-adapter.js";
 export {
-  __resetForTests,
+  firstSentenceEndIndex,
   isAospEnabled,
-  kvCacheTypeNameToEnum,
-  readEnvKvCacheType,
-  registerAospLlamaLoader,
-  resolveKvCacheType,
-  resolveLibllamaPath,
-  resolveLlamaShimPath,
-  resolveThreads,
-} from "./aosp-llama-adapter.js";
+  resolveAospAbiDir,
+  resolveAospElizaInferenceLibPath,
+  resolveAospGenerateTokenBudget,
+} from "./aosp-llama-paths.js";
 
 export {
   activateAospLocalInferenceModel,
   buildAospLoadModelArgs,
   clearAospLocalInferenceModel,
   ensureAospLocalInferenceHandlers,
+  registerAospLlamaLoader,
+  tryBuildAospFusedTextLoader,
 } from "./aosp-local-inference-bootstrap.js";
 
 // Bundle-safety: force binding identities into the module's init
@@ -42,40 +38,36 @@ export {
 // mobile agent explodes with `ReferenceError: <name> is not defined`
 // when a consumer dereferences a re-exported binding at runtime.
 import {
-  __resetForTests as _bs_1___resetForTests,
-  isAospEnabled as _bs_9_isAospEnabled,
-  kvCacheTypeNameToEnum as _bs_2_kvCacheTypeNameToEnum,
-  readEnvKvCacheType as _bs_3_readEnvKvCacheType,
-  registerAospLlamaLoader as _bs_4_registerAospLlamaLoader,
-  resolveKvCacheType as _bs_5_resolveKvCacheType,
-  resolveLibllamaPath as _bs_6_resolveLibllamaPath,
-  resolveLlamaShimPath as _bs_7_resolveLlamaShimPath,
-  resolveThreads as _bs_8_resolveThreads,
-} from "./aosp-llama-adapter.js";
+  firstSentenceEndIndex as _bs_1_firstSentenceEndIndex,
+  isAospEnabled as _bs_2_isAospEnabled,
+  resolveAospAbiDir as _bs_3_resolveAospAbiDir,
+  resolveAospElizaInferenceLibPath as _bs_4_resolveAospElizaInferenceLibPath,
+  resolveAospGenerateTokenBudget as _bs_5_resolveAospGenerateTokenBudget,
+} from "./aosp-llama-paths.js";
 import {
-  activateAospLocalInferenceModel as _bs_10_activateAospLocalInferenceModel,
-  buildAospLoadModelArgs as _bs_11_buildAospLoadModelArgs,
-  clearAospLocalInferenceModel as _bs_12_clearAospLocalInferenceModel,
-  ensureAospLocalInferenceHandlers as _bs_13_ensureAospLocalInferenceHandlers,
+  activateAospLocalInferenceModel as _bs_6_activateAospLocalInferenceModel,
+  buildAospLoadModelArgs as _bs_7_buildAospLoadModelArgs,
+  clearAospLocalInferenceModel as _bs_8_clearAospLocalInferenceModel,
+  ensureAospLocalInferenceHandlers as _bs_9_ensureAospLocalInferenceHandlers,
+  registerAospLlamaLoader as _bs_10_registerAospLlamaLoader,
+  tryBuildAospFusedTextLoader as _bs_11_tryBuildAospFusedTextLoader,
 } from "./aosp-local-inference-bootstrap.js";
 
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 // biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
 const __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__ = [
-  _bs_1___resetForTests,
-  _bs_2_kvCacheTypeNameToEnum,
-  _bs_3_readEnvKvCacheType,
-  _bs_4_registerAospLlamaLoader,
-  _bs_5_resolveKvCacheType,
-  _bs_6_resolveLibllamaPath,
-  _bs_7_resolveLlamaShimPath,
-  _bs_8_resolveThreads,
-  _bs_9_isAospEnabled,
-  _bs_10_activateAospLocalInferenceModel,
-  _bs_11_buildAospLoadModelArgs,
-  _bs_12_clearAospLocalInferenceModel,
-  _bs_13_ensureAospLocalInferenceHandlers,
+  _bs_1_firstSentenceEndIndex,
+  _bs_2_isAospEnabled,
+  _bs_3_resolveAospAbiDir,
+  _bs_4_resolveAospElizaInferenceLibPath,
+  _bs_5_resolveAospGenerateTokenBudget,
+  _bs_6_activateAospLocalInferenceModel,
+  _bs_7_buildAospLoadModelArgs,
+  _bs_8_clearAospLocalInferenceModel,
+  _bs_9_ensureAospLocalInferenceHandlers,
+  _bs_10_registerAospLlamaLoader,
+  _bs_11_tryBuildAospFusedTextLoader,
 ];
 const bundleSafetyGlobal = globalThis as typeof globalThis & {
   __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__?: typeof __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__;

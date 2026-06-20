@@ -10,11 +10,12 @@
  *   "No handler found for delegate type: TEXT_SMALL"
  *
  * This module is a minimal, agent-package-local replacement for the AOSP
- * branch of `ensure-local-inference-handler.ts`. It registers the AOSP
- * native FFI loader (already implemented in `aosp-llama-adapter.ts`) and
- * wires the four ModelType handlers the runtime needs. No assignments,
- * no model registry, no routing-policy — single loader, single model
- * (the one staged into the APK at build time and loaded on first call).
+ * branch of `ensure-local-inference-handler.ts`. It builds the fused
+ * `libelizainference` FFI loader (`tryBuildAospFusedTextLoader`) — the sole
+ * text/voice native backend on AOSP — and wires the ModelType handlers the
+ * runtime needs. No assignments, no model registry, no routing-policy —
+ * single loader, single model (resolved/auto-downloaded then loaded on first
+ * call).
  *
  * Why not import from `@elizaos/app-core` directly? `@elizaos/app-core`
  * already depends on `@elizaos/agent`, so an `agent → app-core` import
@@ -60,10 +61,6 @@ import {
 // TTS in-process through the fused `eliza_inference_tts_*` ABI.
 import { writeAospLlamaDebugLog } from "./aosp-debug-log.js";
 import {
-  registerAospLlamaLoader,
-  resolveLibllamaPath,
-} from "./aosp-llama-adapter.js";
-import {
   type AospFfiPointerHelpers,
   type AospFusedLlmSymbols,
   type AospFusedStreamingLlmBinding,
@@ -71,6 +68,10 @@ import {
   createAospStreamingLlmBinding,
   streamGenerate,
 } from "./aosp-llama-streaming.js";
+import {
+  isAospEnabled,
+  resolveAospElizaInferenceLibPath,
+} from "./aosp-llama-paths.js";
 
 const SERVICE_NAME = "localInferenceLoader";
 const PROVIDER = "eliza-aosp-llama";
@@ -102,10 +103,9 @@ interface AospLoader {
     stopOnFirstSentence?: boolean;
     minFirstSentenceChars?: number;
     /**
-     * Per-request abort signal. Forwarded into the FFI decode loop in
-     * `aosp-llama-adapter.ts`; the loop checks `signal.aborted` between
-     * chunks and between sampled tokens and throws an AbortError when
-     * the caller cancels.
+     * Per-request abort signal. Forwarded into the fused streaming decode
+     * loop (`streamGenerate`); the loop checks `signal.aborted` between
+     * steps and cancels the native stream when the caller aborts.
      */
     signal?: AbortSignal;
   }): Promise<string>;
@@ -331,9 +331,9 @@ function normalizeChatRole(
 
 /**
  * Render core GenerateTextParams into the flat prompt string consumed by the
- * bun:ffi llama.cpp backend. v5 Stage-1 calls pass native chat `messages`
- * and leave legacy `prompt` unset; without this bridge the native adapter sees
- * an empty string and llama_tokenize returns zero tokens.
+ * fused bun:ffi backend. v5 Stage-1 calls pass native chat `messages`
+ * and leave legacy `prompt` unset; without this bridge the native loader sees
+ * an empty string and `eliza_inference_tokenize` returns zero tokens.
  *
  * The Eliza-1 bundle is a qwen3.5-family model (catalog tokenizerFamily
  * "qwen35"), so we render the qwen ChatML template
@@ -407,9 +407,9 @@ export function buildGenerateArgsFromParams(
     prompt: flattenGenerateTextParamsForAospPrompt(params),
   };
   // Always stop at qwen ChatML turn boundaries. With parse_special=true the
-  // model's <|im_end|> is its EOG token (caught by llama_vocab_is_eog), but the
-  // text stops are a belt-and-suspenders guard against the model continuing past
-  // its turn or opening a new <|im_start|> role.
+  // model's <|im_end|> is its EOG token (the fused stream ends the turn on it),
+  // but the text stops are a belt-and-suspenders guard against the model
+  // continuing past its turn or opening a new <|im_start|> role.
   args.stopSequences = [
     ...(params.stopSequences ?? []),
     QWEN_IM_END,
@@ -759,11 +759,11 @@ function classifyLocalError(err: unknown): {
     if (
       msg.includes("no bundled") ||
       msg.includes("not installed in this build") ||
-      msg.includes("node-llama-cpp is not installed") ||
       msg.includes("no local model is active") ||
       msg.includes("dlopen") ||
-      msg.includes("missing libllama") ||
-      msg.includes("aosp-llama] no") ||
+      msg.includes("fused libelizainference") ||
+      msg.includes("streaming-llm") ||
+      msg.includes("aosp-local-inference] no") ||
       msg.includes("called before loadmodel")
     ) {
       return { fallback: true, reason: "local-unavailable" };
@@ -776,9 +776,9 @@ function classifyLocalError(err: unknown): {
       return { fallback: true, reason: "local-overloaded" };
     }
     if (
-      msg.includes("llama_decode") ||
-      msg.includes("llama_tokenize") ||
-      msg.includes("llama_sampler") ||
+      msg.includes("llm_stream_") ||
+      msg.includes("fused tokenize") ||
+      msg.includes("fused embed") ||
       msg.includes("ggml_assert")
     ) {
       return { fallback: true, reason: "local-error" };
@@ -828,64 +828,43 @@ function findCloudCandidate(
   return null;
 }
 
-function isAospLoaderShape(value: unknown): value is AospLoader {
-  if (!value || typeof value !== "object") return false;
-  const loader = value as Partial<AospLoader>;
-  return (
-    typeof loader.loadModel === "function" &&
-    typeof loader.unloadModel === "function" &&
-    typeof loader.generate === "function" &&
-    typeof loader.embed === "function" &&
-    typeof loader.currentModelPath === "function"
-  );
+interface RuntimeWithRegisterService {
+  registerService?: (name: string, impl: unknown) => unknown;
 }
 
 /**
- * Capture the loader from the (name, impl) registerService overload that
- * `registerAospLlamaLoader` uses.
+ * Register the fused-libelizainference loader as the `localInferenceLoader`
+ * runtime service.
  *
- * The upstream `AgentRuntime.registerService` only accepts `ServiceClass`
- * (a constructor with a static `serviceType` property), not the
- * `(name: string, impl: object)` overload. When the AOSP adapter calls
- * `runtime.registerService("localInferenceLoader", loaderImpl)` the runtime
- * sees the string as the `serviceDef`, finds no `.serviceType`, logs a
- * warn, and silently returns. As a result `runtime.getService(...)` for
- * the loader returns null and TEXT_* handlers never get wired.
+ * The fused `libelizainference.so` is the SOLE text/voice native library on
+ * AOSP: `eliza_inference_llm_stream_*` for streaming text generation (with
+ * same-file MTP speculative decoding + KV-quant), `eliza_inference_tokenize` /
+ * `eliza_inference_embed` for the embedding slot. There is no `libllama.so`
+ * fallback — when the fused lib is absent or pre-v9 this returns false and the
+ * caller surfaces a loud local-unavailable failure.
  *
- * Rather than fork the adapter, install a transient interceptor on
- * `runtime.registerService` that recognizes the (string, impl) overload,
- * captures the impl into a local closure variable, and forwards every
- * other call to the original. We restore the original method after
- * `registerAospLlamaLoader` resolves so subsequent service registrations
- * (plugins calling `registerService(SomeServiceClass)`) keep working.
+ * Returns true when the fused loader was built + registered, false otherwise.
+ * Kept as a named export because `@elizaos/agent`'s mobile bootstrap and
+ * `@elizaos/plugin-local-inference`'s `ensure-local-inference-handler.ts`
+ * dynamically import it to wire the `localInferenceLoader` service.
  */
-async function callRegisterAndCaptureLoader(
-  runtime: AgentRuntime,
-): Promise<{ ok: boolean; loader: AospLoader | null }> {
-  const target = runtime as AgentRuntime & {
-    registerService: (...args: unknown[]) => unknown;
-  };
-  const originalRegisterService = target.registerService.bind(runtime);
-  let captured: AospLoader | null = null;
-  target.registerService = ((...args: unknown[]) => {
-    if (args.length === 2 && typeof args[0] === "string") {
-      if (args[0] === SERVICE_NAME && isAospLoaderShape(args[1])) {
-        captured = args[1];
-      }
-      return undefined;
-    }
-    return originalRegisterService(...args);
-  }) as (typeof target)["registerService"];
-  let ok = false;
-  try {
-    const registrationRuntime: Parameters<typeof registerAospLlamaLoader>[0] = {
-      registerService: target.registerService,
-    };
-    ok = await registerAospLlamaLoader(registrationRuntime);
-  } finally {
-    target.registerService = originalRegisterService;
+export async function registerAospLlamaLoader(
+  runtime: RuntimeWithRegisterService,
+): Promise<boolean> {
+  if (!isAospEnabled()) return false;
+  if (typeof runtime.registerService !== "function") return false;
+  const loader = await tryBuildAospFusedTextLoader();
+  if (!loader) {
+    logger.error(
+      "[aosp-local-inference] fused libelizainference text loader unavailable (lib absent or pre-ABI-v9); localInferenceLoader NOT registered.",
+    );
+    return false;
   }
-  return { ok, loader: captured };
+  runtime.registerService(SERVICE_NAME, loader);
+  logger.info(
+    "[aosp-local-inference] Registered fused libelizainference localInferenceLoader (ELIZA_LOCAL_LLAMA=1)",
+  );
+  return true;
 }
 
 /**
@@ -2020,7 +1999,7 @@ function cString(value: string): Buffer {
 }
 
 function resolveElizaInferenceLibPath(): string {
-  return path.join(path.dirname(resolveLibllamaPath()), "libelizainference.so");
+  return resolveAospElizaInferenceLibPath();
 }
 
 function resolveAospFusedOmnivoiceConfig(): AospFusedOmnivoiceConfig | null {
@@ -2384,10 +2363,11 @@ export function makeAospTranscriptionHandler(
 /* On AOSP + the normal Android APK the bun agent already dlopens        */
 /* libelizainference.so for fused TTS/ASR. This loader binds the         */
 /* streaming-LLM + tokenize/embed symbols on the SAME library so TEXT    */
-/* generation runs through the fused, MTP/KV-quant-optimized path        */
-/* instead of the separate libllama.so adapter — gated on the ABI-v9     */
-/* probes. When the fused lib is absent or too old the gate refuses and  */
-/* the caller falls back to the libllama `AospLlamaAdapter`.             */
+/* generation runs through the fused, MTP/KV-quant-optimized path. It is */
+/* the SOLE text backend on AOSP — gated on the ABI-v9 probes. When the  */
+/* fused lib is absent or too old the gate refuses and the caller fails  */
+/* loud (local text inference unavailable); there is no libllama         */
+/* fallback.                                                             */
 /* -------------------------------------------------------------------- */
 
 const ELIZA_POOLING_MEAN = 1;
@@ -2591,31 +2571,24 @@ function dlopenFusedTextLib(ffi: BunFfiModule, libPath: string) {
 }
 
 /**
- * Build the fused libelizainference text loader for a resolved chat bundle,
- * or return `null` when the fused lib is absent / too old (no streaming-LLM,
- * MTP, or KV-quant support — the ABI-v9 gate). On `null` the caller keeps the
- * libllama `AospLlamaAdapter`.
+ * Build the fused libelizainference text loader, or return `null` when the
+ * fused lib is absent / too old (no streaming-LLM, MTP, or KV-quant support —
+ * the ABI-v9 gate). The fused lib is the SOLE text backend on AOSP; on `null`
+ * the caller surfaces a loud local-unavailable failure (there is no
+ * libllama fallback).
  *
- * The returned loader satisfies the same `AospLoader` shape the bootstrap
- * already drives (`loadModel` / `generate` / `embed` / …), so the existing
- * lifecycle + handler wiring is reused unchanged. `loadModel` creates the
- * `EliInferenceContext` (the text GGUF is loaded lazily on the first
- * `llm_stream_open`); `generate` tokenizes the ChatML prompt and runs the
- * streaming open→prefill→next→close loop.
+ * The returned loader satisfies the `AospLoader` shape the bootstrap drives
+ * (`loadModel` / `generate` / `embed` / …). The `EliInferenceContext` is
+ * created lazily on the first `loadModel`, with the bundle root derived from
+ * the resolved `modelPath` — so the loader can be built at boot even before
+ * the model has been downloaded (the lifecycle resolves/auto-downloads the
+ * GGUF, then calls `loadModel(target)`). `generate` tokenizes the ChatML
+ * prompt and runs the streaming open→prefill→next→close loop.
  */
 export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> {
   const libPath = resolveElizaInferenceLibPath();
   if (!existsSync(libPath)) {
     writeAospLlamaDebugLog("bootstrap:fusedText:libMissing", { libPath });
-    return null;
-  }
-  let bundleRoot: string;
-  try {
-    bundleRoot = resolveAssignedChatBundleRoot();
-  } catch {
-    // No chat bundle resolvable yet — let the libllama adapter handle the
-    // model-resolution + auto-download path; the fused loader needs a real
-    // bundle root to create the context.
     return null;
   }
 
@@ -2645,8 +2618,8 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
     try {
       lib.close();
     } catch {}
-    logger.info(
-      "[aosp-local-inference] fused libelizainference present but lacks streaming-LLM/MTP/KV-quant (ABI <v9); using libllama text adapter",
+    logger.error(
+      "[aosp-local-inference] fused libelizainference present but lacks streaming-LLM/MTP/KV-quant (ABI <v9); local text inference unavailable",
     );
     return null;
   }
@@ -2669,8 +2642,11 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
       // embedding regions per call (`llm_stream_*` vs `embed`), so chat and
       // embedding loads SHARE the context — we never destroy + recreate when
       // the lifecycle swaps roles (that would evict the hot text model). The
-      // context is created lazily on the first load.
+      // context is created lazily on the first load; its bundle root is
+      // derived from the resolved model path so the loader does not need a
+      // pre-staged bundle at boot.
       if (!state) {
+        const bundleRoot = resolveBundleRootFromModelPath(args.modelPath);
         const errCreate = Buffer.alloc(8);
         const ctx = symbols.eliza_inference_create(
           ffi.ptr(cString(bundleRoot)),
@@ -2844,62 +2820,33 @@ export async function ensureAospLocalInferenceHandlers(
   }
   console.log("[aosp-local-inference] runtime has model-registration surface");
 
-  // Wrap registerService transiently to capture the loader passed via the
-  // (name, impl) overload that `registerAospLlamaLoader` uses. See the
-  // helper's docblock for the why.
-  console.log("[aosp-local-inference] calling registerAospLlamaLoader…");
-  const { ok: registered, loader } =
-    await callRegisterAndCaptureLoader(runtime);
+  // Build the fused libelizainference text loader (ABI-v9 streaming-LLM + MTP
+  // + KV-quant). This is the SOLE text backend on AOSP: it runs on the SAME
+  // libelizainference handle the bun agent uses for voice, so text + TTS + ASR
+  // share one native library. When the fused lib is absent or too old the
+  // loader is null and we fail LOUD — `ELIZA_LOCAL_LLAMA=1` is an explicit
+  // operator opt-in, so a missing local backend must surface clearly (the
+  // cloud-fallback handler at priority -1 then routes recoverable failures to
+  // a cloud provider via the local-unavailable classifier).
+  console.log("[aosp-local-inference] building fused text loader…");
+  const textLoader = await tryBuildAospFusedTextLoader();
   console.log(
-    `[aosp-local-inference] registerAospLlamaLoader returned ok=${registered} loader=${loader ? "present" : "null"}`,
+    `[aosp-local-inference] fused text loader ${textLoader ? "ready" : "unavailable"}`,
   );
-  if (!registered) {
-    console.error("[aosp-local-inference] adapter registration failed");
+  if (!textLoader) {
+    console.error("[aosp-local-inference] fused text loader unavailable");
     logger.error(
-      "[aosp-local-inference] AOSP llama loader registration failed; TEXT_* handlers NOT wired.",
+      "[aosp-local-inference] fused libelizainference text loader unavailable (lib absent or pre-ABI-v9); TEXT_* handlers NOT wired. Local text inference is unavailable.",
     );
     return false;
   }
-  if (!loader) {
-    console.error("[aosp-local-inference] adapter ok but no loader captured");
-    logger.error(
-      "[aosp-local-inference] Loader registration reported success but the (name, impl) overload was not captured. The adapter may have changed its registerService call shape.",
-    );
-    return false;
-  }
-  // Prefer the fused libelizainference text path (ABI-v9 streaming-LLM + MTP
-  // + KV-quant) when the bundled lib advertises it. The fused loader runs on
-  // the SAME libelizainference handle the bun agent already uses for voice,
-  // so text + TTS + ASR share one native library. When the fused lib is
-  // absent or too old (`tryBuildAospFusedTextLoader` returns null), keep the
-  // separate libllama `AospLlamaAdapter` captured above as the text backend.
-  // (Normal Android uses this same bootstrap, so it is covered too.)
-  let fusedTextLoader: AospLoader | null = null;
-  try {
-    fusedTextLoader = await tryBuildAospFusedTextLoader();
-  } catch (err) {
-    logger.warn(
-      "[aosp-local-inference] fused text loader probe failed; using libllama text adapter: " +
-        (err instanceof Error ? err.message : String(err)),
-    );
-    fusedTextLoader = null;
-  }
-  const textLoader: AospLoader = fusedTextLoader ?? loader;
-  const textBackendLabel = fusedTextLoader
-    ? "fused-libelizainference"
-    : "libllama";
   routeActivationLoader = textLoader;
 
   const lifecycle = makeLoaderLifecycle(textLoader);
-  // TEXT_EMBEDDING is wired unconditionally now that the adapter resets
-  // the llama.cpp embeddings flag on both decode paths (chat + embed) —
-  // the previous `ELIZA_AOSP_EMBEDDING=1` opt-in existed only because
-  // the shared-context flag bled across calls and caused
-  //   GGML_ASSERT((!batch_inp.token && batch_inp.embd) ||
-  //               (batch_inp.token && !batch_inp.embd))
-  // inside llama_decode, crashing the bun process mid-request. With the
-  // explicit pre-decode `llama_set_embeddings` call in both `generate()`
-  // and `embed()`, the assert can no longer fire from cross-mode bleed.
+  // TEXT_EMBEDDING is wired unconditionally: chat + embedding loads share one
+  // fused EliInferenceContext, and the C side resolves the text vs embedding
+  // region per call (`llm_stream_*` vs `embed`), so there is no cross-mode
+  // state bleed to gate against.
   const slots: Array<(typeof ModelType)[keyof typeof ModelType]> = [
     ModelType.TEXT_SMALL,
     ModelType.TEXT_LARGE,
@@ -2969,9 +2916,9 @@ export async function ensureAospLocalInferenceHandlers(
   }
 
   // Pre-warm the chat model so the first incoming chat request doesn't
-  // pay the ~10 s `llama_model_load_from_file` + ~5 s
-  // `llama_init_from_model` cost inside the request handler. The load
-  // is best-effort: if the bundled chat file is missing we let the
+  // pay the fused context-create + first-load cost inside the request
+  // handler. The load is best-effort: if the bundled chat file is missing
+  // we let the
   // request handler bubble up a clear error instead of crashing the
   // boot. ensureChatLoaded is also memoized at the lifecycle layer, so
   // calling it here doesn't conflict with the first real request.
@@ -2989,10 +2936,10 @@ export async function ensureAospLocalInferenceHandlers(
     asrAssetsPresent ? " / TRANSCRIPTION" : ""
   }`;
   console.log(
-    `[aosp-local-inference] registered ${PROVIDER} handlers for ${registeredList} (priority ${LOCAL_INFERENCE_PRIORITY}, text backend ${textBackendLabel})`,
+    `[aosp-local-inference] registered ${PROVIDER} handlers for ${registeredList} (priority ${LOCAL_INFERENCE_PRIORITY}, text backend fused-libelizainference)`,
   );
   logger.info(
-    `[aosp-local-inference] Registered ${PROVIDER} handlers for ${registeredList} at priority ${LOCAL_INFERENCE_PRIORITY} (text backend ${textBackendLabel})`,
+    `[aosp-local-inference] Registered ${PROVIDER} handlers for ${registeredList} at priority ${LOCAL_INFERENCE_PRIORITY} (text backend fused-libelizainference)`,
   );
   registeredRuntimes.add(runtime);
   return true;

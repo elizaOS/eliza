@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   firstSentenceEndIndex,
   resolveAospGenerateTokenBudget,
-} from "../src/aosp-llama-adapter";
+} from "../src/aosp-llama-paths";
 import {
   aospAsrAssetsPresent,
   buildAospLoadModelArgs,

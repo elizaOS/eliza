@@ -1,6 +1,6 @@
 /**
  * Tests for the fused libelizainference text binding + the ABI-v9 gate that
- * picks it over the libllama `AospLlamaAdapter`.
+ * enables the fused text path (the sole text backend on AOSP).
  *
  * No native library is loaded. The binding is exercised against a fake
  * symbol table + pointer helpers — a buffer registry maps the synthetic
