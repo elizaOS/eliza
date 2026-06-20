@@ -33,12 +33,13 @@ const clientMock = client as unknown as {
 function workflowItem(
   overrides: Partial<AutomationItem> & { id: string; title: string },
 ): AutomationItem {
-  const workflowId = overrides.workflowId ?? overrides.id.replace("auto-", "");
+  const { id, title, ...rest } = overrides;
+  const workflowId = overrides.workflowId ?? id.replace("auto-", "");
   return {
-    id: overrides.id,
+    id,
     type: "workflow",
     source: "workflow",
-    title: overrides.title,
+    title,
     description: "",
     status: "active",
     enabled: true,
@@ -49,14 +50,14 @@ function workflowItem(
     workflowId,
     workflow: {
       id: workflowId,
-      name: overrides.title,
+      name: title,
       active: true,
       nodes: [],
       connections: {},
     },
     schedules: [],
     room: null,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -72,9 +73,9 @@ function listResponse(): AutomationListResponse {
           taskId: "task-nightly",
           displayName: "Daily report",
           instructions: "",
-          triggerType: "scheduled",
+          triggerType: "cron",
           enabled: true,
-          wakeMode: "system",
+          wakeMode: "inject_now",
           createdBy: "test",
           cronExpression: "0 9 * * *",
           runCount: 3,
@@ -152,9 +153,7 @@ describe("AutomationsFeed", () => {
     const nightly = await screen.findByText("Nightly report");
     expect(nightly).toBeTruthy();
 
-    const overview = screen.getByRole("group", {
-      name: /automation overview/i,
-    });
+    const overview = screen.getByLabelText(/automation overview/i);
     expect(overview.textContent).toContain("2 workflows");
     expect(overview.textContent).toContain("1 active");
     expect(overview.textContent).toContain("1 need attention");
