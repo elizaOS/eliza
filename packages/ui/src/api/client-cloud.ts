@@ -131,6 +131,9 @@ type DirectCloudAgentCreateData = {
   status: string;
 };
 
+/** Async-job envelope returned by the restart/suspend/resume lifecycle routes. */
+type LifecycleResult = { jobId: string; status: string; message: string };
+
 type ProvisioningAgentStatusData = {
   status?: string;
   bridgeUrl?: string | null;
@@ -995,6 +998,7 @@ declare module "./client-base" {
     getCloudCompatAgents(): Promise<{
       success: boolean;
       data: CloudCompatAgent[];
+      error?: string;
     }>;
     createCloudCompatAgent(opts: {
       agentName: string;
@@ -1117,6 +1121,7 @@ declare module "./client-base" {
     }>;
     deleteCloudCompatAgent(agentId: string): Promise<{
       success: boolean;
+      error?: string;
       data: { jobId: string; status: string; message: string };
     }>;
     /**
@@ -2050,13 +2055,16 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
 ) {
   const normalizeDelete = (response: {
     success?: boolean;
-    data?: { message?: string; status?: string };
+    data?: { message?: string; status?: string; jobId?: string };
     error?: string;
   }) => ({
     success: response.success === true,
     ...(response.error ? { error: response.error } : {}),
     data: {
-      jobId: "",
+      // A 202 async delete carries a jobId the caller can poll
+      // (`/api/v1/jobs/<id>`) to learn whether the teardown actually
+      // completed. A synchronous delete returns no jobId.
+      jobId: response.data?.jobId ?? "",
       status:
         response.data?.status ??
         (response.success === true ? "deleted" : "error"),
@@ -2070,7 +2078,7 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
 
   const direct = await directCloudRequest<{
     success: boolean;
-    data?: { message?: string; status?: string };
+    data?: { message?: string; status?: string; jobId?: string };
     error?: string;
   }>(this, `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`, {
     method: "DELETE",
@@ -2092,7 +2100,7 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
   if (isDirectCloudBase(this)) {
     const response = await this.fetch<{
       success: boolean;
-      data?: { message?: string; status?: string };
+      data?: { message?: string; status?: string; jobId?: string };
       error?: string;
     }>(
       `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`,
@@ -2280,34 +2288,105 @@ ElizaClient.prototype.getCloudCompatAgentLogs = async function (
   );
 };
 
+/**
+ * Normalize a cloud lifecycle (restart/suspend/resume) response into the
+ * `{ success, data: { jobId, status, message } }` shape the UI expects. The
+ * direct cloud routes return a 202 `{ success, data: { jobId, status,
+ * message } }` async-job envelope; the legacy proxy returns the same shape.
+ */
+function normalizeCloudLifecycleResponse(
+  response: {
+    success?: boolean;
+    data?: { jobId?: string; status?: string; message?: string };
+    error?: string;
+  },
+  fallbackVerb: string,
+): { success: boolean; error?: string; data: LifecycleResult } {
+  const success = response.success === true;
+  return {
+    success,
+    ...(response.error ? { error: response.error } : {}),
+    data: {
+      jobId: response.data?.jobId ?? "",
+      status: response.data?.status ?? (success ? "queued" : "error"),
+      message:
+        response.data?.message ??
+        (success
+          ? `Agent ${fallbackVerb} enqueued`
+          : (response.error ?? `Agent ${fallbackVerb} failed`)),
+    },
+  };
+}
+
+/**
+ * Drive a cloud agent lifecycle action (restart/suspend/resume) through the
+ * direct-cloud ladder — direct token request → native-auth-missing guard →
+ * direct-cloud-base same-origin fetch → legacy `/api/cloud/compat` proxy.
+ * Mirrors `deleteCloudCompatAgent` so the Power/Start buttons work on
+ * phone/web (which have no local API server proxying `/api/cloud/compat/...`).
+ */
+async function runCloudLifecycleAction(
+  client: ElizaClient,
+  agentId: string,
+  action: "restart" | "suspend" | "resume",
+): Promise<{ success: boolean; error?: string; data: LifecycleResult }> {
+  const encoded = encodeURIComponent(agentId);
+  const directPath = `/api/v1/eliza/agents/${encoded}/${action}`;
+
+  const direct = await directCloudRequest<{
+    success: boolean;
+    data?: { jobId?: string; status?: string; message?: string };
+    error?: string;
+  }>(client, directPath, { method: "POST" });
+  if (direct) return normalizeCloudLifecycleResponse(direct, action);
+
+  if (isNativeDirectCloudAuthMissing(client)) {
+    return {
+      success: false,
+      error: nativeDirectCloudAuthMissingMessage(),
+      data: {
+        jobId: "",
+        status: "auth-missing",
+        message: nativeDirectCloudAuthMissingMessage(),
+      },
+    };
+  }
+
+  if (isDirectCloudBase(client)) {
+    const response = await client.fetch<{
+      success: boolean;
+      data?: { jobId?: string; status?: string; message?: string };
+      error?: string;
+    }>(directPath, { method: "POST" }, { allowNonOk: true });
+    return normalizeCloudLifecycleResponse(response, action);
+  }
+
+  return client.fetch(
+    `/api/cloud/compat/agents/${encoded}/${action}`,
+    { method: "POST" },
+    { allowNonOk: true },
+  );
+}
+
 ElizaClient.prototype.restartCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
 ) {
-  return this.fetch(
-    `/api/cloud/compat/agents/${encodeURIComponent(agentId)}/restart`,
-    { method: "POST" },
-  );
+  return runCloudLifecycleAction(this, agentId, "restart");
 };
 
 ElizaClient.prototype.suspendCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
 ) {
-  return this.fetch(
-    `/api/cloud/compat/agents/${encodeURIComponent(agentId)}/suspend`,
-    { method: "POST" },
-  );
+  return runCloudLifecycleAction(this, agentId, "suspend");
 };
 
 ElizaClient.prototype.resumeCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
 ) {
-  return this.fetch(
-    `/api/cloud/compat/agents/${encodeURIComponent(agentId)}/resume`,
-    { method: "POST" },
-  );
+  return runCloudLifecycleAction(this, agentId, "resume");
 };
 
 ElizaClient.prototype.launchCloudCompatAgent = async function (

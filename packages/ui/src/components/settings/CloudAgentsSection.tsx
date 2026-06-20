@@ -22,7 +22,19 @@ import {
 } from "../../state/persistence";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { StatusBadge } from "../ui/status-badge";
+import {
+  statusLabelForState,
+  statusToneForState,
+} from "../ui/status-badge.helpers";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
+
+/** Maximum length accepted for a (new or edited) cloud agent name. */
+const AGENT_NAME_MAX_LENGTH = 60;
+/** How long to poll a delete job before giving up and forcing a refresh. */
+const DELETE_POLL_TIMEOUT_MS = 60_000;
+/** Delay between delete-job poll attempts. */
+const DELETE_POLL_INTERVAL_MS = 1_500;
 
 /** The agent id currently bound as the active cloud server, if any. */
 function activeCloudAgentId(): string | null {
@@ -56,6 +68,7 @@ export function CloudAgentsSection() {
   const { appName } = useBranding();
   const [agents, setAgents] = useState<CloudCompatAgent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -68,15 +81,26 @@ export function CloudAgentsSection() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await client.getCloudCompatAgents();
-      const list = res.success ? res.data : [];
+      // A failed fetch is NOT an empty list — surface it so the user can retry
+      // instead of seeing the indistinguishable "No cloud agents yet" copy.
+      if (!res.success) {
+        setLoadError(res.error || "Could not load your cloud agents.");
+        return;
+      }
+      const list = [...res.data];
       list.sort((a, b) =>
         String(b.created_at).localeCompare(String(a.created_at)),
       );
       setAgents(list);
-    } catch {
-      setAgents([]);
+    } catch (err) {
+      setLoadError(
+        err instanceof Error
+          ? err.message
+          : "Could not load your cloud agents.",
+      );
     } finally {
       setLoading(false);
     }
@@ -156,13 +180,46 @@ export function CloudAgentsSection() {
     }
   }, [newName, cloudApiBase, bindAndReload, setActionNotice]);
 
+  /**
+   * Poll a delete job until it reaches a terminal state. Resolves `true` on a
+   * completed teardown, `false` (with the failure surfaced) when the job
+   * fails, and throws on timeout so the caller can fall back to a refresh.
+   */
+  const waitForDeleteJob = useCallback(async (jobId: string) => {
+    const deadline = Date.now() + DELETE_POLL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const res = await client.getCloudCompatJobStatus(jobId);
+      const status = res.success ? res.data.status : "failed";
+      if (status === "completed") return { ok: true as const };
+      if (status === "failed") {
+        return {
+          ok: false as const,
+          error: res.data.error || "Agent delete failed.",
+        };
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, DELETE_POLL_INTERVAL_MS),
+      );
+    }
+    throw new Error("Timed out waiting for the agent to be deleted.");
+  }, []);
+
   const deleteAgent = useCallback(
     async (agent: CloudCompatAgent) => {
       setBusyId(agent.agent_id);
       try {
         const res = await client.deleteCloudCompatAgent(agent.agent_id);
         if (!res.success) {
-          throw new Error("Delete failed");
+          throw new Error(res.error || "Delete failed");
+        }
+        // A 202 async delete returns a jobId — the teardown may still fail
+        // later, so poll the job and only drop the row once it actually
+        // completes. A synchronous delete (no jobId) is already terminal.
+        if (res.data.jobId) {
+          const outcome = await waitForDeleteJob(res.data.jobId);
+          if (!outcome.ok) {
+            throw new Error(outcome.error);
+          }
         }
         setAgents((prev) => prev.filter((a) => a.agent_id !== agent.agent_id));
         setActionNotice(`Deleted ${agent.agent_name}.`, "success", 3000);
@@ -172,11 +229,14 @@ export function CloudAgentsSection() {
           "error",
           4000,
         );
+        // The teardown failed or timed out — re-sync so the row reflects the
+        // real server state rather than a stale optimistic removal.
+        void refresh();
       } finally {
         setBusyId(null);
       }
     },
-    [setActionNotice],
+    [setActionNotice, waitForDeleteJob, refresh],
   );
 
   const startRename = useCallback((agent: CloudCompatAgent) => {
@@ -306,9 +366,37 @@ export function CloudAgentsSection() {
         description="Switch the active agent, shut one down (or start it back up), rename, or remove one you no longer need."
       >
         {loading ? (
-          <p className="px-4 py-3 text-sm text-txt-muted">Loading agents…</p>
+          <div
+            className="flex items-center gap-2 px-4 py-3 text-sm text-txt-muted"
+            data-testid="cloud-agents-loading"
+          >
+            <RefreshCw className="h-4 w-4 animate-spin" aria-hidden />
+            Loading agents…
+          </div>
+        ) : loadError ? (
+          <div
+            className="flex flex-col gap-2 px-4 py-3"
+            data-testid="cloud-agents-error"
+          >
+            <p className="text-sm text-destructive">{loadError}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="self-start"
+              data-testid="cloud-agents-error-retry"
+              onClick={() => {
+                void refresh();
+              }}
+            >
+              <RefreshCw className="mr-1 h-4 w-4" aria-hidden />
+              Try again
+            </Button>
+          </div>
         ) : agents.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-txt-muted">
+          <p
+            className="px-4 py-3 text-sm text-txt-muted"
+            data-testid="cloud-agents-empty"
+          >
             No cloud agents yet — create your first one below.
           </p>
         ) : (
@@ -341,6 +429,7 @@ export function CloudAgentsSection() {
                     className="flex-1"
                     aria-label="Agent name"
                     data-testid={`cloud-agent-rename-input-${agent.agent_id}`}
+                    maxLength={AGENT_NAME_MAX_LENGTH}
                     disabled={busy}
                     autoFocus
                   />
@@ -370,7 +459,16 @@ export function CloudAgentsSection() {
                 key={agent.agent_id}
                 icon={Bot}
                 label={agent.agent_name || agent.agent_id}
-                description={isActive ? "Active · this device" : agent.status}
+                description={
+                  <span className="inline-flex items-center gap-2">
+                    {isActive ? "Active · this device" : null}
+                    <StatusBadge
+                      tone={statusToneForState(agent.status)}
+                      label={statusLabelForState(agent.status)}
+                      data-testid={`cloud-agent-status-${agent.agent_id}`}
+                    />
+                  </span>
+                }
                 active={isActive}
                 trailing={
                   <div className="flex items-center gap-2">
@@ -457,6 +555,7 @@ export function CloudAgentsSection() {
             onChange={(e) => setNewName(e.target.value)}
             placeholder={`Agent name (e.g. ${appName})`}
             className="flex-1"
+            maxLength={AGENT_NAME_MAX_LENGTH}
             disabled={creating}
           />
           <Button

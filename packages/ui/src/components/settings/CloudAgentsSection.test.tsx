@@ -23,6 +23,7 @@ const clientMock = vi.hoisted(() => ({
   deleteCloudCompatAgent: vi.fn(),
   suspendCloudCompatAgent: vi.fn(),
   resumeCloudCompatAgent: vi.fn(),
+  getCloudCompatJobStatus: vi.fn(),
   selectOrProvisionCloudAgent: vi.fn(),
 }));
 
@@ -254,5 +255,282 @@ describe("CloudAgentsSection rename", () => {
       expect(clientMock.updateCloudCompatAgent).toHaveBeenCalled(),
     );
     expect(persistenceMock.savePersistedActiveServer).not.toHaveBeenCalled();
+  });
+});
+
+/** Shared mock setup for the lifecycle / load-state suites below. */
+function resetClientMocks() {
+  clientMock.getCloudCompatAgents.mockReset();
+  clientMock.deleteCloudCompatAgent.mockReset();
+  clientMock.suspendCloudCompatAgent.mockReset();
+  clientMock.resumeCloudCompatAgent.mockReset();
+  clientMock.getCloudCompatJobStatus.mockReset();
+  persistenceMock.loadPersistedActiveServer.mockReset();
+  persistenceMock.savePersistedActiveServer.mockReset();
+}
+
+describe("CloudAgentsSection lifecycle (suspend/resume)", () => {
+  beforeEach(() => {
+    appMock.value = { elizaCloudConnected: true, setActionNotice: vi.fn() };
+    resetClientMocks();
+    // The active server is a DIFFERENT agent so the row's Power/Start buttons
+    // are not gated by the active-agent guard.
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      kind: "cloud",
+      id: "cloud:other",
+      label: "Other",
+      accessToken: "tok",
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("suspends a running agent via the (direct-path) client call", async () => {
+    clientMock.suspendCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "job-s", status: "queued", message: "Suspend enqueued" },
+    });
+    await renderWithAgents([agent({ status: "running" })]);
+
+    fireEvent.click(
+      screen.getByLabelText("Shut down Old Name", { selector: "button" }),
+    );
+
+    await waitFor(() =>
+      expect(clientMock.suspendCloudCompatAgent).toHaveBeenCalledWith(
+        "agent-1",
+      ),
+    );
+    // Optimistic transition + success notice.
+    await waitFor(() =>
+      expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+        expect.stringContaining("Shutting down"),
+        "success",
+        expect.any(Number),
+      ),
+    );
+  });
+
+  it("surfaces an error when suspend fails (e.g. 404 with no direct path)", async () => {
+    clientMock.suspendCloudCompatAgent.mockResolvedValue({
+      success: false,
+      error: "Not found",
+      data: { jobId: "", status: "error", message: "Not found" },
+    });
+    await renderWithAgents([agent({ status: "running" })]);
+
+    fireEvent.click(
+      screen.getByLabelText("Shut down Old Name", { selector: "button" }),
+    );
+
+    await waitFor(() =>
+      expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+        expect.any(String),
+        "error",
+        expect.any(Number),
+      ),
+    );
+  });
+
+  it("resumes a stopped agent via the (direct-path) client call", async () => {
+    clientMock.resumeCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "job-r", status: "queued", message: "Resume enqueued" },
+    });
+    await renderWithAgents([agent({ status: "stopped" })]);
+
+    fireEvent.click(
+      screen.getByLabelText("Start Old Name", { selector: "button" }),
+    );
+
+    await waitFor(() =>
+      expect(clientMock.resumeCloudCompatAgent).toHaveBeenCalledWith("agent-1"),
+    );
+    await waitFor(() =>
+      expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+        expect.stringContaining("Starting"),
+        "success",
+        expect.any(Number),
+      ),
+    );
+  });
+});
+
+describe("CloudAgentsSection delete (job polling)", () => {
+  beforeEach(() => {
+    appMock.value = { elizaCloudConnected: true, setActionNotice: vi.fn() };
+    resetClientMocks();
+    // The active server is a DIFFERENT agent so delete is not disabled.
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      kind: "cloud",
+      id: "cloud:other",
+      label: "Other",
+      accessToken: "tok",
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("polls the delete job and removes the row only once completed", async () => {
+    clientMock.deleteCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "job-del", status: "deleting", message: "queued" },
+    });
+    // First poll still processing, second poll completed.
+    clientMock.getCloudCompatJobStatus
+      .mockResolvedValueOnce({
+        success: true,
+        data: { jobId: "job-del", status: "processing" },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { jobId: "job-del", status: "completed" },
+      });
+    await renderWithAgents([agent({ agent_name: "ToDelete" })]);
+
+    // Row is present before delete completes.
+    expect(screen.getByText("ToDelete")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("Delete ToDelete"));
+
+    await waitFor(
+      () =>
+        expect(clientMock.getCloudCompatJobStatus).toHaveBeenCalledWith(
+          "job-del",
+        ),
+      { timeout: 5000 },
+    );
+    // Row removed only after the job reports completed.
+    await waitFor(() => expect(screen.queryByText("ToDelete")).toBeNull(), {
+      timeout: 5000,
+    });
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("Deleted"),
+      "success",
+      expect.any(Number),
+    );
+  });
+
+  it("keeps the row and surfaces an error when the delete job fails", async () => {
+    clientMock.deleteCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "job-del", status: "deleting", message: "queued" },
+    });
+    clientMock.getCloudCompatJobStatus.mockResolvedValue({
+      success: true,
+      data: { jobId: "job-del", status: "failed", error: "teardown blew up" },
+    });
+    await renderWithAgents([agent({ agent_name: "Sticky" })]);
+
+    fireEvent.click(screen.getByLabelText("Delete Sticky"));
+
+    await waitFor(() =>
+      expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+        "teardown blew up",
+        "error",
+        expect.any(Number),
+      ),
+    );
+    // A failed job triggers a re-sync (refresh) rather than dropping the row.
+    await waitFor(() =>
+      expect(clientMock.getCloudCompatAgents.mock.calls.length).toBeGreaterThan(
+        1,
+      ),
+    );
+  });
+
+  it("removes the row immediately for a synchronous delete (no jobId)", async () => {
+    clientMock.deleteCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: { jobId: "", status: "deleted", message: "done" },
+    });
+    await renderWithAgents([agent({ agent_name: "Sync" })]);
+
+    fireEvent.click(screen.getByLabelText("Delete Sync"));
+
+    await waitFor(() => expect(screen.queryByText("Sync")).toBeNull());
+    expect(clientMock.getCloudCompatJobStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("CloudAgentsSection load state (error vs empty)", () => {
+  beforeEach(() => {
+    appMock.value = { elizaCloudConnected: true, setActionNotice: vi.fn() };
+    resetClientMocks();
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      kind: "cloud",
+      id: "cloud:other",
+      label: "Other",
+      accessToken: "tok",
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("shows the empty state when the fetch succeeds with no agents", async () => {
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [],
+    });
+    render(<CloudAgentsSection />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("cloud-agents-empty")).toBeTruthy(),
+    );
+    expect(screen.queryByTestId("cloud-agents-error")).toBeNull();
+  });
+
+  it("shows a distinct error state (not empty) when the fetch reports failure", async () => {
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: false,
+      data: [],
+      error: "Cloud unreachable",
+    });
+    render(<CloudAgentsSection />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("cloud-agents-error")).toBeTruthy(),
+    );
+    expect(screen.getByText("Cloud unreachable")).toBeTruthy();
+    // The empty-state copy must NOT be shown for a failed fetch.
+    expect(screen.queryByTestId("cloud-agents-empty")).toBeNull();
+  });
+
+  it("shows the error state when the fetch throws", async () => {
+    clientMock.getCloudCompatAgents.mockRejectedValue(new Error("boom net"));
+    render(<CloudAgentsSection />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("cloud-agents-error")).toBeTruthy(),
+    );
+    expect(screen.getByText("boom net")).toBeTruthy();
+  });
+
+  it("retries the fetch from the error state", async () => {
+    clientMock.getCloudCompatAgents
+      .mockResolvedValueOnce({
+        success: false,
+        data: [],
+        error: "Cloud unreachable",
+      })
+      .mockResolvedValueOnce({ success: true, data: [agent()] });
+    render(<CloudAgentsSection />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("cloud-agents-error")).toBeTruthy(),
+    );
+
+    fireEvent.click(screen.getByTestId("cloud-agents-error-retry"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("cloud-agent-rename-agent-1")).toBeTruthy(),
+    );
+    expect(screen.queryByTestId("cloud-agents-error")).toBeNull();
   });
 });
