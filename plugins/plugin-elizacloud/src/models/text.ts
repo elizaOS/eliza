@@ -3,6 +3,7 @@ import type {
   IAgentRuntime,
   ModelTypeName,
   TextStreamResult,
+  TokenUsage,
 } from "@elizaos/core";
 import {
   buildCanonicalSystemPrompt,
@@ -107,6 +108,31 @@ export async function withNativeChatLimit<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * Acquire a permit on the shared native cap and return a release handle. Used by
+ * the streaming path, where the permit must be HELD for the full SSE lifetime
+ * (the body keeps draining the cerebras key long after the response headers
+ * arrive), not just the `requestRaw` round-trip. The returned `release` is
+ * idempotent so the caller can free the permit on the first of {stream-done,
+ * stream-error, early-abort} without risk of double-release inflating the
+ * budget. Pairs with {@link withNativeChatLimit} on the SAME limiter so a
+ * streaming call and a buffered call still contend on one budget.
+ */
+async function acquireNativeChatPermit(): Promise<{ release: () => void }> {
+  const limiter = getNativeChatLimiter();
+  await limiter.acquire();
+  let released = false;
+  return {
+    release() {
+      if (released) {
+        return;
+      }
+      released = true;
+      limiter.release();
+    },
+  };
+}
+
+/**
  * Test-only: discard the cached limiter so the next call re-reads the env knob.
  * Production code never needs this — the knob is read once per process.
  */
@@ -197,6 +223,20 @@ type ChatCompletionsResponse = Record<string, unknown> & {
     };
   }>;
   usage?: Record<string, unknown>;
+};
+
+/**
+ * One streaming `chat.completion.chunk` from the cloud SSE feed. We only read
+ * the incremental `delta.content` text and the terminal `finish_reason`; the
+ * gateway also emits a trailing chunk carrying `usage` (when
+ * `stream_options.include_usage` is set), which we surface for metering.
+ */
+type ChatCompletionStreamChunk = Record<string, unknown> & {
+  choices?: Array<{
+    delta?: { content?: unknown };
+    finish_reason?: string | null;
+  }>;
+  usage?: Record<string, unknown> | null;
 };
 
 function buildUserContent(params: GenerateTextParamsWithAttachments) {
@@ -849,6 +889,292 @@ function buildGenerateParams(
   return { generateParams, modelName, modelType, prompt: promptText, systemPrompt };
 }
 
+/**
+ * Pull every `delta.content` text fragment + the terminal usage/finish_reason
+ * out of an OpenAI-style SSE `chat.completion.chunk` line. The cloud
+ * `/chat/completions?stream=true` feed is line-delimited `data: {json}` events
+ * terminated by a `data: [DONE]` sentinel. Returns nothing for keep-alive
+ * comments / blank lines / the sentinel.
+ */
+function parseStreamLine(line: string): {
+  text?: string;
+  finishReason?: string;
+  usage?: Record<string, unknown>;
+} | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("data:")) {
+    return null;
+  }
+  const payload = trimmed.slice("data:".length).trim();
+  if (!payload || payload === "[DONE]") {
+    return null;
+  }
+  let chunk: ChatCompletionStreamChunk;
+  try {
+    chunk = JSON.parse(payload) as ChatCompletionStreamChunk;
+  } catch {
+    // A partial JSON payload here means the SSE framing was split mid-line; the
+    // caller buffers across reads, so a parse failure on a complete line is a
+    // genuinely malformed event we skip rather than crash the stream.
+    return null;
+  }
+  const choice = chunk.choices?.[0];
+  const deltaContent = choice?.delta?.content;
+  const text = typeof deltaContent === "string" ? deltaContent : undefined;
+  const finishReason =
+    typeof choice?.finish_reason === "string" ? choice.finish_reason : undefined;
+  const usage = isRecord(chunk.usage) ? chunk.usage : undefined;
+  if (text === undefined && finishReason === undefined && usage === undefined) {
+    return null;
+  }
+  return {
+    ...(text !== undefined ? { text } : {}),
+    ...(finishReason !== undefined ? { finishReason } : {}),
+    ...(usage !== undefined ? { usage } : {}),
+  };
+}
+
+/**
+ * Stream a PLAIN-PROMPT cloud reply via `/chat/completions` with `stream:true`,
+ * parsing the SSE delta chunks into a {@link TextStreamResult} the runtime's
+ * streaming `useModel` path consumes. The native concurrency permit is acquired
+ * BEFORE the request and held for the FULL stream duration (the body keeps the
+ * cerebras key busy until the last chunk), then released exactly once on
+ * completion or error so a streaming call can never reintroduce the 429 burst.
+ *
+ * Throws synchronously (before returning the result) when the request can't be
+ * established or the body is missing, so the caller can fall back to the
+ * buffered path without dropping the turn. Errors that surface mid-stream are
+ * propagated through `textStream` (and the `text` promise) — the permit is still
+ * released in that case.
+ */
+async function streamNativeChatCompletion(
+  runtime: IAgentRuntime,
+  modelType: TextModelType,
+  params: GenerateTextParams,
+  context: { modelName: string; prompt: string; systemPrompt?: string }
+): Promise<TextStreamResult> {
+  const reasoning = isReasoningModel(context.modelName);
+  const messages: Array<Record<string, unknown>> = [];
+  if (context.systemPrompt) {
+    messages.push({ role: "system", content: context.systemPrompt });
+  }
+  messages.push({ role: "user", content: context.prompt });
+
+  const requestBody: Record<string, unknown> = {
+    model: context.modelName,
+    messages,
+    max_tokens: params.maxTokens ?? 8192,
+    stream: true,
+    // Ask the gateway to emit a terminal usage chunk so streaming turns are
+    // still metered exactly like the buffered path.
+    stream_options: { include_usage: true },
+  };
+  if (!reasoning && typeof params.temperature === "number") {
+    requestBody.temperature = params.temperature;
+  }
+
+  const headers: Record<string, string> = {
+    "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
+    "X-Eliza-Model-Type": modelType,
+    Accept: "text/event-stream",
+  };
+  if (isSpanSamplerHonoringModel(context.modelName)) {
+    const samplerHeader = buildSpanSamplerHeader(params.spanSamplerPlan);
+    if (samplerHeader) {
+      headers["x-eliza-span-samplers"] = samplerHeader;
+    }
+  }
+
+  // Hold the permit across the whole stream, not just the round-trip — release
+  // on the first of {done, error}. Acquired before the request so a stream
+  // contends on the SAME budget as buffered calls.
+  const permit = await acquireNativeChatPermit();
+
+  let response: Response;
+  try {
+    response = await createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
+      headers,
+      json: requestBody,
+    });
+  } catch (err) {
+    permit.release();
+    throw err;
+  }
+
+  if (!response.ok) {
+    permit.release();
+    const errorText = await response.text().catch(() => "");
+    let errorMessage = `elizaOS Cloud error ${response.status}`;
+    if (errorText) {
+      try {
+        const parsed = JSON.parse(errorText) as { error?: { message?: string } };
+        if (typeof parsed.error?.message === "string" && parsed.error.message.trim()) {
+          errorMessage = parsed.error.message.trim();
+        }
+      } catch {
+        // Non-JSON error body — keep the status-based message.
+      }
+    }
+    const requestError = new Error(errorMessage) as Error & { status?: number };
+    requestError.status = response.status;
+    throw requestError;
+  }
+
+  const body = response.body;
+  if (!body) {
+    permit.release();
+    throw new Error("elizaOS Cloud returned no streaming body");
+  }
+
+  const queue: string[] = [];
+  let pendingResolve: ((value: IteratorResult<string>) => void) | null = null;
+  let pendingReject: ((reason: unknown) => void) | null = null;
+  let streamError: unknown = null;
+  let streamDone = false;
+  let accumulated = "";
+  let finishReason: string | undefined;
+  let usage: TokenUsage | undefined;
+
+  const drain = (): void => {
+    if (!pendingResolve) {
+      return;
+    }
+    if (queue.length > 0) {
+      const next = queue.shift() as string;
+      const resolver = pendingResolve;
+      pendingResolve = null;
+      pendingReject = null;
+      resolver({ value: next, done: false });
+      return;
+    }
+    if (streamError && pendingReject) {
+      const rejector = pendingReject;
+      pendingResolve = null;
+      pendingReject = null;
+      rejector(streamError);
+      return;
+    }
+    if (streamDone) {
+      const resolver = pendingResolve;
+      pendingResolve = null;
+      pendingReject = null;
+      resolver({ value: undefined as unknown as string, done: true });
+    }
+  };
+
+  const ingestLine = (line: string): void => {
+    const parsed = parseStreamLine(line);
+    if (!parsed) {
+      return;
+    }
+    if (parsed.usage) {
+      usage = convertNativeUsage(parsed.usage);
+    }
+    if (parsed.finishReason) {
+      finishReason = parsed.finishReason;
+    }
+    if (parsed.text) {
+      accumulated += parsed.text;
+      queue.push(parsed.text);
+      drain();
+    }
+  };
+
+  // Drive the SSE feed off the response body. Buffer across reads so an event
+  // split over two chunks is parsed once whole. Release the permit + emit usage
+  // exactly once when the feed ends (cleanly or with an error).
+  const pump = (async () => {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        let newlineIndex = buffer.indexOf("\n");
+        while (newlineIndex !== -1) {
+          const line = buffer.slice(0, newlineIndex);
+          buffer = buffer.slice(newlineIndex + 1);
+          ingestLine(line);
+          newlineIndex = buffer.indexOf("\n");
+        }
+      }
+      buffer += decoder.decode();
+      if (buffer.trim()) {
+        ingestLine(buffer);
+      }
+      if (!accumulated.trim()) {
+        throw new Error("elizaOS Cloud returned no streamed text");
+      }
+      if (usage) {
+        emitModelUsageEvent(runtime, modelType, context.prompt, usage, {
+          modelName: context.modelName,
+          ...(() => {
+            const costUsd = extractCostUsd(usage, response);
+            return typeof costUsd === "number" ? { costUsd } : {};
+          })(),
+        });
+      }
+    } catch (err) {
+      streamError = err;
+      throw err;
+    } finally {
+      streamDone = true;
+      permit.release();
+      drain();
+    }
+  })();
+
+  // Single settled view of the pump: the post-stream summary promises derive
+  // from THIS (never-rejecting) promise so an unconsumed `text`/`usage`/
+  // `finishReason` can't surface as an unhandled rejection. Consumers that
+  // iterate `textStream` still see a mid-stream error there; `text` resolves to
+  // whatever partial text accumulated, matching the runtime streaming contract
+  // (the error is observed via the iterator, not the summary promise).
+  const settled = pump.then(
+    () => ({ ok: true as const }),
+    (err) => ({ ok: false as const, err })
+  );
+
+  const textStream: AsyncIterable<string> = {
+    [Symbol.asyncIterator](): AsyncIterator<string> {
+      return {
+        next(): Promise<IteratorResult<string>> {
+          if (queue.length > 0) {
+            const next = queue.shift() as string;
+            return Promise.resolve({ value: next, done: false });
+          }
+          if (streamError) {
+            return Promise.reject(streamError);
+          }
+          if (streamDone) {
+            return Promise.resolve({
+              value: undefined as unknown as string,
+              done: true,
+            });
+          }
+          return new Promise<IteratorResult<string>>((resolve, reject) => {
+            pendingResolve = resolve;
+            pendingReject = reject;
+          });
+        },
+      };
+    },
+  };
+
+  return {
+    textStream,
+    text: settled.then(() => accumulated),
+    usage: settled.then((s) => (s.ok ? usage : undefined)),
+    finishReason: settled.then((s) => (s.ok ? (finishReason ?? "stop") : undefined)),
+    providerMetadata: { modelName: context.modelName },
+  };
+}
+
 async function generateTextWithModel(
   runtime: IAgentRuntime,
   modelType: TextModelType,
@@ -858,12 +1184,6 @@ async function generateTextWithModel(
   const paramsWithNative = params as GenerateTextParamsWithNativeOptions;
 
   logger.debug(`[ELIZAOS_CLOUD] Generating text with ${modelType} model: ${modelName}`);
-
-  if (params.stream) {
-    logger.debug(
-      "[ELIZAOS_CLOUD] Streaming text disabled for responses compatibility; falling back to buffered response."
-    );
-  }
 
   logger.log(`[ELIZAOS_CLOUD] Using ${modelType} model: ${modelName}`);
   logger.log(prompt);
@@ -877,6 +1197,27 @@ async function generateTextWithModel(
     return shouldReturnNativeResult(paramsWithNative)
       ? (nativeResult as NativeGenerateTextModelResult)
       : nativeResult.text;
+  }
+
+  // Plain-prompt path: when streaming is requested, stream tokens incrementally
+  // via /chat/completions so the user sees text appear instead of a multi-second
+  // blank wait. The native-transport (tools/schema/messages/providerOptions)
+  // calls above keep the buffered round-trip. On any streaming setup error we
+  // fall back to the buffered /responses path below so the turn is never dropped.
+  if (params.stream) {
+    try {
+      return await streamNativeChatCompletion(runtime, modelType, params, {
+        modelName,
+        prompt,
+        systemPrompt,
+      });
+    } catch (err) {
+      logger.warn(
+        `[ELIZAOS_CLOUD] Streaming text failed (${
+          err instanceof Error ? err.message : String(err)
+        }); falling back to buffered response.`
+      );
+    }
   }
 
   const reasoning = isReasoningModel(modelName);
