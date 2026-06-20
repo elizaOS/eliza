@@ -62,3 +62,17 @@ export const CORS_ALLOW_METHOD_NAMES = [
 export const CORS_ALLOW_METHODS = CORS_ALLOW_METHOD_NAMES.join(", ");
 
 export const CORS_MAX_AGE = "86400";
+
+/**
+ * The Eliza app WebView / local-dev origins that authenticate with credentials
+ * (cookies / native fetch) and therefore get the origin reflected +
+ * `Access-Control-Allow-Credentials: true` (a wildcard `*` is invalid for a
+ * credentialed cross-origin read such as an SSE chat stream). EXACT-ANCHORED —
+ * never a suffix/`endsWith` match. Single source of truth so the Hono-CORS and
+ * proxy-CORS allowlists cannot drift. Mirrors the dedicated-agent allow-list in
+ * packages/agent/src/api/server-helpers-auth.ts.
+ */
+export const APP_LOCAL_ORIGIN_RE =
+  /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|\[0:0:0:0:0:0:0:1\])(:\d+)?$/i;
+export const APP_SCHEME_ORIGIN_RE =
+  /^(capacitor|capacitor-electron|app|tauri|file|electrobun):\/\/.*$/i;

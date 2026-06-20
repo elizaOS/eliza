@@ -27,7 +27,12 @@
 import type { MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 
-import { CORS_ALLOW_HEADER_NAMES, CORS_ALLOW_METHOD_NAMES } from "../cors-constants";
+import {
+  APP_LOCAL_ORIGIN_RE,
+  APP_SCHEME_ORIGIN_RE,
+  CORS_ALLOW_HEADER_NAMES,
+  CORS_ALLOW_METHOD_NAMES,
+} from "../cors-constants";
 
 const STATIC_ALLOWED_ORIGINS = new Set<string>([
   "https://elizacloud.ai",
@@ -59,10 +64,8 @@ const PAGES_PREVIEW_SUFFIX = ".eliza-cloud-enq.pages.dev";
  * `Access-Control-Allow-Credentials` (a `*` wildcard is rejected) and name the
  * X-Eliza* headers the client always sends. Mirrors the dedicated-agent subdomain
  * allow-list in packages/agent/src/api/server-helpers-auth.ts.
+ * Regexes live in cors-constants.ts (single source of truth).
  */
-const APP_LOCAL_ORIGIN_RE =
-  /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|\[0:0:0:0:0:0:0:1\])(:\d+)?$/i;
-const APP_SCHEME_ORIGIN_RE = /^(capacitor|capacitor-electron|app|tauri|file|electrobun):\/\/.*$/i;
 const PUBLIC_TOKEN_API_PATH_PREFIXES = [
   "/api/v1/app-credits/",
   "/api/v1/voice/",

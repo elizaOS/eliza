@@ -1,4 +1,9 @@
-import { CORS_ALLOW_HEADERS, CORS_MAX_AGE } from "../../cors-constants";
+import {
+  APP_LOCAL_ORIGIN_RE,
+  APP_SCHEME_ORIGIN_RE,
+  CORS_ALLOW_HEADERS,
+  CORS_MAX_AGE,
+} from "../../cors-constants";
 
 /**
  * Shared CORS utilities for proxy services
@@ -35,10 +40,8 @@ import { CORS_ALLOW_HEADERS, CORS_MAX_AGE } from "../../cors-constants";
  *  - `http://localhost[:port]` / `http://127.0.0.1[:port]` — local web dev/preview
  *  - `https://localhost[:port]` / `https://127.0.0.1[:port]` — https local dev
  * Mirrors the dedicated-agent LOCAL_ORIGIN_RE + APP_ORIGIN_RE allow-list.
+ * Regexes live in cors-constants.ts (single source of truth).
  */
-const APP_LOCAL_ORIGIN_RE =
-  /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|\[0:0:0:0:0:0:0:1\])(:\d+)?$/i;
-const APP_SCHEME_ORIGIN_RE = /^(capacitor|capacitor-electron|app|tauri|file|electrobun):\/\/.*$/i;
 
 /**
  * An origin that authenticates with credentials (cookies/native fetch) from the
