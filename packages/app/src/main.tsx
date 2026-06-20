@@ -84,7 +84,6 @@ import {
   isAppWindowRoute,
 } from "@elizaos/ui/navigation/index";
 import type { ShareTargetPayload } from "@elizaos/ui/platform";
-import { resolveAndroidRuntimeMode } from "@elizaos/ui/platform";
 import {
   applyLaunchConnection,
   applyLaunchConnectionFromUrl,
@@ -381,21 +380,11 @@ const APP_BRANDING: Partial<BrandingConfig> = {
   // backend should control first-run capabilities instead — UNLESS the desktop
   // shell explicitly opted into cloud-only mode (desktopRuntimeMode === "cloud"),
   // which forces cloud-only regardless of the injected loopback proxy base.
-  //
-  // The `android-cloud` Play-Store build is also cloud-only: it ships no
-  // on-device agent (VITE_ELIZA_ANDROID_RUNTIME_MODE === "cloud"), so first-run
-  // must skip the runtime picker rather than offer a "This device" option that
-  // would provision an agent that physically isn't in the APK. The default
-  // sideload/AOSP builds resolve to "local" here and keep the full 3-way picker.
   cloudOnly: shouldUseCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
     injectedApiBase:
       typeof window === "undefined" ? undefined : getInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
-    nativeRuntimeMode:
-      Capacitor.getPlatform() === "android"
-        ? resolveAndroidRuntimeMode(import.meta.env)
-        : undefined,
     desktopRuntimeMode: getInjectedDesktopRuntimeMode(),
   }),
 };
@@ -2521,6 +2510,23 @@ async function main(): Promise<void> {
 
   injectWaifuChatAccessToken();
 
+  // The iOS full-Bun backend smoke is a headless QA gate that must run BEFORE
+  // any window-shell / popout routing. First-run renders onboarding through a
+  // non-"main" window-shell route, whose branch returns before the main boot
+  // path — so the smoke (previously only wired into the main path) was
+  // structurally unreachable whenever onboarding was showing, and its request
+  // flag silently no-op'd. Run it (and the iOS local-agent bridges it needs)
+  // up front; when requested it takes over the WebView and returns.
+  if (isIOS) {
+    await initializeStorageBridge();
+    initializeCapacitorBridge();
+    installIosLocalAgentNativeRequestBridge();
+    installIosLocalAgentFetchBridge();
+    if (await runIosFullBunSmokeIfRequested()) {
+      return;
+    }
+  }
+
   if (isPopoutWindow()) {
     injectPopoutApiBase();
     mountReactApp();
@@ -2544,9 +2550,6 @@ async function main(): Promise<void> {
     initializeCapacitorBridge();
     installIosLocalAgentNativeRequestBridge();
     installIosLocalAgentFetchBridge();
-    if (await runIosFullBunSmokeIfRequested()) {
-      return;
-    }
   } else if (isAndroid) {
     initializeCapacitorBridge();
     installAndroidNativeAgentFetchBridge();
