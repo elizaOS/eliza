@@ -16,8 +16,8 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
-import ai.milady.app.BuildConfig;
-import ai.milady.app.R;
+import ai.elizaos.app.BuildConfig;
+import ai.elizaos.app.R;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
