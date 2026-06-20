@@ -26,7 +26,8 @@ android {
         // Capacitor APK build path (`bun run build:android`) leaves it
         // unset and the field stays false. ElizaAgentService reads this
         // to decide whether to export ELIZA_LOCAL_LLAMA=1 to the bun
-        // process so the AOSP-only libllama.so loader takes over inference.
+        // process so the AOSP-only fused libelizainference.so loader takes
+        // over inference.
         buildConfigField "boolean", "AOSP_BUILD", "${project.findProperty('elizaAospBuild') ?: 'false'}"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

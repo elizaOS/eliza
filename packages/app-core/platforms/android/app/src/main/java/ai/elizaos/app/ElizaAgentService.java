@@ -16,8 +16,8 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
-import ai.elizaos.app.BuildConfig;
-import ai.elizaos.app.R;
+import ai.milady.app.BuildConfig;
+import ai.milady.app.R;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -1371,41 +1371,56 @@ public class ElizaAgentService extends Service {
             // the bridge handlers registered, not pre-warmed.
             agentEnv.put("ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD", "1");
             // Native bun:ffi inference path. When the APK bundles the eliza
-            // llama.cpp fork's native libs under agent/{abi}/ (libllama.so +
-            // libeliza-llama-shim.so), opt the bun process into loading them
+            // llama.cpp fork's fused native lib under agent/{abi}/
+            // (libelizainference.so), opt the bun process into loading it
             // directly via bun:ffi — see
-            // eliza/plugins/plugin-aosp-local-inference/src/aosp-llama-adapter.ts.
+            // eliza/plugins/plugin-aosp-local-inference/src/aosp-local-inference-bootstrap.ts
+            // (tryBuildAospFusedTextLoader) and aosp-llama-paths.ts
+            // (isAospEnabled reads ELIZA_LOCAL_LLAMA).
             // This is required, not optional: the eliza-1 model tiers are
             // qwen35-arch + QJL/PolarQuant/TBQ-quantized, and the stock
             // llama-cpp-capacitor JNI lib cannot load those GGUFs at all
-            // (`context->loadModel() returned false`). The fork libllama.so
-            // carries the kernels + qwen35 arch.
+            // (`context->loadModel() returned false`). The fused
+            // libelizainference.so carries the kernels + qwen35 arch and is
+            // the SOLE text/voice native library the bun agent loads.
             //
             // This was previously gated on `BuildConfig.AOSP_BUILD &&
             // isBrandedDevice()`. That gate's sole rationale was the
-            // aosp-llama-adapter's first-run model auto-download crashing a
+            // aosp loader's first-run model auto-download crashing a
             // network-restricted bun process — but that download is already
             // suppressed unconditionally above
-            // (ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1), and the adapter itself
-            // self-gates + defensively no-ops when the lib/shim is absent or
-            // incompatible. Presence of the bundled fork libs is therefore
+            // (ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1), and the loader itself
+            // self-gates + defensively no-ops when the lib is absent or
+            // incompatible. Presence of the bundled fused lib is therefore
             // the correct, sufficient signal for both build types.
+            //
+            // libelizainference.so is the lib actually dlopen'd at runtime;
+            // libllama.so is kept as a legacy OR-condition so the gate still
+            // activates on any APK that predates the fused-lib cutover (where
+            // only libllama.so + shim were staged). Once libllama.so stops
+            // being built the fused lib alone trips the gate.
+            File abiFusedInference = new File(abiDir, "libelizainference.so");
             File abiLibllama = new File(abiDir, "libllama.so");
             File abiLlamaShim = new File(abiDir, "libeliza-llama-shim.so");
             File abiSpeculativeShim = new File(abiDir, "libeliza-llama-speculative-shim.so");
             File abiGgmlVulkan = new File(abiDir, "libggml-vulkan.so");
-            boolean nativeLlamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
+            boolean fusedInferenceBundled = abiFusedInference.isFile();
+            boolean legacyLibllamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
+            boolean nativeLlamaBundled = fusedInferenceBundled || legacyLibllamaBundled;
             boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
             if (nativeLlamaBundled && !env.containsKey("ELIZA_LOCAL_LLAMA")) {
                 agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
+                String bundledLib = fusedInferenceBundled
+                    ? "libelizainference.so"
+                    : "libllama.so + shim (legacy)";
                 Log.i(TAG, "agent/" + abiDir.getName()
-                    + "/libllama.so + shim present; enabling native bun:ffi inference (ELIZA_LOCAL_LLAMA=1)");
+                    + "/" + bundledLib + " present; enabling native bun:ffi inference (ELIZA_LOCAL_LLAMA=1)");
             }
             if (nativeLlamaBundled) {
                 // When the Vulkan ggml backend (libggml-vulkan.so) is bundled —
                 // i.e. the arm64 GPU build — offload the model to the GPU. The
-                // aosp-llama-adapter pins n_gpu_layers=0 by default, so without
-                // this a Vulkan-capable libllama still runs entirely on CPU. CPU-
+                // aosp loader pins n_gpu_layers=0 by default, so without
+                // this a Vulkan-capable build still runs entirely on CPU. CPU-
                 // only builds (riscv64, or arm64 without the Vulkan backend) ship
                 // no libggml-vulkan.so, so they correctly stay on CPU.
                 if (abiGgmlVulkan.isFile()
@@ -1524,6 +1539,18 @@ public class ElizaAgentService extends Service {
             if (BuildConfig.AOSP_BUILD && isBrandedDevice()) {
                 agentEnv.put("ELIZA_AOSP_BUILD", "1");
                 agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
+                // Branded AOSP unconditionally opts the bun agent into native
+                // inference. If neither the fused libelizainference.so nor the
+                // legacy libllama.so + shim shipped in this APK, that opt-in
+                // cannot be honored — the bun agent's fused loader will fail at
+                // its first TEXT_* call. Surface the broken pipeline LOUDLY here
+                // (Commandment 8: no silent fallback) rather than letting the
+                // failure first appear minutes later mid-inference.
+                if (!nativeLlamaBundled) {
+                    Log.e(TAG, "agent/" + abiDir.getName()
+                        + ": branded AOSP set ELIZA_LOCAL_LLAMA=1 but no native inference lib is bundled "
+                        + "(libelizainference.so absent, libllama.so + shim absent); local inference WILL fail.");
+                }
                 // CPU-only inference of a 12k-token prompt on cuttlefish
                 // x86_64 / Eliza-1 lands well past the 180 s default
                 // chat-generation timeout (chat-routes.ts). On cvd a
@@ -1538,8 +1565,8 @@ public class ElizaAgentService extends Service {
                 // matters for AOSP cvd runs.
                 agentEnv.put("ELIZA_CHAT_GENERATION_TIMEOUT_MS", "3600000");
                 // Device bridge is unused on AOSP (ELIZA_LOCAL_LLAMA=1 routes
-                // inference through the native llama.so adapter instead). Set
-                // the same 1h budget explicitly so the intent is clear and
+                // inference through the fused libelizainference.so loader
+                // instead). Set the same 1h budget explicitly so the intent is clear and
                 // operator overrides above are not inadvertently in effect.
                 agentEnv.put("ELIZA_DEVICE_GENERATE_TIMEOUT_MS", "3600000");
 
