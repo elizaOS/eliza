@@ -103,6 +103,7 @@ export { SettingsControls } from "./components/ui/settings-controls.tsx";
 export { Skeleton } from "./components/ui/skeleton.tsx";
 export { Spinner } from "./components/ui/spinner.tsx";
 export {
+  agentLifecycleLabel,
   statusLabelForState,
   statusToneForState,
 } from "./components/ui/status-badge.helpers.ts";
