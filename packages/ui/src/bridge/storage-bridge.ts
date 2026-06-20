@@ -148,8 +148,12 @@ export async function initializeStorageBridge(): Promise<void> {
   // with a few short retries until the plugin answers, then hydrate. The probe
   // can't distinguish "plugin cold" from "key genuinely unset", so it is capped
   // and never blocks first paint for more than a moment.
+  let pluginResponded = false;
   for (let attempt = 0; attempt < PREFERENCE_HYDRATION_ATTEMPTS; attempt += 1) {
-    if (await preferencesResponded()) break;
+    if (await preferencesResponded()) {
+      pluginResponded = true;
+      break;
+    }
     if (attempt < PREFERENCE_HYDRATION_ATTEMPTS - 1) {
       await new Promise((resolve) =>
         setTimeout(resolve, PREFERENCE_HYDRATION_RETRY_MS),
@@ -176,10 +180,19 @@ export async function initializeStorageBridge(): Promise<void> {
     }
   }
 
-  // Set up the storage proxy
+  // Set up the storage proxy (idempotent) so localStorage<->Preferences sync
+  // works even while we wait for a cold plugin to warm up.
   setupStorageProxy();
 
-  initialized = true;
+  // Only consider the bridge initialized once the native plugin has actually
+  // answered. If it never warmed up, leave `initialized` false so a later call
+  // (e.g. from initializePlatform after more of the bridge has wired up)
+  // re-hydrates instead of permanently dropping critical synced keys —
+  // first-run-complete, active-server, the smoke request — which otherwise
+  // strands the user in onboarding or silently skips the QA smoke.
+  if (pluginResponded) {
+    initialized = true;
+  }
 }
 
 /**
