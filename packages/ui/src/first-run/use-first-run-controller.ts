@@ -760,6 +760,129 @@ export function useFirstRunController(): FirstRunController {
       clearPersistedFirstRunState();
       setBusyText(null);
       completeFirstRun("chat", { launchCompanionOverlay: true });
+
+      // Seamless shared→personal handoff. A freshly created cloud agent serves
+      // the user from the shared REST adapter while its dedicated container
+      // boots (selectedAgent.created with no bridge URL yet). In the background,
+      // once the container is reachable, copy the conversation the user built on
+      // the shared adapter into it and switch the live client over — no waiting,
+      // no lost history. Best-effort: on failure the user stays on the shared
+      // adapter, which keeps working.
+      if (selectedAgent.created && !selectedAgent.bridgeUrl) {
+        void client
+          .startCloudAgentHandoff({
+            agentId: selectedAgent.agentId,
+            sharedApiBase: cloudAgentApiBase,
+            // The shared adapter keeps one canonical conversation per agent id.
+            conversationId: selectedAgent.agentId,
+            cloudApiBase:
+              getBootConfig().cloudApiBase || "https://www.elizacloud.ai",
+            authToken,
+            onSwitch: (containerBase) => {
+              client.setBaseUrl(containerBase);
+              client.setToken(authToken);
+              const switched = createPersistedActiveServer({
+                kind: "cloud",
+                id: `cloud:${selectedAgent.agentId}`,
+                apiBase: containerBase,
+                accessToken: authToken,
+              });
+              savePersistedActiveServer(switched);
+              const profile = addAgentProfile({
+                kind: "cloud",
+                label: switched.label,
+                apiBase: containerBase,
+                accessToken: authToken,
+              });
+              switchAgentProfile(profile.id);
+            },
+          })
+          .catch(() => {
+            // Handoff is best-effort; the shared adapter remains usable.
+          });
+      }
+    },
+    [completeFirstRun, switchAgentProfile, uiLanguage],
+  );
+
+  const finishCloud = React.useCallback(
+    async (sourceDraft: FirstRunProfileDraft) => {
+      syncIdentity(sourceDraft);
+      setError(null);
+      setState("firstRunRuntimeTarget", firstRunRuntimeTarget("cloud"));
+      setState("firstRunProvider", "elizacloud");
+      let cloudConnectedForFinish = elizaCloudConnected;
+      if (!cloudConnectedForFinish) {
+        const cloudStatus = await client.getCloudStatus().catch(() => null);
+        cloudConnectedForFinish = isCloudStatusAuthenticated(
+          Boolean(cloudStatus?.connected),
+          cloudStatus?.reason,
+        );
+      }
+      if (firstRunNeedsCloudConnect(sourceDraft, cloudConnectedForFinish)) {
+        const authWindow = preOpenWindow();
+        await handleCloudLogin(authWindow);
+        const cloudStatus = await client.getCloudStatus().catch(() => null);
+        cloudConnectedForFinish = isCloudStatusAuthenticated(
+          Boolean(cloudStatus?.connected),
+          cloudStatus?.reason,
+        );
+        // Cloud = Steward: a present session token is authoritative even if the
+        // status proxy lags right after sign-in.
+        if (!cloudConnectedForFinish && getCloudAuthToken(client)) {
+          cloudConnectedForFinish = true;
+        }
+        if (!cloudConnectedForFinish) {
+          return;
+        }
+      }
+      // Cloud = Steward everywhere (DECISIONS.md D3): the cloud agent is
+      // provisioned with the Steward session JWT (same-origin cookie+JWT on web,
+      // Bearer-from-localStorage on native), not a device-code token. Only enter
+      // the picker once a token is present — fetching the agent list without one
+      // would falsely show empty/error. Surface (not throw) so onboarding stays.
+      const authToken = getCloudAuthToken(client) ?? "";
+      if (!authToken) {
+        setError("Eliza Cloud authentication required.");
+        return;
+      }
+      // Interpose the picker: show the user's existing cloud agents (choose one
+      // or create new) instead of silently auto-reusing/creating.
+      pickerBindingRef.current = false;
+      setStep("pick-agent");
+      setPickerPhase("loading");
+      setPickerError(null);
+      setPickerBindingId(null);
+      let list: { success: boolean; data: CloudCompatAgent[]; error?: string };
+      try {
+        list = await client.getCloudCompatAgents();
+      } catch (err) {
+        list = {
+          success: false,
+          data: [],
+          error:
+            err instanceof Error ? err.message : "Could not load your agents.",
+        };
+      }
+      if (!list.success) {
+        // Hold on an error state — do NOT fall through to auto-create. This is
+        // the fix for the silent .catch churn that minted duplicate agents.
+        setPickerPhase("error");
+        setPickerError(list.error ?? "Could not load your agents. Try again.");
+        return;
+      }
+      if (list.data.length === 0) {
+        // Brand-new user: skip the picker and auto-create (current behavior, no
+        // extra click, no dead one-item-less UI).
+        await finishCloudWithSelection(sourceDraft, authToken, {
+          forceCreate: false,
+        });
+        return;
+      }
+      // >=1 agents: render the picker (newest-first, running-prioritized to
+      // mirror pickPreferredCloudAgent). Leave busyText null so it is interactive.
+      setPickerAgents(sortCloudAgentsForPicker(list.data));
+      setPickerPhase("ready");
     },
     [completeFirstRun, uiLanguage],
   );
