@@ -306,6 +306,52 @@ describe("streamNativeChatCompletion", () => {
     await readStream(second);
   });
 
+  it("releases the permit on an early consumer break without draining the stream", async () => {
+    process.env.ELIZAOS_CLOUD_NATIVE_CONCURRENCY = "1";
+    __resetNativeChatLimiterForTests();
+
+    // A multi-chunk stream the consumer will abandon after the first token.
+    nextResponse = sseResponse([
+      dataFrame(contentDelta("one")),
+      dataFrame(contentDelta("two")),
+      dataFrame(contentDelta("three")),
+      "data: [DONE]\n\n",
+    ]);
+    const first = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      nativeParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+    expect(requestRaw).toHaveBeenCalledTimes(1);
+
+    // Second call queues behind the only permit.
+    nextResponse = sseResponse([dataFrame(contentDelta("x")), "data: [DONE]\n\n"]);
+    const secondPromise = streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      nativeParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(requestRaw).toHaveBeenCalledTimes(1);
+
+    // Pull exactly ONE chunk then break early: the generator's return() must
+    // release the permit (and cancel the upstream) WITHOUT draining the
+    // remaining "two"/"three" chunks, so the queued second call proceeds.
+    let pulled = 0;
+    for await (const _chunk of first.textStream) {
+      pulled += 1;
+      break;
+    }
+    expect(pulled).toBe(1);
+
+    const second = await secondPromise;
+    expect(requestRaw).toHaveBeenCalledTimes(2);
+    await readStream(second);
+  });
+
   it("ELIZAOS_CLOUD_STREAMING=0 disables streaming (kill-switch)", () => {
     process.env.ELIZAOS_CLOUD_STREAMING = "0";
     expect(resolveStreamingEnabled()).toBe(false);
