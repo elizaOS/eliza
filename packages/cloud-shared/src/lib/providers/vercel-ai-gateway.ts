@@ -478,16 +478,50 @@ function contentToText(content: GatewayChatMessage["content"]): string {
     .join("\n");
 }
 
+// Tolerate BOTH the nested OpenAI tool shape (`{ function: { name, parameters } }`)
+// and the flat `ToolDefinition` envelope (`{ name, type, parameters }`) that
+// elizaOS core emits (createHandleResponseTool / the action planner). Reading
+// `tool.function.name` unconditionally threw "Cannot read properties of
+// undefined (reading 'name')" and surfaced as an opaque 500 for any caller that
+// sent the flat form.
+function normalizeToolFunction(tool: unknown): {
+  name?: string;
+  description?: unknown;
+  parameters?: unknown;
+} {
+  const record = (tool ?? {}) as Record<string, unknown>;
+  const fn = (record.function ?? record) as Record<string, unknown>;
+  return {
+    name: typeof fn.name === "string" ? fn.name : undefined,
+    description: fn.description,
+    parameters: fn.parameters,
+  };
+}
+
 function toGatewayTools(tools: NonNullable<OpenAIChatRequest["tools"]>) {
   return Object.fromEntries(
-    tools.map((tool) => [
-      tool.function.name,
-      {
-        ...(tool.function.description ? { description: tool.function.description } : {}),
-        inputSchema: jsonSchema(tool.function.parameters ?? { type: "object" }),
-        outputSchema: jsonSchema({ type: "object", additionalProperties: true }),
-      },
-    ]),
+    tools
+      .map((tool) => {
+        const { name, description, parameters } = normalizeToolFunction(tool);
+        if (!name) {
+          return undefined;
+        }
+        return [
+          name,
+          {
+            ...(typeof description === "string" && description
+              ? { description }
+              : {}),
+            inputSchema: jsonSchema(
+              (parameters as Parameters<typeof jsonSchema>[0] | undefined) ?? {
+                type: "object",
+              },
+            ),
+            outputSchema: jsonSchema({ type: "object", additionalProperties: true }),
+          },
+        ] as const;
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined),
   );
 }
 
@@ -497,7 +531,8 @@ function toGatewayToolChoice(
   if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") {
     return toolChoice;
   }
-  return { type: "tool", toolName: toolChoice.function.name };
+  const { name } = normalizeToolFunction(toolChoice);
+  return name ? { type: "tool", toolName: name } : "required";
 }
 
 function mergeGatewayProviderOptions(
