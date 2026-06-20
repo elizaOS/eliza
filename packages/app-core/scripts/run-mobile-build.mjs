@@ -1239,6 +1239,7 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
     "assets",
   );
   const targetAssets = path.join(androidDir, "app", "src", "main", "assets");
+  const targetPublic = path.join(targetAssets, "public");
   const syncedPublic = path.join(syncedAssets, "public");
   // Mirror the synced web payload only when cap sync wrote to a SEPARATE appDir
   // tree (the legacy two-tree split). When capacitor.config.ts unifies the trees
@@ -1253,7 +1254,6 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
     fs.existsSync(targetAssets) &&
     fs.realpathSync(syncedAssets) === fs.realpathSync(targetAssets);
   if (hasSyncedPublic && !sameTree) {
-    const targetPublic = path.join(targetAssets, "public");
     fs.mkdirSync(targetAssets, { recursive: true });
     fs.rmSync(targetPublic, { recursive: true, force: true });
     fs.cpSync(syncedPublic, targetPublic, { recursive: true });
@@ -1279,6 +1279,30 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
   // on-device local inference and Capacitor Preferences silently report
   // "not implemented on android". Reconcile the manifest with what gradle
   // actually compiles so loadPluginClasses succeeds.
+  // STALE-WEB GUARD: cap sync (even unified via android.path) has been observed
+  // to leave a STALE assets/public — an old entry hash in the gradle-packaged
+  // tree, shipping an "ancient" UI despite a fresh build. The freshly vite-built
+  // bundle in appDir/dist is the source of truth, so overlay it unconditionally:
+  // clear the hashed assets/ then copy dist over public. cordova.js /
+  // cordova_plugins.js are Capacitor-injected (NOT in dist) and survive because
+  // we only clear assets/ and cpSync never deletes existing non-dist files;
+  // capacitor.config.json / capacitor.plugins.json live in targetAssets (above
+  // public) and are untouched.
+  const freshWeb = path.join(appDir, "dist");
+  if (
+    fs.existsSync(path.join(freshWeb, "index.html")) &&
+    fs.existsSync(targetAssets)
+  ) {
+    fs.mkdirSync(targetPublic, { recursive: true });
+    fs.rmSync(path.join(targetPublic, "assets"), {
+      recursive: true,
+      force: true,
+    });
+    fs.cpSync(freshWeb, targetPublic, { recursive: true });
+    console.log(
+      `[mobile-build] Stale-web guard: overlaid fresh ${path.relative(repoRoot, freshWeb)} → ${path.relative(repoRoot, targetPublic)}`,
+    );
+  }
   reconcilePluginManifestWithGradle(targetAssets);
 }
 
