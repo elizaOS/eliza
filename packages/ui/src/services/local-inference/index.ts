@@ -38,6 +38,12 @@ export {
   selectRecommendedModels,
 } from "./recommendation";
 export { LocalInferenceService, localInferenceService } from "./service";
+export {
+  computeGenerationThroughput,
+  type GenerationCounters,
+  type GenerationThroughput,
+  isGenerationCounters,
+} from "./throughput";
 export type {
   ActiveModelState,
   CatalogModel,

@@ -109,6 +109,8 @@ type DeviceOutbound =
       promptTokens: number;
       outputTokens: number;
       durationMs: number;
+      /** Time-to-first-token (ms) when the device measured it; prefill wall-clock. */
+      ttftMs?: number;
     }
   | { type: "generateResult"; correlationId: string; ok: false; error: string }
   | {
@@ -526,6 +528,9 @@ export class DeviceBridgeClient {
           promptTokens: result.promptTokens,
           outputTokens: result.outputTokens,
           durationMs: result.durationMs,
+          ...(typeof result.ttftMs === "number"
+            ? { ttftMs: result.ttftMs }
+            : {}),
         });
       } catch (err) {
         this.send(ws, {

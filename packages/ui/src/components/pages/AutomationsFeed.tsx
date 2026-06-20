@@ -17,15 +17,11 @@
 import {
   CalendarClock,
   CheckCircle2,
-  CircleSlash,
   Clock,
   History,
-  Layers,
-  Pause,
   Play,
   Plus,
   Workflow,
-  Zap,
 } from "lucide-react";
 import {
   type ReactNode,
@@ -98,13 +94,6 @@ const FILTER_LABELS: Record<FeedFilter, { key: string; defaultLabel: string }> =
       defaultLabel: "Inactive",
     },
   };
-const FILTER_ICONS: Record<FeedFilter, ReactNode> = {
-  all: <Layers className="h-3.5 w-3.5" aria-hidden />,
-  tasks: <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />,
-  workflows: <Workflow className="h-3.5 w-3.5" aria-hidden />,
-  active: <Play className="h-3.5 w-3.5" aria-hidden />,
-  inactive: <CircleSlash className="h-3.5 w-3.5" aria-hidden />,
-};
 const NEW_AUTOMATION_LINK_ID = "__new__";
 
 interface FeedRow {
@@ -116,7 +105,18 @@ interface FeedRow {
   status: string;
   lastUpdated: string | null;
   lastRunStatus: NonNullable<AutomationItem["lastExecution"]>["status"] | null;
+  lastRunError: string | null;
   source: AutomationItem;
+}
+
+interface FeedOverview {
+  total: number;
+  workflows: number;
+  active: number;
+  scheduled: number;
+  succeeded: number;
+  needsAttention: number;
+  running: number;
 }
 
 function automationToRow(
@@ -158,7 +158,23 @@ function automationToRow(
     status: item.status,
     lastUpdated: item.updatedAt,
     lastRunStatus: item.lastExecution?.status ?? null,
+    lastRunError: item.lastExecution?.errorMessage ?? null,
     source: item,
+  };
+}
+
+function buildFeedOverview(rows: FeedRow[]): FeedOverview {
+  return {
+    total: rows.length,
+    workflows: rows.filter((row) => row.kind === "workflow").length,
+    active: rows.filter((row) => row.active).length,
+    scheduled: rows.filter((row) => row.schedule).length,
+    succeeded: rows.filter((row) => row.lastRunStatus === "success").length,
+    needsAttention: rows.filter((row) => row.lastRunStatus === "error").length,
+    running: rows.filter(
+      (row) =>
+        row.lastRunStatus === "running" || row.lastRunStatus === "waiting",
+    ).length,
   };
 }
 
@@ -297,6 +313,7 @@ export function AutomationsFeed({
     }),
     [allRows],
   );
+  const overview = useMemo(() => buildFeedOverview(allRows), [allRows]);
 
   // Editor mode
   if (editor.kind === "task") {
@@ -343,17 +360,9 @@ export function AutomationsFeed({
       >
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-accent/30 bg-gradient-to-br from-accent/20 to-accent/5 text-accent"
-              aria-hidden
-            >
-              <Zap className="h-5 w-5" />
-            </span>
-            <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
-              {t("automationsfeed.title", { defaultValue: "Automations" })}
-            </h1>
-          </div>
+          <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
+            {t("automationsfeed.title", { defaultValue: "Automations" })}
+          </h1>
           <Button
             ref={newAgent.ref}
             variant="default"
@@ -366,6 +375,10 @@ export function AutomationsFeed({
           </Button>
         </div>
 
+        {overview.total > 0 && (
+          <AutomationOverviewStrip overview={overview} onSelect={setFilter} />
+        )}
+
         {/* Filter chips */}
         <div className="flex flex-wrap gap-1.5">
           {(Object.keys(FILTER_LABELS) as FeedFilter[]).map((key) => (
@@ -375,7 +388,6 @@ export function AutomationsFeed({
               label={t(FILTER_LABELS[key].key, {
                 defaultValue: FILTER_LABELS[key].defaultLabel,
               })}
-              icon={FILTER_ICONS[key]}
               count={filterCounts[key]}
               isActive={filter === key}
               onSelect={setFilter}
@@ -490,14 +502,12 @@ export function AutomationsFeed({
 function FilterChipButton({
   filter,
   label,
-  icon,
   count,
   isActive,
   onSelect,
 }: {
   filter: FeedFilter;
   label: string;
-  icon: ReactNode;
   count: number;
   isActive: boolean;
   onSelect: (filter: FeedFilter) => void;
@@ -524,7 +534,6 @@ function FilterChipButton({
       }`}
       {...agentProps}
     >
-      <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
       <span>{label}</span>
       <span
         className={`min-w-4 rounded-full px-1 text-center text-[0.65rem] font-semibold tabular-nums ${
@@ -536,6 +545,74 @@ function FilterChipButton({
         {count}
       </span>
     </button>
+  );
+}
+
+function AutomationOverviewStrip({
+  overview,
+  onSelect,
+}: {
+  overview: FeedOverview;
+  onSelect: (filter: FeedFilter) => void;
+}) {
+  const workflowAction = useAgentElement<HTMLButtonElement>({
+    id: "overview-workflows",
+    role: "button",
+    label: `${overview.workflows} workflows`,
+    group: "automations-overview",
+    description: "Show workflow automations",
+    onActivate: () => onSelect("workflows"),
+  });
+  const activeAction = useAgentElement<HTMLButtonElement>({
+    id: "overview-active",
+    role: "button",
+    label: `${overview.active} active`,
+    group: "automations-overview",
+    description: "Show active automations",
+    onActivate: () => onSelect("active"),
+  });
+  const statusTone =
+    overview.needsAttention > 0
+      ? "text-danger"
+      : overview.running > 0
+        ? "text-warning"
+        : "text-ok";
+  const statusLabel =
+    overview.needsAttention > 0
+      ? `${overview.needsAttention} need attention`
+      : overview.running > 0
+        ? `${overview.running} running`
+        : `${overview.succeeded} succeeded`;
+
+  return (
+    <section
+      aria-label="Automation overview"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-strong"
+    >
+      <button
+        ref={workflowAction.ref}
+        type="button"
+        className="font-medium text-txt hover:text-accent"
+        onClick={() => onSelect("workflows")}
+        {...workflowAction.agentProps}
+      >
+        {overview.workflows} workflows
+      </button>
+      <span aria-hidden>/</span>
+      <button
+        ref={activeAction.ref}
+        type="button"
+        className="font-medium text-txt hover:text-accent"
+        onClick={() => onSelect("active")}
+        {...activeAction.agentProps}
+      >
+        {overview.active} active
+      </button>
+      <span aria-hidden>/</span>
+      <span className={`font-medium ${statusTone}`}>{statusLabel}</span>
+      <span aria-hidden>/</span>
+      <span>{overview.scheduled} scheduled</span>
+    </section>
   );
 }
 
@@ -558,15 +635,49 @@ function FeedRowItem({
   const medallionClasses = isWorkflow
     ? "border-accent/30 bg-gradient-to-br from-accent/20 to-accent/5 text-accent"
     : "border-border/60 bg-bg-accent text-muted-strong";
+  const openAction = useAgentElement<HTMLButtonElement>({
+    id: `open-${row.kind}-${row.source.workflowId ?? row.source.taskId ?? row.key}`,
+    role: "button",
+    label: `Open ${row.title}`,
+    group: "automations-list",
+    description:
+      row.kind === "workflow"
+        ? "Open workflow graph, runs, logs, and JSON"
+        : "Open task schedule and prompt",
+    status: row.active ? "active" : "inactive",
+    onActivate: onOpen,
+  });
+  const runAction = useAgentElement<HTMLButtonElement>({
+    id: `run-workflow-${row.source.workflowId ?? row.key}`,
+    role: "button",
+    label: `Run ${row.title} now`,
+    group: "workflow-actions",
+    description: "Run this workflow once and refresh the automation dashboard",
+    status:
+      row.lastRunStatus === "running" || row.lastRunStatus === "waiting"
+        ? "busy"
+        : undefined,
+    onActivate: onRunNow,
+  });
+  const lastRunLabel =
+    row.lastRunStatus === "error" && row.lastRunError
+      ? `Failed: ${row.lastRunError}`
+      : row.lastRunStatus
+        ? t(`automationsfeed.run.${row.lastRunStatus}`, {
+            defaultValue: row.lastRunStatus,
+          })
+        : null;
   return (
     <li
       ref={registerRef}
       className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-accent/40"
     >
       <button
+        ref={openAction.ref}
         type="button"
         onClick={onOpen}
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        {...openAction.agentProps}
       >
         <span
           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${medallionClasses}`}
@@ -597,12 +708,10 @@ function FeedRowItem({
                 tone="accent"
               />
             )}
-            {row.lastRunStatus && (
+            {lastRunLabel && row.lastRunStatus && (
               <RowChip
                 icon={<History className="h-3 w-3" />}
-                label={t(`automationsfeed.run.${row.lastRunStatus}`, {
-                  defaultValue: row.lastRunStatus,
-                })}
+                label={lastRunLabel}
                 tone={
                   row.lastRunStatus === "error"
                     ? "danger"
@@ -628,24 +737,14 @@ function FeedRowItem({
       </button>
       {row.kind === "workflow" && (
         <button
+          ref={runAction.ref}
           type="button"
-          aria-label={
-            row.active
-              ? t("automationsfeed.deactivateWorkflow", {
-                  defaultValue: "Deactivate workflow",
-                })
-              : t("automationsfeed.activateWorkflow", {
-                  defaultValue: "Activate workflow",
-                })
-          }
+          aria-label={`Run ${row.title} now`}
           onClick={onRunNow}
-          className="rounded-sm border border-border/40 px-2 py-1 text-xs text-muted-strong opacity-0 transition-opacity hover:border-border group-hover:opacity-100 focus:opacity-100"
+          className="rounded-sm border border-border/40 px-2 py-1 text-xs text-muted-strong opacity-100 transition-opacity hover:border-border sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+          {...runAction.agentProps}
         >
-          {row.active ? (
-            <Pause className="h-3 w-3" aria-hidden />
-          ) : (
-            <Play className="h-3 w-3" aria-hidden />
-          )}
+          <Play className="h-3 w-3" aria-hidden />
         </button>
       )}
     </li>
