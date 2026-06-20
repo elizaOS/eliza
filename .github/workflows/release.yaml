@@ -438,7 +438,7 @@ jobs:
 
       # Push changes to git (fails the workflow if it can't push)
       - name: Push to git
-        if: steps.commit.outputs.has_changes == 'true'
+        if: steps.commit.outputs.has_changes == 'true' && steps.release_type.outputs.is_release_event != 'true'
         run: |
           TAG_NAME="${{ steps.tag.outputs.tag_name }}"
 
