@@ -35,6 +35,21 @@ const AGENT_NAME_MAX_LENGTH = 60;
 const DELETE_POLL_TIMEOUT_MS = 60_000;
 /** Delay between delete-job poll attempts. */
 const DELETE_POLL_INTERVAL_MS = 1_500;
+/** Delay between status re-sync poll attempts after a suspend/resume. */
+const STATUS_POLL_INTERVAL_MS = 3_000;
+/** How many times to poll an agent's status after a suspend/resume before
+ * giving up (the daemon's job should have flipped the status by then). */
+const STATUS_POLL_ATTEMPTS = 5;
+/** How long to poll a waking agent before entering anyway with a warning. */
+const WAKE_POLL_TIMEOUT_MS = 60_000;
+/** Delay between waking-readiness poll attempts. */
+const WAKE_POLL_INTERVAL_MS = 2_000;
+
+/** Statuses that mean an agent is not running and must be woken before use. */
+const NON_RUNNING_STATES = new Set(["stopped", "sleeping", "suspended"]);
+
+/** Statuses that indicate the agent failed / is in an error state. */
+const ERROR_STATES = new Set(["error", "failed"]);
 
 /** The agent id currently bound as the active cloud server, if any. */
 function activeCloudAgentId(): string | null {
@@ -74,6 +89,9 @@ export function CloudAgentsSection() {
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  // The agent currently being woken (resumed + readiness-polled) before we
+  // switch to it. Drives the "Waking <name>…" row state.
+  const [wakingId, setWakingId] = useState<string | null>(null);
   const activeId = useMemo(() => activeCloudAgentId(), []);
 
   const cloudApiBase =
@@ -110,6 +128,12 @@ export function CloudAgentsSection() {
     void refresh();
   }, [refresh]);
 
+  const setLocalStatus = useCallback((agentId: string, status: string) => {
+    setAgents((prev) =>
+      prev.map((a) => (a.agent_id === agentId ? { ...a, status } : a)),
+    );
+  }, []);
+
   const bindAndReload = useCallback(
     (agentId: string, apiBase: string, label: string) => {
       const token = currentCloudToken();
@@ -130,19 +154,87 @@ export function CloudAgentsSection() {
     [setActionNotice],
   );
 
+  /**
+   * Resume a non-running agent and gate entry on a short readiness poll, so we
+   * only hand the user a live container. Resolves `true` once the agent reports
+   * `running`; resolves `false` (with the failure surfaced) if the resume call
+   * is rejected. Throws on timeout so the caller can decide whether to enter
+   * anyway. Mirrors the delete-job poll loop.
+   */
+  const wakeUntilRunning = useCallback(
+    async (agent: CloudCompatAgent) => {
+      const res = await client.resumeCloudCompatAgent(agent.agent_id);
+      if (!res.success) {
+        return { ok: false as const, error: "Start failed" };
+      }
+      setLocalStatus(agent.agent_id, "resuming");
+      const deadline = Date.now() + WAKE_POLL_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, WAKE_POLL_INTERVAL_MS),
+        );
+        const statusRes = await client.getCloudCompatAgentStatus(
+          agent.agent_id,
+        );
+        const status = statusRes.success
+          ? statusRes.data.status.toLowerCase()
+          : "";
+        if (status) setLocalStatus(agent.agent_id, status);
+        if (status === "running") return { ok: true as const };
+        if (ERROR_STATES.has(status)) {
+          return {
+            ok: false as const,
+            error: statusRes.data.suspendedReason || "Agent failed to start.",
+          };
+        }
+      }
+      throw new Error("Timed out waiting for the agent to start.");
+    },
+    [setLocalStatus],
+  );
+
   const switchTo = useCallback(
-    (agent: CloudCompatAgent) => {
+    async (agent: CloudCompatAgent) => {
       if (agent.agent_id === activeId) return;
-      setBusyId(agent.agent_id);
       const apiBase = resolveCloudAgentApiBase({
         bridgeUrl: agent.bridge_url,
         webUiUrl: agent.web_ui_url ?? agent.webUiUrl,
         agentId: agent.agent_id,
         cloudApiBase,
       });
-      bindAndReload(agent.agent_id, apiBase, agent.agent_name || "Eliza Cloud");
+      const label = agent.agent_name || "Eliza Cloud";
+      const status = (agent.status || "").toLowerCase();
+      // A non-running agent has no live container to talk to — wake it and
+      // wait for readiness before binding, so chat doesn't land on a 404.
+      if (NON_RUNNING_STATES.has(status)) {
+        setBusyId(agent.agent_id);
+        setWakingId(agent.agent_id);
+        setActionNotice(`Waking ${label}…`, "success", 3000);
+        try {
+          const outcome = await wakeUntilRunning(agent);
+          if (!outcome.ok) {
+            setActionNotice(outcome.error, "error", 4000);
+            return;
+          }
+        } catch (err) {
+          // Readiness timed out — surface it and let the user retry rather
+          // than binding to a container that may still be coming up.
+          setActionNotice(
+            err instanceof Error ? err.message : "Failed to start agent.",
+            "error",
+            4000,
+          );
+          return;
+        } finally {
+          setBusyId(null);
+          setWakingId(null);
+        }
+      } else {
+        setBusyId(agent.agent_id);
+      }
+      bindAndReload(agent.agent_id, apiBase, label);
     },
-    [activeId, cloudApiBase, bindAndReload],
+    [activeId, cloudApiBase, bindAndReload, setActionNotice, wakeUntilRunning],
   );
 
   const createAgent = useCallback(async () => {
@@ -288,11 +380,29 @@ export function CloudAgentsSection() {
     [editName, activeId, setActionNotice],
   );
 
-  const setLocalStatus = useCallback((agentId: string, status: string) => {
-    setAgents((prev) =>
-      prev.map((a) => (a.agent_id === agentId ? { ...a, status } : a)),
-    );
-  }, []);
+  /**
+   * After a suspend/resume the row status lies (it shows the optimistic
+   * transition) until a manual Refresh. Poll the agent's status a few times so
+   * the row reconciles to the real server state as the daemon's job flips it.
+   */
+  const resyncStatus = useCallback(
+    async (agentId: string) => {
+      for (let attempt = 0; attempt < STATUS_POLL_ATTEMPTS; attempt++) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, STATUS_POLL_INTERVAL_MS),
+        );
+        const res = await client.getCloudCompatAgentStatus(agentId);
+        if (!res.success) continue;
+        const status = res.data.status.toLowerCase();
+        if (!status) continue;
+        setLocalStatus(agentId, status);
+        // Once the agent reaches a settled (non-transitional) state there is
+        // nothing left to reconcile — stop polling early.
+        if (status === "running" || NON_RUNNING_STATES.has(status)) return;
+      }
+    },
+    [setLocalStatus],
+  );
 
   const suspendAgent = useCallback(
     async (agent: CloudCompatAgent) => {
@@ -302,14 +412,16 @@ export function CloudAgentsSection() {
         if (!res.success) {
           throw new Error("Shutdown failed");
         }
-        // Async job — show the transition optimistically; a Refresh reflects the
-        // daemon flipping it to "stopped" once the container is actually stopped.
+        // Async job — show the transition optimistically, then re-sync the row
+        // from the server so it reconciles to "stopped" once the container is
+        // actually stopped (no manual Refresh needed).
         setLocalStatus(agent.agent_id, "stopping");
         setActionNotice(
           `Shutting down ${agent.agent_name || "agent"}…`,
           "success",
           3000,
         );
+        void resyncStatus(agent.agent_id);
       } catch (err) {
         setActionNotice(
           err instanceof Error ? err.message : "Failed to shut down agent.",
@@ -320,7 +432,7 @@ export function CloudAgentsSection() {
         setBusyId(null);
       }
     },
-    [setActionNotice, setLocalStatus],
+    [setActionNotice, setLocalStatus, resyncStatus],
   );
 
   const resumeAgent = useCallback(
@@ -331,12 +443,13 @@ export function CloudAgentsSection() {
         if (!res.success) {
           throw new Error("Start failed");
         }
-        setLocalStatus(agent.agent_id, "provisioning");
+        setLocalStatus(agent.agent_id, "resuming");
         setActionNotice(
           `Starting ${agent.agent_name || "agent"}…`,
           "success",
           3000,
         );
+        void resyncStatus(agent.agent_id);
       } catch (err) {
         setActionNotice(
           err instanceof Error ? err.message : "Failed to start agent.",
@@ -347,7 +460,7 @@ export function CloudAgentsSection() {
         setBusyId(null);
       }
     },
-    [setActionNotice, setLocalStatus],
+    [setActionNotice, setLocalStatus, resyncStatus],
   );
 
   const hasToken = Boolean(currentCloudToken());
@@ -403,12 +516,14 @@ export function CloudAgentsSection() {
           agents.map((agent) => {
             const isActive = agent.agent_id === activeId;
             const busy = busyId === agent.agent_id;
+            const waking = wakingId === agent.agent_id;
             const status = (agent.status || "").toLowerCase();
             const canSuspend = status === "running";
-            const canResume =
-              status === "stopped" ||
-              status === "sleeping" ||
-              status === "suspended";
+            const canResume = NON_RUNNING_STATES.has(status);
+            // A broken agent: surface WHY (error_message) instead of a bare
+            // status, so the user can tell a transient stop from a real fault.
+            const errored = ERROR_STATES.has(status);
+            const errorMessage = errored ? agent.error_message?.trim() : null;
             if (editingId === agent.agent_id) {
               return (
                 <div
@@ -460,13 +575,36 @@ export function CloudAgentsSection() {
                 icon={Bot}
                 label={agent.agent_name || agent.agent_id}
                 description={
-                  <span className="inline-flex items-center gap-2">
-                    {isActive ? "Active · this device" : null}
-                    <StatusBadge
-                      tone={statusToneForState(agent.status)}
-                      label={statusLabelForState(agent.status)}
-                      data-testid={`cloud-agent-status-${agent.agent_id}`}
-                    />
+                  <span className="flex flex-col gap-1">
+                    <span className="inline-flex items-center gap-2">
+                      {isActive ? "Active · this device" : null}
+                      {waking ? (
+                        <StatusBadge
+                          tone="warning"
+                          pulse
+                          label={`Waking ${agent.agent_name || agent.agent_id}…`}
+                          data-testid={`cloud-agent-status-${agent.agent_id}`}
+                        />
+                      ) : (
+                        <StatusBadge
+                          tone={
+                            errored
+                              ? "danger"
+                              : statusToneForState(agent.status)
+                          }
+                          label={statusLabelForState(agent.status)}
+                          data-testid={`cloud-agent-status-${agent.agent_id}`}
+                        />
+                      )}
+                    </span>
+                    {errorMessage ? (
+                      <span
+                        className="text-2xs text-destructive"
+                        data-testid={`cloud-agent-error-${agent.agent_id}`}
+                      >
+                        {errorMessage}
+                      </span>
+                    ) : null}
                   </span>
                 }
                 active={isActive}
@@ -482,9 +620,9 @@ export function CloudAgentsSection() {
                         variant="outline"
                         size="sm"
                         disabled={busy}
-                        onClick={() => switchTo(agent)}
+                        onClick={() => void switchTo(agent)}
                       >
-                        {busy ? "Switching…" : "Use"}
+                        {waking ? "Waking…" : busy ? "Switching…" : "Use"}
                       </Button>
                     )}
                     {canSuspend && (
