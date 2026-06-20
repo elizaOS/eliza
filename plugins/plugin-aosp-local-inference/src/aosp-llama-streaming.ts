@@ -39,7 +39,9 @@ import { logger } from "@elizaos/core";
  * Opaque pointer to a streaming-LLM session.  Numeric on `bun:ffi`
  * (returned as `bigint`); never inspected on the JS side.
  */
-export type AospLlmStreamHandle = bigint;
+// bun:ffi returns the `FFIType.ptr` stream handle as a number (it round-trips
+// to a bigint via `toBig` for the `usize` arg slots).
+export type AospLlmStreamHandle = number | bigint;
 
 /** Pointer to the parent `EliInferenceContext`. */
 export type AospInferenceContextHandle = bigint;
@@ -127,44 +129,52 @@ export interface AospStreamingLlmBinding {
  * `@elizaos/plugin-local-inference`'s `voice/ffi-bindings.ts`. `ctx` is the
  * `EliInferenceContext*`; stream handles round-trip as raw pointers (bigint).
  */
+/**
+ * bun:ffi marshals `FFIType.ptr` args/returns as a JS `number` and `usize`/`u64`
+ * as a `bigint`. The binding hands `T.ptr` args a number (`helpers.ptr` /
+ * `Number(ctx)`) and `usize` args a bigint (`toBig` / `BigInt`), so every word
+ * here is `number | bigint`.
+ */
+type FfiWord = number | bigint;
+
 export interface AospFusedLlmSymbols {
   eliza_inference_llm_stream_supported?: () => number;
   eliza_inference_llm_mtp_supported?: () => number;
   eliza_inference_llm_kv_quant_supported?: () => number;
   eliza_inference_llm_stream_open: (
-    ctx: bigint,
-    cfg: bigint,
-    outError: bigint,
-  ) => bigint;
+    ctx: FfiWord,
+    cfg: FfiWord,
+    outError: FfiWord,
+  ) => FfiWord;
   eliza_inference_llm_stream_prefill: (
-    stream: bigint,
-    tokens: bigint,
-    nTokens: bigint,
-    outError: bigint,
+    stream: FfiWord,
+    tokens: FfiWord,
+    nTokens: FfiWord,
+    outError: FfiWord,
   ) => number;
   eliza_inference_llm_stream_next: (
-    stream: bigint,
-    tokensOut: bigint,
-    tokensCap: bigint,
-    numTokensOut: bigint,
-    textOut: bigint,
-    textCap: bigint,
-    drafterDrafted: bigint,
-    drafterAccepted: bigint,
-    outError: bigint,
+    stream: FfiWord,
+    tokensOut: FfiWord,
+    tokensCap: FfiWord,
+    numTokensOut: FfiWord,
+    textOut: FfiWord,
+    textCap: FfiWord,
+    drafterDrafted: FfiWord,
+    drafterAccepted: FfiWord,
+    outError: FfiWord,
   ) => number;
-  eliza_inference_llm_stream_cancel: (stream: bigint) => number;
+  eliza_inference_llm_stream_cancel: (stream: FfiWord) => number;
   eliza_inference_llm_stream_save_slot?: (
-    stream: bigint,
-    filename: bigint,
-    outError: bigint,
+    stream: FfiWord,
+    filename: FfiWord,
+    outError: FfiWord,
   ) => number;
   eliza_inference_llm_stream_restore_slot?: (
-    stream: bigint,
-    filename: bigint,
-    outError: bigint,
+    stream: FfiWord,
+    filename: FfiWord,
+    outError: FfiWord,
   ) => number;
-  eliza_inference_llm_stream_close: (stream: bigint) => void;
+  eliza_inference_llm_stream_close: (stream: FfiWord) => void;
 }
 
 /**
