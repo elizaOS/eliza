@@ -45,6 +45,30 @@ export const embeddedWorkflows = workflowSchema.table(
   })
 );
 
+export const workflowRevisions = workflowSchema.table(
+  'workflow_revisions',
+  {
+    id: text('id').primaryKey(),
+    workflowId: text('workflow_id').notNull(),
+    versionId: text('version_id').notNull(),
+    name: text('name').notNull(),
+    active: boolean('active').default(false).notNull(),
+    workflow: jsonb('workflow').$type<WorkflowDefinition>().notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    capturedAt: text('captured_at').notNull(),
+    operation: text('operation').notNull(),
+  },
+  (table) => ({
+    workflowIdx: index('idx_workflow_revisions_workflow_id').on(table.workflowId),
+    versionIdx: uniqueIndex('idx_workflow_revisions_workflow_version').on(
+      table.workflowId,
+      table.versionId
+    ),
+    capturedAtIdx: index('idx_workflow_revisions_captured_at').on(table.capturedAt),
+  })
+);
+
 export const embeddedExecutions = workflowSchema.table(
   'embedded_executions',
   {

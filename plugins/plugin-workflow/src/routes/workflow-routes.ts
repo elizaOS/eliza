@@ -247,6 +247,33 @@ async function handleGet(
   sendJson(ctx, 200, await service.getWorkflow(id));
 }
 
+async function handleListRevisions(
+  ctx: WorkflowRouteContext,
+  service: WorkflowService,
+  id: string
+): Promise<void> {
+  const url = new URL(`http://x${ctx.req.url ?? ''}`);
+  const rawLimit = url.searchParams.get('limit');
+  const limit = Math.min(Math.max(1, Number(rawLimit) || 20), 50);
+  const [workflow, revisions] = await Promise.all([
+    service.getWorkflow(id),
+    service.listWorkflowRevisions(id, limit),
+  ]);
+  sendJson(ctx, 200, {
+    currentVersionId: workflow.versionId,
+    revisions,
+  });
+}
+
+async function handleRestoreRevision(
+  ctx: WorkflowRouteContext,
+  service: WorkflowService,
+  id: string,
+  versionId: string
+): Promise<void> {
+  sendJson(ctx, 200, await service.restoreWorkflowRevision(id, versionId));
+}
+
 async function handleGenerate(ctx: WorkflowRouteContext, service: WorkflowService): Promise<void> {
   const body = await readJsonBody(ctx.req, ctx.res);
   if (!isRecord(body)) {
@@ -465,6 +492,23 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
     if (id && method === 'GET' && path === `/workflows/${encodeURIComponent(id)}`) {
       await handleGet(ctx, service, id);
       return;
+    }
+    if (id && method === 'GET' && path === `/workflows/${encodeURIComponent(id)}/revisions`) {
+      await handleListRevisions(ctx, service, id);
+      return;
+    }
+    if (
+      id &&
+      method === 'POST' &&
+      path.startsWith(`/workflows/${encodeURIComponent(id)}/revisions/`)
+    ) {
+      const prefix = `/workflows/${encodeURIComponent(id)}/revisions/`;
+      const suffix = path.slice(prefix.length);
+      const versionId = suffix.endsWith('/restore') ? suffix.slice(0, -'/restore'.length) : '';
+      if (versionId) {
+        await handleRestoreRevision(ctx, service, id, decodeURIComponent(versionId));
+        return;
+      }
     }
     if (id && method === 'PUT' && path === `/workflows/${encodeURIComponent(id)}`) {
       await handleWrite(ctx, service, id);

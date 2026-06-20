@@ -22,7 +22,9 @@ vi.mock("../../api", () => ({
     deactivateWorkflowDefinition: vi.fn(),
     generateWorkflowDefinition: vi.fn(),
     getWorkflowExecutions: vi.fn(),
+    getWorkflowRevisions: vi.fn(),
     runWorkflowDefinition: vi.fn(),
+    restoreWorkflowRevision: vi.fn(),
     updateWorkflowDefinition: vi.fn(),
   },
 }));
@@ -33,7 +35,9 @@ const clientMock = client as unknown as {
   deactivateWorkflowDefinition: ReturnType<typeof vi.fn>;
   generateWorkflowDefinition: ReturnType<typeof vi.fn>;
   getWorkflowExecutions: ReturnType<typeof vi.fn>;
+  getWorkflowRevisions: ReturnType<typeof vi.fn>;
   runWorkflowDefinition: ReturnType<typeof vi.fn>;
+  restoreWorkflowRevision: ReturnType<typeof vi.fn>;
   updateWorkflowDefinition: ReturnType<typeof vi.fn>;
 };
 
@@ -54,6 +58,7 @@ function workflowFixture(): WorkflowDefinition {
     id: "workflow-1",
     name: "Cerebras review workflow",
     active: false,
+    versionId: "version-current",
     nodes: [
       {
         id: "manual",
@@ -128,6 +133,10 @@ function executionFixture(
 beforeEach(() => {
   vi.clearAllMocks();
   clientMock.getWorkflowExecutions.mockResolvedValue([]);
+  clientMock.getWorkflowRevisions.mockResolvedValue({
+    currentVersionId: "version-current",
+    revisions: [],
+  });
   clientMock.runWorkflowDefinition.mockResolvedValue(executionFixture());
 });
 
@@ -174,5 +183,45 @@ describe("WorkflowEditor", () => {
     expect(
       await screen.findByRole("button", { name: /run now/i }),
     ).toBeTruthy();
+  });
+
+  it("restores the previous saved workflow version from history", async () => {
+    const restored = {
+      ...workflowFixture(),
+      name: "Restored workflow",
+      versionId: "version-restored",
+    };
+    clientMock.getWorkflowRevisions.mockResolvedValue({
+      currentVersionId: "version-current",
+      revisions: [
+        {
+          id: "revision-1",
+          workflowId: "workflow-1",
+          versionId: "version-previous",
+          name: "Previous workflow",
+          active: false,
+          createdAt: "2026-06-19T19:00:00.000Z",
+          updatedAt: "2026-06-19T19:00:00.000Z",
+          capturedAt: "2026-06-19T19:05:00.000Z",
+          operation: "update",
+        },
+      ],
+    });
+    clientMock.restoreWorkflowRevision.mockResolvedValue(restored);
+
+    render(<WorkflowEditor initial={workflowFixture()} />);
+
+    const restoreButton = await screen.findByRole("button", {
+      name: /restore previous/i,
+    });
+    fireEvent.click(restoreButton);
+
+    await waitFor(() => {
+      expect(clientMock.restoreWorkflowRevision).toHaveBeenCalledWith(
+        "workflow-1",
+        "version-previous",
+      );
+    });
+    expect(await screen.findByText("Restored workflow")).toBeTruthy();
   });
 });

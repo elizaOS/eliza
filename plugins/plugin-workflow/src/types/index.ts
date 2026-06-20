@@ -111,6 +111,27 @@ export interface WorkflowDefinitionResponse extends WorkflowDefinition {
   versionId: string;
 }
 
+export type WorkflowRevisionOperation =
+  | 'update'
+  | 'activate'
+  | 'deactivate'
+  | 'tags'
+  | 'restore'
+  | 'delete';
+
+export interface WorkflowRevision {
+  id: string;
+  workflowId: string;
+  versionId: string;
+  name: string;
+  active: boolean;
+  workflow: WorkflowDefinition;
+  createdAt: string;
+  updatedAt: string;
+  capturedAt: string;
+  operation: WorkflowRevisionOperation;
+}
+
 export interface WorkflowCredential {
   id: string;
   name: string;
