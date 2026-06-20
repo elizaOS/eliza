@@ -243,6 +243,22 @@ describe("useShellController — voice capture routing", () => {
     });
   });
 
+  it("a spoken 'start transcription' in converse flips into transcription mode and is not sent", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    expect(result.current.handsFree).toBe(true);
+    appMock.value.sendChatText.mockClear();
+
+    act(() => fireFinalTranscript("ok start transcription"));
+    // The command flips INTO record-only transcription mode (disabling
+    // hands-free) and is NOT sent as a normal conversational turn.
+    expect(result.current.transcriptionMode).toBe(true);
+    expect(result.current.handsFree).toBe(false);
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+  });
+
   it("does NOT respond to pure thinking-noise in always-on (shouldRespond gate)", async () => {
     const { result } = renderHook(() => useShellController());
     await act(async () => {

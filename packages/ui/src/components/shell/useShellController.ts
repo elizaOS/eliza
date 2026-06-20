@@ -13,6 +13,7 @@ import { TurnAggregator } from "../../voice/end-of-turn";
 import { shouldRespondToVoiceTurn } from "../../voice/should-respond";
 import {
   isTranscriptionExitPhrase,
+  isTranscriptionStartPhrase,
   stripExitPhrase,
 } from "../../voice/transcription-exit";
 import {
@@ -197,6 +198,10 @@ export function useShellController(): ShellController {
   const [transcriptionMode, setTranscriptionMode] = React.useState(false);
   const transcriptionModeRef = React.useRef(false);
   transcriptionModeRef.current = transcriptionMode;
+  // Forward handle to `toggleTranscriptionMode` (defined far below) so the
+  // converse capture loop can flip INTO transcription on a spoken "start
+  // transcription" without a definition-order/closure problem.
+  const toggleTranscriptionModeRef = React.useRef<() => void>(() => {});
   // The continuous-chat-mode persisted before hands-free engaged, restored when
   // the user taps the mic off so a deliberate ChatView "vad-gated" choice isn't
   // clobbered to "off". Defaults to "off" — tapping the mic off means voice off.
@@ -454,6 +459,17 @@ export function useShellController(): ShellController {
             setTranscript("");
             onDictatedTextRef.current?.(text);
           } else if (aggregator) {
+            // A spoken "start transcription" flips INTO long-form record-only
+            // mode instead of being sent as a normal turn. (Exit is handled
+            // above once already in transcription mode.)
+            if (
+              !transcriptionModeRef.current &&
+              isTranscriptionStartPhrase(text)
+            ) {
+              setTranscript("");
+              toggleTranscriptionModeRef.current();
+              return;
+            }
             lastBackend = segment.backend;
             const committed = aggregator.addFinal(text);
             // Keep the held turn visible while we wait for the speaker to
@@ -636,6 +652,9 @@ export function useShellController(): ShellController {
       startCapture("transcription");
     }
   }, [startCapture, stopCapture, voiceOutput]);
+  // Keep the forward ref current so the converse capture loop (defined above)
+  // can flip into transcription on a spoken start phrase.
+  toggleTranscriptionModeRef.current = toggleTranscriptionMode;
 
   // Transcription re-listen loop: a one-shot capture backend (local-inference
   // auto-stop on silence) ends after each utterance — re-open it so long-form

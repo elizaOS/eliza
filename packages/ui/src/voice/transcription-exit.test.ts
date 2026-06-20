@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isTranscriptionExitPhrase,
+  isTranscriptionStartPhrase,
   stripExitPhrase,
 } from "./transcription-exit";
 
@@ -44,6 +45,32 @@ describe("isTranscriptionExitPhrase", () => {
         "so today I want to talk about the quarterly plan",
       ),
     ).toBe(false);
+  });
+});
+
+describe("isTranscriptionStartPhrase", () => {
+  it("matches explicit start phrases (case/punctuation-insensitive)", () => {
+    for (const p of [
+      "start transcription",
+      "Start Transcription Mode.",
+      "ok begin transcribing now",
+      "enter transcription mode please",
+      "start recording",
+      "begin recording this",
+    ]) {
+      expect(isTranscriptionStartPhrase(p)).toBe(true);
+    }
+  });
+
+  it("does NOT fire on a bare 'start' or ordinary speech", () => {
+    expect(isTranscriptionStartPhrase("start")).toBe(false);
+    expect(isTranscriptionStartPhrase("let's start over")).toBe(false);
+    expect(isTranscriptionStartPhrase("start the car")).toBe(false);
+    expect(
+      isTranscriptionStartPhrase("so today I want to talk about the plan"),
+    ).toBe(false);
+    expect(isTranscriptionStartPhrase("")).toBe(false);
+    expect(isTranscriptionStartPhrase(null)).toBe(false);
   });
 });
 
