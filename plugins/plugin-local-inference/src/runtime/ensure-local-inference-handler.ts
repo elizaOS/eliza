@@ -65,11 +65,6 @@ import {
 } from "../services/structured-output";
 import type { AgentModelSlot } from "../services/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
-import { VoiceStartupError } from "../services/voice/errors";
-import {
-	AsrUnavailableError,
-	createStreamingTranscriber,
-} from "../services/voice/transcriber";
 import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
 import { EMBEDDING_PRESETS } from "./embedding-presets";
 import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
@@ -843,54 +838,19 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 		: new DOMException("Aborted", "AbortError");
 }
 
-async function transcribeWithStandaloneAsr(
-	audio: TranscriptionAudio,
-	signal: AbortSignal | undefined,
-): Promise<string> {
-	const transcriber = createStreamingTranscriber({
-		prefer: "whisper-cpp",
-		allowWhisperCpp: true,
-	});
-	try {
-		throwIfAborted(signal);
-		transcriber.feed({
-			pcm: audio.pcm,
-			sampleRate: audio.sampleRate,
-			timestampMs: Date.now(),
-		});
-		throwIfAborted(signal);
-		const update = await transcriber.flush();
-		throwIfAborted(signal);
-		return update.partial.trim();
-	} finally {
-		transcriber.dispose();
-	}
-}
-
-function shouldRetryWithStandaloneAsr(error: unknown): boolean {
-	return (
-		error instanceof VoiceStartupError || error instanceof AsrUnavailableError
-	);
-}
-
 function makeTranscriptionHandler(): TranscriptionHandler {
 	return async (_runtime, params) => {
 		const signal = extractTranscriptionSignal(params);
 		throwIfAborted(signal);
 		const audio = extractTranscriptionAudio(params);
-		try {
-			await localInferenceEngine.ensureActiveBundleVoiceReady();
-			throwIfAborted(signal);
-			const transcript = await localInferenceEngine.transcribePcm(
-				audio,
-				signal,
-			);
-			throwIfAborted(signal);
-			return transcript;
-		} catch (error) {
-			if (!shouldRetryWithStandaloneAsr(error)) throw error;
-			return transcribeWithStandaloneAsr(audio, signal);
-		}
+		// The fused libelizainference ASR runtime is the sole on-device
+		// transcriber. A startup/availability failure propagates (AGENTS.md §3) —
+		// there is no whisper.cpp second attempt and no silent empty transcript.
+		await localInferenceEngine.ensureActiveBundleVoiceReady();
+		throwIfAborted(signal);
+		const transcript = await localInferenceEngine.transcribePcm(audio, signal);
+		throwIfAborted(signal);
+		return transcript;
 	};
 }
 
@@ -1384,8 +1344,8 @@ export async function ensureLocalInferenceHandler(
 		// TRANSCRIPTION is registered default-on at the local-inference floor
 		// priority (0). It is the last-resort handler: any cloud / other-plugin
 		// TRANSCRIPTION handler registers above 0 and wins. When the handler
-		// does run, it drives the streaming ASR adapter chain (fused
-		// Qwen3-ASR via libelizainference → whisper.cpp interim →
+		// does run, it drives the fused libelizainference ASR runtime — the sole
+		// on-device transcriber (Qwen3-ASR streaming → fused batch interim →
 		// AsrUnavailableError) via the engine's armed voice bridge — see
 		// makeTranscriptionHandler / EngineVoiceBridge.createStreamingTranscriber.
 		// (The old ELIZA_LOCAL_TRANSCRIPTION env gate is removed — voice is a

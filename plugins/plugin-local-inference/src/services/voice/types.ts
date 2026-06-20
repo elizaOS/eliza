@@ -8,8 +8,7 @@ export interface TextToken {
 	 * id the text model would assign — a downstream in-process handoff can
 	 * inject `id` directly into the text KV cache without detokenize →
 	 * retokenize. Absent for producers that only have surface text (the
-	 * whisper.cpp interim adapter — a different tokenizer; the word-chunk
-	 * approximation in `splitTranscriptToTokens`).
+	 * word-chunk approximation in `splitTranscriptToTokens`).
 	 */
 	id?: number;
 }
@@ -259,8 +258,8 @@ export interface VoiceTurnMetadata {
  * VAD gating + barge-in word-confirm (`voice/vad.ts`, `voice/barge-in.ts`),
  * the turn controller / speculative-on-pause path, and the overlapped
  * `VoicePipeline` (`voice/pipeline.ts`). The `StreamingTranscriber` below
- * is the single ASR contract; the two adapters (fused Qwen3-ASR via
- * libelizainference, interim whisper.cpp) implement it in
+ * is the single ASR contract; the two fused adapters (fused Qwen3-ASR
+ * streaming and fused batch, both via libelizainference) implement it in
  * `voice/transcriber.ts`. It consumes the canonical `PcmFrame` (defined
  * below in the audio front-end section) off a `MicSource` and is gated by
  * the `VadEvent` stream. The `VoicePipeline` drives the same contract as a
@@ -285,9 +284,9 @@ export interface TranscriptUpdate {
 	turn?: VoiceTurnMetadata;
 	/**
 	 * Text-model token ids for `partial`, when the backend can supply them
-	 * cheaply (fused Qwen3-ASR shares the text vocabulary). Absent for the
-	 * whisper.cpp interim adapter (different tokenizer — re-tokenization is
-	 * the LLM stage's job there).
+	 * cheaply (fused Qwen3-ASR shares the text vocabulary). Absent when the
+	 * decoder reports surface text only (re-tokenization is the LLM stage's
+	 * job there).
 	 */
 	tokens?: number[];
 	/**
@@ -679,8 +678,7 @@ export type VoiceSchedulerTelemetryListener = (
 
 // ---------------------------------------------------------------------------
 // Shared interfaces extracted here to break circular dependencies between
-// vad.ts ↔ vad-ggml.ts, wake-word.ts ↔ wake-word-ggml.ts, and
-// transcriber.ts ↔ openvino-whisper-asr.ts.
+// vad.ts ↔ vad-ggml.ts and wake-word.ts ↔ wake-word-ggml.ts.
 // ---------------------------------------------------------------------------
 
 /** Minimal VAD model contract consumed by SileroVadGgml and qwen-toolkit adapter. */
@@ -698,6 +696,3 @@ export interface WakeWordModel {
 	scoreFrame(frame: Float32Array): Promise<number>;
 	reset(): void;
 }
-
-/** Streaming PCM decoder function type consumed by OpenVinoWhisperAsr. */
-export type StreamingPcmDecoder = (pcm16k: Float32Array) => Promise<string>;

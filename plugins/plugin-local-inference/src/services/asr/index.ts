@@ -85,8 +85,8 @@ export interface CreateAsrCapabilityRegistrationOptions {
 	/**
 	 * Best-effort RAM footprint estimate for the loaded weights. The
 	 * arbiter only uses this for telemetry; eviction is by priority. The
-	 * default (600 MB) matches Q4_K_M Qwen3-ASR-0.6B; whisper.cpp large-v3
-	 * loaders SHOULD pass ~1500.
+	 * default (600 MB) matches Q4_K_M Qwen3-ASR-0.6B; larger ASR models
+	 * SHOULD pass a higher estimate.
 	 */
 	estimatedMb?: number;
 }

@@ -1052,8 +1052,8 @@ export class LocalInferenceEngine {
 	 *   - a `MicSource` (caller-supplied, or `DesktopMicSource` under Electrobun),
 	 *   - a Silero v5 GGML VAD (caller-supplied detector, or `createSileroVadDetector()` — runs through libelizainference's native VAD ABI),
 	 *   - a working ASR (the bridge's `createStreamingTranscriber` throws
-	 *     `AsrUnavailableError` when neither the fused decoder nor whisper.cpp
-	 *     is available),
+	 *     `AsrUnavailableError` when the fused decoder is unavailable — the
+	 *     fused build is the sole on-device ASR runtime),
 	 *   - a real OmniVoice TTS backend on the bridge (the `StubOmniVoiceBackend`
 	 *     is rejected — it emits zeros).
 	 * Any missing piece fails loudly with the specific component named.
@@ -1189,9 +1189,9 @@ export class LocalInferenceEngine {
 					: undefined,
 			}));
 
-		// ASR — throws `AsrUnavailableError` when neither the fused decoder nor
-		// whisper.cpp is present. Gated on the VAD so silent frames aren't
-		// decoded.
+		// ASR — throws `AsrUnavailableError` when the fused decoder is
+		// unavailable (the fused build is the sole on-device ASR runtime). Gated
+		// on the VAD so silent frames aren't decoded.
 		const transcriber = bridge.createStreamingTranscriber({ vad });
 		// Voice Wave 2 (2026-05-14): tier-aware turn-detector revision selection.
 		// `0_8b` / `2b` ship the ~66 MB EN-only SmolLM2-135M distill

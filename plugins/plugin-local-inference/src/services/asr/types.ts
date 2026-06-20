@@ -14,15 +14,12 @@
  *      per-platform path:
  *
  *        - `fused`           — `eliza_inference_asr_*` ABI (Qwen3-ASR
- *          inside the fused libelizainference). Linux / macOS / Windows
- *          desktop, AOSP system app via the same fused build.
- *        - `whisper-cpp`     — whisper.cpp via the libwhisper_eliza_adapter
- *          flat C ABI, loaded through bun:ffi. Available on every arch we
- *          ship to (x86_64, arm64, riscv64); replaces the previous
- *          OpenVINO Python-worker path.
- *        - `coreml`          — Capacitor bridge to a Core ML Whisper
+ *          inside the fused libelizainference). The sole on-device ASR
+ *          runtime: Linux / macOS / Windows desktop, AOSP system app via
+ *          the same fused build.
+ *        - `coreml`          — Capacitor bridge to a Core ML ASR
  *          model on iOS (unavailable until the bridge ships).
- *        - `aosp-ffi`        — bun:ffi shim around the AOSP NDK Whisper /
+ *        - `aosp-ffi`        — bun:ffi shim around the AOSP NDK
  *          Qwen-ASR JNI handle (unavailable until the AOSP fused
  *          ASR symbols are exported).
  *        - `fake`            — deterministic in-process backend used by tests.
@@ -80,7 +77,7 @@ export interface AsrLoadArgs {
 
 /** Backend contract. Every per-platform ASR runtime implements this. */
 export interface AsrBackend {
-	/** Stable identifier for telemetry / errors (`"fused"`, `"whisper-cpp"`, `"coreml"`, ...). */
+	/** Stable identifier for telemetry / errors (`"fused"`, `"coreml"`, `"aosp-ffi"`, ...). */
 	readonly id: string;
 	/**
 	 * Whether this backend supports the request as-is. False → the arbiter

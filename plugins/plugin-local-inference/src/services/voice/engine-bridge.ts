@@ -2038,8 +2038,8 @@ async function resolveDiarizer(
  * No-op lifecycle loaders for the Kokoro-only bridge. ORT owns the
  * model memory; nothing to mmap-acquire or evict. ASR is not served
  * from this path — callers that need ASR construct
- * `createStreamingTranscriber` directly (the chain in `transcriber.ts`
- * supports `openvino-whisper` and `whisper.cpp` without a bundle).
+ * `createStreamingTranscriber` directly (the fused-only chain in
+ * `transcriber.ts`: fused streaming → fused batch → AsrUnavailableError).
  */
 function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
 	const noopMmap = (id: string): MmapRegionHandle => ({

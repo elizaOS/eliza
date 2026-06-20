@@ -1,32 +1,9 @@
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { ModelType } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CompatRuntimeState } from "./compat-helpers";
 import { handleLocalInferenceAsrRoute } from "./local-inference-asr-route";
-
-const whisperState = vi.hoisted(() => ({
-	runtime: null as null | {
-		libraryPath: string;
-		modelPath: string;
-		language: string;
-		translate: boolean;
-		nThreads: number;
-		useGpu: boolean;
-	},
-}));
-
-const transcriberState = vi.hoisted(() => ({
-	createStreamingTranscriber: vi.fn(),
-}));
-
-vi.mock("../services/voice/whisper-cpp-asr", () => ({
-	resolveWhisperCppRuntime: vi.fn(() => whisperState.runtime),
-}));
-
-vi.mock("../services/voice/transcriber", () => ({
-	createStreamingTranscriber: transcriberState.createStreamingTranscriber,
-}));
 
 function wavBytes(): Uint8Array {
 	const pcm = new Int16Array([0, 900, -900, 0]);
@@ -108,23 +85,14 @@ function fakeRes(): {
 }
 
 describe("local inference ASR route", () => {
-	beforeEach(() => {
-		whisperState.runtime = null;
-		transcriberState.createStreamingTranscriber.mockReset();
-	});
-
-	it("reports packaged Whisper readiness without starting transcription", async () => {
-		whisperState.runtime = {
-			libraryPath: "/bundle/voice/whisper/libwhisper_eliza_adapter.dylib",
-			modelPath: "/bundle/voice/whisper/ggml-base.en.bin",
-			language: "en",
-			translate: false,
-			nThreads: 4,
-			useGpu: true,
-		};
+	it("reports readiness off the registered fused TRANSCRIPTION handler", async () => {
+		const getModel = vi.fn(() => () => "transcript");
 		const useModel = vi.fn();
 		const state: CompatRuntimeState = {
-			current: { useModel } as unknown as CompatRuntimeState["current"],
+			current: {
+				getModel,
+				useModel,
+			} as unknown as CompatRuntimeState["current"],
 		};
 		const out = fakeRes();
 
@@ -141,53 +109,33 @@ describe("local inference ASR route", () => {
 		expect(out.status()).toBe(200);
 		expect(out.bodyJson()).toEqual({
 			ready: true,
-			provider: "whisper-cpp",
+			provider: "local-inference",
 		});
+		expect(getModel).toHaveBeenCalledWith(ModelType.TRANSCRIPTION);
 		expect(useModel).not.toHaveBeenCalled();
 	});
 
-	it("uses packaged Whisper before runtime TRANSCRIPTION for first-run voice", async () => {
-		const feed = vi.fn();
-		const flush = vi
-			.fn()
-			.mockResolvedValue({ partial: "hello packaged whisper", isFinal: true });
-		const dispose = vi.fn();
-		transcriberState.createStreamingTranscriber.mockReturnValue({
-			feed,
-			flush,
-			dispose,
-		});
-		whisperState.runtime = {
-			libraryPath: "/bundle/voice/whisper/libwhisper_eliza_adapter.dylib",
-			modelPath: "/bundle/voice/whisper/ggml-base.en.bin",
-			language: "en",
-			translate: false,
-			nThreads: 4,
-			useGpu: true,
-		};
-		const useModel = vi.fn();
+	it("reports not-ready when no TRANSCRIPTION handler is registered", async () => {
+		const getModel = vi.fn(() => undefined);
 		const state: CompatRuntimeState = {
-			current: { useModel } as unknown as CompatRuntimeState["current"],
+			current: {
+				getModel,
+			} as unknown as CompatRuntimeState["current"],
 		};
 		const out = fakeRes();
 
 		const handled = await handleLocalInferenceAsrRoute(
-			fakeReq(wavBytes()),
+			fakeReq(undefined, {
+				method: "GET",
+				url: "/api/asr/local-inference/status",
+			}),
 			out.res,
 			state,
 		);
 
 		expect(handled).toBe(true);
-		expect(transcriberState.createStreamingTranscriber).toHaveBeenCalledWith({
-			prefer: "whisper-cpp",
-			allowWhisperCpp: true,
-		});
-		expect(feed).toHaveBeenCalledOnce();
-		expect(flush).toHaveBeenCalledOnce();
-		expect(dispose).toHaveBeenCalledOnce();
-		expect(useModel).not.toHaveBeenCalled();
 		expect(out.status()).toBe(200);
-		expect(out.bodyJson()).toEqual({ text: "hello packaged whisper" });
+		expect(out.bodyJson()).toEqual({ ready: false, provider: null });
 	});
 
 	it("falls through missing providers and returns a transcript", async () => {

@@ -187,7 +187,7 @@ export class GgmlSileroVad {
 
 	/** True when the libelizainference build exports the native VAD ABI and
 	 *  advertises support. False on ABI-only builds or when the C++ side has
-	 *  not been linked against the whisper-style `whisper_vad_*` runtime. */
+	 *  not been linked against the GGML Silero VAD runtime. */
 	static isSupported(ffi: ElizaInferenceFfi | null | undefined): boolean {
 		if (!ffi || typeof ffi.vadSupported !== "function") return false;
 		return ffi.vadSupported();
@@ -203,7 +203,7 @@ export class GgmlSileroVad {
 		if (!GgmlSileroVad.isSupported(opts.ffi)) {
 			throw new VadUnavailableError(
 				"ffi-missing",
-				"[voice] Native GGML Silero VAD is not supported by this libelizainference build. Rebuild with the whisper-style VAD runtime linked in (eliza_inference_vad_* symbols).",
+				"[voice] Native GGML Silero VAD is not supported by this libelizainference build. Rebuild with the GGML VAD runtime linked in (eliza_inference_vad_* symbols).",
 			);
 		}
 		if (
