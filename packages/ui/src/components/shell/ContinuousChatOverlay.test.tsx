@@ -625,7 +625,13 @@ describe("ContinuousChatOverlay", () => {
     const pill = screen.getByTestId("chat-pill");
     fireEvent.click(pill);
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
-    expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
+    const textarea = screen.getByTestId("chat-composer-textarea");
+    expect(textarea).toBeTruthy();
+    // The pill tap must focus the composer (so iOS raises the keyboard on the
+    // first tap) and clear the `inert` it carried while pilled — without that,
+    // the composer silently refuses keyboard input until a second tap.
+    expect(document.activeElement).toBe(textarea);
+    expect(screen.getByTestId("chat-content").hasAttribute("inert")).toBe(false);
   });
 
   it("flicks UP from the pill to recover the input", () => {

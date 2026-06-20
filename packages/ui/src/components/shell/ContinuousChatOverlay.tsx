@@ -831,6 +831,16 @@ export function ContinuousChatOverlay({
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLFieldSetElement>(null);
   const threadRef = React.useRef<HTMLDivElement>(null);
+  // The composer content (textarea + thread). Held so we can imperatively clear
+  // its `inert` (set while pilled) the instant the pill is tapped open, before
+  // React re-renders — iOS only raises the keyboard for a focus() that lands on
+  // a non-inert element synchronously inside the originating tap gesture.
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  // Set for one focus() when we open the pill to the bare input bar: that focus
+  // is only there to raise the iOS keyboard and must NOT trip the focus→expand
+  // that the normal "tap the visible composer" path relies on (which would
+  // fling a history thread open to half instead of resting on the input bar).
+  const suppressExpandOnFocusRef = React.useRef(false);
   const focusThreadRef = React.useRef(false);
   // Recomputed only when the thread changes — NOT on every drag/draft re-render.
   // Filter empty turns, then keep only the most recent window (cap DOM nodes).
@@ -1629,6 +1639,18 @@ export function ContinuousChatOverlay({
     if (reduce) openProgress.set(1);
     else animate(openProgress, 1, OPEN_SPRING);
     detentHaptic();
+    // Raise the keyboard on the SAME tap that opens the pill. While pilled, the
+    // composer content is `inert`, and React only clears that on the next
+    // render — too late for iOS WebKit, which honors focus() only synchronously
+    // inside the originating user gesture AND only on a non-inert element. So
+    // clear inert imperatively now and focus immediately; otherwise the first
+    // tap opens a composer that silently refuses keyboard input until a second
+    // tap (the reported "chat input doesn't accept text on iOS" bug). Rest on
+    // the bare input bar — suppress the focus→expand so an existing history
+    // thread doesn't fling open to half on what should be a "type here" tap.
+    contentRef.current?.removeAttribute("inert");
+    suppressExpandOnFocusRef.current = true;
+    inputRef.current?.focus();
   }, [openProgress, reduce]);
 
   // --- Pull gesture --------------------------------------------------------
@@ -2091,6 +2113,7 @@ export function ContinuousChatOverlay({
               from pointer, tab order, and the a11y tree) so it can't be reached
               behind the pill capsule. */}
           <motion.div
+            ref={contentRef}
             data-testid="chat-content"
             inert={pilled || undefined}
             // overflow-hidden + the live radius clips the sheen/thread to the
@@ -2405,7 +2428,13 @@ export function ContinuousChatOverlay({
                 }}
                 onFocus={() => {
                   setComposerFocused(true);
-                  expand();
+                  // A pill-open focus only raises the keyboard; it must not
+                  // expand a history thread (see suppressExpandOnFocusRef).
+                  if (suppressExpandOnFocusRef.current) {
+                    suppressExpandOnFocusRef.current = false;
+                  } else {
+                    expand();
+                  }
                 }}
                 onBlur={() => setComposerFocused(false)}
                 onPaste={(e) => {
