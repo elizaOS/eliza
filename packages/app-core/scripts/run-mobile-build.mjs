@@ -786,6 +786,20 @@ export function applyIosAppIdentity({
       "WebsiteBlockerContentExtension",
       "ActionRequestHandler.swift",
     ),
+    // The DeviceActivity extensions hardcode group.ai.elizaos.app in their
+    // template entitlements; without rewriting them to the app's group, a
+    // non-eliza branded full-team device build fails codesign with
+    // "provisioning profile doesn't support the group.ai.elizaos.app App Group".
+    path.join(
+      "App",
+      "DeviceActivityMonitorExtension",
+      "DeviceActivityMonitorExtension.entitlements",
+    ),
+    path.join(
+      "App",
+      "DeviceActivityReportExtension",
+      "DeviceActivityReportExtension.entitlements",
+    ),
   ]) {
     const filePath = path.join(iosAppRoot, relPath);
     if (
