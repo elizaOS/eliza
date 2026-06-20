@@ -635,6 +635,17 @@ export function useFirstRunController(): FirstRunController {
             label: apiBase,
             apiBase,
           });
+          // Persist the remote as the ACTIVE SERVER too (not just an agent
+          // profile). After the user enters the code, handlePairingSubmit →
+          // persistPairedToken attaches the minted token to the active server
+          // and reloads; without an active server here that reload boots into
+          // fresh onboarding instead of the now-paired remote agent.
+          savePersistedActiveServer({
+            id: `remote:${apiBase}`,
+            kind: "remote",
+            label: apiBase,
+            apiBase,
+          });
           persistMobileRuntimeModeForServerTarget("remote");
           setState("firstRunRuntimeTarget", "remote");
           setState("firstRunRemoteApiBase", apiBase);
