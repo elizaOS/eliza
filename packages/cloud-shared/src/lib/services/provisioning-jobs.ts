@@ -13,7 +13,7 @@
  * - agent_restore: Restore from backup
  */
 
-import { and, desc, eq, type SQL, sql } from "drizzle-orm";
+import { and, desc, eq, ne, type SQL, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
@@ -218,6 +218,10 @@ export interface AgentSnapshotJobResult {
   sizeBytes?: number;
   createdAt?: string;
   error?: string;
+  /** True when an auto snapshot was a terminal no-op (agent had no live state). */
+  skipped?: boolean;
+  /** Human-readable reason for a skip (e.g. "Sandbox is not running"). */
+  reason?: string;
 }
 
 function agentProvisionJobDataToRecord(data: AgentProvisionJobData): Record<string, unknown> {
@@ -809,6 +813,34 @@ export class ProvisioningJobService {
             updated_at: new Date(),
           })
           .where(eq(agentSandboxes.id, params.agentId));
+
+        // Cancel any OTHER lifecycle jobs still queued for this agent. Delete
+        // wins: a pending restart/wake/resume/etc. that runs after the row is
+        // flipped to deletion_pending (or deleted) would either re-provision a
+        // container we are tearing down or fail noisily. Marking them
+        // `cancelled` (a terminal status claimPendingJobs/recoverStaleJobs
+        // never touch) drops them cleanly and keeps them auditable. The
+        // agent_delete row itself is inserted right after this and is excluded
+        // by type, so it is never self-cancelled.
+        const cancelled = await tx
+          .update(jobs)
+          .set({ status: "cancelled", updated_at: new Date() })
+          .where(
+            and(
+              eq(jobs.organization_id, params.organizationId),
+              eq(jobs.agent_id, params.agentId),
+              ne(jobs.type, JOB_TYPES.AGENT_DELETE),
+              sql`${jobs.status} IN ('pending', 'in_progress')`,
+            ),
+          )
+          .returning({ id: jobs.id });
+        if (cancelled.length > 0) {
+          logger.info("[provisioning-jobs] Cancelled pending jobs superseded by agent_delete", {
+            agentId: params.agentId,
+            orgId: params.organizationId,
+            cancelledCount: cancelled.length,
+          });
+        }
       },
     });
   }
@@ -1182,6 +1214,12 @@ export class ProvisioningJobService {
         and(
           eq(agentSandboxes.status, "running"),
           sql`${agentSandboxes.pool_status} IS NULL`,
+          // Only enqueue agents that are actually reachable. A `running` row with
+          // no bridge_url (shared-runtime / web-only agents, or a row whose
+          // bridge was cleared) has no live state endpoint to snapshot — the
+          // snapshot would just fail with "Sandbox is not running" and burn
+          // retries. Requiring bridge_url keeps those out of the queue entirely.
+          sql`${agentSandboxes.bridge_url} IS NOT NULL`,
           sql`(${agentSandboxes.last_backup_at} IS NULL OR ${agentSandboxes.last_backup_at} < ${cutoff})`,
         ),
       )
@@ -1625,6 +1663,34 @@ export class ProvisioningJobService {
     }
   }
 
+  /**
+   * Resolve a lifecycle job whose target agent no longer exists as a terminal
+   * no-op instead of retrying to exhaustion. Once the agent row is gone (e.g. a
+   * concurrent agent_delete completed first, or a stale in_progress job was
+   * recovered after deletion), there is nothing left to suspend/resume/restart
+   * /snapshot — throwing would just burn three attempts and land the job in
+   * `failed`, masking the real (benign) cause. Returns true when it claimed the
+   * job as completed; the caller must return early. Any other failure flows
+   * through the normal retry path.
+   */
+  private async completeIfAgentGone(
+    job: Job,
+    result: { success: boolean; error?: string },
+    agentId: string,
+  ): Promise<boolean> {
+    if (result.success || result.error !== "Agent not found") return false;
+    await jobsRepository.updateStatus(job.id, "completed", {
+      result: { cloudAgentId: agentId, skipped: true, reason: "Agent not found" },
+      completed_at: new Date(),
+    });
+    logger.info("[provisioning-jobs] Job completed as no-op — agent no longer exists", {
+      jobId: job.id,
+      jobType: job.type,
+      agentId,
+    });
+    return true;
+  }
+
   private async executeAgentSuspend(job: Job): Promise<void> {
     const data = readAgentSuspendJobData(job);
 
@@ -1640,6 +1706,8 @@ export class ProvisioningJobService {
     });
 
     const result = await elizaSandboxService.executeSuspend(data.agentId, data.organizationId);
+
+    if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
     if (!result.success) {
       await jobsRepository.update(job.id, {
@@ -1688,6 +1756,8 @@ export class ProvisioningJobService {
     });
 
     const result = await elizaSandboxService.executeResume(data.agentId, data.organizationId);
+
+    if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
     if (!result.success) {
       await jobsRepository.update(job.id, {
@@ -1740,6 +1810,8 @@ export class ProvisioningJobService {
 
     const result = await elizaSandboxService.executeSleep(data.agentId, data.organizationId);
 
+    if (await this.completeIfAgentGone(job, result, data.agentId)) return;
+
     if (!result.success) {
       await jobsRepository.update(job.id, {
         result: agentSleepJobResultToRecord({
@@ -1791,6 +1863,8 @@ export class ProvisioningJobService {
 
     const result = await elizaSandboxService.executeWake(data.agentId, data.organizationId);
 
+    if (await this.completeIfAgentGone(job, result, data.agentId)) return;
+
     if (!result.success) {
       await jobsRepository.update(job.id, {
         result: agentWakeJobResultToRecord({
@@ -1841,6 +1915,8 @@ export class ProvisioningJobService {
     });
 
     const result = await elizaSandboxService.executeRestart(data.agentId, data.organizationId);
+
+    if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
     if (!result.success) {
       await jobsRepository.update(job.id, {
@@ -1905,6 +1981,8 @@ export class ProvisioningJobService {
       data.fromDigest,
     );
 
+    if (await this.completeIfAgentGone(job, result, data.agentId)) return;
+
     if (!result.success) {
       // Failures are visible by the row staying on the OLD image_digest; the
       // reconciler will try again on the next cycle. The worker's standard
@@ -1959,6 +2037,8 @@ export class ProvisioningJobService {
       data.organizationId,
       data.tail,
     );
+
+    if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
     if (!result.success) {
       await jobsRepository.update(job.id, {
@@ -2085,6 +2165,36 @@ export class ProvisioningJobService {
       data.snapshotType,
     );
 
+    if (await this.completeIfAgentGone(job, result, data.agentId)) return;
+
+    // Scheduled (auto) backups run across every non-pool sandbox, but an idle
+    // agent (stopped/sleeping/disconnected — no bridge_url) legitimately has no
+    // live state to snapshot. Treating that as a hard failure burned three
+    // attempts per agent per tick and flooded the failed-jobs view (the bulk of
+    // it was "Sandbox is not running"), masking real snapshot failures. For an
+    // auto snapshot this is a benign no-op, so mark it completed-as-skipped
+    // WITHOUT throwing (no retry). MANUAL snapshots still surface the error —
+    // the user explicitly asked for a backup and deserves to know it can't run.
+    if (
+      !result.success &&
+      data.snapshotType === "auto" &&
+      result.error === "Sandbox is not running"
+    ) {
+      await jobsRepository.updateStatus(job.id, "completed", {
+        result: agentSnapshotJobResultToRecord({
+          cloudAgentId: data.agentId,
+          skipped: true,
+          reason: result.error,
+        }),
+        completed_at: new Date(),
+      });
+      logger.info("[provisioning-jobs] auto snapshot skipped — agent not running", {
+        jobId: job.id,
+        agentId: data.agentId,
+      });
+      return;
+    }
+
     if (!result.success) {
       await jobsRepository.update(job.id, {
         result: agentSnapshotJobResultToRecord({
@@ -2192,6 +2302,8 @@ export class ProvisioningJobService {
     });
 
     const provResult = await elizaSandboxService.provision(data.agentId, data.organizationId);
+
+    if (await this.completeIfAgentGone(job, provResult, data.agentId)) return;
 
     if (!provResult.success) {
       await jobsRepository.update(job.id, {
@@ -2319,6 +2431,76 @@ export class ProvisioningJobService {
     await Promise.all(workers);
 
     return { total, recovered, reprovisioned, failed };
+  }
+
+  /**
+   * Re-arm stuck `deletion_failed` sandboxes so a delete that failed only
+   * because the host node was transiently unreachable eventually completes.
+   *
+   * `deletion_failed` is otherwise a dead-end: the agent_delete job exhausted
+   * its retries (e.g. the core was down for a deploy), so the row sits forever
+   * — visible to ops but never auto-recovered, and still counting against the
+   * org's agent capacity. This low-frequency sweep finds rows that have been
+   * `deletion_failed` longer than `minAgeMs` and enqueues a FRESH agent_delete
+   * for each. `enqueueAgentDeleteOnce` is idempotent (it dedups an in-flight
+   * delete and re-flips the row to `deletion_pending`), so a node that has
+   * since come back will finally drop the container + row. `minAgeMs` keeps
+   * this from fighting the live retry loop right after a failure.
+   *
+   * NOTE (follow-up): capacity accounting still counts `deletion_failed` rows
+   * until they are actually removed; excluding them from capacity is a separate
+   * change in the agent-creation path.
+   */
+  async reEnqueueFailedDeletions(params?: {
+    minAgeMs?: number;
+    maxAgents?: number;
+  }): Promise<{ scanned: number; reEnqueued: number; failed: number }> {
+    const minAgeMs = params?.minAgeMs ?? 30 * 60 * 1000; // 30m
+    const maxAgents = params?.maxAgents ?? 50;
+    const cutoff = new Date(Date.now() - minAgeMs);
+
+    const stuck = await dbWrite
+      .select({
+        id: agentSandboxes.id,
+        organizationId: agentSandboxes.organization_id,
+        userId: agentSandboxes.user_id,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.status, "deletion_failed"),
+          sql`${agentSandboxes.updated_at} < ${cutoff}`,
+        ),
+      )
+      .limit(maxAgents);
+
+    let reEnqueued = 0;
+    let failed = 0;
+    for (const agent of stuck) {
+      try {
+        await this.enqueueAgentDeleteOnce({
+          agentId: agent.id,
+          organizationId: agent.organizationId,
+          userId: agent.userId,
+        });
+        reEnqueued += 1;
+      } catch (error) {
+        failed += 1;
+        logger.warn("[provisioning-jobs] re-enqueue of failed deletion failed", {
+          agentId: agent.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (stuck.length > 0) {
+      logger.info("[provisioning-jobs] Re-enqueued stuck deletions", {
+        scanned: stuck.length,
+        reEnqueued,
+        failed,
+      });
+    }
+    return { scanned: stuck.length, reEnqueued, failed };
   }
 
   private async recoverStaleJobs(
