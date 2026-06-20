@@ -24,6 +24,22 @@ export class SharedRuntimeHistoryRepository {
     return Array.isArray(row?.messages) ? row.messages : [];
   }
 
+  /**
+   * Delete ALL shared-runtime history rows for an agent (every channel),
+   * called when the agent itself is deleted. Without this, a shared agent's
+   * cross-turn history is orphaned: the canonical `agent_sandboxes` row is
+   * gone but its `(agent_id, channel_id)` rows linger forever (no FK cascade —
+   * this table is deliberately decoupled from the sandbox/conversation tables).
+   * Returns the number of rows removed so the caller can log the cleanup.
+   */
+  async deleteByAgent(agentId: string): Promise<number> {
+    const deleted = await dbWrite
+      .delete(sharedRuntimeHistory)
+      .where(eq(sharedRuntimeHistory.agent_id, agentId))
+      .returning({ channelId: sharedRuntimeHistory.channel_id });
+    return deleted.length;
+  }
+
   async upsert(
     agentId: string,
     channelId: string,
