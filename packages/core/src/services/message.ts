@@ -1657,6 +1657,26 @@ function voiceTurnSignalSuppressesAgent(
 }
 
 /**
+ * The turn signal POSITIVELY confirms the agent should reply — the server-side
+ * "decide, don't just veto" path (#8786). Conservative: it only fires on the
+ * EXPLICIT `agentShouldSpeak === true` signal (the client sets this on a
+ * wake-word / direct-address turn), and only when end-of-turn doesn't read as
+ * the user still talking. Used to PROMOTE an IGNORE to RESPOND; it never
+ * overrides an explicit STOP or an already-RESPOND decision.
+ */
+function voiceTurnSignalConfirmsAgent(
+	signal: VoiceTurnSignalMetadata | null,
+): boolean {
+	if (!signal) return false;
+	return (
+		signal.agentShouldSpeak === true &&
+		signal.nextSpeaker !== "user" &&
+		(typeof signal.endOfTurnProbability !== "number" ||
+			signal.endOfTurnProbability >= 0.4)
+	);
+}
+
+/**
  * Read the transcription-mode flag off a turn. Mirrors
  * {@link getVoiceTurnSignalMetadata}: chat clients nest custom fields under
  * `content.metadata` (where the conversation route persists a request's
@@ -2804,6 +2824,20 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					],
 				};
 			},
+		},
+		{
+			name: "core.voice_turn_signal_confirm",
+			description:
+				"Server-side positive decision for voice: promotes an IGNORE to RESPOND when the turn signal explicitly confirms the agent should speak (wake-word / direct-address). Never overrides an explicit STOP or an already-RESPOND decision.",
+			priority: 0,
+			shouldRun: ({ message, messageHandler }) =>
+				isVoiceChannelMessage(message) &&
+				messageHandler.processMessage === "IGNORE" &&
+				voiceTurnSignalConfirmsAgent(getVoiceTurnSignalMetadata(message)),
+			evaluate: () => ({
+				processMessage: "RESPOND",
+				debug: ["voice turn signal confirmed reply (agentShouldSpeak)"],
+			}),
 		},
 		{
 			name: "core.transcription_mode",

@@ -341,6 +341,24 @@ export class RuntimeHttpVoiceAdapter implements VoiceRuntimeAdapter {
     );
   }
 
+  /**
+   * Build the message body for a voice handoff: a `VOICE_DM` carrying the turn
+   * signal / speaker metadata so the server's voice gate (`core.voice_turn_signal`)
+   * runs — matching the web `useShellController`. Previously this sent a plain
+   * `{ text }` DM, so desktop voice silently bypassed the entire voice gate (#8786).
+   */
+  private voiceMessageBody(params: VoiceRuntimeHandoffParams): JsonRecord {
+    const metadata: JsonRecord = {
+      voiceSource: "electrobun",
+      ...(params.metadata ?? {}),
+    };
+    return {
+      text: params.text,
+      channelType: "VOICE_DM",
+      metadata,
+    };
+  }
+
   private async createVoiceConversation(): Promise<string> {
     const conversation = await this.jsonRequest("POST", "/api/conversations", {
       title: "Voice",
@@ -371,7 +389,7 @@ export class RuntimeHttpVoiceAdapter implements VoiceRuntimeAdapter {
     const message = await this.jsonRequest(
       "POST",
       `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
-      { text: params.text },
+      this.voiceMessageBody(params),
     );
     const responseText =
       stringField(message, "text") ??
@@ -408,7 +426,7 @@ export class RuntimeHttpVoiceAdapter implements VoiceRuntimeAdapter {
     const response = await this.streamRequest(
       "POST",
       `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
-      { text: params.text },
+      this.voiceMessageBody(params),
     );
     if (!response.ok || !response.body) {
       const text = await response.text().catch(() => "");
