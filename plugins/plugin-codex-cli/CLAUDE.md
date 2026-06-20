@@ -94,6 +94,7 @@ No auto-enable env var trigger exists. Auto-enable logic lives in `auto-enable.t
 - **401 auto-refresh.** On a 401 from the Responses endpoint, the backend refreshes the OAuth token (with a file lock) and retries exactly once.
 - **Tool calls return an object, not a string.** When `params.tools` is non-empty, `params.messages` is provided, or the backend returns tool calls, `generateTextWithCodex` returns `TextResultWithNativeTools` (`{ text, toolCalls, finishReason, usage }`) rather than a plain string.
 - **`responseSchema` support.** When callers pass a `responseSchema` and no explicit `responseFormat`, the backend wraps it in `{ type: "json_schema", schema }` for the OpenAI Responses API structured output format.
+- **Per-call model override.** Text handlers honor `params.model` before `CODEX_MODEL`. Workflow generation uses this for isolated Codex model tests without changing every Codex CLI text call.
 - **Auth file lock.** `codex-auth.ts` uses a `.lock` file alongside `auth.json` (30 s stale timeout, 30 retries at 100 ms). Stale locks are cleaned up automatically.
 - **Supported models:** `gpt-5`, `gpt-5-codex`, `gpt-5.4`, `gpt-5.5`, `gpt-5.5-pro`. Setting `CODEX_MODEL` to anything else will be sent as-is; the backend may reject it.
 - See the root `AGENTS.md` for repo-wide architecture rules, logger conventions, and ESM requirements.

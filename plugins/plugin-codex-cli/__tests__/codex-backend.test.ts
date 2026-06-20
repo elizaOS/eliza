@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { __INTERNAL_buildCodexGenerateParams } from "../index";
 import {
   __resetCodexAuthDeps,
   __setCodexAuthDeps,
@@ -111,6 +112,22 @@ describe("tool translation", () => {
 });
 
 describe("CodexBackend", () => {
+  it("honors a per-call model override before Codex slot defaults", () => {
+    const runtime = {
+      getSetting(key: string) {
+        if (key === "CODEX_MODEL") return "gpt-5.5";
+        return undefined;
+      },
+    };
+
+    expect(
+      __INTERNAL_buildCodexGenerateParams(runtime as never, {
+        prompt: "hello",
+        model: " gpt-5-codex ",
+      }).model
+    ).toBe("gpt-5-codex");
+  });
+
   it("translates provider-neutral messages and tool calls", () => {
     expect(
       translateMessagesToCodexInput(

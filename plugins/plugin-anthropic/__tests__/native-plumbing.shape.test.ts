@@ -92,6 +92,29 @@ describe("Anthropic native text plumbing", () => {
     });
   }, 60_000);
 
+  it("honors a per-call model override before Anthropic slot defaults", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "ok",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    }));
+
+    const { handleTextLarge } = await import("../models/text");
+    await handleTextLarge(createRuntime(), {
+      prompt: "use the workflow model",
+      model: " claude-workflow ",
+    });
+
+    const call = generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect((call.model as { modelId?: unknown }).modelId).toBe("claude-workflow");
+  });
+
   it("normalizes AI SDK v6 usage shape (inputTokenDetails) into recorder cache fields and emits providerMetadata.modelName", async () => {
     // Regression for audit F14 + F16: the AI SDK v6 LanguageModelUsage uses
     // inputTokens/outputTokens and reports cache reads via

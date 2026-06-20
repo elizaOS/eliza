@@ -23,7 +23,7 @@ import {
   type UserContent,
 } from "ai";
 import { createAnthropicClientWithTopPSupport } from "../providers/anthropic";
-import type { ModelName, ModelSize } from "../types";
+import { createModelName, type ModelName, type ModelSize } from "../types";
 import { generateViaCli, streamViaCli } from "../utils/claude-cli";
 import {
   getActionPlannerModel,
@@ -98,6 +98,13 @@ interface GenerateTextParamsWithProviderOptions
   toolChoice?: ToolChoice<ToolSet>;
   responseSchema?: unknown;
   providerOptions?: ProviderOptions;
+}
+
+function resolveRequestedModelName(params: GenerateTextParams, fallback: ModelName): ModelName {
+  const requestedModel = (params as GenerateTextParams & { model?: unknown }).model;
+  return typeof requestedModel === "string" && requestedModel.trim().length > 0
+    ? createModelName(requestedModel.trim())
+    : fallback;
 }
 
 type NativeOutput = NonNullable<Parameters<typeof generateText<ToolSet>>[0]["output"]>;
@@ -1037,7 +1044,7 @@ export async function handleTextSmall(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  const modelName = getSmallModel(runtime);
+  const modelName = resolveRequestedModelName(params, getSmallModel(runtime));
   return generateTextWithModel(runtime, params, modelName, "small", ModelType.TEXT_SMALL);
 }
 
@@ -1045,7 +1052,7 @@ export async function handleTextLarge(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  const modelName = getLargeModel(runtime);
+  const modelName = resolveRequestedModelName(params, getLargeModel(runtime));
   return generateTextWithModel(runtime, params, modelName, "large", ModelType.TEXT_LARGE);
 }
 
@@ -1056,7 +1063,7 @@ export async function handleTextNano(
   return generateTextWithModel(
     runtime,
     params,
-    getNanoModel(runtime),
+    resolveRequestedModelName(params, getNanoModel(runtime)),
     "small",
     TEXT_NANO_MODEL_TYPE
   );
@@ -1069,7 +1076,7 @@ export async function handleTextMedium(
   return generateTextWithModel(
     runtime,
     params,
-    getMediumModel(runtime),
+    resolveRequestedModelName(params, getMediumModel(runtime)),
     "large",
     TEXT_MEDIUM_MODEL_TYPE
   );
@@ -1082,7 +1089,7 @@ export async function handleTextMega(
   return generateTextWithModel(
     runtime,
     params,
-    getMegaModel(runtime),
+    resolveRequestedModelName(params, getMegaModel(runtime)),
     "large",
     TEXT_MEGA_MODEL_TYPE
   );
@@ -1095,7 +1102,7 @@ export async function handleResponseHandler(
   return generateTextWithModel(
     runtime,
     params,
-    getResponseHandlerModel(runtime),
+    resolveRequestedModelName(params, getResponseHandlerModel(runtime)),
     "small",
     RESPONSE_HANDLER_MODEL_TYPE
   );
@@ -1108,7 +1115,7 @@ export async function handleActionPlanner(
   return generateTextWithModel(
     runtime,
     params,
-    getActionPlannerModel(runtime),
+    resolveRequestedModelName(params, getActionPlannerModel(runtime)),
     "large",
     ACTION_PLANNER_MODEL_TYPE
   );
@@ -1124,7 +1131,7 @@ export async function handleReasoningSmall(
   return generateTextWithModel(
     runtime,
     params,
-    getReasoningSmallModel(runtime),
+    resolveRequestedModelName(params, getReasoningSmallModel(runtime)),
     "small",
     TEXT_REASONING_SMALL_MODEL_TYPE
   );
@@ -1137,7 +1144,7 @@ export async function handleReasoningLarge(
   return generateTextWithModel(
     runtime,
     params,
-    getReasoningLargeModel(runtime),
+    resolveRequestedModelName(params, getReasoningLargeModel(runtime)),
     "large",
     TEXT_REASONING_LARGE_MODEL_TYPE
   );
