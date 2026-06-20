@@ -64,6 +64,8 @@ import { StatusBadge } from "../ui/status-badge";
 import { Textarea } from "../ui/textarea";
 import { WorkflowGraphViewer } from "./WorkflowGraphViewer";
 
+const CHAT_PREFILL_EVENT = "eliza:chat:prefill";
+
 export interface WorkflowEditorProps {
   initial?: WorkflowDefinition | null;
   onSaved?: (workflow: WorkflowDefinition) => void;
@@ -424,6 +426,25 @@ export function WorkflowEditor({
     }
   }, [selectedExecution]);
 
+  const handleTroubleshootInChat = useCallback(() => {
+    if (!selectedExecution || typeof window === "undefined") return;
+    const workflowId =
+      persistedWorkflowId ?? selectedExecution.workflowId ?? "unknown";
+    const diagnostics = buildWorkflowExecutionDiagnostics(selectedExecution);
+    window.dispatchEvent(
+      new CustomEvent(CHAT_PREFILL_EVENT, {
+        detail: {
+          text: [
+            `Troubleshoot workflow ${workflowId} execution ${selectedExecution.id}.`,
+            "",
+            diagnostics,
+          ].join("\n"),
+          select: false,
+        },
+      }),
+    );
+  }, [persistedWorkflowId, selectedExecution]);
+
   const handleCopyEvaluationSamples = useCallback(async () => {
     if (!persistedWorkflowId) return;
     setEvaluationSamplesCopying(true);
@@ -551,6 +572,16 @@ export function WorkflowEditor({
         ? "active"
         : "inactive",
     onActivate: () => void handleCopyDiagnostics(),
+  });
+
+  const troubleshootRunButton = useAgentElement<HTMLButtonElement>({
+    id: "troubleshoot-run-in-chat",
+    role: "button",
+    label: "Troubleshoot run in chat",
+    group: "workflow-executions",
+    description: "Send the selected workflow run diagnostics to the page chat.",
+    status: selectedExecution ? "active" : "inactive",
+    onActivate: handleTroubleshootInChat,
   });
 
   const copyEvaluationSamplesButton = useAgentElement<HTMLButtonElement>({
@@ -900,6 +931,22 @@ export function WorkflowEditor({
                           <Copy className="mr-1.5 h-3.5 w-3.5" aria-hidden />
                         )}
                         {diagnosticsCopied ? "Copied" : "Copy diagnostics"}
+                      </Button>
+                      <Button
+                        ref={troubleshootRunButton.ref}
+                        {...troubleshootRunButton.agentProps}
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-2xs"
+                        aria-label="Troubleshoot run in chat"
+                        onClick={handleTroubleshootInChat}
+                        disabled={!selectedExecution}
+                      >
+                        <AlertTriangle
+                          className="mr-0 h-3.5 w-3.5 sm:mr-1.5"
+                          aria-hidden
+                        />
+                        <span className="hidden sm:inline">Troubleshoot</span>
                       </Button>
                     </div>
                     {selectedExecutionSummary.error && (

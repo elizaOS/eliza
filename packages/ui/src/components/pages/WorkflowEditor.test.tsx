@@ -215,6 +215,28 @@ describe("WorkflowEditor", () => {
       "Add Review Fields: success; 1 item",
     );
 
+    const chatPrefill = vi.fn();
+    window.addEventListener("eliza:chat:prefill", chatPrefill as EventListener);
+    fireEvent.click(
+      screen.getByRole("button", { name: /troubleshoot run in chat/i }),
+    );
+    expect(chatPrefill).toHaveBeenCalledTimes(1);
+    const event = chatPrefill.mock.calls[0]?.[0] as CustomEvent<{
+      text: string;
+      select: boolean;
+    }>;
+    expect(event.detail.select).toBe(false);
+    expect(event.detail.text).toContain(
+      "Troubleshoot workflow workflow-1 execution execution-1.",
+    );
+    expect(event.detail.text).toContain(
+      "Engine: 2 nodes / 2 levels / 1 max parallel",
+    );
+    window.removeEventListener(
+      "eliza:chat:prefill",
+      chatPrefill as EventListener,
+    );
+
     clipboardWriteText.mockClear();
     fireEvent.click(screen.getByRole("button", { name: /copy eval samples/i }));
 
