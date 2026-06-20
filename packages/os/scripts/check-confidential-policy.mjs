@@ -215,7 +215,7 @@ function policyInvariants(policy) {
       sideChannel.secureBoot.dmCryptUserData === true,
     ],
     [
-      "sideChannel.secureBoot.unsealBindsStateDir must be true (MILADY_STATE_DIR unavailable until the quote verifies, §4.4)",
+      "sideChannel.secureBoot.unsealBindsStateDir must be true (ELIZA_STATE_DIR unavailable until the quote verifies, §4.4)",
       sideChannel.secureBoot.unsealBindsStateDir === true,
     ],
   ];

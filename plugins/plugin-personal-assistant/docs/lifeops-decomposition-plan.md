@@ -648,7 +648,7 @@ prompt → real model → real JSON parse → strict enum validation — no mock
 Running it live found + fixed a real production-grade bug: the classifier prompt's
 `"a|b|c"` placeholder shape made small/local models echo the literal pipe string
 (`"urgent|ignore"`), which strict validation correctly rejected — so inbox triage
-SILENTLY FAILED on local models. Milady is local-first (users run small local models),
+SILENTLY FAILED on local models. Eliza is local-first (users run small local models),
 so this matters: fixed the prompt (triage-classifier.ts) to instruct picking exactly one
 value and never emitting `"|"`. With the fix, gpt-4o-mini classifies an outage as
 urgent/high and a newsletter as non-urgent through the unchanged pipeline. Commit

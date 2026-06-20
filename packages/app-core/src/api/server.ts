@@ -256,9 +256,7 @@ function resolveCompatConfigPaths(): {
   appConfigPath?: string;
 } {
   const explicitConfig = process.env.ELIZA_CONFIG_PATH?.trim();
-  const hasStateOverride =
-    Boolean(process.env.ELIZA_STATE_DIR?.trim()) ||
-    Boolean(process.env.MILADY_STATE_DIR?.trim());
+  const hasStateOverride = Boolean(process.env.ELIZA_STATE_DIR?.trim());
   const configPath =
     explicitConfig ||
     (hasStateOverride ? path.join(resolveStateDir(), "eliza.json") : undefined);

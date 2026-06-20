@@ -76,7 +76,7 @@ bun run --cwd plugins/plugin-gitpathologist clean         # rm dist .turbo
 | `GITPATHOLOGIST_BUDGET` | number | No | `20` | Maximum LLM narration calls per analysis. Set to `0` to run fully deterministic (no model calls). |
 | `GITPATHOLOGIST_CACHE_DIR` | string | No | `<repoRoot>/.eliza/gitpathology` | Override the cache directory. Relative paths are resolved against `repoRoot`. |
 
-The action reads `ELIZA_WORKSPACE_DIR` to resolve the repo root when running inside an Eliza agent workspace. `MILADY_WORKSPACE_DIR` is accepted as a legacy fallback when `ELIZA_WORKSPACE_DIR` is unset. Falls back to `process.cwd()` when neither is set.
+The action reads `ELIZA_WORKSPACE_DIR` to resolve the repo root when running inside an Eliza agent workspace. Falls back to `process.cwd()` when it is unset.
 
 ## How to extend
 

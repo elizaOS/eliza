@@ -49,7 +49,7 @@ resource "hcloud_server" "control_plane" {
 
   # Naming: `eliza-${index}` — short, matches the data-plane convention
   # `eliza-core-<hex>` and supports the in-place rename from the legacy
-  # `milady` VM. The environment lives in labels, not the hostname, so the
+  # `eliza` VM. The environment lives in labels, not the hostname, so the
   # prod/staging distinction shows up in the Hetzner Console filter
   # without bloating the hostname every operator types into SSH.
   #

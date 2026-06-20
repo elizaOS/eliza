@@ -703,23 +703,8 @@ export const ELIZA_CURATED_APP_DEFINITIONS: readonly ElizaCuratedAppDefinition[]
       aliases: [],
     },
     {
-      slug: "hyperscape",
-      canonicalName: "@hyperscape/plugin-hyperscape",
-      aliases: ["@elizaos/plugin-hyperscape"],
-    },
-    {
       slug: "feed",
       canonicalName: "@elizaos/plugin-feed",
-      aliases: [],
-    },
-    {
-      slug: "2004scape",
-      canonicalName: "@elizaos/plugin-2004scape",
-      aliases: [],
-    },
-    {
-      slug: "scape",
-      canonicalName: "@elizaos/plugin-scape",
       aliases: [],
     },
     {

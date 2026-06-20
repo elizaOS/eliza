@@ -1,7 +1,7 @@
 # e2e + Screenshot Test Harness Map (packages/app ui-smoke)
 
 Scope: feeding a redesign where EVERY view must be screenshotted + e2e-tested.
-Repo: `/home/shaw/milady/eliza`. Working package: `packages/app`.
+Repo: `/home/shaw/eliza`. Working package: `packages/app`.
 
 ---
 
@@ -280,7 +280,7 @@ training, facewear, smartglasses.
 
 ## 4. HOW TO RUN LOCALLY
 
-All commands from repo root `/home/shaw/milady/eliza`.
+All commands from repo root `/home/shaw/eliza`.
 
 ### Cold build + run the full suite (default stub lane)
 ```bash
@@ -299,14 +299,14 @@ bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-visual.spec.ts
 ### Boot the stack ONCE and reuse it across runs (fast iteration)
 Terminal A — start the live stack standalone:
 ```bash
-cd /home/shaw/milady/eliza
+cd /home/shaw/eliza
 ELIZA_UI_SMOKE_FORCE_STUB=1 ELIZA_UI_SMOKE_PORT=2138 ELIZA_UI_SMOKE_API_PORT=31337 \
   node packages/app-core/scripts/run-node-tsx.mjs \
   packages/app-core/scripts/playwright-ui-live-stack.ts
 ```
 Terminal B — run specs against it (skip cold build, reuse the port):
 ```bash
-cd /home/shaw/milady/eliza/packages/app
+cd /home/shaw/eliza/packages/app
 ELIZA_UI_SMOKE_REUSE_SERVER=1 ELIZA_UI_SMOKE_PORT=2138 ELIZA_UI_SMOKE_API_PORT=31337 \
 ELIZA_UI_SMOKE_SKIP_BUILD=1 \
   bunx playwright test --config playwright.ui-smoke.config.ts \

@@ -31,8 +31,8 @@ class RefreshAndroidSystemApkProvenanceTests(unittest.TestCase):
                         {
                             "schema": payload_gate.AOSP_PROVENANCE_SCHEMA,
                             "claim_boundary": payload_gate.AOSP_PROVENANCE_CLAIM_BOUNDARY,
-                            "apk_name": "Milady.apk",
-                            "repo_root": "/home/shaw/milady",
+                            "apk_name": "Eliza.apk",
+                            "repo_root": "/path/to",
                             "android_package": "ai.elizaos.app",
                         }
                     ),

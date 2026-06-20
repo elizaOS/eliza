@@ -19,7 +19,7 @@ fi
 if [ -r /usr/local/lib/elizaos/runtime-env ]; then
     . /usr/local/lib/elizaos/runtime-env
 fi
-ELIZAOS_RUNTIME_ROOT="${ELIZAOS_RUNTIME_ROOT:-${ELIZAOS_RUNTIME_DIR:-/opt/milady}}"
+ELIZAOS_RUNTIME_ROOT="${ELIZAOS_RUNTIME_ROOT:-${ELIZAOS_RUNTIME_DIR:-/opt/elizaos}}"
 ELIZAOS_BUN="${ELIZAOS_BUN:-${ELIZAOS_RUNTIME_ROOT}/bin/bun}"
 
 if [ ! -x "${ELIZAOS_BUN}" ]; then

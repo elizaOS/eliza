@@ -9,6 +9,7 @@ import {
   isSubscriptionProviderSelectionId,
   SUBSCRIPTION_PROVIDER_SELECTIONS,
 } from "../../providers";
+import { getFrontendPlatform } from "../../platform/platform-guards";
 import type { ConfigUiHint } from "../../types";
 import type { ProviderCategory, ProviderStatus } from "./ProviderCard";
 import type { ProviderPanelId } from "./useProviderSelection";
@@ -220,6 +221,19 @@ export function useProviderEntries({
 
   const providerEntries = useMemo<ProviderListEntry[]>(() => {
     const entries: ProviderListEntry[] = [];
+    const localEntry: ProviderListEntry = {
+      id: "__local__",
+      icon: Cpu,
+      label: "Local provider",
+      category: "local",
+      status: getProviderStatus("__local__"),
+      current: cloudCallsDisabled,
+    };
+    // On phones the headline choice is Cloud vs on-device, so surface the local
+    // provider right after Cloud. On desktop/web the subscription + API-key
+    // providers come first and local sits after them (its long-standing spot).
+    const platform = getFrontendPlatform();
+    const localProviderFirst = platform === "ios" || platform === "android";
     entries.push({
       id: "__cloud__",
       icon: Cloud,
@@ -228,6 +242,9 @@ export function useProviderEntries({
       status: getProviderStatus("__cloud__"),
       current: !cloudCallsDisabled && isCloudSelected,
     });
+    if (localProviderFirst) {
+      entries.push(localEntry);
+    }
     for (const provider of SUBSCRIPTION_PROVIDER_SELECTIONS) {
       entries.push({
         id: provider.id,
@@ -238,14 +255,9 @@ export function useProviderEntries({
         current: !cloudCallsDisabled && resolvedSelectedId === provider.id,
       });
     }
-    entries.push({
-      id: "__local__",
-      icon: Cpu,
-      label: "Local provider",
-      category: "local",
-      status: getProviderStatus("__local__"),
-      current: cloudCallsDisabled,
-    });
+    if (!localProviderFirst) {
+      entries.push(localEntry);
+    }
     for (const choice of apiProviderChoices) {
       entries.push({
         id: choice.id,

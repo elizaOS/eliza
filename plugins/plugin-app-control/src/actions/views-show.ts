@@ -181,7 +181,7 @@ const INTENT_VIEW_RULES: ReadonlyArray<{ re: RegExp; viewId: string }> = [
 		viewId: "settings",
 	},
 	// --- Multilingual deterministic rules ---
-	// Milady is local-first; a small/local model may not reliably route a
+	// Eliza is local-first; a small/local model may not reliably route a
 	// non-English navigation request, so the deterministic safety net handles the
 	// common surfaces in major languages too. Anchored on a possessive
 	// (mi/mon/mein/我的/내) or a navigation verb (muéstrame/montre-moi/zeig/打开/

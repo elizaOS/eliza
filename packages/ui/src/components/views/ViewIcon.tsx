@@ -111,7 +111,7 @@ const KEYWORD_ICONS: Array<[RegExp, LucideIcon]> = [
   [/trajector|\blog/, Activity],
   [/feed|social|alpha/, Rss],
   [/glass|facewear|smart ?glass|\bxr\b|spatial|vr\b/, Glasses],
-  [/scape|clawville|hyperscape|defense|arcade|\bgame/, Gamepad2],
+  [/clawville|defense|arcade|\bgame/, Gamepad2],
   [/coordinat|orchestrat|builder|maker|coding|workflow/, Bot],
   [/plugin|catalog|apps?\b/, LayoutGrid],
 ];

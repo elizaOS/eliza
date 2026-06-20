@@ -1153,8 +1153,8 @@ export async function startMockApiServer(
     if (method === "GET" && pathname === "/api/apps") {
       json(res, 200, [
         {
-          name: "@hyperscape/plugin-hyperscape",
-          displayName: "Hyperscape",
+          name: "@elizaos/plugin-mock-app",
+          displayName: "Mock App",
           description: "Mock app",
           category: "game",
           launchType: "viewer",
@@ -1163,11 +1163,11 @@ export async function startMockApiServer(
           heroImage: null,
           capabilities: [],
           stars: 100,
-          repository: "https://github.com/HyperscapeAI/hyperscape",
+          repository: "https://github.com/elizaOS/mock-app",
           latestVersion: "1.0.0",
           supports: { v0: false, v1: false, v2: true },
           npm: {
-            package: "@hyperscape/plugin-hyperscape",
+            package: "@elizaos/plugin-mock-app",
             v0Version: null,
             v1Version: null,
             v2Version: "1.0.0",
@@ -1189,7 +1189,7 @@ export async function startMockApiServer(
       json(res, 200, {
         pluginInstalled: true,
         needsRestart: false,
-        displayName: "Hyperscape",
+        displayName: "Mock App",
         launchType: "viewer",
         launchUrl: null,
         viewer: {
@@ -1199,13 +1199,6 @@ export async function startMockApiServer(
           authMessage: null,
         },
       });
-      return;
-    }
-    if (
-      method === "GET" &&
-      pathname === "/api/apps/hyperscape/embedded-agents"
-    ) {
-      json(res, 200, { success: true, agents: [], count: 0 });
       return;
     }
 

@@ -103,6 +103,20 @@ body.native textarea {
   resize: none;
 }
 
+/* ─── Mobile safe-area: top banners ───
+   The app column (App.tsx) reserves the status-bar safe area with
+   `padding-top: var(--safe-area-top)` so view headers + back buttons sit below
+   the status bar. A top-of-column banner (action / warning / connection) must
+   instead bleed its colored background UP through the safe area while keeping
+   its text below the status bar — otherwise the banner content hides under the
+   status bar. Only the FIRST rendered banner gets the bleed (negative margin
+   cancels the column padding); stacked banners keep their normal padding so
+   they don't overlap. No-op on web/desktop where --safe-area-top is 0. */
+.mobile-top-banner:first-child {
+  margin-top: calc(-1 * var(--safe-area-top, 0px));
+  padding-top: calc(var(--safe-area-top, 0px) + 0.5rem);
+}
+
 /*
  * Theme flips touch a large number of CSS variables. Temporarily disabling
  * transitions prevents the entire shell from animating every color/border

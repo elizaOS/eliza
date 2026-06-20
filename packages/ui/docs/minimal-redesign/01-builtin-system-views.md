@@ -1,6 +1,6 @@
 # Per-View UX + Code + State Inventory — Built-in System / Apps / Settings Views
 
-Repo: `/home/shaw/milady/eliza`. All view files under `packages/ui/src/components/pages/` and `packages/ui/src/components/settings/`. Routes from `packages/ui/src/navigation/index.ts` `TAB_PATHS`.
+Repo: `/home/shaw/eliza`. All view files under `packages/ui/src/components/pages/` and `packages/ui/src/components/settings/`. Routes from `packages/ui/src/navigation/index.ts` `TAB_PATHS`.
 
 Redesign direction being judged against: **minimalism** (cut text/descriptions/borders/cards/badges/redundant inputs; icons + color + whitespace over text), **lighter flat-futuristic look** (orange `#ff8a24` accent, blue `#1d91e8` info, white/black/gray; no heavy black bg, no dark/light toggle as a feature), **floating chat overlay is the primary interface** (views should be glanceable, voice-forward, expose view-dependent actions, surface proactive agent context, integrate with chat).
 

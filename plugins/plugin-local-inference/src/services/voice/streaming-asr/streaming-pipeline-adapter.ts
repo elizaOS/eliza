@@ -4,8 +4,8 @@
  * The base `VoicePipeline` in `voice/pipeline.ts` drives a `StreamingTranscriber`
  * as a batch: it pushes the WHOLE VAD-gated utterance buffer in a single
  * `feed()` call, awaits `flush()`, and only then splits the final transcript
- * into tokens for the drafter/verifier loop. That works for both the fused
- * batch decoder and the whisper.cpp interim path, but it leaves the biggest
+ * into tokens for the drafter/verifier loop. That works for the fused
+ * batch decoder, but it leaves the biggest
  * H2 UX seam (incremental partials → planner / barge-in word-confirm /
  * speculative-on-pause) untapped when the fused build is in streaming mode.
  *

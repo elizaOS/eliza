@@ -197,18 +197,19 @@ export async function prepareManagedElizaBaseEnvironment(
   params: PrepareManagedElizaSharedEnvironmentParams,
 ): Promise<ManagedElizaBaseEnvironmentResult> {
   const existingEnv = { ...(params.existingEnv ?? {}) };
-  // DATABASE_URL / ELIZA_MANAGED_DATABASE_URL are managed reserved keys; the
-  // sandbox layer (the DB-env block in eliza-sandbox.ts) is the SOLE authority on
-  // the agent's DB env. Strip any inherited value here so the control-plane's OWN
+  // DATABASE_URL / ELIZA_MANAGED_DATABASE_URL are managed reserved keys
+  // (RESERVED_MANAGED_ELIZA_ENV_KEYS); the sandbox layer
+  // (computeManagedAgentDbEnv in eliza-sandbox.ts) is the SOLE authority on the
+  // agent's DB env. Strip any inherited value here so the control-plane's OWN
   // DATABASE_URL — which the cloud Worker / provisioning daemon carries in its
   // process env and which spreads in through params.existingEnv — cannot leak
   // into the agent and silently override ELIZA_AGENT_LOCAL_STATE=1. That leak
   // forced every "local-state" agent onto the remote shared Railway Postgres
   // (~166ms/query x dozens of serial reads+writes per turn = the dominant
-  // dedicated-chat latency, plus the shared-DB blast radius). With these removed,
-  // a local-state agent gets only PGlite (+ opt-in ELIZA_MANAGED_DATABASE_URL),
-  // while a shared-DB agent (ELIZA_AGENT_LOCAL_STATE=0) still has DATABASE_URL
-  // re-injected by the sandbox layer.
+  // dedicated-chat latency, plus the shared-DB blast radius). With these
+  // removed, a local-state agent gets only PGlite (+ ELIZA_MANAGED_DATABASE_URL
+  // opt-in), while a shared-DB agent (ELIZA_AGENT_LOCAL_STATE=0) still has
+  // DATABASE_URL re-injected by computeManagedAgentDbEnv.
   delete existingEnv.DATABASE_URL;
   delete existingEnv.ELIZA_MANAGED_DATABASE_URL;
   const { plainKey: agentApiKey } = await apiKeysService.createForAgent({
@@ -275,11 +276,16 @@ export async function prepareManagedElizaBaseEnvironment(
       // mount so local state survives container restarts.
       ELIZA_AGENT_LOCAL_STATE: existingEnv.ELIZA_AGENT_LOCAL_STATE ?? "1",
       PGLITE_DATA_DIR: existingEnv.PGLITE_DATA_DIR ?? "/root/.eliza/.pgdata",
-      // Lean multi-tenant Postgres pool. Every dedicated agent container pools
-      // against the shared cloud Postgres, so the default per-agent pool
-      // (max 20 / min 2) exhausts the server's max_connections at scale (50
-      // idle agents × min 2 = 100 connections). Cap bursts at 8 and let idle
-      // agents release ALL connections (min 0). plugin-sql reads POSTGRES_POOL_*.
+      // New dedicated agents boot the lean chat plugin set (no shell/coding-tools/
+      // browser/orchestrator) for fast cold-start (#8434). Override per agent by
+      // pinning ELIZA_PLUGIN_SET to another value at create.
+      ELIZA_PLUGIN_SET: existingEnv.ELIZA_PLUGIN_SET ?? "lean-chat",
+      // Lean Postgres pool — only applies to agents still on the SHARED DB
+      // (existing agents, or new agents provisioned with ELIZA_AGENT_LOCAL_STATE=0).
+      // The default per-agent pool (max 20 / min 2) exhausts the server's
+      // max_connections at scale (50 idle agents × min 2 = 100). Cap bursts at 8
+      // and let idle agents release ALL connections (min 0). plugin-sql reads
+      // POSTGRES_POOL_*; harmless (unused) under local PGlite.
       POSTGRES_POOL_MAX: existingEnv.POSTGRES_POOL_MAX ?? "8",
       POSTGRES_POOL_MIN: existingEnv.POSTGRES_POOL_MIN ?? "0",
       POSTGRES_POOL_IDLE_TIMEOUT_MS: existingEnv.POSTGRES_POOL_IDLE_TIMEOUT_MS ?? "15000",

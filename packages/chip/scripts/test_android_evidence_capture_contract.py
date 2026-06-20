@@ -151,7 +151,7 @@ class AndroidEvidenceCaptureContractTests(unittest.TestCase):
                             },
                             "app": {
                                 "package_name": gate.EXPECTED_AGENT_PACKAGE,
-                                "pm_path": "package:/system/priv-app/Milady/Milady.apk",
+                                "pm_path": "package:/system/priv-app/Eliza/Eliza.apk",
                                 "role_holders": {
                                     "android.app.role.HOME": [gate.EXPECTED_AGENT_PACKAGE]
                                 },

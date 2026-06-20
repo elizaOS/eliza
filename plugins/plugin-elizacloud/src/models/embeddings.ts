@@ -1,10 +1,54 @@
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
-import { logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  timeInferenceSpan,
+  VECTOR_DIMS,
+} from "@elizaos/core";
 import { getSetting } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { createCloudApiClient } from "../utils/sdk-client";
 
 const MAX_BATCH_SIZE = 100;
+
+// ── Bounded retry/backoff for the /embeddings round-trip ──────────────────
+// Embeddings are off the turn's critical path (queueEmbeddingGeneration is
+// fire-and-forget), so a stall here delays the embedding QUEUE, not a reply.
+// The old behaviour — one blind 30s (or full retry-after) sleep then a single
+// retry — could park the queue for 30s+ on a transient 429. Replaced with
+// bounded exponential backoff + jitter, a CAP on any single wait (so a large
+// server retry-after can't stall the queue indefinitely), and a per-request
+// client-side timeout (the endpoint had none, so a hung gateway hung the
+// queue forever).
+//
+// Handler retries are deliberately SMALL: the EmbeddingGenerationService
+// BatchQueue already wraps generateEmbedding in its own multi-attempt backoff,
+// so this layer absorbs only a single transient burst (one quick retry) and
+// defers sustained pressure to the queue — otherwise the two backoffs compound.
+const EMBED_MAX_ATTEMPTS = 2;
+const EMBED_BACKOFF_BASE_MS = 1_000;
+const EMBED_BACKOFF_CAP_MS = 8_000;
+const EMBED_REQUEST_TIMEOUT_MS = 60_000;
+
+/**
+ * Backoff before the next embedding attempt. Exponential (base·2^attempt) as a
+ * floor, honoring the server's `retry-after` when present, but never longer
+ * than {@link EMBED_BACKOFF_CAP_MS}; ±25% jitter spreads retries from a burst.
+ */
+function embeddingBackoffMs(attempt: number, retryAfterSec?: number): number {
+  const exp = EMBED_BACKOFF_BASE_MS * 2 ** attempt;
+  const serverHint =
+    typeof retryAfterSec === "number" && retryAfterSec > 0
+      ? retryAfterSec * 1000
+      : 0;
+  const base = Math.min(EMBED_BACKOFF_CAP_MS, Math.max(exp, serverHint));
+  return Math.round(base * (1 + Math.random() * 0.25));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function extractRateLimitInfo(response: Response): {
   remainingRequests?: number;
   remainingTokens?: number;
@@ -48,9 +92,16 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
   return { embeddingModelName, embeddingDimension };
 }
 
-function createErrorVector(dimension: number, marker: number): number[] {
+/**
+ * The init probe vector. `runtime.ensureEmbeddingDimension()` calls the handler
+ * with `null` purely to learn the vector length; it only inspects `.length`, so
+ * a deterministic non-zero[0] marker vector is the correct, legitimate response.
+ * This is the ONLY place a synthetic vector is returned — every real failure
+ * throws so it can never be persisted as a corrupt embedding (Commandment 8).
+ */
+function createInitProbeVector(dimension: number): number[] {
   const vector = Array(dimension).fill(0);
-  vector[0] = marker;
+  vector[0] = 0.1;
   return vector;
 }
 
@@ -66,7 +117,7 @@ export async function handleTextEmbedding(
 
   if (params === null) {
     logger.debug("Creating test embedding for initialization");
-    return createErrorVector(embeddingDimension, 0.1);
+    return createInitProbeVector(embeddingDimension);
   }
 
   let text: string;
@@ -75,13 +126,14 @@ export async function handleTextEmbedding(
   } else if (typeof params === "object" && params.text) {
     text = params.text;
   } else {
-    logger.warn("Invalid input format for embedding");
-    return createErrorVector(embeddingDimension, 0.2);
+    // A malformed request is a programming error, not a recoverable runtime
+    // state. Throw instead of returning a marker vector that would silently
+    // corrupt the embedding store (Commandment 8).
+    throw new Error("Invalid input format for embedding: expected string or { text: string }");
   }
 
   if (!text.trim()) {
-    logger.warn("Empty text for embedding");
-    return createErrorVector(embeddingDimension, 0.3);
+    throw new Error("Cannot generate embedding for empty text");
   }
 
   const results = await handleBatchTextEmbedding(runtime, [text]);
@@ -103,26 +155,22 @@ export async function handleBatchTextEmbedding(
   const client = createCloudApiClient(runtime, true);
 
   if (!texts || texts.length === 0) {
-    logger.warn("[BatchEmbeddings] Empty texts array");
     return [];
   }
 
+  // Every text must be non-empty: an empty input cannot produce a meaningful
+  // vector, and a marker/zero vector would silently corrupt the store. Surface
+  // the bad input to the caller (Commandment 8) instead of papering over it.
   const validTexts: { text: string; originalIndex: number }[] = [];
-  const results: number[][] = new Array(texts.length);
-
   for (let i = 0; i < texts.length; i++) {
     const text = texts[i]?.trim();
-    if (text) {
-      validTexts.push({ text, originalIndex: i });
-    } else {
-      results[i] = createErrorVector(embeddingDimension, 0.3);
+    if (!text) {
+      throw new Error(`Cannot generate embedding for empty text at index ${i}`);
     }
+    validTexts.push({ text, originalIndex: i });
   }
 
-  if (validTexts.length === 0) {
-    logger.warn("[BatchEmbeddings] All texts were empty");
-    return results;
-  }
+  const results: number[][] = new Array(texts.length);
 
   for (let batchStart = 0; batchStart < validTexts.length; batchStart += MAX_BATCH_SIZE) {
     const batchEnd = Math.min(batchStart + MAX_BATCH_SIZE, validTexts.length);
@@ -134,86 +182,88 @@ export async function handleBatchTextEmbedding(
     );
 
     try {
-      const response = await client.requestRaw("POST", "/embeddings", {
-        json: {
-          model: embeddingModelName,
-          input: batchTexts,
-        },
-      });
-
-      const rateLimitInfo = extractRateLimitInfo(response);
-
-      if (rateLimitInfo.remainingRequests !== undefined && rateLimitInfo.remainingRequests < 50) {
-        logger.warn(
-          `[BatchEmbeddings] Rate limit: ${rateLimitInfo.remainingRequests}/${rateLimitInfo.limitRequests} requests remaining`
+      // Records a `cloud.embedding` span on the active per-turn timer when an
+      // embedding happens to be on a turn's critical path (most are queued /
+      // detached, so this is a no-op there — which is exactly what proves they
+      // don't add to turn latency). Retries transient throttling/5xx with
+      // bounded exponential backoff (see EMBED_* constants) instead of a single
+      // 30s blind sleep.
+      let response: Response | null = null;
+      for (let attempt = 0; attempt < EMBED_MAX_ATTEMPTS; attempt++) {
+        const resp = await timeInferenceSpan(
+          "cloud.embedding",
+          () =>
+            client.requestRaw("POST", "/embeddings", {
+              json: {
+                model: embeddingModelName,
+                input: batchTexts,
+              },
+              timeoutMs: EMBED_REQUEST_TIMEOUT_MS,
+            }),
+          { batch: batchTexts.length, attempt }
         );
-      }
 
-      if (response.status === 429) {
-        const retryAfter = rateLimitInfo.retryAfter || 30;
-        logger.warn(`[BatchEmbeddings] Rate limited, waiting ${retryAfter}s...`);
-        await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+        const rateLimitInfo = extractRateLimitInfo(resp);
+        if (
+          rateLimitInfo.remainingRequests !== undefined &&
+          rateLimitInfo.remainingRequests < 50
+        ) {
+          logger.warn(
+            `[BatchEmbeddings] Rate limit: ${rateLimitInfo.remainingRequests}/${rateLimitInfo.limitRequests} requests remaining`
+          );
+        }
 
-        const retryResponse = await client.requestRaw("POST", "/embeddings", {
-          json: {
-            model: embeddingModelName,
-            input: batchTexts,
-          },
-        });
-
-        if (!retryResponse.ok) {
-          logger.error(`[BatchEmbeddings] Retry failed: ${retryResponse.status}`);
-          for (const item of batch) {
-            results[item.originalIndex] = createErrorVector(embeddingDimension, 0.4);
-          }
+        const transient =
+          resp.status === 429 ||
+          resp.status === 502 ||
+          resp.status === 503 ||
+          resp.status === 504;
+        if (transient && attempt < EMBED_MAX_ATTEMPTS - 1) {
+          const delay = embeddingBackoffMs(attempt, rateLimitInfo.retryAfter);
+          logger.warn(
+            `[BatchEmbeddings] ${resp.status} (attempt ${attempt + 1}/${EMBED_MAX_ATTEMPTS}) — backing off ${delay}ms`
+          );
+          // Drain the body so the underlying connection can be reused.
+          await resp.text().catch(() => undefined);
+          await sleep(delay);
           continue;
         }
+        response = resp;
+        break;
+      }
 
-        const retryData = (await retryResponse.json()) as {
-          data: Array<{ embedding: number[]; index: number }>;
-        };
-
-        if (retryData?.data) {
-          for (const item of retryData.data) {
-            const originalIndex = batch[item.index].originalIndex;
-            results[originalIndex] = item.embedding;
-          }
-          logger.info(`[BatchEmbeddings] Retry successful for ${batch.length} embeddings`);
-        }
-        continue;
+      // Type guard: the loop assigns `response` on its final iteration, so this
+      // is unreachable in practice.
+      if (!response) {
+        throw new Error("[BatchEmbeddings] No response after retry loop");
       }
 
       if (!response.ok) {
-        // Auth errors (401/403) are non-recoverable with the current key —
-        // throw so the router can fall through to the next provider (e.g.
-        // local inference) instead of silently returning zero-vectors that
-        // corrupt the embedding store. Commandment 8: don't hide broken
-        // pipelines behind fallback values.
+        // Auth errors (401/403) are non-recoverable with the current key.
+        // Every other non-OK status is just as fatal for this batch — neither
+        // can produce real vectors. Throw in both cases so the router falls
+        // through to the next provider (e.g. local inference) instead of
+        // silently persisting marker/zero vectors that corrupt the embedding
+        // store. Commandment 8: don't hide broken pipelines behind fallbacks.
         if (response.status === 401 || response.status === 403) {
           throw new Error(
             `[BatchEmbeddings] Authentication failed (${response.status}). ` +
-            `Check ELIZAOS_CLOUD_API_KEY or ELIZAOS_CLOUD_EMBEDDING_API_KEY — ` +
-            `the current key is not authorized for the embedding endpoint.`
+              `Check ELIZAOS_CLOUD_API_KEY or ELIZAOS_CLOUD_EMBEDDING_API_KEY — ` +
+              `the current key is not authorized for the embedding endpoint.`
           );
         }
-        logger.error(`[BatchEmbeddings] API error: ${response.status} - ${response.statusText}`);
-        for (const item of batch) {
-          results[item.originalIndex] = createErrorVector(embeddingDimension, 0.4);
-        }
-        continue;
+        throw new Error(
+          `[BatchEmbeddings] API error: ${response.status} ${response.statusText}`
+        );
       }
 
       const data = (await response.json()) as {
-        data: Array<{ embedding: number[]; index: number }>;
+        data?: Array<{ embedding: number[]; index: number }>;
         usage?: { prompt_tokens: number; total_tokens: number };
       };
 
       if (!data?.data || !Array.isArray(data.data)) {
-        logger.error("[BatchEmbeddings] API returned invalid structure");
-        for (const item of batch) {
-          results[item.originalIndex] = createErrorVector(embeddingDimension, 0.5);
-        }
-        continue;
+        throw new Error("[BatchEmbeddings] API returned invalid response structure");
       }
 
       for (const item of data.data) {
@@ -231,19 +281,16 @@ export async function handleBatchTextEmbedding(
       }
 
       logger.debug(
-        `[BatchEmbeddings] Got ${batch.length} embeddings (${embeddingDimension}d), remaining: ${rateLimitInfo.remainingRequests ?? "unknown"}`
+        `[BatchEmbeddings] Got ${batch.length} embeddings (${embeddingDimension}d)`
       );
     } catch (error) {
+      // Any failure in this batch (HTTP error, transport error, malformed body)
+      // means we have no real vectors for it. Log context and re-throw so the
+      // router can fall through to another provider; never persist marker/zero
+      // vectors that would corrupt the embedding store (Commandment 8).
       const message = error instanceof Error ? error.message : String(error);
-      // Re-throw auth errors so the router can fall through to another
-      // provider instead of silently inserting zero-vectors.
-      if (message.includes("Authentication failed")) {
-        throw error;
-      }
-      logger.error(`[BatchEmbeddings] Error: ${message}`);
-      for (const item of batch) {
-        results[item.originalIndex] = createErrorVector(embeddingDimension, 0.6);
-      }
+      logger.error(`[BatchEmbeddings] Batch failed: ${message}`);
+      throw error instanceof Error ? error : new Error(message);
     }
   }
 

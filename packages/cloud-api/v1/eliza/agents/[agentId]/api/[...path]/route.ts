@@ -42,10 +42,11 @@ const CORS_METHODS = "GET, POST, OPTIONS";
 
 const app = new Hono<AppEnv>();
 
-function json(data: unknown, status?: number): Response {
+function json(c: Context<AppEnv>, data: unknown, status?: number): Response {
   return applyCorsHeaders(
     status ? Response.json(data, { status }) : Response.json(data),
     CORS_METHODS,
+    c.req.header("origin"),
   );
 }
 
@@ -58,37 +59,43 @@ function shellPath(c: Context<AppEnv>): string {
     .join("/");
 }
 
-app.options("/", () => handleCorsOptions(CORS_METHODS));
+app.options("/", (c) =>
+  handleCorsOptions(CORS_METHODS, c.req.header("origin")),
+);
 
 app.get("/", async (c) => {
   const r = await resolveSharedAgent(c);
   if ("error" in r) {
-    return json({ success: false, error: r.error }, r.status);
+    return json(c, { success: false, error: r.error }, r.status);
   }
   switch (shellPath(c)) {
     case "status":
       // The startup-coordinator's first gate — must answer before first-run.
-      return json(sharedRestStatus(r.agentName));
+      return json(c, sharedRestStatus(r.agentName));
     case "first-run/status":
-      return json(sharedRestFirstRunStatus());
+      return json(c, sharedRestFirstRunStatus());
     case "first-run":
-      return json(sharedRestFirstRun());
+      return json(c, sharedRestFirstRun());
     case "views":
-      return json(sharedRestViews(c.req.query("viewType")));
+      return json(c, sharedRestViews(c.req.query("viewType")));
     case "config":
-      return json(sharedRestConfig());
+      return json(c, sharedRestConfig());
     case "auth/me":
       // The app's hard startup auth gate. The caller is already an authed API
       // key (resolveSharedAgent validated it), so report the authed machine
       // identity instead of 404'ing into "server_unavailable".
-      return json(sharedRestAuthMe(r.agentId, r.agentName));
+      return json(c, sharedRestAuthMe(r.agentId, r.agentName));
     case "character":
       // The exact character the shared turn answers as (reuses
       // buildSharedRuntimeCharacter via the service).
-      return json(await sharedRestCharacter(r.agentId, r.orgId, r.agentName));
+      return json(
+        c,
+        await sharedRestCharacter(r.agentId, r.orgId, r.agentName),
+      );
     default:
       // Genuinely-unknown shell endpoint — don't mask it with a default.
       return json(
+        c,
         { success: false, error: "Not found", code: "resource_not_found" },
         404,
       );
@@ -98,14 +105,15 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   const r = await resolveSharedAgent(c);
   if ("error" in r) {
-    return json({ success: false, error: r.error }, r.status);
+    return json(c, { success: false, error: r.error }, r.status);
   }
   // Onboarding "submit" — a shared agent has no config to persist, so accept it
   // as a harmless no-op instead of 404'ing onboarding.
   if (shellPath(c) === "first-run") {
-    return json(sharedRestFirstRunSubmit());
+    return json(c, sharedRestFirstRunSubmit());
   }
   return json(
+    c,
     { success: false, error: "Not found", code: "resource_not_found" },
     404,
   );

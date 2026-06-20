@@ -10,7 +10,7 @@ import {
 const tmpDirs: string[] = [];
 
 function makeRuntimeDist(platform: NodeJS.Platform = "darwin"): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "milady-whisper-env-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "example-whisper-env-"));
   tmpDirs.push(root);
   const dir = path.join(root, "voice", "whisper");
   fs.mkdirSync(dir, { recursive: true });

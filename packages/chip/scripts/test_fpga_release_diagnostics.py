@@ -41,9 +41,9 @@ def run(command: list[str]) -> subprocess.CompletedProcess[str]:
 class FpgaReleaseDiagnosticsTest(unittest.TestCase):
     def test_report_provenance_sanitizer_strips_host_local_paths(self) -> None:
         payload = {
-            "path": "/home/shaw/milady/eliza/packages/chip/external/oss-cad-suite/bin/yosys",
+            "path": "/path/to/eliza/packages/chip/external/oss-cad-suite/bin/yosys",
             "command": (
-                "PATH=/home/shaw/milady/eliza/packages/chip/external/oss-cad-suite/bin:$PATH "
+                "PATH=/path/to/eliza/packages/chip/external/oss-cad-suite/bin:$PATH "
                 "TOP=e1_chip_top make -C board/fpga synth"
             ),
             "tmp": "/tmp/fpga-release/run.log",

@@ -208,6 +208,7 @@ beforeEach(() => {
 	originalEnv = { ...process.env };
 	process.env.ELIZA_TRAJECTORY_DIR = tempDir;
 	process.env.ELIZA_TRAJECTORY_RECORDING = "1";
+	process.env.ELIZA_AWAIT_FACTS_STAGE = "true";
 });
 
 afterEach(() => {

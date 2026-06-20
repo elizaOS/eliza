@@ -11,6 +11,7 @@ import {
   type AgentBackupSnapshotType,
   type AgentSandbox,
   type AgentSandboxBackup,
+  type AgentSandboxStatus,
   agentSandboxesRepository,
   prepareAgentBackupInsertData,
 } from "../../db/repositories/agent-sandboxes";
@@ -114,6 +115,16 @@ export interface SnapshotResult {
   error?: string;
 }
 
+/**
+ * Sentinel error for "the running agent image does not serve POST /api/snapshot".
+ * The deployed elizaOS (V2) agent image binds its API to ELIZA_PORT/PORT and
+ * does not expose the bridge `/api/snapshot` route — only the cloud-agent
+ * template image (and the in-memory test double) do. A scheduled (auto) backup
+ * against such an agent is a no-op, not a failure, so the snapshot job treats
+ * this exactly like "Sandbox is not running": skip without burning retries.
+ */
+export const SNAPSHOT_ENDPOINT_UNSUPPORTED = "Snapshot endpoint not supported by agent image";
+
 const MAX_BACKUPS = 10;
 const SHARED_RUNTIME_HISTORY_MAX_MESSAGES = 40;
 // Heartbeat probes the agent over the headscale tailnet. When idle the path
@@ -184,6 +195,33 @@ class BridgeRouteUnavailableError extends Error {
     super(message);
     this.name = "BridgeRouteUnavailableError";
   }
+}
+
+/**
+ * Decide how the shared managed DB URL is exposed to an agent container (#8696).
+ *
+ * - A self-contained image that shipped its OWN `DATABASE_URL` keeps it; the
+ *   managed URL is exposed under `ELIZA_MANAGED_DATABASE_URL` so it can opt in.
+ * - A local-state agent (provisioned with `ELIZA_AGENT_LOCAL_STATE=1`) keeps
+ *   agent-state in a local in-container PGlite DB on the persistent volume and
+ *   uses the shared DB only for auth/discovery via the cloud API. The managed URL
+ *   is exposed as `ELIZA_MANAGED_DATABASE_URL` (opt-in) and `DATABASE_URL` is left
+ *   UNSET so plugin-sql falls back to local PGlite — removing the shared-Postgres
+ *   connection hot path.
+ * - Otherwise (existing agents with no flag) the managed URL is injected as
+ *   `DATABASE_URL`, byte-identical to the prior behavior — a forward cutover with
+ *   no migration.
+ */
+export function computeManagedAgentDbEnv(
+  callerEnv: Record<string, string>,
+  dbUri: string,
+): Record<string, string> {
+  const callerSuppliedDatabaseUrl =
+    typeof callerEnv.DATABASE_URL === "string" && callerEnv.DATABASE_URL.trim().length > 0;
+  const wantsLocalState = callerEnv.ELIZA_AGENT_LOCAL_STATE === "1";
+  return callerSuppliedDatabaseUrl || wantsLocalState
+    ? { ELIZA_MANAGED_DATABASE_URL: dbUri }
+    : { DATABASE_URL: dbUri };
 }
 
 export class ElizaSandboxService {
@@ -723,6 +761,26 @@ export class ElizaSandboxService {
           error: err instanceof Error ? err.message : String(err),
         });
       }
+
+      // Best-effort: drop the shared-runtime (Tier-0) conversation history for
+      // this agent. That table is deliberately decoupled from the sandbox row
+      // (no FK cascade), so the per-channel history rows would otherwise be
+      // orphaned forever after the agent is gone. A failure here leaves stale
+      // rows but never un-deletes the (already gone) sandbox.
+      try {
+        const removed = await sharedRuntimeHistoryRepository.deleteByAgent(agentId);
+        if (removed > 0) {
+          logger.info("[agent-sandbox] Cleaned up shared-runtime history after delete", {
+            agentId,
+            channelsRemoved: removed,
+          });
+        }
+      } catch (err) {
+        logger.warn("[agent-sandbox] Failed to clean up shared-runtime history", {
+          agentId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     return result;
@@ -884,22 +942,14 @@ export class ElizaSandboxService {
         // name (ELIZA_MANAGED_DATABASE_URL) so the image can opt in. Only when
         // the caller did NOT supply one do we inject the managed URL as
         // DATABASE_URL — the normal managed-agent path, byte-identical to before.
-        const callerSuppliedDatabaseUrl =
-          typeof callerEnv.DATABASE_URL === "string" && callerEnv.DATABASE_URL.trim().length > 0;
-        // ELIZA_AGENT_LOCAL_STATE=1 agents run on PGlite. Keep the managed shared
-        // DB out of DATABASE_URL for them (expose it only as the opt-in
-        // ELIZA_MANAGED_DATABASE_URL), so a local-state agent is never forced onto
-        // the remote shared Railway Postgres — the dominant dedicated-chat latency.
-        const wantsLocalState = callerEnv.ELIZA_AGENT_LOCAL_STATE === "1";
+        const dbEnv = computeManagedAgentDbEnv(callerEnv, dbUri);
         handle = await (await this.getProvider()).create({
           agentId: rec.id,
           agentName: rec.agent_name ?? "CloudAgent",
           organizationId: rec.organization_id,
           environmentVars: {
             ...callerEnv,
-            ...(callerSuppliedDatabaseUrl || wantsLocalState
-              ? { ELIZA_MANAGED_DATABASE_URL: dbUri }
-              : { DATABASE_URL: dbUri }),
+            ...dbEnv,
           },
           // Path A: pass the persisted character so the container boots AS
           // this agent (see docker-sandbox-provider ELIZA_AGENT_CHARACTER_JSON
@@ -3123,7 +3173,21 @@ export class ElizaSandboxService {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec?.bridge_url) return { success: false, error: "Sandbox is not running" };
 
-    const { stateData, sizeBytes } = await this.fetchSnapshotState(rec);
+    let stateData: AgentBackupStateData;
+    let sizeBytes: number;
+    try {
+      ({ stateData, sizeBytes } = await this.fetchSnapshotState(rec));
+    } catch (error) {
+      // A bridge that lacks /api/snapshot (V2 image) returns the sentinel; an
+      // auto backup against it is a benign skip, so surface it as a result the
+      // snapshot job recognizes instead of a thrown, retried failure. All other
+      // errors (real fetch/transport failures) still propagate.
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === SNAPSHOT_ENDPOINT_UNSUPPORTED) {
+        return { success: false, error: SNAPSHOT_ENDPOINT_UNSUPPORTED };
+      }
+      throw error;
+    }
 
     const backup = await agentSandboxesRepository.createBackup(
       await this.buildBackupInput(rec.id, type, stateData, sizeBytes),
@@ -3456,7 +3520,7 @@ export class ElizaSandboxService {
     return await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
-      if (!rec)
+      if (!rec || this.isAwaitingDeletion(rec.status))
         return {
           success: false,
           containerStopped: false,
@@ -3507,6 +3571,17 @@ export class ElizaSandboxService {
   }
 
   /**
+   * A row in `deletion_pending` / `deletion_failed` is logically gone — an
+   * agent_delete job owns it. Bringing it back up (resume / wake / restart)
+   * would resurrect a container we are tearing down, so these states are
+   * treated exactly like a missing row: the daemon handler maps "Agent not
+   * found" to a terminal no-op instead of resurrecting the agent.
+   */
+  private isAwaitingDeletion(status: AgentSandboxStatus): boolean {
+    return status === "deletion_pending" || status === "deletion_failed";
+  }
+
+  /**
    * Daemon-side handler for the `agent_resume` job. Delegates to
    * `provision()` which restores `bridge_url` / `health_url` from the
    * provider's sandbox handle and reuses the existing shared DB
@@ -3528,8 +3603,12 @@ export class ElizaSandboxService {
     reprovisioned: boolean;
     error?: string;
   }> {
-    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (!rec)
+    // Read from the PRIMARY: a replica-lagged "Agent not found" / stale status
+    // here would turn a legitimate resume into a terminal no-op (the daemon
+    // maps "Agent not found" to completed), silently dropping the request. The
+    // existence + deletion-state check must be authoritative.
+    const rec = await this.getAgentForWrite(agentId, orgId);
+    if (!rec || this.isAwaitingDeletion(rec.status))
       return {
         success: false,
         containerStarted: false,
@@ -3579,8 +3658,10 @@ export class ElizaSandboxService {
     backupId?: string;
     error?: string;
   }> {
-    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (!rec) return { success: false, containerRemoved: false, error: "Agent not found" };
+    // Primary read: replica lag must not turn a real sleep into a no-op.
+    const rec = await this.getAgentForWrite(agentId, orgId);
+    if (!rec || this.isAwaitingDeletion(rec.status))
+      return { success: false, containerRemoved: false, error: "Agent not found" };
     if (rec.status === "sleeping") return { success: true, containerRemoved: true };
     if (rec.status === "provisioning") {
       return {
@@ -3692,8 +3773,10 @@ export class ElizaSandboxService {
     restoredBackupId?: string;
     error?: string;
   }> {
-    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (!rec) return { success: false, reprovisioned: false, error: "Agent not found" };
+    // Primary read: a replica-lagged "Agent not found" must not no-op a wake.
+    const rec = await this.getAgentForWrite(agentId, orgId);
+    if (!rec || this.isAwaitingDeletion(rec.status))
+      return { success: false, reprovisioned: false, error: "Agent not found" };
     if (rec.status === "running" && rec.bridge_url) {
       return { success: true, reprovisioned: false };
     }
@@ -3734,6 +3817,22 @@ export class ElizaSandboxService {
     healthUrl?: string;
     error?: string;
   }> {
+    // Bail before shutdown()+provision() if the row is being deleted — restart
+    // would otherwise flip a deletion_pending row to `stopped` and rebuild a
+    // container the agent_delete job is tearing down. Reported as not-found so
+    // the daemon handler completes the job as a terminal no-op. Read from the
+    // PRIMARY so a replica-lagged status doesn't bail a legitimate restart (or
+    // miss an in-flight deletion) on stale data.
+    const rec = await this.getAgentForWrite(agentId, orgId);
+    if (!rec || this.isAwaitingDeletion(rec.status)) {
+      return {
+        success: false,
+        containerStopped: false,
+        containerStarted: false,
+        error: "Agent not found",
+      };
+    }
+
     const shutdownResult = await this.shutdown(agentId, orgId);
     if (!shutdownResult.success) {
       if (shutdownResult.error === "Agent not found") {
@@ -4132,6 +4231,12 @@ export class ElizaSandboxService {
       headers: this.getAgentJsonHeaders(rec),
       signal: AbortSignal.timeout(15_000),
     });
+    if (res.status === 404) {
+      // The deployed agent image does not expose POST /api/snapshot (only the
+      // cloud-agent template image does). Surface a recognizable sentinel so an
+      // auto snapshot is skipped, not hard-failed-and-retried.
+      throw new Error(SNAPSHOT_ENDPOINT_UNSUPPORTED);
+    }
     if (!res.ok) {
       throw new Error(`Snapshot fetch failed: HTTP ${res.status}`);
     }

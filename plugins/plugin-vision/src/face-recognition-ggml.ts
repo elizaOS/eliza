@@ -1,30 +1,33 @@
-// face-recognition-ggml.ts — EXPERIMENTAL.
+// face-recognition-ggml.ts — native ggml face recognition.
 //
 // bun:ffi binding for the face-embed head exposed by the standalone
-// `packages/native/plugins/face-cpp/` library. This is the ggml-backed
-// replacement for the face-api.js descriptor path inside
-// `face-recognition.ts`.
+// `packages/native/plugins/face-cpp/` library, plus the full
+// `FaceRecognition` surface (detect → embed → match → store) consumed by
+// `VisionService`. This is the only face-recognition backend; there is no
+// tfjs / face-api.js fallback.
 //
 // The native library produces a 128-d L2-normalized embedding from a
 // `face_detection` record (bbox + 6 BlazeFace landmarks). That detection
-// is what `BlazeFaceGgmlDetector` returns, so the typical pipeline is:
+// is what `BlazeFaceGgmlDetector` returns, so the pipeline is:
 //
 //   const det = await blazefaceDetector.detect(buffer);
 //   const emb = await embedder.embed(buffer, det[i]);
 //
-// The class deliberately only owns the embedding step; matching,
-// storage, and the rest of the FaceLibrary surface live in
-// `face-recognition.ts` (which the planned `setFaceBackend("ggml")`
-// toggle will wire to this module). Cosine + L2 distance helpers below
-// mirror `face_embed_distance` / `face_embed_distance_l2` so callers
-// can keep their existing math when swapping the backend.
+// `FaceEmbedGgmlRecognizer` owns only the embedding step; the matching,
+// storage, and persistence that make up the `FaceLibrary` surface live in
+// the `FaceRecognition` class below. Cosine + L2 distance helpers mirror
+// `face_embed_distance` / `face_embed_distance_l2`.
 
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
 import sharp from "sharp";
-import type { MediaPipeFaceDetection } from "./face-detector-ggml";
+import {
+  BlazeFaceGgmlDetector,
+  type MediaPipeFaceDetection,
+} from "./face-detector-ggml";
+import type { BoundingBox, FaceLibrary, FaceProfile } from "./types";
 
 const MODULE_TAG = "[FaceEmbedGgml]";
 
@@ -260,10 +263,8 @@ export function l2Distance(a: Float32Array, b: Float32Array): number {
 }
 
 /**
- * EXPERIMENTAL ggml-backed 128-d face embedder. Mirrors the descriptor
- * path inside the legacy face-api.js `FaceRecognition` class — same
- * 128-d L2-normalized output, swappable via the planned
- * `setFaceBackend("ggml")` toggle.
+ * ggml-backed 128-d face embedder: a 128-d L2-normalized descriptor per
+ * detected face, consumed by the `FaceRecognition` class below.
  */
 export class FaceEmbedGgmlRecognizer {
   private readonly cfg: FaceEmbedGgmlConfig & { modelDir: string };
@@ -372,4 +373,207 @@ export class FaceEmbedGgmlRecognizer {
     this.initPromise = null;
     logger.debug(`${MODULE_TAG} disposed`);
   }
+}
+
+const FACE_REC_TAG = "[FaceRecognition]";
+
+/**
+ * A detected face: a native BlazeFace detection plus its 128-d ggml
+ * embedding. Mirrors the fields `VisionService` reads off each result.
+ * The native backend produces no expression / age-gender estimates, so
+ * those attributes are left to higher layers.
+ */
+export interface DetectedFace {
+  detection: { box: BoundingBox };
+  descriptor: Float32Array;
+}
+
+/**
+ * Native ggml face recognition: BlazeFace detection + 128-d embedding +
+ * in-memory matching and persistence. When the native `libface` library
+ * or its GGUF weights are not on disk, detection returns an empty list
+ * (recognition is disabled, never faked). Matching and storage are pure
+ * JS and always available.
+ */
+export class FaceRecognition {
+  private readonly detector = new BlazeFaceGgmlDetector();
+  private readonly embedder = new FaceEmbedGgmlRecognizer();
+  private detectorAvailable: boolean | null = null;
+  private readonly faceLibrary: FaceLibrary = {
+    faces: new Map(),
+    embeddings: new Map(),
+  };
+
+  // Euclidean distance threshold for a face match.
+  private readonly FACE_MATCH_THRESHOLD = 0.6;
+  // Minimum face size in pixels.
+  private readonly MIN_FACE_SIZE = 50;
+
+  /**
+   * Detect faces in a raw RGBA frame and compute an embedding for each.
+   * Returns an empty list when the native face backend is unavailable.
+   */
+  async detectFaces(
+    imageData: Buffer,
+    width: number,
+    height: number,
+  ): Promise<DetectedFace[]> {
+    if (!imageData || imageData.length === 0 || width <= 0 || height <= 0) {
+      logger.warn(
+        `${FACE_REC_TAG} Invalid input parameters: dataLength=${imageData?.length ?? 0}, width=${width}, height=${height}`,
+      );
+      return [];
+    }
+
+    const expectedSize = width * height * 4; // RGBA
+    if (imageData.length !== expectedSize) {
+      logger.warn(
+        `${FACE_REC_TAG} Buffer size mismatch: expected=${expectedSize}, actual=${imageData.length}, width=${width}, height=${height}`,
+      );
+      return [];
+    }
+
+    if (this.detectorAvailable === null) {
+      this.detectorAvailable = await BlazeFaceGgmlDetector.isAvailable();
+      if (!this.detectorAvailable) {
+        logger.warn(
+          `${FACE_REC_TAG} face recognition unavailable (native face-cpp library not built)`,
+        );
+      }
+    }
+    if (!this.detectorAvailable) return [];
+
+    // BlazeFace + the embedder both decode via sharp, so wrap the raw
+    // RGBA frame in a sharp-readable PNG once and reuse it for both.
+    const png = await sharp(imageData, {
+      raw: { width, height, channels: 4 },
+    })
+      .png()
+      .toBuffer();
+
+    const detections = await this.detector.detect(png);
+
+    const faces: DetectedFace[] = [];
+    for (const det of detections) {
+      const { width: bw, height: bh } = det.bbox;
+      if (bw < this.MIN_FACE_SIZE || bh < this.MIN_FACE_SIZE) continue;
+      const descriptor = await this.embedder.embed(png, det);
+      faces.push({ detection: { box: det.bbox }, descriptor });
+    }
+    return faces;
+  }
+
+  async recognizeFace(
+    descriptor: Float32Array,
+  ): Promise<{ profileId: string; distance: number } | null> {
+    let bestMatch: { profileId: string; distance: number } | null = null;
+    let minDistance = Number.POSITIVE_INFINITY;
+
+    for (const [profileId, embeddings] of this.faceLibrary.embeddings) {
+      for (const knownEmbedding of embeddings) {
+        const distance = euclideanDistance(descriptor, knownEmbedding);
+        if (distance < this.FACE_MATCH_THRESHOLD && distance < minDistance) {
+          minDistance = distance;
+          bestMatch = { profileId, distance };
+        }
+      }
+    }
+
+    return bestMatch;
+  }
+
+  async addOrUpdateFace(
+    descriptor: Float32Array,
+    attributes?: Partial<FaceProfile>,
+  ): Promise<string> {
+    const match = await this.recognizeFace(descriptor);
+
+    if (match) {
+      const profile = this.faceLibrary.faces.get(match.profileId);
+      if (!profile) {
+        throw new Error(
+          `Profile not found for matched profileId: ${match.profileId}`,
+        );
+      }
+      profile.lastSeen = Date.now();
+      profile.seenCount++;
+
+      const embeddings = this.faceLibrary.embeddings.get(match.profileId);
+      if (!embeddings) {
+        throw new Error(
+          `Embeddings not found for matched profileId: ${match.profileId}`,
+        );
+      }
+      // Keep up to 10 embeddings per person for robustness.
+      if (embeddings.length < 10) {
+        embeddings.push(Array.from(descriptor));
+      }
+
+      if (attributes) {
+        Object.assign(profile, attributes);
+      }
+
+      return match.profileId;
+    }
+
+    const profileId = `face-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    const profile: FaceProfile = {
+      id: profileId,
+      embeddings: [Array.from(descriptor)],
+      firstSeen: Date.now(),
+      lastSeen: Date.now(),
+      seenCount: 1,
+      ...attributes,
+    };
+
+    this.faceLibrary.faces.set(profileId, profile);
+    this.faceLibrary.embeddings.set(profileId, [Array.from(descriptor)]);
+
+    logger.info(`${FACE_REC_TAG} New face registered: ${profileId}`);
+    return profileId;
+  }
+
+  getFaceProfile(profileId: string): FaceProfile | undefined {
+    return this.faceLibrary.faces.get(profileId);
+  }
+
+  getAllProfiles(): FaceProfile[] {
+    return Array.from(this.faceLibrary.faces.values());
+  }
+
+  async saveFaceLibrary(filePath: string): Promise<void> {
+    const data = {
+      faces: Array.from(this.faceLibrary.faces.entries()),
+      embeddings: Array.from(this.faceLibrary.embeddings.entries()),
+    };
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+    logger.info(`${FACE_REC_TAG} Face library saved to ${filePath}`);
+  }
+
+  async loadFaceLibrary(filePath: string): Promise<void> {
+    const raw = await fs.readFile(filePath, "utf-8");
+    const data = JSON.parse(raw) as {
+      faces: [string, FaceProfile][];
+      embeddings: [string, number[][]][];
+    };
+    this.faceLibrary.faces = new Map(data.faces);
+    this.faceLibrary.embeddings = new Map(data.embeddings);
+    logger.info(
+      `${FACE_REC_TAG} Loaded ${this.faceLibrary.faces.size} face profiles`,
+    );
+  }
+
+  async dispose(): Promise<void> {
+    await this.detector.dispose();
+    await this.embedder.dispose();
+  }
+}
+
+function euclideanDistance(a: Float32Array, b: number[]): number {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) {
+    const d = a[i] - b[i];
+    sum += d * d;
+  }
+  return Math.sqrt(sum);
 }

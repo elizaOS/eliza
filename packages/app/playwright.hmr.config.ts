@@ -44,7 +44,6 @@ export default defineConfig({
       ELIZA_UI_PORT: String(uiPort),
       ELIZA_PORT: String(uiPort),
       ELIZA_STATE_DIR: stateDir,
-      MILADY_STATE_DIR: stateDir,
       ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE || "eliza-hmr",
       // Keep the API process watcher off (HMR under test is Vite's, not the
       // API's), quiet logs, and skip optional camera deps in CI.

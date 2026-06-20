@@ -128,6 +128,16 @@ if (arm64SimdFlags.length > 0) {
 // LLAMA_BUILD_TOOLS=OFF + LLAMA_BUILD_MTMD=ON ensures the mtmd target exists
 // before tools/omnivoice configures (the fork's top-level CMakeLists orders
 // the mtmd embed hook before omnivoice so `if(TARGET mtmd)` is satisfied).
+//
+// LLAMA_BUILD_KOKORO=ON folds kokoro_lib (Kokoro-82M TTS, ABI v10) into the
+// fused libelizainference.so. With LLAMA_BUILD_TOOLS=OFF the fork's root
+// CMakeLists embed-as-library hook (`LLAMA_BUILD_KOKORO AND NOT (COMMON AND
+// TOOLS)`) adds tools/kokoro BEFORE tools/omnivoice, so the `if(TARGET
+// kokoro_lib)` fold in tools/omnivoice/CMakeLists.txt resolves and
+// elizainference exports the eliza_inference_kokoro_* surface. This is the
+// device-proven path: on a real Pixel (arm64/bionic) the staged .so reports
+// eliza_inference_abi_version()=="10", kokoro_supported()==1, and synthesizes
+// PCM on-device with only libc/libm/libdl NEEDED.
 run("cmake", [
   "-S", forkSrc,
   "-B", buildDir,
@@ -143,6 +153,7 @@ run("cmake", [
   ...arm64SimdFlags,
   "-DLLAMA_BUILD_OMNIVOICE=ON",
   "-DLLAMA_BUILD_MTMD=ON",
+  "-DLLAMA_BUILD_KOKORO=ON",
   "-DLLAMA_BUILD_COMMON=ON",
   "-DLLAMA_BUILD_TOOLS=OFF",
   "-DLLAMA_BUILD_EXAMPLES=OFF",

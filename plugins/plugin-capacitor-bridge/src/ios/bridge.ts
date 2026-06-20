@@ -3030,6 +3030,20 @@ async function handleDirectCoreRoute(
 		});
 	}
 
+	if (method === "GET" && pathname === "/api/first-run/status") {
+		// The full-Bun in-process agent is already provisioned and running, so
+		// first-run is complete from the backend's perspective (onboarding is a
+		// client-shell concern). Mirrors the WebView kernel shim
+		// (ios-local-agent-kernel.ts) which the full-Bun bridge replaces — without
+		// this route the local-mode startup poll 404s and the app shows
+		// "Backend Unreachable".
+		return jsonResponse(200, {
+			complete: true,
+			cloudProvisioned: false,
+			deploymentTarget: "local",
+		});
+	}
+
 	if (method === "POST" && pathname === "/api/dev/model-grind") {
 		const report = await runModelGrind({
 			callIosHost,

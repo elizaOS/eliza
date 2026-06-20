@@ -106,7 +106,7 @@ app.listen(3000);
 - `OPENROUTER_TRANSCRIPTION_MODEL`: Specific model to use for `TRANSCRIPTION` (default: `openai/whisper-large-v3`). Overrides `TRANSCRIPTION_MODEL` if set.
 - `OPENROUTER_EMBEDDING_DIMENSIONS`: Number of dimensions for embedding vectors. Supported values: 384, 512, 768, 1024, 1536, 2048, 3072. Defaults to 1536.
 - `OPENROUTER_AUTO_CLEANUP_IMAGES`: Boolean flag for auto-cleanup of generated images, read by `shouldAutoCleanupImages()` in `utils/config.ts` (default: "false").
-- `SMALL_MODEL`: Fallback model for small tasks (default: "google/gemini-2.0-flash-001"). Used if `OPENROUTER_SMALL_MODEL` is not set.
+- `SMALL_MODEL`: Fallback model for small tasks (default: "google/gemini-2.5-flash-lite"). Used if `OPENROUTER_SMALL_MODEL` is not set.
 - `LARGE_MODEL`: Fallback model for large tasks (default: "google/gemini-2.5-flash"). Used if `OPENROUTER_LARGE_MODEL` is not set.
 - `IMAGE_MODEL`: Fallback model for image analysis (default: "x-ai/grok-2-vision-1212"). Used if `OPENROUTER_IMAGE_MODEL` is not set.
 - `IMAGE_GENERATION_MODEL`: Fallback model for image generation (default: "google/gemini-2.5-flash-image-preview"). Used if `OPENROUTER_IMAGE_GENERATION_MODEL` is not set.
@@ -119,7 +119,7 @@ app.listen(3000);
 The plugin registers these model types:
 
 - `TEXT_NANO`: Fastest/cheapest text generation; falls back to the small model when no nano override is set.
-- `TEXT_SMALL`: Fast, cost-effective text generation (default: `google/gemini-2.0-flash-001`). Supports `tools`, `toolChoice`, and `responseSchema`.
+- `TEXT_SMALL`: Fast, cost-effective text generation (default: `google/gemini-2.5-flash-lite`). Supports `tools`, `toolChoice`, and `responseSchema`.
 - `TEXT_MEDIUM`: Mid-tier text generation; falls back to the small model when no medium override is set.
 - `TEXT_LARGE`: Complex text generation tasks (default: `google/gemini-2.5-flash`). Supports `tools`, `toolChoice`, and `responseSchema`.
 - `TEXT_MEGA`: Largest text tasks; falls back to the large model when no mega override is set.

@@ -6,12 +6,14 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { NativeAcpClient } from "./acp-native-transport.js";
+import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
   accountMetaFromSessionMetadata,
   type CodingAccountMeta,
   resolveCodingAccountStrategy,
   selectCodingAccount,
 } from "./coding-account-selection.js";
+import { readConfigMcpServers } from "./config-env.js";
 import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,
@@ -614,6 +616,15 @@ export class AcpService extends Service {
     // separate enforceSessionLimit()/store.create() left a read-then-act race).
     await this.reserveSessionSlot(session);
 
+    // App-build tasks lose the parent's deploy contract at the spawn boundary.
+    // Re-attach it ONCE here, before the transport branch, so BOTH the native
+    // and the CLI/acpx paths host the app and report a verified URL. No-op for
+    // non-app tasks; applied only to the initial task, never to follow-up sends.
+    const initialTask =
+      opts.initialTask && opts.initialTask.trim().length > 0
+        ? augmentTaskWithDeployGuidance(opts.initialTask)
+        : opts.initialTask;
+
     if (this.transportMode === "native") {
       const result = await this.spawnNativeSession(id, session, {
         ...opts,
@@ -623,7 +634,7 @@ export class AcpService extends Service {
         const keepAliveAfterComplete =
           (opts.metadata as Record<string, unknown> | undefined)
             ?.keepAliveAfterComplete === true;
-        void this.sendPrompt(id, opts.initialTask, {
+        void this.sendPrompt(id, initialTask ?? "", {
           timeoutMs: opts.timeoutMs,
           model: opts.model,
         })
@@ -631,8 +642,8 @@ export class AcpService extends Service {
             this.log("error", "initial prompt failed", {
               sessionId: id,
               agentType,
-              promptLength: opts.initialTask?.length ?? 0,
-              promptPreview: preview(opts.initialTask ?? ""),
+              promptLength: initialTask?.length ?? 0,
+              promptPreview: preview(initialTask ?? ""),
               error: errorMessage(err),
             });
           })
@@ -690,7 +701,7 @@ export class AcpService extends Service {
       const keepAliveAfterComplete =
         (opts.metadata as Record<string, unknown> | undefined)
           ?.keepAliveAfterComplete === true;
-      void this.sendPrompt(id, opts.initialTask, {
+      void this.sendPrompt(id, initialTask ?? "", {
         timeoutMs: opts.timeoutMs,
         model: opts.model,
       })
@@ -698,8 +709,8 @@ export class AcpService extends Service {
           this.log("error", "initial prompt failed", {
             sessionId: id,
             agentType,
-            promptLength: opts.initialTask?.length ?? 0,
-            promptPreview: preview(opts.initialTask ?? ""),
+            promptLength: initialTask?.length ?? 0,
+            promptPreview: preview(initialTask ?? ""),
             error: errorMessage(err),
           });
         })
@@ -1174,6 +1185,10 @@ export class AcpService extends Service {
         opts.model,
         session.agentType,
       ),
+      // Auto-inherit the parent runtime's configured MCP servers (config
+      // `mcp.servers`) so the sub-agent gets the same MCP tools. Undefined when
+      // none are configured → the transport falls back to ELIZA_ACP_MCP_SERVERS.
+      mcpServers: readConfigMcpServers(),
       onEvent: (event, protocolSessionId) => {
         this.handleAcpEvent(
           event,

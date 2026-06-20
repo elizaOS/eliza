@@ -2499,6 +2499,23 @@ async function main(): Promise<void> {
 
   injectWaifuChatAccessToken();
 
+  // The iOS full-Bun backend smoke is a headless QA gate that must run BEFORE
+  // any window-shell / popout routing. First-run renders onboarding through a
+  // non-"main" window-shell route, whose branch returns before the main boot
+  // path — so the smoke (previously only wired into the main path) was
+  // structurally unreachable whenever onboarding was showing, and its request
+  // flag silently no-op'd. Run it (and the iOS local-agent bridges it needs)
+  // up front; when requested it takes over the WebView and returns.
+  if (isIOS) {
+    await initializeStorageBridge();
+    initializeCapacitorBridge();
+    installIosLocalAgentNativeRequestBridge();
+    installIosLocalAgentFetchBridge();
+    if (await runIosFullBunSmokeIfRequested()) {
+      return;
+    }
+  }
+
   if (isPopoutWindow()) {
     injectPopoutApiBase();
     mountReactApp();
@@ -2522,9 +2539,6 @@ async function main(): Promise<void> {
     initializeCapacitorBridge();
     installIosLocalAgentNativeRequestBridge();
     installIosLocalAgentFetchBridge();
-    if (await runIosFullBunSmokeIfRequested()) {
-      return;
-    }
   } else if (isAndroid) {
     initializeCapacitorBridge();
     installAndroidNativeAgentFetchBridge();

@@ -211,12 +211,17 @@ function collectArchives(buildDir, outDir) {
     .map((s) => s.trim())
     .filter(Boolean)
     .filter((p) =>
-      // Fused slices also stage libmtmd*.a (Qwen3-ASR projector) and
-      // libelizainference*.a (the eliza_inference_* voice ABI). NOT
-      // libomnivoice*.a — elizainference_static already compiles the omnivoice
-      // CORE sources, so staging both would duplicate those objects when the
-      // xcframework assembler merges every .a with `libtool -static`.
-      /^lib(llama|ggml|mtmd|elizainference)[^/]*\.a$/.test(path.basename(p)),
+      // Fused slices also stage libmtmd*.a (Qwen3-ASR projector),
+      // libkokoro_lib*.a (Kokoro-82M TTS, ABI v10), and libelizainference*.a
+      // (the eliza_inference_* voice ABI). NOT libomnivoice*.a —
+      // elizainference_static already compiles the omnivoice CORE sources, so
+      // staging both would duplicate those objects when the xcframework
+      // assembler merges every .a with `libtool -static`. kokoro_lib is a
+      // separate static target (its own GGUF reader + iSTFT decoder), so its
+      // archive must be collected for the xcframework to carry Kokoro.
+      /^lib(llama|ggml|mtmd|kokoro_lib|elizainference)[^/]*\.a$/.test(
+        path.basename(p),
+      ),
     );
   if (found.length === 0) {
     die(
@@ -310,7 +315,16 @@ function buildTarget(target) {
     // projector the eliza_inference ASR path wraps). The omnivoice subtree is
     // already configured (LLAMA_BUILD_OMNIVOICE defaults ON); we only need the
     // elizainference_static + mtmd targets, built by name below.
-    ...(t.fused ? ["-DLLAMA_BUILD_MTMD=ON"] : []),
+    //
+    // LLAMA_BUILD_KOKORO=ON folds kokoro_lib (Kokoro-82M TTS, ABI v10) into the
+    // fused slice so the iOS xcframework carries Kokoro. This slice path already
+    // builds with BUILD_SHARED_LIBS=OFF + LLAMA_BUILD_TOOLS=OFF, so the fork's
+    // root-CMakeLists embed-as-library hook (`LLAMA_BUILD_KOKORO AND NOT (COMMON
+    // AND TOOLS)`) adds tools/kokoro BEFORE tools/omnivoice and the
+    // `if(TARGET kokoro_lib)` fold in elizainference resolves. The kokoro_lib
+    // static archive is collected below (collectArchives) so it merges into the
+    // packaged LlamaCpp.xcframework alongside libelizainference.a.
+    ...(t.fused ? ["-DLLAMA_BUILD_MTMD=ON", "-DLLAMA_BUILD_KOKORO=ON"] : []),
   ]);
 
   // Build ONLY the static library targets. The default `all` target also
@@ -319,12 +333,14 @@ function buildTarget(target) {
   // library targets carry the full kernel set and need no signing.
   const buildTargets = ["llama", "ggml", "ggml-base", "ggml-cpu", "ggml-metal"];
   if (t.fused) {
-    // mtmd (Qwen3-ASR projector) + the STATIC eliza_inference_* FFI archive.
+    // mtmd (Qwen3-ASR projector) + kokoro_lib (Kokoro-82M TTS, ABI v10) + the
+    // STATIC eliza_inference_* FFI archive. kokoro_lib must build before
+    // elizainference_static links so the `if(TARGET kokoro_lib)` fold resolves.
     // NOT omnivoice-tts / omnivoice-codec: those CLIs include audio-io.h
     // (miniaudio device IO) and link as signed app bundles that fail iphoneos.
     // Building by explicit target name (never the `all` target) is exactly how
     // those CLIs are excluded.
-    buildTargets.push("mtmd", "elizainference_static");
+    buildTargets.push("mtmd", "kokoro_lib", "elizainference_static");
   }
   log(
     `cmake build (static libraries only) — compiles the Metal kernel set${

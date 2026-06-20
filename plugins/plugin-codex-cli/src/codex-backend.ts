@@ -200,14 +200,52 @@ export function translateMessagesToCodexInput(messages: ChatMessage[] | undefine
   }
 
   let lastText = "";
+  // function_call ids emitted but not yet paired with their output, in order.
+  // The Responses API rejects a function_call_output whose call_id has no
+  // matching function_call ("No tool call found for function call output with
+  // call_id ..."), so every output must reference a real preceding call.
+  const pendingCallIds: string[] = [];
   for (const message of messages) {
     if (message.role === "system" || message.role === "developer") continue;
     if (message.role === "tool") {
-      out.push({
-        type: "function_call_output",
-        call_id: message.toolCallId ?? "tool_call",
-        output: contentToText(message.content),
-      });
+      // A tool turn carries one or more results. The planner renders them as
+      // `tool-result` CONTENT PARTS (toolCallId + output on the part); older
+      // callers put a single result in plain-text content keyed by the
+      // message-level toolCallId. Handle both so the fetched data actually
+      // reaches the model — dropping it makes the model believe its own tool
+      // call never ran ("I don't have the fetched contents visible here").
+      const resultParts = toolResultPartsFromContent(message.content);
+      const results =
+        resultParts.length > 0
+          ? resultParts
+          : [{ toolCallId: message.toolCallId, text: contentToText(message.content) }];
+      for (const result of results) {
+        const wantId = result.toolCallId ?? message.toolCallId;
+        let callId: string | undefined;
+        const idx = wantId ? pendingCallIds.indexOf(wantId) : -1;
+        if (idx >= 0) {
+          callId = pendingCallIds[idx];
+          pendingCallIds.splice(idx, 1);
+        } else if (pendingCallIds.length > 0) {
+          callId = pendingCallIds.shift();
+        }
+        if (callId) {
+          out.push({
+            type: "function_call_output",
+            call_id: callId,
+            output: result.text,
+          });
+        } else if (result.text.trim().length > 0) {
+          // Orphaned tool result (no preceding function_call in this
+          // transcript): render its content as plain context instead of an
+          // unmatched function_call_output that the backend would 400 on.
+          out.push({
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: result.text }],
+          });
+        }
+      }
       continue;
     }
 
@@ -217,13 +255,32 @@ export function translateMessagesToCodexInput(messages: ChatMessage[] | undefine
         lastText = text;
         out.push({ type: "message", role: "assistant", content: [{ type: "output_text", text }] });
       }
-      for (const toolCall of message.toolCalls ?? []) {
+      // Tool calls arrive either as a structured `toolCalls` field or as
+      // `tool-call` content parts (what the planner renders). Emit both,
+      // deduped by id, so the assistant's prior calls are preserved and the
+      // following tool results have a real function_call to pair with.
+      const seen = new Set<string>();
+      const toolCalls = [
+        ...(message.toolCalls ?? []).map((toolCall) => ({
+          id: toolCall.id,
+          name: toolCall.name,
+          arguments:
+            typeof toolCall.arguments === "string"
+              ? toolCall.arguments
+              : JSON.stringify(toolCall.arguments ?? {}),
+        })),
+        ...toolCallPartsFromContent(message.content),
+      ];
+      for (const toolCall of toolCalls) {
+        if (!toolCall.id || seen.has(toolCall.id)) continue;
+        seen.add(toolCall.id);
         out.push({
           type: "function_call",
           call_id: toolCall.id,
           name: toolCall.name,
-          arguments: typeof toolCall.arguments === "string" ? toolCall.arguments : JSON.stringify(toolCall.arguments ?? {}),
+          arguments: toolCall.arguments,
         });
+        pendingCallIds.push(toolCall.id);
       }
       continue;
     }
@@ -253,6 +310,53 @@ function contentToText(content: ChatMessage["content"]): string {
     .map((part) => (part.type === "text" && typeof part.text === "string" ? part.text : ""))
     .filter(Boolean)
     .join("\n");
+}
+
+/** Flatten a tool-result part's `output`/`result` into a single string. */
+function toolOutputText(output: unknown): string {
+  if (output == null) return "";
+  if (typeof output === "string") return output;
+  if (Array.isArray(output)) return contentToText(output as ChatMessage["content"]);
+  if (isRecord(output)) {
+    if (typeof output.value === "string") return output.value;
+    if (typeof output.text === "string") return output.text;
+    return JSON.stringify(output);
+  }
+  return String(output);
+}
+
+/** Extract `tool-result` content parts (toolCallId + flattened output text). */
+function toolResultPartsFromContent(
+  content: ChatMessage["content"],
+): Array<{ toolCallId?: string; text: string }> {
+  if (!Array.isArray(content)) return [];
+  const results: Array<{ toolCallId?: string; text: string }> = [];
+  for (const part of content) {
+    if (!isRecord(part) || part.type !== "tool-result") continue;
+    results.push({
+      toolCallId: typeof part.toolCallId === "string" ? part.toolCallId : undefined,
+      text: toolOutputText(part.output ?? part.result),
+    });
+  }
+  return results;
+}
+
+/** Extract `tool-call` content parts as codex function-call descriptors. */
+function toolCallPartsFromContent(
+  content: ChatMessage["content"],
+): Array<{ id: string; name: string; arguments: string }> {
+  if (!Array.isArray(content)) return [];
+  const calls: Array<{ id: string; name: string; arguments: string }> = [];
+  for (const part of content) {
+    if (!isRecord(part) || part.type !== "tool-call") continue;
+    const argSource = part.input ?? part.args ?? {};
+    calls.push({
+      id: typeof part.toolCallId === "string" ? part.toolCallId : "",
+      name: typeof part.toolName === "string" ? part.toolName : "",
+      arguments: typeof argSource === "string" ? argSource : JSON.stringify(argSource ?? {}),
+    });
+  }
+  return calls;
 }
 
 interface ActiveFunctionCall {

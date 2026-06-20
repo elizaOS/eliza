@@ -258,4 +258,10 @@ export interface ChatImageAttachment {
   data: string;
   mimeType: string;
   name: string;
+  /**
+   * Optional client-generated downscaled preview (base64, no prefix). Persisted
+   * separately and surfaced as the attachment's `thumbnailUrl` so the chat tile
+   * loads a small image while the full resolution opens in the lightbox.
+   */
+  thumbnail?: { data: string; mimeType: string };
 }

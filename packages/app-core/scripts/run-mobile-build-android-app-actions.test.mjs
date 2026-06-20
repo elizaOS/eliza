@@ -69,7 +69,7 @@ test("Android cloud strip keeps only the active Java package root", () => {
   const tmp = fs.mkdtempSync(path.join(process.cwd(), ".tmp-android-roots-"));
   try {
     const active = path.join(tmp, "app", "eliza");
-    const stale = path.join(tmp, "ai", "milady", "milady");
+    const stale = path.join(tmp, "com", "example", "example");
     const legacy = path.join(tmp, "ai", "elizaos", "app");
     for (const root of [active, stale, legacy]) {
       fs.mkdirSync(root, { recursive: true });
@@ -184,46 +184,46 @@ test("Android App Actions shortcuts are rewritten to the configured package and 
   );
 });
 
-test("Android App Actions rewrites branded Milady shortcut templates", () => {
+test("Android App Actions rewrites branded whitelabel shortcut templates", () => {
   const shortcuts = `<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <capability android:name="actions.intent.OPEN_APP_FEATURE">
       <intent>
-        <url-template android:value="milady://feature/open?source=android-app-actions{&amp;feature}" />
+        <url-template android:value="app.eliza://feature/open?source=android-app-actions{&amp;feature}" />
       </intent>
       <intent>
-        <url-template android:value="milady://chat?source=android-app-actions&amp;action=chat" />
+        <url-template android:value="app.eliza://chat?source=android-app-actions&amp;action=chat" />
       </intent>
     </capability>
     <capability android:name="actions.intent.CREATE_MESSAGE">
       <intent>
-        <url-template android:value="milady://chat?source=android-app-actions&amp;action=ask{&amp;text}" />
+        <url-template android:value="app.eliza://chat?source=android-app-actions&amp;action=ask{&amp;text}" />
       </intent>
       <intent>
-        <url-template android:value="milady://chat?source=android-app-actions&amp;action=chat" />
+        <url-template android:value="app.eliza://chat?source=android-app-actions&amp;action=chat" />
       </intent>
     </capability>
     <capability android:name="actions.intent.GET_THING">
       <intent>
-        <url-template android:value="milady://chat?source=android-app-actions&amp;action=ask{&amp;query}" />
+        <url-template android:value="app.eliza://chat?source=android-app-actions&amp;action=ask{&amp;query}" />
       </intent>
       <intent>
-        <url-template android:value="milady://chat?source=android-app-actions&amp;action=ask" />
+        <url-template android:value="app.eliza://chat?source=android-app-actions&amp;action=ask" />
       </intent>
     </capability>
     <shortcut android:shortcutId="eliza_app_action_chat">
-      <intent android:targetPackage="ai.milady.milady" android:targetClass="ai.milady.milady.MainActivity" android:data="milady://chat?source=android-static-shortcut" />
+      <intent android:targetPackage="app.eliza" android:targetClass="app.eliza.MainActivity" android:data="app.eliza://chat?source=android-static-shortcut" />
     </shortcut>
     <shortcut android:shortcutId="eliza_app_action_voice">
-      <intent android:targetPackage="ai.milady.milady" android:targetClass="ai.milady.milady.MainActivity" android:data="milady://voice?source=android-static-shortcut" />
+      <intent android:targetPackage="app.eliza" android:targetClass="app.eliza.MainActivity" android:data="app.eliza://voice?source=android-static-shortcut" />
     </shortcut>
     <shortcut android:shortcutId="eliza_app_action_daily_brief">
-      <intent android:targetPackage="ai.milady.milady" android:targetClass="ai.milady.milady.MainActivity" android:data="milady://lifeops/daily-brief?source=android-static-shortcut" />
+      <intent android:targetPackage="app.eliza" android:targetClass="app.eliza.MainActivity" android:data="app.eliza://lifeops/daily-brief?source=android-static-shortcut" />
     </shortcut>
     <shortcut android:shortcutId="eliza_app_action_new_task">
-      <intent android:targetPackage="ai.milady.milady" android:targetClass="ai.milady.milady.MainActivity" android:data="milady://lifeops/task/new?source=android-static-shortcut" />
+      <intent android:targetPackage="app.eliza" android:targetClass="app.eliza.MainActivity" android:data="app.eliza://lifeops/task/new?source=android-static-shortcut" />
     </shortcut>
     <shortcut android:shortcutId="eliza_app_action_tasks">
-      <intent android:targetPackage="ai.milady.milady" android:targetClass="ai.milady.milady.MainActivity" android:data="milady://lifeops/tasks?source=android-static-shortcut" />
+      <intent android:targetPackage="app.eliza" android:targetClass="app.eliza.MainActivity" android:data="app.eliza://lifeops/tasks?source=android-static-shortcut" />
     </shortcut>
   </shortcuts>`;
 
@@ -232,8 +232,8 @@ test("Android App Actions rewrites branded Milady shortcut templates", () => {
     urlScheme: "elizaos",
   });
 
-  assert.doesNotMatch(patched, /milady:\/\//);
-  assert.doesNotMatch(patched, /ai\.milady\.milady/);
+  assert.doesNotMatch(patched, /app\.eliza:\/\//);
+  assert.doesNotMatch(patched, /android:targetPackage="app\.eliza"/);
   assert.deepEqual(
     validateAndroidAppActionsXmlResource(patched, {
       androidPackage: "ai.elizaos.app",

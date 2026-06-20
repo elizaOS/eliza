@@ -1,6 +1,6 @@
 # 04 — Plugin Views Inventory: Finance · Tools · XR · Games
 
-Per-view UX + code + state inventory of elizaOS **plugin** views (under `plugins/plugin-*/src`), feeding a minimalist, lighter, chat-first redesign. Repo root: `/home/shaw/milady/eliza`. Read-only review (no code edited).
+Per-view UX + code + state inventory of elizaOS **plugin** views (under `plugins/plugin-*/src`), feeding a minimalist, lighter, chat-first redesign. Repo root: `/home/shaw/eliza`. Read-only review (no code edited).
 
 **Redesign direction judged against:** minimalism (cut text/descriptions/borders/nested cards/tags/badges/redundant inputs; icons + color + whitespace over text); lighter feel (move off heavy black bg toward a single flat/futuristic look — orange `#ff8a24` accent, blue `#1d91e8` info, white/black text, some gray); floating chat overlay is the PRIMARY interface (glanceable, voice-forward, stay-in-chat); each view shows only essential info + view-dependent actions + proactive agent context + chat integration.
 

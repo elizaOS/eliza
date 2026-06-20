@@ -18,7 +18,7 @@
  *    - **Watch + default** — Vite **dev** server + `ELIZA_RENDERER_URL` for Electrobun (HMR).
  *      Stale dep chunks: `--vite-force` or `ELIZA_VITE_FORCE=1` / `ELIZA_VITE_FORCE=1` (passes `vite --force`).
  *    - **Watch + Rollup** — `--rollup-watch` or `ELIZA_DESKTOP_VITE_BUILD_WATCH=1` with
- *      `ELIZA_DESKTOP_VITE_WATCH=1` (or `MILADY_DESKTOP_VITE_WATCH=1`): legacy `vite build --watch` (slow on large graphs).
+ *      `ELIZA_DESKTOP_VITE_WATCH=1`: legacy `vite build --watch` (slow on large graphs).
  *    - **Electrobun** — `bun run dev` in `packages/app-core/platforms/electrobun`.
  *
  * ## Port allocation (`launch()`) — WHY
@@ -153,18 +153,12 @@ const defaultElizaNamespace = appIdentity.ELIZA_NAMESPACE || "eliza";
 const API_PROCESS_SPAWNED_AT_ENV = "ELIZA_API_PROCESS_SPAWNED_AT_MS";
 const PROCESS_SPAWNED_AT_ENV = "ELIZA_PROCESS_SPAWNED_AT_MS";
 
-if (
-  isElizaMonorepo &&
-  process.env.MILADY_SKIP_LOCAL_UPSTREAMS !== "1" &&
-  process.env.ELIZA_SKIP_LOCAL_UPSTREAMS !== "1"
-) {
-  process.env.MILADY_FORCE_LOCAL_UPSTREAMS ??= "1";
+if (isElizaMonorepo && process.env.ELIZA_SKIP_LOCAL_UPSTREAMS !== "1") {
   process.env.ELIZA_FORCE_LOCAL_UPSTREAMS ??= "1";
 }
 
 function resolveDevStateDir() {
-  const explicit =
-    process.env.ELIZA_STATE_DIR?.trim() || process.env.MILADY_STATE_DIR?.trim();
+  const explicit = process.env.ELIZA_STATE_DIR?.trim();
   if (explicit)
     return path.resolve(
       explicit.replace(/^~(?=$|[\\/])/, process.env.HOME || process.cwd()),
@@ -328,9 +322,7 @@ const forceRenderer =
 // (renderer may be stale until the next build). Prefer dev:desktop:watch (HMR).
 const rendererBuildSkipRequested =
   process.env.ELIZA_DESKTOP_RENDERER_BUILD === "skip";
-const viteWatch =
-  process.env.ELIZA_DESKTOP_VITE_WATCH === "1" ||
-  process.env.MILADY_DESKTOP_VITE_WATCH === "1";
+const viteWatch = process.env.ELIZA_DESKTOP_VITE_WATCH === "1";
 const viteDepForceCli = process.argv.includes("--vite-force");
 const viteDepForce =
   viteDepForceCli ||

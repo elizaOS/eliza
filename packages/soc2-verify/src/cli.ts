@@ -70,7 +70,7 @@ Environment:
 
 /**
  * Find the eliza monorepo root by walking up from the CLI script location
- * until we see a `packages/security/` directory. The outer milady root is the
+ * until we see a `packages/security/` directory. The outer workspace root is the
  * parent of `eliza/`.
  */
 function locateRoots(): { elizaRoot: string; outerRoot: string } {

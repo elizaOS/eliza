@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { KokoroGgufRuntime, KokoroMockRuntime } from "../kokoro-runtime";
+import { KokoroMockRuntime } from "../kokoro-runtime";
 import type { KokoroVoicePack } from "../types";
 
 const OLD_ENV = { ...process.env };
@@ -91,39 +91,5 @@ describe("KokoroMockRuntime", () => {
 			onChunk: () => true,
 		});
 		expect(result.cancelled).toBe(true);
-	});
-});
-
-describe("KokoroGgufRuntime", () => {
-	it("throws when server returns a non-ok response", async () => {
-		const runtime = new KokoroGgufRuntime({
-			serverUrl: "http://127.0.0.1:18789",
-			modelId: "kokoro-v1.0",
-			sampleRate: 24_000,
-			fetchImpl: async () =>
-				({
-					ok: false,
-					status: 503,
-					statusText: "Service Unavailable",
-					body: null,
-				}) as unknown as Response,
-		});
-		await expect(
-			runtime.synthesize({
-				phonemes: { ids: Int32Array.from([1, 2]), phonemes: "ab" },
-				voice: makeVoice(),
-				cancelSignal: { cancelled: false },
-				onChunk: () => undefined,
-			}),
-		).rejects.toThrow("503");
-	});
-
-	it("dispose is a no-op (stateless adapter)", () => {
-		const runtime = new KokoroGgufRuntime({
-			serverUrl: "http://127.0.0.1:18789",
-			modelId: "kokoro-v1.0",
-			sampleRate: 24_000,
-		});
-		expect(() => runtime.dispose()).not.toThrow();
 	});
 });

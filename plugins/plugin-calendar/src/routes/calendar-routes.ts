@@ -7,7 +7,7 @@
  * parsing, JSON writing — is host infrastructure and is injected via
  * {@link CalendarRouteDeps} so this module never depends on the host plugin
  * (dependency direction stays `host -> plugin-calendar`). Paths are unchanged
- * contract surface the client + Odysseus depend on.
+ * contract surface the client + task-coordinator depend on.
  */
 
 import type {

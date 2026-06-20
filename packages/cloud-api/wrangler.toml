@@ -146,7 +146,6 @@ SQL_HEAVY_PAYLOAD_STORAGE = "r2"
 SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
 SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
 LLM_TRAJECTORY_STORAGE = "r2"
-BITROUTER_BASE_URL = "https://bitrouter-production.up.railway.app"
 HEADSCALE_PUBLIC_URL = "https://headscale.elizacloud.ai"
 HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
 HEADSCALE_USER = "tunnel"
@@ -184,8 +183,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   KV_REST_API_URL                    Upstash Redis REST (LEGACY fallback only; primary is REDIS_URL)
 #   KV_REST_API_TOKEN                  Upstash auth (legacy fallback)
 #   KV_REST_API_READ_ONLY_TOKEN        Upstash read-only token (legacy fallback)
-#   BITROUTER_API_KEY                 BitRouter proxy bearer token
-#   BITROUTER_BASE_URL                 BitRouter proxy base URL (Railway service or BitRouter Cloud)
+#   OPENROUTER_API_KEY                 OpenRouter BYOK key (backup for non-native models)
 #   ANTHROPIC_API_KEY                  Claude
 #   OPENAI_API_KEY                     OpenAI direct
 #   AI_GATEWAY_API_KEY
@@ -258,7 +256,6 @@ APPS_DEPLOY_ENABLED = "1"
 NEXT_PUBLIC_APP_URL = "https://staging.elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api-staging.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://staging.elizacloud.ai"
-BITROUTER_BASE_URL = "https://bitrouter-staging.up.railway.app"
 # Per-tenant `magicLinkBaseUrl` (set in Steward Neon `tenant_configs.email_config`)
 # redirects email magic-link callbacks to staging.elizacloud.ai instead of the
 # prod fallback (www.elizacloud.ai). Tenant row provisioned manually.
@@ -419,7 +416,6 @@ SQL_HEAVY_PAYLOAD_STORAGE = "r2"
 SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
 SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
 LLM_TRAJECTORY_STORAGE = "r2"
-BITROUTER_BASE_URL = "https://bitrouter-production.up.railway.app"
 HEADSCALE_PUBLIC_URL = "https://headscale.elizacloud.ai"
 HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
 HEADSCALE_USER = "tunnel"

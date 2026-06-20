@@ -201,13 +201,6 @@ const PLUGIN_REGISTRY: Array<{
     requiredTerms: ["InventoryView", "Button", "useInventoryData"],
   },
   {
-    pluginDir: "plugins/plugin-2004scape",
-    manifestPath: "plugins/plugin-2004scape/src/index.ts",
-    xrComponentSrc:
-      "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx",
-    requiredTerms: ["TwoThousandFourScapeOperatorSurface", "useState"],
-  },
-  {
     pluginDir: "plugins/plugin-feed",
     manifestPath: "plugins/plugin-feed/src/index.ts",
     xrComponentSrc: "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx",
@@ -232,19 +225,6 @@ const PLUGIN_REGISTRY: Array<{
     xrComponentSrc:
       "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx",
     requiredTerms: ["DefenseAgentsOperatorSurface", "useState"],
-  },
-  {
-    pluginDir: "plugins/plugin-hyperscape",
-    manifestPath: "plugins/plugin-hyperscape/src/index.ts",
-    xrComponentSrc:
-      "plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.tsx",
-    requiredTerms: ["HyperscapeOperatorSurface", "useState"],
-  },
-  {
-    pluginDir: "plugins/plugin-scape",
-    manifestPath: "plugins/plugin-scape/src/index.ts",
-    xrComponentSrc: "plugins/plugin-scape/src/ui/ScapeOperatorSurface.tsx",
-    requiredTerms: ["ScapeOperatorSurface", "useState"],
   },
   {
     pluginDir: "plugins/plugin-screenshare",
@@ -317,11 +297,6 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
     srcFile: "plugins/plugin-wallet-ui/src/InventoryView.interact.ts",
     capabilities: ["terminal-wallet-state"],
   },
-  "plugins/plugin-2004scape": {
-    srcFile:
-      "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.interact.ts",
-    capabilities: ["terminal-2004scape-state", "terminal-2004scape-command"],
-  },
   "plugins/plugin-feed": {
     srcFile: "plugins/plugin-feed/src/ui/FeedOperatorSurface.interact.ts",
     capabilities: ["get-state", "refresh-agent-status"],
@@ -335,15 +310,6 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
     srcFile:
       "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.interact.ts",
     capabilities: ["terminal-defense-state", "terminal-defense-command"],
-  },
-  "plugins/plugin-hyperscape": {
-    srcFile:
-      "plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.interact.ts",
-    capabilities: ["terminal-hyperscape-state", "terminal-hyperscape-command"],
-  },
-  "plugins/plugin-scape": {
-    srcFile: "plugins/plugin-scape/src/ui/ScapeOperatorSurface.interact.ts",
-    capabilities: ["terminal-scape-state", "terminal-scape-command"],
   },
   "plugins/plugin-screenshare": {
     srcFile:
@@ -364,7 +330,7 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("XR feature-by-feature functional parity — all 23 views", () => {
+describe("XR feature-by-feature functional parity — all 20 views", () => {
   // A. Shared bundle architecture ─────────────────────────────────────────────
 
   it("A — every XR view uses the same bundlePath as the GUI view (shared bundle = shared features)", () => {
@@ -534,11 +500,11 @@ describe("XR feature-by-feature functional parity — all 23 views", () => {
 
   // Summary assertion ─────────────────────────────────────────────────────────
 
-  it("summary — all 23 plugins have XR views that are functionally identical to their GUI views", () => {
+  it("summary — all 20 plugins have XR views that are functionally identical to their GUI views", () => {
     // This test is a logical consequence of tests A, B, C, D above all passing.
     // It explicitly states the guarantee: same bundle + same component = same features.
     const xrPluginCount = PLUGIN_REGISTRY.length;
-    expect(xrPluginCount).toBe(23);
+    expect(xrPluginCount).toBe(20);
 
     for (const { pluginDir, manifestPath } of PLUGIN_REGISTRY) {
       const source = readFile(manifestPath);

@@ -41,13 +41,10 @@ const VIEW_MANIFESTS = [
   "plugins/plugin-steward-app/src/plugin.ts",
   "plugins/plugin-vincent/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
-  "plugins/plugin-2004scape/src/index.ts",
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
   "plugins/plugin-clawville/src/index.ts",
   "plugins/plugin-defense-of-the-agents/src/index.ts",
-  "plugins/plugin-hyperscape/src/index.ts",
-  "plugins/plugin-scape/src/index.ts",
   "plugins/plugin-screenshare/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/index.ts",
@@ -124,12 +121,6 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-wallet-market-overview",
     "terminal-wallet-trading-profile",
   ],
-  "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx": [
-    "terminal-2004scape-state",
-    "terminal-2004scape-command",
-    "terminal-2004scape-pause",
-    "terminal-2004scape-resume",
-  ],
   "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx": [
     "get-state",
     "refresh-agent-status",
@@ -150,16 +141,6 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
   ],
   "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx":
     ["terminal-defense-state", "terminal-defense-command"],
-  "plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.tsx": [
-    "terminal-hyperscape-state",
-    "terminal-hyperscape-command",
-    "terminal-hyperscape-control",
-  ],
-  "plugins/plugin-scape/src/ui/ScapeOperatorSurface.tsx": [
-    "terminal-scape-state",
-    "terminal-scape-command",
-    "terminal-scape-control",
-  ],
   "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx": [
     "terminal-screenshare-state",
     "terminal-screenshare-start",

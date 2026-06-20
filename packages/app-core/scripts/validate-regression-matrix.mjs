@@ -7,9 +7,7 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_CORE_ROOT = path.resolve(SCRIPT_DIR, "..");
 
 function explicitRepoRoot() {
-  const raw =
-    process.env.ELIZA_REGRESSION_MATRIX_REPO_ROOT ??
-    process.env.MILADY_REPO_ROOT;
+  const raw = process.env.ELIZA_REGRESSION_MATRIX_REPO_ROOT;
   const explicitRoot = raw?.trim();
   if (!explicitRoot) return null;
 
@@ -106,8 +104,9 @@ function parsePathAliases(raw) {
 
 const REPO_PATH_ALIASES = parsePathAliases(
   process.env.ELIZA_REGRESSION_MATRIX_PATH_ALIASES ??
-    process.env.MILADY_REGRESSION_MATRIX_PATH_ALIASES ??
-    (process.env.MILADY_REPO_ROOT ? "packages/docs/=docs/" : ""),
+    (process.env.ELIZA_REGRESSION_MATRIX_REPO_ROOT
+      ? "packages/docs/=docs/"
+      : ""),
 );
 
 function parseArgs(argv) {

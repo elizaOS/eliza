@@ -245,7 +245,7 @@ describe("scenario executor action turns", () => {
         } as Action,
       ],
       {
-        character: { name: "Milady" } as AgentRuntime["character"],
+        character: { name: "Example" } as AgentRuntime["character"],
         useModel: vi.fn() as AgentRuntime["useModel"],
       },
     );

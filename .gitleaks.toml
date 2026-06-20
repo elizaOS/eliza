@@ -153,25 +153,6 @@ regexes = [
   '''0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80''',
 ]
 
-# Vendored upstream Tails OS source snapshot. This subtree is a verbatim copy of
-# the public Tails project source (mirroring its GitLab layout), not project
-# code. Its only gitleaks hits are public upstream material: the published
-# OpenPGP release-signing fingerprint (A490D0F4D311A4153E2BB7CADBB802B258ACD84F),
-# Tails' own test-VM SSH key literally named `Unsafe_SSH_private_key`, and a
-# private_key FORMAT example in the release-process wiki docs. None are
-# credentials for this repo. Scoped to the vendored tails/ tree only. (The files
-# were added then deleted, but gitleaks scans the diff over the commit range so
-# they still trip.)
-[[allowlists]]
-description = "Vendored upstream Tails OS source (public test fixtures + docs)"
-paths = [
-  '''(^|/)packages/os/linux/variants/milady-tails/tails/''',
-]
-
-# Robot engineering material identifiers such as PA6_GF30, PC_ABS, and
-# TPU_SHORE_A95 are mechanical/material codes, not credentials. Keep this scoped
-# to the robot material files and exact extracted token values that gitleaks'
-# generic-api-key rule misclassifies.
 [[allowlists]]
 description = "Robot material identifiers (not credentials; match target)"
 paths = [
@@ -255,6 +236,19 @@ paths = [
 # because gitleaks scans the add in commit d28c72036d's range.
 [[allowlists]]
 description = "eliza-1 smoke SFT corpus (synthetic/captured-public tokens, not credentials)"
+paths = [
+  '''(^|/)packages/training/data/final-eliza1-smoke/.*\.jsonl$''',
+]
+
+# eliza-1 smoke SFT corpus (final-eliza1-smoke/*.jsonl): a ~400-row e2e pipeline
+# validator DELIBERATELY kept in git (see packages/training/.gitignore negations)
+# so the SFT pipeline can be smoke-tested from a fresh clone. Its synthetic
+# training rows include captured Daytona/Node sandbox env dumps — GPG_KEY is the
+# Node base image's PUBLIC release-key fingerprint, DAYTONA_SANDBOX_* are ids —
+# and dummy api-key examples (sk_live_abc123xyz). Generated content, not
+# credentials. Scoped to the corpus jsonl only.
+[[allowlists]]
+description = "eliza-1 smoke SFT corpus (synthetic training rows, not credentials)"
 paths = [
   '''(^|/)packages/training/data/final-eliza1-smoke/.*\.jsonl$''',
 ]

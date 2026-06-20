@@ -356,10 +356,6 @@ export function getAppCatalogSectionKey(
       return "finance";
     case "@elizaos/plugin-feed":
       return "games";
-    case "@hyperscape/plugin-hyperscape":
-    case "@elizaos/plugin-hyperscape":
-    case "@elizaos/plugin-2004scape":
-    case "@elizaos/plugin-scape":
     case "@elizaos/plugin-defense-of-the-agents":
     case "@elizaos/plugin-clawville":
       return "games";

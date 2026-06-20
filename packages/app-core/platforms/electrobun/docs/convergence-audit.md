@@ -1,14 +1,217 @@
 # Convergence, Annotation, and Deletion Audit
 
-Generated: 2026-05-17T17:53:44.862Z
+Generated: 2026-06-20T19:58:51.166Z
 
-Branch: codex/phase-11-event-bridge-wip
+Branch: develop
 
-Ahead/behind origin/develop: 22	0
+Ahead/behind origin/develop: 1	0
 
 Dirty status at generation:
 
+- M bun.lock
+- M knip.json
+- M packages/agent/src/__tests__/game-tui-mounted-surfaces.test.tsx
+- M packages/agent/src/__tests__/plugin-tui-view-coverage.test.ts
+- M packages/agent/src/__tests__/view-agent-surface-coverage.test.ts
+- M packages/agent/src/__tests__/view-bundle-lifecycle.test.ts
+- M packages/agent/src/__tests__/view-user-journeys.ts
+- M packages/agent/src/runtime/view-action-affinity.test.ts
+- M packages/agent/src/runtime/view-action-affinity.ts
+- M packages/agent/src/services/app-package-modules.ts
+- M packages/agent/src/services/registry-client-app-meta.ts
+- M packages/app-core/platforms/android/app/capacitor.build.gradle
+- M packages/app-core/platforms/android/capacitor.settings.gradle
+- M packages/app-core/platforms/electrobun/docs/convergence-audit.json
+- M packages/app-core/platforms/electrobun/docs/convergence-audit.md
 - M packages/app-core/platforms/electrobun/scripts/generate-convergence-audit.ts
+- M packages/app-core/platforms/electrobun/src/native/canvas.ts
+- M packages/app-core/scripts/playwright-ui-smoke-api-stub.mjs
+- M packages/app-core/scripts/release-check.ts
+- D packages/app-core/src/registry/entries/apps/2004scape.json
+- D packages/app-core/src/registry/entries/apps/hyperscape.json
+- D packages/app-core/src/registry/entries/apps/scape.json
+- M packages/app/capacitor.config.ts
+- M packages/app/docs/EXTERNAL_API_MOCK_VALIDATION.md
+- M packages/app/package.json
+- M packages/app/src/plugin-registrations.test.ts
+- M packages/app/src/plugin-registrations.ts
+- M packages/app/src/types/app-plugin-modules.d.ts
+- M packages/app/src/types/side-effect-app-modules.d.ts
+- M packages/app/test/electrobun-packaged/mock-api.ts
+- M packages/app/test/external-api-mock-validation.test.ts
+- M packages/app/test/fixtures/plugin-view-visual-review.md
+- M packages/app/test/hmr/hmr-dependency-levels.spec.ts
+- M packages/app/test/route-coverage.test.ts
+- M packages/app/test/ui-smoke/apps-session-route-cases.ts
+- D  packages/app/test/ui-smoke/game-operator-gui-interactions.spec.ts
+- M packages/app/test/ui-smoke/plugin-view-cases.ts
+- M packages/app/test/view-interaction-coverage.test.ts
+- M packages/app/tsconfig.typecheck.json
+- M packages/app/vite.config.ts
+- M packages/cloud-shared/src/lib/services/eliza-sandbox.ts
+- M packages/cloud-shared/src/lib/services/provisioning-jobs-delete-enqueue.test.ts
+- M packages/cloud-shared/src/lib/services/provisioning-jobs.ts
+- M packages/core/src/generated/action-docs.ts
+- M packages/core/src/runtime.ts
+- M packages/core/src/services/message.ts
+- M packages/core/src/types/runtime.ts
+- M packages/docs/action-catalog.md
+- M packages/docs/apps/mobile.md
+- M packages/docs/apps/overview.md
+- M packages/docs/dashboard/apps.md
+- M packages/elizaos/templates/project/apps/app/capacitor.config.ts
+- M packages/elizaos/templates/project/apps/app/test/electrobun-packaged/mock-api.ts
+- M packages/elizaos/templates/project/apps/app/tsconfig.json
+- M packages/prompts/specs/actions/plugins.generated.json
+- M packages/shared/src/contracts/apps.ts
+- M packages/shared/src/i18n/keywords/action-search.generated.keywords.json
+- M packages/shared/src/i18n/keywords/shared.keywords.json
+- M packages/ui/src/components/apps/GameView.tsx
+- M packages/ui/src/components/apps/helpers.ts
+- M packages/ui/src/components/shell/ContinuousChatOverlay.test.tsx
+- M packages/ui/src/components/shell/ContinuousChatOverlay.tsx
+- M packages/ui/src/components/views/ViewIcon.tsx
+- D plugins/plugin-2004scape/AGENTS.md
+- D plugins/plugin-2004scape/CLAUDE.md
+- D plugins/plugin-2004scape/README.md
+- D plugins/plugin-2004scape/package.json
+- D plugins/plugin-2004scape/src/__tests__/detail-extension.test.tsx
+- D plugins/plugin-2004scape/src/__tests__/fixtures.ts
+- D plugins/plugin-2004scape/src/__tests__/interact.test.ts
+- D plugins/plugin-2004scape/src/__tests__/operator-surface.test.tsx
+- D plugins/plugin-2004scape/src/__tests__/telemetry-parser.contract.test.ts
+- D plugins/plugin-2004scape/src/__tests__/tui-view.test.tsx
+- D plugins/plugin-2004scape/src/actions/game-service.ts
+- D plugins/plugin-2004scape/src/actions/index.ts
+- D plugins/plugin-2004scape/src/actions/rs2004.ts
+- D plugins/plugin-2004scape/src/components/TwoThousandFourScapeSpatialView.test.tsx
+- D plugins/plugin-2004scape/src/components/TwoThousandFourScapeSpatialView.tsx
+- D plugins/plugin-2004scape/src/gateway/index.ts
+- D plugins/plugin-2004scape/src/index.ts
+- D plugins/plugin-2004scape/src/providers/bot-state.ts
+- D plugins/plugin-2004scape/src/providers/goals.ts
+- D plugins/plugin-2004scape/src/providers/index.ts
+- D plugins/plugin-2004scape/src/providers/map-area.ts
+- D plugins/plugin-2004scape/src/providers/service-access.ts
+- D plugins/plugin-2004scape/src/providers/world-knowledge.ts
+- D plugins/plugin-2004scape/src/register-terminal-view.tsx
+- D plugins/plugin-2004scape/src/routes.ts
+- D plugins/plugin-2004scape/src/sdk/actions-helpers.ts
+- D plugins/plugin-2004scape/src/sdk/actions.ts
+- D plugins/plugin-2004scape/src/sdk/index.ts
+- D plugins/plugin-2004scape/src/sdk/types.ts
+- D plugins/plugin-2004scape/src/services/autonomous-loop-prompt.ts
+- D plugins/plugin-2004scape/src/services/bot-manager.ts
+- D plugins/plugin-2004scape/src/services/game-service.ts
+- D plugins/plugin-2004scape/src/shared-state.ts
+- D plugins/plugin-2004scape/src/ui/2004scape-view-bundle.ts
+- D plugins/plugin-2004scape/src/ui/TwoThousandFourScapeDetailExtension.tsx
+- D plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.helpers.ts
+- D plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.interact.ts
+- D plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx
+- D plugins/plugin-2004scape/src/ui/game-surface-shell.tsx
+- D plugins/plugin-2004scape/src/ui/index.ts
+- D plugins/plugin-2004scape/tsconfig.build.json
+- D plugins/plugin-2004scape/tsconfig.json
+- D plugins/plugin-2004scape/vite.config.views.ts
+- D plugins/plugin-2004scape/vitest.config.ts
+- M plugins/plugin-app-manager/AGENTS.md
+- M plugins/plugin-app-manager/CLAUDE.md
+- M plugins/plugin-app-manager/src/api/apps-routes.ts
+- M plugins/plugin-app-manager/src/services/app-manager.ts
+- M plugins/plugin-facewear/app-xr/e2e/all-views-crud.spec.ts
+- M plugins/plugin-facewear/src/__tests__/feature-parity.test.ts
+- M plugins/plugin-facewear/src/__tests__/view-host-http.test.ts
+- M plugins/plugin-facewear/src/__tests__/view-host.test.ts
+- M plugins/plugin-facewear/src/actions/view-actions.ts
+- M plugins/plugin-facewear/src/actions/xr-view-actions.ts
+- M plugins/plugin-feed/src/ui/FeedDetailExtension.render.test.tsx
+- M plugins/plugin-feed/src/ui/FeedOperatorSurface.render.test.tsx
+- D plugins/plugin-hyperscape/AGENTS.md
+- D plugins/plugin-hyperscape/CLAUDE.md
+- D plugins/plugin-hyperscape/README.md
+- D plugins/plugin-hyperscape/package.json
+- D plugins/plugin-hyperscape/src/components/HyperscapeSpatialView.test.tsx
+- D plugins/plugin-hyperscape/src/components/HyperscapeSpatialView.tsx
+- D plugins/plugin-hyperscape/src/index.ts
+- D plugins/plugin-hyperscape/src/register-terminal-view.tsx
+- D plugins/plugin-hyperscape/src/routes.contract.test.ts
+- D plugins/plugin-hyperscape/src/routes.ts
+- D plugins/plugin-hyperscape/src/ui/HyperscapeDetailExtension.test.tsx
+- D plugins/plugin-hyperscape/src/ui/HyperscapeDetailExtension.tsx
+- D plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.interact.test.ts
+- D plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.interact.ts
+- D plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.test.tsx
+- D plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.tsx
+- D plugins/plugin-hyperscape/src/ui/HyperscapeTuiView.test.tsx
+- D plugins/plugin-hyperscape/src/ui/hyperscape-view-bundle.ts
+- D plugins/plugin-hyperscape/src/ui/index.ts
+- D plugins/plugin-hyperscape/src/ui/test-support.ts
+- D plugins/plugin-hyperscape/tsconfig.build.json
+- D plugins/plugin-hyperscape/tsconfig.json
+- D plugins/plugin-hyperscape/vite.config.views.ts
+- D plugins/plugin-hyperscape/vitest.config.ts
+- D plugins/plugin-scape/AGENTS.md
+- D plugins/plugin-scape/CLAUDE.md
+- D plugins/plugin-scape/README.md
+- D plugins/plugin-scape/elizaos.plugin.json
+- D plugins/plugin-scape/package.json
+- D plugins/plugin-scape/src/actions/index.ts
+- D plugins/plugin-scape/src/actions/param-parser.ts
+- D plugins/plugin-scape/src/actions/scape.ts
+- D plugins/plugin-scape/src/components/ScapeSpatialView.test.tsx
+- D plugins/plugin-scape/src/components/ScapeSpatialView.tsx
+- D plugins/plugin-scape/src/index.ts
+- D plugins/plugin-scape/src/journal/journal-store.ts
+- D plugins/plugin-scape/src/journal/types.ts
+- D plugins/plugin-scape/src/providers/bot-state.ts
+- D plugins/plugin-scape/src/providers/goals.ts
+- D plugins/plugin-scape/src/providers/index.ts
+- D plugins/plugin-scape/src/providers/inventory.ts
+- D plugins/plugin-scape/src/providers/journal.ts
+- D plugins/plugin-scape/src/providers/nearby.ts
+- D plugins/plugin-scape/src/register-terminal-view.tsx
+- D plugins/plugin-scape/src/routes.telemetry.test.ts
+- D plugins/plugin-scape/src/routes.ts
+- D plugins/plugin-scape/src/sdk/index.ts
+- D plugins/plugin-scape/src/sdk/json.ts
+- D plugins/plugin-scape/src/sdk/types.ts
+- D plugins/plugin-scape/src/services/agent-identity.ts
+- D plugins/plugin-scape/src/services/autonomous-loop-prompt.ts
+- D plugins/plugin-scape/src/services/bot-manager.ts
+- D plugins/plugin-scape/src/services/game-service.ts
+- D plugins/plugin-scape/src/services/journal-service.ts
+- D plugins/plugin-scape/src/shared-state.ts
+- D plugins/plugin-scape/src/ui/ScapeOperatorSurface.interact.test.ts
+- D plugins/plugin-scape/src/ui/ScapeOperatorSurface.interact.ts
+- D plugins/plugin-scape/src/ui/ScapeOperatorSurface.test.tsx
+- D plugins/plugin-scape/src/ui/ScapeOperatorSurface.tsx
+- D plugins/plugin-scape/src/ui/ScapeTuiView.test.tsx
+- D plugins/plugin-scape/src/ui/game-surface-shell.tsx
+- D plugins/plugin-scape/src/ui/index.ts
+- D plugins/plugin-scape/src/ui/scape-view-bundle.ts
+- D plugins/plugin-scape/src/ui/test-support.ts
+- D plugins/plugin-scape/tsconfig.build.json
+- D plugins/plugin-scape/tsconfig.json
+- D plugins/plugin-scape/vite.config.views.ts
+- D plugins/plugin-scape/vitest.config.ts
+- M plugins/plugin-trajectory-logger/package.json
+- M plugins/plugin-trajectory-logger/src/index.ts
+- M plugins/plugin-xr/src/__tests__/xr-bundle-coverage.test.ts
+- M plugins/plugin-xr/src/__tests__/xr-feature-parity.test.ts
+- M plugins/plugin-xr/src/__tests__/xr-functional-parity.test.ts
+- M plugins/plugin-xr/src/__tests__/xr-view-host-http.test.ts
+- M plugins/plugin-xr/src/__tests__/xr-view-host.test.ts
+- M plugins/plugin-xr/src/actions/xr-view-actions.ts
+- M scripts/spatial-convert-plugin-views.workflow.js
+- M tsconfig.dist-paths.json
+- M tsconfig.json
+- ?? _railway_errors.mjs
+- ?? _railway_inspect.mjs
+- ?? a.out
+- ?? packages/core/src/__tests__/compose-state-refresh-providers.test.ts
+- ?? packages/ui/src/components/shell/ContinuousChatOverlay.fuzz.test.tsx
+- ?? plugins/plugin-trajectory-logger/src/plugin.ts
 
 ## Executive Summary
 
@@ -27,15 +230,16 @@ No Swift host/controller path is part of this architecture. The only retained bo
 | core-runtime | 4 |
 | desktop-shell | 5 |
 | production-ui | 1 |
-| app-plugin | 36 |
+| app-plugin | 35 |
 | connector-plugin | 35 |
-| model-plugin | 8 |
-| voice-plugin | 4 |
-| native-semantic-plugin | 35 |
+| model-plugin | 7 |
+| voice-plugin | 3 |
+| native-semantic-plugin | 36 |
 | desktop-capability | 6 |
 | data-memory-plugin | 4 |
 | dev-tooling | 12 |
 | provider-plugin | 8 |
+| unknown | 16 |
 
 ### By Recommended Next Action
 
@@ -45,9 +249,9 @@ No Swift host/controller path is part of this architecture. The only retained bo
 | add-trace-hooks | 74 |
 | add-dynamic-view-manifest | 13 |
 | route-through-runtime-broker | 21 |
-| connect-to-voice-pipeline | 4 |
-| connect-to-local-model | 8 |
-| needs-owner-decision | 1 |
+| connect-to-voice-pipeline | 3 |
+| connect-to-local-model | 7 |
+| needs-owner-decision | 17 |
 
 ## Hard No-Migration List
 
@@ -133,6 +337,7 @@ This list is intentionally short. Do not turn connector, provider, or app plugin
 - plugin-native-mobile-signals
 - plugin-native-network-policy
 - plugin-native-phone
+- plugin-native-reminders
 - plugin-native-screencapture
 - plugin-native-shared-types
 - plugin-native-swabble
@@ -193,11 +398,9 @@ This list is intentionally short. Do not turn connector, provider, or app plugin
 - plugin-elevenlabs
 - plugin-lmstudio
 - plugin-local-inference
-- plugin-mlx
 - plugin-native-llama
 - plugin-native-talkmode
 - plugin-ollama
-- plugin-omnivoice
 - plugin-rlm
 
 ## Runtime-Broker Candidates
@@ -248,6 +451,22 @@ plugins/plugin-xmtp | Plugin-shaped directory without package.json. Needs owner 
 ## Owner-Decision Items
 
 - future.eliza.computer
+- plugin-ainex
+- plugin-blocker
+- plugin-calendar
+- plugin-facewear
+- plugin-finances
+- plugin-gitpathologist
+- plugin-goals
+- plugin-inbox
+- plugin-nearai
+- plugin-relationships
+- plugin-reminders
+- plugin-remote-desktop
+- plugin-scheduling
+- plugin-undesirables
+- plugin-vector-browser
+- plugin-xr
 
 ## Proposed Annotation Plan
 
@@ -319,21 +538,22 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | packages/core | core-runtime | core | leave-alone | no | no | no | low | Hard no-migration item. Runtime semantics stay here. |
 | packages/electrobun-remote-plugins | desktop-shell | core | leave-alone | no | no | no | low | Keep as module runtime substrate. Do not turn into a second plugin system. |
 | packages/shared/src/local-inference | model-plugin | model-pipeline-participant | connect-to-local-model | no | yes | no | medium | Source of truth for Eliza-1 and voice metadata. Do not duplicate in Electrobun. |
-| plugin-2004scape | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-action-bench | dev-tooling | plugin | leave-alone | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-agent-orchestrator | dev-tooling | plugin | add-dynamic-view-manifest | yes | yes | no | medium | Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard. |
 | plugin-agent-skills | dev-tooling | plugin | add-dynamic-view-manifest | yes | yes | no | medium | Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard. |
+| plugin-ainex | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-anthropic | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
 | plugin-anthropic-proxy | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
 | plugin-aosp-local-inference | model-plugin | model-pipeline-participant | connect-to-local-model | no | no | no | medium | Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers. |
 | plugin-app-control | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-app-manager | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
-| plugin-feed | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-background-runner | dev-tooling | plugin | leave-alone | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-benchmarks | dev-tooling | plugin | leave-alone | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
+| plugin-blocker | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-bluebubbles | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-bluesky | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-browser | native-semantic-plugin | plugin | add-dynamic-view-manifest | yes | yes | yes | medium | Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard. |
+| plugin-calendar | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-calendly | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-capacitor-bridge | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-clawville | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
@@ -355,10 +575,15 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | plugin-eliza-classic | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-elizacloud | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-elizamaker | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
+| plugin-facewear | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-farcaster | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
+| plugin-feed | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-feishu | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
+| plugin-finances | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-form | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-github | connector-plugin | connector | add-dynamic-view-manifest | yes | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
+| plugin-gitpathologist | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
+| plugin-goals | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-google | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-google-chat | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-google-genai | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
@@ -366,11 +591,10 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | plugin-groq | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
 | plugin-health | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-hyperliquid-app | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
-| plugin-hyperscape | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-imessage | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
+| plugin-inbox | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-inmemorydb | data-memory-plugin | plugin | leave-alone | no | no | no | low | Keep as a data or memory plugin. Do not duplicate storage semantics in Electrobun. |
 | plugin-instagram | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
-| plugin-personal-assistant | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-line | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-linear | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-lmstudio | model-plugin | model-pipeline-participant | connect-to-local-model | no | no | no | medium | Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers. |
@@ -381,7 +605,6 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | plugin-mcp | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-messages | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-minecraft | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
-| plugin-mlx | model-plugin | model-pipeline-participant | connect-to-local-model | no | no | no | medium | Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers. |
 | plugin-music | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-mysticism | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-native-activity-tracker | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
@@ -403,6 +626,7 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | plugin-native-mobile-signals | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-native-network-policy | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-native-phone | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-native-reminders | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-native-screencapture | native-semantic-plugin | plugin | add-dynamic-view-manifest | yes | yes | yes | medium | Keep existing plugin boundary. Add contextual dynamic views only for task-specific inspection, not a fixed dashboard. |
 | plugin-native-shared-types | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-native-swabble | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
@@ -410,19 +634,23 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | plugin-native-talkmode | voice-plugin | voice-pipeline-participant | connect-to-voice-pipeline | no | yes | no | medium | Keep as a runtime voice participant. Wire availability, ASR/TTS/turn events, and latency into eliza.voice and trace. |
 | plugin-native-websiteblocker | native-semantic-plugin | plugin | add-trace-hooks | no | yes | no | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-native-wifi | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
+| plugin-nearai | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-ngrok | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-nostr | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-ollama | model-plugin | model-pipeline-participant | connect-to-local-model | no | no | no | medium | Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers. |
-| plugin-omnivoice | voice-plugin | voice-pipeline-participant | connect-to-voice-pipeline | no | no | no | medium | Keep as a runtime voice participant. Wire availability, ASR/TTS/turn events, and latency into eliza.voice and trace. |
 | plugin-openai | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
 | plugin-openrouter | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
 | plugin-pdf | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
+| plugin-personal-assistant | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-phone | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-polymarket-app | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-registry | dev-tooling | plugin | leave-alone | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
+| plugin-relationships | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
+| plugin-reminders | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
+| plugin-remote-desktop | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-rlm | model-plugin | model-pipeline-participant | connect-to-local-model | no | no | no | medium | Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers. |
 | plugin-roblox | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
-| plugin-scape | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
+| plugin-scheduling | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-screenshare | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-shell | native-semantic-plugin | plugin | route-through-runtime-broker | no | yes | yes | medium | Keep as the agent-facing semantic plugin. Route host/system execution through Electrobun or an existing Remote when needed. |
 | plugin-shopify | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
@@ -443,9 +671,13 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | plugin-trajectory-logger | dev-tooling | plugin | leave-alone | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-tunnel | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-twitch | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
+| plugin-undesirables | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
+| plugin-vector-browser | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-video | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-vincent | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-vision | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
+| plugin-waifu-imagegen-app | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
+| plugin-waifu-swap-app | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-wallet | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-wallet-ui | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-web-search | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
@@ -457,5 +689,6 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | plugin-x402 | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-xai | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
 | plugin-xmtp | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
+| plugin-xr | unknown | needs-review | needs-owner-decision | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-zai | provider-plugin | plugin | leave-alone | no | no | no | low | Keep as a provider plugin. Do not move provider routing into Electrobun or a Remote. |
 | repo-root | core-runtime | core | leave-alone | no | no | no | low | Keep as workspace root. Do not use Electrobun convergence to change global repo ownership. |

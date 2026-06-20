@@ -121,7 +121,7 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
         )
         android_service = write(
             app_core
-            / "platforms/android/app/src/main/java/ai/milady/milady/ElizaAgentService.java",
+            / "platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java",
             'private static final String HEALTH_URL = "http://127.0.0.1:31337/api/health";\n',
         )
         linux_agent_hook = write(

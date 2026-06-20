@@ -42,6 +42,14 @@ const ANDROID_LOCAL_AGENT_IPC_BASE = IOS_LOCAL_AGENT_IPC_BASE;
 const IOS_FULL_BUN_SMOKE_MODEL_ID = "eliza-1-0_8b";
 const IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH =
   "models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf";
+// Cap the on-device context window. The bundled eliza-1 GGUF advertises a 128k
+// max context; loading it at full width allocates a multi-GB KV cache that is
+// impractically slow (and OOMs) on a phone/simulator, so the first reply never
+// lands. 4096 mirrors the Android smoke and keeps model load + generation fast.
+const IOS_FULL_BUN_SMOKE_CONTEXT_SIZE = Number.parseInt(
+  process.env.IOS_FULL_BUN_SMOKE_CONTEXT_SIZE?.trim() || "4096",
+  10,
+);
 const IOS_FULL_BUN_SMOKE_ATTEMPTS = 180;
 const IOS_FULL_BUN_SMOKE_DELAY_MS = 2000;
 const IOS_FULL_BUN_SMOKE_EXPECTED_REPLY = "ios smoke model works";
@@ -177,6 +185,11 @@ function executablePath(...candidates) {
 }
 
 function appId() {
+  // White-label builds (e.g. the Milady app shell at apps/app, bundle id
+  // ai.milady.milady) install under a different bundle id than the eliza
+  // package config. Allow targeting the installed app explicitly so the smoke
+  // can validate whichever shell was actually built.
+  if (process.env.ELIZA_SMOKE_APP_ID) return process.env.ELIZA_SMOKE_APP_ID;
   const config = fs.readFileSync(appConfigPath, "utf8");
   return config.match(/appId:\s*["']([^"']+)["']/)?.[1] ?? "app.eliza";
 }
@@ -485,6 +498,7 @@ function stageIosFullBunSmokeModel(udid, id) {
         lastUsedAt: now,
         source: "ios-full-bun-smoke",
         bundleVerifiedAt: now,
+        contextSize: IOS_FULL_BUN_SMOKE_CONTEXT_SIZE,
       },
     ],
   };

@@ -55,7 +55,7 @@ export function SystemWarningBanner() {
           role="alert"
           aria-live="assertive"
           data-window-titlebar-banner="true"
-          className="shrink-0 z-[9998] flex items-center justify-between gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] "
+          className="mobile-top-banner shrink-0 z-[9998] flex items-center justify-between gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] "
         >
           <span className="truncate">{message}</span>
           <Button

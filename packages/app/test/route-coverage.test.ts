@@ -84,14 +84,13 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-steward-app/src/plugin.ts",
   "plugins/plugin-vincent/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
+  "plugins/plugin-waifu-imagegen-app/src/plugin.ts",
+  "plugins/plugin-waifu-swap-app/src/plugin.ts",
   "plugins/plugin-vector-browser/src/plugin.ts",
-  "plugins/plugin-2004scape/src/index.ts",
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
   "plugins/plugin-clawville/src/index.ts",
   "plugins/plugin-defense-of-the-agents/src/index.ts",
-  "plugins/plugin-hyperscape/src/index.ts",
-  "plugins/plugin-scape/src/index.ts",
   "plugins/plugin-screenshare/src/index.ts",
   "plugins/plugin-social-alpha/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
@@ -136,9 +135,19 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
 
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/app-core": null,
-  "@elizaos/plugin-2004scape": "plugins/plugin-2004scape/src/index.ts",
   "@elizaos/plugin-clawville": "plugins/plugin-clawville/src/index.ts",
-  "@elizaos/plugin-companion": "plugins/plugin-companion/src/plugin.ts",
+  "@elizaos/plugin-companion/components/companion/CompanionShell":
+    "plugins/plugin-companion/src/plugin.ts",
+  "@elizaos/plugin-companion/components/companion/GlobalEmoteOverlay":
+    "plugins/plugin-companion/src/plugin.ts",
+  "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton":
+    "plugins/plugin-companion/src/plugin.ts",
+  "@elizaos/plugin-companion/components/companion/companion-app":
+    "plugins/plugin-companion/src/plugin.ts",
+  "@elizaos/plugin-companion/components/companion/companion-scene-status-context":
+    "plugins/plugin-companion/src/plugin.ts",
+  "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice":
+    "plugins/plugin-companion/src/plugin.ts",
   "@elizaos/plugin-contacts/register": "plugins/plugin-contacts/src/plugin.ts",
   "@elizaos/plugin-defense-of-the-agents":
     "plugins/plugin-defense-of-the-agents/src/index.ts",
@@ -147,7 +156,6 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-feed": "plugins/plugin-feed/src/index.ts",
   "@elizaos/plugin-hyperliquid-app":
     "plugins/plugin-hyperliquid-app/src/plugin.ts",
-  "@elizaos/plugin-hyperscape": "plugins/plugin-hyperscape/src/index.ts",
   // PA no longer declares a view (the LifeOps overview was removed); it is a
   // boot plugin with no renderer module.
   "@elizaos/plugin-personal-assistant": null,
@@ -156,7 +164,6 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-phone/register": "plugins/plugin-phone/src/plugin.ts",
   "@elizaos/plugin-polymarket-app":
     "plugins/plugin-polymarket-app/src/plugin.ts",
-  "@elizaos/plugin-scape": "plugins/plugin-scape/src/index.ts",
   "@elizaos/plugin-shopify-ui": "plugins/plugin-shopify-ui/src/plugin.ts",
   "@elizaos/plugin-steward-app": "plugins/plugin-steward-app/src/plugin.ts",
   "@elizaos/plugin-task-coordinator":
@@ -169,7 +176,12 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-vector-browser/register":
     "plugins/plugin-vector-browser/src/plugin.ts",
   "@elizaos/plugin-vincent": "plugins/plugin-vincent/src/plugin.ts",
-  "@elizaos/plugin-wallet-ui": "plugins/plugin-wallet-ui/src/plugin.ts",
+  "@elizaos/plugin-waifu-imagegen-app":
+    "plugins/plugin-waifu-imagegen-app/src/plugin.ts",
+  "@elizaos/plugin-waifu-swap-app":
+    "plugins/plugin-waifu-swap-app/src/plugin.ts",
+  "@elizaos/plugin-wallet-ui/register":
+    "plugins/plugin-wallet-ui/src/plugin.ts",
   "@elizaos/plugin-wifi/register": null,
   "@elizaos/app-model-tester": "plugins/app-model-tester/src/plugin.ts",
 };
@@ -242,10 +254,16 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     path: "/wallet",
   },
   {
-    manifestPath: "plugins/plugin-2004scape/src/index.ts",
-    id: "2004scape",
+    manifestPath: "plugins/plugin-waifu-imagegen-app/src/plugin.ts",
+    id: "waifu-imagegen",
     viewType: "xr",
-    path: "/2004scape",
+    path: "/waifu-imagegen",
+  },
+  {
+    manifestPath: "plugins/plugin-waifu-swap-app/src/plugin.ts",
+    id: "waifu-swap",
+    viewType: "xr",
+    path: "/waifu-swap",
   },
   {
     manifestPath: "plugins/plugin-feed/src/index.ts",
@@ -270,18 +288,6 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     id: "defense-of-the-agents",
     viewType: "xr",
     path: "/defense-of-the-agents",
-  },
-  {
-    manifestPath: "plugins/plugin-hyperscape/src/index.ts",
-    id: "hyperscape",
-    viewType: "xr",
-    path: "/hyperscape",
-  },
-  {
-    manifestPath: "plugins/plugin-scape/src/index.ts",
-    id: "scape",
-    viewType: "xr",
-    path: "/scape",
   },
   {
     manifestPath: "plugins/plugin-screenshare/src/index.ts",
@@ -329,27 +335,6 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
 
 const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
   [
-    {
-      manifestPath: "plugins/plugin-2004scape/src/index.ts",
-      id: "2004scape",
-      viewType: "gui",
-      path: "/2004scape",
-      componentExport: "TwoThousandFourScapeOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-2004scape/src/index.ts",
-      id: "2004scape",
-      viewType: "xr",
-      path: "/2004scape",
-      componentExport: "TwoThousandFourScapeOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-2004scape/src/index.ts",
-      id: "2004scape",
-      viewType: "tui",
-      path: "/2004scape/tui",
-      componentExport: "TwoThousandFourScapeTuiView",
-    },
     {
       manifestPath: "plugins/plugin-clawville/src/index.ts",
       id: "clawville",
@@ -412,48 +397,6 @@ const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
       viewType: "tui",
       path: "/feed/tui",
       componentExport: "FeedTuiView",
-    },
-    {
-      manifestPath: "plugins/plugin-hyperscape/src/index.ts",
-      id: "hyperscape",
-      viewType: "gui",
-      path: "/hyperscape",
-      componentExport: "HyperscapeOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-hyperscape/src/index.ts",
-      id: "hyperscape",
-      viewType: "xr",
-      path: "/hyperscape",
-      componentExport: "HyperscapeOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-hyperscape/src/index.ts",
-      id: "hyperscape",
-      viewType: "tui",
-      path: "/hyperscape/tui",
-      componentExport: "HyperscapeTuiView",
-    },
-    {
-      manifestPath: "plugins/plugin-scape/src/index.ts",
-      id: "scape",
-      viewType: "gui",
-      path: "/scape",
-      componentExport: "ScapeOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-scape/src/index.ts",
-      id: "scape",
-      viewType: "xr",
-      path: "/scape",
-      componentExport: "ScapeOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-scape/src/index.ts",
-      id: "scape",
-      viewType: "tui",
-      path: "/scape/tui",
-      componentExport: "ScapeTuiView",
     },
     {
       manifestPath: "plugins/plugin-screenshare/src/index.ts",
@@ -706,6 +649,8 @@ function appPackageDependencies(): Record<string, string> {
 }
 
 function packageNameForBootModule(moduleId: string): string {
+  const scopedPackage = moduleId.match(/^(@[^/]+\/[^/]+)/);
+  if (scopedPackage) return scopedPackage[1] ?? moduleId;
   return moduleId.replace(/\/register$/, "");
 }
 

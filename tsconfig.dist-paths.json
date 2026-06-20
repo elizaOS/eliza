@@ -199,15 +199,9 @@
         "./plugins/plugin-farcaster/dist/index.d.ts"
       ],
       "@elizaos/plugin-google": ["./plugins/plugin-google/dist/index.d.ts"],
-      "@elizaos/plugin-hyperscape": [
-        "./plugins/plugin-hyperscape/dist/index.d.ts"
-      ],
       "@elizaos/plugin-feed": ["./plugins/plugin-feed/dist/index.d.ts"],
       "@elizaos/plugin-openrouter": [
         "./plugins/plugin-openrouter/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-2004scape": [
-        "./plugins/plugin-2004scape/dist/index.d.ts"
       ],
       "@elizaos/plugin-coding-tools": [
         "./plugins/plugin-coding-tools/dist/index.d.ts"
@@ -357,7 +351,6 @@
       "@elizaos/plugin-agent-orchestrator": [
         "./plugins/plugin-agent-orchestrator/dist/index.d.ts"
       ],
-      "@elizaos/plugin-scape": ["./plugins/plugin-scape/dist/index.d.ts"],
       "@elizaos/plugin-shell": ["./plugins/plugin-shell/dist/index.d.ts"],
       "@elizaos/plugin-bluebubbles": [
         "./plugins/plugin-bluebubbles/dist/index.d.ts"

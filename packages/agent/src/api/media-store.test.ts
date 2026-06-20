@@ -23,7 +23,14 @@ const {
   isStoredMediaUrl,
   serveMediaFile,
   selectMediaToEvict,
+  handleMediaRouteRequest,
+  mediaFileNameFromUrl,
+  gcUnreferencedMedia,
 } = await import("./media-store.ts");
+
+function mediaPath(fileName: string): string {
+  return path.join(stateDir, "media", fileName);
+}
 
 /** Minimal ServerResponse stub capturing status + body for serve tests. */
 function makeRes(): {
@@ -196,5 +203,104 @@ describe("selectMediaToEvict", () => {
     ];
     // total 150, cap 60, target 54 → drop f1 (100), f2 (50<=54) stop
     expect(selectMediaToEvict(files, 60)).toEqual(["f1", "f2"]);
+  });
+});
+
+describe("handleMediaRouteRequest (in-process / iOS path)", () => {
+  it("returns the file bytes as a Buffer body for GET", () => {
+    const bytes = Buffer.from("route-bytes");
+    const { url } = persistMediaBytes(bytes, "image/png");
+    const res = handleMediaRouteRequest(url, "GET");
+    expect(res.status).toBe(200);
+    expect(res.headers["Content-Type"]).toBe("image/png");
+    expect(Buffer.isBuffer(res.body)).toBe(true);
+    expect((res.body as Buffer).equals(bytes)).toBe(true);
+  });
+
+  it("omits the body for HEAD but keeps headers", () => {
+    const { url } = persistMediaBytes(Buffer.from("head-bytes"), "image/png");
+    const res = handleMediaRouteRequest(url, "HEAD");
+    expect(res.status).toBe(200);
+    expect(res.body).toBeUndefined();
+    expect(Number(res.headers["Content-Length"])).toBe(
+      Buffer.from("head-bytes").length,
+    );
+  });
+
+  it("404s an unknown file and 400s a malformed name", () => {
+    expect(
+      handleMediaRouteRequest(`/api/media/${"a".repeat(64)}.png`, "GET").status,
+    ).toBe(404);
+    expect(handleMediaRouteRequest("/api/media/..%2fetc", "GET").status).toBe(
+      400,
+    );
+  });
+
+  it("405s a non-GET/HEAD method", () => {
+    expect(handleMediaRouteRequest("/api/media/x.png", "POST").status).toBe(
+      405,
+    );
+  });
+});
+
+describe("iOS in-process binary round-trip", () => {
+  // Mirrors the production chain that was broken before the fix:
+  //   route handler → native bridge base64-encodes the Buffer body →
+  //   iOS transport decodes bodyBase64 back to bytes.
+  // Verifies binary survives the iOS path (no HTTP server on iOS).
+  it("preserves exact bytes through route → bridge encode → transport decode", () => {
+    // Non-UTF8 bytes that the old text-only path would have mangled.
+    const original = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0xfe, 0x01,
+    ]);
+    const { url } = persistMediaBytes(original, "image/png");
+
+    // 1. Route handler returns a Buffer body (in-process / iOS path).
+    const routeResult = handleMediaRouteRequest(url, "GET");
+    const body = routeResult.body as Buffer;
+    expect(Buffer.isBuffer(body)).toBe(true);
+
+    // 2. Native bridge (ios/bridge.ts): Buffer → bodyBase64 (lossless).
+    const bodyBase64 = body.toString("base64");
+
+    // 3. iOS transport (nativeResponseBody): atob → bytes.
+    const binary = atob(bodyBase64);
+    const decoded = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1)
+      decoded[i] = binary.charCodeAt(i);
+
+    expect(Buffer.from(decoded).equals(original)).toBe(true);
+  });
+});
+
+describe("mediaFileNameFromUrl", () => {
+  it("extracts the stored filename from a served URL", () => {
+    const name = `${"a".repeat(64)}.png`;
+    expect(mediaFileNameFromUrl(`/api/media/${name}`)).toBe(name);
+    expect(mediaFileNameFromUrl(`/api/media/${name}?v=1`)).toBe(name);
+  });
+  it("returns null for non-store / malformed URLs", () => {
+    expect(mediaFileNameFromUrl("https://x/y.png")).toBeNull();
+    expect(mediaFileNameFromUrl("/api/media/not-a-hash.png")).toBeNull();
+    expect(mediaFileNameFromUrl("data:image/png;base64,AA")).toBeNull();
+  });
+});
+
+describe("gcUnreferencedMedia", () => {
+  it("removes old unreferenced files, keeps referenced + recent ones", () => {
+    const referenced = persistMediaBytes(Buffer.from("keep-ref"), "image/png");
+    const orphanOld = persistMediaBytes(Buffer.from("orphan-old"), "image/png");
+    const orphanNew = persistMediaBytes(Buffer.from("orphan-new"), "image/png");
+    // Age both the referenced and the old-orphan past the grace window.
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    fs.utimesSync(mediaPath(referenced.fileName), old, old);
+    fs.utimesSync(mediaPath(orphanOld.fileName), old, old);
+
+    const result = gcUnreferencedMedia(new Set([referenced.fileName]));
+
+    expect(fs.existsSync(mediaPath(referenced.fileName))).toBe(true); // referenced
+    expect(fs.existsSync(mediaPath(orphanOld.fileName))).toBe(false); // old + orphan → gone
+    expect(fs.existsSync(mediaPath(orphanNew.fileName))).toBe(true); // within grace window
+    expect(result.removed).toBeGreaterThanOrEqual(1);
   });
 });

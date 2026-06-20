@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { fileURLToPath } from "node:url";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BackendPlan } from "./backend";
 import {
 	type FfiBackendRuntime,
@@ -6,27 +7,31 @@ import {
 	FfiStreamingBackend,
 } from "./ffi-streaming-backend";
 
-// Hoisted spy so the mock factory (also hoisted) and the test can share it.
-const adapterMock = vi.hoisted(() => ({
-	close: vi.fn(() => {
-		throw new Error("llama_backend_free segfault surrogate");
+// Hoisted spy shared between the mock factory (hoisted) and the test so we can
+// assert the fused lib's native free was attempted exactly once.
+const ffiCloseMock = vi.hoisted(() =>
+	vi.fn(() => {
+		throw new Error("ov_free segfault surrogate");
 	}),
-}));
+);
 
-// Replace the FFI adapter module entirely so importing it never pulls bun:ffi
-// or dlopens a native library. desktop-ffi-backend-runtime.ts only value-imports
-// `loadDesktopLlama` + `desktopLlamaDylibsPresent`, so those are the only fakes.
-vi.mock("./desktop-llama-adapter", () => ({
-	desktopLlamaDylibsPresent: () => true,
-	loadDesktopLlama: vi.fn(async () => ({
-		binding: {},
-		ctx: {},
-		adapter: {
-			close: adapterMock.close,
-			tokenize: () => new Int32Array(),
-			loadedDrafterPath: () => null,
-			parallelSlots: () => 1,
-		},
+// Replace the fused-lib FFI loader so importing the runtime never pulls bun:ffi
+// or dlopens a native library. `loadElizaInferenceFfi` is the only value the
+// desktop fused runtime imports from the bindings module; the fake exposes the
+// v9 surface the runtime touches during acquire()/release().
+vi.mock("./voice/ffi-bindings", () => ({
+	loadElizaInferenceFfi: vi.fn(() => ({
+		create: () => 1n,
+		destroy: vi.fn(),
+		close: ffiCloseMock,
+		tokenizeSupported: () => true,
+		tokenize: () => new Int32Array(),
+		llmStreamSupported: () => true,
+		llmStreamOpen: () => 0n,
+		llmStreamPrefill: () => 0,
+		llmStreamNext: () => 0,
+		llmStreamCancel: () => 0,
+		llmStreamClose: () => undefined,
 	})),
 }));
 
@@ -57,7 +62,7 @@ function fakeSession(): FfiBackendSession {
 /**
  * Minimal runtime that mirrors the real acquire/release live-session guard:
  * acquire() throws if a session is already live (exactly like
- * DesktopFfiBackendRuntime). release() can be made to throw to simulate a
+ * DesktopFusedFfiBackendRuntime). release() can be made to throw to simulate a
  * native bun:ffi free rejecting.
  */
 class GuardedRuntime implements FfiBackendRuntime {
@@ -123,19 +128,31 @@ describe("FfiStreamingBackend.unload() ordering (#14)", () => {
 	});
 });
 
-describe("DesktopFfiBackendRuntime.release() ordering (#14)", () => {
-	it("clears the active session even when adapter.close() throws", async () => {
-		const { DesktopFfiBackendRuntime } = await import(
-			"./desktop-ffi-backend-runtime"
+describe("DesktopFusedFfiBackendRuntime.release() ordering (#14)", () => {
+	beforeEach(() => {
+		// resolveFusedLibraryPath() returns the first existing candidate; point it
+		// at a real file so acquire() resolves a lib path (the FFI loader itself is
+		// mocked, so the path's contents are irrelevant).
+		process.env.ELIZA_INFERENCE_LIBRARY = fileURLToPath(import.meta.url);
+		ffiCloseMock.mockClear();
+	});
+
+	afterEach(() => {
+		process.env.ELIZA_INFERENCE_LIBRARY = undefined;
+	});
+
+	it("clears the active session even when the fused close() throws", async () => {
+		const { DesktopFusedFfiBackendRuntime } = await import(
+			"./desktop-fused-ffi-backend-runtime"
 		);
-		const runtime = new DesktopFfiBackendRuntime();
+		const runtime = new DesktopFusedFfiBackendRuntime();
 		await runtime.acquire(PLAN);
 
 		// close() throws, but release() must still clear `active` via its finally.
 		await expect(runtime.release()).rejects.toThrow(
-			"llama_backend_free segfault surrogate",
+			"ov_free segfault surrogate",
 		);
-		expect(adapterMock.close).toHaveBeenCalledTimes(1);
+		expect(ffiCloseMock).toHaveBeenCalledTimes(1);
 
 		// The runtime is not hidden-wedged on the old live-session guard, but it
 		// is explicitly poisoned so a new native model is not allocated over a

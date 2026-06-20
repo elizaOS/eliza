@@ -81,6 +81,33 @@ let initialized = false;
 let storageProxyInstalled = false;
 
 const PREFERENCE_READ_TIMEOUT_MS = 1_500;
+// Warm-up probe before hydration: retry a few times so a cold native bridge
+// doesn't drop critical synced keys (first-run-complete, active-server, …).
+const PREFERENCE_HYDRATION_ATTEMPTS = 6;
+const PREFERENCE_HYDRATION_RETRY_MS = 350;
+
+/**
+ * Resolve `true` as soon as the native Preferences plugin answers a call (even
+ * with a null value), `false` if it times out (still cold). Used to warm up the
+ * bridge before hydration so a cold plugin doesn't silently drop synced keys.
+ */
+async function preferencesResponded(): Promise<boolean> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const timeout = new Promise<false>((resolve) => {
+      timeoutId = setTimeout(() => resolve(false), PREFERENCE_READ_TIMEOUT_MS);
+    });
+    const { Preferences } = await loadPreferences();
+    const probe = Preferences.get({ key: "eliza:first-run-complete" }).then(
+      () => true as const,
+    );
+    return await Promise.race([probe, timeout]);
+  } catch {
+    return false;
+  } finally {
+    if (timeoutId !== null) clearTimeout(timeoutId);
+  }
+}
 
 async function readPreferenceWithTimeout(key: string): Promise<string | null> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -113,9 +140,29 @@ export async function initializeStorageBridge(): Promise<void> {
     return;
   }
 
-  // Load synced keys from Preferences into cache. Native plugin calls can hang
-  // during very early WebView startup on some simulator builds; keep hydration
-  // best-effort so a single stale preference read cannot block first paint.
+  // The Capacitor Preferences plugin is frequently not yet responsive on the
+  // first read during very early WebView startup (the bridge is still wiring
+  // up), so a single best-effort pass loses critical session/first-run state —
+  // e.g. `eliza:first-run-complete` fails to hydrate and the user is bounced
+  // back into onboarding even though native Preferences has it. Probe one key
+  // with a few short retries until the plugin answers, then hydrate. The probe
+  // can't distinguish "plugin cold" from "key genuinely unset", so it is capped
+  // and never blocks first paint for more than a moment.
+  let pluginResponded = false;
+  for (let attempt = 0; attempt < PREFERENCE_HYDRATION_ATTEMPTS; attempt += 1) {
+    if (await preferencesResponded()) {
+      pluginResponded = true;
+      break;
+    }
+    if (attempt < PREFERENCE_HYDRATION_ATTEMPTS - 1) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, PREFERENCE_HYDRATION_RETRY_MS),
+      );
+    }
+  }
+
+  // Load synced keys from Preferences into cache. Hydration stays best-effort so
+  // a single stale preference read cannot block first paint.
   const entries = await Promise.all(
     Array.from(
       SYNCED_KEYS,
@@ -133,10 +180,19 @@ export async function initializeStorageBridge(): Promise<void> {
     }
   }
 
-  // Set up the storage proxy
+  // Set up the storage proxy (idempotent) so localStorage<->Preferences sync
+  // works even while we wait for a cold plugin to warm up.
   setupStorageProxy();
 
-  initialized = true;
+  // Only consider the bridge initialized once the native plugin has actually
+  // answered. If it never warmed up, leave `initialized` false so a later call
+  // (e.g. from initializePlatform after more of the bridge has wired up)
+  // re-hydrates instead of permanently dropping critical synced keys —
+  // first-run-complete, active-server, the smoke request — which otherwise
+  // strands the user in onboarding or silently skips the QA smoke.
+  if (pluginResponded) {
+    initialized = true;
+  }
 }
 
 /**

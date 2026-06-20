@@ -29,8 +29,8 @@ export interface AppShellPageRegistration {
   group?: string;
   /**
    * When true, the shell mounts this page edge-to-edge with no host
-   * top-bar/chrome — for views that own their full window, e.g. the odysseus
-   * orchestrator.
+   * top-bar/chrome — for views that own their full window, e.g. the
+   * orchestrator workbench.
    */
   fullBleed?: boolean;
   /**

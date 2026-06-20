@@ -237,7 +237,7 @@ export function firstRunDownloadsLocalModel(
 function stripFirstRunVoicePrefix(value: string): string {
   return value
     .trim()
-    .replace(/^(?:hey\s+)?(?:milady|eliza)\b[\s,.:;!-]*/i, "")
+    .replace(/^(?:hey\s+)?eliza\b[\s,.:;!-]*/i, "")
     .trim();
 }
 

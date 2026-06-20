@@ -520,10 +520,10 @@ export class SubAgentRouter extends Service {
       );
       return;
     }
-    if (event === "error" && isUnsupportedCancelError(data)) {
+    if (event === "error" && isUnsupportedAcpMethodError(data)) {
       this.log(
         "debug",
-        "suppressing internal unsupported session/cancel error",
+        "suppressing internal ACP method-not-found error (not a task failure)",
         {
           sessionId,
         },
@@ -1391,14 +1391,35 @@ function shouldInject(event: SessionEventName): boolean {
   );
 }
 
-function isUnsupportedCancelError(data: unknown): boolean {
-  const serialized = JSON.stringify(data);
-  const message =
-    pickPayloadString(data, "message") ??
-    (typeof serialized === "string" ? serialized : "");
-  return (
-    /method\s+not\s+found/i.test(message) && /session\/cancel/i.test(message)
-  );
+function isUnsupportedAcpMethodError(data: unknown): boolean {
+  const serialized =
+    typeof data === "object" && data !== null
+      ? JSON.stringify(data)
+      : String(data ?? "");
+  // Gate on the JSON-RPC method-not-found CODE (-32601), NOT free text. A
+  // sub-agent's own build error that merely contains the words "method not
+  // found" (e.g. an upstream "405 Method Not Allowed") must still reach the
+  // user — only a real -32601 from the ACP layer is internal protocol noise.
+  // It means the CLIENT called an auxiliary method the adapter lacks
+  // (session/cancel, terminal/*, fs/*); the sub-agent keeps running and the
+  // real outcome still arrives via task_complete or a timeout.
+  const isMethodNotFound =
+    /"code"\s*:\s*-32601\b/.test(serialized) ||
+    /\(-32601\)/.test(serialized) ||
+    // A "method not found" that names a REAL auxiliary ACP method. Match an
+    // explicit allow-list of method names rather than `(session|terminal|fs)/*`:
+    // the broad form false-matches a sub-agent's own build output (e.g. a stack
+    // trace mentioning `node:fs/promises`), which would wrongly swallow a real
+    // failure. session/prompt is intentionally absent — it is fatal, not noise.
+    (/method\s+not\s+found/i.test(serialized) &&
+      /\b(?:session\/cancel|terminal\/(?:create|output|release|wait_for_exit|kill)|fs\/(?:read_text_file|write_text_file)|_meta\/[a-z_]+)\b/i.test(
+        serialized,
+      ));
+  if (!isMethodNotFound) return false;
+  // NEVER suppress a -32601 on the core prompt method: that means the adapter
+  // cannot run the task at all, so swallowing it would hang the user with no
+  // feedback until the full ACP timeout fires.
+  return !/session\/prompt/i.test(serialized);
 }
 
 function verifiedUrlCompletionFallback(text: string, verifiedUrls: string[]) {
@@ -1943,7 +1964,18 @@ function composeNarration(
   data: unknown,
   changeSet?: WorkspaceChangeSet,
 ): string {
-  const header = `[sub-agent: ${label} (${session.agentType}) — ${event}]`;
+  // For task_complete the LABEL is the original (often imperative) task text —
+  // e.g. "Use the webfetch tool on this exact URL: …". A literal planner reads
+  // that leading imperative as a fresh instruction and re-spawns the SAME task
+  // whose completion triggered this turn, looping (observed live: the claude
+  // backend spawned 6 sessions for one BTC price and never relayed the answer
+  // that each sub-agent had already returned). The directive below is INSIDE
+  // the bracketed header, so every `[sub-agent:`-prefix stripper (user-facing
+  // reply, deliverable extraction) still removes it — only the planner sees it.
+  const header =
+    event === "task_complete"
+      ? `[sub-agent: ${label} (${session.agentType}) — task_complete — this delegated task is DONE; the result is below, relay it to the user as the answer, do NOT start another sub-agent for it]`
+      : `[sub-agent: ${label} (${session.agentType}) — ${event}]`;
   if (event === QUESTION_FOR_TASK_CREATOR) {
     const message =
       pickPayloadString(data, "question") ??

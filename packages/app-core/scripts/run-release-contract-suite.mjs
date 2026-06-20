@@ -22,7 +22,6 @@ const releaseContractTests = [
   "eliza/packages/app-core/scripts/chrome-extension-release-surface.test.ts",
   "eliza/packages/app-core/scripts/electrobun-release-workflow-drift.test.ts",
   "eliza/packages/app-core/scripts/electrobun-test-workflow-drift.test.ts",
-  "eliza/packages/app-core/scripts/whisper-build-script-drift.test.ts",
   "eliza/packages/app-core/scripts/release-check.test.ts",
   "eliza/packages/app-core/scripts/static-asset-manifest.test.ts",
 ];

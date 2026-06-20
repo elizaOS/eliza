@@ -1,4 +1,5 @@
 import {
+	type AudioStreamResult,
 	EventType,
 	type GenerateTextParams,
 	type IAgentRuntime,
@@ -101,6 +102,17 @@ interface LocalInferenceTextToSpeechService {
 		text: string;
 		signal?: AbortSignal;
 	}) => Promise<Uint8Array | ArrayBuffer | Buffer>;
+	/**
+	 * Optional streaming synth seam: yields audio (PCM/WAV) chunks as they are
+	 * produced so playback can start before the whole clip is ready. When a
+	 * backend implements it, the TEXT_TO_SPEECH handler returns an
+	 * {@link AudioStreamResult} for `audioStream` callers; otherwise it falls
+	 * back to a single-chunk result around the buffered synth.
+	 */
+	synthesizeSpeechStream?: (
+		text: string,
+		signal?: AbortSignal,
+	) => AsyncIterable<Uint8Array>;
 }
 
 interface LocalInferenceTranscriptionService {
@@ -364,6 +376,60 @@ function normalizeAudioBytes(
 	);
 }
 
+function concatAudioChunks(chunks: Uint8Array[]): Uint8Array {
+	const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+	const out = new Uint8Array(total);
+	let offset = 0;
+	for (const chunk of chunks) {
+		out.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return out;
+}
+
+/** A single-chunk {@link AudioStreamResult} around already-synthesized bytes —
+ *  satisfies the streaming contract when the backend has no streaming synth. */
+function bufferedAudioStreamResult(
+	bytes: Uint8Array,
+	mimeType: string,
+): AudioStreamResult {
+	async function* generate(): AsyncGenerator<Uint8Array> {
+		if (bytes.byteLength > 0) yield bytes;
+	}
+	return { audioStream: generate(), bytes: Promise.resolve(bytes), mimeType };
+}
+
+/** Wrap a backend streaming synth as an {@link AudioStreamResult}, accumulating
+ *  the chunks so `bytes` resolves to the full clip after the stream is drained. */
+function streamingAudioStreamResult(
+	source: AsyncIterable<Uint8Array>,
+	mimeType: string,
+): AudioStreamResult {
+	const collected: Uint8Array[] = [];
+	let resolveBytes!: (value: Uint8Array) => void;
+	let rejectBytes!: (reason: unknown) => void;
+	const bytes = new Promise<Uint8Array>((resolve, reject) => {
+		resolveBytes = resolve;
+		rejectBytes = reject;
+	});
+	async function* generate(): AsyncGenerator<Uint8Array> {
+		try {
+			for await (const value of source) {
+				const chunk = normalizeAudioBytes(value);
+				collected.push(chunk);
+				yield chunk;
+			}
+			resolveBytes(concatAudioChunks(collected));
+		} catch (err) {
+			rejectBytes(err);
+			throw err;
+		}
+	}
+	return { audioStream: generate(), bytes, mimeType };
+}
+
+const LOCAL_TTS_MIME = "audio/wav";
+
 function extractPcmTranscriptionParams(
 	params: TranscriptionParams | Buffer | string | unknown,
 ): { pcm: Float32Array; sampleRate: number; signal?: AbortSignal } {
@@ -510,51 +576,76 @@ function createTextToSpeechHandler() {
 	return async (
 		runtime: IAgentRuntime,
 		params: TextToSpeechParams | string,
-	): Promise<Uint8Array> => {
+	): Promise<Uint8Array | AudioStreamResult> => {
 		const service = requireService(runtime, ModelType.TEXT_TO_SPEECH);
 		const text = ensureNonEmptyText(
 			ModelType.TEXT_TO_SPEECH,
 			extractSpeechText(params),
 		);
 		const signal = extractSpeechSignal(params);
-		const arbiter = _tryGetTtsArbiter(service);
-		if (arbiter) {
-			const request = { text, ...(signal ? { signal } : {}) };
-			const requestSpeech = arbiter.requestTextToSpeech ?? arbiter.requestSpeak;
-			if (!requestSpeech) {
-				throw unavailable(
-					ModelType.TEXT_TO_SPEECH,
-					"capability_unavailable",
-					"[local-inference] Active local arbiter does not implement TEXT_TO_SPEECH",
-				);
-			}
-			const modelKeyCandidate =
-				typeof params === "object"
-					? (params as unknown as { modelKey?: unknown }).modelKey
-					: undefined;
-			const modelKey =
-				typeof modelKeyCandidate === "string" && modelKeyCandidate
-					? modelKeyCandidate
-					: "eliza-1-voice";
-			const result = await requestSpeech<typeof request, Uint8Array>({
-				modelKey,
-				payload: request,
-			});
-			return normalizeAudioBytes(result);
-		}
-		if (typeof service.synthesizeSpeech === "function") {
-			return normalizeAudioBytes(await service.synthesizeSpeech(text, signal));
-		}
-		if (typeof service.textToSpeech === "function") {
-			return normalizeAudioBytes(
-				await service.textToSpeech({ text, ...(signal ? { signal } : {}) }),
+		// Explicit opt-in (NOT the generic `stream` useModel injects from an
+		// ambient text-streaming turn) so byte-expecting callers keep a buffer.
+		const wantsStream =
+			typeof params === "object" &&
+			params !== null &&
+			(params as { audioStream?: boolean }).audioStream === true;
+
+		// Real chunked streaming when the backend implements the seam.
+		if (wantsStream && typeof service.synthesizeSpeechStream === "function") {
+			return streamingAudioStreamResult(
+				service.synthesizeSpeechStream(text, signal),
+				LOCAL_TTS_MIME,
 			);
 		}
-		throw unavailable(
-			ModelType.TEXT_TO_SPEECH,
-			"capability_unavailable",
-			"[local-inference] Active local backend does not implement TEXT_TO_SPEECH",
-		);
+
+		const synthesizeBuffered = async (): Promise<Uint8Array> => {
+			const arbiter = _tryGetTtsArbiter(service);
+			if (arbiter) {
+				const request = { text, ...(signal ? { signal } : {}) };
+				const requestSpeech =
+					arbiter.requestTextToSpeech ?? arbiter.requestSpeak;
+				if (!requestSpeech) {
+					throw unavailable(
+						ModelType.TEXT_TO_SPEECH,
+						"capability_unavailable",
+						"[local-inference] Active local arbiter does not implement TEXT_TO_SPEECH",
+					);
+				}
+				const modelKeyCandidate =
+					typeof params === "object"
+						? (params as unknown as { modelKey?: unknown }).modelKey
+						: undefined;
+				const modelKey =
+					typeof modelKeyCandidate === "string" && modelKeyCandidate
+						? modelKeyCandidate
+						: "eliza-1-voice";
+				const result = await requestSpeech<typeof request, Uint8Array>({
+					modelKey,
+					payload: request,
+				});
+				return normalizeAudioBytes(result);
+			}
+			if (typeof service.synthesizeSpeech === "function") {
+				return normalizeAudioBytes(await service.synthesizeSpeech(text, signal));
+			}
+			if (typeof service.textToSpeech === "function") {
+				return normalizeAudioBytes(
+					await service.textToSpeech({ text, ...(signal ? { signal } : {}) }),
+				);
+			}
+			throw unavailable(
+				ModelType.TEXT_TO_SPEECH,
+				"capability_unavailable",
+				"[local-inference] Active local backend does not implement TEXT_TO_SPEECH",
+			);
+		};
+
+		const bytes = await synthesizeBuffered();
+		// Streaming asked but no streaming backend — satisfy the contract with a
+		// single chunk so consumers use one code path for cloud + local.
+		return wantsStream
+			? bufferedAudioStreamResult(bytes, LOCAL_TTS_MIME)
+			: bytes;
 	};
 }
 

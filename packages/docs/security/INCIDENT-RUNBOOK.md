@@ -1,4 +1,4 @@
-> **Mirror.** Authoritative copy lives in the outer milady monorepo at `milady/docs/security/INCIDENT-RUNBOOK.md`. Relative links below (`../../POLICIES/...`) resolve in the outer monorepo, not inside this submodule.
+> **Mirror.** Authoritative copy lives in the outer monorepo at `../docs/security/INCIDENT-RUNBOOK.md`. Relative links below (`../../POLICIES/...`) resolve in the outer monorepo, not inside this submodule.
 
 # Incident Response Runbook
 

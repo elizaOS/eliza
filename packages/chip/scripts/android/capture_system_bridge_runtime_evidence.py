@@ -429,7 +429,7 @@ def build_report(args: argparse.Namespace) -> dict[str, object]:
         args.timeout_seconds,
         "sh",
         "-c",
-        "pm list packages -f | grep -Ei 'eliza|milady|system.bridge' || true",
+        "pm list packages -f | grep -Ei 'eliza|system.bridge' || true",
     )
     pm_path = adb_shell(prefix, args.timeout_seconds, "pm", "path", args.bridge_package)
     package_dump = adb_shell(

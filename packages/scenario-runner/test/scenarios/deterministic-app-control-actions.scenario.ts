@@ -529,7 +529,7 @@ export default scenario({
   rooms: [
     {
       id: "main",
-      source: "telegram",
+      source: "chat",
       title: "Deterministic App Control Catalog",
     },
   ],
@@ -1199,6 +1199,13 @@ export default scenario({
               body: { ok: true, navigated: true, viewId: "settings" },
               status: 200,
             },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
             search: "",
           },
           {

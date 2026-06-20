@@ -19,7 +19,7 @@ describe("executeFallbackParsedActions", () => {
     } as Action;
     const runtime = {
       actions: [action],
-      character: { name: "Milady" },
+      character: { name: "Example" },
       logger: {
         debug: vi.fn(),
         info: vi.fn(),
@@ -75,14 +75,14 @@ describe("maybeHandleDirectBinanceSkillRequest", () => {
       validate: vi.fn(async () => true),
       handler: vi.fn(async (_runtime, _message, _state, _options, callback) => {
         await callback?.({
-          text: 'Script executed successfully: {"symbol":"MILADY","score":99}',
+          text: 'Script executed successfully: {"symbol":"EXMPL","score":99}',
         });
         return { success: true };
       }),
     } as Action;
     const runtime = {
       actions: [action],
-      character: { name: "Milady" },
+      character: { name: "Example" },
       logger: {
         debug: vi.fn(),
         info: vi.fn(),
@@ -95,10 +95,10 @@ describe("maybeHandleDirectBinanceSkillRequest", () => {
       useModel: vi.fn(async (modelType, params) => {
         expect(modelType).toBe(ModelType.TEXT_SMALL);
         expect(String((params as { prompt?: string }).prompt)).toContain(
-          "MILADY",
+          "EXMPL",
         );
         return JSON.stringify({
-          response: 'Here is the raw payload: {"symbol":"MILADY","score":99}',
+          response: 'Here is the raw payload: {"symbol":"EXMPL","score":99}',
         });
       }),
     } as unknown as AgentRuntime;
@@ -122,7 +122,7 @@ describe("maybeHandleDirectBinanceSkillRequest", () => {
 
     expect(appended).toEqual(["Fetching meme tokens from Binance..."]);
     expect(replaced).toBe(
-      'Here is the raw payload: {"symbol":"MILADY","score":99}',
+      'Here is the raw payload: {"symbol":"EXMPL","score":99}',
     );
     expect(result).toBe(replaced);
     expect(runtime.useModel).toHaveBeenCalledWith(

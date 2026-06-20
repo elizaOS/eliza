@@ -52,7 +52,7 @@ function readAppXr(relPath: string): string {
   return readFileSync(resolve(appXrRoot, relPath), "utf8");
 }
 
-// All 26 registered XR view IDs
+// All 23 registered XR view IDs
 const ALL_XR_VIEW_IDS = [
   "wallet",
   "companion",
@@ -68,13 +68,10 @@ const ALL_XR_VIEW_IDS = [
   "contacts",
   "messages",
   "feed",
-  "2004scape",
   "defense-of-the-agents",
   "clawville",
   "hyperliquid",
-  "hyperscape",
   "lifeops",
-  "scape",
   "screenshare",
   "trajectory-logger",
   "model-tester",
@@ -229,7 +226,7 @@ describe("XR feature parity audit", () => {
     expect(missing, "missing agent actions").toEqual([]);
   });
 
-  it("axis 3 — extractViewId() knows all 26 view ids for natural-language routing", () => {
+  it("axis 3 — extractViewId() knows all 23 view ids for natural-language routing", () => {
     const actionsSource = readFile(
       "plugins/plugin-facewear/src/actions/xr-view-actions.ts",
     );
@@ -264,7 +261,7 @@ describe("XR feature parity audit", () => {
   // 5. Voice input ────────────────────────────────────────────────────────────
 
   it("axis 5 — view-host pages have voice transcript routing for INPUT, TEXTAREA, SELECT, and ARIA widgets", async () => {
-    // All 26 view-host pages share the same template — test a representative sample
+    // All 23 view-host pages share the same template — test a representative sample
     const sampleIds: (typeof ALL_XR_VIEW_IDS)[number][] = [
       "wallet",
       "phone",
@@ -417,7 +414,7 @@ describe("XR feature parity audit", () => {
 
   // Cross-cutting: simulator test coverage ────────────────────────────────────
 
-  it("cross-cut — all 26 view ids are present in the all-views-crud Playwright spec", () => {
+  it("cross-cut — all 23 view ids are present in the all-views-crud Playwright spec", () => {
     const specSrc = readAppXr("e2e/all-views-crud.spec.ts");
     const missing = ALL_XR_VIEW_IDS.filter(
       (id) => !specSrc.includes(`"${id}"`),

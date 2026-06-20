@@ -11,6 +11,12 @@ import {
 	type CapabilityConfig,
 	createBasicCapabilitiesPlugin,
 } from "./features/basic-capabilities/index";
+import {
+	INFERENCE_MARKS,
+	markInference,
+	recordInferenceSpan,
+	setInferenceModelProvider,
+} from "./inference-timing";
 import { createLogger } from "./logger";
 import { simpleHash } from "./optimization/ab-analysis";
 import { getOptimizationRootDir } from "./optimization-root-dir";
@@ -169,6 +175,7 @@ import type { AgentContext } from "./types/contexts";
 import type { IMessageService } from "./types/message-service";
 import {
 	afterMemoryPersistedPipelineHookContext,
+	composeStateProvidersPipelineHookContext,
 	modelStreamChunkPipelineHookContext,
 	modelStreamEndPipelineHookContext,
 	PIPELINE_HOOK_DEBUG_LOG_MS,
@@ -1405,6 +1412,30 @@ export class AgentRuntime implements IAgentRuntime {
 					this.stateCache.delete(messageId);
 					this.stateCache.delete(`${messageId}_action_results`);
 				}
+				return;
+			}
+			case "compose_state_providers": {
+				if (!hasHooks) {
+					return;
+				}
+				const c = ctx as Extract<
+					PipelineHookContext,
+					{ phase: "compose_state_providers" }
+				>;
+				const md = c.message.content.metadata;
+				const meta =
+					typeof md === "object" && md !== null
+						? (md as Record<string, unknown>)
+						: null;
+				if (meta?.skipComposeStateProviderHooks === true) {
+					return;
+				}
+				await this.invokePipelineHooks(
+					phase,
+					c,
+					"Compose-state provider pipeline hook",
+					hookTelemetry,
+				);
 				return;
 			}
 			case "pre_should_respond": {
@@ -3463,6 +3494,7 @@ export class AgentRuntime implements IAgentRuntime {
 		includeList: string[] | null = null,
 		onlyInclude = false,
 		skipCache = false,
+		refreshProviders: string[] | null = null,
 	): Promise<State> {
 		const trajectoryStepIdFromMessage =
 			typeof message.metadata === "object" &&
@@ -3517,6 +3549,40 @@ export class AgentRuntime implements IAgentRuntime {
 				providerNames.add(name);
 			}
 		}
+		// Opt-in provider-selection hook: lets a host app filter, extend, or
+		// reorder the provider set per message intent before any provider runs.
+		// Guarded so the default (no-hook) path stays allocation-free.
+		if (this.hooksForPhase("compose_state_providers").length > 0) {
+			const selection = composeStateProvidersPipelineHookContext({
+				message,
+				providers: { current: [...providerNames] },
+				activeContexts,
+				onlyInclude,
+				includeList,
+			});
+			await this.applyPipelineHooks("compose_state_providers", selection);
+			// Boundary validation: a buggy hook may replace `current` with a
+			// non-array (or throw mid-mutation). Only adopt a well-formed list;
+			// otherwise keep the pre-hook selection rather than crash the turn.
+			const selected = selection.providers.current;
+			if (Array.isArray(selected)) {
+				providerNames.clear();
+				for (const name of selected) {
+					if (typeof name === "string" && name.length > 0) {
+						providerNames.add(name);
+					}
+				}
+			} else {
+				this.logger.warn(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						phase: "compose_state_providers",
+					},
+					"compose_state_providers hook left providers.current non-array; keeping pre-hook selection",
+				);
+			}
+		}
 		const providersToGet: Provider[] = [];
 		for (const provider of this.providers) {
 			if (providerNames.has(provider.name)) {
@@ -3528,12 +3594,40 @@ export class AgentRuntime implements IAgentRuntime {
 				(a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name),
 		);
 
+		// `refreshProviders` lets a caller REUSE cached provider results for the
+		// requested set and re-run only the named providers (plus any not yet in
+		// the cache) — e.g. the planner pass refreshes only RECENT_MESSAGES (which
+		// changes after an early reply) and reuses everything the first compose
+		// already ran for this message.id. The full requested set still drives the
+		// rendered text/order below (pulled from `currentProviderResults`, which
+		// merges cache + fresh); only the run-set shrinks. No-op (run everything)
+		// when `refreshProviders` is null or there is no cached state.
+		const refreshSet =
+			refreshProviders && refreshProviders.length > 0
+				? new Set(refreshProviders)
+				: null;
+		const cachedProviderNames = refreshSet
+			? new Set(
+					Object.keys(
+						(cachedState.data.providers as
+							| Record<string, unknown>
+							| undefined) ?? {},
+					),
+				)
+			: null;
+		const providersToRun = refreshSet
+			? providersToGet.filter(
+					(p) => refreshSet.has(p.name) || !cachedProviderNames?.has(p.name),
+				)
+			: providersToGet;
+
 		// Optional trajectory logging service; absent unless configured.
 		const trajLogger = (await this._ensureServiceStarted("trajectories")) as
 			| (Service & TrajectoryProviderAccessLogger)
 			| null;
+		const composeStartedAt = Date.now();
 		const providerData = await Promise.all(
-			providersToGet.map(async (provider) => {
+			providersToRun.map(async (provider) => {
 				const start = Date.now();
 				let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 				let timedOut = false;
@@ -3560,6 +3654,10 @@ export class AgentRuntime implements IAgentRuntime {
 						}),
 					]);
 					const duration = Date.now() - start;
+
+					if (!timedOut) {
+						recordInferenceSpan(`provider:${provider.name}`, duration);
+					}
 
 					// Only log slow successful providers. Timed-out providers already logged above.
 					if (!timedOut && duration > 100) {
@@ -3600,6 +3698,10 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 			}),
 		);
+		recordInferenceSpan("composeState", Date.now() - composeStartedAt, {
+			providers: providersToRun.length,
+			reused: providersToGet.length - providersToRun.length,
+		});
 
 		if (trajectoryStepId && trajLogger) {
 			const userText =
@@ -4312,6 +4414,19 @@ export class AgentRuntime implements IAgentRuntime {
 		provider: string | undefined,
 		response: unknown,
 	): void {
+		// Per-turn latency breakdown: attribute this model round-trip to the
+		// active inference timer (no-op when none is active). `elapsedTime` is the
+		// already-measured handler+stream duration, so every return path that
+		// funnels through here is covered exactly once.
+		const resolvedProvider =
+			provider || this.models.get(modelKey)?.[0]?.provider || "unknown";
+		recordInferenceSpan(`model:${modelType}`, elapsedTime, {
+			modelKey,
+			provider: resolvedProvider,
+		});
+		if (modelType !== ModelType.TEXT_EMBEDDING) {
+			setInferenceModelProvider(resolvedProvider);
+		}
 		// Log to database
 		const responseValue =
 			Array.isArray(response) && response.every((x) => typeof x === "number")
@@ -4663,6 +4778,9 @@ export class AgentRuntime implements IAgentRuntime {
 		let streamedText = "";
 		const deliverModelStreamChunk = async (chunk: string): Promise<void> => {
 			if (abortSignal?.aborted) return;
+			if (streamedText === "" && chunk.length > 0) {
+				markInference(INFERENCE_MARKS.firstToken);
+			}
 			streamedText += chunk;
 			const trajStream = getTrajectoryContext();
 			await this.invokePipelineHooks(
@@ -6152,6 +6270,39 @@ ${section_end}`;
 					}
 
 					extractor.reset();
+				}
+
+				// Repair reroll: when the extractor didn't produce a targeted retry
+				// context (the common case — contextLevel 2, no streaming extractor,
+				// or no validated fields), feed the model the CONCRETE reason its last
+				// output was rejected + the (redacted, truncated) bad output, so the
+				// reroll is corrective instead of a blind re-roll of the same prompt.
+				// Goes in the same `_smartRetryContext` field, which is rendered as a
+				// `stable:false` segment (prompt-cache safe) and cleared on
+				// success/abort. Correctness-neutral: it only changes the prompt of a
+				// retry that was already going to run; it never skips a validation.
+				if (!smartRetryContextNext) {
+					const repairIssues =
+						validationIssues.length > 0
+							? validationIssues
+							: parseErrorMessage
+								? [parseErrorMessage]
+								: [];
+					if (repairIssues.length > 0) {
+						const priorOutput = this.redactSecrets(cleanResponse).slice(
+							0,
+							AgentRuntime.STRUCTURED_FAILURE_PREVIEW_LIMIT,
+						);
+						const issueList = repairIssues
+							.slice(0, 8)
+							.map((issue) => `- ${issue}`)
+							.join("\n");
+						smartRetryContextNext = `\n\n[REPAIR] Your previous response was rejected because it did not satisfy the required schema. Fix exactly these problems and return a corrected response:\n${issueList}${
+							priorOutput
+								? `\n\nYour previous (invalid) output was:\n${priorOutput}`
+								: ""
+						}`;
+					}
 				}
 
 				if (smartRetryContextNext) {

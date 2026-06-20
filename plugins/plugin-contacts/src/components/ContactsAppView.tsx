@@ -24,7 +24,7 @@ import {
   navigateToMessagesWithNumber,
   navigateToPhoneWithNumber,
 } from "@elizaos/ui/app-navigate-view";
-import { PermissionRecoveryCallout } from "@elizaos/ui/components/permissions/PermissionRecoveryCallout";
+import { PermissionRecoveryCallout } from "@elizaos/ui/components";
 import { isNative } from "@elizaos/ui/platform";
 import {
   ArrowLeft,

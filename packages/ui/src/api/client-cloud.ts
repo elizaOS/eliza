@@ -8,6 +8,11 @@ import {
   readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
 } from "@elizaos/shared/steward-session-client";
+import {
+  type AgentReadinessProbe,
+  type AuthedAgentFetch,
+  startCloudConversationHandoff,
+} from "../cloud/handoff/cloud-handoff-supervisor";
 import { getBootConfig } from "../config/boot-config";
 import {
   buildCloudSharedAgentApiBase,
@@ -125,6 +130,9 @@ type DirectCloudAgentCreateData = {
   agentName: string;
   status: string;
 };
+
+/** Async-job envelope returned by the restart/suspend/resume lifecycle routes. */
+type LifecycleResult = { jobId: string; status: string; message: string };
 
 type ProvisioningAgentStatusData = {
   status?: string;
@@ -675,7 +683,11 @@ function parseDirectCloudAgentCreateData(
   const data = recordOrNull(value);
   if (!data) throw new Error("Eliza Cloud response missing data");
   return {
-    id: requireString(data.id, "data.id"),
+    // The cloud create response carries the new agent's id under `id` in most
+    // branches but only `agentId` in the async-provisioning (202) branch.
+    // Accept either — both are `agent.id` — so a provisioning agent (the common
+    // new-user path) doesn't crash onboarding against an un-redeployed worker.
+    id: requireString(data.id ?? data.agentId, "data.id"),
     agentName: stringOrNull(data.agentName) ?? fallbackAgentName,
     status: stringOrNull(data.status) ?? "pending",
   };
@@ -990,6 +1002,7 @@ declare module "./client-base" {
     getCloudCompatAgents(): Promise<{
       success: boolean;
       data: CloudCompatAgent[];
+      error?: string;
     }>;
     createCloudCompatAgent(opts: {
       agentName: string;
@@ -1112,6 +1125,7 @@ declare module "./client-base" {
     }>;
     deleteCloudCompatAgent(agentId: string): Promise<{
       success: boolean;
+      error?: string;
       data: { jobId: string; status: string; message: string };
     }>;
     /**
@@ -1304,6 +1318,26 @@ declare module "./client-base" {
       bridgeUrl: string | null;
       created: boolean;
     }>;
+    /**
+     * Background shared→personal handoff for a freshly provisioned cloud agent:
+     * once the dedicated container is reachable, copy the conversation the user
+     * built on the shared adapter into it and switch the live client over.
+     * Best-effort and non-blocking — failure leaves the user on the (working)
+     * shared adapter.
+     */
+    startCloudAgentHandoff(options: {
+      agentId: string;
+      sharedApiBase: string;
+      conversationId: string;
+      cloudApiBase: string;
+      authToken: string;
+      onSwitch: (containerBase: string) => void | Promise<void>;
+      intervalMs?: number;
+      timeoutMs?: number;
+      log?: (message: string) => void;
+    }): Promise<
+      import("../cloud/handoff/conversation-handoff").ConversationHandoffResult
+    >;
     checkBugReportInfo(): Promise<{
       nodeVersion?: string;
       platform?: string;
@@ -2025,13 +2059,16 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
 ) {
   const normalizeDelete = (response: {
     success?: boolean;
-    data?: { message?: string; status?: string };
+    data?: { message?: string; status?: string; jobId?: string };
     error?: string;
   }) => ({
     success: response.success === true,
     ...(response.error ? { error: response.error } : {}),
     data: {
-      jobId: "",
+      // A 202 async delete carries a jobId the caller can poll
+      // (`/api/v1/jobs/<id>`) to learn whether the teardown actually
+      // completed. A synchronous delete returns no jobId.
+      jobId: response.data?.jobId ?? "",
       status:
         response.data?.status ??
         (response.success === true ? "deleted" : "error"),
@@ -2045,7 +2082,7 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
 
   const direct = await directCloudRequest<{
     success: boolean;
-    data?: { message?: string; status?: string };
+    data?: { message?: string; status?: string; jobId?: string };
     error?: string;
   }>(this, `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`, {
     method: "DELETE",
@@ -2067,7 +2104,7 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
   if (isDirectCloudBase(this)) {
     const response = await this.fetch<{
       success: boolean;
-      data?: { message?: string; status?: string };
+      data?: { message?: string; status?: string; jobId?: string };
       error?: string;
     }>(
       `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`,
@@ -2255,10 +2292,101 @@ ElizaClient.prototype.getCloudCompatAgentLogs = async function (
   );
 };
 
+/**
+ * Normalize a cloud lifecycle (suspend/resume) response into the
+ * `{ success, data: { jobId, status, message } }` shape the UI expects. The
+ * direct cloud routes return a 202 `{ success, data: { jobId, status,
+ * message } }` async-job envelope; the legacy proxy returns the same shape.
+ * A few routes carry the human message at the envelope top level, so read both.
+ */
+function normalizeCloudLifecycleResponse(
+  response: {
+    success?: boolean;
+    data?: { jobId?: string; status?: string; message?: string };
+    message?: string;
+    error?: string;
+  },
+  fallbackVerb: string,
+): { success: boolean; error?: string; data: LifecycleResult } {
+  const success = response.success === true;
+  return {
+    success,
+    ...(response.error ? { error: response.error } : {}),
+    data: {
+      jobId: response.data?.jobId ?? "",
+      status: response.data?.status ?? (success ? "queued" : "error"),
+      message:
+        response.data?.message ??
+        response.message ??
+        (success
+          ? `Agent ${fallbackVerb} enqueued`
+          : (response.error ?? `Agent ${fallbackVerb} failed`)),
+    },
+  };
+}
+
+/**
+ * Drive a cloud agent lifecycle action (suspend/resume) through the
+ * direct-cloud ladder — direct token request → native-auth-missing guard →
+ * direct-cloud-base same-origin fetch → legacy `/api/cloud/compat` proxy.
+ * Mirrors `deleteCloudCompatAgent` so the Power/Start buttons work on
+ * phone/web (which have no local API server proxying `/api/cloud/compat/...`).
+ *
+ * Only suspend/resume go through this ladder: the cloud-api exposes
+ * `/api/v1/eliza/agents/:id/{suspend,resume}` (also sleep/wake) but NOT a
+ * `restart` route, so restart stays on its legacy `/api/cloud/compat` proxy
+ * (see `restartCloudCompatAgent`).
+ */
+async function runCloudLifecycleAction(
+  client: ElizaClient,
+  agentId: string,
+  action: "suspend" | "resume",
+): Promise<{ success: boolean; error?: string; data: LifecycleResult }> {
+  const encoded = encodeURIComponent(agentId);
+  const directPath = `/api/v1/eliza/agents/${encoded}/${action}`;
+
+  const direct = await directCloudRequest<{
+    success: boolean;
+    data?: { jobId?: string; status?: string; message?: string };
+    error?: string;
+  }>(client, directPath, { method: "POST" });
+  if (direct) return normalizeCloudLifecycleResponse(direct, action);
+
+  if (isNativeDirectCloudAuthMissing(client)) {
+    return {
+      success: false,
+      error: nativeDirectCloudAuthMissingMessage(),
+      data: {
+        jobId: "",
+        status: "auth-missing",
+        message: nativeDirectCloudAuthMissingMessage(),
+      },
+    };
+  }
+
+  if (isDirectCloudBase(client)) {
+    const response = await client.fetch<{
+      success: boolean;
+      data?: { jobId?: string; status?: string; message?: string };
+      error?: string;
+    }>(directPath, { method: "POST" }, { allowNonOk: true });
+    return normalizeCloudLifecycleResponse(response, action);
+  }
+
+  return client.fetch(
+    `/api/cloud/compat/agents/${encoded}/${action}`,
+    { method: "POST" },
+    { allowNonOk: true },
+  );
+}
+
 ElizaClient.prototype.restartCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
 ) {
+  // Restart has no `/api/v1/eliza/agents/:id/restart` route (unlike
+  // suspend/resume), so it stays on the legacy compat proxy rather than the
+  // direct-cloud ladder, preserving its prior behavior.
   return this.fetch(
     `/api/cloud/compat/agents/${encodeURIComponent(agentId)}/restart`,
     { method: "POST" },
@@ -2269,20 +2397,14 @@ ElizaClient.prototype.suspendCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
 ) {
-  return this.fetch(
-    `/api/cloud/compat/agents/${encodeURIComponent(agentId)}/suspend`,
-    { method: "POST" },
-  );
+  return runCloudLifecycleAction(this, agentId, "suspend");
 };
 
 ElizaClient.prototype.resumeCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
 ) {
-  return this.fetch(
-    `/api/cloud/compat/agents/${encodeURIComponent(agentId)}/resume`,
-    { method: "POST" },
-  );
+  return runCloudLifecycleAction(this, agentId, "resume");
 };
 
 ElizaClient.prototype.launchCloudCompatAgent = async function (
@@ -2969,6 +3091,83 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     bridgeUrl: detailAgent?.bridge_url ?? null,
     created: true,
   };
+};
+
+ElizaClient.prototype.startCloudAgentHandoff = function (
+  this: ElizaClient,
+  options,
+) {
+  const {
+    agentId,
+    sharedApiBase,
+    conversationId,
+    cloudApiBase,
+    authToken,
+    onSwitch,
+    intervalMs,
+    timeoutMs,
+    log,
+  } = options;
+  const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
+
+  // Authed JSON fetch against a specific agent base (shared adapter OR the
+  // dedicated container subdomain). Both accept the cloud session token —
+  // the dedicated-agent proxy swaps it for the container's own token.
+  const authedFetch: AuthedAgentFetch = async (base, path, init) => {
+    const res = await fetch(`${base}${path}`, {
+      method: init?.method ?? "GET",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      ...(init?.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+      signal: AbortSignal.timeout(20_000),
+    });
+    let json: unknown = null;
+    try {
+      json = await res.json();
+    } catch {
+      json = null;
+    }
+    return { status: res.status, json };
+  };
+
+  const readiness: AgentReadinessProbe = {
+    resolveReadyBase: async () => {
+      const detail = await this.getCloudCompatAgent(agentId).catch(() => null);
+      const agent = detail?.success ? detail.data : null;
+      if (!agent) return null;
+      // The container is "ready" only once the record exposes a dedicated base
+      // (bridge/web-ui subdomain) AND reports running — until then the user is
+      // served by the shared adapter.
+      const hasDedicatedUrl = Boolean(
+        agent.bridge_url || agent.web_ui_url || agent.webUiUrl,
+      );
+      if (!hasDedicatedUrl) return null;
+      if (agent.status && agent.status !== "running") return null;
+      const base = resolveCloudAgentApiBase({
+        bridgeUrl: agent.bridge_url,
+        webUiUrl: agent.web_ui_url ?? agent.webUiUrl,
+        agentId,
+        cloudApiBase: resolvedCloudApiBase,
+      });
+      // Never "switch" onto the shared adapter (no migration target there).
+      if (isDirectCloudSharedAgentBase(base)) return null;
+      return base;
+    },
+  };
+
+  return startCloudConversationHandoff({
+    sharedApiBase,
+    conversationId,
+    readiness,
+    authedFetch,
+    onSwitch,
+    ...(typeof intervalMs === "number" ? { intervalMs } : {}),
+    ...(typeof timeoutMs === "number" ? { timeoutMs } : {}),
+    ...(log ? { log } : {}),
+  });
 };
 
 /** Strip a `/pair?token=…` redirect down to the agent's own origin. */

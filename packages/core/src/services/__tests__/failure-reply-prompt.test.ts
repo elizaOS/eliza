@@ -117,8 +117,8 @@ describe("buildFailureReplyPrompt", () => {
 });
 
 /**
- * BACKGROUND — live regression on Cerebras gpt-oss-120b (2026-05-27,
- * milady channel): "Write me a haiku about the Israel Iran war" + "What
+ * BACKGROUND — live regression on Cerebras gpt-oss-120b (2026-05-27):
+ * "Write me a haiku about the Israel Iran war" + "What
  * was the actual error?" both errored with 0 trajectory stages. bot.log:
  * `AI_RetryError: Failed after 3 attempts. Last error: Too Many Requests`
  * cascaded across all four model slots (TEXT_LARGE -> RESPONSE_HANDLER ->

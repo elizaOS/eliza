@@ -105,12 +105,7 @@ export function WorkspaceLayout({
       {...props}
     >
       {contentHeader && headerPlacement === "outside" ? (
-        <div
-          className={cn(
-            "shrink-0",
-            contentPadding && "px-4 pt-2 sm:px-6 sm:pt-3 lg:px-7 lg:pt-4",
-          )}
-        >
+        <div className={cn("shrink-0", contentPadding && "px-2 pt-1")}>
           {headerElement}
         </div>
       ) : null}
@@ -126,7 +121,7 @@ export function WorkspaceLayout({
             className={cn(
               "min-h-0 w-full shrink-0 items-stretch px-0 pb-0",
               isDesktop ? "flex w-auto" : "hidden",
-              contentPadding && "pt-2 sm:pt-3 lg:pt-4",
+              contentPadding && "pt-1",
             )}
           >
             {desktopSidebarElement}
@@ -138,9 +133,7 @@ export function WorkspaceLayout({
           className={cn(
             "chat-native-scrollbar relative flex min-w-0 flex-1 flex-col bg-transparent",
             showMobileSidebarPane ? "overflow-hidden" : "overflow-y-auto",
-            contentPadding &&
-              !showMobileSidebarPane &&
-              "px-4 pb-4 pt-2 sm:px-6 sm:pb-6 sm:pt-3 lg:px-7 lg:pb-7 lg:pt-4",
+            contentPadding && !showMobileSidebarPane && "px-2 pb-4 pt-1",
             !showMobileSidebarPane && contentClassName,
           )}
         >

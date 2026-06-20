@@ -39,6 +39,7 @@ import type {
 	Eliza1EotScorerOptions,
 } from "./eliza1-eot-scorer";
 import { Eliza1EotScorer } from "./eliza1-eot-scorer";
+import { FfiEotScorer, type FfiEotScorerOptions } from "./fused-eot-scorer";
 
 // ---------------------------------------------------------------------------
 // Interface
@@ -440,4 +441,93 @@ export class Eliza1EotClassifier implements EotClassifier {
 	async dispose(): Promise<void> {
 		await this.scorer.dispose();
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Composite EOT classifier (fused semantic model + heuristic co-signal)
+// ---------------------------------------------------------------------------
+
+/**
+ * Above this heuristic confidence the heuristic's high-precision syntactic
+ * verdict is trusted outright and the model forward pass is skipped. Sentence-
+ * final punctuation, question tags, trailing conjunctions, and dangling
+ * prepositions all clear this bar (P ≤ 0.2 or ≥ 0.8 → confidence ≥ 0.6); short
+ * utterances and the no-signal case fall below it and defer to the model.
+ */
+export const COMPOSITE_HEURISTIC_CONFIDENCE_CUTOFF = 0.6;
+
+/**
+ * End-of-turn classifier that blends the fused semantic scorer
+ * (P(`<|im_end|>`) over the loaded text model) with the heuristic syntactic
+ * rules. The heuristic is NOT a fallback — it is a tuned co-signal: when it is
+ * confident (clear punctuation / mid-clause conjunction / dangling preposition)
+ * its verdict wins outright and the model pass is skipped; in the ambiguous
+ * middle (short utterance, no syntactic cue) the model's semantic judgment
+ * dominates, blended by the heuristic's residual confidence. Acoustic
+ * silence/VAD timing lives a tier below this (the VAD), so this layer is the
+ * pure text-completion read.
+ */
+export class CompositeEotClassifier implements EotClassifier {
+	private readonly model: FfiEotScorer;
+	private readonly heuristic: HeuristicEotClassifier;
+	private readonly confidenceCutoff: number;
+
+	constructor(options: {
+		model: FfiEotScorer;
+		heuristic?: HeuristicEotClassifier;
+		confidenceCutoff?: number;
+	}) {
+		this.model = options.model;
+		this.heuristic = options.heuristic ?? new HeuristicEotClassifier();
+		this.confidenceCutoff =
+			options.confidenceCutoff ?? COMPOSITE_HEURISTIC_CONFIDENCE_CUTOFF;
+	}
+
+	private async blend(
+		partialTranscript: string,
+	): Promise<{ probability: number; latencyMs: number; usedModel: boolean }> {
+		const heuristicP = await this.heuristic.score(partialTranscript);
+		const heuristicConfidence = Math.abs(heuristicP - 0.5) * 2;
+		// High-precision syntactic verdict — trust it and skip the model pass.
+		if (heuristicConfidence >= this.confidenceCutoff) {
+			return { probability: heuristicP, latencyMs: 0, usedModel: false };
+		}
+		const { probability: modelP, latencyMs } =
+			await this.model.score(partialTranscript);
+		const blended =
+			modelP * (1 - heuristicConfidence) + heuristicP * heuristicConfidence;
+		return {
+			probability: clampProbability(blended),
+			latencyMs,
+			usedModel: true,
+		};
+	}
+
+	async score(partialTranscript: string): Promise<number> {
+		return (await this.blend(partialTranscript)).probability;
+	}
+
+	async signal(partialTranscript: string): Promise<VoiceTurnSignal> {
+		const { probability, latencyMs, usedModel } =
+			await this.blend(partialTranscript);
+		return turnSignalFromProbability({
+			probability,
+			transcript: partialTranscript,
+			source: usedModel ? "eliza-1-drafter" : "heuristic",
+			model: usedModel ? `${this.model.modelLabel}+heuristic` : "heuristic-v1",
+			...(latencyMs > 0 ? { latencyMs } : {}),
+		});
+	}
+}
+
+/**
+ * Build a composite EOT classifier backed by the fused FFI scorer, or null when
+ * the loaded fused build does not wire the v11 EOT symbol (a pre-v11 library) —
+ * the caller then falls back to a heuristic-only classifier.
+ */
+export function tryBuildFusedEotClassifier(
+	options: FfiEotScorerOptions,
+): CompositeEotClassifier | null {
+	if (!FfiEotScorer.isSupported(options.ffi)) return null;
+	return new CompositeEotClassifier({ model: new FfiEotScorer(options) });
 }

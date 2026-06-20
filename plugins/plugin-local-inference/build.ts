@@ -10,7 +10,6 @@ const external = await externalsFromPackageJson("./package.json", {
 	// been removed.
 	extra: [
 		"@elizaos/agent",
-		"@elizaos/plugin-omnivoice",
 		"llama-cpp-capacitor",
 		"@reflink/reflink",
 		"ws",

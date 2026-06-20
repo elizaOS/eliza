@@ -104,7 +104,7 @@ Best-effort estimate from task TOMLs:
 
 ## Integration Plan for elizaOS Adapters
 
-Mirror the pattern at `/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/eliza-adapter/eliza_adapter/bfcl.py`. That file defines an agent class (`ElizaBFCLAgent`) with the duck-typed interface a runner expects:
+Mirror the pattern at `/path/to/eliza/packages/benchmarks/eliza-adapter/eliza_adapter/bfcl.py`. That file defines an agent class (`ElizaBFCLAgent`) with the duck-typed interface a runner expects:
 
 ```python
 async def initialize() -> None

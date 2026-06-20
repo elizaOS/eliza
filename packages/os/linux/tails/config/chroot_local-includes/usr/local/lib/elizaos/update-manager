@@ -4,7 +4,7 @@ set -eu
 
 run_dir="${ELIZAOS_RUN_DIR:-/run/elizaos}"
 staged_root="${ELIZAOS_STAGED_UPDATE_DIR:-/home/amnesia/.eliza/updates}"
-baked_runtime="${ELIZAOS_BAKED_RUNTIME:-/opt/milady}"
+baked_runtime="${ELIZAOS_BAKED_RUNTIME:-/opt/elizaos}"
 default_channel="${ELIZAOS_DEFAULT_UPDATE_CHANNEL:-stable}"
 runtime_store="${ELIZAOS_RUNTIME_STORE:-/live/persistence/TailsData_unlocked/elizaos-system/runtimes}"
 state_root="${ELIZAOS_UPDATE_STATE_DIR:-/live/persistence/TailsData_unlocked/elizaos-system/update-state}"

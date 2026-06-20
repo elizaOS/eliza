@@ -62,6 +62,44 @@ describe("resolveLocalInferenceLoadArgs", () => {
     expect(args.contextSize).toBe(32768);
   });
 
+  it("clamps the context window to the mobile ceiling on iOS/Android", async () => {
+    const prev = process.env.ELIZA_MOBILE_PLATFORM;
+    process.env.ELIZA_MOBILE_PLATFORM = "ios";
+    try {
+      const target = makeInstalledModel("eliza-1-9b", "/tmp/eliza-1-9b.gguf");
+      // Catalog ceiling is 131072; on mobile it must clamp to the 8192 default.
+      const args = await resolveLocalInferenceLoadArgs(target);
+      expect(args.contextSize).toBe(8192);
+      // An explicit override above the ceiling is clamped too — a phone cannot
+      // hold the KV cache regardless of what was requested.
+      const overridden = await resolveLocalInferenceLoadArgs(target, {
+        contextSize: 32768,
+      });
+      expect(overridden.contextSize).toBe(8192);
+    } finally {
+      if (prev === undefined) delete process.env.ELIZA_MOBILE_PLATFORM;
+      else process.env.ELIZA_MOBILE_PLATFORM = prev;
+    }
+  });
+
+  it("honors ELIZA_MOBILE_CONTEXT_CEILING override for capable devices", async () => {
+    const prevPlat = process.env.ELIZA_MOBILE_PLATFORM;
+    const prevCeil = process.env.ELIZA_MOBILE_CONTEXT_CEILING;
+    process.env.ELIZA_MOBILE_PLATFORM = "android";
+    process.env.ELIZA_MOBILE_CONTEXT_CEILING = "16384";
+    try {
+      const target = makeInstalledModel("eliza-1-9b", "/tmp/eliza-1-9b.gguf");
+      const args = await resolveLocalInferenceLoadArgs(target);
+      expect(args.contextSize).toBe(16384);
+    } finally {
+      if (prevPlat === undefined) delete process.env.ELIZA_MOBILE_PLATFORM;
+      else process.env.ELIZA_MOBILE_PLATFORM = prevPlat;
+      if (prevCeil === undefined)
+        delete process.env.ELIZA_MOBILE_CONTEXT_CEILING;
+      else process.env.ELIZA_MOBILE_CONTEXT_CEILING = prevCeil;
+    }
+  });
+
   it("per-load gpuLayers/flashAttention/mmap/mlock overrides flow into args", async () => {
     const target = makeInstalledModel("eliza-1-2b", "/tmp/eliza-1-2b.gguf");
     const args = await resolveLocalInferenceLoadArgs(target, {

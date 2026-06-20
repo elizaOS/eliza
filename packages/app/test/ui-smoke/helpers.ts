@@ -775,7 +775,7 @@ function smokeShopifyProducts(url: URL) {
   const products = [
     {
       id: "gid://shopify/Product/1001",
-      title: "Milady Hoodie",
+      title: "Example Hoodie",
       status: "ACTIVE",
       productType: "Apparel",
       vendor: "Eliza Smoke Store",
@@ -833,7 +833,7 @@ function smokeShopifyInventory() {
       {
         id: "gid://shopify/InventoryItem/3001",
         sku: "MLDY-HOODIE",
-        productTitle: "Milady Hoodie",
+        productTitle: "Example Hoodie",
         variantTitle: "Black / M",
         locationId: "gid://shopify/Location/1",
         locationName: "Main Warehouse",
@@ -1848,6 +1848,21 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ actions: [] }),
+    });
+  });
+
+  // Notifications poller — another shell-level GET on every surface. The zero-key
+  // smoke stack returns 501 for it; a fresh agent simply has no notifications, so
+  // an empty list matches real zero-state and keeps the diagnostics guard clean.
+  await page.route("**/api/notifications**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ notifications: [], unreadCount: 0 }),
     });
   });
 

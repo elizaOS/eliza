@@ -371,7 +371,7 @@ $bmp.Dispose()`;
    * Opens a game client URL in a dedicated isolated BrowserWindow.
    *
    * Unlike createWindow(), this does NOT enforce a localhost-only navigation
-   * rule because game clients (Hyperscape, 2004scape) are external origins.
+   * rule because game clients are external origins.
    * The window uses its own "game-isolated" session partition so cookies and
    * storage are separated from the main renderer and canvas windows.
    *

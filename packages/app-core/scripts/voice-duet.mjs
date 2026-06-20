@@ -622,12 +622,9 @@ async function main() {
   }
   const bundlePath = target.path;
 
-  const [{ PushMicSource }, vadMod] = await Promise.all([
-    import(
-      "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
-    ),
-    import("../../../plugins/plugin-local-inference/src/services/voice/vad.ts"),
-  ]);
+  const { PushMicSource } = await import(
+    "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
+  );
   const {
     markVoiceLatency,
     endVoiceLatencyTurn,
@@ -729,16 +726,8 @@ async function main() {
   });
 
   // ── Boot agent A's engine (sink → aToB ring) ───────────────────────────
-  const vadA = await vadMod.createSileroVadDetector({
-    sileroCppGgufPath: process.env.ELIZA_SILERO_VAD_GGUF,
-    modelPath: process.env.ELIZA_VAD_MODEL_PATH,
-  });
-  const vadB = args.twoProcess
-    ? null
-    : await vadMod.createSileroVadDetector({
-        sileroCppGgufPath: process.env.ELIZA_SILERO_VAD_GGUF,
-        modelPath: process.env.ELIZA_VAD_MODEL_PATH,
-      });
+  // Each engine constructs the fused Silero VAD (via the libelizainference VAD
+  // ABI) from its own bridge ffi/ctx when no `vad` is supplied.
 
   // The cross-agent loop bookkeeping.
   let completedTurns = 0;
@@ -884,7 +873,6 @@ async function main() {
     bundlePath,
     sink: bridge.sinkForA(),
     roomId: roomA,
-    vad: vadA,
     micSource: pushA,
     generate: wrapGenerate(bootedA, roomA, "A"),
     prewarm: async (rid) => {
@@ -908,7 +896,6 @@ async function main() {
       bundlePath,
       sink: bridge.sinkForB(),
       roomId: roomB,
-      vad: vadB,
       micSource: pushB,
       generate: wrapGenerate(bootedB, roomB, "B"),
       prewarm: async (rid) => {
@@ -1235,9 +1222,6 @@ async function runAsPeerB(args) {
     const { PushMicSource } = await import(
       "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
     );
-    const vadMod = await import(
-      "../../../plugins/plugin-local-inference/src/services/voice/vad.ts"
-    );
     const { DuetSink } = await import("./lib/duet-bridge.mjs");
     const charB = await loadCharacter(args.characterB, DEFAULT_CHARACTER_B);
     const roomB = "voice-duet-B";
@@ -1263,14 +1247,11 @@ async function runAsPeerB(args) {
     await engine.load(bundlePath);
     engine.startVoice({ bundleRoot, useFfiBackend: true, sink: replySink });
     await engine.armVoice();
-    const vad = await vadMod.createSileroVadDetector({
-      sileroCppGgufPath: process.env.ELIZA_SILERO_VAD_GGUF,
-      modelPath: process.env.ELIZA_VAD_MODEL_PATH,
-    });
+    // The engine constructs the fused Silero VAD (via the libelizainference VAD
+    // ABI) from its own bridge ffi/ctx when no `vad` is supplied.
     await engine.startVoiceSession({
       roomId: roomB,
       micSource: push,
-      vad,
       generate: async (request) => {
         process.stderr.write(`[peer-b] heard: "${request.transcript}"\n`);
         return booted.generate(request, async () => {});

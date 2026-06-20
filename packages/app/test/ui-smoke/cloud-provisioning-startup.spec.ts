@@ -112,6 +112,17 @@ function assistantMessage(page: Page, hasText?: string | RegExp): Locator {
   return direct.last().or(logged.last()).first();
 }
 
+function assistantMessages(page: Page, hasText: string | RegExp): Locator {
+  return page
+    .locator('[data-testid="chat-message"][data-role="assistant"]')
+    .filter({ hasText })
+    .or(
+      conversationLog(page)
+        .locator('[data-role="assistant"]')
+        .filter({ hasText }),
+    );
+}
+
 async function clickIfVisible(
   locator: Locator,
   timeoutMs = 2_000,
@@ -126,12 +137,19 @@ async function clickIfVisible(
 }
 
 async function startCloudRuntime(page: Page): Promise<void> {
-  // Redesigned first-run onboarding: the "Choose how to run your agent"
-  // card surfaces three runtime option buttons. Picking the cloud option
-  // applies the cloud draft + finishes the runtime in a single tap.
-  const cloudOption = page.getByTestId("onboarding-option-cloud");
-  await cloudOption.waitFor({ state: "visible", timeout: 30_000 });
-  await cloudOption.click();
+  // For an already-authenticated user, first-run onboarding skips the "How should
+  // Eliza run?" runtime choice and goes straight to the "Choose your agent"
+  // picker, fetching the account's existing cloud agents. Driving "Create new"
+  // provisions a fresh agent through the local cloud proxy. A brand-new account
+  // with zero agents skips the picker entirely and auto-creates — both paths land
+  // on the same create route, so absence of the picker is fine.
+  const createNew = page.getByTestId("onboarding-agent-create");
+  await createNew.waitFor({ state: "visible", timeout: 30_000 }).catch(() => {
+    /* no picker: zero-agent account auto-creates without a picker step */
+  });
+  if (await createNew.isVisible().catch(() => false)) {
+    await createNew.click();
+  }
 }
 
 async function installCloudConnectionRoutes(
@@ -345,20 +363,32 @@ async function expectDeterministicChatTurn(
   prompt: string,
 ): Promise<void> {
   await expect(userMessage(page, prompt)).toBeVisible();
-  // Target the deterministic fixture reply specifically — a greeting bubble and
-  // cross-viewport stub-conversation state can otherwise make an unfiltered
-  // .last() resolve to a non-JSON assistant bubble (seen only on wide-web).
-  const assistant = assistantMessage(page, /ui-smoke-assistant-v1/);
-  await expect(assistant).toBeVisible({ timeout: 60_000 });
-  const assistantText = (await assistant.textContent())?.trim() ?? "";
-  const parsed = parseAssistantFixtureText(assistantText);
-  expect(parsed).toMatchObject({
-    fixture: "ui-smoke-assistant-v1",
-    transport: "sse",
-    input: {
-      text: prompt,
-    },
-  });
+  await expect
+    .poll(
+      async () => {
+        const assistants = assistantMessages(page, /ui-smoke-assistant-v1/);
+        const matches: DeterministicAssistantFixture[] = [];
+        for (let i = 0; i < (await assistants.count()); i += 1) {
+          const assistantText =
+            (await assistants.nth(i).textContent())?.trim() ?? "";
+          const parsed = parseAssistantFixtureText(assistantText);
+          if (parsed.input.text === prompt) {
+            matches.push(parsed);
+          }
+        }
+        return matches.at(-1) ?? null;
+      },
+      {
+        timeout: 60_000,
+      },
+    )
+    .toMatchObject({
+      fixture: "ui-smoke-assistant-v1",
+      transport: "sse",
+      input: {
+        text: prompt,
+      },
+    });
 }
 
 for (const viewport of VIEWPORTS) {
@@ -376,6 +406,7 @@ for (const viewport of VIEWPORTS) {
       complete: false,
       submissions: [],
     };
+    let compatCreateRequests = 0;
     let _provisionRequests = 0;
     let _jobPollRequests = 0;
     let _agentDetailRequests = 0;
@@ -466,30 +497,49 @@ for (const viewport of VIEWPORTS) {
 
     await page.route("**/api/cloud/compat/agents", async (route) => {
       const request = route.request();
-      if (request.method() !== "GET") {
-        await route.fallback();
+      if (request.method() === "GET") {
+        // The agent picker lists the user's existing cloud agents.
+        await fulfillJson(route, 200, {
+          success: true,
+          data: [
+            {
+              agent_id: "agent-1",
+              agent_name: "My Agent",
+              status: "stopped",
+              bridge_url: null,
+              web_ui_url: null,
+              containerUrl: "",
+              webUiUrl: null,
+              database_status: "ready",
+              error_message: null,
+              agent_config: {},
+              created_at: "2026-01-01T00:00:00.000Z",
+              updated_at: "2026-01-01T00:00:00.000Z",
+              last_heartbeat_at: null,
+            },
+          ],
+        });
         return;
       }
-      await fulfillJson(route, 200, {
-        success: true,
-        data: [
-          {
-            agent_id: "agent-1",
-            agent_name: "My Agent",
-            status: "stopped",
-            bridge_url: null,
-            web_ui_url: null,
-            containerUrl: "",
-            webUiUrl: null,
-            database_status: "ready",
-            error_message: null,
-            agent_config: {},
-            created_at: "2026-01-01T00:00:00.000Z",
-            updated_at: "2026-01-01T00:00:00.000Z",
-            last_heartbeat_at: null,
+      if (request.method() === "POST") {
+        // "Create new" in the picker provisions a fresh dedicated cloud agent
+        // through the local cloud proxy (a single create call — the legacy
+        // separate provision + job-poll handshake no longer runs for this path).
+        compatCreateRequests += 1;
+        await fulfillJson(route, 200, {
+          success: true,
+          data: {
+            agentId: "agent-1",
+            agentName: "My Agent",
+            jobId: "",
+            status: "running",
+            nodeId: null,
+            message: "Agent created",
           },
-        ],
-      });
+        });
+        return;
+      }
+      await route.fallback();
     });
 
     await page.route(
@@ -633,13 +683,9 @@ for (const viewport of VIEWPORTS) {
       page.getByRole("button", { name: /sign in with eliza cloud/i }),
     );
 
-    await expect.poll(() => directCloudState.createRequests).toBe(1);
-    await expect.poll(() => directCloudState.provisionRequests).toBe(1);
-    // >= 3 proves the renderer polled through pending + in_progress before the
-    // completed poll handed off the bridgeUrl, not an instant single-poll finish.
-    await expect
-      .poll(() => directCloudState.jobPollRequests)
-      .toBeGreaterThanOrEqual(3);
+    // "Create new" in the picker provisions a fresh dedicated cloud agent via the
+    // local cloud proxy, then writes the first-run profile.
+    await expect.poll(() => compatCreateRequests).toBe(1);
     await expect.poll(() => firstRunState.submissions.length).toBe(1);
 
     await expect
@@ -689,7 +735,7 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
     complete: false,
     submissions: [],
   };
-  let _createRequests = 0;
+  let compatCreateRequests = 0;
   let _jobPollRequests = 0;
   let _provisioningChatRequests = 0;
   let _launchRequests = 0;
@@ -785,7 +831,7 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
       return;
     }
     if (request.method() === "POST") {
-      _createRequests += 1;
+      compatCreateRequests += 1;
       await fulfillJson(route, 200, {
         success: true,
         data: {
@@ -943,13 +989,9 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
     page.getByRole("button", { name: /sign in with eliza cloud/i }),
   );
 
-  await expect.poll(() => directCloudState.createRequests).toBe(1);
-  await expect.poll(() => directCloudState.provisionRequests).toBe(1);
-  // >= 3 proves the renderer polled through pending + in_progress before the
-  // completed poll handed off the bridgeUrl, not an instant single-poll finish.
-  await expect
-    .poll(() => directCloudState.jobPollRequests)
-    .toBeGreaterThanOrEqual(3);
+  // Zero-agent account: the picker is skipped and the controller auto-creates a
+  // fresh dedicated cloud agent via the local cloud proxy, then writes first-run.
+  await expect.poll(() => compatCreateRequests).toBe(1);
   await expect.poll(() => firstRunState.submissions.length).toBe(1);
   await expect
     .poll(() =>

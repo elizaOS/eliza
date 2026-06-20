@@ -68,6 +68,21 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
   });
 
+  it("strips the anti-respawn directive header so it never leaks to the user", async () => {
+    // composeNarration enriches the task_complete header with a planner-only
+    // "do NOT start another sub-agent" directive (inside the brackets). The
+    // header stripper must still drop the whole line, leaving only the
+    // deliverable — the directive must never reach the user.
+    const context = makeContext({
+      text: "[sub-agent: Use the webfetch tool on this exact URL: https://api.example.test/price (claude) — task_complete — this delegated task is DONE; the result is below, relay it to the user as the answer, do NOT start another sub-agent for it]\n63411",
+    });
+
+    const result = subAgentCompletionResponseEvaluator.evaluate(context);
+    expect(result?.reply).toBe("63411");
+    expect(result?.reply).not.toContain("do NOT start another sub-agent");
+    expect(result?.reply).not.toContain("webfetch");
+  });
+
   it("posts verified URL replies even when Stage 1 inferred generic TASKS", async () => {
     const context = makeContext({
       text: "[sub-agent: demo (opencode) — task_complete]\nSearch for data/apps directory.\n[tool output: data/apps]\n/workspace/apps/demo/index.html",
@@ -666,6 +681,56 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(false);
+  });
+
+  it("relays a short bare value instead of re-spawning the same just-finished lookup", async () => {
+    // Live regression on the claude backend: a "fetch the price, reply with ONLY
+    // the value" sub-agent returned "$1,708.31" as bare text (no [tool output:…]
+    // envelope, so it was never captured as a deliverable). The planner re-read
+    // the imperative task label and re-spawned the SAME lookup — 6 sessions, no
+    // answer. A short clean body whose only follow-up is a FRESH spawn must be
+    // relayed, not looped.
+    const context = makeContext({
+      text: "[sub-agent: Use the webfetch tool on this exact URL: https://api.example.test/price (claude) — task_complete]\n$1,708.31",
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply: "I'll fetch that price.",
+          requiresTool: true,
+          candidateActions: ["TASKS_SPAWN_AGENT"],
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    const result = subAgentCompletionResponseEvaluator.evaluate(context);
+    expect(result?.requiresTool).toBe(false);
+    expect(result?.clearCandidateActions).toBe(true);
+    expect(result?.reply).toBe("$1,708.31");
+  });
+
+  it("relays a short answer even when the re-spawn carries NO candidateActions hint", async () => {
+    // Live cerebras-weather regression: the planner re-issued TASKS:create
+    // directly without populating candidateActions, so a fresh-spawn-only check
+    // missed it and the lookup re-spawned (the "working on it" x2 UX). Relay
+    // whenever the plan is not continuing the existing session.
+    const context = makeContext({
+      text: "[sub-agent: Fetch the current weather in Tokyo (codex) — task_complete]\nTokyo: 🌦️ +74°F",
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply: "Fetching Tokyo weather...",
+          requiresTool: true,
+          // no candidateActions / parentActionHints at all
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    const result = subAgentCompletionResponseEvaluator.evaluate(context);
+    expect(result?.requiresTool).toBe(false);
+    expect(result?.clearCandidateActions).toBe(true);
+    expect(result?.reply).toBe("Tokyo: 🌦️ +74°F");
   });
 
   it("overrides stale concrete action hints when the verified completion already has a URL reply", async () => {

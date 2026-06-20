@@ -11,6 +11,7 @@
  */
 
 import { createContext, useContext } from "react";
+import { appNameInterpolationVars, DEFAULT_BRANDING } from "../config/branding";
 import { createTranslator, type UiLanguage } from "../i18n";
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -30,7 +31,7 @@ export const TranslationCtx = createContext<TranslationContextValue | null>(
 );
 
 const TEST_TRANSLATION_CONTEXT: TranslationContextValue = {
-  t: createTranslator("en"),
+  t: createTranslator("en", appNameInterpolationVars(DEFAULT_BRANDING)),
   uiLanguage: "en",
   setUiLanguage: () => {},
 };

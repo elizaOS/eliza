@@ -40,6 +40,13 @@ export interface IosLocalAgentNativeRequestResult {
   statusText: string;
   headers: Record<string, string>;
   body: string;
+  /**
+   * Lossless base64 of the raw response bytes. Preferred over `body` so binary
+   * payloads (served media, generated images, TTS audio) survive the bridge.
+   * Mirrors the Android transport + the @elizaos/ui copy of this transport.
+   */
+  bodyBase64?: string | null;
+  bodyEncoding?: string;
 }
 
 interface FullBunRuntimePlugin {
@@ -429,6 +436,10 @@ function normalizeNativeResult(
     statusText: record.statusText,
     headers,
     body: record.body,
+    bodyBase64:
+      typeof record.bodyBase64 === "string" ? record.bodyBase64 : undefined,
+    bodyEncoding:
+      typeof record.bodyEncoding === "string" ? record.bodyEncoding : undefined,
   };
 }
 
@@ -536,13 +547,33 @@ async function requestToNativeBridgeOptions(
   };
 }
 
+/**
+ * Reconstruct the response body. Prefer the lossless `bodyBase64` (raw bytes)
+ * so binary payloads — served media, generated images, TTS audio — survive the
+ * bridge; fall back to the UTF-8 `body` string when base64 is absent.
+ */
+function nativeResponseBody(
+  result: IosLocalAgentNativeRequestResult,
+): ArrayBuffer | string {
+  const base64 = result.bodyBase64;
+  if (typeof base64 === "string" && base64.length > 0) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+  return result.body;
+}
+
 function nativeResultToResponse(
   result: IosLocalAgentNativeRequestResult,
 ): Response {
   const body =
     result.status === 204 || result.status === 205 || result.status === 304
       ? null
-      : result.body;
+      : nativeResponseBody(result);
   return new Response(body, {
     status: result.status,
     statusText: result.statusText,

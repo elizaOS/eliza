@@ -9,7 +9,7 @@ describe("action callback voice rewriting", () => {
 		const runtime = {
 			agentId: "agent",
 			character: {
-				name: "Milady",
+				name: "Example",
 				system: "Speak with crisp, helpful confidence.",
 				style: { all: ["clear", "warm"] },
 			},
@@ -55,7 +55,7 @@ describe("action callback voice rewriting", () => {
 		const callback: HandlerCallback = vi.fn(async () => []);
 		const runtime = {
 			agentId: "agent",
-			character: { name: "Milady" },
+			character: { name: "Example" },
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 			useModel: vi.fn(),
 		} as unknown as IAgentRuntime;

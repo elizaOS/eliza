@@ -412,7 +412,7 @@ test("voice provider matrix returns documented combos for each device + runtime 
   ).toEqual({ tts: "local-inference", asr: "local-inference" });
   expect(
     pickDefaultVoiceProvider({ platform: "mobile", runtimeMode: "local" }),
-  ).toEqual({ tts: "elevenlabs", asr: "eliza-cloud" });
+  ).toEqual({ tts: "local-inference", asr: "eliza-cloud" });
   expect(
     pickDefaultVoiceProvider({ platform: "web", runtimeMode: "local" }),
   ).toEqual({ tts: "elevenlabs", asr: "eliza-cloud" });

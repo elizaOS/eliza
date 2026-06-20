@@ -131,11 +131,9 @@ export interface RemotePluginHostOptions {
 }
 
 const REMOTE_PLUGIN_STORE_ENV_KEYS = [
-  "MILADY_REMOTE_PLUGIN_STORE_DIR",
   "ELIZA_REMOTE_PLUGIN_STORE_DIR",
   // Deprecated: kept for backward compatibility with operators using the
   // old "carrot" vocabulary; remove after one release cycle.
-  "MILADY_CARROT_STORE_DIR",
   "ELIZA_CARROT_STORE_DIR",
 ] as const;
 

@@ -201,10 +201,7 @@ export function resolveDesktopChildNamespace(
 }
 
 function resolveExplicitStateDir(env: NodeJS.ProcessEnv): string | null {
-  return (
-    normalizeEnvPath(env.ELIZA_STATE_DIR) ??
-    normalizeEnvPath(env.MILADY_STATE_DIR)
-  );
+  return normalizeEnvPath(env.ELIZA_STATE_DIR);
 }
 
 function isTruthyDesktopEnv(value: string | undefined): boolean {
@@ -331,7 +328,6 @@ function applyDesktopChildStateEnv(childEnv: Record<string, string>): void {
   });
   fs.mkdirSync(stateDir, { recursive: true });
   childEnv.ELIZA_STATE_DIR = stateDir;
-  childEnv.MILADY_STATE_DIR = stateDir;
 }
 
 export function applyWindowsNativeInferenceDefaults(

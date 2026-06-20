@@ -458,7 +458,7 @@ function serializeForRuntimeDebug(
  * signal the UI uses to fade in first-turn capability: the shell paints early
  * (agentState "starting"), and the composer goes live when this flips.
  */
-function computeCanRespond(
+export function computeCanRespond(
   runtime: AgentRuntime | null,
   agentState: string,
 ): boolean {

@@ -19,7 +19,7 @@ fi
 if [ -r /usr/local/lib/elizaos/runtime-env ]; then
     . /usr/local/lib/elizaos/runtime-env
 fi
-ELIZAOS_RUNTIME_ROOT="${ELIZAOS_RUNTIME_ROOT:-${ELIZAOS_RUNTIME_DIR:-/opt/milady}}"
+ELIZAOS_RUNTIME_ROOT="${ELIZAOS_RUNTIME_ROOT:-${ELIZAOS_RUNTIME_DIR:-/opt/elizaos}}"
 ELIZAOS_BUN="${ELIZAOS_BUN:-${ELIZAOS_RUNTIME_ROOT}/bin/bun}"
 runtime_entry="${ELIZAOS_AGENT_ENTRY:-${ELIZAOS_RUNTIME_ROOT}/Resources/app/eliza-dist/entry.js}"
 runtime_modules="${ELIZAOS_NODE_PATH:-${ELIZAOS_RUNTIME_ROOT}/Resources/app/eliza-dist/node_modules}"
@@ -48,10 +48,8 @@ export ELIZA_URL_SCHEME="${ELIZA_URL_SCHEME:-elizaos}"
 export ELIZA_CONFIG_DIR_NAME="${ELIZA_CONFIG_DIR_NAME:-elizaOS}"
 
 export ELIZA_STATE_DIR="${ELIZA_STATE_DIR:-/home/amnesia/.eliza}"
-export MILADY_STATE_DIR="${MILADY_STATE_DIR:-${ELIZA_STATE_DIR}}"
 export ELIZA_WORKSPACE_DIR="${ELIZA_WORKSPACE_DIR:-${ELIZA_STATE_DIR}/workspace}"
-export MILADY_WORKSPACE_DIR="${MILADY_WORKSPACE_DIR:-${ELIZA_WORKSPACE_DIR}}"
-export MILADY_ELIZA_SOURCE="${MILADY_ELIZA_SOURCE:-local}"
+export ELIZA_SOURCE="${ELIZA_SOURCE:-local}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${ELIZA_STATE_DIR}/xdg-config}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${ELIZA_STATE_DIR}/xdg-cache}"
 export XDG_DATA_HOME="${XDG_DATA_HOME:-${ELIZA_STATE_DIR}/xdg-data}"

@@ -16,14 +16,22 @@ const mocks = vi.hoisted(() => ({
   client: {
     abortConversationTurn: vi.fn(),
     createConversation: vi.fn(),
+    sendConversationMessage: vi.fn(),
     sendConversationMessageStream: vi.fn(),
     sendWsMessage: vi.fn(),
     stopCodingAgent: vi.fn(),
+    getBaseUrl: vi.fn(() => ""),
   },
 }));
 
 vi.mock("../api", () => ({
   client: mocks.client,
+}));
+
+vi.mock("../api/client-cloud", () => ({
+  isDirectCloudSharedAgentBase: (url: string | null | undefined) =>
+    !!url &&
+    /\/api\/v1\/eliza\/agents\/[^/]+(?:\/bridge)?\/?$/.test(url.trim()),
 }));
 
 function conversation(id: string, roomId: string): Conversation {
@@ -220,5 +228,121 @@ describe("useChatSend stop handling", () => {
       "room-new",
       "ui-chat-stop",
     );
+  });
+});
+
+function http404(): Error {
+  return Object.assign(new Error("Not Found"), { status: 404 });
+}
+
+function mockStream404() {
+  mocks.client.sendConversationMessageStream.mockRejectedValue(http404());
+}
+
+describe("useChatSend 404 recovery", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+  });
+
+  it("keeps the user message + notifies when the agent is gone (cloud base createConversation 404)", async () => {
+    // Regression: on a cloud agent base a send-404 fell through to recreate the
+    // conversation, which ALSO 404s when the agent is deleted/unreachable — the
+    // old code silently dropped the user's message. Now it surfaces a notice and
+    // keeps the user bubble.
+    mockStream404();
+    mocks.client.createConversation.mockRejectedValue(http404());
+    mocks.client.getBaseUrl.mockReturnValue(
+      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123",
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello there", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(deps.setActionNotice).toHaveBeenCalledTimes(1);
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("no longer reachable"),
+      "error",
+      expect.any(Number),
+    );
+    // The user message is preserved (only the empty assistant placeholder is
+    // dropped).
+    const remaining = deps.conversationMessagesRef.current;
+    expect(
+      remaining.some((m) => m.role === "user" && m.text === "hello there"),
+    ).toBe(true);
+    expect(
+      remaining.some((m) => m.role === "assistant" && !m.text.trim()),
+    ).toBe(false);
+  });
+
+  it("recreates the conversation and replays when only the conversation was deleted", async () => {
+    // The normal recoverable case: the conversation row was deleted but the
+    // agent is fine. createConversation succeeds, the message is replayed.
+    mockStream404();
+    mocks.client.createConversation.mockResolvedValue({
+      conversation: conversation("conv-new", "room-new"),
+    });
+    mocks.client.sendConversationMessage.mockResolvedValue({ text: "hi back" });
+    mocks.client.getBaseUrl.mockReturnValue(
+      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123",
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello there", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+    expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+    expect(mocks.client.sendConversationMessage).toHaveBeenCalledTimes(1);
+    const remaining = deps.conversationMessagesRef.current;
+    expect(
+      remaining.some((m) => m.role === "user" && m.text === "hello there"),
+    ).toBe(true);
+    expect(
+      remaining.some((m) => m.role === "assistant" && m.text === "hi back"),
+    ).toBe(true);
+  });
+
+  it("does NOT notify on a non-cloud base when createConversation 404s (preserves prior behaviour)", async () => {
+    mockStream404();
+    mocks.client.createConversation.mockRejectedValue(http404());
+    mocks.client.getBaseUrl.mockReturnValue("http://127.0.0.1:31337");
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello there", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+    // Prior behaviour: the empty assistant placeholder is dropped.
+    const remaining = deps.conversationMessagesRef.current;
+    expect(
+      remaining.some((m) => m.role === "assistant" && !m.text.trim()),
+    ).toBe(false);
   });
 });

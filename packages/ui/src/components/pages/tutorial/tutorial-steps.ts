@@ -79,13 +79,19 @@ const isExpanded = (d: ChatDetent | null): boolean =>
 const isShrunk = (d: ChatDetent | null): boolean =>
   d === "collapsed" || d === "pill";
 
-export const TUTORIAL_STEPS: TutorialStep[] = [
+/**
+ * Build the tour script for a given agent/app name so the copy reads "Meet
+ * Milady" / "Hi, I'm Milady" in a white-label app instead of the hardcoded
+ * "Eliza". Pass the branding appName (which is also the default agent's name).
+ */
+export function buildTutorialSteps(appName = "Eliza"): TutorialStep[] {
+  const name = appName.trim() || "Eliza";
+  return [
   {
     id: "welcome",
-    title: "Meet Eliza",
+    title: `Meet ${name}`,
     body: "Your AI agent. The chat runs everything — here's the quick version.",
-    voiceLine:
-      "Hi, I'm Eliza, your A I agent. The chat runs everything — here's the quick version.",
+    voiceLine: `Hi, I'm ${name}, your A I agent. The chat runs everything — here's the quick version.`,
     targetSelector: null,
     manualContinue: true,
     continueLabel: "Start",
@@ -116,9 +122,8 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: "ask-to-navigate",
     title: "Just ask",
-    body: "You can ask Eliza to go anywhere. I've typed it for you — tap send.",
-    voiceLine:
-      "You can ask Eliza to go anywhere. I've typed it for you — tap send.",
+    body: `You can ask ${name} to go anywhere. I've typed it for you — tap send.`,
+    voiceLine: `You can ask ${name} to go anywhere. I've typed it for you — tap send.`,
     targetSelector: '[data-testid="chat-composer-action"]',
     enterChat: "rest",
     prefill: "open settings",
@@ -149,4 +154,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     manualContinue: true,
     continueLabel: "Done",
   },
-];
+  ];
+}
+
+/**
+ * Default (canonical Eliza) tour script — kept for callers/tests that don't
+ * thread the app name. Branded callers use buildTutorialSteps(appName).
+ */
+export const TUTORIAL_STEPS: TutorialStep[] = buildTutorialSteps();

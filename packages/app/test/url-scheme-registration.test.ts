@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
  * drifts from `app.config.ts` (urlScheme / appId), auth callbacks and deep
  * links silently fail to resolve to the app — a class of breakage that today
  * only surfaces on a real device. This asserts the registration statically,
- * against the repo's own files (no simulator, no milady-wrapper app dir).
+ * against the repo's own files (no simulator, no wrapper app dir).
  *
  * iOS is intentionally not asserted here: `packages/app/ios/` is
  * Capacitor-generated and gitignored, so there is no in-repo Info.plist to
