@@ -57,7 +57,11 @@ vi.mock("../src/utils/sdk-client", () => ({
 }));
 
 // Imported after the mock is registered.
-import { __resetNativeChatLimiterForTests, generateNativeChatCompletion } from "../src/models/text";
+import {
+  __resetNativeChatLimiterForTests,
+  generateNativeChatCompletion,
+  withNativeChatLimit,
+} from "../src/models/text";
 
 function fakeRuntime(): IAgentRuntime {
   return {
@@ -89,6 +93,16 @@ function fireNativeCall(): Promise<unknown> {
     "TEXT_SMALL" as never,
     { prompt: "hi" } as never,
     { modelName: "cerebras/gpt-oss-120b", prompt: "hi" }
+  );
+}
+
+// Mirrors the production /responses round-trip: the bare-`{ prompt }` path also
+// funnels its requestRaw network call through `withNativeChatLimit`, sharing the
+// SAME per-process limiter as the /chat/completions route. We drive the helper
+// directly with the same fake transport so the two routes contend on one cap.
+function fireResponsesCall(): Promise<unknown> {
+  return withNativeChatLimit(() =>
+    requestRaw("POST", "/responses", { headers: {}, json: { prompt: "hi" } })
   );
 }
 
@@ -233,5 +247,61 @@ describe("native cerebras concurrency limiter", () => {
         expect(transport.maxInFlight).toBe(expected);
       });
     }
+  });
+
+  describe("shared cap across both native routes (/chat/completions + /responses)", () => {
+    it("interleaved /chat/completions and /responses calls never exceed one cap (default 1)", async () => {
+      // Both routes hit the SAME shared cerebras key, so they must contend on
+      // ONE limiter. Interleave them and assert max-in-flight across BOTH ≤ 1.
+      const calls = [
+        fireNativeCall(), // /chat/completions
+        fireResponsesCall(), // /responses
+        fireNativeCall(), // /chat/completions
+        fireResponsesCall(), // /responses
+      ];
+      await flush();
+
+      // Default cap 1 -> only ONE round-trip in flight regardless of route.
+      expect(transport.inFlight).toBe(1);
+      expect(transport.maxInFlight).toBe(1);
+
+      // Drain one-by-one; each release admits the next, whichever route it is.
+      for (let i = 0; i < 4; i++) {
+        expect(transport.pending.length).toBe(1);
+        transport.pending.shift()?.resolve(okResponse());
+        await flush();
+      }
+
+      await Promise.all(calls);
+      // The /responses path was NEVER able to bypass the cap.
+      expect(transport.maxInFlight).toBe(1);
+      expect(requestRaw).toHaveBeenCalledTimes(4);
+    });
+
+    it("interleaved routes respect a raised cap of 2", async () => {
+      process.env.ELIZAOS_CLOUD_NATIVE_CONCURRENCY = "2";
+      __resetNativeChatLimiterForTests();
+
+      const calls = [
+        fireResponsesCall(),
+        fireNativeCall(),
+        fireResponsesCall(),
+        fireNativeCall(),
+        fireResponsesCall(),
+      ];
+      await flush();
+
+      // Cap 2 across BOTH routes combined.
+      expect(transport.inFlight).toBe(2);
+      expect(transport.maxInFlight).toBe(2);
+
+      while (transport.pending.length > 0) {
+        transport.pending.shift()?.resolve(okResponse());
+        await flush();
+      }
+
+      await Promise.all(calls);
+      expect(transport.maxInFlight).toBe(2);
+    });
   });
 });

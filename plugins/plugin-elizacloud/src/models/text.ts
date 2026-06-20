@@ -38,18 +38,30 @@ const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
 const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as ModelTypeName;
 
 /**
- * Per-process cap on CONCURRENT native cerebras `/chat/completions` calls.
+ * Per-process cap on CONCURRENT native cloud text calls.
  *
- * A single chat turn fans providers out via composeState's `Promise.all`
- * (core runtime.ts), and each provider can call `useModel` -> here. Firing them
- * all at once overruns the ONE shared cerebras key's concurrent-request limit
- * -> 429 -> 3 retries x backoff -> 30-63s of latency. Serializing the per-turn
- * burst through a small semaphore keeps each call ~3s with no 429, without
- * needing more keys or backend changes.
+ * Covers BOTH native cloud text routes that share the one cerebras key:
+ * the `/chat/completions` round-trip (native-transport callers) AND the
+ * `/responses` round-trip (bare-`{ prompt }` callers, incl. the primary reply
+ * action). Same model name -> same shared key -> same concurrency budget, so
+ * both routes must funnel through this one semaphore or a bare-prompt call can
+ * still push the key over its limit.
  *
- * Tunable via `ELIZAOS_CLOUD_NATIVE_CONCURRENCY` (integer, default 1 = fully
- * serialize; set 2 for mild parallelism). Embeddings use a SEPARATE
- * `/embeddings` route (embeddings.ts) and are intentionally NOT gated here.
+ * The per-turn burst that triggers the 429 comes from the prompt BATCHER
+ * (`dynamicPromptExecFromState`, which always sets providerOptions -> native
+ * `/chat/completions`) and the merged evaluator call — NOT from composeState
+ * providers (no provider calls `useModel` during composeState). Firing those
+ * at once overruns the ONE shared cerebras key's concurrent-request limit
+ * -> 429 -> 3 retries x backoff -> 30-63s of latency. Serializing them through
+ * a small semaphore keeps each call ~3s with no 429, without needing more keys
+ * or backend changes.
+ *
+ * Trade-off: this serializes ALL native cloud text calls in the process (the
+ * right default for the cerebras-bottlenecked dedicated-agent default of 1).
+ * Non-cerebras deployments can raise `ELIZAOS_CLOUD_NATIVE_CONCURRENCY`
+ * (integer, default 1 = fully serialize; set 2+ for parallelism). Embeddings
+ * use a SEPARATE `/embeddings` route (embeddings.ts) and are intentionally NOT
+ * gated here.
  */
 const NATIVE_CONCURRENCY_ENV = "ELIZAOS_CLOUD_NATIVE_CONCURRENCY";
 const DEFAULT_NATIVE_CONCURRENCY = 1;
@@ -68,6 +80,26 @@ function getNativeChatLimiter(): Semaphore {
     nativeChatLimiter = new Semaphore(resolveNativeConcurrency());
   }
   return nativeChatLimiter;
+}
+
+/**
+ * Run a single cerebras-bound network round-trip under the shared per-process
+ * concurrency cap. Hold the permit only across `fn` (the `requestRaw` call);
+ * release the instant the server responds so response-body parsing runs
+ * unguarded. `finally` frees the permit even on throw so a failed call never
+ * starves the queue. Used by BOTH native text routes (`/chat/completions` and
+ * `/responses`) so every cerebras text call shares one budget.
+ *
+ * Exported for unit tests that drive the shared cap directly.
+ */
+export async function withNativeChatLimit<T>(fn: () => Promise<T>): Promise<T> {
+  const limiter = getNativeChatLimiter();
+  await limiter.acquire();
+  try {
+    return await fn();
+  } finally {
+    limiter.release();
+  }
 }
 
 /**
@@ -848,10 +880,14 @@ async function generateTextWithModel(
       responsesHeaders["x-eliza-span-samplers"] = samplerHeader;
     }
   }
-  const response = await createCloudApiClient(runtime).requestRaw("POST", "/responses", {
-    headers: responsesHeaders,
-    json: requestBody,
-  });
+  // Same shared cerebras key as the /chat/completions route, so gate this
+  // bare-prompt round-trip through the SAME limiter (parsing stays unguarded).
+  const response = await withNativeChatLimit(() =>
+    createCloudApiClient(runtime).requestRaw("POST", "/responses", {
+      headers: responsesHeaders,
+      json: requestBody,
+    })
+  );
   const responseText = await response.text();
   let data: ResponsesApiResponse = {};
   if (responseText) {
@@ -944,23 +980,17 @@ export async function generateNativeChatCompletion(
       headers["x-eliza-span-samplers"] = samplerHeader;
     }
   }
-  // Serialize the per-turn composeState burst through a small semaphore so N
-  // simultaneous useModel calls don't overrun the one shared cerebras key's
-  // concurrent limit (-> 429 -> retries -> 30-63s). Hold the permit only across
-  // the network round-trip; release the instant the server responds (the
-  // text()/JSON parse below runs unguarded). `finally` frees the permit even on
-  // throw so a failed call never starves the queue.
-  const limiter = getNativeChatLimiter();
-  await limiter.acquire();
-  let response: Response;
-  try {
-    response = await createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
+  // Serialize the per-turn batcher/evaluator burst through the SAME shared
+  // semaphore the /responses route uses, so N simultaneous native cloud text
+  // calls don't overrun the one shared cerebras key's concurrent limit (-> 429
+  // -> retries -> 30-63s). The permit is held only across the network
+  // round-trip; the text()/JSON parse below runs unguarded.
+  const response = await withNativeChatLimit(() =>
+    createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
       headers,
       json: requestBody,
-    });
-  } finally {
-    limiter.release();
-  }
+    })
+  );
   const responseText = await response.text();
   let data: ChatCompletionsResponse = {};
   if (responseText) {
