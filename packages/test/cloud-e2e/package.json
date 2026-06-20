@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@elizaos/cloud-shared": "workspace:*",
-    "@elizaos/cloud-test-mocks": "workspace:*"
+    "@elizaos/cloud-test-mocks": "workspace:*",
+    "@elizaos/ui": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
