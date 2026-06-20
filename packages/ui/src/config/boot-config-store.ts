@@ -79,6 +79,19 @@ export interface CompanionShellComponentProps {
   actionNotice: ActionNotice | null;
 }
 
+/** Where a home tile sends you. Mirrors HomeTileTarget in shell/HomeScreen. */
+export type HomeScreenNavTarget =
+  | { kind: "tab"; tab: string }
+  | { kind: "view"; path: string };
+
+/** Props the shell passes to a host-provided home screen (boot-config slot). */
+export interface HomeScreenComponentProps {
+  /** Open a pinned tab/view from a home tile. */
+  onOpenTile: (target: HomeScreenNavTarget) => void;
+  /** Render the AOSP-only native-OS tiles (phone/contacts/messages). */
+  showNativeOsTiles?: boolean;
+}
+
 export type CompanionInferenceNotice =
   | { kind: "cloud"; variant: "danger" | "warn"; tooltip: string }
   | { kind: "settings"; variant: "warn"; tooltip: string };
@@ -224,6 +237,20 @@ export interface AppBootConfig {
   firstRunStyles?: unknown[];
   /** Character editor component — replaces window.__ELIZAOS_CHARACTER_EDITOR__. */
   characterEditor?: ComponentType<Record<string, unknown>>;
+  /**
+   * Home screen override provided by the host app. When set, the shell renders
+   * this instead of the stock HomeScreen on the /chat home (whitelabel seam for
+   * a brand-specific home, e.g. a gold home with a wallet widget). Falls back to
+   * the built-in HomeScreen when absent.
+   */
+  homeScreen?: ComponentType<HomeScreenComponentProps>;
+  /**
+   * Brand mark (logo glyph) override provided by the host app. Rendered in the
+   * startup splash + first-run lockup beside the app name. When set, the shell
+   * renders this instead of the built-in ElizaMark (whitelabel seam so a fork
+   * shows its own logo, not the elizaOS mark). Receives an optional className.
+   */
+  brandMark?: ComponentType<{ className?: string }>;
   /** Companion shell implementation provided by the host app. */
   companionShell?: ComponentType<CompanionShellComponentProps>;
   /** Companion cloud/settings warning resolver provided by the host app. */

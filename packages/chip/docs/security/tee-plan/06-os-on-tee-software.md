@@ -243,8 +243,8 @@ checks that could be bypassed.
 ## 4. elizaOS integration
 
 - The agent runtime, local inference, NPU runtime, and all model/user data live
-  **inside** the confidential domain. `MILADY_STATE_DIR`/`ELIZA_STATE_DIR`
-  (default `~/.local/state/milady`) maps to a private, sealed-key-encrypted volume that only
+  **inside** the confidential domain. `ELIZA_STATE_DIR`
+  (default `~/.local/state/eliza`) maps to a private, sealed-key-encrypted volume that only
   mounts after attestation-gated key release.
 - **"Some stuff on a standard machine" split.** Allowed outside the TEE (untrusted
   by design): UI rendering surfaces, network transport, push/notification relays,

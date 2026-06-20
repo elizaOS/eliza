@@ -27,13 +27,13 @@ describe("desktop brand config", () => {
     const file = path.join(dir, "brand-config.json");
     fs.writeFileSync(
       file,
-      `${JSON.stringify({ appName: "Milady", namespace: "milady" })}\n`,
+      `${JSON.stringify({ appName: "Example", namespace: "example" })}\n`,
     );
 
     process.env.ELIZA_BRAND_CONFIG_PATH = file;
     process.env.ELIZA_NAMESPACE = "eliza";
     resetBrandConfigForTests();
 
-    expect(getBrandConfig().namespace).toBe("milady");
+    expect(getBrandConfig().namespace).toBe("example");
   });
 });

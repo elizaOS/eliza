@@ -12,13 +12,13 @@
 #
 # Usage:
 #   GH_TOKEN=ghp_xxx ./scripts/security/apply-branch-protection.sh
-#   ./scripts/security/apply-branch-protection.sh --repo elizaos/milady --branches main,develop
+#   ./scripts/security/apply-branch-protection.sh --repo elizaos/eliza --branches main,develop
 #
 # Pre-flight checks: requires `gh` CLI authenticated with sufficient scopes.
 
 set -euo pipefail
 
-REPOS=("elizaos/milady" "elizaos/eliza")
+REPOS=("elizaos/eliza")
 BRANCHES=("main" "develop")
 
 # Required status checks. These must match job NAMES (not workflow names) that

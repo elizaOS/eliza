@@ -1,7 +1,7 @@
-# Design Reference — elizaOS/Milady App UI (foundation for the minimalist redesign)
+# Design Reference — elizaOS App UI (foundation for the minimalist redesign)
 
 Scope: `@elizaos/ui` (`packages/ui`) + `@elizaos/app` (`packages/app`). All paths absolute under
-`/home/shaw/milady/eliza`. This documents the token/theme system, the surfaces that already feel
+`/home/shaw/eliza`. This documents the token/theme system, the surfaces that already feel
 "right," the minimal primitive vocabulary, and — critically — exactly how the light/dark mode is
 chosen at runtime and what it takes to force ONE light look app-wide.
 

@@ -86,7 +86,7 @@ describe("corsMiddleware — third-party app origins (open, NO credentials)", ()
   });
 
   test("any third-party origin is allowed (open API)", async () => {
-    const res = await req("GET", "https://milady.nubs.site", false, "/api/v1/models");
+    const res = await req("GET", "https://thirdparty.example.com", false, "/api/v1/models");
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     expect(res.headers.get("access-control-allow-credentials")).toBeNull();
   });

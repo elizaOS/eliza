@@ -31,11 +31,11 @@ describe("getAlternateDomainOrigins", () => {
     );
   });
 
-  it("rejects retired 0xSolace-era domains (milady.ai, shad0w.xyz)", () => {
+  it("rejects retired 0xSolace-era domains (example.ai, shad0w.xyz)", () => {
     // These domains were intentionally dropped from the alias group to
     // close the "0 legacy" cleanup. A leftover bookmark must fail Origin
     // validation rather than silently aliasing into a live brand.
-    expect(getAlternateDomainOrigins("https://abc.milady.ai")).toEqual([]);
+    expect(getAlternateDomainOrigins("https://abc.example.ai")).toEqual([]);
     expect(getAlternateDomainOrigins("https://abc.shad0w.xyz")).toEqual([]);
   });
 

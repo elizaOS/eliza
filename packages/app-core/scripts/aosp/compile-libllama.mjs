@@ -32,7 +32,8 @@
 //   Minimum tested: zig 0.13.0. Earlier versions ship older libc++ headers
 //   that miss <bit> / <span> shims llama.cpp's CMake feature checks rely on.
 //
-// llama.cpp pin (matches plugins/plugin-aosp-local-inference/src/aosp-llama-adapter.ts):
+// llama.cpp pin (matches the fork the runtime loads via
+// plugins/plugin-aosp-local-inference/src/aosp-local-inference-bootstrap.ts):
 //   fork:   https://github.com/elizaOS/llama.cpp
 //   tag:    v1.0.0-eliza           (the kernel-complete v0.4.0-eliza tree,
 //                                   re-tagged on the elizaOS org rename)
@@ -88,8 +89,8 @@
 //   packages/app/android/app/src/main/assets/agent/{abi}/libggml.so
 //   packages/app/android/app/src/main/assets/agent/{abi}/libggml-cpu.so
 //   packages/app/android/app/src/main/assets/agent/{abi}/libggml-base.so
-//   packages/app/android/app/src/main/assets/agent/{abi}/libeliza-llama-shim.so
 //   packages/app/android/app/src/main/assets/agent/{abi}/llama-server          (MTP spec-decode HTTP server)
+//   (with --target *-fused: libelizainference.so — the fused FFI lib)
 //
 // libllama.so has NEEDED entries on the entire libggml family (see
 // `readelf -d`); the dynamic linker resolves them from the per-ABI asset
@@ -97,11 +98,14 @@
 // launch. ABIs: arm64-v8a (real phones), x86_64 (cuttlefish + emulators),
 // and riscv64 (cf_riscv64_phone + future riscv64 hardware).
 //
-// libeliza-llama-shim.so is the bun:ffi struct-by-value workaround: a
-// thin C wrapper (llama-shim/eliza_llama_shim.c next to this script)
-// that converts llama.cpp's struct-by-value entry points into
-// pointer-style equivalents bun:ffi can speak. NEEDED-links
-// libllama.so; resolved from the same asset dir at runtime.
+// libllama.so + the libggml*.so family are NOT loaded directly by any TS
+// adapter anymore — the runtime loads the fused libelizainference.so. But
+// the fused lib `target_link_libraries(elizainference PUBLIC llama)` against
+// the SHARED libllama.so, so libllama.so + libggml*.so remain runtime
+// DT_NEEDED dependencies of libelizainference.so and MUST keep building +
+// staging. The old bun:ffi struct-by-value shims (libeliza-llama-shim.so +
+// libeliza-llama-speculative-shim.so), consumed by the now-deleted
+// aosp-llama-adapter.ts, have been retired from this builder.
 //
 // Approximate build cost on a modern Linux x86_64 builder (16 cores, NVMe):
 //   - llama.cpp clone:    ~30 s, ~150 MB working tree.
@@ -170,6 +174,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { androidArm64SimdCmakeFlags } from "../build-helpers/arm64-simd.mjs";
 import {
   fusedCmakeBuildTargets,
   fusedExtraCmakeFlags,
@@ -1101,10 +1106,44 @@ export function ensureZigDrivers({
         'done\n'
       : null;
 
+  // arm64: the ggml-cpu CMakeLists emits the GCC-style ISA string
+  // `-march=armv8.2-a+dotprod+fp16+i8mm` (from GGML_CPU_ARM_ARCH). Zig 0.13's
+  // bundled LLVM rejects that for the aarch64 target — it tries to translate
+  // `armv8.2-a` to a `-mcpu=` value and dies with "unknown CPU: 'armv8.2'"
+  // (the same class of breakage the riscv64 filter handles). Zig instead
+  // speaks `-mcpu=<cpu>+<feature>` with its OWN feature names. Rewrite the
+  // GCC `-march=armv8.x-a+...` into the equivalent zig `-mcpu=generic+...`:
+  // dotprod→dotprod, i8mm→i8mm, fp16→fullfp16. This sets exactly the same
+  // __ARM_FEATURE_DOTPROD / __ARM_FEATURE_MATMUL_INT8 /
+  // __ARM_FEATURE_FP16_VECTOR_ARITHMETIC macros (verified), so the live QJL
+  // NEON-dotprod / i8mm / fp16 kernel bodies survive preprocessing and the
+  // ggml ARM-feature configure probes pass. Any other `-march=` is passed
+  // through untouched (there shouldn't be one for arm64).
+  const arm64ArgFilter =
+    abi === "arm64-v8a"
+      ? '_n=$#\n' +
+        'i=0\n' +
+        'while [ $i -lt $_n ]; do\n' +
+        '  arg=$1\n' +
+        '  shift\n' +
+        '  i=$((i+1))\n' +
+        '  case "$arg" in\n' +
+        '    -march=armv8.*-a+*)\n' +
+        '      _feats=""\n' +
+        '      case "$arg" in *+dotprod*) _feats="${_feats}+dotprod" ;; esac\n' +
+        '      case "$arg" in *+i8mm*) _feats="${_feats}+i8mm" ;; esac\n' +
+        '      case "$arg" in *+fp16*) _feats="${_feats}+fullfp16" ;; esac\n' +
+        '      set -- "$@" "-mcpu=generic${_feats}" ;;\n' +
+        '    *) set -- "$@" "$arg" ;;\n' +
+        '  esac\n' +
+        'done\n'
+      : null;
+
+  const argFilter = riscv64ArgFilter ?? arm64ArgFilter;
   const exec =
-    riscv64ArgFilter !== null
+    argFilter !== null
       ? (subcmd) =>
-          riscv64ArgFilter +
+          argFilter +
           `exec "${zigBin}" ${subcmd} --target=${target.zigTarget} "$@"\n`
       : (subcmd) =>
           `exec "${zigBin}" ${subcmd} --target=${target.zigTarget} "$@"\n`;
@@ -1223,6 +1262,19 @@ export function buildLibllamaForAbi({
       ? ["-DGGML_AVX=ON", "-DGGML_AVX2=ON", "-DGGML_FMA=ON", "-DGGML_F16C=ON"]
       : [];
 
+  // arm64-v8a: GGML_NATIVE=OFF leaves the cross-build at the bare armv8-a
+  // baseline, which keeps ggml's dotprod/i8mm/fp16 NEON kernels AND the eliza
+  // QJL NEON-dotprod kernel dead. Pin the armv8.2-a+dotprod+fp16+i8mm floor and
+  // flip the QJL dispatch define so the Pixel-class Tensor G4 actually runs the
+  // accelerated paths. See build-helpers/arm64-simd.mjs for the full rationale.
+  const arm64BuildFlags = androidArm64SimdCmakeFlags(abi);
+  if (arm64BuildFlags.length > 0) {
+    log(
+      `[compile-libllama] arm64 SIMD floor: ${arm64BuildFlags.join(" ")} ` +
+        `(dotprod/i8mm/fp16 + QJL NEON-dotprod dispatch)`,
+    );
+  }
+
   // Per-ABI driver scripts that wrap `zig cc --target=<triple>` so cmake's
   // single-binary compiler probe works. See ensureZigDrivers() for why
   // passing `--target=` via CMAKE_C_FLAGS doesn't work on its own. When
@@ -1250,8 +1302,9 @@ export function buildLibllamaForAbi({
       "-DLLAMA_BUILD_EXAMPLES=OFF",
       "-DLLAMA_BUILD_TESTS=OFF",
       // llama-server is required for the AOSP MTP speculative-decode path
-      // (target + drafter share one process; aosp-llama-adapter.ts spawns this
-      // binary and routes inference over the OpenAI-compatible HTTP API). The
+      // (target + drafter share one process; the AOSP local-inference
+      // bootstrap spawns this binary and routes inference over the
+      // OpenAI-compatible HTTP API). The
       // server target also pulls in the JSON/HTTP common-lib pieces, but adds
       // ~1.5 MB stripped per ABI; small price relative to the spec-decode
       // throughput win.
@@ -1270,6 +1323,7 @@ export function buildLibllamaForAbi({
       "-DGGML_NATIVE=OFF",
       ...riscv64BuildFlags,
       ...x86_64BuildFlags,
+      ...arm64BuildFlags,
       // Don't bake in an absolute RUNPATH to the build tree. The default
       // CMAKE_BUILD_RPATH points at the per-ABI build dir, which is a
       // path-leak in shipped APKs and adds dead lookup entries at runtime.
@@ -1383,60 +1437,72 @@ export function buildLibllamaForAbi({
   // libllama.so so the dynamic linker resolves the whole graph from the
   // per-ABI asset dir at runtime (LD_LIBRARY_PATH set by
   // ElizaAgentService.java).
-  const builtLlama = locateBuiltLib(buildDir, "libllama.so");
-  if (!builtLlama) {
-    throw new Error(
-      `[compile-libllama] Could not locate built libllama.so anywhere under ${buildDir}.`,
-    );
-  }
-  const builtGgmlLibs = locateBuiltGgmlLibs(buildDir);
-  if (builtGgmlLibs.length === 0) {
-    throw new Error(
-      `[compile-libllama] Could not locate any libggml*.so under ${buildDir}. ` +
-        `libllama.so has NEEDED entries for the ggml family; without co-copying ` +
-        `them the runtime dlopen will fail. Check that BUILD_SHARED_LIBS=ON took effect.`,
-    );
-  }
-  const builtRuntimeSiblingLibs = ["libllama-common.so", "libmtmd.so"]
-    .map((name) => locateBuiltLib(buildDir, name))
-    .filter(Boolean);
+  // Static-fuse (BUILD_SHARED_LIBS=OFF — the `*-fused` targets): llama/ggml/
+  // mtmd build as STATIC `.a` archives folded into a self-contained
+  // libelizainference.so (no DT_NEEDED on libllama.so/libggml*.so). So the
+  // legacy co-copy of the shared libllama.so + ggml family is both impossible
+  // (.so don't exist) and unnecessary (nothing dlopens them) — skip it. The
+  // non-fused (BUILD_SHARED_LIBS=ON) bulk `--abi` path keeps staging the shared
+  // family verbatim for its libllama.so-loading consumers.
+  const isStaticFused = extraCmakeFlags.some((f) =>
+    /BUILD_SHARED_LIBS\s*=\s*OFF/i.test(String(f)),
+  );
 
   fs.mkdirSync(abiAssetDir, { recursive: true });
-  const llamaOut = path.join(abiAssetDir, "libllama.so");
-  fs.copyFileSync(builtLlama, llamaOut);
-  const ggmlOuts = builtGgmlLibs.map((src) => {
-    const dst = path.join(abiAssetDir, path.basename(src));
-    fs.copyFileSync(src, dst);
-    return dst;
-  });
-  const runtimeSiblingOuts = builtRuntimeSiblingLibs.map((src) => {
-    const dst = path.join(abiAssetDir, path.basename(src));
-    fs.copyFileSync(src, dst);
-    return dst;
-  });
-
-  // The apothic fork builds with SONAME chains: libllama.so has
-  // SONAME=libllama.so.0 and NEEDED entries pointing at SONAME (e.g.
-  // "libggml.so.0"), not at the unversioned filename. The dynamic linker
-  // matches NEEDED against on-disk SONAME, so we must ship a copy at
-  // libfoo.so.0 (or the linker fails to resolve and dlopen returns NULL).
-  // We do NOT ship the .so.X.Y.Z versioned tail — only the SONAME alias
-  // that NEEDED references.
-  //
-  // Cost: ~5MB per ABI of duplicated content (the .so and .so.0 are
-  // identical). APK build dedupes identical files automatically; even
-  // without dedup this is well under the per-ABI .so budget.
-  const sonameAliases = [];
-  for (const out of [llamaOut, ...ggmlOuts, ...runtimeSiblingOuts]) {
-    const soname = readSoname(out);
-    if (soname && soname !== path.basename(out)) {
-      const aliasPath = path.join(abiAssetDir, soname);
-      fs.copyFileSync(out, aliasPath);
-      sonameAliases.push(aliasPath);
-      log(
-        `[compile-libllama] Copied ${path.basename(out)} -> ${soname} ` +
-          `(NEEDED-resolution alias for ${abi}).`,
+  let llamaOut = null;
+  let ggmlOuts = [];
+  let runtimeSiblingOuts = [];
+  let sonameAliases = [];
+  if (!isStaticFused) {
+    const builtLlama = locateBuiltLib(buildDir, "libllama.so");
+    if (!builtLlama) {
+      throw new Error(
+        `[compile-libllama] Could not locate built libllama.so anywhere under ${buildDir}.`,
       );
+    }
+    const builtGgmlLibs = locateBuiltGgmlLibs(buildDir);
+    if (builtGgmlLibs.length === 0) {
+      throw new Error(
+        `[compile-libllama] Could not locate any libggml*.so under ${buildDir}. ` +
+          `libllama.so has NEEDED entries for the ggml family; without co-copying ` +
+          `them the runtime dlopen will fail. Check that BUILD_SHARED_LIBS=ON took effect.`,
+      );
+    }
+    const builtRuntimeSiblingLibs = ["libllama-common.so", "libmtmd.so"]
+      .map((name) => locateBuiltLib(buildDir, name))
+      .filter(Boolean);
+
+    llamaOut = path.join(abiAssetDir, "libllama.so");
+    fs.copyFileSync(builtLlama, llamaOut);
+    ggmlOuts = builtGgmlLibs.map((src) => {
+      const dst = path.join(abiAssetDir, path.basename(src));
+      fs.copyFileSync(src, dst);
+      return dst;
+    });
+    runtimeSiblingOuts = builtRuntimeSiblingLibs.map((src) => {
+      const dst = path.join(abiAssetDir, path.basename(src));
+      fs.copyFileSync(src, dst);
+      return dst;
+    });
+
+    // The apothic fork builds with SONAME chains: libllama.so has
+    // SONAME=libllama.so.0 and NEEDED entries pointing at SONAME (e.g.
+    // "libggml.so.0"), not at the unversioned filename. The dynamic linker
+    // matches NEEDED against on-disk SONAME, so we must ship a copy at
+    // libfoo.so.0 (or the linker fails to resolve and dlopen returns NULL).
+    // We do NOT ship the .so.X.Y.Z versioned tail — only the SONAME alias
+    // that NEEDED references.
+    for (const out of [llamaOut, ...ggmlOuts, ...runtimeSiblingOuts]) {
+      const soname = readSoname(out);
+      if (soname && soname !== path.basename(out)) {
+        const aliasPath = path.join(abiAssetDir, soname);
+        fs.copyFileSync(out, aliasPath);
+        sonameAliases.push(aliasPath);
+        log(
+          `[compile-libllama] Copied ${path.basename(out)} -> ${soname} ` +
+            `(NEEDED-resolution alias for ${abi}).`,
+        );
+      }
     }
   }
 
@@ -1487,6 +1553,15 @@ export function buildLibllamaForAbi({
       `[compile-libllama] Copied libelizainference.so for ${abi} (${(fs.statSync(fusedLibOut).size / (1024 * 1024)).toFixed(2)} MB).`,
     );
   }
+  // Under static-fuse the self-contained libelizainference.so is the ONLY
+  // shipped native lib (no libllama.so/libggml*.so), so its absence is fatal.
+  if (isStaticFused && !fusedLibOut) {
+    throw new Error(
+      `[compile-libllama] static-fuse build for ${abi} produced no libelizainference.so ` +
+        `under ${buildDir}. The fused self-contained lib is the only artifact this ` +
+        `target ships — verify the elizainference cmake target built.`,
+    );
+  }
   const fusedServerSrcCandidates = [
     path.join(buildDir, "bin", "llama-omnivoice-server"),
     path.join(buildDir, "llama-omnivoice-server"),
@@ -1507,7 +1582,7 @@ export function buildLibllamaForAbi({
     ...runtimeSiblingOuts,
     llamaOut,
     ...sonameAliases,
-  ];
+  ].filter(Boolean); // llamaOut is null under static-fuse (no shared libllama.so)
   if (llamaServerOut) stripTargets.push(llamaServerOut);
   if (fusedLibOut) stripTargets.push(fusedLibOut);
   if (fusedServerOut) stripTargets.push(fusedServerOut);
@@ -1540,223 +1615,6 @@ export function buildLibllamaForAbi({
   };
 }
 
-/**
- * Compile `llama-shim/eliza_llama_shim.c` (next to this script) into
- * `<abiAssetDir>/libeliza-llama-shim.so`. The shim provides
- * pointer-style wrappers around llama.cpp's struct-by-value entry
- * points that bun:ffi cannot call directly. See the file's header for
- * the full rationale.
- *
- * Linkage:
- *   - Compiled with the same per-ABI zig driver used for llama.cpp
- *     (musl-linked, matches the bun-on-Android runtime ABI).
- *   - NEEDED-links libllama.so via `-L<abiAssetDir> -lllama`. Runtime
- *     resolution comes through the per-ABI LD_LIBRARY_PATH that the
- *     privileged AOSP system app's agent service sets — same mechanism
- *     libllama.so uses to find libggml*.so.
- *   - RUNPATH stripped (`-Wl,--disable-new-dtags` + no -rpath) so we don't
- *     bake in a build-host path.
- *
- * Output: `<abiAssetDir>/libeliza-llama-shim.so`, stripped to ~10-30 KB.
- *
- * Exported for tests so we can assert the compile invocation arguments
- * without running zig end-to-end.
- */
-export function buildShimForAbi({
-  cacheDir,
-  abi,
-  abiAssetDir,
-  shimSourcePath = path.join(here, "llama-shim", "eliza_llama_shim.c"),
-  llamaIncludeDir,
-  zigBin = "zig",
-  log = console.log,
-  spawn = run,
-}) {
-  if (!fs.existsSync(shimSourcePath)) {
-    throw new Error(
-      `[compile-libllama] Shim source not found at ${shimSourcePath}. ` +
-        `Restore eliza/packages/app-core/scripts/aosp/llama-shim/eliza_llama_shim.c.`,
-    );
-  }
-  if (!fs.existsSync(llamaIncludeDir)) {
-    throw new Error(
-      `[compile-libllama] llama.h include dir missing at ${llamaIncludeDir}. ` +
-        `Did the llama.cpp checkout fail?`,
-    );
-  }
-  const llamaSo = path.join(abiAssetDir, "libllama.so");
-  if (!fs.existsSync(llamaSo)) {
-    throw new Error(
-      `[compile-libllama] Cannot link shim: ${llamaSo} is missing. ` +
-        `Run buildLibllamaForAbi() before buildShimForAbi().`,
-    );
-  }
-
-  const { ccPath } = ensureZigDrivers({ cacheDir, abi, zigBin });
-  const shimOut = path.join(abiAssetDir, "libeliza-llama-shim.so");
-
-  // llama.h transitively includes ggml.h, which lives under ggml/include/
-  // in the llama.cpp tree (separate from the llama include dir). We pass
-  // both -I flags so the compiler resolves the full header chain.
-  const ggmlIncludeDir = path.resolve(llamaIncludeDir, "..", "ggml", "include");
-  if (!fs.existsSync(path.join(ggmlIncludeDir, "ggml.h"))) {
-    throw new Error(
-      `[compile-libllama] ggml.h missing under ${ggmlIncludeDir}. ` +
-        `llama.h transitively includes it; the layout of the cached ` +
-        `llama.cpp checkout may have changed.`,
-    );
-  }
-
-  log(
-    `[compile-libllama] Compiling libeliza-llama-shim.so for ${abi} (NEEDED libllama.so)`,
-  );
-  // -fPIC + -shared: build a position-independent shared object.
-  // -O2: matches llama.cpp's release optimization level.
-  // -I<include>: pick up llama.h from the cached llama.cpp checkout, and
-  //   ggml.h from the ggml/include sibling.
-  // -L<abiAssetDir> -lllama: resolve libllama.so for the link step. The
-  //   resulting .so has NEEDED libllama.so; runtime resolution is via
-  //   LD_LIBRARY_PATH set by ElizaAgentService.java.
-  // -Wl,--disable-new-dtags + no -rpath: don't bake a RUNPATH that points
-  //   at the build-host cache dir.
-  spawn(
-    ccPath,
-    [
-      "-shared",
-      "-fPIC",
-      "-O2",
-      `-I${llamaIncludeDir}`,
-      `-I${ggmlIncludeDir}`,
-      `-L${abiAssetDir}`,
-      "-Wl,--disable-new-dtags",
-      "-o",
-      shimOut,
-      shimSourcePath,
-      "-lllama",
-    ],
-    {},
-  );
-
-  if (!fs.existsSync(shimOut)) {
-    throw new Error(
-      `[compile-libllama] Shim compile reported success but ${shimOut} is missing.`,
-    );
-  }
-  const sizeBefore = fs.statSync(shimOut).size;
-  const stripped = stripBinary({ filePath: shimOut, zigBin, log });
-  if (stripped) {
-    const sizeAfter = fs.statSync(shimOut).size;
-    if (sizeAfter === 0) {
-      throw new Error(
-        `[compile-libllama] Strip produced an empty libeliza-llama-shim.so ` +
-          `(was ${sizeBefore} bytes). This is the zig objcopy in-place ` +
-          `truncation bug — the script is supposed to strip out-of-place.`,
-      );
-    }
-    log(
-      `[compile-libllama] Stripped libeliza-llama-shim.so for ${abi} ` +
-        `(${sizeBefore} -> ${sizeAfter} bytes).`,
-    );
-  }
-  return shimOut;
-}
-
-/**
- * Compile the optional in-process MTP speculative shim. This shared object
- * is loaded separately from the struct-by-value llama shim so Android builds
- * can require it (`ELIZA_MTP_REQUIRED=1`) or fall back loudly when the
- * current llama.cpp checkout only supports the headerless stub.
- */
-export function buildSpeculativeShimForAbi({
-  cacheDir,
-  abi,
-  abiAssetDir,
-  llamaSourceDir,
-  shimSourcePath = path.join(
-    here,
-    "llama-shim",
-    "eliza_llama_shim_speculative.cpp",
-  ),
-  zigBin = "zig",
-  log = console.log,
-  spawn = run,
-}) {
-  if (!fs.existsSync(shimSourcePath)) {
-    throw new Error(
-      `[compile-libllama] Speculative shim source not found at ${shimSourcePath}.`,
-    );
-  }
-  const llamaSo = path.join(abiAssetDir, "libllama.so");
-  if (!fs.existsSync(llamaSo)) {
-    throw new Error(
-      `[compile-libllama] Cannot link speculative shim: ${llamaSo} is missing. ` +
-        `Run buildLibllamaForAbi() before buildSpeculativeShimForAbi().`,
-    );
-  }
-
-  const { cxxPath } = ensureZigDrivers({ cacheDir, abi, zigBin });
-  const shimOut = path.join(abiAssetDir, "libeliza-llama-speculative-shim.so");
-  const includeArgs = [];
-  const linkArgs = ["-lllama"];
-  if (llamaSourceDir) {
-    const includeDir = path.join(llamaSourceDir, "include");
-    const commonDir = path.join(llamaSourceDir, "common");
-    const ggmlIncludeDir = path.join(llamaSourceDir, "ggml", "include");
-    const srcDir = path.join(llamaSourceDir, "src");
-    for (const dir of [includeDir, commonDir, ggmlIncludeDir, srcDir]) {
-      if (fs.existsSync(dir)) includeArgs.push(`-I${dir}`);
-    }
-  }
-  if (fs.existsSync(path.join(abiAssetDir, "libllama-common.so"))) {
-    // The real speculative shim calls common/* C++ helpers that live in
-    // libllama-common.so. Link it explicitly so clean APK builds get a
-    // deterministic DT_NEEDED edge instead of relying on load-order globals.
-    linkArgs.unshift("-lllama-common");
-  }
-
-  log(
-    `[compile-libllama] Compiling libeliza-llama-speculative-shim.so for ${abi}`,
-  );
-  spawn(
-    cxxPath,
-    [
-      "-shared",
-      "-fPIC",
-      "-O2",
-      "-std=c++17",
-      ...includeArgs,
-      `-L${abiAssetDir}`,
-      "-Wl,--disable-new-dtags",
-      "-o",
-      shimOut,
-      shimSourcePath,
-      ...linkArgs,
-    ],
-    {},
-  );
-
-  if (!fs.existsSync(shimOut)) {
-    throw new Error(
-      `[compile-libllama] Speculative shim compile reported success but ${shimOut} is missing.`,
-    );
-  }
-  const sizeBefore = fs.statSync(shimOut).size;
-  const stripped = stripBinary({ filePath: shimOut, zigBin, log });
-  if (stripped) {
-    const sizeAfter = fs.statSync(shimOut).size;
-    if (sizeAfter === 0) {
-      throw new Error(
-        `[compile-libllama] Strip produced an empty libeliza-llama-speculative-shim.so ` +
-          `(was ${sizeBefore} bytes).`,
-      );
-    }
-    log(
-      `[compile-libllama] Stripped libeliza-llama-speculative-shim.so for ${abi} ` +
-        `(${sizeBefore} -> ${sizeAfter} bytes).`,
-    );
-  }
-  return shimOut;
-}
 
 /**
  * Find every `libggml*.so` under the build tree. b4500 shipped plain .so
@@ -2187,6 +2045,9 @@ export function describeAndroidTargetDryRun({
       ...riscv64CmakeFlagsForPlan({ abi: parsed.androidAbi, plan }),
     );
   }
+  // arm64-v8a SIMD floor (dotprod/i8mm/fp16 + QJL NEON-dotprod dispatch) — the
+  // real buildLibllamaForAbi() emits these too; surface them in the dry-run.
+  cmakeFlags.push(...androidArm64SimdCmakeFlags(parsed.androidAbi));
   cmakeFlags.push(
     "-DCMAKE_SKIP_BUILD_RPATH=TRUE",
     "-DCMAKE_SKIP_INSTALL_RPATH=TRUE",
@@ -2204,9 +2065,7 @@ export function describeAndroidTargetDryRun({
     `  cmake --build ${buildDir} --target ${buildTargets.join(" ")} -j ${jobs}`,
   );
   log(`  expected output layout under ${abiAssetDir}:`);
-  log(
-    `    libllama.so libggml*.so llama-server libeliza-llama-shim.so libeliza-llama-speculative-shim.so`,
-  );
+  log(`    libllama.so libggml*.so llama-server`);
   if (parsed.fused) {
     log(
       `    libelizainference.so omnivoice-tts omnivoice-codec (merged-tree artifacts)`,
@@ -2241,22 +2100,10 @@ export async function main(argv = process.argv.slice(2)) {
   for (const abi of args.abis) {
     const llama = path.join(args.androidAssetsDir, abi, "libllama.so");
     const ggml = path.join(args.androidAssetsDir, abi, "libggml.so");
-    const shim = path.join(
-      args.androidAssetsDir,
-      abi,
-      "libeliza-llama-shim.so",
-    );
-    const speculativeShim = path.join(
-      args.androidAssetsDir,
-      abi,
-      "libeliza-llama-speculative-shim.so",
-    );
     const llamaServer = path.join(args.androidAssetsDir, abi, "llama-server");
     if (
       !fs.existsSync(llama) ||
       !fs.existsSync(ggml) ||
-      !fs.existsSync(shim) ||
-      !fs.existsSync(speculativeShim) ||
       !fs.existsSync(llamaServer)
     ) {
       allPresent = false;
@@ -2348,6 +2195,12 @@ export async function main(argv = process.argv.slice(2)) {
 
   for (const abi of args.abis) {
     const abiAssetDir = path.join(args.androidAssetsDir, abi);
+    // Builds + stages libllama.so + the libggml*.so family + llama-server.
+    // libllama.so + libggml*.so are runtime DT_NEEDED dependencies of the
+    // fused libelizainference.so (the fork's `elizainference` target does
+    // `target_link_libraries(elizainference PUBLIC llama)` with
+    // BUILD_SHARED_LIBS=ON), so they stay required even though no TS adapter
+    // dlopens libllama.so directly anymore.
     buildLibllamaForAbi({
       srcDir,
       cacheDir: args.cacheDir,
@@ -2357,41 +2210,6 @@ export async function main(argv = process.argv.slice(2)) {
       log: console.log,
       spawn: run,
     });
-    // Compile the bun:ffi struct-by-value shim against the freshly built
-    // libllama.so. Has to come AFTER the llama build because it links
-    // against -lllama from <abiAssetDir>.
-    buildShimForAbi({
-      cacheDir: args.cacheDir,
-      abi,
-      abiAssetDir,
-      llamaIncludeDir: path.join(srcDir, "include"),
-      log: console.log,
-      spawn: run,
-    });
-    // The speculative (MTP) shim is OPTIONAL: the loader in
-    // aosp-llama-adapter.ts only dlopens it when present
-    // (`speculative shim not bundled; MTP disabled for this APK`). Don't let
-    // its compile failure abort a build whose required libllama/ggml/shim
-    // outputs are already produced — e.g. the x86_64 spec-shim source
-    // currently references `COMMON_SPECULATIVE_TYPE_MTP`, which the pinned
-    // llama.cpp fork doesn't export, so it fails to compile while the chat
-    // path (which doesn't use MTP) is fully functional. Warn and continue.
-    try {
-      buildSpeculativeShimForAbi({
-        cacheDir: args.cacheDir,
-        abi,
-        abiAssetDir,
-        llamaSourceDir: srcDir,
-        log: console.log,
-        spawn: run,
-      });
-    } catch (err) {
-      console.warn(
-        `[compile-libllama] WARN: speculative (MTP) shim build failed for ${abi}; ` +
-          `continuing without it — MTP stays disabled and the adapter treats the ` +
-          `shim as optional. Cause: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
   }
 
   // Cross-compile the SIGSYS-handler shim + loader-wrap for x86_64. ARM64
@@ -2407,7 +2225,7 @@ export async function main(argv = process.argv.slice(2)) {
   await compileShimMain(["--skip-if-present"]);
 
   console.log(
-    `[compile-libllama] Built libllama.so + libeliza-llama-shim.so + libeliza-llama-speculative-shim.so + llama-server for ` +
+    `[compile-libllama] Built libllama.so + libggml*.so + llama-server for ` +
       `${args.abis.join(", ")} (${srcDescription}).`,
   );
 }
@@ -2431,7 +2249,6 @@ export async function main(argv = process.argv.slice(2)) {
  *   4. For `*-fused`: run `verifyFusedSymbols()` against the install dir,
  *      asserting libelizainference.so carries `llama_*` + `ov_*` +
  *      `eliza_inference_*` exports.
- *   5. Compile the bun:ffi struct-by-value shim (`buildShimForAbi`).
  *
  * Dry-run prints what each step WOULD do without touching the filesystem
  * or running cmake / the NDK.
@@ -2561,36 +2378,6 @@ export async function mainTargets(args) {
         ...(parsed.backend === "vulkan" ? ["ggml-vulkan"] : []),
       ],
     });
-
-    buildShimForAbi({
-      cacheDir: args.cacheDir,
-      abi: parsed.androidAbi,
-      abiAssetDir,
-      llamaIncludeDir: path.join(srcDir, "include"),
-      log: console.log,
-      spawn: run,
-    });
-    // The speculative (MTP) shim is OPTIONAL — the adapter dlopens it only when
-    // present. The pinned fork's spec-shim source references the removed
-    // `COMMON_SPECULATIVE_TYPE_MTP` and fails to compile, but the fused libs are
-    // already built. Don't abort the explicit-target build over it (mirrors the
-    // --abi path's handling); MTP just stays disabled for this APK.
-    try {
-      buildSpeculativeShimForAbi({
-        cacheDir: args.cacheDir,
-        abi: parsed.androidAbi,
-        abiAssetDir,
-        llamaSourceDir: srcDir,
-        log: console.log,
-        spawn: run,
-      });
-    } catch (err) {
-      console.warn(
-        `[compile-libllama] WARN: speculative (MTP) shim build failed for ${parsed.androidAbi}; ` +
-          `continuing — MTP stays disabled and the adapter treats the shim as optional. ` +
-          `Cause: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
 
     // Post-build: for fused targets prove libelizainference.so exports both
     // `llama_*` and `ov_*` (and the eliza_inference ABI surface). Hard error

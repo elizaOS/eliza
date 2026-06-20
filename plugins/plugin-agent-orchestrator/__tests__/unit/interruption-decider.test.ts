@@ -23,6 +23,36 @@ describe("decideInterruption", () => {
     ).toBe("interrupt");
   });
 
+  it("does NOT interrupt on an unaddressed ambient stop in a multi-party room", () => {
+    // Another participant's "stop" chatter must not cancel this agent's turn.
+    expect(
+      decideInterruption({
+        ...base,
+        text: "stop",
+        sessionBusy: true,
+        multiParty: true,
+      }).action,
+    ).toBe("ignore");
+    // ...but an ADDRESSED stop in the same room still interrupts.
+    expect(
+      decideInterruption({
+        ...base,
+        text: "Ada, stop",
+        sessionBusy: true,
+        multiParty: true,
+      }).action,
+    ).toBe("interrupt");
+    // ...and in a solo room any stop interrupts (no ambient ambiguity).
+    expect(
+      decideInterruption({
+        ...base,
+        text: "stop",
+        sessionBusy: true,
+        multiParty: false,
+      }).action,
+    ).toBe("interrupt");
+  });
+
   it("delivers to an idle agent", () => {
     expect(
       decideInterruption({

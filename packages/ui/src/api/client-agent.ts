@@ -85,6 +85,7 @@ import type {
   LogsFilter,
   LogsResponse,
   OrchestratorAccountOverview,
+  OrchestratorRoomRosterOverview,
   PluginInfo,
   PluginMutationResult,
   ProviderModelRecord,
@@ -974,6 +975,7 @@ declare module "./client-base" {
     reopenCodingAgentTaskThread(threadId: string): Promise<boolean>;
     getOrchestratorStatus(): Promise<CodingAgentOrchestratorStatus | null>;
     getOrchestratorAccounts(): Promise<OrchestratorAccountOverview>;
+    getOrchestratorRooms(): Promise<OrchestratorRoomRosterOverview>;
     createOrchestratorTask(
       input: CodingAgentCreateTaskInput,
     ): Promise<CodingAgentTaskThreadDetail>;
@@ -3645,6 +3647,12 @@ ElizaClient.prototype.getOrchestratorAccounts = async function (
   this: ElizaClient,
 ) {
   return this.fetch<OrchestratorAccountOverview>("/api/orchestrator/accounts");
+};
+
+ElizaClient.prototype.getOrchestratorRooms = async function (
+  this: ElizaClient,
+) {
+  return this.fetch<OrchestratorRoomRosterOverview>("/api/orchestrator/rooms");
 };
 
 ElizaClient.prototype.createOrchestratorTask = function (

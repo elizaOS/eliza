@@ -22,10 +22,7 @@ export type AppDatabaseState = DatabaseStateColumns & {
 type AppDatabaseStateUpdate = Partial<
   Pick<
     NewAppDatabase,
-    | "user_database_uri"
-    | "user_database_region"
-    | "user_database_status"
-    | "user_database_error"
+    "user_database_uri" | "user_database_region" | "user_database_status" | "user_database_error"
   >
 >;
 

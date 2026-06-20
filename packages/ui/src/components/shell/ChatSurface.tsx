@@ -50,7 +50,7 @@ export function ChatSurface({
           <p className="text-sm text-muted">
             {greeting ??
               t("chatsurface.greeting", {
-                defaultValue: "Ask Eliza anything.",
+                defaultValue: "Ask {{appName}} anything.",
               })}
           </p>
         ) : (
@@ -79,7 +79,7 @@ export function ChatSurface({
                     <span
                       role="status"
                       aria-label={t("chatsurface.typing", {
-                        defaultValue: "Eliza is typing",
+                        defaultValue: "{{appName}} is typing",
                       })}
                       className="inline-flex gap-0.5"
                     >
@@ -110,11 +110,11 @@ export function ChatSurface({
             }
           }}
           placeholder={t("chatsurface.inputPlaceholder", {
-            defaultValue: "Ask Eliza…",
+            defaultValue: "Ask {{appName}}…",
           })}
           disabled={!canSend}
           aria-label={t("chatsurface.messageLabel", {
-            defaultValue: "Message Eliza",
+            defaultValue: "Message {{appName}}",
           })}
           className="min-w-0 flex-1 border-0 bg-transparent px-2 py-1.5 text-sm text-txt placeholder:text-txt/50 focus-visible:outline-none focus-visible:ring-0 disabled:opacity-50"
         />

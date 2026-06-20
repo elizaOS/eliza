@@ -61,7 +61,7 @@ async function runNextBuild() {
   await writeTempTypesInclude();
 
   const exitCode = await new Promise((resolve) => {
-    const child = spawn(process.execPath, [nextCliPath, "build"], {
+    const child = spawn(process.execPath, [nextCliPath, "build", "--webpack"], {
       cwd: packageRoot,
       env: {
         ...process.env,
@@ -79,6 +79,31 @@ async function runNextBuild() {
 }
 
 let exitCode = 1;
+let restored = false;
+
+async function restoreGeneratedInputs() {
+  if (restored) return;
+  restored = true;
+
+  if (originalNextEnv !== null) {
+    await writeFile(nextEnvPath, originalNextEnv);
+  }
+  if (originalTsconfig !== null) {
+    await writeFile(tsconfigPath, originalTsconfig);
+  }
+  await rm(tsbuildInfoPath, {
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
+}
+
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.once(signal, async () => {
+    await restoreGeneratedInputs();
+    process.kill(process.pid, signal);
+  });
+}
 
 try {
   exitCode = await runNextBuild();
@@ -100,17 +125,7 @@ try {
     });
   }
 } finally {
-  if (originalNextEnv !== null) {
-    await writeFile(nextEnvPath, originalNextEnv);
-  }
-  if (originalTsconfig !== null) {
-    await writeFile(tsconfigPath, originalTsconfig);
-  }
-  await rm(tsbuildInfoPath, {
-    force: true,
-    maxRetries: 5,
-    retryDelay: 100,
-  });
+  await restoreGeneratedInputs();
 }
 
 process.exit(exitCode);

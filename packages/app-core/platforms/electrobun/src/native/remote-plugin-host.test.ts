@@ -136,17 +136,17 @@ describe("RemotePluginHost", () => {
   it("defaults the remote plugin store under the state dir", () => {
     expect(
       resolveRemotePluginStoreRoot({
-        ELIZA_STATE_DIR: "/tmp/milady-state",
-        ELIZA_NAMESPACE: "milady",
+        ELIZA_STATE_DIR: "/tmp/example-state",
+        ELIZA_NAMESPACE: "example",
       } as NodeJS.ProcessEnv),
-    ).toBe(join("/tmp/milady-state", "remote-plugins"));
+    ).toBe(join("/tmp/example-state", "remote-plugins"));
   });
 
   it("honors an explicit remote plugin store override", () => {
     expect(
       resolveRemotePluginStoreRoot({
-        MILADY_REMOTE_PLUGIN_STORE_DIR: "/tmp/remote-store",
-        ELIZA_STATE_DIR: "/tmp/milady-state",
+        ELIZA_REMOTE_PLUGIN_STORE_DIR: "/tmp/remote-store",
+        ELIZA_STATE_DIR: "/tmp/example-state",
       } as NodeJS.ProcessEnv),
     ).toBe("/tmp/remote-store");
   });
@@ -156,7 +156,7 @@ describe("RemotePluginHost", () => {
       const configPath = join(dir, "brand.json");
       writeFileSync(
         configPath,
-        `${JSON.stringify({ appName: "Milady", namespace: "milady" })}\n`,
+        `${JSON.stringify({ appName: "Example", namespace: "example" })}\n`,
         "utf8",
       );
       process.env.ELIZA_BRAND_CONFIG_PATH = configPath;
@@ -167,7 +167,7 @@ describe("RemotePluginHost", () => {
           XDG_STATE_HOME: join(dir, "state"),
           ELIZA_NAMESPACE: "eliza",
         } as NodeJS.ProcessEnv),
-      ).toBe(join(dir, "state", "milady", "remote-plugins"));
+      ).toBe(join(dir, "state", "example", "remote-plugins"));
     }));
 
   it("installs, lists, snapshots, and uninstalls remote plugins", () =>

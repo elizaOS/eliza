@@ -1,11 +1,7 @@
-import {
-  AlertCircle,
-  CheckCircle2,
-  Circle,
-  type LucideIcon,
-} from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import type { ComponentType } from "react";
 import { useAgentElement } from "../../agent-surface";
+import { cn } from "../../lib/utils";
 
 export type ProviderStatusTone = "ok" | "warn" | "muted";
 export type ProviderCategory = "cloud" | "subscription" | "key" | "local";
@@ -26,44 +22,28 @@ export interface ProviderCardProps {
   onSelect: (id: string) => void;
 }
 
-const CATEGORY_CHIP_CLASSES: Record<ProviderCategory, string> = {
-  cloud: "text-accent",
-  subscription: "text-txt",
-  key: "text-muted",
-  local: "text-ok",
+const STATUS_DOT_CLASSES: Record<ProviderStatusTone, string> = {
+  ok: "bg-ok",
+  warn: "bg-warn",
+  muted: "bg-muted/50",
 };
 
-const CATEGORY_LABEL: Record<ProviderCategory, string> = {
-  cloud: "Cloud",
-  subscription: "Subscription",
-  key: "API key",
-  local: "Local",
-};
-
-const STATUS_ICON_CLASSES: Record<ProviderStatusTone, string> = {
-  ok: "text-ok",
-  warn: "text-warn",
-  muted: "text-muted",
-};
-
-const STATUS_ICON: Record<ProviderStatusTone, LucideIcon> = {
-  ok: CheckCircle2,
-  warn: AlertCircle,
-  muted: Circle,
-};
-
+/**
+ * Compact provider chip. The AI Model section can list ~15 providers (cloud, six
+ * coding subscriptions, local, and every installed API-key plugin); rendered as
+ * full-width cards they stacked into an unscrollable wall on a phone. As wrapping
+ * pills they stay readable and compact while every chip remains mounted, so the
+ * agent surface can still address any provider by id from chat.
+ */
 export function ProviderCard({
   id,
   icon: Icon,
   label,
-  category,
   status,
   current,
   selected,
   onSelect,
 }: ProviderCardProps) {
-  const StatusIcon = current ? CheckCircle2 : STATUS_ICON[status.tone];
-  const iconClass = current ? "text-accent" : STATUS_ICON_CLASSES[status.tone];
   const stateLabel = current ? "Active" : status.label;
 
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
@@ -84,42 +64,37 @@ export function ProviderCard({
       onClick={() => onSelect(id)}
       title={`${label} · ${stateLabel}`}
       {...agentProps}
-      className={`flex min-h-[3.25rem] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40 ${
+      className={cn(
+        "inline-flex min-h-[2.25rem] max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
         selected
-          ? "border-accent/45 bg-accent/10 hover:bg-accent/12"
-          : "border-border bg-card hover:bg-surface"
-      }`}
+          ? "border-accent/50 bg-accent/12 text-accent"
+          : current
+            ? "border-accent/40 bg-accent/8 text-txt-strong hover:bg-accent/12"
+            : "border-border bg-card text-txt hover:bg-surface",
+      )}
     >
-      <span
-        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md ring-1 ${
-          current
-            ? "bg-accent/10 text-accent ring-accent/20"
-            : "bg-surface text-txt-strong ring-border/70"
-        }`}
-      >
-        <Icon className="h-[18px] w-[18px]" aria-hidden />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-sm font-medium leading-5 text-txt-strong">
-          {label}
-        </span>
-        <span className="truncate text-xs leading-relaxed text-muted">
-          {stateLabel}
-        </span>
-      </span>
-      <span
-        className={`hidden shrink-0 text-xs sm:inline-flex ${CATEGORY_CHIP_CLASSES[category]}`}
+      <Icon
+        className={cn(
+          "h-4 w-4 shrink-0",
+          selected ? "text-accent" : current ? "text-accent" : "text-muted",
+        )}
         aria-hidden
-      >
-        {CATEGORY_LABEL[category]}
-      </span>
-      <span
-        className={`inline-flex h-5 w-5 shrink-0 items-center justify-center ${iconClass}`}
-        title={stateLabel}
-        aria-hidden
-      >
-        <StatusIcon className="h-3.5 w-3.5" />
-      </span>
+      />
+      <span className="truncate font-medium">{label}</span>
+      {current ? (
+        <CheckCircle2
+          className="h-3.5 w-3.5 shrink-0 text-accent"
+          aria-hidden
+        />
+      ) : (
+        <span
+          className={cn(
+            "h-1.5 w-1.5 shrink-0 rounded-full",
+            STATUS_DOT_CLASSES[status.tone],
+          )}
+          aria-hidden
+        />
+      )}
     </button>
   );
 }

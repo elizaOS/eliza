@@ -107,7 +107,6 @@ const publicPathPrefixes = [
   "/api/eliza-app/user",
   "/api/eliza-app/cli-auth",
   "/api/eliza-app/onboarding",
-  "/api/eliza-app/provision-agent",
   "/api/eliza-app/gateway",
 ];
 

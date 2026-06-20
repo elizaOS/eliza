@@ -36,7 +36,7 @@ import numpy as np
 
 
 def _resolve_jax_platform() -> None:
-    if os.environ.get("ELIZA_ROBOT_USE_GPU", os.environ.get("MILADY_ROBOT_USE_GPU")) != "1":
+    if os.environ.get("ELIZA_ROBOT_USE_GPU") != "1":
         os.environ.setdefault("JAX_PLATFORMS", "cpu")
         os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
 

@@ -163,9 +163,7 @@ const commandExists = (command) => {
   if (!pathEnv) return false;
   const isWindows = process.platform === "win32";
   const extensions = isWindows
-    ? (process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM")
-        .split(";")
-        .filter(Boolean)
+    ? (process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean)
     : [""];
   for (const dir of pathEnv.split(path.delimiter).filter(Boolean)) {
     for (const ext of extensions) {
@@ -208,7 +206,7 @@ const runNode = () => {
     platform: process.platform,
     explicitNodePath: process.env.ELIZA_NODE_PATH,
   });
-  // Forks rename `eliza.mjs` to their own entry filename (e.g. `milady.mjs`).
+  // Forks rename `eliza.mjs` to their own entry filename.
   // Letting them override the spawned filename via `ELIZA_ENTRY_FILE` avoids
   // every fork having to ship a shim at the old name. Read from `env` (the
   // local snapshot built at module load) for consistency with what the child

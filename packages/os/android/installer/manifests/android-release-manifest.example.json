@@ -47,9 +47,9 @@
     "properties": {
       "ro.product.device": "caiman",
       "sys.boot_completed": "1",
-      "pm_path": "package:/system/priv-app/Milady/Milady.apk",
-      "home_role": "ai.milady.milady",
-      "foreground_activity": "ai.milady.milady/.MainActivity",
+      "pm_path": "package:/system/priv-app/Eliza/Eliza.apk",
+      "home_role": "ai.elizaos.app",
+      "foreground_activity": "ai.elizaos.app/.MainActivity",
       "agent_service_pid": "present",
       "agent_health": "GET /api/health HTTP 200 ready",
       "logcat_fatal_count": "0",

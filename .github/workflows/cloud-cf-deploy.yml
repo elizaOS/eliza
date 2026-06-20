@@ -20,10 +20,10 @@ name: Cloud CF Deploy
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
 #   CLOUDFLARE_ACCOUNT_ID  - matches account_id in packages/cloud-api/wrangler.toml
-#   BITROUTER_API_KEY      - BitRouter proxy bearer token for the API Worker
-# Optional provider secrets are published when configured:
-#   OPENAI_API_KEY, ANTHROPIC_API_KEY, CEREBRAS_API_KEY, GROQ_API_KEY,
-#   AI_GATEWAY_API_KEY, FAL_KEY, ELEVENLABS_API_KEY, VAST_API_KEY, VAST_BASE_URL.
+# Provider secrets are published when configured (the Worker calls native
+# providers directly and uses OpenRouter as the backup):
+#   OPENROUTER_API_KEY, CEREBRAS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,
+#   GROQ_API_KEY, AI_GATEWAY_API_KEY, FAL_KEY, ELEVENLABS_API_KEY, VAST_API_KEY, VAST_BASE_URL.
 #
 # Source: cloud/.github/workflows/cf-deploy.yml in the original elizaOS/cloud repo.
 
@@ -154,7 +154,7 @@ jobs:
         if: steps.cf.outputs.configured == 'true'
         working-directory: packages/cloud-api
         env:
-          BITROUTER_API_KEY: ${{ secrets.BITROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
@@ -167,8 +167,11 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          if [ -z "$BITROUTER_API_KEY" ]; then
-            echo "::error::BITROUTER_API_KEY is not configured. Add it at https://github.com/elizaOS/eliza/settings/secrets/actions."
+          # The Worker is the gateway: it calls native providers directly and
+          # uses OpenRouter (BYOK) as the backup. At least one provider key (the
+          # OpenRouter backup, or a native key) must be configured.
+          if [ -z "$OPENROUTER_API_KEY" ] && [ -z "$CEREBRAS_API_KEY" ] && [ -z "$OPENAI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::No model provider key configured. Set OPENROUTER_API_KEY (backup) and/or a native key (CEREBRAS/OPENAI/ANTHROPIC) at https://github.com/elizaOS/eliza/settings/secrets/actions."
             exit 1
           fi
 
@@ -183,7 +186,7 @@ jobs:
           }
 
           for name in \
-            BITROUTER_API_KEY \
+            OPENROUTER_API_KEY \
             OPENAI_API_KEY \
             ANTHROPIC_API_KEY \
             CEREBRAS_API_KEY \
@@ -257,6 +260,14 @@ jobs:
           # the only thing the bundle can see at runtime.
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
+
+      # Gate: refuse to deploy a bundle where Rolldown folded the bn.js/crypto
+      # graph into an eager chunk — that ships the "Class constructor cannot be
+      # invoked without 'new'" Buffer.allocUnsafe crash that blanks every route.
+      # This regression has reached prod multiple times; fail the deploy instead.
+      - name: Verify bundle chunk safety
+        working-directory: packages/cloud-frontend
+        run: node scripts/verify-chunk-safety.mjs
 
       - name: Resolve Pages branch
         id: pages

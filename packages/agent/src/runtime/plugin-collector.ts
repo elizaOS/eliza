@@ -99,8 +99,7 @@ function isElizaOsAndroidRuntime(): boolean {
  * Users can explicitly opt out via ELIZA_GITPATHOLOGIST=0.
  */
 function resolveGitpathologistRepoRoot(): string {
-  const fromEnv =
-    process.env.MILADY_WORKSPACE_DIR ?? process.env.ELIZA_WORKSPACE_DIR;
+  const fromEnv = process.env.ELIZA_WORKSPACE_DIR;
   const cwd = fromEnv?.trim() ? fromEnv.trim() : process.cwd();
   return path.resolve(cwd);
 }

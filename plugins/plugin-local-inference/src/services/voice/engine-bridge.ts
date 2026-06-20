@@ -698,6 +698,7 @@ export interface LiveAttributionConfig {
 
 export function createKokoroTtsBackend(
 	kokoro: KokoroEngineDiscoveryResult,
+	opts: { bundleRoot?: string } = {},
 ): KokoroTtsBackend {
 	const forkUrl =
 		process.env.ELIZA_KOKORO_FORK_URL?.trim() ||
@@ -705,8 +706,16 @@ export function createKokoroTtsBackend(
 		"http://127.0.0.1:18789";
 	const forkModelId =
 		process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0";
+	// In-process FFI is the preferred default on every platform — it is the
+	// only Kokoro path that ships on iOS / Google Play (no local TCP socket).
+	// The HTTP `fork` path stays as an explicit dev/desktop opt-in
+	// (`KOKORO_BACKEND=fork`); it is never resolved unless requested.
 	const decision = pickKokoroRuntimeBackend({
-		defaultBackend: "fork",
+		defaultBackend: "ffi",
+		ffi: {
+			layout: kokoro.layout,
+			bundleRoot: opts.bundleRoot,
+		},
 		fork: {
 			serverUrl: forkUrl,
 			modelId: forkModelId,
@@ -1265,7 +1274,14 @@ export class EngineVoiceBridge {
 		// bytes fields are ignored on this path (voice cloning is OmniVoice-only).
 		const preset = createKokoroSpeakerPreset(kokoro);
 
-		const backend = createKokoroTtsBackend(kokoro);
+		// Anchor the in-process Kokoro FFI ctx at the Eliza-1 bundle root when
+		// one is present; otherwise the runtime anchors at the Kokoro model root.
+		const backend = createKokoroTtsBackend(kokoro, {
+			bundleRoot:
+				opts.bundleRoot && existsSync(opts.bundleRoot)
+					? opts.bundleRoot
+					: undefined,
+		});
 
 		const phraseCache = new PhraseCache();
 		for (const entry of opts.prewarmedPhrases ?? []) {

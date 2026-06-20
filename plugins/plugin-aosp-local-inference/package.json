@@ -47,7 +47,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-omnivoice": "workspace:*",
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {

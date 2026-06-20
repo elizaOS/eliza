@@ -192,7 +192,7 @@ else
     # separate `linux-riscv64-cpu` libllama target; the earlier invocation of one
     # always threw "unsupported --target".)
     #
-    # repoRoot inside compile-libllama resolves to the milady consumer root, so
+    # repoRoot inside compile-libllama resolves to the consumer root, so
     # its default --assets-dir/--src-dir would land in the wrong tree. Pin both
     # to this eliza checkout so the .so installs where check-riscv64-artifacts.sh
     # scans for it and the build uses the in-repo llama.cpp submodule.

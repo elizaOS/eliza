@@ -2528,10 +2528,15 @@ async function main(): Promise<void> {
   } else if (isAndroid) {
     initializeCapacitorBridge();
     installAndroidNativeAgentFetchBridge();
-    // Expose window.__diarizationPump so the WebView→agent PCM pump (live
-    // on-device speaker diarization) can be driven + read on-device via CDP.
-    const { installDiarizationPumpHarness } = await import("@elizaos/ui/voice");
+    // Expose window.__diarizationPump (WebView→bun-agent PCM pump) and
+    // window.__jniVoice (the in-process JNI voice pipeline — the four fused
+    // voice classifiers running IN the bionic app process via the ElizaVoice
+    // host, replacing the musl bun-agent transport) so both can be driven +
+    // read on-device via CDP.
+    const { installDiarizationPumpHarness, installJniVoiceHarness } =
+      await import("@elizaos/ui/voice");
     installDiarizationPumpHarness();
+    installJniVoiceHarness();
   }
   mountReactApp();
   await initializePlatform();

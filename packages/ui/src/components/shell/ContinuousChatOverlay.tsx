@@ -1236,6 +1236,14 @@ export function ContinuousChatOverlay({
   const revealed = useTransform(threadHeight, (h) =>
     Math.min(1, Math.max(0, h / Math.max(1, openH))),
   );
+  // At rest (threadHeight 0 = INPUT/CLOSED) the full-viewport dimming scrim sits
+  // at opacity 0 but stays a live composited layer the glass backdrop-filter
+  // samples through. Drive `visibility` off the SAME motion value so it drops out
+  // of compositing/paint at rest (no reflow, compositor-only, zero re-render) and
+  // flips back the instant the thread opens.
+  const scrimVisibility = useTransform(threadHeight, (h) =>
+    h > 0 ? "visible" : "hidden",
+  );
   const suggestionsOpacity = useTransform(threadHeight, (h) =>
     Math.max(0, 1 - h / Math.max(1, openH * 0.5)),
   );
@@ -1843,6 +1851,7 @@ export function ContinuousChatOverlay({
         // during a drag. Capture clicks only once open.
         style={{
           opacity: revealed,
+          visibility: scrimVisibility,
           pointerEvents: sheetOpen ? "auto" : "none",
         }}
       />
@@ -2138,16 +2147,19 @@ export function ContinuousChatOverlay({
                   opacity: headerOpacity,
                   maxHeight: headerMaxH,
                   // Collapsed → 0 top padding (no leaked margin above the
-                  // composer); opens to ~10px as the header reveals. Full-bleed
-                  // keeps its fixed safe-area inset (it's always fully revealed).
-                  paddingTop: fullBleed ? undefined : headerPadTop,
+                  // composer); opens to ~10px as the header reveals. Maximized
+                  // goes edge-to-edge under the status bar, so the header insets
+                  // its buttons below the safe area (the clock/battery) while the
+                  // sheet bg stays full-bleed — set inline (not a Tailwind
+                  // arbitrary class, whose env(...,0px) comma breaks the parser
+                  // so no padding was generated and the buttons sat under the
+                  // status bar).
+                  paddingTop: fullBleed
+                    ? "calc(var(--safe-area-top, 0px) + 0.5rem)"
+                    : headerPadTop,
                 }}
                 className={cn(
                   "relative z-10 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
-                  // Maximized goes edge-to-edge under the status bar, so the
-                  // buttons must clear the safe-area inset (the clock/battery)
-                  // or they sit under it and become untappable.
-                  fullBleed && "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]",
                 )}
               >
                 <div className="flex items-center gap-1.5">

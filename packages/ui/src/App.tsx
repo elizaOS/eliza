@@ -1259,6 +1259,9 @@ function ContinuousChatOverlayMount(): ReactNode {
  */
 function HomeScreenMount(): ReactNode {
   const { setTab } = useApp();
+  // Host apps can override the home screen via the `homeScreen` boot-config slot
+  // (whitelabel seam); fall back to the built-in HomeScreen.
+  const { homeScreen: HomeScreenOverride } = useBootConfig();
   const onOpenTile = useCallback(
     (target: HomeTileTarget) => {
       if (target.kind === "tab") {
@@ -1273,11 +1276,9 @@ function HomeScreenMount(): ReactNode {
     },
     [setTab],
   );
+  const Home = HomeScreenOverride ?? HomeScreen;
   return (
-    <HomeScreen
-      onOpenTile={onOpenTile}
-      showNativeOsTiles={isAospShellEnabled()}
-    />
+    <Home onOpenTile={onOpenTile} showNativeOsTiles={isAospShellEnabled()} />
   );
 }
 
@@ -1773,7 +1774,13 @@ export function App() {
   return (
     <BugReportProvider value={bugReport}>
       <ShellControllerProvider>
-        <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden">
+        <div
+          className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
+          // Reserve the status-bar safe area so view headers + back buttons sit
+          // below the status bar. Top banners bleed their bg back up through it
+          // via `.mobile-top-banner:first-child` (see styles.css). No-op on web.
+          style={{ paddingTop: "var(--safe-area-top, 0px)" }}
+        >
           <ConnectionFailedBanner />
           <SystemWarningBanner />
           <ActionBanner />

@@ -2,7 +2,7 @@
 
 Scope: React runtime cost (CPU, smoothness, re-renders, retained memory of stateful objects) in `packages/ui` and `packages/app`. Companion docs in this folder cover bundle size, boot, and state-sync; this one is render-cost only.
 
-All file:line citations are against the `develop` checkout at `/home/shaw/milady/eliza` on 2026-06-01.
+All file:line citations are against the `develop` checkout at `/path/to/eliza` on 2026-06-01.
 
 ---
 

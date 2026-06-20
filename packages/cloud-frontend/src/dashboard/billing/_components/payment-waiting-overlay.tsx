@@ -227,7 +227,7 @@ export function PaymentWaitingOverlay({
   );
 }
 
-const STORAGE_KEY = "milady.pendingDirectCryptoPayment.v1";
+const STORAGE_KEY = "eliza.pendingDirectCryptoPayment.v1";
 
 export interface PersistedPendingPayment {
   paymentId: string;

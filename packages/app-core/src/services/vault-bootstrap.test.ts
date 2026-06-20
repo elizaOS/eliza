@@ -16,7 +16,7 @@ vi.mock("@elizaos/agent", () => ({
   loadElizaConfig: () => ({}),
   persistConfigEnv: vi.fn(),
   readConfigEnv: vi.fn(async () => ({})),
-  resolveStateDir: () => "/tmp/milady-state",
+  resolveStateDir: () => "/tmp/example-state",
   saveElizaConfig: vi.fn(),
 }));
 

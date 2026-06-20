@@ -19,7 +19,7 @@ export interface Check {
 export interface CheckContext {
   /** Absolute path to the eliza monorepo root (containing packages/, .github/, etc). */
   readonly elizaRoot: string;
-  /** Absolute path to the outer workspace root (the milady/ checkout) if available. */
+  /** Absolute path to the outer workspace root (the parent checkout) if available. */
   readonly outerRoot: string;
 }
 

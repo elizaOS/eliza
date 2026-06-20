@@ -13,6 +13,7 @@ import { client } from "../../api";
 import { resolveCloudAgentApiBase } from "../../api/client-cloud";
 import type { CloudCompatAgent } from "../../api/client-types-cloud";
 import { getBootConfig } from "../../config/boot-config";
+import { useBranding } from "../../config/branding";
 import { useApp } from "../../state";
 import {
   createPersistedActiveServer,
@@ -52,6 +53,7 @@ function currentCloudToken(): string {
  */
 export function CloudAgentsSection() {
   const { elizaCloudConnected, setActionNotice } = useApp();
+  const { appName } = useBranding();
   const [agents, setAgents] = useState<CloudCompatAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -440,7 +442,7 @@ export function CloudAgentsSection() {
           <Input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Agent name (e.g. Milady)"
+            placeholder={`Agent name (e.g. ${appName})`}
             className="flex-1"
             disabled={creating}
           />

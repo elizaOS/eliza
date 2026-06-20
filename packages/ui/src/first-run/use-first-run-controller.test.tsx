@@ -507,4 +507,198 @@ describe("useFirstRunController cloud first-run", () => {
 
     expect(mocks.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
   });
+
+  it("auto-creates (no forceCreate) and skips the picker when the user has 0 agents", async () => {
+    mocks.getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
+    const { result } = renderHook(() => useFirstRunController());
+
+    await act(async () => {
+      await result.current.finishRuntime();
+    });
+
+    // 0 agents → the picker is skipped and we auto-create (no forceCreate),
+    // preserving the brand-new-user behavior with no extra click.
+    expect(mocks.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.selectOrProvisionCloudAgent.mock.calls[0][0].forceCreate,
+    ).toBeUndefined();
+    expect(mocks.completeFirstRun).toHaveBeenCalledWith("chat", {
+      launchCompanionOverlay: true,
+    });
+  });
+
+  it("shows the picker (ready, sorted newest-first) without provisioning when the user has agents", async () => {
+    mocks.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        compatAgent({
+          agent_id: "older",
+          status: "stopped",
+          created_at: "2026-06-10T00:00:00.000Z",
+        }),
+        compatAgent({
+          agent_id: "newer",
+          status: "stopped",
+          created_at: "2026-06-18T00:00:00.000Z",
+        }),
+      ],
+    });
+    const { result } = renderHook(() => useFirstRunController());
+
+    await act(async () => {
+      await result.current.finishRuntime();
+    });
+
+    expect(result.current.step).toBe("pick-agent");
+    expect(result.current.pickerPhase).toBe("ready");
+    expect(result.current.pickerAgents.map((a) => a.agent_id)).toEqual([
+      "newer",
+      "older",
+    ]);
+    // No provisioning happens until the user makes a choice.
+    expect(mocks.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+  });
+
+  it("onPickAgent provisions with preferAgentId, persists cloud:<id>, and completes", async () => {
+    mocks.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [compatAgent({ agent_id: "agent-x", agent_name: "Pick Me" })],
+    });
+    mocks.selectOrProvisionCloudAgent.mockResolvedValue({
+      agentId: "agent-x",
+      agentName: "Pick Me",
+      apiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-x",
+      bridgeUrl: null,
+      created: false,
+    });
+    mocks.createPersistedActiveServer.mockImplementation(
+      (args: ActiveServerArgs): ActiveServerRecord => ({
+        id: "cloud:agent-x",
+        kind: "cloud",
+        label: "Pick Me",
+        ...(args.apiBase ? { apiBase: args.apiBase } : {}),
+        ...(args.accessToken ? { accessToken: args.accessToken } : {}),
+      }),
+    );
+    const { result } = renderHook(() => useFirstRunController());
+
+    await act(async () => {
+      await result.current.finishRuntime();
+    });
+    await act(async () => {
+      await result.current.onPickAgent("agent-x");
+    });
+
+    expect(mocks.selectOrProvisionCloudAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ preferAgentId: "agent-x" }),
+    );
+    expect(mocks.savePersistedActiveServer).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "cloud:agent-x" }),
+    );
+    expect(mocks.completeFirstRun).toHaveBeenCalledWith("chat", {
+      launchCompanionOverlay: true,
+    });
+  });
+
+  it("onCreateNewAgent provisions with forceCreate:true", async () => {
+    mocks.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [compatAgent({ agent_id: "agent-1" })],
+    });
+    const { result } = renderHook(() => useFirstRunController());
+
+    await act(async () => {
+      await result.current.finishRuntime();
+    });
+    await act(async () => {
+      await result.current.onCreateNewAgent();
+    });
+
+    expect(mocks.selectOrProvisionCloudAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ forceCreate: true }),
+    );
+    expect(mocks.completeFirstRun).toHaveBeenCalledWith("chat", {
+      launchCompanionOverlay: true,
+    });
+  });
+
+  it("holds on an error state and does NOT auto-create when the agent fetch fails", async () => {
+    mocks.getCloudCompatAgents.mockResolvedValue({
+      success: false,
+      data: [],
+      error: "Could not load your agents.",
+    });
+    const { result } = renderHook(() => useFirstRunController());
+
+    await act(async () => {
+      await result.current.finishRuntime();
+    });
+
+    expect(result.current.step).toBe("pick-agent");
+    expect(result.current.pickerPhase).toBe("error");
+    expect(result.current.pickerError).toBe("Could not load your agents.");
+    expect(mocks.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(mocks.completeFirstRun).not.toHaveBeenCalled();
+  });
+
+  it("onPickAgent no-ops for the already-active agent", async () => {
+    mocks.loadPersistedActiveServer.mockReturnValue({
+      id: "cloud:active-1",
+      kind: "cloud",
+      label: "Active",
+    });
+    mocks.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [compatAgent({ agent_id: "active-1" })],
+    });
+    const { result } = renderHook(() => useFirstRunController());
+
+    await act(async () => {
+      await result.current.finishRuntime();
+    });
+    expect(result.current.pickerActiveAgentId).toBe("active-1");
+
+    await act(async () => {
+      await result.current.onPickAgent("active-1");
+    });
+
+    expect(mocks.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+  });
+
+  it("provisions once when onCreateNewAgent is invoked twice during binding", async () => {
+    mocks.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [compatAgent({ agent_id: "agent-1" })],
+    });
+    // Hold the provisioning call open so the second invocation lands while the
+    // first is still binding.
+    let release: (() => void) | null = null;
+    mocks.selectOrProvisionCloudAgent.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({
+              agentId: "agent-1",
+              agentName: "Agent One",
+              apiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1",
+              bridgeUrl: null,
+              created: true,
+            });
+        }),
+    );
+    const { result } = renderHook(() => useFirstRunController());
+
+    await act(async () => {
+      await result.current.finishRuntime();
+    });
+
+    await act(async () => {
+      void result.current.onCreateNewAgent();
+      void result.current.onCreateNewAgent();
+      await Promise.resolve();
+      release?.();
+    });
+
+    expect(mocks.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+  });
 });

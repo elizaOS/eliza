@@ -96,21 +96,10 @@
 		"phonemizer": "^1.2.1",
 		"ws": "^8.20.1"
 	},
-	"optionalDependencies": {
-		"node-llama-cpp": "3.18.1"
-	},
 	"peerDependencies": {
 		"@elizaos/core": "workspace:*",
 		"@elizaos/shared": "workspace:*"
 	},
-	"peerDependenciesMeta": {
-		"node-llama-cpp": {
-			"optional": true
-		}
-	},
-	"trustedDependencies": [
-		"node-llama-cpp"
-	],
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.14",
 		"@types/node": "24.12.2",

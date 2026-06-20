@@ -379,8 +379,8 @@ class AndroidLauncherRuntimeEvidenceTests(unittest.TestCase):
                     "schema": "eliza.android_system_apk_payload.v1",
                     "status": "pass",
                     "evidence": {
-                        "provenance_android_package": "ai.milady.milady",
-                        "vendor_ro_elizaos_home": "ai.milady.milady",
+                        "provenance_android_package": "ai.example.stale",
+                        "vendor_ro_elizaos_home": "ai.example.stale",
                     },
                 },
             )
@@ -396,7 +396,7 @@ class AndroidLauncherRuntimeEvidenceTests(unittest.TestCase):
             "launcher_package_mismatch_with_staged_apk",
             {finding["code"] for finding in report["findings"]},
         )
-        self.assertEqual(report["evidence"]["expected_package"], "ai.milady.milady")
+        self.assertEqual(report["evidence"]["expected_package"], "ai.example.stale")
 
     def test_report_sanitizes_host_local_aosp_inventory_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

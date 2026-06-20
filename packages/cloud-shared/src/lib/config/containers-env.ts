@@ -258,8 +258,8 @@ export const containersEnv = {
    * `CONTAINERS_PUBLIC_BASE_DOMAIN` (set to e.g. `apps.elizacloud.ai` on the apps
    * data plane by the apps-data-plane terraform) with NO fallback to the agent
    * sandbox domain (`ELIZA_CLOUD_AGENT_BASE_DOMAIN`) — unlike
-   * {@link publicBaseDomain}. So an app never silently inherits the agent/milady
-   * domain; an unset value surfaces as "no URL" instead of a wrong-domain one.
+   * {@link publicBaseDomain}. So an app never silently inherits the agent
+   * sandbox domain; an unset value surfaces as "no URL" instead of a wrong-domain one.
    */
   appsPublicBaseDomain(): string | undefined {
     return getCloudAwareEnv().CONTAINERS_PUBLIC_BASE_DOMAIN || undefined;

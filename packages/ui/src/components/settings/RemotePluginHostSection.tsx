@@ -24,6 +24,7 @@ import {
   subscribeDesktopRemotePluginWorkerChanged,
   uninstallDesktopRemotePlugin,
 } from "../../bridge/electrobun-rpc";
+import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import {
   type TranslationContextValue,
   useTranslation,
@@ -311,6 +312,7 @@ function RemotePluginRow({
 
 export function RemotePluginHostSection() {
   const { t } = useTranslation();
+  const branding = useBranding();
   const [snapshot, setSnapshot] =
     useState<DesktopRemotePluginStoreSnapshot | null>(null);
   const [statuses, setStatuses] = useState<WorkerStatusMap>({});
@@ -513,7 +515,8 @@ export function RemotePluginHostSection() {
               </span>{" "}
               {t("remotepluginhost.authTokenDesc", {
                 defaultValue:
-                  "a remote plugin can request your API token and call Eliza's HTTP API as you. Only install remote plugins from sources you trust.",
+                  "a remote plugin can request your API token and call {{appName}}'s HTTP API as you. Only install remote plugins from sources you trust.",
+                ...appNameInterpolationVars(branding),
               })}
             </p>
             {storeRoot ? (
@@ -552,7 +555,7 @@ export function RemotePluginHostSection() {
           })}
           stacked
         >
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <SettingsInput
               ref={sourceDirRef}
               variant="touch"
@@ -560,33 +563,35 @@ export function RemotePluginHostSection() {
               onChange={(e) => setSourceDir(e.target.value)}
               placeholder="/absolute/path/to/remote-plugin/source"
               disabled={busy}
-              className="flex-1"
+              className="w-full sm:flex-1"
               {...sourceDirAgentProps}
             />
-            <Button
-              ref={pickFolderRef}
-              type="button"
-              variant="outline"
-              onClick={() => void handlePickFolder()}
-              disabled={busy}
-              className="h-11 w-11 shrink-0 rounded-md p-0"
-              title={t("remotepluginhost.pickFolder", {
-                defaultValue: "Pick a folder…",
-              })}
-              {...pickFolderAgentProps}
-            >
-              <FolderOpen className="h-4 w-4" />
-            </Button>
-            <Button
-              ref={installRef}
-              type="button"
-              onClick={() => void handleInstall()}
-              disabled={busy || sourceDir.trim().length === 0}
-              className="h-11 shrink-0 rounded-md px-4 text-sm"
-              {...installAgentProps}
-            >
-              {t("remotepluginhost.install", { defaultValue: "Install" })}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                ref={pickFolderRef}
+                type="button"
+                variant="outline"
+                onClick={() => void handlePickFolder()}
+                disabled={busy}
+                className="h-11 w-11 shrink-0 rounded-md p-0"
+                title={t("remotepluginhost.pickFolder", {
+                  defaultValue: "Pick a folder…",
+                })}
+                {...pickFolderAgentProps}
+              >
+                <FolderOpen className="h-4 w-4" />
+              </Button>
+              <Button
+                ref={installRef}
+                type="button"
+                onClick={() => void handleInstall()}
+                disabled={busy || sourceDir.trim().length === 0}
+                className="h-11 flex-1 rounded-md px-4 text-sm sm:flex-none"
+                {...installAgentProps}
+              >
+                {t("remotepluginhost.install", { defaultValue: "Install" })}
+              </Button>
+            </div>
           </div>
         </SettingsRow>
       </SettingsGroup>

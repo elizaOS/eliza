@@ -542,6 +542,7 @@ export async function handleInboxAndCloudRelayRouteGroup(
   if (
     !ctx ||
     !(
+      ctx.pathname.startsWith("/api/notifications") ||
       ctx.pathname.startsWith("/api/inbox") ||
       ctx.pathname === "/api/cloud/relay-status"
     )

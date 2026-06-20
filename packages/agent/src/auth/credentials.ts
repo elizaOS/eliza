@@ -74,6 +74,16 @@ export function saveCredentials(
 ): void {
   const existing = loadAccount(provider, accountId);
   const now = Date.now();
+  // OAuth refresh grants frequently re-issue an access_token WITHOUT a fresh
+  // id_token (id_token is an OIDC login artifact). Codex's chatgpt-mode auth
+  // loader requires tokens.id_token to be present (a stale one is tolerated —
+  // Codex refreshes it — but a missing one fails "Authentication required").
+  // So carry forward the prior id_token when the incoming blob lacks one,
+  // rather than dropping it on every post-login refresh.
+  const mergedCredentials: OAuthCredentials =
+    credentials.idToken === undefined && existing?.credentials.idToken
+      ? { ...credentials, idToken: existing.credentials.idToken }
+      : credentials;
   const record: AccountCredentialRecord = {
     id: accountId,
     providerId: provider,
@@ -81,7 +91,7 @@ export function saveCredentials(
       existing?.label ??
       (accountId === DEFAULT_ACCOUNT_ID ? "Default" : accountId),
     source: existing?.source ?? "oauth",
-    credentials,
+    credentials: mergedCredentials,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     ...(existing?.lastUsedAt !== undefined

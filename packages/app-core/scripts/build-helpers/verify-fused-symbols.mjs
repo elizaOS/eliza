@@ -230,9 +230,12 @@ function hasElfNeededLlama(lib) {
  *   - The shared library MUST exist.
  *   - The library's exports MUST contain /llama_/ and /ov_/
  *     symbol families.
- *   - The library MUST export every `eliza_inference_*` ABI v4 symbol
- *     declared in `ffi.h`; otherwise the JS/Bun bridge can dlopen a
- *     half-fused artifact and only fail later at voice activation.
+ *   - The library MUST export every `eliza_inference_*` ABI symbol
+ *     declared in the fused FFI header (TTS/ASR/VAD plus the v8/v9 text
+ *     streaming, MTP, KV-quant, embedding, tokenizer, and vision symbols);
+ *     otherwise the JS/Bun bridge can dlopen a half-fused artifact and only
+ *     fail later at activation. There is no standalone libllama fallback, so a
+ *     missing symbol is a hard build error.
  *
  * Returns a small report so the caller can record it in CAPABILITIES.json.
  */
@@ -272,6 +275,38 @@ export const REQUIRED_ELIZA_INFERENCE_SYMBOLS = Object.freeze([
   "eliza_inference_vad_reset",
   "eliza_inference_vad_close",
   "eliza_inference_free_string",
+  // ABI v8/v9 — in-process streaming LLM, MTP, KV-cache quant, embeddings,
+  // tokenizer, and mmproj vision. The fused libelizainference is now the SOLE
+  // on-device inference library (the standalone libllama.so +
+  // libeliza-llama-shim.so "MTP set" is retired), so a fused lib missing any of
+  // these is NOT a tolerable half-build that falls back to libllama — it is a
+  // hard build error. Names are the exact exports declared in the submodule
+  // header `plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/
+  // include/eliza-inference-ffi.h`.
+  "eliza_inference_llm_stream_supported",
+  "eliza_inference_llm_stream_open",
+  "eliza_inference_llm_stream_next",
+  "eliza_inference_llm_mtp_supported",
+  "eliza_inference_llm_kv_quant_supported",
+  "eliza_inference_embed",
+  "eliza_inference_tokenize",
+  "eliza_inference_vision_supported",
+  "eliza_inference_describe_image",
+  // ABI v10 — Kokoro-82M TTS folded in-process. The static-fuse recipe sets
+  // LLAMA_BUILD_KOKORO=ON so kokoro_lib (its own GGUF reader + iSTFT decoder)
+  // links into libelizainference under the ELIZA_ENABLE_KOKORO define. These
+  // exports prove the fold took effect — a fused lib that built omnivoice but
+  // dropped kokoro (e.g. a target-ordering miss where kokoro_lib was not a
+  // defined target when elizainference's `if(TARGET kokoro_lib)` evaluated) is
+  // a half-fused artifact, not a tolerable fallback. Device-proven on a real
+  // Pixel: kokoro_supported()==1 + 2.36s of synthesized PCM. The `*_supported`
+  // entry is always exported (returns 0 when the build lacked kokoro_lib); the
+  // `_load`/`_synthesize`/`_sample_rate` entries are exported by the v10 FFI
+  // surface regardless, so requiring all four asserts the v10 ABI is present.
+  "eliza_inference_kokoro_supported",
+  "eliza_inference_kokoro_load",
+  "eliza_inference_kokoro_synthesize",
+  "eliza_inference_kokoro_sample_rate",
 ]);
 
 function hasExportedSymbol(symbols, name) {
@@ -373,7 +408,7 @@ function verifyFusedSymbolsInner({ outDir, target }) {
   );
   if (missingAbiSymbols.length > 0) {
     throw new Error(
-      `[omnivoice-verify] symbol-verify: libelizainference at ${lib} is missing ABI v3 symbol(s): ${missingAbiSymbols.join(", ")}. Rebuild the fused target against packages/app-core/scripts/ffi-stub/ffi.h.`,
+      `[omnivoice-verify] symbol-verify: libelizainference at ${lib} is missing required ABI symbol(s): ${missingAbiSymbols.join(", ")}. The fused libelizainference is the SOLE on-device inference library (standalone libllama.so is retired), so a missing text/voice/embed/vision symbol is a hard build error with no fallback. Rebuild the fused target against the FFI header at plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include/eliza-inference-ffi.h.`,
     );
   }
 

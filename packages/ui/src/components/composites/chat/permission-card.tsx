@@ -7,6 +7,7 @@ import {
 import type * as React from "react";
 import { useCallback, useEffect, useState } from "react";
 
+import { useBranding } from "../../../config/branding";
 import { cn } from "../../../lib/utils";
 import { Button } from "../../ui/button";
 import {
@@ -59,6 +60,7 @@ export function PermissionCard({
   labels = {},
   className,
 }: PermissionCardProps): React.ReactElement | null {
+  const { appName } = useBranding();
   const [state, setState] = useState<PermissionState>(
     initialState ?? registry?.get(permission) ?? defaultStateFor(permission),
   );
@@ -163,7 +165,7 @@ export function PermissionCard({
     (state.status === "denied" || state.status === "not-determined");
 
   const title = getPermissionLabel(permission);
-  const guidance = permissionGuidance(permission, state);
+  const guidance = permissionGuidance(permission, state, appName);
   const resolvedFallbackLabel =
     fallbackLabel ??
     (permission === "reminders" ? "Use internal reminder" : "Use fallback");
@@ -273,10 +275,13 @@ function statusLabel(state: PermissionState): string {
   return state.status.replace(/-/g, " ");
 }
 
-function platformSettingsLabel(platform: PermissionState["platform"]): string {
+function platformSettingsLabel(
+  platform: PermissionState["platform"],
+  appName: string,
+): string {
   if (platform === "darwin") return "System Settings > Privacy & Security";
-  if (platform === "ios") return "Settings > Eliza";
-  if (platform === "android") return "Settings > Apps > Eliza > Permissions";
+  if (platform === "ios") return `Settings > ${appName}`;
+  if (platform === "android") return `Settings > Apps > ${appName} > Permissions`;
   if (platform === "win32") return "Windows privacy settings";
   if (platform === "linux") return "system privacy settings";
   return "browser settings";
@@ -285,9 +290,10 @@ function platformSettingsLabel(platform: PermissionState["platform"]): string {
 function permissionGuidance(
   permission: PermissionId,
   state: PermissionState,
+  appName: string,
 ): { primary: string; secondary: string } {
   const title = getPermissionLabel(permission);
-  const settings = platformSettingsLabel(state.platform);
+  const settings = platformSettingsLabel(state.platform, appName);
 
   if (state.status === "denied" || state.canRequest === false) {
     return {
@@ -315,7 +321,7 @@ function permissionGuidance(
 
   if (permission === "usage-access") {
     return {
-      primary: "Open Android Usage Access and allow Eliza.",
+      primary: `Open Android Usage Access and allow ${appName}.`,
       secondary:
         "This lets app blocking and Screen Time features read foreground app usage. Return here and choose Check again when done.",
     };
@@ -323,7 +329,7 @@ function permissionGuidance(
 
   if (permission === "overlay") {
     return {
-      primary: "Allow Eliza to draw over other apps in Android settings.",
+      primary: `Allow ${appName} to draw over other apps in Android settings.`,
       secondary:
         "The blocking screen needs this to appear above distracting apps. If you cancel, press Grant access again.",
     };
@@ -331,7 +337,7 @@ function permissionGuidance(
 
   if (permission === "write-settings") {
     return {
-      primary: "Open Android Write Settings and allow Eliza.",
+      primary: `Open Android Write Settings and allow ${appName}.`,
       secondary:
         "Android requires this separate settings screen for brightness and device-setting changes.",
     };
@@ -339,7 +345,6 @@ function permissionGuidance(
 
   return {
     primary: `When the OS prompt appears, choose Allow for ${title}.`,
-    secondary:
-      "If you cancel by accident, press Grant access again. If the OS stops prompting, open settings, enable it for Eliza, then check again.",
+    secondary: `If you cancel by accident, press Grant access again. If the OS stops prompting, open settings, enable it for ${appName}, then check again.`,
   };
 }

@@ -2206,7 +2206,7 @@ describe("SubAgentRouter state_lost respawn cap", () => {
   });
 
   it("bounds the cross-session state_lost respawn cascade per origin lineage", async () => {
-    // Live regression (milady dog-site, 2026-05-28): a dying sub-agent emitted
+    // Live regression (2026-05-28): a dying sub-agent emitted
     // an "error"/session_state_lost event every ~60s; each respawn was a NEW
     // sessionId so the per-session roundTripCap never fired -> unbounded loop.
     // The per-origin cap (taskRoomId+agentType, default 3) bounds the lineage.

@@ -1,6 +1,24 @@
 /**
  * whisper.cpp ASR decoder for the voice transcriber chain.
  *
+ * WHY THIS EXISTS (a deliberate deviation from the fused-only rule). The
+ * production ASR is the fused `eliza_inference_asr_*` path inside
+ * `libelizainference` (eliza-1-asr, shipped in every Eliza-1 tier bundle —
+ * see `packages/shared/src/local-inference/catalog.ts`). Once a bundle is
+ * active that fused path always wins and whisper.cpp is never reached by the
+ * auto chain (the in-bundle `EngineVoiceBridge` does not even offer it).
+ * whisper.cpp is retained for ONE real device state the fused ASR cannot
+ * cover: the first-run / no-bundle window. A fresh desktop/OS install ships
+ * the small packaged whisper runtime (`base.en`, ~140 MB) staged by
+ * `desktop-build.mjs` `stageBundledWhisperRuntime()` so microphone
+ * transcription works immediately, before the user downloads a multi-GB
+ * Eliza-1 bundle. `packages/ui/src/first-run/voice-readiness.ts` reports
+ * voice as "ready" off this packaged runtime with no active bundle. It also
+ * serves as the runtime resilience fallback if the fused ASR throws
+ * `VoiceStartupError`/`AsrUnavailableError`. This is not a silent
+ * default-masking fallback (AGENTS.md §3): when nothing resolves the chain
+ * throws `AsrUnavailableError`, and it has a real UI trigger.
+ *
  * Replaces the previous OpenVINO Whisper Python-worker path. Loads
  * `libwhisper_eliza_adapter.{so,dylib,dll}` (built by
  * `plugins/plugin-local-inference/native/build-whisper.mjs`) via `bun:ffi`

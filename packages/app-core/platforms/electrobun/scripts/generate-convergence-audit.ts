@@ -212,7 +212,6 @@ const MODEL_NAMES = new Set([
   "plugin-lmstudio",
   "plugin-native-llama",
   "plugin-ollama",
-  "plugin-omnivoice",
   "plugin-rlm",
 ]);
 
@@ -220,7 +219,6 @@ const VOICE_NAMES = new Set([
   "plugin-edge-tts",
   "plugin-elevenlabs",
   "plugin-native-talkmode",
-  "plugin-omnivoice",
 ]);
 
 const DATA_NAMES = new Set([

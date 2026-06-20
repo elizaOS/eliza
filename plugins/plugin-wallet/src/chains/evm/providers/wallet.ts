@@ -58,6 +58,41 @@ function headersWithoutAuthorization(headersInit?: HeadersInit): Headers {
   return headers;
 }
 
+/**
+ * Per-turn safety bound for wallet balance RPC calls. `evmWalletProvider.get()`
+ * runs inside `composeState` on every message and is awaited (via `Promise.all`)
+ * before the agent can produce a reply, so an unbounded RPC against a slow or
+ * unreachable endpoint would block the WHOLE turn up to composeState's 30s
+ * provider cap — the dedicated-agent "28s per reply" symptom. Bounding each read
+ * means a wallet-enabled agent never pays more than this per chain; on timeout we
+ * return null (logged) and that chain's balance simply isn't shown that turn.
+ */
+const WALLET_BALANCE_RPC_TIMEOUT_MS = 3000;
+
+/** Transport-level fast-fail bound so a hung socket aborts instead of lingering. */
+const WALLET_RPC_FETCH_TIMEOUT_MS = 4000;
+
+/**
+ * Race `promise` against a timeout. Rejects with a labelled error on timeout so
+ * the caller's existing try/catch can treat it like any other RPC failure. The
+ * timer is always cleared so a fast-resolving promise leaves no dangling handle.
+ */
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 function isRetryableManagedRpcStatus(status: number): boolean {
   return (
     status === 401 ||
@@ -220,9 +255,14 @@ export class WalletProvider {
   async getWalletBalanceForChain(chainName: SupportedChain): Promise<string | null> {
     try {
       const client = this.getPublicClient(chainName);
-      const balance = await client.getBalance({
-        address: this._account.address,
-      });
+      // Bound the per-turn RPC so a slow/unreachable endpoint can never block the
+      // reply pipeline (see WALLET_BALANCE_RPC_TIMEOUT_MS). On timeout this rejects
+      // and is handled by the catch below exactly like any other RPC error.
+      const balance = await withTimeout(
+        client.getBalance({ address: this._account.address }),
+        WALLET_BALANCE_RPC_TIMEOUT_MS,
+        `getBalance(${chainName})`
+      );
       return formatUnits(balance, 18);
     } catch (error) {
       logger.error(
@@ -277,10 +317,15 @@ export class WalletProvider {
         fallbackRpcUrl &&
         this._cloudRpcDisabled.has(chainName)
       ) {
-        return http(fallbackRpcUrl);
+        return http(fallbackRpcUrl, {
+          timeout: WALLET_RPC_FETCH_TIMEOUT_MS,
+          retryCount: 0,
+        });
       }
 
       return http(managedRpc.rpcUrl, {
+        timeout: WALLET_RPC_FETCH_TIMEOUT_MS,
+        retryCount: 0,
         fetchFn:
           managedRpc.providerName === "elizacloud" && fallbackRpcUrl
             ? async (input, init) => {
@@ -331,9 +376,15 @@ export class WalletProvider {
 
     const customRpc = chain.rpcUrls.custom;
     if (customRpc) {
-      return http(customRpc.http[0]);
+      return http(customRpc.http[0], {
+        timeout: WALLET_RPC_FETCH_TIMEOUT_MS,
+        retryCount: 0,
+      });
     }
-    return http(chain.rpcUrls.default.http[0]);
+    return http(chain.rpcUrls.default.http[0], {
+      timeout: WALLET_RPC_FETCH_TIMEOUT_MS,
+      retryCount: 0,
+    });
   }
 
   static genChainFromName(chainName: string, customRpcUrl?: string | null): Chain {

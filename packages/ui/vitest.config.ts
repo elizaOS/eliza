@@ -151,10 +151,6 @@ export default defineConfig({
         find: /^discord\.js$/,
         replacement: resolve(packageRoot, "test/stubs/discord-js.ts"),
       },
-      {
-        find: /^node-llama-cpp$/,
-        replacement: resolve(packageRoot, "test/stubs/node-llama-cpp.ts"),
-      },
       // `@capacitor/app` is an optional native bridge the host app supplies — not
       // a declared dep of `@elizaos/ui`. Tests `vi.mock` it; alias to a resolvable
       // test double so vite's transform doesn't fail in CI where it isn't installed.

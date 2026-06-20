@@ -959,8 +959,8 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
                         "schema": "eliza.android_system_apk_payload.v1",
                         "status": "pass",
                         "evidence": {
-                            "provenance_android_package": "ai.milady.milady",
-                            "vendor_ro_elizaos_home": "ai.milady.milady",
+                            "provenance_android_package": "ai.elizaos.app",
+                            "vendor_ro_elizaos_home": "ai.elizaos.app",
                         },
                     }
                 ),
@@ -972,11 +972,11 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
                     {
                         "status": "PASS",
                         "app": {
-                            "package_name": "ai.milady.milady",
-                            "foreground_activity": "ai.milady.milady/.MainActivity",
-                            "home_resolve_activity": "ai.milady.milady/.MainActivity",
+                            "package_name": "ai.elizaos.app",
+                            "foreground_activity": "ai.elizaos.app/.MainActivity",
+                            "home_resolve_activity": "ai.elizaos.app/.MainActivity",
                             "role_holders": {
-                                "android.app.role.HOME": ["ai.milady.milady"],
+                                "android.app.role.HOME": ["ai.elizaos.app"],
                             },
                         },
                     }
@@ -1019,11 +1019,11 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             runtime_files[0]["json_expectations"],
             [
                 {"path": "status", "op": "eq", "expected": "PASS"},
-                {"path": "app.package_name", "op": "eq", "expected": "ai.milady.milady"},
+                {"path": "app.package_name", "op": "eq", "expected": "ai.elizaos.app"},
                 {
                     "path": "app.role_holders.android.app.role.HOME",
                     "op": "contains",
-                    "expected": "ai.milady.milady",
+                    "expected": "ai.elizaos.app",
                 },
             ],
         )

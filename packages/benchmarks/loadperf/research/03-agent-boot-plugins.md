@@ -425,7 +425,7 @@ clustering after F2/F3.
 ## D. Measurement & Benchmark Plan (exact commands)
 
 All commands from repo root `packages/...` (i.e. run inside
-`/home/shaw/milady/eliza`).
+`/path/to/eliza`).
 
 **D.1 Truthful cold readyMs + peak RSS (works today; fix F1 to make the harness
 trustworthy):**
