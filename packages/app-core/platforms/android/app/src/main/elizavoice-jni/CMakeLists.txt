@@ -63,12 +63,37 @@ add_library(elizainference SHARED IMPORTED)
 set_target_properties(elizainference PROPERTIES
     IMPORTED_LOCATION "${ELIZAVOICE_PREBUILT_SO}")
 
+# The DYNAMIC-Vulkan variant of libelizainference.so links its ggml/llama/mtmd
+# backends as separate .so (so the GPU backend libggml-vulkan.so can dlopen the
+# device's libvulkan.so at runtime — only possible in the bionic app process,
+# never the musl agent). Import each dep that is staged alongside so the
+# elizavoicejni link resolves libelizainference's DT_NEEDED; the bionic loader
+# pulls them in when System.loadLibrary("elizainference") runs. A CPU-only
+# static-fused libelizainference.so has none of these siblings, so each import
+# is guarded on the file existing — both variants build from this one list.
+set(ELIZAVOICE_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}")
+set(ELIZAVOICE_DEP_TARGETS "")
+foreach(dep ggml ggml-base ggml-cpu ggml-vulkan llama llama-common mtmd)
+    if(EXISTS "${ELIZAVOICE_LIB_DIR}/lib${dep}.so")
+        add_library(eliza_dep_${dep} SHARED IMPORTED)
+        set_target_properties(eliza_dep_${dep} PROPERTIES
+            IMPORTED_LOCATION "${ELIZAVOICE_LIB_DIR}/lib${dep}.so")
+        list(APPEND ELIZAVOICE_DEP_TARGETS eliza_dep_${dep})
+    endif()
+endforeach()
+
 find_library(LOG_LIB log)
 
 add_library(elizavoicejni SHARED elizavoice-jni.cpp)
 target_include_directories(elizavoicejni PRIVATE "${ELIZAVOICE_FFI_INCLUDE_DIR}")
 target_compile_options(elizavoicejni PRIVATE -O2 -DNDEBUG)
-target_link_libraries(elizavoicejni PRIVATE elizainference ${LOG_LIB})
+# --allow-shlib-undefined: libggml-vulkan.so NEEDs the device's libvulkan.so,
+# which isn't a link input (it resolves from /system/lib64 at runtime in the
+# app process). The shim never calls vulkan symbols directly, so leaving that
+# transitive NEEDED unresolved at link time is correct.
+target_link_libraries(elizavoicejni PRIVATE
+    elizainference ${ELIZAVOICE_DEP_TARGETS} ${LOG_LIB})
+target_link_options(elizavoicejni PRIVATE "-Wl,--allow-shlib-undefined")
 
 message(STATUS "[elizavoice-jni] building bionic JNI bridge for ${ANDROID_ABI}")
 message(STATUS "[elizavoice-jni] FFI header: ${ELIZAVOICE_FFI_INCLUDE_DIR}")

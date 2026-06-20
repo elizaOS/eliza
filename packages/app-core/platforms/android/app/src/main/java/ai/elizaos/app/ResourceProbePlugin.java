@@ -162,7 +162,7 @@ public class ResourceProbePlugin extends Plugin {
                 ticksPerSecond = 100; // POSIX-conventional default on Android
             }
             return ((utime + stime) * 1000.0) / ticksPerSecond;
-        } catch (IOException | NumberFormatException | RuntimeException e) {
+        } catch (IOException | RuntimeException e) {
             return JSONObject.NULL;
         }
     }
