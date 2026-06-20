@@ -20,6 +20,14 @@ import {
 } from "../features/advanced-capabilities/personality";
 import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
 import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
+import {
+	emitInferenceTiming,
+	INFERENCE_MARKS,
+	InferenceTurnTimer,
+	markInference,
+	nextInferenceTurnId,
+	runWithInferenceTiming,
+} from "../inference-timing";
 import { logger } from "../logger";
 import { describeImageCached } from "../media";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
@@ -9528,6 +9536,8 @@ export class DefaultMessageService implements IMessageService {
 
 				// Set up timeout monitoring
 				let timeoutId: NodeJS.Timeout | undefined;
+				// Declared outside the try so the `finally` can emit the breakdown.
+				let inferenceTimer: InferenceTurnTimer | undefined;
 
 				try {
 					runtime.logger.info(
@@ -9574,6 +9584,18 @@ export class DefaultMessageService implements IMessageService {
 						};
 					}
 					const startTime = Date.now();
+
+					// Per-turn inference latency timer. Every stage (composeState,
+					// useModel round-trips, the cloud HTTP fetch, evaluators) records
+					// spans/marks onto this via the inference-timing ALS context; the
+					// breakdown is emitted in the `finally` below. Off the hot path
+					// when no one reads it (records are bounded + cheap).
+					inferenceTimer = new InferenceTurnTimer({
+						turnId: nextInferenceTurnId(),
+						label: "message-turn",
+						roomId: message.roomId,
+						t0EpochMs: startTime,
+					});
 
 					// Emit run started event
 					await runtime.emitEvent(EventType.RUN_STARTED, {
@@ -9680,15 +9702,17 @@ export class DefaultMessageService implements IMessageService {
 												abortSignal,
 											}
 										: undefined;
-							return runWithStreamingContext(scopedStreamingContext, () =>
-								this.processMessage(
-									runtime,
-									message,
-									instrumentedCallback,
-									responseId,
-									runId,
-									startTime,
-									opts,
+							return runWithInferenceTiming(inferenceTimer, () =>
+								runWithStreamingContext(scopedStreamingContext, () =>
+									this.processMessage(
+										runtime,
+										message,
+										instrumentedCallback,
+										responseId,
+										runId,
+										startTime,
+										opts,
+									),
 								),
 							);
 						},
@@ -9777,6 +9801,12 @@ export class DefaultMessageService implements IMessageService {
 					return result;
 				} finally {
 					clearTimeout(timeoutId);
+
+					// Close + emit the per-turn latency breakdown. Detached side
+					// effects (post-turn evaluators) intentionally run after this and
+					// are NOT counted in turn latency — that is the proof they don't
+					// stall the user-visible reply.
+					emitInferenceTiming(inferenceTimer);
 
 					// Ensure latestResponseIds is cleaned up even if processMessage
 					// threw before reaching its own cleanup at the end of the method.
@@ -10509,6 +10539,7 @@ export class DefaultMessageService implements IMessageService {
 					if (callback) {
 						await callback(responseContent);
 						simpleReplyDelivered = true;
+						markInference(INFERENCE_MARKS.replyDelivered);
 					}
 				}
 			}

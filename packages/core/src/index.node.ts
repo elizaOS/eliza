@@ -133,6 +133,7 @@ export {
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
+export * from "./inference-timing";
 export * from "./lifeops-passive-connectors";
 export * from "./logger";
 // Export markdown utilities

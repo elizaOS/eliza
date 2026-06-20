@@ -1,5 +1,10 @@
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
-import { logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  timeInferenceSpan,
+  VECTOR_DIMS,
+} from "@elizaos/core";
 import { getSetting } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { createCloudApiClient } from "../utils/sdk-client";
@@ -138,12 +143,21 @@ export async function handleBatchTextEmbedding(
     );
 
     try {
-      const response = await client.requestRaw("POST", "/embeddings", {
-        json: {
-          model: embeddingModelName,
-          input: batchTexts,
-        },
-      });
+      // Records a `cloud.embedding` span on the active per-turn timer when an
+      // embedding happens to be on a turn's critical path (most are queued /
+      // detached, so this is a no-op there — which is exactly what proves they
+      // don't add to turn latency).
+      const response = await timeInferenceSpan(
+        "cloud.embedding",
+        () =>
+          client.requestRaw("POST", "/embeddings", {
+            json: {
+              model: embeddingModelName,
+              input: batchTexts,
+            },
+          }),
+        { batch: batchTexts.length }
+      );
 
       const rateLimitInfo = extractRateLimitInfo(response);
 
