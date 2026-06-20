@@ -335,8 +335,16 @@ describe('workflowAction chat operations', () => {
         optimizer: {
           engine: 'smithers-gepa' as const,
           target: 'workflow-generation' as const,
+          suiteName: 'daily-summary',
+          caseFile: 'evals/daily-summary.jsonl',
           recommendedCommand:
             'bunx smithers-orchestrator eval <workflow.tsx> --cases evals/daily-summary.jsonl --suite daily-summary',
+          recommendedEvalCommand:
+            'bunx smithers-orchestrator eval <workflow.tsx> --cases evals/daily-summary.jsonl --suite daily-summary',
+          recommendedOptimizeCommand: 'bunx smithers-orchestrator optimize',
+          recommendedObservabilityCommand: 'bunx smithers-orchestrator observability --detach',
+          recommendedMetricsCommand:
+            'bunx smithers-orchestrator up <workflow.tsx> --serve --metrics',
           notes: [],
         },
       })
@@ -350,7 +358,14 @@ describe('workflowAction chat operations', () => {
 
     expect(getWorkflowEvaluationSuite).toHaveBeenCalledWith('wf-1', 5);
     expect(result.success).toBe(true);
-    expect(result.values).toEqual({ workflowId: 'wf-1', count: 1 });
+    expect(result.values).toEqual({
+      workflowId: 'wf-1',
+      count: 1,
+      caseFile: 'evals/daily-summary.jsonl',
+      suiteName: 'daily-summary',
+    });
+    expect(result.text).toContain('Save cases to evals/daily-summary.jsonl.');
+    expect(result.text).toContain('Optimize: bunx smithers-orchestrator optimize');
     expect(result.data).toEqual({
       suite: expect.objectContaining({
         workflowId: 'wf-1',

@@ -163,8 +163,17 @@ beforeEach(() => {
     optimizer: {
       engine: "smithers-gepa",
       target: "workflow-generation",
+      suiteName: "cerebras-review-workflow",
+      caseFile: "evals/cerebras-review-workflow.jsonl",
       recommendedCommand:
         "bunx smithers-orchestrator eval <workflow.tsx> --cases evals/cerebras-review-workflow.jsonl --suite cerebras-review-workflow",
+      recommendedEvalCommand:
+        "bunx smithers-orchestrator eval <workflow.tsx> --cases evals/cerebras-review-workflow.jsonl --suite cerebras-review-workflow",
+      recommendedOptimizeCommand: "bunx smithers-orchestrator optimize",
+      recommendedObservabilityCommand:
+        "bunx smithers-orchestrator observability --detach",
+      recommendedMetricsCommand:
+        "bunx smithers-orchestrator up <workflow.tsx> --serve --metrics",
       notes: [],
     },
   });
