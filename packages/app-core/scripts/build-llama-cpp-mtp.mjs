@@ -116,6 +116,14 @@ const REQUIRED_FUSED_SYMBOLS = [
   "eliza_inference_mmap_acquire",
   "eliza_inference_tts_synthesize",
   "eliza_inference_asr_transcribe",
+  // Kokoro is the mobile-default local voice (#8787), so the fused mobile slice
+  // MUST carry the in-process Kokoro FFI exports — identical to the AOSP /
+  // verify-fused-symbols.mjs gate. A slice missing these throws at synth time on
+  // a phone (no OmniVoice fallback on mobile), so fail the build here instead.
+  "eliza_inference_kokoro_supported",
+  "eliza_inference_kokoro_load",
+  "eliza_inference_kokoro_synthesize",
+  "eliza_inference_kokoro_sample_rate",
   "mtmd_init_from_file",
 ].map((symbol) => ({
   symbol,
@@ -412,11 +420,27 @@ function buildTarget(target) {
     // real symbols resolve from the staged archive.
     omnivoice: t.fused
       ? {
-          abiVersion: 4,
+          // Derived from the symbols actually present in the built library
+          // rather than hardcoded — a Kokoro+EOT fused slice is ABI v11, the
+          // Kokoro-only slice is v10, and the legacy TTS/ASR/VAD-only fork is v4
+          // (#8787: the old hardcoded `4` advertised an ABI with no Kokoro at
+          // all while the desktop/AOSP path was already v11).
+          abiVersion: /(?:^|\s)_?eliza_inference_llm_eot_score\b/m.test(
+            symbolsText,
+          )
+            ? 11
+            : /(?:^|\s)_?eliza_inference_kokoro_synthesize\b/m.test(symbolsText)
+              ? 10
+              : 4,
           library: "libelizainference",
           tts: "omnivoice",
           asr: "qwen3-asr",
           vad: "silero",
+          kokoro: /(?:^|\s)_?eliza_inference_kokoro_synthesize\b/m.test(
+            symbolsText,
+          )
+            ? "kokoro-82m"
+            : null,
         }
       : null,
   };
