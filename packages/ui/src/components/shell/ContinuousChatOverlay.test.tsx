@@ -462,13 +462,16 @@ describe("ContinuousChatOverlay", () => {
     expect(scrollIntoView).toHaveBeenCalled();
   });
 
-  it("does NOT close on a pointer-down outside the sheet (no click-out dismiss)", () => {
+  it("does NOT close on an outside pointer-down while the keyboard is DOWN", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
+    // fireEvent.focus drives the React open state but does NOT move
+    // document.activeElement in jsdom — i.e. the composer isn't really focused
+    // (no soft keyboard). An outside tap in that state must NOT close the chat;
+    // closing is a pull-down, the scrim, or Escape.
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    // Clicking the live view behind (here, the bare body) must NOT close it —
-    // the only dismiss paths are a pull-down drag and Escape.
+    expect(document.activeElement).not.toBe(screen.getByLabelText("message"));
     fireEvent.pointerDown(document.body);
     fireEvent.click(document.body);
     expect(sheet.getAttribute("data-variant")).toBe("open");
@@ -654,7 +657,11 @@ describe("ContinuousChatOverlay", () => {
     expect(pill.getAttribute("aria-hidden")).toBeNull();
   });
 
-  it("recovers from the pill back to the input on tap", () => {
+  it("opens the chat to HALF on a SINGLE pill tap (not the bare input bar)", () => {
+    // Regression: a tap on the pill used to land on the bare input bar (the
+    // chat "blinked" without opening) and needed a SECOND tap to reach half.
+    // With a conversation to show, ONE tap must open straight to half — exactly
+    // like a flick-up.
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
@@ -662,8 +669,11 @@ describe("ContinuousChatOverlay", () => {
     fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
     const pill = screen.getByTestId("chat-pill");
-    fireEvent.click(pill);
-    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    // A tap = pointer down + up with no travel. The pill has no onClick; the
+    // pull-gesture binding is the single tap authority (onPointerUp → onTap).
+    fireEvent.pointerDown(pill, { clientY: 400, pointerId: 1 });
+    fireEvent.pointerUp(pill, { clientY: 400, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("half");
     const textarea = screen.getByTestId("chat-composer-textarea");
     expect(textarea).toBeTruthy();
     // The pill tap must focus the composer (so iOS raises the keyboard on the
@@ -673,6 +683,40 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getByTestId("chat-content").hasAttribute("inert")).toBe(
       false,
     );
+  });
+
+  it("opens a thread-less pill tap to the bare input bar (nothing to open into)", () => {
+    // With no conversation yet there's no thread to reveal, so a pill tap forms
+    // the input bar (and raises the keyboard) rather than an empty half sheet.
+    render(
+      <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+    const pill = screen.getByTestId("chat-pill");
+    fireEvent.pointerDown(pill, { clientY: 400, pointerId: 1 });
+    fireEvent.pointerUp(pill, { clientY: 400, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(document.activeElement).toBe(
+      screen.getByTestId("chat-composer-textarea"),
+    );
+  });
+
+  it("opens the pill on keyboard activation (Enter)", () => {
+    // Keyboard users still open the pill via onKeyDown even though the native
+    // onClick was removed in favour of the gesture binding.
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("pill");
+    fireEvent.keyDown(screen.getByTestId("chat-pill"), { key: "Enter" });
+    expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
   it("flicks UP from the pill to recover the input", () => {
