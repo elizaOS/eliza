@@ -597,8 +597,14 @@ interface LifecycleJobOptions<TData extends object> {
    * and before the new job is inserted. Used by delete to flip the
    * sandbox row to `deletion_pending` so the UI reflects intent and
    * concurrent mutations bail. Skipped if an existing job is reused.
+   * Receives the just-read sandbox row so it can branch on the prior
+   * status (e.g. delete resets the failure counter on a fresh, non-delete
+   * enqueue but preserves it across recovery re-enqueues).
    */
-  beforeInsert?: (tx: Parameters<Parameters<typeof dbWrite.transaction>[0]>[0]) => Promise<void>;
+  beforeInsert?: (
+    tx: Parameters<Parameters<typeof dbWrite.transaction>[0]>[0],
+    sandbox: LifecycleSandboxRow,
+  ) => Promise<void>;
 }
 
 /**
@@ -693,7 +699,7 @@ export class ProvisioningJobService {
         return { job: await hydrateJob(existing), created: false };
       }
 
-      await opts.beforeInsert?.(tx);
+      await opts.beforeInsert?.(tx, sandbox);
 
       const [job] = await tx
         .insert(jobs)
@@ -805,11 +811,20 @@ export class ProvisioningJobService {
       // Flip status so the UI shows "deleting" and concurrent mutations
       // bail. Actual row removal happens in executeAgentDelete once SSH
       // stop() succeeds.
-      beforeInsert: async (tx) => {
+      beforeInsert: async (tx, sandbox) => {
+        // A genuine user-initiated delete (the row is not already in a deletion
+        // state) starts the deletion-failure counter fresh — error_count may
+        // carry a stale provisioning-error value, and a new delete should get a
+        // full set of recovery sweeps before the circuit-breaker abandons it.
+        // A recovery re-enqueue (status is already deletion_pending/_failed)
+        // PRESERVES the count so reEnqueueFailedDeletions can stop the loop.
+        const isRecoveryReEnqueue =
+          sandbox.status === "deletion_pending" || sandbox.status === "deletion_failed";
         await tx
           .update(agentSandboxes)
           .set({
             status: "deletion_pending" as const,
+            ...(isRecoveryReEnqueue ? {} : { error_count: 0 }),
             updated_at: new Date(),
           })
           .where(eq(agentSandboxes.id, params.agentId));
@@ -1520,11 +1535,19 @@ export class ProvisioningJobService {
       case JOB_TYPES.AGENT_DELETE: {
         const { agentId } = readAgentDeleteJobData(job);
         return async (tx) => {
+          // Bump error_count so reEnqueueFailedDeletions can circuit-break a
+          // permanently-dead node: each exhausted agent_delete adds one, and
+          // once the count crosses the re-enqueue threshold the sweep stops
+          // re-arming the row and alerts ops instead of looping forever. Once a
+          // row reaches deletion_failed the only writer of error_count is this
+          // path (markError only touches `error` rows), so the count tracks
+          // failed delete sweeps. A fresh user-initiated delete resets it.
           await tx
             .update(agentSandboxes)
             .set({
               status: "deletion_failed",
               error_message: `Deletion permanently failed after ${job.max_attempts} attempts: ${errorMsg}`,
+              error_count: sql`${agentSandboxes.error_count} + 1`,
               updated_at: new Date(),
             })
             .where(eq(agentSandboxes.id, agentId));
@@ -2447,6 +2470,13 @@ export class ProvisioningJobService {
    * since come back will finally drop the container + row. `minAgeMs` keeps
    * this from fighting the live retry loop right after a failure.
    *
+   * Circuit-breaker: a permanently-dead node would otherwise be re-armed every
+   * sweep forever. Each exhausted agent_delete bumps the sandbox's `error_count`
+   * (see the AGENT_DELETE failure handler), so a row that has already been
+   * re-enqueued `maxReEnqueues` times is SKIPPED — logged once as
+   * `event: "deletion.abandoned_candidate"` for ops to investigate (the
+   * container likely needs a manual node-level teardown) rather than looping.
+   *
    * NOTE (follow-up): capacity accounting still counts `deletion_failed` rows
    * until they are actually removed; excluding them from capacity is a separate
    * change in the agent-creation path.
@@ -2454,9 +2484,16 @@ export class ProvisioningJobService {
   async reEnqueueFailedDeletions(params?: {
     minAgeMs?: number;
     maxAgents?: number;
-  }): Promise<{ scanned: number; reEnqueued: number; failed: number }> {
+    maxReEnqueues?: number;
+  }): Promise<{
+    scanned: number;
+    reEnqueued: number;
+    failed: number;
+    abandoned: number;
+  }> {
     const minAgeMs = params?.minAgeMs ?? 30 * 60 * 1000; // 30m
     const maxAgents = params?.maxAgents ?? 50;
+    const maxReEnqueues = params?.maxReEnqueues ?? 5;
     const cutoff = new Date(Date.now() - minAgeMs);
 
     const stuck = await dbWrite
@@ -2464,6 +2501,7 @@ export class ProvisioningJobService {
         id: agentSandboxes.id,
         organizationId: agentSandboxes.organization_id,
         userId: agentSandboxes.user_id,
+        errorCount: agentSandboxes.error_count,
       })
       .from(agentSandboxes)
       .where(
@@ -2476,7 +2514,21 @@ export class ProvisioningJobService {
 
     let reEnqueued = 0;
     let failed = 0;
+    let abandoned = 0;
     for (const agent of stuck) {
+      // Circuit-breaker: a row that has burned through maxReEnqueues sweeps is a
+      // probably-dead node — stop re-arming it and surface it for ops once.
+      if ((agent.errorCount ?? 0) >= maxReEnqueues) {
+        abandoned += 1;
+        logger.warn("[provisioning-jobs] deletion abandoned — exceeded re-enqueue budget", {
+          event: "deletion.abandoned_candidate",
+          agentId: agent.id,
+          orgId: agent.organizationId,
+          errorCount: agent.errorCount,
+          maxReEnqueues,
+        });
+        continue;
+      }
       try {
         await this.enqueueAgentDeleteOnce({
           agentId: agent.id,
@@ -2498,9 +2550,10 @@ export class ProvisioningJobService {
         scanned: stuck.length,
         reEnqueued,
         failed,
+        abandoned,
       });
     }
-    return { scanned: stuck.length, reEnqueued, failed };
+    return { scanned: stuck.length, reEnqueued, failed, abandoned };
   }
 
   private async recoverStaleJobs(

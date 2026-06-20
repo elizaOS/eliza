@@ -3579,7 +3579,11 @@ export class ElizaSandboxService {
     reprovisioned: boolean;
     error?: string;
   }> {
-    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    // Read from the PRIMARY: a replica-lagged "Agent not found" / stale status
+    // here would turn a legitimate resume into a terminal no-op (the daemon
+    // maps "Agent not found" to completed), silently dropping the request. The
+    // existence + deletion-state check must be authoritative.
+    const rec = await this.getAgentForWrite(agentId, orgId);
     if (!rec || this.isAwaitingDeletion(rec.status))
       return {
         success: false,
@@ -3630,7 +3634,8 @@ export class ElizaSandboxService {
     backupId?: string;
     error?: string;
   }> {
-    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    // Primary read: replica lag must not turn a real sleep into a no-op.
+    const rec = await this.getAgentForWrite(agentId, orgId);
     if (!rec) return { success: false, containerRemoved: false, error: "Agent not found" };
     if (rec.status === "sleeping") return { success: true, containerRemoved: true };
     if (rec.status === "provisioning") {
@@ -3743,7 +3748,8 @@ export class ElizaSandboxService {
     restoredBackupId?: string;
     error?: string;
   }> {
-    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    // Primary read: a replica-lagged "Agent not found" must not no-op a wake.
+    const rec = await this.getAgentForWrite(agentId, orgId);
     if (!rec || this.isAwaitingDeletion(rec.status))
       return { success: false, reprovisioned: false, error: "Agent not found" };
     if (rec.status === "running" && rec.bridge_url) {
@@ -3789,8 +3795,10 @@ export class ElizaSandboxService {
     // Bail before shutdown()+provision() if the row is being deleted — restart
     // would otherwise flip a deletion_pending row to `stopped` and rebuild a
     // container the agent_delete job is tearing down. Reported as not-found so
-    // the daemon handler completes the job as a terminal no-op.
-    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    // the daemon handler completes the job as a terminal no-op. Read from the
+    // PRIMARY so a replica-lagged status doesn't bail a legitimate restart (or
+    // miss an in-flight deletion) on stale data.
+    const rec = await this.getAgentForWrite(agentId, orgId);
     if (!rec || this.isAwaitingDeletion(rec.status)) {
       return {
         success: false,

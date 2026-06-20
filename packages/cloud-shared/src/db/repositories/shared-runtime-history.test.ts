@@ -34,8 +34,8 @@ describe("SharedRuntimeHistoryRepository.deleteByAgent", () => {
 
     // The WHERE must filter on agent_id only (delete-by-agent across all
     // channels), never an unscoped DELETE that would nuke other agents' history.
-    expect(capturedWhere).toBeDefined();
-    const sql = new PgDialect().sqlToQuery(capturedWhere as SQL);
+    if (!capturedWhere) throw new Error("WHERE clause was not captured");
+    const sql = new PgDialect().sqlToQuery(capturedWhere);
     expect(sql.sql).toContain("agent_id");
     expect(sql.params).toContain("e06bb509-6c52-4c33-a9f7-66addc43e8c8");
   });

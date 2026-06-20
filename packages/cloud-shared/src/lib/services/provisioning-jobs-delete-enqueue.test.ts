@@ -113,11 +113,13 @@ afterEach(() => {
 describe("enqueueAgentDeleteOnce.beforeInsert — cancels other pending jobs", () => {
   test("marks the agent's non-delete pending/in_progress jobs cancelled", async () => {
     cancelledReturning = [{ id: "j-restart" }, { id: "j-snapshot" }];
+    const orgId = "22222222-2222-4222-8222-222222222222";
+    const agentId = "agent";
     const { provisioningJobService } = await import("./provisioning-jobs");
 
     await provisioningJobService.enqueueAgentDeleteOnce({
-      agentId: "agent",
-      organizationId: "22222222-2222-4222-8222-222222222222",
+      agentId,
+      organizationId: orgId,
       userId: "33333333-3333-4333-8333-333333333333",
     });
 
@@ -129,13 +131,25 @@ describe("enqueueAgentDeleteOnce.beforeInsert — cancels other pending jobs", (
     );
     expect(cancelSet).toBeDefined();
 
-    // The cancel WHERE excludes agent_delete (delete never self-cancels) and is
-    // scoped to pending/in_progress.
-    expect(capturedUpdateWhere).toBeDefined();
-    const sql = new PgDialect().sqlToQuery(capturedUpdateWhere as SQL);
+    // The cancel WHERE is scoped to this org AND this agent, excludes
+    // agent_delete (delete never self-cancels), and only touches
+    // pending/in_progress rows (terminal jobs are never reopened). Asserting the
+    // scoping prevents a future edit from cancelling sibling agents' or other
+    // orgs' jobs.
+    if (!capturedUpdateWhere) throw new Error("cancel WHERE clause was not captured");
+    const sql = new PgDialect().sqlToQuery(capturedUpdateWhere);
+    // Status filter: only pending/in_progress, never a terminal status.
     expect(sql.sql).toContain("pending");
     expect(sql.sql).toContain("in_progress");
+    expect(sql.sql).not.toContain("completed");
+    expect(sql.sql).not.toContain("cancelled");
+    expect(sql.sql).not.toContain("failed");
+    // Type filter: excludes agent_delete (the != operator + the bound value).
+    expect(sql.sql).toMatch(/<>|!=|not/i);
     expect(sql.params).toContain("agent_delete");
+    // Org + agent scoping: both ids are bound parameters of this WHERE clause.
+    expect(sql.params).toContain(orgId);
+    expect(sql.params).toContain(agentId);
   });
 });
 
@@ -177,8 +191,8 @@ describe("enqueueScheduledBackups — only reachable agents", () => {
 describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () => {
   test("re-enqueues agent_delete for each old deletion_failed row", async () => {
     selectRows = [
-      { id: "a1", organizationId: "o1", userId: "u1" },
-      { id: "a2", organizationId: "o2", userId: "u2" },
+      { id: "a1", organizationId: "o1", userId: "u1", errorCount: 1 },
+      { id: "a2", organizationId: "o2", userId: "u2", errorCount: 2 },
     ];
     const { provisioningJobService } = await import("./provisioning-jobs");
     const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentDeleteOnce").mockResolvedValue({
@@ -187,7 +201,7 @@ describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () =
     } as never);
     try {
       const res = await provisioningJobService.reEnqueueFailedDeletions();
-      expect(res).toEqual({ scanned: 2, reEnqueued: 2, failed: 0 });
+      expect(res).toEqual({ scanned: 2, reEnqueued: 2, failed: 0, abandoned: 0 });
       expect(enqueueSpy).toHaveBeenCalledTimes(2);
       expect(enqueueSpy.mock.calls.map((c) => c[0].agentId)).toEqual(["a1", "a2"]);
 
@@ -201,8 +215,8 @@ describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () =
 
   test("an enqueue throw on one row is counted, the rest still process", async () => {
     selectRows = [
-      { id: "a1", organizationId: "o1", userId: "u1" },
-      { id: "a2", organizationId: "o2", userId: "u2" },
+      { id: "a1", organizationId: "o1", userId: "u1", errorCount: 0 },
+      { id: "a2", organizationId: "o2", userId: "u2", errorCount: 0 },
     ];
     const { provisioningJobService } = await import("./provisioning-jobs");
     const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentDeleteOnce").mockImplementation(
@@ -213,7 +227,47 @@ describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () =
     );
     try {
       const res = await provisioningJobService.reEnqueueFailedDeletions();
-      expect(res).toEqual({ scanned: 2, reEnqueued: 1, failed: 1 });
+      expect(res).toEqual({ scanned: 2, reEnqueued: 1, failed: 1, abandoned: 0 });
+    } finally {
+      enqueueSpy.mockRestore();
+    }
+  });
+
+  test("circuit-breaker: a row past the re-enqueue budget is abandoned, not re-armed", async () => {
+    // a1 is under the default budget (5) and gets re-enqueued; a2 is at/over the
+    // budget and must be skipped + surfaced for ops instead of looping forever.
+    selectRows = [
+      { id: "a1", organizationId: "o1", userId: "u1", errorCount: 4 },
+      { id: "a2", organizationId: "o2", userId: "u2", errorCount: 5 },
+    ];
+    const { provisioningJobService } = await import("./provisioning-jobs");
+    const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentDeleteOnce").mockResolvedValue({
+      created: true,
+      job: { id: "del-1" },
+    } as never);
+    try {
+      const res = await provisioningJobService.reEnqueueFailedDeletions();
+      expect(res).toEqual({ scanned: 2, reEnqueued: 1, failed: 0, abandoned: 1 });
+      // Only the under-budget row was re-enqueued; the dead one was not.
+      expect(enqueueSpy).toHaveBeenCalledTimes(1);
+      expect(enqueueSpy.mock.calls[0]?.[0].agentId).toBe("a1");
+    } finally {
+      enqueueSpy.mockRestore();
+    }
+  });
+
+  test("circuit-breaker threshold is configurable via maxReEnqueues", async () => {
+    selectRows = [{ id: "a1", organizationId: "o1", userId: "u1", errorCount: 2 }];
+    const { provisioningJobService } = await import("./provisioning-jobs");
+    const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentDeleteOnce").mockResolvedValue({
+      created: true,
+      job: { id: "del-1" },
+    } as never);
+    try {
+      // With a budget of 2, an errorCount of 2 is already abandoned.
+      const res = await provisioningJobService.reEnqueueFailedDeletions({ maxReEnqueues: 2 });
+      expect(res).toEqual({ scanned: 1, reEnqueued: 0, failed: 0, abandoned: 1 });
+      expect(enqueueSpy).not.toHaveBeenCalled();
     } finally {
       enqueueSpy.mockRestore();
     }
