@@ -113,3 +113,39 @@ export function isElizaCloudControlPlaneAgentlessBase(
   }
   return isCloudAgentsCollectionBase(value);
 }
+
+/**
+ * True when `value` is a DEDICATED cloud agent base — an agent that lives on its
+ * own `<agentId>.elizacloud.ai` subdomain (not a control-plane host, not the
+ * shared REST adapter path). Such a base serves chat over REST and 404s on the
+ * first-run shell like the shared adapter, but unlike the shared adapter it can
+ * also vanish entirely when the agent is deleted or its node is unreachable.
+ */
+export function isDedicatedCloudAgentBase(
+  value: string | null | undefined,
+): boolean {
+  if (!value?.trim()) return false;
+  const url = normalizeHttpUrl(value.trim());
+  if (!url) return false;
+  const host = url.hostname.toLowerCase();
+  return (
+    host.endsWith(".elizacloud.ai") &&
+    !ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(host)
+  );
+}
+
+/**
+ * Extract the agent id from a dedicated cloud agent base
+ * (`https://<agentId>.elizacloud.ai`) — the left-most subdomain label. Returns
+ * null for any base that is not a dedicated cloud agent subdomain.
+ */
+export function dedicatedCloudAgentIdFromBase(
+  value: string | null | undefined,
+): string | null {
+  if (!isDedicatedCloudAgentBase(value)) return null;
+  const url = normalizeHttpUrl((value as string).trim());
+  if (!url) return null;
+  const host = url.hostname.toLowerCase();
+  const label = host.slice(0, host.length - ".elizacloud.ai".length);
+  return label.includes(".") ? label.slice(label.lastIndexOf(".") + 1) : label;
+}

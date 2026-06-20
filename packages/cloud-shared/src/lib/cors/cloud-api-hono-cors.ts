@@ -47,6 +47,22 @@ const STATIC_ALLOWED_ORIGINS = new Set<string>([
   "https://www.eliza.ai",
 ]);
 const PAGES_PREVIEW_SUFFIX = ".eliza-cloud-enq.pages.dev";
+
+/**
+ * The Eliza mobile/desktop app's Capacitor/Electrobun WebView document origins.
+ * On native the WebView origin is `https://localhost` (android/iosScheme="https",
+ * see packages/app/capacitor.config.ts) or `capacitor://localhost` (iOS default);
+ * desktop uses `electrobun://`. These talk to a SHARED-runtime agent's REST surface
+ * on `api.elizacloud.ai` (`/api/v1/eliza/agents/:id/api/...`) and must read SSE chat
+ * streams cross-origin via the native browser fetch (CapacitorWebFetch). That read
+ * is credentialed/browser-enforced, so CORS must reflect the specific origin +
+ * `Access-Control-Allow-Credentials` (a `*` wildcard is rejected) and name the
+ * X-Eliza* headers the client always sends. Mirrors the dedicated-agent subdomain
+ * allow-list in packages/agent/src/api/server-helpers-auth.ts.
+ */
+const APP_LOCAL_ORIGIN_RE =
+  /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|\[0:0:0:0:0:0:0:1\])(:\d+)?$/i;
+const APP_SCHEME_ORIGIN_RE = /^(capacitor|capacitor-electron|app|tauri|file|electrobun):\/\/.*$/i;
 const PUBLIC_TOKEN_API_PATH_PREFIXES = [
   "/api/v1/app-credits/",
   "/api/v1/voice/",
@@ -73,6 +89,11 @@ const PUBLIC_TOKEN_API_PATHS = new Set<string>([
 export function isFirstPartyOrigin(origin: string): boolean {
   if (STATIC_ALLOWED_ORIGINS.has(origin)) return true;
   if (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
+    return true;
+  }
+  // The Eliza app WebView (Capacitor `https://localhost`/`capacitor://localhost`,
+  // Electrobun, local dev) — credentialed SSE reads need origin-reflected CORS.
+  if (APP_LOCAL_ORIGIN_RE.test(origin) || APP_SCHEME_ORIGIN_RE.test(origin)) {
     return true;
   }
   try {

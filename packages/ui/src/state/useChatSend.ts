@@ -15,12 +15,14 @@ import {
   client,
   type ImageAttachment,
 } from "../api";
+import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
 import {
   expandSavedCustomCommand,
   loadSavedCustomCommands,
   normalizeSlashCommandName,
 } from "../chat";
 import { getWindowNavigationPath, type Tab } from "../navigation";
+import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { clearChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
@@ -38,6 +40,24 @@ import {
 // ── Types ────────────────────────────────────────────────────────────
 
 const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
+
+/**
+ * True when the active client base is an Eliza Cloud agent — either the
+ * shared-runtime REST adapter (`/api/v1/eliza/agents/<id>`) or a dedicated agent
+ * on its own `<id>.elizacloud.ai` subdomain. A chat-send 404 against such a base
+ * is ambiguous: it can mean "the conversation was deleted" (recoverable by
+ * recreating the conversation) OR "the agent itself was deleted / is
+ * unreachable" — in which case recreating the conversation also 404s and the
+ * user's message must NOT be silently dropped.
+ */
+function isCloudAgentBase(value: string | null | undefined): boolean {
+  if (!value?.trim()) return false;
+  // Either the shared-runtime REST adapter or a dedicated <id>.elizacloud.ai
+  // subdomain; control-plane hosts are excluded by isDedicatedCloudAgentBase.
+  return (
+    isDirectCloudSharedAgentBase(value) || isDedicatedCloudAgentBase(value)
+  );
+}
 
 interface ChatViewRouting {
   view: string;
@@ -908,6 +928,12 @@ export function useChatSend(deps: UseChatSendDeps) {
 
         const status = (err as { status?: number }).status;
         if (status === 404) {
+          // A 404 on send usually means the conversation row was deleted —
+          // recreate it and replay. But on an Eliza Cloud agent base the 404 can
+          // instead mean the AGENT itself was deleted / is unreachable, in which
+          // case createConversation() ALSO 404s. Distinguish the two so we don't
+          // silently drop the user's message on a dead agent.
+          let conversation: Conversation;
           try {
             const { conversation: rawConversation } =
               await client.createConversation();
@@ -916,7 +942,39 @@ export function useChatSend(deps: UseChatSendDeps) {
                 "Conversation creation returned an invalid payload.",
               );
             }
-            const conversation = rawConversation;
+            conversation = rawConversation;
+          } catch (createErr) {
+            const createStatus = (createErr as { status?: number }).status;
+            // Conversation recreation also failed against a cloud agent base —
+            // the agent is gone/unreachable. Surface the failure and KEEP the
+            // user's message (drop only the empty assistant placeholder) so the
+            // user can retry or re-select an agent instead of losing their text.
+            if (createStatus === 404 && isCloudAgentBase(client.getBaseUrl())) {
+              setActionNotice(
+                "This agent is no longer reachable — it may have been deleted. Your message was kept; pick another agent and try again.",
+                "error",
+                10_000,
+              );
+              setConversationMessages((prev) =>
+                prev.filter(
+                  (message) =>
+                    !(message.id === assistantMsgId && !message.text.trim()),
+                ),
+              );
+              return;
+            }
+            // Non-cloud base, or a different create failure — preserve the prior
+            // behaviour (drop the empty assistant placeholder).
+            setConversationMessages((prev) =>
+              prev.filter(
+                (message) =>
+                  !(message.id === assistantMsgId && !message.text.trim()),
+              ),
+            );
+            return;
+          }
+
+          try {
             const nextCutoffTs = Date.now();
             setConversations((prev) => [conversation, ...prev]);
             setActiveConversationId(conversation.id);
@@ -992,6 +1050,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       setCompanionMessageCutoffTs,
       setConversationMessages,
       setConversations,
+      setActionNotice,
       uiLanguage,
       elizaCloudEnabled,
       elizaCloudConnected,

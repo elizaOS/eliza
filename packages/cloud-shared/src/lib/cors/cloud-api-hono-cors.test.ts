@@ -49,6 +49,28 @@ describe("isFirstPartyOrigin", () => {
   });
 });
 
+describe("isFirstPartyOrigin — Eliza app WebView origins", () => {
+  test("recognizes the Capacitor/Electrobun app WebView origins", () => {
+    // android/iosScheme = "https" → the native WebView document origin.
+    expect(isFirstPartyOrigin("https://localhost")).toBe(true);
+    // Capacitor iOS default + Electrobun desktop + capacitor-electron.
+    expect(isFirstPartyOrigin("capacitor://localhost")).toBe(true);
+    expect(isFirstPartyOrigin("capacitor-electron://localhost")).toBe(true);
+    expect(isFirstPartyOrigin("electrobun://localhost")).toBe(true);
+    // https localhost with a port (local https dev) and 127.0.0.1.
+    expect(isFirstPartyOrigin("https://localhost:2138")).toBe(true);
+    expect(isFirstPartyOrigin("https://127.0.0.1")).toBe(true);
+    // An https look-alike host must NOT be mistaken for the app origin.
+    expect(isFirstPartyOrigin("https://localhost.evil.com")).toBe(false);
+    expect(isFirstPartyOrigin("https://notlocalhost")).toBe(false);
+    // App-scheme origins (capacitor://, electrobun://, …) are only producible by
+    // the native app shell, not browser-navigable, so the host is not attacker-
+    // controlled — allowed regardless of host (mirrors the dedicated-agent
+    // APP_ORIGIN_RE in packages/agent/src/api/server-helpers-auth.ts).
+    expect(isFirstPartyOrigin("capacitor://anything")).toBe(true);
+  });
+});
+
 describe("isPublicTokenApiPath", () => {
   test("recognizes explicit public token API paths", () => {
     expect(isPublicTokenApiPath("/api/v1/chat/completions")).toBe(true);
@@ -64,6 +86,43 @@ describe("corsMiddleware — first-party origins (credentialed)", () => {
     const res = await req("GET", "https://www.elizacloud.ai");
     expect(res.headers.get("access-control-allow-origin")).toBe("https://www.elizacloud.ai");
     expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+  });
+});
+
+describe("corsMiddleware — Eliza app WebView origin (credentialed SSE)", () => {
+  // Regression guard: the shared-runtime agent REST surface
+  // (/api/v1/eliza/agents/:id/api/...) is read by the Capacitor WebView at
+  // `https://localhost`/`capacitor://localhost`. A credentialed cross-origin SSE
+  // read requires the SPECIFIC origin reflected (not `*`) + credentials, and the
+  // X-ElizaOS-Client-Id header the client always sends must be in allow-headers.
+  test("reflects https://localhost + allows credentials (not wildcard)", async () => {
+    const res = await req("GET", "https://localhost", false, "/ping");
+    expect(res.headers.get("access-control-allow-origin")).toBe("https://localhost");
+    expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+  });
+
+  test("reflects capacitor://localhost + allows credentials", async () => {
+    const res = await req("GET", "capacitor://localhost", false, "/ping");
+    expect(res.headers.get("access-control-allow-origin")).toBe("capacitor://localhost");
+    expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+  });
+
+  test("preflight names X-ElizaOS-Client-Id (+ UI-Language) in allow-headers", async () => {
+    const app = appWithCors();
+    const res = await app.request("/ping", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://localhost",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "x-elizaos-client-id,x-elizaos-ui-language",
+      },
+    });
+    expect(res.headers.get("access-control-allow-origin")).toBe("https://localhost");
+    expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+    const allowHeaders = (res.headers.get("access-control-allow-headers") || "").toLowerCase();
+    expect(allowHeaders).toContain("x-elizaos-client-id");
+    expect(allowHeaders).toContain("x-elizaos-ui-language");
+    expect(allowHeaders).toContain("x-eliza-client-id");
   });
 });
 
