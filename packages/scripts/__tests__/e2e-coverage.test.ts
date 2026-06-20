@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildCoverageMatrix,
   discoverRoutePlugins,
+  discoverZeroTestPlugins,
   resolveCoverage,
 } from "../e2e-coverage/inventory.ts";
 import {
@@ -10,6 +11,7 @@ import {
   LARP_TEST_ARTIFACTS,
   PLUGIN_ROUTE_COVERAGE,
   VIEW_COVERAGE_GATES,
+  ZERO_TEST_EXEMPT,
 } from "../e2e-coverage/manifest.ts";
 
 /**
@@ -109,6 +111,36 @@ describe("e2e coverage ship-gate", () => {
     });
     if ([...LARP_TEST_ARTIFACTS].length > 0) {
       expect(rejected.status).toBe("missing");
+    }
+  });
+
+  test("every zero-test plugin gains a test or a documented exemption", () => {
+    const zeroTest = discoverZeroTestPlugins();
+    const documented = new Set(Object.keys(ZERO_TEST_EXEMPT));
+
+    const undocumented = zeroTest
+      .filter((plugin) => !documented.has(plugin))
+      .sort();
+    expect(
+      undocumented,
+      `plugins with no test file and no documented exemption — add a real test or a ZERO_TEST_EXEMPT entry:\n  ${undocumented.join("\n  ")}`,
+    ).toEqual([]);
+
+    // A stale exemption (the plugin now has a test) must be removed.
+    const zeroTestSet = new Set(zeroTest);
+    const stale = [...documented]
+      .filter((plugin) => !zeroTestSet.has(plugin))
+      .sort();
+    expect(
+      stale,
+      `ZERO_TEST_EXEMPT lists plugins that now have tests — remove them:\n  ${stale.join("\n  ")}`,
+    ).toEqual([]);
+
+    for (const [plugin, reason] of Object.entries(ZERO_TEST_EXEMPT)) {
+      expect(
+        reason.length,
+        `zero-test exemption for ${plugin} needs a written reason`,
+      ).toBeGreaterThan(20);
     }
   });
 

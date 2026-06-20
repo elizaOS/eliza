@@ -27,9 +27,7 @@ import { musicPlayerRoutes } from "../routes.ts";
 // `setRuntimeRouteHostContext`). Restore the real module for this file so the
 // dispatcher exercises its genuine body-parsing + error paths.
 vi.mock("@elizaos/core", async () => {
-  return await vi.importActual<typeof import("@elizaos/core")>(
-    "@elizaos/core",
-  );
+  return await vi.importActual<typeof import("@elizaos/core")>("@elizaos/core");
 });
 
 const servers: http.Server[] = [];

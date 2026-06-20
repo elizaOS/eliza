@@ -269,10 +269,14 @@ describe("plugin-computeruse routes (real dispatch)", () => {
     const state = freshState({ resolveResult: resolution });
     const base = await startServer(makeRuntime({ state }));
     // %20 in the id segment must be URL-decoded by the handler.
-    const res = await postJson(base, "/api/computer-use/approvals/approval%201", {
-      approved: true,
-      reason: "looks fine",
-    });
+    const res = await postJson(
+      base,
+      "/api/computer-use/approvals/approval%201",
+      {
+        approved: true,
+        reason: "looks fine",
+      },
+    );
     expect(res.status).toBe(200);
     const body = (await res.json()) as ApprovalResolution;
     expect(body.approved).toBe(true);

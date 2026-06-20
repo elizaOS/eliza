@@ -9,9 +9,9 @@
  * HTTP response (status + parsed body).
  */
 
+import { afterEach, describe, expect, test } from 'bun:test';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterEach, describe, expect, test } from 'bun:test';
 import type { AgentRuntime } from '@elizaos/core';
 
 import { tryHandleRuntimePluginRoute } from '../../../../packages/agent/src/api/runtime-plugin-routes';
@@ -87,9 +87,7 @@ function makeRuntime(
   options: { withService?: boolean; state?: FakeServiceState } = {}
 ): AgentRuntime {
   const { withService = true, state } = options;
-  const service = state
-    ? makeWorkflowService(state)
-    : makeWorkflowService({ calls: [] });
+  const service = state ? makeWorkflowService(state) : makeWorkflowService({ calls: [] });
   return {
     routes: workflowRoutes,
     // The WorkflowService key is "workflow" (WORKFLOW_SERVICE_TYPE).

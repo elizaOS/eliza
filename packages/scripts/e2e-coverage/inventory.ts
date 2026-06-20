@@ -16,18 +16,14 @@
  * statically scans the plugin tree.
  */
 
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-} from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 // Dependency-light: connector-catalog only imports ./registry + ./settings-sections
 // + ./types (a type-only `@elizaos/core` import that erases at compile), so this
 // pulls no runtime framework code.
 import { getConnectorCommands } from "../../../plugins/plugin-commands/src/connector-catalog.ts";
+import type { ManifestEntry } from "./manifest.ts";
 import {
   COMMAND_COVERAGE,
   LARP_TEST_ARTIFACTS,
@@ -35,7 +31,6 @@ import {
   SHORTCUT_REGISTRY_HINTS,
   VIEW_COVERAGE_GATES,
 } from "./manifest.ts";
-import type { ManifestEntry } from "./manifest.ts";
 
 export const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

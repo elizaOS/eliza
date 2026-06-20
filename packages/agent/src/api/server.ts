@@ -288,6 +288,12 @@ import {
   importAgent,
 } from "../services/agent-export.ts";
 import { registerClientChatSendHandler } from "../services/client-chat-sender.ts";
+import {
+  PROACTIVE_INTERACTION_SOURCE,
+  registerProactiveInteractionDecider,
+} from "../services/proactive-interaction-decider.ts";
+import { ProactiveInteractionGate } from "../services/proactive-interaction-gate.ts";
+import { routeAutonomyTextToUser as routeProactiveText } from "./server-helpers-swarm.ts";
 import { createConfigPluginManager } from "../services/config-plugin-manager.ts";
 import {
   type CoreManagerLike,
@@ -1646,6 +1652,26 @@ export {
   handleSwarmSynthesis,
   routeAutonomyTextToUser,
 } from "./server-helpers-swarm.ts";
+
+// One process-wide governance gate shared across runtime (re)registrations, so a
+// restart doesn't reset the proactive-comment cooldowns/caps (#8792).
+const proactiveInteractionGate = new ProactiveInteractionGate();
+
+/**
+ * Wire the proactive-interaction decider (#8792): subscribe to VIEW_SWITCHED and
+ * route an admitted, model-judged comment into the chat via the existing
+ * proactive-message pipeline. No-ops when disabled by config/kill-switch.
+ */
+function wireProactiveInteractionDecider(
+  rt: IAgentRuntime,
+  state: ServerState,
+): void {
+  registerProactiveInteractionDecider(rt, {
+    gate: proactiveInteractionGate,
+    route: (text) =>
+      routeProactiveText(state, text, PROACTIVE_INTERACTION_SOURCE),
+  });
+}
 
 async function handleRequest(
   req: http.IncomingMessage,
@@ -4894,6 +4920,7 @@ export async function startApiServer(opts?: {
       logger.warn("[api] Character overlay restore failed:", err);
     });
     registerClientChatSendHandler(opts.runtime, state);
+    wireProactiveInteractionDecider(opts.runtime, state);
   }
 
   const assertX402RoutesValid = async (
@@ -4970,6 +4997,7 @@ export async function startApiServer(opts?: {
 
     // Re-register client_chat send handler on the new runtime
     registerClientChatSendHandler(rt, state);
+    wireProactiveInteractionDecider(rt, state);
 
     // Wire coding-agent bridges (event-driven via getServiceLoadPromise)
     void wireCoordinatorBridgesWhenReady(state, {

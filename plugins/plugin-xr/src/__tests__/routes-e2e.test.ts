@@ -68,11 +68,7 @@ function makeRuntime(
     recentFrameIds?: string[];
   } = {},
 ): IAgentRuntime {
-  const {
-    withService = true,
-    connections = [],
-    recentFrameIds = [],
-  } = options;
+  const { withService = true, connections = [], recentFrameIds = [] } = options;
 
   const recent = new Set(recentFrameIds);
   const service = {
@@ -199,7 +195,9 @@ describe("plugin-xr routes (real dispatch)", () => {
     const base = await startServer(makeRuntime(), () => false);
     const res = await fetch(`${base}/xr/status`);
     expect(res.status).toBe(401);
-    expect(((await res.json()) as { error: string }).error).toBe("Unauthorized");
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "Unauthorized",
+    );
   });
 
   it("serves /xr/connect as an HTML pairing page when authorized", async () => {

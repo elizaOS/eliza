@@ -24,6 +24,7 @@ import type http from "node:http";
 import path from "node:path";
 
 import {
+  EventType,
   type IAgentRuntime,
   logger,
   type RouteRequestMeta,
@@ -801,6 +802,12 @@ export async function handleViewsRoutes(
       (id === "__view-manager__" ? "/apps" : null);
     const viewLabel = entry?.label ?? id;
     const action = typeof body?.action === "string" ? body.action : undefined;
+    // `source` distinguishes an agent-initiated switch (the default) from a user
+    // manually clicking a tab/tile/slash-command, which the client *reports* with
+    // `source: "user"`. A user-reported switch must NOT re-broadcast
+    // `shell:navigate:view` (the client already navigated locally) — that would
+    // echo back and re-navigate. It still records state + emits VIEW_SWITCHED.
+    const reportedSource = body?.source === "user" ? "user" : "agent";
     const alwaysOnTop = body?.alwaysOnTop === true;
     const layoutViews = Array.isArray(body?.views)
       ? body.views.filter(
@@ -838,14 +845,11 @@ export async function handleViewsRoutes(
       clearCurrentViewState();
     } else {
       const now = new Date().toISOString();
-      // `source` distinguishes an agent-initiated switch (the default) from a
-      // user manually clicking a tab/tile (reported by the client with
-      // `source: "user"`), so the acknowledgement provider can say "I switched
-      // you" vs "you're now on X".
-      const source = body?.source === "user" ? "user" : "agent";
+      const source = reportedSource;
       // Stamp `switchedAt` only when the view actually changes; a re-navigate to
       // the same view should not re-trigger an acknowledgement.
-      const viewChanged = currentViewState?.viewId !== id;
+      const previousViewId = currentViewState?.viewId ?? null;
+      const viewChanged = previousViewId !== id;
       const switchedAt = viewChanged
         ? now
         : (currentViewState?.switchedAt ?? now);
@@ -869,18 +873,43 @@ export async function handleViewsRoutes(
         viewType: resolvedViewType,
         viewPath,
       });
+      // Emit the first-class VIEW_SWITCHED interaction event (#8792) so a
+      // proactive decider can comment. Only on a real change (no spam on
+      // re-navigates), and fire-and-forget so it never blocks the response.
+      if (viewChanged && ctx.runtime) {
+        void ctx.runtime
+          .emitEvent(EventType.VIEW_SWITCHED, {
+            runtime: ctx.runtime,
+            source: `view-navigate:${source}`,
+            viewId: id,
+            viewLabel,
+            viewPath,
+            viewType: resolvedViewType,
+            previousViewId,
+            initiatedBy: source,
+          })
+          .catch((err) => {
+            logger.debug(
+              { src: "ViewsRoutes", err },
+              "[ViewsRoutes] VIEW_SWITCHED emit failed",
+            );
+          });
+      }
     }
 
-    ctx.broadcastWs?.({
-      type: "shell:navigate:view",
-      viewId: id,
-      viewPath,
-      viewLabel,
-      viewType: resolvedViewType,
-      ...(action ? { action } : {}),
-      ...(alwaysOnTop ? { alwaysOnTop } : {}),
-      ...layoutPayload,
-    });
+    // Skip the echo for user-reported switches (the client already navigated).
+    if (reportedSource !== "user") {
+      ctx.broadcastWs?.({
+        type: "shell:navigate:view",
+        viewId: id,
+        viewPath,
+        viewLabel,
+        viewType: resolvedViewType,
+        ...(action ? { action } : {}),
+        ...(alwaysOnTop ? { alwaysOnTop } : {}),
+        ...layoutPayload,
+      });
+    }
 
     json(res, {
       ok: true,

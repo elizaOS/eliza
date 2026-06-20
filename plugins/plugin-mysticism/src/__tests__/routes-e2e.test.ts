@@ -25,8 +25,8 @@ afterEach(async () => {
         new Promise<void>((resolve) => {
           server.closeAllConnections?.();
           server.close(() => resolve());
-        }),
-    ),
+        })
+    )
   );
   servers.length = 0;
 });
@@ -57,7 +57,7 @@ interface FakeServiceState {
 }
 
 function makeRuntime(
-  options: { withService?: boolean; state?: FakeServiceState } = {},
+  options: { withService?: boolean; state?: FakeServiceState } = {}
 ): AgentRuntime {
   const { withService = true, state } = options;
   const service = {
@@ -77,14 +77,13 @@ function makeRuntime(
   };
   return {
     routes: createReadingRoutes(),
-    getService: (key: string) =>
-      withService && key === "MYSTICISM" ? service : null,
+    getService: (key: string) => (withService && key === "MYSTICISM" ? service : null),
   } as unknown as AgentRuntime;
 }
 
 async function startServer(
   runtime: AgentRuntime,
-  isAuthorized: () => boolean = () => true,
+  isAuthorized: () => boolean = () => true
 ): Promise<string> {
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -158,9 +157,7 @@ describe("plugin-mysticism routes (real dispatch)", () => {
       timezone: -5,
     });
     expect(astrology.status).toBe(201);
-    expect(((await astrology.json()) as { type: string }).type).toBe(
-      "astrology",
-    );
+    expect(((await astrology.json()) as { type: string }).type).toBe("astrology");
   });
 
   it("rejects an invalid body with 400 from the real validator", async () => {
@@ -176,9 +173,7 @@ describe("plugin-mysticism routes (real dispatch)", () => {
     const base = await startServer(makeRuntime({ withService: false }));
     const res = await postJson(base, "/api/readings/tarot", VALID_TAROT);
     expect(res.status).toBe(503);
-    expect(((await res.json()) as { error: string }).error).toContain(
-      "service is not available",
-    );
+    expect(((await res.json()) as { error: string }).error).toContain("service is not available");
   });
 
   it("enforces the auth gate on the default-auth reading routes", async () => {
@@ -195,9 +190,7 @@ describe("plugin-mysticism routes (real dispatch)", () => {
     // Auth is denied, but the status route is public so it still serves.
     const base = await startServer(makeRuntime({ state }), () => false);
 
-    const ok = await fetch(
-      `${base}/api/readings/status?entityId=e&roomId=r`,
-    );
+    const ok = await fetch(`${base}/api/readings/status?entityId=e&roomId=r`);
     expect(ok.status).toBe(200);
     const body = (await ok.json()) as { success: boolean; session: { id: string } };
     expect(body.success).toBe(true);
@@ -209,9 +202,7 @@ describe("plugin-mysticism routes (real dispatch)", () => {
 
     // No active session → 404.
     state.session = null;
-    const notFound = await fetch(
-      `${base}/api/readings/status?entityId=e&roomId=r`,
-    );
+    const notFound = await fetch(`${base}/api/readings/status?entityId=e&roomId=r`);
     expect(notFound.status).toBe(404);
   });
 });

@@ -16,12 +16,12 @@
  *     call GitHub).
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
 import type http from "node:http";
 import http_ from "node:http";
-import { mkdtempSync, rmSync } from "node:fs";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { AddressInfo } from "node:net";
 import type { IAgentRuntime, Route } from "@elizaos/core";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
@@ -272,7 +272,10 @@ describe("plugin-github routes (real dispatch)", () => {
     // call and delegate anything else to the real fetch. The test client uses
     // raw `node:http` (not `fetch`) so it is unaffected by this stub.
     let calledUrl: string | null = null;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
       const target = typeof input === "string" ? input : String(input);
       if (target !== "https://api.github.com/user") {
         return realFetch(input, init);
@@ -300,7 +303,10 @@ describe("plugin-github routes (real dispatch)", () => {
   });
 
   it("validates, persists, and reports a good token end to end (200)", async () => {
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
       const target = typeof input === "string" ? input : String(input);
       if (target !== "https://api.github.com/user") {
         return realFetch(input, init);

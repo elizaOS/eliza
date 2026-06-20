@@ -215,3 +215,37 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
       "vincent routes broker the Lit/Vincent agent-wallet backend over live credentials; no deterministic fixture exists for the keyless lane yet.",
   },
 };
+
+/**
+ * Plugins that ship with no test file at all (`discoverZeroTestPlugins`). Issue
+ * #8802 requires each to either gain a real test or be documented as
+ * intentionally test-exempt with a written justification. Every key here is a
+ * justification; a newly added zero-test plugin that is not listed fails the
+ * gate until it gets a test or an entry. (plugin-discord-local and
+ * plugin-elizamaker were on the issue's original list and now have real route
+ * tests, so they are deliberately absent here.)
+ */
+export const ZERO_TEST_EXEMPT: Record<string, string> = {
+  "plugin-2004scape":
+    "Game-world client surface (RuneScape-era 3D client); no unit-testable logic, exercised through the game-apps Playwright smoke and the unified spatial view framework.",
+  "plugin-hyperscape":
+    "3D/MMO game-world client surface; rendering + world state are not unit-testable, exercised through the game-apps Playwright smoke.",
+  "plugin-scape":
+    "Game-world client surface; no headless logic to unit-test, exercised through the game-apps Playwright smoke.",
+  "plugin-action-bench":
+    "Benchmark/eval harness plugin used to drive scenario benchmarks; it has no shipped runtime behavior to unit-test and runs only under the benchmark lanes.",
+  "plugin-google-meet-cute":
+    "Experimental Google Meet companion surface gated behind live Google Meet credentials; no deterministic fixture exists.",
+  "plugin-local-embedding":
+    "Native on-device embedding backend; requires downloaded model weights + native runtime, validated by the local-model validation lane rather than keyless unit tests.",
+  "plugin-mlx":
+    "Apple MLX native inference backend; requires the MLX framework + model weights on Apple Silicon, validated on-device rather than in keyless CI.",
+  "plugin-native-shared-types":
+    "Pure shared TypeScript type/contract definitions for the native bridges; there is no runtime behavior to test.",
+  "plugin-omnivoice":
+    "Native voice (TTS/ASR) backend; requires built native dylibs + voice models, validated by the local-model validation lane rather than keyless unit tests.",
+  "plugin-tee":
+    "Trusted-execution (dstack TEE) attestation/key-release; requires real TEE hardware + a dstack socket, validated by the dedicated TEE smoke scripts.",
+  "plugin-xmtp":
+    "XMTP messaging connector; requires a live XMTP network identity + keys, validated by the live messaging matrix rather than keyless unit tests.",
+};

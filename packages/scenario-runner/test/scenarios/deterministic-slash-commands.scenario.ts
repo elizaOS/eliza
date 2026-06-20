@@ -2,12 +2,12 @@ import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { handleCommandsRoutes } from "../../../agent/src/api/commands-routes.ts";
 import {
   type ClientCommandAction,
   type ConnectorCommand,
   getConnectorCommands,
 } from "../../../../plugins/plugin-commands/src/index.ts";
+import { handleCommandsRoutes } from "../../../agent/src/api/commands-routes.ts";
 
 /**
  * Deterministic slash-command catalog coverage.
@@ -154,7 +154,10 @@ function expectGuiCatalog(status: number, body: unknown): string | undefined {
       return `command ${command.key} alias drifted: ${command.textAliases[0]}`;
     }
     if (command.target.kind === "navigate") {
-      if (typeof command.target.path !== "string" || !command.target.path.startsWith("/")) {
+      if (
+        typeof command.target.path !== "string" ||
+        !command.target.path.startsWith("/")
+      ) {
         return `navigate command ${command.key} has no in-app path`;
       }
     } else if (command.target.kind === "client") {
@@ -168,11 +171,17 @@ function expectGuiCatalog(status: number, body: unknown): string | undefined {
 
   // Representative commands across all three target kinds resolve their effect.
   const settings = commandByKey(payload, "settings");
-  if (settings?.target.kind !== "navigate" || settings.target.path !== "/settings") {
+  if (
+    settings?.target.kind !== "navigate" ||
+    settings.target.path !== "/settings"
+  ) {
     return `expected /settings to navigate to /settings, saw ${JSON.stringify(settings?.target)}`;
   }
   const clear = commandByKey(payload, "clear");
-  if (clear?.target.kind !== "client" || clear.target.clientAction !== "clear-chat") {
+  if (
+    clear?.target.kind !== "client" ||
+    clear.target.clientAction !== "clear-chat"
+  ) {
     return `expected /clear to dispatch clear-chat, saw ${JSON.stringify(clear?.target)}`;
   }
   const think = commandByKey(payload, "think");

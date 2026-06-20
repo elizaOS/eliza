@@ -18,10 +18,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { tryHandleRuntimePluginRoute } from "../../../../packages/agent/src/api/runtime-plugin-routes.ts";
-import discordLocalPlugin, {
-  DISCORD_LOCAL_SERVICE_NAME,
-  DiscordLocalService,
-} from "../index.ts";
+import discordLocalPlugin, { DISCORD_LOCAL_SERVICE_NAME, DiscordLocalService } from "../index.ts";
 
 const routes = discordLocalPlugin.routes;
 
@@ -34,8 +31,8 @@ afterEach(async () => {
         new Promise<void>((resolve) => {
           server.closeAllConnections?.();
           server.close(() => resolve());
-        }),
-    ),
+        })
+    )
   );
   servers.length = 0;
 });
@@ -136,7 +133,7 @@ function makeFakeService(state: FakeServiceState): object {
 }
 
 function makeRuntime(
-  options: { withService?: boolean; state?: FakeServiceState } = {},
+  options: { withService?: boolean; state?: FakeServiceState } = {}
 ): AgentRuntime {
   const { withService = true, state } = options;
   const service = state ? makeFakeService(state) : makeFakeService(defaultState());
@@ -149,7 +146,7 @@ function makeRuntime(
 
 async function startServer(
   runtime: AgentRuntime,
-  isAuthorized: () => boolean = () => true,
+  isAuthorized: () => boolean = () => true
 ): Promise<string> {
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -193,7 +190,7 @@ describe("plugin-discord-local routes (real dispatch)", () => {
         "GET /api/discord/guilds",
         "GET /api/discord/channels",
         "POST /api/discord/subscriptions",
-      ].sort(),
+      ].sort()
     );
   });
 

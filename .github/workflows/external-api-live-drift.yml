@@ -38,9 +38,13 @@ env:
   COINGECKO_LIVE_TEST: "1"
   CALENDLY_LIVE_TEST: "1"
   TAVILY_LIVE_TEST: "1"
+  OPENAI_LIVE_TEST: "1"
+  ANTHROPIC_LIVE_TEST: "1"
   # Key-gated providers (tests self-skip when absent).
   CALENDLY_ACCESS_TOKEN: ${{ secrets.CALENDLY_ACCESS_TOKEN }}
   TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
 jobs:
   live-drift:
@@ -82,3 +86,9 @@ jobs:
 
       - name: Tavily web-search live drift (key-gated, self-skips)
         run: bunx vitest run --root plugins/plugin-web-search src/services/webSearchService.real.test.ts
+
+      - name: OpenAI live drift (key-gated, self-skips)
+        run: bunx vitest run --root plugins/plugin-openai __tests__/openai-drift.real.test.ts
+
+      - name: Anthropic live drift (key-gated, self-skips)
+        run: bunx vitest run --root plugins/plugin-anthropic __tests__/anthropic-drift.real.test.ts
