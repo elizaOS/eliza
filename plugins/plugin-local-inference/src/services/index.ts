@@ -57,6 +57,18 @@ export {
 	totalRamMb,
 } from "./device-tier";
 export {
+	type BatterySummary,
+	DeviceResourceMetrics,
+	type DeviceResourceSummary,
+	type DeviceThermalState,
+	type GenerationObservation,
+	type LowPowerSummary,
+	type ResourceSample,
+	type RssSummary,
+	type ThermalSummary,
+	type ThermalTransition,
+} from "./device-resource-metrics";
+export {
 	LocalInferenceEngine,
 	localInferenceEngine,
 	resolveIdleUnloadMs,
