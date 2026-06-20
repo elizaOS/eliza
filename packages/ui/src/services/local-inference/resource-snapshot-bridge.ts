@@ -53,7 +53,7 @@ export interface DeviceResourceSnapshot {
   capturedAtMs: number;
 }
 
-interface ResourceProbePlugin {
+interface ResourceProbePlugin extends Record<string, unknown> {
   getResourceSnapshot?: () => Promise<unknown>;
 }
 
