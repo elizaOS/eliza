@@ -82,12 +82,8 @@ export interface TutorialChatControlDetail {
    * `pill` collapses the chat to the floating pill; `rest` opens it to the peek
    * detent (grabber + composer visible, history hidden); `expand` opens it
    * full-screen; `prefill` opens to rest and sets the composer draft to `text`.
-   * `reset` restores the chat to a normal interactive state when the tour ends
-   * (un-pill so the composer is not `inert`, clear any prefilled draft, rest the
-   * sheet) — without it, cancelling the tour while it had collapsed the chat to
-   * the pill leaves the composer visible-but-inert and the user can't type.
    */
-  action: "pill" | "rest" | "expand" | "prefill" | "reset";
+  action: "pill" | "rest" | "expand" | "prefill";
   text?: string;
 }
 

@@ -69,23 +69,16 @@ export function deriveFirstRunResumeFieldsFromConfig(
       ? cloud.apiKey.trim()
       : "";
 
-  const pinnedRuntimeMode = readPersistedMobileRuntimeMode();
   const cloudServerTarget =
-    pinnedRuntimeMode === "cloud-hybrid" ? "elizacloud-hybrid" : "elizacloud";
-  // Honor an explicit local choice (set when the user switches to the on-device
-  // agent). Without this, a device whose eliza.json is still cloud-LINKED
-  // (deploymentTarget.runtime === "cloud") re-resumes cloud on every boot and
-  // overrides the user's on-device selection. We only suppress the auto-resume
-  // here — the cloud link in the config is left intact, so the user can switch
-  // back to cloud at any time.
+    readPersistedMobileRuntimeMode() === "cloud-hybrid"
+      ? "elizacloud-hybrid"
+      : "elizacloud";
   const firstRunRuntimeTarget =
-    pinnedRuntimeMode === "local"
-      ? "local"
-      : deploymentTarget.runtime === "remote"
-        ? "remote"
-        : deploymentTarget.runtime === "cloud"
-          ? cloudServerTarget
-          : "local";
+    deploymentTarget.runtime === "remote"
+      ? "remote"
+      : deploymentTarget.runtime === "cloud"
+        ? cloudServerTarget
+        : "local";
 
   const fields: Partial<BuildFirstRunConnectionArgs> = {
     firstRunRuntimeTarget,

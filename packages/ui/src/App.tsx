@@ -6,8 +6,8 @@ import { X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
-  type LazyExoticComponent,
   lazy,
+  type LazyExoticComponent,
   type ReactNode,
   Suspense,
   useCallback,
@@ -1827,12 +1827,19 @@ export function App() {
             only when the tutorial is active (launched from the home Tutorial
             tile or the Help view). */}
         <TutorialOverlay />
-        {/* Notification center, headless for now: the visible bell is hidden,
-            but this still self-boots the notification store (hydrate + live
-            stream) and routes interrupt toasts through ActionNotice. Restore
-            the floating bell by rendering <NotificationCenter /> in a
-            top-right fixed wrapper again (HomePill owns bottom-center). */}
-        <NotificationCenter headless />
+        {/* Persistent notification center — a floating bell + unread badge,
+            top-right, reachable from every view. Self-boots the notification
+            store (hydrate + live stream) and routes interrupt toasts through
+            ActionNotice. HomePill owns bottom-center, so top-right is free. */}
+        <div
+          className="fixed right-2 top-2 z-40"
+          style={{
+            top: "max(0.5rem, env(safe-area-inset-top))",
+            right: "max(0.5rem, env(safe-area-inset-right))",
+          }}
+        >
+          <NotificationCenter />
+        </div>
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}
