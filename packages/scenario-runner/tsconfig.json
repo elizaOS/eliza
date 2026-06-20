@@ -72,9 +72,6 @@
       "@elizaos/plugin-local-inference": [
         "../../plugins/plugin-local-inference/src/index.ts"
       ],
-      "@elizaos/plugin-omnivoice": [
-        "../../plugins/plugin-omnivoice/src/index.ts"
-      ],
       "@elizaos/plugin-shell": ["../../plugins/plugin-shell/src/index.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-telegram": [

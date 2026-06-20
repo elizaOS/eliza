@@ -183,7 +183,6 @@ export default defineConfig({
         "plugin-ollama",
         path.join(repoRoot, "plugins/plugin-ollama/index.ts"),
       ),
-      pluginAlias("plugin-omnivoice"),
       pluginAlias(
         "plugin-openai",
         path.join(repoRoot, "plugins/plugin-openai/index.ts"),
