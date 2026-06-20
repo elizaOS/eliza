@@ -172,8 +172,8 @@ export interface LlmStreamConfig {
 	gpuLayers?: number;
 	/**
 	 * KV-cache K quant type name (ABI v8), e.g. "f16", "q8_0", "qjl1_256".
-	 * `undefined`/null leaves the f16 default. Mirrors
-	 * `desktop-llama-adapter.ts` GGML_KV_CACHE_TYPES.
+	 * `undefined`/null leaves the f16 default. Mapped to `ggml_type` by the
+	 * fused lib's `eliza_llm_stream_config_t.cache_type_k`.
 	 */
 	cacheTypeK?: string | null;
 	/** KV-cache V quant type name (ABI v8); see `cacheTypeK`. */

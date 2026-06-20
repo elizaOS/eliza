@@ -219,9 +219,8 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 
 	/**
 	 * Persist the active session's KV state to a per-conversation file.
-	 * v1 uses `llama_state_seq_save_file` against seq_id=0 — see
-	 * `desktop-llama-adapter.ts`'s `saveSlot`. The on-disk file path
-	 * mirrors `ffi-streaming-backend.ts`'s conversation-keyed slot layout
+	 * v1 uses `llama_state_seq_save_file` against seq_id=0. The on-disk file
+	 * path mirrors `ffi-streaming-backend.ts`'s conversation-keyed slot layout
 	 * (`<cacheDir>/<conversationId>/<slotId>.kv`) so a switch between
 	 * FFI and subprocess can resume each other's slots — once both
 	 * paths agree on the file format.
