@@ -1,4 +1,7 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import type http from "node:http";
+import os from "node:os";
+import path from "node:path";
 import fc from "fast-check";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -10,6 +13,7 @@ import {
 
 interface CapturedResponse {
   body: unknown;
+  headers: Record<string, string | number>;
   status: number;
 }
 
@@ -18,7 +22,21 @@ type TestRequest = http.IncomingMessage & { __body?: unknown };
 function createResponse(): http.ServerResponse & CapturedResponse {
   return {
     body: undefined,
+    headers: {},
     status: 200,
+    writeHead(status: number, headers: Record<string, string | number>) {
+      this.status = status;
+      this.headers = { ...this.headers, ...headers };
+      return this as http.ServerResponse;
+    },
+    setHeader(name: string, value: string | number) {
+      this.headers[name] = value;
+      return this as http.ServerResponse;
+    },
+    end(chunk?: unknown) {
+      this.body = chunk;
+      return this as http.ServerResponse;
+    },
   } as http.ServerResponse & CapturedResponse;
 }
 
@@ -61,6 +79,7 @@ async function callRoute(args: {
   body?: unknown;
   appManager?: AppManagerLike;
   favoriteApps?: FavoriteAppsStore;
+  getPluginManager?: AppsRouteContext["getPluginManager"];
 }): Promise<{
   handled: boolean;
   res: CapturedResponse;
@@ -79,13 +98,15 @@ async function callRoute(args: {
     appManager,
     favoriteApps: args.favoriteApps,
     runtime: null,
-    getPluginManager: () =>
-      ({
-        installPlugin: vi.fn(),
-        getInstalledPlugins: vi.fn(async () => []),
-        searchPlugins: vi.fn(async () => []),
-        refreshRegistry: vi.fn(async () => undefined),
-      }) as never,
+    getPluginManager:
+      args.getPluginManager ??
+      (() =>
+        ({
+          installPlugin: vi.fn(),
+          getInstalledPlugins: vi.fn(async () => []),
+          searchPlugins: vi.fn(async () => []),
+          refreshRegistry: vi.fn(async () => undefined),
+        }) as never),
     parseBoundedLimit: () => 20,
     readJsonBody: async (request) =>
       (request as TestRequest).__body === undefined
@@ -144,21 +165,24 @@ describe("handleAppsRoutes", () => {
 
   it("fuzzes favorites replacement through the route sanitizer", async () => {
     await fc.assert(
-      fc.asyncProperty(fc.array(fc.string(), { maxLength: 50 }), async (apps) => {
-        const store = createFavoriteStore();
-        const result = await callRoute({
-          method: "POST",
-          pathname: "/api/apps/favorites/replace",
-          favoriteApps: store,
-          body: { favoriteAppNames: apps },
-        });
+      fc.asyncProperty(
+        fc.array(fc.string(), { maxLength: 50 }),
+        async (apps) => {
+          const store = createFavoriteStore();
+          const result = await callRoute({
+            method: "POST",
+            pathname: "/api/apps/favorites/replace",
+            favoriteApps: store,
+            body: { favoriteAppNames: apps },
+          });
 
-        const expected = sanitizeExpectedFavorites(apps);
-        expect(result.handled).toBe(true);
-        expect(result.res.status).toBe(200);
-        expect(result.res.body).toEqual({ favoriteApps: expected });
-        expect(store.writes).toEqual([expected]);
-      }),
+          const expected = sanitizeExpectedFavorites(apps);
+          expect(result.handled).toBe(true);
+          expect(result.res.status).toBe(200);
+          expect(result.res.body).toEqual({ favoriteApps: expected });
+          expect(store.writes).toEqual([expected]);
+        },
+      ),
       { numRuns: 200 },
     );
   });
@@ -201,5 +225,67 @@ describe("handleAppsRoutes", () => {
     });
     expect(appManager.launch).not.toHaveBeenCalled();
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it("reuses the app hero registry lookup across adjacent image requests", async () => {
+    const packageDir = await mkdtemp(
+      path.join(os.tmpdir(), "app-manager-hero-"),
+    );
+    try {
+      await mkdir(path.join(packageDir, "assets"));
+      await writeFile(
+        path.join(packageDir, "package.json"),
+        JSON.stringify({
+          name: "@elizaos/plugin-demo",
+          elizaos: { app: { heroImage: "assets/hero.png" } },
+        }),
+      );
+      await writeFile(path.join(packageDir, "assets", "hero.png"), "png");
+
+      const refreshRegistry = vi.fn(
+        async () =>
+          new Map([
+            [
+              "@elizaos/plugin-demo",
+              {
+                name: "@elizaos/plugin-demo",
+                npm: { package: "@elizaos/plugin-demo" },
+                localPath: packageDir,
+                appMeta: { heroImage: "assets/hero.png" },
+              },
+            ],
+          ]),
+      );
+      const getPluginManager = () =>
+        ({
+          installPlugin: vi.fn(),
+          getInstalledPlugins: vi.fn(async () => []),
+          searchPlugins: vi.fn(async () => []),
+          refreshRegistry,
+        }) as never;
+      const appManager = createAppManager();
+
+      const first = await callRoute({
+        method: "GET",
+        pathname: "/api/apps/hero/demo",
+        appManager,
+        getPluginManager,
+      });
+      expect(refreshRegistry).toHaveBeenCalledTimes(1);
+      const second = await callRoute({
+        method: "GET",
+        pathname: "/api/apps/hero/demo",
+        appManager,
+        getPluginManager,
+      });
+
+      expect(first.handled).toBe(true);
+      expect(second.handled).toBe(true);
+      expect(first.res.status).toBe(200);
+      expect(second.res.status).toBe(200);
+      expect(refreshRegistry).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(packageDir, { recursive: true, force: true });
+    }
   });
 });
