@@ -22,7 +22,7 @@
  * Parallels `ensure-text-to-speech-handler.ts` — same shape, same guards.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import {
 	type AgentRuntime,
@@ -38,7 +38,6 @@ import {
 	type TranscriptionParams,
 	type UUID,
 } from "@elizaos/core";
-import type { CapacitorLlamaContext } from "../adapters/capacitor-llama/types";
 import { LocalInferenceUnavailableError } from "../provider";
 import {
 	type LocalInferenceLoader,
@@ -71,10 +70,7 @@ import {
 	AsrUnavailableError,
 	createStreamingTranscriber,
 } from "../services/voice/transcriber";
-import {
-	DEFAULT_MODELS_DIR,
-	embeddingGgufFilePresent,
-} from "./embedding-manager-support";
+import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
 import { EMBEDDING_PRESETS } from "./embedding-presets";
 import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
 
@@ -567,16 +563,6 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 	};
 }
 
-/**
- * Lazily-created desktop embedding context. The canonical capacitor approach
- * (`initCapacitorLlama` → desktop bun:ffi → libllama) loads the compact,
- * SQL-safe gte-small GGUF in embeddings mode (non-causal single-ubatch, MEAN
- * pooling) and serves `ctx.embedding()`. One process-wide context —
- * embeddings aren't slot-aware. Cleared on failure so a later call retries
- * (e.g. after the boot warmup finishes downloading the GGUF).
- */
-let desktopEmbeddingCtxPromise: Promise<CapacitorLlamaContext> | null = null;
-
 interface DesktopEmbeddingConfig {
 	modelsDir: string;
 	model: string;
@@ -609,51 +595,22 @@ function resolveDesktopEmbeddingConfig(): DesktopEmbeddingConfig {
 	return { modelsDir, model, contextSize, gpuLayers };
 }
 
-async function getDesktopEmbeddingContext(): Promise<CapacitorLlamaContext> {
-	if (desktopEmbeddingCtxPromise) return desktopEmbeddingCtxPromise;
-	const promise = (async () => {
-		const cfg = resolveDesktopEmbeddingConfig();
-		if (!embeddingGgufFilePresent(cfg.modelsDir, cfg.model)) {
-			throw new Error(
-				`[local-inference] Embedding model "${cfg.model}" not present in ${cfg.modelsDir} (boot warmup may still be downloading) — falling through to next provider`,
-			);
-		}
-		const { initCapacitorLlama } = await import(
-			"../adapters/capacitor-llama/loader"
-		);
-		const ctx = await initCapacitorLlama({
-			model: path.resolve(cfg.modelsDir, cfg.model),
-			n_ctx: cfg.contextSize,
-			n_gpu_layers: cfg.gpuLayers,
-			embedding: true,
-			pooling_type: "mean",
-		});
-		logger.info(
-			`[local-inference] Desktop embedding context ready via capacitor FFI: ${cfg.model} (${ctx.model.nEmbd} dims)`,
-		);
-		return ctx;
-	})();
-	desktopEmbeddingCtxPromise = promise;
-	// On failure, drop the cached promise so the next call retries (the GGUF
-	// may still be downloading during boot warmup).
-	promise.catch(() => {
-		if (desktopEmbeddingCtxPromise === promise) {
-			desktopEmbeddingCtxPromise = null;
-		}
-	});
-	return promise;
-}
-
 /**
- * Resolve the bundle root the fused `eliza_inference_embed` should anchor at
- * for a given embedding model. The fused C side picks the single GGUF under
- * `<root>/text/`, so:
+ * Resolve (or stage) the bundle root the fused `eliza_inference_embed` should
+ * anchor at for the dedicated embedding model. The fused C side embeds over the
+ * single GGUF under `<root>/text/`, so we must point it at an isolated bundle
+ * that contains ONLY the embedding model — never the chat bundle's text model
+ * (whose decoder-as-embedder output has a different dimension). Resolution:
  *   1. `ELIZA_EMBED_BUNDLE_ROOT` — explicit override.
- *   2. If the model lives under a `text/` dir (`<root>/text/<model>.gguf`),
- *      the bundle root is its grandparent.
- *   3. If `<modelsDir>/text/<model>` exists, anchor at `<modelsDir>`.
- * Returns null when no `<root>/text/` layout resolves — the caller then keeps
- * the libllama path.
+ *   2. The model already lives under a `text/` dir (`<root>/text/<model>.gguf`).
+ *   3. `<modelsDir>/text/<model>` exists → anchor at `<modelsDir>`.
+ *   4. Otherwise STAGE the dedicated embedding GGUF as the sole entry under
+ *      `<modelsDir>/.eliza-embed-bundle/text/` (hardlink, symlink fallback) so
+ *      the fused lib loads gte-small (384-dim bi-encoder, SQL dim384) — the
+ *      same model the retired libllama path used, now through the fused lib.
+ * Returns null only when the embedding GGUF is not present (boot warmup may
+ * still be downloading) — the handler then raises LocalInferenceUnavailable and
+ * the runtime falls through to the next embedding provider.
  */
 function resolveFusedEmbedBundleRoot(cfg: DesktopEmbeddingConfig): string | null {
 	const override = process.env.ELIZA_EMBED_BUNDLE_ROOT?.trim();
@@ -666,7 +623,26 @@ function resolveFusedEmbedBundleRoot(cfg: DesktopEmbeddingConfig): string | null
 	if (existsSync(path.join(cfg.modelsDir, "text", cfg.model))) {
 		return cfg.modelsDir;
 	}
-	return null;
+	if (!existsSync(modelPath)) return null;
+	const root = path.join(cfg.modelsDir, ".eliza-embed-bundle");
+	const textDir = path.join(root, "text");
+	const staged = path.join(textDir, path.basename(cfg.model));
+	try {
+		mkdirSync(textDir, { recursive: true });
+		if (!existsSync(staged)) {
+			try {
+				linkSync(modelPath, staged);
+			} catch {
+				symlinkSync(modelPath, staged);
+			}
+		}
+		return root;
+	} catch (err) {
+		logger.warn(
+			`[local-inference] could not stage the fused embed bundle for "${cfg.model}": ${String(err)}`,
+		);
+		return null;
+	}
 }
 
 /**
@@ -741,29 +717,32 @@ async function getFusedEmbeddingHandle(
 }
 
 /**
- * Desktop TEXT_EMBEDDING handler. Prefers the FUSED `libelizainference`
- * (`eliza_inference_embed`, ABI v9) over the fused handle's resident text
- * vocab when available — that is the default desktop embedding path, retiring
- * node-llama-cpp. When the fused lib is absent / older / no bundle root
- * resolves, it falls back to the canonical capacitor contract
- * (`initCapacitorLlama(...).embedding()` over bun:ffi → libllama) using the
- * compact gte-small GGUF (384-dim, an exact match for plugin-sql's dim384
- * column) — the same `CapacitorLlamaContext.embedding()` path the mobile
- * loader serves. Throws when neither path can produce a real vector so the
- * runtime falls through to the operator-configured provider — no silent
+ * Desktop TEXT_EMBEDDING handler over the FUSED `libelizainference`
+ * (`eliza_inference_embed`, ABI v9). The dedicated embedding GGUF (gte-small,
+ * 384-dim — an exact match for plugin-sql's dim384 column) is staged as the
+ * sole entry of an isolated fused embed bundle (see `resolveFusedEmbedBundleRoot`)
+ * so the fused lib loads it directly. libllama is retired: there is no
+ * capacitor/libllama fallback. When the fused embed cannot resolve (no bun:ffi,
+ * no fused lib, or the embedding GGUF is still downloading) this throws so the
+ * runtime falls through to the operator-configured provider — never a silent
  * zero-vector (Commandment 8).
  */
-function makeCapacitorEmbeddingHandler(): EmbeddingHandler {
+function makeFusedEmbeddingHandler(): EmbeddingHandler {
 	return async (_runtime, params) => {
 		const text = extractEmbeddingText(params);
 		const cfg = resolveDesktopEmbeddingConfig();
 		const fused = await getFusedEmbeddingHandle(cfg);
-		if (fused) {
-			return Array.from(fused.embed(text));
+		if (!fused) {
+			throw new LocalInferenceUnavailableError(
+				ModelType.TEXT_EMBEDDING,
+				"backend_unavailable",
+				`[local-inference] TEXT_EMBEDDING unavailable: the fused libelizainference ` +
+					`embed path could not resolve for "${cfg.model}" (needs bun:ffi, the fused ` +
+					`lib, and the embedding GGUF present). libllama is retired — falling through ` +
+					`to the next embedding provider.`,
+			);
 		}
-		const ctx = await getDesktopEmbeddingContext();
-		const result = await ctx.embedding(text, { embd_normalize: 2 });
-		return result.embedding;
+		return Array.from(fused.embed(text));
 	};
 }
 
@@ -1355,9 +1334,9 @@ export async function ensureLocalInferenceHandler(
 	//   - AOSP / device-bridge loaders expose `embed()` on the
 	//     `localInferenceLoader` service → route through that.
 	//   - Desktop has no `localInferenceLoader`; it serves embeddings through
-	//     the canonical capacitor contract (`initCapacitorLlama(...).embedding()`
-	//     over bun:ffi → libllama) using the compact gte-small GGUF — the same
-	//     `CapacitorLlamaContext.embedding()` path the mobile loader uses.
+	//     the fused `libelizainference` (`eliza_inference_embed`) over the
+	//     dedicated gte-small GGUF staged as an isolated embed bundle. libllama
+	//     is retired — there is no capacitor/libllama embedding fallback.
 	// Neither path registers a handler that would serve a silent zero-vector:
 	// both throw when there's nothing real to call, so the runtime falls
 	// through to the operator-configured provider (Commandment 8).
@@ -1372,7 +1351,7 @@ export async function ensureLocalInferenceHandler(
 		: loaderForEmbed && typeof loaderForEmbed.embed === "function"
 			? makeEmbeddingHandler()
 			: provider === LOCAL_INFERENCE_PROVIDER
-				? makeCapacitorEmbeddingHandler()
+				? makeFusedEmbeddingHandler()
 				: null;
 	if (embeddingHandler) {
 		try {
