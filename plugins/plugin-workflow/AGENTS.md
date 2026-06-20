@@ -138,6 +138,16 @@ The Smithers execution runtime also reads these optional environment variables (
 | `SMITHERS_DB_DATA_DIR` | — | Data directory for SQLite storage. |
 | `ELIZA_SMITHERS_RUN_PAYLOAD` | `{}` | JSON payload injected into Smithers worker runs. |
 
+Workflow generation/repair model calls also read optional primitive settings or env vars:
+
+| Setting / env var | Default | Description |
+|---|---|---|
+| `WORKFLOW_LLM_PROVIDER` / `WORKFLOW_MODEL_PROVIDER` / `WORKFLOW_TEST_PROVIDER` | inferred | Provider intent for workflow generation, repair, and action-copy LLM calls. `cerebras` is mapped to the registered `openai` provider because Cerebras is served through the OpenAI-compatible plugin. |
+| `WORKFLOW_LLM_MODEL` / `WORKFLOW_MODEL` / `WORKFLOW_TEST_MODEL` | `gpt-oss-120b` in Cerebras mode | Per-workflow model hint attached to generation/repair calls and `providerOptions.workflow`. |
+| `WORKFLOW_LLM_RUNTIME_PROVIDER` / `WORKFLOW_MODEL_RUNTIME_PROVIDER` | `openai` when provider is `cerebras` | Override the registered runtime provider name used as the third `runtime.useModel()` argument. |
+
+Cerebras mode is inferred from `ELIZA_PROVIDER=cerebras`, an `OPENAI_BASE_URL` on `cerebras.ai`, or a standalone `CEREBRAS_API_KEY` with no OpenAI key/base URL. The OpenAI plugin then reads `CEREBRAS_MODEL` / `CEREBRAS_API_KEY` / `CEREBRAS_BASE_URL`.
+
 ## How to extend
 
 ### Add an action op

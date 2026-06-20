@@ -1,13 +1,54 @@
 import { describe, expect, mock, test } from 'bun:test';
-import type { NodeDefinition, WorkflowDefinition, WorkflowDraft } from '../../src/types/index';
+import type {
+  NodeDefinition,
+  OutputRefValidation,
+  WorkflowDefinition,
+  WorkflowDraft,
+} from '../../src/types/index';
 import {
   classifyDraftIntent,
+  correctFieldReferences,
+  correctParameterNames,
   extractKeywords,
+  fixWorkflowErrors,
+  formatActionResponse,
   generateWorkflow,
   matchWorkflow,
   modifyWorkflow,
 } from '../../src/utils/generation';
+import type { UnknownParamDetection } from '../../src/utils/workflow';
 import { createMockRuntime } from '../helpers/mockRuntime';
+
+const CEREBRAS_WORKFLOW_SETTINGS = {
+  ELIZA_PROVIDER: 'cerebras',
+  CEREBRAS_MODEL: 'gpt-oss-120b',
+};
+
+function assertCerebrasWorkflowCall(call: unknown[] | undefined, callSite: string): void {
+  expect(call).toBeDefined();
+  if (!call) throw new Error(`expected ${callSite} model call`);
+  const params = call[1] as {
+    model?: string;
+    providerOptions?: {
+      workflow?: {
+        callSite?: string;
+        model?: string;
+        requestedProvider?: string;
+        runtimeProvider?: string;
+      };
+    };
+  };
+  expect(call[2]).toBe('openai');
+  expect(params.model).toBe('gpt-oss-120b');
+  expect(params.providerOptions?.workflow).toEqual(
+    expect.objectContaining({
+      callSite,
+      model: 'gpt-oss-120b',
+      requestedProvider: 'cerebras',
+      runtimeProvider: 'openai',
+    })
+  );
+}
 
 // ============================================================================
 // extractKeywords
@@ -98,6 +139,33 @@ describe('extractKeywords', () => {
 
     const promptArg = useModel.mock.calls[0][1] as { prompt: string };
     expect(promptArg.prompt).not.toContain('Host-supported providers');
+  });
+
+  test('routes structured workflow calls through Cerebras gpt-oss-120b when configured', async () => {
+    const useModel = mock(() => Promise.resolve({ keywords: ['gmail'] }));
+    const runtime = createMockRuntime({
+      settings: CEREBRAS_WORKFLOW_SETTINGS,
+      useModel,
+    });
+
+    await extractKeywords(runtime, 'Summarize Gmail');
+
+    assertCerebrasWorkflowCall(useModel.mock.calls[0], 'extractKeywords');
+  });
+
+  test('infers Cerebras workflow routing from a root OpenAI-compatible base URL', async () => {
+    const useModel = mock(() => Promise.resolve({ keywords: ['gmail'] }));
+    const runtime = createMockRuntime({
+      settings: {
+        OPENAI_BASE_URL: 'https://cerebras.ai/v1',
+        CEREBRAS_MODEL: 'gpt-oss-120b',
+      },
+      useModel,
+    });
+
+    await extractKeywords(runtime, 'Summarize Gmail');
+
+    assertCerebrasWorkflowCall(useModel.mock.calls[0], 'extractKeywords');
   });
 });
 
@@ -379,6 +447,120 @@ describe('generateWorkflow', () => {
     expect(retryParams.prompt).toContain('malformed');
     expect(retryParams.prompt).toContain('"nodes"');
     expect(retryParams.prompt).toContain('"connections"');
+  });
+
+  test('routes workflow JSON generation through Cerebras gpt-oss-120b when configured', async () => {
+    const useModel = mock(() =>
+      Promise.resolve(
+        JSON.stringify({
+          name: 'Cerebras Workflow',
+          nodes: [{ name: 'A', type: 't', position: [0, 0] }],
+          connections: {},
+        })
+      )
+    );
+    const runtime = createMockRuntime({
+      settings: CEREBRAS_WORKFLOW_SETTINGS,
+      useModel,
+    });
+
+    await generateWorkflow(runtime, 'test with Cerebras', []);
+
+    assertCerebrasWorkflowCall(useModel.mock.calls[0], 'generateWorkflow');
+  });
+});
+
+describe('workflow generation model routing', () => {
+  const workflow: WorkflowDefinition = {
+    id: 'wf-cerebras',
+    name: 'Cerebras test workflow',
+    nodes: [
+      {
+        name: 'Set',
+        type: 'workflows-nodes-base.set',
+        typeVersion: 1,
+        position: [0, 0],
+        parameters: {
+          value: '={{ $json.subject }}',
+          model: 'gpt-oss-120b',
+        },
+      },
+    ],
+    connections: {},
+  };
+
+  test('routes repair and action-response calls through Cerebras gpt-oss-120b', async () => {
+    const useModel = mock((_modelType, params: { prompt?: string }) => {
+      if (params.prompt?.includes('Type: SUCCESS')) {
+        return Promise.resolve('Workflow saved.');
+      }
+      return Promise.resolve(JSON.stringify(workflow));
+    });
+    const runtime = createMockRuntime({
+      settings: CEREBRAS_WORKFLOW_SETTINGS,
+      useModel,
+    });
+
+    await fixWorkflowErrors(
+      runtime,
+      workflow,
+      [
+        {
+          kind: 'unknownOutputField',
+          node: 'Set',
+          detail: 'expression references unknown field "subject"',
+          expression: '={{ $json.subject }}',
+          availableFields: ['Subject'],
+        },
+      ],
+      []
+    );
+    await formatActionResponse(runtime, 'SUCCESS', { workflowId: 'wf-cerebras' });
+
+    assertCerebrasWorkflowCall(useModel.mock.calls[0], 'fixWorkflowErrors');
+    assertCerebrasWorkflowCall(useModel.mock.calls[1], 'formatActionResponse');
+  });
+
+  test('routes correction fallbacks through Cerebras gpt-oss-120b', async () => {
+    const useModel = mock((_modelType, params: { prompt?: string }) => {
+      if (params.prompt?.includes('Fix the workflows field reference')) {
+        return Promise.resolve('={{ $json.Subject }}');
+      }
+      return Promise.resolve(
+        JSON.stringify({ responses: { values: [{ content: 'gpt-oss-120b' }] } })
+      );
+    });
+    const runtime = createMockRuntime({
+      settings: CEREBRAS_WORKFLOW_SETTINGS,
+      useModel,
+    });
+    const invalidRefs: OutputRefValidation[] = [
+      {
+        nodeName: 'Set',
+        expression: '={{ $json.subject }}',
+        field: 'subject',
+        sourceNodeName: 'Gmail',
+        sourceNodeType: 'workflows-nodes-base.gmail',
+        resource: 'message',
+        operation: 'getAll',
+        availableFields: ['Subject'],
+      },
+    ];
+    const unknownParams: UnknownParamDetection[] = [
+      {
+        nodeName: 'Set',
+        nodeType: 'workflows-nodes-base.set',
+        currentParams: { prompt: 'gpt-oss-120b' },
+        unknownKeys: ['prompt'],
+        propertyDefs: [{ name: 'responses', type: 'fixedCollection' }],
+      },
+    ];
+
+    await correctFieldReferences(runtime, workflow, invalidRefs);
+    await correctParameterNames(runtime, workflow, unknownParams);
+
+    assertCerebrasWorkflowCall(useModel.mock.calls[0], 'correctFieldReferences');
+    assertCerebrasWorkflowCall(useModel.mock.calls[1], 'correctParameterNames');
   });
 });
 
