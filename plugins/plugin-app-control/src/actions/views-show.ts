@@ -15,6 +15,7 @@ import type {
 	ViewType,
 } from "@elizaos/core";
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import { markViewSwitch } from "../runtime/view-switch-signal.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 import { scoreView } from "./views-search.js";
@@ -401,6 +402,10 @@ export async function runViewsShow({
 
 	const view = resolution.view;
 	const result = await navigateToView(view, viewType);
+
+	// Record the switch so the compose hook injects the acknowledgement provider
+	// (and the provider phrases it) on this turn's reply and the immediate next.
+	if (result.ok) markViewSwitch(message?.roomId);
 
 	logger.info(
 		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}`,

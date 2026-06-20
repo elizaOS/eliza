@@ -14,6 +14,10 @@
 
 import type { Plugin } from "@elizaos/core";
 import { appAction, createAppAction } from "./actions/app.js";
+import {
+	applyCurrentViewComposeHook,
+	CURRENT_VIEW_HOOK_ID,
+} from "./runtime/current-view-hook.js";
 import { homescreenAction } from "./actions/homescreen.js";
 import {
 	closeAllViewsAction,
@@ -130,6 +134,20 @@ export const appControlPlugin: Plugin = {
 		AppWorkerHostService,
 		VerificationRoomBridgeService,
 	],
+	async init(_config, runtime) {
+		// Inject the `current_view` acknowledgement provider into the curated
+		// Stage-1 response state ONLY on switch turns (gating in
+		// applyCurrentViewComposeHook), so non-switch turns pay no prompt/token
+		// cost. The planner state already composes `current_view` by default.
+		runtime.registerPipelineHook({
+			id: CURRENT_VIEW_HOOK_ID,
+			phase: "compose_state_providers",
+			handler: (_rt, ctx) => {
+				if (ctx.phase !== "compose_state_providers") return;
+				applyCurrentViewComposeHook(ctx);
+			},
+		});
+	},
 	async dispose(runtime) {
 		await runtime
 			.getService<VerificationRoomBridgeService>(

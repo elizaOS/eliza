@@ -8,8 +8,11 @@ import {
 } from "./views-registry.ts";
 import {
   clearCurrentViewState,
+  type CurrentViewState,
   getCurrentViewState,
   handleViewsRoutes,
+  isViewSwitchFresh,
+  VIEW_SWITCH_FRESH_MS,
   type ViewsRouteContext,
 } from "./views-routes.ts";
 
@@ -314,5 +317,103 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     expect(state?.viewPath).toBe("/settings");
     expect(state?.viewType).toBe("gui");
     expect(state?.action).toBe("pin-tab");
+  });
+
+  // ── #8788: turn-scoped "view switch just happened" stamp ──────────────────
+
+  function makeCurrentCtx(): {
+    ctx: ViewsRouteContext;
+    json: ReturnType<typeof vi.fn>;
+  } {
+    const req = Readable.from([]) as unknown as http.IncomingMessage;
+    const res = {} as http.ServerResponse;
+    const json = vi.fn();
+    const pathname = "/api/views/current";
+    const ctx: ViewsRouteContext = {
+      req,
+      res,
+      method: "GET",
+      pathname,
+      url: new URL(`http://local${pathname}`),
+      json,
+      error: vi.fn(),
+      broadcastWs: vi.fn(),
+    };
+    return { ctx, json };
+  }
+
+  it("stamps switchedAt + source=agent on navigate and reports justSwitched via GET current", async () => {
+    const nav = makeNavigateCtx("settings", {});
+    await handleViewsRoutes(nav.ctx);
+
+    const state = getCurrentViewState();
+    expect(typeof state?.switchedAt).toBe("string");
+    expect(state?.source).toBe("agent");
+    expect(isViewSwitchFresh(state)).toBe(true);
+
+    const cur = makeCurrentCtx();
+    await handleViewsRoutes(cur.ctx);
+    expect(cur.json).toHaveBeenCalledWith(
+      cur.ctx.res,
+      expect.objectContaining({
+        currentView: expect.objectContaining({ viewId: "settings" }),
+        justSwitched: true,
+      }),
+    );
+  });
+
+  it("marks source=user when the body reports a user-initiated switch", async () => {
+    const nav = makeNavigateCtx("settings", { source: "user" });
+    await handleViewsRoutes(nav.ctx);
+    expect(getCurrentViewState()?.source).toBe("user");
+  });
+
+  it("does not re-stamp switchedAt when re-navigating to the same view", async () => {
+    // Fake timers so each navigate gets a distinct, controlled timestamp
+    // (real wall-clock resolution can collapse sub-millisecond navigates).
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      const first = makeNavigateCtx("settings", {});
+      await handleViewsRoutes(first.ctx);
+      const switchedAt = getCurrentViewState()?.switchedAt;
+      expect(switchedAt).toBe("2026-01-01T00:00:00.000Z");
+
+      // Re-navigate to the SAME view: updatedAt moves but switchedAt is preserved.
+      vi.setSystemTime(new Date("2026-01-01T00:00:02.000Z"));
+      const second = makeNavigateCtx("settings", { action: "pin-tab" });
+      await handleViewsRoutes(second.ctx);
+      expect(getCurrentViewState()?.switchedAt).toBe(switchedAt);
+      expect(getCurrentViewState()?.updatedAt).toBe("2026-01-01T00:00:02.000Z");
+
+      // Navigating to a DIFFERENT view re-stamps switchedAt.
+      vi.setSystemTime(new Date("2026-01-01T00:00:04.000Z"));
+      const third = makeNavigateCtx("character", {});
+      await handleViewsRoutes(third.ctx);
+      expect(getCurrentViewState()?.switchedAt).toBe("2026-01-01T00:00:04.000Z");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("isViewSwitchFresh expires a stale switch after the freshness window", () => {
+    const base: CurrentViewState = {
+      viewId: "settings",
+      viewPath: "/settings",
+      viewLabel: "Settings",
+      viewType: "gui",
+      switchedAt: new Date(1_000_000).toISOString(),
+      source: "agent",
+      updatedAt: new Date(1_000_000).toISOString(),
+    };
+    // Within the window → fresh; past it → stale; missing stamp → never fresh.
+    expect(isViewSwitchFresh(base, 1_000_000 + VIEW_SWITCH_FRESH_MS - 1)).toBe(
+      true,
+    );
+    expect(isViewSwitchFresh(base, 1_000_000 + VIEW_SWITCH_FRESH_MS + 1)).toBe(
+      false,
+    );
+    expect(isViewSwitchFresh({ ...base, switchedAt: undefined })).toBe(false);
+    expect(isViewSwitchFresh(null)).toBe(false);
   });
 });

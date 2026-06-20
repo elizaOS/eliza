@@ -40,6 +40,12 @@ export interface CurrentViewSummary {
 	views?: string[];
 	layout?: string;
 	placement?: string;
+	/** ISO timestamp of the navigate that switched into this view. */
+	switchedAt?: string;
+	/** Who initiated the switch — the agent (default) or the user clicking the UI. */
+	source?: "agent" | "user";
+	/** Server-computed: true only briefly after a switch (turn-scoped signal). */
+	justSwitched?: boolean;
 	updatedAt: string;
 }
 
@@ -229,6 +235,17 @@ function parseCurrentView(body: unknown): CurrentViewSummary | null {
 		typeof currentView.placement === "string"
 			? currentView.placement
 			: undefined;
+	const switchedAt =
+		typeof currentView.switchedAt === "string"
+			? currentView.switchedAt
+			: undefined;
+	const source =
+		currentView.source === "agent" || currentView.source === "user"
+			? currentView.source
+			: undefined;
+	// `justSwitched` is computed server-side and lives at the top level of the
+	// response, not inside `currentView` — surface it on the summary for callers.
+	const justSwitched = body.justSwitched === true;
 	return {
 		viewId,
 		viewPath,
@@ -238,6 +255,9 @@ function parseCurrentView(body: unknown): CurrentViewSummary | null {
 		views,
 		layout,
 		placement,
+		switchedAt,
+		source,
+		justSwitched,
 		updatedAt,
 	};
 }

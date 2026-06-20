@@ -233,7 +233,33 @@ export interface CurrentViewState {
   views?: string[];
   layout?: string;
   placement?: string;
+  /**
+   * ISO timestamp of the navigate that *switched* into this view (distinct from
+   * `updatedAt`, which also moves on same-view re-stamps). Read by the
+   * `current_view` acknowledgement provider to know a switch *just happened*.
+   */
+  switchedAt?: string;
+  /** Who initiated the switch: the agent (default) or the user clicking the UI. */
+  source?: "agent" | "user";
   updatedAt: string;
+}
+
+/**
+ * A view switch is treated as "just happened" for this long after navigate, so
+ * the acknowledgement provider only references it on the turn(s) immediately
+ * following the switch and never re-acknowledges a stale switch forever.
+ */
+export const VIEW_SWITCH_FRESH_MS = 15_000;
+
+/** True when `state` reflects a switch within {@link VIEW_SWITCH_FRESH_MS}. */
+export function isViewSwitchFresh(
+  state: CurrentViewState | null,
+  now: number = Date.now(),
+): boolean {
+  if (!state?.switchedAt) return false;
+  const t = Date.parse(state.switchedAt);
+  if (Number.isNaN(t)) return false;
+  return now - t <= VIEW_SWITCH_FRESH_MS;
 }
 
 let currentViewState: CurrentViewState | null = null;
@@ -386,8 +412,14 @@ export async function handleViewsRoutes(
   }
 
   // ── GET /api/views/current ───────────────────────────────────────────────
+  // `justSwitched` is a turn-scoped signal (distinct from the always-present
+  // current view): true only briefly after a navigate so the `current_view`
+  // provider can phrase the just-happened switch as an acknowledgement.
   if (method === "GET" && pathname === `${PREFIX}/current`) {
-    json(res, { currentView: currentViewState });
+    json(res, {
+      currentView: currentViewState,
+      justSwitched: isViewSwitchFresh(currentViewState),
+    });
     return true;
   }
 
@@ -805,6 +837,18 @@ export async function handleViewsRoutes(
     if (isCloseNavigation) {
       clearCurrentViewState();
     } else {
+      const now = new Date().toISOString();
+      // `source` distinguishes an agent-initiated switch (the default) from a
+      // user manually clicking a tab/tile (reported by the client with
+      // `source: "user"`), so the acknowledgement provider can say "I switched
+      // you" vs "you're now on X".
+      const source = body?.source === "user" ? "user" : "agent";
+      // Stamp `switchedAt` only when the view actually changes; a re-navigate to
+      // the same view should not re-trigger an acknowledgement.
+      const viewChanged = currentViewState?.viewId !== id;
+      const switchedAt = viewChanged
+        ? now
+        : (currentViewState?.switchedAt ?? now);
       currentViewState = {
         viewId: id,
         viewPath,
@@ -813,7 +857,9 @@ export async function handleViewsRoutes(
         ...(action ? { action } : {}),
         ...(alwaysOnTop ? { alwaysOnTop } : {}),
         ...layoutPayload,
-        updatedAt: new Date().toISOString(),
+        switchedAt,
+        source,
+        updatedAt: now,
       };
       // Publish to the prompt-optimization layer so the planner upweights this
       // view's scoped actions while it is on screen.
