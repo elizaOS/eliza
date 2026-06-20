@@ -124,7 +124,9 @@ describe("ContinuousChatOverlay", () => {
   it("blurs the focused composer when the active view leaves chat (drops the iOS accessory bar)", () => {
     const { rerender } = render(
       <ContinuousChatOverlay
-        controller={makeController({ currentTab: "chat" } as Partial<ShellController>)}
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
       />,
     );
     const composer = screen.getByLabelText("message");
@@ -138,9 +140,9 @@ describe("ContinuousChatOverlay", () => {
     // strands the keyboard input-accessory bar (the ‹ › chevrons + "Done").
     rerender(
       <ContinuousChatOverlay
-        controller={
-          makeController({ currentTab: "settings" } as Partial<ShellController>)
-        }
+        controller={makeController({
+          currentTab: "settings",
+        } as Partial<ShellController>)}
       />,
     );
     expect(document.activeElement).not.toBe(composer);
@@ -149,7 +151,9 @@ describe("ContinuousChatOverlay", () => {
   it("keeps composer focus when the active view stays on chat (no spurious blur)", () => {
     const { rerender } = render(
       <ContinuousChatOverlay
-        controller={makeController({ currentTab: "chat" } as Partial<ShellController>)}
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
       />,
     );
     const composer = screen.getByLabelText("message");
@@ -159,7 +163,9 @@ describe("ContinuousChatOverlay", () => {
     // A re-render that does not change the active view must not steal focus.
     rerender(
       <ContinuousChatOverlay
-        controller={makeController({ currentTab: "chat" } as Partial<ShellController>)}
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
       />,
     );
     expect(document.activeElement).toBe(composer);

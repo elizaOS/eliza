@@ -432,7 +432,6 @@ function TabScrollView({
   return (
     <AppWorkspaceChrome
       testId="tab-scroll-view"
-      chatDisabled
       main={
         <div
           data-shell-scroll-region="true"
@@ -449,7 +448,6 @@ function TabContentView({ children }: { children: ReactNode }) {
   return (
     <AppWorkspaceChrome
       testId="tab-content-view"
-      chatDisabled
       main={
         <div
           data-shell-content-region="true"

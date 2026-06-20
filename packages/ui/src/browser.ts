@@ -70,7 +70,6 @@ export {
   UiRenderer,
   type UiRendererProps,
 } from "./components/config-ui/ui-renderer.tsx";
-export * from "./components/pages/PageScopedChatPane.tsx";
 export { AppPageSidebar } from "./components/shared/AppPageSidebar.tsx";
 export * from "./components/shared/LanguageDropdown.helpers.ts";
 export type { TranslatorFn } from "./components/shared/LanguageDropdown.tsx";
@@ -120,7 +119,6 @@ export * from "./components/ui/toggle.tsx";
 export * from "./components/ui/tooltip.tsx";
 export { IconTooltip } from "./components/ui/tooltip-extended.tsx";
 export { TerminalPluginView } from "./components/views/TerminalPluginView.tsx";
-export * from "./components/workspace/AppWorkspaceChrome.hooks.ts";
 export * from "./components/workspace/AppWorkspaceChrome.tsx";
 // === Phase 5C: ./config/app-config moved to @elizaos/app-core/config/app-config ===
 export * from "./config/boot-config.ts";

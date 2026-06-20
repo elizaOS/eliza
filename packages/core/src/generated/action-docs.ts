@@ -9306,7 +9306,7 @@ export const allActionsSpec = {
 				{
 					name: "action",
 					description:
-						"Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, eval_samples.",
+						"Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.",
 					required: true,
 					schema: {
 						type: "string",
@@ -9323,11 +9323,12 @@ export const allActionsSpec = {
 							"executions",
 							"revisions",
 							"restore",
+							"diagnose",
 							"eval_samples",
 						],
 					},
 					descriptionCompressed:
-						"Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, eval_samples.",
+						"Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.",
 				},
 				{
 					name: "workflowId",
@@ -9337,6 +9338,15 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					descriptionCompressed: "Workflow id.",
+				},
+				{
+					name: "executionId",
+					description: "Workflow execution id for action=diagnose.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Workflow execution id for action=diagnose.",
 				},
 				{
 					name: "workflowName",
@@ -9399,7 +9409,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"workflow list|get|create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore|eval_samples",
+				"workflow list|get|create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore|diagnose|eval_samples",
 			similes: [
 				"LIST_WORKFLOWS",
 				"SHOW_WORKFLOWS",
@@ -9433,6 +9443,11 @@ export const allActionsSpec = {
 				"RESTORE_WORKFLOW",
 				"ROLL_BACK_WORKFLOW",
 				"ROLLBACK_WORKFLOW",
+				"DIAGNOSE_WORKFLOW",
+				"TROUBLESHOOT_WORKFLOW",
+				"EXPLAIN_WORKFLOW_FAILURE",
+				"GET_WORKFLOW_DIAGNOSTICS",
+				"WORKFLOW_RUN_DIAGNOSTICS",
 				"WORKFLOW_EVAL_SAMPLES",
 				"GENERATE_WORKFLOW_TRAINING_SAMPLES",
 				"GENERATE_WORKFLOW_EVAL_CASES",
@@ -9447,6 +9462,7 @@ export const allActionsSpec = {
 						WORKFLOW: {
 							action: "list",
 							workflowId: "example",
+							executionId: "example",
 							workflowName: "example",
 							seedPrompt: "example",
 							name: "example",

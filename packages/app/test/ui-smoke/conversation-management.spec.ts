@@ -4,16 +4,12 @@
 // conversation from GET /api/conversations + GET .../messages and re-renders
 // the thread. Keyless against a stateful in-spec store.
 //
-// SCOPE NOTE — page-scoped clear is intentionally NOT driven here. The
-// page-scoped-chat-clear-<scope> control + truncate endpoint live in
-// PageScopedChatPane, which is mounted only by AppWorkspaceChrome when a
-// `chatScope` is set AND `chatDisabled` is false. The single chatScope caller
-// (BrowserWorkspaceView at /browser) passes `chatDisabled`, so the chrome
-// renders `null` for the chat content (AppWorkspaceChrome.tsx). The web /chat
-// route is overlay-only and the overlay carries no per-conversation
-// clear/truncate affordance (ContinuousChatOverlay.tsx). So no keyless web
-// route exposes the clear control; that path stays covered by the component
-// tests. This spec asserts the reachable half: send + persistence.
+// SCOPE NOTE — page-scoped clear is intentionally NOT driven here. The old
+// in-chrome page-scoped chat rail was removed; the web /chat route is
+// overlay-only and the overlay carries no per-conversation clear/truncate
+// affordance (ContinuousChatOverlay.tsx). So no keyless web route exposes the
+// clear control; that path stays covered by the component tests. This spec
+// asserts the reachable half: send + persistence.
 
 import { expect, type Page, test } from "@playwright/test";
 import {
