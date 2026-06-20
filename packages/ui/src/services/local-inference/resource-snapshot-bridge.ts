@@ -54,6 +54,7 @@ export interface DeviceResourceSnapshot {
 }
 
 interface ResourceProbePlugin {
+  [method: string]: unknown;
   getResourceSnapshot?: () => Promise<unknown>;
 }
 

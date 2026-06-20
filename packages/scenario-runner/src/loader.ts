@@ -45,6 +45,7 @@ export interface ScenarioMetadata {
   id: string;
   status?: string;
   title?: string;
+  lane?: string;
   edgeVariant?: string;
   baseScenarioId?: string;
 }
@@ -366,6 +367,7 @@ export async function loadScenarioMetadataFile(
     id,
     title: getStaticStringProperty(objectLiteral, "title"),
     status: getStaticStringProperty(objectLiteral, "status"),
+    lane: getStaticStringProperty(objectLiteral, "lane"),
   };
 }
 
@@ -400,6 +402,7 @@ export async function loadAllScenarios(
   filter?: Set<string>,
   fileGlobs?: readonly string[],
   includeExpanded = shouldExpandScenarioEdges(),
+  laneFilter?: string,
 ): Promise<LoadedScenario[]> {
   const files = await discoverScenarios(root);
   const loaded: LoadedScenario[] = [];
@@ -411,6 +414,7 @@ export async function loadAllScenarios(
       }
     }
     const result = await loadScenarioFile(file);
+    if (laneFilter && result.scenario.lane !== laneFilter) continue;
     const expanded = includeExpanded
       ? expandScenarioDefinition(file, result.scenario)
       : [];
@@ -429,6 +433,7 @@ export async function listScenarioMetadata(
   filter?: Set<string>,
   fileGlobs?: readonly string[],
   includeExpanded = shouldExpandScenarioEdges(),
+  laneFilter?: string,
 ): Promise<ScenarioMetadata[]> {
   const files = await discoverScenarios(root);
   const loaded: ScenarioMetadata[] = [];
@@ -440,6 +445,7 @@ export async function listScenarioMetadata(
       }
     }
     const result = await loadScenarioMetadataFile(file);
+    if (laneFilter && result.lane !== laneFilter) continue;
     if (result.status === "pending" && !includePending) continue;
     const candidates = [
       result,

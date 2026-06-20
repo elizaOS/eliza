@@ -1,7 +1,7 @@
 /**
  * `eliza-scenarios` CLI. Two commands:
  *
- *   run  <dir> [--report <path>] [--report-dir <dir>] [--runId <id>] [--scenario <id,id,...>] [fileGlob ...]
+ *   run  <dir> [--report <path>] [--report-dir <dir>] [--runId <id>] [--scenario <id,id,...>] [--lane <name>] [fileGlob ...]
  *   list <dir> [fileGlob ...]
  *
  * Exit codes:
@@ -42,6 +42,7 @@ interface ParsedArgs {
   exportNativePath?: string;
   runId?: string;
   filter?: Set<string>;
+  lane?: string;
   fileGlobs?: string[];
   expandScenarios?: boolean;
   countScenarios?: boolean;
@@ -60,7 +61,7 @@ function scenarioNativeManifestPath(
 function usageAndExit(message: string, code: number): never {
   process.stderr.write(`[eliza-scenarios] ${message}\n`);
   process.stderr.write(
-    "Usage:\n  eliza-scenarios run  <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--run-dir <dir>] [--export-native <jsonlPath>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [fileGlob ...]\n  eliza-scenarios list <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [fileGlob ...]\n",
+    "Usage:\n  eliza-scenarios run  <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--run-dir <dir>] [--export-native <jsonlPath>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [--lane <name>] [fileGlob ...]\n  eliza-scenarios list <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [fileGlob ...]\n",
   );
   process.exit(code);
 }
@@ -83,6 +84,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
   let exportNativePath: string | undefined;
   let runId: string | undefined;
   let filter: Set<string> | undefined;
+  let lane: string | undefined;
   let expandScenarios = false;
   let countScenarios = false;
   let validateScenarios = false;
@@ -126,6 +128,11 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
         .filter(Boolean);
       filter = new Set(ids);
       i += 1;
+    } else if (arg === "--lane") {
+      const next = argv[i + 1];
+      if (!next) usageAndExit("--lane missing value", 2);
+      lane = next.trim();
+      i += 1;
     } else if (arg === "--expand-scenarios") {
       expandScenarios = true;
     } else if (arg === "--count-scenarios") {
@@ -149,6 +156,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
       : undefined,
     runId,
     filter,
+    lane,
     fileGlobs,
     expandScenarios,
     countScenarios,
@@ -186,6 +194,7 @@ async function main(): Promise<number> {
       parsed.filter,
       parsed.fileGlobs,
       parsed.expandScenarios,
+      parsed.lane,
     );
     for (const scenario of loaded) {
       process.stdout.write(`${scenario.id}\n`);
@@ -247,6 +256,7 @@ async function main(): Promise<number> {
     parsed.filter,
     parsed.fileGlobs,
     parsed.expandScenarios,
+    parsed.lane,
   );
   if (loaded.length === 0) {
     process.stderr.write(

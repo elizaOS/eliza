@@ -16,7 +16,7 @@ describe("startCloudConversationHandoff", () => {
       return readyCalls >= 2 ? CONTAINER : null;
     });
 
-    const authedFetch: AuthedAgentFetch = vi.fn(async (_base, path) => {
+    const authedFetch: AuthedAgentFetch = vi.fn(async (base, path) => {
       if (base === SHARED && path.endsWith("/messages")) {
         return {
           status: 200,
