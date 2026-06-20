@@ -242,7 +242,7 @@ const PLUGIN_REGISTRY: Array<{
   },
   {
     pluginDir: "plugins/plugin-trajectory-logger",
-    manifestPath: "plugins/plugin-trajectory-logger/src/index.ts",
+    manifestPath: "plugins/plugin-trajectory-logger/src/plugin.ts",
     xrComponentSrc:
       "plugins/plugin-trajectory-logger/src/components/TrajectoryLoggerView.tsx",
     requiredTerms: ["TrajectoryLoggerView", "useState"],

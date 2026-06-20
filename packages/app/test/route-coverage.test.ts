@@ -94,7 +94,7 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-screenshare/src/index.ts",
   "plugins/plugin-social-alpha/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
-  "plugins/plugin-trajectory-logger/src/index.ts",
+  "plugins/plugin-trajectory-logger/src/plugin.ts",
   "plugins/plugin-training/src/setup-routes.ts",
   "plugins/plugin-facewear/src/index.ts",
 ] as const;
@@ -172,7 +172,7 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
     "plugins/plugin-task-coordinator/src/index.ts",
   "@elizaos/plugin-training": "plugins/plugin-training/src/setup-routes.ts",
   "@elizaos/plugin-trajectory-logger":
-    "plugins/plugin-trajectory-logger/src/index.ts",
+    "plugins/plugin-trajectory-logger/src/plugin.ts",
   "@elizaos/plugin-vector-browser/register":
     "plugins/plugin-vector-browser/src/plugin.ts",
   "@elizaos/plugin-vincent": "plugins/plugin-vincent/src/plugin.ts",
@@ -308,7 +308,7 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     path: "/orchestrator",
   },
   {
-    manifestPath: "plugins/plugin-trajectory-logger/src/index.ts",
+    manifestPath: "plugins/plugin-trajectory-logger/src/plugin.ts",
     id: "trajectory-logger",
     viewType: "xr",
     path: "/trajectory-logger",

@@ -176,7 +176,7 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
   },
   {
     pluginDir: "plugins/plugin-trajectory-logger",
-    manifestPath: "plugins/plugin-trajectory-logger/src/index.ts",
+    manifestPath: "plugins/plugin-trajectory-logger/src/plugin.ts",
   },
   {
     pluginDir: "plugins/plugin-training",
