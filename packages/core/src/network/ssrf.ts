@@ -202,10 +202,18 @@ export function createPinnedLookup(params: {
 }): PinnedLookup {
 	const normalizedHost = normalizeHostname(params.hostname);
 	const fallback = params.fallback;
-	const records = params.addresses.map((address) => ({
-		address,
-		family: address.includes(":") ? 6 : 4,
-	}));
+	// Drop any non-string/empty address before pinning. An undefined address
+	// reaching node's net layer throws "Invalid IP address: undefined" and the
+	// pinned fetch fails hard; filtering keeps the valid records usable.
+	const records = params.addresses
+		.filter(
+			(address): address is string =>
+				typeof address === "string" && address.length > 0,
+		)
+		.map((address) => ({
+			address,
+			family: address.includes(":") ? 6 : 4,
+		}));
 	let index = 0;
 
 	const lookup: PinnedLookup = (
@@ -290,23 +298,33 @@ export async function resolvePinnedHostnameWithPolicy(
 	if (!lookupFn)
 		throw new Error("lookupFn is required in environment agnostic core");
 	const results = await lookupFn(normalized, { all: true });
-	if (results.length === 0) {
+	// Drop holes (undefined/empty) a resolver may emit before any address is
+	// inspected: an undefined address must never reach the private-IP check
+	// (it would throw on `.trim()`) nor the pinned lookup (it would pin the
+	// string "undefined"). This also covers an empty result set — both fail
+	// closed with "Unable to resolve hostname".
+	const addresses = Array.from(
+		new Set(
+			results
+				.map((entry) => entry.address)
+				.filter(
+					(address): address is string =>
+						typeof address === "string" && address.length > 0,
+				),
+		),
+	);
+	if (addresses.length === 0) {
 		throw new Error(`Unable to resolve hostname: ${hostname}`);
 	}
 
 	if (!allowPrivateNetwork && !isExplicitAllowed) {
-		for (const entry of results) {
-			if (isPrivateIpAddress(entry.address)) {
+		for (const address of addresses) {
+			if (isPrivateIpAddress(address)) {
 				throw new SsrfBlockedError(
 					"Blocked: resolves to private/internal IP address",
 				);
 			}
 		}
-	}
-
-	const addresses = Array.from(new Set(results.map((entry) => entry.address)));
-	if (addresses.length === 0) {
-		throw new Error(`Unable to resolve hostname: ${hostname}`);
 	}
 
 	return {

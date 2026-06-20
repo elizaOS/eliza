@@ -53,6 +53,30 @@ describe("createPinnedLookup", () => {
 			});
 		});
 	});
+
+	it("drops undefined/empty addresses instead of pinning 'undefined'", async () => {
+		const lookup = createPinnedLookup({
+			hostname: "example.com",
+			// A resolver returning a hole (undefined/empty) used to reach node's
+			// net layer and throw "Invalid IP address: undefined".
+			addresses: [undefined as unknown as string, "", "203.0.113.10"],
+		}) as (
+			hostname: string,
+			options: { all: true },
+			callback: (error: Error | null, addresses: LookupAddress[]) => void,
+		) => void;
+
+		await new Promise<void>((resolve, reject) => {
+			lookup("example.com", { all: true }, (error, addresses) => {
+				if (error) {
+					reject(error);
+					return;
+				}
+				expect(addresses).toEqual([{ address: "203.0.113.10", family: 4 }]);
+				resolve();
+			});
+		});
+	});
 });
 
 describe("SSRF policy enforcement", () => {
@@ -100,6 +124,17 @@ describe("SSRF policy enforcement", () => {
 		await expect(
 			resolvePinnedHostnameWithPolicy("example.com", { lookupFn }),
 		).rejects.toThrow("resolves to private/internal IP address");
+	});
+
+	it("fails closed when a host resolves to only undefined/empty addresses", async () => {
+		const lookupFn: LookupFn = async () => [
+			{ address: undefined as unknown as string, family: 4 },
+			{ address: "", family: 4 },
+		];
+
+		await expect(
+			resolvePinnedHostnameWithPolicy("example.com", { lookupFn }),
+		).rejects.toThrow("Unable to resolve hostname");
 	});
 
 	it("allows explicit hostname exceptions without allowing every private network", async () => {
