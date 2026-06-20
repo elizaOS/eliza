@@ -241,7 +241,13 @@ export interface WorkflowEvaluationSuite {
   optimizer: {
     engine: 'smithers-gepa';
     target: 'workflow-generation';
+    suiteName: string;
+    caseFile: string;
     recommendedCommand: string;
+    recommendedEvalCommand: string;
+    recommendedOptimizeCommand: string;
+    recommendedObservabilityCommand: string;
+    recommendedMetricsCommand: string;
     notes: string[];
   };
 }

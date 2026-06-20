@@ -54,7 +54,19 @@ describe('buildWorkflowEvaluationSuite', () => {
 
     expect(suite.sampleCount).toBe(1);
     expect(suite.optimizer.engine).toBe('smithers-gepa');
+    expect(suite.optimizer.caseFile).toBe('evals/cerebras-review-workflow.jsonl');
+    expect(suite.optimizer.suiteName).toBe('cerebras-review-workflow');
     expect(suite.optimizer.recommendedCommand).toContain('smithers-orchestrator eval');
+    expect(suite.optimizer.recommendedEvalCommand).toContain(
+      '--cases evals/cerebras-review-workflow.jsonl --suite cerebras-review-workflow'
+    );
+    expect(suite.optimizer.recommendedOptimizeCommand).toBe('bunx smithers-orchestrator optimize');
+    expect(suite.optimizer.recommendedObservabilityCommand).toBe(
+      'bunx smithers-orchestrator observability --detach'
+    );
+    expect(suite.optimizer.recommendedMetricsCommand).toBe(
+      'bunx smithers-orchestrator up <workflow.tsx> --serve --metrics'
+    );
     expect(sample.input.triggerData?.model).toBe('cerebras/gpt-oss-120b');
     expect(sample.expected.passed).toBe(true);
     expect(sample.expected.engine?.provider).toBe('smithers');

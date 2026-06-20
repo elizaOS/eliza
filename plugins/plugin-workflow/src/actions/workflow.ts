@@ -630,18 +630,33 @@ async function handleEvaluationSamples(
     const text =
       suite.sampleCount === 0
         ? `No executions found for workflow ${workflowId}; run it before generating eval samples.`
-        : `Generated ${suite.sampleCount} workflow eval sample${suite.sampleCount === 1 ? '' : 's'} for ${workflowId}.`;
+        : [
+            `Generated ${suite.sampleCount} workflow eval sample${suite.sampleCount === 1 ? '' : 's'} for ${workflowId}.`,
+            `Save cases to ${suite.optimizer.caseFile}.`,
+            `Eval: ${suite.optimizer.recommendedEvalCommand}`,
+            `Optimize: ${suite.optimizer.recommendedOptimizeCommand}`,
+          ].join('\n');
     if (callback) {
       await callback({
         text,
         action: WORKFLOW_ACTION,
-        metadata: { workflowId, count: suite.sampleCount },
+        metadata: {
+          workflowId,
+          count: suite.sampleCount,
+          caseFile: suite.optimizer.caseFile,
+          suiteName: suite.optimizer.suiteName,
+        },
       });
     }
     return {
       success: true,
       text,
-      values: { workflowId, count: suite.sampleCount },
+      values: {
+        workflowId,
+        count: suite.sampleCount,
+        caseFile: suite.optimizer.caseFile,
+        suiteName: suite.optimizer.suiteName,
+      },
       data: { suite },
     };
   } catch (err) {
