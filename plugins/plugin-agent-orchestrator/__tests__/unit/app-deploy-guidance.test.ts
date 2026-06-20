@@ -39,9 +39,9 @@ describe("app-deploy-guidance", () => {
 
     it("passes a non-app task through unchanged", () => {
       const task = "fix the bug in the parser";
-      expect(augmentTaskWithDeployGuidance(task, { target: "eliza-cloud" })).toBe(
-        task,
-      );
+      expect(
+        augmentTaskWithDeployGuidance(task, { target: "eliza-cloud" }),
+      ).toBe(task);
     });
 
     it("is idempotent — does not double-append the contract", () => {

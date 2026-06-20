@@ -170,8 +170,16 @@ describe("CodexBackend", () => {
         "newest nodejs version?"
       )
     ).toEqual([
-      { type: "message", role: "user", content: [{ type: "input_text", text: "newest nodejs version?" }] },
-      { type: "message", role: "assistant", content: [{ type: "output_text", text: "Fetching the dist index." }] },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "newest nodejs version?" }],
+      },
+      {
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Fetching the dist index." }],
+      },
       {
         type: "function_call",
         call_id: "call_1",
@@ -179,7 +187,11 @@ describe("CodexBackend", () => {
         arguments: '{"url":"https://nodejs.org/dist/index.json"}',
       },
       { type: "function_call_output", call_id: "call_1", output: 'text: [{"version":"v26.3.1"}]' },
-      { type: "message", role: "user", content: [{ type: "input_text", text: "newest nodejs version?" }] },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "newest nodejs version?" }],
+      },
     ]);
   });
 
