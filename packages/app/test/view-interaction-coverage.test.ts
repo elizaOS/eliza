@@ -385,9 +385,19 @@ const INTERACTION_DEBT: Readonly<Record<string, string>> = {
     "`documents` tab (/character/documents) via App.tsx findView, so it cannot be " +
     "registered in the ui-smoke stub without hijacking that route. Needs a " +
     "disambiguated view path before a keyless interaction spec can drive it.",
+  "waifu-imagegen:gui":
+    "The Waifu image generation view is newly boot-loaded and visually covered, " +
+    "but it still needs a keyless interaction owner that injects waifu API " +
+    "runtime config/auth and stubs the image-gen invoke endpoint without hiding " +
+    "credit-settled error states.",
+  "waifu-swap:gui":
+    "The Waifu swap view is newly boot-loaded and visually covered, but it " +
+    "still needs a keyless interaction owner that injects token/runtime config " +
+    "and proves the quote-only, execution-disabled flow without calling live " +
+    "PancakeSwap/waifu capability endpoints.",
 };
 
-const MAX_INTERACTION_DEBT = 1;
+const MAX_INTERACTION_DEBT = 3;
 
 const KEYLESS_INTERACTION_OWNER_DEBT = new Set([
   "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",
@@ -447,7 +457,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(61);
+    expect(visualCases.length).toBe(63);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",
