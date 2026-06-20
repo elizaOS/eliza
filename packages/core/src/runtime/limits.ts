@@ -9,6 +9,17 @@ export interface ChainingLoopConfig {
 	maxUnavailableToolCallRetries: number;
 	/** Maximum terminal-only planner turns that still evaluate to CONTINUE. */
 	maxTerminalOnlyContinuations: number;
+	/**
+	 * Maximum planner iterations whose only non-terminal tool calls exactly
+	 * repeat a call that already SUCCEEDED this turn (same tool name + args).
+	 * Re-running an identical successful call cannot yield new information; a
+	 * model that keeps doing so is stuck (observed live: gpt-5.5 re-issuing the
+	 * same WEB_FETCH 17× until `maxTrajectoryPromptTokens` aborted the turn with
+	 * a generic apology). Once exceeded, the loop stops re-executing and forces
+	 * one terminal synthesis call so the user gets the answer already gathered.
+	 * This is the success-side analog of `maxRepeatedFailures`.
+	 */
+	maxRepeatedToolCalls: number;
 	/** Estimated model context window for compaction decisions. */
 	contextWindowTokens: number;
 	/**
@@ -88,6 +99,7 @@ export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
 	maxRequiredToolMisses: 3,
 	maxUnavailableToolCallRetries: 3,
 	maxTerminalOnlyContinuations: 2,
+	maxRepeatedToolCalls: 2,
 	contextWindowTokens: 128_000,
 	compactionReserveTokens: 10_000,
 	compactionEnabled: true,

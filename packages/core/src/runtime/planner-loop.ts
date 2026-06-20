@@ -138,6 +138,7 @@ export async function runPlannerLoop(
 	let requiredToolMisses = 0;
 	let unavailableToolCallRetries = 0;
 	let silentFailedFinishRecoveries = 0;
+	let repeatedNonTerminalToolCalls = 0;
 	const requireNonTerminalToolCall =
 		params.requireNonTerminalToolCall === true &&
 		hasExposedNonTerminalTool(params.tools);
@@ -199,7 +200,18 @@ export async function runPlannerLoop(
 				modelType: params.modelType,
 				provider: params.provider,
 				tools: params.tools,
-				toolChoice: requireNonTerminalToolCall ? "required" : params.toolChoice,
+				// Force a tool call ONLY while the turn's "use a real tool" requirement
+				// is still unmet. Once a non-terminal tool has executed, relax to
+				// "auto" so the planner is free to synthesize a terminal REPLY from
+				// the result instead of being pushed to re-call a tool every
+				// iteration. "auto" must be EXPLICIT: passing the caller's (undefined)
+				// choice would be a no-op because callPlanner defaults undefined back
+				// to "required".
+				toolChoice: requireNonTerminalToolCall
+					? hasExecutedNonTerminalTool(trajectory)
+						? "auto"
+						: "required"
+					: params.toolChoice,
 				recorder: params.recorder,
 				trajectoryId: params.trajectoryId,
 				parentStageId: params.parentStageId,
@@ -469,7 +481,45 @@ export async function runPlannerLoop(
 					continue;
 				}
 			}
-			const validNonTerminalCalls = unavailable.valid;
+			// Loop-breaker: a non-terminal call that exactly repeats one already
+			// SUCCEEDED this turn (same name + args) cannot return new data. Execute
+			// only genuinely-fresh calls; when every call this iteration is such a
+			// repeat, count a dead round and — past `maxRepeatedToolCalls` — force a
+			// terminal synthesis instead of looping to the prompt-token budget.
+			const { fresh: validNonTerminalCalls, redundant: redundantCalls } =
+				partitionRedundantSucceededCalls(unavailable.valid, trajectory);
+			if (validNonTerminalCalls.length === 0 && redundantCalls.length > 0) {
+				repeatedNonTerminalToolCalls++;
+				trajectory.context = appendContextEvent(trajectory.context, {
+					id: `redundant-tool-call:${iteration}`,
+					type: "instruction",
+					source: "planner-loop",
+					createdAt: Date.now(),
+					content:
+						"You already have a successful result this turn for " +
+						`${redundantCalls.map((call) => call.name).join(", ")} with these ` +
+						"exact arguments. Re-running it cannot return new information — " +
+						"answer the user now from the results already gathered.",
+				});
+				if (repeatedNonTerminalToolCalls > config.maxRepeatedToolCalls) {
+					return finishWithForcedSynthesis({
+						loop: params,
+						config,
+						trajectory,
+						iteration,
+						onUsage: observePlannerUsage,
+					});
+				}
+				trajectory.plannedQueue.length = 0;
+				continue;
+			}
+			if (redundantCalls.length > 0) {
+				params.runtime.logger?.debug?.(
+					{ iteration, skipped: redundantCalls.map((call) => call.name) },
+					"Skipping tool calls that already succeeded with identical args this turn",
+				);
+			}
+			repeatedNonTerminalToolCalls = 0;
 			trajectory.plannedQueue.push(...validNonTerminalCalls);
 			trajectory.context = {
 				...trajectory.context,
@@ -2228,6 +2278,110 @@ function handleRequiredToolPlannerMiss(params: {
 // fulfill the request: the planner produces honest REPLY refusals across
 // iterations, and surfacing the last one is materially better than the
 // generic apology the caller would otherwise emit.
+function canonicalParamsString(value: unknown): string {
+	// Sorted-key serialization so two logically-identical tool calls that differ
+	// only in key insertion order (common across LLM re-emissions) map to the
+	// same identity — otherwise the redundant-call loop-breaker never trips.
+	return JSON.stringify(value, (_key, val) =>
+		val && typeof val === "object" && !Array.isArray(val)
+			? Object.fromEntries(
+					Object.entries(val as Record<string, unknown>).sort(([a], [b]) =>
+						a < b ? -1 : a > b ? 1 : 0,
+					),
+				)
+			: val,
+	);
+}
+
+function toolCallIdentity(toolCall: PlannerToolCall): string {
+	return `${toolCall.name} ${canonicalParamsString(toolCall.params ?? {})}`;
+}
+
+/**
+ * Split a set of planned non-terminal calls into those that are genuinely new
+ * this turn and those that exactly repeat a call which already SUCCEEDED (same
+ * tool name + arguments). A repeat of a successful call cannot return new
+ * information, so the loop should not re-execute it.
+ */
+function partitionRedundantSucceededCalls(
+	calls: PlannerToolCall[],
+	trajectory: PlannerTrajectory,
+): { fresh: PlannerToolCall[]; redundant: PlannerToolCall[] } {
+	const succeeded = new Set<string>();
+	for (const step of trajectory.steps) {
+		if (step.toolCall && step.result?.success === true) {
+			succeeded.add(toolCallIdentity(step.toolCall));
+		}
+	}
+	const fresh: PlannerToolCall[] = [];
+	const redundant: PlannerToolCall[] = [];
+	for (const call of calls) {
+		if (succeeded.has(toolCallIdentity(call))) redundant.push(call);
+		else fresh.push(call);
+	}
+	return { fresh, redundant };
+}
+
+/**
+ * Terminal escape hatch for a planner stuck re-issuing an identical successful
+ * call. Makes one `toolChoice: "none"` planner call so the model MUST answer in
+ * prose — synthesizing from the tool results already gathered — then returns
+ * that as the final message. Bounded (one extra call, no tools) so it cannot
+ * itself loop.
+ */
+async function finishWithForcedSynthesis(params: {
+	loop: PlannerLoopParams;
+	config: ChainingLoopConfig;
+	trajectory: PlannerTrajectory;
+	iteration: number;
+	onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void;
+}): Promise<PlannerLoopResult> {
+	const { loop, config, trajectory, iteration } = params;
+	trajectory.context = appendContextEvent(trajectory.context, {
+		id: `force-synthesis:${iteration}`,
+		type: "instruction",
+		source: "planner-loop",
+		createdAt: Date.now(),
+		content:
+			"Tool gathering for this turn is complete and the same call was repeated " +
+			"without new results. Do not call any tool. Write the final answer to the " +
+			"user now from the tool results already in this trajectory; if they do not " +
+			"contain the answer, say plainly what you found and what was missing.",
+	});
+	const synthOutput = await callPlanner({
+		runtime: loop.runtime,
+		context: trajectory.context,
+		trajectory,
+		config,
+		modelType: loop.modelType,
+		provider: loop.provider,
+		// No tools: forces free-text prose across both cloud ("none") and local
+		// engines. Passing tools here would re-engage the per-action grammar /
+		// responseSkeleton, fighting the "answer in prose, call no tool" intent.
+		tools: undefined,
+		recorder: loop.recorder,
+		trajectoryId: loop.trajectoryId,
+		parentStageId: loop.parentStageId,
+		iteration,
+		onUsage: params.onUsage,
+	});
+	const finalMessage = preferredFinalMessageFromToolOrModel(
+		trajectory,
+		synthOutput.messageToUser,
+	);
+	trajectory.steps.push({
+		iteration,
+		thought: synthOutput.thought,
+		terminalMessage: finalMessage,
+		terminalOnly: true,
+	});
+	return {
+		status: "finished",
+		trajectory,
+		finalMessage: userSafeFinalMessage(finalMessage, trajectory),
+	};
+}
+
 function finishWithCapturedRefusal(params: {
 	trajectory: PlannerTrajectory;
 	iteration: number;
