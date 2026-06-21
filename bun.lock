@@ -2916,6 +2916,7 @@
       },
       "devDependencies": {
         "@types/node": "^25.0.0",
+        "@typescript/native-preview": "^7.0.0-dev.20260421.2",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
       },
