@@ -12,6 +12,8 @@ const mockAppState = {
 
 vi.mock("../state", () => ({
   useApp: () => mockAppState,
+  useAppSelector: <T,>(selector: (s: typeof mockAppState) => T): T =>
+    selector(mockAppState),
   useAppSelectorShallow: <T,>(selector: (s: typeof mockAppState) => T): T =>
     selector(mockAppState),
 }));
