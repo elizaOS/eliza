@@ -94,3 +94,33 @@ describe("view matrix — per-language negative controls never navigate", () => 
 		expect(resolveIntentView(phrase)).toBeNull();
 	});
 });
+
+// #8797 acceptance: the deterministic cascade must clear a landed-accuracy floor
+// on direct + multilingual phrasing *independent of model strength*. This is the
+// model-free, always-on equivalent of the `verify-view-switching` landed-accuracy
+// gate (the live/local-model lanes assert the same floor against a real model).
+describe("view matrix — deterministic cascade accuracy floor (#8797)", () => {
+	const DIRECT_LANDED_FLOOR = 1; // direct multilingual phrasing must be 100%.
+	const NEGATIVE_PRECISION_FLOOR = 1; // zero false navigations.
+
+	it(`lands ≥ ${DIRECT_LANDED_FLOOR * 100}% of curated multilingual phrases`, () => {
+		let landed = 0;
+		for (const c of CURATED_MULTILINGUAL) {
+			if (resolveIntentView(c.phrase) === c.viewId) landed += 1;
+		}
+		const accuracy = landed / CURATED_MULTILINGUAL.length;
+		expect(
+			accuracy,
+			`landed ${landed}/${CURATED_MULTILINGUAL.length} curated phrases`,
+		).toBeGreaterThanOrEqual(DIRECT_LANDED_FLOOR);
+	});
+
+	it("never false-navigates on negative controls (precision floor)", () => {
+		let correctlyDeclined = 0;
+		for (const c of NEGATIVE_CONTROLS) {
+			if (resolveIntentView(c.phrase) === null) correctlyDeclined += 1;
+		}
+		const precision = correctlyDeclined / NEGATIVE_CONTROLS.length;
+		expect(precision).toBeGreaterThanOrEqual(NEGATIVE_PRECISION_FLOOR);
+	});
+});

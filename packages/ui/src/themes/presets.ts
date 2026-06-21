@@ -66,7 +66,9 @@ export const ELIZA_DEFAULT_THEME: ThemeDefinition = {
     headerBarFg: "#06131f",
     sectionBarBg: "rgba(255, 255, 255, 0.68)",
     sectionBarFg: "#1e2329",
-    linkColor: "#0c5f9e",
+    // No blue (#8796): links rest at body-text color and warm to orange on
+    // hover, mirroring the dark theme — never a blue link.
+    linkColor: "var(--text)",
     linkHoverColor: "#d95f16",
     shadowXs: "0 1px 2px rgb(15 23 42 / 0.04)",
     shadowSm: "0 1px 3px rgb(15 23 42 / 0.05)",
