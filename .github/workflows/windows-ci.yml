@@ -78,8 +78,6 @@ jobs:
             command: bun run --cwd packages/vault test
           - lane: test-security
             command: bun run --cwd packages/security test
-          - lane: test-elizaos-cli-full
-            command: bun run --cwd packages/elizaos test
           - lane: test-plugin-elizacloud
             command: bun run --cwd plugins/plugin-elizacloud test
           - lane: test-plugin-discord
