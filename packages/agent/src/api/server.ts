@@ -415,6 +415,7 @@ import {
   tryHandleMusicPlayerStatusFallbackLazy,
   tryHandleRuntimePluginRoute,
 } from "./server-lazy-routes.ts";
+import { tryHandleTrajectoryFallback } from "./trajectory-fallback-routes.ts";
 import {
   EVM_PLUGIN_PACKAGE,
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
@@ -3386,6 +3387,23 @@ async function handleRequest(
     await tryHandleMusicPlayerStatusFallbackLazy({
       pathname,
       method,
+      runtime: state.runtime,
+      res,
+    })
+  ) {
+    return;
+  }
+
+  // ── Trajectory read fallback ────────────────────────────────────────────
+  // Serves GET /api/trajectories[/:id|/stats] from the core TrajectoriesService
+  // when no plugin owns the route (mobile / training disabled), so the realtime
+  // trajectory viewer works without @elizaos/plugin-training. Runs AFTER the
+  // plugin routes above, so plugin-training's richer route wins when present.
+  if (
+    await tryHandleTrajectoryFallback({
+      pathname,
+      method,
+      url,
       runtime: state.runtime,
       res,
     })
