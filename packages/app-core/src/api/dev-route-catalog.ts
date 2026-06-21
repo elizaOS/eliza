@@ -228,6 +228,16 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
+    tabId: "transcripts",
+    path: "/apps/transcripts",
+    label: "Transcripts",
+    group: "Apps",
+    visibility: "all",
+    featureFlag: "VITE_ENABLE_APPS",
+    requiresAuth: true,
+    platformGate: null,
+  },
+  {
     tabId: "relationships",
     path: "/apps/relationships",
     label: "Relationships",
