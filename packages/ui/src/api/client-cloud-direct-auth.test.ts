@@ -299,49 +299,22 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
-  it("gets pairing tokens and deletes Cloud agents directly on native", async () => {
-    capacitorMocks.request
-      .mockResolvedValueOnce({
-        status: 200,
-        data: {
-          success: true,
-          data: {
-            token: "pair-token",
-            redirectUrl: "https://agent.example.test/pair?token=pair-token",
-            expiresIn: 60,
-          },
-        },
-      })
-      .mockResolvedValueOnce({
-        status: 200,
-        data: {
-          success: true,
-          data: { message: "Agent delete complete" },
-        },
-      });
+  it("deletes Cloud agents directly on native", async () => {
+    capacitorMocks.request.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        success: true,
+        data: { message: "Agent delete complete" },
+      },
+    });
 
     const client = new ElizaClient(undefined, "cloud-api-key");
-    const pairing = await client.getCloudCompatPairingToken("agent-1");
     const deleted = await client.deleteCloudCompatAgent("agent-1");
 
-    expect(capacitorMocks.request).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/pairing-token",
-        method: "POST",
-      }),
-    );
-    expect(capacitorMocks.request).toHaveBeenNthCalledWith(
-      2,
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
       expect.objectContaining({
         url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1",
         method: "DELETE",
-      }),
-    );
-    expect(pairing).toEqual(
-      expect.objectContaining({
-        success: true,
-        data: expect.objectContaining({ token: "pair-token" }),
       }),
     );
     expect(deleted).toEqual({
@@ -679,71 +652,6 @@ describe("ElizaClient direct Cloud auth on native", () => {
     );
     expect(capacitorMocks.request).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("uses direct Cloud provisioning-agent status and chat endpoints on native", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockRejectedValue(
-        new Error("native provisioning agent must not use fetch"),
-      );
-    capacitorMocks.request.mockImplementation(async ({ url, method, data }) => {
-      if (
-        url === "https://api.elizacloud.ai/api/v1/provisioning-agent" &&
-        method === "GET"
-      ) {
-        return {
-          status: 200,
-          data: {
-            success: true,
-            data: {
-              status: "running",
-              bridgeUrl: "https://agent.example.test",
-              agentId: "agent-1",
-            },
-          },
-        };
-      }
-      if (
-        url === "https://api.elizacloud.ai/api/v1/provisioning-agent/chat" &&
-        method === "POST"
-      ) {
-        expect(data).toEqual({ message: "hello", agentId: "agent-1" });
-        return {
-          status: 200,
-          data: {
-            success: true,
-            data: {
-              reply: "Ready when you are.",
-              containerStatus: "running",
-              bridgeUrl: "https://agent.example.test",
-            },
-          },
-        };
-      }
-      throw new Error(`Unexpected native Cloud request: ${method} ${url}`);
-    });
-
-    const client = new ElizaClient(undefined, "cloud-api-key");
-    const status = await client.getProvisioningAgentStatus("agent-1");
-    const chat = await client.sendProvisioningAgentMessage("hello", "agent-1");
-
-    expect(status.data).toEqual(
-      expect.objectContaining({
-        status: "running",
-        bridgeUrl: "https://agent.example.test",
-        agentId: "agent-1",
-      }),
-    );
-    expect(chat.data).toEqual(
-      expect.objectContaining({
-        reply: "Ready when you are.",
-        containerStatus: "running",
-        bridgeUrl: "https://agent.example.test",
-      }),
-    );
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expectNoLocalPersistOrStatusProbe();
   });
 
   it("polls direct Cloud provision jobs on native", async () => {

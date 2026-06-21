@@ -134,27 +134,6 @@ type DirectCloudAgentCreateData = {
 /** Async-job envelope returned by the restart/suspend/resume lifecycle routes. */
 type LifecycleResult = { jobId: string; status: string; message: string };
 
-type ProvisioningAgentStatusData = {
-  status?: string;
-  bridgeUrl?: string | null;
-  webUiUrl?: string | null;
-  agentId?: string | null;
-};
-
-type ProvisioningAgentChatMessage = {
-  role: "user" | "assistant";
-  content: string;
-};
-
-type ProvisioningAgentChatData = {
-  reply?: string;
-  containerStatus?: string;
-  bridgeUrl?: string | null;
-  webUiUrl?: string | null;
-  agentId?: string | null;
-  history?: ProvisioningAgentChatMessage[];
-};
-
 function isCloudRouteNotFound(error: unknown): error is ApiError {
   return (
     error instanceof Error &&
@@ -1144,17 +1123,6 @@ declare module "./client-base" {
       success: boolean;
       data: CloudCompatAgentStatus;
     }>;
-    getProvisioningAgentStatus(agentId?: string): Promise<{
-      success: boolean;
-      data: ProvisioningAgentStatusData;
-    }>;
-    sendProvisioningAgentMessage(
-      message: string,
-      agentId?: string,
-    ): Promise<{
-      success: boolean;
-      data: ProvisioningAgentChatData;
-    }>;
     getCloudCompatAgentLogs(
       agentId: string,
       tail?: number,
@@ -1176,54 +1144,6 @@ declare module "./client-base" {
       data?: CloudCompatLaunchResult;
       error?: string;
     }>;
-    /**
-     * Fetch a pairing token for a cloud agent. When the agent is not running,
-     * the server kicks off a resume and returns a 202 `{ status: "starting",
-     * jobId, retryAfterMs }` body instead of a token — poll again after the
-     * suggested interval. See `pairDedicatedCloudAgent` for the full loop.
-     */
-    getCloudCompatPairingToken(agentId: string): Promise<{
-      success: boolean;
-      data: {
-        token?: string;
-        redirectUrl?: string;
-        expiresIn?: number;
-        status?: string;
-        jobId?: string;
-        retryAfterMs?: number;
-        message?: string;
-      };
-      error?: string;
-    }>;
-    /**
-     * Resume (if needed), wait until running, then pair with a DEDICATED cloud
-     * agent and return the bind target. A dedicated agent is a full app-server
-     * with its own auth, so binding needs the agent's own API token (obtained by
-     * exchanging a one-time pairing token), not the cloud token. Drives the
-     * self-healing `pairing-token` endpoint: polls through the cold-boot
-     * (~5 min) `202 starting` responses, then exchanges the token at the cloud
-     * `/api/auth/pair` relay for the agent's API key.
-     *
-     * Resolves to `{ status: "paired", apiBase, agentToken }` to bind, or
-     * `{ status: "manual_auth", webUiUrl }` when the agent only offers its own
-     * password screen (no token pairing). Throws on timeout / hard failure.
-     */
-    pairDedicatedCloudAgent(
-      agentId: string,
-      options?: {
-        onProgress?: (status: string, detail?: string) => void;
-        timeoutMs?: number;
-        signal?: AbortSignal;
-      },
-    ): Promise<
-      | {
-          status: "paired";
-          apiBase: string;
-          agentToken: string;
-          agentName?: string;
-        }
-      | { status: "manual_auth"; webUiUrl: string }
-    >;
     getCloudCompatAvailability(): Promise<{
       success: boolean;
       data: {
@@ -2224,64 +2144,6 @@ ElizaClient.prototype.getCloudCompatAgentStatus = async function (
   );
 };
 
-ElizaClient.prototype.getProvisioningAgentStatus = async function (
-  this: ElizaClient,
-  agentId,
-) {
-  const direct = await directCloudRequest<{
-    success: boolean;
-    data?: ProvisioningAgentStatusData;
-  }>(this, "/api/v1/provisioning-agent");
-  if (direct) return { success: direct.success, data: direct.data ?? {} };
-
-  try {
-    return await this.fetch<{
-      success: boolean;
-      data: ProvisioningAgentStatusData;
-    }>("/api/v1/provisioning-agent");
-  } catch (error) {
-    if (!agentId || !isCloudRouteNotFound(error)) throw error;
-
-    const compat = await this.getCloudCompatAgentStatus(agentId);
-    return {
-      success: compat.success,
-      data: {
-        status: compat.data.status,
-        bridgeUrl: compat.data.bridgeUrl ?? null,
-        webUiUrl: compat.data.webUiUrl ?? null,
-        agentId,
-      },
-    };
-  }
-};
-
-ElizaClient.prototype.sendProvisioningAgentMessage = async function (
-  this: ElizaClient,
-  message,
-  agentId,
-) {
-  const body = JSON.stringify({
-    message,
-    ...(agentId ? { agentId } : {}),
-  });
-  const direct = await directCloudRequest<{
-    success: boolean;
-    data?: ProvisioningAgentChatData;
-  }>(this, "/api/v1/provisioning-agent/chat", {
-    method: "POST",
-    body,
-  });
-  if (direct) return { success: direct.success, data: direct.data ?? {} };
-
-  return this.fetch<{
-    success: boolean;
-    data: ProvisioningAgentChatData;
-  }>("/api/v1/provisioning-agent/chat", {
-    method: "POST",
-    body,
-  });
-};
-
 ElizaClient.prototype.getCloudCompatAgentLogs = async function (
   this: ElizaClient,
   agentId,
@@ -2437,52 +2299,6 @@ ElizaClient.prototype.launchCloudCompatAgent = async function (
 
   return this.fetch(
     `/api/cloud/compat/agents/${encodeURIComponent(agentId)}/launch`,
-    { method: "POST" },
-    { allowNonOk: true },
-  );
-};
-
-ElizaClient.prototype.getCloudCompatPairingToken = async function (
-  this: ElizaClient,
-  agentId,
-) {
-  const direct = await directCloudRequest<{
-    success: boolean;
-    data: {
-      token: string;
-      redirectUrl: string;
-      expiresIn: number;
-      status?: string;
-      jobId?: string;
-      retryAfterMs?: number;
-      message?: string;
-    };
-    error?: string;
-  }>(
-    this,
-    `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/pairing-token`,
-    { method: "POST" },
-  );
-  if (direct) return direct;
-
-  if (isNativeDirectCloudAuthMissing(this)) {
-    return {
-      success: false,
-      data: { token: "", redirectUrl: "", expiresIn: 0 },
-      error: nativeDirectCloudAuthMissingMessage(),
-    };
-  }
-
-  if (isDirectCloudBase(this)) {
-    return this.fetch(
-      `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/pairing-token`,
-      { method: "POST" },
-      { allowNonOk: true },
-    );
-  }
-
-  return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/pairing-token`,
     { method: "POST" },
     { allowNonOk: true },
   );
@@ -3168,150 +2984,6 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
     ...(typeof timeoutMs === "number" ? { timeoutMs } : {}),
     ...(log ? { log } : {}),
   });
-};
-
-/** Strip a `/pair?token=…` redirect down to the agent's own origin. */
-function dedicatedAgentOriginFromRedirect(redirectUrl: string): string {
-  return new URL(redirectUrl).origin;
-}
-
-/**
- * Exchange a one-time pairing token for the dedicated agent's API key via the
- * cloud `/api/auth/pair` relay. The token is origin-bound, so the request MUST
- * carry an `Origin` header matching the agent web UI origin. A browser `fetch`
- * cannot set `Origin` (forbidden header), so the native path calls
- * `CapacitorHttp` directly (it preserves the header); on the web the browser
- * supplies its own origin, which only matches when the SPA is served from the
- * agent origin. The exchange itself is unauthenticated — the pairing token is
- * the credential.
- */
-async function exchangeCloudPairingToken(args: {
-  cloudApiBase: string;
-  token: string;
-  agentOrigin: string;
-}): Promise<{ apiKey: string; agentName?: string }> {
-  const url = `${args.cloudApiBase.replace(/\/+$/, "")}/api/auth/pair`;
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    "Content-Type": "application/json",
-    Origin: args.agentOrigin,
-  };
-  const bodyObj = { token: args.token };
-
-  let status: number;
-  let parsed: { apiKey?: string | null; agentName?: string; error?: string };
-  if (shouldUseNativeCloudHttp()) {
-    const res = await withDirectCloudHttpTimeout(
-      CapacitorHttp.request({
-        url,
-        method: "POST",
-        headers,
-        data: bodyObj,
-        responseType: "json",
-        connectTimeout: 15_000,
-        readTimeout: 15_000,
-      }),
-      { method: "POST", url },
-    );
-    status = res.status;
-    parsed = (parseDirectCloudJsonSafe(res.data) ?? {}) as typeof parsed;
-  } else {
-    const res = await fetchDirectCloudWithTimeout(
-      url,
-      { method: "POST", headers, body: JSON.stringify(bodyObj) },
-      { method: "POST", url },
-    );
-    status = res.status;
-    parsed = (await res.json().catch(() => ({}))) as typeof parsed;
-  }
-
-  if (status === 401 || status === 403 || status === 410) {
-    throw new Error(
-      "Pairing link expired before sign-in completed. Try connecting again.",
-    );
-  }
-  if (status < 200 || status >= 300) {
-    throw new Error(
-      parsed.error || `Agent pairing exchange failed (${status}).`,
-    );
-  }
-  const apiKey = parsed.apiKey;
-  if (typeof apiKey !== "string" || !apiKey) {
-    throw new Error(
-      "Eliza Cloud accepted the pairing link but returned no agent key.",
-    );
-  }
-  return { apiKey, agentName: parsed.agentName };
-}
-
-ElizaClient.prototype.pairDedicatedCloudAgent = async function (
-  this: ElizaClient,
-  agentId,
-  options,
-) {
-  const onProgress = options?.onProgress;
-  // Cold boot of a dedicated container is ~5 min; give it headroom.
-  const deadline = Date.now() + (options?.timeoutMs ?? 6 * 60_000);
-  const cloudApiBase = resolveDirectCloudClientApiBase(this);
-  if (!cloudApiBase) {
-    throw new Error("Not signed in to Eliza Cloud.");
-  }
-
-  let token = "";
-  let redirectUrl = "";
-
-  // Phase 1: resume (server-side, automatic) + wait until the agent is running.
-  // The pairing-token endpoint returns a 202 `starting` body while the agent
-  // boots and a token once it is running.
-  for (;;) {
-    options?.signal?.throwIfAborted?.();
-    const res = await this.getCloudCompatPairingToken(agentId);
-    if (!res.success) {
-      throw new Error(res.error || "Failed to start the cloud agent.");
-    }
-    const data = res.data ?? {};
-    if (data.token && data.redirectUrl) {
-      token = data.token;
-      redirectUrl = data.redirectUrl;
-      break;
-    }
-    onProgress?.(
-      data.status || "starting",
-      data.message || "Waking your agent…",
-    );
-    if (Date.now() >= deadline) {
-      throw new Error(
-        "Timed out waiting for the cloud agent to start. Try again in a moment.",
-      );
-    }
-    const waitMs = Math.min(Math.max(data.retryAfterMs ?? 5000, 1000), 15_000);
-    await new Promise((r) => setTimeout(r, waitMs));
-  }
-
-  const agentOrigin = dedicatedAgentOriginFromRedirect(redirectUrl);
-
-  // When the agent has no UI-token pairing configured the server returns the
-  // bare web UI URL (no `/pair?token=`). That agent uses its own password
-  // screen — we cannot bind headlessly, so hand the URL back to the caller.
-  if (!/\/pair\b/.test(new URL(redirectUrl).pathname)) {
-    onProgress?.("manual_auth", "This agent uses its own sign-in.");
-    return { status: "manual_auth", webUiUrl: agentOrigin };
-  }
-
-  // Phase 2: trade the one-time token for the agent's own API key and bind.
-  onProgress?.("pairing", "Signing in to your agent…");
-  const exchanged = await exchangeCloudPairingToken({
-    cloudApiBase,
-    token,
-    agentOrigin,
-  });
-  onProgress?.("ready", "Connected.");
-  return {
-    status: "paired",
-    apiBase: agentOrigin,
-    agentToken: exchanged.apiKey,
-    agentName: exchanged.agentName,
-  };
 };
 
 ElizaClient.prototype.checkBugReportInfo = async function (this: ElizaClient) {
