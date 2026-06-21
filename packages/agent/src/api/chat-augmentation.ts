@@ -380,9 +380,18 @@ export async function maybeAugmentChatMessageWithDocuments(
     // generate-text round-trip on every plain-chat turn. Skip it.
     if (relevantMatches.length === 0 && initialMatches.matches.length > 0) {
       const recoveredQueries = await recoverDocumentSearchQueriesWithLlm();
-      for (const query of recoveredQueries) {
-        const recovered = await loadMatchesAcrossScopes(query);
-        if (recovered.timedOut) return message;
+      // Run the recovered-query searches concurrently. Each is an independent
+      // embedding round-trip (~1.5s); awaiting them one at a time was the bulk
+      // of the pre-reply latency (this augmentation runs before the reply is
+      // generated). Keep the original "first non-empty result wins" preference
+      // by scanning the resolved results in query order.
+      const recoveredResults = await Promise.all(
+        recoveredQueries.map((query) => loadMatchesAcrossScopes(query)),
+      );
+      if (recoveredResults.some((recovered) => recovered.timedOut)) {
+        return message;
+      }
+      for (const recovered of recoveredResults) {
         const recoveredMatches = selectRelevantMatches(recovered.matches)
           .sort(
             (left, right) => (right.similarity ?? 0) - (left.similarity ?? 0),
