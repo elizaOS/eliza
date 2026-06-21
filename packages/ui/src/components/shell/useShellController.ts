@@ -103,11 +103,18 @@ export interface ShellController {
   /** Register where push-to-talk dictation drops its final transcript (the
    *  overlay wires this to its composer draft). Pass null to clear. */
   setDictationSink: (sink: ((text: string) => void) | null) => void;
-  /** Register where a completed transcription SESSION is delivered (its segments
-   *  + the absolute session-start ms). The overlay wires this to create the
-   *  Transcript record + drop a chat link-widget. Pass null to clear. */
+  /** Register where a completed transcription SESSION is delivered (its segments,
+   *  the absolute session-start ms, and the concatenated session WAV when audio
+   *  was retained). The overlay wires this to create the Transcript record (+
+   *  audio) + drop a chat link-widget. Pass null to clear. */
   setTranscriptSessionSink: (
-    sink: ((segments: TranscriptSegment[], startedAtMs: number) => void) | null,
+    sink:
+      | ((
+          segments: TranscriptSegment[],
+          startedAtMs: number,
+          audioWav: Uint8Array | null,
+        ) => void)
+      | null,
   ) => void;
   /** Tell the controller whether the composer holds a pending typed/dictated
    *  draft. While a draft exists the hands-free ("always-on") loop is paused so
@@ -250,12 +257,21 @@ export function useShellController(): ShellController {
     React.useRef<TranscriptSessionAccumulator | null>(null);
   const transcriptSessionStartRef = React.useRef(0);
   const onTranscriptSessionRef = React.useRef<
-    ((segments: TranscriptSegment[], startedAtMs: number) => void) | null
+    | ((
+        segments: TranscriptSegment[],
+        startedAtMs: number,
+        audioWav: Uint8Array | null,
+      ) => void)
+    | null
   >(null);
   const setTranscriptSessionSink = React.useCallback(
     (
       sink:
-        | ((segments: TranscriptSegment[], startedAtMs: number) => void)
+        | ((
+            segments: TranscriptSegment[],
+            startedAtMs: number,
+            audioWav: Uint8Array | null,
+          ) => void)
         | null,
     ) => {
       onTranscriptSessionRef.current = sink;
@@ -277,6 +293,7 @@ export function useShellController(): ShellController {
     onTranscriptSessionRef.current?.(
       session.build(),
       transcriptSessionStartRef.current,
+      session.buildAudioWav(),
     );
   }, []);
 
@@ -496,8 +513,13 @@ export function useShellController(): ShellController {
             }
             // Accumulate this utterance into the recording session — it does NOT
             // post as its own chat bubble; the whole session becomes one record.
+            // Carry the utterance WAV + per-word timings (fused ASR v12) so the
+            // transcript retains audio + word-synced highlight.
             setTranscript("");
-            transcriptSessionRef.current?.addFinal(text, Date.now());
+            transcriptSessionRef.current?.addFinal(text, Date.now(), {
+              audioWav: segment.audioWav,
+              words: segment.words,
+            });
           } else if (intent === "dictate") {
             // Push-to-talk dictation: hand the text to the composer draft —
             // don't send, and leave lastTurnVoice false so no reply is spoken.

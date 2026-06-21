@@ -64,6 +64,10 @@ export interface AsrResult {
 	}>;
 	/** Optional Qwen2-BPE token ids — the fused build emits these so STT-finish token injection skips re-tokenization. */
 	tokens?: ReadonlyArray<number>;
+	/** Optional per-word `[startMs,endMs)` timings (ms from utterance start) — the
+	 *  fused ASR (ABI v12) emits these via `eliza_inference_asr_transcribe_timed`;
+	 *  absent on older builds. The transcript player highlights against them. */
+	words?: ReadonlyArray<{ text: string; startMs: number; endMs: number }>;
 	/** Optional inference time in ms (wall clock, not GPU compute). */
 	inferenceTimeMs?: number;
 	/** True when the response came from the arbiter's content-hash cache. */

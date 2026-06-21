@@ -27,6 +27,9 @@ export interface TranscriptCreateInput {
   segments: TranscriptSegment[];
   audioUrl?: string;
   audioContentType?: string;
+  /** Base64 WAV bytes — the server persists them to the media store and sets
+   *  audioUrl. The shell sends this instead of audioUrl (it can't write files). */
+  audioBase64?: string;
   createdAt?: number;
 }
 

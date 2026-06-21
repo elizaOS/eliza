@@ -26,6 +26,7 @@ import {
 	TranscriptService,
 	type TranscriptServiceRuntime,
 } from "../services/voice/transcript-service.js";
+import { persistTranscriptAudioWav } from "./transcript-audio-store.js";
 
 function service(ctx: RouteHandlerContext): TranscriptService {
 	return new TranscriptService(
@@ -46,6 +47,8 @@ export interface CreateTranscriptRequest {
 	segments: TranscriptSegment[];
 	audioUrl?: string;
 	audioContentType?: string;
+	/** Base64 WAV bytes — persisted to the media store; sets audioUrl. */
+	audioBase64?: string;
 	createdAt?: number;
 }
 
@@ -125,6 +128,14 @@ const createRoute: Route = {
 		// The shell client doesn't carry world/room/entity ids — default them to
 		// the agent context (single-user local) when not supplied.
 		const agentId = ctx.runtime.agentId as UUID;
+		// Persist the recorded session WAV into the served media store so the
+		// player has audio to scrub. The shell sends base64 (it can't write files).
+		if (body.audioBase64 && !body.audioUrl) {
+			body.audioUrl = persistTranscriptAudioWav(
+				Buffer.from(body.audioBase64, "base64"),
+			);
+			body.audioContentType = "audio/wav";
+		}
 		const transcript = buildTranscriptFromRequest(
 			body,
 			crypto.randomUUID(),

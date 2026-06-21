@@ -211,6 +211,18 @@ function rubberBand(overshoot: number): number {
 const PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
 // Stop generating: a centered rounded square (the universal "stop" affordance).
 const STOP_GLYPH = "M12 12H24V24H12Z";
+
+/** Base64-encode WAV bytes in chunks (avoids the apply() arg-count limit). */
+function wavBytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(
+      ...(bytes.subarray(i, i + chunk) as unknown as number[]),
+    );
+  }
+  return btoa(binary);
+}
 // Muted-speaker glyph for the autoplay-blocked "tap to enable sound" prompt.
 const SPEAKER_MUTED_GLYPH =
   "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
@@ -1709,10 +1721,19 @@ export function ContinuousChatOverlay({
     title: string;
   } | null>(null);
   React.useEffect(() => {
-    setTranscriptSessionSink((segments, startedAtMs) => {
+    setTranscriptSessionSink((segments, startedAtMs, audioWav) => {
       if (segments.length === 0) return;
       void client
-        .createTranscript({ segments, createdAt: startedAtMs })
+        .createTranscript({
+          segments,
+          createdAt: startedAtMs,
+          ...(audioWav
+            ? {
+                audioBase64: wavBytesToBase64(audioWav),
+                audioContentType: "audio/wav",
+              }
+            : {}),
+        })
         .then((res) =>
           setSavedTranscript({
             id: res.transcript.id,

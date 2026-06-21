@@ -53,6 +53,7 @@ import {
 	isOmniVoiceBundleAvailable,
 	VoiceStartupError,
 } from "./voice/engine-bridge";
+import type { AsrWordTiming } from "./voice/ffi-bindings";
 import { resolveKokoroEngineConfig } from "./voice/kokoro/kokoro-engine-discovery";
 import {
 	readVoiceBackendModeFromEnv,
@@ -1539,6 +1540,23 @@ export class LocalInferenceEngine {
 				: new DOMException("Aborted", "AbortError");
 		}
 		return transcript;
+	}
+
+	/** Transcribe + per-word timings (fused ASR v12) through the voice bridge. */
+	async transcribePcmTimed(
+		args: TranscriptionAudio,
+		signal?: AbortSignal,
+	): Promise<{ text: string; words: AsrWordTiming[] }> {
+		this.markActivity();
+		if (signal?.aborted) {
+			throw signal.reason instanceof Error
+				? signal.reason
+				: new DOMException("Aborted", "AbortError");
+		}
+		return this.requireVoiceBridge("transcribe audio").transcribePcmTimed(
+			args,
+			signal,
+		);
 	}
 
 	/**
