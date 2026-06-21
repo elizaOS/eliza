@@ -159,9 +159,14 @@ final class ElizaBionicInferenceServer {
             }
             String prompt = req.optString("prompt", "");
             int maxTokens = req.optInt("maxTokens", 256);
+            Log.i(TAG, "GENERATE from agent: " + prompt.length() + " prompt chars,"
+                + " maxTokens=" + maxTokens + ", bundle=" + bundleDir);
             // Buffered slice: nativeLlmSelfTest runs the whole greedy decode on
             // the GPU and returns {ok,text,tokens,ms,tokS} — pass it straight back.
-            return ElizaVoiceNative.nativeLlmSelfTest(bundleDir, prompt, maxTokens);
+            String result = ElizaVoiceNative.nativeLlmSelfTest(bundleDir, prompt, maxTokens);
+            Log.i(TAG, "GENERATE result: "
+                + (result.length() > 200 ? result.substring(0, 200) + "…" : result));
+            return result;
         } catch (Throwable t) {
             return errorJson(t.getMessage() == null ? t.toString() : t.getMessage());
         }

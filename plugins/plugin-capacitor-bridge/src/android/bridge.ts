@@ -232,9 +232,11 @@ export async function runAndroidBridgeCli(): Promise<void> {
 	);
 
 	// ── Step 4: wire inference delegation if device-bridge enabled ────────────
-	// The Capacitor WebView's llama-cpp plugin connects to the agent's
-	// `/api/local-inference/device-bridge` WebSocket endpoint.  Without
-	// this bootstrap, the bridge handler is never registered.
+	// Registers TEXT_SMALL/TEXT_LARGE/TEXT_EMBEDDING handlers (registerModel) on
+	// the runtime. When ELIZA_BIONIC_HOST_DELEGATED=1 (dynamic-Vulkan fused lib
+	// staged), the TEXT generate handler routes to the in-process bionic GPU
+	// host over an abstract UDS instead of the device-bridge WebSocket — see
+	// makeGenerateHandler in mobile-device-bridge-bootstrap.
 	if (runtime && process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
 		_logToFile("[android-bridge] importing mobile-device-bridge-bootstrap…");
 		const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
