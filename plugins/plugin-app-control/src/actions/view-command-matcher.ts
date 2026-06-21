@@ -745,7 +745,6 @@ const VIEW_PRIORITY = [
 	"camera",
 	"help",
 	"chat",
-	"transcripts",
 ];
 
 function esc(s: string): string {
