@@ -4,9 +4,6 @@ import { useCloudHandoffPhase } from "../../hooks/useCloudHandoffPhase";
 import { cn } from "../../lib/utils";
 import { Spinner } from "../ui/spinner";
 
-// z-[9999] mirrors Z_SYSTEM_CRITICAL in ../../lib/floating-layers.ts, matching
-// the sibling top banners. Kept literal so Tailwind v4's scanner emits it.
-
 const MESSAGE: Record<CloudHandoffPhase, string> = {
   migrating: "Setting up your dedicated agent — you can keep chatting.",
   switched: "You're now on your dedicated agent.",
@@ -19,37 +16,51 @@ const MESSAGE: Record<CloudHandoffPhase, string> = {
 
 /**
  * Surfaces the shared→dedicated cloud-agent handoff so the background swap is
- * visible instead of silent. While a freshly-provisioned agent's container
- * boots the user chats on the shared adapter; once it's ready the live client
- * swaps over automatically. Renders in document flow like the other top banners
- * and self-dismisses via {@link useCloudHandoffPhase}.
+ * visible instead of silent. While a freshly-provisioned agent's container boots
+ * the user keeps chatting on the shared adapter; once it's ready the live client
+ * swaps over automatically.
+ *
+ * Rendered as a floating toast pill (not an in-flow tinted banner): the chat
+ * view is a full-screen overlay with an orange ambient background, so a tinted
+ * top banner would sit behind it and any orange-family tint (accent/warn) would
+ * blend in. A dark pill below the status bar reads cleanly on any view. The
+ * amber spinner / green check carry the state; it self-dismisses via
+ * {@link useCloudHandoffPhase}.
  */
 export function CloudHandoffBanner() {
   const handoff = useCloudHandoffPhase();
   if (!handoff) return null;
 
   const { phase } = handoff;
-  const isFailure = phase === "timed-out" || phase === "failed";
+  const isSuccess = phase === "switched" || phase === "switched-empty";
 
   return (
     <div
       role="status"
       aria-live="polite"
-      data-window-titlebar-banner="true"
+      // z-[9999] mirrors Z_SYSTEM_CRITICAL in ../../lib/floating-layers.ts so it
+      // floats above the chat overlay. Dark bg + safe-area offset are inline so
+      // they don't depend on theme tokens (which are orange on the chat view).
       className={cn(
-        "mobile-top-banner shrink-0 z-[9999] flex items-center gap-3 px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)]",
-        isFailure ? "bg-warn" : "bg-accent",
+        "fixed left-1/2 z-[9999] flex max-w-[88%] -translate-x-1/2 items-center gap-2",
+        "rounded-2xl border border-white/15 px-4 py-2",
+        "text-sm font-medium leading-snug text-white shadow-lg",
       )}
+      style={{
+        top: "calc(var(--safe-area-top, 0px) + 10px)",
+        backgroundColor: "rgba(22, 22, 30, 0.96)",
+      }}
     >
       {phase === "migrating" ? (
-        <Spinner
-          size={16}
-          className="shrink-0 text-[color:var(--accent-foreground)]"
+        <Spinner size={15} className="shrink-0 text-[#ffb020]" />
+      ) : isSuccess ? (
+        <Check
+          size={15}
+          className="shrink-0 text-[color:var(--ok)]"
+          aria-hidden
         />
-      ) : isFailure ? null : (
-        <Check size={16} className="shrink-0" aria-hidden />
-      )}
-      <span className="truncate">{MESSAGE[phase]}</span>
+      ) : null}
+      <span>{MESSAGE[phase]}</span>
     </div>
   );
 }
