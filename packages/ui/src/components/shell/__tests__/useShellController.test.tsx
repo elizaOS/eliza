@@ -443,6 +443,34 @@ describe("useShellController — transcription mode", () => {
     vi.useRealTimers();
   });
 
+  it("starts/stops transcription on a voice-control window event (agent action)", () => {
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.transcriptionMode).toBe(false);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("eliza:voice-control", {
+          detail: { command: "start" },
+        }),
+      );
+    });
+    expect(result.current.transcriptionMode).toBe(true);
+    // Idempotent: a second "start" is a no-op.
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("eliza:voice-control", {
+          detail: { command: "start" },
+        }),
+      );
+    });
+    expect(result.current.transcriptionMode).toBe(true);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("eliza:voice-control", { detail: { command: "stop" } }),
+      );
+    });
+    expect(result.current.transcriptionMode).toBe(false);
+  });
+
   it("records every final VERBATIM as a silent DM carrying transcriptionMode", async () => {
     const { result } = renderHook(() => useShellController());
     await act(async () => {

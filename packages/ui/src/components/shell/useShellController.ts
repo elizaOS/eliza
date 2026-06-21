@@ -1,6 +1,10 @@
 import * as React from "react";
 
 import type { ImageAttachment } from "../../api/client-types-chat";
+import {
+  VOICE_CONTROL_EVENT,
+  type VoiceControlEventDetail,
+} from "../../events";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import { useApp } from "../../state";
 import {
@@ -655,6 +659,25 @@ export function useShellController(): ShellController {
   // Keep the forward ref current so the converse capture loop (defined above)
   // can flip into transcription on a spoken start phrase.
   toggleTranscriptionModeRef.current = toggleTranscriptionMode;
+
+  // A server-side agent action (START/STOP_TRANSCRIPTION) reaches the shell as a
+  // window `voice-control` event (the agent-event bus → client bridge); flip
+  // transcription to match. Idempotent — "start" while already transcribing (or
+  // "stop" while idle) is a no-op.
+  React.useEffect(() => {
+    const onVoiceControl = (e: Event) => {
+      const detail = (e as CustomEvent<VoiceControlEventDetail>).detail;
+      if (!detail) return;
+      if (detail.command === "start" && !transcriptionModeRef.current) {
+        toggleTranscriptionModeRef.current();
+      } else if (detail.command === "stop" && transcriptionModeRef.current) {
+        toggleTranscriptionModeRef.current();
+      }
+    };
+    window.addEventListener(VOICE_CONTROL_EVENT, onVoiceControl);
+    return () =>
+      window.removeEventListener(VOICE_CONTROL_EVENT, onVoiceControl);
+  }, []);
 
   // Transcription re-listen loop: a one-shot capture backend (local-inference
   // auto-stop on silence) ends after each utterance — re-open it so long-form
