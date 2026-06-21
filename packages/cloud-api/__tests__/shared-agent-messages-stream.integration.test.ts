@@ -119,7 +119,7 @@ function path(): string {
   return `/api/v1/eliza/agents/${AGENT}/api/conversations/${CONVERSATION}/messages/stream`;
 }
 
-function postStream(body: unknown, origin?: string): Promise<Response> {
+async function postStream(body: unknown, origin?: string): Promise<Response> {
   const headers: Record<string, string> = {
     // Bearer eliza_* passes the global auth gate; resolveSharedAgent (mocked)
     // does the real org/tier check.
