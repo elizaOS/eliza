@@ -384,6 +384,11 @@ describe("DeviceSettingsAppView — interactions", () => {
       "device-settings-volume-ring",
     )) as HTMLInputElement;
     fireEvent.change(ring, { target: { value: "7" } });
+    // Wait for the controlled edit to flush to the input before applying.
+    // applyVolume reads the edited value from state; on a saturated runner the
+    // change → re-render can lag the synchronous click, so without this the
+    // handler can still see the loaded value (5) instead of 7.
+    await waitFor(() => expect(ring.value).toBe("7"));
 
     fireEvent.click(screen.getByTestId("device-settings-apply-volume-ring"));
 
