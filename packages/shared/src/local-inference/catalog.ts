@@ -2,9 +2,9 @@
  * Eliza-curated local model catalog.
  *
  * Default local inference is restricted to the active Eliza-1 line:
- * eliza-1-0_8b, eliza-1-2b, eliza-1-4b, eliza-1-9b, eliza-1-27b,
+ * eliza-1-2b, eliza-1-4b, eliza-1-9b, eliza-1-27b,
  * and eliza-1-27b-256k.
- * These ship Qwen3.5 bases for 0.8B/2B/4B/9B and Qwen3.6 for 27B. The
+ * These ship Qwen3.5 bases for 2B/4B/9B and Qwen3.6 for 27B. The
  * 2026-05-12 mandate retired the legacy Qwen3 bases; see
  * packages/training/scripts/training/model_registry.py for the active
  * registry. External Hub search remains custom/opt-in and never enters
@@ -21,7 +21,6 @@ import type {
 export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
 
 export const ELIZA_1_TIER_IDS = [
-  "eliza-1-0_8b",
   "eliza-1-2b",
   "eliza-1-4b",
   "eliza-1-9b",
@@ -35,7 +34,6 @@ export const ELIZA_1_RELEASE_TIER_IDS =
   ELIZA_1_TIER_IDS satisfies ReadonlyArray<Eliza1TierId>;
 
 export const ELIZA_1_VISION_TIER_IDS = [
-  "eliza-1-0_8b",
   "eliza-1-2b",
   "eliza-1-4b",
   "eliza-1-9b",
@@ -48,7 +46,6 @@ const _ELIZA_1_VISION_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
 );
 
 export const ELIZA_1_MTP_TIER_IDS = [
-  "eliza-1-0_8b",
   "eliza-1-2b",
   "eliza-1-4b",
   "eliza-1-9b",
@@ -65,9 +62,10 @@ function mtpSupportedForTier(id: Eliza1TierId): boolean {
 }
 
 // The quantized 4B (Qwen3.5) is the minimum tier that is good enough to ship
-// as the default chat model. The 0.8B/2B tiers remain in the catalog (and as
-// MTP drafter companions) but are no longer first-run defaults — they are too
-// small for a quality conversational experience.
+// as the default chat model. The 2B tier remains in the catalog (and as an
+// MTP drafter companion) as the smallest/entry tier for low-memory phones, but
+// is no longer a first-run default — it is too small for a quality
+// conversational experience.
 export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-4b";
 
 export const DEFAULT_ELIGIBLE_MODEL_IDS: ReadonlySet<string> = new Set(
@@ -92,9 +90,9 @@ export function isDefaultEligibleId(id: string): boolean {
  * and for installs that depend on a private HF mirror).
  *
  * W3-12 audit (2026-05-14): the following areas require publish attention:
- *   - 0.8B/2B vision: enabled in the catalog and canonical vision tier set;
- *     publish staging must include `vision/mmproj-0_8b.gguf` and
- *     `vision/mmproj-2b.gguf` or manifest validation fails loudly.
+ *   - 2B vision: enabled in the catalog and canonical vision tier set;
+ *     publish staging must include `vision/mmproj-2b.gguf` or manifest
+ *     validation fails loudly.
  *   - Voice sub-models (wakeword, turn-detector, speaker-encoder, emotion):
  *     published under the unified elizaos/eliza-1 `voice/<model-id>/...`
  *     layout. Per-tier manifests still need to consume these paths directly
@@ -154,7 +152,7 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * backend have a single-element array.
  *
  * Policy:
- *   - Mobile-class tiers (0_8b / 2b / 4b) → Kokoro only. Kokoro is ~82M
+ *   - Mobile-class tiers (2b / 4b) → Kokoro only. Kokoro is ~82M
  *     params (a single ~60-80 MB GGUF) and hits ~97ms CPU TTFB, so it is
  *     both smaller and faster than OmniVoice (~400-625 MB) — the right
  *     trade for phones. OmniVoice is not shipped in these bundles. On
@@ -169,7 +167,6 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["kokoro"],
   "eliza-1-2b": ["kokoro"],
   "eliza-1-4b": ["kokoro"],
   "eliza-1-9b": ["omnivoice", "kokoro"],
@@ -200,7 +197,7 @@ interface TierSpec {
   /**
    * WS3: whether this tier ships a default image-gen model in the bundle
    * extras (`ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`). Mobile-class
-   * tiers (0_8b/2b/4b) default to SD 1.5 Q5_0 (~1.0 GB); desktop-class
+   * tiers (2b/4b) default to SD 1.5 Q5_0 (~1.0 GB); desktop-class
    * tiers (9b/27b) default to Z-Image-Turbo Q4_K_M
    * (~3.4 GB). The diffusion weights are runtime-downloaded — they are
    * NOT part of the base-v1 bundle.
@@ -209,26 +206,6 @@ interface TierSpec {
 }
 
 const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
-  "eliza-1-0_8b": {
-    id: "eliza-1-0_8b",
-    params: "0.8B",
-    sizeGb: 0.5,
-    minRamGb: 2,
-    q4MinRamGb: 2,
-    bucket: "small",
-    contextLength: 131072,
-    textFile: "text/eliza-1-0_8b-128k.gguf",
-    // WS2: vision is enabled on the smallest viable tier. The Q4_K_M
-    // mmproj for 0.8B is ~220 MB (see ELIZA_1_BUNDLE_EXTRAS.json), which
-    // fits even on 2 GB-floor devices when the text model is resident.
-    // Camera + screen analysis remain practical on low-tier phones at this
-    // size — the projector cache short-circuits the per-frame cost.
-    hasVision: true,
-    // WS3: image-gen via sd-cpp + SD 1.5 Q5_0 (~1.0 GB). Co-evicts
-    // with vision on the WS1 `vision` resident-role slot; only one of
-    // (VL describe, diffusion generate) is held at a time.
-    hasImageGen: true,
-  },
   "eliza-1-2b": {
     id: "eliza-1-2b",
     params: "2B",
@@ -321,8 +298,6 @@ function tierSlug(id: Eliza1TierId): string {
 
 function tierDisplaySlug(id: Eliza1TierId): string {
   switch (id) {
-    case "eliza-1-0_8b":
-      return "0.8B";
     case "eliza-1-2b":
       return "2B";
     case "eliza-1-4b":
@@ -392,15 +367,13 @@ export type OmniVoiceQuantLevel =
 
 /**
  * Default OmniVoice K-quant the runtime picks per tier when no
- * device-class override applies. Mobile-class tiers (0_8b/2b/4b) default
+ * device-class override applies. Mobile-class tiers (2b/4b) default
  * to Q4_K_M (~4.5 bits/weight, the common sweet spot for llama.cpp /
  * Ollama / LM Studio). Desktop / workstation tiers default to Q8_0 (≈8
  * bits/weight, near-bf16 quality) because RAM headroom permits it.
  */
 function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
-  return id === "eliza-1-0_8b" || id === "eliza-1-2b" || id === "eliza-1-4b"
-    ? "Q4_K_M"
-    : "Q8_0";
+  return id === "eliza-1-2b" || id === "eliza-1-4b" ? "Q4_K_M" : "Q8_0";
 }
 
 /**
@@ -418,7 +391,6 @@ function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
 const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   Record<Eliza1TierId, ReadonlyArray<OmniVoiceQuantLevel>>
 > = {
-  "eliza-1-0_8b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
   "eliza-1-2b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
   "eliza-1-4b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
@@ -568,10 +540,8 @@ function textQuantizationMatrix(args: {
 function blurbForTier(id: Eliza1TierId): string {
   const displayName = tierDisplayName(id);
   switch (id) {
-    case "eliza-1-0_8b":
-      return `${displayName} - smallest local tier for low-memory phones and CPU fallback.`;
     case "eliza-1-2b":
-      return `${displayName} - recommended first-run local tier for responsive text and voice.`;
+      return `${displayName} - smallest/entry local tier for low-memory phones and CPU fallback.`;
     case "eliza-1-4b":
       return `${displayName} - balanced local tier for modern laptops and desktops.`;
     case "eliza-1-9b":
@@ -604,13 +574,6 @@ const TIER_DRAFTERS: Partial<
     }
   >
 > = {
-  "eliza-1-0_8b": {
-    ggufRel: "dflash/drafter-0_8b.gguf",
-    params: "0.5B",
-    sizeGb: 0.24,
-    minRamGb: 2,
-    bucket: "small",
-  },
   "eliza-1-2b": {
     ggufRel: "dflash/drafter-2b.gguf",
     params: "0.8B",

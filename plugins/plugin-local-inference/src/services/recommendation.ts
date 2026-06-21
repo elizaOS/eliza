@@ -26,7 +26,6 @@ import type {
 	TextGenerationSlot,
 } from "./types";
 
-const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
 const TIER_2B: Eliza1TierId = "eliza-1-2b";
 const TIER_4B: Eliza1TierId = "eliza-1-4b";
 const TIER_9B: Eliza1TierId = "eliza-1-9b";
@@ -63,28 +62,28 @@ const SLOT_LADDERS: Record<
 	Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
 > = {
 	mobile: {
-		TEXT_SMALL: [TIER_0_8B],
-		TEXT_LARGE: [TIER_4B, TIER_2B, TIER_0_8B],
+		TEXT_SMALL: [TIER_2B],
+		TEXT_LARGE: [TIER_4B, TIER_2B],
 	},
 	"apple-silicon": {
-		TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
-		TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
+		TEXT_SMALL: [TIER_2B, TIER_4B],
+		TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B],
 	},
 	"linux-gpu": {
-		TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
-		TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
+		TEXT_SMALL: [TIER_2B, TIER_4B],
+		TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B],
 	},
 	"linux-cpu": {
-		TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
-		TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
+		TEXT_SMALL: [TIER_2B, TIER_4B],
+		TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B],
 	},
 	"desktop-gpu": {
-		TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
-		TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
+		TEXT_SMALL: [TIER_2B, TIER_4B],
+		TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B],
 	},
 	"desktop-cpu": {
-		TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
-		TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
+		TEXT_SMALL: [TIER_2B, TIER_4B],
+		TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B],
 	},
 };
 

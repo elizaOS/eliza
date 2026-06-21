@@ -237,9 +237,8 @@ export interface VoiceEnsembleBudget {
  * the largest co-resident knob is the LM itself.
  */
 export type VoiceTierSlot =
-	| "mobile-0_8b" // mobile profile: kokoro-q8 + turnsense + ASR-0.6B + LM-0.8B, no embedding
-	| "desktop-0_8b" // desktop profile: omnivoice + livekit-turn + ASR-0.6B + LM-0.8B
-	| "desktop-2b" // 2b LM + full voice stack + embedding
+	| "mobile-2b" // mobile profile: kokoro-q8 + turnsense + ASR-0.6B + LM-2B (entry tier), no dedicated embedding
+	| "desktop-2b" // 2b LM (entry tier) + full voice stack + embedding
 	| "desktop-4b" // 4b LM + full voice stack + embedding
 	| "workstation-9b" // 9b LM + omnivoice-Q8 + ASR-0.6B + embedding
 	| "workstation-27b"; // 27b LM + omnivoice-Q8 + ASR-1.7B + embedding
@@ -251,37 +250,21 @@ const _GB = 1024;
 export const VOICE_ENSEMBLE_BUDGETS: Readonly<
 	Record<VoiceTierSlot, VoiceEnsembleBudget>
 > = {
-	"mobile-0_8b": buildEnsemble({
-		tierSlot: "mobile-0_8b",
-		lmMb: 0.5 * _GB,
-		lmKvMb: 0.044 * _GB,
-		drafterMb: 0.31 * _GB,
+	"mobile-2b": buildEnsemble({
+		tierSlot: "mobile-2b",
+		lmMb: 1.4 * _GB, // eliza-1-2b (entry tier) Q4-ish
+		lmKvMb: 0.075 * _GB,
+		drafterMb: 0.5 * _GB,
 		ttsMb: 0.08 * _GB, // kokoro-q8 ONNX
 		asrMb: 0.4 * _GB, // qwen3-asr-0.6B documented Q4-equiv
 		asrMmprojMb: 0.2 * _GB,
-		embeddingMb: 0, // pools from LM on the 0.8B tier
+		embeddingMb: 0, // pools from the text backbone on the 2b entry tier
 		vadMb: 2 * _MB, // silero-vad documented baseline
 		wakeWordMb: 4 * _MB,
 		turnDetectorMb: 60 * _MB, // turnsense 135M int8 mobile
 		emotionMb: 40 * _MB, // wav2small int8 acoustic
 		speakerEncoderMb: 10 * _MB, // wespeaker / x-vector int8
 		transientTtsBufferMb: 0, // mobile defaults to cloud TTS or kokoro burst
-	}),
-	"desktop-0_8b": buildEnsemble({
-		tierSlot: "desktop-0_8b",
-		lmMb: 0.5 * _GB,
-		lmKvMb: 0.044 * _GB,
-		drafterMb: 0.31 * _GB,
-		ttsMb: 0.65 * _GB, // omnivoice base (Q4_K_M = 388.6 MB) + tokenizer (240.8 MB)
-		asrMb: 0.4 * _GB,
-		asrMmprojMb: 0.2 * _GB,
-		embeddingMb: 0,
-		vadMb: 2 * _MB,
-		wakeWordMb: 4 * _MB,
-		turnDetectorMb: 100 * _MB, // livekit/turn-detector v1.2.2-en SmolLM2-135M
-		emotionMb: 40 * _MB,
-		speakerEncoderMb: 10 * _MB,
-		transientTtsBufferMb: 1.17 * _GB, // omnivoice MaskGIT compute peak
 	}),
 	"desktop-2b": buildEnsemble({
 		tierSlot: "desktop-2b",

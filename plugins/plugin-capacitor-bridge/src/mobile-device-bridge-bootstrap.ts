@@ -46,7 +46,6 @@ const SERVICE_ENABLED = process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
 const registeredRuntimes = new WeakSet<AgentRuntime>();
 const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
 	"eliza-1-embedding": 1024,
-	"eliza-1-0_8b": 1024,
 	"eliza-1-2b": 1536,
 	"eliza-1-4b": 2560,
 };
@@ -66,10 +65,9 @@ const ELIZA_1_LOAD_METADATA: Record<
 		mtp?: { draftMin: number; draftMax: number };
 	}
 > = {
-	// 0.8b is the low-memory NON-MTP path: it carries no usable NextN draft
-	// head (per native/AGENTS.md §1 "MTP ships on 2B and larger tiers"), so
-	// draft stays 0 and the device runs the plain decode loop.
-	"eliza-1-0_8b": { contextSize: 131072 },
+	// 2B is the smallest/entry tier (the small-phone default). Every shipped
+	// tier carries a single NextN head (per native/AGENTS.md §1 "MTP ships on
+	// 2B and larger tiers"), so same-file MTP is always available.
 	"eliza-1-2b": { contextSize: 131072, mtp: SAME_FILE_MTP_DRAFT },
 	"eliza-1-4b": { contextSize: 65536, mtp: SAME_FILE_MTP_DRAFT },
 	"eliza-1-9b": { contextSize: 65536, mtp: SAME_FILE_MTP_DRAFT },
@@ -856,8 +854,8 @@ export function buildLoadArgsFromRegistryModel(model: {
 			args.cacheTypeK = "qjl1_256";
 			args.cacheTypeV = "tbq3_0";
 		}
-		// Same-file MTP draft window for the tier's NextN head. The tier table
-		// already excludes 0.8b (no NextN head). ELIZA_BIONIC_MTP forces it
+		// Same-file MTP draft window for the tier's NextN head. Every shipped
+		// tier (2B and up) carries a NextN head. ELIZA_BIONIC_MTP forces it
 		// on/off regardless of the tier default.
 		const mtpOverride = bionicMtpOverride();
 		const mtpEnabled = mtpOverride ?? eliza1.mtp !== undefined;
@@ -949,8 +947,8 @@ const RECOMMENDED_MODELS: Record<
 	"TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
 	RecommendedModel
 > = {
-	// The quantized 4B is the shipped mobile minimum/default. Both chat slots
-	// resolve to it — the 0.8B/2B tiers are too small for quality chat. The
+	// The quantized 4B is the shipped mobile default. Both chat slots resolve
+	// to it — 2B is the entry/floor tier but too small for quality chat. The
 	// load path runs it at 64k context (see ELIZA_1_LOAD_METADATA) with
 	// compressed KV so it fits 8 GB-class phones.
 	TEXT_SMALL: {
@@ -1135,7 +1133,7 @@ function flattenChatParamsForPrompt(params: GenerateTextParams): string {
 
 // The bionic host does a SINGLE blocking generate per call (no streaming), so
 // the whole decode must finish inside this window. On a CPU-only build (the
-// Vulkan lib isn't staged) a 0.8B model runs at only a few tok/s, so a longer
+// Vulkan lib isn't staged) a small model runs at only a few tok/s, so a longer
 // reply (~200+ tokens) blew past the old 120s cap → "bionic host timed out", the
 // turn fell back to an empty/failed reply, and an empty trajectory was recorded.
 // Default to 300s (the other native device-bridge ops already use 600s) and let

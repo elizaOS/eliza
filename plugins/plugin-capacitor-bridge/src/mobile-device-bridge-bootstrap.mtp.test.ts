@@ -19,7 +19,6 @@ describe("buildLoadArgsFromRegistryModel — same-file MTP", () => {
 
 	it("enables MTP for every Eliza-1 tier (all carry an embedded NextN head)", () => {
 		for (const id of [
-			"eliza-1-0_8b",
 			"eliza-1-2b",
 			"eliza-1-4b",
 			"eliza-1-9b",

@@ -997,7 +997,6 @@ function resolveImageGenModelKeyFromRuntime(runtime: IAgentRuntime): string {
  * routing test (`imagegen-routing.test.ts`).
  */
 const TIER_TO_DEFAULT_IMAGE_MODEL_KEY: Readonly<Record<string, string>> = {
-	"eliza-1-0_8b": "imagegen-sd-1_5-q5_0",
 	"eliza-1-2b": "imagegen-sd-1_5-q5_0",
 	"eliza-1-4b": "imagegen-sd-1_5-q5_0",
 	"eliza-1-9b": "imagegen-z-image-turbo-q4_k_m",
