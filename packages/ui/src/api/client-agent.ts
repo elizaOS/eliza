@@ -100,6 +100,10 @@ import type {
   RelationshipsPersonSummary,
   RunFeedGenerationOptions,
   RunFeedGenerationResponse,
+  RunActionBenchmarkOptions,
+  RunActionBenchmarkResponse,
+  RunBenchmarkVsCerebrasOptions,
+  RunBenchmarkVsCerebrasResponse,
   RunLocalEvalComparisonOptions,
   RunLocalEvalComparisonResponse,
   RunScenarioOptions,
@@ -737,6 +741,12 @@ declare module "./client-base" {
     ): Promise<
       RunTrainingCollectionResponse | RunTrainingCollectionPreflightResponse
     >;
+    runTrainingActionBenchmark(
+      options?: RunActionBenchmarkOptions,
+    ): Promise<RunActionBenchmarkResponse>;
+    runTrainingBenchmarkVsCerebras(
+      options?: RunBenchmarkVsCerebrasOptions,
+    ): Promise<RunBenchmarkVsCerebrasResponse>;
     listTrainingCollections(options?: {
       limit?: number;
       root?: string;
@@ -2542,6 +2552,26 @@ ElizaClient.prototype.runTrainingScenarios = async function (
   options?,
 ) {
   return this.fetch("/api/training/scenarios/run", {
+    method: "POST",
+    body: JSON.stringify(options ?? {}),
+  });
+};
+
+ElizaClient.prototype.runTrainingActionBenchmark = async function (
+  this: ElizaClient,
+  options?,
+) {
+  return this.fetch("/api/training/benchmarks/action-selection/run", {
+    method: "POST",
+    body: JSON.stringify(options ?? {}),
+  });
+};
+
+ElizaClient.prototype.runTrainingBenchmarkVsCerebras = async function (
+  this: ElizaClient,
+  options?,
+) {
+  return this.fetch("/api/training/benchmarks/run-vs-cerebras", {
     method: "POST",
     body: JSON.stringify(options ?? {}),
   });
