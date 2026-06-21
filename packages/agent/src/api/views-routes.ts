@@ -872,6 +872,9 @@ export async function handleViewsRoutes(
         viewLabel,
         viewType: resolvedViewType,
         viewPath,
+        // Carry freshness so Stage-1 can acknowledge a just-happened switch (#8788).
+        ...(switchedAt ? { switchedAt } : {}),
+        ...(source ? { source } : {}),
       });
       // Emit the first-class VIEW_SWITCHED interaction event (#8792) so a
       // proactive decider can comment. Only on a real change (no spam on

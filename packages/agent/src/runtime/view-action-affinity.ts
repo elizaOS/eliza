@@ -44,6 +44,27 @@ export interface ActiveViewContext {
    * so the awareness block degrades gracefully to "use list-elements".
    */
   elements?: readonly ActiveViewElement[];
+  /**
+   * ISO timestamp of the most recent switch INTO this view, and who drove it.
+   * Carried from the navigate route so Stage-1 can acknowledge a just-happened
+   * switch (#8788). Absent when the view was not freshly switched.
+   */
+  switchedAt?: string;
+  source?: "agent" | "user";
+}
+
+/**
+ * A view switch is "fresh" (worth acknowledging on the immediately-following
+ * turn) for this window. Kept in lockstep with VIEW_SWITCH_FRESH_MS in
+ * `views-routes.ts`.
+ */
+export const ACTIVE_VIEW_SWITCH_FRESH_MS = 15_000;
+
+function isActiveViewSwitchFresh(view: ActiveViewContext): boolean {
+  if (!view.switchedAt) return false;
+  const at = Date.parse(view.switchedAt);
+  if (Number.isNaN(at)) return false;
+  return Date.now() - at <= ACTIVE_VIEW_SWITCH_FRESH_MS;
 }
 
 let activeView: ActiveViewContext | null = null;
@@ -262,12 +283,21 @@ export function renderActiveViewContextBlock(view: ActiveViewContext): string {
   const lines = [
     "# Active View",
     `The user is looking at the "${view.viewLabel}" view (id: ${view.viewId}, ${view.viewType}${view.viewPath ? `, path ${view.viewPath}` : ""}).`,
+  ];
+  // Turn-scoped acknowledgement of a just-happened switch (#8788): only on the
+  // immediately-following turn (freshness decays after 15s), so it never lingers.
+  if (isActiveViewSwitchFresh(view)) {
+    lines.push(
+      `The user just switched into this view${view.source === "agent" ? " (you navigated here)" : ""} — briefly acknowledge the switch in your reply before doing anything else.`,
+    );
+  }
+  lines.push(
     "You can inspect and drive everything in it through the view-interact capabilities:",
     "- list-elements — enumerate addressable controls/data (id, role, label, value, focus).",
     "- get-agent-state — read the whole view snapshot, including the focused element.",
     "- agent-click {id} / agent-fill {id,value} / agent-focus {id} / agent-scroll-to {id} — act on an element by its id.",
     "Prefer acting directly on the view over describing what the user should click.",
-  ];
+  );
   if (scoped.length > 0) {
     lines.push(
       `Actions most relevant while on this view (prefer these when the request fits): ${scoped.join(", ")}.`,
