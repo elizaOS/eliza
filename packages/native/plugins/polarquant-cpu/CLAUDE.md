@@ -34,8 +34,7 @@ TurboQuant TBQ3_0 V is the ≤8k-context fallback.
 
 | Tier              | Q4_POLAR V-cache (default >8k ctx) | Q4_POLAR weights (Q4 path) |
 |-------------------|-----------------------------------:|---------------------------:|
-| eliza-1-0_8b      | shipped | buildable via `polarquant_apply.py` |
-| eliza-1-2b        | shipped | buildable |
+| eliza-1-2b        | shipped | buildable via `polarquant_apply.py` |
 | eliza-1-4b        | shipped | buildable |
 | eliza-1-9b        | shipped | buildable |
 | eliza-1-27b       | shipped | buildable |

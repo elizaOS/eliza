@@ -26,7 +26,7 @@ audio-first-played`. Derived headline metrics: **TTFT** (vad→first token),
 
 ### Measured-today path (Mac, fused harness) — where time goes
 
-Approx wall-clock for first audio (0.8B tier, from harness defaults + code):
+Approx wall-clock for first audio (2B entry tier, from harness defaults + code):
 
 | Stage | Span | Typical | Blocking? |
 |---|---|---|---|
@@ -99,8 +99,8 @@ time-budget flush (700 ms default).**
     session resets chat history each turn → full prompt re-prefill. Conversation-
     pinned `cacheKey` slots avoid this; voice partials do not.
 14. **MTP is a runtime/engine concern, not catalog-gated** (`catalog.ts:493-506`):
-    the catalog declares MTP support **uniformly** across tiers — 0.8B uses
-    **same-file MTP** (`:494-495`), not a separate DFlash drafter (the `TIER_DRAFTERS`
+    the catalog declares MTP support **uniformly** across tiers — the `2b` entry
+    tier uses **same-file MTP** (`:494-495`), not a separate DFlash drafter (the `TIER_DRAFTERS`
     entries at `:595-609` are hidden, runtime-role-gated; `:458-460` confirms no
     separate drafter component for these tiers). Correctness note (verified): the
     "only the fused backend speculates" behavior lives in the engine/backend, **not**
@@ -119,8 +119,8 @@ The user asked specifically about 8/12/16/20/24/48/128 GB. Proposed resident set
 
 | Device RAM | Text tier | Voice resident set (no evict) | Notes |
 |---|---|---|---|
-| **8 GB** (iPhone/base Mac) | 0.8B Q4 + DFlash drafter | ASR(0.6B) **xor** TTS resident; VAD(2 MB) always; embedding via text `--pooling last` | Tight: keep VAD+text hot; ASR and TTS alternate but pre-warm the next. q8_0 KV. **This is the eviction-sensitive tier.** |
-| **12 GB** | 0.8B/2B | text + ASR + TTS(kokoro) + VAD all resident | GOOD: no per-turn swaps; vision projector co-resident with text. |
+| **8 GB** (iPhone/base Mac) | 2B Q4 + same-file MTP | ASR(0.6B) **xor** TTS resident; VAD(2 MB) always; embedding via text `--pooling last` | Tight: keep VAD+text hot; ASR and TTS alternate but pre-warm the next. q8_0 KV. **This is the eviction-sensitive tier.** |
+| **12 GB** | 2B | text + ASR + TTS(kokoro) + VAD all resident | GOOD: no per-turn swaps; vision projector co-resident with text. |
 | **16 GB** | 2B/4B | + vision mmproj + OmniVoice co-resident | full multimodal hot. |
 | **20–24 GB** | 4B (MAX) | + image-gen warm, larger KV / longer ctx | all models parallelized + resident. |
 | **48 GB** | 9B | everything resident + multi-context (parallel rooms) | run drafter+target+voice with headroom. |

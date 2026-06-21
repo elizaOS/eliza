@@ -11,7 +11,7 @@ fabricated number (AGENTS.md §3/§7).
 1. Run the workbench on the target device class for the tier:
    ```bash
    node packages/benchmarks/mobile-resource/run-workbench.mjs \
-     --platform=android --tier=eliza-1-0_8b --device-class=android-phone
+     --platform=android --tier=eliza-1-2b --device-class=android-phone
    ```
 2. Repeat ≥3× on a quiet, thermally-cool device; take the conservative side
    (p50 floor for throughput, p90/peak for ceilings).
@@ -28,7 +28,6 @@ memory ceiling — they are caps, not measured values:
 
 | Tier            | GGUF footprint (≈) | Provisional peak-RSS cap |
 | --------------- | ------------------ | ------------------------ |
-| `eliza-1-0_8b`  | ~0.56–0.7 GB       | 1400 MB                  |
 | `eliza-1-2b`    | ~1.3–1.6 GB        | 2600 MB                  |
 | `eliza-1-4b`    | ~2.6 GB (Q4_K_M)   | 3600 MB                  |
 
@@ -41,10 +40,10 @@ _None yet — populate as device runs land._
 
 | Device class   | Tier           | Workload        | decode tok/s (p50) | prefill tok/s (p50) | TTFT (p90) | peak RSS | battery drain | commit |
 | -------------- | -------------- | --------------- | ------------------ | ------------------- | ---------- | -------- | ------------- | ------ |
-| ios-phone      | eliza-1-0_8b   | single-turn     | —                  | —                   | —          | —        | —             | —      |
-| ios-phone      | eliza-1-0_8b   | sustained-chat  | —                  | —                   | —          | —        | —             | —      |
-| android-phone  | eliza-1-0_8b   | single-turn     | —                  | —                   | —          | —        | —             | —      |
-| android-phone  | eliza-1-0_8b   | sustained-chat  | —                  | —                   | —          | —        | —             | —      |
+| ios-phone      | eliza-1-2b     | single-turn     | —                  | —                   | —          | —        | —             | —      |
+| ios-phone      | eliza-1-2b     | sustained-chat  | —                  | —                   | —          | —        | —             | —      |
+| android-phone  | eliza-1-2b     | single-turn     | —                  | —                   | —          | —        | —             | —      |
+| android-phone  | eliza-1-2b     | sustained-chat  | —                  | —                   | —          | —        | —             | —      |
 
 ## Notes / known gaps
 

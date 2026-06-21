@@ -51,7 +51,7 @@ or "pick the TTS" — that is a runtime concern, not a user concern.
 
 Backbones (do not change without explicit human approval):
 
-- **Text/vision:** Qwen3.5 family for the current 0.8B/2B/4B/9B
+- **Text/vision:** Qwen3.5 family for the current 2B/4B/9B
   release tiers, with Qwen3.6 for the active 27B family. Every active
   Eliza-1 tier is vision-capable when its tier-matched `vision/mmproj-<tier>.gguf`
   is present and validated. We do not name these as "Qwen" in any
@@ -64,7 +64,7 @@ Backbones (do not change without explicit human approval):
 
   | Tier                  | Backend(s)              | Default  |
   | --------------------- | ----------------------- | -------- |
-  | `0_8b` / `2b` / `4b`  | OmniVoice **and** Kokoro| OmniVoice|
+  | `2b` / `4b`           | OmniVoice **and** Kokoro| OmniVoice|
   | `9b`                  | OmniVoice **and** Kokoro| OmniVoice|
   | `27b` / `27b-256k` | OmniVoice only  | OmniVoice|
 
@@ -146,17 +146,15 @@ Backbones (do not change without explicit human approval):
   bundle. Drives barge-in cancellation; gates ASR to skip silent frames.
 - **Wake word:** openWakeWord (Apache-2.0, ~3 MB). Opt-in, local-mode
   only. Hidden in cloud mode per three-mode hide-not-disable.
-- **Embedding:** `0_8b` and `2b` reuse the active text backbone with
-  `--pooling last` — no duplicate weights in the mobile/default tiers.
+- **Embedding:** `2b` (the entry tier) reuses the active text backbone with
+  `--pooling last` — no duplicate weights in the mobile/default tier.
   Larger tiers may ship a dedicated `embedding/` artifact (1024-dim
   Matryoshka, 32k ctx) when the manifest records a real source artifact and
   evidence. Do not fabricate embedding source repos, and do not silently
   fall back on larger tiers when the manifest says a dedicated region is
   required.
-- **Drafter:** MTP ships on 2B and larger tiers. The 0.8B tier is the
-  low-memory non-MTP path until a real drafter companion and evidence exist.
-  Where MTP is present, speculative decoding is mandatory, not optional
-  (see §3).
+- **Drafter:** MTP ships on every tier, including the `2b` entry tier.
+  Speculative decoding is mandatory, not optional (see §3).
 
 Three runtime modes — every code path must work in all three:
 
@@ -195,8 +193,7 @@ hosted under the `elizalabs` HuggingFace org under `eliza-1`.
 
 | Tier            | Tagline                       | Text  | Voice           | Vision | Context  | MTP | Quant default                   |
 | --------------- | ----------------------------- | ----- | --------------- | ------ | -------- | ------ | ------------------------------- |
-| `0_8b`       | low-RAM phones, CPU fallback   | 0.8B  | OmniVoice + Kokoro | mmproj | 128k  | no     | TurboQuant Q4 + QJL + Polar     |
-| `2b`         | modern phones                  | 2B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + QJL + Polar     |
+| `2b`         | small / low-RAM phones (entry) | 2B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + QJL + Polar     |
 | `4b`         | flagship phones, small desktops| 4B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + QJL + Polar     |
 | `9b`         | desktop / midrange GPU          | 9B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + QJL + Polar     |
 | `27b`        | flagship GPU                    | 27B   | OmniVoice       | mmproj | 128k     | yes    | TurboQuant Q4 + QJL + Polar TCQ |
@@ -220,7 +217,7 @@ elizaos/eliza-1/
     text/
       eliza-1-<tier>-<ctx>.gguf    # text (+ inline vision where supported)
     tts/
-      # Kokoro fallback shipped on 0_8b/2b/4b/9b:
+      # Kokoro fallback shipped on 2b/4b/9b:
       kokoro/model_q4.onnx
       kokoro/tokenizer.json
       kokoro/voices/<voice>.bin
@@ -239,7 +236,7 @@ elizaos/eliza-1/
     vad/
       silero-vad-v5.gguf           # native silero-vad-cpp, every tier
     vision/
-      mmproj-<tier>.gguf           # 0_8b/2b/4b/9b/27b/27b-256k
+      mmproj-<tier>.gguf           # 2b/4b/9b/27b/27b-256k
     mtp/
       drafter-<tier>.gguf
       target-meta.json             # acceptance windows, kernel caps
@@ -268,13 +265,13 @@ elizaos/eliza-1/
 The **runtime default** voice quant per tier (the level the runtime
 selects when no device-class override applies) is the value returned by
 `voiceQuantForTier()` in `packages/shared/src/local-inference/catalog.ts`:
-`Q4_K_M` for `0_8b/2b/4b`, `Q8_0` for `9b/27b/27b-256k`.
+`Q4_K_M` for `2b/4b`, `Q8_0` for `9b/27b/27b-256k`.
 
 The **publish ladder** per tier (every level that gets staged when
 `--include-voice-ladder` is passed) is the value returned by
 `voiceQuantLadderForTier()`:
 
-- Mobile tiers (`0_8b/2b/4b`) publish the narrow OmniVoice ladder
+- Mobile tiers (`2b/4b`) publish the narrow OmniVoice ladder
   `Q3_K_M, Q4_K_M, Q5_K_M`.
 - Larger OmniVoice-shipping tiers (`9b/27b/27b-256k`) publish
   `Q3_K_M, Q4_K_M, Q5_K_M, Q6_K, Q8_0`.

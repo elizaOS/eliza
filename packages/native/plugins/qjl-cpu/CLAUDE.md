@@ -31,7 +31,6 @@ QJL is the **K-cache default for every shipping Eliza-1 tier** — see
 
 | Tier              | QJL1_256 K-cache (default) |
 |-------------------|---------------------------:|
-| eliza-1-0_8b      | shipped (default) |
 | eliza-1-2b        | shipped (default) |
 | eliza-1-4b        | shipped (default) |
 | eliza-1-9b        | shipped (default) |

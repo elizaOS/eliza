@@ -29,7 +29,7 @@ bun run --cwd packages/benchmarks/eliza-1 start \
 bun run src/index.ts --task planner --mode guided --n 3
 ```
 
-Available tiers: `eliza-1-0_8b` (default), `eliza-1-2b`, `eliza-1-4b`,
+Available tiers: `eliza-1-2b` (smallest/entry), `eliza-1-4b` (first-run default),
 `eliza-1-9b`, `eliza-1-27b`, `eliza-1-27b-256k`.
 
 Env: `CEREBRAS_API_KEY` enables the cerebras mode. `ELIZA_BENCH_SKIP_ENGINE=1`

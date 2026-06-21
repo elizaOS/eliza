@@ -170,12 +170,12 @@ describe("buildGenerateArgsFromParams", () => {
 describe("buildAospLoadModelArgs", () => {
   it("leaves bundled MTP disabled by default on stock Android", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "aosp-mtp-model-"));
-    const textDir = path.join(root, "eliza-1-0_8b.bundle", "text");
-    const mtpDir = path.join(root, "eliza-1-0_8b.bundle", "mtp");
+    const textDir = path.join(root, "eliza-1-2b.bundle", "text");
+    const mtpDir = path.join(root, "eliza-1-2b.bundle", "mtp");
     mkdirSync(textDir, { recursive: true });
     mkdirSync(mtpDir, { recursive: true });
-    const chat = path.join(textDir, "eliza-1-0_8b-32k.gguf");
-    const drafter = path.join(mtpDir, "drafter-0_8b.gguf");
+    const chat = path.join(textDir, "eliza-1-2b-32k.gguf");
+    const drafter = path.join(mtpDir, "drafter-2b.gguf");
     writeFileSync(chat, "chat");
     writeFileSync(drafter, "draft");
 
@@ -198,12 +198,12 @@ describe("buildAospLoadModelArgs", () => {
 
   it("auto-pairs a publish-eligible bundled MTP drafter on stock Android", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "aosp-mtp-auto-"));
-    const textDir = path.join(root, "eliza-1-0_8b.bundle", "text");
-    const mtpDir = path.join(root, "eliza-1-0_8b.bundle", "mtp");
+    const textDir = path.join(root, "eliza-1-2b.bundle", "text");
+    const mtpDir = path.join(root, "eliza-1-2b.bundle", "mtp");
     mkdirSync(textDir, { recursive: true });
     mkdirSync(mtpDir, { recursive: true });
-    const chat = path.join(textDir, "eliza-1-0_8b-32k.gguf");
-    const drafter = path.join(mtpDir, "drafter-0_8b.gguf");
+    const chat = path.join(textDir, "eliza-1-2b-32k.gguf");
+    const drafter = path.join(mtpDir, "drafter-2b.gguf");
     writeFileSync(chat, "chat");
     writeFileSync(drafter, "draft");
     writeFileSync(
@@ -289,12 +289,12 @@ describe("buildAospLoadModelArgs", () => {
 
   it("auto-pairs a bundled chat GGUF with its MTP drafter when explicitly enabled", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "aosp-mtp-model-"));
-    const textDir = path.join(root, "eliza-1-0_8b.bundle", "text");
-    const mtpDir = path.join(root, "eliza-1-0_8b.bundle", "mtp");
+    const textDir = path.join(root, "eliza-1-2b.bundle", "text");
+    const mtpDir = path.join(root, "eliza-1-2b.bundle", "mtp");
     mkdirSync(textDir, { recursive: true });
     mkdirSync(mtpDir, { recursive: true });
-    const chat = path.join(textDir, "eliza-1-0_8b-32k.gguf");
-    const drafter = path.join(mtpDir, "drafter-0_8b.gguf");
+    const chat = path.join(textDir, "eliza-1-2b-32k.gguf");
+    const drafter = path.join(mtpDir, "drafter-2b.gguf");
     writeFileSync(chat, "chat");
     writeFileSync(drafter, "draft");
 
@@ -324,12 +324,12 @@ describe("buildAospLoadModelArgs", () => {
 
   it("does not enable MTP when target-meta says the drafter is the target bytes", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "aosp-mtp-copy-"));
-    const textDir = path.join(root, "eliza-1-0_8b.bundle", "text");
-    const mtpDir = path.join(root, "eliza-1-0_8b.bundle", "mtp");
+    const textDir = path.join(root, "eliza-1-2b.bundle", "text");
+    const mtpDir = path.join(root, "eliza-1-2b.bundle", "mtp");
     mkdirSync(textDir, { recursive: true });
     mkdirSync(mtpDir, { recursive: true });
-    const chat = path.join(textDir, "eliza-1-0_8b-32k.gguf");
-    const drafter = path.join(mtpDir, "drafter-0_8b.gguf");
+    const chat = path.join(textDir, "eliza-1-2b-32k.gguf");
+    const drafter = path.join(mtpDir, "drafter-2b.gguf");
     writeFileSync(chat, "same-model");
     writeFileSync(drafter, "same-model");
     writeFileSync(
@@ -362,13 +362,13 @@ describe("readAssignedBundledModels", () => {
   it("prefers assigned registry models over directory scan order", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "aosp-assigned-models-"));
     const modelsDir = path.join(root, "local-inference", "models");
-    const smallBundle = path.join(modelsDir, "eliza-1-0_8b.bundle", "text");
+    const smallBundle = path.join(modelsDir, "eliza-1-2b.bundle", "text");
     const defaultBundle = path.join(modelsDir, "eliza-1-2b.bundle", "text");
     const embeddingDir = path.join(modelsDir, "bge-small-en-v1.5");
     mkdirSync(smallBundle, { recursive: true });
     mkdirSync(defaultBundle, { recursive: true });
     mkdirSync(embeddingDir, { recursive: true });
-    const smallModel = path.join(smallBundle, "eliza-1-0_8b-32k.gguf");
+    const smallModel = path.join(smallBundle, "eliza-1-2b-32k.gguf");
     const defaultModel = path.join(defaultBundle, "eliza-1-2b-32k.gguf");
     const embeddingModel = path.join(
       embeddingDir,
@@ -393,7 +393,7 @@ describe("readAssignedBundledModels", () => {
         version: 1,
         models: [
           {
-            id: "eliza-1-0_8b",
+            id: "eliza-1-2b",
             path: smallModel,
             source: "eliza-download",
           },

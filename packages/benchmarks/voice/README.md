@@ -10,7 +10,7 @@ in `reports/`.
 ## Quick Start
 
 ```bash
-# Full E2E with real models (requires eliza-1-0_8b.bundle + libvoice_classifier.dylib)
+# Full E2E with real models (requires eliza-1-2b.bundle + libvoice_classifier.dylib)
 ELIZA_VOICE_CLASSIFIER_LIB=<repo>/build-darwin/libvoice_classifier.dylib \
   bun packages/benchmarks/voice/three-voice-e2e-real.mjs
 

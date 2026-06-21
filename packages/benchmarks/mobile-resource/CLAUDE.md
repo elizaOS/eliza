@@ -9,11 +9,11 @@ orchestrator. Issue #8800.
 
 ```bash
 node packages/benchmarks/mobile-resource/run-workbench.mjs            # auto-detect device
-node packages/benchmarks/mobile-resource/run-workbench.mjs --platform=android --tier=eliza-1-0_8b
+node packages/benchmarks/mobile-resource/run-workbench.mjs --platform=android --tier=eliza-1-2b
 node packages/benchmarks/mobile-resource/report.mjs                   # consolidated report
 ```
 
-Flags: `--platform=android|ios`, `--tier=eliza-1-0_8b|eliza-1-2b|eliza-1-4b`,
+Flags: `--platform=android|ios`, `--tier=eliza-1-2b|eliza-1-4b`,
 `--device-class=<budgets.json key>`, `--workloads=a,b,c`, `--base-url=<agent>`,
 `--package=<android pkg>`, `--json`, `--fail-on-missing`.
 

@@ -27,17 +27,17 @@ describe("LocalInferenceEngine direct Eliza-1 bundle loads", () => {
 			captured = plan;
 		};
 
-		const bundleRoot = path.join(root, "eliza-1-0_8b.bundle");
-		const modelPath = path.join(bundleRoot, "text", "eliza-1-0_8b-128k.gguf");
+		const bundleRoot = path.join(root, "eliza-1-2b.bundle");
+		const modelPath = path.join(bundleRoot, "text", "eliza-1-2b-128k.gguf");
 		await engine.load(modelPath, {
 			modelPath,
-			modelId: "eliza-1-0_8b",
+			modelId: "eliza-1-2b",
 		});
 
 		expect(captured).toBeDefined();
 		expect(captured?.modelPath).toBe(modelPath);
-		expect(captured?.modelId).toBe("eliza-1-0_8b");
-		expect(captured?.catalog?.id).toBe("eliza-1-0_8b");
+		expect(captured?.modelId).toBe("eliza-1-2b");
+		expect(captured?.catalog?.id).toBe("eliza-1-2b");
 		expect(captured?.overrides?.bundleRoot).toBe(bundleRoot);
 		expect(captured?.overrides?.manifestPath).toBe(
 			path.join(bundleRoot, "eliza-1.manifest.json"),
@@ -51,7 +51,7 @@ describe("LocalInferenceEngine direct Eliza-1 bundle loads", () => {
 		).toEqual(
 			expect.objectContaining({
 				root: bundleRoot,
-				tierId: "eliza-1-0_8b",
+				tierId: "eliza-1-2b",
 			}),
 		);
 	});

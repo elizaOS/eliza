@@ -42,7 +42,7 @@ src/
   mobile-device-bridge-bootstrap.ts  MobileDeviceBridge class + ensureMobileDeviceBridgeInferenceHandlers
                                       Model path resolution: env vars → registry → manifest.json → first .gguf
                                       Auto-download from elizaos/eliza-1 on HuggingFace (respects ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD)
-                                      Recommended models: eliza-1-0_8b (TEXT_SMALL), eliza-1-2b (TEXT_LARGE), eliza-1-embedding (TEXT_EMBEDDING)
+                                      Recommended models: eliza-1-4b (TEXT_SMALL + TEXT_LARGE), eliza-1-embedding (TEXT_EMBEDDING)
   android/
     bridge.ts                       Android CLI entry: env setup, fs shim install, startEliza({ serverOnly: true }), device-bridge wiring
   ios/

@@ -70,7 +70,7 @@ Eliza-1 bundles (Qwen3.5 / 3.6 base):
 
 | Bundle | n_layers | n_kv_heads | head_dim | FP16 KiB/tok | Q8K/Q4V KiB/tok | QJL+Polar KiB/tok |
 |---|---|---|---|---|---|---|
-| 0.8B / 2B class | 28 | 8 | 128 | 112 | 88 | 28 |
+| 2B class | 28 | 8 | 128 | 112 | 88 | 28 |
 | 4B | 36 | 8 | 128 | 144 | 113 | 36 |
 | 9B | 48 | 8 | 128 | 192 | 150 | 48 |
 | 27B | 62 | 8 | 128 | 248 | 194 | 62 |
@@ -169,7 +169,7 @@ Used by the voice optimistic-rollback path. Mid-prefill snapshots cost
 
 | Bundle | ctx_checkpoints | interval |
 |---|---|---|
-| 0.8B / 2B | 4 | 4 096 |
+| 2B | 4 | 4 096 |
 | 4B / 9B | 8 | 8 192 |
 | 27B (incl. 256k) | 16 | 8 192 |
 

@@ -3,7 +3,7 @@
  * Two-agents-talking-endlessly voice harness for Eliza-1 (`bun run voice:duet`).
  *
  * Agent A and agent B are two `LocalInferenceEngine` instances on the **same
- * tier bundle** (`eliza-1-0_8b` by default, then `eliza-1-2b`) but with
+ * tier bundle** (`eliza-1-2b` by default — the smallest/entry tier) but with
  * **different characters** — A's `replyText` → A's OmniVoice TTS →
  * `InMemoryAudioSink`-shaped `DuetSink` (24 kHz → 16 kHz) → a ring →
  * B's `PushMicSource` → B's VAD + streaming ASR → B's `VoiceTurnController`
@@ -60,7 +60,7 @@ const __filename = fileURLToPath(import.meta.url);
 
 function parseArgs(argv) {
   const out = {
-    model: "eliza-1-0_8b",
+    model: "eliza-1-2b",
     turns: Infinity,
     characterA: null,
     characterB: null,
@@ -126,7 +126,7 @@ function intArg(s) {
 
 const USAGE = `Usage: bun run voice:duet [-- <options>]
 
-  --model <id>            tier bundle (default eliza-1-0_8b; also eliza-1-2b)
+  --model <id>            tier bundle (default eliza-1-2b; also eliza-1-4b)
   --turns <N>             stop after N round-trips (default: endless)
   --character-a <path>    agent A's Character JSON (default: a baked-in persona)
   --character-b <path>    agent B's Character JSON (default: a baked-in persona)

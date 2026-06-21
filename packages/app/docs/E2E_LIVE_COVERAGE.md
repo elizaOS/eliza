@@ -145,7 +145,7 @@ provider key it self-skips — but it can run truly-real and keyless against a l
 model served by **Ollama's OpenAI-compatible endpoint**, no paid key:
 
 ```bash
-ollama serve &                     # then: ollama create eliza-1-0_8b -f Modelfile  (FROM <gguf>)
+ollama serve &                     # then: ollama create eliza-1-2b -f Modelfile  (FROM <gguf>)
 OPENAI_API_KEY=local \
 OPENAI_BASE_URL=http://localhost:11434/v1 \
 ELIZA_LIVE_TEST_SMALL_MODEL=llama3.2:3b ELIZA_LIVE_TEST_LARGE_MODEL=llama3.2:3b \

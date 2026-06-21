@@ -13,7 +13,7 @@
  *   - the fused lib is not resolvable (`ELIZA_INFERENCE_LIBRARY` /
  *     `ELIZA_INFERENCE_LIB_DIR`, or a build under build-static-fused),
  *   - no Eliza-1 ASR bundle is provided (`ELIZA_ASR_BUNDLE`, or the default
- *     `~/.eliza/local-inference/models/eliza-1-0_8b.bundle`),
+ *     `~/.eliza/local-inference/models/eliza-1-2b.bundle`),
  *   - the `freeman.wav` speech submodule isn't checked out,
  *   - or the loaded build predates v12 (`timedAsrSupported() === false`).
  * Runs via `bun test` (the post-merge lane runner — bun:ffi + `globalThis.Bun`);
@@ -62,7 +62,7 @@ const LIB_PATH =
 
 const BUNDLE =
 	process.env.ELIZA_ASR_BUNDLE?.trim() ||
-	path.join(os.homedir(), ".eliza/local-inference/models/eliza-1-0_8b.bundle");
+	path.join(os.homedir(), ".eliza/local-inference/models/eliza-1-2b.bundle");
 const HAVE_BUNDLE = existsSync(BUNDLE);
 
 const FREEMAN_WAV = fileURLToPath(
