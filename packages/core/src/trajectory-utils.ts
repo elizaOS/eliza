@@ -1,3 +1,4 @@
+import { isTruthyEnvValue } from "./env-utils.js";
 import {
 	CONTEXT_OBJECT_TRAJECTORY_VERSION,
 	type ContextObjectTrajectoryExport,
@@ -443,11 +444,6 @@ function readProcessEnv(name: string): string | undefined {
 		return undefined;
 	}
 	return process.env[name];
-}
-
-function isTruthyEnvValue(value: string | undefined): boolean {
-	const normalized = value?.trim().toLowerCase();
-	return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
 export function isTrajectoryStrictModeEnabled(): boolean {

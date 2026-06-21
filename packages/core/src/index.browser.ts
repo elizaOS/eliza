@@ -28,6 +28,10 @@ export * from "./connectors/privacy";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
+// `isTruthyEnvValue` is pure string logic (no Node deps), so it is browser-safe
+// and exported from both barrels. @elizaos/shared re-exports it from the core
+// barrel so browser consumers resolve the same canonical truthy set.
+export * from "./env-utils";
 export * from "./features/advanced-memory";
 export { AutonomyService } from "./features/autonomy/index";
 export {

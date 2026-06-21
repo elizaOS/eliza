@@ -1,5 +1,7 @@
 /** Canonical environment-variable reader. */
 
+import { parseBooleanValue } from "./boolean.js";
+
 /** Process env, or an empty object in non-Node runtimes (browser). */
 function defaultEnv(): NodeJS.ProcessEnv {
 	return typeof process !== "undefined" && process.env
@@ -38,9 +40,9 @@ export function readEnvBool(
 	} = {},
 ): boolean {
 	const raw = readEnv(canonicalKey, { env: options.env });
-	if (raw === undefined) return options.defaultValue ?? false;
-	const normalized = raw.toLowerCase();
-	if (["1", "true", "yes", "on"].includes(normalized)) return true;
-	if (["0", "false", "no", "off"].includes(normalized)) return false;
-	return options.defaultValue ?? false;
+	// `parseBooleanValue`'s default sets are exactly `1/true/yes/on` (truthy) and
+	// `0/false/no/off` (falsy) — identical to this reader's historical inline
+	// lists — so it preserves behavior. Unset or unrecognized values fall back
+	// to `defaultValue` (default `false`), matching the previous semantics.
+	return parseBooleanValue(raw) ?? options.defaultValue ?? false;
 }
