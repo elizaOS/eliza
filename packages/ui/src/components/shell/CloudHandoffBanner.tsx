@@ -31,8 +31,11 @@ export function CloudHandoffBanner() {
   const handoff = useCloudHandoffPhase();
   if (!handoff) return null;
 
-  const { phase } = handoff;
+  const { phase, onRetry } = handoff;
   const isSuccess = phase === "switched" || phase === "switched-empty";
+  const canRetry =
+    (phase === "timed-out" || phase === "failed") &&
+    typeof onRetry === "function";
 
   return (
     <div
@@ -61,6 +64,21 @@ export function CloudHandoffBanner() {
         />
       ) : null}
       <span>{MESSAGE[phase]}</span>
+      {canRetry ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          // Neutral pill on the dark surface: neutral-resting → lighter-neutral
+          // hover (never orange→black) per the brand hover rules.
+          className={cn(
+            "ml-1 shrink-0 rounded-lg border border-white/20 bg-white/10 px-2.5 py-1",
+            "text-xs font-semibold text-white transition-colors hover:bg-white/20",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+          )}
+        >
+          Retry
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -790,59 +790,69 @@ export function useFirstRunController(): FirstRunController {
       // adapter, which keeps working.
       if (selectedAgent.created && !selectedAgent.bridgeUrl) {
         const handoffAgentId = selectedAgent.agentId;
-        // Tell the UI a migration is in flight instead of swapping silently.
-        dispatchCloudHandoffPhase({
-          agentId: handoffAgentId,
-          phase: "migrating",
-        });
-        void client
-          .startCloudAgentHandoff({
+        // Hoisted so the terminal `timed-out` / `failed` phases can hand the UI
+        // an `onRetry` closure that re-runs the IDENTICAL handoff.
+        const runHandoff = (): void => {
+          // Tell the UI a migration is in flight instead of swapping silently.
+          dispatchCloudHandoffPhase({
             agentId: handoffAgentId,
-            sharedApiBase: cloudAgentApiBase,
-            // The shared adapter keeps one canonical conversation per agent id.
-            conversationId: handoffAgentId,
-            cloudApiBase:
-              getBootConfig().cloudApiBase || "https://www.elizacloud.ai",
-            authToken,
-            onSwitch: (containerBase) => {
-              client.setBaseUrl(containerBase);
-              client.setToken(authToken);
-              const switched = createPersistedActiveServer({
-                kind: "cloud",
-                id: `cloud:${handoffAgentId}`,
-                apiBase: containerBase,
-                accessToken: authToken,
-              });
-              savePersistedActiveServer(switched);
-              const profile = addAgentProfile({
-                kind: "cloud",
-                label: switched.label,
-                apiBase: containerBase,
-                accessToken: authToken,
-              });
-              switchAgentProfile(profile.id);
-            },
-          })
-          // Stop discarding the ConversationHandoffResult: surface each terminal
-          // status (switched | switched-empty | timed-out | failed) as a typed
-          // handoff phase so the UI can render real progress and an honest
-          // failure notice. Still best-effort — the shared adapter keeps working
-          // regardless of outcome.
-          .then((result) => {
-            dispatchCloudHandoffPhase({
-              agentId: handoffAgentId,
-              phase: result.status,
-              imported: result.imported,
-              ...(result.error ? { error: result.error } : {}),
-            });
-          })
-          .catch((err: unknown) => {
-            dispatchCloudHandoffPhase({
-              agentId: handoffAgentId,
-              phase: "failed",
-              error: err instanceof Error ? err.message : String(err),
-            });
+            phase: "migrating",
           });
+          void client
+            .startCloudAgentHandoff({
+              agentId: handoffAgentId,
+              sharedApiBase: cloudAgentApiBase,
+              // The shared adapter keeps one canonical conversation per agent id.
+              conversationId: handoffAgentId,
+              cloudApiBase:
+                getBootConfig().cloudApiBase || "https://www.elizacloud.ai",
+              authToken,
+              onSwitch: (containerBase) => {
+                client.setBaseUrl(containerBase);
+                client.setToken(authToken);
+                const switched = createPersistedActiveServer({
+                  kind: "cloud",
+                  id: `cloud:${handoffAgentId}`,
+                  apiBase: containerBase,
+                  accessToken: authToken,
+                });
+                savePersistedActiveServer(switched);
+                const profile = addAgentProfile({
+                  kind: "cloud",
+                  label: switched.label,
+                  apiBase: containerBase,
+                  accessToken: authToken,
+                });
+                switchAgentProfile(profile.id);
+              },
+            })
+            // Stop discarding the ConversationHandoffResult: surface each terminal
+            // status (switched | switched-empty | timed-out | failed) as a typed
+            // handoff phase so the UI can render real progress and an honest
+            // failure notice. On a recoverable terminal phase (timed-out/failed)
+            // attach an onRetry that re-runs this same handoff. Still best-effort —
+            // the shared adapter keeps working regardless of outcome.
+            .then((result) => {
+              const recoverable =
+                result.status === "timed-out" || result.status === "failed";
+              dispatchCloudHandoffPhase({
+                agentId: handoffAgentId,
+                phase: result.status,
+                imported: result.imported,
+                ...(result.error ? { error: result.error } : {}),
+                ...(recoverable ? { onRetry: runHandoff } : {}),
+              });
+            })
+            .catch((err: unknown) => {
+              dispatchCloudHandoffPhase({
+                agentId: handoffAgentId,
+                phase: "failed",
+                error: err instanceof Error ? err.message : String(err),
+                onRetry: runHandoff,
+              });
+            });
+        };
+        runHandoff();
       }
     },
     [completeFirstRun, switchAgentProfile, uiLanguage],

@@ -8,7 +8,7 @@ import {
 // has no timer — it persists until the swap resolves (the container boot can
 // take 60-90s).
 const SUCCESS_LINGER_MS = 4000;
-const FAILURE_LINGER_MS = 6000;
+const FAILURE_LINGER_MS = 8000;
 
 /**
  * Subscribe to the shared→dedicated cloud-agent handoff lifecycle
