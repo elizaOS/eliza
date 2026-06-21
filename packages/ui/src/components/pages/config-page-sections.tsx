@@ -9,7 +9,7 @@ import { client } from "../../api";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
 import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";
 import type { JsonSchemaObject } from "../../config/config-catalog";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
@@ -48,7 +48,7 @@ export function CloudRpcStatus({
   loginBusy,
   onLogin,
 }: CloudRpcStatusProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   if (connected) {
     return null;
   }
@@ -297,7 +297,8 @@ function isCloudServiceRouteSelected(route: unknown): boolean {
 }
 
 export function CloudServicesSection() {
-  const { t, setActionNotice } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [services, setServices] = useState<Record<CloudServiceKey, boolean>>({
     rpc: false,
     media: false,

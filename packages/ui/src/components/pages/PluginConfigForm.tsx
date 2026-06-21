@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
 import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { Switch } from "../ui/switch";
 import { paramsToSchema, TELEGRAM_ALLOW_ALL_HIDDEN } from "./plugin-list-utils";
@@ -62,7 +62,7 @@ export function TelegramChatModeToggle({
   allowAll: boolean;
   onToggle: (next: boolean) => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   return (
     <div className="flex items-center justify-between rounded-sm border border-border bg-[var(--card,rgba(255,255,255,0.03))] px-4 py-3 mb-4">
       <div className="flex flex-col gap-0.5">

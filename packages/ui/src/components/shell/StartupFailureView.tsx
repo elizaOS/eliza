@@ -3,7 +3,7 @@ import { useBranding } from "../../config/branding";
 import { type BugReportDraft, useOptionalBugReport } from "../../hooks";
 import { startFreshFirstRunReload } from "../../platform";
 import type { StartupErrorState } from "../../state";
-import { useApp } from "../../state";
+import { type useApp, useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
 
@@ -77,7 +77,7 @@ export function StartupFailureView({
   error,
   onRetry,
 }: StartupFailureViewProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const branding = useBranding();
   const bugReport = useOptionalBugReport();
   const reasonLabel = startupReasonLabel(t, error.reason);

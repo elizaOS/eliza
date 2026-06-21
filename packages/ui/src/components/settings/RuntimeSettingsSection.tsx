@@ -15,7 +15,7 @@ import {
 } from "../../first-run/reload-into-first-run-runtime";
 import { useRuntimeMode } from "../../hooks/useRuntimeMode";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import {
   type AgentRuntimeTargetKind,
   inferAgentRuntimeTarget,
@@ -77,7 +77,7 @@ const STORE_LOCAL_DISABLED_DOCS_URL =
   "https://github.com/eliza-ai/eliza/blob/develop/docs/desktop/build-variants.md";
 
 export function RuntimeSettingsSection() {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const { state: runtimeModeState } = useRuntimeMode();
   const [migrationMessage, setMigrationMessage] = useState<string | null>(null);
   const [migrationBusy, setMigrationBusy] = useState(false);

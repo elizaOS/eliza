@@ -23,7 +23,7 @@ import {
   type FocusConnectorEventDetail,
   readPendingFocusConnector,
 } from "../../events";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { BlueBubblesStatusPanel } from "../connectors/BlueBubblesStatusPanel";
 import { DiscordLocalConnectorPanel } from "../connectors/DiscordLocalConnectorPanel";
 import { IMessageStatusPanel } from "../connectors/IMessageStatusPanel";
@@ -88,7 +88,7 @@ function connectorIcon(plugin: PluginInfo): LucideIcon {
 }
 
 function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   switch (plugin.id) {
     case "telegram":
       return <TelegramAccountConnectorPanel />;
@@ -123,7 +123,7 @@ function ConnectorEnableSwitch({
   busy: boolean;
   onToggle: (enabled: boolean) => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const label = plugin.enabled
     ? t("settings.sections.connectors.disable", {
         defaultValue: "Disable {{name}}",
@@ -202,7 +202,9 @@ function ConnectorRow({
 }
 
 export function ConnectorsSection() {
-  const { plugins, handlePluginToggle, t } = useApp();
+  const plugins = useAppSelector((s) => s.plugins);
+  const handlePluginToggle = useAppSelector((s) => s.handlePluginToggle);
+  const t = useAppSelector((s) => s.t);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [togglingPlugins, setTogglingPlugins] = useState<Set<string>>(
     new Set(),

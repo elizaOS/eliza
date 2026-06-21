@@ -1,11 +1,13 @@
 import { Copy, Server } from "lucide-react";
 import { useMemo } from "react";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { buildPairingCodeCommandInfo } from "./pairing-command";
 
 export function PairingCommandHint({ remoteUrl }: { remoteUrl?: string }) {
-  const { copyToClipboard, setActionNotice, t } = useApp();
+  const copyToClipboard = useAppSelector((s) => s.copyToClipboard);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const t = useAppSelector((s) => s.t);
   const commandInfo = useMemo(
     () => buildPairingCodeCommandInfo(remoteUrl),
     [remoteUrl],

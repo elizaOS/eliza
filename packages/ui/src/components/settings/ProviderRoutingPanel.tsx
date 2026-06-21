@@ -3,7 +3,7 @@ import { CheckCircle2, Loader2 } from "lucide-react";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
 import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import type { CloudModelSchema } from "./cloud-model-schema";
 import { SettingsSelectRow } from "./settings-agent-rows";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
@@ -38,7 +38,7 @@ export function ProviderRoutingPanel({
   showCloudControls,
   elizaCloudConnected,
 }: ProviderRoutingPanelProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const branding = useBranding();
 
   const hasModelControls =

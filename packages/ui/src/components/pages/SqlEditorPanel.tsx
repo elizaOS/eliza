@@ -1,5 +1,5 @@
 import type { QueryResult } from "../../api";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
@@ -25,7 +25,7 @@ export function SqlEditorPanel({
   showHistory: boolean;
   onCellClick: (value: string) => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
 
   return (
     <>

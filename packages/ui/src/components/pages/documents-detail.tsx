@@ -16,7 +16,7 @@ import type {
   DocumentDetail,
   DocumentFragmentRecord,
 } from "../../api/client-types-chat";
-import { useApp } from "../../state/useApp";
+import { useAppSelector } from "../../state";
 import { formatByteSize } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
@@ -44,7 +44,8 @@ export function DocumentViewer({
   documentId: string | null;
   onUpdated?: () => void;
 }) {
-  const { t, setActionNotice } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [doc, setDoc] = useState<DocumentDetail | null>(null);
   const [fragments, setFragments] = useState<DocumentFragmentRecord[]>([]);
   const [loading, setLoading] = useState(true);

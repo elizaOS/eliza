@@ -27,7 +27,7 @@ import type { RelationshipsPersonSummary } from "../../api/client-types-relation
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import {
   type TranslationContextValue,
   useTranslation,
@@ -652,7 +652,8 @@ export function MemoryViewerView({
 }: {
   contentHeader?: ReactNode;
 } = {}) {
-  const { t, setTab } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const setTab = useAppSelector((s) => s.setTab);
   const [viewMode, setViewMode] = useState<ViewMode>("feed");
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [stats, setStats] = useState<MemoryStatsResponse | null>(null);

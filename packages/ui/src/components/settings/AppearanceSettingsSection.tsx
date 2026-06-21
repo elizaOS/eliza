@@ -1,6 +1,6 @@
 import { Check } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
-import { useApp, useContentPack } from "../../state";
+import { useAppSelector, useContentPack } from "../../state";
 import { LANGUAGES } from "../shared/LanguageDropdown.helpers";
 import { selectableTileClass } from "./appearance-primitives.helpers";
 import { LoadContentPackForm } from "./LoadContentPackForm";
@@ -49,7 +49,9 @@ function LanguageTileButton({
 }
 
 export function AppearanceSettingsSection() {
-  const { setUiLanguage, uiLanguage, t } = useApp();
+  const setUiLanguage = useAppSelector((s) => s.setUiLanguage);
+  const uiLanguage = useAppSelector((s) => s.uiLanguage);
+  const t = useAppSelector((s) => s.t);
   const { activePack, loadedPacks, toggle } = useContentPack();
 
   return (

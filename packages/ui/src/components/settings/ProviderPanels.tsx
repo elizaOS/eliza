@@ -10,7 +10,7 @@ import type {
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   SubscriptionProviderSelectionId,
 } from "../../providers";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { AccountList } from "../accounts/AccountList";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
@@ -78,7 +78,7 @@ export function LocalProviderPanel({
   routingModeSaving: boolean;
   onSelectLocalOnly: () => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   return (
     <div className="min-w-0">
       <ProviderPanelHeader
@@ -149,7 +149,7 @@ export function CloudPanel({
   modelSaveSuccess,
   onModelFieldChange,
 }: CloudPanelProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const cloudActive = !cloudCallsDisabled && isCloudSelected;
   return (
     <div className="min-w-0">
@@ -237,7 +237,7 @@ export function SubscriptionPanel({
   onSelectSubscription,
   loadSubscriptionStatus,
 }: SubscriptionPanelProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const showUseButton =
     cloudCallsDisabled || resolvedSelectedId !== visibleProviderPanelId;
   return (
@@ -316,7 +316,7 @@ export function ApiKeyPanel({
   handlePluginConfigSave,
   loadPlugins,
 }: ApiKeyPanelProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const showUseButton =
     cloudCallsDisabled || resolvedSelectedId !== visibleProviderPanelId;
   return (

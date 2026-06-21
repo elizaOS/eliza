@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type ComputerUseApprovalSnapshot, client } from "../../api/client";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { openEventSource } from "../../utils/event-source";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "../ui/card";
@@ -33,7 +33,8 @@ function approvalStreamUrl(): string {
 }
 
 export function ComputerUseApprovalOverlay() {
-  const { setActionNotice, t } = useApp();
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const t = useAppSelector((s) => s.t);
   const [snapshot, setSnapshot] =
     useState<ComputerUseApprovalSnapshot>(EMPTY_SNAPSHOT);
   const [busyApprovalId, setBusyApprovalId] = useState<string | null>(null);

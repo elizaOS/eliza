@@ -21,7 +21,7 @@ import type {
   WorkflowDefinition,
   WorkflowDefinitionNode,
 } from "../../api/client-types-chat";
-import { useApp } from "../../state";
+import { useApp, useAppSelector } from "../../state";
 import type { TranslationContextValue } from "../../state/TranslationContext.hooks";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Spinner } from "../ui/spinner";
@@ -403,7 +403,7 @@ interface NodeDetailDrawerProps {
 }
 
 function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const isOpen = node !== null;
@@ -588,7 +588,8 @@ export function WorkflowGraphViewer({
   onNodeClick,
   onEmptyStateAction,
 }: WorkflowGraphViewerProps) {
-  const { uiTheme, t } = useApp();
+  const uiTheme = useAppSelector((s) => s.uiTheme);
+  const t = useAppSelector((s) => s.t);
   const resolvedEmptyStateActionLabel =
     emptyStateActionLabel ??
     t("workflowGraph.describeWorkflow", {

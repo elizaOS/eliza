@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useVoiceChat } from "../../../hooks/useVoiceChat";
-import { useApp } from "../../../state";
+import { useAppSelector } from "../../../state";
 import { useVoiceConfig } from "../../../voice/useVoiceConfig";
 
 /**
@@ -19,7 +19,10 @@ export function TutorialNarrator({
   text: string;
   muted: boolean;
 }): null {
-  const { uiLanguage, elizaCloudVoiceProxyAvailable } = useApp();
+  const uiLanguage = useAppSelector((s) => s.uiLanguage);
+  const elizaCloudVoiceProxyAvailable = useAppSelector(
+    (s) => s.elizaCloudVoiceProxyAvailable,
+  );
   const { voiceConfig, voiceBootstrapTick } = useVoiceConfig(uiLanguage);
   const { queueAssistantSpeech, stopSpeaking, unlockAudio } = useVoiceChat({
     voiceConfig,

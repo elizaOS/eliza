@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo, SkillMarketplaceResult } from "../../api";
-import { useApp } from "../../state";
+import { useApp, useAppSelector } from "../../state";
 import {
   AdminDialog,
   AdminDialogContent,
@@ -497,7 +497,7 @@ export function InstallModal({
   setState: ReturnType<typeof useApp>["setState"];
   onClose: () => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [tab, setTab] = useState<InstallTab>("search");
   const installTabs = [
     {

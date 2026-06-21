@@ -16,7 +16,7 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Switch } from "../ui/switch";
 import { SettingsActionButton } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -79,7 +79,7 @@ function summariseRequested(
 }
 
 export function AppPermissionsSection() {
-  const { setActionNotice } = useApp();
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [rows, setRows] = useState<RowState[]>([]);
   const [listStatus, setListStatus] = useState<AsyncStatus>({
     state: "loading",

@@ -15,7 +15,7 @@ import type {
   RelationshipsPersonDetail,
 } from "../../../api/client-types-relationships";
 import { PageLayout } from "../../../layouts/page-layout/page-layout";
-import { useApp } from "../../../state/useApp";
+import { useAppSelector } from "../../../state";
 import { useRegisterViewChatBinding } from "../../../state/view-chat-binding";
 import { ChatSearchHint } from "../../composites/chat-search-hint";
 import { PagePanel } from "../../composites/page-panel";
@@ -47,7 +47,8 @@ export function RelationshipsWorkspaceView({
   embedded?: boolean;
   onViewMemories?: (entityIds: string[]) => void;
 }) {
-  const { t, setTab } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const setTab = useAppSelector((s) => s.setTab);
   const [search, setSearch] = useState("");
   const [platform, setPlatform] = useState<string>("all");
   const [graphLoading, setGraphLoading] = useState(true);

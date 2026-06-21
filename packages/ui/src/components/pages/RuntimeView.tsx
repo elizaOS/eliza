@@ -16,7 +16,7 @@ import {
 } from "../../api";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useApp } from "../../state";
+import { useApp, useAppSelector } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatDateTime } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
@@ -210,7 +210,7 @@ function TreeNode(props: {
 }
 
 function OrderCard(props: { title: string; entries: RuntimeOrderItem[] }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const { title, entries } = props;
 
   return (
@@ -238,7 +238,7 @@ function OrderCard(props: { title: string; entries: RuntimeOrderItem[] }) {
 }
 
 function ServicesOrderCard(props: { entries: RuntimeServiceOrderItem[] }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const { entries } = props;
 
   return (
@@ -403,7 +403,7 @@ export function RuntimeView({
 }: {
   contentHeader?: ReactNode;
 } = {}) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [depth, setDepth] = useState(10);
   const [maxArrayLength, setMaxArrayLength] = useState(1000);
   const [maxObjectEntries, setMaxObjectEntries] = useState(1000);

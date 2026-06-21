@@ -3,7 +3,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
   ActiveModelState,
+  CatalogModel,
   DownloadJob,
+  HardwareProbe,
+  InstalledModel,
   ModelHubSnapshot,
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";

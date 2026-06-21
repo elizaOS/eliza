@@ -1,7 +1,7 @@
 import type { ResolvedContentPack } from "@elizaos/shared";
 import { Check } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { SettingsGroup } from "./settings-layout";
 
 interface LoadedPacksListProps {
@@ -79,7 +79,7 @@ export function LoadedPacksList({
   activePackId,
   onToggle,
 }: LoadedPacksListProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   if (loadedPacks.length === 0) return null;
   const activeLabel = t("settings.appearance.active", {
     defaultValue: "Active",

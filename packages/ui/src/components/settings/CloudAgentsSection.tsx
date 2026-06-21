@@ -14,7 +14,7 @@ import { resolveCloudAgentApiBase } from "../../api/client-cloud";
 import type { CloudCompatAgent } from "../../api/client-types-cloud";
 import { getBootConfig } from "../../config/boot-config";
 import { useBranding } from "../../config/branding";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import {
   createPersistedActiveServer,
   loadPersistedActiveServer,
@@ -80,7 +80,9 @@ function currentCloudToken(): string {
  * one — the in-app counterpart to the cloud web dashboard.
  */
 export function CloudAgentsSection() {
-  const { elizaCloudConnected, setActionNotice, cloudHandoffPhase } = useApp();
+  const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const cloudHandoffPhase = useAppSelector((s) => s.cloudHandoffPhase);
   const { appName } = useBranding();
   const [agents, setAgents] = useState<CloudCompatAgent[]>([]);
   const [loading, setLoading] = useState(true);

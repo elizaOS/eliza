@@ -17,7 +17,7 @@ import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,
 } from "../../platform/mobile-permissions-client";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { StreamingPermissionsSettingsView } from "../permissions/StreamingPermissions";
 import { CapabilityToggle, PermissionRow } from "./permission-controls";
 import { useDesktopPermissionsState } from "./permission-controls.hooks";
@@ -85,7 +85,7 @@ function platformCopy(platform: string | null | undefined): PlatformCopy {
 /* ── Streaming permission views (mobile / web) ──────────────────── */
 
 function MobilePermissionsView() {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const {
     appBlockerSettingsCard: AppBlockerSettingsCard,
     websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
@@ -121,7 +121,7 @@ function mobileSettingsPlatform(): "ios" | "android" | "web" {
 }
 
 function MobileSystemPermissionsPanel() {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const branding = useBranding();
   const mobilePlatform = mobileSettingsPlatform();
   const registry = useMemo(() => createMobileSignalsPermissionsRegistry(), []);
@@ -307,7 +307,7 @@ function mobileSetupActionBadge(action: MobileSignalsSetupAction) {
 }
 
 function MobileSignalsPermissionsPanel() {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [status, setStatus] = useState<MobileSignalsPermissionStatus | null>(
     null,
   );
@@ -435,7 +435,7 @@ function MobileSetupActionRow({
   busy: boolean;
   onAct: () => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const badge = mobileSetupActionBadge(action);
   const canAct =
     action.status !== "ready" && (action.canRequest || action.canOpenSettings);
@@ -478,7 +478,7 @@ function MobileSetupActionRow({
 }
 
 function WebPermissionsView() {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const { websiteBlockerSettingsCard: WebsiteBlockerSettingsCard } =
     useBootConfig();
   return (
@@ -549,7 +549,9 @@ function LocalWebsiteBlockingCard({
 /* ── Desktop permission view ────────────────────────────────────── */
 
 function DesktopPermissionsView() {
-  const { t, plugins, handlePluginToggle } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const plugins = useAppSelector((s) => s.plugins);
+  const handlePluginToggle = useAppSelector((s) => s.handlePluginToggle);
   const { websiteBlockerSettingsCard: WebsiteBlockerSettingsCard } =
     useBootConfig();
   const {

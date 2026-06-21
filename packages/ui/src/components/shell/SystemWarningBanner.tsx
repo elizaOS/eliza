@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 
 // z-[9998] mirrors Z_SYSTEM_BANNER in ../../lib/floating-layers.ts.
@@ -12,7 +12,8 @@ const AUTO_DISMISS_MS = 20_000;
  * broadcast via WebSocket `system-warning` events.
  */
 export function SystemWarningBanner() {
-  const { systemWarnings, dismissSystemWarning } = useApp();
+  const systemWarnings = useAppSelector((s) => s.systemWarnings);
+  const dismissSystemWarning = useAppSelector((s) => s.dismissSystemWarning);
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );

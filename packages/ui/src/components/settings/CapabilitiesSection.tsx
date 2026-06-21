@@ -11,7 +11,7 @@ import {
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
-import { useApp } from "../../state";
+import { useApp, useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import {
   SettingsActionButton,
@@ -676,7 +676,7 @@ function CapabilityStatusIcon({
 }: {
   status?: "loading" | "unavailable" | null;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   if (status === "loading") {
     const loadingLabel = t("capabilities.status.loading", {
       defaultValue: "Loading",

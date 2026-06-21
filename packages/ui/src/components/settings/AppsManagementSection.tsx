@@ -12,7 +12,7 @@ import type {
   AppStopResult,
   InstalledAppInfo,
 } from "../../api/client-types-cloud";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { SettingsInput, SettingsTextarea } from "../ui/settings-controls";
@@ -98,7 +98,8 @@ const HEAD_CELL_CLASS = "px-3 py-2 text-xs font-medium text-muted";
 const BODY_CELL_CLASS = "px-3 py-2.5 align-middle text-sm";
 
 export function AppsManagementSection() {
-  const { setActionNotice, t } = useApp();
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const t = useAppSelector((s) => s.t);
 
   const [installed, setInstalled] = useState<InstalledAppInfo[]>([]);
   const [runs, setRuns] = useState<AppRunSummary[]>([]);

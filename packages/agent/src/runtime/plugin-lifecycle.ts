@@ -265,13 +265,14 @@ function createEmptyOwnership(plugin: Plugin): RuntimePluginOwnership {
     providers: [],
     evaluators: [],
     routes: [],
-    events: [],
-    models: [],
-    services: [],
-    sendHandlerSources: [],
-    hasAdapter: false,
-    registeredAt: Date.now(),
-  };
+		events: [],
+		models: [],
+		services: [],
+		shortcuts: [],
+		sendHandlerSources: [],
+		hasAdapter: false,
+		registeredAt: Date.now(),
+	};
 }
 
 function removeArrayItemsByReference<T extends object>(

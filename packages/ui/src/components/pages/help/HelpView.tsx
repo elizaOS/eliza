@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { useApp } from "../../../state";
+import { useAppSelector } from "../../../state";
 import { useRegisterViewChatBinding } from "../../../state/view-chat-binding";
 import { startTutorial } from "../tutorial/tutorial-controller";
 import {
@@ -33,7 +33,7 @@ function scoreEntry(entry: HelpEntry, q: string): number {
 }
 
 export function HelpView(): React.ReactElement {
-  const { setTab } = useApp();
+  const setTab = useAppSelector((s) => s.setTab);
   const [query, setQuery] = React.useState("");
   const [openId, setOpenId] = React.useState<string | null>(null);
 

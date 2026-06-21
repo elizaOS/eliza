@@ -19,7 +19,7 @@ import type {
   TrajectoryLlmCall,
   TrajectoryProviderAccess,
 } from "../../api/client-types-cloud";
-import { useApp } from "../../state/useApp";
+import { useAppSelector } from "../../state";
 import {
   formatTrajectoryDuration,
   formatTrajectoryTokenCount,
@@ -367,7 +367,8 @@ function buildContextDiffSummaries(
 export function TrajectoryDetailView({
   trajectoryId,
 }: TrajectoryDetailViewProps) {
-  const { t, copyToClipboard } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const copyToClipboard = useAppSelector((s) => s.copyToClipboard);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<TrajectoryDetailResult | null>(null);
   const [error, setError] = useState<string | null>(null);

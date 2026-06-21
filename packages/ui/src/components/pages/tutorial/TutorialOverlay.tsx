@@ -3,7 +3,7 @@ import { useBranding } from "../../../config/branding";
 import { dispatchTutorialChatControl } from "../../../events";
 import type { Tab } from "../../../navigation";
 import { setNavLock } from "../../../navigation/nav-lock";
-import { useApp } from "../../../state";
+import { useAppSelector } from "../../../state";
 import { useShellControllerContext } from "../../shell/ShellControllerContext.hooks";
 import { TutorialNarrator } from "./TutorialNarrator";
 import { TutorialSpotlight } from "./TutorialSpotlight";
@@ -45,7 +45,8 @@ function readComposerText(): string {
 
 export function TutorialOverlay(): React.ReactElement | null {
   const { active, stepIndex } = useTutorial();
-  const { tab, setTab } = useApp();
+  const tab = useAppSelector((s) => s.tab);
+  const setTab = useAppSelector((s) => s.setTab);
   const controller = useShellControllerContext();
   // Brand the tour copy ("Meet Milady", "Hi, I'm Milady") with the app name.
   const { appName } = useBranding();

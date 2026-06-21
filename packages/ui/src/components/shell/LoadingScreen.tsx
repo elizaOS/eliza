@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react";
 import type { StartupPhase } from "../../state";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 
 const PHASE_META: Record<
   StartupPhase,
@@ -37,7 +37,7 @@ export function LoadingScreen({
   phase = "starting-backend",
   vrmUrl,
 }: LoadingScreenProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [vrmCached, setVrmCached] = useState(false);
   const [fetchProgress, setFetchProgress] = useState(0);
 

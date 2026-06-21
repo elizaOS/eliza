@@ -18,6 +18,7 @@ import {
 } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { DocumentScope } from "../../api/client-types-chat";
+import { useAppSelector } from "../../state";
 import { useApp } from "../../state/useApp";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -142,7 +143,7 @@ export function UploadZone({
   uploading: boolean;
   uploadStatus: { current: number; total: number; filename: string } | null;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [dragOver, setDragOver] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const [textInput, setTextInput] = useState("");

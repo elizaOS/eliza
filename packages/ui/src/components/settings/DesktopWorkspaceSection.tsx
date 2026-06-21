@@ -12,7 +12,7 @@ import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import {
@@ -120,7 +120,9 @@ export function DesktopWorkspaceSection({
 } = {}) {
   useRenderGuard("DesktopWorkspaceSection");
   const desktopRuntime = isElectrobunRuntime();
-  const { relaunchDesktop, restartBackend, t } = useApp();
+  const relaunchDesktop = useAppSelector((s) => s.relaunchDesktop);
+  const restartBackend = useAppSelector((s) => s.restartBackend);
+  const t = useAppSelector((s) => s.t);
   const [snapshot, setSnapshot] = useState<DesktopWorkspaceSnapshot | null>(
     null,
   );

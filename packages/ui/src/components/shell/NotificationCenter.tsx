@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect } from "react";
 import { cn } from "../../lib/utils";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import {
   clearNotifications,
   initNotifications,
@@ -161,7 +161,7 @@ export function NotificationCenter({
   headless?: boolean;
 }): ReactNode {
   const { notifications, unreadCount } = useNotifications();
-  const { setActionNotice } = useApp();
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
 
   // Boot the notification store (hydrate + subscribe to the live stream) and
   // route its interrupt toasts through the shell's ActionNotice. Idempotent —

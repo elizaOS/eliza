@@ -4,7 +4,7 @@ import { client } from "../../api";
 import { isElectrobunRuntime } from "../../bridge";
 import { useBranding } from "../../config/branding";
 import { useBugReport } from "../../hooks";
-import { useApp } from "../../state";
+import { type useApp, useAppSelector } from "../../state";
 import { openExternalUrl } from "../../utils";
 import {
   createDesktopBugReportBundle,
@@ -90,7 +90,8 @@ function normalizeHttpsResultUrl(url?: string): string | null {
 }
 
 export function BugReportModal() {
-  const { copyToClipboard, t } = useApp();
+  const copyToClipboard = useAppSelector((s) => s.copyToClipboard);
+  const t = useAppSelector((s) => s.t);
   const desktopRuntime = isElectrobunRuntime();
   const branding = useBranding();
   const { isOpen, draft, close } = useBugReport();

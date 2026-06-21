@@ -15,7 +15,7 @@ import type {
 } from "../../api/client-types-cloud";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useApp } from "../../state/useApp";
+import { useAppSelector } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import {
   formatTrajectoryDuration,
@@ -72,7 +72,8 @@ export function TrajectoriesView({
   selectedTrajectoryId: controlledId,
   onSelectTrajectory: controlledOnSelect,
 }: TrajectoriesViewProps) {
-  const { t, setActionNotice } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [error, setError] = useState<string | null>(null);
 
   // Self-manage selection when no external callback is provided (standalone mode).

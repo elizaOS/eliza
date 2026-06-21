@@ -27,8 +27,7 @@ import type {
 } from "../../api/client-types-chat";
 import { isApiError } from "../../api/client-types-core";
 import { getCached, setCached } from "../../hooks/resource-cache";
-import { useTranslation } from "../../state";
-import { useApp } from "../../state/useApp";
+import { useAppSelector, useTranslation } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import {
@@ -422,8 +421,8 @@ export function DocumentsView({
   selectedDocumentId?: string | null;
   showSelectorRail?: boolean;
 } = {}) {
-  const { t } = useApp();
-  const { setActionNotice } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const setActionNoticeRef = useRef(setActionNotice);
   setActionNoticeRef.current = setActionNotice;
   const [searchQuery, setSearchQuery] = useState("");

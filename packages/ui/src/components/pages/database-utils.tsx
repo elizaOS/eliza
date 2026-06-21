@@ -1,5 +1,5 @@
 import type { ColumnInfo } from "../../api";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { CodeBlock } from "../ui/code-block";
@@ -78,7 +78,7 @@ export function CellPopover({
   value: string;
   onClose: () => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
 
   return (
     <Dialog
@@ -134,7 +134,7 @@ export function ResultsGrid({
   onSort?: (col: string) => void;
   onCellClick?: (value: string) => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   return (
     <div
       className="overflow-auto border border-border/40 bg-card/40 backdrop-blur-md rounded-sm "
@@ -253,7 +253,7 @@ export function PaginationBar({
   onPrev: () => void;
   onNext: () => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const start = offset + 1;
   const end = Math.min(offset + limit, total);
   const hasPrev = offset > 0;

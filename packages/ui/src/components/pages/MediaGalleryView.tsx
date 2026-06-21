@@ -3,7 +3,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type QueryResult } from "../../api";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import type { TranslateFn } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
@@ -265,7 +265,7 @@ export function MediaGalleryView({
   leftNav?: ReactNode;
   contentHeader?: ReactNode;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

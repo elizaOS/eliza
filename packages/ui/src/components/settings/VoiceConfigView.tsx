@@ -15,7 +15,7 @@ import {
 } from "../../bridge/native-plugins";
 import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
 import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import {
   hasConfiguredApiKey,
   PREMADE_VOICES,
@@ -62,7 +62,7 @@ export function DesktopTalkModePanel() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [phrase, setPhrase] = useState(t("voiceconfigview.testPhrase"));
   const [panelState, setPanelState] = useState<{
     state: string;
@@ -509,7 +509,7 @@ function WakeWordSection({
 }: {
   serverConfig?: Partial<SwabbleConfig> | null;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [triggers, setTriggers] = useState<string[]>(["eliza"]);
   const [triggerInput, setTriggerInput] = useState("");
   const [postTriggerGap, setPostTriggerGap] = useState(0.45);
@@ -868,7 +868,7 @@ function AsrAdvancedSection({
   onChange: (provider: AsrProvider) => void;
   defaultAsrProvider: AsrProvider;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [localStatusBusy, setLocalStatusBusy] = useState(false);
 
   // A non-empty local-inference downloads list means the model bundle isn't
@@ -1017,7 +1017,11 @@ function PremadeVoiceButton({
 }
 
 export function VoiceConfigView() {
-  const { t, elizaCloudConnected, elizaCloudVoiceProxyAvailable } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
+  const elizaCloudVoiceProxyAvailable = useAppSelector(
+    (s) => s.elizaCloudVoiceProxyAvailable,
+  );
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>({});
   const [swabbleServerConfig, setSwabbleServerConfig] =
     useState<Partial<SwabbleConfig> | null>(null);

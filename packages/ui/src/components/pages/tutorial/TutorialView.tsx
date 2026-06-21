@@ -2,7 +2,7 @@ import { Sparkles } from "lucide-react";
 import * as React from "react";
 
 import { useAgentElement } from "../../../agent-surface";
-import { useApp } from "../../../state";
+import { useAppSelector } from "../../../state";
 import { Button } from "../../ui/button";
 import { startTutorial } from "./tutorial-controller";
 
@@ -14,7 +14,7 @@ import { startTutorial } from "./tutorial-controller";
  */
 
 export function TutorialView(): React.ReactElement {
-  const { setTab } = useApp();
+  const setTab = useAppSelector((s) => s.setTab);
 
   const begin = React.useCallback(() => {
     startTutorial();
