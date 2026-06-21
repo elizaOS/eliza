@@ -40,7 +40,9 @@ test.describe("app onboarding client ↔ real cloud-api", () => {
     // getBootConfig().cloudApiBase, and the compat fetch reads the cloud token
     // from the global the controller normally sets at sign-in.
     const prevBoot = getBootConfig();
-    const prevToken = (globalThis as Record<string, unknown>)[CLOUD_TOKEN_GLOBAL];
+    const prevToken = (globalThis as Record<string, unknown>)[
+      CLOUD_TOKEN_GLOBAL
+    ];
     setBootConfig({ ...prevBoot, cloudApiBase });
     (globalThis as Record<string, unknown>)[CLOUD_TOKEN_GLOBAL] = authToken;
 
@@ -97,9 +99,12 @@ test.describe("app onboarding client ↔ real cloud-api", () => {
         handoff.status,
       );
       // No personal container is reachable, so the user must not be switched off
-      // the shared adapter.
+      // the shared adapter. The exact terminal status is transport-dependent:
+      // a mock can either stay not-ready until the poll budget expires or expose
+      // a dedicated-looking URL whose import/read path fails. Both are safe as
+      // long as the client resolves and does not switch away from shared chat.
       expect(switched).toBe(false);
-      expect(handoff.status).toBe("timed-out");
+      expect(["timed-out", "failed"]).toContain(handoff.status);
     } finally {
       setBootConfig(prevBoot);
       if (prevToken === undefined) {

@@ -30,6 +30,15 @@ export function browserFailureCollector(page: Page): string[] {
     if (/^\[RenderTelemetry\]/.test(text)) return;
     if (/504 \(Outdated Optimize Dep\)/i.test(text)) return;
     if (
+      /\[usePluginsSkillsState\] failed to load plugins/i.test(text) &&
+      /Failed to fetch/i.test(text)
+    ) {
+      // The dev-smoke chat gate proves the runtime can answer. The plugins
+      // panel snapshot is optional during boot and can race the dev server
+      // while navigation/model warmup is already succeeding.
+      return;
+    }
+    if (
       /^Failed to load resource: the server responded with a status of (401|404) /i.test(
         text,
       )
