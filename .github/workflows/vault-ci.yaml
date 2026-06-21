@@ -119,14 +119,11 @@ jobs:
 
       - name: Install dependencies
         working-directory: packages/vault
-        run: bun install
-        env:
-          # Vault tests exercise package code + OS keyring adapters only. The
-          # root postinstall artifact bundle is large and unrelated here, and
-          # downloading it makes the Windows leg spend minutes in install before
-          # the actual typecheck/test signal can run.
-          ELIZA_SKIP_ARTIFACT_SYNC: "1"
-
+        # This matrix verifies @elizaos/vault itself against each OS keyring.
+        # Running the repo postinstall chain here adds unrelated workspace setup
+        # and can strand the Windows leg in dependency install before the vault
+        # typecheck/test gate ever runs.
+        run: bun install --ignore-scripts --no-frozen-lockfile
       - name: Typecheck
         working-directory: packages/vault
         run: bun run typecheck
