@@ -161,8 +161,17 @@ jobs:
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
+          # This list MUST cover every CORE_PLUGINS entry (packages/agent
+          # src/runtime/core-plugins.ts) that is NOT a dependency of
+          # @elizaos/agent or @elizaos/app — those are built transitively by
+          # `build:docker-dist` / `build:client`, but a CORE plugin that is only
+          # loaded dynamically by name (e.g. plugin-device-filesystem) gets its
+          # dist from NOWHERE otherwise, so link-docker rewrites it to .ts source
+          # and the agent crashes on boot (Cannot find module ...bridge.js). Keep
+          # this in sync with CORE_PLUGINS.
           for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf \
             plugin-browser plugin-capacitor-bridge plugin-coding-tools \
+            plugin-device-filesystem \
             plugin-commands plugin-computeruse plugin-discord plugin-edge-tts plugin-elizacloud \
             plugin-imessage plugin-local-inference plugin-mcp plugin-signal \
             plugin-streaming plugin-telegram plugin-whatsapp plugin-wallet plugin-workflow \

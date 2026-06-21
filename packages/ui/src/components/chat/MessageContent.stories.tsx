@@ -61,6 +61,19 @@ export const NoProviderGate: Story = {
   },
 };
 
+/**
+ * `failureKind: "rate_limited"` (and `provider_issue`) render the graceful
+ * message with a one-tap Retry that resends the preceding user turn.
+ */
+export const RateLimitedRetry: Story = {
+  args: {
+    message: makeMessage({
+      text: "The agent is busy right now — wait a few seconds and try again.",
+      failureKind: "rate_limited",
+    }),
+  },
+};
+
 /** Local-inference `downloading` status shows the warn banner + progress CTA. */
 export const LocalModelDownloading: Story = {
   args: {
