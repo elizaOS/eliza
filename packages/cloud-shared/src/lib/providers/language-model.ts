@@ -4,7 +4,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { APICallError, type LanguageModelMiddleware, RetryError, wrapLanguageModel } from "ai";
 import {
   BITROUTER_DEFAULT_FREE_MODEL,
-  BITROUTER_RECOMMENDED_TEXT_MODEL,
+  BITROUTER_NITRO_TEXT_MODEL,
   CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
   CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
   getGroqApiModelId,
@@ -363,7 +363,7 @@ function withRateLimitFailFast(primaryModel: Parameters<typeof wrapLanguageModel
 function requiresGatewayRouting(model: string): boolean {
   const catalogModel = toBitRouterModelId(model);
   return (
-    catalogModel === BITROUTER_RECOMMENDED_TEXT_MODEL ||
+    catalogModel === BITROUTER_NITRO_TEXT_MODEL ||
     catalogModel === BITROUTER_DEFAULT_FREE_MODEL ||
     catalogModel === "openai/gpt-oss-120b" ||
     (catalogModel.includes("/") && catalogModel.split("/")[1]?.includes(":"))

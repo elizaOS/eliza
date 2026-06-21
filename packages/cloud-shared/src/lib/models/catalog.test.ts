@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   annotateCatalogModel,
-  BITROUTER_RECOMMENDED_TEXT_MODEL,
+  BITROUTER_NITRO_TEXT_MODEL,
   type CatalogModel,
   CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
   CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
@@ -13,9 +13,10 @@ import {
  * #8426 — recommend the healthy Cerebras defaults, never the 503-flaky
  * `openai/gpt-oss-120b:nitro` gateway model. The :nitro id is still REACHABLE
  * (BYOK/gateway callers can name it) but must never carry the `recommended`
- * badge, or new users default onto the flaky path. The export's name still says
- * RECOMMENDED, so these are the regression guards against a maintainer being
- * lured into re-adding it.
+ * badge, or new users default onto the flaky path. The id constant is named
+ * BITROUTER_NITRO_TEXT_MODEL (it is the nitro gateway id, NOT a recommended
+ * one); these are the regression guards against a maintainer re-adding it to
+ * the recommended set.
  */
 describe("#8426 text catalog recommendation invariants", () => {
   const byId = (id: string): CatalogModel | undefined =>
@@ -31,16 +32,16 @@ describe("#8426 text catalog recommendation invariants", () => {
   });
 
   test("the flaky :nitro gateway model is reachable but NOT recommended", () => {
-    expect(BITROUTER_RECOMMENDED_TEXT_MODEL).toContain(":nitro");
-    const nitro = byId(BITROUTER_RECOMMENDED_TEXT_MODEL);
+    expect(BITROUTER_NITRO_TEXT_MODEL).toContain(":nitro");
+    const nitro = byId(BITROUTER_NITRO_TEXT_MODEL);
     expect(nitro).toBeDefined(); // still selectable for BYOK/gateway callers...
     expect(nitro?.recommended).not.toBe(true); // ...but never badged recommended
     expect(nitro?.tags ?? []).not.toContain("recommended");
   });
 
-  test("annotateCatalogModel never re-badges :nitro as recommended (the name is a trap)", () => {
+  test("annotateCatalogModel never re-badges :nitro as recommended", () => {
     const annotated = annotateCatalogModel({
-      id: BITROUTER_RECOMMENDED_TEXT_MODEL,
+      id: BITROUTER_NITRO_TEXT_MODEL,
       object: "model",
       created: 0,
       owned_by: "openai",
@@ -66,6 +67,6 @@ describe("#8426 text catalog recommendation invariants", () => {
     const topTwo = FALLBACK_TEXT_SELECTOR_MODELS.slice(0, 2).map((m) => m.id);
     expect(topTwo).toContain(CEREBRAS_DEFAULT_TEXT_SMALL_MODEL);
     expect(topTwo).toContain(CEREBRAS_DEFAULT_TEXT_LARGE_MODEL);
-    expect(topTwo).not.toContain(BITROUTER_RECOMMENDED_TEXT_MODEL);
+    expect(topTwo).not.toContain(BITROUTER_NITRO_TEXT_MODEL);
   });
 });
