@@ -22,13 +22,13 @@ const hardware: HardwareProbe = {
 
 const catalog: CatalogModel[] = [
   {
-    id: "eliza-1-0_8b",
-    displayName: "Eliza-1 0.8B",
+    id: "eliza-1-2b",
+    displayName: "Eliza-1 2B",
     hfRepo: "elizaos/eliza-1",
-    ggufFile: "eliza-1-0_8b.gguf",
-    params: "0.8B",
+    ggufFile: "eliza-1-2b.gguf",
+    params: "2B",
     quant: "Q4_K_M",
-    sizeGb: 0.8,
+    sizeGb: 1.4,
     minRamGb: 4,
     category: "text",
     bucket: "small",

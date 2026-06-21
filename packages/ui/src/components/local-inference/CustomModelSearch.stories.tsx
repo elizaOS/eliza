@@ -27,9 +27,9 @@ const idleActive: ActiveModelState = {
 
 const installed: InstalledModel[] = [
   {
-    id: "eliza-1-0_8b",
-    displayName: "Eliza-1 0.8B",
-    path: "/models/eliza-1-0_8b.gguf",
+    id: "eliza-1-2b",
+    displayName: "Eliza-1 2B",
+    path: "/models/eliza-1-2b.gguf",
     sizeBytes: 820_000_000,
     installedAt: new Date().toISOString(),
     lastUsedAt: new Date().toISOString(),
@@ -98,7 +98,7 @@ export const ActiveModelReady: Story = {
   args: {
     installed,
     active: {
-      modelId: "eliza-1-0_8b",
+      modelId: "eliza-1-2b",
       loadedAt: new Date().toISOString(),
       status: "ready",
     },

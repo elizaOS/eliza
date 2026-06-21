@@ -123,10 +123,10 @@ describe("resolveLocalInferenceLoadArgs", () => {
   });
 
   it("activates same-file MTP (no separate drafter) for every autoregressive Eliza-1 tier", async () => {
-    const bundle = makeTempElizaBundle("0_8b", { hasMtp: false });
+    const bundle = makeTempElizaBundle("2b", { hasMtp: false });
     try {
       const target = makeInstalledModel(
-        "eliza-1-0_8b",
+        "eliza-1-2b",
         bundle.textPath,
         bundle.bundleRoot,
       );
@@ -143,10 +143,10 @@ describe("resolveLocalInferenceLoadArgs", () => {
   });
 
   it("does not throw when no drafter GGUF is present (same-file MTP needs none)", async () => {
-    const bundle = makeTempElizaBundle("0_8b", { hasMtp: false });
+    const bundle = makeTempElizaBundle("2b", { hasMtp: false });
     try {
       const target = makeInstalledModel(
-        "eliza-1-0_8b",
+        "eliza-1-2b",
         bundle.textPath,
         bundle.bundleRoot,
       );

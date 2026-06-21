@@ -164,7 +164,7 @@ export interface VoiceBudget {
  * - MAX:  ~24 GB free RAM (enough to keep 9b + drafter + omnivoice-Q8 +
  *         ASR + embed + warm/cold path co-resident).
  * - GOOD: ~12 GB (2b/4b co-resident + transient).
- * - OKAY: ~6 GB (0.8b LM only resident; ASR/TTS swap).
+ * - OKAY: ~6 GB (2b entry-tier LM only resident; ASR/TTS swap).
  * - POOR: ~3 GB (turn + VAD + wake only, no LM/TTS local).
  *
  * The `maxRamMB` user override (R9 §5.3) can cap this lower. The default
@@ -206,7 +206,7 @@ function defaultTierBudgetBytes(
  * local TTS, so transient = 0.
  *
  * The figures are MEASURED on-disk (Q4_K_M GGUFs in
- * `<stateDir>/local-inference/models/eliza-1-{0_8b,2b}.bundle/`) plus
+ * `<stateDir>/local-inference/models/eliza-1-2b.bundle/`) plus
  * model-card sizes for VAD, wake-word, turn-detector, emotion, speaker-id.
  * See R9 §2.1 + §2.2 + §2.3 for the per-component breakdown.
  */
@@ -370,28 +370,24 @@ export function voiceEnsembleSteadyStateMb(slot: VoiceTierSlot): number {
 
 /**
  * Pick the canonical voice-tier slot for an installed text model + device
- * tier. The LM size anchors the slot (`eliza-1-0_8b` → `0_8b`, `2b` → `2b`,
- * …) and the device tier picks `mobile-` vs `desktop-` vs `workstation-`
- * for the voice surrounding it. Mobile always pulls the `mobile-0_8b` slot
- * because the brief defaults mobile to cloud TTS+ASR; only the 0.8B local
- * LM stays available there.
+ * tier. The LM size anchors the slot (`eliza-1-2b` → `2b` (entry tier),
+ * `4b` → `4b`, …) and the device tier picks `mobile-` vs `desktop-` vs
+ * `workstation-` for the voice surrounding it. Mobile always pulls the
+ * `mobile-2b` slot because the brief defaults mobile to cloud TTS+ASR; only
+ * the 2B entry-tier local LM stays available there.
  */
 export function pickVoiceTierSlot(args: {
 	textModelId: string;
 	deviceTier: DeviceTier;
 	mobile?: boolean;
 }): VoiceTierSlot {
-	if (args.mobile) return "mobile-0_8b";
+	if (args.mobile) return "mobile-2b";
 	const id = args.textModelId.toLowerCase();
 	if (id.includes("27b")) return "workstation-27b";
 	if (id.includes("9b")) return "workstation-9b";
 	if (id.includes("4b")) return "desktop-4b";
-	if (id.includes("2b") || id.includes("1_7b")) return "desktop-2b";
-	// 0.8B / 0.6B / unknown small fall through to desktop-0_8b on non-mobile.
-	if (args.deviceTier === "POOR" || args.deviceTier === "OKAY") {
-		return "desktop-0_8b";
-	}
-	return "desktop-0_8b";
+	// 2b is the entry/floor tier; any smaller/unknown id resolves to it.
+	return "desktop-2b";
 }
 
 /**

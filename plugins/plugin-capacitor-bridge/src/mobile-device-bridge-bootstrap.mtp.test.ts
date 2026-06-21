@@ -34,18 +34,6 @@ describe("buildLoadArgsFromRegistryModel — same-file MTP", () => {
 		}
 	});
 
-	it("leaves MTP off for the low-memory 0.8B tier (no usable NextN draft head)", () => {
-		// eliza-1-0_8b is the low-memory NON-MTP path: it is a recognized Eliza-1
-		// tier (gets a context size) but carries no usable NextN draft head, so
-		// ELIZA_1_LOAD_METADATA intentionally omits its `mtp` window.
-		const args = buildLoadArgsFromRegistryModel({
-			id: "eliza-1-0_8b",
-			path: "/models/eliza-1-0_8b.gguf",
-		});
-		expect(args.draftMin, "eliza-1-0_8b draftMin").toBeUndefined();
-		expect(args.draftMax, "eliza-1-0_8b draftMax").toBeUndefined();
-	});
-
 	it("leaves MTP unset for an unknown (non-Eliza-1) model id", () => {
 		const args = buildLoadArgsFromRegistryModel({
 			id: "some-custom-model",

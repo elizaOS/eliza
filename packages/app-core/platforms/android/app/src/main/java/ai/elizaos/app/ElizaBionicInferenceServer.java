@@ -54,6 +54,16 @@ final class ElizaBionicInferenceServer {
     private volatile LocalServerSocket serverSocket;
     private volatile Thread acceptThread;
 
+    // Resident inference state: the model + context + stream stay loaded across
+    // turns (no per-call reload). KV + sampler are reset each turn. Guarded by
+    // residentLock so the per-connection workers serialize (one decode at a time).
+    private long residentCtx = 0L;
+    private long residentStream = 0L;
+    private String residentBundle = null;
+    private final Object residentLock = new Object();
+    /** Hard decode ceiling for the resident stream (per-call cap is applied below). */
+    private static final int RESIDENT_STREAM_MAX_TOKENS = 2048;
+
     ElizaBionicInferenceServer(String socketName, String defaultBundleDir) {
         this.socketName = socketName;
         this.defaultBundleDir = defaultBundleDir;
@@ -97,6 +107,7 @@ final class ElizaBionicInferenceServer {
                 // closing only needs to unblock accept(); nothing to recover.
             }
         }
+        resetResident();
         acceptThread = null;
     }
 
@@ -172,26 +183,101 @@ final class ElizaBionicInferenceServer {
             int maxTokens = req.optInt("maxTokens", 256);
             Log.i(TAG, "GENERATE from agent: " + prompt.length() + " prompt chars,"
                 + " maxTokens=" + maxTokens + ", bundle=" + bundleDir);
-            // nativeLlmSelfTest creates a FRESH context per call (reloads the model
-            // → fresh GPU weights) and runs the proven greedy decode, returning
-            // {ok,text,tokens,ms,tokS}. ~5 s/turn, always clean.
-            //
-            // PERF NOTE: model/context REUSE (to skip the cold load) was tried in
-            // THREE forms and device-tested — fresh-lctx-per-call, one persistent
-            // lctx, and one persistent lctx + a fork-side KV reset
-            // (eliza_inference_llm_stream_reset, which IS wired and clears the KV +
-            // sampler). ALL three intermittently corrupt the output (~1 in 3 turns
-            // degenerate into "His!!!!" token repetition) while nativeLlmSelfTest
-            // is always clean. Reloading the model per call is what differs, so the
-            // root cause is the fork's Vulkan backend corrupting the SHARED GPU
-            // model weights across reuse — a backend bug, not a KV/lctx issue.
-            // Until that's fixed in the fork, reload-per-call is the reliable path.
+            // RESIDENT path (default): the model + context stay loaded across turns;
+            // only the KV cache + sampler are reset and the prompt re-prefilled per
+            // turn, so we skip the ~7-8s model RELOAD that nativeLlmSelfTest paid every
+            // call. Reuse was previously believed to "corrupt the GPU model weights"
+            // (~1/3 turns degenerated into " His!!!!" repetition) — but that signature
+            // is the flash-attn SCALAR RACE, which is now DISABLED on Android (FA-off
+            // → deterministic non-FA attention). So warm reuse is clean. Any stream
+            // failure falls back to the reload-per-call self-test (set
+            // ELIZA_BIONIC_RESIDENT=0 to force the old path).
+            if (!"0".equals(System.getenv("ELIZA_BIONIC_RESIDENT"))) {
+                try {
+                    String r = generateResident(bundleDir, prompt, maxTokens);
+                    Log.i(TAG, "GENERATE result (resident): "
+                        + (r.length() > 200 ? r.substring(0, 200) + "…" : r));
+                    return r;
+                } catch (Throwable t) {
+                    Log.w(TAG, "resident generate failed; falling back to reload-per-call", t);
+                    resetResident();
+                }
+            }
             String result = ElizaVoiceNative.nativeLlmSelfTest(bundleDir, prompt, maxTokens);
             Log.i(TAG, "GENERATE result: "
                 + (result.length() > 200 ? result.substring(0, 200) + "…" : result));
             return result;
         } catch (Throwable t) {
             return errorJson(t.getMessage() == null ? t.toString() : t.getMessage());
+        }
+    }
+
+    /**
+     * Warm/resident generate: the model + context + stream are created once and
+     * reused; each turn only resets the KV+sampler and re-prefills the prompt, so
+     * we skip the ~7-8s model reload. Greedy decode (temp=0, top_k=1), all-GPU.
+     * Returns the same {ok,tokens,ms,tokS,text} JSON as nativeLlmSelfTest.
+     */
+    private String generateResident(String bundleDir, String prompt, int maxTokens)
+            throws org.json.JSONException {
+        synchronized (residentLock) {
+            if (residentCtx == 0L || !bundleDir.equals(residentBundle)) {
+                resetResident();
+                residentCtx = ElizaVoiceNative.nativeContextCreate(bundleDir);
+                if (residentCtx == 0L) {
+                    throw new IllegalStateException("resident contextCreate failed: " + bundleDir);
+                }
+                residentBundle = bundleDir;
+            }
+            if (residentStream == 0L) {
+                residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
+                    residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");
+                if (residentStream == 0L) {
+                    throw new IllegalStateException("resident streamOpen failed");
+                }
+            }
+            // Drop the previous turn's KV + sampler state for a clean re-prefill.
+            ElizaVoiceNative.nativeLlmStreamReset(residentStream);
+            int[] toks = ElizaVoiceNative.nativeTokenize(residentCtx, prompt, true, true);
+            final long t0 = android.os.SystemClock.elapsedRealtime();
+            ElizaVoiceNative.nativeLlmStreamPrefill(residentStream, toks);
+            final StringBuilder sb = new StringBuilder();
+            int produced = 0;
+            final int cap = maxTokens > 0 ? maxTokens : 32;
+            while (produced < cap) {
+                String stepJson = ElizaVoiceNative.nativeLlmStreamNext(residentStream);
+                if (stepJson == null) break;
+                JSONObject step = new JSONObject(stepJson);
+                sb.append(step.optString("text", ""));
+                int nout = step.optInt("nout", 1);
+                produced += nout > 0 ? nout : 1;
+                if (step.optBoolean("done", false)) break;
+            }
+            final long ms = android.os.SystemClock.elapsedRealtime() - t0;
+            final double tokS = ms > 0 ? produced * 1000.0 / ms : 0.0;
+            return new JSONObject()
+                .put("ok", true)
+                .put("tokens", produced)
+                .put("ms", ms)
+                .put("tokS", tokS)
+                .put("text", sb.toString())
+                .put("resident", true)
+                .toString();
+        }
+    }
+
+    /** Tear down the resident model/context/stream (on bundle change, failure, or stop). */
+    private void resetResident() {
+        synchronized (residentLock) {
+            if (residentStream != 0L) {
+                try { ElizaVoiceNative.nativeLlmStreamClose(residentStream); } catch (Throwable ignored) {}
+                residentStream = 0L;
+            }
+            if (residentCtx != 0L) {
+                try { ElizaVoiceNative.nativeContextDestroy(residentCtx); } catch (Throwable ignored) {}
+                residentCtx = 0L;
+            }
+            residentBundle = null;
         }
     }
 

@@ -146,7 +146,7 @@ function tierFromCatalogId(id: string): Eliza1Tier | null {
 	return slug;
 }
 
-/** "0_8b" → "eliza-1-0_8b" — inverse of {@link tierFromCatalogId}. */
+/** "2b" → "eliza-1-2b" — inverse of {@link tierFromCatalogId}. */
 function catalogIdFromTier(tier: Eliza1Tier): string {
 	return `eliza-1-${tier}`;
 }

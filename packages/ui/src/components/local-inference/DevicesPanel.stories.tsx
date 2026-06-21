@@ -17,7 +17,7 @@ const desktopAndPhone: DeviceBridgeStatus = {
         cpuCores: 16,
         gpu: { backend: "metal", available: true, totalVramGb: 48 },
       },
-      loadedPath: "/models/eliza-1-0_8b.gguf",
+      loadedPath: "/models/eliza-1-2b.gguf",
       connectedSince,
       score: 372,
       activeRequests: 2,
@@ -43,7 +43,7 @@ const desktopAndPhone: DeviceBridgeStatus = {
   pendingRequests: 2,
   deviceId: "device-mac",
   capabilities: null,
-  loadedPath: "/models/eliza-1-0_8b.gguf",
+  loadedPath: "/models/eliza-1-2b.gguf",
   connectedSince,
 };
 
