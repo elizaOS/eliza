@@ -138,6 +138,16 @@
       "import": "./dist/voice-wer.js",
       "default": "./dist/voice-wer.js"
     },
+    "./voice-eot": {
+      "types": "./dist/voice-eot.d.ts",
+      "eliza-source": {
+        "types": "./src/voice-eot.ts",
+        "import": "./src/voice-eot.ts",
+        "default": "./src/voice-eot.ts"
+      },
+      "import": "./dist/voice-eot.js",
+      "default": "./dist/voice-eot.js"
+    },
     "./transcripts": {
       "types": "./dist/transcripts.d.ts",
       "eliza-source": {

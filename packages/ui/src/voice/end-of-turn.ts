@@ -4,133 +4,28 @@
  * The platform recognizers finalize a turn purely on a fixed silence window
  * (Android SODA ~700ms, web VAD ~900ms). That cuts a slow speaker off the
  * instant they pause to think mid-sentence ("schedule a meeting with… [pause]
- * …Bob"). This module adds a lightweight, deterministic semantic layer ON TOP of
- * the recognizer's finals: when the accumulated transcript looks syntactically
- * UNFINISHED (ends on a conjunction / preposition / article), we hold the turn
- * open and keep listening instead of sending; when it looks complete (sentence-
- * final punctuation, a short command, or simply a clause that doesn't trail off)
- * we commit immediately so the agent still replies snappily.
+ * …Bob"). The {@link TurnAggregator} below adds a lightweight, deterministic
+ * semantic layer ON TOP of the recognizer's finals: when the accumulated
+ * transcript looks syntactically UNFINISHED (ends on a conjunction / preposition
+ * / article) it holds the turn open and keeps listening; when it looks complete
+ * (sentence-final punctuation, a short command, or a clause that doesn't trail
+ * off) it commits immediately so the agent still replies snappily.
  *
- * The scorer mirrors the `HeuristicEotClassifier` in
- * `@elizaos/plugin-local-inference` (services/voice/eot-classifier.ts) — that
- * one drives the unwired native voice-session engine; this one drives the live
- * shell capture path. Pure + synchronous so it's trivially testable.
+ * The syntactic scorer itself is the single canonical heuristic in
+ * `@elizaos/shared/voice-eot` — the SAME definition the plugin's Tier-3
+ * `HeuristicEotClassifier` (and, through it, the fused composite EOT) consume,
+ * so the shell capture path and the native voice engine never drift.
  */
 
-/** Conjunctions that strongly suggest the speaker is mid-clause. */
-const TRAILING_CONJUNCTIONS = new Set([
-  "and",
-  "but",
-  "or",
-  "nor",
-  "yet",
-  "so",
-  "because",
-  "although",
-  "though",
-  "while",
-  "whereas",
-  "if",
-  "unless",
-  "until",
-  "since",
-  "when",
-  "where",
-  "which",
-  "that",
-  "who",
-  "whom",
-  "whose",
-]);
-
-/** Prepositions / articles that imply an incomplete noun phrase follows. */
-const TRAILING_INCOMPLETE = new Set([
-  "a",
-  "an",
-  "the",
-  "to",
-  "of",
-  "in",
-  "on",
-  "at",
-  "by",
-  "for",
-  "with",
-  "from",
-  "into",
-  "about",
-  "through",
-  "between",
-  "against",
-  "during",
-  "before",
-  "after",
-  "without",
-  "under",
-  "over",
-  "above",
-  "below",
-  "around",
-  "beside",
-  "beyond",
-  "like",
-  "near",
-  "past",
-  "via",
-]);
-
-/** Question-tag suffixes that end an utterance (matched case-insensitively). */
-const QUESTION_TAGS = [
-  "right?",
-  "yeah?",
-  "ok?",
-  "okay?",
-  "correct?",
-  "hm?",
-  "huh?",
-  "eh?",
-];
+import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
 
 /**
  * Probability in [0,1] that `transcript` is a COMPLETE turn (the speaker is
  * done). High → commit; low → the utterance trails off, keep listening.
+ * Re-exported from the canonical `@elizaos/shared/voice-eot` so the shell and
+ * the plugin score identically.
  */
-export function scoreEndOfTurn(transcript: string): number {
-  const text = transcript.trim();
-  if (text.length === 0) return 0.5;
-
-  // A trailing ellipsis ("…" / "..") is the strongest trail-off signal — the
-  // speaker paused mid-thought. Checked BEFORE sentence-final punctuation, since
-  // "..." also ends in ".".
-  if (/(\.{2,}|…)$/.test(text)) return 0.2;
-  // Sentence-final punctuation → almost certainly done.
-  if (/[.!?]$/.test(text)) return 0.95;
-
-  const lower = text.toLowerCase();
-  for (const tag of QUESTION_TAGS) {
-    if (lower.endsWith(tag)) return 0.85;
-  }
-
-  const words = lower
-    .replace(/[^a-z0-9'\s-]/gi, "")
-    .split(/\s+/)
-    .filter(Boolean);
-  if (words.length === 0) return 0.5;
-
-  const lastWord = words[words.length - 1].replace(/[',;:-]+$/, "");
-  // Trailing conjunction / preposition / article → mid-clause, the speaker is
-  // continuing. Checked BEFORE the short-utterance rule so a 2-word trail-off
-  // ("going to", "and so") is NOT misread as a complete short command.
-  if (TRAILING_CONJUNCTIONS.has(lastWord)) return 0.15;
-  if (TRAILING_INCOMPLETE.has(lastWord)) return 0.2;
-
-  // Short utterance that doesn't trail off (a command / acknowledgement) →
-  // likely complete ("go home", "yes", "stop").
-  if (words.length < 3) return 0.7;
-
-  // No strong signal either way — the recognizer's silence is enough.
-  return 0.5;
-}
+export const scoreEndOfTurn = scoreEndOfTurnHeuristic;
 
 export interface TurnAggregatorOptions {
   /**

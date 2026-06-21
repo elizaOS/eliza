@@ -47,6 +47,9 @@ export default defineConfig({
 			"@elizaos/shared/voice-wer": fileURLToPath(
 				new URL("../../packages/shared/src/voice-wer.ts", import.meta.url),
 			),
+			"@elizaos/shared/voice-eot": fileURLToPath(
+				new URL("../../packages/shared/src/voice-eot.ts", import.meta.url),
+			),
 			"@elizaos/shared/transcripts": fileURLToPath(
 				new URL("../../packages/shared/src/transcripts.ts", import.meta.url),
 			),
