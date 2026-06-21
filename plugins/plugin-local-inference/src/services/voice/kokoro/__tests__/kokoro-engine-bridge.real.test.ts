@@ -23,7 +23,11 @@ import {
 } from "vitest";
 
 import { resolveFusedLibraryPath } from "../../../desktop-fused-ffi-backend-runtime";
-import { EngineVoiceBridge } from "../../engine-bridge";
+import {
+	createKokoroSpeakerPreset,
+	createKokoroTtsBackend,
+	EngineVoiceBridge,
+} from "../../engine-bridge";
 import {
 	type ElizaInferenceFfi,
 	loadElizaInferenceFfi,
@@ -33,8 +37,15 @@ import type {
 	MmapRegionHandle,
 	RefCountedResource,
 } from "../../shared-resources";
-import type { KokoroTtsBackend } from "../kokoro-backend";
-import type { KokoroEngineDiscoveryResult } from "../kokoro-engine-discovery";
+import type { Phrase } from "../../types";
+import {
+	KOKORO_MOBILE_TTFA_BUDGET_MS,
+	type KokoroTtsBackend,
+} from "../kokoro-backend";
+import {
+	type KokoroEngineDiscoveryResult,
+	resolveKokoroEngineConfig,
+} from "../kokoro-engine-discovery";
 
 const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
 const LIB_PATH = resolveFusedLibraryPath(null, process.env);
@@ -146,6 +157,80 @@ describe.skipIf(!isBun || !LIB_PATH)(
 			});
 			expect((bridge.backend as KokoroTtsBackend).sampleRate).toBe(16_000);
 			bridge.dispose();
+		});
+	},
+);
+
+// ── Gated real TTFA synth (issue #8787 acceptance criteria 4 + 7) ──
+//
+// Drives the REAL fused Kokoro engine over a REAL discovered Kokoro GGUF +
+// voice .bin, synthesizes a phrase, and asserts (a) non-empty 24 kHz PCM is
+// produced and (b) the first AUDIBLE chunk arrives within the mobile-class
+// TTFA budget. Skipped (never faked) when the fused lib is unresolved, the
+// build does not link Kokoro, or no Kokoro model is staged on disk
+// (`resolveKokoroEngineConfig() === null`). Stage a model under
+// `$ELIZA_KOKORO_MODEL_DIR` (or `~/.eliza/local-inference/models/kokoro/`).
+const KOKORO_MODEL = isBun && LIB_PATH ? resolveKokoroEngineConfig() : null;
+
+describe.skipIf(!isBun || !LIB_PATH || !KOKORO_MODEL)(
+	"Kokoro real synth — TTFA on the in-process fused engine",
+	() => {
+		let ffi: ElizaInferenceFfi;
+
+		beforeAll(() => {
+			ffi = loadElizaInferenceFfi(LIB_PATH as string);
+			if (typeof ffi.kokoroSupported !== "function" || !ffi.kokoroSupported()) {
+				throw new Error(
+					`[test] the fused lib at ${LIB_PATH} does not link the in-process Kokoro engine.`,
+				);
+			}
+		});
+		afterAll(() => {
+			(ffi as unknown as { close?: () => void }).close?.();
+		});
+
+		it("synthesizes real PCM and reaches first audio within the mobile TTFA budget", async () => {
+			// Non-null inside the skipIf guard.
+			const kokoro = KOKORO_MODEL as KokoroEngineDiscoveryResult;
+			const backend = createKokoroTtsBackend(kokoro, { ffi });
+			const preset = createKokoroSpeakerPreset(kokoro);
+			const phrase: Phrase = {
+				id: 1,
+				text: "Hello, this is a time to first audio probe.",
+				fromIndex: 0,
+				toIndex: 42,
+				terminator: "punctuation",
+			};
+
+			const startedAt = performance.now();
+			let firstAudibleAtMs: number | null = null;
+			let totalSamples = 0;
+			let sampleRate = 0;
+			await backend.synthesizeStream({
+				phrase,
+				preset,
+				cancelSignal: { cancelled: false },
+				onChunk: (c) => {
+					if (!c.isFinal && c.pcm.length > 0) {
+						if (firstAudibleAtMs === null) {
+							firstAudibleAtMs = performance.now() - startedAt;
+						}
+						totalSamples += c.pcm.length;
+						sampleRate = c.sampleRate;
+					}
+					return undefined;
+				},
+			});
+			backend.dispose();
+
+			// Real, non-empty 24 kHz PCM — never a silent stub (acceptance criterion 4).
+			expect(totalSamples).toBeGreaterThan(0);
+			expect(sampleRate).toBe(24_000);
+			// First audible chunk within the mobile-class TTFA budget (criterion 7).
+			expect(firstAudibleAtMs).not.toBeNull();
+			expect(firstAudibleAtMs as unknown as number).toBeLessThanOrEqual(
+				KOKORO_MOBILE_TTFA_BUDGET_MS,
+			);
 		});
 	},
 );

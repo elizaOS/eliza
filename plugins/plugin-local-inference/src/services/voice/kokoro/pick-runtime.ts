@@ -6,7 +6,7 @@
  *   ffi   (default)  → KokoroFfiRuntime → in-process synthesis through the
  *                       fused `libelizainference` handle (the
  *                       `eliza_inference_kokoro_*` exports, introduced at ABI
- *                       v10; the fused library is currently ABI v11). This is
+ *                       v10; the fused library is currently ABI v12). This is
  *                       the SOLE synthesis path on every platform.
  *   mock             → KokoroMockRuntime. Tests only.
  *

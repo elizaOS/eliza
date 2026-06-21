@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { scoreFirstResponseLatency } from "../../e2e-harness";
 import type {
 	AudioSink,
 	Phrase,
 	SpeakerPreset,
 	TtsPcmChunk,
 } from "../../types";
-import { KokoroTtsBackend } from "../kokoro-backend";
+import {
+	KOKORO_MOBILE_TTFA_BUDGET_MS,
+	KokoroTtsBackend,
+} from "../kokoro-backend";
+import type { KokoroRuntime, KokoroRuntimeInputs } from "../kokoro-runtime";
 import { KokoroMockRuntime } from "../kokoro-runtime";
 import type { KokoroPhonemizer } from "../types";
 import { KOKORO_DEFAULT_VOICE_ID } from "../voices";
@@ -144,6 +149,112 @@ describe("KokoroTtsBackend", () => {
 	it("supportsStreamingTts() returns true (satisfies the streaming seam)", () => {
 		const { backend } = makeBackend();
 		expect(backend.supportsStreamingTts()).toBe(true);
+	});
+});
+
+// ── TTFA: the first AUDIBLE chunk streams out before the phrase finishes ──
+//
+// These lock the streaming-TTFA contract (issue #8787 acceptance criterion 7)
+// deterministically — no native model, no wall-clock flakiness. The gated
+// real-FFI synth that measures TTFA against a true Kokoro forward lives in
+// `kokoro-engine-bridge.real.test.ts` and skips when artifacts are absent.
+
+/**
+ * A runtime that emits `chunkCount` body chunks and records, for every body
+ * chunk, how many runtime chunks had been produced when the backend re-emitted
+ * its first audible slice. Proves TTFA is bounded by ONE runtime forward
+ * boundary, not the whole phrase.
+ */
+class CountingKokoroRuntime implements KokoroRuntime {
+	readonly id = "mock" as const;
+	readonly sampleRate = 24000;
+	emitted = 0;
+	constructor(
+		private readonly totalSamples: number,
+		private readonly chunkCount: number,
+	) {}
+	async synthesize(args: KokoroRuntimeInputs): Promise<{ cancelled: boolean }> {
+		const perChunk = Math.max(
+			1,
+			Math.ceil(this.totalSamples / this.chunkCount),
+		);
+		for (let off = 0; off < this.totalSamples; off += perChunk) {
+			if (args.cancelSignal.cancelled) return { cancelled: true };
+			const n = Math.min(perChunk, this.totalSamples - off);
+			this.emitted++;
+			const want = args.onChunk({
+				pcm: new Float32Array(n).fill(0.05),
+				sampleRate: this.sampleRate,
+				isFinal: false,
+			});
+			if (want === true) return { cancelled: true };
+		}
+		args.onChunk({
+			pcm: new Float32Array(0),
+			sampleRate: this.sampleRate,
+			isFinal: true,
+		});
+		return { cancelled: false };
+	}
+	dispose(): void {}
+}
+
+describe("KokoroTtsBackend — streaming TTFA", () => {
+	it("emits the first audible chunk from the first runtime forward (sub-phrase TTFA)", async () => {
+		const runtime = new CountingKokoroRuntime(48000, 4); // 2s across 4 forwards
+		const backend = new KokoroTtsBackend({
+			runtime,
+			layout: {
+				root: "/tmp/kokoro",
+				modelFile: "kokoro-82m-v1_0.gguf",
+				voicesDir: "/tmp/kokoro/voices",
+				sampleRate: 24000,
+			},
+			defaultVoiceId: KOKORO_DEFAULT_VOICE_ID,
+			phonemizer: fixedPhonemizer(),
+			streamingChunkSamples: 1200, // 50ms slices
+		});
+
+		let firstAudibleAtRuntimeEmits = -1;
+		let firstAudibleSamples = -1;
+		await backend.synthesizeStream({
+			phrase: makePhrase("a full sentence that decodes in one forward"),
+			preset: makePreset(KOKORO_DEFAULT_VOICE_ID),
+			cancelSignal: { cancelled: false },
+			onChunk: (c) => {
+				if (!c.isFinal && c.pcm.length > 0 && firstAudibleAtRuntimeEmits < 0) {
+					firstAudibleAtRuntimeEmits = runtime.emitted;
+					firstAudibleSamples = c.pcm.length;
+				}
+				return undefined;
+			},
+		});
+
+		// The listener hears audio after the FIRST runtime forward, not all 4.
+		expect(firstAudibleAtRuntimeEmits).toBe(1);
+		// The first audible chunk is a bounded sub-phrase slice, not the phrase.
+		expect(firstAudibleSamples).toBeGreaterThan(0);
+		expect(firstAudibleSamples).toBeLessThanOrEqual(1200);
+	});
+
+	it("a mobile-class TTFA gate passes within budget and fails past it", () => {
+		// Representative warm-handle Kokoro first-phrase TTFB (~97ms TTFB +
+		// phonemize). Well within the mobile budget.
+		const within = scoreFirstResponseLatency({
+			turnStartedAtMs: 1_000,
+			ttsFirstAudioAtMs: 1_000 + 180,
+			maxFirstAudioMs: KOKORO_MOBILE_TTFA_BUDGET_MS,
+		});
+		expect(within.firstAudioMs).toBe(180);
+		expect(within.passed).toBe(true);
+
+		// A regression that blows the budget must fail the gate, never silently pass.
+		const blown = scoreFirstResponseLatency({
+			turnStartedAtMs: 1_000,
+			ttsFirstAudioAtMs: 1_000 + KOKORO_MOBILE_TTFA_BUDGET_MS + 50,
+			maxFirstAudioMs: KOKORO_MOBILE_TTFA_BUDGET_MS,
+		});
+		expect(blown.passed).toBe(false);
 	});
 });
 

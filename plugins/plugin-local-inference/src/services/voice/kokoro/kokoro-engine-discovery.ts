@@ -8,7 +8,7 @@
  * (see `runtimeKind` below).
  *
  * TRANSPORT NOTE — Kokoro synthesizes in-process through the fused
- * `libelizainference` handle (ABI v10 `eliza_inference_kokoro_*`), the same
+ * `libelizainference` handle (`eliza_inference_kokoro_*`, added at ABI v10), the same
  * dlopen()-ed lib as OmniVoice. The fork links Kokoro's native engine
  * (`tools/kokoro/kokoro_lib`, its own GGUF reader + iSTFT decoder) into the
  * fused build, and `KokoroFfiRuntime` drives it via `kokoroLoad` /
