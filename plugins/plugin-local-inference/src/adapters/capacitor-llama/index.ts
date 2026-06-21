@@ -805,3 +805,15 @@ export const localAiPlugin: Plugin = {
 };
 
 export default localAiPlugin;
+
+// On-device fused voice-turn entry (the production caller for
+// `LocalInferenceEngine.runVoiceTurn`, #8786). The native iOS/Android
+// mic-capture layer imports `runDeviceVoiceTurn` and hands it captured PCM.
+export {
+	type CapacitorTextRunnerOptions,
+	createCapacitorMtpTextRunner,
+	type DeviceVoiceEngine,
+	type RunDeviceVoiceTurnArgs,
+	runDeviceVoiceTurn,
+	type VoiceTurnExitReason,
+} from "./voice-turn";

@@ -1570,6 +1570,13 @@ export class LocalInferenceEngine {
 	 * {@link MtpTextRunner}. When omitted, the active local dispatcher is
 	 * used.
 	 *
+	 * Production caller: the on-device device bridge, via `runDeviceVoiceTurn`
+	 * (`adapters/capacitor-llama/voice-turn.ts`), which wraps the loaded
+	 * `CapacitorLlamaContext` in an `MtpTextRunner` and passes it here so the
+	 * draft/verify loop runs on the on-device text model. The native mic
+	 * capture hands `runDeviceVoiceTurn` the PCM; everything downstream is
+	 * in-process JS + the fused FFI (no HTTP, no second voice path).
+	 *
 	 * Resolves with the turn's exit reason (`done` / `token-cap` /
 	 * `cancelled`). A missing ASR region in voice mode surfaces as a
 	 * `VoiceStartupError` — no silent cloud fallback (AGENTS.md §3).
