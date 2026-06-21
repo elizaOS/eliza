@@ -2,6 +2,7 @@ package ai.elizaos.app;
 
 import android.net.LocalServerSocket;
 import android.net.LocalSocket;
+import android.system.Os;
 import android.util.Base64;
 import android.util.Log;
 
@@ -70,10 +71,41 @@ final class ElizaBionicInferenceServer {
     }
 
     /** Bind the abstract-namespace socket and start accepting. Idempotent. */
+    /**
+     * The bionic host runs the LLM in THIS (app) process via JNI, so the fused
+     * native lib reads its tuning from the app-process environment — NOT the bun
+     * agent subprocess env (which only carries the ELIZA_LLAMA_* names). On
+     * Mali-class 8 GB phones the 2B's non-flash-attn compute + logits buffers at
+     * the upstream n_batch=512 default push peak RSS past what the device can
+     * allocate ("llm_stream_open: failed to init llama context"). FA is disabled
+     * on Android (the scalar-FA race), so the non-FA attention buffer is the
+     * dominant cost and it scales with n_batch; capping n_batch shrinks both that
+     * and the n_vocab×n_batch logits buffer ~4x, which is what lets the context
+     * fit. n_ctx is left at the model-capped default (KV is only ~0.4 GB at 8k).
+     * Only sets a value when it is not already present, so any explicit override
+     * still wins.
+     */
+    private static void applyBionicInferenceMemoryDefaults() {
+        setEnvIfAbsent("ELIZA_LLM_N_BATCH", "128");
+        setEnvIfAbsent("ELIZA_LLM_N_CTX", "8192");
+    }
+
+    private static void setEnvIfAbsent(String key, String value) {
+        try {
+            if (System.getenv(key) == null) {
+                Os.setenv(key, value, true);
+                Log.i(TAG, "set " + key + "=" + value + " for in-process bionic inference");
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "could not set " + key, t);
+        }
+    }
+
     synchronized void start() {
         if (running.get()) {
             return;
         }
+        applyBionicInferenceMemoryDefaults();
         // Load the fused native engine up front so the first request doesn't pay
         // the dlopen + Vulkan-device init; also fail fast + loud if the GPU host
         // isn't actually usable, so the agent's refuse-and-fallback can engage.
