@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 
@@ -57,7 +57,7 @@ function selectedChannelIdsFromStatus(status: DiscordLocalStatus): string[] {
 }
 
 export function DiscordLocalConnectorPanel() {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [status, setStatus] = useState<DiscordLocalStatus | null>(null);
   const [guilds, setGuilds] = useState<DiscordLocalGuild[]>([]);
   const [channels, setChannels] = useState<DiscordLocalChannel[]>([]);

@@ -1,6 +1,6 @@
 import type { StylePreset } from "@elizaos/shared";
 import { useEffect, useState } from "react";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { getVrmPreviewUrl } from "../../state/vrm";
 import { Button } from "../ui/button";
 import { INSET_CLIP, SLANT_CLIP } from "./CharacterRoster.helpers";
@@ -36,7 +36,7 @@ export function CharacterRoster({
   variant = "editor",
   testIdPrefix = "character",
 }: CharacterRosterProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const useWhiteBorders = variant === "first-run";
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
 

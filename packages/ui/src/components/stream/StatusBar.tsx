@@ -2,7 +2,7 @@ import { ExternalLink } from "lucide-react";
 import { type CSSProperties, useEffect, useRef } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
-import { useApp } from "../../state/useApp";
+import { useAppSelector } from "../../state";
 import { formatUptime } from "../../utils/format";
 import { Button } from "../ui/button";
 import { IS_POPOUT } from "./helpers";
@@ -25,7 +25,7 @@ export function StatusBar({
   uptime: number;
   frameCount: number;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const isElectrobun = isElectrobunRuntime();
   const popoutPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 

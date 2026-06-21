@@ -1,4 +1,4 @@
-import { Button, SettingsControls, useApp } from "@elizaos/ui";
+import { Button, SettingsControls, useAppSelector } from "@elizaos/ui";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -22,7 +22,7 @@ export function LlmProviderSection({
   prefs,
   setPref,
 }: LlmProviderSectionProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const providerOptions: Array<{
     value: LlmProvider;
     label: string;

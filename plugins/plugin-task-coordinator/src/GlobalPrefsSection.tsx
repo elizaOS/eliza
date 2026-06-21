@@ -4,7 +4,7 @@ import {
   SelectItem,
   SelectValue,
   SettingsControls,
-  useApp,
+  useAppSelector,
 } from "@elizaos/ui";
 import { useState } from "react";
 import {
@@ -53,7 +53,7 @@ export function GlobalPrefsSection({
   approvalPreset,
   setPref,
 }: GlobalPrefsSectionProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const accountStrategy: CodingAccountStrategy = isCodingAccountStrategy(
     prefs.ELIZA_CODING_ACCOUNT_STRATEGY,
   )

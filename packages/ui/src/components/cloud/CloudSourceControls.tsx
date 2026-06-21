@@ -1,5 +1,5 @@
 import { CheckCircle2, WifiOff } from "lucide-react";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { ConnectionStatus } from "../ui/connection-status";
 
@@ -58,7 +58,7 @@ export function CloudConnectionStatus({
   connectedText?: string;
   disconnectedText: string;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const resolvedConnectedText = connectedText ?? "Connected to Eliza Cloud";
   return (
     <div

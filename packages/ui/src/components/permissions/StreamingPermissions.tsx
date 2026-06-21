@@ -1,6 +1,6 @@
 import { Check, Cloud, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/status-badge";
 import { PermissionIcon } from "./PermissionIcon";
@@ -307,7 +307,7 @@ export function StreamingPermissionsSettingsView({
   testId,
   title,
 }: StreamingPermissionsSettingsViewProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const {
     checking,
     permissionErrors,

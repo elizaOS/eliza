@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 
@@ -62,7 +62,7 @@ function currentPrompt(status: TelegramAccountStatus | null): {
 }
 
 export function TelegramAccountConnectorPanel() {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [status, setStatus] = useState<TelegramAccountStatus | null>(null);
   const [phone, setPhone] = useState("");
   const [inputValue, setInputValue] = useState("");

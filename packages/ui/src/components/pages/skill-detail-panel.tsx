@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo } from "../../api";
 import { client } from "../../api";
-import { useApp } from "../../state";
+import { useApp, useAppSelector } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import {
@@ -44,7 +44,7 @@ export function EditSkillModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [content, setContent] = useState("");
   const [originalContent, setOriginalContent] = useState("");
   const [loading, setLoading] = useState(true);

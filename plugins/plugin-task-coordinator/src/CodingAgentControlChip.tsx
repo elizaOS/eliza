@@ -1,11 +1,16 @@
-import { Button, type CodingAgentSession, client, useApp } from "@elizaos/ui";
+import {
+  Button,
+  type CodingAgentSession,
+  client,
+  useAppSelector,
+} from "@elizaos/ui";
 import { Square, Terminal } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 const TERMINAL_STATUSES = new Set(["completed", "stopped", "error", "errored"]);
 
 export function CodingAgentControlChip() {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [sessions, setSessions] = useState<CodingAgentSession[]>([]);
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
 import { useRenderGuard } from "@elizaos/ui/hooks";
-import { useApp } from "@elizaos/ui/state";
+import { useAppSelector } from "@elizaos/ui/state";
 import { memo, useEffect } from "react";
 import { CompanionSceneHost } from "./CompanionSceneHost";
 import { useCompanionSceneStatus } from "./companion-scene-status-context";
@@ -18,7 +18,7 @@ const CompanionOverlay = memo(function CompanionOverlay({
   exitToApps: () => void;
 }) {
   useRenderGuard("CompanionAppView");
-  const { emotePickerOpen } = useApp();
+  const emotePickerOpen = useAppSelector((s) => s.emotePickerOpen);
   const { avatarReady } = useCompanionSceneStatus();
 
   useEffect(() => {

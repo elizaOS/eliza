@@ -2,7 +2,7 @@ import {
   type AgentPreflightResult,
   Button,
   SettingsControls,
-  useApp,
+  useAppSelector,
 } from "@elizaos/ui";
 import {
   AlertTriangle,
@@ -43,7 +43,7 @@ export function AgentTabsSection({
   onSelectAgent,
   onAuth,
 }: AgentTabsSectionProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const activeNeedsAuth = Boolean(
     activeTab &&
       llmProvider === "subscription" &&

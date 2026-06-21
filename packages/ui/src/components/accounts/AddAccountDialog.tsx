@@ -35,7 +35,7 @@ import {
 } from "react";
 import { client } from "../../api";
 import { cn } from "../../lib/utils";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { navigatePreOpenedWindow, preOpenWindow } from "../../utils";
 import { openEventSource } from "../../utils/event-source";
 import { Button } from "../ui/button";
@@ -171,7 +171,7 @@ export function AddAccountDialog({
   onClose,
   onCreated,
 }: AddAccountDialogProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const subscriptionAddMode = getSubscriptionAddMode(providerId);
 
   const [step, setStep] = useState<DialogStep>(

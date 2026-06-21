@@ -1,4 +1,4 @@
-import { type AgentPreflightResult, client, useApp } from "@elizaos/ui";
+import { type AgentPreflightResult, client, useAppSelector } from "@elizaos/ui";
 import { ExternalLink, Terminal } from "lucide-react";
 import {
   type ReactNode,
@@ -45,7 +45,8 @@ function AgentAdvancedSettingsDisclosure({
 }
 
 export function CodingAgentSettingsSection() {
-  const { t, elizaCloudConnected } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
 
   const [activeTab, setActiveTab] = useState<AgentTab | null>(null);
   const [loading, setLoading] = useState(true);
