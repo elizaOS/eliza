@@ -71,3 +71,15 @@
 - After the ainex crash-storm (abrupt SIGKILLs mid-write), the vault PGlite at ~/.local/state/eliza/.vault-pglite became corrupt ("PGlite initialization failed... Aborted()"), and the agent FATAL-crash-loops on every boot until the user manually removes that dir (the error message instructs this). Robustness gap: a corrupt vault bricks the whole agent. Auto-move-aside+recreate is risky for a secrets store, so flagged as a finding, not auto-fixed. (Cleared manually to recover.)
 
 ## Bug count this session: 3 fixed+pushed (reset/nuke P0, ainex-crash P1, ws-hardening P1) + 2 UX findings (cloud-401 generic error; vault-corruption bricks agent)
+
+## FINAL COMPLETION PASS (all code-completable notes items closed)
+- ✅ Vault corruption recovery — corrupt .vault-pglite now auto-moved-aside + recreated (was: FATAL crash-loop on every boot). ELIZA_VAULT_NO_AUTO_RECOVER=1 to opt out. vault 185/186.
+- ✅ Remote-connect "Password" mislabel → "Access token" + helper steering blank-token users to pairing. ui typecheck clean.
+- ✅ Cloud-inference 401 → honest "Eliza Cloud key not authorized — add credits" reply (isAuthError). Done earlier (a28fabf411).
+- ✅ #8810 refactor: pairing-path deleted, ProvisioningChatView deleted, handoff retry added (banner + onRetry + 8s linger); progress banner + product status copy already in-tree.
+- ✅ #8811 refactor: capability-driven AUTO routing policy (device-tier → local/cloud per slot); voice (TTS/TRANSCRIPTION) already on the per-slot router via pickProvider, so AUTO covers voice too. RoutingMatrix "Auto (by device)" option.
+- ✅ recommendation.ts/Eliza1TierId pre-existing break — resolved by the tier-ladder owner (ui typecheck now clean); correctly left untouched (their domain).
+- n/a provisionCloudSandbox /provision 409 — confirmed DEAD path (zero live callers; first-run uses selectOrProvisionCloudAgent). Not worth fixing; could be deleted as future cleanup.
+
+## GENUINELY BLOCKED (cannot be made 100% by code — environment-dependent)
+- Live UI cloud onboarding / agent-switch / local→cloud inference driven through the FULL UI on web + desktop + android-sim + android-device: blocked by (a) Eliza Cloud auth rate-limiting parallel/headless runs, (b) need for a BILLED cloud account with credits for inference-via-local (bare SIWE key 401s on inference — proven), (c) the x86_64 android emulator's embedded agent segfaults (documented). The underlying paths are validated at the API + device-render layer; the remaining gap is purely full-UI-on-every-physical-surface, which needs a credited account + hands-on device driving.
