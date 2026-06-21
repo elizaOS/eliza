@@ -3,10 +3,13 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { handleReset } = vi.hoisted(() => ({ handleReset: vi.fn() }));
+const { handleReset, appValue } = vi.hoisted(() => ({
+  handleReset: vi.fn(),
+  appValue: {} as Record<string, unknown>,
+}));
 
-vi.mock("../../state", () => ({
-  useApp: () => ({
+vi.mock("../../state", () => {
+  Object.assign(appValue, {
     t: (key: string) => key,
     handleReset,
     exportBusy: false,
@@ -22,10 +25,17 @@ vi.mock("../../state", () => ({
     handleAgentExport: vi.fn(),
     handleAgentImport: vi.fn(),
     setState: vi.fn(),
-  }),
-  useIsDeveloperMode: () => false,
-  setDeveloperMode: vi.fn(),
-}));
+  });
+  return {
+    useApp: () => appValue,
+    useAppSelector: (sel: (value: Record<string, unknown>) => unknown) =>
+      sel(appValue),
+    useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
+      sel(appValue),
+    useIsDeveloperMode: () => false,
+    setDeveloperMode: vi.fn(),
+  };
+});
 
 import { AdvancedSection } from "./AdvancedSection";
 

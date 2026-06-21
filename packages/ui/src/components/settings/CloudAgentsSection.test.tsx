@@ -56,6 +56,10 @@ const persistenceMock = vi.hoisted(() => ({
 
 vi.mock("../../state", () => ({
   useApp: () => appMock.value,
+  useAppSelector: (sel: (value: typeof appMock.value) => unknown) =>
+    sel(appMock.value),
+  useAppSelectorShallow: (sel: (value: typeof appMock.value) => unknown) =>
+    sel(appMock.value),
 }));
 
 vi.mock("../../api", () => ({
