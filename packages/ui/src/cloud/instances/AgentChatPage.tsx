@@ -31,7 +31,7 @@ import { ApiError, api } from "../lib/api-client";
 import { useAgent } from "./lib/data/eliza-agents";
 import { useT } from "./lib/i18n";
 import { openWebUIWithPairing } from "./lib/open-web-ui";
-import { useDocumentTitle } from "./lib/use-document-title";
+import { useDocumentTitle } from "../lib/use-document-title";
 import { useRequireAuth } from "./lib/use-session-auth";
 
 type ChatRole = "user" | "agent" | "system";

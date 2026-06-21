@@ -53,7 +53,7 @@ import { api } from "../lib/api-client";
 import { ApiTester } from "./api-tester";
 import { AuthManager } from "./auth-manager";
 import { toast } from "./toast";
-import { useDocumentTitle } from "./use-document-title";
+import { useDocumentTitle } from "../lib/use-document-title";
 import { useExplorerApiKey } from "./use-explorer-api-key";
 import { useRequireAuth } from "./use-session-auth";
 

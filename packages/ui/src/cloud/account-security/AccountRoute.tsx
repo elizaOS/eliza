@@ -20,7 +20,7 @@ import {
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AccountPageClient } from "./components/account-page-client";
 import { useUserProfile } from "./data/user";
-import { useDocumentTitle } from "./use-document-title";
+import { useDocumentTitle } from "../lib/use-document-title";
 
 /**
  * The account surface. Embeddable: handed to the Wave-3 settings section and

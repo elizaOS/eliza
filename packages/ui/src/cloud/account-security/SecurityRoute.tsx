@@ -23,7 +23,7 @@ import { IncidentReportPanel } from "./components/incident-report-panel";
 import { MfaPanel } from "./components/mfa-panel";
 import { PrivacyPanel } from "./components/privacy-panel";
 import { RecentAuditEvents } from "./components/recent-audit-events";
-import { useDocumentTitle } from "./use-document-title";
+import { useDocumentTitle } from "../lib/use-document-title";
 
 /**
  * The security surface. Embeddable: handed to the Wave-3 settings section and

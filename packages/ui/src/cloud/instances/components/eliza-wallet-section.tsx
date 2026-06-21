@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "../lib/i18n";
-import { useCopyFeedback } from "../lib/use-copy-feedback";
+import { useCopyFeedback } from "../../lib/use-copy-feedback";
 
 interface WalletAddresses {
   evmAddress?: string;

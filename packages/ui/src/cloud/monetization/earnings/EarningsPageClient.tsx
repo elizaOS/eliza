@@ -66,7 +66,7 @@ import {
 } from "../../../cloud-ui";
 import { api, apiFetch } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
-import { formatUsd as formatCurrency } from "../lib/format-usd";
+import { formatUsd as formatCurrency } from "../../lib/format-usd";
 
 type TFn = ReturnType<typeof useCloudT>;
 

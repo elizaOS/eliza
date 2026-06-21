@@ -19,7 +19,7 @@ import {
 } from "./components/documents-page-client";
 import { useMyAgents } from "./lib/agents";
 import { useRequireAuth } from "./lib/use-session-auth";
-import { useDocumentTitle } from "./use-document-title";
+import { useDocumentTitle } from "../lib/use-document-title";
 
 /**
  * The Documents/Knowledge surface. Embeddable: used directly by the Wave-3

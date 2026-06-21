@@ -14,7 +14,7 @@
 import { PageHeaderProvider } from "../../cloud-ui";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { PluginPermissionsPageClient } from "./components/plugin-permissions-page-client";
-import { useDocumentTitle } from "./use-document-title";
+import { useDocumentTitle } from "../lib/use-document-title";
 
 /**
  * The plugin-permissions surface. Embeddable: handed to the Wave-3 settings

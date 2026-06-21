@@ -17,7 +17,7 @@ import { DashboardLoadingState } from "../../../cloud-ui/components/dashboard/ro
 import { DashboardRoutePage } from "../../../cloud-ui/components/layout/dashboard-route-page";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { useRequireAuth } from "../auth-gate";
-import { useDocumentTitle } from "../use-document-title";
+import { useDocumentTitle } from "../../lib/use-document-title";
 import { EarningsPageClient } from "./EarningsPageClient";
 
 /** Bare earnings surface — auth-gated, no page chrome. */

@@ -7,7 +7,7 @@
 import { DashboardLoadingState } from "@elizaos/ui/cloud-ui";
 import { MyAgentsClient } from "./components/my-agents";
 import { useT } from "./lib/i18n";
-import { useDocumentTitle } from "./lib/use-document-title";
+import { useDocumentTitle } from "../lib/use-document-title";
 import { useRequireAuth } from "./lib/use-session-auth";
 
 export default function MyAgentsPage() {
