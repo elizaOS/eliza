@@ -20,7 +20,7 @@
  * not pretend it fixed anything.
  */
 
-import { readSystemMemory } from "./system-memory.js";
+import { readSystemMemory } from "./system-memory";
 import type {
 	ResidentModelRole,
 	SharedResourceRegistry,

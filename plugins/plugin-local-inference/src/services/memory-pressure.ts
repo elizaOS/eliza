@@ -41,7 +41,7 @@
  *     not second-guess it with its own poll.
  */
 
-import { readSystemMemory } from "./system-memory.js";
+import { readSystemMemory } from "./system-memory";
 
 /** Pressure level the arbiter consumes. */
 export type MemoryPressureLevel = "nominal" | "low" | "critical";

@@ -1449,6 +1449,20 @@ export function ContinuousChatOverlay({
       clamp: true,
     },
   );
+  // Grabber clearance: when the chat is OPEN but BELOW the half detent the header
+  // is hidden, so the thread viewport would start at the panel's very top —
+  // tucking the topmost line under the floating drag handle (a partial bubble
+  // pinned beneath the grabber at a small free-rest height). Inset the thread
+  // down by the grabber's height in that window only: 0 at the collapsed peek
+  // (threadHeight ~0, so the closed input bar stays exactly its own height),
+  // ramping to the inset once a thread is actually open, then back to 0 as the
+  // header reveals at half+ (it provides the clearance itself).
+  const threadGrabberClearance = useTransform(
+    threadHeight,
+    [0, 40, halfH - 64, halfH],
+    [0, 20, 20, 0],
+    { clamp: true },
+  );
 
   // Sub-threshold release: spring back to the current detent (no state change).
   // Also settles the pill→input morph to its resting end (0 while pilled, 1 once
@@ -2463,8 +2477,13 @@ export function ContinuousChatOverlay({
                 // spring-animated to a detent on release; no `animate`/`transition`,
                 // so no re-render. `shrink min-h-0` lets the panel's `maxHeight` cap
                 // win: a tall detent (or the keyboard) shrinks the thread (it
-                // scrolls) instead of pushing the panel off-screen.
-                style={{ flexBasis: threadFlexBasis }}
+                // scrolls) instead of pushing the panel off-screen. paddingTop
+                // insets the scroll viewport below the floating grabber while the
+                // header is hidden (0 once the header reveals at half+).
+                style={{
+                  flexBasis: threadFlexBasis,
+                  paddingTop: threadGrabberClearance,
+                }}
               >
                 <div
                   id="continuous-thread"
