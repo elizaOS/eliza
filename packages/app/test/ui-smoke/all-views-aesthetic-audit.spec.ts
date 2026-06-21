@@ -135,7 +135,7 @@ interface ViewFinding {
   readableChars: number;
   quality: ScreenshotQuality | null;
   qualityIssues: string[];
-  verdict: "good" | "needs-work" | "broken";
+  verdict: "good" | "needs-work" | "needs-eyeball" | "broken";
 }
 
 /** Scan the rendered DOM for any blue text/background/border color (banned). */
@@ -179,6 +179,58 @@ async function collectHoverViolations(page: Page): Promise<string[]> {
   return violations;
 }
 
+/**
+ * Scan the rendered DOM for border-radius values that are NOT on the token
+ * radius scale (presets.ts: radiusSm/Md/Lg/Xl/2xl/3xl → 6/8/12/16/20/24px at a
+ * 16px root, plus the base `radius` 8px). Allowed alongside the token scale:
+ * `0px` (square) and full-round shapes (`9999px`, `50%`, `100%`, circle pills).
+ * Everything else (e.g. ad-hoc `4px`/`10px`) is an off-scale value that should
+ * round to a token. Returns a deduped list of offending computed values so the
+ * report can surface them; ±1px tolerance absorbs sub-pixel rounding.
+ */
+async function collectBorderRadiusViolations(page: Page): Promise<string[]> {
+  const raw = await page.evaluate(() => {
+    // Allowed px values from the token rem scale (16px root):
+    //   0.375rem=6, 0.5rem=8, 0.75rem=12, 1rem=16, 1.25rem=20, 1.5rem=24.
+    const allowedPx = [0, 6, 8, 12, 16, 20, 24];
+    const tolerance = 1;
+    const isAllowed = (value: string): boolean => {
+      const v = value.trim().toLowerCase();
+      if (!v || v === "none" || v === "auto") return true;
+      // A shorthand can list up to 4 corners (space- or slash-separated); each
+      // corner must be on-scale for the element to pass.
+      const parts = v.split(/[\s/]+/).filter(Boolean);
+      if (parts.length > 1) return parts.every((p) => isAllowed(p));
+      // Full-round shapes: explicit pill radius or any percentage ≥ 50% (a
+      // 50%/100% radius renders a circle/pill, which is a deliberate shape).
+      if (v === "9999px" || v === "50%" || v === "100%") return true;
+      const pctMatch = v.match(/^(\d+\.?\d*)%$/);
+      if (pctMatch) return Number(pctMatch[1]) >= 50;
+      const pxMatch = v.match(/^(\d+\.?\d*)px$/);
+      if (pxMatch) {
+        const px = Number(pxMatch[1]);
+        if (px >= 1000) return true; // any huge px = pill rounding
+        return allowedPx.some((a) => Math.abs(px - a) <= tolerance);
+      }
+      // Unknown unit/keyword we cannot evaluate → don't flag (avoid noise).
+      return true;
+    };
+    const out = new Set<string>();
+    const nodes = Array.from(document.querySelectorAll("*")).slice(0, 4000);
+    for (const node of nodes) {
+      const cs = getComputedStyle(node as Element);
+      // borderRadius is the shorthand; sample a corner too in case the
+      // shorthand serializes to "" (mixed corners on some engines).
+      const candidates = [cs.borderRadius, cs.borderTopLeftRadius];
+      for (const value of candidates) {
+        if (value && !isAllowed(value)) out.add(value);
+      }
+    }
+    return Array.from(out);
+  });
+  return raw;
+}
+
 function renderManualReviewStub(finding: ViewFinding): string {
   const lines = [
     `# ${finding.slug} (${finding.viewport})`,
@@ -187,6 +239,7 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **verdict:** ${finding.verdict}`,
     `- **console errors:** ${finding.consoleErrors.length}`,
     `- **blue colors (banned):** ${finding.blueColors.length ? finding.blueColors.join(", ") : "none"}`,
+    `- **border-radius violations (off-token):** ${finding.borderRadiusViolations.length ? finding.borderRadiusViolations.join(", ") : "none"}`,
     `- **orange↔black hover violations:** ${finding.hoverViolations.length ? finding.hoverViolations.join("; ") : "none"}`,
     `- **floating chat overlay present:** ${finding.overlayPresent ? "yes" : "NO"}`,
     `- **readable content chars:** ${finding.readableChars}`,
@@ -255,6 +308,16 @@ function computeVerdict(
     !finding.overlayPresent
   ) {
     return "needs-work";
+  }
+  // Off-scale border-radius is a soft signal, not a crash or a brand violation:
+  // the criterion (#8796 AC3) only asks the harness to FLAG non-token radius, and
+  // we cannot run a fix-grind here. Surfacing it via the report + a non-blocking
+  // `needs-eyeball` verdict records the data without destabilizing the 152/152
+  // green baseline (a `needs-work`/`broken` verdict would block the gate). TUI +
+  // games/canvas surfaces are exempt above (same set as the blue rule), since a
+  // terminal/canvas owns its own geometry.
+  if (finding.borderRadiusViolations.length > 0) {
+    return "needs-eyeball";
   }
   return "good";
 }
@@ -364,6 +427,9 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         const hoverViolations = await collectHoverViolations(page).catch(
           () => [],
         );
+        const borderRadiusViolations = await collectBorderRadiusViolations(
+          page,
+        ).catch(() => []);
 
         const base = {
           slug: view.slug,
@@ -373,7 +439,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           consoleErrors,
           blueColors,
           hoverViolations,
-          borderRadiusViolations: [],
+          borderRadiusViolations,
           overlayPresent,
           readableChars,
           quality,
@@ -412,6 +478,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         (f) =>
           `<tr><td>${f.slug}</td><td>${f.viewport}</td><td>${f.verdict}</td>` +
           `<td>${f.consoleErrors.length}</td><td>${f.blueColors.length}</td>` +
+          `<td>${f.borderRadiusViolations.length}</td>` +
           `<td>${f.hoverViolations.length}</td><td>${f.overlayPresent ? "✓" : "✗"}</td></tr>`,
       )
       .join("\n");
@@ -419,7 +486,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       path.join(outputDir, "contact-sheet.html"),
       `<!doctype html><meta charset="utf-8"><title>app aesthetic audit</title>` +
         `<table border="1" cellpadding="6"><tr><th>view</th><th>viewport</th>` +
-        `<th>verdict</th><th>console</th><th>blue</th><th>hover</th><th>overlay</th></tr>` +
+        `<th>verdict</th><th>console</th><th>blue</th><th>radius</th><th>hover</th><th>overlay</th></tr>` +
         `${rows}</table>`,
       "utf8",
     );
