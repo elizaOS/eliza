@@ -302,13 +302,14 @@ async function runDragSuite(p, pointer, tag) {
   await snap(p, `${tag}-full`);
 
   // Header: Maximize + Clear on the left, Home + Settings on the right. With no
-  // active tab set, both Home and Settings show.
+  // active tab set, Home, Views and Settings all show (and are enabled).
   assert(
     (await p.getByTestId("chat-full-maximize").count()) === 1 &&
       (await p.getByTestId("chat-full-clear").count()) === 1 &&
       (await p.getByTestId("chat-full-home").count()) === 1 &&
+      (await p.getByTestId("chat-full-views").count()) === 1 &&
       (await p.getByTestId("chat-full-settings").count()) === 1,
-    `[${pointer}] header shows maximize + clear + home + settings`,
+    `[${pointer}] header shows maximize + clear + home + views + settings`,
   );
   // Maximize → full-bleed (edge-to-edge): data-maximized flips + panel reaches x=0.
   await p.getByTestId("chat-full-maximize").click();
@@ -1135,10 +1136,12 @@ try {
     await p.close();
   }
 
-  // HEADER CONTEXT: Home hides while on the home screen ("chat"); Settings hides
-  // while on the settings screen. The other button stays.
-  for (const [tab, hidden, shown] of [
+  // HEADER CONTEXT: Home | Views | Settings are ALWAYS shown; each is DISABLED
+  // (dimmed, inert) — never hidden — while on its own screen, so the row never
+  // reflows. The other two stay enabled.
+  for (const [tab, disabledId, enabledId] of [
     ["chat", "chat-full-home", "chat-full-settings"],
+    ["views", "chat-full-views", "chat-full-home"],
     ["settings", "chat-full-settings", "chat-full-home"],
   ]) {
     const p = await ctrl();
@@ -1148,14 +1151,21 @@ try {
     await p.waitForTimeout(600);
     await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
-    assert((await detent(p)) === "half", `HIDE[${tab}]: opened to half`);
+    assert((await detent(p)) === "half", `DISABLE[${tab}]: opened to half`);
+    // All three nav buttons present on every screen (never hidden).
     assert(
-      (await p.getByTestId(hidden).count()) === 0,
-      `HIDE[${tab}]: ${hidden} hidden on the ${tab} screen`,
+      (await p.getByTestId("chat-full-home").count()) === 1 &&
+        (await p.getByTestId("chat-full-views").count()) === 1 &&
+        (await p.getByTestId("chat-full-settings").count()) === 1,
+      `DISABLE[${tab}]: home|views|settings all present`,
     );
     assert(
-      (await p.getByTestId(shown).count()) === 1,
-      `HIDE[${tab}]: ${shown} still shown on the ${tab} screen`,
+      await p.getByTestId(disabledId).isDisabled(),
+      `DISABLE[${tab}]: ${disabledId} disabled on the ${tab} screen`,
+    );
+    assert(
+      !(await p.getByTestId(enabledId).isDisabled()),
+      `DISABLE[${tab}]: ${enabledId} enabled on the ${tab} screen`,
     );
     await p.close();
   }

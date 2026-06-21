@@ -102,22 +102,20 @@ try {
     (await mobile.getByText("Alex Rivera").count()) > 0,
     "message threads render",
   );
-  // The home pins the 4 default tiles on every platform; the AOSP fork adds the
-  // 4 native-OS surfaces (messages/phone/contacts/camera) for 8 total. With
-  // ?native set, all 8 are expected (see HomeScreen.tsx HOME_TILES).
-  for (const id of [
-    "tutorial",
-    "help",
-    "settings",
-    "views",
-    "messages",
-    "phone",
-    "contacts",
-    "camera",
-  ]) {
+  // No general quick-access tiles anymore — Home/Views/Settings moved to the
+  // chat nav. The only tiles left are the AOSP native-OS surfaces, shown here
+  // because the mobile page sets ?native (see HomeScreen.tsx HOME_TILES).
+  for (const id of ["messages", "phone", "contacts", "camera"]) {
     assert(
       await mobile.getByTestId(`home-tile-${id}`).isVisible(),
-      `tile ${id} renders (native enabled)`,
+      `native-OS tile ${id} renders (native enabled)`,
+    );
+  }
+  // The removed defaults must NOT appear, even with native enabled.
+  for (const id of ["tutorial", "help", "settings", "views"]) {
+    assert(
+      (await mobile.getByTestId(`home-tile-${id}`).count()) === 0,
+      `removed default tile ${id} is gone`,
     );
   }
   await snap(mobile, "mobile-home");
@@ -141,6 +139,11 @@ try {
   await desktop.goto(url);
   await desktop.waitForSelector('[data-testid="home-screen"]');
   await desktop.waitForTimeout(500);
+  // Off-AOSP: no pinned tiles at all — the tile grid is omitted entirely.
+  assert(
+    (await desktop.getByTestId("home-tiles").count()) === 0,
+    "no pinned tiles off-AOSP (grid omitted)",
+  );
   assert(
     (await desktop.getByTestId("home-tile-phone").count()) === 0,
     "phone tile hidden when native disabled",

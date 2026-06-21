@@ -3,6 +3,7 @@ import {
   FileText,
   Film,
   Home,
+  LayoutGrid,
   Loader2,
   Maximize2,
   Mic,
@@ -306,12 +307,14 @@ function HeaderButton({
   label,
   onClick,
   active,
+  disabled,
   testId,
 }: {
   icon: typeof Maximize2;
   label: string;
   onClick: () => void;
   active?: boolean;
+  disabled?: boolean;
   testId?: string;
 }): React.JSX.Element {
   return (
@@ -320,13 +323,18 @@ function HeaderButton({
       data-testid={testId}
       aria-label={label}
       aria-pressed={active}
+      disabled={disabled}
+      aria-disabled={disabled || undefined}
       onClick={onClick}
       className={cn(
         "grid h-9 w-9 shrink-0 place-items-center rounded-full border transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
-        active
-          ? "border-white/40 bg-white/85 text-black"
-          : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
+        disabled
+          ? // On the view it targets: shown but inert + dimmed (we disable, not hide).
+            "cursor-default border-white/10 bg-white/[0.05] text-white/35"
+          : active
+            ? "border-white/40 bg-white/85 text-black"
+            : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
       )}
     >
       <Icon className="h-[18px] w-[18px]" aria-hidden />
@@ -789,6 +797,7 @@ export function ContinuousChatOverlay({
     unlockAudio,
     openSettings,
     navigateHome,
+    navigateToViews,
     currentTab,
     clearConversation,
     stop,
@@ -2485,9 +2494,9 @@ export function ContinuousChatOverlay({
             {/* Sheet header — shown at the HALF detent and up (not just FULL).
               Left: Maximize (toggle edge-to-edge full-screen) + Clear (reset to
               a fresh greeted thread, RotateCcw — it resets, it doesn't delete).
-              Right: Home (back to the home dashboard) + Settings. Home is hidden
-              while already on the home screen ("chat"); Settings is hidden while
-              already on the settings screen. */}
+              Right: Home | Views | Settings. Each is always shown but DISABLED
+              (dimmed, inert) while already on its target screen — never hidden,
+              so the row never reflows. */}
             {!pilled ? (
               <motion.div
                 // Always mounted (when not pilled) so it can FADE + LERP its
@@ -2544,22 +2553,27 @@ export function ContinuousChatOverlay({
                   </div>
                 ) : null}
                 <div className="flex items-center gap-1.5">
-                  {currentTab !== "chat" ? (
-                    <HeaderButton
-                      icon={Home}
-                      label="home"
-                      onClick={() => navigateAndClose(() => navigateHome?.())}
-                      testId="chat-full-home"
-                    />
-                  ) : null}
-                  {currentTab !== "settings" ? (
-                    <HeaderButton
-                      icon={SettingsIcon}
-                      label="settings"
-                      onClick={() => navigateAndClose(() => openSettings())}
-                      testId="chat-full-settings"
-                    />
-                  ) : null}
+                  <HeaderButton
+                    icon={Home}
+                    label="home"
+                    disabled={currentTab === "chat"}
+                    onClick={() => navigateAndClose(() => navigateHome?.())}
+                    testId="chat-full-home"
+                  />
+                  <HeaderButton
+                    icon={LayoutGrid}
+                    label="views"
+                    disabled={currentTab === "views"}
+                    onClick={() => navigateAndClose(() => navigateToViews?.())}
+                    testId="chat-full-views"
+                  />
+                  <HeaderButton
+                    icon={SettingsIcon}
+                    label="settings"
+                    disabled={currentTab === "settings"}
+                    onClick={() => navigateAndClose(() => openSettings())}
+                    testId="chat-full-settings"
+                  />
                 </div>
               </motion.div>
             ) : null}
