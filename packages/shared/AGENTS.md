@@ -48,7 +48,6 @@ packages/shared/
       index.ts                   Types + helpers for local model inference
       catalog.ts                 MODEL_CATALOG, Eliza-1 tier IDs, HuggingFace URLs
       gpu-profiles.ts            GpuProfile, KvCacheType, matchGpuProfile
-      kokoro/                    Kokoro TTS execution provider types
       manifest-signature.ts      Ed25519 manifest signature verification
       network-policy.ts          NetworkPolicyPreferences, evaluateNetworkPolicy
       paths.ts                   elizaModelsDir, localInferenceRoot, registryPath

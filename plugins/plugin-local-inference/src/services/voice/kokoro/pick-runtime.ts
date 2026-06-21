@@ -6,8 +6,9 @@
  *   ffi   (default)  → KokoroFfiRuntime → in-process synthesis through the
  *                       fused `libelizainference` handle (the
  *                       `eliza_inference_kokoro_*` exports, introduced at ABI
- *                       v10; the fused library is currently ABI v11). This is
- *                       the SOLE synthesis path on every platform.
+ *                       v10 and present in every current build — see
+ *                       `ELIZA_INFERENCE_ABI_VERSION`). This is the SOLE
+ *                       synthesis path on every platform.
  *   mock             → KokoroMockRuntime. Tests only.
  *
  * The legacy `fork` / `server` value (POST `/v1/audio/speech` on a running
