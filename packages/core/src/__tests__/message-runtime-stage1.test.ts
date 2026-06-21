@@ -132,7 +132,10 @@ function stage1Response(fields: {
 	};
 }
 
-function makeRuntime(responses: unknown[]): IAgentRuntime {
+function makeRuntime(
+	responses: unknown[],
+	settings?: Record<string, string>,
+): IAgentRuntime {
 	const queue = [...responses];
 	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
 	for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
@@ -156,7 +159,7 @@ function makeRuntime(responses: unknown[]): IAgentRuntime {
 			}
 			return queue.shift();
 		}),
-		getSetting: vi.fn(() => undefined),
+		getSetting: vi.fn((key: string) => settings?.[key]),
 		logger: {
 			debug: vi.fn(),
 			info: vi.fn(),

@@ -68,12 +68,12 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
 <service
-            android:name="ai.milady.app.GatewayConnectionService"
+            android:name="ai.elizaos.app.GatewayConnectionService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
     
         <service
-            android:name="ai.milady.app.ElizaAgentService"
+            android:name="ai.elizaos.app.ElizaAgentService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
@@ -82,7 +82,7 @@
         </service>
     
         <activity
-            android:name="ai.milady.app.ElizaDialActivity"
+            android:name="ai.elizaos.app.ElizaDialActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -97,7 +97,7 @@
         </activity>
     
         <activity
-            android:name="ai.milady.app.ElizaAssistActivity"
+            android:name="ai.elizaos.app.ElizaAssistActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -111,7 +111,7 @@
         </activity>
     
         <activity
-            android:name="ai.milady.app.ElizaShareActivity"
+            android:name="ai.elizaos.app.ElizaShareActivity"
             android:exported="true"
             android:label="@string/app_action_smart_reply_long"
             android:theme="@style/AppTheme.NoActionBar">
@@ -128,7 +128,7 @@
         </activity>
     
         <service
-            android:name="ai.milady.app.ElizaVoiceTileService"
+            android:name="ai.elizaos.app.ElizaVoiceTileService"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_monochrome"
             android:label="@string/app_action_voice_long"
@@ -142,7 +142,7 @@
         </service>
     
         <receiver
-            android:name="ai.milady.app.ElizaQuickActionsWidgetProvider"
+            android:name="ai.elizaos.app.ElizaQuickActionsWidgetProvider"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -153,7 +153,7 @@
         </receiver>
     
         <service
-            android:name="ai.milady.app.ElizaAccessibilityService"
+            android:name="ai.elizaos.app.ElizaAccessibilityService"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
@@ -165,7 +165,7 @@
         </service>
     
         <service
-            android:name="ai.milady.app.ElizaNotificationListenerService"
+            android:name="ai.elizaos.app.ElizaNotificationListenerService"
             android:exported="true"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
@@ -174,7 +174,7 @@
         </service>
     
         <service
-            android:name="ai.milady.app.ElizaInCallService"
+            android:name="ai.elizaos.app.ElizaInCallService"
             android:exported="true"
             android:permission="android.permission.BIND_INCALL_SERVICE">
             <meta-data
@@ -189,7 +189,7 @@
         </service>
     
         <receiver
-            android:name="ai.milady.app.ElizaSmsReceiver"
+            android:name="ai.elizaos.app.ElizaSmsReceiver"
             android:exported="true"
             android:permission="android.permission.BROADCAST_SMS">
             <intent-filter>
@@ -198,7 +198,7 @@
         </receiver>
     
         <receiver
-            android:name="ai.milady.app.ElizaMmsReceiver"
+            android:name="ai.elizaos.app.ElizaMmsReceiver"
             android:exported="true"
             android:permission="android.permission.BROADCAST_WAP_PUSH">
             <intent-filter>
@@ -208,11 +208,11 @@
         </receiver>
     
         <service
-            android:name="ai.milady.app.ElizaSmsGatewayService"
+            android:name="ai.elizaos.app.ElizaSmsGatewayService"
             android:exported="false" />
     
         <service
-            android:name="ai.milady.app.ElizaRespondViaMessageService"
+            android:name="ai.elizaos.app.ElizaRespondViaMessageService"
             android:exported="true"
             android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE">
             <intent-filter>
@@ -225,7 +225,7 @@
         </service>
     
         <activity
-            android:name="ai.milady.app.ElizaSmsComposeActivity"
+            android:name="ai.elizaos.app.ElizaSmsComposeActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -239,7 +239,7 @@
         </activity>
     
         <receiver
-            android:name="ai.milady.app.ElizaBootReceiver"
+            android:name="ai.elizaos.app.ElizaBootReceiver"
             android:directBootAware="true"
             android:exported="false">
             <intent-filter>
@@ -249,7 +249,7 @@
         </receiver>
     
         <activity
-            android:name="ai.milady.app.ElizaBrowserActivity"
+            android:name="ai.elizaos.app.ElizaBrowserActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -266,7 +266,7 @@
         </activity>
     
         <activity
-            android:name="ai.milady.app.ElizaContactsActivity"
+            android:name="ai.elizaos.app.ElizaContactsActivity"
             android:exported="true"
             android:label="Contacts"
             android:theme="@style/AppTheme.NoActionBar">
@@ -285,7 +285,7 @@
         </activity>
     
         <activity
-            android:name="ai.milady.app.ElizaCameraActivity"
+            android:name="ai.elizaos.app.ElizaCameraActivity"
             android:exported="true"
             android:label="Camera"
             android:theme="@style/AppTheme.NoActionBar">
@@ -304,7 +304,7 @@
         </activity>
     
         <activity
-            android:name="ai.milady.app.ElizaClockActivity"
+            android:name="ai.elizaos.app.ElizaClockActivity"
             android:exported="true"
             android:label="Clock"
             android:theme="@style/AppTheme.NoActionBar">
@@ -331,7 +331,7 @@
         </activity>
     
         <activity
-            android:name="ai.milady.app.ElizaCalendarActivity"
+            android:name="ai.elizaos.app.ElizaCalendarActivity"
             android:exported="true"
             android:label="Calendar"
             android:theme="@style/AppTheme.NoActionBar">
