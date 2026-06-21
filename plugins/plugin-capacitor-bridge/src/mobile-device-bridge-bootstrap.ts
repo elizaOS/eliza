@@ -46,7 +46,9 @@ const SERVICE_ENABLED = process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
 const registeredRuntimes = new WeakSet<AgentRuntime>();
 const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
 	"eliza-1-embedding": 1024,
-	"eliza-1-2b": 1536,
+	// 2B reuses the text backbone for embeddings (--pooling last), so its dim is the
+	// model's embedding_length = 2048 (device-verified: EMBED -> dim 2048), NOT 1536.
+	"eliza-1-2b": 2048,
 	"eliza-1-4b": 2560,
 };
 

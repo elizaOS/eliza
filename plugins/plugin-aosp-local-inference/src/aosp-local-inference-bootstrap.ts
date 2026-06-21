@@ -1085,9 +1085,9 @@ const AOSP_RECOMMENDED_MODELS: Record<
   AospRecommendedModel
 > = {
   chat: {
-    // The quantized 4B is the shipped mobile minimum/default chat model;
-    // 0.8B/2B are too small for quality chat. Mirrors the capacitor bridge
-    // and the catalog FIRST_RUN_DEFAULT_MODEL_ID.
+    // The quantized 4B is the shipped mobile default chat model; the 2B entry
+    // tier is too small for quality chat. Mirrors the capacitor bridge and the
+    // catalog FIRST_RUN_DEFAULT_MODEL_ID.
     id: "eliza-1-4b",
     hfRepo: "elizaos/eliza-1",
     ggufFile: "bundles/4b/text/eliza-1-4b-128k.gguf",
@@ -1227,7 +1227,7 @@ function ensureOmnivoiceTtsAssetsInBackground(bundleRoot: string): void {
 }
 
 // Kokoro-82M is the small/fast on-device voice (catalog policy makes the mobile
-// 0_8b/2b/4b tiers Kokoro-default). Like OmniVoice it isn't always bundled into
+// 2b/4b tiers Kokoro-default). Like OmniVoice it isn't always bundled into
 // the APK, so fetch the acoustic GGUF + the af_sam speaker preset into the
 // bundle's `tts/kokoro/` dir — the exact dir ElizaBionicInferenceServer.tts()
 // and the fused Kokoro loader read. The on-device voice is an ESSENTIAL feature
@@ -1244,7 +1244,7 @@ function ensureKokoroTtsAssetsInBackground(bundleRoot: string): void {
   if (kokoroTtsDownloadInflight) return;
   const kokoroDir = path.join(bundleRoot, "tts", "kokoro");
   if (existsSync(kokoroDir)) return;
-  const tier = path.basename(bundleRoot) || "0_8b";
+  const tier = path.basename(bundleRoot) || "2b";
   const stagingDir = path.join(bundleRoot, "tts", "kokoro.staging");
   kokoroTtsDownloadInflight = (async () => {
     rmSync(stagingDir, { recursive: true, force: true });

@@ -25,7 +25,6 @@ import path from "node:path";
  * manifest, depending on the build phase).
  */
 export type Eliza1TierId =
-  | "eliza-1-0_8b"
   | "eliza-1-2b"
   | "eliza-1-4b"
   | "eliza-1-9b"
@@ -60,7 +59,7 @@ export type ResolveResult =
   | { kind: "ok"; engine: ResolvedEngine }
   | { kind: "skip"; reason: string };
 
-const DEFAULT_TIER: Eliza1TierId = "eliza-1-0_8b";
+const DEFAULT_TIER: Eliza1TierId = "eliza-1-2b";
 
 interface SharedPathsLike {
   elizaModelsDir: () => string;

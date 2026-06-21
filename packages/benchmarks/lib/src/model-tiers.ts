@@ -3,10 +3,10 @@
  * pipeline.
  *
  * Tiers:
- * - `small`     — Qwen3.5 0.8B GGUF via the mtp local-llama-cpp fork
- *                 (`~/.cache/eliza-mtp/eliza-llama-cpp`) or Ollama as
+ * - `small`     — eliza-1 2B (entry tier) GGUF via the mtp local-llama-cpp
+ *                 fork (`~/.cache/eliza-mtp/eliza-llama-cpp`) or Ollama as
  *                 fallback. Tier-A smoke lane.
- * - `mid`       — Qwen3.5 2B GGUF via the same fork. Tier-B manual /
+ * - `mid`       — eliza-1 4B GGUF via the same fork. Tier-B manual /
  *                 scheduled.
  * - `large`     — Cerebras `gpt-oss-120b`. Default evaluation provider.
  * - `frontier`  — Anthropic Opus 4.7. Production runtime.
@@ -40,16 +40,16 @@ export const DEFAULT_TIERS: Record<ModelTier, TierSpec> = {
   small: {
     tier: "small",
     provider: "local-llama-cpp",
-    modelName: "qwen3.5-0.8b-q8_0",
-    bundlePath: "~/.eliza/local-inference/models/eliza-1-0_8b.bundle",
-    contextWindow: 32_768,
-    notes: "Tier-A smoke lane; mtp fork or Ollama fallback",
+    modelName: "qwen3.5-2b-q4_k_m",
+    bundlePath: "~/.eliza/local-inference/models/eliza-1-2b.bundle",
+    contextWindow: 65_536,
+    notes: "Tier-A smoke lane; eliza-1 2B entry tier via mtp fork or Ollama fallback",
   },
   mid: {
     tier: "mid",
     provider: "local-llama-cpp",
-    modelName: "qwen3.5-2b-q4_k_m",
-    bundlePath: "~/.eliza/local-inference/models/eliza-1-2b.bundle",
+    modelName: "qwen3.5-4b-q4_k_m",
+    bundlePath: "~/.eliza/local-inference/models/eliza-1-4b.bundle",
     contextWindow: 65_536,
     notes: "Tier-B manual/scheduled",
   },

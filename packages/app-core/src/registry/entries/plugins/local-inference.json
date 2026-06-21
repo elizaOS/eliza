@@ -56,7 +56,7 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "text/eliza-1-0_8b-128k.gguf",
+      "default": "text/eliza-1-2b-128k.gguf",
       "label": "Embedding Model",
       "help": "Filename of the embedding model used for vector embeddings.",
       "advanced": false
@@ -94,14 +94,9 @@
       "help": "Select a published Eliza-1 fine-tune tier. The runtime auto-picks the right quant flavor (gguf/polarquant/fp8/bf16) for your detected GPU and pulls it from HuggingFace on first use.",
       "options": [
         {
-          "value": "eliza-1-0_8b",
-          "label": "Eliza-1 0.8B (mobile)",
-          "description": "Mobile-tier fine-tune; fits Android/iOS on-device inference."
-        },
-        {
           "value": "eliza-1-2b",
-          "label": "Eliza-1 2B (16 GB GPU)",
-          "description": "Local-tier fine-tune, fits 16 GB consumer GPUs at Q4_K_M."
+          "label": "Eliza-1 2B (mobile / entry)",
+          "description": "Smallest/entry tier; fits Android/iOS on-device inference and 16 GB consumer GPUs at Q4_K_M."
         },
         {
           "value": "eliza-1-4b",

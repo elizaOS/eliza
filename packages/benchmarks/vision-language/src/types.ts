@@ -18,7 +18,6 @@ export type BenchmarkName =
   | "osworld";
 
 export type Eliza1TierId =
-  | "eliza-1-0_8b"
   | "eliza-1-2b"
   | "eliza-1-4b"
   | "eliza-1-9b"

@@ -51,7 +51,6 @@ const ALL_BENCHMARKS: BenchmarkName[] = [
 ];
 
 const VALID_TIERS = new Set<string>([
-  "eliza-1-0_8b",
   "eliza-1-2b",
   "eliza-1-4b",
   "eliza-1-9b",
@@ -92,7 +91,7 @@ interface Args {
 const HELP = `vision-language bench
 
 Flags:
-  --tier <id>          eliza-1 tier; one of eliza-1-0_8b, eliza-1-2b,
+  --tier <id>          eliza-1 tier; one of eliza-1-2b,
                        eliza-1-4b, eliza-1-9b, eliza-1-27b, eliza-1-27b-256k.
                        Default: eliza-1-9b.
   --harness <name>     eliza, hermes, openclaw, elizaos, or opencode.
