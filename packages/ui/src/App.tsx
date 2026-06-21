@@ -154,6 +154,10 @@ const BrowserWorkspaceView = lazyNamedView(
   () => import("./components/pages/BrowserWorkspaceView"),
   "BrowserWorkspaceView",
 );
+const TranscriptsPageView = lazyNamedView(
+  () => import("./components/transcripts/TranscriptsPage"),
+  "TranscriptsPage",
+);
 const CameraPageView = lazyNamedView(
   () => import("./components/pages/CameraPageView"),
   "CameraPageView",
@@ -925,6 +929,11 @@ function renderStaticViewRouterTab({
     trajectories: (
       <TabContentView>
         <TrajectoriesView />
+      </TabContentView>
+    ),
+    transcripts: (
+      <TabContentView>
+        <TranscriptsPageView />
       </TabContentView>
     ),
     relationships: (

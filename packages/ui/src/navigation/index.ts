@@ -66,6 +66,7 @@ export type BuiltinTab =
   | "advanced"
   | "fine-tuning"
   | "trajectories"
+  | "transcripts"
   | "relationships"
   | "memories"
   | "rolodex"
@@ -89,6 +90,7 @@ export const APPS_TOOL_TABS = [
   "skills",
   "fine-tuning",
   "trajectories",
+  "transcripts",
   "relationships",
   "memories",
   "runtime",
@@ -297,6 +299,7 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   advanced: "/apps/fine-tuning",
   "fine-tuning": "/apps/fine-tuning",
   trajectories: "/apps/trajectories",
+  transcripts: "/apps/transcripts",
   relationships: "/apps/relationships",
   memories: "/apps/memories",
   rolodex: "/rolodex",
@@ -367,6 +370,7 @@ const APPS_SUB_TABS: Record<string, Tab> = {
   skills: "skills",
   "fine-tuning": "fine-tuning",
   trajectories: "trajectories",
+  transcripts: "transcripts",
   relationships: "relationships",
   memories: "memories",
   runtime: "runtime",
@@ -544,6 +548,8 @@ export function titleForTab(tab: Tab): string {
       return "Fine-Tuning";
     case "trajectories":
       return "Trajectories";
+    case "transcripts":
+      return "Transcripts";
     case "relationships":
       return "Relationships";
     case "memories":
