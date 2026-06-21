@@ -71,6 +71,7 @@ import type {
   WhitelistStatus,
   WorkbenchOverview,
 } from "../api/client";
+import type { CloudHandoffPhaseDetail } from "../events";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
 import type { Tab } from "../navigation";
@@ -236,6 +237,22 @@ export function deriveAgentReady(agentStatus: AgentStatus | null): boolean {
   );
 }
 
+/**
+ * True while a shared→dedicated cloud-agent handoff is in flight (`migrating`):
+ * the user is chatting on the shared adapter while the dedicated container boots.
+ * One signal both the chat shell and the Settings cloud-agents row read, so the
+ * transient "shared-now / dedicated-pending" state isn't opaque to either. It is
+ * an AWARENESS signal only — it never gates the composer, since the shared
+ * adapter is fully responsive during the handoff.
+ */
+export function isCloudAgentWaking(
+  phase: CloudHandoffPhaseDetail | null,
+  agentId?: string,
+): boolean {
+  if (!phase || phase.phase !== "migrating") return false;
+  return agentId === undefined || phase.agentId === agentId;
+}
+
 export type SlashCommandInput = {
   name: string;
   argsRaw: string;
@@ -334,6 +351,13 @@ export interface AppState {
   companionHalfFramerateMode: CompanionHalfFramerateMode;
   connected: boolean;
   agentStatus: AgentStatus | null;
+  /**
+   * Latest shared→dedicated cloud-agent handoff phase, or null. Single source of
+   * truth fed by `CLOUD_HANDOFF_PHASE_EVENT`, so the chat shell and the Settings
+   * cloud-agents row both reflect the shared-now/dedicated-pending state instead
+   * of each running an independent wake loop. {@link isCloudAgentWaking}.
+   */
+  cloudHandoffPhase: CloudHandoffPhaseDetail | null;
   firstRunComplete: boolean;
   /** Incremented on agent reset so first-run UI shows immediately (not stuck behind VRM reveal). */
   firstRunUiRevealNonce: number;

@@ -248,14 +248,15 @@ describe("plugin-facewear routes (real dispatch)", () => {
     expect(known.status).toBe(200);
     expect(((await known.json()) as { id: string }).id).toBe("meta-quest");
 
-    // An unknown id currently serves 200 with an empty body: `getDeviceProfile`
-    // is a plain registry lookup (`DEVICE_REGISTRY[deviceType]`) that returns
-    // `undefined` rather than throwing, so the route's `catch` → 404 branch is
-    // never reached. Asserting the real response keeps this e2e honest about
-    // actual behavior; the dead 404 branch is the real bug to fix in source.
+    // An unknown id is validated against the registry at the route boundary
+    // (`isFacewearDeviceType`) and rejected with a real 404 instead of serving
+    // an empty 200 body.
     const unknown = await fetch(`${base}/api/facewear/devices/does-not-exist`);
-    expect(unknown.status).toBe(200);
-    expect(await unknown.text()).toBe("");
+    expect(unknown.status).toBe(404);
+    expect(unknown.headers.get("content-type")).toContain("application/json");
+    expect(((await unknown.json()) as { error: string }).error).toBe(
+      "Device not found",
+    );
   });
 
   it("GET /api/facewear/status reports connected devices from FacewearService", async () => {

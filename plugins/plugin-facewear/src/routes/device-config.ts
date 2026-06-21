@@ -1,8 +1,8 @@
 import type { Route } from "@elizaos/core";
 import {
-  type FacewearDeviceType,
   getAllDeviceProfiles,
   getDeviceProfile,
+  isFacewearDeviceType,
 } from "../devices/registry.ts";
 import {
   FACEWEAR_SERVICE_TYPE,
@@ -23,20 +23,20 @@ export const facewearDeviceRoute: Route = {
   path: "/api/facewear/devices/:id",
   type: "GET",
   routeHandler: async (ctx) => {
-    const id = (ctx.params as Record<string, string>).id as FacewearDeviceType;
-    try {
-      const profile = getDeviceProfile(id);
-      return {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(profile),
-      };
-    } catch {
+    const id = (ctx.params as Record<string, string>).id;
+    const profile = isFacewearDeviceType(id) ? getDeviceProfile(id) : undefined;
+    if (!profile) {
       return {
         status: 404,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ error: "Device not found" }),
       };
     }
+    return {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(profile),
+    };
   },
 };
 

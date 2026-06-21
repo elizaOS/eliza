@@ -2865,6 +2865,12 @@ export const allActionsSpec = {
 				"Trust system: action=evaluate|record_interaction|request_elevation|update_role.",
 		},
 		{
+			name: "${key.toUpperCase()}_COMMAND",
+			description: "",
+			parameters: [],
+			descriptionCompressed: "",
+		},
+		{
 			name: "AINEX_BOW",
 			description: "Play the `bow` action group on the AiNex robot.",
 			parameters: [],

@@ -8,6 +8,10 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { AgentStatus } from "../api";
 import {
+  CLOUD_HANDOFF_PHASE_EVENT,
+  type CloudHandoffPhaseDetail,
+} from "../events";
+import {
   loadPersistedFirstRunComplete,
   savePersistedFirstRunComplete,
 } from "./persistence";
@@ -25,6 +29,8 @@ import type {
 export interface LifecycleState {
   connected: boolean;
   agentStatus: AgentStatus | null;
+  /** Latest shared→dedicated cloud-agent handoff phase (see CLOUD_HANDOFF_PHASE_EVENT). */
+  cloudHandoffPhase: CloudHandoffPhaseDetail | null;
   firstRunComplete: boolean;
   firstRunUiRevealNonce: number;
   firstRunLoading: boolean;
@@ -47,6 +53,7 @@ export interface LifecycleState {
 const INITIAL_LIFECYCLE_STATE: LifecycleState = {
   connected: false,
   agentStatus: null,
+  cloudHandoffPhase: null,
   firstRunComplete: loadPersistedFirstRunComplete(),
   firstRunUiRevealNonce: 0,
   firstRunLoading: true,
@@ -76,6 +83,7 @@ const INITIAL_LIFECYCLE_STATE: LifecycleState = {
 type LifecycleAction_ =
   | { type: "SET_CONNECTED"; value: boolean }
   | { type: "SET_AGENT_STATUS"; value: AgentStatus | null }
+  | { type: "SET_CLOUD_HANDOFF_PHASE"; value: CloudHandoffPhaseDetail | null }
   | { type: "SET_FIRST_RUN_COMPLETE"; value: boolean }
   | { type: "INCREMENT_FIRST_RUN_REVEAL_NONCE" }
   | { type: "SET_FIRST_RUN_LOADING"; value: boolean }
@@ -110,6 +118,9 @@ function lifecycleReducer(
       return { ...state, connected: action.value };
     case "SET_AGENT_STATUS":
       return { ...state, agentStatus: action.value };
+    case "SET_CLOUD_HANDOFF_PHASE":
+      if (state.cloudHandoffPhase === action.value) return state;
+      return { ...state, cloudHandoffPhase: action.value };
     case "SET_FIRST_RUN_COMPLETE":
       return { ...state, firstRunComplete: action.value };
     case "INCREMENT_FIRST_RUN_REVEAL_NONCE":
@@ -215,6 +226,7 @@ export interface LifecycleStateHook {
   setAgentStatus: (v: AgentStatus | null) => void;
   /** Only calls setAgentStatus when the payload has materially changed. */
   setAgentStatusIfChanged: (next: AgentStatus | null) => void;
+  setCloudHandoffPhase: (v: CloudHandoffPhaseDetail | null) => void;
   setFirstRunComplete: (v: boolean) => void;
   incrementFirstRunRevealNonce: () => void;
   setFirstRunLoading: (v: boolean) => void;
@@ -305,6 +317,27 @@ export function useLifecycleState(): LifecycleStateHook {
     }
     agentStatusRef.current = next;
     dispatch({ type: "SET_AGENT_STATUS", value: next });
+  }, []);
+
+  const setCloudHandoffPhase = useCallback(
+    (v: CloudHandoffPhaseDetail | null) =>
+      dispatch({ type: "SET_CLOUD_HANDOFF_PHASE", value: v }),
+    [],
+  );
+
+  // Single subscriber for the shared→dedicated handoff phase. Mirroring it into
+  // lifecycle state (rather than each surface subscribing to the window event on
+  // its own) is what lets the chat shell + Settings cloud-agents row read one
+  // unified "shared-now / dedicated-pending" signal. The CloudHandoffBanner keeps
+  // its own display-lingering hook; this is the canonical app-state copy.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPhase = (event: Event) => {
+      const detail = (event as CustomEvent<CloudHandoffPhaseDetail>).detail;
+      if (detail) dispatch({ type: "SET_CLOUD_HANDOFF_PHASE", value: detail });
+    };
+    window.addEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
+    return () => window.removeEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
   }, []);
 
   const setFirstRunComplete = useCallback((v: boolean) => {
@@ -454,6 +487,7 @@ export function useLifecycleState(): LifecycleStateHook {
     setConnected,
     setAgentStatus,
     setAgentStatusIfChanged,
+    setCloudHandoffPhase,
     setFirstRunComplete,
     incrementFirstRunRevealNonce,
     setFirstRunLoading,

@@ -42,13 +42,13 @@ import {
   loadAgentProfileRegistry,
   setActiveProfileId,
 } from "./agent-profiles";
+import { publishAppValue, seedAppValue } from "./app-store";
 import {
   ChatComposerCtx,
   ChatInputRefCtx,
   clearAllChatDrafts,
   useChatComposerDraftPersistence,
 } from "./ChatComposerContext.hooks";
-import { publishAppValue, seedAppValue } from "./app-store";
 import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext.hooks";
 import { ConversationMessagesCtx } from "./ConversationMessagesContext.hooks";
 import { AppContext, type AppContextValue, type AppState } from "./internal";
@@ -169,6 +169,7 @@ function AppProviderInner({
     state: {
       connected,
       agentStatus,
+      cloudHandoffPhase,
       firstRunComplete,
       firstRunUiRevealNonce,
       firstRunLoading,
@@ -1885,6 +1886,7 @@ function AppProviderInner({
       companionHalfFramerateMode,
       connected,
       agentStatus,
+      cloudHandoffPhase,
       firstRunComplete,
       firstRunUiRevealNonce,
       firstRunLoading,
@@ -2309,6 +2311,7 @@ function AppProviderInner({
       companionHalfFramerateMode,
       connected,
       agentStatus,
+      cloudHandoffPhase,
       firstRunComplete,
       firstRunUiRevealNonce,
       firstRunLoading,

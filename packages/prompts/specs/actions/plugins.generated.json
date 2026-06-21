@@ -2,6 +2,11 @@
   "version": "1.0.0",
   "actions": [
     {
+      "name": "${key.toUpperCase()}_COMMAND",
+      "description": "",
+      "parameters": []
+    },
+    {
       "name": "AINEX_BOW",
       "description": "Play the `bow` action group on the AiNex robot.",
       "parameters": [],

@@ -1,5 +1,16 @@
 import type { UUID } from "@elizaos/core";
 import {
+  computeNextCronRunAtMs,
+  DISABLED_TRIGGER_INTERVAL_MS,
+  MAX_TRIGGER_INTERVAL_MS,
+  MIN_TRIGGER_INTERVAL_MS,
+  normalizeTriggerIntervalMs,
+  parseCronExpression,
+  parseScheduledAtIso,
+  resolveTriggerTiming,
+  type TriggerTiming,
+} from "@elizaos/core";
+import {
   type NormalizedTriggerDraft,
   TRIGGER_SCHEMA_VERSION,
   type TriggerConfig,
@@ -9,47 +20,19 @@ import {
   type TriggerWakeMode,
 } from "./types.ts";
 
-export const MIN_TRIGGER_INTERVAL_MS = 60_000;
-export const MAX_TRIGGER_INTERVAL_MS = 31 * 24 * 60 * 60 * 1000;
-export const DISABLED_TRIGGER_INTERVAL_MS = 365 * 24 * 60 * 60 * 1000;
+export {
+  computeNextCronRunAtMs,
+  DISABLED_TRIGGER_INTERVAL_MS,
+  MAX_TRIGGER_INTERVAL_MS,
+  MIN_TRIGGER_INTERVAL_MS,
+  normalizeTriggerIntervalMs,
+  parseCronExpression,
+  parseScheduledAtIso,
+  resolveTriggerTiming,
+  type TriggerTiming,
+};
+
 export const MAX_TRIGGER_RUN_HISTORY = 100;
-
-const CRON_FIELDS = 5;
-const CRON_SCAN_WINDOW_MS = 366 * 24 * 60 * 60 * 1000;
-const CRON_MINUTE_MS = 60_000;
-
-interface CronRange {
-  min: number;
-  max: number;
-}
-
-interface CronSchedule {
-  minute: Set<number>;
-  hour: Set<number>;
-  dayOfMonth: Set<number>;
-  month: Set<number>;
-  dayOfWeek: Set<number>;
-}
-
-const CRON_RANGES: readonly [
-  CronRange,
-  CronRange,
-  CronRange,
-  CronRange,
-  CronRange,
-] = [
-  { min: 0, max: 59 },
-  { min: 0, max: 23 },
-  { min: 1, max: 31 },
-  { min: 1, max: 12 },
-  { min: 0, max: 6 },
-];
-
-export interface TriggerTiming {
-  updatedAt: number;
-  updateIntervalMs: number;
-  nextRunAtMs: number;
-}
 
 interface DraftInput {
   displayName?: string;
@@ -69,242 +52,8 @@ interface DraftInput {
   workflowName?: string;
 }
 
-function parseInteger(raw: string): number | null {
-  if (!/^-?\d+$/.test(raw)) return null;
-  const value = Number(raw);
-  if (!Number.isFinite(value)) return null;
-  return value;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  if (value < min) return min;
-  if (value > max) return max;
-  return value;
-}
-
 export function normalizeText(value: string): string {
   return value.trim().replace(/\s+/g, " ");
-}
-
-function parseCronPart(part: string, range: CronRange): Set<number> | null {
-  const output = new Set<number>();
-  const chunks = part.split(",");
-
-  for (const chunkRaw of chunks) {
-    const chunk = chunkRaw.trim();
-    if (!chunk) return null;
-
-    const [baseRaw, stepRaw, extraStep] = chunk.split("/");
-    if (baseRaw === undefined || extraStep !== undefined) return null;
-    const step = stepRaw === undefined ? 1 : parseInteger(stepRaw.trim());
-    if (step === null || step <= 0) return null;
-
-    const base = baseRaw.trim();
-    if (base === "*") {
-      for (let value = range.min; value <= range.max; value += step) {
-        output.add(value);
-      }
-      continue;
-    }
-
-    const [rangeStartRaw, rangeEndRaw, extraRange] = base.split("-");
-    if (rangeStartRaw === undefined || extraRange !== undefined) return null;
-    if (rangeEndRaw === undefined) {
-      const single = parseInteger(rangeStartRaw.trim());
-      if (single === null) return null;
-      if (single < range.min || single > range.max) return null;
-      output.add(single);
-      continue;
-    }
-
-    const start = parseInteger(rangeStartRaw.trim());
-    const end = parseInteger(rangeEndRaw.trim());
-    if (start === null || end === null) return null;
-    if (start > end) return null;
-    if (start < range.min || end > range.max) return null;
-    for (let value = start; value <= end; value += step) {
-      output.add(value);
-    }
-  }
-
-  return output.size > 0 ? output : null;
-}
-
-export function parseCronExpression(expression: string): CronSchedule | null {
-  const trimmed = expression.trim();
-  if (!trimmed) return null;
-  const parts = trimmed.split(/\s+/);
-  if (parts.length !== CRON_FIELDS) return null;
-
-  const [minuteExpr, hourExpr, dayOfMonthExpr, monthExpr, dayOfWeekExpr] =
-    parts;
-  if (
-    minuteExpr === undefined ||
-    hourExpr === undefined ||
-    dayOfMonthExpr === undefined ||
-    monthExpr === undefined ||
-    dayOfWeekExpr === undefined
-  ) {
-    return null;
-  }
-
-  const minute = parseCronPart(minuteExpr, CRON_RANGES[0]);
-  const hour = parseCronPart(hourExpr, CRON_RANGES[1]);
-  const dayOfMonth = parseCronPart(dayOfMonthExpr, CRON_RANGES[2]);
-  const month = parseCronPart(monthExpr, CRON_RANGES[3]);
-  const dayOfWeek = parseCronPart(dayOfWeekExpr, CRON_RANGES[4]);
-
-  if (!minute || !hour || !dayOfMonth || !month || !dayOfWeek) {
-    return null;
-  }
-
-  return {
-    minute,
-    hour,
-    dayOfMonth,
-    month,
-    dayOfWeek,
-  };
-}
-
-function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
-  const candidate = new Date(candidateMs);
-  return (
-    schedule.minute.has(candidate.getUTCMinutes()) &&
-    schedule.hour.has(candidate.getUTCHours()) &&
-    schedule.dayOfMonth.has(candidate.getUTCDate()) &&
-    schedule.month.has(candidate.getUTCMonth() + 1) &&
-    schedule.dayOfWeek.has(candidate.getUTCDay())
-  );
-}
-
-function getTimezoneOffsetMs(
-  timezone: string | undefined,
-  atMs: number,
-): number {
-  if (!timezone || timezone === "UTC") return 0;
-  try {
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
-    const parts = formatter.formatToParts(new Date(atMs));
-    const get = (type: string): number => {
-      const part = parts.find((p) => p.type === type);
-      return part ? Number(part.value) : 0;
-    };
-    const tzDate = Date.UTC(
-      get("year"),
-      get("month") - 1,
-      get("day"),
-      get("hour"),
-      get("minute"),
-      get("second"),
-    );
-    return tzDate - atMs;
-  } catch {
-    return 0;
-  }
-}
-
-function cronMatches(
-  schedule: CronSchedule,
-  candidateMs: number,
-  timezone?: string,
-): boolean {
-  if (!timezone || timezone === "UTC") {
-    return cronMatchesUTC(schedule, candidateMs);
-  }
-  const offsetMs = getTimezoneOffsetMs(timezone, candidateMs);
-  const wallClockMs = candidateMs + offsetMs;
-  return cronMatchesUTC(schedule, wallClockMs);
-}
-
-export function computeNextCronRunAtMs(
-  expression: string,
-  fromMs: number,
-  timezone?: string,
-): number | null {
-  const schedule = parseCronExpression(expression);
-  if (!schedule) return null;
-
-  const start = Math.floor(fromMs / CRON_MINUTE_MS) * CRON_MINUTE_MS;
-  const cutoff = start + CRON_SCAN_WINDOW_MS;
-  for (
-    let candidate = start + CRON_MINUTE_MS;
-    candidate <= cutoff;
-    candidate += CRON_MINUTE_MS
-  ) {
-    if (cronMatches(schedule, candidate, timezone)) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
-export function parseScheduledAtIso(scheduledAtIso: string): number | null {
-  const parsed = Date.parse(scheduledAtIso);
-  if (!Number.isFinite(parsed)) return null;
-  return parsed;
-}
-
-export function normalizeTriggerIntervalMs(intervalMs: number): number {
-  if (!Number.isFinite(intervalMs)) return MIN_TRIGGER_INTERVAL_MS;
-  const rounded = Math.floor(intervalMs);
-  return clamp(rounded, MIN_TRIGGER_INTERVAL_MS, MAX_TRIGGER_INTERVAL_MS);
-}
-
-export function resolveTriggerTiming(
-  trigger: TriggerConfig,
-  nowMs: number,
-): TriggerTiming | null {
-  if (!trigger.enabled) return null;
-
-  if (trigger.triggerType === "interval") {
-    const intervalMs = normalizeTriggerIntervalMs(trigger.intervalMs ?? 0);
-    return {
-      updatedAt: nowMs,
-      updateIntervalMs: intervalMs,
-      nextRunAtMs: nowMs + intervalMs,
-    };
-  }
-
-  if (trigger.triggerType === "once") {
-    const scheduledAt = trigger.scheduledAtIso
-      ? parseScheduledAtIso(trigger.scheduledAtIso)
-      : null;
-    if (scheduledAt === null) return null;
-    const nextRunAtMs = Math.max(nowMs, scheduledAt);
-    return {
-      updatedAt: nowMs,
-      updateIntervalMs: Math.max(0, nextRunAtMs - nowMs),
-      nextRunAtMs,
-    };
-  }
-
-  if (trigger.triggerType === "event") {
-    return {
-      updatedAt: nowMs,
-      updateIntervalMs: DISABLED_TRIGGER_INTERVAL_MS,
-      nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS,
-    };
-  }
-
-  const nextRunAtMs = trigger.cronExpression
-    ? computeNextCronRunAtMs(trigger.cronExpression, nowMs, trigger.timezone)
-    : null;
-  if (nextRunAtMs === null) return null;
-  return {
-    updatedAt: nowMs,
-    updateIntervalMs: Math.max(0, nextRunAtMs - nowMs),
-    nextRunAtMs,
-  };
 }
 
 export function buildTriggerMetadata(params: {

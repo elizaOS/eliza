@@ -9,11 +9,13 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CloudCompatAgent } from "../../api/client-types-cloud";
+import type { CloudHandoffPhaseDetail } from "../../events";
 
 const appMock = vi.hoisted(() => ({
   value: {} as {
     elizaCloudConnected: boolean;
     setActionNotice: ReturnType<typeof vi.fn>;
+    cloudHandoffPhase?: CloudHandoffPhaseDetail | null;
   },
 }));
 
@@ -756,5 +758,77 @@ describe("CloudAgentsSection load state (error vs empty)", () => {
       expect(screen.getByTestId("cloud-agent-rename-agent-1")).toBeTruthy(),
     );
     expect(screen.queryByTestId("cloud-agents-error")).toBeNull();
+  });
+});
+
+describe("CloudAgentsSection handoff-aware waking badge", () => {
+  beforeEach(() => {
+    appMock.value = {
+      elizaCloudConnected: true,
+      setActionNotice: vi.fn(),
+      cloudHandoffPhase: null,
+    };
+    clientMock.getCloudCompatAgents.mockReset();
+    persistenceMock.loadPersistedActiveServer.mockReset();
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      kind: "cloud",
+      id: "cloud:other",
+      label: "Other",
+      accessToken: "tok",
+    });
+  });
+
+  afterEach(() => cleanup());
+
+  it("shows the Waking badge for an agent with a migrating handoff in flight", async () => {
+    appMock.value.cloudHandoffPhase = {
+      agentId: "agent-1",
+      phase: "migrating",
+    };
+    await renderWithAgents([
+      agent({
+        agent_id: "agent-1",
+        agent_name: "Mine",
+        status: "provisioning",
+      }),
+    ]);
+    expect(
+      screen.getByTestId("cloud-agent-status-agent-1").textContent,
+    ).toMatch(/Waking/);
+  });
+
+  it("does NOT show Waking once the handoff has switched (terminal phase)", async () => {
+    appMock.value.cloudHandoffPhase = {
+      agentId: "agent-1",
+      phase: "switched",
+      imported: 2,
+    };
+    await renderWithAgents([
+      agent({ agent_id: "agent-1", agent_name: "Mine", status: "running" }),
+    ]);
+    expect(
+      screen.getByTestId("cloud-agent-status-agent-1").textContent,
+    ).not.toMatch(/Waking/);
+  });
+
+  it("only wakes the agent the handoff targets, not its siblings", async () => {
+    appMock.value.cloudHandoffPhase = {
+      agentId: "agent-1",
+      phase: "migrating",
+    };
+    await renderWithAgents([
+      agent({
+        agent_id: "agent-1",
+        agent_name: "Mine",
+        status: "provisioning",
+      }),
+      agent({ agent_id: "agent-2", agent_name: "Other", status: "running" }),
+    ]);
+    expect(
+      screen.getByTestId("cloud-agent-status-agent-1").textContent,
+    ).toMatch(/Waking/);
+    expect(
+      screen.getByTestId("cloud-agent-status-agent-2").textContent,
+    ).not.toMatch(/Waking/);
   });
 });

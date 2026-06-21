@@ -28,7 +28,6 @@ const child = createLogger({ name: "worker" });
 - `logger` / default export / `elizaLogger` — the shared singleton logger
 - `createLogger(bindings?)` — a bound child logger
 - `addLogListener` / `removeLogListener` / `recentLogs` — in-memory log tap
-- `logPrompt` / `logResponse` / `logChatIn` / `logChatOut` — model-call logging
 - `Logger`, `LoggerBindings`, `LogEntry`, `LogListener` — types
 
 ## Dependencies

@@ -20,6 +20,7 @@ import {
   loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "../../state/persistence";
+import { isCloudAgentWaking } from "../../state/types";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { StatusBadge } from "../ui/status-badge";
@@ -79,7 +80,7 @@ function currentCloudToken(): string {
  * one — the in-app counterpart to the cloud web dashboard.
  */
 export function CloudAgentsSection() {
-  const { elizaCloudConnected, setActionNotice } = useApp();
+  const { elizaCloudConnected, setActionNotice, cloudHandoffPhase } = useApp();
   const { appName } = useBranding();
   const [agents, setAgents] = useState<CloudCompatAgent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -516,7 +517,13 @@ export function CloudAgentsSection() {
           agents.map((agent) => {
             const isActive = agent.agent_id === activeId;
             const busy = busyId === agent.agent_id;
-            const waking = wakingId === agent.agent_id;
+            // Show "Waking…" for a locally-driven resume (wakingId) OR a
+            // first-run shared→dedicated handoff in flight for this agent, so the
+            // row reflects the same shared-now/dedicated-pending state the chat
+            // shell sees rather than running a wholly independent signal.
+            const waking =
+              wakingId === agent.agent_id ||
+              isCloudAgentWaking(cloudHandoffPhase, agent.agent_id);
             const status = (agent.status || "").toLowerCase();
             const canSuspend = status === "running";
             const canResume = NON_RUNNING_STATES.has(status);

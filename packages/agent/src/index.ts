@@ -321,7 +321,6 @@ export * from "./services/tee-sealed-volume.ts";
 export * from "./services/tee-signer-backend.ts";
 export { resolveDefaultAgentWorkspaceDir } from "./shared/workspace-resolution.ts";
 export * from "./test-support/index.ts";
-export * from "./test-utils/sqlite-compat.ts";
 export * from "./triggers/runtime.ts";
 export * from "./triggers/scheduling.ts";
 export * from "./triggers/types.ts";
