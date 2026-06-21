@@ -17,7 +17,7 @@ import {
 } from "@elizaos/ui/components/ui/select";
 import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 import { formatTime } from "@elizaos/ui/utils";
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import {
   FINE_TUNING_ACTION_CLASS,
   FINE_TUNING_PANEL_CLASS,
@@ -168,7 +168,7 @@ function AgentSelect({
 
 type TrajectorySummary = TrainingTrajectoryList["trajectories"][number];
 
-function TrajectoryListItem({
+const TrajectoryListItem = memo(function TrajectoryListItem({
   trajectory,
   onSelectTrajectory,
   t,
@@ -201,9 +201,9 @@ function TrajectoryListItem({
       </div>
     </Button>
   );
-}
+});
 
-function DatasetRadioItem({
+const DatasetRadioItem = memo(function DatasetRadioItem({
   dataset,
   selectedDatasetId,
   setSelectedDatasetId,
@@ -244,9 +244,9 @@ function DatasetRadioItem({
       </div>
     </label>
   );
-}
+});
 
-function JobListItem({
+const JobListItem = memo(function JobListItem({
   job,
   selectedJobId,
   setSelectedJobId,
@@ -319,9 +319,9 @@ function JobListItem({
       <div className="text-xs text-muted">{formatDate(job.createdAt)}</div>
     </div>
   );
-}
+});
 
-function ModelListItem({
+const ModelListItem = memo(function ModelListItem({
   model,
   selectedModelId,
   setSelectedModelId,
@@ -366,7 +366,7 @@ function ModelListItem({
       </div>
     </Button>
   );
-}
+});
 
 /* ── Trajectories Section ──────────────────────────────────────────── */
 
@@ -503,7 +503,7 @@ export function TrajectoriesSection({
 
 /* ── Dataset Section ───────────────────────────────────────────────── */
 
-export function DatasetSection({
+export const DatasetSection = memo(function DatasetSection({
   buildLimit,
   setBuildLimit,
   buildMinCalls,
@@ -599,11 +599,11 @@ export function DatasetSection({
       </div>
     </section>
   );
-}
+});
 
 /* ── Jobs Section ──────────────────────────────────────────────────── */
 
-export function TrainingJobsSection({
+export const TrainingJobsSection = memo(function TrainingJobsSection({
   selectedDatasetId,
   setSelectedDatasetId,
   datasets,
@@ -799,11 +799,11 @@ export function TrainingJobsSection({
       </div>
     </section>
   );
-}
+});
 
 /* ── Trained Models Section ───────────────────────────────────────── */
 
-export function TrainedModelsSection({
+export const TrainedModelsSection = memo(function TrainedModelsSection({
   activateProviderModel,
   importBaseModel,
   importModelName,
@@ -892,11 +892,11 @@ export function TrainedModelsSection({
       </div>
     </section>
   );
-}
+});
 
 /* ── Live Events Panel ─────────────────────────────────────────────── */
 
-export function LiveEventsPanel({
+export const LiveEventsPanel = memo(function LiveEventsPanel({
   events,
   t,
 }: {
@@ -916,9 +916,9 @@ export function LiveEventsPanel({
             {t("finetuningview.NoLiveEventsYet")}
           </div>
         ) : (
-          events.slice(0, 80).map((event) => (
+          events.slice(0, 80).map((event, index) => (
             <div
-              key={`${event.ts}-${event.kind}-${String(event.message)}`}
+              key={`${event.ts}-${event.kind}-${index}`}
               className="px-3 py-2 text-sm"
             >
               <span className="mr-2 font-mono text-xs text-muted">
@@ -941,7 +941,7 @@ export function LiveEventsPanel({
       </div>
     </section>
   );
-}
+});
 
 /* ── Selected Job Detail Panel ─────────────────────────────────────── */
 

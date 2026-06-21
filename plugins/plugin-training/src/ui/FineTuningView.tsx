@@ -2207,6 +2207,38 @@ export function FineTuningView({
     };
   }, [loadDatasets, loadJobs, loadModels, loadStatus]);
 
+  const onBuildDataset = useCallback(() => {
+    void handleBuildDataset();
+  }, [handleBuildDataset]);
+  const onRefreshDatasets = useCallback(() => {
+    void loadDatasets();
+  }, [loadDatasets]);
+  const onStartJob = useCallback(() => {
+    void handleStartJob();
+  }, [handleStartJob]);
+  const onRefreshJobs = useCallback(() => {
+    void loadJobs();
+    void loadStatus();
+  }, [loadJobs, loadStatus]);
+  const onCancelJob = useCallback(
+    (jobId: string) => {
+      void handleCancelJob(jobId);
+    },
+    [handleCancelJob],
+  );
+  const onImportModel = useCallback(() => {
+    void handleImportSelectedModel();
+  }, [handleImportSelectedModel]);
+  const onActivateModel = useCallback(() => {
+    void handleActivateSelectedModel();
+  }, [handleActivateSelectedModel]);
+  const onBenchmarkModel = useCallback(() => {
+    void handleBenchmarkSelectedModel();
+  }, [handleBenchmarkSelectedModel]);
+  const onSmokeTestModel = useCallback(() => {
+    void handleSmokeTestSelectedModel();
+  }, [handleSmokeTestSelectedModel]);
+
   if (pageLoading) {
     return (
       <ContentLayout contentHeader={contentHeader}>
@@ -5308,12 +5340,8 @@ export function FineTuningView({
           buildMinCalls={buildMinCalls}
           setBuildMinCalls={setBuildMinCalls}
           datasetBuilding={datasetBuilding}
-          onBuildDataset={() => {
-            void handleBuildDataset();
-          }}
-          onRefreshDatasets={() => {
-            void loadDatasets();
-          }}
+          onBuildDataset={onBuildDataset}
+          onRefreshDatasets={onRefreshDatasets}
           datasets={datasets}
           selectedDatasetId={selectedDatasetId}
           setSelectedDatasetId={setSelectedDatasetId}
@@ -5336,20 +5364,13 @@ export function FineTuningView({
           setStartLearningRate={setStartLearningRate}
           startingJob={startingJob}
           activeRunningJob={activeRunningJob}
-          onStartJob={() => {
-            void handleStartJob();
-          }}
-          onRefreshJobs={() => {
-            void loadJobs();
-            void loadStatus();
-          }}
+          onStartJob={onStartJob}
+          onRefreshJobs={onRefreshJobs}
           jobs={jobs}
           selectedJobId={selectedJobId}
           setSelectedJobId={setSelectedJobId}
           cancellingJobId={cancellingJobId}
-          onCancelJob={(jobId) => {
-            void handleCancelJob(jobId);
-          }}
+          onCancelJob={onCancelJob}
           selectedJob={selectedJob}
           t={t}
         />
@@ -5369,18 +5390,10 @@ export function FineTuningView({
           setActivateProviderModel={setActivateProviderModel}
           modelAction={modelAction}
           smokeResult={smokeResult}
-          onImport={() => {
-            void handleImportSelectedModel();
-          }}
-          onActivate={() => {
-            void handleActivateSelectedModel();
-          }}
-          onBenchmark={() => {
-            void handleBenchmarkSelectedModel();
-          }}
-          onSmokeTest={() => {
-            void handleSmokeTestSelectedModel();
-          }}
+          onImport={onImportModel}
+          onActivate={onActivateModel}
+          onBenchmark={onBenchmarkModel}
+          onSmokeTest={onSmokeTestModel}
           t={t}
         />
 

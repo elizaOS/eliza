@@ -74,14 +74,13 @@ const COMMON_RELATIONSHIPS = [
   "roommate",
 ];
 
-function VoiceProfileRow({
+const VoiceProfileRow = React.memo(function VoiceProfileRow({
   profile,
   isEditingThis,
   renameValue,
   setRenameValue,
   setRenameId,
   dispatch,
-  t,
 }: {
   profile: VoiceProfile;
   isEditingThis: boolean;
@@ -89,8 +88,8 @@ function VoiceProfileRow({
   setRenameValue: (value: string) => void;
   setRenameId: (id: string | null) => void;
   dispatch: (action: ProfileAction) => void;
-  t: ReturnType<typeof useTranslation>["t"];
 }) {
+  const { t } = useTranslation();
   const { ref: nameRef, agentProps: nameAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: `voice-profile-name-${profile.id}`,
@@ -318,7 +317,7 @@ function VoiceProfileRow({
       ) : null}
     </li>
   );
-}
+});
 
 export function VoiceProfileSection({
   profilesClient,
@@ -364,10 +363,15 @@ export function VoiceProfileSection({
     void refresh();
   }, [initialProfiles, refresh]);
 
-  const sorted = React.useMemo(
-    () => [...profiles].sort(compareProfiles),
-    [profiles],
-  );
+  const { sorted, ownerCount, otherCount } = React.useMemo(() => {
+    const next = [...profiles].sort(compareProfiles);
+    const owners = next.filter((p) => p.isOwner).length;
+    return {
+      sorted: next,
+      ownerCount: owners,
+      otherCount: next.length - owners,
+    };
+  }, [profiles]);
 
   const dispatch = React.useCallback(
     async (action: ProfileAction) => {
@@ -425,6 +429,11 @@ export function VoiceProfileSection({
     [profiles, profilesClient, t],
   );
 
+  const dispatchAction = React.useCallback(
+    (action: ProfileAction) => void dispatch(action),
+    [dispatch],
+  );
+
   const onExport = React.useCallback(async () => {
     try {
       const { downloadUrl } = await profilesClient.exportAll();
@@ -456,9 +465,6 @@ export function VoiceProfileSection({
       );
     }
   }, [profilesClient, t]);
-
-  const ownerCount = sorted.filter((p) => p.isOwner).length;
-  const otherCount = sorted.length - ownerCount;
 
   const { ref: exportRef, agentProps: exportAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -580,18 +586,22 @@ export function VoiceProfileSection({
           className="divide-y divide-border/30"
           data-testid="voice-profile-list"
         >
-          {sorted.map((profile) => (
-            <VoiceProfileRow
-              key={profile.id}
-              profile={profile}
-              isEditingThis={renameId === profile.id}
-              renameValue={renameValue}
-              setRenameValue={setRenameValue}
-              setRenameId={setRenameId}
-              dispatch={(action) => void dispatch(action)}
-              t={t}
-            />
-          ))}
+          {sorted.map((profile) => {
+            const isEditingThis = renameId === profile.id;
+            return (
+              <VoiceProfileRow
+                key={profile.id}
+                profile={profile}
+                isEditingThis={isEditingThis}
+                // Only the editing row needs the live draft; passing "" to the
+                // rest keeps their props stable so memo skips them per keystroke.
+                renameValue={isEditingThis ? renameValue : ""}
+                setRenameValue={setRenameValue}
+                setRenameId={setRenameId}
+                dispatch={dispatchAction}
+              />
+            );
+          })}
         </ul>
       )}
     </div>

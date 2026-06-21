@@ -40,38 +40,44 @@ const vincentClientMock = vi.hoisted(() => ({
 // inert, openExternalUrl is a spy. useAgentElement (from @elizaos/ui/agent-surface)
 // is the REAL module here (proven to resolve in node by the existing TUI test),
 // so action ids land on the DOM as data-agent-id attributes.
-vi.mock("@elizaos/ui", () => ({
-  useApp: () => ({ setActionNotice: vi.fn() }),
-  openExternalUrl: vi.fn(async () => {}),
-  Button: React.forwardRef<HTMLButtonElement, Record<string, unknown>>(
-    function MockButton({ children, asChild: _asChild, ...props }, ref) {
-      return React.createElement(
-        "button",
-        { type: "button", ref, ...props },
-        children as React.ReactNode,
-      );
-    },
-  ),
-  Spinner: (props: Record<string, unknown>) =>
-    React.createElement("span", { "data-testid": "spinner", ...props }),
-  PagePanel: {
-    Notice: ({
-      children,
-      tone,
-    }: {
-      children: React.ReactNode;
-      tone?: string;
-    }) =>
-      React.createElement(
-        "div",
-        { "data-testid": "page-notice", "data-tone": tone },
+vi.mock("@elizaos/ui", () => {
+  const appState = { setActionNotice: vi.fn() };
+  return {
+    useApp: () => appState,
+    useAppSelector: <T,>(selector: (s: typeof appState) => T) =>
+      selector(appState),
+    openExternalUrl: vi.fn(async () => {}),
+    Button: React.forwardRef<HTMLButtonElement, Record<string, unknown>>(
+      function MockButton({ children, asChild: _asChild, ...props }, ref) {
+        return React.createElement(
+          "button",
+          { type: "button", ref, ...props },
+          children as React.ReactNode,
+        );
+      },
+    ),
+    Spinner: (props: Record<string, unknown>) =>
+      React.createElement("span", { "data-testid": "spinner", ...props }),
+    PagePanel: {
+      Notice: ({
         children,
-      ),
-  },
-  StatusBadge: ({ label }: { label: string }) =>
-    React.createElement("span", { "data-testid": "status-badge" }, label),
-  StatusDot: () => React.createElement("span", { "data-testid": "status-dot" }),
-}));
+        tone,
+      }: {
+        children: React.ReactNode;
+        tone?: string;
+      }) =>
+        React.createElement(
+          "div",
+          { "data-testid": "page-notice", "data-tone": tone },
+          children,
+        ),
+    },
+    StatusBadge: ({ label }: { label: string }) =>
+      React.createElement("span", { "data-testid": "status-badge" }, label),
+    StatusDot: () =>
+      React.createElement("span", { "data-testid": "status-dot" }),
+  };
+});
 
 vi.mock("./client", () => ({ vincentClient: vincentClientMock }));
 

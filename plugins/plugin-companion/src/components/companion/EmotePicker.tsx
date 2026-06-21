@@ -10,7 +10,7 @@ import { useTimeout } from "@elizaos/ui/hooks";
 import { useApp } from "@elizaos/ui/state";
 import { Z_SYSTEM_CRITICAL } from "@elizaos/ui/utils";
 import { type LucideIcon, Menu, Sparkles, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EMOTE_CATALOG } from "../../emotes/catalog";
 import {
   buildCategoryList,
@@ -317,7 +317,7 @@ export function EmotePicker() {
               key={emote.id}
               emote={emote}
               playing={playing === emote.id}
-              onPlay={() => void playEmote(emote.id)}
+              onPlay={playEmote}
             />
           ))}
         </div>
@@ -445,14 +445,14 @@ function EmotePickerCategoryButton({
   );
 }
 
-function EmotePickerEmoteButton({
+const EmotePickerEmoteButton = memo(function EmotePickerEmoteButton({
   emote,
   playing,
   onPlay,
 }: {
   emote: EmoteItem;
   playing: boolean;
-  onPlay: () => void;
+  onPlay: (emoteId: string) => void | Promise<void>;
 }) {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `emotes-play-${emote.id}`,
@@ -468,7 +468,7 @@ function EmotePickerEmoteButton({
       ref={ref}
       variant="ghost"
       size="icon"
-      onClick={onPlay}
+      onClick={() => void onPlay(emote.id)}
       disabled={playing}
       aria-label={`Play ${emote.name}`}
       data-testid={`emote-picker-item-${emote.id}`}
@@ -482,4 +482,4 @@ function EmotePickerEmoteButton({
       <EmoteIcon className="h-6 w-6" aria-hidden />
     </Button>
   );
-}
+});

@@ -4,7 +4,7 @@ import {
   useCallback,
   useEffect,
   useId,
-  useRef,
+  useMemo,
   useState,
 } from "react";
 
@@ -48,10 +48,14 @@ export function CompanionBar(props: CompanionBarProps) {
     className,
   } = props;
 
-  const composerRef = useRef<HTMLFormElement | null>(null);
   const [composerEl, setComposerEl] = useState<HTMLFormElement | null>(null);
   const [draft, setDraft] = useState("");
   const panelId = useId();
+
+  const setComposerNode = useCallback(
+    (node: HTMLFormElement | null) => setComposerEl(node),
+    [],
+  );
 
   const isModeControlled = controlledMode !== undefined;
   const isMicControlled = controlledMicState !== undefined;
@@ -78,13 +82,23 @@ export function CompanionBar(props: CompanionBarProps) {
     hooks?.onPushToTalkUp?.();
   }, [hooks]);
 
-  const { isOpen, micState, setOpen, setMicState } = useKeyboardShortcuts(
-    {
+  const shortcutHandlers = useMemo(
+    () => ({
       onToggleExpand: handleExpandChange,
       onMicStateChange: handleMicChange,
       onPushToTalkDown: handlePushToTalkDown,
       onPushToTalkUp: handlePushToTalkUp,
-    },
+    }),
+    [
+      handleExpandChange,
+      handleMicChange,
+      handlePushToTalkDown,
+      handlePushToTalkUp,
+    ],
+  );
+
+  const { isOpen, micState, setOpen, setMicState } = useKeyboardShortcuts(
+    shortcutHandlers,
     { composerElement: composerEl },
   );
 
@@ -160,10 +174,7 @@ export function CompanionBar(props: CompanionBarProps) {
             ))}
           </div>
           <form
-            ref={(node) => {
-              composerRef.current = node;
-              setComposerEl(node);
-            }}
+            ref={setComposerNode}
             className="companion-bar-composer"
             onSubmit={handleSend}
             onKeyDown={handleComposerKeyDown}

@@ -25,6 +25,7 @@ import type {
 } from "../../api/client-types-chat";
 import type { RelationshipsPersonSummary } from "../../api/client-types-relationships";
 import { getCached, setCached } from "../../hooks/resource-cache";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
 import {
@@ -286,16 +287,17 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
   );
 
   useEffect(() => {
-    // Revalidate silently when a cached page is already on screen, then poll
-    // for fresh memories so the feed stays current without a manual refresh.
+    // Revalidate silently when a cached page is already on screen.
     void loadFeed(undefined, {
       silent: getCached<MemoryFeedResponse>(feedCacheKey) != null,
     });
-    const interval = setInterval(() => {
-      if (!loadingMore.current) void loadFeed(undefined, { silent: true });
-    }, FEED_POLL_MS);
-    return () => clearInterval(interval);
   }, [loadFeed, feedCacheKey]);
+
+  // Poll for fresh memories so the feed stays current without a manual refresh;
+  // pauses while the document is hidden and resumes on visibilitychange.
+  useIntervalWhenDocumentVisible(() => {
+    if (!loadingMore.current) void loadFeed(undefined, { silent: true });
+  }, FEED_POLL_MS);
 
   const loadMore = () => {
     const last = feed[feed.length - 1];

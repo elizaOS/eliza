@@ -8,6 +8,7 @@
 import { ArrowRight, Loader2, Plus, Trash2 } from "lucide-react";
 import {
   type FormEvent,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -171,6 +172,18 @@ export function RoutingTab(props: RoutingTabProps) {
   }, [focusKey, onFocusApplied]);
 
   const allKeys = useMemo(() => entries.map((e) => e.key), [entries]);
+  const agentNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of agents) map.set(a.id, a.name);
+    return map;
+  }, [agents]);
+  const appLabelByName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of apps) {
+      if (a.displayName) map.set(a.name, a.displayName);
+    }
+    return map;
+  }, [apps]);
   const profilesByKey = useMemo(() => {
     const map = new Map<string, { id: string; label: string }[]>();
     for (const entry of entries) {
@@ -631,11 +644,10 @@ export function RoutingTab(props: RoutingTabProps) {
                   "—";
                 const targetLabel =
                   rule.scope.kind === "agent"
-                    ? (agents.find((a) => a.id === rule.scope.agentId)?.name ??
-                      targetId)
+                    ? (agentNameById.get(rule.scope.agentId ?? "") ?? targetId)
                     : rule.scope.kind === "app"
-                      ? (apps.find((a) => a.name === rule.scope.appName)
-                          ?.displayName ?? targetId)
+                      ? (appLabelByName.get(rule.scope.appName ?? "") ??
+                        targetId)
                       : targetId;
                 const ruleKey = `${rule.keyPattern}:${rule.scope.kind}:${targetId}:${rule.profileId}:${idx}`;
                 const keyExists = allKeys.includes(rule.keyPattern);
@@ -674,16 +686,7 @@ export function RoutingTab(props: RoutingTabProps) {
   );
 }
 
-function RoutingRuleRow({
-  ruleKey,
-  keyPattern,
-  scopeKind,
-  targetLabel,
-  profileId,
-  keyExists,
-  onOpenInSecrets,
-  onDelete,
-}: {
+interface RoutingRuleRowProps {
   ruleKey: string;
   keyPattern: string;
   scopeKind: string;
@@ -692,78 +695,102 @@ function RoutingRuleRow({
   keyExists: boolean;
   onOpenInSecrets: () => void;
   onDelete: () => void;
-}) {
-  const { t } = useTranslation();
-  const { ref: chipRef, agentProps: chipAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `routing-key-chip-${ruleKey}`,
-      role: "button",
-      label: `Open ${keyPattern} in Secrets tab`,
-      group: "routing-rules",
-      description: "Jump to the Secrets tab pre-filtered to this key",
-      onActivate: onOpenInSecrets,
-    });
-  const { ref: deleteRef, agentProps: deleteAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `routing-rule-delete-${ruleKey}`,
-      role: "button",
-      label: `Delete routing rule for ${keyPattern}`,
-      group: "routing-rules",
-      onActivate: onDelete,
-    });
-  return (
-    <tr
-      data-testid={`routing-rule-row-${ruleKey}`}
-      className="border-t border-border/30"
-    >
-      <td className="px-2 py-1.5 align-top">
-        {keyExists ? (
-          <button
-            ref={chipRef}
-            {...chipAgentProps}
-            type="button"
-            onClick={onOpenInSecrets}
-            data-testid={`routing-key-chip-${ruleKey}`}
-            className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-2xs font-medium text-accent hover:bg-accent/20"
-            aria-label={t("routing.openInSecrets", {
+}
+
+const RoutingRuleRow = memo(
+  function RoutingRuleRow({
+    ruleKey,
+    keyPattern,
+    scopeKind,
+    targetLabel,
+    profileId,
+    keyExists,
+    onOpenInSecrets,
+    onDelete,
+  }: RoutingRuleRowProps) {
+    const { t } = useTranslation();
+    const { ref: chipRef, agentProps: chipAgentProps } =
+      useAgentElement<HTMLButtonElement>({
+        id: `routing-key-chip-${ruleKey}`,
+        role: "button",
+        label: `Open ${keyPattern} in Secrets tab`,
+        group: "routing-rules",
+        description: "Jump to the Secrets tab pre-filtered to this key",
+        onActivate: onOpenInSecrets,
+      });
+    const { ref: deleteRef, agentProps: deleteAgentProps } =
+      useAgentElement<HTMLButtonElement>({
+        id: `routing-rule-delete-${ruleKey}`,
+        role: "button",
+        label: `Delete routing rule for ${keyPattern}`,
+        group: "routing-rules",
+        onActivate: onDelete,
+      });
+    return (
+      <tr
+        data-testid={`routing-rule-row-${ruleKey}`}
+        className="border-t border-border/30"
+      >
+        <td className="px-2 py-1.5 align-top">
+          {keyExists ? (
+            <button
+              ref={chipRef}
+              {...chipAgentProps}
+              type="button"
+              onClick={onOpenInSecrets}
+              data-testid={`routing-key-chip-${ruleKey}`}
+              className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-2xs font-medium text-accent hover:bg-accent/20"
+              aria-label={t("routing.openInSecrets", {
+                keyPattern,
+                defaultValue: "Open {{keyPattern}} in Secrets tab",
+              })}
+            >
+              {keyPattern}
+              <ArrowRight className="h-3 w-3" aria-hidden />
+            </button>
+          ) : (
+            <span className="font-mono text-2xs text-muted">{keyPattern}</span>
+          )}
+        </td>
+        <td className="px-2 py-1.5 align-top">
+          <span className="rounded-full border border-border/40 bg-bg/40 px-1.5 py-0.5 text-2xs text-muted">
+            {scopeKind}
+          </span>
+          <span className="ml-1.5 text-2xs text-txt">{targetLabel}</span>
+        </td>
+        <td className="px-2 py-1.5 align-top">
+          <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
+            {profileId}
+          </span>
+        </td>
+        <td className="px-2 py-1.5 align-top text-right">
+          <Button
+            ref={deleteRef}
+            {...deleteAgentProps}
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 rounded-sm p-0 text-muted hover:text-danger"
+            onClick={onDelete}
+            aria-label={t("routing.deleteRule", {
               keyPattern,
-              defaultValue: "Open {{keyPattern}} in Secrets tab",
+              defaultValue: "Delete rule for {{keyPattern}}",
             })}
           >
-            {keyPattern}
-            <ArrowRight className="h-3 w-3" aria-hidden />
-          </button>
-        ) : (
-          <span className="font-mono text-2xs text-muted">{keyPattern}</span>
-        )}
-      </td>
-      <td className="px-2 py-1.5 align-top">
-        <span className="rounded-full border border-border/40 bg-bg/40 px-1.5 py-0.5 text-2xs text-muted">
-          {scopeKind}
-        </span>
-        <span className="ml-1.5 text-2xs text-txt">{targetLabel}</span>
-      </td>
-      <td className="px-2 py-1.5 align-top">
-        <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
-          {profileId}
-        </span>
-      </td>
-      <td className="px-2 py-1.5 align-top text-right">
-        <Button
-          ref={deleteRef}
-          {...deleteAgentProps}
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6 rounded-sm p-0 text-muted hover:text-danger"
-          onClick={onDelete}
-          aria-label={t("routing.deleteRule", {
-            keyPattern,
-            defaultValue: "Delete rule for {{keyPattern}}",
-          })}
-        >
-          <Trash2 className="h-3.5 w-3.5" aria-hidden />
-        </Button>
-      </td>
-    </tr>
-  );
-}
+            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+          </Button>
+        </td>
+      </tr>
+    );
+  },
+  // The onOpenInSecrets/onDelete handlers are allocated inline per row, so
+  // compare only the render-affecting primitive props. For a given ruleKey the
+  // handlers always perform the same action, so skipping a re-render when the
+  // primitives are unchanged is safe.
+  (prev, next) =>
+    prev.ruleKey === next.ruleKey &&
+    prev.keyPattern === next.keyPattern &&
+    prev.scopeKind === next.scopeKind &&
+    prev.targetLabel === next.targetLabel &&
+    prev.profileId === next.profileId &&
+    prev.keyExists === next.keyExists,
+);

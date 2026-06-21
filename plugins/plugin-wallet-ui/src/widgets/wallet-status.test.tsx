@@ -23,9 +23,27 @@ import {
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const appHooks = vi.hoisted(() => ({
-  useApp: vi.fn(),
-}));
+const appHooks = vi.hoisted(() => {
+  // Single shared app-state ref so the legacy `useApp` API
+  // (`useApp.mockReturnValue(state)`) also feeds the per-slice `useAppSelector`
+  // reads the widget now uses. Each `mockReturnValue` updates the ref; selectors
+  // read from it synchronously.
+  const ref: { current: Record<string, unknown> } = { current: {} };
+  const useApp = Object.assign(
+    () => ref.current,
+    {
+      mockReturnValue(state: Record<string, unknown>) {
+        ref.current = state;
+        return useApp;
+      },
+    },
+  );
+  return {
+    useApp,
+    useAppSelector: <T,>(selector: (s: Record<string, unknown>) => T): T =>
+      selector(ref.current),
+  };
+});
 
 vi.mock("@elizaos/ui", () => ({
   // Transparent passthroughs that surface the props the widget relies on.
@@ -53,6 +71,7 @@ vi.mock("@elizaos/ui", () => ({
   EmptyWidgetState: ({ title }: { title: string }) =>
     React.createElement("div", { "data-testid": "empty-widget-state" }, title),
   useApp: appHooks.useApp,
+  useAppSelector: appHooks.useAppSelector,
 }));
 
 import { WalletStatusSidebarWidget } from "./wallet-status.tsx";

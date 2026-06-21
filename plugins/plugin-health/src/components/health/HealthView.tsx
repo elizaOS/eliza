@@ -19,7 +19,7 @@
 import { client } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { CSSProperties, ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type {
   LifeOpsPersonalBaselineResponse,
   LifeOpsRegularityClass,
@@ -245,7 +245,7 @@ const visuallyHiddenStyle: CSSProperties = {
 // Agent-instrumented controls (hooks cannot run inside .map()).
 // ---------------------------------------------------------------------------
 
-function RangeButton({
+const RangeButton = memo(function RangeButton({
   days,
   selected,
   onSelect,
@@ -279,7 +279,7 @@ function RangeButton({
       {days}d
     </button>
   );
-}
+});
 
 function WindowRange({
   windowDays,
@@ -396,7 +396,7 @@ function sleepProactiveLine(
   return null;
 }
 
-function StatRow({
+const StatRow = memo(function StatRow({
   label,
   value,
 }: {
@@ -409,13 +409,13 @@ function StatRow({
       <span style={statValueStyle}>{value}</span>
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Populated sub-sections.
 // ---------------------------------------------------------------------------
 
-function LatestNightCard({
+const LatestNightCard = memo(function LatestNightCard({
   episode,
 }: {
   episode: LifeOpsSleepHistoryEpisode;
@@ -434,9 +434,9 @@ function LatestNightCard({
       />
     </div>
   );
-}
+});
 
-function RegularityCard({
+const RegularityCard = memo(function RegularityCard({
   regularity,
 }: {
   regularity: LifeOpsSleepRegularityResponse;
@@ -460,9 +460,9 @@ function RegularityCard({
       <StatRow label="Samples" value={`${regularity.sampleSize}`} />
     </div>
   );
-}
+});
 
-function BaselineCard({
+const BaselineCard = memo(function BaselineCard({
   baseline,
 }: {
   baseline: LifeOpsPersonalBaselineResponse;
@@ -485,7 +485,7 @@ function BaselineCard({
       <StatRow label="Samples" value={`${baseline.sampleSize}`} />
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Fetch-driven state machine.

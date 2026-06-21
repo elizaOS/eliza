@@ -515,7 +515,7 @@ function WakeWordSection({
   const [postTriggerGap, setPostTriggerGap] = useState(0.45);
   const [modelSize, setModelSize] =
     useState<NonNullable<SwabbleConfig["modelSize"]>>("base");
-  const [audioLevel, setAudioLevel] = useState(0);
+  const meterRef = useRef<HTMLDivElement | null>(null);
   const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
@@ -547,7 +547,11 @@ function WakeWordSection({
         handle = await getSwabblePlugin().addListener(
           "audioLevel",
           (evt: { level: number }) => {
-            setAudioLevel(evt.level);
+            // Write the meter width directly to the DOM to avoid a React
+            // re-render of the whole section on every (tens-of-Hz) mic frame.
+            if (meterRef.current) {
+              meterRef.current.style.width = `${Math.min(evt.level * 100, 100)}%`;
+            }
           },
         );
       } catch {
@@ -805,8 +809,9 @@ function WakeWordSection({
         </span>
         <div className="h-2 w-full overflow-hidden rounded-full bg-border/70">
           <div
+            ref={meterRef}
             className="h-full rounded-full bg-ok transition-all duration-75"
-            style={{ width: `${Math.min(audioLevel * 100, 100)}%` }}
+            style={{ width: "0%" }}
           />
         </div>
       </div>

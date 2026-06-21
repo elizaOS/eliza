@@ -18,8 +18,9 @@ import {
   type TableRowsResponse,
 } from "../../api";
 import { getCached, setCached } from "../../hooks/resource-cache";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useApp } from "../../state";
+import { useTranslation } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
@@ -80,7 +81,7 @@ export function DatabaseView({
   leftNav?: ReactNode;
   contentHeader?: ReactNode;
 }) {
-  const { t } = useApp();
+  const { t } = useTranslation();
   const showExternalSidebar = Boolean(leftNav);
 
   // `t` from useApp is not guaranteed to be referentially stable across
@@ -342,12 +343,14 @@ export function DatabaseView({
   useEffect(() => {
     const onFocus = () => void revalidate();
     window.addEventListener("focus", onFocus);
-    const interval = window.setInterval(onFocus, 30_000);
     return () => {
       window.removeEventListener("focus", onFocus);
-      window.clearInterval(interval);
     };
   }, [revalidate]);
+
+  // Slow background revalidation only ticks while the document is visible; the
+  // focus listener above already covers the user-returns case.
+  useIntervalWhenDocumentVisible(() => void revalidate(), 30_000);
 
   const editorModes: Array<{ value: DbView; label: string }> = [
     { value: "tables", label: t("databaseview.TableEditor") },

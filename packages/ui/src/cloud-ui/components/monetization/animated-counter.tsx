@@ -30,6 +30,8 @@ export function AnimatedCounter({
   const [displayValue, setDisplayValue] = useState(0);
   const previousValue = useRef(0);
   const animationRef = useRef<number | null>(null);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   useEffect(() => {
     const startValue = previousValue.current;
@@ -50,7 +52,7 @@ export function AnimatedCounter({
         animationRef.current = requestAnimationFrame(animate);
       } else {
         previousValue.current = endValue;
-        onComplete?.();
+        onCompleteRef.current?.();
       }
     };
 
@@ -61,7 +63,7 @@ export function AnimatedCounter({
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [value, duration, onComplete]);
+  }, [value, duration]);
 
   const formattedValue = displayValue.toFixed(decimals);
 

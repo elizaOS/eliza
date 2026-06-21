@@ -2135,10 +2135,10 @@ export function InventoryView() {
     inventoryChainFilters: ALL_INVENTORY_FILTERS,
   });
 
-  const addresses = resolveWalletAddresses({
-    walletAddresses,
-    walletConfig,
-  });
+  const addresses = useMemo(
+    () => resolveWalletAddresses({ walletAddresses, walletConfig }),
+    [walletAddresses, walletConfig],
+  );
 
   const visibleAssetRows = useMemo(
     () => inventoryData.tokenRowsAllChains.filter(tokenHasInventory),

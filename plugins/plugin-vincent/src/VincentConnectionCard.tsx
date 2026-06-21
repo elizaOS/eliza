@@ -3,6 +3,7 @@
 import { Button, StatusDot } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { KeyRound, LogIn, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
+import { memo } from "react";
 import { useVincentState } from "./useVincentState";
 
 interface VincentConnectionCardProps {
@@ -30,7 +31,7 @@ function formatConnectedAt(ts: number | null): string {
   }
 }
 
-export function VincentConnectionCard({
+export const VincentConnectionCard = memo(function VincentConnectionCard({
   setActionNotice,
   t,
 }: VincentConnectionCardProps) {
@@ -141,4 +142,4 @@ export function VincentConnectionCard({
       )}
     </div>
   );
-}
+});

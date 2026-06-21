@@ -25,6 +25,13 @@ vi.mock("../../api", () => ({
   client: clientMock,
 }));
 
+// DatabaseView reads only the translator. It now sources `t` from
+// useTranslation() (a narrower subscription than useApp()), so mock that to the
+// identity translator the assertions expect (keys render verbatim).
+vi.mock("../../state/TranslationContext.hooks", () => ({
+  useTranslation: () => ({ t: (k: string) => k, uiLanguage: "en" }),
+}));
+
 const connectedStatus = {
   provider: "pglite",
   connected: true,

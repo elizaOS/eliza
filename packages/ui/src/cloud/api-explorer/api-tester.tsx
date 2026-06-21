@@ -35,7 +35,7 @@ import {
   XCircleIcon,
   XIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CodeDisplay } from "../../cloud-ui/components/code/code-display";
 import { ApiParameterSelect as CustomSelect } from "../../cloud-ui/components/docs/api-parameter-select";
 import { useAudioRecorder } from "../../cloud-ui/components/voice/use-audio-recorder";
@@ -101,6 +101,22 @@ export function ApiTester({
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
 
   const audioRecorder = useAudioRecorder();
+
+  const recordingPreviewBlob = recordedAudio ?? audioRecorder.audioBlob;
+  const recordingPreviewUrl = useMemo(
+    () =>
+      recordingPreviewBlob
+        ? URL.createObjectURL(recordingPreviewBlob)
+        : undefined,
+    [recordingPreviewBlob],
+  );
+  useEffect(() => {
+    return () => {
+      if (recordingPreviewUrl) {
+        URL.revokeObjectURL(recordingPreviewUrl);
+      }
+    };
+  }, [recordingPreviewUrl]);
 
   const initializeParameters = useCallback(() => {
     if (!endpoint) return;
@@ -719,13 +735,7 @@ export function ApiTester({
                         <audio
                           controls
                           className="h-10"
-                          src={
-                            recordedAudio
-                              ? URL.createObjectURL(recordedAudio)
-                              : audioRecorder.audioBlob
-                                ? URL.createObjectURL(audioRecorder.audioBlob)
-                                : undefined
-                          }
+                          src={recordingPreviewUrl}
                         >
                           <track kind="captions" />
                         </audio>

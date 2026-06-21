@@ -1168,6 +1168,35 @@ export function GameView() {
     });
   }, [activeGameApp, logs]);
 
+  // Memoized activity-feed derivations for the logs panel. GameView re-renders on
+  // every context change (3s polls, keystrokes, toasts); deriving these inline in
+  // renderLogsPanel re-sorted/re-sliced the feeds on each render.
+  const telemetryActivityFeed = useMemo(() => {
+    const recentActivity = (
+      activeSessionState?.telemetry as Record<string, unknown> | null
+    )?.recentActivity;
+    if (!Array.isArray(recentActivity) || recentActivity.length === 0) {
+      return null;
+    }
+    return (recentActivity as { ts: number; action: string; detail: string }[])
+      .slice()
+      .reverse()
+      .slice(0, 30);
+  }, [activeSessionState?.telemetry]);
+
+  const sessionActivityFeed = useMemo(() => {
+    const activity = activeSessionState?.activity;
+    if (!Array.isArray(activity) || activity.length === 0) {
+      return null;
+    }
+    return activity
+      .slice()
+      .sort((a, b) => Number(b.timestamp ?? 0) - Number(a.timestamp ?? 0))
+      .slice(0, 30);
+  }, [activeSessionState?.activity]);
+
+  const gameLogsFeed = useMemo(() => gameLogs.slice(0, 50), [gameLogs]);
+
   // Auto-refresh logs when panel is open and tab is visible (catch-up on focus).
   useEffect(() => {
     if (!showLogsPanel || !docVisible) return;
@@ -1697,96 +1726,67 @@ export function GameView() {
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto p-2 text-xs-tight font-mono">
           {/* Prefer telemetry activity feed when available (Defense game loop pushes entries here) */}
-          {Array.isArray(
-            (activeSessionState?.telemetry as Record<string, unknown> | null)
-              ?.recentActivity,
-          ) &&
-          (
-            (activeSessionState?.telemetry as Record<string, unknown>)
-              .recentActivity as {
-              ts: number;
-              action: string;
-              detail: string;
-            }[]
-          ).length > 0 ? (
-            (
-              (activeSessionState?.telemetry as Record<string, unknown>)
-                .recentActivity as {
-                ts: number;
-                action: string;
-                detail: string;
-              }[]
-            )
-              .slice()
-              .reverse()
-              .slice(0, 30)
-              .map(
-                (
-                  entry: { ts: number; action: string; detail: string },
-                  idx: number,
-                ) => (
-                  <div
-                    // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
-                    key={`${entry.ts}-${idx}`}
-                    className="py-1 flex flex-col gap-0.5"
-                  >
-                    <div className="flex items-center gap-1">
-                      <span className="text-muted text-2xs">
-                        {formatTime(entry.ts, { fallback: "—" })}
-                      </span>
-                      <span
-                        className={`font-semibold text-2xs uppercase ${
-                          entry.action === "error"
-                            ? "text-danger"
-                            : entry.action.startsWith("ability")
-                              ? "text-ok"
-                              : entry.action.startsWith("move")
-                                ? "text-warn"
-                                : "text-muted"
-                        }`}
-                      >
-                        {entry.action.split(":")[0]}
-                      </span>
-                    </div>
-                    <div className="text-txt break-all">{entry.detail}</div>
-                  </div>
-                ),
-              )
-          ) : Array.isArray(activeSessionState?.activity) &&
-            activeSessionState.activity.length > 0 ? (
-            activeSessionState.activity
-              .slice()
-              .sort(
-                (a, b) => Number(b.timestamp ?? 0) - Number(a.timestamp ?? 0),
-              )
-              .slice(0, 30)
-              .map((entry) => (
-                <div key={entry.id} className="py-1 flex flex-col gap-0.5">
+          {telemetryActivityFeed ? (
+            telemetryActivityFeed.map(
+              (
+                entry: { ts: number; action: string; detail: string },
+                idx: number,
+              ) => (
+                <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
+                  key={`${entry.ts}-${idx}`}
+                  className="py-1 flex flex-col gap-0.5"
+                >
                   <div className="flex items-center gap-1">
                     <span className="text-muted text-2xs">
-                      {formatTime(entry.timestamp ?? 0, { fallback: "—" })}
+                      {formatTime(entry.ts, { fallback: "—" })}
                     </span>
                     <span
                       className={`font-semibold text-2xs uppercase ${
-                        entry.severity === "error"
+                        entry.action === "error"
                           ? "text-danger"
-                          : entry.severity === "warning"
-                            ? "text-warn"
-                            : "text-muted"
+                          : entry.action.startsWith("ability")
+                            ? "text-ok"
+                            : entry.action.startsWith("move")
+                              ? "text-warn"
+                              : "text-muted"
                       }`}
                     >
-                      {entry.type}
+                      {entry.action.split(":")[0]}
                     </span>
                   </div>
-                  <div className="text-txt break-all">{entry.message}</div>
+                  <div className="text-txt break-all">{entry.detail}</div>
                 </div>
-              ))
+              ),
+            )
+          ) : sessionActivityFeed ? (
+            sessionActivityFeed.map((entry) => (
+              <div key={entry.id} className="py-1 flex flex-col gap-0.5">
+                <div className="flex items-center gap-1">
+                  <span className="text-muted text-2xs">
+                    {formatTime(entry.timestamp ?? 0, { fallback: "—" })}
+                  </span>
+                  <span
+                    className={`font-semibold text-2xs uppercase ${
+                      entry.severity === "error"
+                        ? "text-danger"
+                        : entry.severity === "warning"
+                          ? "text-warn"
+                          : "text-muted"
+                    }`}
+                  >
+                    {entry.type}
+                  </span>
+                </div>
+                <div className="text-txt break-all">{entry.message}</div>
+              </div>
+            ))
           ) : gameLogs.length === 0 ? (
             <div className="text-center py-4 text-muted italic">
               {t("game.noAgentActivity")}
             </div>
           ) : (
-            gameLogs.slice(0, 50).map((entry: LogEntry, idx) => (
+            gameLogsFeed.map((entry: LogEntry, idx) => (
               <div
                 // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
                 key={`${entry.timestamp}-${idx}`}

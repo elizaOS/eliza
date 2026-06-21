@@ -8,7 +8,7 @@
  * exact structural parity with each other and with the TUI IR.
  */
 
-import type { ReactNode } from "react";
+import { type ReactNode, useMemo } from "react";
 import { type SpatialAction, SpatialContextProvider } from "./context.ts";
 import type { SpatialModality } from "./ir.ts";
 
@@ -56,8 +56,12 @@ export function SpatialSurface({
   children,
 }: SpatialSurfaceProps) {
   const resolved = modality ?? detectDomModality();
+  const value = useMemo(
+    () => ({ modality: resolved, dispatch: onAction }),
+    [resolved, onAction],
+  );
   return (
-    <SpatialContextProvider value={{ modality: resolved, dispatch: onAction }}>
+    <SpatialContextProvider value={value}>
       <div
         data-spatial-surface={resolved}
         style={{

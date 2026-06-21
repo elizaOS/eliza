@@ -472,7 +472,7 @@ function ExperienceGraphNode({
   );
 }
 
-function ExperienceGraphPanel({
+const ExperienceGraphPanel = memo(function ExperienceGraphPanel({
   experiences,
   selectedExperienceId,
   onSelectExperience,
@@ -481,11 +481,21 @@ function ExperienceGraphPanel({
   selectedExperienceId: string | null;
   onSelectExperience: (experienceId: string) => void;
 }) {
-  const graphExperiences = experiences.slice(0, 24);
-  const links = buildLocalGraphLinks(graphExperiences);
-  const positions = buildGraphPositions(graphExperiences);
-  const connectedIds = new Set(
-    links.flatMap((link) => [link.sourceId, link.targetId]),
+  const graphExperiences = useMemo(
+    () => experiences.slice(0, 24),
+    [experiences],
+  );
+  const links = useMemo(
+    () => buildLocalGraphLinks(graphExperiences),
+    [graphExperiences],
+  );
+  const positions = useMemo(
+    () => buildGraphPositions(graphExperiences),
+    [graphExperiences],
+  );
+  const connectedIds = useMemo(
+    () => new Set(links.flatMap((link) => [link.sourceId, link.targetId])),
+    [links],
   );
 
   return (
@@ -531,7 +541,7 @@ function ExperienceGraphPanel({
       ))}
     </div>
   );
-}
+});
 
 const ExperienceQueueRow = memo(function ExperienceQueueRow({
   experience,

@@ -2,7 +2,7 @@
 
 import type { WalletAddresses } from "@elizaos/shared";
 import type { OverlayAppContext } from "@elizaos/ui";
-import { Button, PagePanel, Spinner, useApp } from "@elizaos/ui";
+import { Button, PagePanel, Spinner, useAppSelector } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   ArrowLeft,
@@ -20,7 +20,10 @@ import { VincentConnectionCard } from "./VincentConnectionCard";
 import { WalletStatusCard } from "./WalletStatusCard";
 
 export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
-  const { setActionNotice } = useApp();
+  // Subscribe to only the stable `setActionNotice` callback instead of the whole
+  // AppContext value, which is rebuilt on a large dependency array — this stops
+  // VincentAppView (and its card subtree) re-rendering on unrelated context churn.
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
 
   const backLabel = t("nav.back", { defaultValue: "Back" });
   const refreshLabel = t("actions.refresh", { defaultValue: "Refresh" });

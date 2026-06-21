@@ -12,7 +12,7 @@ import {
   MonitorSmartphone,
   Server,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useT } from "../lib/i18n";
@@ -371,49 +371,57 @@ export function MyAgentsClient() {
       });
   }, [fetchCharacters, t]);
 
-  const filteredCharacters = characters.filter((char) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    const agent = char as AgentWithOwnership & {
-      topics?: string[];
-      adjectives?: string[];
-    };
-    return (
-      agent.name?.toLowerCase().includes(query) ||
-      (typeof agent.bio === "string" &&
-        agent.bio.toLowerCase().includes(query)) ||
-      (Array.isArray(agent.bio) &&
-        agent.bio.some((b) => b.toLowerCase().includes(query))) ||
-      agent.topics?.some((topic: string) =>
-        topic.toLowerCase().includes(query),
-      ) ||
-      agent.adjectives?.some((a: string) => a.toLowerCase().includes(query))
-    );
-  });
+  const filteredCharacters = useMemo(
+    () =>
+      characters.filter((char) => {
+        if (!searchQuery) return true;
+        const query = searchQuery.toLowerCase();
+        const agent = char as AgentWithOwnership & {
+          topics?: string[];
+          adjectives?: string[];
+        };
+        return (
+          agent.name?.toLowerCase().includes(query) ||
+          (typeof agent.bio === "string" &&
+            agent.bio.toLowerCase().includes(query)) ||
+          (Array.isArray(agent.bio) &&
+            agent.bio.some((b) => b.toLowerCase().includes(query))) ||
+          agent.topics?.some((topic: string) =>
+            topic.toLowerCase().includes(query),
+          ) ||
+          agent.adjectives?.some((a: string) => a.toLowerCase().includes(query))
+        );
+      }),
+    [characters, searchQuery],
+  );
 
-  const sortedCharacters = [...filteredCharacters].sort((a, b) => {
-    if (sortBy === "name") {
-      return (a.name || "").localeCompare(b.name || "");
-    }
-    if (sortBy === "created") {
-      const getCreatedTime = (char: AgentWithOwnership): number =>
-        char.created_at ? new Date(char.created_at).getTime() : 0;
-      const timeDiff = getCreatedTime(b) - getCreatedTime(a);
-      if (timeDiff !== 0) return timeDiff;
-      return (a.name || "").localeCompare(b.name || "");
-    }
-    const getRecentTime = (char: AgentWithOwnership): number => {
-      if (char.isOwned) {
-        return char.updated_at ? new Date(char.updated_at).getTime() : 0;
-      }
-      return char.lastInteraction
-        ? new Date(char.lastInteraction).getTime()
-        : 0;
-    };
-    const timeDiff = getRecentTime(b) - getRecentTime(a);
-    if (timeDiff !== 0) return timeDiff;
-    return (a.name || "").localeCompare(b.name || "");
-  });
+  const sortedCharacters = useMemo(
+    () =>
+      [...filteredCharacters].sort((a, b) => {
+        if (sortBy === "name") {
+          return (a.name || "").localeCompare(b.name || "");
+        }
+        if (sortBy === "created") {
+          const getCreatedTime = (char: AgentWithOwnership): number =>
+            char.created_at ? new Date(char.created_at).getTime() : 0;
+          const timeDiff = getCreatedTime(b) - getCreatedTime(a);
+          if (timeDiff !== 0) return timeDiff;
+          return (a.name || "").localeCompare(b.name || "");
+        }
+        const getRecentTime = (char: AgentWithOwnership): number => {
+          if (char.isOwned) {
+            return char.updated_at ? new Date(char.updated_at).getTime() : 0;
+          }
+          return char.lastInteraction
+            ? new Date(char.lastInteraction).getTime()
+            : 0;
+        };
+        const timeDiff = getRecentTime(b) - getRecentTime(a);
+        if (timeDiff !== 0) return timeDiff;
+        return (a.name || "").localeCompare(b.name || "");
+      }),
+    [filteredCharacters, sortBy],
+  );
 
   const handleCreateNew = useCallback(() => {
     navigate("/dashboard/agents");

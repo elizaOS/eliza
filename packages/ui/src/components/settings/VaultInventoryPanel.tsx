@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import {
   type FormEvent,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -300,7 +301,7 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
 
 // ── Category group ─────────────────────────────────────────────────
 
-function CategoryGroup({
+const CategoryGroup = memo(function CategoryGroup({
   category,
   entries,
   onChanged,
@@ -338,11 +339,11 @@ function CategoryGroup({
       </ul>
     </div>
   );
-}
+});
 
 // ── Single entry row ───────────────────────────────────────────────
 
-function EntryRow({
+const EntryRow = memo(function EntryRow({
   entry,
   onChanged,
   onJumpToRouting,
@@ -569,7 +570,7 @@ function EntryRow({
       )}
     </div>
   );
-}
+});
 
 // ── Profiles management ────────────────────────────────────────────
 
@@ -932,15 +933,7 @@ function ProfilesPanel({
 
 // ── Single profile row ─────────────────────────────────────────────
 
-function ProfileRow({
-  entryKey,
-  profileId,
-  profileLabel,
-  active,
-  highlight,
-  onActivate,
-  onDelete,
-}: {
+interface ProfileRowProps {
   entryKey: string;
   profileId: string;
   profileLabel: string;
@@ -948,72 +941,92 @@ function ProfileRow({
   highlight: boolean;
   onActivate: () => void;
   onDelete: () => void;
-}) {
-  const { t } = useTranslation();
-  const { ref: activateRef, agentProps: activateAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: `vault-profile-activate-${entryKey}-${profileId}`,
-      role: "toggle",
-      label: `Make ${profileLabel} the active profile`,
-      group: "vault-profiles",
-      status: active ? "active" : "inactive",
-      onActivate,
-    });
-  const { ref: deleteRef, agentProps: deleteAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `vault-profile-delete-${entryKey}-${profileId}`,
-      role: "button",
-      label: `Delete profile ${profileLabel}`,
-      group: "vault-profiles",
-      onActivate: onDelete,
-    });
-  return (
-    <li
-      className={`flex items-center gap-2 rounded-sm px-1.5 py-1 text-xs ${highlight ? "ring-1 ring-accent/40" : ""}`}
-    >
-      <input
-        ref={activateRef}
-        {...activateAgentProps}
-        type="radio"
-        name={`active-${entryKey}`}
-        checked={active}
-        onChange={onActivate}
-        className="h-3 w-3 cursor-pointer accent-accent"
-        aria-current={active ? "true" : undefined}
-        aria-label={t("vaultinventory.profiles.makeActive", {
-          label: profileLabel,
-          defaultValue: "Make {{label}} active",
-        })}
-      />
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-medium text-txt">{profileLabel}</p>
-        <p className="truncate font-mono text-2xs text-muted">{profileId}</p>
-      </div>
-      {active && (
-        <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
-          <CheckCircle2 className="h-3 w-3" aria-hidden />{" "}
-          {t("vaultinventory.profiles.active", {
-            defaultValue: "Active",
-          })}
-        </span>
-      )}
-      <Button
-        ref={deleteRef}
-        {...deleteAgentProps}
-        variant="ghost"
-        size="sm"
-        className="h-6 w-6 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
-        aria-label={t("vaultinventory.profiles.deleteProfile", {
-          label: profileLabel,
-          defaultValue: "Delete profile {{label}}",
-        })}
-        onClick={onDelete}
-      >
-        <Trash2 className="h-3 w-3" aria-hidden />
-      </Button>
-    </li>
-  );
 }
+
+const ProfileRow = memo(
+  function ProfileRow({
+    entryKey,
+    profileId,
+    profileLabel,
+    active,
+    highlight,
+    onActivate,
+    onDelete,
+  }: ProfileRowProps) {
+    const { t } = useTranslation();
+    const { ref: activateRef, agentProps: activateAgentProps } =
+      useAgentElement<HTMLInputElement>({
+        id: `vault-profile-activate-${entryKey}-${profileId}`,
+        role: "toggle",
+        label: `Make ${profileLabel} the active profile`,
+        group: "vault-profiles",
+        status: active ? "active" : "inactive",
+        onActivate,
+      });
+    const { ref: deleteRef, agentProps: deleteAgentProps } =
+      useAgentElement<HTMLButtonElement>({
+        id: `vault-profile-delete-${entryKey}-${profileId}`,
+        role: "button",
+        label: `Delete profile ${profileLabel}`,
+        group: "vault-profiles",
+        onActivate: onDelete,
+      });
+    return (
+      <li
+        className={`flex items-center gap-2 rounded-sm px-1.5 py-1 text-xs ${highlight ? "ring-1 ring-accent/40" : ""}`}
+      >
+        <input
+          ref={activateRef}
+          {...activateAgentProps}
+          type="radio"
+          name={`active-${entryKey}`}
+          checked={active}
+          onChange={onActivate}
+          className="h-3 w-3 cursor-pointer accent-accent"
+          aria-current={active ? "true" : undefined}
+          aria-label={t("vaultinventory.profiles.makeActive", {
+            label: profileLabel,
+            defaultValue: "Make {{label}} active",
+          })}
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium text-txt">{profileLabel}</p>
+          <p className="truncate font-mono text-2xs text-muted">{profileId}</p>
+        </div>
+        {active && (
+          <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
+            <CheckCircle2 className="h-3 w-3" aria-hidden />{" "}
+            {t("vaultinventory.profiles.active", {
+              defaultValue: "Active",
+            })}
+          </span>
+        )}
+        <Button
+          ref={deleteRef}
+          {...deleteAgentProps}
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
+          aria-label={t("vaultinventory.profiles.deleteProfile", {
+            label: profileLabel,
+            defaultValue: "Delete profile {{label}}",
+          })}
+          onClick={onDelete}
+        >
+          <Trash2 className="h-3 w-3" aria-hidden />
+        </Button>
+      </li>
+    );
+  },
+  // onActivate/onDelete are allocated inline per row but always act on this
+  // row's profileId, so compare only the render-affecting primitive props.
+  (prev, next) =>
+    prev.entryKey === next.entryKey &&
+    prev.profileId === next.profileId &&
+    prev.profileLabel === next.profileLabel &&
+    prev.active === next.active &&
+    prev.highlight === next.highlight,
+);
 
 // ── Add-secret form ────────────────────────────────────────────────
 

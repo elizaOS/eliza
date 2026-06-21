@@ -13,7 +13,7 @@
 import { Component, type ErrorInfo, type ReactNode, useMemo } from "react";
 import { UiRenderer } from "../components/config-ui/ui-renderer";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
-import { useApp } from "../state";
+import { useAppSelectorShallow } from "../state";
 import { useIsDeveloperMode } from "../state/useDeveloperMode";
 import { resolveWidgetsForSlot } from "./registry";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
@@ -111,7 +111,7 @@ export function WidgetHost({
   hideWhenEmpty = true,
   filter,
 }: WidgetHostProps) {
-  const { plugins } = useApp();
+  const plugins = useAppSelectorShallow((s) => s.plugins);
   const developerModeEnabled = useIsDeveloperMode();
 
   const resolved = useMemo(() => {
@@ -121,6 +121,12 @@ export function WidgetHost({
       : all.filter((entry) => entry.declaration.developerOnly !== true);
     return filter ? gated.filter((entry) => filter(entry.declaration)) : gated;
   }, [slot, plugins, filter, developerModeEnabled]);
+
+  const pluginById = useMemo(() => {
+    const map = new Map<string, (typeof plugins)[number]>();
+    for (const p of plugins ?? []) map.set(p.id, p);
+    return map;
+  }, [plugins]);
 
   if (resolved.length === 0 && hideWhenEmpty) return null;
 
@@ -132,9 +138,7 @@ export function WidgetHost({
     >
       {resolved.map(({ declaration, Component }) => {
         const widgetKey = `${declaration.pluginId}/${declaration.id}`;
-        const pluginState = (plugins ?? []).find(
-          (p) => p.id === declaration.pluginId,
-        );
+        const pluginState = pluginById.get(declaration.pluginId);
 
         const widgetProps: WidgetProps = {
           pluginId: declaration.pluginId,

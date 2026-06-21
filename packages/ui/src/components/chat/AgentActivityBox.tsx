@@ -3,7 +3,7 @@ import {
   PULSE_STATUSES,
   STATUS_DOT,
 } from "../../chat/coding-agent-session-state";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 
 /** Derive activity text for sessions hydrated from the server (no lastActivity yet). */
 function deriveActivity(
@@ -36,7 +36,7 @@ export function AgentActivityBox({
   sessions,
   onSessionClick,
 }: AgentActivityBoxProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   if (!sessions || sessions.length === 0) return null;
 
   return (

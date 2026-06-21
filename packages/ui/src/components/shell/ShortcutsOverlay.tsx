@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { COMMON_SHORTCUTS } from "../../hooks";
-import { useApp } from "../../state";
+import { useTranslation } from "../../state";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
 function formatKey(shortcut: (typeof COMMON_SHORTCUTS)[number]): string {
@@ -26,7 +26,7 @@ function formatKey(shortcut: (typeof COMMON_SHORTCUTS)[number]): string {
 }
 
 export function ShortcutsOverlay() {
-  const { t } = useApp();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {

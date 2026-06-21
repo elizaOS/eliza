@@ -24,7 +24,7 @@
 import { client } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { CSSProperties, ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   INBOX_CHANNEL_LABELS,
   INBOX_CHANNELS,
@@ -441,7 +441,7 @@ const unreadDotStyle: CSSProperties = {
   marginRight: 6,
 };
 
-function ItemRow({
+const ItemRow = memo(function ItemRow({
   item,
   isLast,
 }: {
@@ -449,6 +449,10 @@ function ItemRow({
   isLast: boolean;
 }): ReactNode {
   const title = item.subject ?? item.sender;
+  // `mapMessage` rebuilds InboxItem objects on every fetch, so item identity is
+  // not stable across an unchanged payload; key the Intl-formatted time on the
+  // primitive timestamp so the poll doesn't re-run toLocaleString per row.
+  const time = useMemo(() => formatTime(item.receivedAt), [item.receivedAt]);
   return (
     <li style={isLast ? lastRowStyle : rowStyle}>
       <span style={rowMainStyle}>
@@ -466,12 +470,12 @@ function ItemRow({
         </span>
       </span>
       {/* Channel is already the group heading, so the row meta is just time. */}
-      <span style={metaStyle}>{formatTime(item.receivedAt)}</span>
+      <span style={metaStyle}>{time}</span>
     </li>
   );
-}
+});
 
-function ChannelGroup({
+const ChannelGroup = memo(function ChannelGroup({
   channel,
   items,
 }: {
@@ -498,7 +502,7 @@ function ChannelGroup({
       </ul>
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Fetch-driven state machine.
@@ -519,6 +523,22 @@ function requestConnect(): void {
   client.sendChatMessage?.(
     "Connect a messaging channel so you can triage my inbox.",
   );
+}
+
+/** Stable empty array so the pre-ready memo inputs keep a constant reference. */
+const EMPTY_ITEMS: InboxItem[] = [];
+
+interface ChannelGroupData {
+  channel: InboxChannel;
+  items: InboxItem[];
+}
+
+/** Group items by channel in display order; filtering already happened server-side. */
+function groupByChannel(items: InboxItem[]): ChannelGroupData[] {
+  return INBOX_CHANNELS.map((channel) => ({
+    channel,
+    items: items.filter((item) => item.channel === channel),
+  })).filter((group) => group.items.length > 0);
 }
 
 export function InboxView(props: InboxViewProps = {}): ReactNode {
@@ -596,6 +616,14 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
     });
   }, []);
 
+  // Hooks must run unconditionally, so derive grouping + nudge above the early
+  // returns from the ready items (or a stable empty list). The O(channels*items)
+  // grouping and the unread reduce then only re-run when the items reference
+  // actually changes, not on every poll tick or parent re-render.
+  const items = state.kind === "ready" ? state.data.items : EMPTY_ITEMS;
+  const groups = useMemo(() => groupByChannel(items), [items]);
+  const nudge = useMemo(() => unreadNudge(items), [items]);
+
   if (state.kind === "loading") {
     return (
       <div style={containerStyle} data-testid="inbox-loading">
@@ -629,14 +657,7 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
     );
   }
 
-  const { items, connected } = state.data;
-
-  // Group items by channel in display order. Filtering already happened at the
-  // server (via the channels query); grouping is presentation only.
-  const groups = INBOX_CHANNELS.map((channel) => ({
-    channel,
-    items: items.filter((item) => item.channel === channel),
-  })).filter((group) => group.items.length > 0);
+  const { connected } = state.data;
 
   // Nothing to triage. Distinguish "no channels connected" (connect-a-channel)
   // from "connected but inbox zero" — never fabricate threads for either.
@@ -680,8 +701,6 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
       </div>
     );
   }
-
-  const nudge = unreadNudge(items);
 
   return (
     <div style={containerStyle} data-testid="inbox-populated">

@@ -1,7 +1,7 @@
 /** TradingProfileCard — P&L summary stats and per-token breakdown. */
 
 import { BadgeDollarSign, Repeat2, Target, TrendingUp } from "lucide-react";
-import type { ComponentType } from "react";
+import { type ComponentType, memo } from "react";
 import type { VincentTradingProfile } from "./vincent-contracts";
 
 interface TradingProfileCardProps {
@@ -38,7 +38,7 @@ function formatWinRate(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
 }
 
-export function TradingProfileCard({
+export const TradingProfileCard = memo(function TradingProfileCard({
   tradingProfile,
 }: TradingProfileCardProps) {
   if (!tradingProfile) {
@@ -100,4 +100,4 @@ export function TradingProfileCard({
       )}
     </div>
   );
-}
+});

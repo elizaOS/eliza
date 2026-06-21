@@ -10,7 +10,7 @@ import {
   CONFIG_SELECT_FLOATING_LAYER_NAME,
   CONFIG_SELECT_FLOATING_LAYER_Z_INDEX,
 } from "../../lib/floating-layers";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import type { DynamicValue } from "../../types";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -344,7 +344,7 @@ export function renderUrlField(props: FieldRenderProps) {
 
 /** Dropdown select. Options from hint.options or schema.enum. */
 export function RenderSelectField(props: FieldRenderProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const enhancedOptions = (props.hint as Record<string, unknown>).options as
     | Array<{ value: string; label: string; description?: string }>
     | undefined;
@@ -433,7 +433,7 @@ function SearchableSelectInner({
   options: Array<{ value: string; label: string; description?: string }>;
   effectiveValue: string;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const matchingOpt = options.find((o) => o.value === effectiveValue);
   const [inputVal, setInputVal] = useState(
     matchingOpt?.label ?? effectiveValue,
@@ -947,7 +947,7 @@ export function renderJsonField(props: FieldRenderProps) {
 }
 
 function JsonFieldInner({ fp: props }: { fp: FieldRenderProps }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const initial = props.isSet ? String(props.value ?? "") : "";
   const [jsonError, setJsonError] = useState<string | null>(null);
 
@@ -1059,7 +1059,7 @@ function ArrayItem({
   onMoveDown: () => void;
   onBlur: () => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   return (
     <div className="flex items-center gap-1">
       {!readonly && (
@@ -1117,7 +1117,7 @@ function ArrayItem({
 }
 
 function ArrayFieldInner({ fp: props }: { fp: FieldRenderProps }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const rawVal = props.isSet ? props.value : [];
   const initialItems: string[] = Array.isArray(rawVal)
     ? rawVal.map(String)
@@ -1204,7 +1204,7 @@ export function renderKeyValueField(props: FieldRenderProps) {
 }
 
 function KeyValueFieldInner({ fp: props }: { fp: FieldRenderProps }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const rawVal = props.isSet ? props.value : {};
   const initialPairs: Array<{ key: string; value: string }> =
     rawVal && typeof rawVal === "object" && !Array.isArray(rawVal)
@@ -1332,7 +1332,7 @@ export function renderDatetimeField(props: FieldRenderProps) {
 
 /** File path text input with path traversal guard. */
 export function RenderFileField(props: FieldRenderProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const value = props.isSet ? String(props.value ?? "") : "";
   const placeholder = props.hint.placeholder ?? "/path/to/file";
 
@@ -1368,7 +1368,7 @@ export function RenderFileField(props: FieldRenderProps) {
 
 /** Placeholder for plugin-provided custom React components. */
 export function RenderCustomField(props: FieldRenderProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const componentName = (props.hint as Record<string, unknown>).component as
     | string
     | undefined;
@@ -1552,7 +1552,7 @@ function processSimpleInline(text: string, key: number): React.ReactNode {
 }
 
 function MarkdownFieldInner(props: FieldRenderProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [preview, setPreview] = useState(false);
   const value = typeof props.value === "string" ? props.value : "";
 
@@ -1631,7 +1631,7 @@ export const renderMarkdownField: FieldRenderer = (props) => (
 // ── 21. Checkbox Group ───────────────────────────────────────────────────
 
 function CheckboxGroupInner(props: FieldRenderProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const fieldId = useId();
   const selected = new Set(
     Array.isArray(props.value)
@@ -1741,7 +1741,7 @@ export const renderGroupField: FieldRenderer = (props) => {
 // ── 23. Table ────────────────────────────────────────────────────────────
 
 function TableFieldInner(props: FieldRenderProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const MAX_TABLE_ROWS = 50;
   const columns: Array<{ key: string; label: string }> = ((
     props.hint as Record<string, unknown>

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import {
   type FormEvent,
+  memo,
   type ReactNode,
   useCallback,
   useEffect,
@@ -673,7 +674,7 @@ function SessionsSection() {
   );
 }
 
-function SessionRow({
+const SessionRow = memo(function SessionRow({
   session,
   revoking,
   onRevoke,
@@ -750,7 +751,7 @@ function SessionRow({
       )}
     </div>
   );
-}
+});
 
 type PasswordState =
   | { phase: "idle" }

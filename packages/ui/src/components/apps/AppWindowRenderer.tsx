@@ -1,6 +1,7 @@
 import {
   type ComponentType,
   Suspense,
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -74,6 +75,37 @@ export function AppWindowRenderer({
     };
   }, [app]);
 
+  // Read the theme from the DOM in an effect (not during render) and keep it in
+  // sync as the document class toggles, so the memoized context only changes when
+  // the theme actually changes.
+  const [uiTheme, setUiTheme] = useState<OverlayAppContext["uiTheme"]>(() =>
+    document.documentElement.classList.contains("dark") ? "dark" : "light",
+  );
+  useEffect(() => {
+    const root = document.documentElement;
+    const sync = () =>
+      setUiTheme(root.classList.contains("dark") ? "dark" : "light");
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  const exitToApps = useCallback(() => {
+    window.location.href = "/apps";
+  }, []);
+
+  // Stable identity so embedded apps can use React.memo: only changes when a
+  // render-affecting field (exitToApps / uiTheme) actually changes.
+  const context = useMemo<OverlayAppContext>(
+    () => ({
+      exitToApps,
+      uiTheme,
+      t: (key) => key,
+    }),
+    [exitToApps, uiTheme],
+  );
+
   if (!app) {
     return (
       <div className="flex h-full items-center justify-center bg-background text-sm text-muted-foreground">
@@ -81,16 +113,6 @@ export function AppWindowRenderer({
       </div>
     );
   }
-
-  const context: OverlayAppContext = {
-    exitToApps: () => {
-      window.location.href = "/apps";
-    },
-    uiTheme: document.documentElement.classList.contains("dark")
-      ? "dark"
-      : "light",
-    t: (key) => key,
-  };
 
   const LazyComponent = getLazyComponentForApp(app);
   if (LazyComponent) {

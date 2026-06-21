@@ -21,6 +21,26 @@ function readStorage(): boolean {
   }
 }
 
+/**
+ * Cached snapshot of the persisted value. `getSnapshot` runs on every render of
+ * every subscriber, so it must return a stable primitive without per-render
+ * localStorage I/O. The cache is seeded once and refreshed only when the value
+ * changes (via `setDeveloperMode` or a cross-tab `storage` event).
+ */
+let cachedEnabled = readStorage();
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== null && event.key !== STORAGE_KEY) return;
+    const next = readStorage();
+    if (next === cachedEnabled) return;
+    cachedEnabled = next;
+    for (const listener of listeners) {
+      listener();
+    }
+  });
+}
+
 function writeStorage(enabled: boolean): void {
   if (typeof window === "undefined") return;
   try {
@@ -38,7 +58,7 @@ function subscribe(listener: () => void): () => void {
 }
 
 function getSnapshot(): boolean {
-  return readStorage();
+  return cachedEnabled;
 }
 
 function getServerSnapshot(): boolean {
@@ -46,11 +66,13 @@ function getServerSnapshot(): boolean {
 }
 
 export function isDeveloperModeEnabled(): boolean {
-  return readStorage();
+  return cachedEnabled;
 }
 
 export function setDeveloperMode(enabled: boolean): void {
   writeStorage(enabled);
+  if (enabled === cachedEnabled) return;
+  cachedEnabled = enabled;
   for (const listener of listeners) {
     listener();
   }

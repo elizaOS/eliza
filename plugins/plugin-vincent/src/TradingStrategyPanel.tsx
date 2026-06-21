@@ -11,6 +11,7 @@ import {
   Repeat2,
   Settings2,
 } from "lucide-react";
+import { memo, useMemo } from "react";
 import type { VincentStrategy } from "./vincent-contracts";
 
 interface TradingStrategyPanelProps {
@@ -24,10 +25,14 @@ const STRATEGY_LABELS: Record<VincentStrategy["name"], string> = {
   manual: "Manual",
 };
 
-export function TradingStrategyPanel({ strategy }: TradingStrategyPanelProps) {
+export const TradingStrategyPanel = memo(function TradingStrategyPanel({
+  strategy,
+}: TradingStrategyPanelProps) {
   const strategyName = strategy?.name ?? null;
-  const params = strategy?.params ?? {};
-  const paramEntries = Object.entries(params);
+  const paramEntries = useMemo(
+    () => Object.entries(strategy?.params ?? {}),
+    [strategy?.params],
+  );
 
   const openVincent = useAgentElement<HTMLAnchorElement>({
     id: "link-open-vincent",
@@ -141,4 +146,4 @@ export function TradingStrategyPanel({ strategy }: TradingStrategyPanelProps) {
       )}
     </div>
   );
-}
+});

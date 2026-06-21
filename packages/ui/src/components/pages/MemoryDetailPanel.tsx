@@ -1,10 +1,22 @@
-import { useApp } from "../../state";
+import { useMemo } from "react";
+import { useTranslation } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { CodeBlock } from "../ui/code-block";
 import type { MemoryRecord } from "./vector-browser-utils";
 
 export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
-  const { t } = useApp();
+  const { t } = useTranslation();
+  const embeddingText = useMemo(
+    () =>
+      memory?.embedding
+        ? `[${memory.embedding.map((v) => v.toFixed(6)).join(", ")}]`
+        : null,
+    [memory?.id, memory?.embedding],
+  );
+  const rawJson = useMemo(
+    () => JSON.stringify(memory?.raw, null, 2),
+    [memory?.id, memory?.raw],
+  );
   if (!memory) {
     return (
       <div className="flex flex-1 items-center justify-center p-8">
@@ -106,7 +118,7 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
               {memory.embedding.length} {t("vectorbrowserview.dimensions")}
             </div>
             <CodeBlock
-              value={`[${memory.embedding.map((v) => v.toFixed(6)).join(", ")}]`}
+              value={embeddingText ?? ""}
               wrap
               copyable
               className="mt-3 max-h-[16rem]"
@@ -119,7 +131,7 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
             {t("vectorbrowserview.RawRecord")}
           </summary>
           <CodeBlock
-            value={JSON.stringify(memory.raw, null, 2)}
+            value={rawJson}
             wrap
             copyable
             className="mt-3 max-h-[18rem]"

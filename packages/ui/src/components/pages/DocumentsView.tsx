@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import {
   type ChangeEvent,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -26,6 +27,7 @@ import type {
 } from "../../api/client-types-chat";
 import { isApiError } from "../../api/client-types-core";
 import { getCached, setCached } from "../../hooks/resource-cache";
+import { useTranslation } from "../../state";
 import { useApp } from "../../state/useApp";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
@@ -148,7 +150,7 @@ function ScopeFilterChip({
 
 /* ── Search Result Item ─────────────────────────────────────────────── */
 
-function SearchResultListItem({
+const SearchResultListItem = memo(function SearchResultListItem({
   result,
   active,
   onSelect,
@@ -157,7 +159,7 @@ function SearchResultListItem({
   active: boolean;
   onSelect: (documentId: string) => void;
 }) {
-  const { t } = useApp();
+  const { t } = useTranslation();
   const documentId = result.documentId || result.id;
   const title =
     result.documentTitle ||
@@ -205,11 +207,11 @@ function SearchResultListItem({
       </div>
     </button>
   );
-}
+});
 
 /* ── Document Card ──────────────────────────────────────────────────── */
 
-function DocumentListItem({
+const DocumentListItem = memo(function DocumentListItem({
   doc,
   active,
   onSelect,
@@ -222,7 +224,7 @@ function DocumentListItem({
   onDelete: (id: string) => void;
   deleting: boolean;
 }) {
-  const { t } = useApp();
+  const { t } = useTranslation();
   const scopeLabel =
     doc.scope === "owner-private"
       ? t("documentsview.ScopeOwner", { defaultValue: "Owner" })
@@ -318,11 +320,11 @@ function DocumentListItem({
       </span>
     </div>
   );
-}
+});
 
 /* ── Compact strip chips ────────────────────────────────────────────── */
 
-function CompactSearchChip({
+const CompactSearchChip = memo(function CompactSearchChip({
   result,
   active,
   onSelect,
@@ -331,7 +333,7 @@ function CompactSearchChip({
   active: boolean;
   onSelect: (documentId: string) => void;
 }) {
-  const { t } = useApp();
+  const { t } = useTranslation();
   const id = result.documentId || result.id;
   const title =
     result.documentTitle ||
@@ -363,7 +365,7 @@ function CompactSearchChip({
       <span className="truncate">{title}</span>
     </button>
   );
-}
+});
 
 function CompactDocChip({
   doc,

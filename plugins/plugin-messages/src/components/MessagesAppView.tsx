@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import {
   type ChangeEvent,
+  memo,
   type ReactNode,
   useCallback,
   useEffect,
@@ -150,7 +151,7 @@ function ChatBubblesMotif() {
   );
 }
 
-function MessagesThreadButton({
+const MessagesThreadButton = memo(function MessagesThreadButton({
   thread,
   selected,
   onOpen,
@@ -213,9 +214,9 @@ function MessagesThreadButton({
       ) : null}
     </button>
   );
-}
+});
 
-function TuiThreadButton({
+const TuiThreadButton = memo(function TuiThreadButton({
   thread,
   index,
   selected,
@@ -271,7 +272,7 @@ function TuiThreadButton({
       </span>
     </button>
   );
-}
+});
 
 export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
   const [messages, setMessages] = useState<SmsMessageSummary[]>([]);

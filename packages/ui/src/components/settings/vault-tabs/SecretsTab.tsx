@@ -5,6 +5,7 @@
  * The parent modal owns the entries fetch; this tab only renders.
  */
 
+import { useCallback } from "react";
 import { VaultInventoryPanel } from "../VaultInventoryPanel";
 import type { VaultEntryMeta, VaultTabNavigate } from "./types";
 
@@ -25,11 +26,15 @@ export function SecretsTab({
   focusProfileId,
   onFocusApplied,
 }: SecretsTabProps) {
+  const onJumpToRouting = useCallback(
+    (key: string) => navigate({ tab: "routing", focusKey: key }),
+    [navigate],
+  );
   return (
     <VaultInventoryPanel
       entries={entries}
       onChanged={onChanged}
-      onJumpToRouting={(key) => navigate({ tab: "routing", focusKey: key })}
+      onJumpToRouting={onJumpToRouting}
       focusKey={focusKey}
       focusProfileId={focusProfileId}
       onFocusApplied={onFocusApplied}

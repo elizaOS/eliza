@@ -23,7 +23,7 @@
 import { client } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { CSSProperties, ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PresentedDocument } from "../../document-presenter.js";
 
 // ---------------------------------------------------------------------------
@@ -370,14 +370,25 @@ function DocumentsHeader(): ReactNode {
 // Populated sub-sections.
 // ---------------------------------------------------------------------------
 
-function DocumentRow({ document }: { document: PresentedDocument }): ReactNode {
-  const meta = [
-    shortContentType(document.contentType),
-    formatFileSize(document.fileSize),
-    formatDate(document.createdAt),
-  ]
-    .filter((part) => part && part !== "—")
-    .join(" · ");
+const DocumentRow = memo(function DocumentRow({
+  document,
+}: {
+  document: PresentedDocument;
+}): ReactNode {
+  // The 20s poll replaces document object identities, so memoize the derived
+  // meta string on its primitive inputs — this avoids re-running the byte-size
+  // while-loop, Date formatting, and string join per row on every poll tick.
+  const meta = useMemo(
+    () =>
+      [
+        shortContentType(document.contentType),
+        formatFileSize(document.fileSize),
+        formatDate(document.createdAt),
+      ]
+        .filter((part) => part && part !== "—")
+        .join(" · "),
+    [document.contentType, document.fileSize, document.createdAt],
+  );
   return (
     <li style={rowStyle}>
       <span style={rowMainStyle}>
@@ -388,7 +399,7 @@ function DocumentRow({ document }: { document: PresentedDocument }): ReactNode {
       </span>
     </li>
   );
-}
+});
 
 function DocumentList({
   documents,
@@ -406,27 +417,26 @@ function DocumentList({
   );
 }
 
-function SearchResultRow({
+const SearchResultRow = memo(function SearchResultRow({
   result,
 }: {
   result: DocumentSearchResultWire;
 }): ReactNode {
-  const snippet = result.text.trim();
+  const snippet = useMemo(() => {
+    const trimmed = result.text.trim();
+    return trimmed.length > 140 ? `${trimmed.slice(0, 139)}…` : trimmed;
+  }, [result.text]);
   return (
     <li style={rowStyle}>
       <span style={rowMainStyle}>
         <span style={rowTitleStyle} title={result.documentTitle}>
           {result.documentTitle}
         </span>
-        {snippet ? (
-          <span style={rowMetaStyle}>
-            {snippet.length > 140 ? `${snippet.slice(0, 139)}…` : snippet}
-          </span>
-        ) : null}
+        {snippet ? <span style={rowMetaStyle}>{snippet}</span> : null}
       </span>
     </li>
   );
-}
+});
 
 function SearchResults({
   results,

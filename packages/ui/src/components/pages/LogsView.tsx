@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { LogEntry } from "../../api";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useApp } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
@@ -87,14 +88,14 @@ function LogsViewBody() {
     void loadLogs().finally(() => {
       if (!cancelled) setInitialLoading(false);
     });
-    const interval = setInterval(() => {
-      void loadLogs();
-    }, 5000);
     return () => {
       cancelled = true;
-      clearInterval(interval);
     };
   }, [loadLogs]);
+
+  // Live tail only ticks while the document is visible; pauses when the
+  // tab/window is hidden and resumes on visibilitychange.
+  useIntervalWhenDocumentVisible(() => void loadLogs(), 5000);
 
   const handleClearFilters = () => {
     setState("logTagFilter", "");

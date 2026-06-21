@@ -494,11 +494,16 @@ export function LogViewer({
                   <span className="flex-1 whitespace-pre-wrap break-all text-white/80">
                     {entry.message}
                   </span>
-                  {renderMetadata(entry.metadata) && (
-                    <span className="max-w-[200px] truncate text-xs text-white/50">
-                      {renderMetadata(entry.metadata)}
-                    </span>
-                  )}
+                  {(() => {
+                    const meta = renderMetadata(entry.metadata);
+                    return (
+                      meta && (
+                        <span className="max-w-[200px] truncate text-xs text-white/50">
+                          {meta}
+                        </span>
+                      )
+                    );
+                  })()}
                   {onCopyEntry && (
                     <BrandButton
                       variant="ghost"

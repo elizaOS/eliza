@@ -5,11 +5,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WidgetHost } from "./WidgetHost";
 import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
 
+const mockAppState = {
+  plugins: [{ id: "spec-plugin", enabled: true, isActive: true }],
+  t: (key: string) => key,
+};
+
 vi.mock("../state", () => ({
-  useApp: () => ({
-    plugins: [{ id: "spec-plugin", enabled: true, isActive: true }],
-    t: (key: string) => key,
-  }),
+  useApp: () => mockAppState,
+  useAppSelectorShallow: <T,>(selector: (s: typeof mockAppState) => T): T =>
+    selector(mockAppState),
 }));
 
 vi.mock("../state/useDeveloperMode", () => ({

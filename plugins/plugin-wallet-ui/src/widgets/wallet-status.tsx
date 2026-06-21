@@ -1,6 +1,6 @@
 import type { ChatSidebarWidgetProps } from "@elizaos/ui/components";
 import { EmptyWidgetState, WidgetSection } from "@elizaos/ui/components";
-import { useApp } from "@elizaos/ui/state";
+import { useAppSelector } from "@elizaos/ui/state";
 import { Check, Copy, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -166,15 +166,13 @@ function CopyAddressButton({ value, label }: CopyButtonProps) {
 }
 
 export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
-  const {
-    walletEnabled,
-    walletAddresses,
-    walletConfig,
-    walletBalances,
-    loadWalletConfig,
-    loadBalances,
-    setTab,
-  } = useApp();
+  const walletEnabled = useAppSelector((s) => s.walletEnabled);
+  const walletAddresses = useAppSelector((s) => s.walletAddresses);
+  const walletConfig = useAppSelector((s) => s.walletConfig);
+  const walletBalances = useAppSelector((s) => s.walletBalances);
+  const loadWalletConfig = useAppSelector((s) => s.loadWalletConfig);
+  const loadBalances = useAppSelector((s) => s.loadBalances);
+  const setTab = useAppSelector((s) => s.setTab);
 
   useEffect(() => {
     if (walletEnabled === false) return;
@@ -195,10 +193,14 @@ export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
   const solanaAddress = walletAddresses?.solanaAddress ?? null;
   const evmShort = shortenAddress(evmAddress);
   const solanaShort = shortenAddress(solanaAddress);
-  const evmChains = normalizeEvmChainKeys([
-    ...(walletConfig?.evmChains ?? []),
-    ...(walletBalances?.evm?.chains.map((chain) => chain.chain) ?? []),
-  ]);
+  const evmChains = useMemo(
+    () =>
+      normalizeEvmChainKeys([
+        ...(walletConfig?.evmChains ?? []),
+        ...(walletBalances?.evm?.chains.map((chain) => chain.chain) ?? []),
+      ]),
+    [walletConfig?.evmChains, walletBalances],
+  );
 
   const walletSummary = useMemo(() => {
     let assetCount = 0;

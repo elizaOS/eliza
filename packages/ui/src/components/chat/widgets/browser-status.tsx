@@ -10,12 +10,13 @@
  */
 
 import { Globe } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   type BrowserWorkspaceSnapshot,
   type BrowserWorkspaceTab,
   client,
 } from "../../../api";
+import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { useApp } from "../../../state";
 import { WidgetSection } from "./shared";
 import type { ChatSidebarWidgetProps } from "./types";
@@ -62,30 +63,21 @@ export function BrowserStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
     null,
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    async function poll() {
-      try {
-        const next = await client.getBrowserWorkspace();
-        if (cancelled) return;
-        setSnapshot(next);
-      } catch {
-        // Transient errors — keep the last snapshot.
-      } finally {
-        if (!cancelled) {
-          timer = setTimeout(poll, POLL_INTERVAL_MS);
-        }
-      }
+  const poll = useCallback(async () => {
+    try {
+      const next = await client.getBrowserWorkspace();
+      setSnapshot(next);
+    } catch {
+      // Transient errors — keep the last snapshot.
     }
-
-    void poll();
-    return () => {
-      cancelled = true;
-      if (timer !== null) clearTimeout(timer);
-    };
   }, []);
+
+  useEffect(() => {
+    void poll();
+  }, [poll]);
+  // Poll only while the document is visible — don't drain battery/network
+  // re-fetching the workspace every 4s in a backgrounded app/tab.
+  useIntervalWhenDocumentVisible(() => void poll(), POLL_INTERVAL_MS);
 
   const tabs = snapshot?.tabs ?? [];
   if (tabs.length === 0) {

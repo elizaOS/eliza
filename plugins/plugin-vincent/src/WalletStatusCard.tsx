@@ -6,7 +6,7 @@ import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
 import { Button, StatusBadge } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Check, Copy, Layers3, Network, Wallet } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 
 interface WalletStatusCardProps {
   walletAddresses: WalletAddresses | null;
@@ -92,7 +92,7 @@ function isNonDust(valueUsd: string): boolean {
   return Number.isFinite(n) && n >= 0.01;
 }
 
-export function WalletStatusCard({
+export const WalletStatusCard = memo(function WalletStatusCard({
   walletAddresses,
   walletBalances,
   setActionNotice,
@@ -263,4 +263,4 @@ export function WalletStatusCard({
       )}
     </div>
   );
-}
+});

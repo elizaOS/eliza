@@ -2,8 +2,9 @@ import { useEffect } from "react";
 import { SHARE_TARGET_EVENT } from "../../events";
 import type { ShareTargetPayload } from "../../platform/init";
 
+import { useAppSelector } from "../../state/app-store";
+import type { AppContextValue } from "../../state/internal";
 import type { ActionNotice } from "../../state/types";
-import { useApp } from "../../state/useApp";
 import { CompanionGlobalOverlay as GlobalEmoteOverlay } from "../companion/injected";
 import { Spinner } from "../ui/spinner";
 import { BugReportModal } from "./BugReportModal";
@@ -44,12 +45,18 @@ function formatSharePayload(payload: ShareTargetPayload): string {
   return fileNames.length > 0 ? fileNames.join(", ") : "";
 }
 
+const selectTab = (s: AppContextValue) => s.tab;
+const selectSetState = (s: AppContextValue) => s.setState;
+const selectSetActionNotice = (s: AppContextValue) => s.setActionNotice;
+
 export function ShellOverlays({
   actionNotice,
 }: {
   actionNotice: ActionNotice | null;
 }) {
-  const { tab, setState, setActionNotice } = useApp();
+  const tab = useAppSelector(selectTab);
+  const setState = useAppSelector(selectSetState);
+  const setActionNotice = useAppSelector(selectSetActionNotice);
 
   useEffect(() => {
     const handlePayload = (payload: ShareTargetPayload) => {
