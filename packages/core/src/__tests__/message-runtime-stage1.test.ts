@@ -1021,7 +1021,10 @@ android smoke model works`,
 		// immediately — no second model call — even though a usable response is
 		// queued behind it.
 		const runtime = makeRuntime(
-			["", stage1Response({ contexts: ["simple"], replyText: "never reached" })],
+			[
+				"",
+				stage1Response({ contexts: ["simple"], replyText: "never reached" }),
+			],
 			{ ELIZA_RESPONSE_HANDLER_EMPTY_RETRIES: "0" },
 		);
 
@@ -1078,7 +1081,10 @@ android smoke model works`,
 		// throw "Unexpected useModel call", but assert the count explicitly so a
 		// regression that re-adds the regen is caught directly.
 		const runtime = makeRuntime([
-			stage1Response({ contexts: ["simple"], replyText: "The answer is four." }),
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "The answer is four.",
+			}),
 		]);
 
 		const result = await runV5MessageRuntimeStage1({

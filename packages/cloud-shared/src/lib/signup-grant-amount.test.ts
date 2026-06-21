@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { DEFAULT_INITIAL_CREDITS, getInitialCredits } from "./steward-sync";
 import { INITIAL_FREE_CREDITS } from "./services/wallet-signup";
+import { DEFAULT_INITIAL_CREDITS, getInitialCredits } from "./steward-sync";
 
 /**
  * #8427 — the signup welcome-bonus amount ($5) is defined independently in TWO

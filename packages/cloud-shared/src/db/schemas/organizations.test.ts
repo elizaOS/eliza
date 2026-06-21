@@ -1,5 +1,5 @@
-import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, test } from "bun:test";
+import { getTableConfig } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 
 /**

@@ -11,65 +11,65 @@ import type { IAgentRuntime } from "../types/runtime";
  * and ship silently.
  */
 function makeRuntime(opts: {
-  hasModel: boolean;
-  embeddingDimension?: string | number;
+	hasModel: boolean;
+	embeddingDimension?: string | number;
 }): { runtime: IAgentRuntime; ensureDim: ReturnType<typeof vi.fn> } {
-  const ensureDim = vi.fn(async () => true);
-  const runtime = {
-    agentId: "00000000-0000-0000-0000-000000000001",
-    adapter: { ensureEmbeddingDimension: ensureDim },
-    getModel: vi.fn(() => (opts.hasModel ? async () => [] : undefined)),
-    getSetting: vi.fn((key: string) =>
-      key === "EMBEDDING_DIMENSION" ? opts.embeddingDimension : undefined,
-    ),
-  } as unknown as IAgentRuntime;
-  return { runtime, ensureDim };
+	const ensureDim = vi.fn(async () => true);
+	const runtime = {
+		agentId: "00000000-0000-0000-0000-000000000001",
+		adapter: { ensureEmbeddingDimension: ensureDim },
+		getModel: vi.fn(() => (opts.hasModel ? async () => [] : undefined)),
+		getSetting: vi.fn((key: string) =>
+			key === "EMBEDDING_DIMENSION" ? opts.embeddingDimension : undefined,
+		),
+	} as unknown as IAgentRuntime;
+	return { runtime, ensureDim };
 }
 
 describe("ensureEmbeddingDimension (#8769 boot probe)", () => {
-  it("skips when no TEXT_EMBEDDING model is registered", async () => {
-    const { runtime, ensureDim } = makeRuntime({
-      hasModel: false,
-      embeddingDimension: "1536",
-    });
-    await ensureEmbeddingDimension(runtime);
-    expect(ensureDim).not.toHaveBeenCalled();
-  });
+	it("skips when no TEXT_EMBEDDING model is registered", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: false,
+			embeddingDimension: "1536",
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).not.toHaveBeenCalled();
+	});
 
-  it("skips when EMBEDDING_DIMENSION is non-numeric", async () => {
-    const { runtime, ensureDim } = makeRuntime({
-      hasModel: true,
-      embeddingDimension: "abc",
-    });
-    await ensureEmbeddingDimension(runtime);
-    expect(ensureDim).not.toHaveBeenCalled();
-  });
+	it("skips when EMBEDDING_DIMENSION is non-numeric", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: "abc",
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).not.toHaveBeenCalled();
+	});
 
-  it("skips when EMBEDDING_DIMENSION is <= 0", async () => {
-    const { runtime, ensureDim } = makeRuntime({
-      hasModel: true,
-      embeddingDimension: "0",
-    });
-    await ensureEmbeddingDimension(runtime);
-    expect(ensureDim).not.toHaveBeenCalled();
-  });
+	it("skips when EMBEDDING_DIMENSION is <= 0", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: "0",
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).not.toHaveBeenCalled();
+	});
 
-  it("snaps the column to the configured dimension when a model + valid dim are present", async () => {
-    const { runtime, ensureDim } = makeRuntime({
-      hasModel: true,
-      embeddingDimension: "1536",
-    });
-    await ensureEmbeddingDimension(runtime);
-    expect(ensureDim).toHaveBeenCalledTimes(1);
-    expect(ensureDim).toHaveBeenCalledWith(1536);
-  });
+	it("snaps the column to the configured dimension when a model + valid dim are present", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: "1536",
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).toHaveBeenCalledTimes(1);
+		expect(ensureDim).toHaveBeenCalledWith(1536);
+	});
 
-  it("accepts a numeric EMBEDDING_DIMENSION setting", async () => {
-    const { runtime, ensureDim } = makeRuntime({
-      hasModel: true,
-      embeddingDimension: 768,
-    });
-    await ensureEmbeddingDimension(runtime);
-    expect(ensureDim).toHaveBeenCalledWith(768);
-  });
+	it("accepts a numeric EMBEDDING_DIMENSION setting", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: 768,
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).toHaveBeenCalledWith(768);
+	});
 });

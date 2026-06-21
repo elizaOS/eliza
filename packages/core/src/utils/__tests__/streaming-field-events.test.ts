@@ -288,7 +288,10 @@ describe("ResponseSkeletonStreamExtractor", () => {
 		expect(chunks).toEqual([]);
 		expect(extractor.done).toBe(true);
 		expect(events).toContainEqual(
-			expect.objectContaining({ eventType: "error", error: "Cancelled by user" }),
+			expect.objectContaining({
+				eventType: "error",
+				error: "Cancelled by user",
+			}),
 		);
 	});
 
@@ -318,7 +321,9 @@ describe("ResponseSkeletonStreamExtractor", () => {
 		expect(chunks.length).toBe(chunkCountBeforeAbort);
 		expect(extractor.done).toBe(true);
 		expect(
-			events.filter((e) => e.eventType === "error" && e.error === "Cancelled by user"),
+			events.filter(
+				(e) => e.eventType === "error" && e.error === "Cancelled by user",
+			),
 		).toHaveLength(1);
 
 		// A further push after abort must NOT emit a duplicate error event.

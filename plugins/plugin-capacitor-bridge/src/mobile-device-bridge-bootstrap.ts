@@ -66,13 +66,34 @@ const ELIZA_1_LOAD_METADATA: Record<
 		mtp?: { draftMin: number; draftMax: number };
 	}
 > = {
-	"eliza-1-0_8b": { contextSize: 131072, mtp: SAME_FILE_MTP_DRAFT },
+	// 0.8b is the low-memory NON-MTP path: it carries no usable NextN draft
+	// head (per native/AGENTS.md §1 "MTP ships on 2B and larger tiers"), so
+	// draft stays 0 and the device runs the plain decode loop.
+	"eliza-1-0_8b": { contextSize: 131072 },
 	"eliza-1-2b": { contextSize: 131072, mtp: SAME_FILE_MTP_DRAFT },
 	"eliza-1-4b": { contextSize: 65536, mtp: SAME_FILE_MTP_DRAFT },
 	"eliza-1-9b": { contextSize: 65536, mtp: SAME_FILE_MTP_DRAFT },
 	"eliza-1-27b": { contextSize: 131072, mtp: SAME_FILE_MTP_DRAFT },
 	"eliza-1-27b-256k": { contextSize: 262144, mtp: SAME_FILE_MTP_DRAFT },
 };
+
+// Native bionic-host override for the same-file MTP draft window. When
+// ELIZA_BIONIC_MTP is set this forces speculative decoding on/off regardless
+// of the tier default above (the JNI keystone path reads the same env). "0"/
+// "false"/"no"/"off" → force OFF; "1"/"true"/"yes"/"on" → force ON; absent →
+// fall back to the tier default. Mirrors arm_bionic_text_cfg() in
+// elizavoice-jni.cpp.
+function bionicMtpOverride(): boolean | undefined {
+	const raw = process.env.ELIZA_BIONIC_MTP?.trim().toLowerCase();
+	if (!raw) return undefined;
+	if (raw === "0" || raw === "false" || raw === "no" || raw === "off") {
+		return false;
+	}
+	if (raw === "1" || raw === "true" || raw === "yes" || raw === "on") {
+		return true;
+	}
+	return undefined;
+}
 
 type GenerateTextHandler = (
 	runtime: IAgentRuntime,
@@ -827,12 +848,23 @@ export function buildLoadArgsFromRegistryModel(model: {
 	const eliza1 = ELIZA_1_LOAD_METADATA[model.id];
 	if (eliza1) {
 		args.contextSize = eliza1.contextSize;
-		if (eliza1.mtp) {
-			// Same-file MTP: enable the draft window so the device's llama.cpp
-			// binding runs speculative decoding off the embedded NextN head. No
-			// `draftModelPath` — the head lives in the text GGUF already.
-			args.draftMin = eliza1.mtp.draftMin;
-			args.draftMax = eliza1.mtp.draftMax;
+		// Fused QJL K-cache / TBQ3 V-cache KV-quant — matches
+		// CatalogModel.runtime.kvCache (catalog.ts) and arm_bionic_text_cfg()
+		// in elizavoice-jni.cpp. Gated by ELIZA_BIONIC_KV_QUANT (default ON now
+		// that the fused QJL attention route is verified); "0" leaves f16.
+		if (process.env.ELIZA_BIONIC_KV_QUANT?.trim() !== "0") {
+			args.cacheTypeK = "qjl1_256";
+			args.cacheTypeV = "tbq3_0";
+		}
+		// Same-file MTP draft window for the tier's NextN head. The tier table
+		// already excludes 0.8b (no NextN head). ELIZA_BIONIC_MTP forces it
+		// on/off regardless of the tier default.
+		const mtpOverride = bionicMtpOverride();
+		const mtpEnabled = mtpOverride ?? eliza1.mtp !== undefined;
+		if (mtpEnabled) {
+			const draft = eliza1.mtp ?? SAME_FILE_MTP_DRAFT;
+			args.draftMin = draft.draftMin;
+			args.draftMax = draft.draftMax;
 			args.mobileSpeculative = true;
 		}
 	}

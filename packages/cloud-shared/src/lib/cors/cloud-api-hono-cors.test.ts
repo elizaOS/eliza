@@ -204,8 +204,6 @@ describe("corsMiddleware + secureHeaders chain on a raw Response.json passthroug
       headers: { Origin: "https://www.elizacloud.ai" },
     });
     expect(res.status).toBe(200);
-    expect(res.headers.get("access-control-allow-origin")).toBe(
-      "https://www.elizacloud.ai",
-    );
+    expect(res.headers.get("access-control-allow-origin")).toBe("https://www.elizacloud.ai");
   });
 });

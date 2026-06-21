@@ -156,20 +156,27 @@ describe("ElizaClient agent streaming transport", () => {
     // The 2nd read pends until the test releases it — so if onToken('a') has
     // fired by then, the consumer is genuinely incremental (not buffering the
     // whole reply). Every existing test delivers all events in ONE read.
-    let releaseSecond: (value: { done: boolean; value?: Uint8Array }) => void = () => {};
-    const secondRead = new Promise<{ done: boolean; value?: Uint8Array }>((resolve) => {
-      releaseSecond = resolve;
-    });
+    let releaseSecond: (value: { done: boolean; value?: Uint8Array }) => void =
+      () => {};
+    const secondRead = new Promise<{ done: boolean; value?: Uint8Array }>(
+      (resolve) => {
+        releaseSecond = resolve;
+      },
+    );
     const read = vi
       .fn()
       .mockResolvedValueOnce({
         done: false,
-        value: encoder.encode('data: {"type":"token","text":"a","fullText":"a"}\n\n'),
+        value: encoder.encode(
+          'data: {"type":"token","text":"a","fullText":"a"}\n\n',
+        ),
       })
       .mockImplementationOnce(() => secondRead)
       .mockResolvedValueOnce({
         done: false,
-        value: encoder.encode('data: {"type":"done","fullText":"ab","agentName":"Eliza"}\n\n'),
+        value: encoder.encode(
+          'data: {"type":"done","fullText":"ab","agentName":"Eliza"}\n\n',
+        ),
       })
       .mockRejectedValueOnce(new Error("read after terminal event"));
     const request = vi.fn(async () => {
@@ -196,7 +203,9 @@ describe("ElizaClient agent streaming transport", () => {
     // Release the 2nd chunk (token 'b'); the stream then completes on the done event.
     releaseSecond({
       done: false,
-      value: encoder.encode('data: {"type":"token","text":"b","fullText":"ab"}\n\n'),
+      value: encoder.encode(
+        'data: {"type":"token","text":"b","fullText":"ab"}\n\n',
+      ),
     });
 
     const result = await resultPromise;

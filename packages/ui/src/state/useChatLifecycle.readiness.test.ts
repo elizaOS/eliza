@@ -1,5 +1,5 @@
-import type { AgentStatus } from "../api";
 import { describe, expect, it } from "vitest";
+import type { AgentStatus } from "../api";
 import { shouldAwaitAgentReadiness } from "./types";
 
 /**
@@ -24,7 +24,9 @@ describe("shouldAwaitAgentReadiness (#8777 waking-up banner)", () => {
 
   it("keeps polling while a running agent reports canRespond:false", () => {
     expect(
-      shouldAwaitAgentReadiness(status({ state: "running", canRespond: false })),
+      shouldAwaitAgentReadiness(
+        status({ state: "running", canRespond: false }),
+      ),
     ).toBe(true);
   });
 

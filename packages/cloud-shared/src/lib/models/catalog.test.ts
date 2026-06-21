@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
   annotateCatalogModel,
   BITROUTER_RECOMMENDED_TEXT_MODEL,
+  type CatalogModel,
   CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
   CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
-  type CatalogModel,
   FALLBACK_TEXT_SELECTOR_MODELS,
   STATIC_TEXT_CATALOG_MODELS,
 } from "./catalog";

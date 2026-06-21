@@ -392,6 +392,65 @@ void cleanup_session_for_selftest(PipelineSession* s, EliInferenceContext* ctx) 
     if (ctx) eliza_inference_destroy(ctx);
 }
 
+// True unless the env var is explicitly "0"/"false"/"no"/"off" (case-insensitive).
+// Absent / unrecognized → the `fallback`.
+bool bionic_bool_env_or_default(const char* name, bool fallback) {
+    const char* v = std::getenv(name);
+    if (!v || v[0] == '\0') return fallback;
+    std::string s(v);
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    if (s == "0" || s == "false" || s == "no" || s == "off") return false;
+    if (s == "1" || s == "true" || s == "yes" || s == "on") return true;
+    return fallback;
+}
+
+// Arm the eliza-1 text-model bionic config: the fused QJL K-cache /
+// TBQ3 V-cache KV-quant (so the device actually uses the fused QJL attention
+// route verified on lavapipe) and the same-file MTP draft window.
+//
+// KV-quant: ON by default (ELIZA_BIONIC_KV_QUANT != 0). Sets
+//   cache_type_k = "qjl1_256" (256-dim JL sketch matching quants-qjl.c's
+//                              process-global default Π, seed=42, head_dim=128)
+//   cache_type_v = "tbq3_0"   (TurboQuant-3 V-cache)
+// matching CatalogModel.runtime.kvCache (catalog.ts). When set to 0 the fields
+// stay NULL → the FFI leaves the llama.cpp f16 default (safe fallback).
+//
+// MTP: OFF by default (no NextN draft on the keystone path). When
+//   ELIZA_BIONIC_MTP=1 the same-file MTP draft window is armed
+//   (draft_min/draft_max from ELIZA_BIONIC_MTP_DRAFT_MIN/MAX, default 1/2 =
+//   the single-NextN-head throughput peak). The 0.8b tier has no NextN head,
+//   so the FFI's same-file MTP path falls back to the plain decode loop there —
+//   tier gating is the bootstrap's job (ELIZA_1_LOAD_METADATA); this is the
+//   native override seam.
+//
+// The two static names below outlive the cfg they're attached to (cfg is a
+// stack struct consumed synchronously by eliza_inference_llm_stream_open).
+void arm_bionic_text_cfg(eliza_llm_stream_config_t& cfg) {
+    static const char* kKvTypeK = "qjl1_256";
+    static const char* kKvTypeV = "tbq3_0";
+    if (bionic_bool_env_or_default("ELIZA_BIONIC_KV_QUANT", true)) {
+        cfg.cache_type_k = kKvTypeK;
+        cfg.cache_type_v = kKvTypeV;
+        LOGI("bionic text cfg: KV-quant ON (k=%s v=%s)", kKvTypeK, kKvTypeV);
+    } else {
+        LOGI("bionic text cfg: KV-quant OFF (f16 fallback)");
+    }
+
+    if (bionic_bool_env_or_default("ELIZA_BIONIC_MTP", false)) {
+        const char* dmin = std::getenv("ELIZA_BIONIC_MTP_DRAFT_MIN");
+        const char* dmax = std::getenv("ELIZA_BIONIC_MTP_DRAFT_MAX");
+        int draft_min = dmin && dmin[0] ? std::atoi(dmin) : 1;
+        int draft_max = dmax && dmax[0] ? std::atoi(dmax) : 2;
+        if (draft_min < 1) draft_min = 1;
+        if (draft_max < draft_min) draft_max = draft_min;
+        cfg.draft_min = draft_min;
+        cfg.draft_max = draft_max;
+        LOGI("bionic text cfg: MTP ON (draft_min=%d draft_max=%d, same-file)",
+             draft_min, draft_max);
+    }
+}
+
 }  // namespace
 
 extern "C" {
@@ -1163,6 +1222,17 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamOpen(
     cfg.repeat_penalty = 1.0f;
     cfg.n_gpu_layers = nGpuLayers;
     cfg.mtp_drafter_path = drafter.empty() ? nullptr : drafter.c_str();
+    // Arm the fused QJL/TBQ3 KV-quant + (env-gated) same-file MTP draft window.
+    // A caller-supplied drafter path is separate-drafter MTP and needs its own
+    // draft window — only arm the same-file MTP env override when no drafter
+    // was passed.
+    arm_bionic_text_cfg(cfg);
+    if (!drafter.empty() && cfg.draft_min <= 0) {
+        // Separate drafter supplied but env left the window 0; give it the
+        // single-head default so the drafter actually drives speculation.
+        cfg.draft_min = 1;
+        cfg.draft_max = 2;
+    }
     char* outError = nullptr;
     EliLlmStream* s = eliza_inference_llm_stream_open(ctx, &cfg, &outError);
     if (!s) {
@@ -1288,6 +1358,9 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
     cfg.top_p = 1.0f;
     cfg.repeat_penalty = 1.0f;
     cfg.n_gpu_layers = -1;   // all-GPU when the vulkan lib is staged
+    // Arm the fused QJL/TBQ3 KV-quant + (env-gated) same-file MTP draft window
+    // so the keystone generation path exercises the fused QJL attention route.
+    arm_bionic_text_cfg(cfg);
     EliLlmStream* s = eliza_inference_llm_stream_open(ctx, &cfg, &outError);
     if (!s) {
         if (tok) eliza_inference_free_tokens(tok);
