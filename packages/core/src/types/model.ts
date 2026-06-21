@@ -58,6 +58,14 @@ export const ModelType = {
 	RESPONSE_HANDLER: "RESPONSE_HANDLER",
 	ACTION_PLANNER: "ACTION_PLANNER",
 	TEXT_EMBEDDING: "TEXT_EMBEDDING",
+	/**
+	 * Batch text embedding: one model call embeds N texts in a single request.
+	 * Providers that support a batched embeddings endpoint (e.g. `input: string[]`)
+	 * register this so callers that have many texts ready (the embedding-drain
+	 * service) avoid N serial single-text round-trips. Falls back to N×
+	 * {@link ModelType.TEXT_EMBEDDING} when a provider does not register it.
+	 */
+	TEXT_EMBEDDING_BATCH: "TEXT_EMBEDDING_BATCH",
 	TEXT_TOKENIZER_ENCODE: "TEXT_TOKENIZER_ENCODE",
 	TEXT_TOKENIZER_DECODE: "TEXT_TOKENIZER_DECODE",
 	TEXT_REASONING_SMALL: "REASONING_SMALL",
@@ -804,6 +812,13 @@ export interface TextEmbeddingParams {
 }
 
 /**
+ * Parameters for batch text embedding models — embed many texts in one call.
+ */
+export interface BatchTextEmbeddingParams {
+	texts: string[];
+}
+
+/**
  * Parameters for image generation models
  */
 export interface ImageGenerationParams {
@@ -1148,6 +1163,7 @@ export interface ModelParamsMap {
 	[ModelType.TEXT_REASONING_SMALL]: GenerateTextParams;
 	[ModelType.TEXT_REASONING_LARGE]: GenerateTextParams;
 	[ModelType.TEXT_EMBEDDING]: TextEmbeddingParams | string | null;
+	[ModelType.TEXT_EMBEDDING_BATCH]: BatchTextEmbeddingParams;
 	[ModelType.TEXT_TOKENIZER_ENCODE]: TokenizeTextParams;
 	[ModelType.TEXT_TOKENIZER_DECODE]: DetokenizeTextParams;
 	[ModelType.IMAGE]: ImageGenerationParams;
@@ -1182,6 +1198,7 @@ export interface ModelResultMap {
 	[ModelType.TEXT_REASONING_SMALL]: string;
 	[ModelType.TEXT_REASONING_LARGE]: string;
 	[ModelType.TEXT_EMBEDDING]: number[];
+	[ModelType.TEXT_EMBEDDING_BATCH]: number[][];
 	[ModelType.TEXT_TOKENIZER_ENCODE]: number[];
 	[ModelType.TEXT_TOKENIZER_DECODE]: string;
 	[ModelType.IMAGE]: ImageGenerationResult[];
