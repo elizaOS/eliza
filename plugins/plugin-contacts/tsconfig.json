@@ -48,6 +48,12 @@
       "@elizaos/vault/*": ["../../packages/vault/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/plugin-agent-skills": [
+        "../../plugins/plugin-agent-skills/src/index.ts"
+      ],
+      "@elizaos/plugin-agent-skills/*": [
+        "../../plugins/plugin-agent-skills/src/*"
+      ],
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
       ],
