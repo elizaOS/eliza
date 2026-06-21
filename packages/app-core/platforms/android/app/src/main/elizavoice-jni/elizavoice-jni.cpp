@@ -1357,4 +1357,56 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
     return to_jstring(env, json);
 }
 
+// ── Kokoro TTS (ABI v10) ─────────────────────────────────────────────────
+// Synthesize speech in-process via the fused Kokoro-82M head. This is what lets
+// the Android app speak with the real on-device voice instead of falling back to
+// the platform TextToSpeech: TalkMode (this bionic process) → bionic host "tts"
+// op → here. Returns a float[] of 24 kHz PCM (the model's native rate).
+
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSampleRate(JNIEnv*, jclass,
+                                                            jlong ctxHandle) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    return ctx ? eliza_inference_kokoro_sample_rate(ctx) : -1;
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesize(JNIEnv* env, jclass,
+                                                            jlong ctxHandle,
+                                                            jstring jGguf,
+                                                            jstring jVoiceBin,
+                                                            jstring jText,
+                                                            jfloat speed) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    if (!ctx) {
+        throw_runtime(env, "kokoroSynthesize: null context", nullptr);
+        return nullptr;
+    }
+    const std::string gguf = from_jstring(env, jGguf);
+    const std::string voiceBin = from_jstring(env, jVoiceBin);
+    const std::string text = from_jstring(env, jText);
+    char* err = nullptr;
+    // style_dim 256 for Kokoro v1.0. Reloads only when the model/voice changed
+    // (the FFI caches the resident model + voice preset).
+    if (eliza_inference_kokoro_load(ctx, gguf.c_str(), voiceBin.c_str(), 256, &err) != 0) {
+        throw_runtime(env, "kokoro_load failed", err);
+        return nullptr;
+    }
+    // Cap at 30 s @ 24 kHz — far longer than any single reply phrase.
+    const size_t cap = 24000u * 30u;
+    std::vector<float> pcm(cap);
+    err = nullptr;
+    int n = eliza_inference_kokoro_synthesize(
+        ctx, text.c_str(), text.size(), speed, pcm.data(), cap, &err);
+    if (n < 0) {
+        throw_runtime(env, "kokoro_synthesize failed", err);
+        return nullptr;
+    }
+    jfloatArray out = env->NewFloatArray(n);
+    if (!out) return nullptr;
+    env->SetFloatArrayRegion(out, 0, n, pcm.data());
+    LOGI("nativeKokoroSynthesize: %zu chars -> %d samples", text.size(), n);
+    return out;
+}
+
 }  // extern "C"

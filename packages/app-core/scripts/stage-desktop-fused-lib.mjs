@@ -145,6 +145,37 @@ function rpathCmakeFlags() {
   ];
 }
 
+/**
+ * CUDA target architectures. `-arch=native` (ggml's default) requires nvcc to
+ * query the live GPU at BUILD time — which fails in headless/background builds
+ * ("Cannot find valid GPU for '-arch=native'") and silently bakes a fallback
+ * arch that omits the host GPU, so at runtime CUDA reports "no CUDA-capable
+ * device" and the lib drops to CPU. Detect the real compute capability from
+ * nvidia-smi instead (e.g. 12.0 → "120"), with a broad modern fallback list.
+ */
+function cudaArchitectures() {
+  const explicit = process.env.ELIZA_CUDA_ARCHITECTURES?.trim();
+  if (explicit) return explicit;
+  const res = spawnSync(
+    "nvidia-smi",
+    ["--query-gpu=compute_cap", "--format=csv,noheader"],
+    { encoding: "utf8" },
+  );
+  if (res.status === 0 && typeof res.stdout === "string") {
+    const caps = [
+      ...new Set(
+        res.stdout
+          .split(/\r?\n/)
+          .map((l) => l.trim().replace(".", ""))
+          .filter((c) => /^\d+$/.test(c)),
+      ),
+    ];
+    if (caps.length) return caps.join(";");
+  }
+  // Fallback: Turing → Blackwell real archs + PTX for forward compat.
+  return "75-real;80-real;86-real;89-real;90-real;120-real;120-virtual";
+}
+
 function backendCmakeFlags(backend) {
   switch (backend) {
     case "metal":
@@ -155,7 +186,10 @@ function backendCmakeFlags(backend) {
         "-DGGML_ACCELERATE=ON",
       ];
     case "cuda":
-      return ["-DGGML_CUDA=ON"];
+      return [
+        "-DGGML_CUDA=ON",
+        `-DCMAKE_CUDA_ARCHITECTURES=${cudaArchitectures()}`,
+      ];
     case "vulkan":
       return ["-DGGML_VULKAN=ON"];
     case "hip":

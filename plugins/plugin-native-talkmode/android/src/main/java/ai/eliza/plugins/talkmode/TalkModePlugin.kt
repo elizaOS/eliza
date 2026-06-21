@@ -32,7 +32,14 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import kotlinx.coroutines.*
+import android.net.LocalSocket
+import android.net.LocalSocketAddress
 import java.io.BufferedInputStream
+import java.io.ByteArrayInputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -54,6 +61,10 @@ class TalkModePlugin : Plugin() {
         private const val DEFAULT_MODEL_ID = "eleven_flash_v2_5"
         private const val DEFAULT_OUTPUT_FORMAT = "pcm_24000"
         private const val LOCAL_INFERENCE_TTS_URL = "http://127.0.0.1:31337/api/tts/local-inference"
+        // Abstract-namespace UDS of ElizaBionicInferenceServer (the bionic app
+        // process that has libelizainference loaded). Kept in sync with
+        // BIONIC_INFERENCE_SOCKET_NAME in ElizaAgentService.
+        private const val BIONIC_INFER_SOCKET = "eliza_bionic_infer_v1"
         // 16 kHz mono is the rate VAD / diarizer / wake-word models expect; 20 ms
         // (320 samples) is the standard VAD frame size.
         private const val DEFAULT_FRAME_SAMPLE_RATE = 16000
@@ -1204,6 +1215,12 @@ class TalkModePlugin : Plugin() {
         directive: JSObject?
     ) = withContext(Dispatchers.IO) {
         pcmStopRequested.set(false)
+        // Prefer the in-process fused Kokoro voice via the bionic inference host.
+        // Only if that host is unreachable (e.g. desktop/Electrobun, or a build
+        // without it) do we fall through to the HTTP agent endpoint.
+        if (streamAndPlayBionicKokoroTts(text, directive)) {
+            return@withContext
+        }
         val conn = openLocalInferenceTtsConnection()
         activePcmConnection = conn
         try {
@@ -1244,6 +1261,90 @@ class TalkModePlugin : Plugin() {
                 activePcmConnection = null
             }
             conn.disconnect()
+        }
+    }
+
+    /**
+     * Synthesize + play with the fused Kokoro-82M head in the bionic inference
+     * host (ElizaBionicInferenceServer, op "tts") over its abstract-namespace
+     * UDS. The host loads the same libelizainference that runs GPU text and
+     * synthesizes Kokoro PCM in-process — no musl agent, no HTTP, no 502 → no
+     * fallback to the platform TextToSpeech (the bug this fixes: the app was
+     * speaking with the Android system voice). Returns true on success; false if
+     * the host is unreachable so the caller can fall through.
+     */
+    private suspend fun streamAndPlayBionicKokoroTts(
+        text: String,
+        directive: JSObject?
+    ): Boolean = withContext(Dispatchers.IO) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return@withContext false
+        val speed = (directive?.optDouble("speed", 1.0) ?: 1.0).toFloat()
+        val sock = LocalSocket()
+        try {
+            sock.connect(
+                LocalSocketAddress(BIONIC_INFER_SOCKET, LocalSocketAddress.Namespace.ABSTRACT)
+            )
+        } catch (e: Exception) {
+            Log.d(TAG, "bionic Kokoro TTS host unreachable: ${e.message}")
+            try { sock.close() } catch (_: Exception) {}
+            return@withContext false
+        }
+        try {
+            val req = JSONObject().apply {
+                put("op", "tts")
+                put("text", trimmed)
+                put("speed", speed.toDouble())
+            }.toString().toByteArray(Charsets.UTF_8)
+            DataOutputStream(sock.outputStream).apply {
+                writeInt(req.size) // big-endian length prefix
+                write(req)
+                flush()
+            }
+            val din = DataInputStream(sock.inputStream)
+            val len = din.readInt()
+            if (len <= 0 || len > 64 * 1024 * 1024) {
+                throw IllegalStateException("bionic TTS bad frame length $len")
+            }
+            val respBytes = ByteArray(len)
+            din.readFully(respBytes)
+            val resp = JSONObject(String(respBytes, Charsets.UTF_8))
+            if (!resp.optBoolean("ok", false)) {
+                throw IllegalStateException("bionic TTS error: ${resp.optString("error")}")
+            }
+            val sampleRate = resp.optInt("sampleRate", 24000)
+            val pcmF32 = Base64.decode(resp.getString("pcmBase64"), Base64.NO_WRAP)
+            // fp32 LE → int16 PCM (the play path is ENCODING_PCM_16BIT).
+            val fb = ByteBuffer.wrap(pcmF32).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
+            val nSamples = fb.remaining()
+            if (nSamples == 0) {
+                throw IllegalStateException("bionic TTS returned 0 samples")
+            }
+            val pcm16 = ByteArray(nSamples * 2)
+            val ob = ByteBuffer.wrap(pcm16).order(ByteOrder.LITTLE_ENDIAN)
+            for (i in 0 until nSamples) {
+                val s = (fb.get(i) * 32767f).coerceIn(-32768f, 32767f).toInt().toShort()
+                ob.putShort(s)
+            }
+            val format = PcmStreamFormat(sampleRate, 1, 16, pcm16.size)
+            val track = createPcmAudioTrack(format)
+            pcmTrack = track
+            track.play()
+            notifyListeners("playbackStart", JSObject().apply {
+                put("provider", "local-inference")
+                put("sampleRate", sampleRate)
+                put("channels", 1)
+            })
+            val framesWritten = writePcmStreamToTrack(
+                BufferedInputStream(ByteArrayInputStream(pcm16)), track, format
+            )
+            drainPcmTrack(track, framesWritten, sampleRate)
+            if (!pcmStopRequested.get()) track.stop()
+            Log.d(TAG, "bionic Kokoro TTS played $nSamples samples @ $sampleRate Hz")
+            true
+        } finally {
+            cleanupPcmTrack()
+            try { sock.close() } catch (_: Exception) {}
         }
     }
 
