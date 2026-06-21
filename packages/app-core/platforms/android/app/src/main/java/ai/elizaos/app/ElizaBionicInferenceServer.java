@@ -161,8 +161,13 @@ final class ElizaBionicInferenceServer {
             int maxTokens = req.optInt("maxTokens", 256);
             Log.i(TAG, "GENERATE from agent: " + prompt.length() + " prompt chars,"
                 + " maxTokens=" + maxTokens + ", bundle=" + bundleDir);
-            // Buffered slice: nativeLlmSelfTest runs the whole greedy decode on
-            // the GPU and returns {ok,text,tokens,ms,tokS} — pass it straight back.
+            // nativeLlmSelfTest creates a FRESH context per call (clean KV) and
+            // runs the proven greedy decode on the GPU, returning {ok,text,tokens,
+            // ms,tokS}. Context REUSE (keep the model resident to skip the cold
+            // load) is the perf follow-up — it needs a fork FFI change to reset
+            // the stream KV between generations (stream_open does NOT clear the
+            // slot-0 KV, so a reused ctx contaminates the 2nd+ turn). Correctness
+            // first: a fresh ctx is slower (~5 s) but always produces clean text.
             String result = ElizaVoiceNative.nativeLlmSelfTest(bundleDir, prompt, maxTokens);
             Log.i(TAG, "GENERATE result: "
                 + (result.length() > 200 ? result.substring(0, 200) + "…" : result));
