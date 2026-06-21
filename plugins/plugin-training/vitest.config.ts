@@ -128,7 +128,12 @@ export default defineConfig({
   test: {
     ...baseConfig.test,
     environment: "node",
-    include: ["test/**/*.test.ts", "src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: [
+      "test/**/*.test.ts",
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "scripts/**/*.test.ts",
+    ],
     exclude: unitExcludes,
     globals: false,
     passWithNoTests: true,

@@ -22,6 +22,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { matchViewCommand } from "../../plugin-app-control/src/actions/view-command-matcher.ts";
 import { resolveIntentView } from "../../plugin-app-control/src/actions/views-show.ts";
 import { extractPlannerView } from "../src/optimizers/scoring.ts";
@@ -39,10 +40,20 @@ const VIEW_IDS = [
 // end-to-end landing.
 const REGISTERED = new Set(VIEW_IDS.filter((v) => v !== "none"));
 
+// Input modality the prompt arrives over. Today every case is typed `text`;
+// `voice` exists so transcribed/dictated prompts can be tracked separately in
+// the grid without changing the scoring path.
+type Modality = "text" | "voice";
+
 interface Case {
   prompt: string;
   expected: string; // expected landed view id, or "none" for no-nav
   kind: "direct" | "passive" | "contextual" | "multilingual" | "negative";
+  // Grid axes. `view` defaults to `expected`, `language` to "en", `modality` to
+  // "text" when omitted; multilingual cases carry an explicit BCP-47 language.
+  view?: string;
+  language?: string;
+  modality?: Modality;
 }
 
 const CASES: Case[] = [
@@ -68,14 +79,25 @@ const CASES: Case[] = [
   { prompt: "i need to fix the login bug in my app", expected: "task-coordinator", kind: "contextual" },
   { prompt: "let's build a new feature for my app", expected: "task-coordinator", kind: "contextual" },
   // multilingual
-  { prompt: "muéstrame mi calendario", expected: "calendar", kind: "multilingual" },
-  { prompt: "abre mi correo", expected: "inbox", kind: "multilingual" },
-  { prompt: "我的钱包", expected: "wallet", kind: "multilingual" },
+  { prompt: "muéstrame mi calendario", expected: "calendar", kind: "multilingual", language: "es" },
+  { prompt: "abre mi correo", expected: "inbox", kind: "multilingual", language: "es" },
+  { prompt: "我的钱包", expected: "wallet", kind: "multilingual", language: "zh" },
   // negatives (must NOT navigate)
   { prompt: "what's the weather like today", expected: "none", kind: "negative" },
   { prompt: "tell me a joke", expected: "none", kind: "negative" },
   { prompt: "what is the capital of France", expected: "none", kind: "negative" },
 ];
+
+// Resolve the grid axes for a case, applying the documented defaults.
+function caseView(c: Case): string {
+  return c.view ?? c.expected;
+}
+function caseLanguage(c: Case): string {
+  return c.language ?? "en";
+}
+function caseModality(c: Case): Modality {
+  return c.modality ?? "text";
+}
 
 const SYSTEM_PROMPT = [
   "You route a user's chat message to an app view, or reply normally.",
@@ -165,6 +187,72 @@ function landedView(prompt: string, action: string, modelView: string): string {
   return "none";
 }
 
+export type GridStatus = "pass" | "fail" | "absent";
+
+// Minimal row shape the grid cross-tabulates over. The verify harness rows are
+// a superset of this; tests build the fixture directly from this interface.
+export interface GridRow {
+  view: string;
+  language: string;
+  modality: string;
+  landedOk: boolean;
+}
+
+export interface GridCell {
+  view: string;
+  language: string;
+  modality: string;
+  status: GridStatus;
+}
+
+export interface ResultGrid {
+  views: string[];
+  languages: string[];
+  modalities: string[];
+  // grid[view][language][modality] -> "pass" | "fail" | "absent". A combo with
+  // no row is "absent"; a combo with any failing row is "fail" (fail dominates).
+  grid: Record<string, Record<string, Record<string, GridStatus>>>;
+  cells: GridCell[];
+}
+
+// Pure, model-free cross-tabulation of result rows into a per-(view, language,
+// modality) pass/fail grid. Every (view × language × modality) combination that
+// appears across the axes gets a cell: "absent" when no row covers it, "fail"
+// when any covering row failed, otherwise "pass".
+export function buildResultGrid(rows: GridRow[]): ResultGrid {
+  const uniqueSorted = (values: string[]): string[] =>
+    [...new Set(values)].sort();
+  const views = uniqueSorted(rows.map((r) => r.view));
+  const languages = uniqueSorted(rows.map((r) => r.language));
+  const modalities = uniqueSorted(rows.map((r) => r.modality));
+
+  const grid: Record<string, Record<string, Record<string, GridStatus>>> = {};
+  const cells: GridCell[] = [];
+  for (const view of views) {
+    grid[view] = {};
+    for (const language of languages) {
+      grid[view][language] = {};
+      for (const modality of modalities) {
+        const covering = rows.filter(
+          (r) =>
+            r.view === view &&
+            r.language === language &&
+            r.modality === modality,
+        );
+        const status: GridStatus =
+          covering.length === 0
+            ? "absent"
+            : covering.every((r) => r.landedOk)
+              ? "pass"
+              : "fail";
+        grid[view][language][modality] = status;
+        cells.push({ view, language, modality, status });
+      }
+    }
+  }
+  return { views, languages, modalities, grid, cells };
+}
+
 async function main() {
   console.log(`[verify] model=${MODEL_LABEL} url=${MODEL_URL} name=${MODEL_NAME}`);
   const rows: Array<{
@@ -196,14 +284,32 @@ async function main() {
   };
   console.log(`\n[verify] ${MODEL_LABEL}: action ${sum("actionOk")}/${n} | rawView ${sum("rawViewOk")}/${n} | LANDED ${sum("landedOk")}/${n}`);
 
+  const grid = buildResultGrid(
+    rows.map((r) => ({
+      view: caseView(r.c),
+      language: caseLanguage(r.c),
+      modality: caseModality(r.c),
+      landedOk: r.landedOk,
+    })),
+  );
+
   const outDir = path.join(process.cwd(), "output", "view-switching-verify");
   mkdirSync(outDir, { recursive: true });
   const stamp = MODEL_LABEL.replace(/[^a-z0-9_-]/gi, "_");
-  writeFileSync(path.join(outDir, `report-${stamp}.json`), JSON.stringify({ summary, rows: rows.map((r) => ({ ...r.c, action: r.action, modelView: r.modelView, landed: r.landed, actionOk: r.actionOk, rawViewOk: r.rawViewOk, landedOk: r.landedOk, err: r.err })) }, null, 2));
+  writeFileSync(path.join(outDir, `report-${stamp}.json`), JSON.stringify({ summary, rows: rows.map((r) => ({ ...r.c, action: r.action, modelView: r.modelView, landed: r.landed, actionOk: r.actionOk, rawViewOk: r.rawViewOk, landedOk: r.landedOk, err: r.err })), grid }, null, 2));
+  const gridCols = grid.languages.flatMap((language) =>
+    grid.modalities.map((modality) => ({ language, modality })),
+  );
+  const gridSym: Record<GridStatus, string> = { pass: "✓", fail: "✗", absent: "·" };
+  const gridTable = `<h2>Grid — view × language × modality</h2>
+<table class=grid><tr><th>view</th>${gridCols.map((col) => `<th>${col.language}·${col.modality}</th>`).join("")}</tr>
+${grid.views.map((view) => `<tr><td>${view}</td>${gridCols.map((col) => { const s = grid.grid[view][col.language][col.modality]; return `<td class=${s} title="${view} / ${col.language} / ${col.modality}: ${s}">${gridSym[s]}</td>`; }).join("")}</tr>`).join("\n")}
+</table>`;
   const html = `<!doctype html><meta charset=utf8><title>view-switching ${MODEL_LABEL}</title>
-<style>body{font:14px system-ui;margin:24px;background:#111;color:#eee}table{border-collapse:collapse;width:100%}td,th{border:1px solid #333;padding:6px 8px;text-align:left}.pass{color:#3c3}.fail{color:#f55}h1{font-size:18px}code{background:#222;padding:1px 4px;border-radius:3px}</style>
+<style>body{font:14px system-ui;margin:24px;background:#111;color:#eee}table{border-collapse:collapse;width:100%;margin-bottom:24px}td,th{border:1px solid #333;padding:6px 8px;text-align:left}.pass{color:#3c3}.fail{color:#f55}.absent{color:#777}table.grid td{text-align:center}h1{font-size:18px}h2{font-size:15px}code{background:#222;padding:1px 4px;border-radius:3px}</style>
 <h1>View-switching verification — ${MODEL_LABEL} (${MODEL_NAME})</h1>
 <p>Landed: <b>${sum("landedOk")}/${n}</b> (${(summary.landedAccuracy * 100).toFixed(0)}%) · Action: ${sum("actionOk")}/${n} · Raw view: ${sum("rawViewOk")}/${n}</p>
+${gridTable}
 <table><tr><th>kind</th><th>prompt</th><th>expected</th><th>action</th><th>model view</th><th>landed</th><th>result</th></tr>
 ${rows.map((r) => `<tr><td>${r.c.kind}</td><td><code>${r.c.prompt}</code></td><td>${r.c.expected}</td><td>${r.action}</td><td>${r.modelView}</td><td>${r.landed}</td><td class=${r.landedOk ? "pass" : "fail"}>${r.landedOk ? "PASS" : "FAIL"}${r.err ? " " + r.err : ""}</td></tr>`).join("\n")}
 </table>`;
@@ -211,4 +317,9 @@ ${rows.map((r) => `<tr><td>${r.c.kind}</td><td><code>${r.c.prompt}</code></td><t
   console.log(`[verify] wrote output/view-switching-verify/report-${stamp}.{json,html}`);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
