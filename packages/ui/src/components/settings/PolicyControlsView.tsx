@@ -30,6 +30,8 @@ import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
+import { SettingsSelectTrigger } from "../ui/settings-controls";
 import { Slider } from "../ui/slider";
 import { Spinner } from "../ui/spinner";
 import { Switch } from "../ui/switch";
@@ -929,7 +931,7 @@ function TimeSection({
     config.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const { ref: fromRef, agentProps: fromAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "policy-time-from",
       role: "select",
       label: t("policycontrols.time.from", { defaultValue: "From" }),
@@ -943,7 +945,7 @@ function TimeSection({
         }),
     });
   const { ref: toRef, agentProps: toAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "policy-time-to",
       role: "select",
       label: t("policycontrols.time.to", { defaultValue: "To" }),
@@ -957,7 +959,7 @@ function TimeSection({
         }),
     });
   const { ref: tzRef, agentProps: tzAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "policy-time-timezone",
       role: "select",
       label: t("policycontrols.time.timezone", { defaultValue: "Timezone" }),
@@ -981,52 +983,62 @@ function TimeSection({
           <Label className="text-xs text-muted">
             {t("policycontrols.time.from", { defaultValue: "From" })}
           </Label>
-          <select
-            ref={fromRef}
-            {...fromAgentProps}
-            value={hours.start}
-            onChange={(e) =>
+          <Select
+            value={String(hours.start)}
+            onValueChange={(v) =>
               onUpdate({
                 ...config,
-                allowedHours: [
-                  { start: Number(e.target.value), end: hours.end },
-                ],
+                allowedHours: [{ start: Number(v), end: hours.end }],
               })
             }
-            className="h-8 rounded-sm border border-border bg-bg px-2 text-xs text-txt"
           >
-            {HOUR_FROM_OPTIONS.map((h) => (
-              <option key={h.key} value={h.value}>
-                {h.label}
-              </option>
-            ))}
-          </select>
+            <SettingsSelectTrigger
+              ref={fromRef}
+              {...fromAgentProps}
+              variant="touch"
+              className="w-full"
+            >
+              <SelectValue />
+            </SettingsSelectTrigger>
+            <SelectContent>
+              {HOUR_FROM_OPTIONS.map((h) => (
+                <SelectItem key={h.key} value={String(h.value)}>
+                  {h.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <span className="text-muted text-xs mt-5">→</span>
         <div className="space-y-1">
           <Label className="text-xs text-muted">
             {t("policycontrols.time.to", { defaultValue: "To" })}
           </Label>
-          <select
-            ref={toRef}
-            {...toAgentProps}
-            value={hours.end}
-            onChange={(e) =>
+          <Select
+            value={String(hours.end)}
+            onValueChange={(v) =>
               onUpdate({
                 ...config,
-                allowedHours: [
-                  { start: hours.start, end: Number(e.target.value) },
-                ],
+                allowedHours: [{ start: hours.start, end: Number(v) }],
               })
             }
-            className="h-8 rounded-sm border border-border bg-bg px-2 text-xs text-txt"
           >
-            {HOUR_TO_OPTIONS.map((h) => (
-              <option key={h.key} value={h.value}>
-                {h.label}
-              </option>
-            ))}
-          </select>
+            <SettingsSelectTrigger
+              ref={toRef}
+              {...toAgentProps}
+              variant="touch"
+              className="w-full"
+            >
+              <SelectValue />
+            </SettingsSelectTrigger>
+            <SelectContent>
+              {HOUR_TO_OPTIONS.map((h) => (
+                <SelectItem key={h.key} value={String(h.value)}>
+                  {h.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -1046,19 +1058,26 @@ function TimeSection({
         <Label className="text-xs text-muted">
           {t("policycontrols.time.timezone", { defaultValue: "Timezone" })}
         </Label>
-        <select
-          ref={tzRef}
-          {...tzAgentProps}
+        <Select
           value={timezone}
-          onChange={(e) => onUpdate({ ...config, timezone: e.target.value })}
-          className="h-8 rounded-sm border border-border bg-bg px-2 text-xs text-txt w-full"
+          onValueChange={(v) => onUpdate({ ...config, timezone: v })}
         >
-          {TIMEZONES.map((tz) => (
-            <option key={tz} value={tz}>
-              {tz}
-            </option>
-          ))}
-        </select>
+          <SettingsSelectTrigger
+            ref={tzRef}
+            {...tzAgentProps}
+            variant="touch"
+            className="w-full"
+          >
+            <SelectValue />
+          </SettingsSelectTrigger>
+          <SelectContent>
+            {TIMEZONES.map((tz) => (
+              <SelectItem key={tz} value={tz}>
+                {tz}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );

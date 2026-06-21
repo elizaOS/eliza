@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import type {
   AgentModelSlot,
@@ -8,7 +9,11 @@ import type {
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
+import { SettingsSelectTrigger } from "../ui/settings-controls";
 import { LOCAL_INFERENCE_SLOT_DESCRIPTORS } from "./slot-metadata";
+
+const PREFERRED_AUTO_VALUE = "__auto__";
 
 const DEFAULT_POLICY: RoutingPolicy = "prefer-local";
 
@@ -193,111 +198,193 @@ export function RoutingMatrix() {
             .filter((r) => r.modelType === modelType)
             .filter((r) => r.provider !== "eliza-router")
             .sort((a, b) => b.priority - a.priority);
-          const policy = preferences.policy[slot] ?? DEFAULT_POLICY;
-          const preferred = preferences.preferredProvider[slot] ?? "";
-          const disabled = busySlots.has(slot);
           return (
-            <div
+            <RoutingSlotRow
               key={slot}
-              className="rounded-sm border border-border bg-card p-3 flex flex-col gap-2"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-sm" title={slot}>
-                  {label}
-                </span>
-                <span
-                  className={`h-2 w-2 rounded-full ${
-                    candidates.length > 0 ? "bg-ok" : "bg-muted"
-                  }`}
-                  title={t("routingmatrix.availableProviders", {
-                    count: candidates.length,
-                    defaultValue: "{{count}} available providers",
-                  })}
-                  aria-hidden
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-muted-foreground">
-                    {t("routingmatrix.policyLabel", { defaultValue: "Policy" })}
-                  </span>
-                  <select
-                    value={policy}
-                    disabled={disabled}
-                    onChange={(e) =>
-                      void handlePolicy(slot, e.target.value as RoutingPolicy)
-                    }
-                    className="rounded-sm border border-border bg-bg/50 px-2 py-1.5 text-sm"
-                  >
-                    {POLICIES.map((p) => (
-                      <option
-                        key={p.value}
-                        value={p.value}
-                        title={t(p.hintKey, { defaultValue: p.hint })}
-                      >
-                        {t(p.labelKey, { defaultValue: p.label })}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-muted-foreground">
-                    {t("routingmatrix.preferredProvider", {
-                      defaultValue: "Preferred provider",
-                    })}
-                    {policy !== "manual" &&
-                      t("routingmatrix.manualOnly", {
-                        defaultValue: " (manual only)",
-                      })}
-                  </span>
-                  <select
-                    value={preferred}
-                    disabled={disabled}
-                    onChange={(e) =>
-                      void handlePreferred(slot, e.target.value || null)
-                    }
-                    className="rounded-sm border border-border bg-bg/50 px-2 py-1.5 text-sm disabled:opacity-60"
-                  >
-                    <option value="">
-                      {t("routingmatrix.auto", { defaultValue: "Auto" })}
-                    </option>
-                    {candidates.map((c) => (
-                      <option key={c.provider} value={c.provider}>
-                        {c.provider}
-                        {typeof c.priority === "number"
-                          ? t("routingmatrix.priority", {
-                              priority: c.priority,
-                              defaultValue: " (priority {{priority}})",
-                            })
-                          : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              {candidates.length === 0 ? (
-                <div className="text-xs text-muted-foreground italic">
-                  {t("routingmatrix.noProvider", {
-                    defaultValue:
-                      "No provider has registered a handler for this slot yet.",
-                  })}
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-1">
-                  {candidates.map((c) => (
-                    <span
-                      key={c.provider}
-                      className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                    >
-                      {c.provider}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
+              slot={slot}
+              label={label}
+              candidates={candidates}
+              policy={preferences.policy[slot] ?? DEFAULT_POLICY}
+              preferred={preferences.preferredProvider[slot] ?? ""}
+              disabled={busySlots.has(slot)}
+              onPolicyChange={handlePolicy}
+              onPreferredChange={handlePreferred}
+            />
           );
         })}
       </div>
     </section>
+  );
+}
+
+interface RoutingSlotRowProps {
+  slot: AgentModelSlot;
+  label: string;
+  candidates: PublicRegistration[];
+  policy: RoutingPolicy;
+  preferred: string;
+  disabled: boolean;
+  onPolicyChange: (slot: AgentModelSlot, policy: RoutingPolicy) => void;
+  onPreferredChange: (slot: AgentModelSlot, provider: string | null) => void;
+}
+
+function RoutingSlotRow({
+  slot,
+  label,
+  candidates,
+  policy,
+  preferred,
+  disabled,
+  onPolicyChange,
+  onPreferredChange,
+}: RoutingSlotRowProps) {
+  const { t } = useTranslation();
+
+  const policyLabel = t("routingmatrix.policyLabel", {
+    defaultValue: "Policy",
+  });
+  const preferredLabel = t("routingmatrix.preferredProvider", {
+    defaultValue: "Preferred provider",
+  });
+
+  const policyAgent = useAgentElement<HTMLButtonElement>({
+    id: `routing-policy-${slot}`,
+    role: "select",
+    label: `${label} ${policyLabel}`,
+    group: "model-routing",
+    status: policy,
+    options: POLICIES.map((p) => p.value),
+    getValue: () => policy,
+    onFill: disabled
+      ? undefined
+      : (next: string) => onPolicyChange(slot, next as RoutingPolicy),
+  });
+
+  const preferredAgent = useAgentElement<HTMLButtonElement>({
+    id: `routing-preferred-${slot}`,
+    role: "select",
+    label: `${label} ${preferredLabel}`,
+    group: "model-routing",
+    status: preferred || undefined,
+    options: candidates.map((c) => c.provider),
+    getValue: () => preferred,
+    onFill: disabled
+      ? undefined
+      : (next: string) => onPreferredChange(slot, next || null),
+  });
+
+  return (
+    <div className="rounded-sm border border-border bg-card p-3 flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium text-sm" title={slot}>
+          {label}
+        </span>
+        <span
+          className={`h-2 w-2 rounded-full ${
+            candidates.length > 0 ? "bg-ok" : "bg-muted"
+          }`}
+          title={t("routingmatrix.availableProviders", {
+            count: candidates.length,
+            defaultValue: "{{count}} available providers",
+          })}
+          aria-hidden
+        />
+      </div>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+        <div className="flex flex-col gap-1 text-xs">
+          <span className="text-muted">{policyLabel}</span>
+          <Select
+            value={policy}
+            disabled={disabled}
+            onValueChange={(value) =>
+              void onPolicyChange(slot, value as RoutingPolicy)
+            }
+          >
+            <SettingsSelectTrigger
+              ref={policyAgent.ref}
+              variant="filter"
+              aria-label={`${label} ${policyLabel}`}
+              {...policyAgent.agentProps}
+            >
+              <SelectValue />
+            </SettingsSelectTrigger>
+            <SelectContent>
+              {POLICIES.map((p) => (
+                <SelectItem
+                  key={p.value}
+                  value={p.value}
+                  title={t(p.hintKey, { defaultValue: p.hint })}
+                >
+                  {t(p.labelKey, { defaultValue: p.label })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1 text-xs">
+          <span className="text-muted">
+            {preferredLabel}
+            {policy !== "manual" &&
+              t("routingmatrix.manualOnly", {
+                defaultValue: " (manual only)",
+              })}
+          </span>
+          <Select
+            value={preferred || PREFERRED_AUTO_VALUE}
+            disabled={disabled}
+            onValueChange={(value) =>
+              void onPreferredChange(
+                slot,
+                value === PREFERRED_AUTO_VALUE ? null : value,
+              )
+            }
+          >
+            <SettingsSelectTrigger
+              ref={preferredAgent.ref}
+              variant="filter"
+              aria-label={`${label} ${preferredLabel}`}
+              {...preferredAgent.agentProps}
+            >
+              <SelectValue />
+            </SettingsSelectTrigger>
+            <SelectContent>
+              <SelectItem value={PREFERRED_AUTO_VALUE}>
+                {t("routingmatrix.auto", { defaultValue: "Auto" })}
+              </SelectItem>
+              {candidates.map((c) => (
+                <SelectItem key={c.provider} value={c.provider}>
+                  {c.provider}
+                  {typeof c.priority === "number"
+                    ? t("routingmatrix.priority", {
+                        priority: c.priority,
+                        defaultValue: " (priority {{priority}})",
+                      })
+                    : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      {candidates.length === 0 ? (
+        <div className="text-xs text-muted italic">
+          {t("routingmatrix.noProvider", {
+            defaultValue:
+              "No provider has registered a handler for this slot yet.",
+          })}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-1">
+          {candidates.map((c) => (
+            <span
+              key={c.provider}
+              className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted"
+            >
+              {c.provider}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

@@ -280,6 +280,7 @@ export function VoiceSection({
 
           <SettingsSegmentedRow
             agentId="voice-section-strategy-select"
+            testId="voice-section-strategy-select"
             icon={Cloud}
             label={t("voicesection.localVsCloud", {
               defaultValue: "Local vs Cloud",

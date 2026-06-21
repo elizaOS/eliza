@@ -16,7 +16,15 @@ import { useApp } from "../../state";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { SettingsInput, SettingsTextarea } from "../ui/settings-controls";
+import { SettingsSelectRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
+
+/**
+ * Sentinel for the "Start from scratch" option. The create flow uses an empty
+ * string to mean "no base app", but Radix Select forbids an empty-string item
+ * value, so we map this sentinel back to "" at the value/onChange boundary.
+ */
+const CREATE_FROM_SCRATCH_VALUE = "__scratch__";
 
 function AppRowActionButton({
   agentId,
@@ -400,18 +408,6 @@ export function AppsManagementSection() {
       getValue: () => createIntent,
       onFill: setCreateIntent,
     });
-  const { ref: createTargetRef, agentProps: createTargetAgentProps } =
-    useAgentElement<HTMLSelectElement>({
-      id: "apps-create-edit-target",
-      role: "select",
-      label: t("settings.sections.apps.basedOnLabel", {
-        defaultValue: "Based on existing app (optional)",
-      }),
-      group: "apps-create",
-      getValue: () => createEditTarget,
-      onFill: setCreateEditTarget,
-      options: ["", ...installed.map((app) => app.name)],
-    });
   const { ref: createSubmitRef, agentProps: createSubmitAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "apps-create-submit",
@@ -568,34 +564,32 @@ export function AppsManagementSection() {
                 {...createIntentAgentProps}
               />
             </SettingsRow>
-            <SettingsRow
-              htmlFor="apps-create-edit-target"
-              stacked
+            <SettingsSelectRow
+              agentId="apps-create-edit-target"
+              group="apps-create"
               label={t("settings.sections.apps.basedOnLabel", {
                 defaultValue: "Based on existing app (optional)",
               })}
-            >
-              <select
-                ref={createTargetRef}
-                id="apps-create-edit-target"
-                value={createEditTarget}
-                disabled={isCreating}
-                onChange={(e) => setCreateEditTarget(e.target.value)}
-                className="block h-11 w-full rounded-md border border-border bg-card px-3 text-sm text-txt transition-colors focus:border-accent focus:outline-none disabled:opacity-50"
-                {...createTargetAgentProps}
-              >
-                <option value="">
-                  {t("settings.sections.apps.basedOnNone", {
+              value={createEditTarget || CREATE_FROM_SCRATCH_VALUE}
+              onValueChange={(value) =>
+                setCreateEditTarget(
+                  value === CREATE_FROM_SCRATCH_VALUE ? "" : value,
+                )
+              }
+              disabled={isCreating}
+              options={[
+                {
+                  value: CREATE_FROM_SCRATCH_VALUE,
+                  label: t("settings.sections.apps.basedOnNone", {
                     defaultValue: "Start from scratch",
-                  })}
-                </option>
-                {installed.map((app) => (
-                  <option key={app.name} value={app.name}>
-                    {app.displayName} ({app.name})
-                  </option>
-                ))}
-              </select>
-            </SettingsRow>
+                  }),
+                },
+                ...installed.map((app) => ({
+                  value: app.name,
+                  label: `${app.displayName} (${app.name})`,
+                })),
+              ]}
+            />
             <SettingsRow label="" stacked>
               <div className="flex items-center gap-2">
                 <Button

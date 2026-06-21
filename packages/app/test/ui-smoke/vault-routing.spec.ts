@@ -147,24 +147,33 @@ test.describe("vault routing deep round-trip", () => {
 
     await ruleForm.getByPlaceholder(/OPENROUTER_/i).fill(ROUTING_KEY);
 
-    // Scope defaults to "agent"; pick the first real agent option.
+    // Scope defaults to "agent"; pick the first real agent option. The scope and
+    // profile pickers are now Radix selects (themed, 44px touch, agent-addressable)
+    // rather than native `<select>`, so they render a portal listbox of
+    // role="option" items instead of `<option>` elements (#8793).
     const agentSelect = ruleForm.locator(
       '[data-agent-id="routing-scope-agent"]',
     );
-    const agentValues = await agentSelect
-      .locator("option")
-      .evaluateAll((els) =>
-        (els as HTMLOptionElement[]).map((o) => o.value).filter(Boolean),
-      );
-    expect(
-      agentValues.length,
+    await agentSelect.click();
+    const agentOptions = page.getByRole("option");
+    await expect(
+      agentOptions.first(),
       "live runtime must expose at least one agent for routing scope",
-    ).toBeGreaterThan(0);
-    await agentSelect.selectOption(agentValues[0] as string);
+    ).toBeVisible({ timeout: 10_000 });
+    await agentOptions.first().click();
 
-    await ruleForm
-      .locator('[data-agent-id="routing-rule-profile"]')
-      .selectOption(PROFILE_ID);
+    await ruleForm.locator('[data-agent-id="routing-rule-profile"]').click();
+    // The profile was created with id `work`; its option label echoes the id when
+    // no display name is set. Match by name, falling back to the last option (the
+    // newly-created profile) if the runtime supplies a different display label.
+    const profileByName = page.getByRole("option", {
+      name: new RegExp(PROFILE_ID, "i"),
+    });
+    if (await profileByName.count()) {
+      await profileByName.first().click();
+    } else {
+      await page.getByRole("option").last().click();
+    }
 
     await ruleForm.getByRole("button", { name: /Save rule/i }).click();
 

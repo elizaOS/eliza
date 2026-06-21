@@ -75,7 +75,7 @@ describe("VoiceSection", () => {
       />,
     );
     const alwaysOn = screen
-      .getByRole("radiogroup")
+      .getByTestId("voice-section-continuous-row")
       .querySelector("button[data-mode='always-on']") as HTMLButtonElement;
     fireEvent.click(alwaysOn);
     expect(onPrefsChange).toHaveBeenCalledTimes(1);
@@ -92,10 +92,10 @@ describe("VoiceSection", () => {
         onPrefsChange={onPrefsChange}
       />,
     );
-    const select = screen.getByTestId(
-      "voice-section-strategy-select",
-    ) as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: "force-cloud" } });
+    const forceCloud = screen
+      .getByTestId("voice-section-strategy-select")
+      .querySelector("button[data-value='force-cloud']") as HTMLButtonElement;
+    fireEvent.click(forceCloud);
     expect(onPrefsChange).toHaveBeenCalled();
     const call = onPrefsChange.mock.calls[0]?.[0] as VoiceSectionPrefs;
     expect(call.strategy).toBe("force-cloud");

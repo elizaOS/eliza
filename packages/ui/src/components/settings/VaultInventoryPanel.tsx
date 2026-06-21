@@ -47,6 +47,8 @@ import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
+import { SettingsSelectTrigger } from "../ui/settings-controls";
 import type { VaultEntryCategory, VaultEntryMeta } from "./vault-tabs/types";
 
 const CATEGORY_LABEL: Record<VaultEntryCategory, string> = {
@@ -1061,7 +1063,7 @@ function AddSecretForm({
       onFill: (v) => setValue(v),
     });
   const { ref: categoryRef, agentProps: categoryAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "vault-add-category",
       role: "select",
       label: "Secret category",
@@ -1191,19 +1193,27 @@ function AddSecretForm({
               defaultValue: "Category",
             })}
           </Label>
-          <select
-            ref={categoryRef}
-            {...categoryAgentProps}
+          <Select
             value={category}
-            onChange={(e) => setCategory(e.target.value as VaultEntryCategory)}
-            className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
+            onValueChange={(value) => setCategory(value as VaultEntryCategory)}
           >
-            {CATEGORY_INPUT_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {t(opt.labelKey, { defaultValue: opt.defaultLabel })}
-              </option>
-            ))}
-          </select>
+            <SettingsSelectTrigger
+              ref={categoryRef}
+              variant="soft"
+              className="block w-full"
+              aria-label="Secret category"
+              {...categoryAgentProps}
+            >
+              <SelectValue />
+            </SettingsSelectTrigger>
+            <SelectContent>
+              {CATEGORY_INPUT_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {t(opt.labelKey, { defaultValue: opt.defaultLabel })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <Label className="text-2xs text-muted">

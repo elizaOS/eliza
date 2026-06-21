@@ -7,13 +7,30 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   type VoiceProfile,
   VoiceProfilesClient,
 } from "../../api/client-voice-profiles";
 import { VoiceProfileSection } from "./VoiceProfileSection";
+
+// Radix Select drives selection through pointer capture and scrolls the
+// active item into view; jsdom implements neither, so stub them once.
+beforeAll(() => {
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = () => false;
+  }
+  if (!Element.prototype.setPointerCapture) {
+    Element.prototype.setPointerCapture = () => {};
+  }
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = () => {};
+  }
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {};
+  }
+});
 
 afterEach(() => {
   cleanup();
@@ -162,10 +179,13 @@ describe("VoiceProfileSection", () => {
       />,
     );
 
-    const select = screen.getByTestId(
-      "voice-profile-relationship-select-g1",
-    ) as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: "wife" } });
+    const trigger = screen.getByTestId("voice-profile-relationship-select-g1");
+    // Radix opens the listbox on keyboard activation, which is deterministic in
+    // jsdom (pointer-driven open relies on pointer capture jsdom can't model).
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    const option = await screen.findByRole("option", { name: "wife" });
+    fireEvent.click(option);
     await waitFor(() => {
       expect(patch).toHaveBeenCalledWith("g1", { relationshipLabel: "wife" });
     });

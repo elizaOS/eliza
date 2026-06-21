@@ -14,6 +14,8 @@ import type {
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
+import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
+import { SettingsSelectTrigger } from "../ui/settings-controls";
 
 export interface VoiceProfileSectionProps {
   /** Adapter supplied by the parent that holds the `ElizaClient`. */
@@ -50,6 +52,14 @@ function relationshipRank(cohort: VoiceProfile["cohort"]): number {
       return 3;
   }
 }
+
+/**
+ * Sentinel for the "(no label)" relationship choice. The profile stores a
+ * relationship as `string | null`; Radix Select forbids an empty-string item
+ * value, so this sentinel stands in for "no relationship" and maps back to
+ * `null` at the value/onChange boundary.
+ */
+const NO_RELATIONSHIP_VALUE = "__none__";
 
 const COMMON_RELATIONSHIPS = [
   "wife",
@@ -106,21 +116,22 @@ function VoiceProfileRow({
       onFill: setRenameValue,
     });
   const { ref: relationshipRef, agentProps: relationshipAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: `voice-profile-relationship-${profile.id}`,
       role: "select",
       label: t("voiceprofile.setRelationship", {
         defaultValue: "Set relationship",
       }),
       group: "voice-profiles-list",
-      getValue: () => profile.relationshipLabel ?? "",
+      getValue: () => profile.relationshipLabel ?? NO_RELATIONSHIP_VALUE,
       onFill: (value) =>
         dispatch({
           type: "set-relationship",
           id: profile.id,
-          relationshipLabel: value || null,
+          relationshipLabel:
+            value && value !== NO_RELATIONSHIP_VALUE ? value : null,
         }),
-      options: ["", ...COMMON_RELATIONSHIPS],
+      options: [NO_RELATIONSHIP_VALUE, ...COMMON_RELATIONSHIPS],
     });
   const { ref: renameBtnRef, agentProps: renameBtnAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -239,32 +250,39 @@ function VoiceProfileRow({
 
       {!profile.isOwner ? (
         <div className="flex items-center gap-1">
-          <select
-            ref={relationshipRef}
-            value={profile.relationshipLabel ?? ""}
-            onChange={(e) =>
+          <Select
+            value={profile.relationshipLabel ?? NO_RELATIONSHIP_VALUE}
+            onValueChange={(value) =>
               dispatch({
                 type: "set-relationship",
                 id: profile.id,
-                relationshipLabel: e.target.value || null,
+                relationshipLabel:
+                  value === NO_RELATIONSHIP_VALUE ? null : value,
               })
             }
-            className="h-11 rounded-md border border-border bg-card px-2 text-xs transition-colors focus:border-accent focus:outline-none"
-            data-testid={`voice-profile-relationship-select-${profile.id}`}
-            aria-label={t("voiceprofile.setRelationship", {
-              defaultValue: "Set relationship",
-            })}
-            {...relationshipAgentProps}
           >
-            <option value="">
-              {t("voiceprofile.noLabel", { defaultValue: "(no label)" })}
-            </option>
-            {COMMON_RELATIONSHIPS.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
+            <SettingsSelectTrigger
+              ref={relationshipRef}
+              variant="soft"
+              data-testid={`voice-profile-relationship-select-${profile.id}`}
+              aria-label={t("voiceprofile.setRelationship", {
+                defaultValue: "Set relationship",
+              })}
+              {...relationshipAgentProps}
+            >
+              <SelectValue />
+            </SettingsSelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_RELATIONSHIP_VALUE}>
+                {t("voiceprofile.noLabel", { defaultValue: "(no label)" })}
+              </SelectItem>
+              {COMMON_RELATIONSHIPS.map((r) => (
+                <SelectItem key={r} value={r}>
+                  {r}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             ref={renameBtnRef}
             type="button"

@@ -18,6 +18,13 @@ import { useTranslation } from "../../../state/TranslationContext.hooks";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "../../ui/select";
+import { SettingsSelectTrigger } from "../../ui/settings-controls";
 import type {
   AgentSummary,
   InstalledApp,
@@ -64,7 +71,7 @@ export function RoutingTab(props: RoutingTabProps) {
   const [rulesFilter, setRulesFilter] = useState("");
 
   const { ref: defaultProfileRef, agentProps: defaultProfileAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "routing-default-profile",
       role: "select",
       label: "Default routing profile",
@@ -101,7 +108,7 @@ export function RoutingTab(props: RoutingTabProps) {
       onFill: (v) => setKeyPattern(v),
     });
   const { ref: scopeKindRef, agentProps: scopeKindAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "routing-scope-kind",
       role: "select",
       label: "Routing scope kind",
@@ -111,7 +118,7 @@ export function RoutingTab(props: RoutingTabProps) {
       onFill: (v) => setScopeKind(v as RoutingScopeKind),
     });
   const { ref: scopeAgentRef, agentProps: scopeAgentAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "routing-scope-agent",
       role: "select",
       label: "Routing scope agent",
@@ -121,7 +128,7 @@ export function RoutingTab(props: RoutingTabProps) {
       onFill: (v) => setScopeAgentId(v),
     });
   const { ref: scopeAppRef, agentProps: scopeAppAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "routing-scope-app",
       role: "select",
       label: "Routing scope app",
@@ -131,7 +138,7 @@ export function RoutingTab(props: RoutingTabProps) {
       onFill: (v) => setScopeAppName(v),
     });
   const { ref: ruleProfileRef, agentProps: ruleProfileAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "routing-rule-profile",
       role: "select",
       label: "Routing rule profile",
@@ -317,21 +324,28 @@ export function RoutingTab(props: RoutingTabProps) {
               })}
             </p>
           </div>
-          <select
-            ref={defaultProfileRef}
-            {...defaultProfileAgentProps}
+          <Select
             value={config.defaultProfile ?? "default"}
-            onChange={(e) => void onDefaultProfileChange(e.target.value)}
+            onValueChange={(value) => void onDefaultProfileChange(value)}
             disabled={saving}
-            data-testid="routing-default-profile"
-            className="block h-8 w-40 rounded-sm border border-border bg-bg px-2 text-xs text-txt"
           >
-            {allProfileIds.map((id) => (
-              <option key={id} value={id}>
-                {id}
-              </option>
-            ))}
-          </select>
+            <SettingsSelectTrigger
+              ref={defaultProfileRef}
+              {...defaultProfileAgentProps}
+              variant="filter"
+              data-testid="routing-default-profile"
+              className="w-40"
+            >
+              <SelectValue />
+            </SettingsSelectTrigger>
+            <SelectContent>
+              {allProfileIds.map((id) => (
+                <SelectItem key={id} value={id}>
+                  {id}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </section>
 
@@ -425,22 +439,29 @@ export function RoutingTab(props: RoutingTabProps) {
                 <Label className="text-2xs text-muted">
                   {t("routing.field.scope", { defaultValue: "Scope" })}
                 </Label>
-                <select
-                  ref={scopeKindRef}
-                  {...scopeKindAgentProps}
+                <Select
                   value={scopeKind}
-                  onChange={(e) =>
-                    setScopeKind(e.target.value as RoutingScopeKind)
+                  onValueChange={(value) =>
+                    setScopeKind(value as RoutingScopeKind)
                   }
-                  className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
                 >
-                  <option value="agent">
-                    {t("routing.scope.agent", { defaultValue: "Agent" })}
-                  </option>
-                  <option value="app">
-                    {t("routing.scope.app", { defaultValue: "App" })}
-                  </option>
-                </select>
+                  <SettingsSelectTrigger
+                    ref={scopeKindRef}
+                    {...scopeKindAgentProps}
+                    variant="touch"
+                    className="w-full"
+                  >
+                    <SelectValue />
+                  </SettingsSelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="agent">
+                      {t("routing.scope.agent", { defaultValue: "Agent" })}
+                    </SelectItem>
+                    <SelectItem value="app">
+                      {t("routing.scope.app", { defaultValue: "App" })}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label className="text-2xs text-muted">
@@ -449,68 +470,85 @@ export function RoutingTab(props: RoutingTabProps) {
                     : t("routing.scope.app", { defaultValue: "App" })}
                 </Label>
                 {scopeKind === "agent" ? (
-                  <select
-                    ref={scopeAgentRef}
-                    {...scopeAgentAgentProps}
-                    value={scopeAgentId}
-                    onChange={(e) => setScopeAgentId(e.target.value)}
-                    className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
-                    required
+                  <Select
+                    value={scopeAgentId || undefined}
+                    onValueChange={(value) => setScopeAgentId(value)}
                   >
-                    <option value="">
-                      {t("routing.selectAgent", {
-                        defaultValue: "Select agent…",
-                      })}
-                    </option>
-                    {agents.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
+                    <SettingsSelectTrigger
+                      ref={scopeAgentRef}
+                      {...scopeAgentAgentProps}
+                      variant="touch"
+                      className="w-full"
+                    >
+                      <SelectValue
+                        placeholder={t("routing.selectAgent", {
+                          defaultValue: "Select agent…",
+                        })}
+                      />
+                    </SettingsSelectTrigger>
+                    <SelectContent>
+                      {agents.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 ) : (
-                  <select
-                    ref={scopeAppRef}
-                    {...scopeAppAgentProps}
-                    value={scopeAppName}
-                    onChange={(e) => setScopeAppName(e.target.value)}
-                    className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
-                    required
+                  <Select
+                    value={scopeAppName || undefined}
+                    onValueChange={(value) => setScopeAppName(value)}
                   >
-                    <option value="">
-                      {t("routing.selectApp", { defaultValue: "Select app…" })}
-                    </option>
-                    {apps.map((a) => (
-                      <option key={a.name} value={a.name}>
-                        {a.displayName ?? a.name}
-                      </option>
-                    ))}
-                  </select>
+                    <SettingsSelectTrigger
+                      ref={scopeAppRef}
+                      {...scopeAppAgentProps}
+                      variant="touch"
+                      className="w-full"
+                    >
+                      <SelectValue
+                        placeholder={t("routing.selectApp", {
+                          defaultValue: "Select app…",
+                        })}
+                      />
+                    </SettingsSelectTrigger>
+                    <SelectContent>
+                      {apps.map((a) => (
+                        <SelectItem key={a.name} value={a.name}>
+                          {a.displayName ?? a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
               <div>
                 <Label className="text-2xs text-muted">
                   {t("routing.field.profile", { defaultValue: "Profile" })}
                 </Label>
-                <select
-                  ref={ruleProfileRef}
-                  {...ruleProfileAgentProps}
-                  value={profileId}
-                  onChange={(e) => setProfileId(e.target.value)}
-                  className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
-                  required
+                <Select
+                  value={profileId || undefined}
+                  onValueChange={(value) => setProfileId(value)}
                 >
-                  <option value="">
-                    {t("routing.selectProfile", {
-                      defaultValue: "Select profile…",
-                    })}
-                  </option>
-                  {profilesForNewRule.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
+                  <SettingsSelectTrigger
+                    ref={ruleProfileRef}
+                    {...ruleProfileAgentProps}
+                    variant="touch"
+                    className="w-full"
+                  >
+                    <SelectValue
+                      placeholder={t("routing.selectProfile", {
+                        defaultValue: "Select profile…",
+                      })}
+                    />
+                  </SettingsSelectTrigger>
+                  <SelectContent>
+                    {profilesForNewRule.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-1">

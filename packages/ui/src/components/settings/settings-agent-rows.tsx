@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
+import { cn } from "../../lib/utils";
 import { Button, type ButtonProps } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
 import {
@@ -10,7 +11,6 @@ import {
   SettingsSelectTrigger,
   SettingsTextarea,
 } from "../ui/settings-controls";
-import { cn } from "../../lib/utils";
 import { Switch } from "../ui/switch";
 import { SettingsRow } from "./settings-layout";
 
@@ -186,6 +186,8 @@ export interface SettingsSegmentedRowProps {
   disabled?: boolean;
   group?: string;
   className?: string;
+  /** Optional stable test id, applied to the segmented group container. */
+  testId?: string;
 }
 
 /**
@@ -208,6 +210,7 @@ export function SettingsSegmentedRow({
   disabled = false,
   group = "settings",
   className,
+  testId,
 }: SettingsSegmentedRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { ref, agentProps } = useAgentElement<HTMLDivElement>({
@@ -234,17 +237,21 @@ export function SettingsSegmentedRow({
         ref={ref}
         role="radiogroup"
         aria-label={resolvedLabel}
+        data-testid={testId}
         className={cn("w-full", className)}
         {...agentProps}
       >
         {options.map((option) => {
           const active = option.value === value;
           return (
+            // biome-ignore lint/a11y/useSemanticElements: a themed segmented button keeps its custom styling + agent-surface wiring; a native input[type=radio] would lose them.
             <button
               key={option.value}
               type="button"
               role="radio"
               aria-checked={active}
+              data-value={option.value}
+              data-active={active ? "true" : "false"}
               disabled={disabled}
               onClick={() => onValueChange(option.value)}
               className={cn(

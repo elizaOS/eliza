@@ -11,7 +11,6 @@ import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
 import { useApp } from "../../state";
 import { PagePanel } from "../composites/page-panel";
-import { ErrorBoundary } from "../ui/error-boundary";
 import {
   SettingsGroup,
   SettingsRow,
@@ -28,6 +27,7 @@ import {
   settingsSectionLabel,
   settingsSectionTitle,
 } from "../settings/settings-sections";
+import { ErrorBoundary } from "../ui/error-boundary";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 type Translate = (key: string, vars?: Record<string, unknown>) => string;

@@ -20,6 +20,9 @@ import { SettingsView } from "./SettingsView";
 // their own tests). The useApp + section-registry mocks are the seams this
 // refactor must keep stable.
 const appMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
+// Controls whether the deliberately-throwing "crash" section throws on render,
+// so a single test can flip it off and assert the per-section retry recovers.
+const crashControl = vi.hoisted(() => ({ shouldThrow: true }));
 const stubSections = vi.hoisted(() => [
   {
     id: "identity",
@@ -41,6 +44,16 @@ const stubSections = vi.hoisted(() => [
     titleKey: "settings.sections.runtime.label",
     defaultTitle: "Runtime",
   },
+  {
+    id: "crash",
+    label: "settings.sections.crash.label",
+    defaultLabel: "Crash",
+    tone: "neutral",
+    hue: "slate",
+    group: "system",
+    titleKey: "settings.sections.crash.label",
+    defaultTitle: "Crash",
+  },
 ]);
 
 vi.mock("../../state", () => ({ useApp: () => appMock.value }));
@@ -49,9 +62,21 @@ vi.mock("../settings/settings-sections", () => {
   const sections = stubSections.map((section) => ({
     ...section,
     icon: Settings,
-    Component: () => (
-      <div data-testid={`stub-${section.id}`}>{section.defaultLabel} body</div>
-    ),
+    Component:
+      section.id === "crash"
+        ? () => {
+            if (crashControl.shouldThrow) {
+              throw new Error("crash section blew up on mount");
+            }
+            return (
+              <div data-testid="stub-crash">{section.defaultLabel} body</div>
+            );
+          }
+        : () => (
+            <div data-testid={`stub-${section.id}`}>
+              {section.defaultLabel} body
+            </div>
+          ),
   }));
   return {
     SECTION_HUE_MEDALLION_CLASS: { accent: "", amber: "", rose: "", slate: "" },
@@ -89,6 +114,7 @@ function makeContext(
 
 beforeEach(() => {
   appMock.value = makeContext();
+  crashControl.shouldThrow = true;
 });
 
 afterEach(() => cleanup());
@@ -141,6 +167,45 @@ describe("SettingsView", () => {
     // Both tiles are visible again and no section body is mounted.
     expect(screen.getByText("Basics")).toBeTruthy();
     expect(screen.queryByTestId("stub-runtime")).toBeNull();
+  });
+
+  it("isolates a throwing section behind a per-section error boundary", () => {
+    // React logs the caught render error to console.error; silence it so the
+    // test output stays clean while still exercising the boundary.
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      render(<SettingsView initialSection="crash" />);
+
+      // The section body crashed, but the shell did NOT blank: the inline
+      // per-section fallback renders and the nav back-affordance stays usable.
+      expect(screen.getByTestId("settings-section-error")).toBeTruthy();
+      expect(screen.queryByTestId("stub-crash")).toBeNull();
+      expect(screen.getByText("Settings")).toBeTruthy();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("recovers the section when retry is pressed after the cause is fixed", () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      render(<SettingsView initialSection="crash" />);
+      expect(screen.getByTestId("settings-section-error")).toBeTruthy();
+
+      // The underlying cause is resolved, then the user hits Retry.
+      crashControl.shouldThrow = false;
+      fireEvent.click(screen.getByText("Retry"));
+
+      // The boundary resets and the real section body now renders.
+      expect(screen.getByTestId("stub-crash")).toBeTruthy();
+      expect(screen.queryByTestId("settings-section-error")).toBeNull();
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("on desktop, shows a persistent rail with a section selected in the pane", () => {

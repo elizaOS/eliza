@@ -1,6 +1,7 @@
 /**
  * Settings tabs navigation component with responsive design.
- * Supports desktop tab list and mobile dropdown selection.
+ * Desktop renders a bordered tab list; mobile renders a horizontally
+ * scrollable pill strip exposing every tab without a dropdown.
  *
  * @param props - Settings tabs configuration
  * @param props.activeTab - Currently active tab
@@ -9,13 +10,6 @@
 
 "use client";
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui";
 import {
   BarChart3,
   Building2,
@@ -57,54 +51,42 @@ export function SettingsTabs({ activeTab, onTabChange }: SettingsTabsProps) {
     return null;
   }
 
-  const activeTabData = tabs.find((tab) => tab.id === activeTab);
-
   return (
     <>
-      {/* Mobile Dropdown */}
-      <div className="block md:hidden w-full mb-6">
-        <Select
-          value={activeTab}
-          onValueChange={(value) => onTabChange(value as SettingsTab)}
-        >
-          <SelectTrigger className="w-full h-12 rounded-sm border border-brand-surface bg-[rgba(0,0,0,0.4)] text-white">
-            <SelectValue>
-              <div className="flex items-center gap-2">
-                {activeTabData && (
-                  <>
-                    <activeTabData.icon className="h-4 w-4" />
-                    {activeTabData.label}
-                  </>
-                )}
-              </div>
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent className="bg-[#1A1A1A] border-brand-surface">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <SelectItem
-                  key={tab.id}
-                  value={tab.id}
-                  className="text-white cursor-pointer hover:bg-[rgba(255,255,255,0.07)] focus:bg-[rgba(255,255,255,0.07)]"
-                >
-                  <div className="flex items-center gap-2">
-                    <Icon className="h-4 w-4" />
-                    {tab.label}
-                  </div>
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
+      {/* Mobile pill strip — horizontally scrollable, all tabs reachable */}
+      <div className="flex md:hidden w-full mb-6 gap-2 overflow-x-auto">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => onTabChange(tab.id)}
+              className={cn(
+                "flex shrink-0 items-center gap-2 rounded-sm px-4 py-2",
+                "border border-brand-surface",
+                "transition-colors duration-200",
+                isActive
+                  ? "bg-white/10 text-white"
+                  : "text-muted-foreground hover:bg-white/5",
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              <span className="text-sm font-medium font-mono tracking-tight whitespace-nowrap">
+                {tab.label}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Desktop Tabs */}
       <div className="hidden md:flex border-l border-t border-brand-surface items-start w-full overflow-x-auto">
-        {tabs.map((tab, index) => {
+        {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
-          const _isLast = index === tabs.length - 1;
 
           return (
             <button
@@ -116,20 +98,20 @@ export function SettingsTabs({ activeTab, onTabChange }: SettingsTabsProps) {
                 "border-b border-r border-brand-surface",
                 "transition-all duration-200",
                 isActive
-                  ? "bg-[rgba(255,255,255,0.07)] border-b-2 border-b-white"
-                  : "hover:bg-[rgba(255,255,255,0.03)]",
+                  ? "bg-white/10 border-b-2 border-b-white"
+                  : "hover:bg-white/5",
               )}
             >
               <Icon
                 className={cn(
                   "h-4 w-4",
-                  isActive ? "text-white" : "text-[#A2A2A2]",
+                  isActive ? "text-white" : "text-muted-foreground",
                 )}
               />
               <span
                 className={cn(
                   "text-sm font-medium font-mono tracking-tight",
-                  isActive ? "text-white" : "text-[#A2A2A2]",
+                  isActive ? "text-white" : "text-muted-foreground",
                 )}
               >
                 {tab.label}
