@@ -42,6 +42,15 @@ export interface BatchQueueOptions<T> {
 	drainIntervalMs: number;
 	getPriority: (item: T) => QueuePriority;
 	process: (item: T) => Promise<void>;
+	/**
+	 * Optional batched processor. When provided, a drain calls this ONCE with the
+	 * whole dequeued slice (so a provider that supports a batched request — e.g.
+	 * embeddings — sends one call instead of N). If it throws, the drain falls
+	 * back to the per-item {@link process} path, so all retry / `onExhausted`
+	 * semantics are preserved for failures. Existing per-item callers that don't
+	 * set this are completely unaffected.
+	 */
+	processBatch?: (items: T[]) => Promise<BatchItemOutcome<T>[]>;
 	maxParallel?: number;
 	maxRetriesAfterFailure?: number;
 	retryPolicy?: RetryConfig;
@@ -135,7 +144,18 @@ export class BatchQueue<T> {
 			if (batch.length === 0) {
 				return;
 			}
-			const outcomes = await this.batchProcessor.processBatch(batch);
+			// Prefer the batched processor when provided; on ANY batch-wide failure
+			// fall back to the per-item path so retry / onExhausted still apply.
+			let outcomes: BatchItemOutcome<T>[];
+			if (this.options.processBatch) {
+				try {
+					outcomes = await this.options.processBatch(batch);
+				} catch {
+					outcomes = await this.batchProcessor.processBatch(batch);
+				}
+			} else {
+				outcomes = await this.batchProcessor.processBatch(batch);
+			}
 			try {
 				this.options.onDrainBatchOutcomes?.(outcomes);
 			} catch {
