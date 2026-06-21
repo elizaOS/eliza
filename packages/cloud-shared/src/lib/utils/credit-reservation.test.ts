@@ -96,4 +96,69 @@ describe("createCreditReservationSettler", () => {
     expect(calls).toBe(2);
     expect(result).toEqual(fakeResult);
   });
+
+  // Streaming-path invariants (cloud-api v1/chat/completions/route.ts).
+  // handleStreamingRequest's streamText callbacks share ONE settler:
+  //   onFinish success → settleReservation(billing.totalCost)
+  //   onFinish throw    → settleReservation(0)
+  //   onAbort           → settleReservation(0)
+  // The once-guard guarantees the actual cost is settled exactly once even
+  // when these fire in either order, so a thrown onFinish or a late onAbort
+  // can never refund/double-settle a stream that already billed.
+
+  test("settle(0) releases without re-billing once a real cost is settled (onFinish-then-abort)", async () => {
+    const reconciledCosts: number[] = [];
+    const reservation = makeReservation(async (cost) => {
+      reconciledCosts.push(cost);
+      return fakeResult;
+    });
+
+    const settle = createCreditReservationSettler(reservation);
+
+    // onFinish bills the real usage…
+    const finished = await settle(0.0042);
+    // …then a late onAbort fires with the release amount.
+    const aborted = await settle(0);
+
+    // reconcile ran exactly once, with the real cost — the abort's 0 is a no-op.
+    expect(reconciledCosts).toEqual([0.0042]);
+    expect(finished).toEqual(fakeResult);
+    expect(aborted).toEqual(fakeResult);
+  });
+
+  test("abort-then-finish: first settlement wins, second is a no-op", async () => {
+    const reconciledCosts: number[] = [];
+    const reservation = makeReservation(async (cost) => {
+      reconciledCosts.push(cost);
+      return fakeResult;
+    });
+
+    const settle = createCreditReservationSettler(reservation);
+
+    // onAbort releases first…
+    const aborted = await settle(0);
+    // …a racing onFinish then tries to bill the real cost.
+    const finished = await settle(0.0042);
+
+    // Still a single settlement — the abort's release is authoritative.
+    expect(reconciledCosts).toEqual([0]);
+    expect(aborted).toEqual(fakeResult);
+    expect(finished).toEqual(fakeResult);
+  });
+
+  test("settle(0) on a no-op (anonymous) reservation releases without billing", async () => {
+    // createAnonymousReservation() returns a reservation whose reconcile is a
+    // void no-op; the onAbort settleReservation(0) path must not throw.
+    let calls = 0;
+    const reservation = makeReservation(async () => {
+      calls++;
+      return undefined as unknown as CreditReconciliationResult;
+    });
+
+    const settle = createCreditReservationSettler(reservation);
+    const result = await settle(0);
+
+    expect(calls).toBe(1);
+    expect(result).toBeNull();
+  });
 });
