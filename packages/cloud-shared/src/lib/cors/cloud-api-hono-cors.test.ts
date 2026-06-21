@@ -10,6 +10,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
+import { secureHeaders } from "hono/secure-headers";
 import { corsMiddleware, isFirstPartyOrigin, isPublicTokenApiPath } from "./cloud-api-hono-cors";
 
 function appWithCors() {
@@ -165,5 +166,46 @@ describe("corsMiddleware — no Origin (non-browser caller)", () => {
   test("still sets Access-Control-Allow-Origin so c.res is touched (invariant)", async () => {
     const res = await req("GET", null);
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
+  });
+});
+
+describe("corsMiddleware + secureHeaders chain on a raw Response.json passthrough", () => {
+  // The real failure mode the no-Origin '*' invariant guards: corsMiddleware
+  // THEN secureHeaders (the bootstrap-app.ts order) over a handler that returns
+  // a raw `Response.json(...)` (NOT `c.json`). If CORS does not touch `c.res` on
+  // a no-Origin request, the raw Response's headers stay immutable and
+  // secureHeaders throws "Can't modify immutable headers" → 500 (the bug that
+  // broke /api/v1/voice/* for Bearer-token, no-Origin callers). The unit test
+  // above only used `c.json` (mutable) and never registered secureHeaders, so it
+  // could not reproduce this; this one does.
+  function appWithCorsAndSecureHeaders() {
+    const app = new Hono();
+    app.use("*", corsMiddleware);
+    app.use("*", secureHeaders());
+    app.get("/api/v1/voice/raw", () => Response.json({ ok: true }));
+    return app;
+  }
+
+  test("no-Origin (Bearer) request to a raw-Response route returns 200, not an immutable-headers 500", async () => {
+    const app = appWithCorsAndSecureHeaders();
+    const res = await app.request("/api/v1/voice/raw", { method: "GET" });
+    expect(res.status).toBe(200);
+    // CORS wrote ACAO even with no Origin, so secureHeaders could mutate headers.
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    // secureHeaders actually ran (its header is present, not blocked by a throw).
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  test("the same raw-Response route still works for a first-party Origin", async () => {
+    const app = appWithCorsAndSecureHeaders();
+    const res = await app.request("/api/v1/voice/raw", {
+      method: "GET",
+      headers: { Origin: "https://www.elizacloud.ai" },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBe(
+      "https://www.elizacloud.ai",
+    );
   });
 });
