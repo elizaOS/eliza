@@ -1101,7 +1101,17 @@ function flattenChatParamsForPrompt(params: GenerateTextParams): string {
 // matches ElizaBionicInferenceServer.java + BionicHostLoader.ts:
 // [int32 BE length][UTF-8 JSON] each direction.
 
-const BIONIC_REQUEST_TIMEOUT_MS = 120_000;
+// The bionic host does a SINGLE blocking generate per call (no streaming), so
+// the whole decode must finish inside this window. On a CPU-only build (the
+// Vulkan lib isn't staged) a 0.8B model runs at only a few tok/s, so a longer
+// reply (~200+ tokens) blew past the old 120s cap → "bionic host timed out", the
+// turn fell back to an empty/failed reply, and an empty trajectory was recorded.
+// Default to 300s (the other native device-bridge ops already use 600s) and let
+// it be tuned via env for slower devices.
+const BIONIC_REQUEST_TIMEOUT_MS = readTimeoutMs(
+	"ELIZA_BIONIC_REQUEST_TIMEOUT_MS",
+	300_000,
+);
 const BIONIC_MAX_FRAME_BYTES = 64 * 1024 * 1024;
 
 interface BionicGenerateResponse {
@@ -1111,6 +1121,8 @@ interface BionicGenerateResponse {
 	tokens?: number;
 	ms?: number;
 	tokS?: number;
+	embedding?: number[];
+	dim?: number;
 }
 
 /** Abstract-namespace socket name set by ElizaAgentService, or null. */
@@ -1376,6 +1388,26 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 				`[mobile-device-bridge] No local GGUF embedding model resolved for ${modelsDir()}.`,
 			);
 		}
+
+		// GPU delegation: embed on the in-process bionic host (--pooling last over
+		// the fused text model), bypassing the device-bridge. This is what makes
+		// on-device memory + doc-seeding run locally instead of failing over to
+		// cloud BatchEmbeddings (401 on a fresh local install).
+		const bionicSock = bionicSocketName();
+		if (bionicSock) {
+			const res = await bionicHostGenerate(bionicSock, {
+				op: "embed",
+				bundleDir: deriveBionicBundleDir(loadArgs.modelPath),
+				text: extractEmbeddingText(params),
+			});
+			if (!res.ok || !Array.isArray(res.embedding)) {
+				throw new Error(
+					`[mobile-device-bridge] bionic embed failed: ${res.error ?? "no embedding"}`,
+				);
+			}
+			return res.embedding;
+		}
+
 		await mobileDeviceBridge.loadModel(loadArgs);
 		return mobileDeviceBridge.embed({
 			input: extractEmbeddingText(params),
