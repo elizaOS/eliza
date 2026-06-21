@@ -180,6 +180,22 @@ function finalFilename(model: CatalogModel): string {
 	return `${safe}.gguf`;
 }
 
+/**
+ * HuggingFace bearer token for gated/metered repos, read from the same env
+ * aliases the embedding manager uses (HF_TOKEN / HUGGINGFACE_TOKEN /
+ * HF_HUB_TOKEN). Returns `{}` when unset so public repos are unaffected. The
+ * resolve endpoints for gated bundles (e.g. the Eliza-1 mono-repo) 401 without
+ * it, so weight + bundle downloads MUST forward it.
+ */
+function huggingFaceAuthHeader(): Record<string, string> {
+	const token =
+		process.env.HF_TOKEN?.trim() ||
+		process.env.HUGGINGFACE_TOKEN?.trim() ||
+		process.env.HF_HUB_TOKEN?.trim() ||
+		"";
+	return token ? { authorization: `Bearer ${token}` } : {};
+}
+
 function bundleDirname(modelId: string): string {
 	const safe = modelId.replace(/[^a-zA-Z0-9._-]/g, "_");
 	return `${safe}.bundle`;
@@ -497,6 +513,7 @@ export class Downloader {
 
 			const headers: Record<string, string> = {
 				"user-agent": "Eliza-LocalInference/1.0",
+				...huggingFaceAuthHeader(),
 			};
 			if (startByte > 0) {
 				headers.range = `bytes=${startByte}-`;
@@ -789,6 +806,7 @@ export class Downloader {
 
 		const headers: Record<string, string> = {
 			"user-agent": "Eliza-LocalInference/1.0",
+			...huggingFaceAuthHeader(),
 		};
 		if (startByte > 0) {
 			headers.range = `bytes=${startByte}-`;

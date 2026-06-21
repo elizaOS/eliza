@@ -29,6 +29,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { resolveStateDir } from "@elizaos/core";
+
 import type { BackendPlan } from "./backend";
 import type {
 	FfiBackendRuntime,
@@ -60,6 +62,9 @@ function fusedLibraryFilenames(): string[] {
  *   1. `ELIZA_INFERENCE_LIBRARY` — an explicit absolute path.
  *   2. `<bundleRoot>/lib/<name>` — the bundle-local lib.
  *   3. `ELIZA_INFERENCE_LIB_DIR/<name>` — an explicit lib directory.
+ *   4. `<stateDir>/local-inference/lib/<name>` — the default staging dir written
+ *      by `scripts/stage-desktop-fused-lib.mjs`, so a staged desktop build is
+ *      found with no env wiring.
  * Returns null when none of the candidates exist on disk — `supported()` then
  * reports unavailable and the engine raises LocalInferenceUnavailable.
  */
@@ -73,6 +78,7 @@ export function resolveFusedLibraryPath(
 		bundleRoot ? path.join(bundleRoot, "lib") : null,
 		exact ? path.dirname(exact) : null,
 		env.ELIZA_INFERENCE_LIB_DIR?.trim() || null,
+		path.join(resolveStateDir(env), "local-inference", "lib"),
 	].filter((dir): dir is string => Boolean(dir));
 	for (const dir of dirs) {
 		for (const name of fusedLibraryFilenames()) {
