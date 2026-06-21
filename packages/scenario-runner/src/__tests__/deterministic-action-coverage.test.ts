@@ -85,7 +85,12 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "SKILL_UNINSTALL",
     "USE_SKILL",
   ],
-  "@elizaos/plugin-local-inference": ["GENERATE_MEDIA", "IDENTIFY_SPEAKER"],
+  "@elizaos/plugin-local-inference": [
+    "GENERATE_MEDIA",
+    "IDENTIFY_SPEAKER",
+    "START_TRANSCRIPTION",
+    "STOP_TRANSCRIPTION",
+  ],
   "@elizaos/plugin-gitpathologist": ["GIT_PATHOLOGY"],
   "@elizaos/plugin-todos": ["TODO"],
   "@elizaos/plugin-streaming": ["STREAM"],
@@ -175,6 +180,9 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "CLOSE_VIEW",
   // New speaker-diarization action; no deterministic keyless scenario yet.
   "IDENTIFY_SPEAKER",
+  // New on-device transcription actions; no deterministic keyless scenario yet.
+  "START_TRANSCRIPTION",
+  "STOP_TRANSCRIPTION",
 ];
 
 /**
