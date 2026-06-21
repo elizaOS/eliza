@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+import { characterSchema } from "../schemas/character";
 import type { Character } from "../types/agent";
-import { composePromptFromState } from "../utils";
 import type { State } from "../types/state";
+import { composePromptFromState } from "../utils";
 
 describe("Character Callback Templates", () => {
 	it("should support string templates (existing behavior)", async () => {
@@ -18,7 +19,11 @@ describe("Character Callback Templates", () => {
 	});
 
 	it("should support callback templates that return strings", async () => {
-		const template = ({ state }: { state: State | Record<string, unknown> }) => {
+		const template = ({
+			state,
+		}: {
+			state: State | Record<string, unknown>;
+		}) => {
 			const agentName =
 				typeof state === "object" && "agentName" in state
 					? (state.agentName as string)
@@ -38,12 +43,16 @@ describe("Character Callback Templates", () => {
 	});
 
 	it("should support callbacks with dynamic logic", async () => {
-		const template = ({ state }: { state: State | Record<string, unknown> }) => {
+		const template = ({
+			state,
+		}: {
+			state: State | Record<string, unknown>;
+		}) => {
 			const stateObj = state as Record<string, unknown>;
 			const tone = stateObj.formalTone ? "formal" : "casual";
 			return `Respond in a {{tone}} manner. {{agentName}} here.`.replace(
 				"{{tone}}",
-				tone
+				tone,
 			);
 		};
 
@@ -61,16 +70,20 @@ describe("Character Callback Templates", () => {
 	});
 
 	it("should handle mixed string and callback templates in character", async () => {
+		const stringTemplate = "Simple string template";
+		const callbackTemplate = ({
+			state,
+		}: {
+			state: State | Record<string, unknown>;
+		}) => {
+			const stateObj = state as Record<string, unknown>;
+			return `Dynamic template with ${stateObj.agentName || "agent"}`;
+		};
 		const character: Character = {
 			name: "TestAgent",
-			templates: {
-				stringTemplate: "Simple string template",
-				callbackTemplate: ({ state }: { state: State | Record<string, unknown> }) => {
-					const stateObj = state as Record<string, unknown>;
-					return `Dynamic template with ${stateObj.agentName || "agent"}`;
-				},
-			},
+			templates: { stringTemplate, callbackTemplate },
 		};
+		expect(character.templates).toBeDefined();
 
 		const state: State = {
 			agentName: "TestAgent",
@@ -82,28 +95,32 @@ describe("Character Callback Templates", () => {
 		// Test string template
 		const stringResult = composePromptFromState({
 			state,
-			template: character.templates!.stringTemplate as string,
+			template: stringTemplate,
 		});
 		expect(stringResult).toBe("Simple string template");
 
 		// Test callback template
 		const callbackResult = composePromptFromState({
 			state,
-			template: character.templates!.callbackTemplate,
+			template: callbackTemplate,
 		});
 		expect(callbackResult).toContain("Dynamic template");
 		expect(callbackResult).toContain("TestAgent");
 	});
 
 	it("should allow callbacks to access full state context", async () => {
-		const template = ({ state }: { state: State | Record<string, unknown> }) => {
+		const template = ({
+			state,
+		}: {
+			state: State | Record<string, unknown>;
+		}) => {
 			const stateObj = state as State;
 			return `Agent: {{agentName}}, Context: {{roomId}}`.replace(
 				/\{\{(\w+)\}\}/g,
-				(match, key) => {
+				(_match, key) => {
 					const value = stateObj[key as keyof State];
 					return typeof value === "string" ? value : String(value);
-				}
+				},
 			);
 		};
 
@@ -118,5 +135,31 @@ describe("Character Callback Templates", () => {
 		const result = composePromptFromState({ state, template });
 		expect(result).toContain("David");
 		expect(result).toContain("room-123");
+	});
+});
+
+describe("characterSchema templates field accepts callbacks", () => {
+	it("accepts string template values (baseline)", () => {
+		const result = characterSchema.safeParse({
+			name: "Tmpl",
+			templates: { greeting: "Hello there" },
+		});
+		expect(result.success).toBe(true);
+	});
+
+	it("accepts a function template value", () => {
+		const result = characterSchema.safeParse({
+			name: "Tmpl",
+			templates: { rateLimitedReply: () => "slow down a sec" },
+		});
+		expect(result.success).toBe(true);
+	});
+
+	it("rejects a template value that is neither string nor function", () => {
+		const result = characterSchema.safeParse({
+			name: "Tmpl",
+			templates: { bad: 123 },
+		});
+		expect(result.success).toBe(false);
 	});
 });
