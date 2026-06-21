@@ -265,7 +265,7 @@ describe("scenario PR workflow contract", () => {
       "SCENARIO_LLM_PROXY_STRICT=1",
     );
     expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
-      "deterministic-pr-smoke,deterministic-app-control-actions,deterministic-generated-app-routes,deterministic-todos-actions,deterministic-streaming-actions,deterministic-xr-view-actions,deterministic-mcp-actions-routes,deterministic-workflow-actions-routes,deterministic-github-actions-routes,deterministic-view-switching,deterministic-app-control-nl-routing,deterministic-browser-actions,deterministic-lifeops-scheduled-tasks,deterministic-coding-tools-actions,deterministic-agent-skills-actions,deterministic-media-emote-actions,deterministic-gitpathology-actions",
+      "deterministic-pr-smoke,deterministic-app-control-actions,deterministic-generated-app-routes,deterministic-todos-actions,deterministic-streaming-actions,deterministic-xr-view-actions,deterministic-mcp-actions-routes,deterministic-workflow-actions-routes,deterministic-github-actions-routes,deterministic-view-switching,deterministic-app-control-nl-routing,deterministic-browser-actions,deterministic-lifeops-scheduled-tasks,deterministic-coding-tools-actions,deterministic-agent-skills-actions,deterministic-media-emote-actions,deterministic-gitpathology-actions,deterministic-slash-commands",
     );
     expect(scenarioRunnerPackage.scripts?.["test:live:e2e"]).not.toContain(
       "SCENARIO_USE_LLM_PROXY",

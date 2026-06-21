@@ -1,0 +1,54 @@
+name: e2e-coverage-gate
+
+# Issue #8802 — umbrella e2e coverage gate for slash commands, #8791 shortcuts,
+# plugin-declared HTTP routes, and views. Builds the canonical coverage matrix
+# from real source, uploads it as an artifact, and (advisory) reports any
+# surface that ships without a real recorded e2e.
+#
+# ADVISORY at first (E2E_COVERAGE_GATE_ENFORCE=0 — reports but never fails the
+# build), mirroring coverage-gate.yml. The hard enforcement already runs in
+# scenario-pr.yml's "E2E coverage ship-gate" step (the baseline is green). Flip
+# this standalone workflow to required by setting E2E_COVERAGE_GATE_ENFORCE=1
+# once new surfaces (e.g. #8791 shortcuts) are wired into the manifest.
+
+on:
+  pull_request:
+    branches: ["main", "develop"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-coverage:
+    name: e2e coverage matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Bun workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Build the e2e coverage matrix (advisory)
+        env:
+          # Flip to "1" to make this standalone gate required.
+          E2E_COVERAGE_GATE_ENFORCE: "0"
+        run: bun packages/scripts/check-e2e-coverage.ts --report-dir reports/coverage
+
+      - name: Upload e2e coverage matrix
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: e2e-coverage-matrix
+          path: reports/coverage/
+          if-no-files-found: warn
+          retention-days: 7
