@@ -290,6 +290,12 @@ jobs:
           BOOT_STABLE_WINDOW_SEC: "15"
           SMOKE_PORT: "32138"
           CONTAINER_PORT: "42138"
+          # Enforce the boot-KPI cold-readyMs budget (#8812 item 5). The budget
+          # (boot.coldReadyMs, 25000ms) carries ~5x headroom over the ~5s real
+          # cold boot, and emit_boot_kpi downgrades a breach to a warning when the
+          # runner is heavily contended, so this only fails on a genuine multi-x
+          # boot-time regression — not on transient runner load.
+          BOOT_KPI_ENFORCE: "1"
         run: bash packages/app-core/scripts/docker-ci-smoke.sh --boot-verify-only
 
       # Push the EXACT verified image. This runs only if the boot verification

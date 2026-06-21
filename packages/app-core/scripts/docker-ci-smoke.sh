@@ -479,11 +479,37 @@ boot_verify() {
       log "[boot-kpi] WARNING: jq or budgets.json unavailable; using default coldReadyMs budget ${budget_default}ms"
     fi
 
+    # Record runner contention alongside readyMs (#8812 item 5). Boot is
+    # single-threaded and import-bound, so a heavily loaded runner inflates
+    # readyMs; we log loadavg/cpu so a breach can be triaged, and (below) refuse
+    # to FAIL on a breach when the runner is clearly overloaded, so enforcement
+    # only catches a genuine boot-time regression — not transient runner load.
+    local load1="" cpus="" contended="false"
+    if [[ -r /proc/loadavg ]]; then
+      load1="$(cut -d' ' -f1 /proc/loadavg 2>/dev/null || true)"
+    fi
+    cpus="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
+    log "[boot-kpi] runner loadavg(1m)=${load1:-?} cpus=${cpus}"
+    # Heavy contention = loadavg(1m) above 2x the cpu count. Float compare via
+    # awk (no bc dependency); guarded so a missing loadavg never trips it.
+    if [[ -n "$load1" && "$cpus" =~ ^[0-9]+$ ]]; then
+      if awk -v l="$load1" -v c="$cpus" 'BEGIN{exit !(l > 2*c)}' 2>/dev/null; then
+        contended="true"
+      fi
+    fi
+
     log "[boot-kpi] cold readyMs=${ready_ms} budget=${budget}"
     log "[boot-kpi] peakRss: not measured (docker stats samples instantaneously, not boot peak)"
 
     if (( ready_ms > budget )); then
       local msg="boot-kpi cold readyMs=${ready_ms} exceeded budget=${budget} (boot.coldReadyMs)"
+      if [[ "${BOOT_KPI_ENFORCE:-}" == "1" && "$contended" == "true" ]]; then
+        if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+          printf '::warning::%s — runner contended (loadavg %s over %s cpus), not failing\n' "$msg" "$load1" "$cpus" >&2
+        fi
+        log "[boot-kpi] WARNING (runner contended, loadavg ${load1} over ${cpus} cpus — not failing): $msg"
+        return 0
+      fi
       if [[ "${BOOT_KPI_ENFORCE:-}" == "1" ]]; then
         if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
           printf '::error::%s\n' "$msg" >&2

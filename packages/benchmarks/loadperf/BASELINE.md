@@ -98,6 +98,30 @@ Spawn → `ready:true` on a quiet host (~3.7 s) decomposes as:
     code regression. `summary.contention` (loadavg, cpu count, sibling count) is
     recorded for every run.
 
+### Boot-KPI CI gate — now ENFORCING (item 5 of #8812)
+
+The build-agent-image workflow's boot-verify step
+(`docker-ci-smoke.sh --boot-verify-only`) now runs with `BOOT_KPI_ENFORCE=1`, so
+a cold-start `readyMs` that exceeds `boot.coldReadyMs` (25 000 ms) **fails the
+build** and blocks publishing a slow image — the server/container analog of the
+mobile resource workbench (#8800). Safety rails so the gate is trustworthy, not
+flaky:
+
+- The budget keeps ~5× headroom over the ~4.6 s real production cold boot, so
+  only a genuine multi-× regression trips it.
+- `emit_boot_kpi` logs the runner `loadavg(1m)`/cpu count next to `readyMs`, and
+  **downgrades a breach to a warning** (does not fail) when the runner is heavily
+  contended (loadavg(1m) > 2× cpus) — boot is single-threaded and import-bound,
+  so a contended runner inflates `readyMs` with no code regression.
+- `peakRssMb` is **not** enforced on the docker path: `docker stats` samples
+  instantaneously, not the boot peak. Peak RSS is gated by the standalone
+  `boot-kpi.mjs` (`/proc/<pid>/status` VmRSS, budget 1600 MB) when run on a host.
+
+**Ratcheting the budget down requires a quiesced host re-baseline** — run
+`node packages/benchmarks/loadperf/boot-kpi.mjs --runs=5 --json` with no sibling
+node/bun/tsx load and update `boot.coldReadyMs` to the measured median + margin.
+Do not ratchet from a contended reading (the harness WARNs when it detects one).
+
 ## Frontend (`frontend-kpi.mjs`) — skipped this run
 
 - Status: **skipped** — `playwright` is installed but no browser binary is
