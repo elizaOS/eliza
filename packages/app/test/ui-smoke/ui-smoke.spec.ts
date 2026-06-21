@@ -36,9 +36,10 @@ test("chat, apps, and settings routes render through the real shell", async ({
   await openAppPath(page, "/apps");
   await expect(page).toHaveURL(/\/apps$/);
   await expect(page.getByRole("heading", { name: "Views" })).toBeVisible();
-  await expect(
-    page.getByRole("searchbox", { name: "Search views…" }),
-  ).toBeVisible();
+  // Views search is no longer a standalone searchbox — it is bound to the global
+  // chat composer (ViewCatalog registers a chat binding with placeholder
+  // "Search views…"; covered by ViewCatalog.test.tsx). The page-render proof here
+  // is the heading plus the catalog body below.
   await expect(
     page
       .getByRole("heading", { name: "Companion" })
