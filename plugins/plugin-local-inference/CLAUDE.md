@@ -4,7 +4,7 @@ Eliza-1 local inference provider: text generation, embeddings, TTS, ASR, image g
 
 ## Purpose / role
 
-This plugin registers model handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `IMAGE`, `IMAGE_DESCRIPTION`, `TEXT_TO_SPEECH`, and `TRANSCRIPTION`. It also exposes the `GENERATE_MEDIA` agent action and HTTP routes for the model catalog, download orchestration, hardware detection, and voice tooling. The plugin is opt-in: it must be added to the elizaOS agent's plugin list. It requires at minimum one active local backend (an Eliza-1 GGUF bundle loaded via `LocalInferenceService` or an AOSP/device-bridge loader); without one, every model call throws `LocalInferenceUnavailableError` with code `LOCAL_INFERENCE_UNAVAILABLE`.
+This plugin registers model handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `IMAGE`, `IMAGE_DESCRIPTION`, `TEXT_TO_SPEECH`, and `TRANSCRIPTION`. It also exposes local media, speaker, and transcription-control agent actions plus HTTP routes for the model catalog, download orchestration, hardware detection, and voice tooling. The plugin is opt-in: it must be added to the elizaOS agent's plugin list. It requires at minimum one active local backend (an Eliza-1 GGUF bundle loaded via `LocalInferenceService` or an AOSP/device-bridge loader); without one, every model call throws `LocalInferenceUnavailableError` with code `LOCAL_INFERENCE_UNAVAILABLE`.
 
 ## Plugin surface
 
@@ -13,6 +13,8 @@ This plugin registers model handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBED
 |---|---|
 | `GENERATE_MEDIA` | Classifies user text as image/audio/video intent, then dispatches to `ModelType.IMAGE` or `ModelType.TEXT_TO_SPEECH`. Video is refused cleanly. |
 | `IDENTIFY_SPEAKER` | Binds the most-recently-heard *unidentified* speaker voice to a named person ("that was Jill"). Emits `VOICE_TURN_OBSERVED` to drive the merge engine; the `VOICE_ENTITY_BOUND` round-trip persists `entityId` onto the profile. Inert (logs only) if no merge-engine plugin is loaded. |
+| `START_TRANSCRIPTION` | Emits a best-effort `voice-control` command through `AgentEventService` so connected clients can start long-form mic transcription. It reports command delivery intent, not capture success, because the microphone lives in the renderer/client. |
+| `STOP_TRANSCRIPTION` | Emits the paired `voice-control` stop command for the connected client to end long-form transcription. The same event-bus contract keeps server-side action routing separate from client-owned capture permissions. |
 
 ### Events (voice ⇄ entity binding seam — issue #8234)
 The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plugin (plugin-lifeops) owns the entity graph. They communicate only through two core events — neither imports the other:
@@ -63,6 +65,7 @@ src/
   actions/
     generate-media.ts             GENERATE_MEDIA action: keyword+classifier intent routing → IMAGE or TTS
     identify-speaker.ts           IDENTIFY_SPEAKER action: name a recent unidentified voice → merge engine
+    transcription-control.ts      START_TRANSCRIPTION / STOP_TRANSCRIPTION: emit client voice-control events
 
   adapters/
     capacitor-llama/              Capacitor/mobile llama adapter (environment, loader, browser stub)
