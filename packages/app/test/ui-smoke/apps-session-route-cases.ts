@@ -171,6 +171,12 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
+    name: "transcripts app window",
+    path: "/apps/transcripts",
+    selector: '[data-testid="transcripts-view"]',
+    timeoutMs: 90_000,
+  },
+  {
     name: "phone companion app shell page",
     path: "/phone-companion",
     readyChecks: [{ text: "Eliza" }, { text: "Pair" }],
