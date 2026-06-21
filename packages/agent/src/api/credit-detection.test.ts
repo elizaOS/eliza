@@ -15,21 +15,21 @@ function providerError(
 }
 
 /**
- * `isRateLimitError` distinguishes a transient 429 ("try again in a few
- * seconds") from credit exhaustion ("top up"). Callers check
- * `isInsufficientCreditsError` FIRST, so a 429-with-billing is credits and a
- * bare 429 is a rate limit.
+ * `isRateLimitError` is the canonical `@elizaos/core` detector, re-exported
+ * here. It distinguishes a transient 429 ("try again in a few seconds") from
+ * credit exhaustion ("top up"). Callers check `isInsufficientCreditsError`
+ * FIRST, so a 429-with-billing is credits and a bare 429 is a rate limit.
  */
 describe("isRateLimitError", () => {
-  it("treats a bare HTTP 429 as a rate limit", () => {
+  it("treats a bare HTTP 429 as a rate limit (legacy .status duck-type)", () => {
     expect(isRateLimitError({ status: 429 })).toBe(true);
     expect(isRateLimitError(providerError("boom", 429))).toBe(true);
   });
 
-  it("matches rate-limit messages (no status)", () => {
-    expect(isRateLimitError("Rate limit exceeded")).toBe(true);
+  it("matches rate-limit messages on Error instances (status-less fallback)", () => {
+    expect(isRateLimitError(providerError("Rate limit exceeded"))).toBe(true);
     expect(isRateLimitError(providerError("Too Many Requests"))).toBe(true);
-    expect(isRateLimitError("5 requests per minute")).toBe(true);
+    expect(isRateLimitError(providerError("5 requests per minute"))).toBe(true);
   });
 
   it("does NOT match unrelated errors", () => {
