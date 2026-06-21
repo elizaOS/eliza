@@ -78,6 +78,7 @@ import {
 } from "./pipeline-impls";
 import type { VoiceProfileStore } from "./profile-store";
 import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
+import { decodeMonoPcm16Wav, encodeMonoPcm16Wav } from "./wav-codec";
 import {
 	type MmapRegionHandle,
 	SharedResourceRegistry,
@@ -1953,7 +1954,7 @@ export class EngineVoiceBridge {
 // The mono PCM16 WAV codec lives in the dependency-light `wav-codec.ts` so
 // corpus / fixture / test code can encode + decode WAV without dragging in this
 // heavy module. Re-exported here for the existing callers.
-export { decodeMonoPcm16Wav, encodeMonoPcm16Wav } from "./wav-codec";
+export { decodeMonoPcm16Wav, encodeMonoPcm16Wav };
 
 function readPositiveIntEnv(name: string): number | undefined {
 	const raw = process.env[name]?.trim();

@@ -22,13 +22,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { makeSpeechWithSilenceFixture } from "./__test-helpers__/synthetic-speech";
-import { encodeMonoPcm16Wav } from "./wav-codec";
 import {
 	turnReferenceTranscript,
 	turnSpeakerLabel,
 	type VoiceScenario,
 	validateVoiceScenario,
 } from "./voice-scenario";
+import { encodeMonoPcm16Wav } from "./wav-codec";
 
 const DEFAULT_SAMPLE_RATE = 16_000;
 /** Natural speaking rate used to size synthetic speech from text length. */

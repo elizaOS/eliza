@@ -10,18 +10,6 @@
  */
 
 export {
-	type VoiceScenario,
-	type VoiceScenarioAssertions,
-	type VoiceScenarioClass,
-	type VoiceScenarioParticipant,
-	type VoiceScenarioTurn,
-	type VoiceScenarioValidation,
-	turnReferenceTranscript,
-	turnSpeakerLabel,
-	validateVoiceScenario,
-} from "./services/voice/voice-scenario";
-
-export {
 	type CorpusGroundTruth,
 	type CorpusTtsSynthesizer,
 	type CorpusTurnLabel,
@@ -32,16 +20,17 @@ export {
 	type VoiceCorpusPaths,
 	writeVoiceCorpus,
 } from "./services/voice/corpus-generator";
-
 export {
-	type RunVoiceScenarioHeadlessArgs,
-	type RunVoiceWorkbenchArgs,
-	runVoiceScenarioHeadless,
-	runVoiceWorkbenchHeadless,
-	type VoiceTurnObservation,
-	type VoiceWorkbenchServices,
-} from "./services/voice/workbench-headless-runner";
-
+	turnReferenceTranscript,
+	turnSpeakerLabel,
+	type VoiceScenario,
+	type VoiceScenarioAssertions,
+	type VoiceScenarioClass,
+	type VoiceScenarioParticipant,
+	type VoiceScenarioTurn,
+	type VoiceScenarioValidation,
+	validateVoiceScenario,
+} from "./services/voice/voice-scenario";
 export {
 	buildVoiceWorkbenchReport,
 	formatVoiceWorkbenchMarkdown,
@@ -54,14 +43,21 @@ export {
 	type VoiceWorkbenchStatus,
 	type VoiceWorkbenchVerdict,
 } from "./services/voice/voice-workbench-report";
-
 export {
-	buildAndRunVoiceWorkbench,
 	type BuildAndRunVoiceWorkbenchArgs,
+	buildAndRunVoiceWorkbench,
 	type VoiceWorkbenchArtifacts,
 	type VoiceWorkbenchResult,
 	writeVoiceWorkbenchResult,
 } from "./services/voice/workbench-entrypoint";
+export {
+	type RunVoiceScenarioHeadlessArgs,
+	type RunVoiceWorkbenchArgs,
+	runVoiceScenarioHeadless,
+	runVoiceWorkbenchHeadless,
+	type VoiceTurnObservation,
+	type VoiceWorkbenchServices,
+} from "./services/voice/workbench-headless-runner";
 
 export {
 	groundTruthMockServices,
