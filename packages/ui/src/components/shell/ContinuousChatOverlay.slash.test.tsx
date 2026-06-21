@@ -37,6 +37,7 @@ function makeController(
     handsFree: false,
     toggleHandsFree: vi.fn(),
     setDictationSink: vi.fn(),
+    setTranscriptSessionSink: vi.fn(),
     setComposerHasDraft: vi.fn(),
     clearConversation: vi.fn(),
     ...overrides,

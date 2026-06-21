@@ -35,9 +35,11 @@ function service(ctx: RouteHandlerContext): TranscriptService {
 
 /** The body a recording session POSTs to create a transcript record. */
 export interface CreateTranscriptRequest {
-	worldId: UUID;
-	roomId: UUID;
-	entityId: UUID;
+	/** Optional — the route derives these from the agent context when absent (the
+	 *  shell client doesn't carry world/room/entity ids). */
+	worldId?: UUID;
+	roomId?: UUID;
+	entityId?: UUID;
 	title?: string;
 	source?: TranscriptSource;
 	scope?: TranscriptScope;
@@ -117,21 +119,21 @@ const createRoute: Route = {
 	rawPath: true,
 	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
 		const body = ctx.body as CreateTranscriptRequest | undefined;
-		if (!body?.roomId || !body.entityId || !body.worldId) {
-			return {
-				status: 400,
-				body: { error: "worldId, roomId and entityId are required" },
-			};
+		if (!body || !Array.isArray(body.segments) || body.segments.length === 0) {
+			return { status: 400, body: { error: "segments are required" } };
 		}
+		// The shell client doesn't carry world/room/entity ids — default them to
+		// the agent context (single-user local) when not supplied.
+		const agentId = ctx.runtime.agentId as UUID;
 		const transcript = buildTranscriptFromRequest(
 			body,
 			crypto.randomUUID(),
 			Date.now(),
 		);
 		const saved = await service(ctx).create({
-			worldId: body.worldId,
-			roomId: body.roomId,
-			entityId: body.entityId,
+			worldId: (body.worldId ?? agentId) as UUID,
+			roomId: (body.roomId ?? agentId) as UUID,
+			entityId: (body.entityId ?? agentId) as UUID,
 			transcript,
 		});
 		return { status: 201, body: { transcript: saved } };

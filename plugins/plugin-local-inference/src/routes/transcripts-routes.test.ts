@@ -91,10 +91,8 @@ describe("buildTranscriptFromRequest", () => {
 describe("transcripts routes", () => {
 	it("POST creates, GET reads it back, GET list summarizes, DELETE removes", async () => {
 		const { runtime } = fakeRuntime();
+		// No world/room/entity ids — the route derives them from the agent context.
 		const body: CreateTranscriptRequest = {
-			worldId: WORLD,
-			roomId: ROOM,
-			entityId: ENTITY,
 			title: "Standup",
 			segments,
 		};
@@ -135,12 +133,12 @@ describe("transcripts routes", () => {
 		expect(after.status).toBe(404);
 	});
 
-	it("POST rejects a body missing the required ids", async () => {
+	it("POST rejects a body with no segments", async () => {
 		const { runtime } = fakeRuntime();
 		const res = await handlerFor(
 			"POST",
 			"/api/transcripts",
-		)(ctx({ runtime: runtime as never, body: { segments } }));
+		)(ctx({ runtime: runtime as never, body: { segments: [] } }));
 		expect(res.status).toBe(400);
 	});
 });

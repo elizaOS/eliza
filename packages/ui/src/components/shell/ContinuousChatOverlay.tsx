@@ -23,6 +23,7 @@ import {
 } from "motion/react";
 import * as React from "react";
 
+import { client } from "../../api/client";
 import type { ImageAttachment } from "../../api/client-types-chat";
 import {
   parseSlashDraft,
@@ -763,6 +764,7 @@ export function ContinuousChatOverlay({
     transcriptionMode,
     toggleTranscriptionMode,
     setDictationSink,
+    setTranscriptSessionSink,
     setComposerHasDraft,
     transcript,
     needsAudioUnlock,
@@ -1699,6 +1701,31 @@ export function ContinuousChatOverlay({
     return () => setDictationSink(null);
   }, [setDictationSink, expand]);
 
+  // A completed transcription SESSION becomes a Transcript record (+ knowledge
+  // mirror) via the API; on success we surface a dismissible card in the chat —
+  // the in-chat link-widget pointing at the saved recording.
+  const [savedTranscript, setSavedTranscript] = React.useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  React.useEffect(() => {
+    setTranscriptSessionSink((segments, startedAtMs) => {
+      if (segments.length === 0) return;
+      void client
+        .createTranscript({ segments, createdAt: startedAtMs })
+        .then((res) =>
+          setSavedTranscript({
+            id: res.transcript.id,
+            title: res.transcript.title,
+          }),
+        )
+        .catch(() => {
+          /* recording is best-effort; a failed save just shows no card */
+        });
+    });
+    return () => setTranscriptSessionSink(null);
+  }, [setTranscriptSessionSink]);
+
   // Tell the controller whether a draft is pending so the hands-free always-on
   // loop pauses while the user is typing (or editing a PTT dictation) and
   // resumes the prior voice state once the draft clears on send.
@@ -2098,6 +2125,30 @@ export function ContinuousChatOverlay({
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
     >
+      {/* In-chat transcript link-widget: a dismissible card shown when a
+          recording session has just been saved, pointing at the new transcript
+          (find it in the Transcripts view). */}
+      {savedTranscript ? (
+        <div
+          data-testid="transcript-saved-card"
+          className="pointer-events-auto absolute inset-x-0 top-3 z-50 mx-auto flex w-fit max-w-[90%] items-center gap-2 rounded-full border border-border/30 bg-bg/95 px-3 py-1.5 text-sm text-txt shadow-lg backdrop-blur"
+        >
+          <FileText className="h-4 w-4 shrink-0 text-accent-fg" aria-hidden />
+          <span className="truncate">
+            Transcript saved: {savedTranscript.title}
+          </span>
+          <button
+            type="button"
+            aria-label="dismiss"
+            data-testid="transcript-saved-dismiss"
+            onClick={() => setSavedTranscript(null)}
+            className="ml-1 shrink-0 rounded-full px-1 text-muted hover:text-txt"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+
       {/* Dimming scrim behind the open chat. It fades in WITH the reveal and
           captures pointer events while open; clicking it COLLAPSES the chat back
           to the input. Collapsed → pointer-events-none, so the view behind stays

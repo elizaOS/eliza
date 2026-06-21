@@ -14,11 +14,13 @@ import type {
 } from "@elizaos/shared/transcripts";
 import { ElizaClient } from "./client-base";
 
-/** Body the recording pipeline POSTs to create a transcript record. */
+/** Body the recording pipeline POSTs to create a transcript record. The
+ *  world/room/entity ids are optional — the server derives them from the agent
+ *  context when the shell client doesn't supply them. */
 export interface TranscriptCreateInput {
-  worldId: string;
-  roomId: string;
-  entityId: string;
+  worldId?: string;
+  roomId?: string;
+  entityId?: string;
   title?: string;
   source?: TranscriptSource;
   scope?: TranscriptScope;
