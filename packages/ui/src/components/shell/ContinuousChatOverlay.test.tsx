@@ -713,6 +713,11 @@ describe("ContinuousChatOverlay", () => {
     expect(pill.className).toContain("pointer-events-auto");
     expect(pill.className).not.toContain("pointer-events-none");
     expect(pill.getAttribute("aria-hidden")).toBeNull();
+    // Restored to the tab order once it's the active handle — the symmetric half
+    // of the collapsed assertion above (tabindex "-1" while NOT pilled). The
+    // PillHandle sets tabIndex={pilled ? undefined : -1}, so the attribute is
+    // absent (null) when pilled and keyboard users can Tab to + Enter the pill.
+    expect(pill.getAttribute("tabindex")).toBeNull();
   });
 
   it("opens the chat to HALF on a SINGLE pill tap (not the bare input bar)", () => {
@@ -922,5 +927,173 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getByText(/^Transcript .*\.md$/)).toBeTruthy();
     // … and is NOT auto-sent — the user sends it with their next message.
     expect(controller.send).not.toHaveBeenCalled();
+  });
+
+  // ── SheetGrabber inert-while-pilled (the symmetric half of the PillHandle
+  // pilled-gating above; #8772). The grabber and the pill capsule occupy the
+  // same bottom region; exactly ONE may own the gesture / a11y tree at a time.
+  // While the input is formed (not pilled) the GRABBER is live; once collapsed
+  // to the pill, the grabber must go fully inert so it can't steal the pill's
+  // taps or sit in the tab order behind it.
+  it("keeps the sheet grabber live + in the a11y tree while NOT pilled", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    // SheetGrabber: pointerEvents auto, tabIndex undefined (attr absent → in
+    // tab order), aria-hidden undefined (attr absent → exposed) while !pilled.
+    expect(grabber.style.pointerEvents).toBe("auto");
+    expect(grabber.getAttribute("tabindex")).toBeNull();
+    expect(grabber.getAttribute("aria-hidden")).toBeNull();
+  });
+
+  it("makes the sheet grabber fully inert (pointer/tab/a11y) once collapsed to the pill", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    // Collapse the input down into the pill.
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("pill");
+
+    // The (still-mounted) grabber is now invisible behind the pill capsule, so
+    // it must not intercept taps meant for the pill or pass them through to the
+    // home screen, and must drop out of the tab order + a11y tree.
+    // SheetGrabber: pointerEvents none, tabIndex -1, aria-hidden "true" pilled.
+    expect(grabber.style.pointerEvents).toBe("none");
+    expect(grabber.getAttribute("tabindex")).toBe("-1");
+    expect(grabber.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  // ── chat-full Home | Views | Settings nav-gating. The header row always shows
+  // all three buttons (so the row never reflows) but DISABLES the one for the
+  // screen you're already on — never hides it. An enabled button navigates +
+  // collapses the chat; the disabled one is inert.
+  it("disables only the chat-full Home button while on the chat tab, leaving Views/Settings live", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
+      />,
+    );
+    const home = screen.getByTestId("chat-full-home");
+    const views = screen.getByTestId("chat-full-views");
+    const settings = screen.getByTestId("chat-full-settings");
+
+    // Already on chat → Home is the inert target; Views/Settings stay live.
+    expect((home as HTMLButtonElement).disabled).toBe(true);
+    expect(home.getAttribute("aria-disabled")).toBe("true");
+    expect((views as HTMLButtonElement).disabled).toBe(false);
+    expect(views.getAttribute("aria-disabled")).toBeNull();
+    expect((settings as HTMLButtonElement).disabled).toBe(false);
+    expect(settings.getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("disables only the chat-full Views button while on the views tab", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          currentTab: "views",
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(
+      (screen.getByTestId("chat-full-views") as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      screen.getByTestId("chat-full-views").getAttribute("aria-disabled"),
+    ).toBe("true");
+    // The other two targets remain reachable.
+    expect(
+      (screen.getByTestId("chat-full-home") as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(
+      (screen.getByTestId("chat-full-settings") as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("disables only the chat-full Settings button while on the settings tab", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          currentTab: "settings",
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(
+      (screen.getByTestId("chat-full-settings") as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByTestId("chat-full-home") as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(
+      (screen.getByTestId("chat-full-views") as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  // Open the sheet to the HALF detent so the chat-full header is revealed and
+  // interactive (its wrapper carries `inert` until `headerVisible` flips at the
+  // half threshold). A deliberate pull-up of the grabber past the distance
+  // threshold lands on half — the same gesture the COLLAPSED→HALF test uses.
+  function openSheetToHalf(): void {
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+  }
+
+  it("routes each ENABLED chat-full header button to its navigation callback", async () => {
+    const navigateHome = vi.fn();
+    const navigateToViews = vi.fn();
+    const openSettings = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          // On the views tab: Home + Settings are enabled, Views is the inert one.
+          currentTab: "views",
+          navigateHome,
+          navigateToViews,
+          openSettings,
+        } as Partial<ShellController>)}
+      />,
+    );
+    openSheetToHalf();
+
+    // The disabled (current-tab) button is a native no-op: clicking Views here
+    // must not fire its navigate callback (asserted first, before any deferral).
+    fireEvent.click(screen.getByTestId("chat-full-views"));
+    expect(navigateToViews).not.toHaveBeenCalled();
+
+    // navigateAndClose collapses the sheet then defers the navigation a frame
+    // (so the close animates first), so the callback fires on a short timer.
+    fireEvent.click(screen.getByTestId("chat-full-home"));
+    await vi.waitFor(() => expect(navigateHome).toHaveBeenCalledTimes(1));
+
+    openSheetToHalf();
+    fireEvent.click(screen.getByTestId("chat-full-settings"));
+    await vi.waitFor(() => expect(openSettings).toHaveBeenCalledTimes(1));
+
+    // The disabled button never navigated across the whole interaction.
+    expect(navigateToViews).not.toHaveBeenCalled();
+  });
+
+  it("routes the chat-full Views button to navigateToViews when enabled (on a non-views tab)", async () => {
+    const navigateToViews = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          currentTab: "chat",
+          navigateToViews,
+        } as Partial<ShellController>)}
+      />,
+    );
+    openSheetToHalf();
+    fireEvent.click(screen.getByTestId("chat-full-views"));
+    await vi.waitFor(() => expect(navigateToViews).toHaveBeenCalledTimes(1));
   });
 });
