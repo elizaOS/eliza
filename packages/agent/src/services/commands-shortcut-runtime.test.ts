@@ -33,7 +33,7 @@ describe("commands plugin → runtime shortcut wiring (real runtime)", () => {
 
   beforeAll(async () => {
     runtime = new AgentRuntime({
-      character: { name: "TestAgent", bio: "t", settings: {} } as Character,
+      character: { name: "TestAgent", bio: ["t"], settings: {} } as Character,
       adapter: new InMemoryDatabaseAdapter(),
       logLevel: "fatal",
     });
@@ -65,7 +65,8 @@ describe("commands plugin → runtime shortcut wiring (real runtime)", () => {
       senderRole: "OWNER",
     });
     expect(result?.kind).toBe("direct_reply");
-    expect(result?.result.responseContent.text).toContain("Available commands");
+    if (result?.kind !== "direct_reply") throw new Error("expected direct_reply");
+    expect(result.result.responseContent.text).toContain("Available commands");
   });
 
   it("resolves /status through the real gate", async () => {
@@ -77,7 +78,8 @@ describe("commands plugin → runtime shortcut wiring (real runtime)", () => {
       senderRole: "OWNER",
     });
     expect(result?.kind).toBe("direct_reply");
-    expect(result?.result.responseContent.text).toContain("Agent: TestAgent");
+    if (result?.kind !== "direct_reply") throw new Error("expected direct_reply");
+    expect(result.result.responseContent.text).toContain("Agent: TestAgent");
   });
 
   it("does not fire the gate for a plain message", async () => {
