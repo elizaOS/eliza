@@ -23,8 +23,8 @@ import { getDefaultElizaCharacterData } from "./utils/default-eliza-character";
 import { getRandomUserAvatar } from "./utils/default-user-avatar";
 import { logger } from "./utils/logger";
 
-const DEFAULT_INITIAL_CREDITS = 5.0;
-const getInitialCredits = (): number => {
+export const DEFAULT_INITIAL_CREDITS = 5.0;
+export const getInitialCredits = (): number => {
   const envValue = process.env.INITIAL_FREE_CREDITS;
   if (envValue) {
     const parsed = parseFloat(envValue);
