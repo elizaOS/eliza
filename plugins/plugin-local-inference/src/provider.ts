@@ -17,6 +17,10 @@ import {
 
 import { generateMediaAction } from "./actions/generate-media.js";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";
+import {
+	startTranscriptionAction,
+	stopTranscriptionAction,
+} from "./actions/transcription-control.js";
 import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
 import { handleVoiceEntityBound } from "./runtime/voice-entity-binding.js";
 
@@ -1123,7 +1127,12 @@ export const localInferencePlugin: Plugin = {
 	description:
 		"Eliza-1 local provider for text, embeddings, text-to-speech, and transcription.",
 	priority: LOCAL_INFERENCE_PRIORITY,
-	actions: [generateMediaAction, identifySpeakerAction],
+	actions: [
+		generateMediaAction,
+		identifySpeakerAction,
+		startTranscriptionAction,
+		stopTranscriptionAction,
+	],
 	events: {
 		// Round-trip half of the voice→entity binding: when the merge engine
 		// (plugin-lifeops) reports a binding, persist entityId onto the matching
