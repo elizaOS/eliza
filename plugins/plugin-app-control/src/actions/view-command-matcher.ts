@@ -216,6 +216,14 @@ const POSSESSIVES = [
 
 // Per-view multilingual noun synonyms. Order = match priority.
 const VIEW_NOUNS: Record<string, readonly string[]> = {
+	transcripts: [
+		"transcripts",
+		"transcript",
+		"recording",
+		"recordings",
+		"voice notes",
+		"voice transcript",
+	],
 	settings: [
 		"settings",
 		"setting",
@@ -718,6 +726,7 @@ const VIEW_PRIORITY = [
 	"camera",
 	"help",
 	"chat",
+	"transcripts",
 ];
 
 function esc(s: string): string {

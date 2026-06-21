@@ -79,7 +79,12 @@ function makeResponse(): FakeResponse {
 
 describe("voiceProfilePluginRoutes", () => {
   it("is registered on the plugin object so both API servers serve it", () => {
-    expect(localInferencePlugin.routes).toBe(voiceProfilePluginRoutes);
+    // The plugin composes voice-profile routes with the transcripts routes
+    // (provider.ts: `routes: [...voiceProfilePluginRoutes, ...transcriptsRoutes]`),
+    // so assert the voice-profile routes are all present rather than reference-equal.
+    expect(localInferencePlugin.routes).toEqual(
+      expect.arrayContaining([...voiceProfilePluginRoutes]),
+    );
   });
 
   it("covers the bind/unbind namespaces with rawPath routes", () => {

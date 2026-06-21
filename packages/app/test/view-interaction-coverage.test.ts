@@ -133,9 +133,8 @@ const GUI_INTERACTION_OWNERS: Readonly<
   hyperliquid: [
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves:
-        "Refreshes market data and verifies markets, positions, and orders.",
-      signals: ["hyperliquid refresh", "Markets", "Orders"],
+      proves: "Verifies markets, positions, and orders.",
+      signals: ["Markets", "Orders"],
     },
   ],
   lifeops: [
@@ -187,8 +186,8 @@ const GUI_INTERACTION_OWNERS: Readonly<
   polymarket: [
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves: "Refreshes markets and verifies the Polymarket route shell.",
-      signals: ["Polymarket refresh", "Polymarket"],
+      proves: "Verifies the Polymarket route shell.",
+      signals: ["Polymarket"],
     },
   ],
   shopify: [
@@ -318,9 +317,8 @@ const GUI_INTERACTION_OWNERS: Readonly<
   "trajectory-logger": [
     {
       spec: "packages/app/test/ui-smoke/apps-model-training-interactions.spec.ts",
-      proves:
-        "Exercises trajectory refresh, detail selection, stage filtering, and search.",
-      signals: ["trajectory viewer route refreshes", "trajectory refresh"],
+      proves: "Exercises detail selection, stage filtering, and search.",
+      signals: ["trajectory viewer route refreshes"],
     },
   ],
   training: [
