@@ -3,7 +3,6 @@ import {
   Button,
   client,
   registerDetailExtension,
-  useAppSelector,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type {
@@ -31,6 +30,7 @@ import type {
 } from "@elizaos/ui/api";
 import { useIntervalWhenDocumentVisible } from "@elizaos/ui/hooks";
 import { ContentLayout } from "@elizaos/ui/layouts";
+import { type AppContextValue, useAppSelector } from "@elizaos/ui/state";
 import {
   confirmDesktopAction,
   openExternalUrl,
@@ -793,9 +793,11 @@ export function FineTuningView({
 }: {
   contentHeader?: ReactNode;
 } = {}) {
-  const handleRestart = useAppSelector((s) => s.handleRestart);
-  const setActionNotice = useAppSelector((s) => s.setActionNotice);
-  const t = useAppSelector((s) => s.t);
+  const handleRestart = useAppSelector((s: AppContextValue) => s.handleRestart);
+  const setActionNotice = useAppSelector(
+    (s: AppContextValue) => s.setActionNotice,
+  );
+  const t = useAppSelector((s: AppContextValue) => s.t);
 
   const [pageLoading, setPageLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
