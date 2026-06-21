@@ -19,6 +19,7 @@ import type {
   WalletEntry,
   WalletExportRejection as WalletExportRejectionLike,
   WalletExportRequestBody,
+  WalletNftsResponse,
   WalletPrimaryMap,
   WalletRpcChain,
   WalletSource,
@@ -927,6 +928,17 @@ export async function handleWalletRoutes(
     }
 
     json(res, result);
+    return true;
+  }
+
+  // GET /api/wallet/nfts
+  // The always-loaded plugin-wallet has no NFT data source wired in — NFT
+  // indexing lives in the opt-in steward-app routes. Return an empty,
+  // well-typed collection (shape-matched to that handler) so the wallet and
+  // inventory views render cleanly instead of hitting an unhandled 404.
+  if (method === "GET" && pathname === "/api/wallet/nfts") {
+    const empty: WalletNftsResponse = { evm: [], solana: null };
+    json(res, empty);
     return true;
   }
 

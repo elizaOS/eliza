@@ -82,6 +82,42 @@ async function getBrowserPlugin(): Promise<BrowserPluginModule> {
   return browserPluginModulePromise;
 }
 
+// On mobile the agent bundle aliases `@elizaos/plugin-browser` to a null-stub
+// (scripts/mobile-stubs/null-plugin.cjs): the module imports fine but its
+// workspace functions are absent, so calling one throws an uncaught TypeError
+// that surfaces as a 500 (and a raw "X is not a function" in the /browser view).
+// The browser workspace is desktop-only, so resolve the plugin only when it
+// really implements the requested method and let callers serve an empty payload
+// otherwise.
+async function resolveDesktopBrowserPlugin(
+  method: keyof BrowserPluginModule,
+): Promise<BrowserPluginModule | null> {
+  if (isMobilePlatform()) return null;
+  const browserPlugin = await getBrowserPlugin();
+  if ((browserPlugin as { __mobileStub?: boolean }).__mobileStub) return null;
+  return typeof browserPlugin[method] === "function" ? browserPlugin : null;
+}
+
+function getBrowserWorkspacePlugin(): Promise<BrowserPluginModule | null> {
+  return resolveDesktopBrowserPlugin("getBrowserWorkspaceSnapshot");
+}
+
+function getBrowserBridgePlugin(): Promise<BrowserPluginModule | null> {
+  return resolveDesktopBrowserPlugin("getBrowserBridgeCompanionPackageStatus");
+}
+
+const EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS = {
+  extensionPath: null,
+  chromeBuildPath: null,
+  chromePackagePath: null,
+  safariWebExtensionPath: null,
+  safariAppPath: null,
+  safariPackagePath: null,
+  releaseManifest: null,
+} satisfies ReturnType<
+  BrowserPluginModule["getBrowserBridgeCompanionPackageStatus"]
+>;
+
 async function getX402Plugin(): Promise<X402PluginModule> {
   if (x402PluginModule) return x402PluginModule;
   x402PluginModulePromise ??= import(
@@ -1008,9 +1044,11 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (method === "GET" && pathname === "/api/browser-bridge/packages") {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserBridgePlugin();
     json(res, {
-      status: browserPlugin.getBrowserBridgeCompanionPackageStatus(),
+      status: browserPlugin
+        ? browserPlugin.getBrowserBridgeCompanionPackageStatus()
+        : EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS,
     });
     return true;
   }
@@ -1025,7 +1063,11 @@ async function handleBuiltinOptionalRoutes(
         res,
       )) ?? null;
     if (!body) return true;
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserBridgePlugin();
+    if (!browserPlugin) {
+      error(res, "Browser bridge is not available on this platform", 503);
+      return true;
+    }
     const target = parseBrowserBridgePackageTarget(browserPlugin, body.target);
     if (!target) {
       error(res, "Invalid browser bridge package target", 400);
@@ -1044,7 +1086,11 @@ async function handleBuiltinOptionalRoutes(
     /^\/api\/browser-bridge\/packages\/([^/]+)\/build$/,
   );
   if (method === "POST" && packageBuildMatch) {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserBridgePlugin();
+    if (!browserPlugin) {
+      error(res, "Browser bridge is not available on this platform", 503);
+      return true;
+    }
     const browser = parseBrowserBridgeKind(browserPlugin, packageBuildMatch[1]);
     if (!browser) {
       error(res, "Invalid browser bridge package browser", 400);
@@ -1060,7 +1106,11 @@ async function handleBuiltinOptionalRoutes(
     /^\/api\/browser-bridge\/packages\/([^/]+)\/open-manager$/,
   );
   if (method === "POST" && packageManagerMatch) {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserBridgePlugin();
+    if (!browserPlugin) {
+      error(res, "Browser bridge is not available on this platform", 503);
+      return true;
+    }
     const browser = parseBrowserBridgeKind(
       browserPlugin,
       packageManagerMatch[1],
@@ -1074,17 +1124,25 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (pathname === "/api/browser-workspace" && method === "GET") {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserWorkspacePlugin();
+    if (!browserPlugin) {
+      json(res, { mode: "web", tabs: [] });
+      return true;
+    }
     json(res, await browserPlugin.getBrowserWorkspaceSnapshot());
     return true;
   }
 
   if (pathname === "/api/browser-workspace/command" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserWorkspacePlugin();
     const body =
       (await readJsonBody<BrowserWorkspaceCommand>(req, res)) ?? null;
     if (!body?.subaction) {
       error(res, "subaction is required", 400);
+      return true;
+    }
+    if (!browserPlugin) {
+      error(res, "Browser workspace is not available on this platform", 503);
       return true;
     }
     json(res, await browserPlugin.executeBrowserWorkspaceCommand(body));
@@ -1092,13 +1150,21 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (pathname === "/api/browser-workspace/tabs" && method === "GET") {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserWorkspacePlugin();
+    if (!browserPlugin) {
+      json(res, { tabs: [] });
+      return true;
+    }
     json(res, { tabs: await browserPlugin.listBrowserWorkspaceTabs() });
     return true;
   }
 
   if (pathname === "/api/browser-workspace/tabs" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserWorkspacePlugin();
+    if (!browserPlugin) {
+      error(res, "Browser workspace is not available on this platform", 503);
+      return true;
+    }
     const body =
       (await readJsonBody<{
         url?: string;
@@ -1121,33 +1187,34 @@ async function handleBuiltinOptionalRoutes(
   const tabId = decodeURIComponent(tabMatch[1]).trim();
   const action = tabMatch[2] ?? null;
 
+  const browserPlugin = await getBrowserWorkspacePlugin();
+  if (!browserPlugin) {
+    error(res, "Browser workspace is not available on this platform", 503);
+    return true;
+  }
+
   if (!action && method === "DELETE") {
-    const browserPlugin = await getBrowserPlugin();
     const closed = await browserPlugin.closeBrowserWorkspaceTab(tabId);
     json(res, { closed }, closed ? 200 : 404);
     return true;
   }
 
   if (action === "show" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
     json(res, { tab: await browserPlugin.showBrowserWorkspaceTab(tabId) });
     return true;
   }
 
   if (action === "hide" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
     json(res, { tab: await browserPlugin.hideBrowserWorkspaceTab(tabId) });
     return true;
   }
 
   if (action === "snapshot" && method === "GET") {
-    const browserPlugin = await getBrowserPlugin();
     json(res, await browserPlugin.snapshotBrowserWorkspaceTab(tabId));
     return true;
   }
 
   if (action === "navigate" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
     const body =
       (await readJsonBody<{ url?: string; partition?: string }>(req, res)) ??
       null;
@@ -1165,7 +1232,6 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (action === "eval" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
     const body =
       (await readJsonBody<{ script?: string; partition?: string }>(req, res)) ??
       null;

@@ -1,4 +1,5 @@
 import {
+  ApiError,
   Button,
   type CodingAgentTaskThread,
   type CodingAgentTaskThreadDetail,
@@ -663,6 +664,17 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
         });
       } catch (error) {
         if (cancelled) return;
+        // The task-thread endpoint is owned by the Node-only
+        // @elizaos/plugin-agent-orchestrator and is absent on mobile/web
+        // surfaces. A 404 there means "no coding tasks", not a load failure —
+        // render the empty state instead of the red error banner.
+        if (error instanceof ApiError && error.status === 404) {
+          setLoadError(null);
+          setThreads([]);
+          setSelectedThreadId(null);
+          setSelectedThread(null);
+          return;
+        }
         if (!silent) {
           setLoadError(
             getClientErrorMessage(

@@ -24,6 +24,7 @@ import type {
   DocumentScope,
   DocumentSearchResult,
 } from "../../api/client-types-chat";
+import { isApiError } from "../../api/client-types-core";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useApp } from "../../state/useApp";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
@@ -462,6 +463,10 @@ export function DocumentsView({
     string | null
   >(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Set when GET /api/documents 404s — the documents plugin isn't mounted on
+  // this surface (e.g. the mobile/Android agent). Degrade to a calm
+  // "unavailable here" panel instead of a red error + Retry loop.
+  const [documentsUnavailable, setDocumentsUnavailable] = useState(false);
   const [isServiceLoading, setIsServiceLoading] = useState(false);
   const serviceRetryRef = useRef(0);
   const selectedDocId = selectedDocumentId ?? internalSelectedDocId;
@@ -490,8 +495,17 @@ export function DocumentsView({
         setCached(`documents:list:${scopeFilter}`, docsRes.documents);
         onDocumentsChange?.(docsRes.documents);
         setIsServiceLoading(false);
+        setDocumentsUnavailable(false);
         serviceRetryRef.current = 0;
       } catch (err) {
+        // A 404 means the documents plugin isn't mounted on this surface
+        // (the mobile/Android agent omits it). Treat it as "unavailable here"
+        // — a calm panel, not a red error + Retry loop.
+        if (isApiError(err) && err.status === 404) {
+          setIsServiceLoading(false);
+          setDocumentsUnavailable(true);
+          return;
+        }
         const status = (err as { status?: number }).status;
         if (status === 503) {
           setIsServiceLoading(true);
@@ -1345,7 +1359,16 @@ export function DocumentsView({
         </PagePanel>
       )}
 
-      {loadError && !isServiceLoading && (
+      {documentsUnavailable && !isServiceLoading && (
+        <PagePanel.Notice tone="default">
+          {t("documentsview.DocumentsUnavailableHere", {
+            defaultValue:
+              "Knowledge isn't available on this device. Manage documents from the desktop or web app.",
+          })}
+        </PagePanel.Notice>
+      )}
+
+      {loadError && !documentsUnavailable && !isServiceLoading && (
         <PagePanel.Notice
           tone="danger"
           actions={

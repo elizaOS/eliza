@@ -305,9 +305,9 @@ function LogsViewBody() {
           />
         ) : (
           <PagePanel variant="inset" className="overflow-hidden rounded-sm">
-            {filteredLogs.map((entry: LogEntry) => (
+            {filteredLogs.map((entry: LogEntry, i: number) => (
               <div
-                key={`${entry.timestamp}-${entry.source}-${entry.level}-${entry.message}`}
+                key={`${i}-${entry.timestamp}-${entry.source}-${entry.level}`}
                 className="flex flex-col gap-1 px-3 py-3 text-sm md:flex-row md:items-start md:gap-3"
                 data-testid="log-entry"
               >

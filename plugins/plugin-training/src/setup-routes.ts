@@ -228,6 +228,23 @@ const TRAINING_ROUTES: Array<{ type: string; path: string }> = [
   { type: "GET", path: "/api/training/auto/runs/:runId" },
   { type: "GET", path: "/api/training/auto/config" },
   { type: "POST", path: "/api/training/auto/config" },
+  // Analysis + readiness
+  { type: "POST", path: "/api/training/analysis/index" },
+  { type: "POST", path: "/api/training/analysis/readiness" },
+  // Data collection pipeline
+  { type: "GET", path: "/api/training/collections" },
+  { type: "POST", path: "/api/training/collect" },
+  { type: "POST", path: "/api/training/feed/generate" },
+  { type: "POST", path: "/api/training/scenarios/run" },
+  { type: "POST", path: "/api/training/datasets/ingest-hf" },
+  // Evals + benchmarks
+  { type: "POST", path: "/api/training/evals/record-comparison" },
+  { type: "POST", path: "/api/training/evals/run-local-comparison" },
+  { type: "POST", path: "/api/training/benchmarks/action-selection/run" },
+  { type: "POST", path: "/api/training/benchmarks/matrix" },
+  { type: "POST", path: "/api/training/benchmarks/matrix/from-artifacts" },
+  { type: "POST", path: "/api/training/benchmarks/run-vs-cerebras" },
+  { type: "POST", path: "/api/training/models/stage-eliza1-bundle" },
   { type: "GET", path: "/api/training/trajectories" },
   { type: "GET", path: "/api/training/trajectories/:trajectoryId" },
   { type: "POST", path: "/api/training/trajectories/export" },
