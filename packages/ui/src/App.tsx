@@ -44,6 +44,7 @@ import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
 import { ChatAmbientBackground } from "./components/shell/ChatAmbientBackground";
 import { ChatSurface } from "./components/shell/ChatSurface";
+import { CloudHandoffBanner } from "./components/shell/CloudHandoffBanner";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
@@ -1821,6 +1822,7 @@ export function App() {
           <ConnectionFailedBanner />
           <SystemWarningBanner />
           <ActionBanner />
+          <CloudHandoffBanner />
           {shellContent}
         </div>
         {/* Full-screen overlay app — renders whichever overlay app is active */}
