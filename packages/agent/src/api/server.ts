@@ -4421,6 +4421,13 @@ export async function startApiServer(opts?: {
 
   // ── WebSocket Server ─────────────────────────────────────────────────────
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+  // A server-level 'error' with no listener crashes the process. Abrupt client
+  // disconnects (RST during/after the upgrade handshake) surface here.
+  wss.on("error", (err: unknown) => {
+    logger.warn(
+      `[eliza-api] WebSocketServer error: ${err instanceof Error ? err.message : err}`,
+    );
+  });
   const wsClients = new Set<WebSocket>();
   const wsClientIds = new WeakMap<WebSocket, string>();
   /**
@@ -4486,6 +4493,17 @@ export async function startApiServer(opts?: {
 
   // Handle upgrade requests for WebSocket
   server.on("upgrade", (request, socket, head) => {
+    // The raw upgrade socket can emit 'error' (client RST mid-handshake) before
+    // a WebSocket — and its error handler — exists. Unhandled, it crashes the
+    // process. Attach a no-op-ish guard for the whole upgrade window.
+    socket.on("error", (err: unknown) => {
+      logger.warn(
+        `[eliza-api] WS upgrade socket error: ${err instanceof Error ? err.message : err}`,
+      );
+      try {
+        socket.destroy();
+      } catch {}
+    });
     try {
       const wsUrl = new URL(
         request.url ?? "/",
@@ -4500,6 +4518,15 @@ export async function startApiServer(opts?: {
         return;
       }
       wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+        // Attach an 'error' listener IMMEDIATELY — before emit('connection')
+        // runs the (long) connection handler that only attaches its own error
+        // listener near the end. A client that RSTs in that window otherwise
+        // emits an unhandled 'error' on the ws and crashes the process.
+        ws.on("error", (err: unknown) => {
+          logger.warn(
+            `[eliza-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
+          );
+        });
         wss.emit("connection", ws, request);
       });
     } catch (err) {
