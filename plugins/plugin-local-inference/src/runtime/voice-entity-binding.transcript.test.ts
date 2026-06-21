@@ -66,4 +66,33 @@ describe("handleLiveVoiceAttribution — transcript carry (#8786)", () => {
 		});
 		expect(signal.transcript).toBe("Jill is my wife");
 	});
+
+	it("stamps the resolved speaker entityId onto the turn metadata (#8786)", async () => {
+		const { runtime } = captureRuntime();
+		const out = output();
+		await handleLiveVoiceAttribution(runtime, out, {
+			ownerEntityId: "entity-jill",
+			transcript: "I'm Jill",
+		});
+		// The imprint → entityId match rides on the message so providers/extraction
+		// attribute the turn to the right person, not just the EOT gate.
+		const meta = out.turn.metadata as Record<string, unknown>;
+		expect(meta.speakerEntityId).toBe("entity-jill");
+		expect(meta.voiceTurnSignal).toBeDefined();
+	});
+
+	it("omits speakerEntityId for an unbound speaker (never writes a null speaker)", async () => {
+		const { runtime } = captureRuntime();
+		const out = {
+			turnId: "t2",
+			primarySpeaker: { entityId: null, confidence: 0.2 },
+			observation: undefined,
+			turn: { metadata: {} },
+			segments: [],
+		} as unknown as VoiceAttributionOutput;
+		await handleLiveVoiceAttribution(runtime, out, {});
+		const meta = out.turn.metadata as Record<string, unknown>;
+		expect(meta.speakerEntityId).toBeUndefined();
+		expect(meta.voiceTurnSignal).toBeDefined();
+	});
 });

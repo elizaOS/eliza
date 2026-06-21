@@ -1646,6 +1646,31 @@ function getVoiceTurnSignalMetadata(
 	return Object.keys(signal).length > 0 ? signal : null;
 }
 
+/**
+ * The resolved speaker entity for a voice turn (#8786). Voice attribution
+ * (imprint cluster → entityId) writes `speakerEntityId` onto the turn; like
+ * {@link getVoiceTurnSignalMetadata} it can arrive top-level (`content.speaker
+ * EntityId`, the in-process engine path) or nested under `content.metadata`
+ * (chat clients). Returns the trimmed id, or null when the speaker is unbound.
+ */
+function getVoiceSpeakerEntityId(
+	message: Pick<Memory, "content">,
+): string | null {
+	const content = message.content;
+	const nested =
+		content?.metadata &&
+		typeof content.metadata === "object" &&
+		!Array.isArray(content.metadata)
+			? (content.metadata as Record<string, unknown>).speakerEntityId
+			: undefined;
+	const value =
+		(content as { speakerEntityId?: unknown } | undefined)?.speakerEntityId ??
+		nested;
+	if (typeof value !== "string") return null;
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : null;
+}
+
 function voiceTurnSignalSuppressesAgent(
 	signal: VoiceTurnSignalMetadata | null,
 ): boolean {
@@ -5514,13 +5539,11 @@ export async function runShortcutGate(args: {
 	const text = getUserMessageText(args.message) ?? "";
 	if (!text.trim()) return null;
 
-	const registry = (
-		args.runtime as { shortcutRegistry?: ShortcutRegistry }
-	).shortcutRegistry;
+	const registry = (args.runtime as { shortcutRegistry?: ShortcutRegistry })
+		.shortcutRegistry;
 	if (!registry || registry.size === 0) return null;
 
-	const authorized =
-		args.senderRole === "OWNER" || args.senderRole === "ADMIN";
+	const authorized = args.senderRole === "OWNER" || args.senderRole === "ADMIN";
 	const match = registry.match(text, {
 		actions: args.runtime.actions.map((action) => action.name),
 		allowNatural: process.env.ELIZA_SHORTCUTS_NL === "1",
@@ -10302,6 +10325,25 @@ export class DefaultMessageService implements IMessageService {
 		const earlyReplyMessages: Memory[] = [];
 		const persistedEarlyReplyIds = new Set<string>();
 		const voiceResponseHandlerFastPath = isVoiceChannelMessage(message);
+		// Canonicalize the resolved speaker (imprint → entityId) onto
+		// `content.metadata.speakerEntityId` for every voice turn that carries one
+		// (#8786). Attribution can arrive top-level (in-process engine) or nested
+		// (chat clients); collapsing to one spot lets providers/extraction and the
+		// facts/relationships stage attribute the turn to the right person.
+		if (voiceResponseHandlerFastPath && message.content) {
+			const speakerEntityId = getVoiceSpeakerEntityId(message);
+			if (speakerEntityId) {
+				const md =
+					message.content.metadata &&
+					typeof message.content.metadata === "object" &&
+					!Array.isArray(message.content.metadata)
+						? (message.content.metadata as Record<string, unknown>)
+						: {};
+				if (md.speakerEntityId !== speakerEntityId) {
+					message.content.metadata = { ...md, speakerEntityId };
+				}
+			}
+		}
 		const deliverResponseHandlerEarlyReply = voiceResponseHandlerFastPath
 			? async (event: ResponseHandlerEarlyReplyEvent): Promise<void> => {
 					const text = event.text.trim();
@@ -10412,20 +10454,20 @@ export class DefaultMessageService implements IMessageService {
 		const directLifeOpsResult = strategyResult
 			? null
 			: await (
-			runtime as IAgentRuntime & {
-				lifeOpsDirectMessageHook?: {
-					handleMessageRequest?: (args: {
-						runtime: IAgentRuntime;
-						message: Memory;
-						state: State;
-					}) => Promise<ActionResult | null | undefined>;
-				};
-			}
-		).lifeOpsDirectMessageHook?.handleMessageRequest?.({
-			runtime,
-			message,
-			state,
-		});
+					runtime as IAgentRuntime & {
+						lifeOpsDirectMessageHook?: {
+							handleMessageRequest?: (args: {
+								runtime: IAgentRuntime;
+								message: Memory;
+								state: State;
+							}) => Promise<ActionResult | null | undefined>;
+						};
+					}
+				).lifeOpsDirectMessageHook?.handleMessageRequest?.({
+					runtime,
+					message,
+					state,
+				});
 		if (directLifeOpsResult) {
 			const directText =
 				typeof directLifeOpsResult.text === "string" &&

@@ -282,7 +282,15 @@ export async function handleLiveVoiceAttribution(
 	const signal = foldSpeakerIntoSignal(base, standing, opts);
 
 	const turn = output.turn;
-	turn.metadata = { ...(turn.metadata ?? {}), voiceTurnSignal: signal };
+	// Stamp the resolved speaker entity onto the turn (#8786): the imprint →
+	// entityId match rides with the transcript so the server/providers/extraction
+	// attribute the turn to the right person (not just the EOT gate). Omitted when
+	// the speaker is unbound (`entityId == null`) — never write a null speaker.
+	turn.metadata = {
+		...(turn.metadata ?? {}),
+		voiceTurnSignal: signal,
+		...(standing.entityId ? { speakerEntityId: standing.entityId } : {}),
+	};
 
 	return signal;
 }
