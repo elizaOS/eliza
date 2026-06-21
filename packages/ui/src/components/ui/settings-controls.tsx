@@ -110,12 +110,13 @@ export const SettingsTextarea = React.forwardRef<
 export interface SettingsSegmentedGroupProps
   extends React.HTMLAttributes<HTMLDivElement> {}
 
-export function SettingsSegmentedGroup({
-  className,
-  ...props
-}: SettingsSegmentedGroupProps) {
+export const SettingsSegmentedGroup = React.forwardRef<
+  HTMLDivElement,
+  SettingsSegmentedGroupProps
+>(function SettingsSegmentedGroup({ className, ...props }, ref) {
   return (
     <div
+      ref={ref}
       className={cn(
         "flex shrink-0 gap-1 rounded-sm border border-border bg-card/50 p-1",
         className,
@@ -123,7 +124,7 @@ export function SettingsSegmentedGroup({
       {...props}
     />
   );
-}
+});
 
 export interface SettingsMutedTextProps
   extends React.HTMLAttributes<HTMLDivElement> {}

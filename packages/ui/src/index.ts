@@ -229,6 +229,7 @@ export * from "./components/primitives/index";
 export {
   SettingsActionButton,
   SettingsInputRow,
+  SettingsSegmentedRow,
   SettingsSelectRow,
   SettingsSwitchRow,
   SettingsTextareaRow,

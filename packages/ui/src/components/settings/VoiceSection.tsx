@@ -13,6 +13,7 @@ import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
+import { SettingsSegmentedRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { VoiceProfileSection } from "./VoiceProfileSection";
 import { DEFAULT_VAD_AUTO_STOP_PREFS } from "./VoiceSection.helpers";
@@ -186,19 +187,6 @@ export function VoiceSection({
       status: wakeWordEnabled ? "active" : "inactive",
       onActivate: () => onWakeWordToggle?.(!wakeWordEnabled),
     });
-  const { ref: strategyRef, agentProps: strategyAgentProps } =
-    useAgentElement<HTMLSelectElement>({
-      id: "voice-section-strategy-select",
-      role: "select",
-      label: t("voicesection.localVsCloudStrategy", {
-        defaultValue: "Local vs Cloud strategy",
-      }),
-      group: "voice-section",
-      getValue: () => prefs.strategy,
-      onFill: (value) =>
-        updatePrefs({ strategy: value as VoiceLocalCloudStrategy }),
-      options: ["auto", "force-local", "force-cloud"],
-    });
   const { ref: cloudCacheRef, agentProps: cloudCacheAgentProps } =
     useAgentElement<HTMLInputElement>({
       id: "voice-section-cloud-cache-toggle",
@@ -290,48 +278,44 @@ export function VoiceSection({
             }
           />
 
-          <SettingsRow
+          <SettingsSegmentedRow
+            agentId="voice-section-strategy-select"
             icon={Cloud}
             label={t("voicesection.localVsCloud", {
               defaultValue: "Local vs Cloud",
             })}
+            agentLabel={t("voicesection.localVsCloudStrategy", {
+              defaultValue: "Local vs Cloud strategy",
+            })}
             description={t("voicesection.localVsCloudDesc", {
               defaultValue: "Where speech recognition and synthesis run.",
             })}
-            stacked
-          >
-            <select
-              ref={strategyRef}
-              value={prefs.strategy}
-              onChange={(e) =>
-                updatePrefs({
-                  strategy: e.target.value as VoiceLocalCloudStrategy,
-                })
-              }
-              className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm text-txt transition-colors focus:border-accent focus:outline-none"
-              data-testid="voice-section-strategy-select"
-              aria-label={t("voicesection.localVsCloudStrategy", {
-                defaultValue: "Local vs Cloud strategy",
-              })}
-              {...strategyAgentProps}
-            >
-              <option value="auto">
-                {t("voicesection.strategyAuto", {
-                  defaultValue: "Auto (recommended)",
-                })}
-              </option>
-              <option value="force-local">
-                {t("voicesection.strategyForceLocal", {
-                  defaultValue: "Force local",
-                })}
-              </option>
-              <option value="force-cloud">
-                {t("voicesection.strategyForceCloud", {
-                  defaultValue: "Force cloud",
-                })}
-              </option>
-            </select>
-          </SettingsRow>
+            group="voice-section"
+            value={prefs.strategy}
+            onValueChange={(value) =>
+              updatePrefs({ strategy: value as VoiceLocalCloudStrategy })
+            }
+            options={[
+              {
+                value: "auto",
+                label: t("voicesection.strategyAuto", {
+                  defaultValue: "Auto",
+                }),
+              },
+              {
+                value: "force-local",
+                label: t("voicesection.strategyForceLocal", {
+                  defaultValue: "Local",
+                }),
+              },
+              {
+                value: "force-cloud",
+                label: t("voicesection.strategyForceCloud", {
+                  defaultValue: "Cloud",
+                }),
+              },
+            ]}
+          />
         </SettingsGroup>
 
         <SettingsGroup

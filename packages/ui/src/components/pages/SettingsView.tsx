@@ -11,6 +11,7 @@ import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
 import { useApp } from "../../state";
 import { PagePanel } from "../composites/page-panel";
+import { ErrorBoundary } from "../ui/error-boundary";
 import {
   SettingsGroup,
   SettingsRow,
@@ -228,9 +229,64 @@ function SettingsSectionContent({
       </div>
       <PagePanel variant="section">
         <div className={cn("p-4 sm:p-5", section.bodyClassName)}>
-          <Component />
+          <ErrorBoundary
+            key={section.id}
+            fallback={(error, reset) => (
+              <SettingsSectionFallback
+                title={title}
+                error={error}
+                onRetry={reset}
+                t={t}
+              />
+            )}
+          >
+            <Component />
+          </ErrorBoundary>
         </div>
       </PagePanel>
+    </div>
+  );
+}
+
+/**
+ * Inline per-section error fallback. A section that throws on mount/render must
+ * degrade to this card — never blank the whole shell — so the settings nav rail
+ * and every other section stay interactive. Uses the settings `warn` token
+ * vocabulary for visual consistency with the rest of the surface.
+ */
+function SettingsSectionFallback({
+  title,
+  error,
+  onRetry,
+  t,
+}: {
+  title: string;
+  error: Error;
+  onRetry: () => void;
+  t: Translate;
+}) {
+  return (
+    <div
+      role="alert"
+      data-testid="settings-section-error"
+      className="flex flex-col items-start gap-2 rounded-md border border-warn/30 bg-warn/12 p-4 text-left"
+    >
+      <p className="text-sm font-semibold text-warn">
+        {t("settings.sectionFailed", {
+          defaultValue: "{{title}} failed to load",
+          title,
+        })}
+      </p>
+      <p className="text-xs-tight text-muted max-w-prose break-words">
+        {error.message}
+      </p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-1 inline-flex h-9 items-center rounded-md border border-border bg-card px-3 text-xs font-medium text-txt transition-colors hover:border-accent hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+      >
+        {t("settings.sectionRetry", { defaultValue: "Retry" })}
+      </button>
     </div>
   );
 }
