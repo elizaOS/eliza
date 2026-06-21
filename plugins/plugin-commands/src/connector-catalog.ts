@@ -1,53 +1,38 @@
 /**
  * Connector-neutral command catalog.
  *
- * The text command registry (`registry.ts`) describes what an agent can *do*
- * via slash commands; the catalog re-projects that registry, plus the app's
- * navigation surface, into a connector-neutral shape (`ConnectorCommand`) that
- * a connector (Discord, Telegram, …) maps onto its own native command surface.
+ * The text command registry (`registry.ts`) describes the agent's slash
+ * capabilities; `navigation-commands.ts` describes the app's navigation/client
+ * commands. Both are `CommandDefinition`s now, so the catalog treats them
+ * uniformly: it unions them, dedupes (navigation wins name collisions), filters
+ * by surface (`surfaces`) and active view (`views`), and projects onto either:
  *
- * Each command declares a `target` discriminating where it executes:
- *   - `agent`    → the reconstructed command text is routed through the agent's
- *                  message pipeline (these come from the text command registry).
- *   - `navigate` → opens a destination in the Eliza app (settings, views, …);
- *                  `path` is the in-app deep link.
- *   - `client`   → GUI/TUI-only behavior that has no remote surface; connectors
- *                  filter these out (none are emitted for remote connectors).
+ *   - `ConnectorCommand` — the shape a connector (Discord, Telegram, …) maps
+ *     onto its native command surface (`getConnectorCommands`), or
+ *   - `SerializedCommand` — the wire shape `GET /api/commands` serves the web
+ *     composer / TUI (`getCatalogCommands`), via `serializeCommand`.
  *
- * Options carry a fully-resolved `choices: string[]` (always an array, possibly
- * empty) so connectors never have to evaluate the registry's function-valued
- * choices themselves.
+ * Each command declares a `target` discriminating where it executes (`agent` /
+ * `navigate` / `client`). `ConnectorCommand` options carry a fully-resolved
+ * `choices: string[]` so connectors never evaluate function-valued choices.
  */
 
+import { navigationCommandDefinitions } from "./navigation-commands";
 import { DEFAULT_COMMANDS } from "./registry";
-import { getSettingsSectionChoices } from "./settings-sections";
-import type { CommandArgDefinition, CommandDefinition } from "./types";
+import { commandVisibleForSurface, serializeCommand } from "./serialize";
+import type {
+	ClientCommandAction,
+	CommandDefinition,
+	CommandSurface,
+	CommandTarget,
+	SerializedCommand,
+	SerializedCommandSource,
+} from "./types";
 
-/**
- * Client-only behaviors the in-app surfaces (GUI/TUI) run directly, with no
- * agent round-trip and no remote surface. Mirrors the GUI's `ClientCommandAction`
- * (packages/ui `client-types-commands.ts`); kept here so the catalog stays
- * connector-neutral without depending on the UI package.
- */
-export type ClientCommandAction =
-	| "clear-chat"
-	| "new-conversation"
-	| "toggle-fullscreen"
-	| "open-command-palette"
-	| "show-commands"
-	| "toggle-transcription";
-
-/** Where a connector command executes. */
-export type ConnectorCommandTarget =
-	| { kind: "agent" }
-	| {
-			kind: "navigate";
-			path: string;
-			tab?: string;
-			viewId?: string;
-			section?: string;
-	  }
-	| { kind: "client"; clientAction: ClientCommandAction };
+// Re-export the canonical command-target types for connectors that still import
+// them from here. `ConnectorCommandTarget` is now an alias of `CommandTarget`.
+export type { ClientCommandAction, CommandTarget } from "./types";
+export type ConnectorCommandTarget = CommandTarget;
 
 /** A single argument of a connector command. */
 export interface ConnectorCommandOption {
@@ -62,7 +47,7 @@ export interface ConnectorCommandOption {
 export interface ConnectorCommand {
 	name: string;
 	description: string;
-	target: ConnectorCommandTarget;
+	target: CommandTarget;
 	options: ConnectorCommandOption[];
 	/**
 	 * View ids this command is scoped to (#8798): present only while one of these
@@ -70,6 +55,13 @@ export interface ConnectorCommand {
 	 */
 	views?: string[];
 }
+
+const KNOWN_SURFACES: ReadonlySet<string> = new Set([
+	"gui",
+	"tui",
+	"discord",
+	"telegram",
+]);
 
 /**
  * Whether a command with the given `views` scoping is visible for the active
@@ -87,40 +79,68 @@ export function commandVisibleForView(
 
 /**
  * Connectors expose a native command surface, so only commands that make sense
- * remotely are emitted. The text registry's `scope` already encodes this:
- * `text`-only commands (e.g. `/bash`) are local-shell behaviors that never
- * belong on a connector surface.
+ * remotely are emitted. The text registry's `scope` encodes this: `text`-only
+ * commands (e.g. `/bash`) are local-shell behaviors that never belong on a
+ * connector surface.
  */
 function isConnectorScoped(command: CommandDefinition): boolean {
 	return command.scope !== "text";
 }
 
-/** Resolve a registry arg's choices to a concrete string array. */
-function resolveArgChoices(arg: CommandArgDefinition): string[] {
-	if (!arg.choices) return [];
-	// Catalog projection is runtime-independent, so function-valued choices
-	// (which need a live provider/model context) collapse to free-form here.
-	if (typeof arg.choices === "function") return [];
-	return arg.choices;
+function commandName(command: CommandDefinition): string {
+	return command.nativeName ?? command.key;
 }
 
-function mapRegistryArg(arg: CommandArgDefinition): ConnectorCommandOption {
+/**
+ * The unified command list: enabled, connector-scoped agent commands from the
+ * text registry plus the navigation/client commands. Navigation/client commands
+ * win on name collisions (they own those surfaces).
+ */
+function unifiedDefinitions(): CommandDefinition[] {
+	const agent = DEFAULT_COMMANDS.filter(
+		(command) => command.enabled !== false && isConnectorScoped(command),
+	);
+	const navigation = navigationCommandDefinitions();
+	const navigationNames = new Set(navigation.map(commandName));
+	const agentOnly = agent.filter(
+		(command) => !navigationNames.has(commandName(command)),
+	);
+	return [...agentOnly, ...navigation];
+}
+
+function normalizeSurface(surface: string): CommandSurface | null {
+	return KNOWN_SURFACES.has(surface) ? (surface as CommandSurface) : null;
+}
+
+/** The surface- and view-filtered unified definitions. */
+function visibleDefinitions(
+	surface: string,
+	activeViewId: string | null | undefined,
+): CommandDefinition[] {
+	const normalized = normalizeSurface(surface);
+	return unifiedDefinitions()
+		.filter((command) => commandVisibleForSurface(command.surfaces, normalized))
+		.filter((command) => commandVisibleForView(command.views, activeViewId));
+}
+
+function mapDefinitionArg(
+	arg: NonNullable<CommandDefinition["args"]>[number],
+): ConnectorCommandOption {
 	return {
 		name: arg.name,
 		description: arg.description,
 		required: arg.required ?? false,
-		choices: resolveArgChoices(arg),
+		choices: Array.isArray(arg.choices) ? arg.choices : [],
 	};
 }
 
-/** Project an enabled, connector-scoped registry command onto the catalog. */
-function mapRegistryCommand(command: CommandDefinition): ConnectorCommand {
-	const options = command.args?.map(mapRegistryArg) ?? [];
+/** Project a definition onto the connector-neutral `ConnectorCommand` shape. */
+function toConnectorCommand(command: CommandDefinition): ConnectorCommand {
 	return {
-		name: command.nativeName ?? command.key,
+		name: commandName(command),
 		description: command.description,
-		target: { kind: "agent" },
-		options,
+		target: command.target ?? { kind: "agent" },
+		options: (command.args ?? []).map(mapDefinitionArg),
 		...(command.views && command.views.length > 0
 			? { views: command.views }
 			: {}),
@@ -128,171 +148,36 @@ function mapRegistryCommand(command: CommandDefinition): ConnectorCommand {
 }
 
 /**
- * Navigation + client commands the app surfaces in addition to the agent
- * capabilities. Navigation commands open a destination in the Eliza app rather
- * than routing through the agent; `path` is the in-app deep link a connector can
- * advertise, and `tab`/`viewId` are routing hints the GUI/TUI use to open the
- * destination deterministically. Client commands run a GUI/TUI-only behavior.
+ * Build the connector command catalog for a given surface (Discord, Telegram, …).
  *
- * The `path`/`tab` values mirror the canonical route table in
- * `@elizaos/ui` (`navigation/index.ts` `TAB_PATHS`); keep them in sync there.
- */
-function navigationCommands(): ConnectorCommand[] {
-	return [
-		{
-			name: "settings",
-			description: "Open agent settings",
-			target: { kind: "navigate", path: "/settings", tab: "settings" },
-			options: [
-				{
-					name: "section",
-					description: "Settings section to open",
-					required: false,
-					choices: getSettingsSectionChoices(),
-				},
-			],
-		},
-		{
-			name: "chat",
-			description: "Return to the chat",
-			target: { kind: "navigate", path: "/chat", tab: "chat" },
-			options: [],
-		},
-		{
-			name: "views",
-			description: "Open the agent's views",
-			target: { kind: "navigate", path: "/views", tab: "views" },
-			options: [],
-		},
-		{
-			name: "orchestrator",
-			description: "Open the agent orchestrator",
-			target: {
-				kind: "navigate",
-				path: "/orchestrator",
-				viewId: "orchestrator",
-			},
-			options: [],
-		},
-		{
-			name: "character",
-			description: "Open the character editor",
-			target: { kind: "navigate", path: "/character", tab: "character" },
-			options: [],
-		},
-		{
-			name: "knowledge",
-			description: "Open the knowledge base",
-			target: {
-				kind: "navigate",
-				path: "/character/documents",
-				tab: "documents",
-			},
-			options: [],
-		},
-		{
-			name: "wallet",
-			description: "Open the wallet & inventory",
-			target: { kind: "navigate", path: "/wallet", tab: "inventory" },
-			options: [],
-		},
-		{
-			name: "automations",
-			description: "Open automations",
-			target: { kind: "navigate", path: "/automations", tab: "automations" },
-			options: [],
-		},
-		{
-			name: "tasks",
-			description: "Open tasks",
-			target: { kind: "navigate", path: "/apps/tasks", tab: "tasks" },
-			options: [],
-		},
-		{
-			name: "skills",
-			description: "Open the skills library",
-			target: { kind: "navigate", path: "/apps/skills", tab: "skills" },
-			options: [],
-		},
-		{
-			name: "plugins",
-			description: "Open installed plugins",
-			target: { kind: "navigate", path: "/apps/plugins", tab: "plugins" },
-			options: [],
-		},
-		{
-			name: "logs",
-			description: "Open the logs",
-			target: { kind: "navigate", path: "/apps/logs", tab: "logs" },
-			options: [],
-		},
-		{
-			name: "database",
-			description: "Open the database browser",
-			target: { kind: "navigate", path: "/apps/database", tab: "database" },
-			options: [],
-		},
-		// Client-only behaviors — run in the GUI/TUI, filtered off chat connectors
-		// (a Discord/Telegram user has nothing to clear or full-screen).
-		{
-			name: "clear",
-			description: "Clear the current chat",
-			target: { kind: "client", clientAction: "clear-chat" },
-			options: [],
-		},
-		{
-			name: "fullscreen",
-			description: "Toggle full-screen chat",
-			target: { kind: "client", clientAction: "toggle-fullscreen" },
-			options: [],
-		},
-		{
-			name: "transcribe",
-			description:
-				"Toggle long-form transcription mode (record-only; agent stays silent until an exit phrase)",
-			target: { kind: "client", clientAction: "toggle-transcription" },
-			options: [],
-		},
-	];
-}
-
-/**
- * Build the connector command catalog for a given surface.
- *
- * The catalog is the union of:
- *   - agent-capability commands derived from the enabled, connector-scoped text
- *     command registry, and
- *   - the app navigation + client commands.
- *
- * Client-only commands (GUI/TUI behaviors like clear / full-screen) are emitted
- * to the in-app surfaces but filtered off chat connectors, which have no surface
- * to run them on.
- *
- * @param surface the target surface ("gui" | "tui" | "discord" | "telegram").
+ * @param surface "gui" | "tui" | "discord" | "telegram".
  * @param options.activeViewId when set, view-scoped commands (#8798) are
  *   included only if this is one of their views; global commands always appear.
- *   When unset, view-scoped commands are filtered out entirely (no foreground).
+ *   When unset, view-scoped commands are filtered out entirely.
  */
 export function getConnectorCommands(
 	surface: string,
 	options: { activeViewId?: string | null } = {},
 ): ConnectorCommand[] {
-	const agentCommands = DEFAULT_COMMANDS.filter(
-		(command) => command.enabled !== false && isConnectorScoped(command),
-	).map(mapRegistryCommand);
-
-	const isChatConnector = surface === "discord" || surface === "telegram";
-	const navigation = navigationCommands().filter(
-		(command) => !(isChatConnector && command.target.kind === "client"),
+	return visibleDefinitions(surface, options.activeViewId).map(
+		toConnectorCommand,
 	);
+}
 
-	// Navigation commands win on name collisions (they own those surfaces).
-	const navigationNames = new Set(navigation.map((command) => command.name));
-	const agentOnly = agentCommands.filter(
-		(command) => !navigationNames.has(command.name),
-	);
-
-	return [...agentOnly, ...navigation].filter((command) =>
-		commandVisibleForView(command.views, options.activeViewId),
+/**
+ * Build the wire-safe catalog (`SerializedCommand[]`) served by
+ * `GET /api/commands`. This is the pure projection: surface- and view-filtered
+ * unified definitions, each run through `serializeCommand` so `surfaces`, auth
+ * flags, `category`, `dynamicChoices`, and `icon` all survive intact.
+ */
+export function getCatalogCommands(
+	surface: string,
+	options: {
+		activeViewId?: string | null;
+		source?: SerializedCommandSource;
+	} = {},
+): SerializedCommand[] {
+	return visibleDefinitions(surface, options.activeViewId).map((command) =>
+		serializeCommand(command, options.source ? { source: options.source } : {}),
 	);
 }

@@ -29,6 +29,9 @@ import {
 	type ProviderResult,
 	type State,
 } from "@elizaos/core";
+// Deterministic command action layer (#8790): handlers, dispatch, settings,
+// and the registered *_COMMAND actions.
+import { commandActions } from "./actions";
 import { detectCommand, hasCommand, normalizeCommandBody } from "./parser";
 import {
 	findCommandByAlias,
@@ -44,9 +47,13 @@ import type { CommandContext, CommandDefinition, CommandResult } from "./types";
 
 // Connector-neutral command catalog (getConnectorCommands / ConnectorCommand)
 // + settings-section resolution (resolveSettingsSection).
+export * from "./actions";
 export * from "./connector-catalog";
+export * from "./navigation-commands";
 export * from "./parser";
 export * from "./registry";
+// Canonical serialization (serializeCommand / commandVisibleForSurface).
+export * from "./serialize";
 export * from "./settings-sections";
 // Re-export everything
 export * from "./types";
@@ -164,6 +171,12 @@ export const commandsPlugin: Plugin = {
 	description: "Chat command system with /help, /status, /reset, etc.",
 
 	providers: [commandRegistryProvider],
+
+	// Deterministic agent-target command handlers (#8790). Each action's
+	// validate() is strictly slash-only, so they never intercept conversational
+	// messages. The pre-LLM shortcut gate dispatches these before inference; the
+	// actions are also registered so the planner can route to them as a fallback.
+	actions: commandActions,
 
 	// Self-declared auto-enable: activate when features.commands is enabled.
 	autoEnable: {
