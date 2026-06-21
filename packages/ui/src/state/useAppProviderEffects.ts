@@ -1,5 +1,9 @@
-import { type RefObject, useEffect, useRef } from "react";
+import { type RefObject, useEffect, useRef, useSyncExternalStore } from "react";
 import { type ConversationMessage, client } from "../api";
+import {
+  getAppShellPageRegistrySnapshot,
+  subscribeAppShellPages,
+} from "../app-shell-registry";
 import {
   getWindowNavigationPath,
   isRouteRootPath,
@@ -29,7 +33,23 @@ export function useNavigationPathSync({
   tab: Tab;
   setTabRaw: (tab: Tab) => void;
 }) {
+  // App-shell pages (e.g. `@elizaos/plugin-facewear/register` →
+  // `/apps/smartglasses/tui`) register from idle-loaded side-effect modules, so
+  // a deep link / refresh can boot before the matching registration exists.
+  // `tabFromPath` then falls through to the `apps` catalog, and that
+  // misresolution is otherwise sticky because this effect only re-runs on
+  // tab/navigation change. Re-running it when the registry version bumps lets a
+  // late registration reconcile the active tab to the real page.
+  const appShellRegistryVersion = useSyncExternalStore(
+    subscribeAppShellPages,
+    getAppShellPageRegistrySnapshot,
+    getAppShellPageRegistrySnapshot,
+  );
   useEffect(() => {
+    // `appShellRegistryVersion` is a re-run trigger, not a value read here:
+    // `tabFromPath` consults the live registry, so a version bump must re-run
+    // this effect to reconcile a deep link that booted before its page landed.
+    void appShellRegistryVersion;
     const navPath = getWindowNavigationPath();
     if (isRouteRootPath(navPath)) {
       return;
@@ -40,7 +60,7 @@ export function useNavigationPathSync({
     if (routeTab && routeTab !== tab && isNavAllowed(routeTab)) {
       setTabRaw(routeTab);
     }
-  }, [tab, setTabRaw]);
+  }, [tab, setTabRaw, appShellRegistryVersion]);
 }
 
 export function useBackendConnectionSync({
