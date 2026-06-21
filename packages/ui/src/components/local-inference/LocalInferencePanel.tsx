@@ -17,6 +17,7 @@ import { useApp } from "../../state";
 import type { TranslationContextValue } from "../../state/TranslationContext.hooks";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
+import { openEventSource } from "../../utils/event-source";
 import { AdvancedSettingsDisclosure } from "../settings/settings-control-primitives";
 import { Button } from "../ui/button";
 import { ActiveModelBar } from "./ActiveModelBar";
@@ -75,8 +76,11 @@ export function LocalInferencePanel() {
     // route's `isStreamAuthorized` accepts either source.
     const url = resolveApiUrl("/api/local-inference/downloads/stream");
     const withToken = appendTokenParam(url);
-    const es = new EventSource(withToken, { withCredentials: false });
+    // On-device runtimes are reached over the native IPC base, which
+    // EventSource cannot open; skip live updates there rather than throwing.
+    const es = openEventSource(withToken, { withCredentials: false });
     eventSourceRef.current = es;
+    if (!es) return;
 
     es.onmessage = (event) => {
       try {

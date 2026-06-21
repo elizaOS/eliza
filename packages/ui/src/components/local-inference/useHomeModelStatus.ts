@@ -7,6 +7,7 @@ import {
 } from "../../services/local-inference/home-model-status";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
+import { openEventSource } from "../../utils/event-source";
 
 const NOT_REQUIRED: HomeModelStatus = {
   kind: "not-required",
@@ -50,19 +51,23 @@ export function useHomeModelStatus(): HomeModelStatus {
     const url = appendTokenParam(
       resolveApiUrl("/api/local-inference/downloads/stream"),
     );
-    const es = new EventSource(url, { withCredentials: false });
-    es.onmessage = () => {
-      // The stream carries download/active deltas but not recomputed
-      // readiness, so debounce a hub refetch to pick up the fresh
-      // `textReadiness` rather than recomputing it client-side.
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-      refreshTimerRef.current = setTimeout(() => void refresh(), 400);
-    };
+    // On-device runtimes are addressed via the native IPC base, which
+    // EventSource cannot open — fall back to the one-shot `refresh()` above.
+    const es = openEventSource(url, { withCredentials: false });
+    if (es) {
+      es.onmessage = () => {
+        // The stream carries download/active deltas but not recomputed
+        // readiness, so debounce a hub refetch to pick up the fresh
+        // `textReadiness` rather than recomputing it client-side.
+        if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = setTimeout(() => void refresh(), 400);
+      };
+    }
 
     return () => {
       cancelled = true;
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-      es.close();
+      es?.close();
     };
   }, []);
 

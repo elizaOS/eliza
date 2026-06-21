@@ -33,6 +33,7 @@ import {
   type WebsiteBlockerStatusResult,
 } from "../bridge/native-plugins";
 import { TERMINAL_STATUSES } from "../chat/coding-agent-session-state";
+import { openEventSource } from "../utils/event-source";
 import { androidNativeAgentLifecycleForUrl } from "./android-native-agent-transport";
 import { ElizaClient } from "./client-base";
 import { isDirectCloudSharedAgentBase } from "./client-cloud";
@@ -3985,11 +3986,14 @@ ElizaClient.prototype.streamOrchestratorTask = function (
   taskId,
   onChange,
 ) {
-  if (typeof EventSource === "undefined") return () => {};
   const url = `${this.baseUrl || ""}/api/orchestrator/tasks/${encodeURIComponent(
     taskId,
   )}/stream`;
-  const source = new EventSource(url);
+  // On-device runtimes are addressed via the native IPC base, which
+  // EventSource cannot open; skip the live stream (the caller still has its
+  // initial fetch) rather than throwing a synchronous SecurityError.
+  const source = openEventSource(url);
+  if (!source) return () => {};
   source.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);

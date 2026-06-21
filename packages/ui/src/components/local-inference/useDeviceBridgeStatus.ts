@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { DeviceBridgeStatus } from "../../api/client-local-inference";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
+import { openEventSource } from "../../utils/event-source";
 
 export function buildDeviceBridgeStatusStreamUrl(
   rawUrl: string,
@@ -22,21 +23,25 @@ export function useDeviceBridgeStatus() {
       resolveApiUrl("/api/local-inference/device/stream"),
       getElizaApiToken(),
     );
-    const eventSource = new EventSource(url);
-    eventSource.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data) as {
-          type: "status";
-          status: DeviceBridgeStatus;
-        };
-        if (payload.type === "status") {
-          setStatus(payload.status);
+    // The native IPC base used by on-device runtimes is not an http(s) URL, so
+    // EventSource cannot subscribe to it; leave status null in that case.
+    const eventSource = openEventSource(url);
+    if (eventSource) {
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data) as {
+            type: "status";
+            status: DeviceBridgeStatus;
+          };
+          if (payload.type === "status") {
+            setStatus(payload.status);
+          }
+        } catch {
+          // Ignore malformed stream events and keep the last good status.
         }
-      } catch {
-        // Ignore malformed stream events and keep the last good status.
-      }
-    };
-    return () => eventSource.close();
+      };
+    }
+    return () => eventSource?.close();
   }, []);
 
   return status;

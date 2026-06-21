@@ -26,6 +26,7 @@ import {
 } from "react";
 import { useAgentElement } from "../../../agent-surface";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
+import { openEventSource } from "../../../utils/event-source";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
@@ -636,8 +637,15 @@ export function InstallSheet({
         }
         const { jobId } = (await res.json()) as { jobId: string };
 
-        const source = new EventSource(`/api/secrets/manager/install/${jobId}`);
+        const source = openEventSource(`/api/secrets/manager/install/${jobId}`);
         sourceRef.current = source;
+        if (!source) {
+          throw new Error(
+            t("vault.install.streamDisconnected", {
+              defaultValue: "install stream disconnected",
+            }),
+          );
+        }
         source.onmessage = (event) => {
           let data:
             | { type: "log"; stream: "stdout" | "stderr"; line: string }

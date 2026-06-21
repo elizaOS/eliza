@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type ComputerUseApprovalSnapshot, client } from "../../api/client";
 import { useApp } from "../../state";
+import { openEventSource } from "../../utils/event-source";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "../ui/card";
 import { StatusBadge } from "../ui/status-badge";
@@ -74,8 +75,11 @@ export function ComputerUseApprovalOverlay() {
       pollingTimer = window.setInterval(pollRefresh, POLL_MS);
     };
 
-    try {
-      eventSource = new EventSource(approvalStreamUrl());
+    // On-device runtimes use the native IPC base, which EventSource cannot
+    // open; openEventSource returns null there so we fall straight through to
+    // polling instead of throwing a synchronous SecurityError.
+    eventSource = openEventSource(approvalStreamUrl());
+    if (eventSource) {
       eventSource.onmessage = (event) => {
         if (cancelled) {
           return;
@@ -101,8 +105,6 @@ export function ComputerUseApprovalOverlay() {
         eventSource = null;
         startPolling();
       };
-    } catch {
-      startPolling();
     }
 
     if (!eventSource) {
