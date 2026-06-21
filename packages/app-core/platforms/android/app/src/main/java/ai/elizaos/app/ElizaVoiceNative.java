@@ -195,6 +195,9 @@ final class ElizaVoiceNative {
 
     static native void nativeLlmStreamClose(long streamHandle);
 
+    /** Reset a persistent stream (clear KV + sampler) for warm reuse. 1=ok, 0=no. */
+    static native int nativeLlmStreamReset(long streamHandle);
+
     /**
      * KEYSTONE proof: run a whole greedy text generation in one native call,
      * in the bionic app process. With the dynamic-Vulkan lib staged, ggml-vulkan

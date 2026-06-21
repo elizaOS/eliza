@@ -163,14 +163,18 @@ final class ElizaBionicInferenceServer {
                 + " maxTokens=" + maxTokens + ", bundle=" + bundleDir);
             // nativeLlmSelfTest creates a FRESH context per call (reloads the model
             // → fresh GPU weights) and runs the proven greedy decode, returning
-            // {ok,text,tokens,ms,tokS}. ~5 s/turn. CONTEXT REUSE (cache the model,
-            // open a fresh stream per call) was tried + device-tested: it halves
-            // the latency BUT intermittently corrupts the output ("His!!!!" token
-            // degeneration on ~1 in 3 turns) — reusing the GPU model weights across
-            // repeated lctx create/destroy cycles is a Vulkan-backend lifecycle bug
-            // in the fork. Reloading the model per call sidesteps it (always clean).
-            // The real perf fix is a fork change: one resident lctx + a KV reset
-            // (eliza_inference_context_reset) between turns. Correctness first.
+            // {ok,text,tokens,ms,tokS}. ~5 s/turn, always clean.
+            //
+            // PERF NOTE: model/context REUSE (to skip the cold load) was tried in
+            // THREE forms and device-tested — fresh-lctx-per-call, one persistent
+            // lctx, and one persistent lctx + a fork-side KV reset
+            // (eliza_inference_llm_stream_reset, which IS wired and clears the KV +
+            // sampler). ALL three intermittently corrupt the output (~1 in 3 turns
+            // degenerate into "His!!!!" token repetition) while nativeLlmSelfTest
+            // is always clean. Reloading the model per call is what differs, so the
+            // root cause is the fork's Vulkan backend corrupting the SHARED GPU
+            // model weights across reuse — a backend bug, not a KV/lctx issue.
+            // Until that's fixed in the fork, reload-per-call is the reliable path.
             String result = ElizaVoiceNative.nativeLlmSelfTest(bundleDir, prompt, maxTokens);
             Log.i(TAG, "GENERATE result: "
                 + (result.length() > 200 ? result.substring(0, 200) + "…" : result));

@@ -1241,6 +1241,16 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamClose(JNIEnv*, jclass,
         reinterpret_cast<EliLlmStream*>(streamHandle));
 }
 
+// Reset a persistent stream (clear KV + sampler + counters) for warm reuse.
+// Returns 1 on success, 0 if the stream can't be reset (MTP / null).
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamReset(JNIEnv*, jclass,
+                                                          jlong streamHandle) {
+    const int rc = eliza_inference_llm_stream_reset(
+        reinterpret_cast<EliLlmStream*>(streamHandle));
+    return static_cast<jint>(rc == ELIZA_OK ? 1 : 0);
+}
+
 // ── LLM self-test (one native call: ctx→tokenize→stream→generate) ─────────
 //
 // THE KEYSTONE PROOF: runs a whole greedy text generation in ONE native call,
