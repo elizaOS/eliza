@@ -697,10 +697,13 @@ export function useShellController(): ShellController {
     }
   }, [responding, startCapture, stopCapture, voiceOutput]);
 
-  // Toggle transcription mode (long-form record-only). Mutually exclusive with
-  // the hands-free reply loop — enabling it disables hands-free and opens a
-  // long-running capture that sends every utterance silently until an exit
-  // phrase (or this toggle) turns it off.
+  // Toggle transcription mode (long-form, record-only — the agent never replies
+  // to a transcribed turn). It is an ADDITIVE voice layer: the mic stays on and
+  // the composer keeps working; enabling it just pauses the hands-free REPLY
+  // loop and opens a long-running capture that accumulates every utterance
+  // silently. Turning it off (this toggle, the mic button, or a spoken exit
+  // phrase) finalizes the session, which drops the transcript into the composer
+  // as an attachment the user sends with their next message.
   const toggleTranscriptionMode = React.useCallback(() => {
     if (transcriptionModeRef.current) {
       setTranscriptionMode(false);
