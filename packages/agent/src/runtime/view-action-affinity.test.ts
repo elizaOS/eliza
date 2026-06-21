@@ -154,6 +154,45 @@ describe("view-action-affinity", () => {
     expect(block).toContain("most relevant while on this view");
     expect(block).toContain("EVM_SWAP");
   });
+
+  it("acknowledges a just-happened switch only while it is fresh (#8788)", () => {
+    const base = {
+      viewId: "wallet",
+      viewLabel: "Wallet",
+      viewType: "gui" as const,
+      viewPath: "/wallet",
+    };
+    // Fresh agent-initiated switch → acknowledgement line present.
+    const fresh = renderActiveViewContextBlock({
+      ...base,
+      switchedAt: new Date().toISOString(),
+      source: "agent",
+    });
+    expect(fresh).toContain("just switched into this view");
+    expect(fresh).toContain("(you navigated here)");
+
+    // Fresh user-initiated switch → acknowledged, without the "you navigated" note.
+    const userFresh = renderActiveViewContextBlock({
+      ...base,
+      switchedAt: new Date().toISOString(),
+      source: "user",
+    });
+    expect(userFresh).toContain("just switched into this view");
+    expect(userFresh).not.toContain("(you navigated here)");
+
+    // Stale switch (older than the freshness window) → no acknowledgement.
+    const stale = renderActiveViewContextBlock({
+      ...base,
+      switchedAt: new Date(Date.now() - 20_000).toISOString(),
+      source: "agent",
+    });
+    expect(stale).not.toContain("just switched into this view");
+
+    // No switchedAt (sitting on the view) → no acknowledgement.
+    expect(renderActiveViewContextBlock(base)).not.toContain(
+      "just switched into this view",
+    );
+  });
 });
 
 describe("active-view element snapshot", () => {
