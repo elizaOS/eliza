@@ -147,7 +147,10 @@ vi.mock("./hooks", () => ({
 }));
 
 vi.mock("./state", () => {
-  const appValue = {
+  // Rebuilt on each access so `appState.tab`/`setTab` are read LIVE — the
+  // navigation tests mutate appState between renders, and useApp / the selector
+  // hooks must reflect that (mirrors the original fresh-object-per-call mock).
+  const getAppValue = () => ({
     actionNotice: null,
     activeGameViewerUrl: null,
     activeOverlayApp: null,
@@ -175,13 +178,14 @@ vi.mock("./state", () => {
     uiShellMode: "default",
     uiTheme: "light",
     uiThemeMode: "system",
-  };
+  });
   return {
-    useApp: () => appValue,
-    useAppSelector: <T,>(selector: (s: typeof appValue) => T): T =>
-      selector(appValue),
-    useAppSelectorShallow: <T,>(selector: (s: typeof appValue) => T): T =>
-      selector(appValue),
+    useApp: () => getAppValue(),
+    useAppSelector: <T,>(selector: (s: ReturnType<typeof getAppValue>) => T): T =>
+      selector(getAppValue()),
+    useAppSelectorShallow: <T,>(
+      selector: (s: ReturnType<typeof getAppValue>) => T,
+    ): T => selector(getAppValue()),
   };
 });
 
