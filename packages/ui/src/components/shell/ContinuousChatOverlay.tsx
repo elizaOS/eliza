@@ -978,6 +978,16 @@ export function ContinuousChatOverlay({
   // only when the reader is already resting at the bottom, so scrolling up to
   // read history is never yanked down.
   const wasOpenRef = React.useRef(false);
+  // Coalesces the per-token streaming-follow scroll into one rAF so a burst of
+  // tokens landing within a frame triggers at most one measure+write instead of
+  // a forced reflow per token. New-line / first-open pins stay synchronous below.
+  const followRafRef = React.useRef<number | null>(null);
+  React.useEffect(
+    () => () => {
+      if (followRafRef.current != null) cancelAnimationFrame(followRafRef.current);
+    },
+    [],
+  );
   // biome-ignore lint/correctness/useExhaustiveDependencies: lastId/lastContent/sheetOpen are the triggers; the body reads refs
   React.useLayoutEffect(() => {
     const el = threadRef.current;
@@ -1000,16 +1010,36 @@ export function ContinuousChatOverlay({
     // more reliable than scrollIntoView inside this clipped flex column.
     const justOpened = !wasOpenRef.current;
     wasOpenRef.current = true;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if (isNewLine && !justOpened && !reduce && atBottom) {
-      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    } else if (justOpened || isNewLine || atBottom) {
-      el.scrollTop = el.scrollHeight;
+
+    // New line or first open: pin synchronously (pre-paint) so the thread never
+    // flashes at the top. Infrequent — once per turn, not per token.
+    if (isNewLine || justOpened) {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      if (isNewLine && !justOpened && !reduce && atBottom) {
+        endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      } else {
+        // justOpened OR isNewLine (always re-pin) OR atBottom — all true here.
+        el.scrollTop = el.scrollHeight;
+      }
+      if (justOpened && focusThreadRef.current) {
+        el.focus();
+        focusThreadRef.current = false;
+      }
+      return;
     }
-    if (justOpened && focusThreadRef.current) {
-      el.focus();
-      focusThreadRef.current = false;
-    }
+
+    // Streaming growth of the current line: coalesce the bottom-follow into a
+    // single rAF (measure atBottom + write scrollTop at most once per frame).
+    // Same semantics as before — only follows when the reader is at the bottom.
+    if (followRafRef.current != null) return;
+    followRafRef.current = requestAnimationFrame(() => {
+      followRafRef.current = null;
+      const node = threadRef.current;
+      if (!node) return;
+      const atBottom =
+        node.scrollHeight - node.scrollTop - node.clientHeight < 80;
+      if (atBottom) node.scrollTop = node.scrollHeight;
+    });
   }, [lastId, lastContent, sheetOpen]);
 
   // The closed peek must always whisper the NEWEST line, but closing is an
