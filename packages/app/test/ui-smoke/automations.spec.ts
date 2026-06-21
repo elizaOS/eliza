@@ -721,13 +721,16 @@ test("automations can list tasks, create a task, and inspect workflow JSON", asy
   await expect(
     page.getByRole("button", { name: "Message triage" }),
   ).toBeVisible();
-  // Each row's open control is labelled `Open <title>` (AutomationsFeed); the
-  // bare title matches both the open and the run buttons, so target the open one.
-  await expect(
-    page.getByRole("button", { name: "Open Message pipeline" }),
-  ).toBeVisible();
+  // The row's accessible name is its full text ("Message pipeline Active …"),
+  // which collides with the sibling "Run …" button under a bare-title role query.
+  // Target the open control by its stable agent-surface label instead
+  // (useAgentElement stamps data-agent-label="Open <title>").
+  const openMessagePipeline = page.locator(
+    '[data-agent-label="Open Message pipeline"]',
+  );
+  await expect(openMessagePipeline).toBeVisible();
 
-  await page.getByRole("button", { name: "Open Message pipeline" }).click();
+  await openMessagePipeline.click();
   await expect(
     page.getByRole("heading", { name: "Message pipeline" }),
   ).toBeVisible();

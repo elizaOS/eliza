@@ -37,12 +37,16 @@ test("chat, apps, and settings routes render through the real shell", async ({
   await expect(page).toHaveURL(/\/apps$/);
   await expect(page.getByRole("heading", { name: "Views" })).toBeVisible();
   // Views search is no longer a standalone searchbox — it is bound to the global
-  // chat composer (ViewCatalog registers a chat binding with placeholder
-  // "Search views…"; covered by ViewCatalog.test.tsx). The page-render proof here
-  // is the heading plus the catalog body below.
+  // chat composer, and the catalog renders an inline "Search views by typing in
+  // the chat." hint (common.chatSearchHint). That hint plus a rendered view tile
+  // are the page-render proof (view entries are buttons/tiles, not headings).
+  await expect(
+    page.getByText("Search views by typing in the chat."),
+  ).toBeVisible();
   await expect(
     page
-      .getByRole("heading", { name: "Companion" })
+      .locator('[data-testid^="view-card-"]')
+      .first()
       .or(page.getByText("No views available")),
   ).toBeVisible();
 
@@ -53,8 +57,10 @@ test("chat, apps, and settings routes render through the real shell", async ({
   const capabilitiesSection = page.locator("#capabilities");
   await capabilitiesSection.scrollIntoViewIfNeeded();
   await expect(capabilitiesSection).toBeVisible();
+  // The section wraps both an h1 section title and an h3 subsection of the same
+  // name, so scope to the first match (section-rendered proof, not uniqueness).
   await expect(
-    capabilitiesSection.getByText("Capabilities", { exact: true }),
+    capabilitiesSection.getByText("Capabilities", { exact: true }).first(),
   ).toBeVisible();
   await expect(
     capabilitiesSection.getByRole("switch", { name: "Enable Computer Use" }),
@@ -64,6 +70,7 @@ test("chat, apps, and settings routes render through the real shell", async ({
   await expect(
     page
       .locator("#app-permissions")
-      .getByText("App Permissions", { exact: true }),
+      .getByText("App Permissions", { exact: true })
+      .first(),
   ).toBeVisible();
 });
