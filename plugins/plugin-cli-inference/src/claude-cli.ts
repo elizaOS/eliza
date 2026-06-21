@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
 import { flattenPrompt } from "./prompt-flatten";
-import { filterEnv, redactSensitive, resolveSafeBinary, resolveSafeCwd } from "./sandbox";
+import { filterEnv, redactStderr, resolveSafeBinary, resolveSafeCwd } from "./sandbox";
 
 /**
  * Claude Code CLI inference variant (TOS-clean SAFE/CLOUD route).
@@ -153,11 +153,6 @@ export function __setSpawnForTests(fn: SpawnFn): () => void {
   return () => {
     spawnImpl = prev;
   };
-}
-
-/** Redact anything resembling a secret out of stderr before logging. */
-function redactStderr(stderr: string): string {
-  return redactSensitive(stderr).slice(0, 2000);
 }
 
 export class ClaudeCli {

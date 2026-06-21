@@ -36,21 +36,14 @@ import { CodexCli } from "./src/codex-cli-exec";
  * not the cheap triage calls.
  */
 
-const TEXT_MEGA_MODEL_TYPE: string = ModelType.TEXT_MEGA;
-const RESPONSE_HANDLER_MODEL_TYPE: string = ModelType.RESPONSE_HANDLER;
-
 /** Large-tier model types this plugin registers (when enabled). */
 const LARGE_TIER_MODEL_TYPES: readonly string[] = [
   ModelType.TEXT_LARGE,
-  TEXT_MEGA_MODEL_TYPE,
-  RESPONSE_HANDLER_MODEL_TYPE,
+  ModelType.TEXT_MEGA,
+  ModelType.RESPONSE_HANDLER,
 ];
 
 type CliBackend = "claude" | "codex";
-
-type RuntimeWithSettings = IAgentRuntime & {
-  getSetting?: (key: string) => string | number | boolean | undefined | null;
-};
 
 function readEnv(name: string): string | undefined {
   if (typeof process === "undefined") return undefined;
@@ -58,7 +51,7 @@ function readEnv(name: string): string | undefined {
 }
 
 function getSetting(runtime: IAgentRuntime, key: string): string | undefined {
-  const value = (runtime as RuntimeWithSettings).getSetting?.(key);
+  const value = runtime.getSetting(key);
   return value === undefined || value === null ? readEnv(key) : String(value);
 }
 

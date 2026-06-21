@@ -10,7 +10,7 @@ import {
   type SpawnResult,
 } from "./claude-cli";
 import { flattenPrompt } from "./prompt-flatten";
-import { filterEnv, redactSensitive, resolveSafeBinary, resolveSafeCwd } from "./sandbox";
+import { filterEnv, redactStderr, resolveSafeBinary, resolveSafeCwd } from "./sandbox";
 
 /**
  * Codex CLI inference variant (TOS-clean SAFE/CLOUD route).
@@ -50,8 +50,6 @@ export interface CodexCliConfig {
   model?: string;
   timeoutMs?: number;
   env?: NodeJS.ProcessEnv;
-  /** Injected spawner; defaults to the seam set via `__setSpawnForTests`. */
-  spawnFn?: SpawnFn;
   /**
    * Pin the resolved binary path, skipping `resolveSafeBinary`. Used by unit
    * tests and by container deploys that pin the CLI outside the default
@@ -59,10 +57,6 @@ export interface CodexCliConfig {
    * whitelist.
    */
   binaryPath?: string;
-}
-
-function redactStderr(stderr: string): string {
-  return redactSensitive(stderr).slice(0, 2000);
 }
 
 export class CodexParseError extends Error {
@@ -166,19 +160,13 @@ export class CodexCli {
   private readonly model: string;
   private readonly timeoutMs: number;
   private readonly env: NodeJS.ProcessEnv;
-  private readonly spawnFn?: SpawnFn;
   private readonly binaryPath?: string;
 
   constructor(config: CodexCliConfig = {}) {
     this.model = config.model ?? DEFAULT_MODEL;
     this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.env = config.env ?? process.env;
-    this.spawnFn = config.spawnFn;
     this.binaryPath = config.binaryPath;
-  }
-
-  private getSpawn(): SpawnFn {
-    return this.spawnFn ?? spawnImpl;
   }
 
   async generate(params: ClaudeGenerateParams): Promise<string> {
@@ -207,7 +195,7 @@ export class CodexCli {
         prompt,
       ];
 
-      const result: SpawnResult = await this.getSpawn()(argv, {
+      const result: SpawnResult = await spawnImpl(argv, {
         cwd,
         env: filterEnv(this.env),
         timeoutMs: this.timeoutMs,

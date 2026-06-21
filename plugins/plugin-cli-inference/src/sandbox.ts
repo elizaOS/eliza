@@ -5,14 +5,14 @@
  *
  * Keep in sync with the upstream copy if `SAFE_ENV_KEYS` / `SENSITIVE_ENV_RE`
  * change. Additions here over the upstream copy: the `SENSITIVE_ENV_RE` export
- * and `redactSensitive`, used by the CLI handlers to redact subprocess stderr
- * before logging.
+ * plus `redactSensitive` / `redactStderr`, used by the CLI handlers to redact
+ * subprocess stderr before logging.
  *
  * - `filterEnv` — explicit allowlist + token blocklist for child env.
  * - `resolveSafeCwd` — realpath validation; cwd must be under workspace or /tmp.
  * - `resolveSafeBinary` — PATH lookup constrained to an allowlisted launcher dir.
  * - `redactSensitive` — strips key-named + value-shaped secrets from stderr.
- * - `buildSandboxedCommand` — wraps argv in sandbox-exec (macOS) or bwrap (Linux).
+ * - `redactStderr` — `redactSensitive` + a length cap for error messages / logs.
  */
 
 import { existsSync, realpathSync, statSync } from "node:fs";
@@ -20,7 +20,7 @@ import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, resolve, sep } from "node:path";
 
 /** Env keys that may be forwarded to a sub-agent verbatim. */
-export const SAFE_ENV_KEYS: ReadonlySet<string> = new Set([
+const SAFE_ENV_KEYS: ReadonlySet<string> = new Set([
   "PATH",
   "HOME",
   "TMPDIR",
@@ -71,7 +71,7 @@ export function filterEnv(
   return out;
 }
 
-export class SubAgentCwdError extends Error {
+class SubAgentCwdError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "SubAgentCwdError";
@@ -111,7 +111,7 @@ export function resolveSafeCwd(cwd: string, workspaceRoots: readonly string[]): 
   );
 }
 
-export class SubAgentBinaryError extends Error {
+class SubAgentBinaryError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "SubAgentBinaryError";
@@ -189,95 +189,6 @@ export function resolveSafeBinary(binary: string, env: NodeJS.ProcessEnv = proce
   return realpathSync(launcher);
 }
 
-export interface SandboxPlan {
-  cmd: string[];
-  /** Identifier of the sandbox layer in use; `"none"` when no helper available. */
-  sandbox: "macos-sandbox-exec" | "linux-bwrap" | "none";
-}
-
-export interface SandboxOptions {
-  workspaceRoot: string;
-  sessionId: string;
-  /** Path to a macOS .sb profile. Required on darwin. */
-  macosProfile?: string;
-  /** Path to the bwrap wrapper script. Required on linux. */
-  linuxWrapper?: string;
-}
-
-/**
- * Build the final argv for spawning the sub-agent, prepended by an OS
- * sandbox helper when available. Returns `sandbox: "none"` and the raw
- * argv when no helper exists (Windows, or missing profile in dev) — the
- * caller MUST log a WARN in that case.
- */
-export function buildSandboxedCommand(argv: string[], opts: SandboxOptions): SandboxPlan {
-  if (process.platform === "darwin") {
-    if (opts.macosProfile && existsSync(opts.macosProfile) && hasBinary("/usr/bin/sandbox-exec")) {
-      const cmd = [
-        "/usr/bin/sandbox-exec",
-        "-D",
-        `WORKSPACE=${opts.workspaceRoot}`,
-        "-D",
-        `SESSION=${opts.sessionId}`,
-        "-D",
-        `HOME=${homedir()}`,
-        "-D",
-        `TMPDIR=${tmpdir()}`,
-        "-f",
-        opts.macosProfile,
-        ...argv,
-      ];
-      return { cmd, sandbox: "macos-sandbox-exec" };
-    }
-    return { cmd: argv, sandbox: "none" };
-  }
-  if (process.platform === "linux") {
-    if (opts.linuxWrapper && existsSync(opts.linuxWrapper) && hasBinary("/usr/bin/bwrap")) {
-      const cmd = [opts.linuxWrapper, opts.workspaceRoot, opts.sessionId, "--", ...argv];
-      return { cmd, sandbox: "linux-bwrap" };
-    }
-    return { cmd: argv, sandbox: "none" };
-  }
-  return { cmd: argv, sandbox: "none" };
-}
-
-function hasBinary(absPath: string): boolean {
-  try {
-    return existsSync(absPath);
-  } catch {
-    return false;
-  }
-}
-
-/** True iff the path resolved cleanly to an executable file. */
-export function isExecutable(path: string): boolean {
-  try {
-    const real = realpathSync(path);
-    const stat = statSync(real);
-    // 0o111 = any-execute bit.
-    return stat.isFile() && (stat.mode & 0o111) !== 0;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Best-effort discovery of the bundled sandbox profile paths relative to
- * the package root. Returns undefined when the file is missing so callers
- * can fall through to no-sandbox + WARN.
- */
-export function locateBundledProfiles(packageRoot: string): {
-  macosProfile?: string;
-  linuxWrapper?: string;
-} {
-  const macos = resolve(packageRoot, "sandbox", "macos.sb");
-  const linux = resolve(packageRoot, "sandbox", "linux-bwrap.sh");
-  return {
-    ...(existsSync(macos) ? { macosProfile: macos } : {}),
-    ...(existsSync(linux) ? { linuxWrapper: linux } : {}),
-  };
-}
-
 /**
  * Value-shaped secret patterns. `SENSITIVE_ENV_RE` only catches lines that
  * mention a sensitive KEY name (e.g. `ANTHROPIC_API_KEY=...`); these catch the
@@ -308,4 +219,12 @@ export function redactSensitive(text: string): string {
     out = out.replace(re, SECRET_PLACEHOLDER);
   }
   return out;
+}
+
+/**
+ * Redact anything resembling a secret out of subprocess stderr before logging,
+ * then cap the length so a noisy CLI cannot blow up an error message / log line.
+ */
+export function redactStderr(stderr: string): string {
+  return redactSensitive(stderr).slice(0, 2000);
 }
