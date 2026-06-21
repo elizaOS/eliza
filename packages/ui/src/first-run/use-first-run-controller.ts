@@ -556,6 +556,16 @@ export function useFirstRunController(): FirstRunController {
         sourceDraft.runtime,
         sourceDraft.localInference,
       );
+      // Persist the runtime mode BEFORE starting/awaiting the on-device agent.
+      // The iOS native transport classifies the app from
+      // `eliza:mobile-runtime-mode`; while it is still unset, a production build
+      // defaults to a pure-cloud runtime (isNativeIosCloudRuntime) and BLOCKS
+      // local-agent IPC, so every waitForAgentApi probe is rejected before it
+      // can reach the engine and "Starting local agent" hangs to the deadline.
+      // Setting the mode first makes the transport treat local/cloud-hybrid as
+      // on-device runtimes and route the probe through the bundled agent.
+      persistMobileRuntimeModeForServerTarget(serverTarget);
+      setState("firstRunRuntimeTarget", serverTarget);
       setBusyText("Starting local agent");
       const apiBase = resolveFirstRunLocalAgentApiBase();
       client.setBaseUrl(apiBase);
@@ -591,8 +601,6 @@ export function useFirstRunController(): FirstRunController {
         });
         addAgentProfile({ kind: "remote", label: "Local agent", apiBase });
       }
-      persistMobileRuntimeModeForServerTarget(serverTarget);
-      setState("firstRunRuntimeTarget", serverTarget);
       setBusyText("Saving first-run profile");
       await submitFirstRun(sourceDraft, "local");
       if (firstRunDownloadsLocalModel(sourceDraft.localInference)) {
