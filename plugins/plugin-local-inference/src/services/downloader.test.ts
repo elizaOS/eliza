@@ -728,7 +728,9 @@ describe("local inference downloader status", () => {
 		const model = findCatalogModel("eliza-1-2b");
 		if (!model) throw new Error("missing test catalog model");
 
-		const downloader = new Downloader({ probeDeviceCaps: async () => cpuOnlyCaps });
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+		});
 		// Fire two starts for the same id concurrently. The first reserves the
 		// active slot synchronously before its first await, so the second sees it
 		// and returns the SAME job instead of racing a second write onto the .part.
