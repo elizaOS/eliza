@@ -6524,8 +6524,22 @@ export async function runV5MessageRuntimeStage1(args: {
 		};
 		const plannerTools = collectPlannerTools(plannerContextWithDecision);
 		const benchmarkForcingToolCall = isBenchmarkForcingToolCall(args.message);
+		// Only HARD-enforce a non-terminal tool when Stage 1 both flagged the turn
+		// tool-required AND named at least one candidate action. A bare
+		// `requiresTool=true` with NO named tool is the Stage-1 classifier
+		// over-flagging pure-knowledge and sub-agent-relay turns (verified in the
+		// 2026-06-21 deepscan): forcing then makes the planner either loop
+		// re-emitting REPLY (rejected up to maxRequiredToolMisses times, answer
+		// only via fallback) or run an irrelevant tool (VIEWS / TASKS_HISTORY) just
+		// to satisfy the gate. When Stage 1 names no tool, don't hard-require a non-terminal call: a terminal
+		// REPLY may finish the turn (toolChoice stays "required", but REPLY no
+		// longer increments requiredToolMisses), and the planner still calls a
+		// tool when one genuinely fits.
+		const stageOneNamedAToolForThisTurn =
+			messageHandler.plan.requiresTool === true &&
+			(messageHandler.plan.candidateActions?.length ?? 0) > 0;
 		const requireNonTerminalToolCall =
-			(messageHandler.plan.requiresTool === true || benchmarkForcingToolCall) &&
+			(stageOneNamedAToolForThisTurn || benchmarkForcingToolCall) &&
 			plannerTools.length > 0;
 		const effectivePlannerContext = requireNonTerminalToolCall
 			? appendContextEvent(plannerContextWithDecision, {
