@@ -261,14 +261,7 @@ final class ElizaBionicInferenceServer {
     private String generateResident(String bundleDir, String prompt, int maxTokens)
             throws org.json.JSONException {
         synchronized (residentLock) {
-            if (residentCtx == 0L || !bundleDir.equals(residentBundle)) {
-                resetResident();
-                residentCtx = ElizaVoiceNative.nativeContextCreate(bundleDir);
-                if (residentCtx == 0L) {
-                    throw new IllegalStateException("resident contextCreate failed: " + bundleDir);
-                }
-                residentBundle = bundleDir;
-            }
+            ensureResidentCtx(bundleDir);
             if (residentStream == 0L) {
                 residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
                     residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");
@@ -306,6 +299,25 @@ final class ElizaBionicInferenceServer {
         }
     }
 
+    /**
+     * Get-or-create the shared resident inference context. ONE model load is
+     * reused by both generation (via residentStream) and embeddings (the native
+     * EliInferenceContext caches a separate non-causal embed_ctx + the causal
+     * stream within the same shared model weights), so embeds no longer reload
+     * the 1.27 GB model per call. Caller must hold residentLock.
+     */
+    private long ensureResidentCtx(String bundleDir) {
+        if (residentCtx == 0L || !bundleDir.equals(residentBundle)) {
+            resetResident();
+            residentCtx = ElizaVoiceNative.nativeContextCreate(bundleDir);
+            if (residentCtx == 0L) {
+                throw new IllegalStateException("resident contextCreate failed: " + bundleDir);
+            }
+            residentBundle = bundleDir;
+        }
+        return residentCtx;
+    }
+
     /** Tear down the resident model/context/stream (on bundle change, failure, or stop). */
     private void resetResident() {
         synchronized (residentLock) {
@@ -322,31 +334,35 @@ final class ElizaBionicInferenceServer {
     }
 
     /**
-     * Embed text on the GPU via the fused model (--pooling last). Fresh context
-     * per call (single forward pass, no autoregressive decode — fast + clean).
-     * Returns {ok, embedding:[...], dim}. This is what lets on-device memory /
-     * doc-seeding run locally instead of failing over to cloud BatchEmbeddings.
+     * Embed text on the GPU via the fused model (--pooling last). Reuses the
+     * shared resident context (the native side caches a non-causal embed_ctx
+     * inside it) so the 1.27 GB model is NOT reloaded per call — previously every
+     * embed did contextCreate→embed→contextDestroy (~15 s + a full model copy of
+     * memory churn each), which starved the LLM context on 8 GB devices. Single
+     * forward pass, no autoregressive decode. Returns {ok, embedding:[...], dim}.
      */
     private String embed(String bundleDir, String text) throws org.json.JSONException {
         final int POOLING_LAST = 3;
-        long ctx = ElizaVoiceNative.nativeContextCreate(bundleDir);
-        if (ctx == 0L) {
-            return errorJson("embed: failed to create context for " + bundleDir);
-        }
-        try {
-            float[] emb = ElizaVoiceNative.nativeEmbed(ctx, text, POOLING_LAST);
-            org.json.JSONArray arr = new org.json.JSONArray();
-            for (float v : emb) {
-                arr.put((double) v);
+        synchronized (residentLock) {
+            final long ctx = ensureResidentCtx(bundleDir);
+            try {
+                float[] emb = ElizaVoiceNative.nativeEmbed(ctx, text, POOLING_LAST);
+                org.json.JSONArray arr = new org.json.JSONArray();
+                for (float v : emb) {
+                    arr.put((double) v);
+                }
+                Log.i(TAG, "EMBED from agent: " + text.length() + " chars -> dim " + emb.length);
+                return new JSONObject()
+                    .put("ok", true)
+                    .put("embedding", arr)
+                    .put("dim", emb.length)
+                    .toString();
+            } catch (Throwable t) {
+                // A failed embed may leave the shared context in an unknown state;
+                // drop it so the next generate/embed rebuilds cleanly.
+                resetResident();
+                throw t;
             }
-            Log.i(TAG, "EMBED from agent: " + text.length() + " chars -> dim " + emb.length);
-            return new JSONObject()
-                .put("ok", true)
-                .put("embedding", arr)
-                .put("dim", emb.length)
-                .toString();
-        } finally {
-            ElizaVoiceNative.nativeContextDestroy(ctx);
         }
     }
 
