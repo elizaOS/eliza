@@ -150,12 +150,15 @@ final class ElizaBionicInferenceServer {
         try {
             JSONObject req = new JSONObject(requestJson);
             String op = req.optString("op", "generate");
-            if (!"generate".equals(op)) {
-                return errorJson("unsupported op: " + op);
-            }
             String bundleDir = req.optString("bundleDir", "");
             if (bundleDir.isEmpty()) {
                 bundleDir = defaultBundleDir;
+            }
+            if ("embed".equals(op)) {
+                return embed(bundleDir, req.optString("text", ""));
+            }
+            if (!"generate".equals(op)) {
+                return errorJson("unsupported op: " + op);
             }
             String prompt = req.optString("prompt", "");
             int maxTokens = req.optInt("maxTokens", 256);
@@ -181,6 +184,35 @@ final class ElizaBionicInferenceServer {
             return result;
         } catch (Throwable t) {
             return errorJson(t.getMessage() == null ? t.toString() : t.getMessage());
+        }
+    }
+
+    /**
+     * Embed text on the GPU via the fused model (--pooling last). Fresh context
+     * per call (single forward pass, no autoregressive decode — fast + clean).
+     * Returns {ok, embedding:[...], dim}. This is what lets on-device memory /
+     * doc-seeding run locally instead of failing over to cloud BatchEmbeddings.
+     */
+    private String embed(String bundleDir, String text) throws org.json.JSONException {
+        final int POOLING_LAST = 3;
+        long ctx = ElizaVoiceNative.nativeContextCreate(bundleDir);
+        if (ctx == 0L) {
+            return errorJson("embed: failed to create context for " + bundleDir);
+        }
+        try {
+            float[] emb = ElizaVoiceNative.nativeEmbed(ctx, text, POOLING_LAST);
+            org.json.JSONArray arr = new org.json.JSONArray();
+            for (float v : emb) {
+                arr.put((double) v);
+            }
+            Log.i(TAG, "EMBED from agent: " + text.length() + " chars -> dim " + emb.length);
+            return new JSONObject()
+                .put("ok", true)
+                .put("embedding", arr)
+                .put("dim", emb.length)
+                .toString();
+        } finally {
+            ElizaVoiceNative.nativeContextDestroy(ctx);
         }
     }
 
