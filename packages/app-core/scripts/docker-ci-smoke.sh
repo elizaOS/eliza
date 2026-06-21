@@ -32,6 +32,16 @@ set -Eeuo pipefail
 #                        --boot-verify-only.
 #   SMOKE_CHARACTER_JSON Optional minimal character JSON injected via
 #                        ELIZA_AGENT_CHARACTER_JSON for the boot.
+#   BOOT_KPI_ENFORCE     If "1", a cold-start readyMs budget breach (measured
+#                        boot readyMs > boot.coldReadyMs from
+#                        packages/benchmarks/loadperf/budgets.json) FAILS the
+#                        smoke. Default (unset/!=1) is WARN-FIRST: a breach is
+#                        reported via a ::warning:: line but does NOT fail. Flip
+#                        this to "1" in the workflow once the baseline is
+#                        confirmed green in CI. The KPI measurement is additive
+#                        and only runs in --boot-verify-only mode; a measurement
+#                        failure (missing jq/budget) never fails a smoke that
+#                        otherwise passed.
 
 BUN_VERSION="${BUN_VERSION:-1.3.10}"
 SMOKE_PORT="${SMOKE_PORT:-32138}"
@@ -65,6 +75,31 @@ BOOT_CRASH_PATTERNS=(
 
 log() {
   printf '[docker-ci-smoke] %s\n' "$*"
+}
+
+# Portable millisecond epoch timer used by the boot-KPI cold-start measurement.
+# Prefers bash 5's EPOCHREALTIME (no subprocess), falls back to GNU date
+# (%s%3N), then python3, then whole-second `date` * 1000. Always prints an
+# integer count of milliseconds. Never used for liveness decisions, only for
+# the additive boot-KPI readyMs value, so a coarse fallback is harmless.
+now_ms() {
+  if [[ -n "${EPOCHREALTIME:-}" ]]; then
+    # EPOCHREALTIME is "<seconds>.<microseconds>"; strip the dot and trim to ms.
+    local er="${EPOCHREALTIME/[.,]/}"
+    printf '%s\n' "${er:0:${#er}-3}"
+    return 0
+  fi
+  local d
+  d="$(date +%s%3N 2>/dev/null || true)"
+  if [[ "$d" =~ ^[0-9]+$ && "$d" != *N ]]; then
+    printf '%s\n' "$d"
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import time; print(int(time.time()*1000))'
+    return 0
+  fi
+  printf '%s\n' "$(( $(date +%s) * 1000 ))"
 }
 
 on_error() {
@@ -268,6 +303,15 @@ boot_verify() {
   local pglite_dir="/tmp/ci-db-${RANDOM}-${RANDOM}"
 
   "$DOCKER_BIN" rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  # Boot-KPI cold-start: stamp the instant just before the container starts.
+  # The elapsed time from here to the FIRST /api/health (or /api/status) ready
+  # is the cold readyMs we compare against boot.coldReadyMs. Only meaningful in
+  # --boot-verify-only mode (the workflow's gate); see emit_boot_kpi below.
+  BOOT_KPI_START_MS=""
+  BOOT_KPI_READY_MS=""
+  if [[ "$BOOT_VERIFY_ONLY" == "true" ]]; then
+    BOOT_KPI_START_MS="$(now_ms 2>/dev/null || true)"
+  fi
   # NOTE: no command override here. The container runs its default CMD
   # (APP_CMD_START = the real absolute tsx loader plus agent dist start).
   # Substituting a stub health server is exactly what let broken
@@ -295,6 +339,16 @@ boot_verify() {
   local status_url="http://127.0.0.1:${SMOKE_PORT}/api/status"
   local health_url="http://127.0.0.1:${SMOKE_PORT}/api/health"
 
+  # Boot-KPI: record the FIRST instant any probe reports ready. Called from the
+  # 200/401 success paths below so the readyMs reflects the very first health
+  # success, not the end of confirm_ok's confirmation re-probes. Stamps once and
+  # only in --boot-verify-only mode; never affects the liveness return value.
+  mark_first_ready() {
+    if [[ "$BOOT_VERIFY_ONLY" == "true" && -z "${BOOT_KPI_READY_MS:-}" ]]; then
+      BOOT_KPI_READY_MS="$(now_ms 2>/dev/null || true)"
+    fi
+  }
+
   probe_ok() {
     local url="$1"
     local out="$2"
@@ -302,10 +356,12 @@ boot_verify() {
     code="$(curl -sS --connect-timeout 1 --max-time 3 -o "$out" -w '%{http_code}' "$url" || true)"
     case "$code" in
       200)
+        mark_first_ready
         return 0
         ;;
       401)
         if grep -q 'Unauthorized' "$out" 2>/dev/null; then
+          mark_first_ready
           return 0
         fi
         ;;
@@ -373,6 +429,71 @@ boot_verify() {
     return 0
   }
 
+  # Boot-KPI cold-start budget (item 5 of #8812). Computes cold readyMs from the
+  # pre-`docker run` checkpoint to the FIRST health/status success, reads the
+  # boot.coldReadyMs budget from packages/benchmarks/loadperf/budgets.json, and
+  # reports the comparison. WARN-FIRST: a breach prints a ::warning:: line and
+  # returns 0 (does not fail) UNLESS BOOT_KPI_ENFORCE=1, in which case it returns
+  # 1 so the caller can fail the smoke. Every measurement step is guarded so a
+  # missing jq / budget / timer NEVER turns a liveness-passing boot RED.
+  # peakRss is intentionally NOT measured: `docker stats` reports an inst
+  # sample, not the boot peak, so a number here would be misleading.
+  emit_boot_kpi() {
+    if [[ "$BOOT_VERIFY_ONLY" != "true" ]]; then
+      return 0
+    fi
+    if [[ -z "${BOOT_KPI_START_MS:-}" || -z "${BOOT_KPI_READY_MS:-}" ]]; then
+      log "[boot-kpi] cold readyMs: not measured (missing start/ready timestamp)"
+      return 0
+    fi
+
+    local ready_ms
+    ready_ms=$(( BOOT_KPI_READY_MS - BOOT_KPI_START_MS ))
+    if (( ready_ms < 0 )); then
+      log "[boot-kpi] cold readyMs: not measured (non-monotonic clock)"
+      return 0
+    fi
+
+    # Default budget mirrors packages/benchmarks/loadperf/budgets.json boot.coldReadyMs.
+    local budget_default=25000
+    local budget="$budget_default"
+    local budgets_file="$REPO_ROOT/packages/benchmarks/loadperf/budgets.json"
+    if command -v jq >/dev/null 2>&1 && [[ -f "$budgets_file" ]]; then
+      local parsed
+      parsed="$(jq -r '.boot.coldReadyMs // empty' "$budgets_file" 2>/dev/null || true)"
+      if [[ "$parsed" =~ ^[0-9]+$ ]]; then
+        budget="$parsed"
+      else
+        log "[boot-kpi] WARNING: could not read boot.coldReadyMs from $budgets_file; using default ${budget_default}ms"
+      fi
+    else
+      log "[boot-kpi] WARNING: jq or budgets.json unavailable; using default coldReadyMs budget ${budget_default}ms"
+    fi
+
+    log "[boot-kpi] cold readyMs=${ready_ms} budget=${budget}"
+    log "[boot-kpi] peakRss: not measured (docker stats samples instantaneously, not boot peak)"
+
+    if (( ready_ms > budget )); then
+      local msg="boot-kpi cold readyMs=${ready_ms} exceeded budget=${budget} (boot.coldReadyMs)"
+      if [[ "${BOOT_KPI_ENFORCE:-}" == "1" ]]; then
+        if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+          printf '::error::%s\n' "$msg" >&2
+        fi
+        log "[boot-kpi] ENFORCING: $msg"
+        return 1
+      fi
+      if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+        printf '::warning::%s (warn-first; set BOOT_KPI_ENFORCE=1 to gate)\n' "$msg" >&2
+      fi
+      log "[boot-kpi] WARNING (warn-first, not failing): $msg"
+      log "[boot-kpi] Set BOOT_KPI_ENFORCE=1 to make this breach fail CI."
+      return 0
+    fi
+
+    log "[boot-kpi] within budget (readyMs ${ready_ms} <= ${budget})"
+    return 0
+  }
+
   local logs_file="$SMOKE_ARTIFACT_DIR/boot.log"
   local deadline=$((SECONDS + SMOKE_TIMEOUT_SEC))
   local last_log_dump=0
@@ -408,20 +529,32 @@ boot_verify() {
     fi
 
     if confirm_ok "$health_url" /tmp/eliza-docker-health.txt; then
+      # Boot-KPI readyMs was already stamped by probe_ok (mark_first_ready) at
+      # the FIRST health success, BEFORE the post-health stability window.
       log "Health probe succeeded against the real entrypoint: $health_url"
       cat /tmp/eliza-docker-health.txt
       local health_ts
       health_ts="$(date -u +%Y-%m-%dT%H:%M:%S 2>/dev/null || echo '')"
-      confirm_stable "$health_ts" && { log "Boot verified: agent stayed up after health came up"; return 0; }
+      if confirm_stable "$health_ts"; then
+        log "Boot verified: agent stayed up after health came up"
+        emit_boot_kpi || fail "boot-kpi cold readyMs budget exceeded (BOOT_KPI_ENFORCE=1)"
+        return 0
+      fi
       fail "Agent served health then crashed during the post-health window; image is NOT bootable"
     fi
 
     if confirm_ok "$status_url" /tmp/eliza-docker-status.txt; then
+      # Boot-KPI readyMs was already stamped by probe_ok (mark_first_ready) at
+      # the FIRST status success.
       log "Status probe succeeded against the real entrypoint: $status_url"
       cat /tmp/eliza-docker-status.txt
       local status_ts
       status_ts="$(date -u +%Y-%m-%dT%H:%M:%S 2>/dev/null || echo '')"
-      confirm_stable "$status_ts" && { log "Boot verified: agent stayed up after status came up"; return 0; }
+      if confirm_stable "$status_ts"; then
+        log "Boot verified: agent stayed up after status came up"
+        emit_boot_kpi || fail "boot-kpi cold readyMs budget exceeded (BOOT_KPI_ENFORCE=1)"
+        return 0
+      fi
       fail "Agent served status then crashed during the post-health window; image is NOT bootable"
     fi
 
