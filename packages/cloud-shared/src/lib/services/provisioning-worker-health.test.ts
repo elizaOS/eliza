@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { resetMockRedisForTests } from "../cache/mock-redis";
 import { runWithCloudBindingsAsync } from "../runtime/cloud-bindings";
 import {
   checkProvisioningWorkerHealth,
@@ -35,6 +36,7 @@ describe("provisioning worker health (Redis heartbeat)", () => {
       savedEnv[key] = process.env[key];
     }
     clearManagedEnv();
+    resetMockRedisForTests();
   });
 
   afterEach(() => {

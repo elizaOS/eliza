@@ -1,32 +1,13 @@
 /**
- * In-memory mock of the {@link SocketRedis} client surface, backed by
- * `ioredis-mock`. Selected only when `MOCK_REDIS=1` is set in the
- * environment — never used as a silent fallback.
+ * In-memory mock of the {@link SocketRedis} client surface. Selected only
+ * when `MOCK_REDIS=1` is set in the environment — never used as a silent
+ * fallback.
  *
  * The exposed methods match the subset of `SocketRedis` that callers in this
  * repo use (rate limiters, credit events, agent gateway relay, A2A task
  * store, generic cache). Values are JSON-encoded on the way in and decoded
  * on the way out so the round-trip behaviour matches `SocketRedis`.
  */
-
-import { createRequire } from "node:module";
-
-// Lazy: `import.meta.url` is undefined in some bundle contexts (e.g. the
-// Cloudflare Workers dev bundle reload path), so building createRequire at
-// module load throws. Defer until first use, which only happens when
-// MOCK_REDIS=1 and ioredis-mock is actually needed.
-let _requireCJS: NodeJS.Require | null = null;
-function getRequireCJS(): NodeJS.Require {
-  if (_requireCJS) return _requireCJS;
-  const url = import.meta.url;
-  if (!url) {
-    throw new Error(
-      "mock-redis: import.meta.url is undefined; cannot resolve ioredis-mock via createRequire",
-    );
-  }
-  _requireCJS = createRequire(url);
-  return _requireCJS;
-}
 
 interface IoRedisLike {
   get(key: string): Promise<string | null>;
@@ -57,12 +38,257 @@ interface IoRedisLike {
   quit(): Promise<string>;
 }
 
-type IoRedisMockCtor = new () => IoRedisLike;
+interface RedisEntry {
+  value: string;
+  expiresAt: number | null;
+}
 
-function createIoRedisMock(): IoRedisLike {
-  const mod = getRequireCJS()("ioredis-mock") as IoRedisMockCtor | { default: IoRedisMockCtor };
-  const Ctor: IoRedisMockCtor = "default" in mod ? mod.default : mod;
-  return new Ctor();
+interface RedisStore {
+  strings: Map<string, RedisEntry>;
+  lists: Map<string, string[]>;
+  sets: Map<string, Set<string>>;
+  zsets: Map<string, Map<string, number>>;
+}
+
+const SHARED_STORE: RedisStore = {
+  strings: new Map(),
+  lists: new Map(),
+  sets: new Map(),
+  zsets: new Map(),
+};
+
+export function resetMockRedisForTests(): void {
+  SHARED_STORE.strings.clear();
+  SHARED_STORE.lists.clear();
+  SHARED_STORE.sets.clear();
+  SHARED_STORE.zsets.clear();
+}
+
+function nowMs(): number {
+  return Date.now();
+}
+
+function globToRegExp(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+  return new RegExp(`^${escaped}$`);
+}
+
+class SimpleRedis implements IoRedisLike {
+  constructor(private readonly store: RedisStore = SHARED_STORE) {}
+
+  private getEntry(key: string): RedisEntry | null {
+    const entry = this.store.strings.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt !== null && entry.expiresAt <= nowMs()) {
+      this.store.strings.delete(key);
+      return null;
+    }
+    return entry;
+  }
+
+  async get(key: string): Promise<string | null> {
+    return this.getEntry(key)?.value ?? null;
+  }
+
+  async set(...args: Array<string | number>): Promise<string | null> {
+    const [key, value, ...options] = args;
+    if (typeof key !== "string") throw new Error("Redis SET requires a string key");
+    const normalized = options.map((option) => String(option).toUpperCase());
+    if (normalized.includes("NX") && this.getEntry(key)) return null;
+
+    let expiresAt: number | null = null;
+    for (let i = 0; i < normalized.length; i += 1) {
+      if (normalized[i] === "EX") {
+        expiresAt = nowMs() + Number(options[i + 1]) * 1_000;
+        i += 1;
+      } else if (normalized[i] === "PX") {
+        expiresAt = nowMs() + Number(options[i + 1]);
+        i += 1;
+      }
+    }
+
+    this.store.strings.set(key, { value: String(value), expiresAt });
+    return "OK";
+  }
+
+  async setex(key: string, seconds: number, value: string): Promise<string> {
+    this.store.strings.set(key, { value, expiresAt: nowMs() + seconds * 1_000 });
+    return "OK";
+  }
+
+  async getdel(key: string): Promise<string | null> {
+    const value = await this.get(key);
+    this.store.strings.delete(key);
+    return value;
+  }
+
+  async incr(key: string): Promise<number> {
+    const next = Number((await this.get(key)) ?? "0") + 1;
+    await this.set(key, String(next));
+    return next;
+  }
+
+  async expire(key: string, seconds: number): Promise<number> {
+    const entry = this.getEntry(key);
+    if (!entry) return 0;
+    entry.expiresAt = nowMs() + seconds * 1_000;
+    return 1;
+  }
+
+  async pexpire(key: string, ms: number): Promise<number> {
+    const entry = this.getEntry(key);
+    if (!entry) return 0;
+    entry.expiresAt = nowMs() + ms;
+    return 1;
+  }
+
+  async pttl(key: string): Promise<number> {
+    const entry = this.getEntry(key);
+    if (!entry) return -2;
+    if (entry.expiresAt === null) return -1;
+    return Math.max(0, entry.expiresAt - nowMs());
+  }
+
+  async del(...keys: string[]): Promise<number> {
+    let deleted = 0;
+    for (const key of keys) {
+      const existed =
+        this.store.strings.delete(key) ||
+        this.store.lists.delete(key) ||
+        this.store.sets.delete(key) ||
+        this.store.zsets.delete(key);
+      if (existed) deleted += 1;
+    }
+    return deleted;
+  }
+
+  async mget(...keys: string[]): Promise<Array<string | null>> {
+    return Promise.all(keys.map((key) => this.get(key)));
+  }
+
+  async scan(
+    cursor: string | number,
+    ...args: Array<string | number>
+  ): Promise<[string, string[]]> {
+    const normalized = args.map((arg) => String(arg).toUpperCase());
+    const matchIndex = normalized.indexOf("MATCH");
+    const pattern = matchIndex >= 0 ? String(args[matchIndex + 1]) : "*";
+    const re = globToRegExp(pattern);
+    const keys = [
+      ...this.store.strings.keys(),
+      ...this.store.lists.keys(),
+      ...this.store.sets.keys(),
+      ...this.store.zsets.keys(),
+    ].filter((key, index, all) => all.indexOf(key) === index && re.test(key));
+    return [String(cursor) === "0" ? "0" : "0", keys];
+  }
+
+  async lpush(key: string, ...values: string[]): Promise<number> {
+    const list = this.store.lists.get(key) ?? [];
+    list.unshift(...values);
+    this.store.lists.set(key, list);
+    return list.length;
+  }
+
+  async rpush(key: string, ...values: string[]): Promise<number> {
+    const list = this.store.lists.get(key) ?? [];
+    list.push(...values);
+    this.store.lists.set(key, list);
+    return list.length;
+  }
+
+  async lpop(key: string, count?: number): Promise<string | string[] | null> {
+    const list = this.store.lists.get(key);
+    if (!list || list.length === 0) return count === undefined ? null : [];
+    if (count === undefined) return list.shift() ?? null;
+    return list.splice(0, count);
+  }
+
+  async rpop(key: string): Promise<string | null> {
+    return this.store.lists.get(key)?.pop() ?? null;
+  }
+
+  async llen(key: string): Promise<number> {
+    return this.store.lists.get(key)?.length ?? 0;
+  }
+
+  async sadd(key: string, ...members: string[]): Promise<number> {
+    const set = this.store.sets.get(key) ?? new Set<string>();
+    let added = 0;
+    for (const member of members) {
+      if (!set.has(member)) added += 1;
+      set.add(member);
+    }
+    this.store.sets.set(key, set);
+    return added;
+  }
+
+  async srem(key: string, ...members: string[]): Promise<number> {
+    const set = this.store.sets.get(key);
+    if (!set) return 0;
+    let deleted = 0;
+    for (const member of members) {
+      if (set.delete(member)) deleted += 1;
+    }
+    return deleted;
+  }
+
+  async smembers(key: string): Promise<string[]> {
+    return [...(this.store.sets.get(key) ?? new Set<string>())];
+  }
+
+  async zadd(key: string, score: number, member: string): Promise<number> {
+    const zset = this.store.zsets.get(key) ?? new Map<string, number>();
+    const added = zset.has(member) ? 0 : 1;
+    zset.set(member, score);
+    this.store.zsets.set(key, zset);
+    return added;
+  }
+
+  async zcard(key: string): Promise<number> {
+    return this.store.zsets.get(key)?.size ?? 0;
+  }
+
+  async zrange(key: string, start: number, stop: number): Promise<string[]> {
+    const members = [...(this.store.zsets.get(key) ?? new Map<string, number>()).entries()]
+      .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+      .map(([member]) => member);
+    const end = stop < 0 ? members.length + stop + 1 : stop + 1;
+    return members.slice(start, end);
+  }
+
+  async zrem(key: string, ...members: string[]): Promise<number> {
+    const zset = this.store.zsets.get(key);
+    if (!zset) return 0;
+    let deleted = 0;
+    for (const member of members) {
+      if (zset.delete(member)) deleted += 1;
+    }
+    return deleted;
+  }
+
+  async zremrangebyscore(key: string, min: number | string, max: number | string): Promise<number> {
+    const zset = this.store.zsets.get(key);
+    if (!zset) return 0;
+    const minScore = Number(min);
+    const maxScore = Number(max);
+    let deleted = 0;
+    for (const [member, score] of zset.entries()) {
+      if (score >= minScore && score <= maxScore) {
+        zset.delete(member);
+        deleted += 1;
+      }
+    }
+    return deleted;
+  }
+
+  async ping(): Promise<string> {
+    return "PONG";
+  }
+
+  async quit(): Promise<string> {
+    return "OK";
+  }
 }
 
 function serializeArg(value: unknown): string {
@@ -94,7 +320,12 @@ export class MockSocketRedis {
   private readonly client: IoRedisLike;
 
   constructor(client?: IoRedisLike) {
-    this.client = client ?? createIoRedisMock();
+    // WHY: Windows CI runs this package in one large `bun test --isolate`
+    // lane. Loading a heavyweight Redis emulator on first use can burn the
+    // entire 5s default test budget before the health contract is exercised.
+    // This small shared store keeps MOCK_REDIS deterministic while preserving
+    // the Redis commands the repo actually uses.
+    this.client = client ?? new SimpleRedis();
   }
 
   async get<T = string>(key: string): Promise<T | null> {
