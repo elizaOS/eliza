@@ -5,6 +5,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.create.travel-time",
   title: "Create a calendar event with travel-time awareness",
   domain: "calendar",

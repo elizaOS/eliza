@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.twilio-sms.certify-retry-idempotent",
   title: "Certify Twilio SMS retry-safe idempotent send handling",
   connector: "twilio-sms",

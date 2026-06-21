@@ -31,6 +31,7 @@ function checkLateNightHandled(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "travel-buffer.late-night-skips-buffer",
   title: "Late-night casual event skips the auto travel buffer",
   domain: "lifeops.travel-buffer",

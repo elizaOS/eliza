@@ -8,6 +8,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "followup.bump-unanswered-decision-2-days",
   title: "Bump an unanswered decision after 2 days with context preserved",
   domain: "lifeops.followup",

@@ -15,6 +15,7 @@ import type {
 	ViewType,
 } from "@elizaos/core";
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import { markViewSwitch } from "../runtime/view-switch-signal.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 import { scoreView } from "./views-search.js";
@@ -230,6 +231,15 @@ const INTENT_VIEW_RULES: ReadonlyArray<{ re: RegExp; viewId: string }> = [
 ];
 
 /**
+ * All view ids any `INTENT_VIEW_RULES` rule can resolve to. Exported for the
+ * cross-list drift guard (#8797) so a passive intent can never target a view the
+ * matcher cannot also reach by explicit command.
+ */
+export const INTENT_VIEW_IDS: readonly string[] = [
+	...new Set(INTENT_VIEW_RULES.map((rule) => rule.viewId)),
+];
+
+/**
  * Map a passive domain intent to a concrete view id, or null when no rule
  * matches. Used both as a `runViewsShow` fallback (when normal resolution
  * fails) and by `inferMode` to route intent-only utterances to `show`.
@@ -401,6 +411,10 @@ export async function runViewsShow({
 
 	const view = resolution.view;
 	const result = await navigateToView(view, viewType);
+
+	// Record the switch so the compose hook injects the acknowledgement provider
+	// (and the provider phrases it) on this turn's reply and the immediate next.
+	if (result.ok) markViewSwitch(message?.roomId);
 
 	logger.info(
 		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}`,

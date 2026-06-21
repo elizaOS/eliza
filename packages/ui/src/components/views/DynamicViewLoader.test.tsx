@@ -739,8 +739,7 @@ describe("DynamicViewLoader", () => {
   });
 
   it("cleans up a pending bundle that is evicted before import resolution", async () => {
-    const bundleUrl =
-      "https://capability.example.test/assets/late-pressure.js";
+    const bundleUrl = "https://capability.example.test/assets/late-pressure.js";
     const cleanupLateBundle = vi.fn();
     let resolveImport:
       | ((module: { default: () => ReactElement; cleanup: () => void }) => void)

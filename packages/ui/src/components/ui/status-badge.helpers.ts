@@ -54,3 +54,34 @@ export function statusLabelForState(status: string): string {
   if (!normalized) return status;
   return normalized.replace(/\b\w/g, (match) => match.toUpperCase());
 }
+
+/**
+ * Product copy for cloud-agent *lifecycle* states on user-facing first-run /
+ * handoff surfaces. `statusLabelForState` just title-cases the raw DB enum
+ * (fine for dev/admin consoles, weak as onboarding copy — users should not see
+ * "Resuming"/"Suspended"/"Provisioning" verbatim). This maps the lifecycle
+ * enum to friendly copy and falls back to the title-cased label for anything
+ * unknown, so it is safe to use anywhere `statusLabelForState` is used for an
+ * agent status. It is intentionally separate from `statusLabelForState` so
+ * non-lifecycle consumers (e.g. steward transaction states like
+ * "broadcast"/"confirmed") keep their own labels.
+ */
+const AGENT_LIFECYCLE_LABELS: Record<string, string> = {
+  running: "Ready",
+  ready: "Ready",
+  provisioning: "Setting up",
+  starting: "Starting up",
+  resuming: "Starting up",
+  stopping: "Stopping",
+  suspending: "Pausing",
+  suspended: "Asleep",
+  sleeping: "Asleep",
+  stopped: "Stopped",
+  error: "Failed to start",
+  failed: "Failed to start",
+};
+
+export function agentLifecycleLabel(status: string): string {
+  const normalized = status.trim().toLowerCase();
+  return AGENT_LIFECYCLE_LABELS[normalized] ?? statusLabelForState(status);
+}

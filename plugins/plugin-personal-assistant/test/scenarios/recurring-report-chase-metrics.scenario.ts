@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "recurring-report-chase-metrics",
   title: "Assistant chases missing metrics for a recurring operating report",
   domain: "executive.delegation",

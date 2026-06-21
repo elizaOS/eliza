@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "remote.mobile-controls-mac",
   title: "iPhone remote-control request routes into remote session handling",
   domain: "remote",

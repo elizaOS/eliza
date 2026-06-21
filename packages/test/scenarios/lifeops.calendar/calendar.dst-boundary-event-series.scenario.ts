@@ -58,6 +58,7 @@ function describeAgentRespectedInstanceScope(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.dst-boundary-event-series",
   title:
     "Daily recurring series across DST boundary respects this-instance scope",

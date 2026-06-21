@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "followup.cross-channel-followup-via-platform-of-origin",
   title: "Follow-up goes back through the platform the conversation started on",
   domain: "lifeops.followup",

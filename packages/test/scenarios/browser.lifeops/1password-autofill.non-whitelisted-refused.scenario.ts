@@ -8,6 +8,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "1password-autofill.non-whitelisted-refused",
   title: "Autofill refused on non-whitelisted site",
   domain: "browser.lifeops",

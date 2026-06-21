@@ -5,6 +5,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "imessage.cross-reference-contact",
   title: "Unknown phone lookup must use Rolodex search or entity read",
   domain: "messaging.imessage",

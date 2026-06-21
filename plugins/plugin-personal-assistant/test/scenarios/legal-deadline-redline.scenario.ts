@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "legal-deadline-redline",
   title: "Assistant triages contract redlines and preserves approval gates",
   domain: "executive.legal",

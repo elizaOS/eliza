@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hold_style.polite.code.011",
   title: "hold_style :: no_hedging :: polite :: code :: 5-turn (11)",
   domain: "personality",

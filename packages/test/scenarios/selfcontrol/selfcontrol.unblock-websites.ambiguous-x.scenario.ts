@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "selfcontrol.unblock-websites.ambiguous-x",
   title: "Unblock requests do not require restating the hostname",
   domain: "selfcontrol",

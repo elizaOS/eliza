@@ -22,6 +22,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { evaluatePromotion } from "../src/core/promotion-gate.js";
 import {
   createPromptScorer,
   runBootstrapFewshot,
@@ -113,15 +114,33 @@ async function main() {
     `[${LABEL}] baseline=${baseline.toFixed(3)} bootstrap=${boot.score.toFixed(3)} gepa=${gepa.score.toFixed(3)}`,
   );
   const best = [
-    { name: "baseline", score: baseline, prompt: BASELINE },
     { name: "bootstrap", score: boot.score, prompt: boot.optimizedPrompt },
     { name: "gepa", score: gepa.score, prompt: gepa.optimizedPrompt },
   ].sort((a, b) => b.score - a.score)[0];
+
+  // Regression gate (#8797): an optimized artifact may only be promoted when it
+  // beats the baseline by more than scoring noise. Reuse the canonical
+  // variance-aware promotion gate so a noisy single run can never silently
+  // regress the production `view_context` prompt.
+  const decision = await evaluatePromotion({
+    incumbentPrompt: BASELINE,
+    candidatePrompt: best.prompt,
+    dataset,
+    scorer,
+  });
   const out = join(TMP_OUT, `${LABEL.replace(/[^a-z0-9]+/gi, "_")}.json`);
-  writeFileSync(out, JSON.stringify(best, null, 2));
-  console.log(
-    `[${LABEL}] best: ${best.name} ${best.score.toFixed(3)} → ${out}`,
+  writeFileSync(
+    out,
+    JSON.stringify({ ...best, baseline, decision }, null, 2),
   );
+  console.log(
+    `[${LABEL}] best candidate: ${best.name} ${best.score.toFixed(3)} | gate: ${decision.promote ? "PROMOTE" : "REJECT"} (${decision.reason}) → ${out}`,
+  );
+  if (!decision.promote) {
+    console.log(
+      `[${LABEL}] candidate did not beat baseline by the noise margin — keeping baseline.`,
+    );
+  }
 }
 main().catch((err) => {
   console.error(err);

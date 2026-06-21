@@ -8,6 +8,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
 
 export default scenario({
+  lane: "live-only",
   id: "relationships.status-goals.progress",
   title: "Quarterly relationship progress routes into follow-up list review",
   domain: "relationships",

@@ -9,6 +9,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 const TASK_CREATE_ACTIONS = ["CREATE_TASK", "LIFE"];
 
 export default scenario({
+  lane: "live-only",
   id: "cross.language.spanish-english-mixed",
   title: "Spanish-language task-creation request routes correctly",
   domain: "cross-cutting",

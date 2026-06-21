@@ -10,6 +10,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "cross.negative.greeting-calls-no-action",
   title: "Casual greeting triggers REPLY only — no side-effect actions",
   domain: "cross-cutting",

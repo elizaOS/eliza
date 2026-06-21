@@ -64,6 +64,7 @@ async function seedCompletedWeightLossGoal(ctx: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "goal.experience-loop.learn-from-completion",
   title: "New goal previews lessons from a similar completed goal",
   domain: "goals",

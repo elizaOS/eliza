@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "expat-payroll-shadow-tax",
   title: "Assistant coordinates expat payroll shadow tax decisions",
   domain: "executive.money",

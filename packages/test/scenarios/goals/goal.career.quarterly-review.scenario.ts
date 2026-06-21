@@ -3,6 +3,7 @@ import { expectScenarioActionResultData } from "../_helpers/action-result-assert
 import { seedLifeOpsGoal } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "goal.career.quarterly-review",
   title: "Quarterly review now asserts current review_goal semantics",
   domain: "goals",

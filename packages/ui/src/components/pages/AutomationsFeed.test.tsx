@@ -91,6 +91,7 @@ function responseFixture(): AutomationListResponse {
 }
 
 beforeEach(() => {
+  window.location.hash = "#automations";
   clientMock.listAutomations.mockResolvedValue(responseFixture());
   clientMock.runWorkflowDefinition.mockResolvedValue({ id: "execution-1" });
 });
@@ -119,6 +120,7 @@ describe("AutomationsFeed", () => {
     expect(
       within(screen.getByTestId("automation-stat-failed")).getByText("1"),
     ).toBeTruthy();
+    expect(screen.getByText("Failed: HTTP request failed")).toBeTruthy();
 
     expect(
       screen.queryByRole("button", { name: /activate workflow/i }),
@@ -127,9 +129,14 @@ describe("AutomationsFeed", () => {
       screen.queryByRole("button", { name: /deactivate workflow/i }),
     ).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Run Nightly review now" }),
+    const runButton = screen.getByRole("button", {
+      name: "Run Nightly review now",
+    });
+    expect(runButton.getAttribute("data-agent-id")).toBe(
+      "run-workflow-workflow-1",
     );
+
+    fireEvent.click(runButton);
 
     await waitFor(() => {
       expect(clientMock.runWorkflowDefinition).toHaveBeenCalledWith(

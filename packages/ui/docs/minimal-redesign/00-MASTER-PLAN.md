@@ -4,10 +4,13 @@
 > chat-forward, voice-forward interface. Remove excess text, borders, divs,
 > tags, inputs, and "slop". Icons + color + whitespace over text. One curated
 > **light** look (no dark/light toggle). Eliza colors: **orange `#ff8a24`**
-> (accent), **blue `#1d91e8`** (info/secondary only), white, black (text), some
-> gray. Flat, futuristic, modern. Each view shows only what the user needs, lets
+> (accent), white, black (text), some neutral gray for info/secondary (NO blue —
+> see the no-blue rule below). Flat, futuristic, modern. Each view shows only what the user needs, lets
 > them stay in chat, exposes view-dependent actions, and surfaces proactive
 > agent context.
+>
+> **No blue anywhere** (project brand rule, #8796). Info/secondary states use a
+> neutral gray or a desaturated orange — never blue. Orange is the only accent.
 
 This folder holds the research + the rolling redesign log. Detailed per-view
 inventories live in the sibling files:
@@ -63,9 +66,10 @@ black" the user sees comes from two places, both now being fixed:
    slop. Remove it (keep a quiet auto-refresh).
 8. **Fewer inputs.** Per-view search boxes become "search by typing in chat".
    Forms collapse to the few fields that matter; the agent fills the rest.
-9. **Orange is accent only; blue is info only.** No green/indigo/purple/cyan
-   accents. Resting-orange → darker-orange hover; neutral resting → neutral hover
-   (never → black). Fix `#ff5800` → `#ff8a24`.
+9. **Orange is accent only; no blue anywhere.** Info/secondary states use
+   neutral gray (or a desaturated orange) — never blue. No green/indigo/purple/
+   cyan accents either. Resting-orange → darker-orange hover; neutral resting →
+   neutral hover (never → black). Fix `#ff5800` → `#ff8a24`.
 10. **Agent-controllable + proactive.** Every actionable element uses
     `useAgentElement` (so chat can drive it), every view exposes view-dependent
     actions, and where it helps, a single quiet line of proactive agent context

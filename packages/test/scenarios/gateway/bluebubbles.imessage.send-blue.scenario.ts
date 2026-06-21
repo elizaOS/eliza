@@ -5,6 +5,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "bluebubbles.imessage.send-blue",
   title: "Agent confirms then sends a BlueBubbles iMessage",
   domain: "gateway",

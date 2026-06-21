@@ -5,6 +5,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "discord-gateway.bot-routes-to-user-agent",
   title: "Discord gateway bot routes to the active assistant",
   domain: "gateway",

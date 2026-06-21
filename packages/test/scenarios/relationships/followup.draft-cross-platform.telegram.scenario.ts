@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "followup.draft-cross-platform.telegram",
   title: "Draft a follow-up Telegram DM to a Rolodex contact",
   domain: "relationships",

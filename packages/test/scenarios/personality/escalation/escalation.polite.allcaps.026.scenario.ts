@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "escalation.polite.allcaps.026",
   title: "escalation :: more_formal :: polite :: allcaps :: 3-turn (26)",
   domain: "personality",

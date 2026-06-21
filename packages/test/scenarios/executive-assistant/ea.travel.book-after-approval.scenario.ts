@@ -9,6 +9,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.travel.book-after-approval",
   title: "Book travel only after explicit approval",
   domain: "executive-assistant",

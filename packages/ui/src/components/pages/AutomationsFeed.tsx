@@ -135,6 +135,7 @@ interface FeedRow {
   status: string;
   lastUpdated: string | null;
   lastRunStatus: NonNullable<AutomationItem["lastExecution"]>["status"] | null;
+  lastRunError: string | null;
   source: AutomationItem;
 }
 
@@ -177,6 +178,7 @@ function automationToRow(
     status: item.status,
     lastUpdated: item.updatedAt,
     lastRunStatus: item.lastExecution?.status ?? null,
+    lastRunError: item.lastExecution?.errorMessage ?? null,
     source: item,
   };
 }
@@ -635,24 +637,51 @@ function FeedRowItem({
     ? "border-accent/30 bg-gradient-to-br from-accent/20 to-accent/5 text-accent"
     : "border-border/60 bg-bg-accent text-muted-strong";
   const workflowId = row.source.workflowId ?? row.source.id;
+  const openAction = useAgentElement<HTMLButtonElement>({
+    id: `open-${row.kind}-${row.source.workflowId ?? row.source.taskId ?? row.key}`,
+    role: "button",
+    label: `Open ${row.title}`,
+    group: "automations-list",
+    description:
+      row.kind === "workflow"
+        ? "Open workflow graph, runs, logs, and JSON"
+        : "Open task schedule and prompt",
+    status: row.active ? "active" : "inactive",
+    onActivate: onOpen,
+  });
   const runAction = useAgentElement<HTMLButtonElement>({
     id: `run-workflow-${workflowId}`,
     role: "button",
-    label: `Run ${row.title}`,
-    group: "automations-actions",
-    description: "Run this workflow now and refresh its latest status.",
-    status: isWorkflow ? "active" : "inactive",
+    label: `Run ${row.title} now`,
+    group: "workflow-actions",
+    description: "Run this workflow once and refresh the automation dashboard",
+    status:
+      row.lastRunStatus === "running" || row.lastRunStatus === "waiting"
+        ? "busy"
+        : isWorkflow
+          ? "active"
+          : "inactive",
     onActivate: onRunNow,
   });
+  const lastRunLabel =
+    row.lastRunStatus === "error" && row.lastRunError
+      ? `Failed: ${row.lastRunError}`
+      : row.lastRunStatus
+        ? t(`automationsfeed.run.${row.lastRunStatus}`, {
+            defaultValue: row.lastRunStatus,
+          })
+        : null;
   return (
     <li
       ref={registerRef}
       className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-accent/40"
     >
       <button
+        ref={openAction.ref}
         type="button"
         onClick={onOpen}
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        {...openAction.agentProps}
       >
         <span
           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${medallionClasses}`}
@@ -683,12 +712,10 @@ function FeedRowItem({
                 tone="accent"
               />
             )}
-            {row.lastRunStatus && (
+            {lastRunLabel && row.lastRunStatus && (
               <RowChip
                 icon={<History className="h-3 w-3" />}
-                label={t(`automationsfeed.run.${row.lastRunStatus}`, {
-                  defaultValue: row.lastRunStatus,
-                })}
+                label={lastRunLabel}
                 tone={
                   row.lastRunStatus === "error"
                     ? "danger"

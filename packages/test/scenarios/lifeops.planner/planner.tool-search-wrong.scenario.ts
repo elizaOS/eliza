@@ -66,6 +66,7 @@ function checkPlannerSelfCorrectedOrAskedClarification(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "planner.tool-search-wrong",
   title:
     'Planner self-corrects when "block out time" misleads retrieval to website/app blockers',

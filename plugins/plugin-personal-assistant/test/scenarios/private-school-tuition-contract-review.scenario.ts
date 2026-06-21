@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "private-school-tuition-contract-review",
   title: "Assistant reviews private school tuition contract",
   domain: "executive.family",

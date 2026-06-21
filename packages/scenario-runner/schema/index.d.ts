@@ -278,6 +278,15 @@ export type ScenarioDefinition = {
   title: string;
   domain: string;
   status?: "active" | "pending";
+  /**
+   * CI lane this scenario is eligible for.
+   * - `pr-deterministic`: runs keyless on every PR through the deterministic
+   *   LLM proxy + Mockoon connectors (zero external cost).
+   * - `live-only`: requires real provider/connector credentials; runs only in
+   *   the scheduled live lanes.
+   * Declare it as a string literal — the scenario tooling reads it statically.
+   */
+  lane?: "pr-deterministic" | "live-only";
   turns: ScenarioTurn[];
   seed?: ScenarioSeedStep[];
   finalChecks?: ScenarioFinalCheck[];

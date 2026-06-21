@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "scope_global_vs_user.polite.code.011",
   title:
     "scope :: user_tries_global_should_refuse :: polite :: code :: 5-turn (11)",

@@ -44,11 +44,11 @@ export * from "./app-shell-registry";
 export { registerAppShellPage } from "./app-shell-registry";
 export * from "./backgrounds/index";
 export * from "./bridge/index";
-export * from "./cache-telemetry";
 export {
   invokeDesktopBridgeRequest,
   isElectrobunRuntime,
 } from "./bridge/index";
+export * from "./cache-telemetry";
 export * from "./character-catalog";
 export {
   DEFAULT_ELIZA_CHARACTER_ASSET,
@@ -162,7 +162,6 @@ export {
   MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
   maybeCompressDocumentUploadImage,
 } from "./components";
-export { ChatSearchHint } from "./components/composites/chat-search-hint";
 export * from "./components/apps/AppWindowRenderer";
 export * from "./components/apps/AppWindowRenderer.helpers";
 export * from "./components/apps/extensions/registry";
@@ -192,6 +191,7 @@ export type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "./components/chat/widgets/types";
+export { ChatSearchHint } from "./components/composites/chat-search-hint";
 export * from "./components/composites/index";
 export * from "./components/composites/page-panel/index";
 export { SidebarContent } from "./components/composites/sidebar/sidebar-content";

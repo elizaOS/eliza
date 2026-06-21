@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.twilio-voice.certify-retry-idempotent",
   title: "Certify Twilio voice retry-safe idempotent call handling",
   connector: "twilio-voice",

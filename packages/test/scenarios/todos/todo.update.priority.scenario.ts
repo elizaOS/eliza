@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "todo.update.priority",
   title: "Raise a seeded todo to high priority",
   domain: "todos",

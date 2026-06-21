@@ -72,6 +72,7 @@ function checkUndoHandledHonestly(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.bulk-archive-with-undo",
   title:
     "Bulk archive then undo within 60s — agent reverses or queues unarchive",

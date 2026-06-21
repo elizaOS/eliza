@@ -10,6 +10,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
 
 export default scenario({
+  lane: "live-only",
   id: "travel.flight-conflict-rebook",
   title:
     "Detect a flight conflict with an existing booking and propose a rebook",

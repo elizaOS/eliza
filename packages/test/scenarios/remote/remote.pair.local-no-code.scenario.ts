@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "remote.pair.local-no-code",
   title: "Local pairing request returns in-device instructions",
   domain: "remote",

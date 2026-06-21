@@ -6,6 +6,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "habit.night-routine.full-stack",
   title: "Set up a full night routine in one request",
   domain: "habits",

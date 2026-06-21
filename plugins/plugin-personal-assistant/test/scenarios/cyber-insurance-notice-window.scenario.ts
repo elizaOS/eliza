@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "cyber-insurance-notice-window",
   title: "Assistant coordinates cyber-insurance notice window",
   domain: "executive.legal",

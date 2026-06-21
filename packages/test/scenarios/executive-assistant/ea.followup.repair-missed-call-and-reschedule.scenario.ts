@@ -9,6 +9,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.followup.repair-missed-call-and-reschedule",
   title: "Repair a missed call and reschedule it quickly",
   domain: "executive-assistant",

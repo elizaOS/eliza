@@ -6,6 +6,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "sleep.wake-up-alarm-cascade",
   title: "Wake-up alarm cascade at 7:00, 7:05, 7:10",
   domain: "lifeops.sleep",

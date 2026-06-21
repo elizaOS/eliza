@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "vitamins-with-meals",
   title: "Vitamins tied to a meal window",
   domain: "habits",

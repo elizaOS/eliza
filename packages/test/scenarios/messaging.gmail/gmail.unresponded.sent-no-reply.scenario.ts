@@ -2,6 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.unresponded.sent-no-reply",
   title: "Find sent Gmail threads with no later human reply",
   domain: "messaging.gmail",

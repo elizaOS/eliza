@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "executive-security-travel-protocol",
   title: "Assistant coordinates sensitive travel with security and calendar constraints",
   domain: "executive.travel",

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "estate-liquidity-tax-call",
   title: "Assistant prepares an estate liquidity and tax advisor call",
   domain: "executive.money",

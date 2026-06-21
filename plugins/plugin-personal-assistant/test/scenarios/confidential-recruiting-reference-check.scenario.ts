@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "confidential-recruiting-reference-check",
   title: "Assistant runs confidential executive recruiting reference checks",
   domain: "executive.hiring",

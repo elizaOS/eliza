@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.notifications.certify-core",
   title: "Certify desktop and mobile notification synchronization",
   connector: "notifications",

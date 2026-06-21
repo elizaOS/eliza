@@ -13,6 +13,7 @@ import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "health.heart-rate-spike-alert",
   title: "Heart-rate spike — agent surfaces data, no diagnosis",
   domain: "lifeops.health",

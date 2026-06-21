@@ -18,7 +18,6 @@ export const Badge = NullComponent;
 export const Button = NullComponent;
 export const Input = NullComponent;
 export const PagePanel = NullComponent;
-export const PageScopedChatPane = NullComponent;
 export const SegmentedControl = NullComponent;
 export const Switch = NullComponent;
 export const Textarea = NullComponent;
@@ -30,10 +29,6 @@ export function useAgentElement(): Record<string, unknown> {
 }
 
 export function useApp(): Record<string, unknown> {
-  return {};
-}
-
-export function useAppWorkspaceChatChrome(): Record<string, unknown> {
   return {};
 }
 

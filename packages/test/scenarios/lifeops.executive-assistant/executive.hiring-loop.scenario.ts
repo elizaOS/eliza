@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.hiring-loop",
   title:
     "Hiring loop coordinates interview schedule, docs, panel, and follow-up",

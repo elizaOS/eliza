@@ -7,6 +7,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "cross.negative.question-calls-no-action",
   title: "Trivia question is answered without side-effect actions",
   domain: "cross-cutting",

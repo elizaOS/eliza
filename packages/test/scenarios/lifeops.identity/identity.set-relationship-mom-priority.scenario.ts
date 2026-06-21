@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "identity.set-relationship-mom-priority",
   title: "Tag 'mom' relationship and cascade to highest priority across triage",
   domain: "lifeops.identity",

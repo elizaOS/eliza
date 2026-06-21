@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "renovation-lien-waiver-payment",
   title: "Assistant holds renovation payment for lien waiver",
   domain: "executive.household",

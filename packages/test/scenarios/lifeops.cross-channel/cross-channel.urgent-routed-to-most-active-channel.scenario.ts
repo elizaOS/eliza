@@ -43,6 +43,7 @@ function checkRoutedToTelegram(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "cross-channel.urgent-routed-to-most-active-channel",
   title:
     "Urgent send routes to most-active channel (Telegram), not stale Gmail",

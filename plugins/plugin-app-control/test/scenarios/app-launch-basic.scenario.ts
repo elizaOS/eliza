@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
 	id: "app-launch-basic",
 	title: "APP action launch sub-mode dispatches with mode=launch",
 	domain: "app-control",

@@ -869,6 +869,7 @@ async function finalGeneratedAppCheck(
 
 export default scenario({
   id: "deterministic-generated-app-routes",
+  lane: "pr-deterministic",
   title: "Real generated app registry, catalog tile, hero, and route dispatch",
   domain: "app-runtime",
   status: "active",

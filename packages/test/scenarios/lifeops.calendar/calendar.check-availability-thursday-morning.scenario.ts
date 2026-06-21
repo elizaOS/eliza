@@ -32,6 +32,7 @@ function thursdayMorningOffsetMinutes(hour: number): number {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.check-availability-thursday-morning",
   title: "Free/busy query for Thursday morning surfaces the seeded events",
   domain: "lifeops.calendar",

@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "identity.detect-impersonation-attempt",
   title:
     "Flag a possible impersonation: same display name, different platform ID",

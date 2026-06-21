@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.ack-from-one-device-clears-others",
   title:
     "Acknowledging on mobile clears the same notification on desktop + watch",

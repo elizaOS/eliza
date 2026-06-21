@@ -8,6 +8,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.cancellation-fee-warning-before-skip",
   title:
     "Warn about a cancellation fee before letting the user skip an appointment",

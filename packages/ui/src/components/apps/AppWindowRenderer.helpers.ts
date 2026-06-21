@@ -1,4 +1,4 @@
-import { createElement, type ComponentType } from "react";
+import { type ComponentType, createElement } from "react";
 import { RetainedLazyComponent } from "../../retained-lazy";
 import type { OverlayApp, OverlayAppContext } from "./overlay-app-api";
 

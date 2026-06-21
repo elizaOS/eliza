@@ -14,6 +14,7 @@ import {
  * vacation mode.
  */
 export default scenario({
+  lane: "live-only",
   id: "lifeops.pause.vacation-window",
   title: "User asks for vacation mode → LIFEOPS verb=pause is invoked",
   domain: "lifeops",

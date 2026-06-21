@@ -13,6 +13,7 @@ import {
 const AUTOFILL_ACTIONS = ["AUTOFILL_FIELD", "AUTOFILL"];
 
 export default scenario({
+  lane: "live-only",
   id: "1password-autofill.whitelisted-gmail",
   title: "1Password autofill on whitelisted Gmail login",
   domain: "browser.lifeops",

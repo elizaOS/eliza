@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "calendar-llm-eval-mutations",
   title: "Calendar LLM evals cover check, add, move, delete, and search",
   domain: "calendar",

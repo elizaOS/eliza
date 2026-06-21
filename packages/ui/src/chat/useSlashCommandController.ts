@@ -20,10 +20,38 @@ import { COMMAND_PALETTE_EVENT } from "../events";
 import { useAvailableViews } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
 import { useApp } from "../state";
+import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
 import { loadSavedCustomCommands, normalizeSlashCommandName } from "./index";
 
 /** Event the App shell listens for to open settings at a specific section. */
 export const NAVIGATE_SETTINGS_EVENT = "eliza:navigate:settings";
+
+/**
+ * Report a user-initiated view switch to the agent (#8792). Fire-and-forget,
+ * fully guarded: a failure here must never break navigation. `source: "user"`
+ * makes the server record state + emit VIEW_SWITCHED without echoing
+ * shell:navigate:view back to the client.
+ */
+function reportUserViewSwitch(viewId: string, viewPath?: string): void {
+  try {
+    const base = getElizaApiBase();
+    if (!base || typeof fetch === "undefined") return;
+    const token = getElizaApiToken();
+    void fetch(`${base}/api/views/${encodeURIComponent(viewId)}/navigate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        source: "user",
+        ...(viewPath ? { path: viewPath } : {}),
+      }),
+    }).catch(() => {});
+  } catch {
+    // Best-effort observability only.
+  }
+}
 
 export interface NavigateSettingsDetail {
   section?: string;
@@ -180,6 +208,14 @@ export function useSlashCommandController(): SlashCommandController {
           },
         }),
       );
+      // Report this user-initiated switch to the agent (#8792) so the server's
+      // current-view state stays accurate and a VIEW_SWITCHED event fires for the
+      // proactive decider. `source: "user"` tells the server to record + emit
+      // WITHOUT re-broadcasting shell:navigate:view (the client already
+      // navigated above), avoiding an echo loop. Fire-and-forget.
+      if (target.viewId) {
+        reportUserViewSwitch(target.viewId, target.viewPath);
+      }
     },
     [],
   );

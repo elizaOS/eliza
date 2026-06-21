@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "followup.snooze-until-monday",
   title: "Snooze a follow-up until Monday morning and confirm the wake time",
   domain: "lifeops.followup",

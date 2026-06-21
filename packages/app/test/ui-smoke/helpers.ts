@@ -3182,6 +3182,33 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/automations", async (route) => {
+    // Only the bare list endpoint — the /nodes sub-route has its own stub above.
+    if (
+      route.request().method() !== "GET" ||
+      new URL(route.request().url()).pathname !== "/api/automations"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        automations: [],
+        summary: {
+          total: 0,
+          coordinatorCount: 0,
+          workflowCount: 0,
+          scheduledCount: 0,
+          draftCount: 0,
+        },
+        workflowStatus: null,
+        workflowFetchError: null,
+      }),
+    });
+  });
+
   await page.route("**/api/cloud/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

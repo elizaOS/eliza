@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "followup.followup-becomes-task",
   title: "Promote a follow-up to an actionable scheduled task",
   domain: "lifeops.followup",

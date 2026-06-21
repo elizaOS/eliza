@@ -7,6 +7,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "cross.failure-recovery.action-fails-agent-retries",
   title: "Agent degrades gracefully when a todo memory row is corrupt",
   domain: "cross-cutting",

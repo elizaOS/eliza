@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "remote.agent-calls-for-help",
   title: "Agent escalates to user via phone call when stuck",
   domain: "remote",

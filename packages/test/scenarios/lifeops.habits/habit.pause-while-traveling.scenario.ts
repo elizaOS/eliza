@@ -39,6 +39,7 @@ async function seedPauseMetadata(ctx: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "habit.pause-while-traveling",
   title: "Morning check-in respects time-bounded habit pauses",
   domain: "habits",

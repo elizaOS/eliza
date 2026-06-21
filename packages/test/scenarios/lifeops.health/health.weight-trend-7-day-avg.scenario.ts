@@ -11,6 +11,7 @@ import {
 import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "health.weight-trend-7-day-avg",
   title: "Weight trend uses 7-day average, not a single reading",
   domain: "lifeops.health",

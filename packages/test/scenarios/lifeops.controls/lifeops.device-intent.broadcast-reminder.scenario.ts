@@ -14,6 +14,7 @@ import {
  * reached the underlying intent-sync surface.
  */
 export default scenario({
+  lane: "live-only",
   id: "lifeops.device-intent.broadcast-reminder",
   title: "User asks to broadcast a reminder → DEVICE_INTENT routes to mobile",
   domain: "lifeops",

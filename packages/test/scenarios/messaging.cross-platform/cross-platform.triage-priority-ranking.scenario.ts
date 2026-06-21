@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "cross-platform.triage-priority-ranking",
   title: "Rank incoming messages across all channels by priority",
   domain: "messaging.cross-platform",

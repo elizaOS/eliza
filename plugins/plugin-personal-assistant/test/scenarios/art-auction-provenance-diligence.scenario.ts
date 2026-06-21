@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "art-auction-provenance-diligence",
   title: "Assistant coordinates art auction provenance diligence",
   domain: "executive.legal",

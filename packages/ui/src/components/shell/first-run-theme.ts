@@ -4,7 +4,9 @@ import type { FirstRunThemeConfig } from "../../config/branding";
 type FirstRunCssVars = CSSProperties & Record<`--${string}`, string>;
 
 const DEFAULT_FIRST_RUN_THEME = {
-  background: "#1d91e8",
+  // Brand rule (#8796): no blue. Near-black background with the orange button +
+  // white text is the on-brand first-run look (orange/black/white).
+  background: "#0b0e11",
   foreground: "#ffffff",
   mutedForeground: "rgba(255, 255, 255, 0.78)",
   controlBackground: "rgba(255, 255, 255, 0.18)",

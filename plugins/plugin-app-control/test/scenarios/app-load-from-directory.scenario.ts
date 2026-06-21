@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
 	id: "app-load-from-directory",
 	title: "APP action load_from_directory sub-mode scans the named folder",
 	domain: "app-control",

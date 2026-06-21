@@ -9,11 +9,11 @@ const NOOP_TRANSCRIPT = (): void => {};
 
 function findLatestAssistantText(
   messages: readonly ConversationMessage[],
-): { id: string; text: string } | null {
+): { id: string; text: string; source?: string } | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message && message.role === "assistant" && message.text.trim()) {
-      return { id: message.id, text: message.text };
+      return { id: message.id, text: message.text, source: message.source };
     }
   }
   return null;
@@ -105,6 +105,18 @@ export function useShellVoiceOutput(
     if (voiceBootstrapTick === 0) return; // voice config not loaded yet
     const latest = findLatestAssistantText(conversationMessages);
     if (!latest) return;
+
+    // Proactive interaction comments (#8792) are text-only by default: they must
+    // never be read aloud unless the user is actively hands-free (the latest turn
+    // was voice). The general voice-turn gate below also enforces this for new
+    // messages, but make it explicit so a proactive comment is never spoken just
+    // because an earlier turn happened to be voice.
+    if (
+      latest.source === "proactive-interaction" &&
+      !lastTurnVoiceRef.current
+    ) {
+      return;
+    }
 
     if (!voiceReplyIdsRef.current.has(latest.id)) {
       // First sighting of this assistant message: it's a voice reply only if the

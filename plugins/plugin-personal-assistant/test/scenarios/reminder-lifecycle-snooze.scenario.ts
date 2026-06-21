@@ -34,6 +34,7 @@ function assertApiBody(options: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "reminder-lifecycle-snooze",
   title: "Compressed reminder lifecycle with snooze",
   domain: "lifeops",

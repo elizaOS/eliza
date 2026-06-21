@@ -9,6 +9,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
 
 export default scenario({
+  lane: "live-only",
   id: "followup.threshold-14-days",
   title: "Follow-up threshold of 14 days",
   domain: "relationships",

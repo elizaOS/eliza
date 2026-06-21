@@ -39,6 +39,7 @@ function checkPrepVsTravelDistinguished(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "travel-buffer.adjacent-meeting-prep-vs-travel-distinguish",
   title: "Distinguishes prep buffer from travel buffer when both are relevant",
   domain: "lifeops.travel-buffer",

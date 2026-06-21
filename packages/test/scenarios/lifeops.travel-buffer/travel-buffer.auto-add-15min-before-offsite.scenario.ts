@@ -34,6 +34,7 @@ function checkTravelBufferAdded(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "travel-buffer.auto-add-15min-before-offsite",
   title: "Auto-adds a 15-min travel buffer before an offsite event",
   domain: "lifeops.travel-buffer",

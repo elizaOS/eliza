@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.weekly-operating-review",
   title: "Weekly operating review extracts commitments, risks, and decisions",
   domain: "lifeops.executive-assistant",

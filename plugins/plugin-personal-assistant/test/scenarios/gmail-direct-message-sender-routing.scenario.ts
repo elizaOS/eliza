@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail-direct-message-sender-routing",
   title: "Narrative Gmail sender routing",
   domain: "gmail",

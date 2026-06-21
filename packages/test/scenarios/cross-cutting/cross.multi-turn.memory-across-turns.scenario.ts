@@ -6,6 +6,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "cross.multi-turn.memory-across-turns",
   title: "Agent recalls a user-stated fact on a later turn",
   domain: "cross-cutting",

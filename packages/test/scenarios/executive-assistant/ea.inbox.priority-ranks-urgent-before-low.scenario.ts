@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.inbox.priority-ranks-urgent-before-low",
   title: "Rank urgent blockers ahead of low-priority noise",
   domain: "executive-assistant",

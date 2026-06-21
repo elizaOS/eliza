@@ -5,6 +5,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.vitamins-with-breakfast",
   title: "Take vitamins with breakfast every day",
   domain: "lifeops.hygiene",

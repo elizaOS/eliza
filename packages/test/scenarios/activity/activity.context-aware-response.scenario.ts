@@ -35,6 +35,7 @@ class FixedScreenContextSampler extends LifeOpsScreenContextSampler {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "activity.context-aware-response",
   title: "Agent references current app context",
   domain: "activity",

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "minor-emergency-passport",
   title: "Assistant coordinates a minor's emergency passport appointment",
   domain: "executive.family",

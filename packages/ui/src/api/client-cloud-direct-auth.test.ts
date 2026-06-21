@@ -283,7 +283,9 @@ describe("ElizaClient direct Cloud auth on native", () => {
     });
 
     const client = new ElizaClient(undefined, "cloud-api-key");
-    const create = await client.createCloudCompatAgent({ agentName: "My Agent" });
+    const create = await client.createCloudCompatAgent({
+      agentName: "My Agent",
+    });
 
     expect(create).toEqual(
       expect.objectContaining({

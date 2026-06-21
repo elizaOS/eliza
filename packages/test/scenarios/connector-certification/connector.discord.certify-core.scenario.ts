@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.discord.certify-core",
   title: "Certify Discord inbound and reply delivery",
   connector: "discord",

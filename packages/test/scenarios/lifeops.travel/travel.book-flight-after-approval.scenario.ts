@@ -9,6 +9,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "travel.book-flight-after-approval",
   title: "Flight booking is gated on explicit approval, never auto-fired",
   domain: "lifeops.travel",

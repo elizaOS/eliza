@@ -40,6 +40,7 @@ async function seedExpiredPauseMetadata(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "habits.post-travel-resume",
   title: "Habit resumes cleanly when travel pause expires",
   domain: "lifeops.habits",

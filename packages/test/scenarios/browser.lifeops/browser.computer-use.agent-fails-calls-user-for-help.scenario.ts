@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "browser.computer-use.agent-fails-calls-user-for-help",
   title: "Agent escalates failed browser action to user",
   domain: "browser.lifeops",

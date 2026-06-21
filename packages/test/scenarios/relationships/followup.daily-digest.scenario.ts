@@ -9,6 +9,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
 
 export default scenario({
+  lane: "live-only",
   id: "followup.daily-digest",
   title: "Morning digest surfaces overdue follow-ups",
   domain: "relationships",

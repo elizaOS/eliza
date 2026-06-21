@@ -216,6 +216,7 @@ function loadScenarioMetadataFile(file) {
     id,
     title: getStaticStringProperty(objectLiteral, "title"),
     status: getStaticStringProperty(objectLiteral, "status"),
+    lane: getStaticStringProperty(objectLiteral, "lane"),
   };
 }
 
@@ -699,6 +700,21 @@ function main() {
     ),
   ].sort();
 
+  // Every scenario must declare a `lane` ("pr-deterministic" | "live-only") so
+  // the deterministic PR lane selects by tag, not a hand-maintained list. (#8801)
+  const VALID_LANES = new Set(["pr-deterministic", "live-only"]);
+  const laneScanRoots = [
+    "packages/test/scenarios",
+    "plugins/plugin-personal-assistant/test/scenarios",
+    "plugins/plugin-app-control/test/scenarios",
+    "packages/scenario-runner/test/scenarios",
+  ];
+  const untaggedLaneScenarios = laneScanRoots
+    .flatMap((root) => listScenarioMetadata(root, { includePending: true }))
+    .filter((metadata) => !VALID_LANES.has(metadata.lane))
+    .map((metadata) => toPosixPath(path.relative(REPO_ROOT, metadata.file)))
+    .sort();
+
   const covered = new Set();
   const coverageGlobs = [
     ...workflowScenarioGlobs(),
@@ -724,6 +740,7 @@ function main() {
     allScenarioCount: allScenarioRows.length,
     coveredDefaultCount: defaultIds.filter((id) => covered.has(id)).length,
     missingDefaultIds,
+    untaggedLaneScenarios,
   };
 
   writeList(options.reportDir, "packages-test-default.txt", defaultIds);
@@ -779,10 +796,18 @@ function main() {
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
   } else {
     process.stdout.write(
-      `scenario workflow coverage ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}; missing ${summary.missingDefaultIds.length}\n`,
+      `scenario workflow coverage ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}; missing ${summary.missingDefaultIds.length}; untagged-lane ${summary.untaggedLaneScenarios.length}\n`,
     );
+    if (summary.untaggedLaneScenarios.length > 0) {
+      process.stderr.write(
+        `[scenario-catalog] ${summary.untaggedLaneScenarios.length} scenario(s) missing a 'lane' tag (pr-deterministic | live-only):\n  ${summary.untaggedLaneScenarios.join("\n  ")}\n`,
+      );
+    }
   }
-  return options.failOnMissing && summary.missingDefaultIds.length > 0 ? 1 : 0;
+  const hasFailures =
+    summary.missingDefaultIds.length > 0 ||
+    summary.untaggedLaneScenarios.length > 0;
+  return options.failOnMissing && hasFailures ? 1 : 0;
 }
 
 try {

@@ -123,7 +123,9 @@ export function PluginCard({
       ? p.loadError || inactiveLabel
       : toggleHealth === "attention"
         ? needsConfig
-          ? t("pluginsview.NeedsConfig", { defaultValue: "Needs configuration" })
+          ? t("pluginsview.NeedsConfig", {
+              defaultValue: "Needs configuration",
+            })
           : p.enabled
             ? inactiveLabel
             : undefined

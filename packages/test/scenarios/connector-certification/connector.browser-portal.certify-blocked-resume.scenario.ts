@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.browser-portal.certify-blocked-resume",
   title: "Certify browser blocked-resume intervention handling",
   connector: "browser-portal",

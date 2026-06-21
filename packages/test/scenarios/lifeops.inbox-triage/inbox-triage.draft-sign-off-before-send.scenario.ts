@@ -48,6 +48,7 @@ function checkNoSendWithoutSignoff(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.draft-sign-off-before-send",
   title: "Draft awaits explicit sign-off; edits-request does not trigger send",
   domain: "lifeops.inbox-triage",

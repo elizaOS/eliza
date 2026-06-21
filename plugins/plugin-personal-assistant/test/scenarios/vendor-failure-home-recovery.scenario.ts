@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "vendor-failure-home-recovery",
   title: "Assistant recovers from a failed household vendor visit",
   domain: "executive.vendor",

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.reminder.10min-before",
   title: "Seeded event 10 minutes out fires a last-call reminder",
   domain: "calendar",

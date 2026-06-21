@@ -8,6 +8,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { seedMeetingPreferences } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "sleep.travel-jet-lag-adjustment",
   title: "Jet-lag adjustment recommends gradual sleep-time shift",
   domain: "lifeops.sleep",

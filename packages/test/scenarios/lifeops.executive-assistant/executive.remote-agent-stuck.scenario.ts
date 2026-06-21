@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.remote-agent-stuck",
   title: "Remote agent stuck flow escalates with context and owner choices",
   domain: "lifeops.executive-assistant",

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "art-storage-renewal-valuation",
   title: "Assistant reviews art storage renewal valuation",
   domain: "executive.vendor",

@@ -7,6 +7,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.brush-teeth-cancel-with-reason",
   title: "Brush teeth preview is cancelled with a reason — no duplicate",
   domain: "lifeops.hygiene",

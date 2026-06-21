@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "travel.capture-preferences-first-time",
   title: "Capture travel preferences on the first booking conversation",
   domain: "lifeops.travel",

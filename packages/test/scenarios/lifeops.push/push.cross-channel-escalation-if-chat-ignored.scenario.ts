@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.cross-channel-escalation-if-chat-ignored",
   title:
     "Escalate to mobile push if a desktop chat message went 10 minutes unread",

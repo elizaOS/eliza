@@ -44,6 +44,7 @@ function checkProposedSlotsRespectBlackouts(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "scheduling.propose-respects-blackouts",
   title: "Proposed slots avoid commute / lunch / gym blackout windows",
   domain: "lifeops.scheduling",

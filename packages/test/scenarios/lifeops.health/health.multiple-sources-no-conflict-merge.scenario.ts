@@ -12,6 +12,7 @@ import {
 import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "health.multiple-sources-no-conflict-merge",
   title: "Multiple agreeing sources merge without surfacing a conflict",
   domain: "lifeops.health",

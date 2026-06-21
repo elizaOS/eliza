@@ -41,6 +41,7 @@ function checkReconciliation(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "scheduling.attendee-counter-proposes",
   title: "Agent reconciles when the attendee counter-proposes a different time",
   domain: "lifeops.scheduling",

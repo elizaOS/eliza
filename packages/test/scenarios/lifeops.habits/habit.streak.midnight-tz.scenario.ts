@@ -82,6 +82,7 @@ function checkStreakCreditedToPacificDay(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "habit.streak.midnight-tz",
   title: "Habit streak credits the user's TZ day, not the server's UTC day",
   domain: "lifeops.habits",

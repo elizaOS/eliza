@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "brush-teeth-basic",
   title: "Brush teeth basic save flow",
   domain: "tasks",

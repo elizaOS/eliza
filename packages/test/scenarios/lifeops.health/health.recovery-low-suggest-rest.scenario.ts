@@ -11,6 +11,7 @@ import {
 import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "health.recovery-low-suggest-rest",
   title: "Low recovery score — agent suggests easing the day",
   domain: "lifeops.health",

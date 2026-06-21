@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.twilio-sms.certify-core",
   title: "Certify Twilio SMS send-after-approval",
   connector: "twilio-sms",

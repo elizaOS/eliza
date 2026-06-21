@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "household-staff-background-check",
   title: "Assistant coordinates household staff background checks",
   domain: "executive.household",

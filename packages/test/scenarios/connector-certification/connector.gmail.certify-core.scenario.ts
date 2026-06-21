@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.gmail.certify-core",
   title: "Certify Gmail read, draft, and send-after-approval",
   connector: "gmail",

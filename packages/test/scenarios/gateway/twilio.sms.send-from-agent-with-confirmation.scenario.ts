@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "twilio.sms.send-from-agent-with-confirmation",
   title: "Agent sends outbound SMS via Twilio after confirmation",
   domain: "gateway",

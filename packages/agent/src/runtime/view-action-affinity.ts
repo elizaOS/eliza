@@ -162,6 +162,11 @@ export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   todos: ["OWNER_TODOS"],
   lifeops: ["PERSONAL_ASSISTANT"],
   relationships: ["ENTITY"],
+  // documents — plugins/plugin-documents/src/actions/owner-documents.ts
+  //   (umbrella action "OWNER_DOCUMENTS"; DocumentsView reads/uploads via the
+  //   docs-and-portals domain). Added so a contextual "pull up my documents"
+  //   switch upweights the domain action while the view is foreground (#8798).
+  documents: ["OWNER_DOCUMENTS"],
 };
 
 /**
@@ -195,6 +200,55 @@ export function validateViewActionMap(
       }
     }
   }
+}
+
+/**
+ * Registered view ids that have NO domain-action affinity entry in
+ * VIEW_ACTION_MAP. These views are still fully agent-controllable through the
+ * universal agent-surface (`useAgentElement` click/fill/etc.), but their domain
+ * actions are not upweighted in the planner prompt when the view is foreground —
+ * so a `documents`/`messages`/`phone` view's domain action competes with every
+ * other action instead of being kept at full param detail. Pure; the caller
+ * supplies the live registry view ids. (#8798)
+ */
+export function findViewsWithoutActionAffinity(
+  registeredViewIds: Iterable<string>,
+): string[] {
+  const mapped = new Set(Object.keys(VIEW_ACTION_MAP));
+  const missing: string[] = [];
+  for (const viewId of registeredViewIds) {
+    if (!mapped.has(viewId)) missing.push(viewId);
+  }
+  return missing;
+}
+
+/**
+ * Completeness sibling of {@link validateViewActionMap}: where that flags a
+ * mapped action name that no longer exists, this flags a *registered view* that
+ * has neither a VIEW_ACTION_MAP entry nor any declared `ViewCapability`. It only
+ * warns (the universal agent-surface still reaches every control), but surfaces
+ * the affinity gap so domain actions for new views are not silently unweighted.
+ * (#8798)
+ *
+ * @param registeredViewIds every view id the registry currently knows about.
+ * @param viewsWithCapabilities view ids that declare a `ViewCapability[]`.
+ */
+export function validateViewCoverage(
+  registeredViewIds: Iterable<string>,
+  viewsWithCapabilities: Iterable<string>,
+  logger?: { warn: (msg: string) => void },
+): string[] {
+  const mapped = new Set(Object.keys(VIEW_ACTION_MAP));
+  const withCaps = new Set(viewsWithCapabilities);
+  const uncovered: string[] = [];
+  for (const viewId of registeredViewIds) {
+    if (mapped.has(viewId) || withCaps.has(viewId)) continue;
+    uncovered.push(viewId);
+    logger?.warn(
+      `[eliza] view "${viewId}" has no VIEW_ACTION_MAP entry and declares no ViewCapability — its domain actions are not weighted while it is foreground (agent-surface element control still works)`,
+    );
+  }
+  return uncovered;
 }
 
 /**

@@ -53,6 +53,7 @@ async function seedSecondMissedFloss(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.floss-missed-2-nights-escalate",
   title: "Floss escalation surfaces after 2 missed nights",
   domain: "lifeops.hygiene",

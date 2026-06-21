@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "travel.asset-deadline-checklist",
   title: "Track event asset deadlines (slides, bios, forms) tied to a trip",
   domain: "lifeops.travel",

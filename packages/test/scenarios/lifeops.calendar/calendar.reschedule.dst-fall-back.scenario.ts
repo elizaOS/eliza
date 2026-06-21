@@ -103,6 +103,7 @@ function inspectCalendarActionForLocalNineAm(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.reschedule.dst-fall-back",
   title:
     "Reschedule across DST fall-back keeps the new event at the right LOCAL hour",
