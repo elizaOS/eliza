@@ -181,8 +181,9 @@ vi.mock("./state", () => {
   });
   return {
     useApp: () => getAppValue(),
-    useAppSelector: <T,>(selector: (s: ReturnType<typeof getAppValue>) => T): T =>
-      selector(getAppValue()),
+    useAppSelector: <T,>(
+      selector: (s: ReturnType<typeof getAppValue>) => T,
+    ): T => selector(getAppValue()),
     useAppSelectorShallow: <T,>(
       selector: (s: ReturnType<typeof getAppValue>) => T,
     ): T => selector(getAppValue()),
