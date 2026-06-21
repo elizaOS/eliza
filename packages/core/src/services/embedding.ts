@@ -204,6 +204,13 @@ export class EmbeddingGenerationService extends Service {
 			return;
 		}
 
+		// A batched drain may have already persisted this vector before throwing
+		// and falling back to this per-item path. Skip it so we don't re-embed or
+		// re-emit EMBEDDING_GENERATION_COMPLETED for an already-vectored memory.
+		if (memory.embedding) {
+			return;
+		}
+
 		try {
 			const startTime = Date.now();
 
@@ -312,6 +319,9 @@ export class EmbeddingGenerationService extends Service {
 			const { memory } = item;
 			if (memory.id) {
 				await this.runtime.updateMemory({ id: memory.id, embedding });
+				// Mark the in-flight memory so a fallback re-run of the per-item
+				// path (generateEmbedding) skips it instead of double-emitting.
+				memory.embedding = embedding;
 				await this.runtime.log({
 					entityId: this.runtime.agentId,
 					roomId: memory.roomId || this.runtime.agentId,
