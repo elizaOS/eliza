@@ -1596,6 +1596,42 @@ function isVoiceChannelMessage(message: Pick<Memory, "content">): boolean {
 	);
 }
 
+/** A multi-party voice room (≥1 agent, ≥1 human / other agents). */
+function isVoiceGroupChannelMessage(message: Pick<Memory, "content">): boolean {
+	return message.content?.channelType === ChannelType.VOICE_GROUP;
+}
+
+/**
+ * Multi-agent / multi-speaker voice-room turn-taking (#8786). An agent DEFERS
+ * (suppresses its reply) when the turn is explicitly addressed to OTHER
+ * participants and not to this agent — the "only the addressed agent replies"
+ * contract that keeps ≥3-participant rooms from devolving into a cross-talk
+ * storm where every agent answers every utterance.
+ *
+ * Pure + deterministic. An empty `addressedTo` (no explicit target) never
+ * suppresses — normal `shouldRespond` decides — so a single-agent group room
+ * and undirected questions are unaffected; only an utterance directed AT a
+ * named participant who is not this agent is gated. Fails OPEN (no suppression)
+ * when this agent cannot be identified.
+ */
+function voiceGroupAddressSuppressesAgent(
+	addressedTo: readonly string[] | undefined,
+	selfIdentifiers: readonly string[],
+): boolean {
+	if (!Array.isArray(addressedTo) || addressedTo.length === 0) return false;
+	const self = new Set(
+		selfIdentifiers.map((s) => s.trim().toLowerCase()).filter(Boolean),
+	);
+	if (self.size === 0) return false; // can't identify self → fail open
+	const targets = addressedTo
+		.map((t) => t.trim().toLowerCase())
+		.filter(Boolean);
+	if (targets.length === 0) return false;
+	// Addressed to me (possibly among others) → not suppressed. Addressed only
+	// to others → defer to the agent who was named.
+	return !targets.some((t) => self.has(t));
+}
+
 type VoiceTurnSignalMetadata = {
 	endOfTurnProbability?: number;
 	nextSpeaker?: "agent" | "user" | "unknown";
@@ -2864,6 +2900,32 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 			evaluate: () => ({
 				processMessage: "RESPOND",
 				debug: ["voice turn signal confirmed reply (agentShouldSpeak)"],
+			}),
+		},
+		{
+			// Runs AFTER the suppress/confirm signal gates: an explicit address to
+			// ANOTHER participant is the final word — it overrides even a generic
+			// agentShouldSpeak confirm, so a misfiring signal can't make an
+			// un-addressed agent talk over the addressed one.
+			name: "core.voice_group_address",
+			description:
+				"Multi-agent/multi-speaker voice-room turn-taking: an agent defers (IGNORE) when a VOICE_GROUP turn is explicitly addressed to another named participant and not to this agent, so only the addressed agent replies. Undirected turns are left to normal shouldRespond.",
+			priority: 0,
+			shouldRun: ({ message, runtime, messageHandler }) =>
+				isVoiceGroupChannelMessage(message) &&
+				voiceGroupAddressSuppressesAgent(
+					messageHandler.extract?.addressedTo,
+					[runtime.character?.name, runtime.agentId].filter(
+						(v): v is string => typeof v === "string" && v.length > 0,
+					),
+				),
+			evaluate: ({ runtime, messageHandler }) => ({
+				processMessage: "IGNORE",
+				requiresTool: false,
+				clearReply: true,
+				debug: [
+					`voice group: turn addressed to [${(messageHandler.extract?.addressedTo ?? []).join(", ")}], not ${runtime.character?.name ?? runtime.agentId} → defer`,
+				],
 			}),
 		},
 		{
