@@ -1377,7 +1377,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
     cfg.n_gpu_layers = -1;   // all-GPU when the vulkan lib is staged
     // Arm safe runtime optimizations (F16 KV for shipped qwen35; same-file MTP
     // on 2B+ bundles, or env override for lab runs).
-    arm_bionic_text_cfg(cfg, bundle.c_str());
+    arm_bionic_text_cfg(cfg, bundleDir.c_str());
     EliLlmStream* s = eliza_inference_llm_stream_open(ctx, &cfg, &outError);
     if (!s) {
         if (tok) eliza_inference_free_tokens(tok);

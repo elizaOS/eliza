@@ -12,8 +12,8 @@
 //   once at APK build time, then every install is offline-capable.
 //
 // Output (per ABI is unnecessary — GGUF files are arch-independent):
-//   apps/app/android/app/src/main/assets/agent/models/<file>.gguf
-//   apps/app/android/app/src/main/assets/agent/models/manifest.json
+//   packages/app-core/platforms/android/app/src/main/assets/agent/models/<file>.gguf
+//   packages/app-core/platforms/android/app/src/main/assets/agent/models/manifest.json
 //
 // On-device: ElizaAgentService (or any white-label fork's equivalent)
 // extracts assets/agent/models/* into the per-user state dir's
@@ -121,18 +121,23 @@ export const DEFAULT_MODELS = [
   VOICE_PRESET_KOKORO,
 ];
 
-const ASSETS_MODELS_DIR = path.join(
-  repoRoot,
-  "apps",
-  "app",
-  "android",
-  "app",
-  "src",
-  "main",
-  "assets",
-  "agent",
-  "models",
-);
+export function resolveDefaultModelsAssetsDir(root = repoRoot) {
+  return path.join(
+    root,
+    "packages",
+    "app-core",
+    "platforms",
+    "android",
+    "app",
+    "src",
+    "main",
+    "assets",
+    "agent",
+    "models",
+  );
+}
+
+const ASSETS_MODELS_DIR = resolveDefaultModelsAssetsDir(repoRoot);
 
 const MANIFEST_PATH = path.join(ASSETS_MODELS_DIR, "manifest.json");
 
