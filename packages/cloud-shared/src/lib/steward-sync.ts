@@ -436,21 +436,29 @@ export async function syncUserFromSteward(
         },
       });
     } catch (error) {
-      // The credit-ledger write failed. Still grant the welcome bonus by writing
-      // the balance directly, but surface the underlying failure — a silent
-      // fallback hides a broken credits pipeline and leaves a balance with no
-      // matching ledger row (logger-only / no-silent-swallow).
       logger.error(
-        "[StewardSync] addCredits failed for new org; writing initial balance directly as a fallback",
+        "[StewardSync] addCredits failed for new org; rolling back signup organization",
         {
           organizationId: organization.id,
           initialCredits,
           error: error instanceof Error ? error.message : String(error),
         },
       );
-      await organizationsService.update(organization.id, {
-        credit_balance: String(initialCredits),
-      });
+      try {
+        await organizationsService.delete(organization.id);
+      } catch (rollbackError) {
+        logger.error(
+          "[StewardSync] Failed to delete organization after welcome-credit failure",
+          {
+            organizationId: organization.id,
+            error:
+              rollbackError instanceof Error
+                ? rollbackError.message
+                : String(rollbackError),
+          },
+        );
+      }
+      throw error;
     }
   }
 
