@@ -126,6 +126,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     description:
       "Recorded voice transcripts — play, scrub, and read with word sync",
     icon: "AudioLines",
+    heroImagePath: "assets/view-heroes/transcripts.png",
     path: "/apps/transcripts",
     order: 71,
     tags: ["transcript", "voice", "recording", "audio"],
