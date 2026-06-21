@@ -61,6 +61,7 @@
     "@napi-rs/keyring": "^1.1.6"
   },
   "devDependencies": {
+    "@elizaos/vitest-vite": "npm:vite@7.3.3",
     "@types/node": "^25.0.0",
     "@typescript/native-preview": "^7.0.0-dev.20260421.2",
     "typescript": "^6.0.3",
