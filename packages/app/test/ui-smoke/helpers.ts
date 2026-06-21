@@ -1799,6 +1799,22 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // The Transcripts view (client.listTranscripts) hits this on mount; the
+  // keyless loopback stack answers 501 for unimplemented endpoints, which surface
+  // as console errors in the stricter app-window smoke. Serve an empty list so
+  // the view renders its real empty state cleanly.
+  await page.route("**/api/transcripts**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ transcripts: [] }),
+    });
+  });
+
   await page.route("**/api/runtime/mode", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
