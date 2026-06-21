@@ -16,8 +16,21 @@
  *     `~/.eliza/local-inference/models/eliza-1-0_8b.bundle`),
  *   - the `freeman.wav` speech submodule isn't checked out,
  *   - or the loaded build predates v12 (`timedAsrSupported() === false`).
- * Runs in the post-merge lane (`*.real.test.ts` is excluded from the default
- * `vitest.config.ts` lane).
+ * Runs via `bun test` (the post-merge lane runner — bun:ffi + `globalThis.Bun`);
+ * `*.real.test.ts` is excluded from the default `vitest.config.ts` lane.
+ *
+ * Reproduce locally (verified on this host):
+ *   B=~/.eliza/local-inference/models/eliza-1-asr-q8.bundle
+ *   hf download ggml-org/Qwen3-ASR-0.6B-GGUF Qwen3-ASR-0.6B-Q8_0.gguf --local-dir "$B/asr"
+ *   hf download ggml-org/Qwen3-ASR-0.6B-GGUF mmproj-Qwen3-ASR-0.6B-Q8_0.gguf --local-dir "$B/asr"
+ *   mv "$B/asr/Qwen3-ASR-0.6B-Q8_0.gguf" "$B/asr/eliza-1-asr.gguf"
+ *   mv "$B/asr/mmproj-Qwen3-ASR-0.6B-Q8_0.gguf" "$B/asr/eliza-1-asr-mmproj.gguf"
+ *   ELIZA_ASR_BUNDLE="$B" ELIZA_INFERENCE_LIBRARY=<built libelizainference.so> \
+ *     bun test src/services/voice/asr-timed.real.test.ts
+ * The fused `eliza_pick_asr_files` resolves an ASR-only bundle from
+ * `<bundle>/asr/`; no text/TTS model or manifest is needed for the ASR region.
+ * Observed: transcript "If you go into different cultures, they have different
+ * concepts of creation." — 12 words, monotonic + non-overlapping, ~2.3s CPU.
  */
 
 import { existsSync, readFileSync } from "node:fs";

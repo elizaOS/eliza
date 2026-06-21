@@ -87,6 +87,39 @@ export interface AsrWordTiming {
 }
 
 /**
+ * Recover per-word `{ text, startMs, endMs }` from a v12 timed-ASR result.
+ *
+ * The native `eliza_inference_asr_transcribe_timed` sizes the `startMs`/`endMs`
+ * arrays by splitting the transcript on ASCII whitespace — `std::isspace` in the
+ * C locale matches EXACTLY ` \t\n\v\f\r`. We must mirror that split byte-for-byte
+ * to recover the word strings: a broader Unicode `\s` split collapses NBSP /
+ * ideographic space (U+00A0, U+3000, …) that the native byte split keeps, which
+ * would make `tokens` shorter than `count` and silently zip each word's text
+ * against a DIFFERENT word's timing — a desync `validateAsrWordTimings` cannot
+ * see (it never compares text to count). `count` only falls below the true word
+ * count when the caller's `maxWords` cap is hit, in which case the trailing
+ * (untimed) words are dropped by `Math.min`.
+ */
+export function recoverAsrWords(
+	text: string,
+	count: number,
+	startMs: Int32Array,
+	endMs: Int32Array,
+): AsrWordTiming[] {
+	const tokens = text.split(/[ \t\n\v\f\r]+/).filter(Boolean);
+	const n = Math.min(count, tokens.length);
+	const words: AsrWordTiming[] = [];
+	for (let i = 0; i < n; i++) {
+		words.push({
+			text: tokens[i] as string,
+			startMs: startMs[i] ?? 0,
+			endMs: endMs[i] ?? 0,
+		});
+	}
+	return words;
+}
+
+/**
  * Pooling strategies for `embed`. Mirror `enum llama_pooling_type` and the
  * `ELIZA_POOLING_*` constants in `eliza-inference-ffi.h`.
  */
@@ -1943,14 +1976,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				outText.byteOffset,
 				len,
 			).toString("utf8");
-			const count = Number(nWords[0]);
-			// The native side split on whitespace to size the timing arrays; mirror
-			// that split to recover the word texts, then zip with the timings.
-			const tokens = text.split(/\s+/).filter(Boolean);
-			const words: AsrWordTiming[] = [];
-			for (let i = 0; i < Math.min(count, tokens.length); i++) {
-				words.push({ text: tokens[i], startMs: startMs[i], endMs: endMs[i] });
-			}
+			const words = recoverAsrWords(text, Number(nWords[0]), startMs, endMs);
 			return { text, words };
 		},
 

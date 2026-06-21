@@ -1,18 +1,15 @@
 /**
  * Local ASR (transcription) capability — public entry point.
  *
- * This module is what `provider.ts` (`createTranscriptionHandler`), the
- * voice pipeline bridge, and additional ASR consumers import to register the
- * capability with the WS1 MemoryArbiter.
- *
- * Wiring:
- *
- *   const arbiter = service.getMemoryArbiter();
- *   const registration = createAsrCapabilityRegistration({
- *     loader: createDefaultAsrLoader({ ... }),
- *     transcriptCache: arbiter,
- *   });
- *   arbiter.registerCapability(registration);
+ * `createAsrCapabilityRegistration` builds a `CapabilityRegistration` for the
+ * WS1 MemoryArbiter's `transcribe` slot. NOTE: it is exported for that purpose
+ * but is NOT currently wired into `service.ts` (unlike the `vision-describe` and
+ * `image-gen` registrations) — the live on-device ASR path
+ * (`transcribeWavWithWords` → `LocalInferenceEngine.transcribePcmTimed`) goes
+ * straight through the fused FFI, not the arbiter. It is kept for the eventual
+ * memory-pressure-coordination story on 6 GB devices; if that never lands, this
+ * factory and the `transcribe` arbiter capability should be removed together
+ * with the parallel (also-unwired) `speak` capability.
  *
  * `createAsrCapabilityRegistration` wraps the underlying backend so the
  * arbiter's `run(request)` path:

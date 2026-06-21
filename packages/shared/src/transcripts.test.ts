@@ -190,15 +190,28 @@ describe("validateAsrWordTimings", () => {
     ).toBe(true);
   });
 
-  it("absorbs integer rounding at boundaries within tolerance", () => {
-    // The native char-proportional timing rounds each boundary independently,
-    // so adjacent words can touch off-by-one. Default tolerance accepts it.
+  it("accepts the native contract: adjacent words share an exactly-equal boundary", () => {
+    // The fused v12 char-proportional timer computes word i's end and word
+    // i+1's start from the SAME cumulative char position, so a shared boundary
+    // is EXACTLY equal (never off-by-one). This is the real shape it emits for
+    // "one two three" over 1000ms (11 chars: 3/3/5).
+    const words: TranscriptWord[] = [
+      { text: "one", startMs: 0, endMs: 273 },
+      { text: "two", startMs: 273, endMs: 545 },
+      { text: "three", startMs: 545, endMs: 1000 },
+    ];
+    expect(validateAsrWordTimings(words, 1000).ok).toBe(true);
+  });
+
+  it("tolerates a 1ms boundary jitter (defensive slack for non-native producers)", () => {
+    // toleranceMs is not needed for the native timer (exact-equal boundaries
+    // above) — it is defensive slack so a future/imported producer that rounds
+    // each boundary independently (a -1ms touch) still validates.
     const words: TranscriptWord[] = [
       { text: "one", startMs: 0, endMs: 333 },
       { text: "two", startMs: 332, endMs: 667 },
-      { text: "three", startMs: 667, endMs: 1000 },
     ];
-    expect(validateAsrWordTimings(words, 1000).ok).toBe(true);
+    expect(validateAsrWordTimings(words, 667).ok).toBe(true);
   });
 
   it("skips the upper-bound check when no duration is given", () => {
