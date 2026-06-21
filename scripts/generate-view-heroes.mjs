@@ -19,9 +19,12 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { VIEW_HERO_ICONS, renderViewHeroSvg } from "@elizaos/shared";
+import { renderViewHeroSvg, VIEW_HERO_ICONS } from "@elizaos/shared";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 
 /**
  * Discover every plugin that declares an Eliza app surface (`elizaos.app` in its
@@ -59,21 +62,111 @@ function pluginHasHeroAsset(pluginDir) {
  * while staying cohesive. None lands on pure blue (~210–250) as the dominant.
  */
 const views = [
-  { out: "plugins/app-model-tester/assets/hero.svg", id: "model-tester", label: "Model Tester", hue: 25, icon: VIEW_HERO_ICONS.modelTester },
-  { out: "plugins/plugin-app-control/assets/hero.svg", id: "views", label: "Views", hue: 270, icon: VIEW_HERO_ICONS.views },
-  { out: "plugins/plugin-blocker/assets/hero.svg", id: "focus", label: "Focus", hue: 348, icon: VIEW_HERO_ICONS.focus },
-  { out: "plugins/plugin-calendar/assets/hero.svg", id: "calendar", label: "Calendar", hue: 12, icon: VIEW_HERO_ICONS.calendar },
-  { out: "plugins/plugin-facewear/assets/hero-facewear.svg", id: "facewear", label: "Facewear", hue: 190, icon: VIEW_HERO_ICONS.headphones },
-  { out: "plugins/plugin-facewear/assets/hero-smartglasses.svg", id: "smartglasses", label: "Smartglasses", hue: 300, icon: VIEW_HERO_ICONS.glasses },
-  { out: "plugins/plugin-finances/assets/hero.svg", id: "finances", label: "Finances", hue: 150, icon: VIEW_HERO_ICONS.finances },
-  { out: "plugins/plugin-goals/assets/hero.svg", id: "goals", label: "Goals", hue: 38, icon: VIEW_HERO_ICONS.goals },
-  { out: "plugins/plugin-health/assets/hero.svg", id: "health", label: "Health", hue: 332, icon: VIEW_HERO_ICONS.health },
-  { out: "plugins/plugin-inbox/assets/hero.svg", id: "inbox", label: "Inbox", hue: 168, icon: VIEW_HERO_ICONS.inbox },
-  { out: "plugins/plugin-messages/assets/hero.svg", id: "messages", label: "Messages", hue: 256, icon: VIEW_HERO_ICONS.messages },
-  { out: "plugins/plugin-relationships/assets/hero.svg", id: "relationships", label: "Relationships", hue: 286, icon: VIEW_HERO_ICONS.vectorBrowser },
-  { out: "plugins/plugin-social-alpha/assets/hero.svg", id: "social-alpha", label: "Social Alpha", hue: 130, icon: VIEW_HERO_ICONS.socialAlpha },
-  { out: "plugins/plugin-todos/assets/hero.svg", id: "todos", label: "Todos", hue: 52, icon: VIEW_HERO_ICONS.todos },
-  { out: "plugins/plugin-vector-browser/assets/hero.svg", id: "vector-browser", label: "Vector Browser", hue: 286, icon: VIEW_HERO_ICONS.vectorBrowser },
+  {
+    out: "plugins/app-model-tester/assets/hero.svg",
+    id: "model-tester",
+    label: "Model Tester",
+    hue: 25,
+    icon: VIEW_HERO_ICONS.modelTester,
+  },
+  {
+    out: "plugins/plugin-app-control/assets/hero.svg",
+    id: "views",
+    label: "Views",
+    hue: 270,
+    icon: VIEW_HERO_ICONS.views,
+  },
+  {
+    out: "plugins/plugin-blocker/assets/hero.svg",
+    id: "focus",
+    label: "Focus",
+    hue: 348,
+    icon: VIEW_HERO_ICONS.focus,
+  },
+  {
+    out: "plugins/plugin-calendar/assets/hero.svg",
+    id: "calendar",
+    label: "Calendar",
+    hue: 12,
+    icon: VIEW_HERO_ICONS.calendar,
+  },
+  {
+    out: "plugins/plugin-facewear/assets/hero-facewear.svg",
+    id: "facewear",
+    label: "Facewear",
+    hue: 190,
+    icon: VIEW_HERO_ICONS.headphones,
+  },
+  {
+    out: "plugins/plugin-facewear/assets/hero-smartglasses.svg",
+    id: "smartglasses",
+    label: "Smartglasses",
+    hue: 300,
+    icon: VIEW_HERO_ICONS.glasses,
+  },
+  {
+    out: "plugins/plugin-finances/assets/hero.svg",
+    id: "finances",
+    label: "Finances",
+    hue: 150,
+    icon: VIEW_HERO_ICONS.finances,
+  },
+  {
+    out: "plugins/plugin-goals/assets/hero.svg",
+    id: "goals",
+    label: "Goals",
+    hue: 38,
+    icon: VIEW_HERO_ICONS.goals,
+  },
+  {
+    out: "plugins/plugin-health/assets/hero.svg",
+    id: "health",
+    label: "Health",
+    hue: 332,
+    icon: VIEW_HERO_ICONS.health,
+  },
+  {
+    out: "plugins/plugin-inbox/assets/hero.svg",
+    id: "inbox",
+    label: "Inbox",
+    hue: 168,
+    icon: VIEW_HERO_ICONS.inbox,
+  },
+  {
+    out: "plugins/plugin-messages/assets/hero.svg",
+    id: "messages",
+    label: "Messages",
+    hue: 256,
+    icon: VIEW_HERO_ICONS.messages,
+  },
+  {
+    out: "plugins/plugin-relationships/assets/hero.svg",
+    id: "relationships",
+    label: "Relationships",
+    hue: 286,
+    icon: VIEW_HERO_ICONS.vectorBrowser,
+  },
+  {
+    out: "plugins/plugin-social-alpha/assets/hero.svg",
+    id: "social-alpha",
+    label: "Social Alpha",
+    hue: 130,
+    icon: VIEW_HERO_ICONS.socialAlpha,
+  },
+  {
+    out: "plugins/plugin-todos/assets/hero.svg",
+    id: "todos",
+    label: "Todos",
+    hue: 52,
+    icon: VIEW_HERO_ICONS.todos,
+  },
+  {
+    out: "plugins/plugin-vector-browser/assets/hero.svg",
+    id: "vector-browser",
+    label: "Vector Browser",
+    hue: 286,
+    icon: VIEW_HERO_ICONS.vectorBrowser,
+  },
 ];
 
 async function main() {
@@ -114,7 +207,9 @@ async function main() {
     console.warn(
       `\n⚠️  ${missing.length} app plugin(s) declare a surface but ship no hero asset:\n${missing
         .map((d) => `  - plugins/${d}`)
-        .join("\n")}\nAdd a curated entry above or commit plugins/<name>/assets/hero.svg.`,
+        .join(
+          "\n",
+        )}\nAdd a curated entry above or commit plugins/<name>/assets/hero.svg.`,
     );
   }
 }

@@ -66,6 +66,7 @@ import {
 import {
   isInsufficientCreditsError,
   isInsufficientCreditsMessage,
+  isRateLimitError,
 } from "./credit-detection.ts";
 import {
   buildWalletActionNotExecutedReply,
@@ -879,6 +880,11 @@ async function resolveExactDocumentValueForChat(
 const PROVIDER_ISSUE_CHAT_REPLY = "Sorry, I'm having a provider issue";
 const INSUFFICIENT_CREDITS_CHAT_REPLY =
   "Eliza Cloud credits are depleted. Top up the cloud balance and try again.";
+// A transient 429 (no billing context) — e.g. the shared model key briefly
+// over its requests/min under concurrent load. Tell the user it's momentary so
+// they retry, instead of the generic "provider issue" which reads as broken.
+const RATE_LIMITED_CHAT_REPLY =
+  "I'm being rate-limited right now — give it a few seconds and try again.";
 // Used by paths #1-#3: planner picked IGNORE/NONE/empty REPLY, action ran but
 // emitted no text callback, or normalized text became empty. None of these are
 // provider failures, so the message must not blame the provider.
@@ -932,6 +938,9 @@ function classifySyntheticChatFailureText(
   }
   if (normalized === INSUFFICIENT_CREDITS_CHAT_REPLY.toLowerCase()) {
     return "insufficient_credits";
+  }
+  if (normalized === RATE_LIMITED_CHAT_REPLY.toLowerCase()) {
+    return "rate_limited";
   }
   if (normalized === NO_PROVIDER_CHAT_MESSAGE.toLowerCase()) {
     return "no_provider";
@@ -1239,6 +1248,10 @@ export function getChatFailureReply(
   if (isNoProviderError(err)) {
     return NO_PROVIDER_CHAT_MESSAGE;
   }
+  // After credits (a 429 *with* billing is "top up"): a bare 429 is transient.
+  if (isRateLimitError(err)) {
+    return RATE_LIMITED_CHAT_REPLY;
+  }
   return getProviderIssueChatReply();
 }
 
@@ -1252,6 +1265,7 @@ export type ChatFailureKind =
   | "insufficient_credits"
   | "no_provider"
   | "provider_issue"
+  | "rate_limited"
   | "local_inference";
 
 export function classifyChatFailure(
@@ -1269,6 +1283,9 @@ export function classifyChatFailure(
   }
   if (isLocalInferenceError(err)) {
     return "local_inference";
+  }
+  if (isRateLimitError(err)) {
+    return "rate_limited";
   }
   return "provider_issue";
 }

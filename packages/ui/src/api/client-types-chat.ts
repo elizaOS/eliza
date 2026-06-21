@@ -122,6 +122,7 @@ export type ChatFailureKind =
   | "insufficient_credits"
   | "no_provider"
   | "provider_issue"
+  | "rate_limited"
   | "local_inference";
 
 export interface ChatActionResultSummary {
