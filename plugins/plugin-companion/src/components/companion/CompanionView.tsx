@@ -1,6 +1,6 @@
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { useRenderGuard } from "@elizaos/ui/hooks";
-import { useApp } from "@elizaos/ui/state";
+import { useApp, useConversationMessages } from "@elizaos/ui/state";
 import { type CSSProperties, memo, type ReactNode } from "react";
 import { AGENT_EMOTE_CATALOG, EMOTE_CATALOG } from "../../emotes/catalog";
 import { CompanionSceneHost } from "./CompanionSceneHost";
@@ -184,7 +184,6 @@ export function CompanionTuiView() {
     uiTheme,
     chatAgentVoiceMuted,
     chatLastUsage,
-    conversationMessages,
     elizaCloudAuthRejected,
     elizaCloudConnected,
     elizaCloudCreditsError,
@@ -198,6 +197,7 @@ export function CompanionTuiView() {
     setTab,
     t,
   } = useApp();
+  const { conversationMessages } = useConversationMessages();
 
   const messages = Array.isArray(conversationMessages)
     ? conversationMessages

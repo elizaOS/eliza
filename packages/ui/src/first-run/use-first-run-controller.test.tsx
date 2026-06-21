@@ -118,7 +118,10 @@ vi.mock("../api", () => ({
 vi.mock("../api/client-cloud", () => ({
   getCloudAuthToken: () =>
     (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ ?? null,
-  isDirectCloudSharedAgentBase: () => false,
+  isDirectCloudSharedAgentBase: (url: string | null | undefined) =>
+    /\/api\/v1\/eliza\/agents\/[^/]+(?:\/bridge)?\/?$/.test(
+      String(url ?? "").trim(),
+    ),
 }));
 
 vi.mock("../bridge", () => ({
@@ -353,6 +356,24 @@ describe("useFirstRunController cloud first-run", () => {
     expect(mocks.completeFirstRun).toHaveBeenCalledWith("chat", {
       launchCompanionOverlay: true,
     });
+  });
+
+  it("does not arm shared-runtime handoff when a new cloud agent is already on a dedicated base", async () => {
+    mocks.selectOrProvisionCloudAgent.mockResolvedValue({
+      agentId: "agent-1",
+      agentName: "Demo Agent",
+      apiBase: "https://agent-1.elizacloud.ai",
+      bridgeUrl: null,
+      created: true,
+    });
+
+    const { result } = renderHook(() => useFirstRunController());
+
+    await act(async () => {
+      await result.current.finishRuntime();
+    });
+
+    expect(mocks.startCloudAgentHandoff).not.toHaveBeenCalled();
   });
 
   it("shows the picker (ready, sorted newest-first) without provisioning when the user has agents", async () => {

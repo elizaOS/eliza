@@ -782,15 +782,15 @@ const RoutingRuleRow = memo(
       </tr>
     );
   },
-  // The onOpenInSecrets/onDelete handlers are allocated inline per row, so
-  // compare only the render-affecting primitive props. For a given ruleKey the
-  // handlers always perform the same action, so skipping a re-render when the
-  // primitives are unchanged is safe.
+  // Include handlers in the memo check so rows pick up changed navigation or
+  // delete closures after their parent state changes.
   (prev, next) =>
     prev.ruleKey === next.ruleKey &&
     prev.keyPattern === next.keyPattern &&
     prev.scopeKind === next.scopeKind &&
     prev.targetLabel === next.targetLabel &&
     prev.profileId === next.profileId &&
-    prev.keyExists === next.keyExists,
+    prev.keyExists === next.keyExists &&
+    prev.onOpenInSecrets === next.onOpenInSecrets &&
+    prev.onDelete === next.onDelete,
 );

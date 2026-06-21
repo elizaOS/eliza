@@ -43,6 +43,9 @@ vi.mock("@elizaos/ui", () => ({
   dispatchAppEmoteEvent: eventDispatchers.dispatchAppEmoteEvent,
   STOP_EMOTE_EVENT: "eliza:stop-emote",
   useApp: () => appState,
+  useConversationMessages: () => ({
+    conversationMessages: appState.conversationMessages,
+  }),
   usePtySessions: () => ({ ptySessions: [] }),
   useRenderGuard: vi.fn(),
 }));

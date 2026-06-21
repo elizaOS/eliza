@@ -124,22 +124,37 @@ export function useAppSelector<T>(
   // Memoize the selected snapshot so getSnapshot returns a referentially-stable
   // value when nothing relevant changed — required to avoid useSyncExternalStore
   // infinite loops and to bail out of re-renders on equal slices.
-  const lastRef = useRef<{ value: AppContextValue; selected: T } | null>(null);
+  const lastRef = useRef<{
+    value: AppContextValue;
+    selector: (value: AppContextValue) => T;
+    isEqual: (a: T, b: T) => boolean;
+    selected: T;
+  } | null>(null);
 
   const getSnapshot = useCallback((): T => {
     const value = getAppValueOrThrow();
     const last = lastRef.current;
-    if (last && last.value === value) {
+    if (
+      last &&
+      last.value === value &&
+      last.selector === selector &&
+      last.isEqual === isEqual
+    ) {
       // Same value identity → selected slice cannot have changed.
       return last.selected;
     }
     const selected = selector(value);
     if (last && isEqual(last.selected, selected)) {
       // Value changed but the selected slice is equal → keep the prior ref.
-      lastRef.current = { value, selected: last.selected };
+      lastRef.current = {
+        value,
+        selector,
+        isEqual,
+        selected: last.selected,
+      };
       return last.selected;
     }
-    lastRef.current = { value, selected };
+    lastRef.current = { value, selector, isEqual, selected };
     return selected;
   }, [selector, isEqual]);
 

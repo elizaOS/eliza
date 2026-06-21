@@ -788,7 +788,10 @@ export function useFirstRunController(): FirstRunController {
       // the shared adapter into it and switch the live client over — no waiting,
       // no lost history. Best-effort: on failure the user stays on the shared
       // adapter, which keeps working.
-      if (selectedAgent.created && !selectedAgent.bridgeUrl) {
+      if (
+        selectedAgent.created &&
+        isDirectCloudSharedAgentBase(cloudAgentApiBase)
+      ) {
         const handoffAgentId = selectedAgent.agentId;
         // Surface the handoff lifecycle (migrating → switched | timed-out |
         // failed) as typed phase events instead of swapping silently, and keep

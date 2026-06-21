@@ -88,6 +88,24 @@ describe("useAppSelector", () => {
     expect(result.current).toEqual({ a: 5, b: 2 });
   });
 
+  it("recomputes when the selector changes while the store value identity is unchanged", () => {
+    __setAppValueForTests(makeValue({ a: "first", b: "second" }));
+
+    const { result, rerender } = renderHook(
+      ({ keyName }: { keyName: "a" | "b" }) =>
+        useAppSelector(
+          (s) => (s as unknown as Record<"a" | "b", string>)[keyName],
+        ),
+      { initialProps: { keyName: "a" as const } },
+    );
+
+    expect(result.current).toBe("first");
+
+    rerender({ keyName: "b" });
+
+    expect(result.current).toBe("second");
+  });
+
   it("unsubscribes on unmount", () => {
     __setAppValueForTests(makeValue({ tab: "chat" }));
     const spy = vi.fn(() => useAppSelector((s) => s.tab as unknown as string));

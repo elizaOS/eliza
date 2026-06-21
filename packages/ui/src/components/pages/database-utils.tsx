@@ -99,6 +99,24 @@ export function CellPopover({
   );
 }
 
+export function buildResultsGridRowKey(
+  columns: string[],
+  row: Record<string, unknown>,
+  rowIndex: number,
+  columnMeta?: Map<string, ColumnInfo>,
+): string | number {
+  const primaryKeyCols = columns.filter(
+    (col) => columnMeta?.get(col)?.isPrimaryKey,
+  );
+  if (!primaryKeyCols.length) return rowIndex;
+
+  const values = primaryKeyCols.map((col) => row[col]);
+  if (values.some((value) => value === null || value === undefined)) {
+    return rowIndex;
+  }
+  return values.map((value) => `${typeof value}:${String(value)}`).join("|");
+}
+
 export function ResultsGrid({
   columns,
   rows,
@@ -117,9 +135,6 @@ export function ResultsGrid({
   onCellClick?: (value: string) => void;
 }) {
   const { t } = useApp();
-  const primaryKeyCol = columns.find(
-    (col) => columnMeta?.get(col)?.isPrimaryKey,
-  );
   return (
     <div
       className="overflow-auto border border-border/40 bg-card/40 backdrop-blur-md rounded-sm "
@@ -174,11 +189,12 @@ export function ResultsGrid({
         </thead>
         <tbody>
           {rows.map((row, i) => {
-            const pkValue = primaryKeyCol ? row[primaryKeyCol] : undefined;
-            const rowKey =
-              pkValue === null || pkValue === undefined
-                ? i
-                : String(pkValue);
+            const rowKey = buildResultsGridRowKey(
+              columns,
+              row,
+              i,
+              columnMeta,
+            );
             return (
             <tr
               key={rowKey}

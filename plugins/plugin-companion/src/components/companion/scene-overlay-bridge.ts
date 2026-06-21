@@ -1,4 +1,8 @@
-import { useApp, usePtySessions } from "@elizaos/ui/state";
+import {
+  useApp,
+  useConversationMessages,
+  usePtySessions,
+} from "@elizaos/ui/state";
 import { useCallback, useEffect, useRef } from "react";
 import type { SceneOverlayManager } from "../avatar/SceneOverlayManager";
 import type {
@@ -28,7 +32,8 @@ function findOverlayManager(): SceneOverlayManager | null {
  * overlay manager. Render this at the app level, outside CompanionSceneHost.
  */
 export function SceneOverlayDataBridge(): null {
-  const { conversationMessages, agentStatus, triggers } = useApp();
+  const { agentStatus, triggers } = useApp();
+  const { conversationMessages } = useConversationMessages();
   const { ptySessions } = usePtySessions();
   const managerRef = useRef<SceneOverlayManager | null>(null);
 
