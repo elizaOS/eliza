@@ -442,9 +442,11 @@ describe("CloudAgentsSection lifecycle (suspend/resume)", () => {
     );
     await waitFor(
       () =>
+        // Friendly lifecycle copy (`agentLifecycleLabel`): "running" → "Ready",
+        // never the raw DB enum, on this user-facing surface.
         expect(
           screen.getByTestId("cloud-agent-status-agent-1").textContent,
-        ).toBe("Running"),
+        ).toBe("Ready"),
       { timeout: 6000 },
     );
   });

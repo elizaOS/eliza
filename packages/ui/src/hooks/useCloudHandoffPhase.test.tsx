@@ -57,9 +57,9 @@ describe("useCloudHandoffPhase", () => {
     expect(result.current?.phase).toBe("failed");
 
     act(() => vi.advanceTimersByTime(4000));
-    expect(result.current?.phase).toBe("failed"); // still inside the 6s window
+    expect(result.current?.phase).toBe("failed"); // still inside the 8s window
 
-    act(() => vi.advanceTimersByTime(2000));
+    act(() => vi.advanceTimersByTime(4000));
     expect(result.current).toBeNull();
   });
 });
@@ -89,5 +89,27 @@ describe("CloudHandoffBanner", () => {
     render(<CloudHandoffBanner />);
     emit({ agentId: "a1", phase: "timed-out" });
     expect(screen.queryByText(/still on the shared one/i)).not.toBeNull();
+  });
+
+  it("offers a Retry that re-invokes the handoff on a recoverable failure", () => {
+    const onRetry = vi.fn();
+    render(<CloudHandoffBanner />);
+    emit({ agentId: "a1", phase: "failed", error: "boom", onRetry });
+
+    const retry = screen.getByRole("button", { name: /retry/i });
+    act(() => retry.click());
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows no Retry button when the failure carries no retry handler", () => {
+    render(<CloudHandoffBanner />);
+    emit({ agentId: "a1", phase: "failed", error: "boom" });
+    expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
+  });
+
+  it("does not offer Retry on a successful switch", () => {
+    render(<CloudHandoffBanner />);
+    emit({ agentId: "a1", phase: "switched", imported: 2 });
+    expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
   });
 });

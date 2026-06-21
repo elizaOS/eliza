@@ -14,6 +14,7 @@ import { resolveCloudAgentApiBase } from "../../api/client-cloud";
 import type { CloudCompatAgent } from "../../api/client-types-cloud";
 import { getBootConfig } from "../../config/boot-config";
 import { useBranding } from "../../config/branding";
+import { useCloudHandoffPhase } from "../../hooks/useCloudHandoffPhase";
 import { useApp } from "../../state";
 import {
   createPersistedActiveServer,
@@ -24,7 +25,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { StatusBadge } from "../ui/status-badge";
 import {
-  statusLabelForState,
+  agentLifecycleLabel,
   statusToneForState,
 } from "../ui/status-badge.helpers";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -93,6 +94,12 @@ export function CloudAgentsSection() {
   // switch to it. Drives the "Waking <name>…" row state.
   const [wakingId, setWakingId] = useState<string | null>(null);
   const activeId = useMemo(() => activeCloudAgentId(), []);
+  // Shared→dedicated handoff phase. While the active agent's dedicated container
+  // is still provisioning (`migrating`) the user is transiently on the shared
+  // adapter; reflect that here so this surface and the chat shell agree on the
+  // shared-now/dedicated-pending state instead of each running its own loop.
+  const handoff = useCloudHandoffPhase();
+  const dedicatedPending = handoff?.phase === "migrating";
 
   const cloudApiBase =
     getBootConfig().cloudApiBase || "https://www.elizacloud.ai";
@@ -585,6 +592,13 @@ export function CloudAgentsSection() {
                           label={`Waking ${agent.agent_name || agent.agent_id}…`}
                           data-testid={`cloud-agent-status-${agent.agent_id}`}
                         />
+                      ) : isActive && dedicatedPending ? (
+                        <StatusBadge
+                          tone="warning"
+                          pulse
+                          label="Setting up dedicated agent…"
+                          data-testid={`cloud-agent-status-${agent.agent_id}`}
+                        />
                       ) : (
                         <StatusBadge
                           tone={
@@ -592,7 +606,7 @@ export function CloudAgentsSection() {
                               ? "danger"
                               : statusToneForState(agent.status)
                           }
-                          label={statusLabelForState(agent.status)}
+                          label={agentLifecycleLabel(agent.status)}
                           data-testid={`cloud-agent-status-${agent.agent_id}`}
                         />
                       )}
