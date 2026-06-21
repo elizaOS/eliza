@@ -306,6 +306,55 @@ function withOpenRouterFallback(
 }
 
 /**
+ * Wraps the cerebras chat model so a 429 (rate-limited) surfaces FAST instead of
+ * after the AI SDK's default 3-attempt exponential backoff (~50s). The SDK retries
+ * a 429 because the provider marks the `APICallError` `isRetryable: true`; we
+ * re-throw just the 429 as a NON-retryable `APICallError` so the retry loop gives
+ * up on the first attempt and the chat path's graceful "model provider
+ * rate-limited" reply surfaces in a few seconds rather than stalling the turn.
+ * Only 429 is short-circuited — 5xx/network keep the SDK's normal retry/backoff,
+ * and the 429 keeps its status so downstream classification still maps it to a
+ * rate-limit reply. Cerebras-only (the chat reply path); embeddings and
+ * structured output are untouched.
+ */
+function withRateLimitFailFast(primaryModel: Parameters<typeof wrapLanguageModel>[0]["model"]) {
+  const failFast = (error: unknown): never => {
+    if (APICallError.isInstance(error) && error.statusCode === 429) {
+      throw new APICallError({
+        message: error.message,
+        url: error.url,
+        requestBodyValues: error.requestBodyValues,
+        statusCode: 429,
+        responseHeaders: error.responseHeaders,
+        responseBody: error.responseBody,
+        cause: error.cause,
+        isRetryable: false,
+        data: error.data,
+      });
+    }
+    throw error;
+  };
+  const middleware: LanguageModelMiddleware = {
+    specificationVersion: "v3",
+    wrapGenerate: async ({ doGenerate }) => {
+      try {
+        return await doGenerate();
+      } catch (error) {
+        return failFast(error);
+      }
+    },
+    wrapStream: async ({ doStream }) => {
+      try {
+        return await doStream();
+      } catch (error) {
+        return failFast(error);
+      }
+    },
+  };
+  return wrapLanguageModel({ model: primaryModel, middleware });
+}
+
+/**
  * True for OpenRouter-catalog ids that NO native provider can serve directly —
  * routing-suffix variants (`:nitro`/`:floor`), the free tier, and `openai/gpt-oss-120b`
  * (an OpenRouter id, not an OpenAI-API model). These must go to the OpenRouter
@@ -382,11 +431,13 @@ export function getLanguageModel(model: string) {
   }
 
   // Cerebras-native default IDs (gpt-oss-120b, zai-glm-4.7) → Cerebras direct.
-  // Cerebras-only by design: a free-tier 429 must surface so the chat path can
-  // return the graceful "model provider rate-limited" reply rather than silently
-  // failing over to OpenRouter on a different provider.
+  // Cerebras-only by design: a 429 must surface so the chat path can return the
+  // graceful "model provider rate-limited" reply rather than silently failing
+  // over to OpenRouter on a different provider. Wrapped in withRateLimitFailFast
+  // so that 429 surfaces in ~one round-trip instead of after the AI SDK's default
+  // ~50s 3-attempt backoff (which turned a throttled turn into a 50s hang).
   if (isCerebrasNativeModel(model) && getProviderKey("CEREBRAS_API_KEY")) {
-    return getCerebrasClient().chat(normalizeCerebrasModelId(model));
+    return withRateLimitFailFast(getCerebrasClient().chat(normalizeCerebrasModelId(model)));
   }
 
   // OpenRouter-catalog ids no native provider can serve (`:nitro`/`:floor`,

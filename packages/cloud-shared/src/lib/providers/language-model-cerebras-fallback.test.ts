@@ -103,6 +103,31 @@ describe("getLanguageModel cerebras-direct (cerebras-only, no OpenRouter fallbac
     expect(hosts).toEqual(["cerebras"]);
   });
 
+  test("a 429 FAILS FAST under default retries (one cerebras call, no ~50s backoff loop)", async () => {
+    // The bug: the gateway calls generateText/streamText WITHOUT maxRetries, so
+    // the AI SDK's default (2 retries → 3 attempts) ran a 429 through ~50s of
+    // exponential backoff before the graceful rate-limit reply surfaced.
+    // withRateLimitFailFast re-throws the 429 as non-retryable → the SDK gives up
+    // after ONE attempt. This test uses the DEFAULT retry config on purpose (no
+    // maxRetries:0) — without the fix, `attempts` would be 3.
+    let attempts = 0;
+    globalThis.fetch = (async (url: RequestInfo | URL) => {
+      hosts.push(hostOf(url));
+      attempts++;
+      return tooManyRequests();
+    }) as typeof fetch;
+
+    await expect(
+      generateText({
+        model: getLanguageModel("openai/gpt-oss-120b:nitro"),
+        prompt: "hi",
+      }),
+    ).rejects.toBeDefined();
+
+    expect(attempts).toBe(1);
+    expect(hosts).toEqual(["cerebras"]);
+  });
+
   test("a non-retryable error (400) also surfaces via cerebras only", async () => {
     globalThis.fetch = (async (url: RequestInfo | URL) => {
       hosts.push(hostOf(url));
