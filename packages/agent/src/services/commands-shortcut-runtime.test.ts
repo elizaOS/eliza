@@ -65,7 +65,8 @@ describe("commands plugin → runtime shortcut wiring (real runtime)", () => {
       senderRole: "OWNER",
     });
     expect(result?.kind).toBe("direct_reply");
-    if (result?.kind !== "direct_reply") throw new Error("expected direct_reply");
+    if (result?.kind !== "direct_reply")
+      throw new Error("expected direct_reply");
     expect(result.result.responseContent?.text).toContain("Available commands");
   });
 
@@ -78,7 +79,8 @@ describe("commands plugin → runtime shortcut wiring (real runtime)", () => {
       senderRole: "OWNER",
     });
     expect(result?.kind).toBe("direct_reply");
-    if (result?.kind !== "direct_reply") throw new Error("expected direct_reply");
+    if (result?.kind !== "direct_reply")
+      throw new Error("expected direct_reply");
     expect(result.result.responseContent?.text).toContain("Agent: TestAgent");
   });
 

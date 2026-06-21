@@ -117,7 +117,6 @@ import type {
 } from "../runtime/response-handler-field-evaluator";
 import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
 import type { ShortcutRegistry } from "../runtime/shortcut-registry";
-import type { ShortcutMatch } from "../types/shortcut";
 import {
 	looksLikeNonRefusalStage1HonestyViolation,
 	looksLikeStage1HonestyViolation,
@@ -189,6 +188,7 @@ import type {
 } from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
+import type { ShortcutMatch } from "../types/shortcut";
 import type { State } from "../types/state";
 import type {
 	StreamingContextEventPayload,
