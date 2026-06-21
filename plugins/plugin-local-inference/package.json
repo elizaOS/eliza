@@ -56,6 +56,16 @@
 			"import": "./dist/services/index.js",
 			"default": "./dist/services/index.js"
 		},
+		"./voice-workbench": {
+			"types": "./src/voice-workbench.ts",
+			"eliza-source": {
+				"types": "./src/voice-workbench.ts",
+				"import": "./src/voice-workbench.ts",
+				"default": "./src/voice-workbench.ts"
+			},
+			"import": "./dist/voice-workbench.js",
+			"default": "./dist/voice-workbench.js"
+		},
 		"./*.css": "./dist/*.css",
 		"./*": {
 			"types": "./src/*.ts",

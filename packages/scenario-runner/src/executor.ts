@@ -38,6 +38,8 @@ import { runFinalCheck } from "./final-checks/index.ts";
 import { attachInterceptor } from "./interceptor.ts";
 import { judgeTextWithLlm } from "./judge.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
+import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";
+import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import type {
   FinalCheckReport,
   RunnerContext,
@@ -1432,6 +1434,16 @@ async function runTurnAssertions(
     }
   }
 
+  if (kind === "voice") {
+    // A voice turn fails when the scored run regressed; a `skipped` run (no
+    // backend provisioned) is not a failure (the workbench honesty contract).
+    failures.push(
+      ...voiceTurnAssertionFailures(
+        execution.responseBody as VoiceWorkbenchScenarioRun | undefined,
+      ),
+    );
+  }
+
   if (typeof turn.assertTurn === "function") {
     const result = await turn.assertTurn(execution);
     if (typeof result === "string" && result.length > 0) {
@@ -1665,7 +1677,8 @@ export async function runScenario(
         kind !== "message" &&
         kind !== "action" &&
         kind !== "api" &&
-        kind !== "tick"
+        kind !== "tick" &&
+        kind !== "voice"
       ) {
         report.turns.push({
           name: turn.name,
@@ -1684,48 +1697,54 @@ export async function runScenario(
 
       const actionsBefore = interceptor.actions.length;
       const execution: ExecutedTurn =
-        kind === "api"
+        kind === "voice"
           ? {
               actionsCalled: [],
-              ...(await executeApiTurn({
-                turn,
-                apiServer: activeApiServer,
-                variables,
-                turnTimeoutMs: opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
-              })),
+              ...(await executeVoiceTurn(turn)),
             }
-          : kind === "tick"
+          : kind === "api"
             ? {
                 actionsCalled: [],
-                ...(await executeTickTurn({
+                ...(await executeApiTurn({
                   turn,
                   apiServer: activeApiServer,
                   variables,
                   turnTimeoutMs: opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
-                  runtime,
                 })),
               }
-            : kind === "action"
+            : kind === "tick"
               ? {
                   actionsCalled: [],
-                  ...(await executeActionTurn(
-                    runtime,
+                  ...(await executeTickTurn({
                     turn,
-                    resolveTurnRoom(turn, rooms),
-                    logicalNow,
-                    opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
-                  )),
+                    apiServer: activeApiServer,
+                    variables,
+                    turnTimeoutMs:
+                      opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                    runtime,
+                  })),
                 }
-              : {
-                  actionsCalled: [],
-                  ...(await executeMessageTurn(
-                    runtime,
-                    turn,
-                    resolveTurnRoom(turn, rooms),
-                    logicalNow,
-                    opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
-                  )),
-                };
+              : kind === "action"
+                ? {
+                    actionsCalled: [],
+                    ...(await executeActionTurn(
+                      runtime,
+                      turn,
+                      resolveTurnRoom(turn, rooms),
+                      logicalNow,
+                      opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                    )),
+                  }
+                : {
+                    actionsCalled: [],
+                    ...(await executeMessageTurn(
+                      runtime,
+                      turn,
+                      resolveTurnRoom(turn, rooms),
+                      logicalNow,
+                      opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                    )),
+                  };
       let actionsThisTurn = interceptor.actions.slice(actionsBefore);
       // Synthesize an implicit REPLY capture when the runtime emitted text
       // via the message callback but the LLM failed to select REPLY in its
