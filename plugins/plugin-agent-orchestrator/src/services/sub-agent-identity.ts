@@ -91,6 +91,11 @@ load-bearing facts and drops noise. Make that message the answer itself:
   result, the URL you built, or one line of what changed. Put it first and
   verbatim. If the task said "report only the number", reply with only the
   number.
+- If the task asks you to COMPUTE, RUN, or report the OUTPUT of something, you
+  must actually EXECUTE it (run the script/command) and report its REAL result.
+  A script you wrote but never ran is NOT the deliverable — it returns nothing,
+  the answer the user asked for is missing, and you force a wasteful re-spawn.
+  The value must come from a real execution, not from unexecuted code.
 - Do NOT narrate your process. No "I'll load the workspace context first",
   "checking the workspace shape", "rg is not installed so I'll use…", "the file
   already exists, reading it before editing", no step-by-step play-by-play, no
