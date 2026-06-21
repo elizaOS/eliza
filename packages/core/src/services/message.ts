@@ -1468,7 +1468,8 @@ interface StrategyResult {
 type FailureReplyAttempt =
 	| { kind: "text"; value: string }
 	| { kind: "noProvider" }
-	| { kind: "rateLimited" };
+	| { kind: "rateLimited" }
+	| { kind: "authFailed" };
 
 /**
  * Detect provider rate-limit / 429 failures so the user-facing failure reply
@@ -1507,6 +1508,44 @@ export function isRateLimitError(error: unknown): boolean {
 		haystack.includes("requests per hour") ||
 		haystack.includes("slow down") ||
 		/\b429\b/.test(haystack)
+	);
+}
+
+/**
+ * Detect provider auth failures (401/403 — invalid/expired/unauthorized API key)
+ * so the user-facing failure reply can say "my cloud key isn't authorized — check
+ * your Eliza Cloud key / add credits" instead of the opaque generic
+ * "something went wrong". Mirrors {@link isRateLimitError}: structured HTTP status
+ * first, message-substring fallback second.
+ */
+export function isAuthError(error: unknown): boolean {
+	const unwrapped = RetryError.isInstance(error) ? error.lastError : error;
+	if (
+		APICallError.isInstance(unwrapped) &&
+		(unwrapped.statusCode === 401 || unwrapped.statusCode === 403)
+	) {
+		return true;
+	}
+	if (
+		typeof unwrapped === "object" &&
+		unwrapped !== null &&
+		((unwrapped as { status?: unknown }).status === 401 ||
+			(unwrapped as { status?: unknown }).status === 403)
+	) {
+		return true;
+	}
+	if (!(error instanceof Error)) return false;
+	const haystack = `${error.name} ${error.message}`.toLowerCase();
+	return (
+		haystack.includes("invalid or expired api key") ||
+		haystack.includes("authentication_required") ||
+		haystack.includes("authentication failed") ||
+		haystack.includes("unauthorized") ||
+		haystack.includes("not authorized") ||
+		haystack.includes("invalid api key") ||
+		haystack.includes("expired api key") ||
+		/\b401\b/.test(haystack) ||
+		/\b403\b/.test(haystack)
 	);
 }
 
@@ -11259,6 +11298,7 @@ export class DefaultMessageService implements IMessageService {
 		stage: string,
 	): Promise<FailureReplyAttempt> {
 		let sawRateLimit = false;
+		let sawAuthError = false;
 		for (const modelType of [
 			ModelType.TEXT_LARGE,
 			ModelType.RESPONSE_HANDLER,
@@ -11301,6 +11341,7 @@ export class DefaultMessageService implements IMessageService {
 				// failed for unrelated reasons where retrying won't help). The
 				// all-429 cascade from the live incident still lands here.
 				sawRateLimit = isRateLimitError(error);
+				sawAuthError = isAuthError(error);
 				runtime.logger.warn(
 					{
 						src: "service:message",
@@ -11318,6 +11359,11 @@ export class DefaultMessageService implements IMessageService {
 		// shortly", not "something broke".
 		if (sawRateLimit) {
 			return { kind: "rateLimited" };
+		}
+		// An auth failure (bad/expired/unauthorized cloud key) is actionable —
+		// tell the user to fix their key/credits, not the opaque generic message.
+		if (sawAuthError) {
+			return { kind: "authFailed" };
 		}
 		return { kind: "text", value: "" };
 	}
@@ -11364,7 +11410,10 @@ export class DefaultMessageService implements IMessageService {
 			);
 		}
 
-		let replyText = attempt.kind === "rateLimited" ? "" : attempt.value;
+		let replyText =
+			attempt.kind === "rateLimited" || attempt.kind === "authFailed"
+				? ""
+				: attempt.value;
 		if (!replyText) {
 			// Last-ditch fallback when every model call above also failed.
 			// Voice-neutral so any character can ship this default; characters
@@ -11376,6 +11425,11 @@ export class DefaultMessageService implements IMessageService {
 				replyText =
 					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
 					"My model provider is rate-limiting me right now — give it a few seconds and try again.";
+			} else if (attempt.kind === "authFailed") {
+				const tmpl = runtime.character.templates?.authFailedReply;
+				replyText =
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+					"My Eliza Cloud key isn't authorized for inference right now — check that your cloud key is valid and your account has credits, then try again.";
 			} else {
 				const tmpl = runtime.character.templates?.transientFailureReply;
 				replyText =
