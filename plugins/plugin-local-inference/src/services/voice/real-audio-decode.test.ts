@@ -40,19 +40,27 @@ const manifest = JSON.parse(
 	readFileSync(join(FIXTURE_DIR, "manifest.json"), "utf8"),
 ) as FixtureManifest;
 
-/** Every decoded sample must be a finite mono amplitude in [-1, 1]. */
+/**
+ * Every decoded sample must be a finite mono amplitude in [-1, 1]. Scan in a
+ * plain loop and assert the AGGREGATE once — a per-sample `expect()` over a
+ * multi-second clip (freeman.wav is ~380k samples) is pathologically slow and
+ * trips the test timeout under load.
+ */
 function assertInRangePcm(pcm: Float32Array): void {
 	expect(pcm.length).toBeGreaterThan(0);
-	let min = Number.POSITIVE_INFINITY;
-	let max = Number.NEGATIVE_INFINITY;
+	let allFinite = true;
+	let maxAbs = 0;
 	for (let i = 0; i < pcm.length; i++) {
 		const s = pcm[i] ?? Number.NaN;
-		expect(Number.isFinite(s)).toBe(true);
-		expect(Math.abs(s)).toBeLessThanOrEqual(1);
-		if (s < min) min = s;
-		if (s > max) max = s;
+		if (!Number.isFinite(s)) {
+			allFinite = false;
+			break;
+		}
+		const abs = Math.abs(s);
+		if (abs > maxAbs) maxAbs = abs;
 	}
-	return;
+	expect(allFinite).toBe(true);
+	expect(maxAbs).toBeLessThanOrEqual(1);
 }
 
 describe("decodeMonoPcm16Wav — committed fixture corpus (real WAV files)", () => {
