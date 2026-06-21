@@ -1,0 +1,146 @@
+/**
+ * Transcript HTTP routes (#8789) — `/api/transcripts*`, served as rawPath plugin
+ * routes (on `runtime.routes`, dispatched by both the upstream agent server and
+ * app-core) so the Transcripts view + the recording pipeline have a backend.
+ * Audio is served by the existing content-addressed media store via each
+ * record's `audioUrl`, so no separate audio route is needed.
+ *
+ * Private routes: the host dispatcher answers 401 for unauthenticated callers.
+ */
+
+import type {
+	Route,
+	RouteHandlerContext,
+	RouteHandlerResult,
+	UUID,
+} from "@elizaos/core";
+import {
+	type Transcript,
+	type TranscriptScope,
+	type TranscriptSegment,
+	type TranscriptSource,
+	transcriptDurationMs,
+	transcriptSpeakerCount,
+} from "@elizaos/shared/transcripts";
+import {
+	TranscriptService,
+	type TranscriptServiceRuntime,
+} from "../services/voice/transcript-service.js";
+
+function service(ctx: RouteHandlerContext): TranscriptService {
+	return new TranscriptService(
+		ctx.runtime as unknown as TranscriptServiceRuntime,
+	);
+}
+
+/** The body a recording session POSTs to create a transcript record. */
+export interface CreateTranscriptRequest {
+	worldId: UUID;
+	roomId: UUID;
+	entityId: UUID;
+	title?: string;
+	source?: TranscriptSource;
+	scope?: TranscriptScope;
+	segments: TranscriptSegment[];
+	audioUrl?: string;
+	audioContentType?: string;
+	createdAt?: number;
+}
+
+/**
+ * Build a full {@link Transcript} from a create request — derives duration +
+ * speaker count from the segments, defaults title/scope/status. Pure (id + now
+ * injected) so it is unit-testable.
+ */
+export function buildTranscriptFromRequest(
+	body: CreateTranscriptRequest,
+	id: string,
+	now: number,
+): Transcript {
+	const segments = Array.isArray(body.segments) ? body.segments : [];
+	const createdAt = body.createdAt ?? now;
+	return {
+		id,
+		title: body.title?.trim() || defaultTitle(createdAt),
+		createdAt,
+		endedAt: now,
+		durationMs: transcriptDurationMs(segments),
+		audioUrl: body.audioUrl,
+		audioContentType: body.audioContentType,
+		segments,
+		source: body.source ?? "voice-session",
+		scope: body.scope ?? "owner-private",
+		status: "ready",
+		speakerCount: transcriptSpeakerCount(segments),
+	};
+}
+
+function defaultTitle(createdAt: number): string {
+	return `Recording ${new Date(createdAt).toLocaleString()}`;
+}
+
+const listRoute: Route = {
+	type: "GET",
+	path: "/api/transcripts",
+	rawPath: true,
+	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
+		const roomId = (ctx.query.roomId as string | undefined) || undefined;
+		const transcripts = await service(ctx).list(roomId as UUID | undefined);
+		return { status: 200, body: { transcripts } };
+	},
+};
+
+const getRoute: Route = {
+	type: "GET",
+	path: "/api/transcripts/:id",
+	rawPath: true,
+	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
+		const transcript = await service(ctx).get(ctx.params.id as UUID);
+		if (!transcript) return { status: 404, body: { error: "not found" } };
+		return { status: 200, body: { transcript } };
+	},
+};
+
+const deleteRoute: Route = {
+	type: "DELETE",
+	path: "/api/transcripts/:id",
+	rawPath: true,
+	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
+		await service(ctx).delete(ctx.params.id as UUID);
+		return { status: 200, body: { ok: true } };
+	},
+};
+
+const createRoute: Route = {
+	type: "POST",
+	path: "/api/transcripts",
+	rawPath: true,
+	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
+		const body = ctx.body as CreateTranscriptRequest | undefined;
+		if (!body?.roomId || !body.entityId || !body.worldId) {
+			return {
+				status: 400,
+				body: { error: "worldId, roomId and entityId are required" },
+			};
+		}
+		const transcript = buildTranscriptFromRequest(
+			body,
+			crypto.randomUUID(),
+			Date.now(),
+		);
+		const saved = await service(ctx).create({
+			worldId: body.worldId,
+			roomId: body.roomId,
+			entityId: body.entityId,
+			transcript,
+		});
+		return { status: 201, body: { transcript: saved } };
+	},
+};
+
+export const transcriptsRoutes: Route[] = [
+	listRoute,
+	createRoute,
+	getRoute,
+	deleteRoute,
+];
