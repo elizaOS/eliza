@@ -5,20 +5,29 @@
  *   makeTenantDbProvisioning -> ClusterPool -> tenantDbClustersRepository (real
  *   dbRead/dbWrite) -> SqlTenantDbProvisioner -> DirectPgExecutor (node-`pg`).
  *
- * It proves the two load-bearing properties that mocks cannot:
+ * It proves the load-bearing properties that mocks cannot:
  *   1. RACE SAFETY — two concurrent slot claims on a one-slot cluster: exactly
  *      one wins (the atomic `UPDATE ... WHERE database_count < max RETURNING`).
- *   2. TENANT ISOLATION — a provisioned app reaches its OWN database but another
- *      app's role is rejected by `REVOKE CONNECT ON DATABASE ... FROM PUBLIC`
- *      ("permission denied for database") — the hard auth-layer boundary.
+ *   2. TENANT ISOLATION — a provisioned app's DB is created atomically and is
+ *      reachable by its OWN role, but another app's role is rejected by `REVOKE
+ *      CONNECT ON DATABASE ... FROM PUBLIC` ("permission denied for database") —
+ *      the hard CONNECT-boundary that keeps tenant data isolated.
  *
- * GATED: runs only when `APPS_TENANT_DB_TEST_DSN` is set to a superuser admin
- * DSN (e.g. `postgresql://postgres:pw@localhost:55432/postgres?sslmode=disable`).
- * `DATABASE_URL` MUST point at the SAME database so the repository's dbRead/
- * dbWrite hit it. With no DSN the whole describe is skipped, so CI stays green
- * without infra. Local run:
+ * RUNNABLE WITHOUT EXTERNAL SECRETS. The test resolves a superuser Postgres in
+ * this order (see ./__tests__/ephemeral-postgres.ts):
+ *   1. `APPS_TENANT_DB_TEST_DSN` set        → use it directly (external PG).
+ *   2. docker + opt-in (`TEST_LANE=post-merge` or `APPS_TENANT_DB_EPHEMERAL=1`)
+ *                                           → boot a throwaway `postgres:16-alpine`.
+ *   3. neither                              → SKIP LOUDLY (console.warn naming
+ *                                              exactly how to enable it).
+ * The resolved DSN backs BOTH the admin connection AND `DATABASE_URL` (the
+ * repository's dbRead/dbWrite), so the whole stack hits one ephemeral cluster.
  *
- *   DATABASE_URL='postgresql://postgres:adminpw@localhost:55432/postgres?sslmode=disable' \
+ * Enable the live lane locally with docker present:
+ *   APPS_TENANT_DB_EPHEMERAL=1 \
+ *   bun test src/lib/services/tenant-db/tenant-db-provisioning.integration.test.ts
+ * …or against your own Postgres:
+ *   DATABASE_URL='postgresql://postgres:pw@localhost:5432/postgres?sslmode=disable' \
  *   APPS_TENANT_DB_TEST_DSN="$DATABASE_URL" \
  *   bun test src/lib/services/tenant-db/tenant-db-provisioning.integration.test.ts
  */
@@ -28,13 +37,25 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
+import { closeDatabaseConnectionsForTests } from "../../../db/client";
 import { tenantDbClustersRepository } from "../../../db/repositories/tenant-db-clusters";
+import { acquireEphemeralPostgres, type EphemeralPostgres } from "./__tests__/ephemeral-postgres";
 import { ClusterPool, NoClusterCapacityError } from "./cluster-pool";
 import { makeTenantDbProvisioning } from "./make-tenant-db-provisioning";
 
-const ADMIN_DSN = process.env.APPS_TENANT_DB_TEST_DSN;
-const HOST = process.env.APPS_TENANT_DB_TEST_HOST ?? "localhost:55432";
-const RUN = Boolean(ADMIN_DSN);
+/** Resolved at runtime in beforeAll; `null` ⇒ the describe self-skips loudly. */
+let pg: EphemeralPostgres | null = null;
+let ADMIN_DSN = "";
+let HOST = "";
+
+const SKIP_REASON =
+  "[E6 tenant-db isolation] SKIPPED — no superuser Postgres available. " +
+  "This proves per-tenant DB CREATE + the cross-tenant CONNECT rejection " +
+  "(REVOKE CONNECT FROM PUBLIC), which need a REAL Postgres. Enable it with:\n" +
+  "  • docker present:   APPS_TENANT_DB_EPHEMERAL=1 bun test " +
+  "src/lib/services/tenant-db/tenant-db-provisioning.integration.test.ts\n" +
+  "  • or your own PG:   DATABASE_URL=<dsn> APPS_TENANT_DB_TEST_DSN=<same dsn> bun test …\n" +
+  "  • CI post-merge lane (TEST_LANE=post-merge) opts in automatically when docker exists.";
 
 /** Identities created during the run, dropped in afterAll. */
 const created: Array<{ role: string; db: string }> = [];
@@ -75,6 +96,24 @@ async function resetClusters(): Promise<void> {
   await adminExec("DELETE FROM tenant_db_clusters");
 }
 
+// Resolve the ephemeral/external Postgres up front so the whole describe can be
+// statically skipped (with a LOUD reason) when none is available. Synchronous
+// `describe`/`describe.skip` selection requires the decision before the suite is
+// registered, so the container boot happens here and stops in afterAll.
+pg = await acquireEphemeralPostgres();
+const RUN = pg !== null;
+if (RUN && pg) {
+  ADMIN_DSN = pg.dsn;
+  HOST = pg.hostPort;
+  // The repository's dbRead/dbWrite read DATABASE_URL lazily (per access) and
+  // cache the connection by URL — set both to the SAME ephemeral cluster so the
+  // tenant_db_clusters row and the admin DDL hit one Postgres.
+  process.env.DATABASE_URL = ADMIN_DSN;
+  process.env.TEST_DATABASE_URL = ADMIN_DSN;
+} else {
+  console.warn(SKIP_REASON);
+}
+
 const d = RUN ? describe : describe.skip;
 
 d("tenant-db provisioning over real Postgres", () => {
@@ -100,6 +139,8 @@ d("tenant-db provisioning over real Postgres", () => {
       await adminExec(`DROP ROLE IF EXISTS "${role}"`).catch(() => {});
     }
     await resetClusters().catch(() => {});
+    await closeDatabaseConnectionsForTests().catch(() => {});
+    await pg?.stop().catch(() => {});
   });
 
   test("two concurrent claims on a one-slot cluster: exactly one wins", async () => {
