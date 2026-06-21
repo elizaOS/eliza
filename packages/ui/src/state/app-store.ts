@@ -71,14 +71,43 @@ function subscribe(listener: Listener): () => void {
   };
 }
 
-function getAppValueOrThrow(): AppContextValue {
-  const value = store.value;
-  if (value == null) {
-    throw new Error(
-      "useAppSelector used before AppProvider rendered — wrap the consumer in <AppProvider> (or call __setAppValueForTests in tests).",
-    );
+// In tests a component may render outside <AppProvider> and without a barrel
+// mock, relying on the same inert proxy useApp() returns. Mirror that proxy here
+// (cached so its function/value refs are STABLE across getSnapshot calls — fresh
+// refs would loop useSyncExternalStore). Production always seeds the store, so
+// this only triggers under NODE_ENV=test.
+let testFallbackValue: AppContextValue | null = null;
+function getTestFallbackValue(): AppContextValue {
+  if (!testFallbackValue) {
+    const noop = () => {};
+    const identityT = (k: string) => k;
+    const navigation = {
+      scheduleAfterTabCommit: (fn: () => void) => {
+        queueMicrotask(fn);
+      },
+    };
+    testFallbackValue = new Proxy({} as AppContextValue, {
+      get(_target, prop) {
+        if (prop === "t") return identityT;
+        if (prop === "uiLanguage") return "en";
+        if (prop === "companionHalfFramerateMode") return "when_saving_power";
+        if (prop === "navigation") return navigation;
+        return noop;
+      },
+    });
   }
-  return value;
+  return testFallbackValue;
+}
+
+function readAppValue(): AppContextValue {
+  const value = store.value;
+  if (value != null) return value;
+  if (typeof process !== "undefined" && process.env.NODE_ENV === "test") {
+    return getTestFallbackValue();
+  }
+  throw new Error(
+    "useAppSelector used before AppProvider rendered — wrap the consumer in <AppProvider>.",
+  );
 }
 
 function shallowEqual(a: unknown, b: unknown): boolean {
@@ -132,7 +161,7 @@ export function useAppSelector<T>(
   } | null>(null);
 
   const getSnapshot = useCallback((): T => {
-    const value = getAppValueOrThrow();
+    const value = readAppValue();
     const last = lastRef.current;
     if (
       last &&

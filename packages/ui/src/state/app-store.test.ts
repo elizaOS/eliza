@@ -94,7 +94,7 @@ describe("useAppSelector", () => {
         useAppSelector(
           (s) => (s as unknown as Record<"a" | "b", string>)[keyName],
         ),
-      { initialProps: { keyName: "a" as const } },
+      { initialProps: { keyName: "a" } as { keyName: "a" | "b" } },
     );
 
     expect(result.current).toBe("first");
