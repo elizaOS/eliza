@@ -251,9 +251,22 @@ export const characterSchema = z
 				"System prompt that defines the character's core behavior and response style",
 			),
 		templates: z
-			.record(z.string(), z.string())
+			.record(z.string(), z.unknown())
 			.default({})
-			.describe("Custom templates for generating different types of content"),
+			.transform((templates: Record<string, unknown>) => {
+				// Validate that all templates are either strings or functions
+				for (const [key, value] of Object.entries(templates)) {
+					if (typeof value !== 'string' && typeof value !== 'function') {
+						throw new Error(
+							`Template "${key}" must be a string or function, got ${typeof value}`
+						);
+					}
+				}
+				return templates as { [key: string]: TemplateType };
+			})
+			.describe(
+				"Custom templates for generating different types of content. Can be strings or functions that take { state } and return a string."
+			),
 		bio: z
 			.union([z.string(), z.array(z.string())])
 			.optional()
