@@ -146,8 +146,8 @@ vi.mock("./hooks", () => ({
   useRenderGuard: vi.fn(),
 }));
 
-vi.mock("./state", () => ({
-  useApp: () => ({
+vi.mock("./state", () => {
+  const appValue = {
     actionNotice: null,
     activeGameViewerUrl: null,
     activeOverlayApp: null,
@@ -175,8 +175,15 @@ vi.mock("./state", () => ({
     uiShellMode: "default",
     uiTheme: "light",
     uiThemeMode: "system",
-  }),
-}));
+  };
+  return {
+    useApp: () => appValue,
+    useAppSelector: <T,>(selector: (s: typeof appValue) => T): T =>
+      selector(appValue),
+    useAppSelectorShallow: <T,>(selector: (s: typeof appValue) => T): T =>
+      selector(appValue),
+  };
+});
 
 vi.mock("./config/boot-config-react.hooks", () => ({
   useBootConfig: () => ({ companionShell: null }),
