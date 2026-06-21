@@ -2,6 +2,7 @@ import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	commandActions,
+	commandShortcuts,
 	dispatchCommandMessage,
 	getCommandSettings,
 	resolveCommand,
@@ -183,6 +184,29 @@ describe("command actions — slash-only validate (#8790)", () => {
 		for (const action of commandActions) {
 			for (const simile of action.similes ?? []) {
 				expect(simile.startsWith("/")).toBe(true);
+			}
+		}
+	});
+});
+
+describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
+	it("every slash shortcut targets a registered command action", () => {
+		const actionNames = new Set(commandActions.map((a) => a.name));
+		expect(commandShortcuts.length).toBeGreaterThan(0);
+		for (const shortcut of commandShortcuts) {
+			expect(shortcut.kind).toBe("explicit");
+			expect(shortcut.target.kind).toBe("action");
+			if (shortcut.target.kind === "action") {
+				expect(actionNames.has(shortcut.target.name)).toBe(true);
+			}
+		}
+	});
+
+	it("shortcut aliases match the command's text aliases (slash-only)", () => {
+		for (const shortcut of commandShortcuts) {
+			expect(shortcut.aliases && shortcut.aliases.length > 0).toBe(true);
+			for (const alias of shortcut.aliases ?? []) {
+				expect(alias.startsWith("/")).toBe(true);
 			}
 		}
 	});
