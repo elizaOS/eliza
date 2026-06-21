@@ -85,9 +85,40 @@ const CHAT_MODEL_ELIZA_1_LITE = {
   role: "chat",
 };
 
+// Kokoro-82M voice — the on-device TTS voice. Without it the bundle has no
+// tts/ model, so the runtime can't synthesize and the app falls back to the
+// platform TextToSpeech (the "android voice"). Kokoro is the small/fast voice
+// (~167 MB acoustic GGUF + a ~0.5 MB speaker preset), so bundling it keeps
+// first-boot voice working offline with no runtime download. Staged into
+// tts/kokoro/, exactly where the fused FFI's Kokoro loader (and
+// ElizaBionicInferenceServer.tts()) resolves it.
+const VOICE_MODEL_KOKORO = {
+  id: "eliza-1-kokoro",
+  displayName: "Eliza-1 Voice (Kokoro)",
+  hfRepo: "elizaos/eliza-1",
+  hfPath: "bundles/0_8b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+  ggufFile: "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+  expectedMinBytes: 150 * 1024 * 1024,
+  expectedMaxBytes: 200 * 1024 * 1024,
+  role: "tts",
+};
+
+const VOICE_PRESET_KOKORO = {
+  id: "eliza-1-kokoro-voice-af-sam",
+  displayName: "Eliza-1 Voice preset (af_sam)",
+  hfRepo: "elizaos/eliza-1",
+  hfPath: "voice/kokoro/voices/af_sam.bin",
+  ggufFile: "tts/kokoro/af_sam.bin",
+  expectedMinBytes: 256 * 1024,
+  expectedMaxBytes: 1024 * 1024,
+  role: "tts",
+};
+
 export const DEFAULT_MODELS = [
   CHAT_MODEL_ELIZA_1_MOBILE,
   CHAT_MODEL_ELIZA_1_LITE,
+  VOICE_MODEL_KOKORO,
+  VOICE_PRESET_KOKORO,
 ];
 
 const ASSETS_MODELS_DIR = path.join(
