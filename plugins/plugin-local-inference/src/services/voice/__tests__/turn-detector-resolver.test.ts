@@ -2,7 +2,7 @@
  * Tests for the Voice Wave 2 turn-detector resolver:
  *
  *   1. `turnDetectorRevisionForTier` — tier ↔ upstream revision routing.
- *      - 0_8b/2b → `v1.2.2-en` (English-only GGUF).
+ *      - 2b (entry tier) → `v1.2.2-en` (English-only GGUF).
  *      - 4b/9b/27b* → `v0.4.1-intl` (multilingual GGUF).
  *   2. Heuristic fallback contract: `HeuristicEotClassifier` satisfies
  *      `EotClassifier` and emits well-formed `VoiceTurnSignal`s.
@@ -29,9 +29,7 @@ import {
 
 describe("turnDetectorRevisionForTier — tier ↔ revision mapping", () => {
 	it.each([
-		["0_8b", LIVEKIT_TURN_DETECTOR_EN_REVISION],
 		["2b", LIVEKIT_TURN_DETECTOR_EN_REVISION],
-		["eliza-1-0_8b", LIVEKIT_TURN_DETECTOR_EN_REVISION],
 		["eliza-1-2b", LIVEKIT_TURN_DETECTOR_EN_REVISION],
 	])("%s → EN revision (%s)", (tier, expected) => {
 		expect(turnDetectorRevisionForTier(tier)).toBe(expected);

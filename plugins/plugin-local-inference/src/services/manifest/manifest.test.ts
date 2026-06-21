@@ -11,7 +11,6 @@ import type { Eliza1DeviceCaps, Eliza1Manifest, Eliza1Tier } from "./types";
 
 const SHA = "0".repeat(64);
 const VISION_TIERS = new Set<Eliza1Tier>([
-	"0_8b",
 	"2b",
 	"4b",
 	"9b",
@@ -107,7 +106,6 @@ describe("Eliza-1 manifest schema constants", () => {
 	it("uses Eliza-1 size-tier ids and tokenizer family", () => {
 		expect(ELIZA_1_TOKENIZER_FAMILY).toBe("qwen35");
 		expect(ELIZA_1_TIERS).toEqual([
-			"0_8b",
 			"2b",
 			"4b",
 			"9b",
@@ -115,7 +113,7 @@ describe("Eliza-1 manifest schema constants", () => {
 			"27b-256k",
 		]);
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
-			expect.arrayContaining(["0_8b", "2b", "4b"]),
+			expect.arrayContaining(["2b", "4b"]),
 		);
 		for (const tier of ELIZA_1_TIERS) {
 			expect(REQUIRED_KERNELS_BY_TIER[tier]).toContain("turbo3_tcq");
@@ -182,12 +180,12 @@ describe("validateManifest — valid input", () => {
 	});
 
 	it("accepts optional EAGLE3 kernel and eval metadata without requiring it by tier", () => {
-		const m = baseManifest("0_8b");
+		const m = baseManifest("2b");
 		m.kernels.eagle3 = {
 			enabled: true,
 			capability: "eagle3",
 			specType: "draft-eagle3",
-			model: "RedHatAI/Qwen3.5-0.8B-EAGLE3-head",
+			model: "RedHatAI/Qwen3.5-2B-EAGLE3-head",
 			maxDraftTokens: 3,
 		};
 		m.evals.eagle3 = {
@@ -197,7 +195,7 @@ describe("validateManifest — valid input", () => {
 		};
 
 		const result = validateManifest(m);
-		expect([...REQUIRED_KERNELS_BY_TIER["0_8b"]] as string[]).not.toContain(
+		expect([...REQUIRED_KERNELS_BY_TIER["2b"]] as string[]).not.toContain(
 			"eagle3",
 		);
 		expect(result.ok).toBe(true);
@@ -456,8 +454,8 @@ describe("validateManifest — contract rejections", () => {
 	});
 
 	it("does not require cuda or rocm for tiers that don't ship on cuda/rocm", () => {
-		const m = baseManifest("0_8b");
-		// 0.8B tier doesn't ship on cuda/rocm; failures there should not block.
+		const m = baseManifest("2b");
+		// 2B (entry tier) doesn't ship on cuda/rocm; failures there should not block.
 		m.kernels.verifiedBackends.cuda = {
 			status: "fail",
 			atCommit: "abc1234",
@@ -546,10 +544,8 @@ describe("validateManifest — contract rejections", () => {
 		}
 	});
 
-	it("accepts vision artifacts on 0_8B and 2B mobile tiers", () => {
-		for (const tier of ["0_8b", "2b"] as const) {
-			expect(validateManifest(baseManifest(tier)).ok).toBe(true);
-		}
+	it("accepts vision artifacts on the 2B mobile entry tier", () => {
+		expect(validateManifest(baseManifest("2b")).ok).toBe(true);
 	});
 });
 
@@ -611,7 +607,7 @@ describe("canSetAsDefault", () => {
 	});
 
 	it("does not auto-default version-only staged bundles without release provenance", () => {
-		const m = baseManifest("0_8b");
+		const m = baseManifest("2b");
 		m.version = "1.0.0-weights-staged.2";
 		m.defaultEligible = false;
 		m.evals.asrWer = { wer: 1.4444, passed: false };

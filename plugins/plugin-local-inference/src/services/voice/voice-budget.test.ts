@@ -282,8 +282,7 @@ describe("VOICE_ENSEMBLE_BUDGETS — R9 §2.3 co-resident roll-up", () => {
 	it("exposes every tier slot with non-negative MB rows", () => {
 		const slots = Object.keys(VOICE_ENSEMBLE_BUDGETS);
 		expect(slots).toEqual([
-			"mobile-0_8b",
-			"desktop-0_8b",
+			"mobile-2b",
 			"desktop-2b",
 			"desktop-4b",
 			"workstation-9b",
@@ -302,28 +301,27 @@ describe("VOICE_ENSEMBLE_BUDGETS — R9 §2.3 co-resident roll-up", () => {
 	});
 
 	it("scales monotonically — bigger LM tier has bigger steady-state", () => {
-		const mobile = VOICE_ENSEMBLE_BUDGETS["mobile-0_8b"].steadyStateMb;
-		const desktop = VOICE_ENSEMBLE_BUDGETS["desktop-0_8b"].steadyStateMb;
+		const mobile = VOICE_ENSEMBLE_BUDGETS["mobile-2b"].steadyStateMb;
 		const two = VOICE_ENSEMBLE_BUDGETS["desktop-2b"].steadyStateMb;
 		const four = VOICE_ENSEMBLE_BUDGETS["desktop-4b"].steadyStateMb;
 		const nine = VOICE_ENSEMBLE_BUDGETS["workstation-9b"].steadyStateMb;
 		const twentyseven = VOICE_ENSEMBLE_BUDGETS["workstation-27b"].steadyStateMb;
-		// desktop adds OmniVoice on top of mobile's kokoro
-		expect(desktop).toBeGreaterThan(mobile);
-		expect(two).toBeGreaterThan(desktop);
+		// desktop-2b adds OmniVoice + dedicated embedding on top of the mobile-2b
+		// kokoro/pooled-embedding profile at the same LM size.
+		expect(two).toBeGreaterThan(mobile);
 		expect(four).toBeGreaterThan(two);
 		expect(nine).toBeGreaterThan(four);
 		expect(twentyseven).toBeGreaterThan(nine);
 	});
 
-	it("desktop-0_8b includes the ~1.17 GB OmniVoice transient peak", () => {
-		const row = VOICE_ENSEMBLE_BUDGETS["desktop-0_8b"];
+	it("desktop-2b includes the ~1.17 GB OmniVoice transient peak", () => {
+		const row = VOICE_ENSEMBLE_BUDGETS["desktop-2b"];
 		expect(row.transientTtsBufferMb).toBeGreaterThan(1000);
 		expect(row.peakMb).toBeGreaterThan(row.steadyStateMb + 1000);
 	});
 
-	it("mobile-0_8b skips the OmniVoice transient (defaults to cloud TTS)", () => {
-		const row = VOICE_ENSEMBLE_BUDGETS["mobile-0_8b"];
+	it("mobile-2b skips the OmniVoice transient (defaults to cloud TTS)", () => {
+		const row = VOICE_ENSEMBLE_BUDGETS["mobile-2b"];
 		expect(row.transientTtsBufferMb).toBe(0);
 		expect(row.peakMb).toBe(row.steadyStateMb);
 	});
@@ -336,14 +334,14 @@ describe("VOICE_ENSEMBLE_BUDGETS — R9 §2.3 co-resident roll-up", () => {
 });
 
 describe("pickVoiceTierSlot", () => {
-	it("picks mobile-0_8b on mobile regardless of text model", () => {
+	it("picks mobile-2b on mobile regardless of text model", () => {
 		expect(
 			pickVoiceTierSlot({
 				textModelId: "eliza-1-9b",
 				deviceTier: "GOOD",
 				mobile: true,
 			}),
-		).toBe("mobile-0_8b");
+		).toBe("mobile-2b");
 	});
 
 	it("picks workstation-27b for 27B id", () => {
@@ -373,20 +371,20 @@ describe("pickVoiceTierSlot", () => {
 		).toBe("desktop-2b");
 	});
 
-	it("falls through to desktop-0_8b for small / unknown ids", () => {
+	it("falls through to desktop-2b (the entry tier) for small / unknown ids", () => {
 		expect(
-			pickVoiceTierSlot({ textModelId: "eliza-1-0_8b", deviceTier: "OKAY" }),
-		).toBe("desktop-0_8b");
+			pickVoiceTierSlot({ textModelId: "eliza-1-2b", deviceTier: "OKAY" }),
+		).toBe("desktop-2b");
 		expect(
 			pickVoiceTierSlot({ textModelId: "unknown", deviceTier: "MAX" }),
-		).toBe("desktop-0_8b");
+		).toBe("desktop-2b");
 	});
 });
 
 describe("assessVoiceBundleFits", () => {
 	it("fits when host RAM >> peakMb", () => {
 		const decision = assessVoiceBundleFits({
-			tierSlot: "desktop-0_8b",
+			tierSlot: "desktop-2b",
 			deviceTier: "GOOD",
 			hostRamMb: 32 * 1024,
 		});
@@ -395,11 +393,11 @@ describe("assessVoiceBundleFits", () => {
 	});
 
 	it("tight when host fits steady-state but not peak", () => {
-		const ensemble = VOICE_ENSEMBLE_BUDGETS["desktop-0_8b"];
+		const ensemble = VOICE_ENSEMBLE_BUDGETS["desktop-2b"];
 		// reserveMb=0 makes the math trivial: usableMb === hostRamMb
 		const tightHostMb = Math.ceil(ensemble.steadyStateMb + 50);
 		const decision = assessVoiceBundleFits({
-			tierSlot: "desktop-0_8b",
+			tierSlot: "desktop-2b",
 			deviceTier: "GOOD",
 			hostRamMb: tightHostMb,
 			reserveMb: 0,
