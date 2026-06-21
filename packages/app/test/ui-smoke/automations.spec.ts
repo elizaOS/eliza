@@ -676,19 +676,29 @@ test("automations overview empty state encourages creating tasks and workflows",
   await expect(page.getByRole("button", { name: "Workflows 0" })).toBeVisible();
   await expect(page.getByText("Nothing scheduled yet")).toBeVisible();
 
+  // "New" no longer opens a task/workflow chooser — it focuses the Automations
+  // chat with a creation prefill (mirrors AutomationsFeed.test.tsx). Capture the
+  // dispatched prefill event as the proof of the new contract.
+  await page.evaluate(() => {
+    (window as unknown as { __prefill?: unknown }).__prefill = null;
+    window.addEventListener(
+      "eliza:chat:prefill",
+      (event) => {
+        (window as unknown as { __prefill?: unknown }).__prefill = (
+          event as CustomEvent
+        ).detail;
+      },
+      { once: true },
+    );
+  });
   await page.getByRole("button", { name: "New" }).click();
-  await expect(page.getByText("What do you want to create?")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Task \(simple prompt\)/ }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Workflow \(node graph\)/ }),
-  ).toBeVisible();
-
-  await page.getByRole("button", { name: /Task \(simple prompt\)/ }).click();
-  await expect(page.getByRole("heading", { name: "New task" })).toBeVisible();
-  await expect(page.getByTestId("task-editor-name")).toBeVisible();
-  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as unknown as { __prefill?: unknown }).__prefill,
+      ),
+    )
+    .toEqual({ text: "Create an automation that ", select: false });
   await expect(page.getByTestId("automations-shell")).toBeVisible();
 });
 
@@ -711,11 +721,13 @@ test("automations can list tasks, create a task, and inspect workflow JSON", asy
   await expect(
     page.getByRole("button", { name: "Message triage" }),
   ).toBeVisible();
+  // Each row's open control is labelled `Open <title>` (AutomationsFeed); the
+  // bare title matches both the open and the run buttons, so target the open one.
   await expect(
-    page.getByRole("button", { name: "Message pipeline" }),
+    page.getByRole("button", { name: "Open Message pipeline" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Message pipeline" }).click();
+  await page.getByRole("button", { name: "Open Message pipeline" }).click();
   await expect(
     page.getByRole("heading", { name: "Message pipeline" }),
   ).toBeVisible();
@@ -725,8 +737,11 @@ test("automations can list tasks, create a task, and inspect workflow JSON", asy
   await expect(page.getByText("Graph")).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
 
-  await page.getByRole("button", { name: "New" }).click();
-  await page.getByRole("button", { name: /Task \(simple prompt\)/ }).click();
+  // The chooser was removed; open the New TaskEditor directly via the automations
+  // hash deep-link (#automations/task/__new__, parsed by useAutomationDeepLink).
+  await page.evaluate(() => {
+    window.location.hash = "#automations/task/__new__";
+  });
   await page.getByTestId("task-editor-name").fill("Escalate inbound messages");
   await page
     .getByTestId("task-editor-prompt")
@@ -741,38 +756,12 @@ test("automations can list tasks, create a task, and inspect workflow JSON", asy
   await expect(page.getByText("Escalate inbound messages")).toBeVisible();
 });
 
-test("workflow editor generates a workflow from a prompt", async ({ page }) => {
-  const api = await installAutomationsApi(page, []);
-
-  await openAppPath(page, "/automations");
-
-  await page.getByRole("button", { name: "New" }).click();
-  await page.getByRole("button", { name: /Workflow \(node graph\)/ }).click();
-  await page
-    .getByRole("button", { name: "Generate from prompt" })
-    .first()
-    .click();
-  const workflowPrompt = page.getByPlaceholder(
-    "When a new starred email arrives in Gmail, post a summary in #ops on Slack.",
-  );
-  await workflowPrompt.fill(
-    "When a generic message event arrives, summarize it and send a digest.",
-  );
-  await page.getByRole("button", { name: "Generate" }).click();
-
-  await expect
-    .poll(() => api.getGeneratedWorkflow())
-    .toMatchObject({
-      prompt:
-        "When a generic message event arrives, summarize it and send a digest.",
-    });
-  await expect(
-    page.getByRole("heading", { name: "Generated workflow" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("workflow-editor-json")).toHaveValue(
-    /Generated workflow/,
-  );
-});
+// NOTE: the in-app "generate a workflow from a prompt" surface was removed from
+// the WorkflowEditor (workflow generation is backend-only now; the UI no longer
+// exposes a "Generate from prompt" affordance — see WorkflowEditor.test.tsx
+// asserting its absence). The former Playwright case for it is intentionally
+// gone; its mock seam (`getGeneratedWorkflow` / the `/generate` route) is left in
+// `installAutomationsApi` as a harmless no-op for any future re-introduction.
 
 // Event-triggered automation coverage.
 //
@@ -797,9 +786,11 @@ test("automations renders an event trigger and creates a new event automation", 
   ).toBeVisible();
   await expect(page.getByText("On message.received")).toBeVisible();
 
-  // Create a fresh event-triage automation through the real editor flow.
-  await page.getByRole("button", { name: "New" }).click();
-  await page.getByRole("button", { name: /Task \(simple prompt\)/ }).click();
+  // Create a fresh event-triage automation through the real editor flow. The
+  // chooser was removed; open the New TaskEditor directly via the hash deep-link.
+  await page.evaluate(() => {
+    window.location.hash = "#automations/task/__new__";
+  });
   await page.getByTestId("task-editor-name").fill("Triage new chat events");
   await page
     .getByTestId("task-editor-prompt")

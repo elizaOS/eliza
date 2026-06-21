@@ -356,7 +356,7 @@ const SAFE_VIEW_TILES: readonly {
 
 const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
   /^Basics$/,
-  /^Providers$/,
+  /^Models & Providers$/,
   /^Runtime$/,
   /^Appearance$/,
   /^Voice$/,
@@ -366,7 +366,7 @@ const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
   /^Connectors$/,
   /^App Permissions$/,
   /^Permissions$/,
-  /^Secrets storage$/,
+  /^Vault$/,
   /^Security$/,
   /^Updates$/,
   /^Backup & Reset$/,

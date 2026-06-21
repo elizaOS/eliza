@@ -162,7 +162,7 @@ export async function expectNoPageDiagnostics(
 
 const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Basics", "identity"],
-  ["Providers", "ai-model"],
+  ["Models & Providers", "ai-model"],
   ["Runtime", "runtime"],
   ["Appearance", "appearance"],
   ["Voice", "voice"],
