@@ -63,7 +63,7 @@ export interface Character {
 	name?: string;
 	username?: string;
 	system?: string;
-	templates?: { [key: string]: string };
+	templates?: { [key: string]: TemplateType };
 	bio?: string[];
 	postExamples?: string[];
 	topics?: string[];
