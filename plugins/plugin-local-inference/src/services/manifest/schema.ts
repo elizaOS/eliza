@@ -38,13 +38,7 @@ export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
 // Tiers — size-ordered across the active Eliza-1 bundles. 2b is the
 // smallest/entry tier.
-export const ELIZA_1_TIERS = [
-	"2b",
-	"4b",
-	"9b",
-	"27b",
-	"27b-256k",
-] as const;
+export const ELIZA_1_TIERS = ["2b", "4b", "9b", "27b", "27b-256k"] as const;
 export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 
 // Manifest-level kernel capability names. Per AGENTS.md §3:
