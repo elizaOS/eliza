@@ -84,6 +84,14 @@ export class EmbeddingGenerationService extends Service {
 		// model as other services so we do not maintain another bespoke queue + task stack here.
 		// Task system owns WHEN (repeat EMBEDDING_DRAIN tick); we own WHAT (dequeue, embed, persist).
 		// No maxSize — bottleneck is embedding I/O, not queue length.
+		//
+		// Only wire the batched drain when the provider actually registers a
+		// TEXT_EMBEDDING_BATCH handler. Decided once here (vs a runtime
+		// negative-cache) so a non-batching provider (e.g. local gte-small) never
+		// pays a doomed batch attempt + per-item fallback on every drain.
+		const supportsBatchEmbedding = !!this.runtime.getModel(
+			ModelType.TEXT_EMBEDDING_BATCH,
+		);
 		this.batchQueue = new BatchQueue<EmbeddingQueueItem>({
 			name: EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
 			taskDescription: "Embedding generation drain",
@@ -98,7 +106,9 @@ export class EmbeddingGenerationService extends Service {
 			// ~19 serial single-text round-trips/turn that made post-turn embedding
 			// take ~30s. On any batch failure the queue falls back to `process`
 			// (per-item) above, preserving retry/onExhausted.
-			processBatch: (items) => this.generateBatchEmbeddings(items),
+			processBatch: supportsBatchEmbedding
+				? (items) => this.generateBatchEmbeddings(items)
+				: undefined,
 			onExhausted: async (item, error) => {
 				await this.runtime.log({
 					entityId: this.runtime.agentId,
