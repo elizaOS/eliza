@@ -151,6 +151,100 @@ describe("ElizaClient agent streaming transport", () => {
     expect(result.completed).toBe(true);
   });
 
+  it("emits onToken for an early chunk BEFORE the next chunk arrives (true incremental render, #8773)", async () => {
+    const encoder = new TextEncoder();
+    // The 2nd read pends until the test releases it — so if onToken('a') has
+    // fired by then, the consumer is genuinely incremental (not buffering the
+    // whole reply). Every existing test delivers all events in ONE read.
+    let releaseSecond: (value: { done: boolean; value?: Uint8Array }) => void = () => {};
+    const secondRead = new Promise<{ done: boolean; value?: Uint8Array }>((resolve) => {
+      releaseSecond = resolve;
+    });
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({
+        done: false,
+        value: encoder.encode('data: {"type":"token","text":"a","fullText":"a"}\n\n'),
+      })
+      .mockImplementationOnce(() => secondRead)
+      .mockResolvedValueOnce({
+        done: false,
+        value: encoder.encode('data: {"type":"done","fullText":"ab","agentName":"Eliza"}\n\n'),
+      })
+      .mockRejectedValueOnce(new Error("read after terminal event"));
+    const request = vi.fn(async () => {
+      return {
+        ok: true,
+        status: 200,
+        body: { getReader: () => ({ read, cancel: vi.fn(async () => {}) }) },
+      } as unknown as Response;
+    });
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+    const onToken = vi.fn();
+
+    const resultPromise = client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "hello",
+      onToken,
+    );
+
+    // Token 'a' must surface while the 2nd chunk is still pending.
+    await vi.waitFor(() => expect(onToken).toHaveBeenCalledWith("a", "a"));
+    expect(onToken).toHaveBeenCalledTimes(1);
+
+    // Release the 2nd chunk (token 'b'); the stream then completes on the done event.
+    releaseSecond({
+      done: false,
+      value: encoder.encode('data: {"type":"token","text":"b","fullText":"ab"}\n\n'),
+    });
+
+    const result = await resultPromise;
+    expect(onToken).toHaveBeenNthCalledWith(2, "b", "ab");
+    expect(result).toEqual({ text: "ab", agentName: "Eliza", completed: true });
+  });
+
+  it("reassembles a single SSE event split across two read() chunks (#8773)", async () => {
+    const encoder = new TextEncoder();
+    // A `data:` JSON line split mid-token across two TCP reads — the exact
+    // real-network boundary case. The consumer must buffer until the \n\n.
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({
+        done: false,
+        value: encoder.encode('data: {"type":"to'),
+      })
+      .mockResolvedValueOnce({
+        done: false,
+        value: encoder.encode(
+          'ken","text":"hi","fullText":"hi"}\n\n' +
+            'data: {"type":"done","fullText":"hi","agentName":"Eliza"}\n\n',
+        ),
+      })
+      .mockRejectedValueOnce(new Error("read after terminal event"));
+    const request = vi.fn(async () => {
+      return {
+        ok: true,
+        status: 200,
+        body: { getReader: () => ({ read, cancel: vi.fn(async () => {}) }) },
+      } as unknown as Response;
+    });
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+    const onToken = vi.fn();
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "hello",
+      onToken,
+    );
+
+    // Exactly one well-formed token — no partial/malformed emission from chunk-1.
+    expect(onToken).toHaveBeenCalledTimes(1);
+    expect(onToken).toHaveBeenCalledWith("hi", "hi");
+    expect(result).toEqual({ text: "hi", agentName: "Eliza", completed: true });
+  });
+
   it("streams security audit events through the configured request transport", async () => {
     const globalFetch = vi.fn();
     vi.stubGlobal("fetch", globalFetch);
