@@ -830,4 +830,23 @@ describe("computeManagedAgentDbEnv (#8696 local agent state)", () => {
     expect(env.DATABASE_URL).toBeUndefined();
     expect(env.ELIZA_MANAGED_DATABASE_URL).toBe(DB);
   });
+
+  // The merges below mirror create()'s `{ ...callerEnv, ...computeManagedAgentDbEnv(...) }`
+  // (eliza-sandbox.ts) — the whole locality design depends on this spread order,
+  // which the pure-function tests above don't exercise.
+  test("create() merge: a caller DATABASE_URL survives while the shared DB rides ELIZA_MANAGED_DATABASE_URL", async () => {
+    const { computeManagedAgentDbEnv } = await import("./eliza-sandbox.ts?actual");
+    const callerEnv = { DATABASE_URL: "postgres://own.example/db" };
+    const merged = { ...callerEnv, ...computeManagedAgentDbEnv(callerEnv, DB) };
+    expect(merged.DATABASE_URL).toBe("postgres://own.example/db");
+    expect(merged.ELIZA_MANAGED_DATABASE_URL).toBe(DB);
+  });
+
+  test("create() merge: a local-state agent ends with NO DATABASE_URL and the shared DB on the managed key", async () => {
+    const { computeManagedAgentDbEnv } = await import("./eliza-sandbox.ts?actual");
+    const callerEnv = { ELIZA_AGENT_LOCAL_STATE: "1" };
+    const merged = { ...callerEnv, ...computeManagedAgentDbEnv(callerEnv, DB) };
+    expect(merged.DATABASE_URL).toBeUndefined();
+    expect(merged.ELIZA_MANAGED_DATABASE_URL).toBe(DB);
+  });
 });
