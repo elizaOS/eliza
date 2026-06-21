@@ -5536,13 +5536,20 @@ export async function runShortcutGate(args: {
 	const action = args.runtime.actions.find((a) => a.name === target.name);
 	if (!action) return null;
 
-	let valid = false;
-	try {
-		valid = await action.validate(args.runtime, args.message, args.state);
-	} catch {
-		return null;
+	// For an EXPLICIT slash/`!` match the alias IS the validation — the shortcut
+	// already identified the command unambiguously, so re-running the action's
+	// (natural-language-oriented) validate() is redundant and risks a drift
+	// mismatch (e.g. a per-runtime command registry mutated by other plugins).
+	// Natural-language matches still re-validate: their match is fuzzy.
+	if (match.shortcut.kind !== "explicit") {
+		let valid = false;
+		try {
+			valid = await action.validate(args.runtime, args.message, args.state);
+		} catch {
+			return null;
+		}
+		if (!valid) return null;
 	}
-	if (!valid) return null;
 
 	let captured: string | undefined;
 	try {
@@ -5695,24 +5702,6 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.SELF;
 		const stage1TurnSignal =
 			getStreamingContext()?.abortSignal ?? new AbortController().signal;
-
-		// #8791: pre-LLM action shortcut gate. A confident match (always-on for
-		// explicit slash/`!` commands, flag-gated for natural language) runs the
-		// target action and returns its reply with zero RESPONSE_HANDLER tokens.
-		const shortcutResult = await runShortcutGate({
-			runtime: args.runtime,
-			message: args.message,
-			state: args.state,
-			responseId: args.responseId,
-			senderRole,
-		});
-		if (shortcutResult) {
-			args.runtime.logger?.debug?.(
-				{ src: "service:message", agentId: args.runtime.agentId },
-				"Stage 1 resolved via pre-LLM shortcut gate",
-			);
-			return shortcutResult;
-		}
 
 		if (
 			directMessageChannel &&
@@ -10392,7 +10381,37 @@ export class DefaultMessageService implements IMessageService {
 			setTranslatedUserText,
 		});
 
-		const directLifeOpsResult = await (
+		// #8791: pre-LLM action shortcut gate runs FIRST — before any direct hook,
+		// planner, or model call. An explicit slash/`!` command (always-on) or a
+		// flag-gated natural-language shortcut resolves to a deterministic action
+		// reply with zero inference. Placed here (ahead of the LifeOps/workflow
+		// direct hooks and the conditional v5 stage) so a slash command can never
+		// be pre-empted by another handler.
+		if (!strategyResult) {
+			const shortcutSenderRole = await resolveStage1SenderRole(
+				runtime,
+				message,
+			);
+			const shortcutOutcome = await runShortcutGate({
+				runtime,
+				message,
+				state,
+				responseId,
+				senderRole: shortcutSenderRole,
+			});
+			if (shortcutOutcome && shortcutOutcome.kind === "direct_reply") {
+				strategyResult = shortcutOutcome.result;
+				_usedV5Runtime = true;
+				runtime.logger?.debug?.(
+					{ src: "service:message", agentId: runtime.agentId },
+					"Message resolved via pre-LLM shortcut gate",
+				);
+			}
+		}
+
+		const directLifeOpsResult = strategyResult
+			? null
+			: await (
 			runtime as IAgentRuntime & {
 				lifeOpsDirectMessageHook?: {
 					handleMessageRequest?: (args: {
