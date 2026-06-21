@@ -103,7 +103,7 @@ describe("BionicHostLoader (real abstract-UDS)", () => {
 	});
 
 	it("survives a response split across multiple data chunks (multibyte safe)", async () => {
-		const text = "héllo 🌊 ünïcode " + "x".repeat(5000);
+		const text = `héllo 🌊 ünïcode ${"x".repeat(5000)}`;
 		host = net.createServer((sock) => {
 			let buf = Buffer.alloc(0);
 			let expected = -1;

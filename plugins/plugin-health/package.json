@@ -39,6 +39,16 @@
       "import": "./dist/ui/index.js",
       "default": "./dist/ui/index.js"
     },
+    "./screen-time/mobile-signal-setup": {
+      "types": "./dist/screen-time/mobile-signal-setup.d.ts",
+      "eliza-source": {
+        "types": "./src/screen-time/mobile-signal-setup.ts",
+        "import": "./src/screen-time/mobile-signal-setup.ts",
+        "default": "./src/screen-time/mobile-signal-setup.ts"
+      },
+      "import": "./dist/screen-time/mobile-signal-setup.js",
+      "default": "./dist/screen-time/mobile-signal-setup.js"
+    },
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",

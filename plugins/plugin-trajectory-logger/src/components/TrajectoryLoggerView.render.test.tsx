@@ -412,9 +412,7 @@ describe("TrajectoryLoggerView populated render", () => {
       ).toBeTruthy(),
     );
     // The raw "[trajectory-logger] 503 ..." string must NOT leak into the header.
-    expect(
-      screen.queryByText(/\[trajectory-logger\] 503/),
-    ).toBeNull();
+    expect(screen.queryByText(/\[trajectory-logger\] 503/)).toBeNull();
     // No badge while showing the unavailable state (header is mutually exclusive).
     expect(screen.queryByTestId("trajectory-logging-badge")).toBeNull();
   });

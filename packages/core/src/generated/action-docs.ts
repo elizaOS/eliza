@@ -7666,6 +7666,24 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "START_TRANSCRIPTION",
+			description:
+				"Start long-form voice transcription (record-only) on the user's device. Use when the user asks to start transcribing/recording a conversation or meeting.",
+			parameters: [],
+			similes: ["BEGIN_TRANSCRIPTION", "START_RECORDING", "RECORD_TRANSCRIPT"],
+			descriptionCompressed:
+				"Start long-form voice transcription (record-only) on user's device. Use when user asks to start transcribing/recording a convo or meeting.",
+		},
+		{
+			name: "STOP_TRANSCRIPTION",
+			description:
+				"Stop the long-form voice transcription currently running on the user's device.",
+			parameters: [],
+			similes: ["END_TRANSCRIPTION", "STOP_RECORDING", "FINISH_TRANSCRIPT"],
+			descriptionCompressed:
+				"Stop the long-form voice transcription running on user's device.",
+		},
+		{
 			name: "TASKS",
 			description:
 				"Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / opencode / claude / codex). ",

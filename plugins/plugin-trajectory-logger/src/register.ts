@@ -4,8 +4,8 @@
  * Load once during app startup to register the app.
  */
 
-import { registerTrajectoryLoggerApp } from "./components/trajectory-logger-app";
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+import { registerTrajectoryLoggerApp } from "./components/trajectory-logger-app";
 
 registerTrajectoryLoggerApp();
 

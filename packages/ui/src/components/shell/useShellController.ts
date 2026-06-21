@@ -582,7 +582,7 @@ export function useShellController(): ShellController {
           setRecording(false);
         });
     },
-    [send, stopCapture],
+    [send, stopCapture, finalizeTranscriptSession],
   );
 
   const toggleRecording = React.useCallback(() => {

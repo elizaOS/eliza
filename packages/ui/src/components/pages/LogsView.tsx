@@ -18,6 +18,16 @@ import {
 import { ListSkeleton } from "../ui/skeleton-layouts";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
+function logEntryKey(entry: LogEntry): string {
+  return [
+    entry.timestamp,
+    entry.source,
+    entry.level,
+    entry.message,
+    entry.tags.join(","),
+  ].join("|");
+}
+
 /**
  * Logs page — formerly split across `LogsPageView` (a 17-LOC ContentLayout
  * wrapper) and `LogsView` (the panel). Folded into one component since
@@ -305,9 +315,9 @@ function LogsViewBody() {
           />
         ) : (
           <PagePanel variant="inset" className="overflow-hidden rounded-sm">
-            {filteredLogs.map((entry: LogEntry, i: number) => (
+            {filteredLogs.map((entry: LogEntry) => (
               <div
-                key={`${i}-${entry.timestamp}-${entry.source}-${entry.level}`}
+                key={logEntryKey(entry)}
                 className="flex flex-col gap-1 px-3 py-3 text-sm md:flex-row md:items-start md:gap-3"
                 data-testid="log-entry"
               >

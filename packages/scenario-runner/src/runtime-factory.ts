@@ -479,6 +479,18 @@ export async function createScenarioRuntime(
   await seedBenchmarkLifeOpsFixtures(runtime);
   await seedLifeOpsSimulatorRuntime(runtime);
 
+  // Deterministic scenarios share one runtime; seed first-run as already
+  // complete so the firstRun provider stays silent and action-routing is
+  // order-independent. Without this, scenarios run in --lane discovery order
+  // can see a "first-run pending" planner context the strict fixtures do not
+  // cover (e.g. deterministic-xr-view-actions when it runs last).
+  await runtime.setCache("eliza:lifeops:first-run:v1", {
+    status: "complete",
+    partialAnswers: {},
+    completionCount: 1,
+    completedAt: "1970-01-01T00:00:00.000Z",
+  });
+
   // Remove upstream actions that reliably steal action-selection from the
   // domain actions scenarios actually care about. UPDATE_ENTITY's description
   // ("Add or edit contact details for a person you are talking to or

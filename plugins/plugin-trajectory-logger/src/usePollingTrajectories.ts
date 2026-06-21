@@ -3,8 +3,8 @@ import {
   fetchTrajectoryDetail,
   fetchTrajectoryList,
   type TrajectoryDetail,
-  type TrajectoryListItem,
   TrajectoryHttpError,
+  type TrajectoryListItem,
 } from "./api-client";
 
 const POLL_MS = 700;
