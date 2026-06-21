@@ -4,7 +4,7 @@ HTTP API surface for the elizaOS document store.
 
 ## Purpose / role
 
-Registers a set of REST routes that expose document CRUD, bulk upload, URL ingestion, semantic search, and fragment listing against the runtime's document store. The plugin delegates all persistence and search to `DocumentsServiceLike` (resolved from `@elizaos/agent/api/documents-service-loader`). It also registers the `OWNER_DOCUMENTS` action (currently a stub pending migration from plugin-lifeops). It has no providers, evaluators, or event handlers.
+Registers a set of REST routes that expose document CRUD, bulk upload, URL ingestion, semantic search, and fragment listing against the runtime's document store. The plugin delegates all persistence and search to `DocumentsServiceLike` (resolved from `@elizaos/agent/api/documents-service-loader`). It does not register owner actions; `OWNER_DOCUMENTS` is host-adapted by `@elizaos/plugin-personal-assistant`, which owns approval queue gating, scheduled-task deadline tracking, and document-request orchestration. This plugin has no providers, evaluators, or event handlers.
 
 Loading: added explicitly to the agent plugin list or via character config. It is not unconditionally enabled by default; the runtime must resolve it by name (`@elizaos/plugin-documents`).
 
@@ -27,11 +27,9 @@ Repo-wide conventions (logger-only, ESM, naming, architecture rules, git workflo
 | PATCH  | `/api/documents/:id` | Update document text content (re-fragments) |
 | DELETE | `/api/documents/:id` | Delete document and all its fragments |
 
-**Actions:**
-
-| Action name | File | Status |
-|-------------|------|--------|
-| `OWNER_DOCUMENTS` | `src/actions/owner-documents.ts` | Stub — full implementation (approval queue gating, scheduled-task deadline tracking, signing-portal dispatch, document-request lifecycle) pending migration from plugin-lifeops |
+**Actions:** none registered here. `OWNER_DOCUMENTS` is registered by
+`@elizaos/plugin-personal-assistant` and delegates to this package's document
+routes/store where appropriate.
 
 No providers, services, evaluators, or event handlers are registered.
 
@@ -46,8 +44,6 @@ src/
                          getDocumentProvenance(), getDocumentVisibilityScope(), etc.
   service-loader.ts      Re-exports canonical types and getDocumentsService() from
                          @elizaos/agent/api/documents-service-loader
-  actions/
-    owner-documents.ts   OWNER_DOCUMENTS action (stub)
   components/
     documents/
       DocumentsView.tsx          React view for documents UI
@@ -110,4 +106,4 @@ All scope/permission decisions live in `src/routes.ts` (`canReadDocumentMemory`,
 - **Fragment pagination.** Fragment listing always paginates in batches of 500 (`FRAGMENT_BATCH_SIZE`). Large documents with many fragments will issue multiple `getMemories` calls.
 - **Max body size.** Single and bulk upload endpoints cap at 32 MB (`DOCUMENT_UPLOAD_MAX_BODY_BYTES`). Bulk is further capped at 100 documents per request.
 - **rawPath routing.** All routes are registered with `rawPath: true`, meaning the agent server dispatches them directly without prefix stripping. The path `/api/documents` is absolute.
-- **OWNER_DOCUMENTS action is a stub.** The action registers cleanly so the runtime knows the action contract, but the full implementation (approval queue, deadline tracking, signing-portal dispatch) is not yet ported from plugin-lifeops.
+- **OWNER_DOCUMENTS is host-adapted.** Do not add a second action here unless the PA-hosted approval, scheduler, and document-request behavior is moved with tests that prove parity.

@@ -1,16 +1,16 @@
 # @elizaos/plugin-goals
 
-Life direction plugin for elizaOS: owner-set long-horizon goals, recurring
-routines, reminders, alarms, daily check-ins, and a self-care / mood / journal
-panel.
+Life direction plugin for elizaOS: owner-set long-horizon goals, daily
+check-ins, and a self-care / mood / journal panel.
 
 ## Purpose / role
 
 Decomposed out of `@elizaos/plugin-personal-assistant` to make the "life direction"
-surface a self-contained plugin. Owns the four owner actions
-(`OWNER_GOALS`, `OWNER_ROUTINES`, `OWNER_REMINDERS`, `OWNER_ALARMS`), the
-check-in engine (`GoalsCheckinService`), the corresponding drizzle
-`pgSchema('app_goals')` tables, and the desktop `goals` view.
+surface a self-contained plugin. Owns the fully migrated `OWNER_GOALS` action,
+the check-in service (`GoalsCheckinService`), the corresponding drizzle
+`pgSchema('app_goals')` tables, and the desktop `goals` view. Routines,
+reminders, and alarms remain host-adapted owner surfaces in
+`@elizaos/plugin-personal-assistant` and are not exported here.
 
 The plugin is opt-in — add it to the agent's plugin list. It depends on
 `@elizaos/plugin-sql` for the database.
@@ -25,19 +25,9 @@ The plugin is opt-in — add it to the agent's plugin list. It depends on
   is loaded it registers its own richer natural-language `OWNER_GOALS` flow
   first (first-registration wins), which delegates to the same `GoalsService`
   CRUD; this self-contained action is the PA-free topology surface.
-- **`OWNER_ROUTINES`** (`src/actions/routines.ts`) — recurring routines
-  (daily / weekly / custom cadence). Default packs come from
-  `plugin-lifeops/src/default-packs/daily-rhythm.ts` and `habit-starters.ts`
-  (still to migrate).
-- **`OWNER_REMINDERS`** (`src/actions/reminders.ts`) — owner-facing surface
-  over Apple Reminders / Google Tasks bridges (which live in their own
-  plugins).
-- **`OWNER_ALARMS`** (`src/actions/alarms.ts`) — wake / notification alarms
-  with repeat rules.
-
-All four are currently **scaffold stubs**; handlers return
-`success: false` with a `scaffold_stub` reason and include a `TODO(migrate)`
-pointer back to the LifeOps source.
+`OWNER_ROUTINES`, `OWNER_REMINDERS`, and `OWNER_ALARMS` are registered by
+`@elizaos/plugin-personal-assistant` while their data-layer work remains split
+across `@elizaos/plugin-reminders` and the shared scheduled-task runner.
 
 ### Back-end (the goal domain home)
 - **`GoalsService`** (`src/goals-service.ts`) — goal CRUD (`createGoal` /
@@ -70,8 +60,8 @@ pointer back to the LifeOps source.
 
 ### Services
 - **`GoalsCheckinService`** (`src/services/checkin.ts`) — daily check-in
-  engine. Stub. Will absorb the LifeOps `CheckinService`
-  (`plugin-lifeops/src/lifeops/checkin/checkin-service.ts`).
+  engine. Stub. Will absorb the PA `CheckinService`
+  (`plugin-personal-assistant/src/lifeops/checkin/checkin-service.ts`).
 
 ### Views
 - **`goals`** — `GoalsView` (`src/components/goals/GoalsView.tsx`); path
@@ -102,9 +92,6 @@ src/
   goal-semantic-evaluator.ts     evaluateGoalProgressWithLlm (LLM goal review)
   actions/
     goals.ts                     OWNER_GOALS (real — CRUD via GoalsService)
-    routines.ts                  OWNER_ROUTINES (stub)
-    reminders.ts                 OWNER_REMINDERS (stub)
-    alarms.ts                    OWNER_ALARMS (stub)
   services/
     checkin.ts                   GoalsCheckinService (stub)
   db/
@@ -131,21 +118,19 @@ bun run --cwd plugins/plugin-goals build:types   # tsc declaration emit
 bun run --cwd plugins/plugin-goals clean         # rm -rf dist
 ```
 
-## Migration mapping (plugin-lifeops -> plugin-goals)
+## Migration mapping (personal-assistant -> plugin-goals)
 
-| Owner surface                | Source in plugin-lifeops                                                                  | Target here                              |
+| Owner surface                | Source in personal-assistant                                                              | Target here                              |
 |-----------------------------|-------------------------------------------------------------------------------------------|------------------------------------------|
 | `OWNER_GOALS`                | `src/actions/owner-surfaces.ts` (search `OWNER_GOAL_ACTIONS`)                              | `src/actions/goals.ts`                   |
-| `OWNER_ROUTINES`             | `src/actions/owner-surfaces.ts` (search `OWNER_LIFE_ACTIONS` / `ownerRoutinesAction`)      | `src/actions/routines.ts`                |
-| `OWNER_REMINDERS`            | `src/actions/owner-surfaces.ts`                                                            | `src/actions/reminders.ts`               |
-| `OWNER_ALARMS`               | `src/actions/owner-surfaces.ts`                                                            | `src/actions/alarms.ts`                  |
 | Daily check-in engine        | `src/lifeops/checkin/checkin-service.ts`, `schedule-resolver.ts`, `types.ts`               | `src/services/checkin.ts` (+ types)      |
 | Follow-up watcher            | `src/followup/followup-tracker.ts`, `src/followup/actions/`                                | `src/followup/` (to add)                 |
 | Default packs                | `src/default-packs/daily-rhythm.ts`, `habit-starters.ts`, `followup-starter.ts`            | `src/default-packs/` (to add)            |
 | Schema (goals + check-ins)   | `src/lifeops/schema.ts` (`app_goals` namespace)                                            | `src/db/schema.ts`                       |
 
-`plugin-lifeops` keeps its own copies for now; the actions there will
-re-export from this package once the bodies move.
+PA keeps the non-goal owner action orchestration for now. Do not re-add local
+stubs for those actions; migrate the real behavior with parity tests if
+ownership changes.
 
 ## Boundary with plugin-personal-assistant
 
@@ -180,13 +165,11 @@ re-export from this package once the bodies move.
 - **`src/db/sql.ts` is a self-contained copy** of PA's raw-SQL helpers (so the
   back-end carries no PA dependency). Keep it in sync only if a correctness fix
   applies to both; do not add goals-specific logic.
-- **OWNER_GOALS is real; the other three actions are scaffold stubs.**
-  `OWNER_ROUTINES` / `OWNER_REMINDERS` / `OWNER_ALARMS` still register and
-  validate but return a `scaffold_stub` reason. Real bodies come during the
-  later migration passes.
+- **Only OWNER_GOALS is registered here.** Routines, reminders, and alarms are
+  PA-owned owner actions; this package owns the goal CRUD/domain service.
 - **View bundles separately.** `build:views` (Vite) produces
   `dist/views/bundle.js`. The `bundlePath` on the view registration points
   there. The tsup `build:js` and the vite `build:views` are independent.
-- **Owner scope.** All four actions are owner-scoped (`roleGate: ADMIN`,
-  contexts `goals` / `self_care` / `owner`).
+- **Owner scope.** `OWNER_GOALS` is owner-scoped (`roleGate: ADMIN`, contexts
+  `goals` / `self_care` / `owner`).
 - See the root `AGENTS.md` for repo-wide architecture rules.

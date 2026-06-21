@@ -9,7 +9,6 @@
  * are stable contract surface and intentionally unchanged by the extraction.
  */
 
-import { ElizaClient } from "@elizaos/ui";
 import type {
   CreateLifeOpsCalendarEventRequest,
   GetLifeOpsCalendarFeedRequest,
@@ -21,6 +20,7 @@ import type {
   ListLifeOpsCalendarsRequest,
   SetLifeOpsCalendarIncludedRequest,
 } from "@elizaos/shared";
+import { ElizaClient } from "@elizaos/ui";
 
 export interface CalendarClientMethods {
   getLifeOpsCalendarFeed(
@@ -44,9 +44,8 @@ export interface CalendarClientMethods {
   ): Promise<LifeOpsCalendarEventMutationResult>;
   deleteLifeOpsCalendarEvent(
     eventId: string,
-    options?: Pick<
-      LifeOpsCalendarEventUpdate,
-      "calendarId" | "grantId" | "side"
+    options?: Partial<
+      Pick<LifeOpsCalendarEventUpdate, "calendarId" | "grantId" | "side">
     >,
   ): Promise<{ deleted: true }>;
 }
@@ -159,9 +158,8 @@ calendarClientPrototype.updateLifeOpsCalendarEvent = async function (
 calendarClientPrototype.deleteLifeOpsCalendarEvent = async function (
   this: ElizaClient,
   eventId: string,
-  options: Pick<
-    LifeOpsCalendarEventUpdate,
-    "calendarId" | "grantId" | "side"
+  options: Partial<
+    Pick<LifeOpsCalendarEventUpdate, "calendarId" | "grantId" | "side">
   > = {},
 ) {
   const params = new URLSearchParams();

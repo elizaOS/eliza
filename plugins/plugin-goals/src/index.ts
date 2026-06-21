@@ -1,7 +1,4 @@
-export { ownerAlarmsAction } from "./actions/alarms.ts";
 export { ownerGoalsAction } from "./actions/goals.ts";
-export { ownerRemindersAction } from "./actions/reminders.ts";
-export { ownerRoutinesAction } from "./actions/routines.ts";
 // View export — re-exported so host applications can pre-render the view
 // without going through the dynamic bundle loader.
 export { GoalsView } from "./components/goals/GoalsView.tsx";

@@ -3654,6 +3654,18 @@ const calendarAction: CalendarHandlerAction = {
           resolvedEventId = targetEvent.externalId;
           resolvedCalendarId = targetEvent.calendarId;
         }
+        if (!resolvedEventId) {
+          return respond({
+            success: false,
+            text: await renderReply(
+              "clarify_update_event_target",
+              "i need an event id or a title + date to update an event.",
+              {
+                missing: ["event target"],
+              },
+            ),
+          });
+        }
         const newTitle = detailString(details, "newTitle") ?? explicitTitle;
         const explicitStartAtForUpdate = detailString(details, "startAt");
         const explicitEndAtForUpdate = detailString(details, "endAt");

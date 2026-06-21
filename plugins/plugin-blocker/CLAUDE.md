@@ -5,26 +5,21 @@ SelfControl-style hosts engine and macOS / mobile app blocking.
 
 ## Purpose / role
 
-Provides the focus surface for an Eliza agent: a single `BLOCK` umbrella action
-(target = app | website), two read-only providers that surface the user's
-current block state, and two Service classes that own the platform engine
-lifecycle. Persistence lives in a drizzle `pgSchema('app_blocker')`. Ships a
-`focus` overlay view rendered by the dashboard shell.
+Provides the focus surface for an Eliza agent: two read-only providers that
+surface the user's current block state, two Service classes that own the
+platform engine lifecycle, a drizzle `pgSchema('app_blocker')`, and a `focus`
+overlay view rendered by the dashboard shell. The `BLOCK` umbrella action is
+host-adapted by `@elizaos/plugin-personal-assistant`.
 
-This package was scaffolded as part of decomposing the giant
-`@elizaos/plugin-personal-assistant`. The action / providers / services are currently
-stubs that reference the live implementations still in `plugin-lifeops`. See
-`README.md` for the migration mapping.
+This package was split out of `@elizaos/plugin-personal-assistant`. The
+providers, services, schema, and view are owned here. The `BLOCK` action remains
+PA-resident to keep one owner-gated scheduler/chat dispatch path.
 
 ## Plugin surface
 
-### Action
-- `BLOCK` (`src/actions/block.ts`) — umbrella with `target` and `action`
-  parameters. Matrix:
-  - `app`: `block`, `unblock`, `status`
-  - `website`: `block`, `unblock`, `status`, `request_permission`, `release`,
-    `list_active`
-  - Contexts: `focus`, `automation`. Role gate: ADMIN.
+### Actions
+- None registered here. `BLOCK` is registered by
+  `@elizaos/plugin-personal-assistant`.
 
 ### Providers
 - `WEBSITE_BLOCKER` (`src/providers/website-blocker.ts`) — active website block
@@ -52,8 +47,6 @@ src/
   plugin.ts                       blockerPlugin definition
   index.ts                        Public export barrel
   types.ts                        Constants + Block* types
-  actions/
-    block.ts                      BLOCK umbrella action (stub)
   providers/
     website-blocker.ts            WEBSITE_BLOCKER provider (stub)
     app-blocker.ts                APP_BLOCKER provider (stub)
@@ -101,8 +94,8 @@ the lifeops implementations they replace.
 
 ## Conventions / gotchas
 
-- Stubs reference the source in plugin-lifeops via TODO(migration) comments —
-  preserve those when porting; they are the only breadcrumbs.
+- Do not add a second `BLOCK` action here unless the PA-hosted owner gating,
+  scheduler hooks, and chat dispatch behavior move with parity tests.
 - `@elizaos/plugin-sql` is required at runtime — schema registration in the
   Plugin object tells the SQL plugin to migrate `app_blocker`.
 - The view bundle is built independently of the JS / type build (`build:views`

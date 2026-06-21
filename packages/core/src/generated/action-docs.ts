@@ -3130,68 +3130,155 @@ export const allActionsSpec = {
 		},
 		{
 			name: "BLOCK",
-			description:
-				"Focus / distraction control. Block or unblock websites (SelfControl-style hosts-file rules) and macOS apps, manage allow-lists, and review active block sessions. Targets: app (block/unblock/status) and website (block/unblock/status/request_permission/release/list_active).",
+			description: "Block/unblock phone apps or desktop websites. ",
 			parameters: [
 				{
 					name: "target",
 					description:
-						"What to block: app (native macOS/mobile app) or website (hostname).",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"What to block: app (native macOS/mobile app) or website (hostname).",
-				},
-				{
-					name: "action",
-					description:
-						"Subaction: block, unblock, status, request_permission, release, list_active.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Subaction: block, unblock, status, request_permission, release, list_active.",
-				},
-				{
-					name: "pattern",
-					description:
-						"Bundle id (target=app) or hostname / hostname pattern (target=website).",
+						"app phone apps | website desktop hosts-file/SelfControl. Omit ok: infer request_permission|release|list_active -> website, params, user text.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Bundle id (target=app) or hostname/hostname pattern (target=website).",
+						"app phone apps | website desktop hosts-file/SelfControl. Omit ok: infer request_permission|release|list_active -> website, params, user text.",
 				},
 				{
-					name: "durationMs",
+					name: "action",
 					description:
-						"Optional duration of the block session in milliseconds.",
+						"block | unblock | status | request_permission | release | list_active. request_permission|release|list_active website-only.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"block | unblock | status | request_permission | release | list_active. request_permission|release|list_active website-only.",
+				},
+				{
+					name: "intent",
+					description: "Owner intent text; extract apps/hostnames + duration.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Owner intent text. extract apps/hostnames + duration.",
+				},
+				{
+					name: "hostnames",
+					description: "(target=website) Public hostnames/URLs.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "(target=website) Public hostnames/URLs.",
+				},
+				{
+					name: "confirmed",
+					description:
+						"(target=website) true after owner confirmed. Without: block drafts. Required by release.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"(target=website) true after owner confirmed. without: block drafts. Required by release.",
+				},
+				{
+					name: "ruleId",
+					description: "(target=website action=release) Managed block rule id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"(target=website action=release) Managed block rule id.",
+				},
+				{
+					name: "reason",
+					description:
+						"(target=website action=release) Optional release reason; audit record.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"(target=website action=release) Optional release reason. audit record.",
+				},
+				{
+					name: "includeLiveStatus",
+					description:
+						"(target=website action=list_active) Include hosts-file/SelfControl live state. Default true.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"(target=website action=list_active) Include hosts-file/SelfControl live state. Default true.",
+				},
+				{
+					name: "includeManagedRules",
+					description:
+						"(target=website action=list_active) Include managed rules. Default true.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"(target=website action=list_active) Include managed rules. Default true.",
+				},
+				{
+					name: "packageNames",
+					description: "(target=app Android) Package names.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "(target=app Android) Package names.",
+				},
+				{
+					name: "appTokens",
+					description: "(target=app iOS) iPhone app tokens from selectApps().",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed:
+						"(target=app iOS) iPhone app tokens from selectApps().",
+				},
+				{
+					name: "durationMinutes",
+					description:
+						"Block duration minutes. Omit/null = indefinite until manual removal.",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					descriptionCompressed:
-						"Optional duration of the block session in milliseconds.",
+						"Block duration minutes. Omit/null = indefinite until manual removal.",
 				},
 			],
 			descriptionCompressed:
-				"focus: block|unblock|status|request_permission|release|list_active for target=app|website",
+				"BLOCK apps+websites only; NOT calendar/focus; block|unblock|status|permission|release",
 			similes: [
-				"FOCUS",
-				"FOCUS_MODE",
-				"BLOCK_WEBSITE",
-				"BLOCK_SITE",
-				"BLOCK_APP",
-				"UNBLOCK_WEBSITE",
-				"UNBLOCK_APP",
-				"START_FOCUS",
-				"END_FOCUS",
-				"STOP_DISTRACTION",
 				"SELFCONTROL",
+				"SITE_BLOCKER",
+				"HOSTS_BLOCK",
+				"BLOCK_WEBSITE",
+				"SHIELD_APPS",
+				"FAMILY_CONTROLS",
+				"PHONE_FOCUS",
+				"PHONE_BLOCK_APPS",
+				"BLOCK_APPS",
 			],
 			exampleCalls: [
 				{
@@ -3201,8 +3288,16 @@ export const allActionsSpec = {
 						BLOCK: {
 							target: "example",
 							action: "example",
-							pattern: "example",
-							durationMs: 1,
+							intent: "example",
+							hostnames: "example",
+							confirmed: false,
+							ruleId: "example",
+							reason: "example",
+							includeLiveStatus: false,
+							includeManagedRules: false,
+							packageNames: "example",
+							appTokens: "example",
+							durationMinutes: 1,
 						},
 					},
 				},

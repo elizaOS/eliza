@@ -1,11 +1,10 @@
 /**
  * Drizzle pgSchema('app_blocker') for @elizaos/plugin-blocker.
  *
- * MIGRATION NOTE: There is no existing drizzle schema in plugin-lifeops for the
- * blocker (the original SelfControl / appblocker engines used disk-backed
- * state files). This new schema replaces that — block_rules, active_sessions,
- * and allow_list tables — and is the new persistent store the migrated
- * services will write through.
+ * MIGRATION NOTE: there was no previous drizzle schema for blocker state (the
+ * original SelfControl / appblocker engines used disk-backed state files).
+ * This schema owns block_rules, active_sessions, and allow_list tables for the
+ * extracted plugin.
  */
 
 import { sql } from "drizzle-orm";

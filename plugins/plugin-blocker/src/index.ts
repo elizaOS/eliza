@@ -1,4 +1,3 @@
-export { blockAction } from "./actions/block.ts";
 export {
   type FocusActiveSession,
   type FocusScheduleEntry,

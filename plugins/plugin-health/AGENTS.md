@@ -158,7 +158,7 @@ The OAuth-dir root is resolved via `resolveOAuthDir` from `@elizaos/core`, so it
 
 ### Add an action surface
 
-Action metadata and parameter ownership belongs here. If the action still needs LifeOps persistence or owner access checks, expose a factory/runner pair that accepts host adapters instead of importing `plugin-lifeops`. Only add an action directly to `healthPlugin.actions` when it no longer depends on LifeOps storage or routing.
+Action metadata and parameter ownership belongs here. If the action still needs LifeOps persistence or owner access checks, expose a factory/runner pair that accepts host adapters instead of importing `@elizaos/plugin-personal-assistant`. Only add an action directly to `healthPlugin.actions` when it no longer depends on LifeOps storage or routing.
 
 ### Add a default pack
 
@@ -167,9 +167,9 @@ Create `src/default-packs/<name>.ts` implementing `DefaultPack`, add it to `HEAL
 ## Conventions / gotchas
 
 - **Wave-1 soft-dependency posture.** All four `register*` calls in `init` check for the registry on the runtime and log a single skip line if absent — never throw. Callers do not need to guard.
-- **Action registration vs action ownership.** The `actions: []` in `healthPlugin` is still intentional for runtime registration, but action metadata and planning surfaces live here. `plugin-lifeops` may register host-adapted health actions only by calling plugin-health factories.
+- **Action registration vs action ownership.** The `actions: []` in `healthPlugin` is still intentional for runtime registration, but action metadata and planning surfaces live here. `@elizaos/plugin-personal-assistant` may register host-adapted health actions only by calling plugin-health factories.
 - **No `app-lifeops` build-time dep.** `src/util/time.ts` and `src/util/time-util.ts` are local copies of same-named helpers to avoid a circular dependency. Do not replace them with imports from `app-lifeops`.
 - **CircadianInsightContract is the canonical seam.** Any code that needs circadian state or scheduling-window inference resolves it via `getCircadianInsightContract(runtime)` — never deep-imports `src/sleep/*` from outside the plugin.
-- **screen-time aggregation ownership.** `src/screen-time/` owns taxonomy/classification, range/window helpers, mobile signal parsing/status helpers, pure summary/breakdown/metrics builders, system-inactivity filtering, and shared payload contracts. The repository-backed aggregator lives in `plugin-lifeops` while signal-bus ownership remains split across the two plugins.
+- **screen-time aggregation ownership.** `src/screen-time/` owns taxonomy/classification, range/window helpers, mobile signal parsing/status helpers, pure summary/breakdown/metrics builders, system-inactivity filtering, and shared payload contracts. The repository-backed aggregator lives in `@elizaos/plugin-personal-assistant` while signal-bus ownership remains split across the two plugins.
 - **Token encryption.** `src/util/token-encryption.ts` encrypts OAuth tokens at rest using a per-runtime key; do not store raw tokens elsewhere.
 - See root `AGENTS.md` for global architecture rules, logger conventions, and ESM/naming requirements.

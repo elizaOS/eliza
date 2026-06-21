@@ -6,7 +6,7 @@
  * and the route-coverage harness rely on: a single gui view whose
  * `componentExport` ("GoalsView") and `path` ("/goals") must stay in lockstep
  * with the actual exported component, or the shell will mount the wrong / no
- * module. Also pins the four owner actions and the check-in service so the
+ * module. Also pins the migrated owner action and the check-in service so the
  * plugin surface can't silently drift.
  *
  * External-API contract test: N/A — the plugin views/actions perform no fetch
@@ -15,6 +15,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import * as goalsExports from "../src/index.ts";
 import { GoalsCheckinService, GoalsView, goalsPlugin } from "../src/index.ts";
 
 describe("goalsPlugin manifest", () => {
@@ -51,11 +52,17 @@ describe("goalsPlugin manifest", () => {
     expect(typeof GoalsView).toBe("function");
   });
 
-  it("registers migrated owner actions and the check-in service", () => {
+  it("registers only the migrated owner action and the check-in service", () => {
     const actionNames = (goalsPlugin.actions ?? []).map((a) => a.name);
     expect(actionNames).toEqual(["OWNER_GOALS"]);
 
     expect(goalsPlugin.services).toContain(GoalsCheckinService);
+  });
+
+  it("does not export the removed scaffold routine/reminder/alarm actions", () => {
+    expect("ownerRoutinesAction" in goalsExports).toBe(false);
+    expect("ownerRemindersAction" in goalsExports).toBe(false);
+    expect("ownerAlarmsAction" in goalsExports).toBe(false);
   });
 
   it("registers a drizzle schema object for migration", () => {

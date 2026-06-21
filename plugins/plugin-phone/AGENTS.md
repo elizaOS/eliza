@@ -12,7 +12,11 @@ Adds two distinct surfaces to elizaOS. The Android surface provides a full-scree
 - `phoneCallLog` — Dynamic, read-only. Fetches the last 50 Android calls via `@elizaos/capacitor-phone`. Available in `contacts` and `messaging` contexts; requires `ADMIN` role. Returns `{ count, items }` where each item has `id`, `number`, `cachedName`, `date`, `durationSeconds`, `type`, `isNew`.
 
 **Actions**
-- `VOICE_CALL` — Scaffold stub registered in plugin. Sub-op `dial` routes by `recipientKind`: `owner`, `external`, or `e164`. Draft-first; `confirmed:true` to dispatch through the approval queue. **Not yet migrated** — the handler returns a `scaffold_stub` failure; full Twilio dispatch is pending migration from `plugins/plugin-lifeops/src/actions/voice-call.ts`. The Twilio helpers (`sendTwilioSms`, `sendTwilioVoiceCall`) already live in `src/twilio.ts`.
+- None registered here. The canonical `VOICE_CALL` action is currently
+  host-adapted by `@elizaos/plugin-personal-assistant`, which owns owner gating,
+  approval queue flow, recipient policy, and Twilio dispatch. The Twilio helpers
+  (`sendTwilioSms`, `sendTwilioVoiceCall`) live in `src/twilio.ts` for the
+  future provider/action migration.
 
 **Views** (registered in `plugin.ts` under `plugin.views`)
 - `phone` (default) — `PhonePluginView`: full-screen dialer + recent-calls overlay, mounted at `/phone`. The address book is the separate Contacts view; a header "Contacts" button links to it via the `eliza:navigate:view` bus.
@@ -35,8 +39,6 @@ src/
   ui.ts                          Re-exports all UI components under public names
   twilio.ts                      Twilio helpers: sendTwilioSms, sendTwilioVoiceCall,
                                  readTwilioCredentialsFromEnv, billing calc
-  actions/
-    voice-call.ts                VOICE_CALL action (scaffold stub; see TODO in file)
   providers/
     call-log.ts                  phoneCallLog provider (dynamic, ADMIN-gated)
   components/
@@ -109,7 +111,9 @@ The `phoneCallLog` provider reads no env vars; it calls `Phone.listRecentCalls` 
 ## Conventions / gotchas
 
 - **Android-only registration.** `src/register.ts` calls `registerPhoneApp()` only when `isElizaOS()` returns true (i.e. the Android host). The companion page registers unconditionally because it serves iOS as well.
-- **VOICE_CALL action is a stub.** The action is registered and the runtime can plan with it, but the handler returns a `scaffold_stub` failure until the Twilio dispatch is migrated from `plugins/plugin-lifeops`. Do not add parallel inline wrappers — migrate into the existing `src/actions/voice-call.ts` instead.
+- **VOICE_CALL is host-adapted.** Do not add a second phone action here unless
+  the PA-hosted owner gating, approval queue flow, recipient policy, and Twilio
+  dispatch move with parity tests.
 - **Contacts live in their own view.** The Phone overlay has no contacts pane — it links to the separate `@elizaos/plugin-contacts` view via `eliza:navigate:view` (`{ viewId: "contacts", viewPath: "/contacts" }`). Do not re-embed a contacts list or add a `@elizaos/capacitor-contacts` dependency here.
 - **Cross-view number handoff.** The Phone view consumes a pending number via `consumePendingPhoneNumber()` from `@elizaos/ui/app-navigate-view` on mount, pre-seeding the dialer. Contacts (and any caller) seed it with `navigateToPhoneWithNumber(number)` from the same module — the navigation bus carries no payload to a mounted view, so the number is stashed module-side and consumed once.
 - **`ElizaIntentWeb` does not simulate success.** The web fallback for the iOS native bridge explicitly returns `paired: false` and throws on `scheduleAlarm` — intentional, to prevent dev builds from appearing to work without a simulator.

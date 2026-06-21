@@ -106,13 +106,13 @@ export function setActiveViewElements(
  * element-controllable) when that view is the foreground surface. Names
  * confirmed registered in each plugin's actions/ source; plugin-conditional like
  * the rest (a missing-plugin skip when not loaded). Sources:
- *   calendar  — plugins/plugin-calendar/src/actions (CALENDAR, CONFLICT_DETECT)
- *   health    — plugins/plugin-health/src/actions (OWNER_HEALTH, OWNER_SCREENTIME)
- *   focus     — plugins/plugin-blocker/src/actions/block.ts (BLOCK umbrella;
+ *   calendar  — PA-registered calendar actions backed by plugin-calendar
+ *   health    — PA-registered actions built from plugin-health factories
+ *   focus     — PA-registered BLOCK umbrella backed by plugin-blocker;
  *               list_active / release are subactions of it, not standalone actions)
- *   finances  — plugins/plugin-finances/src/actions/finances (OWNER_FINANCES)
+ *   finances  — PA-registered OWNER_FINANCES backed by plugin-finances
  *   inbox     — plugins/plugin-inbox/src/actions/inbox (literal name: "INBOX")
- *   goals     — plugins/plugin-goals/src/actions (OWNER_GOALS, OWNER_ALARMS, OWNER_REMINDERS, OWNER_ROUTINES)
+ *   goals     — plugin-goals owns OWNER_GOALS; PA owns routines/reminders/alarms
  *   todos     — plugins/plugin-personal-assistant/src/actions/owner-surfaces (OWNER_TODOS)
  *   lifeops   — plugins/plugin-personal-assistant/src/actions (PERSONAL_ASSISTANT)
  *   relationships — plugins/plugin-relationships/src/actions/entity.ts
@@ -162,7 +162,7 @@ export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   todos: ["OWNER_TODOS"],
   lifeops: ["PERSONAL_ASSISTANT"],
   relationships: ["ENTITY"],
-  // documents — plugins/plugin-documents/src/actions/owner-documents.ts
+  // documents — PA-registered OWNER_DOCUMENTS backed by plugin-documents routes
   //   (umbrella action "OWNER_DOCUMENTS"; DocumentsView reads/uploads via the
   //   docs-and-portals domain). Added so a contextual "pull up my documents"
   //   switch upweights the domain action while the view is foreground (#8798).

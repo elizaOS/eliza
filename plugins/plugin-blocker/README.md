@@ -8,26 +8,22 @@ and a `focus` overlay view for the dashboard shell.
 
 ## Status
 
-This is the initial scaffold landed as part of decomposing the giant
-`@elizaos/plugin-personal-assistant` into focused plugins. The plugin compiles standalone
-and registers with the runtime; the providers / services are
-intentional stubs that point at the live implementations still resident in
-`plugin-lifeops`. The `BLOCK` umbrella action is still registered by the
-personal-assistant plugin (its persistence couples to the lifeops SQL layer) and
-is intentionally not registered here to avoid double-registration. The next pass
-moves that code over and removes the lifeops copies.
+This plugin owns the focus/blocking platform, schema, providers, services, and
+view. The `BLOCK` umbrella action is still registered by
+`@elizaos/plugin-personal-assistant` because its owner gating, scheduler hooks,
+and chat-oriented dispatch flow remain PA-resident. It is intentionally not
+registered or exported here to avoid duplicate action registration.
 
 ## Migration mapping from `@elizaos/plugin-personal-assistant`
 
-| New location (this plugin) | Source in `plugin-lifeops` |
+| New location (this plugin) | Source in `@elizaos/plugin-personal-assistant` |
 |---|---|
-| `src/actions/block.ts` (`blockAction`) | `plugins/plugin-personal-assistant/src/actions/block.ts` plus the per-target dispatchers `app-block.ts` and `website-block.ts` |
 | `src/providers/website-blocker.ts` | `plugins/plugin-personal-assistant/src/providers/website-blocker.ts` |
 | `src/providers/app-blocker.ts` | `plugins/plugin-personal-assistant/src/providers/app-blocker.ts` |
 | `src/services/website-blocker.ts` (`WebsiteBlockerService`) | `plugins/plugin-personal-assistant/src/website-blocker/` (`engine.ts`, `service.ts`, `access.ts`, `permissions.ts`, `public.ts`, `proactive-block-bridge.ts`, `roles.ts`, `chat-integration/`) |
 | `src/services/app-blocker.ts` (`AppBlockerService`) | `plugins/plugin-personal-assistant/src/app-blocker/` (`engine.ts`, `access.ts`, `types.ts`) |
-| `src/db/schema.ts` (`pgSchema('app_blocker')`) | new — there was no drizzle table in lifeops; previous state lived in disk-backed engine files. The new schema gives the migrated services a persistent store and lets the runtime own migrations through `@elizaos/plugin-sql`. |
-| `src/components/focus/FocusView.tsx` | new — no equivalent existed in plugin-lifeops; this is the dashboard view for the extracted plugin. |
+| `src/db/schema.ts` (`pgSchema('app_blocker')`) | new — there was no previous drizzle table; state lived in disk-backed engine files. The schema gives the services a persistent store and lets the runtime own migrations through `@elizaos/plugin-sql`. |
+| `src/components/focus/FocusView.tsx` | new dashboard view for the extracted plugin. |
 
 ## Surface
 
@@ -51,10 +47,9 @@ Both gate to `contexts: ["focus", "automation"]`.
 - `focus` — path `/focus`, component `FocusView`, bundled to
   `dist/views/bundle.js` by `vite.config.views.ts`.
 
-### Action (not yet registered)
-- `BLOCK` (`src/actions/block.ts`) — stub; target/subaction matrix exists but
-  the action is not yet added to the plugin object. It is currently registered
-  by `@elizaos/plugin-personal-assistant`.
+### Action
+- None registered here. `BLOCK` is host-adapted by
+  `@elizaos/plugin-personal-assistant`.
 
 ## Commands
 
