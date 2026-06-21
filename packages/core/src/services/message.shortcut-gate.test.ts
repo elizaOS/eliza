@@ -147,4 +147,43 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		});
 		expect(result).toBeNull();
 	});
+
+	it("fires a natural-language shortcut only when ELIZA_SHORTCUTS_NL=1 (voice/typed parity)", async () => {
+		const { runtime, useModel, emitEvent } = makeRuntime();
+		// A natural shortcut targeting ECHO_COMMAND, eligible only when NL is on.
+		(runtime.shortcutRegistry as ShortcutRegistry).register({
+			id: "nl:echo",
+			kind: "natural",
+			patterns: [{ template: "echo {what}" }],
+			target: { kind: "action", name: "ECHO_COMMAND" },
+		});
+
+		// Default: NL disabled → no match (the turn would proceed to the LLM).
+		const off = await runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message: msg("echo hello there"),
+			state: {} as State,
+			responseId,
+			senderRole: "OWNER",
+		});
+		expect(off).toBeNull();
+
+		// Enabled (mirrors a typed message and an ASR transcript): fires the action.
+		process.env.ELIZA_SHORTCUTS_NL = "1";
+		const on = await runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message: msg("echo hello there"),
+			state: {} as State,
+			responseId,
+			senderRole: "OWNER",
+		});
+		expect(on?.kind).toBe("direct_reply");
+		expect(useModel).not.toHaveBeenCalled();
+		const shortcutEvents = emitEvent.mock.calls.filter(
+			(c) => c[0] === EventType.SHORTCUT_FIRED,
+		);
+		expect(shortcutEvents).toHaveLength(1);
+	});
 });
