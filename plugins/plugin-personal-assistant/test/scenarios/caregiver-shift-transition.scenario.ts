@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "caregiver-shift-transition",
   title: "Assistant coordinates a caregiver shift transition",
   domain: "executive.family",

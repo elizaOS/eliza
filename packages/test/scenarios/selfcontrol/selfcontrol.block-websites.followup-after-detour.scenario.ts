@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "selfcontrol.block-websites.followup-after-detour",
   title: "Block previously named websites after an unrelated detour",
   domain: "selfcontrol",

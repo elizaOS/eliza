@@ -8,6 +8,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
  * sense.
  */
 export default scenario({
+  lane: "live-only",
 	id: "app-create-no-existing",
 	title: "APP create — no fuzzy matches, scaffold path",
 	domain: "app-control",

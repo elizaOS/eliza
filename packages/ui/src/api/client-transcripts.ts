@@ -1,0 +1,81 @@
+/**
+ * Transcript API client methods (#8789) — list / get / create / delete over
+ * `/api/transcripts`. Declaration-merged onto `ElizaClient` (the side-effect
+ * import in `client.ts` installs the prototype methods), matching the other
+ * `client-*` domain modules.
+ */
+
+import type {
+  Transcript,
+  TranscriptScope,
+  TranscriptSegment,
+  TranscriptSource,
+  TranscriptSummary,
+} from "@elizaos/shared/transcripts";
+import { ElizaClient } from "./client-base";
+
+/** Body the recording pipeline POSTs to create a transcript record. The
+ *  world/room/entity ids are optional — the server derives them from the agent
+ *  context when the shell client doesn't supply them. */
+export interface TranscriptCreateInput {
+  worldId?: string;
+  roomId?: string;
+  entityId?: string;
+  title?: string;
+  source?: TranscriptSource;
+  scope?: TranscriptScope;
+  segments: TranscriptSegment[];
+  audioUrl?: string;
+  audioContentType?: string;
+  /** Base64 WAV bytes — the server persists them to the media store and sets
+   *  audioUrl. The shell sends this instead of audioUrl (it can't write files). */
+  audioBase64?: string;
+  createdAt?: number;
+}
+
+declare module "./client-base" {
+  interface ElizaClient {
+    listTranscripts(
+      roomId?: string,
+    ): Promise<{ transcripts: TranscriptSummary[] }>;
+    getTranscript(id: string): Promise<{ transcript: Transcript }>;
+    createTranscript(
+      input: TranscriptCreateInput,
+    ): Promise<{ transcript: Transcript }>;
+    deleteTranscript(id: string): Promise<{ ok: boolean }>;
+  }
+}
+
+ElizaClient.prototype.listTranscripts = async function (
+  this: ElizaClient,
+  roomId?: string,
+) {
+  const q = roomId ? `?roomId=${encodeURIComponent(roomId)}` : "";
+  return this.fetch(`/api/transcripts${q}`);
+};
+
+ElizaClient.prototype.getTranscript = async function (
+  this: ElizaClient,
+  id: string,
+) {
+  return this.fetch(`/api/transcripts/${encodeURIComponent(id)}`);
+};
+
+ElizaClient.prototype.createTranscript = async function (
+  this: ElizaClient,
+  input: TranscriptCreateInput,
+) {
+  return this.fetch("/api/transcripts", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+};
+
+ElizaClient.prototype.deleteTranscript = async function (
+  this: ElizaClient,
+  id: string,
+) {
+  return this.fetch(`/api/transcripts/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+};

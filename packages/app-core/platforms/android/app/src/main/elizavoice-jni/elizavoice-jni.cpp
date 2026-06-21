@@ -1042,4 +1042,319 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeVadSelfTest(JNIEnv* env, jclass,
     return to_jstring(env, j);
 }
 
+// ── Text generation (LLM) ops — the GPU-accelerated text path ────────────
+//
+// Wrap the fused streaming-LLM ABI (eliza_inference_llm_stream_*), pooled
+// embeddings (eliza_inference_embed), end-of-turn scoring
+// (eliza_inference_llm_eot_score, ABI v11), and the tokenizer. When this JNI
+// host is built against the DYNAMIC-Vulkan libelizainference (libggml-vulkan.so
+// staged alongside it), llm_stream_open offloads the model to the GPU in the
+// bionic app process automatically — the path the musl bun agent cannot take.
+
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamSupported(JNIEnv*, jclass) {
+    return static_cast<jint>(eliza_inference_llm_stream_supported());
+}
+
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbedSupported(JNIEnv*, jclass) {
+    return static_cast<jint>(eliza_inference_embed_supported());
+}
+
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeEotSupported(JNIEnv*, jclass) {
+    return static_cast<jint>(eliza_inference_llm_eot_supported());
+}
+
+// Tokenize text -> int[] token ids. addSpecial adds BOS; parseSpecial renders
+// special tokens (<|im_start|> etc.) from the input.
+JNIEXPORT jintArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeTokenize(JNIEnv* env, jclass,
+                                                    jlong ctxHandle,
+                                                    jstring jText,
+                                                    jboolean addSpecial,
+                                                    jboolean parseSpecial) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    const std::string text = from_jstring(env, jText);
+    int* toks = nullptr;
+    size_t n = 0;
+    char* outError = nullptr;
+    const int rc = eliza_inference_tokenize(
+        ctx, text.c_str(), text.size(), addSpecial ? 1 : 0,
+        parseSpecial ? 1 : 0, &toks, &n, &outError);
+    if (rc != ELIZA_OK) {
+        throw_runtime(env, "tokenize", outError);
+        return nullptr;
+    }
+    jintArray out = env->NewIntArray(static_cast<jsize>(n));
+    if (out && n > 0) {
+        env->SetIntArrayRegion(out, 0, static_cast<jsize>(n),
+                               reinterpret_cast<const jint*>(toks));
+    }
+    if (toks) eliza_inference_free_tokens(toks);
+    return out;
+}
+
+// Pooled, L2-normalized sentence embedding (pooling: 1=MEAN default) ->
+// float[n_embd].
+JNIEXPORT jfloatArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbed(JNIEnv* env, jclass,
+                                                 jlong ctxHandle, jstring jText,
+                                                 jint pooling) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    const std::string text = from_jstring(env, jText);
+    std::vector<float> out(4096, 0.0f);
+    int dim = 0;
+    char* outError = nullptr;
+    const int rc = eliza_inference_embed(ctx, text.c_str(), text.size(),
+                                         pooling > 0 ? pooling : 1, out.data(),
+                                         out.size(), &dim, &outError);
+    if (rc != ELIZA_OK) {
+        throw_runtime(env, "embed", outError);
+        return nullptr;
+    }
+    jfloatArray ja = env->NewFloatArray(dim);
+    if (ja && dim > 0) env->SetFloatArrayRegion(ja, 0, dim, out.data());
+    return ja;
+}
+
+// End-of-turn score: next-token P(targetToken | tokens) -> float.
+JNIEXPORT jfloat JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeEotScore(JNIEnv* env, jclass,
+                                                    jlong ctxHandle,
+                                                    jintArray jTokens,
+                                                    jint targetToken) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    const jsize n = env->GetArrayLength(jTokens);
+    std::vector<int32_t> toks(static_cast<size_t>(n));
+    if (n > 0) {
+        env->GetIntArrayRegion(jTokens, 0, n,
+                               reinterpret_cast<jint*>(toks.data()));
+    }
+    float prob = 0.0f, topProb = 0.0f;
+    int32_t topTok = -1;
+    char* outError = nullptr;
+    const int rc = eliza_inference_llm_eot_score(ctx, toks.data(), toks.size(),
+                                                 targetToken, &prob, &topTok,
+                                                 &topProb, &outError);
+    if (rc != ELIZA_OK) {
+        throw_runtime(env, "eot_score", outError);
+        return 0.0f;
+    }
+    return prob;
+}
+
+// Open a streaming-LLM session. nGpuLayers: -1 = all-GPU (default), 0 = CPU
+// (the lib ignores 0 when libggml-vulkan is linked; the CPU/GPU choice is the
+// staged LIB VARIANT, see the per-device selection). drafterPath ("" = none)
+// enables MTP speculative decoding.
+JNIEXPORT jlong JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamOpen(
+    JNIEnv* env, jclass, jlong ctxHandle, jint maxTokens, jfloat temperature,
+    jfloat topP, jint topK, jint nGpuLayers, jstring jDrafterPath) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    const std::string drafter = from_jstring(env, jDrafterPath);
+    eliza_llm_stream_config_t cfg;
+    std::memset(&cfg, 0, sizeof(cfg));
+    cfg.max_tokens = maxTokens;
+    cfg.temperature = temperature;
+    cfg.top_p = topP > 0 ? topP : 1.0f;
+    cfg.top_k = topK;
+    cfg.repeat_penalty = 1.0f;
+    cfg.n_gpu_layers = nGpuLayers;
+    cfg.mtp_drafter_path = drafter.empty() ? nullptr : drafter.c_str();
+    char* outError = nullptr;
+    EliLlmStream* s = eliza_inference_llm_stream_open(ctx, &cfg, &outError);
+    if (!s) {
+        throw_runtime(env, "llm_stream_open returned null", outError);
+        return 0;
+    }
+    return reinterpret_cast<jlong>(s);
+}
+
+JNIEXPORT void JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamPrefill(JNIEnv* env, jclass,
+                                                            jlong streamHandle,
+                                                            jintArray jTokens) {
+    auto* s = reinterpret_cast<EliLlmStream*>(streamHandle);
+    const jsize n = env->GetArrayLength(jTokens);
+    std::vector<int32_t> toks(static_cast<size_t>(n));
+    if (n > 0) {
+        env->GetIntArrayRegion(jTokens, 0, n,
+                               reinterpret_cast<jint*>(toks.data()));
+    }
+    char* outError = nullptr;
+    const int rc = eliza_inference_llm_stream_prefill(s, toks.data(),
+                                                      toks.size(), &outError);
+    if (rc != ELIZA_OK) throw_runtime(env, "llm_stream_prefill", outError);
+}
+
+// Pull the next decode step. Returns JSON {text, done, drafted, accepted}:
+// `text` is the detokenized chunk (may span multiple committed tokens via MTP),
+// `done` true at the final step. `text` is JSON-escaped.
+JNIEXPORT jstring JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamNext(JNIEnv* env, jclass,
+                                                         jlong streamHandle) {
+    auto* s = reinterpret_cast<EliLlmStream*>(streamHandle);
+    int32_t toks[256];
+    char text[4096];
+    size_t nout = 0;
+    int32_t drafted = 0, accepted = 0;
+    char* outError = nullptr;
+    const int rc = eliza_inference_llm_stream_next(
+        s, toks, 256, &nout, text, sizeof(text), &drafted, &accepted, &outError);
+    if (rc < 0) {
+        throw_runtime(env, "llm_stream_next", outError);
+        return nullptr;
+    }
+    std::string esc;
+    for (const char* p = text; *p; ++p) {
+        switch (*p) {
+            case '"': esc += "\\\""; break;
+            case '\\': esc += "\\\\"; break;
+            case '\n': esc += "\\n"; break;
+            case '\r': esc += "\\r"; break;
+            case '\t': esc += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(*p) < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x",
+                                  static_cast<unsigned char>(*p));
+                    esc += buf;
+                } else {
+                    esc += *p;
+                }
+        }
+    }
+    std::string json = "{\"text\":\"" + esc +
+                       "\",\"done\":" + (rc == 1 ? "true" : "false") +
+                       ",\"nout\":" + std::to_string(nout) +
+                       ",\"drafted\":" + std::to_string(drafted) +
+                       ",\"accepted\":" + std::to_string(accepted) + "}";
+    return to_jstring(env, json);
+}
+
+JNIEXPORT void JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamClose(JNIEnv*, jclass,
+                                                          jlong streamHandle) {
+    eliza_inference_llm_stream_close(
+        reinterpret_cast<EliLlmStream*>(streamHandle));
+}
+
+// Reset a persistent stream (clear KV + sampler + counters) for warm reuse.
+// Returns 1 on success, 0 if the stream can't be reset (MTP / null).
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamReset(JNIEnv*, jclass,
+                                                          jlong streamHandle) {
+    const int rc = eliza_inference_llm_stream_reset(
+        reinterpret_cast<EliLlmStream*>(streamHandle));
+    return static_cast<jint>(rc == ELIZA_OK ? 1 : 0);
+}
+
+// ── LLM self-test (one native call: ctx→tokenize→stream→generate) ─────────
+//
+// THE KEYSTONE PROOF: runs a whole greedy text generation in ONE native call,
+// in the bionic app process, against whatever libelizainference.so is staged
+// into jniLibs. When that lib is the dynamic-Vulkan variant, ggml-vulkan logs
+// "Found 1 Vulkan devices: Mali-G715" + "offloaded N/N layers to GPU" to
+// logcat (the in-process GPU evidence). Returns JSON {ok,text,tokens,ms,tokS}.
+JNIEXPORT jstring JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
+                                                       jstring jBundleDir,
+                                                       jstring jPrompt,
+                                                       jint maxTokens) {
+    const std::string bundleDir = from_jstring(env, jBundleDir);
+    const std::string prompt = from_jstring(env, jPrompt);
+    const int genCap = maxTokens > 0 ? maxTokens : 32;
+    char* outError = nullptr;
+
+    EliInferenceContext* ctx =
+        eliza_inference_create(bundleDir.c_str(), &outError);
+    if (!ctx) { throw_runtime(env, "llmSelfTest: create", outError); return nullptr; }
+
+    int* tok = nullptr; size_t tn = 0;
+    if (eliza_inference_tokenize(ctx, prompt.c_str(), prompt.size(), 1, 1, &tok,
+                                 &tn, &outError) != ELIZA_OK) {
+        eliza_inference_destroy(ctx);
+        throw_runtime(env, "llmSelfTest: tokenize", outError);
+        return nullptr;
+    }
+
+    eliza_llm_stream_config_t cfg;
+    std::memset(&cfg, 0, sizeof(cfg));
+    cfg.max_tokens = genCap;
+    cfg.temperature = 0.0f;  // greedy, deterministic
+    cfg.top_k = 1;
+    cfg.top_p = 1.0f;
+    cfg.repeat_penalty = 1.0f;
+    cfg.n_gpu_layers = -1;   // all-GPU when the vulkan lib is staged
+    EliLlmStream* s = eliza_inference_llm_stream_open(ctx, &cfg, &outError);
+    if (!s) {
+        if (tok) eliza_inference_free_tokens(tok);
+        eliza_inference_destroy(ctx);
+        throw_runtime(env, "llmSelfTest: stream_open", outError);
+        return nullptr;
+    }
+
+    const double t0 = []() {
+        timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+        return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+    }();
+    if (eliza_inference_llm_stream_prefill(s, reinterpret_cast<int32_t*>(tok),
+                                           tn, &outError) != ELIZA_OK) {
+        eliza_inference_llm_stream_close(s);
+        if (tok) eliza_inference_free_tokens(tok);
+        eliza_inference_destroy(ctx);
+        throw_runtime(env, "llmSelfTest: prefill", outError);
+        return nullptr;
+    }
+
+    std::string text;
+    int produced = 0;
+    while (produced < genCap) {
+        int32_t toks[256]; char chunk[4096]; size_t nout = 0;
+        int32_t dd = 0, da = 0;
+        const int rc = eliza_inference_llm_stream_next(
+            s, toks, 256, &nout, chunk, sizeof(chunk), &dd, &da, &outError);
+        if (rc < 0) break;
+        text += chunk;
+        produced += static_cast<int>(nout);
+        if (rc == 1) break;
+    }
+    const double t1 = []() {
+        timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+        return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+    }();
+    eliza_inference_llm_stream_close(s);
+    if (tok) eliza_inference_free_tokens(tok);
+    eliza_inference_destroy(ctx);
+
+    const double ms = t1 - t0;
+    const double tokS = ms > 0 ? produced * 1000.0 / ms : 0.0;
+    LOGI("LLM SELFTEST: generated %d tokens in %.0fms (%.2f tok/s) — \"%.80s\"",
+         produced, ms, tokS, text.c_str());
+
+    // JSON-escape the generated text.
+    std::string esc;
+    for (char c : text) {
+        switch (c) {
+            case '"': esc += "\\\""; break;
+            case '\\': esc += "\\\\"; break;
+            case '\n': esc += "\\n"; break;
+            case '\r': esc += "\\r"; break;
+            case '\t': esc += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char b[8]; std::snprintf(b, sizeof(b), "\\u%04x",
+                                             static_cast<unsigned char>(c));
+                    esc += b;
+                } else esc += c;
+        }
+    }
+    std::string json = "{\"ok\":true,\"tokens\":" + std::to_string(produced) +
+                       ",\"ms\":" + std::to_string(ms) + ",\"tokS\":" +
+                       std::to_string(tokS) + ",\"text\":\"" + esc + "\"}";
+    return to_jstring(env, json);
+}
+
 }  // extern "C"

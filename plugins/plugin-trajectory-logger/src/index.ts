@@ -7,7 +7,6 @@
  * re-exports it alongside the UI and SDK surface for browser/view-bundle and
  * direct consumers.
  */
-export { default, trajectoryLoggerPlugin } from "./plugin.js";
 
 export type {
   TrajectoryDetail,
@@ -15,6 +14,7 @@ export type {
 } from "./api-client";
 export type { PhaseName, PhaseStatus, PhaseSummary } from "./phases";
 export { PHASES, summarizePhases } from "./phases";
+export { default, trajectoryLoggerPlugin } from "./plugin.js";
 export * from "./register";
 export {
   registerTrajectoryLoggerApp,

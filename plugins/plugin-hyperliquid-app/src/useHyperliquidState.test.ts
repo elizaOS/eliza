@@ -6,9 +6,9 @@
 // =false leaves markets/positions/orders null and skips the three read calls;
 // a rejection sets error and clears loading; refresh() re-invokes the reads.
 
+import { ApiError } from "@elizaos/ui";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import type {
   HyperliquidMarketsResponse,
   HyperliquidOrdersResponse,
@@ -132,6 +132,29 @@ describe("useHyperliquidState", () => {
     });
     expect(result.current.error).toBe("status fetch failed");
     expect(result.current.status).toBeNull();
+  });
+
+  it.each([
+    404, 503,
+  ])("degrades to unavailable (no raw error) when the routes %i", async (httpStatus) => {
+    hyperliquidClient.hyperliquidStatus.mockRejectedValue(
+      new ApiError({
+        kind: "http",
+        path: "/api/hyperliquid/status",
+        message: "Not found",
+        status: httpStatus,
+      }),
+    );
+
+    const { result } = renderHook(() => useHyperliquidState());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.unavailable).toBe(true);
+    expect(result.current.error).toBeNull();
+    expect(result.current.status).toBeNull();
+    expect(result.current.markets).toBeNull();
   });
 
   it("re-invokes the reads when refresh() is called", async () => {

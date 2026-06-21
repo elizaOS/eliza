@@ -201,9 +201,17 @@ describe("LifeOps decomposition — composed plugin surface", () => {
     // (packages/agent/src/runtime/view-action-affinity.ts). Inlined to keep this
     // test free of a cross-package import; the agent drift test guards the names
     // themselves, this guards that a loaded plugin actually registers them.
+    // OWNER_SCREENTIME is a Darwin-only umbrella: its only end-to-end data
+    // source (the native activity tracker) is macOS-only, so plugin.ts gates it
+    // behind `isDarwin()` (platformGatedActionUmbrellas). The affinity map lists
+    // it unconditionally for the planner, but it only *registers* as an action
+    // on darwin hosts — so only require it to resolve there.
+    const isDarwinHost = process.platform === "darwin";
     const LIFEOPS_VIEW_ACTIONS: Record<string, string[]> = {
       calendar: ["CALENDAR", "CONFLICT_DETECT"],
-      health: ["OWNER_HEALTH", "OWNER_SCREENTIME"],
+      health: isDarwinHost
+        ? ["OWNER_HEALTH", "OWNER_SCREENTIME"]
+        : ["OWNER_HEALTH"],
       // The focus view's domain action is the BLOCK umbrella (list_active /
       // release are now subactions of it, not standalone actions).
       focus: ["BLOCK"],

@@ -1028,13 +1028,12 @@ test("trajectory viewer route refreshes, filters, and changes selected detail", 
   await expect(page.getByTestId("trajectories-view")).toBeVisible();
   let sidebar = await openVisiblePageSidebar(page, "trajectories-sidebar");
   await expect(sidebar.getByText("scenario-alpha")).toBeVisible();
+  // The minimal redesign dropped the manual Refresh button: the list stays
+  // current via a silent ~15s background poll. Assert the poll re-queries the
+  // list source (no user-facing refresh control).
   const listCount = recorder.listRequestCount();
-  await clickRequired(
-    sidebar.locator("button[title]").first(),
-    "trajectory refresh",
-  );
   await expect
-    .poll(() => recorder.listRequestCount())
+    .poll(() => recorder.listRequestCount(), { timeout: 30_000 })
     .toBeGreaterThan(listCount);
   await closeMobilePageSidebar(page);
 
@@ -1065,13 +1064,10 @@ test("trajectory viewer route refreshes, filters, and changes selected detail", 
     page.getByText("Beta response from Playwright trajectory fixture.").first(),
   ).toBeVisible();
 
-  sidebar = await openVisiblePageSidebar(page, "trajectories-sidebar");
-  // The trajectories search moved to the floating chat composer; the sidebar
-  // stays open to show the (re-queried) list.
-  await page.getByTestId("chat-composer-textarea").fill("beta");
-  await expect.poll(() => recorder.listRequests().at(-1)?.search).toBe("beta");
-  await expect(sidebar.getByText("scenario-beta")).toBeVisible();
-  await expect(sidebar.getByText("scenario-alpha")).toHaveCount(0);
+  // NOTE: the trajectories list search moved to the floating chat composer.
+  // This suite hides that overlay in beforeEach (it floats over the viewer), so
+  // the chat-driven search is exercised by the dedicated builtin-pages spec
+  // ("trajectories view loads and search re-queries"), not here.
 
   await expectNoPageDiagnostics(page, "trajectory viewer interactions");
 });

@@ -20,6 +20,9 @@
       "react/*": ["../../node_modules/@types/react/*"],
       "react-dom": ["../../node_modules/@types/react-dom"],
       "react-dom/*": ["../../node_modules/@types/react-dom/*"],
+      "csstype": [
+        "../../node_modules/.bun/csstype@3.2.3/node_modules/csstype/index.d.ts"
+      ],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],

@@ -11,6 +11,7 @@ import {
 import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "health.weekly-step-trend",
   title: "Weekly step trend compares to prior week",
   domain: "lifeops.health",

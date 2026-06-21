@@ -305,9 +305,21 @@ function isMobileLocalAgentUrl(value: string): boolean {
   return isConfiguredMobileLocalAgentUrl(value);
 }
 
+/**
+ * Whether the selected runtime runs an on-device agent that serves local-agent
+ * IPC. Both `local` (on-device inference) and `cloud-hybrid` (on-device runtime
+ * that routes inference through Eliza Cloud) run the bundled agent on the
+ * device and therefore must be allowed to use the in-process IPC bridge — only
+ * a pure `cloud` runtime talks exclusively to a remote agent.
+ */
+function iosRuntimeHasOnDeviceAgent(): boolean {
+  const mode = readRuntimeMode();
+  return mode === "local" || mode === "cloud-hybrid";
+}
+
 function canUseIosLocalAgentIpc(): boolean {
   if (!isNativeIos()) return false;
-  if (readRuntimeMode() === "local" || shouldRequireFullBunRuntime()) {
+  if (iosRuntimeHasOnDeviceAgent() || shouldRequireFullBunRuntime()) {
     return true;
   }
   return !usesStrictIosNetworkPolicy();
@@ -614,7 +626,11 @@ export async function handleIosLocalAgentNativeRequest(
   if (!/^[A-Z]{1,16}$/.test(method)) {
     throw new Error("Unsupported HTTP method");
   }
-  if (isNativeIosCloudRuntime() && !isCloudRuntimeAllowedLocalAgentPath(path)) {
+  if (
+    isNativeIosCloudRuntime() &&
+    !iosRuntimeHasOnDeviceAgent() &&
+    !isCloudRuntimeAllowedLocalAgentPath(path)
+  ) {
     throw new TypeError(
       "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active",
     );

@@ -15,6 +15,7 @@ import {
   embeddedExecutions,
   embeddedTags,
   embeddedWorkflows,
+  workflowRevisions,
 } from '../db/schema';
 import type {
   WorkflowCredential,
@@ -22,6 +23,8 @@ import type {
   WorkflowDefinitionResponse,
   WorkflowExecution,
   WorkflowNode,
+  WorkflowRevision,
+  WorkflowRevisionOperation,
   WorkflowTag,
 } from '../types/index';
 import { WorkflowApiError } from '../types/index';
@@ -119,6 +122,13 @@ interface StoredWorkflowRow {
   versionId: string;
 }
 
+interface StoredWorkflowRevisionRow extends StoredWorkflowRow {
+  id: string;
+  workflowId: string;
+  capturedAt: string;
+  operation: WorkflowRevisionOperation;
+}
+
 interface ExecuteOptions {
   mode?: WorkflowExecuteMode;
   /**
@@ -197,6 +207,21 @@ function responseFromWorkflow(
     createdAt,
     updatedAt,
     versionId,
+  };
+}
+
+function revisionFromRow(row: StoredWorkflowRevisionRow): WorkflowRevision {
+  return {
+    id: row.id,
+    workflowId: row.workflowId,
+    versionId: row.versionId,
+    name: row.workflow.name,
+    active: row.workflow.active === true,
+    workflow: cloneJson(row.workflow),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    capturedAt: row.capturedAt,
+    operation: row.operation,
   };
 }
 
@@ -1460,6 +1485,32 @@ export class EmbeddedWorkflowService extends Service {
           ON "workflow"."embedded_workflows" ("updated_at")
         `);
         await db.execute(sql`
+          CREATE TABLE IF NOT EXISTS "workflow"."workflow_revisions" (
+            "id" text PRIMARY KEY,
+            "workflow_id" text NOT NULL,
+            "version_id" text NOT NULL,
+            "name" text NOT NULL,
+            "active" boolean DEFAULT false NOT NULL,
+            "workflow" jsonb NOT NULL,
+            "created_at" text NOT NULL,
+            "updated_at" text NOT NULL,
+            "captured_at" text NOT NULL,
+            "operation" text NOT NULL
+          )
+        `);
+        await db.execute(sql`
+          CREATE INDEX IF NOT EXISTS "idx_workflow_revisions_workflow_id"
+          ON "workflow"."workflow_revisions" ("workflow_id")
+        `);
+        await db.execute(sql`
+          CREATE UNIQUE INDEX IF NOT EXISTS "idx_workflow_revisions_workflow_version"
+          ON "workflow"."workflow_revisions" ("workflow_id", "version_id")
+        `);
+        await db.execute(sql`
+          CREATE INDEX IF NOT EXISTS "idx_workflow_revisions_captured_at"
+          ON "workflow"."workflow_revisions" ("captured_at")
+        `);
+        await db.execute(sql`
           CREATE TABLE IF NOT EXISTS "workflow"."embedded_executions" (
             "id" text PRIMARY KEY,
             "workflow_id" text NOT NULL,
@@ -1553,6 +1604,7 @@ export class EmbeddedWorkflowService extends Service {
     this.assertRegisteredNodes(workflow);
     const existing = await this.getStoredWorkflow(id);
     const db = this.getDb();
+    await this.captureWorkflowRevision(id, existing, 'update');
     const updatedAt = nowIso();
     const versionId = randomUUID();
     const stored = normalizeWorkflowPayload(workflow, id, existing.workflow.active ?? false);
@@ -1611,6 +1663,7 @@ export class EmbeddedWorkflowService extends Service {
     this.clearSchedules(id);
     const existing = await this.getStoredWorkflow(id);
     const db = this.getDb();
+    await this.captureWorkflowRevision(id, existing, 'delete');
     await db.delete(embeddedWorkflows).where(eq(embeddedWorkflows.id, id));
     if (!existing) {
       throw new WorkflowApiError(`Workflow not found: ${id}`, 404);
@@ -1621,6 +1674,7 @@ export class EmbeddedWorkflowService extends Service {
     const entry = await this.getStoredWorkflow(id);
     this.assertHostSupports(entry.workflow);
     const db = this.getDb();
+    await this.captureWorkflowRevision(id, entry, 'activate');
     entry.workflow.active = true;
     entry.updatedAt = nowIso();
     entry.versionId = randomUUID();
@@ -1640,6 +1694,7 @@ export class EmbeddedWorkflowService extends Service {
   async deactivateWorkflow(id: string): Promise<WorkflowDefinitionResponse> {
     const entry = await this.getStoredWorkflow(id);
     const db = this.getDb();
+    await this.captureWorkflowRevision(id, entry, 'deactivate');
     entry.workflow.active = false;
     entry.updatedAt = nowIso();
     entry.versionId = randomUUID();
@@ -1666,6 +1721,7 @@ export class EmbeddedWorkflowService extends Service {
       if (!tag) throw new WorkflowApiError(`Tag not found: ${tagId}`, 404);
       tags.push({ id: tag.id, name: tag.name, createdAt: tag.createdAt, updatedAt: tag.updatedAt });
     }
+    await this.captureWorkflowRevision(id, entry, 'tags');
     entry.workflow.tags = cloneJson(tags);
     entry.updatedAt = nowIso();
     entry.versionId = randomUUID();
@@ -1678,6 +1734,81 @@ export class EmbeddedWorkflowService extends Service {
       })
       .where(eq(embeddedWorkflows.id, id));
     return cloneJson(tags);
+  }
+
+  async listWorkflowRevisions(
+    workflowId: string,
+    limit = 20
+  ): Promise<{ data: WorkflowRevision[] }> {
+    await this.ensureSchema();
+    const db = this.getDb();
+    const rows = await db
+      .select()
+      .from(workflowRevisions)
+      .where(eq(workflowRevisions.workflowId, workflowId))
+      .orderBy(desc(workflowRevisions.capturedAt))
+      .limit(Math.min(Math.max(1, limit), 50));
+    return {
+      data: rows.map((row) =>
+        revisionFromRow({
+          id: row.id,
+          workflowId: row.workflowId,
+          workflow: row.workflow,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+          versionId: row.versionId,
+          capturedAt: row.capturedAt,
+          operation: row.operation as WorkflowRevisionOperation,
+        })
+      ),
+    };
+  }
+
+  async restoreWorkflowRevision(
+    workflowId: string,
+    versionId: string
+  ): Promise<WorkflowDefinitionResponse> {
+    await this.ensureSchema();
+    const db = this.getDb();
+    const revisionRows = await db
+      .select()
+      .from(workflowRevisions)
+      .where(
+        and(
+          eq(workflowRevisions.workflowId, workflowId),
+          eq(workflowRevisions.versionId, versionId)
+        )
+      )
+      .limit(1);
+    const revision = revisionRows[0];
+    if (!revision) {
+      throw new WorkflowApiError(`Workflow revision not found: ${workflowId}/${versionId}`, 404);
+    }
+
+    const current = await this.getStoredWorkflow(workflowId);
+    const restored = normalizeWorkflowPayload(revision.workflow, workflowId, revision.active);
+    this.assertRegisteredNodes(restored);
+    this.assertHostSupports(restored);
+    await this.captureWorkflowRevision(workflowId, current, 'restore');
+
+    const updatedAt = nowIso();
+    const nextVersionId = randomUUID();
+    await db
+      .update(embeddedWorkflows)
+      .set({
+        name: restored.name,
+        active: restored.active ?? false,
+        workflow: restored,
+        updatedAt,
+        versionId: nextVersionId,
+      })
+      .where(eq(embeddedWorkflows.id, workflowId));
+    if (restored.active) {
+      await this.armSchedules(workflowId);
+    } else {
+      await this.clearSchedules(workflowId);
+    }
+    return responseFromWorkflow(restored, current.createdAt, updatedAt, nextVersionId);
   }
 
   async createCredential(credential: {
@@ -1884,6 +2015,29 @@ export class EmbeddedWorkflowService extends Service {
       executions.push(await this.runWorkflow(wf, 'trigger'));
     }
     return executions;
+  }
+
+  private async captureWorkflowRevision(
+    workflowId: string,
+    entry: StoredWorkflowRow,
+    operation: WorkflowRevisionOperation
+  ): Promise<void> {
+    await this.ensureSchema();
+    await this.getDb()
+      .insert(workflowRevisions)
+      .values({
+        id: randomUUID(),
+        workflowId,
+        versionId: entry.versionId,
+        name: entry.workflow.name,
+        active: entry.workflow.active === true,
+        workflow: cloneJson(entry.workflow),
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+        capturedAt: nowIso(),
+        operation,
+      })
+      .onConflictDoNothing();
   }
 
   private async getStoredWorkflow(id: string): Promise<StoredWorkflowRow> {
@@ -2282,6 +2436,14 @@ export class EmbeddedWorkflowService extends Service {
       startedAt: startedAt.toISOString(),
       workflowId: workflowData.id ?? '',
       status: 'running',
+      ...(triggerData || idempotencyKey
+        ? {
+            customData: {
+              ...(triggerData ? { triggerData } : {}),
+              ...(idempotencyKey ? { idempotencyKey } : {}),
+            },
+          }
+        : {}),
     };
     await this.saveExecution(pending, idempotencyKey);
 

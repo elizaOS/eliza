@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "work-thread-handoff-recovery",
   title: "Assistant recovers a stalled work thread and prepares a handoff",
   domain: "executive.delegation",

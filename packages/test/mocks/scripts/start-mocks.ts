@@ -288,10 +288,12 @@ function envVarsFor(
     out.ELIZA_MOCK_PAYMENTS_BASE = baseUrls.payments;
   }
   if (envs.includes("anthropic")) {
-    out.ELIZA_MOCK_ANTHROPIC_BASE = baseUrls.anthropic;
+    // Include the `/v1` prefix so the value is a drop-in for `ANTHROPIC_BASE_URL`
+    // (the openai.json/anthropic.json routes live under `/v1/...`).
+    out.ELIZA_MOCK_ANTHROPIC_BASE = `${baseUrls.anthropic}/v1`;
   }
   if (envs.includes("openai")) {
-    out.ELIZA_MOCK_OPENAI_BASE = baseUrls.openai;
+    out.ELIZA_MOCK_OPENAI_BASE = `${baseUrls.openai}/v1`;
   }
   if (envs.includes("vision")) {
     out.ELIZA_MOCK_VISION_BASE = baseUrls.vision;

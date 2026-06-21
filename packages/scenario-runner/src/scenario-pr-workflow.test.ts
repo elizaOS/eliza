@@ -264,8 +264,9 @@ describe("scenario PR workflow contract", () => {
     expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
       "SCENARIO_LLM_PROXY_STRICT=1",
     );
+    // The deterministic lane selects by lane tag, not a hand-maintained id list.
     expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
-      "deterministic-pr-smoke,deterministic-app-control-actions,deterministic-generated-app-routes,deterministic-todos-actions,deterministic-streaming-actions,deterministic-xr-view-actions,deterministic-mcp-actions-routes,deterministic-workflow-actions-routes,deterministic-github-actions-routes,deterministic-view-switching,deterministic-app-control-nl-routing,deterministic-browser-actions,deterministic-lifeops-scheduled-tasks,deterministic-coding-tools-actions,deterministic-agent-skills-actions,deterministic-media-emote-actions,deterministic-gitpathology-actions",
+      "--lane pr-deterministic",
     );
     expect(scenarioRunnerPackage.scripts?.["test:live:e2e"]).not.toContain(
       "SCENARIO_USE_LLM_PROXY",

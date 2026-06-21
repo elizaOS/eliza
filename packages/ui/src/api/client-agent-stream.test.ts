@@ -83,6 +83,41 @@ describe("ElizaClient agent streaming transport", () => {
     });
   });
 
+  it("surfaces done event action results for page handoffs", async () => {
+    const encoder = new TextEncoder();
+    const read = vi.fn().mockResolvedValueOnce({
+      done: false,
+      value: encoder.encode(
+        'data: {"type":"done","fullText":"Created.","agentName":"Eliza","actionResults":[{"actionName":"WORKFLOW","success":true,"values":{"workflowId":"workflow-1"}}]}\n\n',
+      ),
+    });
+    const request = vi.fn(async () => {
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({ read, cancel: vi.fn(async () => {}) }),
+        },
+      } as unknown as Response;
+    });
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "create workflow",
+      vi.fn(),
+    );
+
+    expect(result.actionResults).toEqual([
+      {
+        actionName: "WORKFLOW",
+        success: true,
+        values: { workflowId: "workflow-1" },
+      },
+    ]);
+  });
+
   it("omits reasoning when the done event has no thought", async () => {
     const encoder = new TextEncoder();
     const read = vi

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "selfcontrol.override-requires-auth",
   title: "Early unblock asks whether a block exists first",
   domain: "selfcontrol",

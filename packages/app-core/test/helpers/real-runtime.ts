@@ -11,6 +11,19 @@ import type { LiveProviderConfig, LiveProviderName } from "./live-provider";
 
 const helperDir = path.dirname(fileURLToPath(import.meta.url));
 
+// Vite 7's import-analysis resolves string-literal dynamic imports at transform
+// time even inside branches that never run, throwing "Failed to resolve entry"
+// for the optional connector plugins below whose dist isn't built in the unit
+// Plugin Tests lane — which fails collection of every real-db spec that imports
+// this helper, even ones that never opt into those plugins. Route the specifier
+// through a variable so the analyzer leaves it as a pure runtime import; the
+// call sites are already config-gated and wrapped in try/catch.
+function importOptionalPlugin(
+  specifier: string,
+): Promise<Record<string, unknown>> {
+  return import(/* @vite-ignore */ specifier);
+}
+
 export interface RealTestRuntimeOptions {
   /** Name for the test agent character. Defaults to "TestAgent". */
   characterName?: string;
@@ -414,8 +427,8 @@ export async function createRealTestRuntime(
       process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS !== "1"
     ) {
       try {
-        const { default: localEmbeddingPlugin } = await import(
-          "@elizaos/plugin-local-inference"
+        const { default: localEmbeddingPlugin } = await importOptionalPlugin(
+          "@elizaos/plugin-local-inference",
         );
         configureLocalEmbeddingPlugin(localEmbeddingPlugin as Plugin);
         await runtime.registerPlugin(localEmbeddingPlugin as Plugin);
@@ -432,8 +445,8 @@ export async function createRealTestRuntime(
     // Register Discord plugin if requested and token available
     if (options?.withDiscord && process.env.DISCORD_BOT_TOKEN?.trim()) {
       try {
-        const { default: discordPlugin } = await import(
-          "@elizaos/plugin-discord"
+        const { default: discordPlugin } = await importOptionalPlugin(
+          "@elizaos/plugin-discord",
         );
         await runtime.registerPlugin(discordPlugin as Plugin);
         logger.info("[real-runtime] Registered Discord plugin");
@@ -445,8 +458,8 @@ export async function createRealTestRuntime(
     // Register Telegram plugin if requested and token available
     if (options?.withTelegram && process.env.TELEGRAM_BOT_TOKEN?.trim()) {
       try {
-        const { default: telegramPlugin } = await import(
-          "@elizaos/plugin-telegram"
+        const { default: telegramPlugin } = await importOptionalPlugin(
+          "@elizaos/plugin-telegram",
         );
         await runtime.registerPlugin(telegramPlugin as Plugin);
         logger.info("[real-runtime] Registered Telegram plugin");

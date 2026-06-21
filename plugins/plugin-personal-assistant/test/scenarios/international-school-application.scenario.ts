@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "international-school-application",
   title: "Assistant coordinates an international school application packet",
   domain: "executive.family",

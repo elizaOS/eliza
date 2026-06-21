@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getConnectorCommands } from "../src/connector-catalog";
+import {
+	commandVisibleForView,
+	getConnectorCommands,
+} from "../src/connector-catalog";
 
 /**
  * The navigation half of the catalog must point at real app routes and expose
@@ -100,5 +103,31 @@ describe("connector catalog — client command surface filtering", () => {
 		expect(
 			clear?.target.kind === "client" ? clear.target.clientAction : null,
 		).toBe("clear-chat");
+	});
+});
+
+describe("connector catalog — view-scoped command visibility (#8798)", () => {
+	it("treats global commands (no views) as always visible", () => {
+		expect(commandVisibleForView(undefined, null)).toBe(true);
+		expect(commandVisibleForView(undefined, "calendar")).toBe(true);
+		expect(commandVisibleForView([], "calendar")).toBe(true);
+	});
+
+	it("shows a view-scoped command only while its view is active", () => {
+		expect(commandVisibleForView(["calendar"], "calendar")).toBe(true);
+		expect(commandVisibleForView(["calendar", "todos"], "todos")).toBe(true);
+		expect(commandVisibleForView(["calendar"], "wallet")).toBe(false);
+		// No active view → scoped commands are hidden.
+		expect(commandVisibleForView(["calendar"], null)).toBe(false);
+		expect(commandVisibleForView(["calendar"], undefined)).toBe(false);
+	});
+
+	it("never drops global commands regardless of the active view", () => {
+		const withoutView = getConnectorCommands("gui");
+		const withView = getConnectorCommands("gui", { activeViewId: "wallet" });
+		// Built-ins are all global, so the active view neither adds nor removes any.
+		expect(new Set(withView.map((c) => c.name))).toEqual(
+			new Set(withoutView.map((c) => c.name)),
+		);
 	});
 });

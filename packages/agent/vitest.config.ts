@@ -124,6 +124,23 @@ export default defineConfig({
           "index.ts",
         ),
       },
+      // Source-alias plugin-app-control so view-id drift tests see the current
+      // exports (MATCHER_VIEW_IDS / CONTEXT_VIEWS / INTENT_VIEW_IDS) instead of a
+      // stale dist build.
+      {
+        find: /^@elizaos\/plugin-app-control$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-app-control/src/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-app-control\/(.+)$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-app-control/src/$1",
+        ),
+      },
     ],
   },
   test: {

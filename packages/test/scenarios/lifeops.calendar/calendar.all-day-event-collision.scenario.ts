@@ -43,6 +43,7 @@ function checkAgentSurfacesAllDayConflict(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.all-day-event-collision",
   title: "Rescheduling into an all-day OOO day surfaces the conflict",
   domain: "lifeops.calendar",

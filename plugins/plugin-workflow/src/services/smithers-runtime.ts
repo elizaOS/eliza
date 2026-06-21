@@ -1,26 +1,14 @@
+import { spawn } from 'node:child_process';
 import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
-import type { WorkflowDefinition, WorkflowExecution, WorkflowNode } from '../types/index';
-
-declare const Bun: {
-  spawn(
-    command: string[],
-    options: {
-      cwd: string;
-      env: NodeJS.ProcessEnv;
-      stdin: 'pipe';
-      stdout: 'pipe';
-      stderr: 'pipe';
-    }
-  ): {
-    stdin: { write(chunk: string): void; end(): void };
-    stdout: ReadableStream<BufferSource>;
-    stderr: ReadableStream<Uint8Array>;
-    exited: Promise<number>;
-  };
-};
+import type {
+  WorkflowDefinition,
+  WorkflowExecution,
+  WorkflowExecutionEngineMetrics,
+  WorkflowNode,
+} from '../types/index';
 
 interface SmithersNodeExecutionData {
   json: Record<string, unknown>;
@@ -53,16 +41,7 @@ export interface SmithersWorkflowRunOptions {
   ) => Promise<SmithersNodeExecutionData[][]>;
 }
 
-interface SmithersRunMetrics {
-  nodes: number;
-  levels: number;
-  maxConcurrency: number;
-  started: number;
-  finished: number;
-  failed: number;
-  skipped: number;
-  retries: number;
-}
+type SmithersRunMetrics = Omit<WorkflowExecutionEngineMetrics, 'provider'>;
 
 interface SmithersProtocolRequest {
   type: 'executeNode';
@@ -91,6 +70,11 @@ function sanitizeWorkflowName(name: string): string {
 function resolveSmithersDbPath(workflowId: string): string {
   const safeId = sanitizeWorkflowName(workflowId || 'anonymous');
   return join(process.cwd(), '.eliza', 'smithers', `${safeId}.sqlite`);
+}
+
+function resolveBunBinary(): string {
+  if (typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined') return process.execPath;
+  return process.env.BUN_BIN || 'bun';
 }
 
 /**
@@ -139,6 +123,24 @@ function toErrorPayload(error: unknown): { message: string; stack?: string } {
   return { message: String(error) };
 }
 
+function buildSmithersWorkerEnv(payload: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, ELIZA_SMITHERS_RUN_PAYLOAD: payload };
+  for (const key of Object.keys(env)) {
+    const normalized = key.toUpperCase();
+    if (
+      normalized === 'NODE_V8_COVERAGE' ||
+      normalized === 'BUN_TEST' ||
+      normalized.startsWith('BUN_TEST_') ||
+      normalized.startsWith('VITEST') ||
+      normalized.startsWith('NYC_') ||
+      normalized.includes('COVERAGE')
+    ) {
+      delete env[key];
+    }
+  }
+  return env;
+}
+
 /**
  * Source for the per-run Smithers subprocess. Each workflow run executes in a
  * fresh Bun process so the global Smithers singleton + SQLite state stay isolated
@@ -164,6 +166,7 @@ function createSmithersScript(): string {
     const pending = new Map();
     let requestSeq = 0;
     const metrics = { nodes: 0, levels: 0, maxConcurrency: 0, started: 0, finished: 0, failed: 0, skipped: 0, retries: 0 };
+    let lastNodeError = null;
 
     function emit(message) {
       process.stdout.write(JSON.stringify(message) + '\n');
@@ -244,7 +247,11 @@ function createSmithersScript(): string {
       let lastError;
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         try { return await sendNodeRequest(node.name, inputData); }
-        catch (error) { lastError = error; if (attempt < maxAttempts) { metrics.retries += 1; await delay(node.waitBetweenTries ?? 1000); } }
+        catch (error) {
+          lastError = error;
+          lastNodeError = { nodeName: node.name, message: error?.message ?? String(error) };
+          if (attempt < maxAttempts) { metrics.retries += 1; await delay(node.waitBetweenTries ?? 1000); }
+        }
       }
       if (node.continueOnFail) return [[{ json: { error: lastError?.message ?? String(lastError) } }]];
       throw lastError;
@@ -355,6 +362,9 @@ function createSmithersScript(): string {
       emit({ type: 'workflowResult', execution, metrics });
       process.exit(0);
     } catch (error) {
+      if (lastNodeError) {
+        console.error('Node "' + lastNodeError.nodeName + '" failed: ' + lastNodeError.message);
+      }
       console.error(error?.stack ?? error?.message ?? String(error));
       process.exit(1);
     }
@@ -386,19 +396,24 @@ export async function runWorkflowWithSmithers({
     rootDir: process.cwd(),
   });
   const pluginRoot = await resolvePluginRoot();
-  const proc = Bun.spawn([process.execPath, '-e', createSmithersScript()], {
+  const proc = spawn(resolveBunBinary(), ['-e', createSmithersScript()], {
     cwd: pluginRoot,
-    env: { ...process.env, ELIZA_SMITHERS_RUN_PAYLOAD: payload },
-    stdin: 'pipe',
-    stdout: 'pipe',
-    stderr: 'pipe',
+    env: buildSmithersWorkerEnv(payload),
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
   const byName = new Map(plan.enabledNodes.map((node) => [node.name, node]));
   let executionResult: WorkflowExecution | null = null;
   let runMetrics: SmithersRunMetrics | null = null;
+  let stdinEnded = false;
+
+  const endStdin = (): void => {
+    if (stdinEnded) return;
+    stdinEnded = true;
+    proc.stdin.end();
+  };
 
   const writeResponse = (response: SmithersProtocolResponse): void => {
-    proc.stdin.write(`${JSON.stringify(response)}\n`);
+    if (proc.stdin.writable) proc.stdin.write(`${JSON.stringify(response)}\n`);
   };
 
   // Node executions are dispatched concurrently so a parallel level's nodes
@@ -418,6 +433,7 @@ export async function runWorkflowWithSmithers({
     if (message.type === 'workflowResult') {
       executionResult = message.execution;
       runMetrics = message.metrics ?? null;
+      endStdin();
       return;
     }
     if (message.type !== 'executeNode') return;
@@ -442,28 +458,28 @@ export async function runWorkflowWithSmithers({
     );
   };
 
-  const readStdout = async (): Promise<void> => {
-    const reader = proc.stdout.pipeThrough(new TextDecoderStream()).getReader();
-    let buffer = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += value;
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() ?? '';
-      for (const line of lines) handleLine(line);
-    }
-    if (buffer.trim()) handleLine(buffer);
-  };
+  let stdoutBuffer = '';
+  let stderr = '';
+  proc.stdout.setEncoding('utf8');
+  proc.stdout.on('data', (chunk: string) => {
+    stdoutBuffer += chunk;
+    const lines = stdoutBuffer.split(/\r?\n/);
+    stdoutBuffer = lines.pop() ?? '';
+    for (const line of lines) handleLine(line);
+  });
+  proc.stderr.setEncoding('utf8');
+  proc.stderr.on('data', (chunk: string) => {
+    stderr += chunk;
+  });
 
-  const stderrPromise = new Response(proc.stderr).text();
-  const exitPromise = proc.exited;
-  await Promise.all([readStdout(), exitPromise]);
-  await Promise.all(inflight);
-  const stderr = await stderrPromise;
-  const exitCode = await exitPromise;
+  const exitCode = await new Promise<number>((resolve, reject) => {
+    proc.on('error', reject);
+    proc.on('close', (code) => resolve(code ?? 1));
+  });
+  if (stdoutBuffer.trim()) handleLine(stdoutBuffer);
+  if (exitCode === 0) await Promise.all(inflight);
 
-  proc.stdin.end();
+  endStdin();
 
   if (exitCode !== 0) {
     throw new Error(`Smithers workflow execution failed: ${stderr.trim() || `exit ${exitCode}`}`);
@@ -471,6 +487,30 @@ export async function runWorkflowWithSmithers({
   if (!executionResult) {
     throw new Error('Smithers workflow execution completed without returning a workflow result');
   }
+  const completedExecution = executionResult as WorkflowExecution;
+  const completedMetrics = runMetrics as SmithersRunMetrics | null;
+  const executionWithMetrics: WorkflowExecution = completedMetrics
+    ? {
+        ...completedExecution,
+        data: {
+          ...completedExecution.data,
+          resultData: {
+            ...completedExecution.data?.resultData,
+            engine: {
+              provider: 'smithers',
+              nodes: completedMetrics.nodes,
+              levels: completedMetrics.levels,
+              maxConcurrency: completedMetrics.maxConcurrency,
+              started: completedMetrics.started,
+              finished: completedMetrics.finished,
+              failed: completedMetrics.failed,
+              skipped: completedMetrics.skipped,
+              retries: completedMetrics.retries,
+            },
+          },
+        },
+      }
+    : completedExecution;
 
   logger.info(
     {
@@ -482,5 +522,5 @@ export async function runWorkflowWithSmithers({
     'workflow executed'
   );
 
-  return executionResult;
+  return executionWithMetrics;
 }

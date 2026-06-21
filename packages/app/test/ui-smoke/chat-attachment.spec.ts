@@ -185,7 +185,9 @@ test("chat overlay: attaching an image renders a pending thumbnail and sends the
   // 1) Set a file on the hidden input behind the attach control.
   const attach = page.getByTestId("chat-composer-attach");
   await expect(attach).toBeVisible({ timeout: 15_000 });
-  const fileInput = page.locator('input[type="file"][accept="image/*"]');
+  // The composer upload input accepts every chat attachment kind (images,
+  // audio, video, PDFs, text), not just images — match its leading image/* tag.
+  const fileInput = page.locator('input[type="file"][accept^="image/*"]');
   await fileInput.setInputFiles({
     name: "smoke.png",
     mimeType: "image/png",

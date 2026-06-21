@@ -157,4 +157,52 @@ final class ElizaVoiceNative {
 
     /** Run the whole pipeline (ctx→open→feed→flush) on one PCM buffer in one call. */
     static native String nativePipelineSelfTest(String bundleDir, float[] pcm, int feedSamples);
+
+    // ── Text generation (LLM) — the GPU-accelerated text path ────────────
+    //
+    // When this host is built against the dynamic-Vulkan libelizainference
+    // (libggml-vulkan.so staged alongside), llm_stream_open offloads the model
+    // to the GPU in the bionic app process — the path the musl bun agent can't
+    // take. nGpuLayers=-1 means all-GPU (default); the CPU/GPU choice is the
+    // staged LIB variant, not this flag.
+
+    /** {@code eliza_inference_llm_stream_supported()}. */
+    static native int nativeLlmStreamSupported();
+
+    /** {@code eliza_inference_embed_supported()}. */
+    static native int nativeEmbedSupported();
+
+    /** {@code eliza_inference_llm_eot_supported()} (ABI v11). */
+    static native int nativeEotSupported();
+
+    /** Tokenize text → int[] token ids. */
+    static native int[] nativeTokenize(long ctxHandle, String text, boolean addSpecial, boolean parseSpecial);
+
+    /** Pooled (MEAN) L2-normalized sentence embedding → float[n_embd]. */
+    static native float[] nativeEmbed(long ctxHandle, String text, int pooling);
+
+    /** End-of-turn score: next-token P(targetToken | tokens). */
+    static native float nativeEotScore(long ctxHandle, int[] tokens, int targetToken);
+
+    /** Open a streaming-LLM session (nGpuLayers=-1 all-GPU; drafterPath ""=none). */
+    static native long nativeLlmStreamOpen(long ctxHandle, int maxTokens, float temperature, float topP, int topK, int nGpuLayers, String drafterPath);
+
+    /** Feed pre-tokenized prompt tokens into the session KV before the first next(). */
+    static native void nativeLlmStreamPrefill(long streamHandle, int[] tokens);
+
+    /** Pull the next decode step → JSON {text, done, drafted, accepted}. */
+    static native String nativeLlmStreamNext(long streamHandle);
+
+    static native void nativeLlmStreamClose(long streamHandle);
+
+    /** Reset a persistent stream (clear KV + sampler) for warm reuse. 1=ok, 0=no. */
+    static native int nativeLlmStreamReset(long streamHandle);
+
+    /**
+     * KEYSTONE proof: run a whole greedy text generation in one native call,
+     * in the bionic app process. With the dynamic-Vulkan lib staged, ggml-vulkan
+     * logs the Mali device + layer offload to logcat. Returns JSON
+     * {ok, text, tokens, ms, tokS}.
+     */
+    static native String nativeLlmSelfTest(String bundleDir, String prompt, int maxTokens);
 }

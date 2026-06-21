@@ -70,6 +70,7 @@ describe("createVoiceCapture", () => {
     isLocalInferenceAsrReadyMock.mockResolvedValue(true);
     transcribeLocalInferenceWavMock.mockResolvedValue({
       text: "Ada Lovelace",
+      words: [],
     });
     isNativePlatformMock.mockReturnValue(false);
     getTalkModePluginMock.mockReturnValue({} as never);
@@ -109,11 +110,14 @@ describe("createVoiceCapture", () => {
       autoStop: { silenceMs: 200 },
       onAutoStop: expect.any(Function),
     });
-    expect(onTranscript).toHaveBeenCalledWith({
-      text: "Ada Lovelace",
-      final: true,
-      backend: "local-inference",
-    });
+    expect(onTranscript).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Ada Lovelace",
+        final: true,
+        backend: "local-inference",
+        words: [],
+      }),
+    );
     expect(onStateChange).toHaveBeenLastCalledWith("stopped", undefined);
   });
 

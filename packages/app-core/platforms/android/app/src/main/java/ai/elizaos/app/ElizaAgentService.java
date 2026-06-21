@@ -95,6 +95,15 @@ public class ElizaAgentService extends Service {
 
     private static final int AGENT_PORT = 31337;
     private static final String HEALTH_URL = "http://127.0.0.1:" + AGENT_PORT + "/api/health";
+
+    /**
+     * Abstract-namespace AF_UNIX socket the in-process bionic GPU inference
+     * server ({@link ElizaBionicInferenceServer}) binds, and the musl agent's
+     * BionicHostLoader connects to. Abstract namespace (no filesystem path)
+     * avoids SELinux file-label issues under the priv_app domain. The musl
+     * agent reaches it as {@code Bun.connect({unix:"\0" + name})}.
+     */
+    static final String BIONIC_INFERENCE_SOCKET_NAME = "eliza_bionic_infer_v1";
     private static final String LOCAL_AGENT_BASE_URL = "http://127.0.0.1:" + AGENT_PORT;
     private static final int LOCAL_REQUEST_DEFAULT_TIMEOUT_MS = 10_000;
     private static final int LOCAL_REQUEST_MAX_TIMEOUT_MS = 600_000;
@@ -152,6 +161,8 @@ public class ElizaAgentService extends Service {
     private Thread stdoutPump;
     private Thread stderrPump;
     private WatchdogThread watchdog;
+    /** In-process bionic GPU inference host; non-null only when delegating. */
+    private volatile ElizaBionicInferenceServer bionicInferenceServer;
     private Thread startWorker;
     private volatile boolean shuttingDown;
     private volatile boolean detachedAgentMode;
@@ -642,6 +653,10 @@ public class ElizaAgentService extends Service {
         if (watchdog != null) {
             watchdog.interrupt();
             watchdog = null;
+        }
+        if (bionicInferenceServer != null) {
+            bionicInferenceServer.stop();
+            bionicInferenceServer = null;
         }
         stopAgentProcess();
         NotificationManager mgr = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
@@ -1408,7 +1423,46 @@ public class ElizaAgentService extends Service {
             boolean legacyLibllamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
             boolean nativeLlamaBundled = fusedInferenceBundled || legacyLibllamaBundled;
             boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
-            if (nativeLlamaBundled && !env.containsKey("ELIZA_LOCAL_LLAMA")) {
+            // When the dynamic-Vulkan fused lib is staged (libelizainference.so +
+            // libggml-vulkan.so), the GPU is only reachable from THIS bionic app
+            // process — the musl agent's ld can't load libvulkan's HIDL closure
+            // (project_android_gpu_vulkan_wall). So instead of pointing the musl
+            // agent at the bun:ffi AOSP loader (ELIZA_LOCAL_LLAMA=1 → the wall),
+            // delegate inference over an abstract-namespace UDS to the in-process
+            // ElizaBionicInferenceServer, which runs libelizainference on the Mali
+            // GPU. The musl agent never tries to load the native lib itself.
+            boolean delegateToBionicHost = fusedInferenceBundled && abiGgmlVulkan.isFile();
+            if (delegateToBionicHost) {
+                agentEnv.put("ELIZA_BIONIC_HOST_DELEGATED", "1");
+                agentEnv.put("ELIZA_BIONIC_INFERENCE_SOCK", BIONIC_INFERENCE_SOCKET_NAME);
+                // The bionic host reloads the model per call (the fork's Vulkan
+                // backend corrupts shared GPU weights on reuse), so even a
+                // token-capped post-turn reflection runs ~40-60s — past the
+                // 30s default post-delivery side-effect timeout. That reflection
+                // is non-blocking background work (the reply is already
+                // delivered), so give it room to finish and persist instead of
+                // logging a spurious timeout every turn. Don't clobber an
+                // explicit operator override.
+                if (!agentEnv.containsKey("ELIZA_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS")) {
+                    agentEnv.put("ELIZA_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS", "120000");
+                }
+                Log.i(TAG, "agent/" + abiDir.getName()
+                    + "/libggml-vulkan.so present; delegating inference to the in-process"
+                    + " bionic Vulkan host over UDS \"" + BIONIC_INFERENCE_SOCKET_NAME
+                    + "\" (NOT taking the musl bun:ffi AOSP path)");
+                // Stand up the in-process GPU inference server BEFORE the agent
+                // spawns so the abstract socket is already bound when the agent's
+                // BionicHostLoader first connects. Idempotent across restarts.
+                if (bionicInferenceServer == null) {
+                    String defaultBundleDir =
+                        new File(getFilesDir(), "eliza-1/bundle").getAbsolutePath();
+                    bionicInferenceServer =
+                        new ElizaBionicInferenceServer(BIONIC_INFERENCE_SOCKET_NAME, defaultBundleDir);
+                }
+                bionicInferenceServer.start();
+            }
+            if (!delegateToBionicHost && nativeLlamaBundled
+                    && !env.containsKey("ELIZA_LOCAL_LLAMA")) {
                 agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
                 String bundledLib = fusedInferenceBundled
                     ? "libelizainference.so"
@@ -1423,7 +1477,10 @@ public class ElizaAgentService extends Service {
                 // this a Vulkan-capable build still runs entirely on CPU. CPU-
                 // only builds (riscv64, or arm64 without the Vulkan backend) ship
                 // no libggml-vulkan.so, so they correctly stay on CPU.
-                if (abiGgmlVulkan.isFile()
+                // Skipped when delegating: the GPU offload happens in the bionic
+                // host, not the musl bun:ffi path (which can't reach Vulkan).
+                if (!delegateToBionicHost
+                        && abiGgmlVulkan.isFile()
                         && !env.containsKey("ELIZA_AOSP_LLAMA_USE_GPU")
                         && !env.containsKey("ELIZA_LLAMA_N_GPU_LAYERS")) {
                     agentEnv.put("ELIZA_AOSP_LLAMA_USE_GPU", "true");

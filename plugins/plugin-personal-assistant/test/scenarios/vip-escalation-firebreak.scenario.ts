@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "vip-escalation-firebreak",
   title: "Assistant protects focus while escalating a true VIP interruption",
   domain: "executive.escalation",

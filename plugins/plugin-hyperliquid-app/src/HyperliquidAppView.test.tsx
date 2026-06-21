@@ -344,25 +344,31 @@ describe("HyperliquidAppView (standard/XR)", () => {
     expect(notice.textContent).toBe("network down");
   });
 
-  it("re-invokes the read methods when the refresh button is clicked", async () => {
-    mockReads();
-    render(React.createElement(HyperliquidAppView, ctx()));
-    await screen.findByText("ETH");
+  it("auto-refreshes the read methods on the 15s interval", async () => {
+    // The standard view dropped its manual Refresh button in the law-8 de-slop
+    // pass; it now auto-refreshes on the useHyperliquidState 15s interval. Drive
+    // that with fake timers and assert all four reads fire again.
+    vi.useFakeTimers();
+    try {
+      mockReads();
+      render(React.createElement(HyperliquidAppView, ctx()));
+      // Flush the initial mount reads.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(1);
+      expect(hyperliquidClient.hyperliquidMarkets).toHaveBeenCalledTimes(1);
 
-    expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(1);
-    expect(hyperliquidClient.hyperliquidMarkets).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByLabelText("Refresh"));
-
-    await waitFor(() => {
+      // Advance past the auto-refresh interval.
+      await vi.advanceTimersByTimeAsync(15_000);
       expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(2);
-    });
-    expect(hyperliquidClient.hyperliquidMarkets).toHaveBeenCalledTimes(2);
-    expect(hyperliquidClient.hyperliquidPositions).toHaveBeenCalledTimes(2);
-    expect(hyperliquidClient.hyperliquidOrders).toHaveBeenCalledTimes(2);
+      expect(hyperliquidClient.hyperliquidMarkets).toHaveBeenCalledTimes(2);
+      expect(hyperliquidClient.hyperliquidPositions).toHaveBeenCalledTimes(2);
+      expect(hyperliquidClient.hyperliquidOrders).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("shows the loading spinner and disables refresh while status is pending", async () => {
+  it("shows the loading spinner while status is pending", async () => {
     // Status promise never resolves -> loading stays true, markets stays null.
     let _resolve: ((s: HyperliquidStatusResponse) => void) | undefined;
     hyperliquidClient.hyperliquidStatus.mockReturnValue(
@@ -372,11 +378,11 @@ describe("HyperliquidAppView (standard/XR)", () => {
     );
     render(React.createElement(HyperliquidAppView, ctx()));
 
+    // While loading-with-no-data the whole surface is the spinner (the manual
+    // refresh control is only rendered alongside loaded data — law-8 de-slop).
     expect(await screen.findByTestId("spinner")).toBeTruthy();
     expect(screen.getByText("Loading Hyperliquid state")).toBeTruthy();
-    expect(
-      (screen.getByLabelText("Refresh") as HTMLButtonElement).disabled,
-    ).toBe(true);
+    expect(screen.queryByRole("button", { name: /refresh/i })).toBeNull();
   });
 
   it("calls exitToApps when the back button is clicked", async () => {

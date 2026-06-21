@@ -36,6 +36,24 @@ export interface NetworkStatusChangeDetail {
 
 // ── Voice / config ───────────────────────────────────────────────────────
 export const VOICE_CONFIG_UPDATED_EVENT = "eliza:voice-config-updated" as const;
+/**
+ * A server-side agent action (START/STOP_TRANSCRIPTION) drives the shell's
+ * transcription capture through this event: the `voice-control` agent-event
+ * stream is re-dispatched here, and {@link useShellController} toggles the mic
+ * accordingly. Keeps the agent→shell command decoupled (same pattern as the
+ * tutorial/slash navigation events).
+ */
+export const VOICE_CONTROL_EVENT = "eliza:voice-control" as const;
+export interface VoiceControlEventDetail {
+  command: "start" | "stop";
+}
+
+/** Dispatch a transcription start/stop command to the shell. */
+export function dispatchVoiceControl(detail: VoiceControlEventDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(VOICE_CONTROL_EVENT, { detail }));
+}
+
 export const CHAT_AVATAR_VOICE_EVENT = "eliza:chat-avatar-voice" as const;
 export const APP_EMOTE_EVENT = "eliza:app-emote" as const;
 /** After `/api/cloud/status` — chat voice reloads config so cloud-backed TTS mode matches the server snapshot. */
@@ -65,6 +83,41 @@ export const FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT =
 
 // ── Sidebar sync ─────────────────────────────────────────────────────────
 export const SELF_STATUS_SYNC_EVENT = "eliza:self-status-refresh" as const;
+
+// ── Shared → dedicated cloud-agent handoff ───────────────────────────────
+/**
+ * First-run provisions a personal cloud agent and lands the user in chat on the
+ * shared REST adapter while the dedicated container boots; a background
+ * supervisor then copies the conversation into the container and swaps the live
+ * client over. That swap used to be silent (`.catch(() => {})`). This event is
+ * the typed seam onto which the handoff's lifecycle is surfaced so chat-state /
+ * a progress indicator can render it instead of the user seeing nothing.
+ */
+export const CLOUD_HANDOFF_PHASE_EVENT = "eliza:cloud-handoff-phase" as const;
+
+/**
+ * `migrating` — personal container is provisioning; user is on the shared
+ * adapter. `switched` — conversation copied and the live client moved to the
+ * dedicated container (`switched-empty` when there was nothing to copy yet).
+ * `timed-out` / `failed` — the container never became ready (or an I/O step
+ * threw); the user safely stays on the working shared adapter. Mirrors
+ * `ConversationHandoffStatus` plus the `migrating` in-flight phase.
+ */
+export type CloudHandoffPhase =
+  | "migrating"
+  | "switched"
+  | "switched-empty"
+  | "timed-out"
+  | "failed";
+
+export interface CloudHandoffPhaseDetail {
+  agentId: string;
+  phase: CloudHandoffPhase;
+  /** Messages copied into the dedicated container on `switched`. */
+  imported?: number;
+  /** Error message on `failed`. */
+  error?: string;
+}
 
 // ── Tutorial ─────────────────────────────────────────────────────────────
 /**
@@ -137,7 +190,8 @@ export type ElizaWindowEventName =
   | typeof VRM_TELEPORT_COMPLETE_EVENT
   | typeof FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT
   | typeof SELF_STATUS_SYNC_EVENT
-  | typeof TUTORIAL_CHAT_CONTROL_EVENT;
+  | typeof TUTORIAL_CHAT_CONTROL_EVENT
+  | typeof CLOUD_HANDOFF_PHASE_EVENT;
 
 export type ElizaEventName = ElizaDocumentEventName | ElizaWindowEventName;
 
@@ -169,6 +223,17 @@ export function dispatchElizaCloudStatusUpdated(
   detail: ElizaCloudStatusUpdatedDetail,
 ): void {
   dispatchWindowEvent(ELIZA_CLOUD_STATUS_UPDATED_EVENT, detail);
+}
+
+/**
+ * Surface a shared→dedicated handoff phase. Replaces the silent
+ * `startCloudAgentHandoff(...).catch(() => {})` discard so the typed
+ * {@link ConversationHandoffResult} reaches the UI.
+ */
+export function dispatchCloudHandoffPhase(
+  detail: CloudHandoffPhaseDetail,
+): void {
+  dispatchWindowEvent(CLOUD_HANDOFF_PHASE_EVENT, detail);
 }
 
 export function readPendingFocusConnector(): string | null {

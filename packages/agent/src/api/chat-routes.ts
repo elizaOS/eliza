@@ -14,6 +14,7 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import {
+  type ActionResult,
   type AgentRuntime,
   ChannelType,
   type Content,
@@ -65,6 +66,7 @@ import {
 import {
   isInsufficientCreditsError,
   isInsufficientCreditsMessage,
+  isRateLimitError,
 } from "./credit-detection.ts";
 import {
   buildWalletActionNotExecutedReply,
@@ -651,6 +653,7 @@ export interface ChatGenerationResult {
   localInference?: LocalInferenceChatMetadata;
   usedActionCallbacks?: boolean;
   actionCallbackHistory?: string[];
+  actionResults?: ChatActionResultSummary[];
   responseContent?: Content | null;
   responseMessages?: Array<{
     id?: string;
@@ -665,6 +668,14 @@ export interface ChatGenerationResult {
     isEstimated: boolean;
     llmCalls: number;
   };
+}
+
+export interface ChatActionResultSummary {
+  actionName?: string;
+  success: boolean;
+  text?: string;
+  error?: string;
+  values?: Record<string, unknown>;
 }
 
 export interface ChatGenerateOptions {
@@ -869,6 +880,11 @@ async function resolveExactDocumentValueForChat(
 const PROVIDER_ISSUE_CHAT_REPLY = "Sorry, I'm having a provider issue";
 const INSUFFICIENT_CREDITS_CHAT_REPLY =
   "Eliza Cloud credits are depleted. Top up the cloud balance and try again.";
+// A transient 429 (no billing context) — e.g. the shared model key briefly
+// over its requests/min under concurrent load. Tell the user it's momentary so
+// they retry, instead of the generic "provider issue" which reads as broken.
+const RATE_LIMITED_CHAT_REPLY =
+  "I'm being rate-limited right now — give it a few seconds and try again.";
 // Used by paths #1-#3: planner picked IGNORE/NONE/empty REPLY, action ran but
 // emitted no text callback, or normalized text became empty. None of these are
 // provider failures, so the message must not blame the provider.
@@ -922,6 +938,9 @@ function classifySyntheticChatFailureText(
   }
   if (normalized === INSUFFICIENT_CREDITS_CHAT_REPLY.toLowerCase()) {
     return "insufficient_credits";
+  }
+  if (normalized === RATE_LIMITED_CHAT_REPLY.toLowerCase()) {
+    return "rate_limited";
   }
   if (normalized === NO_PROVIDER_CHAT_MESSAGE.toLowerCase()) {
     return "no_provider";
@@ -998,12 +1017,12 @@ function buildRuntimeActionNameLookup(
   return lookup;
 }
 
-function listExecutedRuntimeActions(
+function readRuntimeActionResults(
   runtime: AgentRuntime,
   messageId: UUID | undefined,
-): Set<string> {
+): unknown[] {
   if (!messageId) {
-    return new Set();
+    return [];
   }
 
   const getActionResults = (
@@ -1012,34 +1031,126 @@ function listExecutedRuntimeActions(
     }
   ).getActionResults;
   if (typeof getActionResults !== "function") {
-    return new Set();
+    return [];
   }
 
   try {
-    return new Set(
-      getActionResults(messageId)
-        .map((result) => {
-          if (typeof result === "string") {
-            return normalizeActionName(result);
-          }
-          if (!result || typeof result !== "object") {
-            return "";
-          }
-          const record = result as Record<string, unknown>;
-          if (typeof record.actionName === "string") {
-            return normalizeActionName(record.actionName);
-          }
-          const data =
-            record.data && typeof record.data === "object"
-              ? (record.data as Record<string, unknown>)
-              : null;
-          return normalizeActionName(data?.actionName);
-        })
-        .filter((name) => name.length > 0),
-    );
+    return getActionResults(messageId);
   } catch {
-    return new Set();
+    return [];
   }
+}
+
+function listExecutedRuntimeActions(
+  runtime: AgentRuntime,
+  messageId: UUID | undefined,
+): Set<string> {
+  return new Set(
+    readRuntimeActionResults(runtime, messageId)
+      .map((result) => {
+        if (typeof result === "string") {
+          return normalizeActionName(result);
+        }
+        if (!result || typeof result !== "object") {
+          return "";
+        }
+        const record = result as Record<string, unknown>;
+        if (typeof record.actionName === "string") {
+          return normalizeActionName(record.actionName);
+        }
+        const data =
+          record.data && typeof record.data === "object"
+            ? (record.data as Record<string, unknown>)
+            : null;
+        return normalizeActionName(data?.actionName);
+      })
+      .filter((name) => name.length > 0),
+  );
+}
+
+function sanitizeActionResultValue(value: unknown, depth = 0): unknown {
+  if (value === null) return null;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number")
+    return Number.isFinite(value) ? value : undefined;
+  if (typeof value === "string") {
+    return value.length > 1000 ? `${value.slice(0, 997)}...` : value;
+  }
+  if (Array.isArray(value)) {
+    if (depth >= 2) return undefined;
+    return value
+      .slice(0, 20)
+      .map((entry) => sanitizeActionResultValue(entry, depth + 1))
+      .filter((entry) => entry !== undefined);
+  }
+  if (value && typeof value === "object") {
+    if (depth >= 2) return undefined;
+    const output: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value).slice(0, 20)) {
+      const safe = sanitizeActionResultValue(entry, depth + 1);
+      if (safe !== undefined) output[key] = safe;
+    }
+    return output;
+  }
+  return undefined;
+}
+
+function sanitizeActionResultValues(
+  values: unknown,
+): Record<string, unknown> | undefined {
+  if (!values || typeof values !== "object" || Array.isArray(values))
+    return undefined;
+  const output: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(values).slice(0, 20)) {
+    const safe = sanitizeActionResultValue(value);
+    if (safe !== undefined) output[key] = safe;
+  }
+  return Object.keys(output).length > 0 ? output : undefined;
+}
+
+function summarizeActionResultForClient(
+  result: unknown,
+): ChatActionResultSummary | null {
+  if (typeof result === "string") {
+    const actionName = normalizeActionName(result);
+    return actionName ? { actionName, success: true } : null;
+  }
+  if (!result || typeof result !== "object") return null;
+  const record = result as ActionResult & Record<string, unknown>;
+  const data = asRecord(record.data);
+  const actionName =
+    (typeof data?.actionName === "string" && data.actionName.trim()) ||
+    (typeof record.actionName === "string" && record.actionName.trim()) ||
+    undefined;
+  const values = sanitizeActionResultValues(record.values);
+  const text =
+    typeof record.text === "string" && record.text.trim()
+      ? String(sanitizeActionResultValue(record.text))
+      : undefined;
+  const error =
+    typeof record.error === "string" && record.error.trim()
+      ? String(sanitizeActionResultValue(record.error))
+      : record.error instanceof Error
+        ? record.error.message
+        : undefined;
+  if (!actionName && !values && !text && !error) return null;
+  return {
+    ...(actionName ? { actionName } : {}),
+    success: Boolean(record.success),
+    ...(text ? { text } : {}),
+    ...(error ? { error } : {}),
+    ...(values ? { values } : {}),
+  };
+}
+
+function summarizeRuntimeActionResults(
+  runtime: AgentRuntime,
+  messageId: UUID | undefined,
+): ChatActionResultSummary[] {
+  return readRuntimeActionResults(runtime, messageId)
+    .map(summarizeActionResultForClient)
+    .filter((entry): entry is ChatActionResultSummary => Boolean(entry))
+    .slice(-8);
 }
 
 function pickInsufficientCreditsChatReply(): string {
@@ -1137,6 +1248,10 @@ export function getChatFailureReply(
   if (isNoProviderError(err)) {
     return NO_PROVIDER_CHAT_MESSAGE;
   }
+  // After credits (a 429 *with* billing is "top up"): a bare 429 is transient.
+  if (isRateLimitError(err)) {
+    return RATE_LIMITED_CHAT_REPLY;
+  }
   return getProviderIssueChatReply();
 }
 
@@ -1150,6 +1265,7 @@ export type ChatFailureKind =
   | "insufficient_credits"
   | "no_provider"
   | "provider_issue"
+  | "rate_limited"
   | "local_inference";
 
 export function classifyChatFailure(
@@ -1167,6 +1283,9 @@ export function classifyChatFailure(
   }
   if (isLocalInferenceError(err)) {
     return "local_inference";
+  }
+  if (isRateLimitError(err)) {
+    return "rate_limited";
   }
   return "provider_issue";
 }
@@ -2534,6 +2653,10 @@ export async function generateChatResponse(
       responseContent.thought.trim()
         ? responseContent.thought
         : undefined;
+    const actionResultSummaries = summarizeRuntimeActionResults(
+      runtime,
+      typeof message.id === "string" ? message.id : undefined,
+    );
 
     return {
       text: finalText,
@@ -2547,6 +2670,9 @@ export async function generateChatResponse(
       ...(actionCallbacksSeen > 0 ? { usedActionCallbacks: true } : {}),
       ...(actionCallbackHistory.length > 0
         ? { actionCallbackHistory: [...actionCallbackHistory] }
+        : {}),
+      ...(actionResultSummaries.length > 0
+        ? { actionResults: actionResultSummaries }
         : {}),
       ...(responseContent ? { responseContent } : {}),
       ...(responseMessages.length > 0 ? { responseMessages } : {}),

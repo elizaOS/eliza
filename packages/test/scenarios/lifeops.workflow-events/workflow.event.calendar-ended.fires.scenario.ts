@@ -47,6 +47,7 @@ interface RuntimeLike {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "workflow.event.calendar-ended.fires",
   title:
     "Event-triggered workflow fires when a synced event's end time has passed",

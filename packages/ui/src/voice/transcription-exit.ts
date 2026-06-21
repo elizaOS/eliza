@@ -1,19 +1,26 @@
 /**
- * Transcription-mode exit-phrase detection.
+ * Transcription-mode start/exit-phrase detection.
  *
- * Long-form transcription mode records every utterance into the conversation
- * while the agent stays silent (see issue #8789 / the `core.transcription_mode`
- * server evaluator). The user leaves the mode by saying an exit phrase, after
- * which normal response evaluation resumes. This module is the pure, UI-side
- * detector the capture loop runs on every final transcript before sending.
+ * Long-form transcription mode records every utterance while the agent stays
+ * silent (see issue #8789 / the `core.transcription_mode` server evaluator).
+ * The user ENTERS the mode by saying a start phrase ("start transcription")
+ * mid-conversation, and LEAVES it by saying an exit phrase, after which normal
+ * response evaluation resumes. This module is the pure, UI-side detector the
+ * capture loop runs on every final transcript.
  *
- * Two triggers (per product):
+ * Exit triggers (per product):
  *   1. An explicit phrase anywhere in the utterance — "exit transcription mode",
  *      "stop transcription", "end transcription", etc.
  *   2. A standalone SHORT utterance whose tokens include one of
  *      transcribe/transcription/transcribing/stop/exit. The short-utterance gate
  *      (≤ {@link MAX_STANDALONE_TOKENS} tokens) keeps a long sentence that merely
  *      contains "stop" (e.g. "I waited at the bus stop for ages") from exiting.
+ *
+ * Start trigger: an explicit start phrase ONLY ("start transcription", "begin
+ * transcribing", "start recording", …). There is deliberately no bare-keyword
+ * "start" trigger — that would false-fire on ordinary speech ("start over",
+ * "let's get started"), and accidental activation mid-conversation is worse than
+ * a missed activation (the user can tap the button).
  */
 
 /** Explicit multi-word exit phrases (substring match, punctuation-insensitive). */
@@ -37,6 +44,20 @@ const STANDALONE_EXIT_KEYWORDS: ReadonlySet<string> = new Set([
   "stop",
   "exit",
 ]);
+
+/** Explicit multi-word START phrases (substring match, punctuation-insensitive).
+ *  Explicit phrases ONLY — no bare-"start" keyword (would false-fire on ordinary
+ *  speech like "start over"). */
+const START_PHRASES: readonly string[] = [
+  "start transcription mode",
+  "start transcription",
+  "start transcribing",
+  "begin transcription",
+  "begin transcribing",
+  "enter transcription mode",
+  "start recording",
+  "begin recording",
+];
 
 /** Max token count for the "standalone keyword" trigger (avoids false hits on
  *  long sentences that merely contain a keyword). */
@@ -69,6 +90,15 @@ export function isTranscriptionExitPhrase(
     tokens.length <= MAX_STANDALONE_TOKENS &&
     tokens.some((token) => STANDALONE_EXIT_KEYWORDS.has(token))
   );
+}
+
+/** True when `text` should turn transcription mode ON (explicit start phrase). */
+export function isTranscriptionStartPhrase(
+  text: string | null | undefined,
+): boolean {
+  const normalized = normalize(text ?? "");
+  if (!normalized) return false;
+  return START_PHRASES.some((phrase) => normalized.includes(phrase));
 }
 
 /**

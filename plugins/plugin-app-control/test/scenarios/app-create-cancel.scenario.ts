@@ -8,6 +8,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
  *            confirmation. No scaffold should occur.
  */
 export default scenario({
+  lane: "live-only",
 	id: "app-create-cancel",
 	title: "APP create — user cancels at the picker",
 	domain: "app-control",

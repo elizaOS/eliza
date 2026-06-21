@@ -38,6 +38,7 @@ function checkSleepWindowSurfaced(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.sleep-window-defense",
   title:
     "Agent defends a protected 23:00-08:00 sleep window against a 7am call",

@@ -40,6 +40,7 @@ function assertApiBody(options: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "daily-left-today-variants",
   title: "Daily leftover overview phrasing variants",
   domain: "lifeops",

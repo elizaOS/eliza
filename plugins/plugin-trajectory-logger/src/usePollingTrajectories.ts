@@ -3,6 +3,7 @@ import {
   fetchTrajectoryDetail,
   fetchTrajectoryList,
   type TrajectoryDetail,
+  TrajectoryHttpError,
   type TrajectoryListItem,
 } from "./api-client";
 
@@ -14,6 +15,13 @@ export interface PollingTrajectoryState {
   last: TrajectoryListItem | null;
   lastDetail: TrajectoryDetail | null;
   error: string | null;
+  /**
+   * True when the trajectory routes are not mounted on this surface (the
+   * provider plugin is absent → 404/503). Distinct from `error`, which is for
+   * genuine request failures. When set, the view shows a calm unavailable
+   * state instead of leaking the raw HTTP error string.
+   */
+  unavailable: boolean;
   ready: boolean;
 }
 
@@ -23,6 +31,7 @@ const INITIAL: PollingTrajectoryState = {
   last: null,
   lastDetail: null,
   error: null,
+  unavailable: false,
   ready: false,
 };
 
@@ -71,14 +80,25 @@ export function usePollingTrajectories(
           last,
           lastDetail,
           error: null,
+          unavailable: false,
           ready: true,
         });
       } catch (err) {
         if (cancelled) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
+        if (err instanceof TrajectoryHttpError && err.isUnavailable) {
+          setState((prev) => ({
+            ...prev,
+            ready: true,
+            error: null,
+            unavailable: true,
+          }));
+          return;
+        }
         setState((prev) => ({
           ...prev,
           ready: true,
+          unavailable: false,
           error: err instanceof Error ? err.message : String(err),
         }));
       } finally {

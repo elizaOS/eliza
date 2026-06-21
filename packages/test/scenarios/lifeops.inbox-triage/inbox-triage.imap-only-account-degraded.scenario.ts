@@ -67,6 +67,7 @@ function checkAgentHandledImapHonestly(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.imap-only-account-degraded",
   title: "IMAP-only account refuses Gmail labels without faking success",
   domain: "lifeops.inbox-triage",

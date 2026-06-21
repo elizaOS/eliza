@@ -2,6 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.draft.followup-14-days",
   title: "Identify 14-day-old email without a reply for follow-up",
   domain: "messaging.gmail",

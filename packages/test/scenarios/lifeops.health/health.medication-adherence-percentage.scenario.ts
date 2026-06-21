@@ -10,6 +10,7 @@ import {
 import { seedLifeOpsDefinition } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "health.medication-adherence-percentage",
   title: "Medication adherence percentage over the past month",
   domain: "lifeops.health",

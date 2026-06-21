@@ -56,8 +56,8 @@ import { ChatEmptyState } from "../composites/chat/chat-empty-state";
 import { ChatSourceIcon } from "../composites/chat/chat-source";
 import { ChatThreadLayout } from "../composites/chat/chat-thread-layout";
 import { ChatTranscript } from "../composites/chat/chat-transcript";
-import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
 import type { ChatMessageData } from "../composites/chat/chat-types";
+import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
 import {
   useChatVoiceController,
   useGameModalMessages,
@@ -532,9 +532,12 @@ export function ChatView({
     }),
     [t],
   );
-  const handleCopyMessageText = useCallback((text: string) => {
-    void copyToClipboard(text);
-  }, []);
+  const handleCopyMessageText = useCallback(
+    (text: string) => {
+      void copyToClipboard(text);
+    },
+    [copyToClipboard],
+  );
   const renderChatMessageContent = useCallback(
     (message: ChatMessageData) => (
       <MessageContent

@@ -528,8 +528,7 @@ function requestNewGoal(): void {
 function reviewNudge(goals: GoalItem[]): string | null {
   const flagged = goals.filter(
     (goal) =>
-      goal.reviewState === "at_risk" ||
-      goal.reviewState === "needs_attention",
+      goal.reviewState === "at_risk" || goal.reviewState === "needs_attention",
   ).length;
   if (flagged === 0) return null;
   return flagged === 1

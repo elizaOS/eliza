@@ -576,8 +576,7 @@ export function TrajectoriesView({
               hasActiveFilters
                 ? undefined
                 : t("trajectoriesview.EmptyHint", {
-                    defaultValue:
-                      "Run the agent and turns will show up here.",
+                    defaultValue: "Run the agent and turns will show up here.",
                   })
             }
           />

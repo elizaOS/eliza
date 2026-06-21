@@ -162,7 +162,7 @@ export async function expectNoPageDiagnostics(
 
 const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Basics", "identity"],
-  ["Providers", "ai-model"],
+  ["Models & Providers", "ai-model"],
   ["Runtime", "runtime"],
   ["Appearance", "appearance"],
   ["Voice", "voice"],
@@ -1799,6 +1799,22 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // The Transcripts view (client.listTranscripts) hits this on mount; the
+  // keyless loopback stack answers 501 for unimplemented endpoints, which surface
+  // as console errors in the stricter app-window smoke. Serve an empty list so
+  // the view renders its real empty state cleanly.
+  await page.route("**/api/transcripts**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ transcripts: [] }),
+    });
+  });
+
   await page.route("**/api/runtime/mode", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3178,6 +3194,33 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({
         nodes: [],
         summary: { total: 0, enabled: 0, disabled: 0 },
+      }),
+    });
+  });
+
+  await page.route("**/api/automations", async (route) => {
+    // Only the bare list endpoint — the /nodes sub-route has its own stub above.
+    if (
+      route.request().method() !== "GET" ||
+      new URL(route.request().url()).pathname !== "/api/automations"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        automations: [],
+        summary: {
+          total: 0,
+          coordinatorCount: 0,
+          workflowCount: 0,
+          scheduledCount: 0,
+          draftCount: 0,
+        },
+        workflowStatus: null,
+        workflowFetchError: null,
       }),
     });
   });

@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "followup.relationship-congratulations-from-brief",
   title:
     "Trigger a congratulations follow-up from a news item in the morning brief",

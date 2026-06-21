@@ -71,10 +71,22 @@ let x402PluginModule: X402PluginModule | null = null;
 let browserPluginModulePromise: Promise<BrowserPluginModule> | null = null;
 let x402PluginModulePromise: Promise<X402PluginModule> | null = null;
 
+// Vite 7's import-analysis eagerly resolves string-literal dynamic imports even
+// when a `@vite-ignore` comment is present, throwing "Failed to resolve entry"
+// for the optional plugins below whose dist isn't built in the unit Plugin
+// Tests lane (any spec that transitively transforms this file then fails to
+// collect). Funnel optional plugin loads through a variable specifier so the
+// analyzer leaves them as pure runtime imports — the host resolves them from
+// node_modules on demand. Mirrors the variable-specifier bundle loader further
+// down this file.
+function importOptionalPlugin<T = unknown>(specifier: string): Promise<T> {
+  return import(/* @vite-ignore */ specifier) as Promise<T>;
+}
+
 async function getBrowserPlugin(): Promise<BrowserPluginModule> {
   if (browserPluginModule) return browserPluginModule;
-  browserPluginModulePromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-browser"
+  browserPluginModulePromise ??= importOptionalPlugin<BrowserPluginModule>(
+    "@elizaos/plugin-browser",
   ).then((browser) => {
     browserPluginModule = browser;
     return browser;
@@ -82,10 +94,46 @@ async function getBrowserPlugin(): Promise<BrowserPluginModule> {
   return browserPluginModulePromise;
 }
 
+// On mobile the agent bundle aliases `@elizaos/plugin-browser` to a null-stub
+// (scripts/mobile-stubs/null-plugin.cjs): the module imports fine but its
+// workspace functions are absent, so calling one throws an uncaught TypeError
+// that surfaces as a 500 (and a raw "X is not a function" in the /browser view).
+// The browser workspace is desktop-only, so resolve the plugin only when it
+// really implements the requested method and let callers serve an empty payload
+// otherwise.
+async function resolveDesktopBrowserPlugin(
+  method: keyof BrowserPluginModule,
+): Promise<BrowserPluginModule | null> {
+  if (isMobilePlatform()) return null;
+  const browserPlugin = await getBrowserPlugin();
+  if ((browserPlugin as { __mobileStub?: boolean }).__mobileStub) return null;
+  return typeof browserPlugin[method] === "function" ? browserPlugin : null;
+}
+
+function getBrowserWorkspacePlugin(): Promise<BrowserPluginModule | null> {
+  return resolveDesktopBrowserPlugin("getBrowserWorkspaceSnapshot");
+}
+
+function getBrowserBridgePlugin(): Promise<BrowserPluginModule | null> {
+  return resolveDesktopBrowserPlugin("getBrowserBridgeCompanionPackageStatus");
+}
+
+const EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS = {
+  extensionPath: null,
+  chromeBuildPath: null,
+  chromePackagePath: null,
+  safariWebExtensionPath: null,
+  safariAppPath: null,
+  safariPackagePath: null,
+  releaseManifest: null,
+} satisfies ReturnType<
+  BrowserPluginModule["getBrowserBridgeCompanionPackageStatus"]
+>;
+
 async function getX402Plugin(): Promise<X402PluginModule> {
   if (x402PluginModule) return x402PluginModule;
-  x402PluginModulePromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-x402"
+  x402PluginModulePromise ??= importOptionalPlugin<X402PluginModule>(
+    "@elizaos/plugin-x402",
   ).then((x402) => {
     x402PluginModule = x402;
     return x402;
@@ -94,16 +142,15 @@ async function getX402Plugin(): Promise<X402PluginModule> {
 }
 
 const optionalPluginImports = {
-  capacitor: () =>
-    import(/* @vite-ignore */ "@elizaos/plugin-capacitor-bridge"),
-  computerUse: () => import(/* @vite-ignore */ "@elizaos/plugin-computeruse"),
-  cloud: () => import(/* @vite-ignore */ "@elizaos/plugin-elizacloud"),
-  imessage: () => import(/* @vite-ignore */ "@elizaos/plugin-imessage"),
-  mcp: () => import(/* @vite-ignore */ "@elizaos/plugin-mcp"),
-  signal: () => import(/* @vite-ignore */ "@elizaos/plugin-signal"),
-  streaming: () => import(/* @vite-ignore */ "@elizaos/plugin-streaming"),
-  whatsapp: () => import(/* @vite-ignore */ "@elizaos/plugin-whatsapp"),
-  workflow: () => import(/* @vite-ignore */ "@elizaos/plugin-workflow"),
+  capacitor: () => importOptionalPlugin("@elizaos/plugin-capacitor-bridge"),
+  computerUse: () => importOptionalPlugin("@elizaos/plugin-computeruse"),
+  cloud: () => importOptionalPlugin("@elizaos/plugin-elizacloud"),
+  imessage: () => importOptionalPlugin("@elizaos/plugin-imessage"),
+  mcp: () => importOptionalPlugin("@elizaos/plugin-mcp"),
+  signal: () => importOptionalPlugin("@elizaos/plugin-signal"),
+  streaming: () => importOptionalPlugin("@elizaos/plugin-streaming"),
+  whatsapp: () => importOptionalPlugin("@elizaos/plugin-whatsapp"),
+  workflow: () => importOptionalPlugin("@elizaos/plugin-workflow"),
 };
 
 type LocalInferenceServerApi = {
@@ -222,7 +269,9 @@ let walletApiPromise:
   | Promise<typeof import("@elizaos/plugin-wallet")>
   | undefined;
 function getWalletApi(): Promise<typeof import("@elizaos/plugin-wallet")> {
-  walletApiPromise ??= import(/* @vite-ignore */ "@elizaos/plugin-wallet");
+  walletApiPromise ??= importOptionalPlugin<
+    typeof import("@elizaos/plugin-wallet")
+  >("@elizaos/plugin-wallet");
   return walletApiPromise;
 }
 
@@ -296,6 +345,11 @@ import {
   type PluginManagerLike,
 } from "../services/plugin-manager-types.ts";
 import {
+  PROACTIVE_INTERACTION_SOURCE,
+  registerProactiveInteractionDecider,
+} from "../services/proactive-interaction-decider.ts";
+import { ProactiveInteractionGate } from "../services/proactive-interaction-gate.ts";
+import {
   executeTriggerTask,
   getTriggerHealthSnapshot,
   getTriggerLimit,
@@ -326,6 +380,7 @@ import {
   isUuidLike,
   patchTouchesProviderSelection,
 } from "./server-helpers.ts";
+import { routeAutonomyTextToUser as routeProactiveText } from "./server-helpers-swarm.ts";
 import {
   createConnectorHealthMonitor,
   extractConversationMetadataFromRoom,
@@ -373,6 +428,7 @@ import {
   tryHandleMusicPlayerStatusFallbackLazy,
   tryHandleRuntimePluginRoute,
 } from "./server-lazy-routes.ts";
+import { tryHandleTrajectoryFallback } from "./trajectory-fallback-routes.ts";
 import {
   EVM_PLUGIN_PACKAGE,
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
@@ -1008,9 +1064,11 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (method === "GET" && pathname === "/api/browser-bridge/packages") {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserBridgePlugin();
     json(res, {
-      status: browserPlugin.getBrowserBridgeCompanionPackageStatus(),
+      status: browserPlugin
+        ? browserPlugin.getBrowserBridgeCompanionPackageStatus()
+        : EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS,
     });
     return true;
   }
@@ -1025,7 +1083,11 @@ async function handleBuiltinOptionalRoutes(
         res,
       )) ?? null;
     if (!body) return true;
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserBridgePlugin();
+    if (!browserPlugin) {
+      error(res, "Browser bridge is not available on this platform", 503);
+      return true;
+    }
     const target = parseBrowserBridgePackageTarget(browserPlugin, body.target);
     if (!target) {
       error(res, "Invalid browser bridge package target", 400);
@@ -1044,7 +1106,11 @@ async function handleBuiltinOptionalRoutes(
     /^\/api\/browser-bridge\/packages\/([^/]+)\/build$/,
   );
   if (method === "POST" && packageBuildMatch) {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserBridgePlugin();
+    if (!browserPlugin) {
+      error(res, "Browser bridge is not available on this platform", 503);
+      return true;
+    }
     const browser = parseBrowserBridgeKind(browserPlugin, packageBuildMatch[1]);
     if (!browser) {
       error(res, "Invalid browser bridge package browser", 400);
@@ -1060,7 +1126,11 @@ async function handleBuiltinOptionalRoutes(
     /^\/api\/browser-bridge\/packages\/([^/]+)\/open-manager$/,
   );
   if (method === "POST" && packageManagerMatch) {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserBridgePlugin();
+    if (!browserPlugin) {
+      error(res, "Browser bridge is not available on this platform", 503);
+      return true;
+    }
     const browser = parseBrowserBridgeKind(
       browserPlugin,
       packageManagerMatch[1],
@@ -1074,17 +1144,25 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (pathname === "/api/browser-workspace" && method === "GET") {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserWorkspacePlugin();
+    if (!browserPlugin) {
+      json(res, { mode: "web", tabs: [] });
+      return true;
+    }
     json(res, await browserPlugin.getBrowserWorkspaceSnapshot());
     return true;
   }
 
   if (pathname === "/api/browser-workspace/command" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserWorkspacePlugin();
     const body =
       (await readJsonBody<BrowserWorkspaceCommand>(req, res)) ?? null;
     if (!body?.subaction) {
       error(res, "subaction is required", 400);
+      return true;
+    }
+    if (!browserPlugin) {
+      error(res, "Browser workspace is not available on this platform", 503);
       return true;
     }
     json(res, await browserPlugin.executeBrowserWorkspaceCommand(body));
@@ -1092,13 +1170,21 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (pathname === "/api/browser-workspace/tabs" && method === "GET") {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserWorkspacePlugin();
+    if (!browserPlugin) {
+      json(res, { tabs: [] });
+      return true;
+    }
     json(res, { tabs: await browserPlugin.listBrowserWorkspaceTabs() });
     return true;
   }
 
   if (pathname === "/api/browser-workspace/tabs" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserWorkspacePlugin();
+    if (!browserPlugin) {
+      error(res, "Browser workspace is not available on this platform", 503);
+      return true;
+    }
     const body =
       (await readJsonBody<{
         url?: string;
@@ -1121,33 +1207,34 @@ async function handleBuiltinOptionalRoutes(
   const tabId = decodeURIComponent(tabMatch[1]).trim();
   const action = tabMatch[2] ?? null;
 
+  const browserPlugin = await getBrowserWorkspacePlugin();
+  if (!browserPlugin) {
+    error(res, "Browser workspace is not available on this platform", 503);
+    return true;
+  }
+
   if (!action && method === "DELETE") {
-    const browserPlugin = await getBrowserPlugin();
     const closed = await browserPlugin.closeBrowserWorkspaceTab(tabId);
     json(res, { closed }, closed ? 200 : 404);
     return true;
   }
 
   if (action === "show" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
     json(res, { tab: await browserPlugin.showBrowserWorkspaceTab(tabId) });
     return true;
   }
 
   if (action === "hide" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
     json(res, { tab: await browserPlugin.hideBrowserWorkspaceTab(tabId) });
     return true;
   }
 
   if (action === "snapshot" && method === "GET") {
-    const browserPlugin = await getBrowserPlugin();
     json(res, await browserPlugin.snapshotBrowserWorkspaceTab(tabId));
     return true;
   }
 
   if (action === "navigate" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
     const body =
       (await readJsonBody<{ url?: string; partition?: string }>(req, res)) ??
       null;
@@ -1165,7 +1252,6 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (action === "eval" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
     const body =
       (await readJsonBody<{ script?: string; partition?: string }>(req, res)) ??
       null;
@@ -1646,6 +1732,26 @@ export {
   handleSwarmSynthesis,
   routeAutonomyTextToUser,
 } from "./server-helpers-swarm.ts";
+
+// One process-wide governance gate shared across runtime (re)registrations, so a
+// restart doesn't reset the proactive-comment cooldowns/caps (#8792).
+const proactiveInteractionGate = new ProactiveInteractionGate();
+
+/**
+ * Wire the proactive-interaction decider (#8792): subscribe to VIEW_SWITCHED and
+ * route an admitted, model-judged comment into the chat via the existing
+ * proactive-message pipeline. No-ops when disabled by config/kill-switch.
+ */
+function wireProactiveInteractionDecider(
+  rt: IAgentRuntime,
+  state: ServerState,
+): void {
+  registerProactiveInteractionDecider(rt, {
+    gate: proactiveInteractionGate,
+    route: (text) =>
+      routeProactiveText(state, text, PROACTIVE_INTERACTION_SOURCE),
+  });
+}
 
 async function handleRequest(
   req: http.IncomingMessage,
@@ -3301,6 +3407,23 @@ async function handleRequest(
     return;
   }
 
+  // ── Trajectory read fallback ────────────────────────────────────────────
+  // Serves GET /api/trajectories[/:id|/stats] from the core TrajectoriesService
+  // when no plugin owns the route (mobile / training disabled), so the realtime
+  // trajectory viewer works without @elizaos/plugin-training. Runs AFTER the
+  // plugin routes above, so plugin-training's richer route wins when present.
+  if (
+    await tryHandleTrajectoryFallback({
+      pathname,
+      method,
+      url,
+      runtime: state.runtime,
+      res,
+    })
+  ) {
+    return;
+  }
+
   // ── Hono adapter for runtime.routes with `routeHandler` (new shape) ─────
   // Covers any plugin route registered via the new return-shape RouteHandler
   // contract. Legacy Express-shaped `handler` routes are still served by
@@ -4894,6 +5017,7 @@ export async function startApiServer(opts?: {
       logger.warn("[api] Character overlay restore failed:", err);
     });
     registerClientChatSendHandler(opts.runtime, state);
+    wireProactiveInteractionDecider(opts.runtime, state);
   }
 
   const assertX402RoutesValid = async (
@@ -4970,6 +5094,7 @@ export async function startApiServer(opts?: {
 
     // Re-register client_chat send handler on the new runtime
     registerClientChatSendHandler(rt, state);
+    wireProactiveInteractionDecider(rt, state);
 
     // Wire coding-agent bridges (event-driven via getServiceLoadPromise)
     void wireCoordinatorBridgesWhenReady(state, {

@@ -42,6 +42,7 @@ function checkAgentReportsPermissionGap(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.shared-calendar-permission-denied",
   title: "Read-only shared calendar surfaces the permission gap",
   domain: "lifeops.calendar",

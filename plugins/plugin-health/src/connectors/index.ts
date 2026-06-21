@@ -291,7 +291,9 @@ export function registerHealthBusFamilies(
     return;
   }
   for (const family of HEALTH_BUS_FAMILIES) {
-    if (registry.list().some((contribution) => contribution.family === family)) {
+    if (
+      registry.list().some((contribution) => contribution.family === family)
+    ) {
       continue;
     }
     registry.register(buildBusFamilyContribution(family));

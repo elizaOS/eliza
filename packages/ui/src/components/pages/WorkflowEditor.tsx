@@ -20,27 +20,29 @@
 import {
   AlertTriangle,
   CheckCircle2,
+  ClipboardList,
   Clock3,
+  Copy,
   Pause,
   PlayCircle,
   Power,
   RefreshCw,
+  RotateCcw,
   Save,
-  Sparkles,
   Wand2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
-import {
-  isMissingCredentialsResponse,
-  type WorkflowDefinition,
-  type WorkflowDefinitionGenerateResponse,
-  type WorkflowExecution,
+import type {
+  WorkflowDefinition,
+  WorkflowExecution,
+  WorkflowRevision,
 } from "../../api/client-types-chat";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { useModalState } from "../../hooks/useModalState";
 import {
+  buildWorkflowExecutionDiagnostics,
+  formatWorkflowEngineMetrics,
   getWorkflowExecutionRunRows,
   summarizeWorkflowExecution,
 } from "../../utils/workflow-executions";
@@ -52,11 +54,11 @@ import {
 } from "../../utils/workflow-json";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
-import { Textarea } from "../ui/textarea";
 import { WorkflowGraphViewer } from "./WorkflowGraphViewer";
+
+const CHAT_PREFILL_EVENT = "eliza:chat:prefill";
 
 export interface WorkflowEditorProps {
   initial?: WorkflowDefinition | null;
@@ -96,14 +98,17 @@ export function WorkflowEditor({
   const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(
     null,
   );
-  const [generatorPrompt, setGeneratorPrompt] = useState("");
-  const generatorModal = useModalState();
-  const generatorOpen = generatorModal.state.status !== "closed";
-  const generating = generatorModal.state.status === "submitting";
-  const generatorError =
-    generatorModal.state.status === "error"
-      ? generatorModal.state.error.message
-      : null;
+  const [diagnosticsCopying, setDiagnosticsCopying] = useState(false);
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const [evaluationSamplesCopying, setEvaluationSamplesCopying] =
+    useState(false);
+  const [evaluationSamplesCopied, setEvaluationSamplesCopied] = useState(false);
+  const [revisions, setRevisions] = useState<WorkflowRevision[]>([]);
+  const [currentVersionId, setCurrentVersionId] = useState<string | null>(
+    () => initial?.versionId ?? null,
+  );
+  const [revisionsLoading, setRevisionsLoading] = useState(false);
+  const [revisionsError, setRevisionsError] = useState<string | null>(null);
 
   useEffect(() => {
     setPersistedWorkflowId(initial?.id ?? null);
@@ -124,6 +129,13 @@ export function WorkflowEditor({
     setExecutionError(null);
     setExecutions([]);
     setSelectedExecutionId(null);
+    setDiagnosticsCopying(false);
+    setDiagnosticsCopied(false);
+    setEvaluationSamplesCopying(false);
+    setEvaluationSamplesCopied(false);
+    setRevisions([]);
+    setCurrentVersionId(initial?.versionId ?? null);
+    setRevisionsError(null);
   }, [initial]);
 
   // Re-parse on debounced text change.
@@ -167,6 +179,50 @@ export function WorkflowEditor({
     executions[0] ??
     null;
 
+  const loadRevisionsForWorkflow = useCallback(
+    async (workflowId: string | null, fallbackVersionId?: string | null) => {
+      if (!workflowId) {
+        setRevisions([]);
+        setCurrentVersionId(fallbackVersionId ?? null);
+        return;
+      }
+      setRevisionsLoading(true);
+      setRevisionsError(null);
+      try {
+        const next = await client.getWorkflowRevisions(workflowId, 10);
+        setCurrentVersionId(next.currentVersionId);
+        setRevisions(next.revisions);
+      } catch (e) {
+        setRevisionsError(
+          e instanceof Error ? e.message : "Failed to load workflow history.",
+        );
+      } finally {
+        setRevisionsLoading(false);
+      }
+    },
+    [],
+  );
+
+  const refreshRevisions = useCallback(async () => {
+    if (!persistedWorkflowId) {
+      setRevisions([]);
+      setCurrentVersionId(lastValidWorkflow?.versionId ?? null);
+      return;
+    }
+    await loadRevisionsForWorkflow(
+      persistedWorkflowId,
+      lastValidWorkflow?.versionId ?? null,
+    );
+  }, [
+    persistedWorkflowId,
+    lastValidWorkflow?.versionId,
+    loadRevisionsForWorkflow,
+  ]);
+
+  useEffect(() => {
+    void refreshRevisions();
+  }, [refreshRevisions]);
+
   const handleFormat = useCallback(() => {
     const result = parseWorkflowJson(text);
     if (result.ok) {
@@ -188,16 +244,24 @@ export function WorkflowEditor({
         ? await client.updateWorkflowDefinition(persistedWorkflowId, req)
         : await client.createWorkflowDefinition(req);
       setPersistedWorkflowId(saved.id);
+      setCurrentVersionId(saved.versionId ?? null);
       setLastValidWorkflow(saved);
       setText(workflowToJsonText(saved));
       onSaved?.(saved);
       void refreshExecutions();
+      void loadRevisionsForWorkflow(saved.id, saved.versionId ?? null);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Failed to save workflow.");
     } finally {
       setSaving(false);
     }
-  }, [parseState, persistedWorkflowId, onSaved, refreshExecutions]);
+  }, [
+    parseState,
+    persistedWorkflowId,
+    onSaved,
+    refreshExecutions,
+    loadRevisionsForWorkflow,
+  ]);
 
   const handleToggleActive = useCallback(async () => {
     if (!persistedWorkflowId) {
@@ -210,8 +274,10 @@ export function WorkflowEditor({
       const updated = workflowIsActive
         ? await client.deactivateWorkflowDefinition(persistedWorkflowId)
         : await client.activateWorkflowDefinition(persistedWorkflowId);
+      setCurrentVersionId(updated.versionId ?? null);
       setLastValidWorkflow(updated);
       setText(workflowToJsonText(updated));
+      void refreshRevisions();
     } catch (e) {
       setSaveError(
         e instanceof Error ? e.message : "Failed to update workflow state.",
@@ -219,7 +285,7 @@ export function WorkflowEditor({
     } finally {
       setSaving(false);
     }
-  }, [persistedWorkflowId, workflowIsActive]);
+  }, [persistedWorkflowId, workflowIsActive, refreshRevisions]);
 
   const handleRunNow = useCallback(async () => {
     if (!persistedWorkflowId) {
@@ -236,6 +302,8 @@ export function WorkflowEditor({
         ...current.filter((item) => item.id !== execution.id),
       ]);
       setSelectedExecutionId(execution.id);
+      setDiagnosticsCopied(false);
+      setEvaluationSamplesCopied(false);
     } catch (e) {
       setExecutionError(
         e instanceof Error ? e.message : "Failed to run workflow.",
@@ -245,42 +313,120 @@ export function WorkflowEditor({
     }
   }, [persistedWorkflowId]);
 
-  const handleGenerate = useCallback(async () => {
-    const prompt = generatorPrompt.trim();
-    if (!prompt) return;
-    await generatorModal.submit(async () => {
-      let res: WorkflowDefinitionGenerateResponse;
+  const handleRestoreRevision = useCallback(
+    async (versionId: string) => {
+      if (!persistedWorkflowId) return;
+      setSaving(true);
+      setSaveError(null);
+      setRevisionsError(null);
       try {
-        res = await client.generateWorkflowDefinition({
-          prompt,
-          workflowId: persistedWorkflowId ?? undefined,
-        });
+        const restored = await client.restoreWorkflowRevision(
+          persistedWorkflowId,
+          versionId,
+        );
+        setCurrentVersionId(restored.versionId ?? null);
+        setLastValidWorkflow(restored);
+        setText(workflowToJsonText(restored));
+        onSaved?.(restored);
+        void refreshExecutions();
+        void refreshRevisions();
       } catch (e) {
-        throw e instanceof Error
-          ? e
-          : new Error("Failed to generate workflow.");
-      }
-      if ("status" in res && res.status === "needs_clarification") {
-        throw new Error(
-          "The workflow generator needs clarification — open the Automations chat to answer.",
+        setRevisionsError(
+          e instanceof Error
+            ? e.message
+            : "Failed to restore workflow version.",
         );
+      } finally {
+        setSaving(false);
       }
-      if (isMissingCredentialsResponse(res)) {
-        throw new Error(
-          `Generated, but missing credentials: ${res.missingCredentials
-            .map((c) => c.credType)
-            .join(", ")}`,
-        );
+    },
+    [persistedWorkflowId, onSaved, refreshExecutions, refreshRevisions],
+  );
+
+  const handleCopyDiagnostics = useCallback(async () => {
+    if (!selectedExecution) return;
+    setDiagnosticsCopying(true);
+    setExecutionError(null);
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard is not available in this browser.");
       }
-      const definition = res as WorkflowDefinition;
-      setPersistedWorkflowId(definition.id);
-      setLastValidWorkflow(definition);
-      setText(workflowToJsonText(definition));
-      setGeneratorPrompt("");
-      void refreshExecutions();
-      return definition;
-    });
-  }, [generatorPrompt, generatorModal, persistedWorkflowId, refreshExecutions]);
+      await navigator.clipboard.writeText(
+        buildWorkflowExecutionDiagnostics(selectedExecution),
+      );
+      setDiagnosticsCopied(true);
+    } catch (e) {
+      setExecutionError(
+        e instanceof Error ? e.message : "Failed to copy workflow diagnostics.",
+      );
+    } finally {
+      setDiagnosticsCopying(false);
+    }
+  }, [selectedExecution]);
+
+  const handleTroubleshootInChat = useCallback(() => {
+    if (!selectedExecution || typeof window === "undefined") return;
+    const workflowId =
+      persistedWorkflowId ?? selectedExecution.workflowId ?? "unknown";
+    const diagnostics = buildWorkflowExecutionDiagnostics(selectedExecution);
+    window.dispatchEvent(
+      new CustomEvent(CHAT_PREFILL_EVENT, {
+        detail: {
+          text: [
+            `Troubleshoot workflow ${workflowId} execution ${selectedExecution.id}.`,
+            "",
+            diagnostics,
+          ].join("\n"),
+          select: false,
+        },
+      }),
+    );
+  }, [persistedWorkflowId, selectedExecution]);
+
+  const handleEditInChat = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const workflowName = lastValidWorkflow?.name ?? "this workflow";
+    const workflowId =
+      persistedWorkflowId ?? lastValidWorkflow?.id ?? initial?.id ?? "draft";
+    const text =
+      workflowId === "draft"
+        ? "Create a workflow that "
+        : `Modify workflow ${workflowId} (${workflowName}). `;
+    window.dispatchEvent(
+      new CustomEvent(CHAT_PREFILL_EVENT, {
+        detail: {
+          text,
+          select: false,
+        },
+      }),
+    );
+  }, [initial?.id, lastValidWorkflow, persistedWorkflowId]);
+
+  const handleCopyEvaluationSamples = useCallback(async () => {
+    if (!persistedWorkflowId) return;
+    setEvaluationSamplesCopying(true);
+    setExecutionError(null);
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard is not available in this browser.");
+      }
+      const suite = await client.getWorkflowEvaluationSamples(
+        persistedWorkflowId,
+        10,
+      );
+      if (suite.sampleCount === 0) {
+        throw new Error("Run this workflow before copying eval samples.");
+      }
+      await navigator.clipboard.writeText(suite.jsonl);
+      setEvaluationSamplesCopied(true);
+    } catch (e) {
+      setExecutionError(
+        e instanceof Error ? e.message : "Failed to copy eval samples.",
+      );
+    } finally {
+      setEvaluationSamplesCopying(false);
+    }
+  }, [persistedWorkflowId]);
 
   const lineErrorBanner = useMemo(() => {
     if (parseState.ok) return null;
@@ -291,6 +437,9 @@ export function WorkflowEditor({
 
   const selectedExecutionSummary = selectedExecution
     ? summarizeWorkflowExecution(selectedExecution)
+    : null;
+  const selectedEngineMetrics = selectedExecution
+    ? formatWorkflowEngineMetrics(selectedExecution)
     : null;
   const selectedRunRows = selectedExecution
     ? getWorkflowExecutionRunRows(selectedExecution)
@@ -307,13 +456,13 @@ export function WorkflowEditor({
     onFill: (value) => setText(value),
   });
 
-  const generateButton = useAgentElement<HTMLButtonElement>({
-    id: "generate-from-prompt",
+  const editInChatButton = useAgentElement<HTMLButtonElement>({
+    id: "edit-workflow-in-chat",
     role: "button",
-    label: "Generate from prompt",
+    label: "Edit workflow in chat",
     group: "workflow-toolbar",
-    description: "Open the prompt-driven workflow generator.",
-    onActivate: generatorModal.open,
+    description: "Ask the page chat to create or modify this workflow.",
+    onActivate: handleEditInChat,
   });
 
   const formatButton = useAgentElement<HTMLButtonElement>({
@@ -367,6 +516,46 @@ export function WorkflowEditor({
     onActivate: () => void refreshExecutions(),
   });
 
+  const copyDiagnosticsButton = useAgentElement<HTMLButtonElement>({
+    id: "copy-run-diagnostics",
+    role: "button",
+    label: "Copy run diagnostics",
+    group: "workflow-executions",
+    description:
+      "Copy the selected workflow run status, node output, and error details.",
+    status: diagnosticsCopying
+      ? "busy"
+      : selectedExecution
+        ? "active"
+        : "inactive",
+    onActivate: () => void handleCopyDiagnostics(),
+  });
+
+  const troubleshootRunButton = useAgentElement<HTMLButtonElement>({
+    id: "troubleshoot-run-in-chat",
+    role: "button",
+    label: "Troubleshoot run in chat",
+    group: "workflow-executions",
+    description: "Send the selected workflow run diagnostics to the page chat.",
+    status: selectedExecution ? "active" : "inactive",
+    onActivate: handleTroubleshootInChat,
+  });
+
+  const copyEvaluationSamplesButton = useAgentElement<HTMLButtonElement>({
+    id: "copy-eval-samples",
+    role: "button",
+    label: "Copy eval samples",
+    group: "workflow-executions",
+    description:
+      "Copy JSONL workflow evaluation samples for Smithers eval and GEPA optimization.",
+    status: evaluationSamplesCopying
+      ? "busy"
+      : persistedWorkflowId && executions.length > 0
+        ? "active"
+        : "inactive",
+    onActivate: () => void handleCopyEvaluationSamples(),
+  });
+
   const closeButton = useAgentElement<HTMLButtonElement>({
     id: "close",
     role: "button",
@@ -374,35 +563,6 @@ export function WorkflowEditor({
     group: "workflow-toolbar",
     description: "Close the workflow editor.",
     onActivate: () => onCancel?.(),
-  });
-
-  const generatorPromptField = useAgentElement<HTMLTextAreaElement>({
-    id: "generator-prompt",
-    role: "textarea",
-    label: "Workflow prompt",
-    group: "workflow-generator",
-    description: "Describe the workflow to generate.",
-    getValue: () => generatorPrompt,
-    onFill: (value) => setGeneratorPrompt(value),
-  });
-
-  const generatorSubmitButton = useAgentElement<HTMLButtonElement>({
-    id: "generator-generate",
-    role: "button",
-    label: "Generate",
-    group: "workflow-generator",
-    description: "Generate the workflow from the prompt.",
-    status: generating ? "busy" : undefined,
-    onActivate: () => void handleGenerate(),
-  });
-
-  const generatorCancelButton = useAgentElement<HTMLButtonElement>({
-    id: "generator-cancel",
-    role: "button",
-    label: "Cancel generation",
-    group: "workflow-generator",
-    description: "Close the workflow generator without generating.",
-    onActivate: generatorModal.close,
   });
 
   return (
@@ -419,16 +579,15 @@ export function WorkflowEditor({
           />
         </div>
         <Button
-          ref={generateButton.ref}
-          {...generateButton.agentProps}
+          ref={editInChatButton.ref}
+          {...editInChatButton.agentProps}
           variant="outline"
           size="sm"
-          onClick={generatorModal.open}
-          disabled={generating}
-          className="hidden sm:inline-flex"
+          onClick={handleEditInChat}
         >
-          <Sparkles className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-          Generate from prompt
+          <ClipboardList className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+          <span className="hidden sm:inline">Edit in chat</span>
+          <span className="sm:hidden">Chat</span>
         </Button>
         <Button
           ref={formatButton.ref}
@@ -542,7 +701,7 @@ export function WorkflowEditor({
               <WorkflowGraphViewer
                 workflow={lastValidWorkflow}
                 loading={false}
-                isGenerating={generating}
+                isGenerating={false}
                 emptyStateHelpText="Draft in chat. Review the graph, runs, and logs here."
               />
             </div>
@@ -561,6 +720,29 @@ export function WorkflowEditor({
                     : "Save before running"}
                 </div>
               </div>
+              <Button
+                ref={copyEvaluationSamplesButton.ref}
+                {...copyEvaluationSamplesButton.agentProps}
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-2xs"
+                onClick={() => void handleCopyEvaluationSamples()}
+                disabled={
+                  !persistedWorkflowId ||
+                  executions.length === 0 ||
+                  evaluationSamplesCopying
+                }
+                aria-label="Copy eval samples"
+              >
+                {evaluationSamplesCopying ? (
+                  <Spinner className="mr-1.5 h-3.5 w-3.5" />
+                ) : (
+                  <ClipboardList className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                )}
+                <span className="hidden sm:inline">
+                  {evaluationSamplesCopied ? "Copied" : "Copy samples"}
+                </span>
+              </Button>
               <Button
                 ref={refreshRunsButton.ref}
                 {...refreshRunsButton.agentProps}
@@ -603,7 +785,10 @@ export function WorkflowEditor({
                           className={`flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left hover:bg-bg-accent/50 ${
                             selected ? "bg-bg-accent" : ""
                           }`}
-                          onClick={() => setSelectedExecutionId(execution.id)}
+                          onClick={() => {
+                            setSelectedExecutionId(execution.id);
+                            setDiagnosticsCopied(false);
+                          }}
                         >
                           {summary.tone === "success" ? (
                             <CheckCircle2
@@ -653,6 +838,43 @@ export function WorkflowEditor({
                         {selectedExecutionSummary.nodeCount === 1 ? "" : "s"} /{" "}
                         {selectedExecutionSummary.durationLabel}
                       </span>
+                      {selectedEngineMetrics && (
+                        <span className="text-2xs text-muted-strong">
+                          / {selectedEngineMetrics}
+                        </span>
+                      )}
+                      <Button
+                        ref={copyDiagnosticsButton.ref}
+                        {...copyDiagnosticsButton.agentProps}
+                        variant="ghost"
+                        size="sm"
+                        className="ml-auto h-7 px-2 text-2xs"
+                        onClick={() => void handleCopyDiagnostics()}
+                        disabled={!selectedExecution || diagnosticsCopying}
+                      >
+                        {diagnosticsCopying ? (
+                          <Spinner className="mr-1.5 h-3.5 w-3.5" />
+                        ) : (
+                          <Copy className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                        )}
+                        {diagnosticsCopied ? "Copied" : "Copy diagnostics"}
+                      </Button>
+                      <Button
+                        ref={troubleshootRunButton.ref}
+                        {...troubleshootRunButton.agentProps}
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-2xs"
+                        aria-label="Troubleshoot run in chat"
+                        onClick={handleTroubleshootInChat}
+                        disabled={!selectedExecution}
+                      >
+                        <AlertTriangle
+                          className="mr-0 h-3.5 w-3.5 sm:mr-1.5"
+                          aria-hidden
+                        />
+                        <span className="hidden sm:inline">Troubleshoot</span>
+                      </Button>
                     </div>
                     {selectedExecutionSummary.error && (
                       <div className="rounded-sm border border-danger/20 bg-danger/10 p-2 text-xs text-danger">
@@ -701,65 +923,97 @@ export function WorkflowEditor({
               </div>
             </div>
           </PagePanel>
-        </div>
-      </div>
 
-      {/* Generator modal */}
-      <Dialog
-        open={generatorOpen}
-        onOpenChange={(open) => {
-          if (!open && !generating) generatorModal.close();
-        }}
-      >
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Generate workflow from prompt</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Textarea
-              ref={generatorPromptField.ref}
-              {...generatorPromptField.agentProps}
-              value={generatorPrompt}
-              onChange={(e) => setGeneratorPrompt(e.target.value)}
-              placeholder="When a new starred email arrives in Gmail, post a summary in #ops on Slack."
-              rows={5}
-              autoFocus
-            />
-            {generatorError && (
-              <div className="rounded-sm border border-danger/20 bg-danger/10 p-2 text-xs text-danger">
-                {generatorError}
+          <PagePanel
+            variant="inset"
+            className="flex min-h-[132px] flex-col overflow-hidden rounded-sm"
+          >
+            <div className="flex flex-wrap items-center gap-2 border-b border-border/40 px-3 py-2">
+              <div className="mr-auto min-w-0">
+                <div className="text-xs font-medium text-txt">History</div>
+                <div className="truncate text-2xs text-muted-strong">
+                  {currentVersionId
+                    ? `Current ${currentVersionId.slice(0, 8)}`
+                    : "Unsaved draft"}
+                </div>
+              </div>
+            </div>
+            {revisionsError && (
+              <div className="border-b border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger">
+                {revisionsError}
               </div>
             )}
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                ref={generatorCancelButton.ref}
-                {...generatorCancelButton.agentProps}
-                variant="ghost"
-                size="sm"
-                onClick={generatorModal.close}
-                disabled={generating}
-              >
-                Cancel
-              </Button>
-              <Button
-                ref={generatorSubmitButton.ref}
-                {...generatorSubmitButton.agentProps}
-                variant="default"
-                size="sm"
-                onClick={() => void handleGenerate()}
-                disabled={generating || !generatorPrompt.trim()}
-              >
-                {generating ? (
-                  <Spinner className="mr-1.5 h-3.5 w-3.5" />
-                ) : (
-                  <Sparkles className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-                )}
-                Generate
-              </Button>
+            <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
+              {revisionsLoading ? (
+                <div className="flex items-center gap-2 text-xs text-muted-strong">
+                  <Spinner className="h-3.5 w-3.5" />
+                  Loading history
+                </div>
+              ) : revisions.length === 0 ? (
+                <div className="text-xs text-muted-strong">
+                  Save an edit to create a restorable version.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {revisions.slice(0, 4).map((revision) => (
+                    <WorkflowRevisionRow
+                      key={revision.id}
+                      revision={revision}
+                      disabled={!persistedWorkflowId || saving}
+                      onRestore={handleRestoreRevision}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </PagePanel>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowRevisionRow({
+  revision,
+  disabled,
+  onRestore,
+}: {
+  revision: WorkflowRevision;
+  disabled: boolean;
+  onRestore: (versionId: string) => void;
+}) {
+  const capturedAt = new Date(revision.capturedAt).toLocaleString();
+  const versionLabel = revision.versionId.slice(0, 8);
+  const restoreAction = useAgentElement<HTMLButtonElement>({
+    id: `restore-workflow-version-${versionLabel}`,
+    role: "button",
+    label: `Restore ${revision.name}`,
+    group: "workflow-history",
+    description: `Restore workflow version ${versionLabel} captured after ${revision.operation}.`,
+    status: disabled ? "inactive" : "active",
+    onActivate: () => onRestore(revision.versionId),
+  });
+
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-sm px-1 py-1 text-xs hover:bg-bg-accent/40">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-txt">{revision.name}</div>
+        <div className="truncate text-2xs text-muted-strong">
+          {revision.operation} / {capturedAt} / {versionLabel}
+        </div>
+      </div>
+      <Button
+        ref={restoreAction.ref}
+        {...restoreAction.agentProps}
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 shrink-0"
+        onClick={() => onRestore(revision.versionId)}
+        disabled={disabled}
+        aria-label={`Restore ${revision.name}`}
+      >
+        <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+      </Button>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.reminder.on-the-dot",
   title: "Event starting right now fires an immediate reminder",
   domain: "calendar",

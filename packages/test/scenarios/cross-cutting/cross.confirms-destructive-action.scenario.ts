@@ -13,6 +13,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 const DELETE_ACTIONS = ["LIFE", "DELETE_TASK"];
 
 export default scenario({
+  lane: "live-only",
   id: "cross.confirms-destructive-action",
   title: "Agent confirms before destructive todo deletion",
   domain: "cross-cutting",

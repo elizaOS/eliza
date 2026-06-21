@@ -10,6 +10,7 @@ import {
 } from "../_helpers/action-result-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.docs.collect-id-copy-for-workflow",
   title: "Collect a missing ID copy or artifact to unblock a workflow",
   domain: "executive-assistant",

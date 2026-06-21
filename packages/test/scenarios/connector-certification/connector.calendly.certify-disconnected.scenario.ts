@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.calendly.certify-disconnected",
   title: "Certify Calendly disconnected degradation handling",
   connector: "calendly",

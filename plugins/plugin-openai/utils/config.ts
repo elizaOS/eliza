@@ -174,8 +174,22 @@ function authHeaderForKey(runtime: IAgentRuntime, key: string | undefined): Reco
   return key ? { Authorization: `Bearer ${key}` } : {};
 }
 
+/**
+ * Route to the wire-level mock server when one is running. `ELIZA_MOCK_OPENAI_BASE`
+ * is set only by the in-process mock runner (`packages/test/mocks`) and never in
+ * production — honoring it directly mirrors how LifeOps consumes its sibling
+ * `ELIZA_MOCK_*_BASE` vars (`mockoon-redirect.ts`). It is authoritative when set
+ * (a deliberate test action), so it wins over any configured base or provider
+ * mode; in production it is unset and has no effect.
+ */
+function getMockBaseURL(): string | undefined {
+  const base = getEnvValue("ELIZA_MOCK_OPENAI_BASE")?.trim();
+  return base ? base : undefined;
+}
+
 export function getBaseURL(runtime: IAgentRuntime): string {
   const browserURL = getSetting(runtime, "OPENAI_BROWSER_BASE_URL");
+  const mockBaseURL = getMockBaseURL();
   const cerebrasBaseURL =
     isCerebrasMode(runtime) && !getSetting(runtime, "OPENAI_BASE_URL")
       ? (getSetting(runtime, "CEREBRAS_BASE_URL") ?? "https://api.cerebras.ai/v1")
@@ -187,7 +201,8 @@ export function getBaseURL(runtime: IAgentRuntime): string {
   const baseURL =
     isBrowser() && browserURL
       ? browserURL
-      : (getSetting(runtime, "OPENAI_BASE_URL") ??
+      : (mockBaseURL ??
+        getSetting(runtime, "OPENAI_BASE_URL") ??
         cerebrasBaseURL ??
         evolinkBaseURL ??
         "https://api.openai.com/v1");

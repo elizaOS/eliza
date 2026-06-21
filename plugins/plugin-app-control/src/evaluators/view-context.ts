@@ -6,14 +6,16 @@ import {
 } from "@elizaos/core";
 import { createViewsClient } from "../actions/views-client.js";
 import { resolveIntentView } from "../actions/views-show.js";
+import { markViewSwitch } from "../runtime/view-switch-signal.js";
 
 const VIEWS_ACTION_NAME = "VIEWS";
 const NONE = "none";
 
 // The user-facing domain surfaces a situation can map to. Kept as a fixed enum
 // so the model output is constrained; the processor still confirms the id is an
-// actually-registered view before navigating.
-const CONTEXT_VIEWS = [
+// actually-registered view before navigating. Exported so the cross-list drift
+// guard (#8797) can assert every contextual view is also matcher-resolvable.
+export const CONTEXT_VIEWS = [
 	"calendar",
 	"inbox",
 	"wallet",
@@ -77,7 +79,7 @@ export const BASELINE_VIEW_CONTEXT_INSTRUCTION = [
  */
 const navigateToContextualView: EvaluatorProcessor<ViewContextOutput> = {
 	name: "navigate-to-contextual-view",
-	async process({ output }) {
+	async process({ output, message }) {
 		const viewId =
 			typeof output?.viewId === "string"
 				? output.viewId.trim().toLowerCase()
@@ -106,6 +108,11 @@ const navigateToContextualView: EvaluatorProcessor<ViewContextOutput> = {
 			viewType: target.viewType,
 		});
 		if (!ok) return undefined;
+		// This evaluator runs *after* the reply, so it cannot acknowledge the
+		// switch in the just-sent message. Record the switch (and the server
+		// stamps it on navigate): the `current_view` provider then acknowledges it
+		// on the immediate next turn rather than the user being moved silently.
+		markViewSwitch(message?.roomId);
 		logger.info(
 			`[plugin-app-control] contextual view nav → ${viewId}${output.reason ? ` (${output.reason})` : ""}`,
 		);

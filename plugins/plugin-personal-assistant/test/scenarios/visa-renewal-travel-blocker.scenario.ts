@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "visa-renewal-travel-blocker",
   title: "Assistant turns a visa renewal issue into a travel blocker plan",
   domain: "executive.travel",

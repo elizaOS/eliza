@@ -10,3 +10,20 @@
 // view and registers none. If a terminal projection is added later, build a
 // spatial snapshot component and register it DOM-guarded here.
 import "./imagegen-app";
+import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+
+// iOS/Android disable DynamicViewLoader, so register this view's already-bundled
+// component as an in-process app-shell page. Web/desktop dedupe it against the
+// agent-served bundle entry (network wins -> DynamicViewLoader), so it only adds
+// the render path on native. See packages/app/src/mobile-plugin-views.ts.
+registerAppShellPage({
+  id: "waifu-imagegen",
+  pluginId: "@elizaos/plugin-waifu-imagegen-app",
+  label: "Image Generation",
+  icon: "Image",
+  path: "/waifu-imagegen",
+  loader: () =>
+    import("./ui.ts").then((m) => ({
+      default: m.ImageGenAppView,
+    })),
+});

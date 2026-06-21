@@ -4,6 +4,13 @@ import { ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { CompatRuntimeState } from "./compat-helpers";
 import { handleLocalInferenceAsrRoute } from "./local-inference-asr-route";
+import { transcribeWavWithWords } from "./local-inference-asr-transcribe";
+
+vi.mock("./local-inference-asr-transcribe", () => ({
+	transcribeWavWithWords: vi.fn(),
+}));
+
+const transcribeWavWithWordsMock = vi.mocked(transcribeWavWithWords);
 
 function wavBytes(): Uint8Array {
 	const pcm = new Int16Array([0, 900, -900, 0]);
@@ -138,15 +145,17 @@ describe("local inference ASR route", () => {
 		expect(out.bodyJson()).toEqual({ ready: false, provider: null });
 	});
 
-	it("falls through missing providers and returns a transcript", async () => {
-		const useModel = vi
-			.fn()
-			.mockRejectedValueOnce(
-				new Error("No handler found for delegate type: TRANSCRIPTION"),
-			)
-			.mockResolvedValueOnce({ text: "hello local voice" });
+	it("transcribes raw WAV audio and returns text + per-word timings", async () => {
+		transcribeWavWithWordsMock.mockResolvedValue({
+			text: "hello local voice",
+			words: [
+				{ text: "hello", startMs: 0, endMs: 400 },
+				{ text: "local", startMs: 400, endMs: 700 },
+				{ text: "voice", startMs: 700, endMs: 1000 },
+			],
+		});
 		const state: CompatRuntimeState = {
-			current: { useModel } as unknown as CompatRuntimeState["current"],
+			current: {} as unknown as CompatRuntimeState["current"],
 		};
 		const out = fakeRes();
 
@@ -157,20 +166,28 @@ describe("local inference ASR route", () => {
 		);
 
 		expect(handled).toBe(true);
-		expect(useModel).toHaveBeenCalledTimes(2);
-		expect(useModel.mock.calls[1]?.[0]).toBe(ModelType.TRANSCRIPTION);
-		expect(useModel.mock.calls[1]?.[2]).toBe("capacitor-llama");
+		// The raw WAV bytes are forwarded to the single FFI-pipe transcriber.
 		expect(
-			Array.from((useModel.mock.calls[1]?.[1] as { audio: Uint8Array }).audio),
+			Array.from(transcribeWavWithWordsMock.mock.calls[0]?.[1] as Uint8Array),
 		).toEqual(Array.from(wavBytes()));
 		expect(out.status()).toBe(200);
-		expect(out.bodyJson()).toEqual({ text: "hello local voice" });
+		expect(out.bodyJson()).toEqual({
+			text: "hello local voice",
+			words: [
+				{ text: "hello", startMs: 0, endMs: 400 },
+				{ text: "local", startMs: 400, endMs: 700 },
+				{ text: "voice", startMs: 700, endMs: 1000 },
+			],
+		});
 	});
 
 	it("accepts JSON base64 audio for route clients that cannot send raw WAV", async () => {
-		const useModel = vi.fn().mockResolvedValue("hello from json");
+		transcribeWavWithWordsMock.mockResolvedValue({
+			text: "hello from json",
+			words: [],
+		});
 		const state: CompatRuntimeState = {
-			current: { useModel } as unknown as CompatRuntimeState["current"],
+			current: {} as unknown as CompatRuntimeState["current"],
 		};
 		const req = fakeReq({
 			audioBase64: Buffer.from(wavBytes()).toString("base64"),
@@ -180,11 +197,9 @@ describe("local inference ASR route", () => {
 
 		await handleLocalInferenceAsrRoute(req, out.res, state);
 
-		expect(useModel.mock.calls[0]?.[0]).toBe(ModelType.TRANSCRIPTION);
 		expect(
-			Array.from((useModel.mock.calls[0]?.[1] as { audio: Uint8Array }).audio),
+			Array.from(transcribeWavWithWordsMock.mock.calls[0]?.[1] as Uint8Array),
 		).toEqual(Array.from(wavBytes()));
-		expect(useModel.mock.calls[0]?.[2]).toBe("eliza-local-inference");
-		expect(out.bodyJson()).toEqual({ text: "hello from json" });
+		expect(out.bodyJson()).toEqual({ text: "hello from json", words: [] });
 	});
 });

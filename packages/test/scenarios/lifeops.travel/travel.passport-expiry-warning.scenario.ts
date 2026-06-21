@@ -9,6 +9,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
 
 export default scenario({
+  lane: "live-only",
   id: "travel.passport-expiry-warning",
   title:
     "Warn when passport expiry is inside the international trip's 6-month rule",

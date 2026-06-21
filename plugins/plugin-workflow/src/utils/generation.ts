@@ -48,16 +48,179 @@ type StructuredModelRunner = {
   ): Promise<T>;
 };
 
+type WorkflowTextModelType = typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE;
+type WorkflowGenerateTextParams = GenerateTextParams & { model?: string };
+
+interface WorkflowModelRouting {
+  model?: string;
+  requestedProvider?: string;
+  runtimeProvider?: string;
+}
+
+const WORKFLOW_MODEL_PROVIDER_KEYS = [
+  'WORKFLOW_LLM_PROVIDER',
+  'WORKFLOW_MODEL_PROVIDER',
+  'WORKFLOW_TEST_PROVIDER',
+] as const;
+
+const WORKFLOW_MODEL_KEYS = [
+  'WORKFLOW_LLM_MODEL',
+  'WORKFLOW_MODEL',
+  'WORKFLOW_TEST_MODEL',
+] as const;
+
+const WORKFLOW_RUNTIME_PROVIDER_KEYS = [
+  'WORKFLOW_LLM_RUNTIME_PROVIDER',
+  'WORKFLOW_MODEL_RUNTIME_PROVIDER',
+] as const;
+
+function readStringSetting(runtime: IAgentRuntime, key: string): string | undefined {
+  const runtimeValue = runtime.getSetting(key);
+  if (typeof runtimeValue === 'string' && runtimeValue.trim().length > 0) {
+    return runtimeValue.trim();
+  }
+  if (typeof process !== 'undefined') {
+    const envValue = process.env[key];
+    if (typeof envValue === 'string' && envValue.trim().length > 0) {
+      return envValue.trim();
+    }
+  }
+  return undefined;
+}
+
+function readFirstStringSetting(
+  runtime: IAgentRuntime,
+  keys: readonly string[]
+): string | undefined {
+  for (const key of keys) {
+    const value = readStringSetting(runtime, key);
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isCerebrasHost(value: string): boolean {
+  const host = value.toLowerCase();
+  return host === 'cerebras.ai' || host.endsWith('.cerebras.ai');
+}
+
+function isCerebrasBaseUrl(value: string): boolean {
+  try {
+    return isCerebrasHost(new URL(value).hostname);
+  } catch {
+    const host = value.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').split(/[/?#:]/, 1)[0];
+    return isCerebrasHost(host);
+  }
+}
+
+function inferCerebrasMode(runtime: IAgentRuntime): boolean {
+  const explicitProvider = readStringSetting(runtime, 'ELIZA_PROVIDER');
+  if (explicitProvider?.toLowerCase() === 'cerebras') {
+    return true;
+  }
+  const openAiBaseUrl = readStringSetting(runtime, 'OPENAI_BASE_URL');
+  if (openAiBaseUrl && isCerebrasBaseUrl(openAiBaseUrl)) {
+    return true;
+  }
+  const cerebrasKey = readStringSetting(runtime, 'CEREBRAS_API_KEY');
+  return !!cerebrasKey && !readStringSetting(runtime, 'OPENAI_API_KEY') && !openAiBaseUrl;
+}
+
+function resolveWorkflowModelRouting(runtime: IAgentRuntime): WorkflowModelRouting | null {
+  const explicitProvider = readFirstStringSetting(runtime, WORKFLOW_MODEL_PROVIDER_KEYS);
+  const requestedProvider =
+    explicitProvider ?? (inferCerebrasMode(runtime) ? 'cerebras' : undefined);
+  const normalizedProvider = requestedProvider?.toLowerCase();
+  const model =
+    readFirstStringSetting(runtime, WORKFLOW_MODEL_KEYS) ??
+    (normalizedProvider === 'cerebras'
+      ? (readStringSetting(runtime, 'CEREBRAS_MODEL') ?? 'gpt-oss-120b')
+      : undefined);
+  const explicitRuntimeProvider = readFirstStringSetting(runtime, WORKFLOW_RUNTIME_PROVIDER_KEYS);
+  const runtimeProvider =
+    explicitRuntimeProvider ?? (normalizedProvider === 'cerebras' ? 'openai' : requestedProvider);
+
+  if (!model && !requestedProvider && !runtimeProvider) {
+    return null;
+  }
+
+  return {
+    ...(model ? { model } : {}),
+    ...(requestedProvider ? { requestedProvider } : {}),
+    ...(runtimeProvider ? { runtimeProvider } : {}),
+  };
+}
+
+function withWorkflowModelRouting(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams,
+  callSite: string
+): { params: WorkflowGenerateTextParams; provider?: string } {
+  const routing = resolveWorkflowModelRouting(runtime);
+  if (!routing) {
+    return { params };
+  }
+
+  const existingProviderOptions = isRecord(params.providerOptions) ? params.providerOptions : {};
+  const existingWorkflowOptions = isRecord(existingProviderOptions.workflow)
+    ? existingProviderOptions.workflow
+    : {};
+
+  return {
+    provider: routing.runtimeProvider,
+    params: {
+      ...params,
+      ...(routing.model ? { model: routing.model } : {}),
+      providerOptions: {
+        ...existingProviderOptions,
+        workflow: {
+          ...existingWorkflowOptions,
+          callSite,
+          ...(routing.model ? { model: routing.model } : {}),
+          ...(routing.requestedProvider ? { requestedProvider: routing.requestedProvider } : {}),
+          ...(routing.runtimeProvider ? { runtimeProvider: routing.runtimeProvider } : {}),
+        },
+      },
+    },
+  };
+}
+
 async function useStructuredModel<T>(
   runtime: IAgentRuntime,
   prompt: string,
-  schema: unknown
+  schema: unknown,
+  callSite: string
 ): Promise<T> {
   const structuredRuntime = runtime as IAgentRuntime & StructuredModelRunner;
-  return (await structuredRuntime.useModel<T>(ModelType.TEXT_SMALL, {
-    prompt,
-    responseSchema: schema as never,
-  })) as T;
+  const routed = withWorkflowModelRouting(
+    runtime,
+    {
+      prompt,
+      responseSchema: schema as never,
+    },
+    callSite
+  );
+  return (await structuredRuntime.useModel<T>(
+    ModelType.TEXT_SMALL,
+    routed.params as GenerateTextParams & { responseSchema: unknown },
+    routed.provider
+  )) as T;
+}
+
+async function useWorkflowTextModel(
+  runtime: IAgentRuntime,
+  modelType: WorkflowTextModelType,
+  params: GenerateTextParams,
+  callSite: string
+): Promise<string> {
+  const routed = withWorkflowModelRouting(runtime, params, callSite);
+  return (await runtime.useModel(modelType, routed.params, routed.provider)) as string;
 }
 
 /**
@@ -85,7 +248,8 @@ export async function extractKeywords(
     result = await useStructuredModel<KeywordExtractionResult>(
       runtime,
       `${KEYWORD_EXTRACTION_SYSTEM_PROMPT}${buildPreferredProvidersDirective(preferredProviders)}\n\nUser request: ${userPrompt}`,
-      keywordExtractionSchema
+      keywordExtractionSchema,
+      'extractKeywords'
     );
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
@@ -153,7 +317,8 @@ ${workflowList}`;
       result = await useStructuredModel<WorkflowMatchResult>(
         runtime,
         `${WORKFLOW_MATCHING_SYSTEM_PROMPT}\n\n${userPrompt}`,
-        workflowMatchingSchema
+        workflowMatchingSchema,
+        'matchWorkflow'
       );
     } catch (innerError) {
       const errMsg = innerError instanceof Error ? innerError.message : String(innerError);
@@ -218,7 +383,8 @@ ${draftSummary}
 ## User Message
 
 ${userMessage}`,
-      draftIntentSchema
+      draftIntentSchema,
+      'classifyDraftIntent'
     );
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
@@ -301,11 +467,16 @@ Return the COMPLETE corrected workflow JSON. Preserve every field that was not p
 
   let response: string;
   try {
-    response = (await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: fixPrompt,
-      temperature: 0,
-      responseFormat: { type: 'json_object' },
-    })) as string;
+    response = await useWorkflowTextModel(
+      runtime,
+      ModelType.TEXT_LARGE,
+      {
+        prompt: fixPrompt,
+        temperature: 0,
+        responseFormat: { type: 'json_object' },
+      },
+      'fixWorkflowErrors'
+    );
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     logger.error(
@@ -501,11 +672,16 @@ async function callLlmAndParseWorkflow(
   context: 'generateWorkflow' | 'modifyWorkflow'
 ): Promise<WorkflowDefinition> {
   const callOnce = async (extraInstruction?: string): Promise<string> =>
-    (await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: extraInstruction ? `${prompt}\n\n${extraInstruction}` : prompt,
-      temperature: 0,
-      responseFormat: { type: 'json_object' },
-    })) as string;
+    useWorkflowTextModel(
+      runtime,
+      ModelType.TEXT_LARGE,
+      {
+        prompt: extraInstruction ? `${prompt}\n\n${extraInstruction}` : prompt,
+        temperature: 0,
+        responseFormat: { type: 'json_object' },
+      },
+      context
+    );
 
   const firstResponse = await callOnce();
   try {
@@ -630,9 +806,14 @@ export async function formatActionResponse(
   data: Record<string, unknown>
 ): Promise<string> {
   try {
-    const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt: `${ACTION_RESPONSE_SYSTEM_PROMPT}\n\nType: ${responseType}\n\nData:\n${formatActionDataForPrompt(data)}`,
-    });
+    const response = await useWorkflowTextModel(
+      runtime,
+      ModelType.TEXT_SMALL,
+      {
+        prompt: `${ACTION_RESPONSE_SYSTEM_PROMPT}\n\nType: ${responseType}\n\nData:\n${formatActionDataForPrompt(data)}`,
+      },
+      'formatActionResponse'
+    );
 
     return (response as string).trim();
   } catch (error) {
@@ -713,7 +894,8 @@ export async function assessFeasibility(
         `\n\n## Removed Integrations (unavailable)\n${removedList}` +
         `\n\n## Available Service Integrations\n${availableList}` +
         `\n\n## Available Utility Nodes\n${utilityList}`,
-      feasibilitySchema
+      feasibilitySchema,
+      'assessFeasibility'
     );
 
     return result;
@@ -756,10 +938,15 @@ export async function correctFieldReferences(
           ref.expression
         ).replace('{availableFields}', ref.availableFields.join('\n'));
 
-        const corrected = await runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt: `${FIELD_CORRECTION_SYSTEM_PROMPT}\n\n${userPrompt}`,
-          temperature: 0,
-        });
+        const corrected = await useWorkflowTextModel(
+          runtime,
+          ModelType.TEXT_SMALL,
+          {
+            prompt: `${FIELD_CORRECTION_SYSTEM_PROMPT}\n\n${userPrompt}`,
+            temperature: 0,
+          },
+          'correctFieldReferences'
+        );
 
         const cleaned = (corrected as string).trim();
         return {
@@ -915,10 +1102,15 @@ export async function correctParameterNames(
           .replace('{currentParams}', JSON.stringify(detection.currentParams, null, 2))
           .replace('{propertyDefs}', JSON.stringify(detection.propertyDefs, null, 2));
 
-        const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt: `${PARAM_CORRECTION_SYSTEM_PROMPT}\n\n${userPrompt}`,
-          temperature: 0,
-        });
+        const response = await useWorkflowTextModel(
+          runtime,
+          ModelType.TEXT_SMALL,
+          {
+            prompt: `${PARAM_CORRECTION_SYSTEM_PROMPT}\n\n${userPrompt}`,
+            temperature: 0,
+          },
+          'correctParameterNames'
+        );
 
         const cleaned = (response as string)
           .replace(/^[\s\S]*?```(?:json)?\s*\n?/i, '')

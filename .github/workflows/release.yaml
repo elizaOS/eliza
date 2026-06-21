@@ -438,7 +438,7 @@ jobs:
 
       # Push changes to git (fails the workflow if it can't push)
       - name: Push to git
-        if: steps.commit.outputs.has_changes == 'true'
+        if: steps.commit.outputs.has_changes == 'true' && steps.release_type.outputs.is_release_event != 'true'
         run: |
           TAG_NAME="${{ steps.tag.outputs.tag_name }}"
 
@@ -603,6 +603,9 @@ jobs:
 
           # Configure npm for authentication
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          # Ensure new scoped /* packages publish as public (lerna reads
+          # publishConfig.access per-package; the npmrc access key is ignored).
+          node scripts/release-set-public-access.mjs
 
           # Publish with appropriate dist-tag
           # Commit workspace reference changes so lerna doesn't complain about uncommitted files

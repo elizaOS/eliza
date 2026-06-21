@@ -39,6 +39,7 @@ function checkSignalUnavailableSurfaced(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "cross-channel.signal-permission-denied-degraded",
   title:
     "Signal permission denied → degraded but cross-channel query continues",

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "memorial-logistics-family-brief",
   title: "Assistant coordinates memorial logistics across family, travel, and vendors",
   domain: "executive.family",

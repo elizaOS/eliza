@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "medical-bill-appeal-coordination",
   title: "Assistant coordinates a medical bill appeal without handling health details",
   domain: "executive.money",

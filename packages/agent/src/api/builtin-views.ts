@@ -121,6 +121,18 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     visibleInManager: true,
   },
   {
+    id: "transcripts",
+    label: "Transcripts",
+    description:
+      "Recorded voice transcripts — play, scrub, and read with word sync",
+    icon: "AudioLines",
+    heroImagePath: "assets/view-heroes/transcripts.png",
+    path: "/apps/transcripts",
+    order: 71,
+    tags: ["transcript", "voice", "recording", "audio"],
+    visibleInManager: true,
+  },
+  {
     id: "memories",
     label: "Memories",
     description: "Agent memory viewer and management",

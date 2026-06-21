@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.meeting-prep-docs-people",
   title: "Meeting prep gathers people, docs, threads, and open decisions",
   domain: "lifeops.executive-assistant",

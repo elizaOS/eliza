@@ -57,6 +57,7 @@ function checkAgentSurfacesAuthFailure(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.token-expiry-mid-fetch",
   title: "Gmail OAuth 401 mid-fetch surfaces re-authentication prompt",
   domain: "lifeops.inbox-triage",

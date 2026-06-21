@@ -6,6 +6,7 @@ import {
 import { seedScreenTimeSessions } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "activity.per-site.social",
   title: "Per-site social activity (requires browser extension)",
   domain: "activity",

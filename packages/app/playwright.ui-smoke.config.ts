@@ -37,6 +37,9 @@ writeFileSync(
   Buffer.from(KNOWN_PHRASE_WAV_DATA_URL.split(",")[1] ?? "", "base64"),
 );
 const VOICE_MIC_SPEC = /voice-realaudio\.spec\.ts/;
+// The all-views aesthetic audit (#8796) walks ~50 views × 2 viewports; it is a
+// dedicated tool run via `audit:app`, not part of the default e2e smoke.
+const AUDIT_APP_SPEC = /all-views-aesthetic-audit\.spec\.ts/;
 const recording = !!process.env.E2E_RECORD;
 const videoMode =
   process.env.ELIZA_UI_SMOKE_DISABLE_VIDEO === "1"
@@ -74,8 +77,9 @@ export default defineConfig({
     {
       name: "chromium",
       // The voice button-press spec needs the fake-audio launch flags; it runs
-      // in the dedicated `chromium-voice-mic` project below, not here.
-      testIgnore: VOICE_MIC_SPEC,
+      // in the dedicated `chromium-voice-mic` project below, not here. The
+      // all-views aesthetic audit runs only via the `audit:app` project.
+      testIgnore: [VOICE_MIC_SPEC, AUDIT_APP_SPEC],
       use: {
         ...devices["Desktop Chrome"],
         ...(chromiumExecutablePath
@@ -110,6 +114,18 @@ export default defineConfig({
       testMatch:
         /(backgrounds|apps-personal-assistant-decomposed-interactions)\.spec\.ts/,
       use: { ...devices["Pixel 7"] },
+    },
+    {
+      // All-views aesthetic audit (#8796) — run with `audit:app`
+      // (`--project=audit-app`). Walks every view at desktop + mobile internally.
+      name: "audit-app",
+      testMatch: AUDIT_APP_SPEC,
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(chromiumExecutablePath
+          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+          : {}),
+      },
     },
   ],
   webServer: {

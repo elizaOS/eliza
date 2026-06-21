@@ -387,7 +387,7 @@ describe("TrajectoryLoggerView populated render", () => {
     expect(screen.getByText("no turn yet")).toBeTruthy();
   });
 
-  it("surfaces the readJson error message in the header when the list fetch fails", async () => {
+  it("shows a graceful unavailable state when the trajectories route is absent (503/404)", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string) => {
@@ -408,10 +408,12 @@ describe("TrajectoryLoggerView populated render", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText(/\[trajectory-logger\] 503 Service Unavailable/),
+        screen.getByText(/Trajectory logging unavailable on this surface/),
       ).toBeTruthy(),
     );
-    // No badge while erroring (header is mutually exclusive).
+    // The raw "[trajectory-logger] 503 ..." string must NOT leak into the header.
+    expect(screen.queryByText(/\[trajectory-logger\] 503/)).toBeNull();
+    // No badge while showing the unavailable state (header is mutually exclusive).
     expect(screen.queryByTestId("trajectory-logging-badge")).toBeNull();
   });
 });

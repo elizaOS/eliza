@@ -154,9 +154,7 @@ describe("handleBatchTextEmbedding no-marker-on-failure", () => {
         new Response("slow down", { status: 429, headers: { "retry-after": "1" } })
       )
       .mockResolvedValueOnce(new Response("still bad", { status: 503, statusText: "Unavailable" }));
-    await expect(handleBatchTextEmbedding(makeRuntime(), ["a"])).rejects.toThrow(
-      /Rate-limit retry failed/
-    );
+    await expect(handleBatchTextEmbedding(makeRuntime(), ["a"])).rejects.toThrow(/API error: 503/);
     expect(emitModelUsageEvent).not.toHaveBeenCalled();
   }, 10000);
 });

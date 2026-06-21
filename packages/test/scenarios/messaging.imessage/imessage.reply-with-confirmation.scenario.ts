@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "imessage.reply-with-confirmation",
   title: "Reply via iMessage only after explicit confirmation",
   domain: "messaging.imessage",

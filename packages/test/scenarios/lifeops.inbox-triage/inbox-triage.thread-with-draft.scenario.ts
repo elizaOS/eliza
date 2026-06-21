@@ -106,6 +106,7 @@ function checkDraftConsidersWholeThread(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.thread-with-draft",
   title: "3-message thread → draft reply, awaits approval before send",
   domain: "lifeops.inbox-triage",

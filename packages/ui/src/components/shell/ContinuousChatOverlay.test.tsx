@@ -12,7 +12,14 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 // The resting overlay's suggestion strip fetches model suggestions via the
 // shared client; stub it so the strip stays on its static fallback in tests.
 vi.mock("../../api/client", () => ({
-  client: { fetch: vi.fn().mockRejectedValue(new Error("no api in test")) },
+  client: {
+    fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
+    // Transcription archival is best-effort and fire-and-forget; resolve so the
+    // attachment path (the user-facing behavior) is what the test asserts.
+    createTranscript: vi
+      .fn()
+      .mockResolvedValue({ transcript: { id: "t1", title: "Transcript" } }),
+  },
 }));
 
 // The press-and-hold copy path writes to the clipboard; stub it so the gesture
@@ -57,6 +64,7 @@ function makeController(
     handsFree: false,
     toggleHandsFree: vi.fn(),
     setDictationSink: vi.fn(),
+    setTranscriptSessionSink: vi.fn(),
     setComposerHasDraft: vi.fn(),
     clearConversation: vi.fn(),
     ...overrides,
@@ -119,6 +127,56 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
+  });
+
+  it("blurs the focused composer when the active view leaves chat (drops the iOS accessory bar)", () => {
+    const { rerender } = render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
+      />,
+    );
+    const composer = screen.getByLabelText("message");
+    act(() => {
+      composer.focus();
+    });
+    expect(document.activeElement).toBe(composer);
+
+    // Navigate to a non-chat view. The overlay floats over every view, so
+    // without an explicit blur the textarea keeps DOM focus on Settings and iOS
+    // strands the keyboard input-accessory bar (the ‹ › chevrons + "Done").
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          currentTab: "settings",
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(document.activeElement).not.toBe(composer);
+  });
+
+  it("keeps composer focus when the active view stays on chat (no spurious blur)", () => {
+    const { rerender } = render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
+      />,
+    );
+    const composer = screen.getByLabelText("message");
+    act(() => {
+      composer.focus();
+    });
+    // A re-render that does not change the active view must not steal focus.
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(document.activeElement).toBe(composer);
   });
 
   it("opens the sheet on a pull-up drag of the grabber", () => {
@@ -735,5 +793,134 @@ describe("ContinuousChatOverlay", () => {
     fireEvent.pointerUp(pill, { clientY: 360, pointerId: 1 });
     expect(sheet.getAttribute("data-detent")).toBe("half");
     expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
+  });
+
+  // ── Transcribe button lives in the composer beside the mic, gated on voice
+  // being on (#8789). It's part of the always-present composer trailing cluster,
+  // so it shows at any detent (no need to open the sheet header).
+  it("hides the transcribe button while voice is off", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    // The mic is present, but with no active voice session the transcribe
+    // control is not offered next to it.
+    expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
+    expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
+    expect(screen.queryByTestId("chat-transcribing-badge")).toBeNull();
+  });
+
+  it("reveals the transcribe button beside the mic while a hands-free voice session is active", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          handsFree: true,
+          transcriptionMode: false,
+          toggleTranscriptionMode: vi.fn(),
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    const btn = screen.getByTestId("chat-composer-transcribe");
+    expect(btn.getAttribute("aria-label")).toBe("transcription mode");
+    expect(btn.getAttribute("aria-pressed")).toBe("false");
+    // It sits next to the mic (both in the composer trailing cluster).
+    expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
+  });
+
+  it("reveals the transcribe button while the mic is open (push-to-talk recording)", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          phase: "listening",
+          recording: true,
+          toggleTranscriptionMode: vi.fn(),
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    expect(screen.getByTestId("chat-composer-transcribe")).toBeTruthy();
+  });
+
+  it("shows the transcribe button as Stop (pressed) while transcribing, and wires the toggle", () => {
+    const toggleTranscriptionMode = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          toggleTranscriptionMode,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    const btn = screen.getByTestId("chat-composer-transcribe");
+    expect(btn.getAttribute("aria-label")).toBe("stop transcription");
+    expect(btn.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(btn);
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the mic button ON while transcribing (additive, not a takeover)", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          toggleTranscriptionMode: vi.fn(),
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    const mic = screen.getByTestId("chat-composer-mic");
+    // The mic stays active (lit) the whole time transcription runs.
+    expect(mic.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("a mic tap while transcribing ends transcription, never starts a conversation", () => {
+    const toggleTranscriptionMode = vi.fn();
+    const toggleHandsFree = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          toggleTranscriptionMode,
+          toggleHandsFree,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("chat-composer-mic"));
+    // Ends transcription (→ composer attachment); does NOT open a second capture.
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+    expect(toggleHandsFree).not.toHaveBeenCalled();
+  });
+
+  it("drops the finished transcript into the composer as an attachment, not an auto-sent message", () => {
+    let sink:
+      | ((
+          segments: Array<Record<string, unknown>>,
+          startedAt: number,
+          audioWav: Uint8Array | null,
+        ) => void)
+      | null = null;
+    const controller = makeController({
+      setTranscriptSessionSink: ((fn: unknown) => {
+        sink = fn as typeof sink;
+      }) as unknown as ShellController["setTranscriptSessionSink"],
+    });
+    render(<ContinuousChatOverlay controller={controller} />);
+    expect(typeof sink).toBe("function");
+
+    act(() => {
+      sink?.(
+        [
+          {
+            id: "s1",
+            startMs: 0,
+            endMs: 1000,
+            text: "hello world",
+            words: [],
+          },
+        ],
+        1_700_000_000_000,
+        null,
+      );
+    });
+
+    // The transcript becomes a composer attachment chip (document kind) …
+    expect(screen.getByText(/^Transcript .*\.md$/)).toBeTruthy();
+    // … and is NOT auto-sent — the user sends it with their next message.
+    expect(controller.send).not.toHaveBeenCalled();
   });
 });

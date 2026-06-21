@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "board-observer-conflict-disclosure",
   title: "Assistant stages board observer conflict disclosure",
   domain: "executive.legal",

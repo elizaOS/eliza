@@ -3044,6 +3044,50 @@ async function handleDirectCoreRoute(
 		});
 	}
 
+	if (method === "POST" && pathname === "/api/first-run") {
+		// finishLocal() submits the first-run profile here. The in-process agent
+		// is already booted with its config, so the submit is acknowledged as
+		// complete — without this route the POST 404s ("No iOS local route for
+		// POST /api/first-run") and on-device onboarding can never finish, leaving
+		// the user stuck on "Starting local agent". Companion to the GET
+		// /api/first-run/status route above.
+		return jsonResponse(200, {
+			ok: true,
+			complete: true,
+			deploymentTarget: "local",
+		});
+	}
+
+	if (method === "GET" && pathname === "/api/auth/me") {
+		// The post-startup auth probe hits /api/auth/me; the in-process local
+		// agent has no remote auth, so report a local machine session (mirrors
+		// the WebView kernel shim). Without it the probe fails and the app shows
+		// "Backend Unreachable — auth probe could not reach /api/auth/me".
+		return jsonResponse(200, {
+			identity: {
+				id: "local-agent",
+				displayName: "Local Agent",
+				kind: "machine",
+			},
+			session: { id: "local", kind: "local", expiresAt: null },
+			access: {
+				mode: "local",
+				passwordConfigured: false,
+				ownerConfigured: false,
+			},
+		});
+	}
+
+	if (method === "GET" && pathname === "/api/auth/status") {
+		return jsonResponse(200, {
+			required: false,
+			pairingEnabled: false,
+			expiresAt: null,
+			authenticated: true,
+			localAccess: true,
+		});
+	}
+
 	if (method === "POST" && pathname === "/api/dev/model-grind") {
 		const report = await runModelGrind({
 			callIosHost,

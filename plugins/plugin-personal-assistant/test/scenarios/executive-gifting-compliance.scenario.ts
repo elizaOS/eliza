@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "executive-gifting-compliance",
   title: "Assistant checks executive gifting compliance",
   domain: "executive.approvals",

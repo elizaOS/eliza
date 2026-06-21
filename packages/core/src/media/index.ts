@@ -12,7 +12,14 @@ export {
 	MediaFetchError,
 	type MediaFetchErrorCode,
 } from "./fetch.js";
-
+export {
+	type CachedImageDescription,
+	describeImageCached,
+	getCachedImageDescription,
+	imageDescriptionCacheKey,
+	normalizeImageDescription,
+	setCachedImageDescription,
+} from "./image-description-cache.js";
 export {
 	detectMime,
 	extensionForMime,
@@ -24,12 +31,3 @@ export {
 	type MediaKind,
 	mediaKindFromMime,
 } from "./mime.js";
-
-export {
-	type CachedImageDescription,
-	describeImageCached,
-	getCachedImageDescription,
-	imageDescriptionCacheKey,
-	normalizeImageDescription,
-	setCachedImageDescription,
-} from "./image-description-cache.js";

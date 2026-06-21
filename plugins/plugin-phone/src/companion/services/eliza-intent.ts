@@ -112,4 +112,5 @@ export class ElizaIntentWeb extends WebPlugin implements ElizaIntentPlugin {
 
 export const ElizaIntent = registerPlugin<ElizaIntentPlugin>("ElizaIntent", {
   web: () => new ElizaIntentWeb(),
+  android: async () => new ElizaIntentWeb(),
 });

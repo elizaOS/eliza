@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "note_trait_unrelated.frank.short_text.038",
   title: "note_trait :: no_lists :: frank :: short_text :: 15-turn (38)",
   domain: "personality",

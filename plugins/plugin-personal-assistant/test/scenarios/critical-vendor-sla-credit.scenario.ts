@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "critical-vendor-sla-credit",
   title: "Assistant recovers critical vendor SLA credit",
   domain: "executive.vendor",

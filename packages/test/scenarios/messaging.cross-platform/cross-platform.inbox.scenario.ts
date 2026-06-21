@@ -14,6 +14,7 @@ import {
 const PERSON_NAME = "Priya Rao";
 
 export default scenario({
+  lane: "live-only",
   id: "cross-platform.inbox",
   title: "Inbox dedupes one person across messaging platforms",
   domain: "messaging.cross-platform",

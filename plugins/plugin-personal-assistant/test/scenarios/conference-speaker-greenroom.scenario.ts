@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "conference-speaker-greenroom",
   title: "Assistant coordinates a conference speaker greenroom run of show",
   domain: "executive.schedule",

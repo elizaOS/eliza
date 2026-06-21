@@ -15,12 +15,24 @@
     if (typeof require !== "undefined") return require.apply(this, arguments);
     throw Error('Dynamic require of "' + x + '" is not supported');
   });
+  var __esm = (fn, res, err) => function __init() {
+    if (err) throw err[0];
+    try {
+      return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+    } catch (e) {
+      throw err = [e], e;
+    }
+  };
   var __commonJS = (cb, mod) => function __require2() {
     try {
       return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
     } catch (e) {
       throw mod = 0, e;
     }
+  };
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
   };
   var __copyProps = (to, from, except, desc) => {
     if (from && typeof from === "object" || typeof from === "function") {
@@ -125,7 +137,7 @@
       function isValidElement2(object) {
         return "object" === typeof object && null !== object && object.$$typeof === REACT_ELEMENT_TYPE;
       }
-      function escape(key) {
+      function escape2(key) {
         var escaperLookup = { "=": "=0", ":": "=2" };
         return "$" + key.replace(/[=:]/g, function(match) {
           return escaperLookup[match];
@@ -133,7 +145,7 @@
       }
       var userProvidedKeyEscapeRegex = /\/+/g;
       function getElementKey(element, index) {
-        return "object" === typeof element && null !== element && null != element.key ? escape("" + element.key) : index.toString(36);
+        return "object" === typeof element && null !== element && null != element.key ? escape2("" + element.key) : index.toString(36);
       }
       function resolveThenable(thenable) {
         switch (thenable.status) {
@@ -781,7 +793,7 @@
   var require_react_dom_production = __commonJS({
     "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom.production.js"(exports) {
       "use strict";
-      var React9 = require_react();
+      var React10 = require_react();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
         if (1 < arguments.length) {
@@ -821,7 +833,7 @@
           implementation
         };
       }
-      var ReactSharedInternals = React9.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React10.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       function getCrossOriginStringAs(as, input) {
         if ("font" === as) return "";
         if ("string" === typeof input)
@@ -957,7 +969,7 @@
     "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
       "use strict";
       var Scheduler = require_scheduler();
-      var React9 = require_react();
+      var React10 = require_react();
       var ReactDOM = require_react_dom();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
@@ -1148,7 +1160,7 @@
         return null;
       }
       var isArrayImpl = Array.isArray;
-      var ReactSharedInternals = React9.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React10.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var ReactDOMSharedInternals = ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var sharedNotPendingObject = {
         pending: false,
@@ -12594,7 +12606,7 @@
           0 === i && attemptExplicitHydrationTarget(target);
         }
       };
-      var isomorphicReactPackageVersion$jscomp$inline_1840 = React9.version;
+      var isomorphicReactPackageVersion$jscomp$inline_1840 = React10.version;
       if ("19.2.5" !== isomorphicReactPackageVersion$jscomp$inline_1840)
         throw Error(
           formatProdErrorMessage(
@@ -12761,8 +12773,551 @@
     }
   });
 
+  // node_modules/.bun/@capacitor+core@8.4.0/node_modules/@capacitor/core/dist/index.js
+  var ExceptionCode, CapacitorException, getPlatformId, createCapacitor, initCapacitorGlobal, Capacitor, registerPlugin, WebPlugin, encode, decode, CapacitorCookiesPluginWeb, CapacitorCookies, readBlobAsBase64, normalizeHttpHeaders, buildUrlParams, buildRequestInit, CapacitorHttpPluginWeb, CapacitorHttp, SystemBarsStyle, SystemBarType, SystemBarsPluginWeb, SystemBars;
+  var init_dist = __esm({
+    "node_modules/.bun/@capacitor+core@8.4.0/node_modules/@capacitor/core/dist/index.js"() {
+      (function(ExceptionCode2) {
+        ExceptionCode2["Unimplemented"] = "UNIMPLEMENTED";
+        ExceptionCode2["Unavailable"] = "UNAVAILABLE";
+      })(ExceptionCode || (ExceptionCode = {}));
+      CapacitorException = class extends Error {
+        constructor(message, code, data) {
+          super(message);
+          this.message = message;
+          this.code = code;
+          this.data = data;
+        }
+      };
+      getPlatformId = (win) => {
+        var _a, _b;
+        if (win === null || win === void 0 ? void 0 : win.androidBridge) {
+          return "android";
+        } else if ((_b = (_a = win === null || win === void 0 ? void 0 : win.webkit) === null || _a === void 0 ? void 0 : _a.messageHandlers) === null || _b === void 0 ? void 0 : _b.bridge) {
+          return "ios";
+        } else {
+          return "web";
+        }
+      };
+      createCapacitor = (win) => {
+        const capCustomPlatform = win.CapacitorCustomPlatform || null;
+        const cap = win.Capacitor || {};
+        const Plugins = cap.Plugins = cap.Plugins || {};
+        const getPlatform = () => {
+          return capCustomPlatform !== null ? capCustomPlatform.name : getPlatformId(win);
+        };
+        const isNativePlatform = () => getPlatform() !== "web";
+        const isPluginAvailable = (pluginName) => {
+          const plugin = registeredPlugins.get(pluginName);
+          if (plugin === null || plugin === void 0 ? void 0 : plugin.platforms.has(getPlatform())) {
+            return true;
+          }
+          if (getPluginHeader(pluginName)) {
+            return true;
+          }
+          return false;
+        };
+        const getPluginHeader = (pluginName) => {
+          var _a;
+          return (_a = cap.PluginHeaders) === null || _a === void 0 ? void 0 : _a.find((h) => h.name === pluginName);
+        };
+        const handleError = (err) => win.console.error(err);
+        const registeredPlugins = /* @__PURE__ */ new Map();
+        const registerPlugin2 = (pluginName, jsImplementations = {}) => {
+          const registeredPlugin = registeredPlugins.get(pluginName);
+          if (registeredPlugin) {
+            console.warn(`Capacitor plugin "${pluginName}" already registered. Cannot register plugins twice.`);
+            return registeredPlugin.proxy;
+          }
+          const platform = getPlatform();
+          const pluginHeader = getPluginHeader(pluginName);
+          let jsImplementation;
+          const loadPluginImplementation = async () => {
+            if (!jsImplementation && platform in jsImplementations) {
+              jsImplementation = typeof jsImplementations[platform] === "function" ? jsImplementation = await jsImplementations[platform]() : jsImplementation = jsImplementations[platform];
+            } else if (capCustomPlatform !== null && !jsImplementation && "web" in jsImplementations) {
+              jsImplementation = typeof jsImplementations["web"] === "function" ? jsImplementation = await jsImplementations["web"]() : jsImplementation = jsImplementations["web"];
+            }
+            return jsImplementation;
+          };
+          const createPluginMethod = (impl, prop) => {
+            var _a, _b;
+            if (pluginHeader) {
+              const methodHeader = pluginHeader === null || pluginHeader === void 0 ? void 0 : pluginHeader.methods.find((m2) => prop === m2.name);
+              if (methodHeader) {
+                if (methodHeader.rtype === "promise") {
+                  return (options) => cap.nativePromise(pluginName, prop.toString(), options);
+                } else {
+                  return (options, callback) => cap.nativeCallback(pluginName, prop.toString(), options, callback);
+                }
+              } else if (impl) {
+                return (_a = impl[prop]) === null || _a === void 0 ? void 0 : _a.bind(impl);
+              }
+            } else if (impl) {
+              return (_b = impl[prop]) === null || _b === void 0 ? void 0 : _b.bind(impl);
+            } else {
+              throw new CapacitorException(`"${pluginName}" plugin is not implemented on ${platform}`, ExceptionCode.Unimplemented);
+            }
+          };
+          const createPluginMethodWrapper = (prop) => {
+            let remove;
+            const wrapper = (...args) => {
+              const p = loadPluginImplementation().then((impl) => {
+                const fn = createPluginMethod(impl, prop);
+                if (fn) {
+                  const p2 = fn(...args);
+                  remove = p2 === null || p2 === void 0 ? void 0 : p2.remove;
+                  return p2;
+                } else {
+                  throw new CapacitorException(`"${pluginName}.${prop}()" is not implemented on ${platform}`, ExceptionCode.Unimplemented);
+                }
+              });
+              if (prop === "addListener") {
+                p.remove = async () => remove();
+              }
+              return p;
+            };
+            wrapper.toString = () => `${prop.toString()}() { [capacitor code] }`;
+            Object.defineProperty(wrapper, "name", {
+              value: prop,
+              writable: false,
+              configurable: false
+            });
+            return wrapper;
+          };
+          const addListener = createPluginMethodWrapper("addListener");
+          const removeListener = createPluginMethodWrapper("removeListener");
+          const addListenerNative = (eventName, callback) => {
+            const call = addListener({ eventName }, callback);
+            const remove = async () => {
+              const callbackId = await call;
+              removeListener({
+                eventName,
+                callbackId
+              }, callback);
+            };
+            const p = new Promise((resolve) => call.then(() => resolve({ remove })));
+            p.remove = async () => {
+              console.warn(`Using addListener() without 'await' is deprecated.`);
+              await remove();
+            };
+            return p;
+          };
+          const proxy = new Proxy({}, {
+            get(_, prop) {
+              switch (prop) {
+                // https://github.com/facebook/react/issues/20030
+                case "$$typeof":
+                  return void 0;
+                case "toJSON":
+                  return () => ({});
+                case "addListener":
+                  return pluginHeader ? addListenerNative : addListener;
+                case "removeListener":
+                  return removeListener;
+                default:
+                  return createPluginMethodWrapper(prop);
+              }
+            }
+          });
+          Plugins[pluginName] = proxy;
+          registeredPlugins.set(pluginName, {
+            name: pluginName,
+            proxy,
+            platforms: /* @__PURE__ */ new Set([...Object.keys(jsImplementations), ...pluginHeader ? [platform] : []])
+          });
+          return proxy;
+        };
+        if (!cap.convertFileSrc) {
+          cap.convertFileSrc = (filePath) => filePath;
+        }
+        cap.getPlatform = getPlatform;
+        cap.handleError = handleError;
+        cap.isNativePlatform = isNativePlatform;
+        cap.isPluginAvailable = isPluginAvailable;
+        cap.registerPlugin = registerPlugin2;
+        cap.Exception = CapacitorException;
+        cap.DEBUG = !!cap.DEBUG;
+        cap.isLoggingEnabled = !!cap.isLoggingEnabled;
+        return cap;
+      };
+      initCapacitorGlobal = (win) => win.Capacitor = createCapacitor(win);
+      Capacitor = /* @__PURE__ */ initCapacitorGlobal(typeof globalThis !== "undefined" ? globalThis : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : {});
+      registerPlugin = Capacitor.registerPlugin;
+      WebPlugin = class {
+        constructor() {
+          this.listeners = {};
+          this.retainedEventArguments = {};
+          this.windowListeners = {};
+        }
+        addListener(eventName, listenerFunc) {
+          let firstListener = false;
+          const listeners = this.listeners[eventName];
+          if (!listeners) {
+            this.listeners[eventName] = [];
+            firstListener = true;
+          }
+          this.listeners[eventName].push(listenerFunc);
+          const windowListener = this.windowListeners[eventName];
+          if (windowListener && !windowListener.registered) {
+            this.addWindowListener(windowListener);
+          }
+          if (firstListener) {
+            this.sendRetainedArgumentsForEvent(eventName);
+          }
+          const remove = async () => this.removeListener(eventName, listenerFunc);
+          const p = Promise.resolve({ remove });
+          return p;
+        }
+        async removeAllListeners() {
+          this.listeners = {};
+          for (const listener in this.windowListeners) {
+            this.removeWindowListener(this.windowListeners[listener]);
+          }
+          this.windowListeners = {};
+        }
+        notifyListeners(eventName, data, retainUntilConsumed) {
+          const listeners = this.listeners[eventName];
+          if (!listeners) {
+            if (retainUntilConsumed) {
+              let args = this.retainedEventArguments[eventName];
+              if (!args) {
+                args = [];
+              }
+              args.push(data);
+              this.retainedEventArguments[eventName] = args;
+            }
+            return;
+          }
+          listeners.forEach((listener) => listener(data));
+        }
+        hasListeners(eventName) {
+          var _a;
+          return !!((_a = this.listeners[eventName]) === null || _a === void 0 ? void 0 : _a.length);
+        }
+        registerWindowListener(windowEventName, pluginEventName) {
+          this.windowListeners[pluginEventName] = {
+            registered: false,
+            windowEventName,
+            pluginEventName,
+            handler: (event) => {
+              this.notifyListeners(pluginEventName, event);
+            }
+          };
+        }
+        unimplemented(msg = "not implemented") {
+          return new Capacitor.Exception(msg, ExceptionCode.Unimplemented);
+        }
+        unavailable(msg = "not available") {
+          return new Capacitor.Exception(msg, ExceptionCode.Unavailable);
+        }
+        async removeListener(eventName, listenerFunc) {
+          const listeners = this.listeners[eventName];
+          if (!listeners) {
+            return;
+          }
+          const index = listeners.indexOf(listenerFunc);
+          this.listeners[eventName].splice(index, 1);
+          if (!this.listeners[eventName].length) {
+            this.removeWindowListener(this.windowListeners[eventName]);
+          }
+        }
+        addWindowListener(handle) {
+          window.addEventListener(handle.windowEventName, handle.handler);
+          handle.registered = true;
+        }
+        removeWindowListener(handle) {
+          if (!handle) {
+            return;
+          }
+          window.removeEventListener(handle.windowEventName, handle.handler);
+          handle.registered = false;
+        }
+        sendRetainedArgumentsForEvent(eventName) {
+          const args = this.retainedEventArguments[eventName];
+          if (!args) {
+            return;
+          }
+          delete this.retainedEventArguments[eventName];
+          args.forEach((arg) => {
+            this.notifyListeners(eventName, arg);
+          });
+        }
+      };
+      encode = (str) => encodeURIComponent(str).replace(/%(2[346B]|5E|60|7C)/g, decodeURIComponent).replace(/[()]/g, escape);
+      decode = (str) => str.replace(/(%[\dA-F]{2})+/gi, decodeURIComponent);
+      CapacitorCookiesPluginWeb = class extends WebPlugin {
+        async getCookies() {
+          const cookies = document.cookie;
+          const cookieMap = {};
+          cookies.split(";").forEach((cookie) => {
+            if (cookie.length <= 0)
+              return;
+            let [key, value] = cookie.replace(/=/, "CAP_COOKIE").split("CAP_COOKIE");
+            key = decode(key).trim();
+            value = decode(value).trim();
+            cookieMap[key] = value;
+          });
+          return cookieMap;
+        }
+        async setCookie(options) {
+          try {
+            const encodedKey = encode(options.key);
+            const encodedValue = encode(options.value);
+            const expires = options.expires ? `; expires=${options.expires.replace("expires=", "")}` : "";
+            const path = (options.path || "/").replace("path=", "");
+            const domain = options.url != null && options.url.length > 0 ? `domain=${options.url}` : "";
+            document.cookie = `${encodedKey}=${encodedValue || ""}${expires}; path=${path}; ${domain};`;
+          } catch (error) {
+            return Promise.reject(error);
+          }
+        }
+        async deleteCookie(options) {
+          try {
+            document.cookie = `${options.key}=; Max-Age=0`;
+          } catch (error) {
+            return Promise.reject(error);
+          }
+        }
+        async clearCookies() {
+          try {
+            const cookies = document.cookie.split(";") || [];
+            for (const cookie of cookies) {
+              document.cookie = cookie.replace(/^ +/, "").replace(/=.*/, `=;expires=${(/* @__PURE__ */ new Date()).toUTCString()};path=/`);
+            }
+          } catch (error) {
+            return Promise.reject(error);
+          }
+        }
+        async clearAllCookies() {
+          try {
+            await this.clearCookies();
+          } catch (error) {
+            return Promise.reject(error);
+          }
+        }
+      };
+      CapacitorCookies = registerPlugin("CapacitorCookies", {
+        web: () => new CapacitorCookiesPluginWeb()
+      });
+      readBlobAsBase64 = async (blob) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64String = reader.result;
+          resolve(base64String.indexOf(",") >= 0 ? base64String.split(",")[1] : base64String);
+        };
+        reader.onerror = (error) => reject(error);
+        reader.readAsDataURL(blob);
+      });
+      normalizeHttpHeaders = (headers = {}) => {
+        const originalKeys = Object.keys(headers);
+        const loweredKeys = Object.keys(headers).map((k) => k.toLocaleLowerCase());
+        const normalized = loweredKeys.reduce((acc, key, index) => {
+          acc[key] = headers[originalKeys[index]];
+          return acc;
+        }, {});
+        return normalized;
+      };
+      buildUrlParams = (params2, shouldEncode = true) => {
+        if (!params2)
+          return null;
+        const output = Object.entries(params2).reduce((accumulator, entry) => {
+          const [key, value] = entry;
+          let encodedValue;
+          let item;
+          if (Array.isArray(value)) {
+            item = "";
+            value.forEach((str) => {
+              encodedValue = shouldEncode ? encodeURIComponent(str) : str;
+              item += `${key}=${encodedValue}&`;
+            });
+            item.slice(0, -1);
+          } else {
+            encodedValue = shouldEncode ? encodeURIComponent(value) : value;
+            item = `${key}=${encodedValue}`;
+          }
+          return `${accumulator}&${item}`;
+        }, "");
+        return output.substr(1);
+      };
+      buildRequestInit = (options, extra = {}) => {
+        const output = Object.assign({ method: options.method || "GET", headers: options.headers }, extra);
+        const headers = normalizeHttpHeaders(options.headers);
+        const type = headers["content-type"] || "";
+        if (typeof options.data === "string") {
+          output.body = options.data;
+        } else if (type.includes("application/x-www-form-urlencoded")) {
+          const params2 = new URLSearchParams();
+          for (const [key, value] of Object.entries(options.data || {})) {
+            params2.set(key, value);
+          }
+          output.body = params2.toString();
+        } else if (type.includes("multipart/form-data") || options.data instanceof FormData) {
+          const form = new FormData();
+          if (options.data instanceof FormData) {
+            options.data.forEach((value, key) => {
+              form.append(key, value);
+            });
+          } else {
+            for (const key of Object.keys(options.data)) {
+              form.append(key, options.data[key]);
+            }
+          }
+          output.body = form;
+          const headers2 = new Headers(output.headers);
+          headers2.delete("content-type");
+          output.headers = headers2;
+        } else if (type.includes("application/json") || typeof options.data === "object") {
+          output.body = JSON.stringify(options.data);
+        }
+        return output;
+      };
+      CapacitorHttpPluginWeb = class extends WebPlugin {
+        /**
+         * Perform an Http request given a set of options
+         * @param options Options to build the HTTP request
+         */
+        async request(options) {
+          const requestInit = buildRequestInit(options, options.webFetchExtra);
+          const urlParams = buildUrlParams(options.params, options.shouldEncodeUrlParams);
+          const url = urlParams ? `${options.url}?${urlParams}` : options.url;
+          const response = await fetch(url, requestInit);
+          const contentType = response.headers.get("content-type") || "";
+          let { responseType = "text" } = response.ok ? options : {};
+          if (contentType.includes("application/json")) {
+            responseType = "json";
+          }
+          let data;
+          let blob;
+          switch (responseType) {
+            case "arraybuffer":
+            case "blob":
+              blob = await response.blob();
+              data = await readBlobAsBase64(blob);
+              break;
+            case "json":
+              data = await response.json();
+              break;
+            case "document":
+            case "text":
+            default:
+              data = await response.text();
+          }
+          const headers = {};
+          response.headers.forEach((value, key) => {
+            headers[key] = value;
+          });
+          return {
+            data,
+            headers,
+            status: response.status,
+            url: response.url
+          };
+        }
+        /**
+         * Perform an Http GET request given a set of options
+         * @param options Options to build the HTTP request
+         */
+        async get(options) {
+          return this.request(Object.assign(Object.assign({}, options), { method: "GET" }));
+        }
+        /**
+         * Perform an Http POST request given a set of options
+         * @param options Options to build the HTTP request
+         */
+        async post(options) {
+          return this.request(Object.assign(Object.assign({}, options), { method: "POST" }));
+        }
+        /**
+         * Perform an Http PUT request given a set of options
+         * @param options Options to build the HTTP request
+         */
+        async put(options) {
+          return this.request(Object.assign(Object.assign({}, options), { method: "PUT" }));
+        }
+        /**
+         * Perform an Http PATCH request given a set of options
+         * @param options Options to build the HTTP request
+         */
+        async patch(options) {
+          return this.request(Object.assign(Object.assign({}, options), { method: "PATCH" }));
+        }
+        /**
+         * Perform an Http DELETE request given a set of options
+         * @param options Options to build the HTTP request
+         */
+        async delete(options) {
+          return this.request(Object.assign(Object.assign({}, options), { method: "DELETE" }));
+        }
+      };
+      CapacitorHttp = registerPlugin("CapacitorHttp", {
+        web: () => new CapacitorHttpPluginWeb()
+      });
+      (function(SystemBarsStyle2) {
+        SystemBarsStyle2["Dark"] = "DARK";
+        SystemBarsStyle2["Light"] = "LIGHT";
+        SystemBarsStyle2["Default"] = "DEFAULT";
+      })(SystemBarsStyle || (SystemBarsStyle = {}));
+      (function(SystemBarType2) {
+        SystemBarType2["StatusBar"] = "StatusBar";
+        SystemBarType2["NavigationBar"] = "NavigationBar";
+      })(SystemBarType || (SystemBarType = {}));
+      SystemBarsPluginWeb = class extends WebPlugin {
+        async setStyle() {
+          this.unavailable("not available for web");
+        }
+        async setAnimation() {
+          this.unavailable("not available for web");
+        }
+        async show() {
+          this.unavailable("not available for web");
+        }
+        async hide() {
+          this.unavailable("not available for web");
+        }
+      };
+      SystemBars = registerPlugin("SystemBars", {
+        web: () => new SystemBarsPluginWeb()
+      });
+    }
+  });
+
+  // node_modules/.bun/@capacitor+keyboard@8.0.3+1b808583819c2ac6/node_modules/@capacitor/keyboard/dist/esm/definitions.js
+  var KeyboardStyle, KeyboardResize;
+  var init_definitions = __esm({
+    "node_modules/.bun/@capacitor+keyboard@8.0.3+1b808583819c2ac6/node_modules/@capacitor/keyboard/dist/esm/definitions.js"() {
+      (function(KeyboardStyle2) {
+        KeyboardStyle2["Dark"] = "DARK";
+        KeyboardStyle2["Light"] = "LIGHT";
+        KeyboardStyle2["Default"] = "DEFAULT";
+      })(KeyboardStyle || (KeyboardStyle = {}));
+      (function(KeyboardResize2) {
+        KeyboardResize2["Body"] = "body";
+        KeyboardResize2["Ionic"] = "ionic";
+        KeyboardResize2["Native"] = "native";
+        KeyboardResize2["None"] = "none";
+      })(KeyboardResize || (KeyboardResize = {}));
+    }
+  });
+
+  // node_modules/.bun/@capacitor+keyboard@8.0.3+1b808583819c2ac6/node_modules/@capacitor/keyboard/dist/esm/index.js
+  var esm_exports = {};
+  __export(esm_exports, {
+    Keyboard: () => Keyboard,
+    KeyboardResize: () => KeyboardResize,
+    KeyboardStyle: () => KeyboardStyle
+  });
+  var Keyboard;
+  var init_esm = __esm({
+    "node_modules/.bun/@capacitor+keyboard@8.0.3+1b808583819c2ac6/node_modules/@capacitor/keyboard/dist/esm/index.js"() {
+      init_dist();
+      init_definitions();
+      Keyboard = registerPlugin("Keyboard");
+    }
+  });
+
   // packages/ui/src/components/shell/__e2e__/chat-sheet-fixture.tsx
-  var React8 = __toESM(require_react(), 1);
+  var React9 = __toESM(require_react(), 1);
   var import_client = __toESM(require_client(), 1);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/createLucideIcon.mjs
@@ -12869,8 +13424,45 @@
     return Component3;
   };
 
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/house.mjs
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/download.mjs
   var __iconNode = [
+    ["path", { d: "M12 15V3", key: "m9g1x1" }],
+    ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
+    ["path", { d: "m7 10 5 5 5-5", key: "brsn70" }]
+  ];
+  var Download = createLucideIcon("download", __iconNode);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/file-text.mjs
+  var __iconNode2 = [
+    [
+      "path",
+      {
+        d: "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",
+        key: "1oefj6"
+      }
+    ],
+    ["path", { d: "M14 2v5a1 1 0 0 0 1 1h5", key: "wfsgrz" }],
+    ["path", { d: "M10 9H8", key: "b1mrlr" }],
+    ["path", { d: "M16 13H8", key: "t4e002" }],
+    ["path", { d: "M16 17H8", key: "z1uh3a" }]
+  ];
+  var FileText = createLucideIcon("file-text", __iconNode2);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/film.mjs
+  var __iconNode3 = [
+    ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }],
+    ["path", { d: "M7 3v18", key: "bbkbws" }],
+    ["path", { d: "M3 7.5h4", key: "zfgn84" }],
+    ["path", { d: "M3 12h18", key: "1i2n21" }],
+    ["path", { d: "M3 16.5h4", key: "1230mu" }],
+    ["path", { d: "M17 3v18", key: "in4fa5" }],
+    ["path", { d: "M17 7.5h4", key: "myr1c1" }],
+    ["path", { d: "M17 16.5h4", key: "go4c1d" }]
+  ];
+  var Film = createLucideIcon("film", __iconNode3);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/house.mjs
+  var __iconNode4 = [
     ["path", { d: "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8", key: "5wwlr5" }],
     [
       "path",
@@ -12880,43 +13472,62 @@
       }
     ]
   ];
-  var House = createLucideIcon("house", __iconNode);
+  var House = createLucideIcon("house", __iconNode4);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/link.mjs
+  var __iconNode5 = [
+    ["path", { d: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71", key: "1cjeqo" }],
+    ["path", { d: "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71", key: "19qd67" }]
+  ];
+  var Link = createLucideIcon("link", __iconNode5);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/loader-circle.mjs
+  var __iconNode6 = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
+  var LoaderCircle = createLucideIcon("loader-circle", __iconNode6);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/maximize-2.mjs
-  var __iconNode2 = [
+  var __iconNode7 = [
     ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
     ["path", { d: "m21 3-7 7", key: "1l2asr" }],
     ["path", { d: "m3 21 7-7", key: "tjx5ai" }],
     ["path", { d: "M9 21H3v-6", key: "wtvkvv" }]
   ];
-  var Maximize2 = createLucideIcon("maximize-2", __iconNode2);
+  var Maximize2 = createLucideIcon("maximize-2", __iconNode7);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/mic.mjs
-  var __iconNode3 = [
+  var __iconNode8 = [
     ["path", { d: "M12 19v3", key: "npa21l" }],
     ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2", key: "1vc78b" }],
     ["rect", { x: "9", y: "2", width: "6", height: "13", rx: "3", key: "s6n7sd" }]
   ];
-  var Mic = createLucideIcon("mic", __iconNode3);
+  var Mic = createLucideIcon("mic", __iconNode8);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/minimize-2.mjs
-  var __iconNode4 = [
+  var __iconNode9 = [
     ["path", { d: "m14 10 7-7", key: "oa77jy" }],
     ["path", { d: "M20 10h-6V4", key: "mjg0md" }],
     ["path", { d: "m3 21 7-7", key: "tjx5ai" }],
     ["path", { d: "M4 14h6v6", key: "rmj7iw" }]
   ];
-  var Minimize2 = createLucideIcon("minimize-2", __iconNode4);
+  var Minimize2 = createLucideIcon("minimize-2", __iconNode9);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/music.mjs
+  var __iconNode10 = [
+    ["path", { d: "M9 18V5l12-2v13", key: "1jmyc2" }],
+    ["circle", { cx: "6", cy: "18", r: "3", key: "fqmcym" }],
+    ["circle", { cx: "18", cy: "16", r: "3", key: "1hluhg" }]
+  ];
+  var Music = createLucideIcon("music", __iconNode10);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/rotate-ccw.mjs
-  var __iconNode5 = [
+  var __iconNode11 = [
     ["path", { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", key: "1357e3" }],
     ["path", { d: "M3 3v5h5", key: "1xhq8a" }]
   ];
-  var RotateCcw = createLucideIcon("rotate-ccw", __iconNode5);
+  var RotateCcw = createLucideIcon("rotate-ccw", __iconNode11);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/send-horizontal.mjs
-  var __iconNode6 = [
+  var __iconNode12 = [
     [
       "path",
       {
@@ -12926,10 +13537,10 @@
     ],
     ["path", { d: "M6 12h16", key: "s4cdu5" }]
   ];
-  var SendHorizontal = createLucideIcon("send-horizontal", __iconNode6);
+  var SendHorizontal = createLucideIcon("send-horizontal", __iconNode12);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/settings.mjs
-  var __iconNode7 = [
+  var __iconNode13 = [
     [
       "path",
       {
@@ -12939,7 +13550,14 @@
     ],
     ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
   ];
-  var Settings = createLucideIcon("settings", __iconNode7);
+  var Settings = createLucideIcon("settings", __iconNode13);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/x.mjs
+  var __iconNode14 = [
+    ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
+    ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
+  ];
+  var X = createLucideIcon("x", __iconNode14);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/AnimatePresence/index.mjs
   var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
@@ -22312,7 +22930,7 @@
   var animate = createScopedAnimate();
 
   // packages/ui/src/components/shell/ContinuousChatOverlay.tsx
-  var React7 = __toESM(require_react(), 1);
+  var React8 = __toESM(require_react(), 1);
 
   // packages/ui/src/chat/slash-menu.ts
   var NONE = {
@@ -22353,6 +22971,12 @@
       argTokens,
       argQuery
     };
+  }
+  function splitLeadingSlashCommand(text) {
+    const match = /^(\/[\w-]+)(?=\s|$)/.exec(text);
+    if (!match) return null;
+    const command = match[1];
+    return { command, rest: text.slice(command.length) };
   }
   function aliasMatches(command, token) {
     const normalized = `/${token}`.toLowerCase();
@@ -22490,6 +23114,9 @@
             return;
           case "show-commands":
             deps.showCommands();
+            return;
+          case "toggle-transcription":
+            deps.toggleTranscription();
             return;
         }
         return;
@@ -25616,19 +26243,83 @@
 
   // packages/ui/src/utils/image-attachment.ts
   var MAX_CHAT_IMAGES = 4;
+  var CHAT_UPLOAD_ACCEPT = "image/*,audio/*,video/*,application/pdf,text/plain,text/csv,text/markdown";
+  function isSupportedChatUpload(file) {
+    const mime = file.type.toLowerCase();
+    return mime.startsWith("image/") || mime.startsWith("audio/") || mime.startsWith("video/") || mime === "application/pdf" || mime === "text/plain" || mime === "text/csv" || mime === "text/markdown";
+  }
+  function chatUploadKind(mimeType) {
+    const mime = mimeType.toLowerCase();
+    if (mime.startsWith("image/")) return "image";
+    if (mime.startsWith("audio/")) return "audio";
+    if (mime.startsWith("video/")) return "video";
+    return "document";
+  }
+  var THUMBNAIL_MAX_DIM = 512;
+  var THUMBNAIL_MIN_SOURCE_BYTES = 96 * 1024;
+  function readFileAsImageElement(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(img);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Failed to decode image"));
+      };
+      img.src = url;
+    });
+  }
+  async function createImageThumbnail(file) {
+    const mime = file.type.toLowerCase();
+    if (!mime.startsWith("image/") || mime === "image/gif" || mime === "image/svg+xml") {
+      return null;
+    }
+    if (file.size < THUMBNAIL_MIN_SOURCE_BYTES) return null;
+    if (typeof document === "undefined") return null;
+    try {
+      const img = await readFileAsImageElement(file);
+      const longest = Math.max(img.width, img.height);
+      if (!longest) return null;
+      const scale2 = THUMBNAIL_MAX_DIM / longest;
+      if (scale2 >= 1) return null;
+      const width = Math.max(1, Math.round(img.width * scale2));
+      const height = Math.max(1, Math.round(img.height * scale2));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      ctx.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
+      const commaIdx = dataUrl.indexOf(",");
+      if (commaIdx < 0 || !dataUrl.startsWith("data:image/")) return null;
+      return { data: dataUrl.slice(commaIdx + 1), mimeType: "image/jpeg" };
+    } catch {
+      return null;
+    }
+  }
   function filesToImageAttachments(files) {
-    const imageFiles = Array.from(files).filter(
-      (f) => f.type.startsWith("image/")
-    );
+    const supported = Array.from(files).filter(isSupportedChatUpload);
     return Promise.all(
-      imageFiles.map(
+      supported.map(
         (file) => new Promise((resolve, reject) => {
           const reader = new FileReader();
-          reader.onload = () => {
+          reader.onload = async () => {
             const result = reader.result;
             const commaIdx = result.indexOf(",");
             const data = commaIdx >= 0 ? result.slice(commaIdx + 1) : result;
-            resolve({ data, mimeType: file.type, name: file.name });
+            const thumbnail = await createImageThumbnail(file).catch(
+              () => null
+            );
+            resolve({
+              data,
+              mimeType: file.type,
+              name: file.name,
+              ...thumbnail ? { thumbnail } : {}
+            });
           };
           reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
           reader.onabort = () => reject(new Error("File read aborted"));
@@ -25638,9 +26329,370 @@
     );
   }
 
+  // packages/ui/src/components/chat/MessageAttachments.tsx
+  var React5 = __toESM(require_react(), 1);
+  var import_react_dom = __toESM(require_react_dom(), 1);
+
+  // packages/ui/src/config/boot-config-store.ts
+  var DEFAULT_BOOT_CONFIG = {
+    branding: {},
+    cloudApiBase: "https://www.elizacloud.ai"
+  };
+  var BOOT_CONFIG_STORE_KEY = /* @__PURE__ */ Symbol.for("elizaos.app.boot-config");
+  var BOOT_CONFIG_WINDOW_KEY = "__ELIZAOS_APP_BOOT_CONFIG__";
+  function getGlobalSlot() {
+    return globalThis;
+  }
+  function getBootConfigStore() {
+    const globalObject = getGlobalSlot();
+    const mirroredWindowConfig = globalObject[BOOT_CONFIG_WINDOW_KEY];
+    if (mirroredWindowConfig) {
+      const mirroredStore = { current: mirroredWindowConfig };
+      globalObject[BOOT_CONFIG_STORE_KEY] = mirroredStore;
+      return mirroredStore;
+    }
+    const existing = globalObject[BOOT_CONFIG_STORE_KEY];
+    if (existing && typeof existing === "object" && "current" in existing) {
+      return existing;
+    }
+    const store2 = { current: DEFAULT_BOOT_CONFIG };
+    globalObject[BOOT_CONFIG_STORE_KEY] = store2;
+    globalObject[BOOT_CONFIG_WINDOW_KEY] = store2.current;
+    return store2;
+  }
+  function getBootConfig() {
+    return getBootConfigStore().current;
+  }
+
+  // packages/shared/src/utils/eliza-globals.ts
+  function getElizaWindow() {
+    return typeof window === "undefined" ? null : window;
+  }
+  function readTrimmedString(value) {
+    if (typeof value !== "string") {
+      return void 0;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : void 0;
+  }
+  function getElizaApiBase() {
+    const elizaWindow = getElizaWindow();
+    return readTrimmedString(elizaWindow?.__ELIZA_API_BASE__) ?? readTrimmedString(elizaWindow?.__ELIZAOS_API_BASE__);
+  }
+
+  // packages/ui/src/utils/asset-url.ts
+  var ELIZA_API_BASE_SESSION_KEY = "elizaos_api_base";
+  function readSessionStorageApiBase() {
+    try {
+      if (typeof window === "undefined") return void 0;
+      const raw = window.sessionStorage.getItem(ELIZA_API_BASE_SESSION_KEY);
+      const trimmed = raw?.trim();
+      return trimmed && trimmed.length > 0 ? trimmed : void 0;
+    } catch {
+      return void 0;
+    }
+  }
+  function resolveApiUrl(apiPath) {
+    const bootRaw = getBootConfig().apiBase?.trim();
+    const boot = bootRaw && bootRaw.length > 0 ? bootRaw : void 0;
+    const injectedRaw = getElizaApiBase()?.trim();
+    const injected = injectedRaw && injectedRaw.length > 0 ? injectedRaw : void 0;
+    const stored = readSessionStorageApiBase();
+    const base = boot ?? injected ?? stored;
+    if (!base) return apiPath;
+    const normalized = base.replace(/\/+$/, "");
+    const suffix = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
+    return `${normalized}${suffix}`;
+  }
+
+  // packages/ui/src/components/chat/MessageAttachments.tsx
+  var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
+  var ABSOLUTE_URL = /^(?:https?:|data:|blob:|[a-z][a-z0-9+.-]*:\/\/)/i;
+  function resolveAttachmentUrl(url) {
+    const trimmed = url.trim();
+    if (!trimmed) return trimmed;
+    if (ABSOLUTE_URL.test(trimmed)) return trimmed;
+    if (trimmed.startsWith("/")) return resolveApiUrl(trimmed);
+    return trimmed;
+  }
+  var IMAGE_EXT = /\.(?:png|jpe?g|gif|webp|avif|bmp|svg)(?:[?#]|$)/i;
+  var VIDEO_EXT = /\.(?:mp4|webm|mov|m4v|ogv)(?:[?#]|$)/i;
+  var AUDIO_EXT = /\.(?:mp3|wav|ogg|oga|m4a|aac|flac|opus)(?:[?#]|$)/i;
+  var DOC_EXT = /\.(?:pdf|docx?|pptx?|xlsx?|txt|csv|md|json)(?:[?#]|$)/i;
+  function resolveKind(att) {
+    if (att.contentType) return att.contentType;
+    const mime = att.mimeType ?? "";
+    if (mime.startsWith("image/")) return "image";
+    if (mime.startsWith("video/")) return "video";
+    if (mime.startsWith("audio/")) return "audio";
+    if (mime === "application/pdf" || mime.startsWith("text/")) return "document";
+    const u = att.url.toLowerCase();
+    if (IMAGE_EXT.test(u) || u.startsWith("data:image/")) return "image";
+    if (VIDEO_EXT.test(u) || u.startsWith("data:video/")) return "video";
+    if (AUDIO_EXT.test(u) || u.startsWith("data:audio/")) return "audio";
+    if (DOC_EXT.test(u) || u.startsWith("data:application/")) return "document";
+    return "link";
+  }
+  function attachmentLabel(att) {
+    if (att.title?.trim()) return att.title.trim();
+    try {
+      const u = att.url.startsWith("data:") ? "" : new URL(att.url, "http://x").pathname;
+      const base = u.split("/").filter(Boolean).at(-1);
+      if (base) return decodeURIComponent(base);
+    } catch {
+    }
+    return "attachment";
+  }
+  function downloadName(att, kind) {
+    const label = attachmentLabel(att);
+    if (label !== "attachment") return label;
+    const ext = kind === "image" ? "png" : kind === "audio" ? "mp3" : kind === "video" ? "mp4" : "bin";
+    return `${att.id || "attachment"}.${ext}`;
+  }
+  function TileButton({
+    label,
+    onClick,
+    href,
+    download,
+    children
+  }) {
+    const cls = cn(
+      "inline-flex h-7 w-7 items-center justify-center rounded-full",
+      "bg-black/45 text-white/90 backdrop-blur-sm transition-colors",
+      "hover:bg-black/65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+    );
+    if (href) {
+      return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+        "a",
+        {
+          href,
+          download,
+          target: "_blank",
+          rel: "noreferrer",
+          "aria-label": label,
+          title: label,
+          className: cls,
+          onClick: (e) => e.stopPropagation(),
+          children
+        }
+      );
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+      "button",
+      {
+        type: "button",
+        "aria-label": label,
+        title: label,
+        className: cls,
+        onClick: (e) => {
+          e.stopPropagation();
+          onClick?.();
+        },
+        children
+      }
+    );
+  }
+  function ImageTile({
+    att,
+    src,
+    thumbSrc,
+    onExpand
+  }) {
+    const label = attachmentLabel(att);
+    return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "group relative inline-block max-w-[min(20rem,100%)] overflow-hidden rounded-xl border border-white/12", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+        "button",
+        {
+          type: "button",
+          onClick: onExpand,
+          className: "block w-full cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+          "aria-label": `Expand image ${label}`,
+          children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+            "img",
+            {
+              src: thumbSrc,
+              alt: att.description?.trim() || label,
+              loading: "lazy",
+              className: "block h-auto max-h-80 w-full object-cover"
+            }
+          )
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "pointer-events-none absolute right-1.5 top-1.5 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "pointer-events-auto", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(TileButton, { label: "Expand image", onClick: onExpand, children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Maximize2, { className: "h-3.5 w-3.5" }) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "pointer-events-auto", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+          TileButton,
+          {
+            label: "Download image",
+            href: src,
+            download: downloadName(att, "image"),
+            children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Download, { className: "h-3.5 w-3.5" })
+          }
+        ) })
+      ] })
+    ] });
+  }
+  function FileTile({
+    att,
+    src,
+    kind
+  }) {
+    const label = attachmentLabel(att);
+    const Icon2 = kind === "link" ? Link : FileText;
+    return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+      "a",
+      {
+        href: src,
+        target: "_blank",
+        rel: "noreferrer",
+        download: kind === "link" ? void 0 : downloadName(att, kind),
+        className: cn(
+          "flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
+          "text-white/90 transition-colors hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+        ),
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Icon2, { className: "h-5 w-5 shrink-0 text-white/70" }),
+          /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { className: "min-w-0 flex-1", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "block truncate text-[13px] font-medium", children: label }),
+            att.description?.trim() ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "block truncate text-[11px] text-white/55", children: att.description.trim() }) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "block text-[11px] uppercase tracking-wide text-white/45", children: kind === "link" ? "link" : kind })
+          ] }),
+          kind === "link" ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Link, { className: "h-4 w-4 shrink-0 text-white/55" }) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Download, { className: "h-4 w-4 shrink-0 text-white/55" })
+        ]
+      }
+    );
+  }
+  function Lightbox({
+    src,
+    alt,
+    downloadAs,
+    onClose
+  }) {
+    React5.useEffect(() => {
+      const onKey = (e) => {
+        if (e.key === "Escape") onClose();
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, [onClose]);
+    if (typeof document === "undefined") return null;
+    return (0, import_react_dom.createPortal)(
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+        "div",
+        {
+          role: "dialog",
+          "aria-modal": "true",
+          "aria-label": alt,
+          "data-testid": "attachment-lightbox",
+          className: "fixed inset-0 flex items-center justify-center p-6",
+          style: { zIndex: Z_SHELL_OVERLAY + 10 },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+              "button",
+              {
+                type: "button",
+                "aria-label": "Close preview",
+                onClick: onClose,
+                className: "absolute inset-0 cursor-zoom-out bg-black/85 backdrop-blur-sm"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+              "img",
+              {
+                src,
+                alt,
+                className: "pointer-events-none relative max-h-full max-w-full rounded-lg object-contain shadow-2xl"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "absolute right-4 top-4 flex gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(TileButton, { label: "Download image", href: src, download: downloadAs, children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Download, { className: "h-4 w-4" }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(TileButton, { label: "Close", onClick: onClose, children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(X, { className: "h-4 w-4" }) })
+            ] })
+          ]
+        }
+      ),
+      document.body
+    );
+  }
+  function MessageAttachments({
+    attachments,
+    className
+  }) {
+    const [lightbox, setLightbox] = React5.useState(null);
+    if (!attachments || attachments.length === 0) return null;
+    return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+      "div",
+      {
+        "data-testid": "message-attachments",
+        className: cn("mt-1.5 flex flex-col gap-2", className),
+        children: [
+          attachments.map((att) => {
+            const kind = resolveKind(att);
+            const src = resolveAttachmentUrl(att.url);
+            if (!src) return null;
+            const label = attachmentLabel(att);
+            switch (kind) {
+              case "image": {
+                const thumbSrc = att.thumbnailUrl ? resolveAttachmentUrl(att.thumbnailUrl) : src;
+                return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                  ImageTile,
+                  {
+                    att,
+                    src,
+                    thumbSrc: thumbSrc || src,
+                    onExpand: () => setLightbox({
+                      src,
+                      alt: att.description?.trim() || label,
+                      downloadAs: downloadName(att, "image")
+                    })
+                  },
+                  att.id
+                );
+              }
+              case "audio":
+                return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+                  "div",
+                  {
+                    className: "max-w-[min(22rem,100%)] rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
+                    children: [
+                      att.title?.trim() ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "mb-1.5 truncate text-[12px] font-medium text-white/80", children: att.title.trim() }) : null,
+                      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("audio", { src, controls: true, preload: "metadata", className: "w-full", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("track", { kind: "captions" }) })
+                    ]
+                  },
+                  att.id
+                );
+              case "video":
+                return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                  "video",
+                  {
+                    src,
+                    controls: true,
+                    preload: "metadata",
+                    className: "max-h-80 max-w-[min(22rem,100%)] rounded-xl border border-white/12",
+                    children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("track", { kind: "captions" })
+                  },
+                  att.id
+                );
+              default:
+                return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(FileTile, { att, src, kind }, att.id);
+            }
+          }),
+          lightbox ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+            Lightbox,
+            {
+              src: lightbox.src,
+              alt: lightbox.alt,
+              downloadAs: lightbox.downloadAs,
+              onClose: () => setLightbox(null)
+            }
+          ) : null
+        ]
+      }
+    );
+  }
+
   // packages/ui/src/components/chat/ThinkingBlock.tsx
   var import_react30 = __toESM(require_react(), 1);
-  var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
   function ThinkingBlock({
     reasoning
   }) {
@@ -25649,8 +26701,8 @@
     if (!trimmed) {
       return null;
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "my-2 border border-accent/20 rounded-sm bg-accent/5 overflow-hidden", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "my-2 border border-accent/20 rounded-sm bg-accent/5 overflow-hidden", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
         "button",
         {
           type: "button",
@@ -25658,7 +26710,7 @@
           "aria-expanded": open,
           className: "flex w-full items-center gap-1.5 bg-accent/10 px-3 py-1 text-xs font-bold text-accent uppercase tracking-wider transition-colors hover:bg-accent/20",
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
               "span",
               {
                 "aria-hidden": "true",
@@ -25670,21 +26722,21 @@
           ]
         }
       ),
-      open ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("pre", { className: "px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words text-muted m-0 overflow-x-auto", children: trimmed }) : null
+      open ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("pre", { className: "px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words text-muted m-0 overflow-x-auto", children: trimmed }) : null
     ] });
   }
 
   // packages/ui/src/components/shell/SlashCommandMenu.tsx
-  var React5 = __toESM(require_react(), 1);
-  var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
+  var React6 = __toESM(require_react(), 1);
+  var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
   var FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
   function useSlashMenu(draft, controller) {
-    const parsed = React5.useMemo(() => parseSlashDraft(draft), [draft]);
-    const matched = React5.useMemo(
+    const parsed = React6.useMemo(() => parseSlashDraft(draft), [draft]);
+    const matched = React6.useMemo(
       () => parsed.isSlash && parsed.hasSpace ? matchCommand(controller.commands, parsed.commandToken) : void 0,
       [parsed, controller.commands]
     );
-    const argInfo = React5.useMemo(() => {
+    const argInfo = React6.useMemo(() => {
       if (!matched) return null;
       const argIndex = activeArgIndex(matched, parsed);
       if (argIndex < 0) return null;
@@ -25696,11 +26748,11 @@
       return { arg, choices: filterArgChoices(all, parsed.argQuery) };
     }, [matched, parsed, controller]);
     const mode = !parsed.isSlash ? "none" : parsed.hasSpace ? argInfo ? "arg" : "none" : "command";
-    const commandResults = React5.useMemo(
+    const commandResults = React6.useMemo(
       () => mode === "command" ? filterCommands(controller.commands, parsed.commandToken) : [],
       [mode, controller.commands, parsed.commandToken]
     );
-    const items = React5.useMemo(() => {
+    const items = React6.useMemo(() => {
       if (mode === "command") {
         return commandResults.map((c) => ({
           id: c.key,
@@ -25721,13 +26773,13 @@
       }
       return [];
     }, [mode, commandResults, argInfo]);
-    const [activeIndex, setActiveIndexState] = React5.useState(0);
+    const [activeIndex, setActiveIndexState] = React6.useState(0);
     const itemsSignature = items.map((i) => i.id).join("|");
-    React5.useEffect(() => {
+    React6.useEffect(() => {
       setActiveIndexState(0);
     }, [itemsSignature]);
     const open = mode !== "none" && items.length > 0;
-    const setActiveIndex = React5.useCallback(
+    const setActiveIndex = React6.useCallback(
       (index) => {
         if (items.length === 0) return;
         const clamped = (index % items.length + items.length) % items.length;
@@ -25735,7 +26787,7 @@
       },
       [items.length]
     );
-    const move = React5.useCallback(
+    const move = React6.useCallback(
       (delta) => {
         if (items.length === 0) return;
         setActiveIndexState((prev) => {
@@ -25745,7 +26797,7 @@
       },
       [items.length]
     );
-    const complete = React5.useCallback(
+    const complete = React6.useCallback(
       (index = activeIndex) => {
         if (mode === "command") {
           const command = commandResults[index];
@@ -25759,7 +26811,7 @@
       },
       [activeIndex, mode, commandResults, argInfo, parsed]
     );
-    const resolve = React5.useCallback(
+    const resolve = React6.useCallback(
       (index = activeIndex) => {
         if (mode === "command") {
           const command = commandResults[index];
@@ -25801,7 +26853,7 @@
     const listboxId = "slash-command-listbox";
     if (!state.open) {
       if (loading) {
-        return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
           "div",
           {
             className: cn(
@@ -25819,7 +26871,7 @@
     return (
       // The combobox input (in the composer) owns aria-activedescendant + focus;
       // this listbox is a non-focusable popup the input points to via aria-controls.
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
         "div",
         {
           id: listboxId,
@@ -25833,7 +26885,7 @@
             "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           ),
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
               "div",
               {
                 className: cn(
@@ -25843,7 +26895,7 @@
                 children: state.headerLabel
               }
             ),
-            state.items.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+            state.items.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
               "button",
               {
                 type: "button",
@@ -25862,7 +26914,7 @@
                   index === state.activeIndex ? "bg-white/15" : "hover:bg-white/8"
                 ),
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                  /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                     "span",
                     {
                       className: cn(
@@ -25872,7 +26924,7 @@
                       children: item.primary
                     }
                   ),
-                  item.secondary ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                  item.secondary ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                     "span",
                     {
                       className: cn(
@@ -25881,8 +26933,8 @@
                       ),
                       children: item.secondary
                     }
-                  ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "flex-1" }),
-                  item.isCommand && item.hasArgs ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                  ) : /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "flex-1" }),
+                  item.isCommand && item.hasArgs ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                     "span",
                     {
                       "aria-hidden": "true",
@@ -25901,7 +26953,7 @@
   }
 
   // packages/ui/src/components/shell/use-pull-gesture.ts
-  var React6 = __toESM(require_react(), 1);
+  var React7 = __toESM(require_react(), 1);
   var TAP_SLOP = 8;
   function usePullGesture(options) {
     const {
@@ -25913,15 +26965,15 @@
       distanceThreshold = 56,
       velocityThreshold = 0.5
     } = options;
-    const start = React6.useRef(null);
-    const onPointerDown = React6.useCallback((event) => {
+    const start = React7.useRef(null);
+    const onPointerDown = React7.useCallback((event) => {
       start.current = { y: event.clientY, t: performance.now() };
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
       } catch {
       }
     }, []);
-    const onPointerMove = React6.useCallback(
+    const onPointerMove = React7.useCallback(
       (event) => {
         const s = start.current;
         if (!s || !onDrag) return;
@@ -25929,7 +26981,7 @@
       },
       [onDrag]
     );
-    const finish = React6.useCallback(
+    const finish = React7.useCallback(
       (event) => {
         const s = start.current;
         start.current = null;
@@ -25987,7 +27039,7 @@
   }
 
   // packages/ui/src/components/shell/ContinuousChatOverlay.tsx
-  var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime9 = __toESM(require_jsx_runtime(), 1);
   var EMPTY_SLASH_CONTROLLER = {
     commands: [],
     loading: false,
@@ -26040,7 +27092,7 @@
   var STOP_GLYPH = "M12 12H24V24H12Z";
   var SPEAKER_MUTED_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
   function Glyph({ d }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("svg", { viewBox: "0 0 36 36", className: "h-[26px] w-[26px]", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("path", { fill: "currentColor", fillRule: "evenodd", d }) });
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("svg", { viewBox: "0 0 36 36", className: "h-[26px] w-[26px]", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("path", { fill: "currentColor", fillRule: "evenodd", d }) });
   }
   function SoftButton({
     glyph,
@@ -26054,7 +27106,7 @@
     active,
     testId
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
       "button",
       {
         type: "button",
@@ -26074,7 +27126,7 @@
           active ? "border-white/40 bg-white/85 text-black" : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
           disabled && "opacity-40"
         ),
-        children: Icon2 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Icon2, { className: "h-[22px] w-[22px]", "aria-hidden": true }) : glyph ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Glyph, { d: glyph }) : null
+        children: Icon2 ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Icon2, { className: "h-[22px] w-[22px]", "aria-hidden": true }) : glyph ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Glyph, { d: glyph }) : null
       }
     );
   }
@@ -26085,7 +27137,7 @@
     active,
     testId
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
       "button",
       {
         type: "button",
@@ -26098,7 +27150,7 @@
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
           active ? "border-white/40 bg-white/85 text-black" : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Icon2, { className: "h-[18px] w-[18px]", "aria-hidden": true })
+        children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Icon2, { className: "h-[18px] w-[18px]", "aria-hidden": true })
       }
     );
   }
@@ -26111,7 +27163,7 @@
     opacity,
     pilled
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
       motion.button,
       {
         style: { opacity, pointerEvents: pilled ? "none" : "auto" },
@@ -26153,7 +27205,7 @@
           "before:absolute before:-inset-x-6 before:-top-16 before:bottom-0 before:content-['']",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
           "span",
           {
             "aria-hidden": "true",
@@ -26170,15 +27222,15 @@
   function PillHandle({
     binding,
     onOpen,
-    glow
+    glow,
+    pilled
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
       "button",
       {
         type: "button",
         "data-testid": "chat-pill",
         "aria-label": "open chat",
-        onClick: onOpen,
         onKeyDown: (e) => {
           if (e.key === "Enter" || e.key === " " || e.key === "ArrowUp") {
             e.preventDefault();
@@ -26186,13 +27238,19 @@
           }
         },
         ...binding,
+        tabIndex: pilled ? void 0 : -1,
+        "aria-hidden": pilled ? void 0 : true,
         className: cn(
           // The bar hugs the BOTTOM (small pb) where the collapsed input sat — not
           // floating mid-air; the tall pt keeps a generous upward grab/flick zone.
-          "pointer-events-auto flex cursor-grab touch-none select-none items-end justify-center px-16 pb-1.5 pt-10 active:cursor-grabbing",
+          "flex cursor-grab touch-none select-none items-end justify-center px-16 pb-1.5 pt-10 active:cursor-grabbing",
+          // Interactive only while pilled. When NOT pilled the (faded) handle must
+          // let taps fall through to the composer textarea below it — otherwise its
+          // tall hit zone steals the tap and the keyboard never opens.
+          pilled ? "pointer-events-auto" : "pointer-events-none",
           "focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
           "span",
           {
             "aria-hidden": "true",
@@ -26208,14 +27266,14 @@
     );
   }
   function TypingDotsInner() {
-    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
       "span",
       {
         className: "flex gap-1.5 py-1",
         "data-testid": "typing-dots",
         role: "status",
         "aria-label": "assistant is responding",
-        children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+        children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
           "span",
           {
             className: "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none",
@@ -26227,7 +27285,7 @@
     );
   }
   function TypingDots({ reduce }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
       motion.div,
       {
         className: "mb-2.5 flex w-full justify-start",
@@ -26235,14 +27293,14 @@
         animate: { opacity: 1 },
         exit: { opacity: 0 },
         transition: { duration: reduce ? 0 : 0.45, ease: OVERLAY_EASE },
-        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
           "div",
           {
             className: cn(
               "rounded-2xl rounded-bl-md border border-white/10 bg-black/45 px-3.5 py-2 text-white/90",
               FLOAT_SHADOW2
             ),
-            children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(TypingDotsInner, {})
+            children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(TypingDotsInner, {})
           }
         )
       }
@@ -26250,7 +27308,15 @@
   }
   var COPY_HOLD_MS = 420;
   var COPY_MOVE_CANCEL_PX = 10;
-  var ThreadLine = React7.memo(function ThreadLine2({
+  function ThreadLineText({ content }) {
+    const slash = splitLeadingSlashCommand(content);
+    if (!slash) return content;
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(import_jsx_runtime9.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "font-bold", "data-testid": "slash-command-token", children: slash.command }),
+      slash.rest
+    ] });
+  }
+  var ThreadLine = React8.memo(function ThreadLine2({
     message,
     floating,
     reduce,
@@ -26259,18 +27325,18 @@
   }) {
     const isUser = message.role === "user";
     const isAssistant = message.role === "assistant";
-    const [copied, setCopied] = React7.useState(false);
-    const holdTimer = React7.useRef(null);
-    const holdStart = React7.useRef(null);
-    const copiedTimer = React7.useRef(null);
-    const clearHold = React7.useCallback(() => {
+    const [copied, setCopied] = React8.useState(false);
+    const holdTimer = React8.useRef(null);
+    const holdStart = React8.useRef(null);
+    const copiedTimer = React8.useRef(null);
+    const clearHold = React8.useCallback(() => {
       if (holdTimer.current !== null) {
         window.clearTimeout(holdTimer.current);
         holdTimer.current = null;
       }
       holdStart.current = null;
     }, []);
-    React7.useEffect(
+    React8.useEffect(
       () => () => {
         if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
         if (copiedTimer.current !== null)
@@ -26305,7 +27371,7 @@
       onPointerCancel: clearHold
     } : null;
     if (isAssistant && message.failureKind === "no_provider") {
-      return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+      return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
         motion.div,
         {
           "data-testid": "thread-line",
@@ -26319,7 +27385,7 @@
             "flex w-full justify-start",
             floating ? "mb-1.5" : "mb-2.5"
           ),
-          children: /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+          children: /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
             "div",
             {
               className: cn(
@@ -26327,9 +27393,9 @@
                 FLOAT_SHADOW2
               ),
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "mb-1 text-[14px] font-medium", children: "Connect a provider to chat" }),
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80 [overflow-wrap:anywhere]", children: message.content }),
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "mb-1 text-[14px] font-medium", children: "Connect a provider to chat" }),
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80 [overflow-wrap:anywhere]", children: message.content }),
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                   "button",
                   {
                     type: "button",
@@ -26345,7 +27411,7 @@
         }
       );
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
       motion.div,
       {
         "data-testid": "thread-line",
@@ -26359,7 +27425,7 @@
           floating ? "mb-1.5" : "mb-2.5",
           isUser ? "justify-end" : "justify-start"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
           "div",
           {
             ...copyHandlers ?? {},
@@ -26382,14 +27448,15 @@
               ) : isUser ? "bg-white/20 text-white" : "bg-white/10 text-white/90"
             ),
             children: [
-              isAssistant && !message.content.trim() ? (
+              isAssistant && !message.content.trim() && !message.attachments?.length ? (
                 // The in-flight assistant turn (kept by visibleMessages only while
                 // responding): breathe the dots INSIDE the bubble so they're anchored
                 // where the streamed text fills in — then the text replaces them.
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(TypingDotsInner, {})
-              ) : message.content,
-              isAssistant && message.reasoning?.trim() ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(ThinkingBlock, { reasoning: message.reasoning }) : null,
-              /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(AnimatePresence, { children: copied ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(TypingDotsInner, {})
+              ) : isUser ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(ThreadLineText, { content: message.content }) : message.content,
+              message.attachments?.length ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(MessageAttachments, { attachments: message.attachments }) : null,
+              isAssistant && message.reasoning?.trim() ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(ThinkingBlock, { reasoning: message.reasoning }) : null,
+              /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(AnimatePresence, { children: copied ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                 motion.span,
                 {
                   "data-testid": "thread-line-copied",
@@ -26424,6 +27491,8 @@
       stopRecording,
       handsFree,
       toggleHandsFree,
+      transcriptionMode,
+      toggleTranscriptionMode,
       setDictationSink,
       setComposerHasDraft,
       transcript,
@@ -26433,45 +27502,48 @@
       navigateHome,
       currentTab,
       clearConversation,
-      stop
+      stop,
+      modelStatus
     } = controller;
-    const handleCopyMessage = React7.useCallback((text) => {
+    const voiceActive = Boolean(recording || handsFree || transcriptionMode);
+    const handleCopyMessage = React8.useCallback((text) => {
       void copyTextToClipboard(text);
     }, []);
     const slash = slashProp ?? EMPTY_SLASH_CONTROLLER;
     const reduce = useReducedMotion() ?? false;
-    const [draft, setDraft] = React7.useState("");
+    const [draft, setDraft] = React8.useState("");
     const viewChatBinding = useViewChatBinding();
-    const [slashDismissed, setSlashDismissed] = React7.useState(false);
-    const [detent, setDetent] = React7.useState(
-      "input"
-    );
-    const sheetOpen = detent !== "input";
-    const expanded = detent === "full";
-    const [pilled, setPilled] = React7.useState(false);
-    const [freeH, setFreeH] = React7.useState(null);
-    const [maximized, setMaximized] = React7.useState(false);
-    const preFocusCollapsedRef = React7.useRef(true);
-    const [composerFocused, setComposerFocused] = React7.useState(false);
+    const [slashDismissed, setSlashDismissed] = React8.useState(false);
+    const [mode, setMode] = React8.useState("input");
+    const pilled = mode === "pill";
+    const sheetOpen = mode === "half" || mode === "full";
+    const expanded = mode === "full";
+    const [freeH, setFreeH] = React8.useState(null);
+    const [maximized, setMaximized] = React8.useState(false);
+    const preFocusCollapsedRef = React8.useRef(true);
+    const composerFocusedAtPressRef = React8.useRef(false);
+    const [composerFocused, setComposerFocused] = React8.useState(false);
     const threadHeight = useMotionValue(0);
     const openProgress = useMotionValue(pilled ? 0 : 1);
-    const settleDragRef = React7.useRef(null);
-    const draggingRef = React7.useRef(false);
-    const pttRef = React7.useRef({ kind: "idle" });
-    const [pttHolding, setPttHolding] = React7.useState(false);
-    const suppressNextClickRef = React7.useRef(false);
-    const [pendingImages, setPendingImages] = React7.useState(
+    const settleDragRef = React8.useRef(null);
+    const draggingRef = React8.useRef(false);
+    const pttRef = React8.useRef({ kind: "idle" });
+    const [pttHolding, setPttHolding] = React8.useState(false);
+    const suppressNextClickRef = React8.useRef(false);
+    const [pendingImages, setPendingImages] = React8.useState(
       []
     );
-    const [imageError, setImageError] = React7.useState(null);
-    const endRef = React7.useRef(null);
-    const inputRef = React7.useRef(null);
-    const fileInputRef = React7.useRef(null);
-    const overlayRef = React7.useRef(null);
-    const panelRef = React7.useRef(null);
-    const threadRef = React7.useRef(null);
-    const focusThreadRef = React7.useRef(false);
-    const visibleMessages = React7.useMemo(
+    const [imageError, setImageError] = React8.useState(null);
+    const endRef = React8.useRef(null);
+    const inputRef = React8.useRef(null);
+    const fileInputRef = React8.useRef(null);
+    const overlayRef = React8.useRef(null);
+    const panelRef = React8.useRef(null);
+    const threadRef = React8.useRef(null);
+    const contentRef = React8.useRef(null);
+    const suppressExpandOnFocusRef = React8.useRef(false);
+    const focusThreadRef = React8.useRef(false);
+    const visibleMessages = React8.useMemo(
       () => messages.filter(
         (m2) => m2.content.trim() || m2.role === "assistant" && phase === "responding"
       ).slice(-MAX_RENDERED_MESSAGES),
@@ -26479,7 +27551,7 @@
     );
     const lastId = visibleMessages.at(-1)?.id ?? null;
     const lastContent = visibleMessages.at(-1)?.content ?? "";
-    const scrollPinnedIdRef = React7.useRef(lastId);
+    const scrollPinnedIdRef = React8.useRef(lastId);
     const booting = phase === "booting";
     const listening = phase === "listening";
     const hasDraft = draft.trim().length > 0;
@@ -26488,7 +27560,7 @@
     const suggestions = usePromptSuggestions(messages, {
       enabled: suggestionsVisible
     });
-    React7.useEffect(
+    React8.useEffect(
       () => () => {
         const phase2 = pttRef.current;
         if (phase2.kind === "pending") window.clearTimeout(phase2.timer);
@@ -26498,8 +27570,8 @@
       },
       []
     );
-    const wasOpenRef = React7.useRef(false);
-    React7.useLayoutEffect(() => {
+    const wasOpenRef = React8.useRef(false);
+    React8.useLayoutEffect(() => {
       const el = threadRef.current;
       if (!el) return;
       const isNewLine = lastId !== scrollPinnedIdRef.current;
@@ -26522,7 +27594,7 @@
         focusThreadRef.current = false;
       }
     }, [lastId, lastContent, sheetOpen]);
-    React7.useEffect(() => {
+    React8.useEffect(() => {
       const el = threadRef.current;
       if (!el || sheetOpen || typeof ResizeObserver === "undefined") return;
       const pin = () => {
@@ -26533,7 +27605,7 @@
       ro.observe(el);
       return () => ro.disconnect();
     }, [sheetOpen]);
-    const submitText = React7.useCallback(
+    const submitText = React8.useCallback(
       (text, images = []) => {
         const trimmed = text.trim();
         if (!trimmed && images.length === 0 || !canSend) return;
@@ -26547,28 +27619,29 @@
           send(trimmed);
         }
         setFreeH(null);
-        setDetent("full");
+        setMode((m2) => m2 === "half" || m2 === "full" ? m2 : "half");
+        preFocusCollapsedRef.current = false;
         detentHaptic();
         inputRef.current?.focus();
       },
       [canSend, send]
     );
-    const submit = React7.useCallback(() => {
+    const submit = React8.useCallback(() => {
       submitText(draft, pendingImages);
     }, [submitText, draft, pendingImages]);
-    const pickSuggestion = React7.useCallback(
+    const pickSuggestion = React8.useCallback(
       (text) => {
         if (!canSend) return;
         setDraft("");
         send(text);
         setFreeH(null);
-        setDetent("full");
+        setMode((m2) => m2 === "half" || m2 === "full" ? m2 : "half");
         detentHaptic();
         inputRef.current?.focus();
       },
       [canSend, send]
     );
-    const addImageFiles = React7.useCallback((files) => {
+    const addImageFiles = React8.useCallback((files) => {
       void filesToImageAttachments(files).then((attachments) => {
         if (!attachments.length) return;
         setImageError(null);
@@ -26581,10 +27654,10 @@
         );
       });
     }, []);
-    const removeImage = React7.useCallback((index) => {
+    const removeImage = React8.useCallback((index) => {
       setPendingImages((prev) => prev.filter((_, i) => i !== index));
     }, []);
-    const beginPushToTalkPress = React7.useCallback(
+    const beginPushToTalkPress = React8.useCallback(
       (event) => {
         if (pttRef.current.kind !== "idle" || event.button !== 0 || hasDraft || recording || // Voice input is gated while a reply is in flight; type + send to queue
         // another turn instead. Re-enabled the instant the reply finishes.
@@ -26606,7 +27679,7 @@
       },
       [hasDraft, recording, responding, startRecording]
     );
-    const finishPushToTalkPress = React7.useCallback(
+    const finishPushToTalkPress = React8.useCallback(
       (event, cancelled) => {
         const phase2 = pttRef.current;
         if (phase2.kind === "pending") window.clearTimeout(phase2.timer);
@@ -26622,7 +27695,7 @@
       },
       [stopRecording]
     );
-    const handleMicClick = React7.useCallback(() => {
+    const handleMicClick = React8.useCallback(() => {
       if (suppressNextClickRef.current) {
         suppressNextClickRef.current = false;
         return;
@@ -26631,16 +27704,18 @@
       toggleHandsFree();
     }, [responding, handsFree, toggleHandsFree]);
     const hasThread = visibleMessages.length > 0;
-    const readViewport = React7.useCallback(() => {
-      if (typeof window === "undefined") return { height: 800, keyboardInset: 0 };
+    const readViewport = React8.useCallback(() => {
+      if (typeof window === "undefined")
+        return { height: 800, keyboardInset: 0, innerHeight: 800 };
       const vv = window.visualViewport;
-      const height = vv?.height ?? window.innerHeight;
-      const keyboardInset2 = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
-      return { height, keyboardInset: keyboardInset2 };
+      const innerHeight = window.innerHeight;
+      const height = vv?.height ?? innerHeight;
+      const keyboardInset2 = vv ? Math.max(0, innerHeight - vv.height - vv.offsetTop) : 0;
+      return { height, keyboardInset: keyboardInset2, innerHeight };
     }, []);
-    const [viewport, setViewport] = React7.useState(readViewport);
-    const [bottomPad, setBottomPad] = React7.useState(0);
-    React7.useEffect(() => {
+    const [viewport, setViewport] = React8.useState(readViewport);
+    const [bottomPad, setBottomPad] = React8.useState(0);
+    React8.useEffect(() => {
       if (typeof window === "undefined") return void 0;
       const sync = () => {
         setViewport(readViewport());
@@ -26668,33 +27743,80 @@
     }, [readViewport]);
     const viewportH = viewport.height;
     const keyboardInset = viewport.keyboardInset;
+    const [nativeKeyboardHeight, setNativeKeyboardHeight] = React8.useState(0);
+    React8.useEffect(() => {
+      if (typeof window === "undefined") return void 0;
+      let cancelled = false;
+      const handles = [];
+      void Promise.resolve().then(() => (init_esm(), esm_exports)).then(({ Keyboard: Keyboard2 }) => {
+        if (cancelled) return;
+        void Keyboard2.addListener("keyboardWillShow", (info) => {
+          setNativeKeyboardHeight(info?.keyboardHeight ?? 0);
+        }).then((handle) => {
+          if (cancelled) handle.remove();
+          else handles.push(handle);
+        }).catch(() => {
+        });
+        void Keyboard2.addListener("keyboardWillHide", () => {
+          setNativeKeyboardHeight(0);
+        }).then((handle) => {
+          if (cancelled) handle.remove();
+          else handles.push(handle);
+        }).catch(() => {
+        });
+      }).catch(() => {
+      });
+      return () => {
+        cancelled = true;
+        for (const handle of handles) handle.remove();
+      };
+    }, []);
+    const baseInnerHeightRef = React8.useRef(viewport.innerHeight);
+    React8.useEffect(() => {
+      if (nativeKeyboardHeight === 0) {
+        baseInnerHeightRef.current = viewport.innerHeight;
+      }
+    }, [nativeKeyboardHeight, viewport.innerHeight]);
+    const layoutShrink = Math.max(
+      0,
+      baseInnerHeightRef.current - viewport.innerHeight
+    );
+    const nativeLift = Math.max(0, nativeKeyboardHeight - layoutShrink);
+    const effectiveKeyboardInset = Math.max(keyboardInset, nativeLift);
     const fullBleed = maximized && expanded && sheetOpen && !pilled;
     const topMargin = fullBleed ? 0 : SHEET_TOP_MARGIN;
-    const panelMaxH = Math.max(200, viewportH - bottomPad - topMargin);
+    const panelMaxH = Math.max(
+      200,
+      viewportH - (fullBleed ? 0 : bottomPad) - topMargin
+    );
     const openH = panelMaxH;
     const halfH = Math.round(viewportH * SHEET_HALF_VH);
     const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
     const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
     const chatState = pilled ? "CLOSED" : !sheetOpen ? "INPUT" : fullBleed ? "MAXIMIZED" : baseH >= halfH - 1 ? "OPEN_HALF_OR_OVER" : "OPEN_UNDER_HALF";
-    const evalHeaderVisible = React7.useCallback(
+    const evalHeaderVisible = React8.useCallback(
       (h) => !pilled && (fullBleed || h >= halfH - 1),
       [pilled, fullBleed, halfH]
     );
-    const [headerVisible, setHeaderVisible] = React7.useState(false);
+    const [headerVisible, setHeaderVisible] = React8.useState(false);
     useMotionValueEvent(threadHeight, "change", (h) => {
       const next = evalHeaderVisible(h);
       setHeaderVisible((prev) => prev === next ? prev : next);
     });
-    React7.useEffect(() => {
+    React8.useEffect(() => {
       setHeaderVisible(evalHeaderVisible(threadHeight.get()));
     }, [evalHeaderVisible]);
-    const clampHeight = React7.useCallback(
+    const clampHeight = React8.useCallback(
       (raw) => raw > openH ? openH + rubberBand(raw - openH) : Math.max(0, raw),
       [openH]
     );
     const revealed = useTransform(
       threadHeight,
       (h) => Math.min(1, Math.max(0, h / Math.max(1, openH)))
+    );
+    const scrimVisibility = useTransform(
+      threadHeight,
+      (h) => h > 0 ? "visible" : "hidden"
     );
     const suggestionsOpacity = useTransform(
       threadHeight,
@@ -26731,7 +27853,13 @@
         clamp: true
       }
     );
-    const settleDrag = React7.useCallback(() => {
+    const threadGrabberClearance = useTransform(
+      threadHeight,
+      [0, 40, halfH - 64, halfH],
+      [0, 20, 20, 0],
+      { clamp: true }
+    );
+    const settleDrag = React8.useCallback(() => {
       draggingRef.current = false;
       const open = pilled ? 0 : 1;
       if (reduce) {
@@ -26743,7 +27871,7 @@
       }
     }, [threadHeight, openProgress, baseH, pilled, reduce]);
     settleDragRef.current = settleDrag;
-    React7.useEffect(() => {
+    React8.useEffect(() => {
       if (draggingRef.current) return;
       const open = pilled ? 0 : 1;
       if (reduce) {
@@ -26753,13 +27881,13 @@
       const controls = animate(openProgress, open, OPEN_SPRING);
       return () => controls.stop();
     }, [pilled, reduce]);
-    const closeSheet = React7.useCallback(() => {
+    const closeSheet = React8.useCallback(() => {
       draggingRef.current = false;
       setFreeH(null);
       setMaximized(false);
-      setDetent("input");
+      setMode("input");
     }, []);
-    const navigateAndClose = React7.useCallback(
+    const navigateAndClose = React8.useCallback(
       (go) => {
         const wasMaximized = maximized;
         closeSheet();
@@ -26767,7 +27895,7 @@
       },
       [closeSheet, maximized, reduce]
     );
-    const toggleMaximize = React7.useCallback(() => {
+    const toggleMaximize = React8.useCallback(() => {
       if (maximized) {
         setMaximized(false);
         return;
@@ -26775,10 +27903,10 @@
       draggingRef.current = false;
       openProgress.set(1);
       setFreeH(null);
-      setDetent("full");
+      setMode("full");
       setMaximized(true);
     }, [maximized, openProgress]);
-    React7.useEffect(() => {
+    React8.useEffect(() => {
       if (draggingRef.current) return;
       if (reduce) {
         threadHeight.set(baseH);
@@ -26787,57 +27915,63 @@
       const controls = animate(threadHeight, baseH, SHEET_SPRING);
       return () => controls.stop();
     }, [baseH, reduce]);
-    const goToDetent = React7.useCallback((to) => {
+    const goToDetent = React8.useCallback((to) => {
       draggingRef.current = false;
       setFreeH(null);
       if (to !== "full") setMaximized(false);
-      setDetent(to === "collapsed" ? "input" : to);
+      setMode(to === "collapsed" ? "input" : to);
       if (to === "collapsed") inputRef.current?.blur();
       detentHaptic();
     }, []);
-    const collapse = React7.useCallback(() => {
+    const collapse = React8.useCallback(() => {
       if (typeof document !== "undefined" && threadRef.current && document.activeElement instanceof HTMLElement && threadRef.current.contains(document.activeElement)) {
         document.activeElement.blur();
       }
       closeSheet();
       inputRef.current?.blur();
     }, [closeSheet]);
-    const expand = React7.useCallback(() => {
+    const dismissKeyboardToPriorState = React8.useCallback(() => {
+      inputRef.current?.blur();
+      if (preFocusCollapsedRef.current) collapse();
+    }, [collapse]);
+    const expand = React8.useCallback(() => {
       if (!hasThread) return;
       preFocusCollapsedRef.current = !sheetOpen;
       setFreeH(null);
-      setDetent((d) => d === "input" ? "half" : d);
+      setMode((m2) => m2 === "half" || m2 === "full" ? m2 : "half");
     }, [hasThread, sheetOpen]);
-    React7.useEffect(() => {
+    React8.useEffect(() => {
       if (typeof window === "undefined") return void 0;
       const onControl = (event) => {
         const detail = event.detail;
         if (!detail) return;
         switch (detail.action) {
           case "pill":
-            closeSheet();
-            setPilled(true);
+            setMode("pill");
             inputRef.current?.blur();
             break;
           case "rest":
-            setPilled(false);
             goToDetent("collapsed");
             break;
           case "expand":
-            setPilled(false);
             goToDetent("full");
             break;
           case "prefill":
-            setPilled(false);
+            setMode((m2) => m2 === "pill" ? "input" : m2);
             setDraft(detail.text ?? "");
             requestAnimationFrame(() => inputRef.current?.focus());
+            break;
+          case "reset":
+            contentRef.current?.removeAttribute("inert");
+            setDraft("");
+            goToDetent("collapsed");
             break;
         }
       };
       window.addEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
       return () => window.removeEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
-    }, [closeSheet, goToDetent]);
-    React7.useEffect(() => {
+    }, [goToDetent]);
+    React8.useEffect(() => {
       setDictationSink((text) => {
         setDraft((current) => current ? `${current} ${text}` : text);
         inputRef.current?.focus();
@@ -26845,7 +27979,7 @@
       });
       return () => setDictationSink(null);
     }, [setDictationSink, expand]);
-    React7.useEffect(() => {
+    React8.useEffect(() => {
       setComposerHasDraft(hasDraft);
     }, [hasDraft, setComposerHasDraft]);
     const slashMenu = useSlashMenu(draft, slash);
@@ -26858,10 +27992,10 @@
       "aria-controls": slashOpen ? "slash-command-listbox" : void 0,
       "aria-activedescendant": slashOpen && slashMenu.items[slashMenu.activeIndex] ? `slash-option-${slashMenu.items[slashMenu.activeIndex].id}` : void 0
     } : {};
-    React7.useEffect(() => {
+    React8.useEffect(() => {
       setSlashDismissed(false);
     }, [draft]);
-    const runExecution = React7.useCallback(
+    const runExecution = React8.useCallback(
       (exec) => {
         if (exec.kind === "send") {
           submitText(exec.text);
@@ -26878,37 +28012,40 @@
           toggleFullscreen: toggleMaximize,
           openCommandPalette: slash.openCommandPalette,
           showCommands: slash.openCommandPalette,
+          toggleTranscription: toggleTranscriptionMode,
           send: (text) => submitText(text)
         });
         setDraft("");
         setSlashDismissed(true);
         inputRef.current?.focus();
       },
-      [slash, controller, submitText, toggleMaximize]
+      [slash, controller, submitText, toggleMaximize, toggleTranscriptionMode]
     );
-    const pickSlashItem = React7.useCallback(
+    const pickSlashItem = React8.useCallback(
       (index) => {
         const exec = slashMenu.resolve(index);
         if (exec) runExecution(exec);
       },
       [slashMenu, runExecution]
     );
-    React7.useEffect(() => {
+    React8.useEffect(() => {
       if (typeof document === "undefined") return void 0;
       const onPointerDown = (event) => {
         const input = inputRef.current;
-        if (!input || document.activeElement !== input) return;
+        const focused = !!input && document.activeElement === input;
+        composerFocusedAtPressRef.current = focused;
+        if (!focused) return;
         const target = event.target;
         if (target && panelRef.current?.contains(target)) return;
         if (target instanceof Element && target.closest('[data-testid="chat-sheet-grabber"]')) {
           return;
         }
-        input.blur();
+        dismissKeyboardToPriorState();
       };
       document.addEventListener("pointerdown", onPointerDown, true);
       return () => document.removeEventListener("pointerdown", onPointerDown, true);
-    }, []);
-    React7.useEffect(() => {
+    }, [dismissKeyboardToPriorState]);
+    React8.useEffect(() => {
       if (typeof document === "undefined" || !sheetOpen) return void 0;
       const onKey = (e) => {
         if (e.key === "Escape") {
@@ -26919,20 +28056,29 @@
       document.addEventListener("keydown", onKey);
       return () => document.removeEventListener("keydown", onKey);
     }, [sheetOpen, collapse]);
-    React7.useLayoutEffect(() => {
+    React8.useLayoutEffect(() => {
       const el = inputRef.current;
       if (!el) return;
       el.style.height = "auto";
       el.style.height = `${el.scrollHeight}px`;
     }, [draft]);
-    const openFromPill = React7.useCallback(() => {
+    const openFromPill = React8.useCallback(() => {
       draggingRef.current = false;
-      setPilled(false);
+      if (hasThread) {
+        goToDetent("half");
+        preFocusCollapsedRef.current = false;
+      } else {
+        setMode("input");
+        preFocusCollapsedRef.current = true;
+        detentHaptic();
+      }
       if (reduce) openProgress.set(1);
       else animate(openProgress, 1, OPEN_SPRING);
-      detentHaptic();
-    }, [openProgress, reduce]);
-    const onDragOffset = React7.useCallback(
+      contentRef.current?.removeAttribute("inert");
+      suppressExpandOnFocusRef.current = true;
+      inputRef.current?.focus();
+    }, [openProgress, reduce, hasThread, goToDetent]);
+    const onDragOffset = React8.useCallback(
       (offset) => {
         draggingRef.current = true;
         if (pilled) {
@@ -26940,6 +28086,12 @@
           openProgress.set(Math.min(1, up / PILL_OPEN_DISTANCE));
           const excess = up - PILL_OPEN_DISTANCE;
           threadHeight.set(excess > 0 ? clampHeight(excess) : 0);
+          return;
+        }
+        if (!sheetOpen && offset < 0) {
+          const down = -offset;
+          openProgress.set(Math.max(0, 1 - down / PILL_OPEN_DISTANCE));
+          threadHeight.set(0);
           return;
         }
         const off = !sheetOpen ? Math.max(0, offset) : expanded ? Math.min(0, offset) : offset;
@@ -26963,11 +28115,11 @@
       onPullUp: () => {
         if (pilled) {
           draggingRef.current = false;
-          setPilled(false);
           if (hasThread) {
             focusThreadRef.current = true;
             goToDetent("half");
           } else {
+            setMode("input");
             if (reduce) threadHeight.set(0);
             else animate(threadHeight, 0, SHEET_SPRING);
             detentHaptic();
@@ -26994,30 +28146,31 @@
         } else if (sheetOpen) {
           goToDetent("collapsed");
         } else {
-          setPilled(true);
+          setMode("pill");
           setMaximized(false);
           draggingRef.current = false;
           inputRef.current?.blur();
           detentHaptic();
         }
       },
-      // A tap (no drag) on the handle. When collapsed the handle's hit zone covers
-      // the composer's center, so a tap there focuses the input to type. While the
-      // keyboard is up (composer focused), a tap on the handle DISMISSES it and
-      // returns to the pre-focus resting state (collapsed if that's where we came
-      // from). A tap on the pill brings the input back.
+      // A tap (no drag) on the handle. A tap on the PILL brings the input back.
+      // When OPEN, the handle is the bar ABOVE the thread, so tapping it with the
+      // keyboard up dismisses it and returns to the pre-focus resting state.
+      // When COLLAPSED the handle's hit zone OVERLAPS the composer, so a tap there
+      // is just "focus to type" — it must only focus the input, never dismiss or
+      // collapse (the native focus already raised the keyboard, and the tap pierces
+      // through to the input). Tapping OUTSIDE the panel is what drops the keyboard.
       onTap: () => {
         if (pilled) {
           openFromPill();
           return;
         }
-        const composerFocused2 = typeof document !== "undefined" && document.activeElement === inputRef.current;
-        if (composerFocused2) {
-          inputRef.current?.blur();
-          if (preFocusCollapsedRef.current) collapse();
+        if (sheetOpen) {
+          const composerFocused2 = typeof document !== "undefined" && document.activeElement === inputRef.current;
+          if (composerFocused2) dismissKeyboardToPriorState();
           return;
         }
-        if (!sheetOpen) inputRef.current?.focus();
+        inputRef.current?.focus();
       },
       // A deliberate (slow) drag: REST exactly where released instead of snapping
       // to a detent — drag the sheet to any size and it stays.
@@ -27029,11 +28182,10 @@
             settleDrag();
             return;
           }
-          setPilled(false);
           if (hasThread) focusThreadRef.current = true;
         }
         if (!sheetOpen && direction === "down") {
-          setPilled(true);
+          setMode("pill");
           inputRef.current?.blur();
           detentHaptic();
           return;
@@ -27050,11 +28202,11 @@
           goToDetent("half");
         } else {
           setFreeH(h);
-          setDetent("half");
+          setMode("half");
         }
       }
     });
-    return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
       "div",
       {
         ref: overlayRef,
@@ -27065,7 +28217,7 @@
         ),
         style: {
           zIndex: Z_SHELL_OVERLAY,
-          bottom: keyboardInset,
+          bottom: effectiveKeyboardInset,
           // Full-bleed fills the screen edge-to-edge: NO overlay bottom padding,
           // so the glass panel reaches the true bottom (no orange gap). The
           // gesture-zone clearance moves INSIDE the composer row (below) so the
@@ -27076,21 +28228,28 @@
         "data-testid": "continuous-chat-overlay",
         "data-open": sheetOpen ? "true" : void 0,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
             motion.div,
             {
               "aria-hidden": "true",
               "data-testid": "chat-sheet-backdrop",
               "data-active": sheetOpen ? "true" : "false",
-              onClick: sheetOpen ? collapse : void 0,
+              onClick: sheetOpen ? () => {
+                if (composerFocusedAtPressRef.current) {
+                  composerFocusedAtPressRef.current = false;
+                  return;
+                }
+                collapse();
+              } : void 0,
               className: "fixed inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.06)_0%,rgba(8,10,18,0.55)_46%,rgba(0,0,0,0.66)_100%)]",
               style: {
                 opacity: revealed,
+                visibility: scrimVisibility,
                 pointerEvents: sheetOpen ? "auto" : "none"
               }
             }
           ),
-          recording && transcript ? /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+          recording && transcript ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
             "div",
             {
               role: "status",
@@ -27102,17 +28261,17 @@
               ),
               children: [
                 transcript,
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { "aria-hidden": "true", children: "\u2026" })
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { "aria-hidden": "true", children: "\u2026" })
               ]
             }
           ) : null,
-          needsAudioUnlock ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+          needsAudioUnlock ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
             "div",
             {
               role: "status",
               "aria-live": "polite",
               className: "pointer-events-none relative mb-2 flex w-full justify-center",
-              children: /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+              children: /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
                 "button",
                 {
                   type: "button",
@@ -27125,14 +28284,45 @@
                     FLOAT_SHADOW2
                   ),
                   children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Glyph, { d: SPEAKER_MUTED_GLYPH }),
-                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { children: "Tap to enable sound" })
+                    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Glyph, { d: SPEAKER_MUTED_GLYPH }),
+                    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { children: "Tap to enable sound" })
                   ]
                 }
               )
             }
           ) : null,
-          suggestionsVisible ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+          modelStatus.kind === "downloading" || modelStatus.kind === "loading" ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+            "div",
+            {
+              role: "status",
+              "aria-live": "polite",
+              "aria-atomic": "true",
+              "data-testid": "overlay-model-download-status",
+              className: "pointer-events-none relative mb-2 flex w-full justify-center",
+              children: /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
+                "span",
+                {
+                  className: cn(
+                    "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-sm font-medium text-white/85 backdrop-blur-sm",
+                    FLOAT_SHADOW2
+                  ),
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(LoaderCircle, { className: "h-3.5 w-3.5 animate-spin text-[#FF5800]" }),
+                    modelStatus.kind === "downloading" ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("span", { children: [
+                      "Downloading ",
+                      modelStatus.modelName ?? "local model",
+                      typeof modelStatus.percent === "number" ? ` \u2014 ${Math.round(modelStatus.percent)}%` : "\u2026"
+                    ] }) : /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("span", { children: [
+                      "Loading ",
+                      modelStatus.modelName ?? "local model",
+                      "\u2026"
+                    ] })
+                  ]
+                }
+              )
+            }
+          ) : null,
+          suggestionsVisible ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
             motion.fieldset,
             {
               "aria-label": "Suggested prompts",
@@ -27141,7 +28331,7 @@
               ),
               style: { order: -1, opacity: suggestionsOpacity },
               "data-testid": "chat-suggestions",
-              children: suggestions.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+              children: suggestions.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                 "button",
                 {
                   type: "button",
@@ -27161,7 +28351,7 @@
               ))
             }
           ) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
             "div",
             {
               className: cn(
@@ -27169,7 +28359,7 @@
                 fullBleed ? "max-w-none" : "max-w-3xl"
               ),
               children: [
-                !fullBleed ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                !fullBleed ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                   SheetGrabber,
                   {
                     open: sheetOpen,
@@ -27185,7 +28375,7 @@
                     pilled
                   }
                 ) : null,
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
                   motion.fieldset,
                   {
                     ref: panelRef,
@@ -27217,7 +28407,7 @@
                       "relative m-0 flex w-full min-w-0 flex-col overflow-visible border-0 p-0"
                     ),
                     children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                         motion.div,
                         {
                           "aria-hidden": "true",
@@ -27238,13 +28428,23 @@
                           ),
                           style: {
                             opacity: glassOpacity,
-                            borderRadius: fullBleed ? 0 : panelRadius
+                            borderRadius: fullBleed ? 0 : panelRadius,
+                            // Full-bleed: extend the glass UP through the safe-area-top so the
+                            // dark background reaches the true top of the screen. The panel
+                            // height comes from visualViewport (which excludes the Android
+                            // status bar) while the panel sits in a screen-top fixed container,
+                            // so without this the glass starts a status-bar-height below the top
+                            // (the "safe-area gap" above maximized chat). overflow-visible on the
+                            // panel lets it bleed up; content (header, with its own safe-area
+                            // padding) is untouched. Harmless when the inset is 0.
+                            ...fullBleed ? { top: "calc(-1 * env(safe-area-inset-top, 0px))" } : null
                           }
                         }
                       ),
-                      /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+                      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
                         motion.div,
                         {
+                          ref: contentRef,
                           "data-testid": "chat-content",
                           inert: pilled || void 0,
                           className: "relative z-10 flex min-h-0 w-full flex-col overflow-hidden",
@@ -27254,14 +28454,14 @@
                             borderRadius: fullBleed ? 0 : panelRadius
                           },
                           children: [
-                            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                            /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                               "div",
                               {
                                 "aria-hidden": "true",
                                 className: "pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
                               }
                             ),
-                            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                            /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                               motion.div,
                               {
                                 "aria-hidden": "true",
@@ -27271,7 +28471,7 @@
                                 transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
                               }
                             ),
-                            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                            /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                               motion.div,
                               {
                                 "aria-hidden": "true",
@@ -27281,28 +28481,34 @@
                                 transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
                               }
                             ),
-                            !pilled ? /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+                            !pilled ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
                               motion.div,
                               {
                                 inert: !headerVisible || void 0,
                                 style: {
-                                  opacity: headerOpacity,
-                                  maxHeight: headerMaxH,
+                                  // Full-bleed is always fully open: show the header at full
+                                  // opacity and UNCAP its height. The reveal lerp tops out at
+                                  // 100px, but the safe-area top padding (status-bar height +
+                                  // 0.5rem) plus the button row exceeds that, so a 100px cap
+                                  // clipped the buttons — uncap it edge-to-edge.
+                                  opacity: fullBleed ? 1 : headerOpacity,
+                                  maxHeight: fullBleed ? "none" : headerMaxH,
                                   // Collapsed → 0 top padding (no leaked margin above the
-                                  // composer); opens to ~10px as the header reveals. Full-bleed
-                                  // keeps its fixed safe-area inset (it's always fully revealed).
-                                  paddingTop: fullBleed ? void 0 : headerPadTop
+                                  // composer); opens to ~10px as the header reveals. Maximized
+                                  // goes edge-to-edge under the status bar, so the header insets
+                                  // its buttons below the safe area (the clock/battery) while the
+                                  // sheet bg stays full-bleed — set inline (not a Tailwind
+                                  // arbitrary class, whose env(...,0px) comma breaks the parser
+                                  // so no padding was generated and the buttons sat under the
+                                  // status bar).
+                                  paddingTop: fullBleed ? "calc(var(--safe-area-top, 0px) + 0.5rem)" : headerPadTop
                                 },
                                 className: cn(
-                                  "relative z-10 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
-                                  // Maximized goes edge-to-edge under the status bar, so the
-                                  // buttons must clear the safe-area inset (the clock/battery)
-                                  // or they sit under it and become untappable.
-                                  fullBleed && "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]"
+                                  "relative z-10 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3"
                                 ),
                                 children: [
-                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "flex items-center gap-1.5", children: [
-                                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                                  /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "flex items-center gap-1.5", children: [
+                                    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                                       HeaderButton,
                                       {
                                         icon: maximized ? Minimize2 : Maximize2,
@@ -27312,7 +28518,7 @@
                                         testId: "chat-full-maximize"
                                       }
                                     ),
-                                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                                    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                                       HeaderButton,
                                       {
                                         icon: RotateCcw,
@@ -27322,8 +28528,16 @@
                                       }
                                     )
                                   ] }),
-                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "flex items-center gap-1.5", children: [
-                                    currentTab !== "chat" ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                                  transcriptionMode ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                                    "div",
+                                    {
+                                      "data-testid": "chat-transcribing-badge",
+                                      className: "pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-[var(--brand-orange,#ff6a00)]/15 px-2.5 py-0.5 text-[11px] font-medium text-[var(--brand-orange,#ff6a00)]",
+                                      children: "Transcribing \u2014 say \u201Cexit transcription mode\u201D to stop"
+                                    }
+                                  ) : null,
+                                  /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "flex items-center gap-1.5", children: [
+                                    currentTab !== "chat" ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                                       HeaderButton,
                                       {
                                         icon: House,
@@ -27332,7 +28546,7 @@
                                         testId: "chat-full-home"
                                       }
                                     ) : null,
-                                    currentTab !== "settings" ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                                    currentTab !== "settings" ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                                       HeaderButton,
                                       {
                                         icon: Settings,
@@ -27345,7 +28559,7 @@
                                 ]
                               }
                             ) : null,
-                            hasThread ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                            hasThread ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                               motion.div,
                               {
                                 "data-testid": "chat-thread",
@@ -27356,8 +28570,11 @@
                                   // against it.
                                   sheetOpen && "[mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)]"
                                 ),
-                                style: { flexBasis: threadFlexBasis },
-                                children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                                style: {
+                                  flexBasis: threadFlexBasis,
+                                  paddingTop: threadGrabberClearance
+                                },
+                                children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                                   "div",
                                   {
                                     id: "continuous-thread",
@@ -27374,8 +28591,8 @@
                                       }
                                     },
                                     className: "relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none] focus-visible:outline-none [&::-webkit-scrollbar]:hidden",
-                                    children: /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "mt-auto flex flex-col pb-3 pt-1", children: [
-                                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(AnimatePresence, { initial: false, children: visibleMessages.map((m2) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                                    children: /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "mt-auto flex flex-col pb-3 pt-1", children: [
+                                      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(AnimatePresence, { initial: false, children: visibleMessages.map((m2) => /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                                         ThreadLine,
                                         {
                                           message: m2,
@@ -27386,42 +28603,63 @@
                                         },
                                         m2.id
                                       )) }),
-                                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(AnimatePresence, { children: responding && !(visibleMessages.at(-1)?.role === "assistant" && !visibleMessages.at(-1)?.content.trim()) ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(TypingDots, { reduce }) : null }),
-                                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { ref: endRef })
+                                      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(AnimatePresence, { children: responding && !(visibleMessages.at(-1)?.role === "assistant" && !visibleMessages.at(-1)?.content.trim()) ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(TypingDots, { reduce }) : null }),
+                                      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { ref: endRef })
                                     ] })
                                   }
                                 )
                               }
                             ) : null,
-                            hasImages || imageError ? /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2", children: [
-                              hasImages ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "flex flex-wrap gap-2", children: pendingImages.map((img, i) => /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
-                                "div",
-                                {
-                                  className: "group relative h-14 w-14 shrink-0",
-                                  children: [
-                                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-                                      "img",
-                                      {
-                                        src: `data:${img.mimeType};base64,${img.data}`,
-                                        alt: img.name,
-                                        className: "h-14 w-14 rounded-lg border border-white/20 object-cover"
-                                      }
-                                    ),
-                                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-                                      "button",
-                                      {
-                                        type: "button",
-                                        "aria-label": `remove ${img.name}`,
-                                        onClick: () => removeImage(i),
-                                        className: "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 backdrop-blur transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90",
-                                        children: "\xD7"
-                                      }
-                                    )
-                                  ]
-                                },
-                                `${img.name}-${img.mimeType}-${img.data.length}`
-                              )) }) : null,
-                              imageError ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                            hasImages || imageError ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2", children: [
+                              hasImages ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "flex flex-wrap gap-2", children: pendingImages.map((img, i) => {
+                                const kind = chatUploadKind(img.mimeType);
+                                const removeButton = /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                                  "button",
+                                  {
+                                    type: "button",
+                                    "aria-label": `remove ${img.name}`,
+                                    onClick: () => removeImage(i),
+                                    className: "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 backdrop-blur transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90",
+                                    children: "\xD7"
+                                  }
+                                );
+                                const tileKey = `${img.name}-${img.mimeType}-${img.data.length}`;
+                                if (kind === "image") {
+                                  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
+                                    "div",
+                                    {
+                                      className: "group relative h-14 w-14 shrink-0",
+                                      children: [
+                                        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                                          "img",
+                                          {
+                                            src: `data:${img.mimeType};base64,${img.data}`,
+                                            alt: img.name,
+                                            className: "h-14 w-14 rounded-lg border border-white/20 object-cover"
+                                          }
+                                        ),
+                                        removeButton
+                                      ]
+                                    },
+                                    tileKey
+                                  );
+                                }
+                                const KindIcon = kind === "audio" ? Music : kind === "video" ? Film : FileText;
+                                return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
+                                  "div",
+                                  {
+                                    className: "group relative flex h-14 min-w-[3.5rem] max-w-[10rem] shrink-0 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-2.5 text-white/90",
+                                    title: img.name,
+                                    children: [
+                                      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(KindIcon, { className: "h-5 w-5 shrink-0 text-white/70" }),
+                                      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "min-w-0 truncate text-[11px] leading-tight", children: img.name }),
+                                      removeButton
+                                    ]
+                                  },
+                                  tileKey
+                                );
+                              }) }) : null,
+                              imageError ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                                 "p",
                                 {
                                   role: "alert",
@@ -27430,12 +28668,12 @@
                                 }
                               ) : null
                             ] }) : null,
-                            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                            /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                               "input",
                               {
                                 ref: fileInputRef,
                                 type: "file",
-                                accept: "image/*",
+                                accept: CHAT_UPLOAD_ACCEPT,
                                 multiple: true,
                                 className: "hidden",
                                 onChange: (e) => {
@@ -27444,7 +28682,7 @@
                                 }
                               }
                             ),
-                            /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+                            /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
                               "div",
                               {
                                 className: cn(
@@ -27463,7 +28701,7 @@
                                   paddingBottom: "calc(0.5rem + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)))"
                                 } : void 0,
                                 children: [
-                                  slashProp && !slashDismissed ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                                  slashProp && !slashDismissed ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                                     SlashCommandMenu,
                                     {
                                       state: slashMenu,
@@ -27471,7 +28709,7 @@
                                       onPick: pickSlashItem
                                     }
                                   ) : null,
-                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                                  /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                                     SoftButton,
                                     {
                                       glyph: PLUS_GLYPH,
@@ -27481,7 +28719,7 @@
                                       testId: "chat-composer-attach"
                                     }
                                   ),
-                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                                  /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                                     "textarea",
                                     {
                                       ref: inputRef,
@@ -27494,9 +28732,20 @@
                                       },
                                       onFocus: () => {
                                         setComposerFocused(true);
-                                        expand();
+                                        if (suppressExpandOnFocusRef.current) {
+                                          suppressExpandOnFocusRef.current = false;
+                                        } else {
+                                          expand();
+                                        }
                                       },
                                       onBlur: () => setComposerFocused(false),
+                                      onPaste: (e) => {
+                                        const files = Array.from(e.clipboardData?.files ?? []);
+                                        if (files.length > 0) {
+                                          e.preventDefault();
+                                          addImageFiles(files);
+                                        }
+                                      },
                                       onKeyDown: (e) => {
                                         if (slashOpen) {
                                           if (e.key === "ArrowDown") {
@@ -27548,52 +28797,64 @@
                                       className: "max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
                                     }
                                   ),
-                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("span", { id: "cc-booting-hint", className: "sr-only", children: [
+                                  /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("span", { id: "cc-booting-hint", className: "sr-only", children: [
                                     agentName,
                                     " is waking up \u2014 you can type now; your message sends and the reply arrives in a moment."
                                   ] }),
-                                  /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "shrink-0", children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-                                    SoftButton,
-                                    {
-                                      icon: SendHorizontal,
-                                      label: !canSend ? "send (agent stopped)" : responding ? "send another" : "send",
-                                      disabled: !canSend,
-                                      onPointerDown: (e) => e.preventDefault(),
-                                      onClick: submit,
-                                      testId: "chat-composer-action"
-                                    }
-                                  ) : !recording && responding ? (
-                                    // While a reply is streaming and nothing is typed, the mic becomes a
-                                    // stop control so the user can interrupt a runaway generation.
-                                    /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                                  /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "flex shrink-0 items-center gap-1.5 sm:gap-2", children: [
+                                    voiceActive ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                                       SoftButton,
                                       {
-                                        glyph: STOP_GLYPH,
-                                        label: "stop generating",
-                                        onClick: () => stop(),
-                                        testId: "chat-composer-stop"
+                                        icon: FileText,
+                                        label: transcriptionMode ? "stop transcription" : "transcription mode",
+                                        active: transcriptionMode,
+                                        onClick: toggleTranscriptionMode,
+                                        testId: "chat-composer-transcribe"
                                       }
-                                    )
-                                  ) : /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-                                    SoftButton,
-                                    {
-                                      icon: Mic,
-                                      label: pttHolding ? "release to send" : handsFree ? "end conversation" : recording ? "stop listening" : "talk",
-                                      active: recording || handsFree,
-                                      onClick: handleMicClick,
-                                      onPointerDown: beginPushToTalkPress,
-                                      onPointerUp: (e) => finishPushToTalkPress(e, false),
-                                      onPointerCancel: (e) => finishPushToTalkPress(e, true),
-                                      testId: "chat-composer-mic"
-                                    }
-                                  ) })
+                                    ) : null,
+                                    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "shrink-0", children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                                      SoftButton,
+                                      {
+                                        icon: SendHorizontal,
+                                        label: !canSend ? "send (agent stopped)" : responding ? "send another" : "send",
+                                        disabled: !canSend,
+                                        onPointerDown: (e) => e.preventDefault(),
+                                        onClick: submit,
+                                        testId: "chat-composer-action"
+                                      }
+                                    ) : !recording && responding ? (
+                                      // While a reply is streaming and nothing is typed, the mic becomes a
+                                      // stop control so the user can interrupt a runaway generation.
+                                      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                                        SoftButton,
+                                        {
+                                          glyph: STOP_GLYPH,
+                                          label: "stop generating",
+                                          onClick: () => stop(),
+                                          testId: "chat-composer-stop"
+                                        }
+                                      )
+                                    ) : /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                                      SoftButton,
+                                      {
+                                        icon: Mic,
+                                        label: pttHolding ? "release to send" : handsFree ? "end conversation" : recording ? "stop listening" : "talk",
+                                        active: recording || handsFree,
+                                        onClick: handleMicClick,
+                                        onPointerDown: beginPushToTalkPress,
+                                        onPointerUp: (e) => finishPushToTalkPress(e, false),
+                                        onPointerCancel: (e) => finishPushToTalkPress(e, true),
+                                        testId: "chat-composer-mic"
+                                      }
+                                    ) })
+                                  ] })
                                 ]
                               }
                             )
                           ]
                         }
                       ),
-                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                         motion.div,
                         {
                           className: "absolute inset-x-0 bottom-0 z-30 flex justify-center",
@@ -27601,12 +28862,13 @@
                             opacity: pillOpacity,
                             pointerEvents: pilled ? "auto" : "none"
                           },
-                          children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                          children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                             PillHandle,
                             {
                               binding: pullBinding,
                               onOpen: openFromPill,
-                              glow: listening || responding
+                              glow: listening || responding,
+                              pilled
                             }
                           )
                         }
@@ -27623,7 +28885,7 @@
   }
 
   // packages/ui/src/components/shell/__e2e__/chat-sheet-fixture.tsx
-  var import_jsx_runtime9 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime10 = __toESM(require_jsx_runtime(), 1);
   var nextId = 100;
   var uid = () => `m${nextId++}`;
   var SEED = [
@@ -27691,23 +28953,23 @@
     }
   ] : SEED;
   function Harness() {
-    const [messages, setMessages] = React8.useState(
+    const [messages, setMessages] = React9.useState(
       startEmpty ? [] : streaming ? [
         ...SEED,
         { id: "m-inflight", role: "assistant", content: "", createdAt: 13 }
       ] : SEED_WITH_FAILURE
     );
-    const [phase, setPhase] = React8.useState(initialPhase);
-    const [recording, setRecording] = React8.useState(initialRecording);
-    const [handsFree, setHandsFree] = React8.useState(false);
-    const [transcript, setTranscript] = React8.useState(initialTranscript);
-    const [agentVoiceMuted, setAgentVoiceMuted] = React8.useState(initialMuted);
-    React8.useEffect(() => {
+    const [phase, setPhase] = React9.useState(initialPhase);
+    const [recording, setRecording] = React9.useState(initialRecording);
+    const [handsFree, setHandsFree] = React9.useState(false);
+    const [transcript, setTranscript] = React9.useState(initialTranscript);
+    const [agentVoiceMuted, setAgentVoiceMuted] = React9.useState(initialMuted);
+    React9.useEffect(() => {
       console.log(
         `[fixture] phase=${phase} messages=${messages.length} recording=${recording}`
       );
     }, [phase, messages.length, recording]);
-    const send = React8.useCallback(
+    const send = React9.useCallback(
       (text, options) => {
         const trimmed = text.trim();
         if (!trimmed) return;
@@ -27734,9 +28996,9 @@
       },
       []
     );
-    const captureIntentRef = React8.useRef("converse");
-    const dictationSinkRef = React8.useRef(null);
-    const startRecording = React8.useCallback(
+    const captureIntentRef = React9.useRef("converse");
+    const dictationSinkRef = React9.useRef(null);
+    const startRecording = React9.useCallback(
       (intent = "converse") => {
         captureIntentRef.current = intent;
         console.log(`[fixture] startRecording(${intent})`);
@@ -27746,13 +29008,13 @@
       },
       []
     );
-    const stopRecording = React8.useCallback(() => {
+    const stopRecording = React9.useCallback(() => {
       console.log("[fixture] stopRecording");
       setRecording(false);
       setTranscript("");
       setPhase("summoned");
     }, []);
-    const toggleRecording = React8.useCallback(() => {
+    const toggleRecording = React9.useCallback(() => {
       setRecording((r2) => {
         const next = !r2;
         console.log(`[fixture] toggleRecording -> ${next}`);
@@ -27761,7 +29023,7 @@
         return next;
       });
     }, []);
-    const toggleHandsFree = React8.useCallback(() => {
+    const toggleHandsFree = React9.useCallback(() => {
       setHandsFree((h) => {
         const next = !h;
         console.log(`[fixture] toggleHandsFree -> ${next}`);
@@ -27771,13 +29033,13 @@
         return next;
       });
     }, []);
-    const setDictationSink = React8.useCallback(
+    const setDictationSink = React9.useCallback(
       (sink) => {
         dictationSinkRef.current = sink;
       },
       []
     );
-    React8.useEffect(() => {
+    React9.useEffect(() => {
       const w = window;
       w.__emitDictation = (t) => dictationSinkRef.current?.(t);
       w.__emitVoiceFinal = (t) => {
@@ -27791,7 +29053,7 @@
         w.__emitVoiceFinal = void 0;
       };
     }, [send]);
-    const toggleAgentVoiceMute = React8.useCallback(() => {
+    const toggleAgentVoiceMute = React9.useCallback(() => {
       setAgentVoiceMuted((m2) => {
         console.log(`[fixture] toggleAgentVoiceMute -> ${!m2}`);
         return !m2;
@@ -27812,6 +29074,9 @@
       speaking: initialSpeaking,
       agentVoiceMuted,
       needsAudioUnlock: false,
+      // The overlay reads `modelStatus.kind` unconditionally; "ready" keeps the
+      // local-model status strip dormant in the fixture.
+      modelStatus: { kind: "ready" },
       send,
       toggleRecording,
       toggleHandsFree,
@@ -27832,7 +29097,7 @@
         setPhase("summoned");
       }
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
       "div",
       {
         "data-testid": "fake-view",
@@ -27847,15 +29112,15 @@
           overflow: "hidden"
         },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
             "div",
             {
               "data-testid": "view-content",
               style: { padding: "48px 28px", maxWidth: 720 },
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("h1", { style: { fontSize: 30, fontWeight: 600, margin: 0 }, children: "Workspace" }),
-                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { style: { opacity: 0.7, marginTop: 12, lineHeight: 1.6 }, children: "This is the live view behind the floating chat. Clicking here must NOT close the chat \u2014 the sheet only closes on a pull-down or Escape." }),
-                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { style: { display: "flex", gap: 10, marginTop: 20 }, children: ["Files", "Tasks", "Notes", "Settings"].map((t) => /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("h1", { style: { fontSize: 30, fontWeight: 600, margin: 0 }, children: "Workspace" }),
+                /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { style: { opacity: 0.7, marginTop: 12, lineHeight: 1.6 }, children: "This is the live view behind the floating chat. Clicking here must NOT close the chat \u2014 the sheet only closes on a pull-down or Escape." }),
+                /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { style: { display: "flex", gap: 10, marginTop: 20 }, children: ["Files", "Tasks", "Notes", "Settings"].map((t) => /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
                   "span",
                   {
                     style: {
@@ -27872,13 +29137,13 @@
               ]
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(ContinuousChatOverlay, { controller })
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(ContinuousChatOverlay, { controller })
         ]
       }
     );
   }
   var root = document.getElementById("root");
-  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Harness, {}));
+  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Harness, {}));
 })();
 /*! Bundled license information:
 
@@ -27937,6 +29202,9 @@ react/cjs/react-jsx-runtime.production.js:
    * LICENSE file in the root directory of this source tree.
    *)
 
+@capacitor/core/dist/index.js:
+  (*! Capacitor: https://capacitorjs.com/ - MIT License *)
+
 lucide-react/dist/esm/shared/src/utils/mergeClasses.mjs:
 lucide-react/dist/esm/shared/src/utils/toKebabCase.mjs:
 lucide-react/dist/esm/shared/src/utils/toCamelCase.mjs:
@@ -27946,13 +29214,20 @@ lucide-react/dist/esm/shared/src/utils/hasA11yProp.mjs:
 lucide-react/dist/esm/context.mjs:
 lucide-react/dist/esm/Icon.mjs:
 lucide-react/dist/esm/createLucideIcon.mjs:
+lucide-react/dist/esm/icons/download.mjs:
+lucide-react/dist/esm/icons/file-text.mjs:
+lucide-react/dist/esm/icons/film.mjs:
 lucide-react/dist/esm/icons/house.mjs:
+lucide-react/dist/esm/icons/link.mjs:
+lucide-react/dist/esm/icons/loader-circle.mjs:
 lucide-react/dist/esm/icons/maximize-2.mjs:
 lucide-react/dist/esm/icons/mic.mjs:
 lucide-react/dist/esm/icons/minimize-2.mjs:
+lucide-react/dist/esm/icons/music.mjs:
 lucide-react/dist/esm/icons/rotate-ccw.mjs:
 lucide-react/dist/esm/icons/send-horizontal.mjs:
 lucide-react/dist/esm/icons/settings.mjs:
+lucide-react/dist/esm/icons/x.mjs:
 lucide-react/dist/esm/lucide-react.mjs:
   (**
    * @license lucide-react v1.18.0 - ISC

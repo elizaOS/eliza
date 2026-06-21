@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.stuck-agent-falls-back-to-SMS",
   title: "When the voice call to the stuck-agent user fails, fall back to SMS",
   domain: "lifeops.push",

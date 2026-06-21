@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "security-incident-account-lockdown",
   title: "Assistant triages a suspected account compromise without leaking secrets",
   domain: "executive.privacy",

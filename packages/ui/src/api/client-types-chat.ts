@@ -122,7 +122,16 @@ export type ChatFailureKind =
   | "insufficient_credits"
   | "no_provider"
   | "provider_issue"
+  | "rate_limited"
   | "local_inference";
+
+export interface ChatActionResultSummary {
+  actionName?: string;
+  success: boolean;
+  text?: string;
+  error?: string;
+  values?: Record<string, unknown>;
+}
 
 export type LocalInferenceChatStatus =
   | "missing"
@@ -624,12 +633,46 @@ export interface WorkflowDefinition {
   id: string;
   name: string;
   active: boolean;
+  versionId?: string;
   description?: string;
   nodeCount?: number;
   nodes?: WorkflowDefinitionNode[];
   lastExecutionAt?: string;
   /** Connection graph. Present on single-workflow GET; absent on list. */
   connections?: WorkflowConnectionMap;
+}
+
+export type WorkflowRevisionOperation =
+  | "update"
+  | "activate"
+  | "deactivate"
+  | "tags"
+  | "restore"
+  | "delete";
+
+export interface WorkflowRevision {
+  id: string;
+  workflowId: string;
+  versionId: string;
+  name: string;
+  active: boolean;
+  workflow?: WorkflowDefinition;
+  createdAt: string;
+  updatedAt: string;
+  capturedAt: string;
+  operation: WorkflowRevisionOperation;
+}
+
+export interface WorkflowExecutionEngineMetrics {
+  provider: "smithers";
+  nodes: number;
+  levels: number;
+  maxConcurrency: number;
+  started: number;
+  finished: number;
+  failed: number;
+  skipped: number;
+  retries: number;
 }
 
 export interface WorkflowExecution {
@@ -652,7 +695,66 @@ export interface WorkflowExecution {
       runData?: Record<string, unknown[]>;
       error?: { message?: string; stack?: string };
       lastNodeExecuted?: string;
+      engine?: WorkflowExecutionEngineMetrics;
     };
+  };
+}
+
+export interface WorkflowEvaluationSampleNode {
+  name: string;
+  status: "success" | "error" | "unknown";
+  itemCount: number;
+  executionTimeMs?: number;
+  error?: string;
+  preview?: string;
+}
+
+export interface WorkflowEvaluationSample {
+  id: string;
+  workflowId: string;
+  workflowName: string;
+  workflowVersionId?: string;
+  executionId: string;
+  createdAt: string;
+  input: {
+    mode: string;
+    triggerData?: Record<string, unknown>;
+  };
+  expected: {
+    status: WorkflowExecution["status"];
+    passed: boolean;
+    lastNodeExecuted?: string;
+    engine?: WorkflowExecutionEngineMetrics;
+    error?: string;
+    nodes: WorkflowEvaluationSampleNode[];
+  };
+  score: {
+    pass: boolean;
+    value: number;
+    reason: string;
+  };
+  tags: string[];
+}
+
+export interface WorkflowEvaluationSuite {
+  workflowId: string;
+  workflowName: string;
+  workflowVersionId?: string;
+  generatedAt: string;
+  sampleCount: number;
+  samples: WorkflowEvaluationSample[];
+  jsonl: string;
+  optimizer: {
+    engine: "smithers-gepa";
+    target: "workflow-generation";
+    suiteName: string;
+    caseFile: string;
+    recommendedCommand: string;
+    recommendedEvalCommand: string;
+    recommendedOptimizeCommand: string;
+    recommendedObservabilityCommand: string;
+    recommendedMetricsCommand: string;
+    notes: string[];
   };
 }
 

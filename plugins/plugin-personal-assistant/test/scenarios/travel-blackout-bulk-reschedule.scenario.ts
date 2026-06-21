@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "travel-blackout-bulk-reschedule",
   title: "Travel disruption clears and reschedules partnership meetings",
   domain: "executive.schedule",

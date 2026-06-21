@@ -184,4 +184,25 @@ describe("MemoryMonitor", () => {
 		monitor.stop();
 		expect(monitor.isRunning()).toBe(false);
 	});
+
+	it("defaults serverRssMb to the real in-process RSS on the FFI path", async () => {
+		// No `serverRssMb` source injected → the default probe reads
+		// `process.memoryUsage().rss`, the in-process FFI host's resident set.
+		const registry = new SharedResourceRegistry();
+		const monitor = new MemoryMonitor({
+			registry,
+			config: { lowWaterMb: 768, lowWaterFraction: 0.08 },
+			sources: {
+				osMemory: () => ({
+					freeBytes: 8 * 1024 * MB,
+					totalBytes: 16 * 1024 * MB,
+				}),
+			},
+		});
+		const sample = await monitor.sample();
+		expect(sample.serverRssMb).not.toBeNull();
+		expect(sample.serverRssMb as number).toBeGreaterThan(0);
+		// The in-process RSS is bounded by total RAM (sanity, not a fabricated value).
+		expect(sample.serverRssMb as number).toBeLessThan(sample.totalMb);
+	});
 });

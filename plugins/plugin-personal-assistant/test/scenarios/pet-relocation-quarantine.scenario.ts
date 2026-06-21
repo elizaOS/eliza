@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "pet-relocation-quarantine",
   title: "Assistant manages pet relocation paperwork and quarantine timing",
   domain: "executive.household",

@@ -10,6 +10,7 @@ import {
 } from "../_helpers/browser-task-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "connector.browser-portal.certify-core",
   title: "Certify browser and portal upload flows",
   domain: "connector-certification",

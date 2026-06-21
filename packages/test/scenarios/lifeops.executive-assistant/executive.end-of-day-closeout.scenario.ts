@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.end-of-day-closeout",
   title:
     "End-of-day closeout compresses unresolved decisions and tomorrow risks",

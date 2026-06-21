@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "scope_global_vs_user.aggressive.with_injection_attempt.029",
   title:
     "scope :: user_overrides_persist_across_unrelated_turns :: aggressive :: with_injection_attempt :: 10-turn (29)",

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "selfcontrol.block-apps.mobile",
   title: "Phone app-block request reaches the blocker permission gate",
   domain: "selfcontrol",

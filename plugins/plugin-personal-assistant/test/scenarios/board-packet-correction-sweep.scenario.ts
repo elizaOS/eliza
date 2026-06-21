@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "board-packet-correction-sweep",
   title: "Assistant corrects a board packet after a late finance change",
   domain: "executive.documents",

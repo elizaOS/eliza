@@ -70,6 +70,7 @@ function checkDraftIsTerse(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.draft-respects-tone-prefs",
   title: "Draft respects 'terse, no pleasantries' tone preference",
   domain: "lifeops.inbox-triage",

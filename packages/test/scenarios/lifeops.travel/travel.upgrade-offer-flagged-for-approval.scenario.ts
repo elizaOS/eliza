@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "travel.upgrade-offer-flagged-for-approval",
   title:
     "Paid upgrade offer is surfaced for explicit approval, not auto-accepted",

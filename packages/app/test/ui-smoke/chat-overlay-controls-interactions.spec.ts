@@ -34,15 +34,19 @@ test("chat overlay: sending opens the chat, click-out collapses, Escape collapse
     timeout: 15_000,
   });
 
-  // Clicking the dimmed view behind collapses the chat back to the input.
-  await page
-    .getByTestId("chat-sheet-backdrop")
-    .click({ position: { x: 14, y: 14 }, force: true });
+  // Sending leaves the composer focused (keyboard up). Tapping the dimming
+  // scrim is a two-step gesture by design: the FIRST tap only drops the
+  // keyboard (returning to the prior detent), the SECOND tap collapses the
+  // chat back to the input. (See ContinuousChatOverlay: composerFocusedAtPress
+  // + dismissKeyboardToPriorState — "first tap drops keyboard, second closes".)
+  const backdrop = page.getByTestId("chat-sheet-backdrop");
+  await backdrop.click({ position: { x: 14, y: 14 }, force: true });
+  await backdrop.click({ position: { x: 14, y: 14 }, force: true });
   await expect(overlay).not.toHaveAttribute("data-open", "true", {
     timeout: 10_000,
   });
 
-  // Typing re-opens it; Escape collapses again.
+  // Typing re-opens it; Escape collapses again in a single keystroke.
   await composer.fill("and again");
   await expect(overlay).toHaveAttribute("data-open", "true", {
     timeout: 10_000,

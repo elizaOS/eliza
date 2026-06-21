@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.travel.capture-booking-preferences",
   title: "Capture reusable flight and hotel preferences",
   domain: "executive-assistant",

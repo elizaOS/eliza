@@ -8,6 +8,7 @@ import {
 import type { CloudCompatAgent } from "../api/client-types-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { getBootConfig } from "../config/boot-config";
+import { dispatchCloudHandoffPhase } from "../events";
 import {
   canSelectLocalRuntime,
   isAndroid,
@@ -555,6 +556,16 @@ export function useFirstRunController(): FirstRunController {
         sourceDraft.runtime,
         sourceDraft.localInference,
       );
+      // Persist the runtime mode BEFORE starting/awaiting the on-device agent.
+      // The iOS native transport classifies the app from
+      // `eliza:mobile-runtime-mode`; while it is still unset, a production build
+      // defaults to a pure-cloud runtime (isNativeIosCloudRuntime) and BLOCKS
+      // local-agent IPC, so every waitForAgentApi probe is rejected before it
+      // can reach the engine and "Starting local agent" hangs to the deadline.
+      // Setting the mode first makes the transport treat local/cloud-hybrid as
+      // on-device runtimes and route the probe through the bundled agent.
+      persistMobileRuntimeModeForServerTarget(serverTarget);
+      setState("firstRunRuntimeTarget", serverTarget);
       setBusyText("Starting local agent");
       const apiBase = resolveFirstRunLocalAgentApiBase();
       client.setBaseUrl(apiBase);
@@ -590,8 +601,6 @@ export function useFirstRunController(): FirstRunController {
         });
         addAgentProfile({ kind: "remote", label: "Local agent", apiBase });
       }
-      persistMobileRuntimeModeForServerTarget(serverTarget);
-      setState("firstRunRuntimeTarget", serverTarget);
       setBusyText("Saving first-run profile");
       await submitFirstRun(sourceDraft, "local");
       if (firstRunDownloadsLocalModel(sourceDraft.localInference)) {
@@ -780,12 +789,18 @@ export function useFirstRunController(): FirstRunController {
       // no lost history. Best-effort: on failure the user stays on the shared
       // adapter, which keeps working.
       if (selectedAgent.created && !selectedAgent.bridgeUrl) {
+        const handoffAgentId = selectedAgent.agentId;
+        // Tell the UI a migration is in flight instead of swapping silently.
+        dispatchCloudHandoffPhase({
+          agentId: handoffAgentId,
+          phase: "migrating",
+        });
         void client
           .startCloudAgentHandoff({
-            agentId: selectedAgent.agentId,
+            agentId: handoffAgentId,
             sharedApiBase: cloudAgentApiBase,
             // The shared adapter keeps one canonical conversation per agent id.
-            conversationId: selectedAgent.agentId,
+            conversationId: handoffAgentId,
             cloudApiBase:
               getBootConfig().cloudApiBase || "https://www.elizacloud.ai",
             authToken,
@@ -794,7 +809,7 @@ export function useFirstRunController(): FirstRunController {
               client.setToken(authToken);
               const switched = createPersistedActiveServer({
                 kind: "cloud",
-                id: `cloud:${selectedAgent.agentId}`,
+                id: `cloud:${handoffAgentId}`,
                 apiBase: containerBase,
                 accessToken: authToken,
               });
@@ -808,8 +823,25 @@ export function useFirstRunController(): FirstRunController {
               switchAgentProfile(profile.id);
             },
           })
-          .catch(() => {
-            // Handoff is best-effort; the shared adapter remains usable.
+          // Stop discarding the ConversationHandoffResult: surface each terminal
+          // status (switched | switched-empty | timed-out | failed) as a typed
+          // handoff phase so the UI can render real progress and an honest
+          // failure notice. Still best-effort — the shared adapter keeps working
+          // regardless of outcome.
+          .then((result) => {
+            dispatchCloudHandoffPhase({
+              agentId: handoffAgentId,
+              phase: result.status,
+              imported: result.imported,
+              ...(result.error ? { error: result.error } : {}),
+            });
+          })
+          .catch((err: unknown) => {
+            dispatchCloudHandoffPhase({
+              agentId: handoffAgentId,
+              phase: "failed",
+              error: err instanceof Error ? err.message : String(err),
+            });
           });
       }
     },

@@ -6,6 +6,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.eye-break-20-20-20",
   title: "20-20-20 eye break every 20 minutes",
   domain: "lifeops.hygiene",

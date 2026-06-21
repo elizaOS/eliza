@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "signal.reply",
   title: "Reply to Signal message with confirmation",
   domain: "messaging.signal",

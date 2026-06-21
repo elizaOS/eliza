@@ -76,6 +76,7 @@
 		"build": "bun run build.ts",
 		"dev": "bun run build.ts",
 		"test": "NODE_OPTIONS='--experimental-sqlite' vitest run",
+		"test:asr:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/asr-real-smoke.ts",
 		"probe:sd-cpp": "node scripts/probe-sd-cpp.mjs --human",
 		"clean": "rm -rf dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",

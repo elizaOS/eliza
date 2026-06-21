@@ -13,6 +13,26 @@ const INSUFFICIENT_CREDITS_RE =
 const BILLING_KEYWORDS_RE =
   /\b(?:billing|quota|credits?|budget|spending|payment|subscription|plan limit)\b/i;
 
+const RATE_LIMIT_RE =
+  /\b(?:rate[_\s-]?limit(?:ed|ing)?|too many requests|requests? per (?:minute|second|hour)|slow down)\b/i;
+
+/**
+ * A transient provider rate-limit (HTTP 429, or a rate-limit message) that is
+ * NOT billing/credit exhaustion. Callers MUST check
+ * {@link isInsufficientCreditsError} first — a 429 *with* billing context is
+ * credit exhaustion ("top up"), whereas a bare 429 is "try again in a moment".
+ */
+export function isRateLimitError(err: unknown): boolean {
+  if (err == null) return false;
+  if (typeof err === "string") return RATE_LIMIT_RE.test(err);
+  if (typeof err !== "object") return false;
+  const status = (err as { status?: number }).status;
+  if (status === 429) return true;
+  const msg = getErrorMessage(err, "");
+  const safe = msg.length > 10_000 ? msg.slice(0, 10_000) : msg;
+  return RATE_LIMIT_RE.test(safe);
+}
+
 export function isInsufficientCreditsMessage(message: string): boolean {
   const safe = message.length > 10_000 ? message.slice(0, 10_000) : message;
   return INSUFFICIENT_CREDITS_RE.test(safe);

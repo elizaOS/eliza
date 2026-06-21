@@ -93,6 +93,7 @@ function checkAgentSurfacesBothSources(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "sleep.apple-vs-oura-conflict",
   title:
     "Sleep summary surfaces Apple Health (7h) vs Oura (8h) conflict with provenance",

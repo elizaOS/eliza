@@ -36,6 +36,10 @@ import path from "node:path";
 import type { Duplex } from "node:stream";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
+import {
+  computeGenerationThroughput,
+  type GenerationThroughput,
+} from "@elizaos/shared/local-inference";
 import type {
   LocalInferenceLoadArgs,
   LocalInferenceLoader,
@@ -92,6 +96,12 @@ type DeviceOutbound =
       promptTokens: number;
       outputTokens: number;
       durationMs: number;
+      /**
+       * Time-to-first-token in ms, when the device measured it. Equals the
+       * prefill wall-clock; lets the agent difference prefill vs decode tok/s.
+       * Optional — absent on the non-streaming path (older device clients).
+       */
+      ttftMs?: number;
     }
   | { type: "generateResult"; correlationId: string; ok: false; error: string }
   | {
@@ -270,6 +280,25 @@ interface PersistedGenerateRequest {
 }
 
 /**
+ * One on-device generation's measured resource signal, emitted to
+ * `subscribeGenerationMetrics` listeners after every successful `generateResult`.
+ * The Mobile Resource Workbench folds these into a `DeviceResourceMetrics`
+ * accumulator (prefill/decode tok/s, TTFT, per-tier aggregation). All
+ * throughput fields are `null` when the device could not measure the inputs.
+ */
+export interface DeviceGenerationMetrics {
+  deviceId: string;
+  platform: DeviceCapabilities["platform"] | null;
+  /** Device model identifier (e.g. `iPhone17,2`) for per-device baselines. */
+  deviceModel: string | null;
+  promptTokens: number;
+  outputTokens: number;
+  durationMs: number;
+  ttftMs: number | null;
+  throughput: GenerationThroughput;
+}
+
+/**
  * Scoring function — pick the most powerful device available.
  * Pure, synchronous, and easy to test.
  */
@@ -321,6 +350,13 @@ export class DeviceBridge {
   private readonly statusListeners = new Set<
     (status: DeviceBridgeStatus) => void
   >();
+
+  private readonly generationMetricsListeners = new Set<
+    (metrics: DeviceGenerationMetrics) => void
+  >();
+
+  /** The most recent successful generation's metrics, or null. */
+  private lastGenerationMetrics: DeviceGenerationMetrics | null = null;
 
   private readonly expectedPairingToken: string | null =
     process.env.ELIZA_DEVICE_PAIRING_TOKEN?.trim() || null;
@@ -392,6 +428,36 @@ export class DeviceBridge {
         listener(snapshot);
       } catch {
         this.statusListeners.delete(listener);
+      }
+    }
+  }
+
+  /**
+   * Subscribe to per-generation throughput metrics. Fires once per successful
+   * on-device generation with the differenced prefill/decode tok/s. Returns an
+   * unsubscribe function.
+   */
+  subscribeGenerationMetrics(
+    listener: (metrics: DeviceGenerationMetrics) => void,
+  ): () => void {
+    this.generationMetricsListeners.add(listener);
+    return () => {
+      this.generationMetricsListeners.delete(listener);
+    };
+  }
+
+  /** The most recent successful generation's measured metrics, or null. */
+  latestGenerationMetrics(): DeviceGenerationMetrics | null {
+    return this.lastGenerationMetrics;
+  }
+
+  private emitGenerationMetrics(metrics: DeviceGenerationMetrics): void {
+    this.lastGenerationMetrics = metrics;
+    for (const listener of this.generationMetricsListeners) {
+      try {
+        listener(metrics);
+      } catch {
+        this.generationMetricsListeners.delete(listener);
       }
     }
   }
@@ -708,6 +774,29 @@ export class DeviceBridge {
       if (msg.ok === false) {
         pending.reject(new Error(msg.error));
       } else {
+        // Difference the raw counters into prefill/decode tok/s and surface
+        // them to profiling subscribers. The loader contract is unchanged —
+        // callers still get the text; metrics are a side channel.
+        const ttftMs = typeof msg.ttftMs === "number" ? msg.ttftMs : null;
+        const throughput = computeGenerationThroughput({
+          promptTokens: msg.promptTokens,
+          outputTokens: msg.outputTokens,
+          durationMs: msg.durationMs,
+          ttftMs,
+        });
+        const device = pending.routedDeviceId
+          ? this.devices.get(pending.routedDeviceId)
+          : null;
+        this.emitGenerationMetrics({
+          deviceId: pending.routedDeviceId ?? "unknown",
+          platform: device?.capabilities.platform ?? null,
+          deviceModel: device?.capabilities.deviceModel ?? null,
+          promptTokens: msg.promptTokens,
+          outputTokens: msg.outputTokens,
+          durationMs: msg.durationMs,
+          ttftMs,
+          throughput,
+        });
         pending.resolve(msg.text);
       }
       return;

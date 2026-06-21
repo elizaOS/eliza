@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "ipo-lockup-liquidity-window",
   title: "Assistant coordinates IPO lockup liquidity planning",
   domain: "executive.money",

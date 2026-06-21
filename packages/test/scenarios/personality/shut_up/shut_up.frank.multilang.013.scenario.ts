@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "shut_up.frank.multilang.013",
   title: "shut_up :: frank :: multilang :: 10-turn (13)",
   domain: "personality",

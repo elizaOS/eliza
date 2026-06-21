@@ -6,6 +6,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.haircut-every-6-weeks",
   title: "Haircut every 6 weeks",
   domain: "lifeops.hygiene",

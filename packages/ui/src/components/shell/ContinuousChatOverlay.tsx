@@ -1,3 +1,4 @@
+import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
   FileText,
   Film,
@@ -23,6 +24,7 @@ import {
 } from "motion/react";
 import * as React from "react";
 
+import { client } from "../../api/client";
 import type { ImageAttachment } from "../../api/client-types-chat";
 import {
   parseSlashDraft,
@@ -210,6 +212,23 @@ function rubberBand(overshoot: number): number {
 const PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
 // Stop generating: a centered rounded square (the universal "stop" affordance).
 const STOP_GLYPH = "M12 12H24V24H12Z";
+
+/** Base64-encode WAV bytes in chunks (avoids the apply() arg-count limit). */
+function wavBytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(
+      ...(bytes.subarray(i, i + chunk) as unknown as number[]),
+    );
+  }
+  return btoa(binary);
+}
+
+/** UTF-8-safe base64 for a transcript turned into a composer text attachment. */
+function textToBase64(text: string): string {
+  return wavBytesToBase64(new TextEncoder().encode(text));
+}
 // Muted-speaker glyph for the autoplay-blocked "tap to enable sound" prompt.
 const SPEAKER_MUTED_GLYPH =
   "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
@@ -763,6 +782,7 @@ export function ContinuousChatOverlay({
     transcriptionMode,
     toggleTranscriptionMode,
     setDictationSink,
+    setTranscriptSessionSink,
     setComposerHasDraft,
     transcript,
     needsAudioUnlock,
@@ -774,6 +794,15 @@ export function ContinuousChatOverlay({
     stop,
     modelStatus,
   } = controller;
+
+  // The transcribe control is a voice feature, so it only belongs in the header
+  // while voice is actually on — a hands-free conversation, the mic open, or an
+  // in-progress transcription. When voice is off it's hidden (the `/transcribe`
+  // command still starts transcription from cold). `transcriptionMode` is part
+  // of the predicate so the button (then "stop transcription") and its badge
+  // stay put across the re-listen gaps where `recording` momentarily drops
+  // between utterances.
+  const voiceActive = Boolean(recording || handsFree || transcriptionMode);
 
   // Copy an assistant answer (press-and-hold on its bubble). Stable identity so
   // the memoized ThreadLine isn't re-rendered every parent tick.
@@ -1024,6 +1053,12 @@ export function ContinuousChatOverlay({
       // user already opened one; clear any free-rest so the height matches.
       setFreeH(null);
       setMode((m) => (m === "half" || m === "full" ? m : "half"));
+      // Sending COMMITS to the open chat: a deliberate message means this is now
+      // an active conversation, so dismissing the keyboard afterwards keeps the
+      // thread open (preFocusCollapsedRef gates that) instead of collapsing the
+      // whole conversation back to the bare input peek — even when the chat was
+      // opened by tapping the collapsed input.
+      preFocusCollapsedRef.current = false;
       detentHaptic();
       inputRef.current?.focus();
     },
@@ -1145,10 +1180,23 @@ export function ContinuousChatOverlay({
     // Voice can't be turned ON while a reply is in flight (it's gated until the
     // turn finishes), but an active hands-free session can always be turned OFF.
     if (responding && !handsFree) return;
+    // While transcribing, the mic is the master voice control: a tap ENDS the
+    // transcription (which drops the transcript into the composer as an
+    // attachment) instead of starting a second, conflicting capture.
+    if (transcriptionMode) {
+      toggleTranscriptionMode();
+      return;
+    }
     // Quick tap = hands-free conversation: the agent speaks its replies back and
     // the mic re-opens after each one. Tap again to end.
     toggleHandsFree();
-  }, [responding, handsFree, toggleHandsFree]);
+  }, [
+    responding,
+    handsFree,
+    toggleHandsFree,
+    transcriptionMode,
+    toggleTranscriptionMode,
+  ]);
 
   const hasThread = visibleMessages.length > 0;
 
@@ -1434,6 +1482,20 @@ export function ContinuousChatOverlay({
       clamp: true,
     },
   );
+  // Grabber clearance: when the chat is OPEN but BELOW the half detent the header
+  // is hidden, so the thread viewport would start at the panel's very top —
+  // tucking the topmost line under the floating drag handle (a partial bubble
+  // pinned beneath the grabber at a small free-rest height). Inset the thread
+  // down by the grabber's height in that window only: 0 at the collapsed peek
+  // (threadHeight ~0, so the closed input bar stays exactly its own height),
+  // ramping to the inset once a thread is actually open, then back to 0 as the
+  // header reveals at half+ (it provides the clearance itself).
+  const threadGrabberClearance = useTransform(
+    threadHeight,
+    [0, 40, halfH - 64, halfH],
+    [0, 20, 20, 0],
+    { clamp: true },
+  );
 
   // Sub-threshold release: spring back to the current detent (no state change).
   // Also settles the pill→input morph to its resting end (0 while pilled, 1 once
@@ -1573,6 +1635,34 @@ export function ContinuousChatOverlay({
     if (preFocusCollapsedRef.current) collapse();
   }, [collapse]);
 
+  // The composer overlay floats over every view and survives tab changes, so
+  // navigating away from a focused composer (chat → Settings / Home / …) would
+  // otherwise leave the textarea holding DOM focus on the new view (its
+  // collapsed/resting look is gated on sheet state, not on document focus). On
+  // iOS that strands the keyboard input-accessory bar (the ‹ › chevrons +
+  // "Done") at the bottom of the screen with no keyboard while the composer
+  // reads as inactive. Drop composer focus whenever the active view changes to a
+  // non-chat tab; an intentional tap to focus the composer on that view (no tab
+  // change) is left untouched. Keyboard.hide() guarantees iOS dismisses the
+  // accessory bar, not just the soft keyboard.
+  React.useEffect(() => {
+    if (currentTab === "chat") return;
+    const input = inputRef.current;
+    if (
+      typeof document === "undefined" ||
+      !input ||
+      document.activeElement !== input
+    ) {
+      return;
+    }
+    input.blur();
+    void import("@capacitor/keyboard")
+      .then(({ Keyboard }) => Keyboard.hide())
+      .catch(() => {
+        // Web/desktop or no native bridge — blur() above already dropped focus.
+      });
+  }, [currentTab]);
+
   // Focusing or typing in the composer opens the chat (keyboard + history) when
   // there's a thread to show. Opens to HALF — the conversation is visible above
   // the keyboard without a full-screen takeover; the maximize button is for that.
@@ -1641,6 +1731,50 @@ export function ContinuousChatOverlay({
     });
     return () => setDictationSink(null);
   }, [setDictationSink, expand]);
+
+  // A completed transcription SESSION drops its transcript into the composer as
+  // an ATTACHMENT — it does NOT auto-send as a message. The user sends it (with
+  // any typed text) when ready; the mic stays on the whole time, so transcribing
+  // is an additive layer, not a mode that takes over the conversation. The
+  // recording is also archived (Transcript record + audio + knowledge mirror)
+  // for the Transcripts view, best-effort and silent.
+  React.useEffect(() => {
+    setTranscriptSessionSink((segments, startedAtMs, audioWav) => {
+      if (segments.length === 0) return;
+      const text = transcriptPlainText(segments);
+      if (text) {
+        const stamp = new Date(startedAtMs)
+          .toISOString()
+          .slice(0, 16)
+          .replace("T", " ");
+        const attachment: ImageAttachment = {
+          data: textToBase64(text),
+          mimeType: "text/markdown",
+          name: `Transcript ${stamp}.md`,
+        };
+        setPendingImages((prev) =>
+          [...prev, attachment].slice(0, MAX_CHAT_IMAGES),
+        );
+        expand();
+        inputRef.current?.focus();
+      }
+      void client
+        .createTranscript({
+          segments,
+          createdAt: startedAtMs,
+          ...(audioWav
+            ? {
+                audioBase64: wavBytesToBase64(audioWav),
+                audioContentType: "audio/wav",
+              }
+            : {}),
+        })
+        .catch(() => {
+          /* archival is best-effort; a failed save just skips the record */
+        });
+    });
+    return () => setTranscriptSessionSink(null);
+  }, [setTranscriptSessionSink, expand]);
 
   // Tell the controller whether a draft is pending so the hands-free always-on
   // loop pauses while the user is typing (or editing a PTT dictation) and
@@ -1834,6 +1968,18 @@ export function ContinuousChatOverlay({
         openProgress.set(Math.min(1, up / PILL_OPEN_DISTANCE));
         const excess = up - PILL_OPEN_DISTANCE;
         threadHeight.set(excess > 0 ? clampHeight(excess) : 0);
+        return;
+      }
+      // INPUT → PILL drag (collapsed, dragging DOWN): the mirror of the pill
+      // drag — map the downward travel to the input→pill morph (openProgress
+      // 1 → 0) so the input bar visibly scales down into the pill capsule under
+      // the finger, instead of staying fully formed and snapping to the pill only
+      // on release (the dead, unresponsive collapse gesture). The thread stays at
+      // 0 (nothing to size below the input).
+      if (!sheetOpen && offset < 0) {
+        const down = -offset;
+        openProgress.set(Math.max(0, 1 - down / PILL_OPEN_DISTANCE));
+        threadHeight.set(0);
         return;
       }
       // Pin the dead direction at each end so the panel feels held: collapsed →
@@ -2388,17 +2534,6 @@ export function ContinuousChatOverlay({
                     onClick={() => clearConversation()}
                     testId="chat-full-clear"
                   />
-                  <HeaderButton
-                    icon={FileText}
-                    label={
-                      transcriptionMode
-                        ? "stop transcription"
-                        : "transcription mode"
-                    }
-                    active={transcriptionMode}
-                    onClick={toggleTranscriptionMode}
-                    testId="chat-full-transcribe"
-                  />
                 </div>
                 {transcriptionMode ? (
                   <div
@@ -2447,8 +2582,13 @@ export function ContinuousChatOverlay({
                 // spring-animated to a detent on release; no `animate`/`transition`,
                 // so no re-render. `shrink min-h-0` lets the panel's `maxHeight` cap
                 // win: a tall detent (or the keyboard) shrinks the thread (it
-                // scrolls) instead of pushing the panel off-screen.
-                style={{ flexBasis: threadFlexBasis }}
+                // scrolls) instead of pushing the panel off-screen. paddingTop
+                // insets the scroll viewport below the floating grabber while the
+                // header is hidden (0 once the header reveals at half+).
+                style={{
+                  flexBasis: threadFlexBasis,
+                  paddingTop: threadGrabberClearance,
+                }}
               >
                 <div
                   id="continuous-thread"
@@ -2716,65 +2856,86 @@ export function ContinuousChatOverlay({
                 {agentName} is waking up — you can type now; your message sends
                 and the reply arrives in a moment.
               </span>
-              {/* One trailing control, ChatGPT-style: mic when there's nothing to
-              send (or while recording, to stop), swapping to send once the user
-              starts typing or attaches an image. It morphs IN PLACE (one
-              persistent <div>, no `key`): React reconciles the SoftButton's
-              glyph/label/handlers without a remount, so there's no scale/fade
-              pop on every keystroke that crosses the draft boundary. */}
-              <div className="shrink-0">
-                {(hasDraft || hasImages) && !recording ? (
+              {/* Trailing controls. The transcribe toggle sits directly LEFT of
+              the mic — it's a voice control, so it appears only while voice is on
+              (voiceActive), giving record-only long-form capture next to the
+              audio button. */}
+              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                {voiceActive ? (
                   <SoftButton
-                    icon={SendHorizontal}
+                    icon={FileText}
                     label={
-                      !canSend
-                        ? "send (agent stopped)"
-                        : responding
-                          ? "send another"
-                          : "send"
+                      transcriptionMode
+                        ? "stop transcription"
+                        : "transcription mode"
                     }
-                    disabled={!canSend}
-                    // Keep focus in the textarea on tap: without this the
-                    // button steals focus, the textarea blurs, the keyboard
-                    // retracts and the composer relayouts between pointerdown
-                    // and click — so the first tap only dismissed the keyboard
-                    // and a second tap was needed to actually send. Chromium
-                    // still dispatches click after a preventDefaulted
-                    // pointerdown, so onClick fires on the first tap and the
-                    // keyboard stays up for the next message.
-                    onPointerDown={(e) => e.preventDefault()}
-                    onClick={submit}
-                    testId="chat-composer-action"
+                    active={transcriptionMode}
+                    onClick={toggleTranscriptionMode}
+                    testId="chat-composer-transcribe"
                   />
-                ) : !recording && responding ? (
-                  // While a reply is streaming and nothing is typed, the mic becomes a
-                  // stop control so the user can interrupt a runaway generation.
-                  <SoftButton
-                    glyph={STOP_GLYPH}
-                    label="stop generating"
-                    onClick={() => stop()}
-                    testId="chat-composer-stop"
-                  />
-                ) : (
-                  <SoftButton
-                    icon={Mic}
-                    label={
-                      pttHolding
-                        ? "release to send"
-                        : handsFree
-                          ? "end conversation"
-                          : recording
-                            ? "stop listening"
-                            : "talk"
-                    }
-                    active={recording || handsFree}
-                    onClick={handleMicClick}
-                    onPointerDown={beginPushToTalkPress}
-                    onPointerUp={(e) => finishPushToTalkPress(e, false)}
-                    onPointerCancel={(e) => finishPushToTalkPress(e, true)}
-                    testId="chat-composer-mic"
-                  />
-                )}
+                ) : null}
+                {/* One trailing control, ChatGPT-style: mic when there's nothing
+                to send (or while recording, to stop), swapping to send once the
+                user starts typing or attaches an image. It morphs IN PLACE (one
+                persistent <div>, no `key`): React reconciles the SoftButton's
+                glyph/label/handlers without a remount, so there's no scale/fade
+                pop on every keystroke that crosses the draft boundary. */}
+                <div className="shrink-0">
+                  {(hasDraft || hasImages) && !recording ? (
+                    <SoftButton
+                      icon={SendHorizontal}
+                      label={
+                        !canSend
+                          ? "send (agent stopped)"
+                          : responding
+                            ? "send another"
+                            : "send"
+                      }
+                      disabled={!canSend}
+                      // Keep focus in the textarea on tap: without this the
+                      // button steals focus, the textarea blurs, the keyboard
+                      // retracts and the composer relayouts between pointerdown
+                      // and click — so the first tap only dismissed the keyboard
+                      // and a second tap was needed to actually send. Chromium
+                      // still dispatches click after a preventDefaulted
+                      // pointerdown, so onClick fires on the first tap and the
+                      // keyboard stays up for the next message.
+                      onPointerDown={(e) => e.preventDefault()}
+                      onClick={submit}
+                      testId="chat-composer-action"
+                    />
+                  ) : !recording && responding ? (
+                    // While a reply is streaming and nothing is typed, the mic becomes a
+                    // stop control so the user can interrupt a runaway generation.
+                    <SoftButton
+                      glyph={STOP_GLYPH}
+                      label="stop generating"
+                      onClick={() => stop()}
+                      testId="chat-composer-stop"
+                    />
+                  ) : (
+                    <SoftButton
+                      icon={Mic}
+                      label={
+                        pttHolding
+                          ? "release to send"
+                          : transcriptionMode
+                            ? "stop transcription"
+                            : handsFree
+                              ? "end conversation"
+                              : recording
+                                ? "stop listening"
+                                : "talk"
+                      }
+                      active={recording || handsFree || transcriptionMode}
+                      onClick={handleMicClick}
+                      onPointerDown={beginPushToTalkPress}
+                      onPointerUp={(e) => finishPushToTalkPress(e, false)}
+                      onPointerCancel={(e) => finishPushToTalkPress(e, true)}
+                      testId="chat-composer-mic"
+                    />
+                  )}
+                </div>
               </div>
             </div>
           </motion.div>

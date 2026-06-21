@@ -324,7 +324,11 @@ export async function executeTriggerTask(
         priority: "high",
         source: "trigger",
         groupKey: `trigger:${task.id ?? trigger.triggerId}`,
-        data: { taskId: task.id, triggerId: trigger.triggerId, error: errorMessage },
+        data: {
+          taskId: task.id,
+          triggerId: trigger.triggerId,
+          error: errorMessage,
+        },
       })
       .catch(() => {});
   }

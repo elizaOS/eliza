@@ -36,40 +36,12 @@ const mainPlaceholder = (
   </div>
 );
 
-const chatPlaceholder = (
-  <div className="flex h-full min-h-0 flex-col">
-    <div className="flex h-10 shrink-0 items-center border-b border-border/40 px-3 text-sm font-medium text-txt">
-      Page chat
-    </div>
-    <div className="flex flex-1 flex-col gap-2 overflow-auto p-3 text-sm">
-      <div className="self-start rounded-md bg-card/70 px-3 py-2 text-txt">
-        Hello — what would you like to do?
-      </div>
-      <div className="self-end rounded-md bg-accent/30 px-3 py-2 text-txt">
-        Summarize today's inbox.
-      </div>
-    </div>
-    <div className="border-t border-border/40 p-2">
-      <input
-        className="w-full rounded-sm border border-border/40 bg-bg/60 px-2 py-1 text-sm outline-none"
-        placeholder="Message…"
-      />
-    </div>
-  </div>
-);
-
 const meta = {
   title: "Workspace/AppWorkspaceChrome",
   component: AppWorkspaceChrome,
   tags: ["autodocs"],
   parameters: {
     layout: "fullscreen",
-  },
-  argTypes: {
-    chatCollapsed: { control: "boolean" },
-    chatDefaultCollapsed: { control: "boolean" },
-    chatDisabled: { control: "boolean" },
-    hideCollapseButton: { control: "boolean" },
   },
   decorators: [
     (Story) => (
@@ -81,8 +53,6 @@ const meta = {
   args: {
     nav: navPlaceholder,
     main: mainPlaceholder,
-    chat: chatPlaceholder,
-    onToggleChat: () => {},
   },
 } satisfies Meta<typeof AppWorkspaceChrome>;
 
@@ -91,26 +61,8 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 
-export const ChatCollapsed: Story = {
-  args: {
-    chatCollapsed: true,
-  },
-};
-
-export const ChatDisabled: Story = {
-  args: {
-    chatDisabled: true,
-  },
-};
-
 export const NoNav: Story = {
   args: {
     nav: undefined,
-  },
-};
-
-export const HiddenCollapseButton: Story = {
-  args: {
-    hideCollapseButton: true,
   },
 };

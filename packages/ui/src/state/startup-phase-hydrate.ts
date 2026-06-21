@@ -16,7 +16,11 @@ import {
 } from "../api";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
 import { prefetchAppsCatalog } from "../components/apps/load-apps-catalog";
-import { type AppEmoteEventDetail, dispatchAppEmoteEvent } from "../events";
+import {
+  type AppEmoteEventDetail,
+  dispatchAppEmoteEvent,
+  dispatchVoiceControl,
+} from "../events";
 import {
   getWindowNavigationPath,
   isRouteRootPath,
@@ -508,6 +512,16 @@ export function bindReadyPhase(
   const unbindAgent = client.onWsEvent(
     "agent_event",
     (data: Record<string, unknown>) => {
+      // The START/STOP_TRANSCRIPTION agent actions ride the "voice-control"
+      // stream; re-dispatch them to the shell as a window event (the agent→shell
+      // bridge) rather than treating them as autonomous trajectory events.
+      if (data.stream === "voice-control") {
+        const payload = data.payload as { command?: unknown } | undefined;
+        if (payload?.command === "start" || payload?.command === "stop") {
+          dispatchVoiceControl({ command: payload.command });
+        }
+        return;
+      }
       const e = parseStreamEventEnvelopeEvent(data);
       if (e) {
         depsRef.current?.appendAutonomousEvent(e);

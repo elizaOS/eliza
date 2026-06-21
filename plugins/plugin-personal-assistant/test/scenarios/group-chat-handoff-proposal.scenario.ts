@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "group-chat-handoff-proposal",
   title: "Assistant proposes group-chat handoff instead of brittle relaying",
   domain: "executive.messaging",

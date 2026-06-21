@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "document-signature-chase",
   title: "Assistant requests signature, tracks deadline, and prepares chase",
   domain: "executive.documents",

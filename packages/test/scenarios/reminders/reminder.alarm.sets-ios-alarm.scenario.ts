@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "reminder.alarm.sets-ios-alarm",
   title: "iPhone alarm request lands in an owner scheduling flow",
   domain: "reminders",

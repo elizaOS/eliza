@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.urgent-bypasses-do-not-disturb",
   title: "Mom-flagged urgent push fires through Do Not Disturb",
   domain: "lifeops.push",

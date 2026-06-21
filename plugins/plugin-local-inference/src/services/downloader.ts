@@ -180,6 +180,22 @@ function finalFilename(model: CatalogModel): string {
 	return `${safe}.gguf`;
 }
 
+/**
+ * HuggingFace bearer token for gated/metered repos, read from the same env
+ * aliases the embedding manager uses (HF_TOKEN / HUGGINGFACE_TOKEN /
+ * HF_HUB_TOKEN). Returns `{}` when unset so public repos are unaffected. The
+ * resolve endpoints for gated bundles (e.g. the Eliza-1 mono-repo) 401 without
+ * it, so weight + bundle downloads MUST forward it.
+ */
+function huggingFaceAuthHeader(): Record<string, string> {
+	const token =
+		process.env.HF_TOKEN?.trim() ||
+		process.env.HUGGINGFACE_TOKEN?.trim() ||
+		process.env.HF_HUB_TOKEN?.trim() ||
+		"";
+	return token ? { authorization: `Bearer ${token}` } : {};
+}
+
 function bundleDirname(modelId: string): string {
 	const safe = modelId.replace(/[^a-zA-Z0-9._-]/g, "_");
 	return `${safe}.bundle`;
@@ -344,7 +360,11 @@ export class Downloader {
 			return { ...existing.job };
 		}
 
-		await ensureDirs();
+		// Reserve the slot SYNCHRONOUSLY — before any await — so a second
+		// concurrent start(sameId) sees it at the check above and returns the same
+		// job instead of racing a second write stream onto the same .part file
+		// (which corrupts the GGUF). All path derivation is synchronous; the resume
+		// offset is filled in after the reservation is held.
 		const stagingPath = path.join(
 			downloadsStagingDir(),
 			stagingFilename(modelId),
@@ -355,7 +375,7 @@ export class Downloader {
 			jobId: randomUUID(),
 			modelId,
 			state: "queued",
-			received: await partialSize(stagingPath),
+			received: 0,
 			total: Math.round(catalogEntry.sizeGb * 1024 ** 3),
 			bytesPerSec: 0,
 			etaMs: null,
@@ -371,6 +391,10 @@ export class Downloader {
 			finalPath,
 		};
 		this.active.set(modelId, record);
+
+		// Slot is held — now safe to await; a concurrent caller short-circuits above.
+		await ensureDirs();
+		job.received = await partialSize(stagingPath);
 
 		// Fire-and-forget; errors are captured and emitted as a "failed" event.
 		void this.runJob(catalogEntry, record).catch(() => {
@@ -497,6 +521,7 @@ export class Downloader {
 
 			const headers: Record<string, string> = {
 				"user-agent": "Eliza-LocalInference/1.0",
+				...huggingFaceAuthHeader(),
 			};
 			if (startByte > 0) {
 				headers.range = `bytes=${startByte}-`;
@@ -789,6 +814,7 @@ export class Downloader {
 
 		const headers: Record<string, string> = {
 			"user-agent": "Eliza-LocalInference/1.0",
+			...huggingFaceAuthHeader(),
 		};
 		if (startByte > 0) {
 			headers.range = `bytes=${startByte}-`;

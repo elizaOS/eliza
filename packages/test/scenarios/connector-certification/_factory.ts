@@ -46,6 +46,8 @@ type ConnectorCertificationScenarioConfig = {
   title: string;
   connector: string;
   axis: ConnectorCertificationAxis;
+  /** CI lane; defaults to `live-only` (certification exercises real connectors). */
+  lane?: "pr-deterministic" | "live-only";
   tags?: string[];
   description: string;
   roomSource?: string;
@@ -78,6 +80,7 @@ export function buildConnectorCertificationScenario(
     id: config.id,
     title: config.title,
     domain: "connector-certification",
+    lane: config.lane ?? "live-only",
     tags: [
       "connector-certification",
       config.connector,

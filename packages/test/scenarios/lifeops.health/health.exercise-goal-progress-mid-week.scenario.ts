@@ -8,6 +8,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { seedLifeOpsGoal } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "health.exercise-goal-progress-mid-week",
   title: "Mid-week check on weekly exercise goal",
   domain: "lifeops.health",

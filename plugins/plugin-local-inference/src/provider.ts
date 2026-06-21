@@ -17,6 +17,11 @@ import {
 
 import { generateMediaAction } from "./actions/generate-media.js";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";
+import {
+	startTranscriptionAction,
+	stopTranscriptionAction,
+} from "./actions/transcription-control.js";
+import { transcriptsRoutes } from "./routes/transcripts-routes.js";
 import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
 import { handleVoiceEntityBound } from "./runtime/voice-entity-binding.js";
 
@@ -599,34 +604,10 @@ function createTextToSpeechHandler() {
 		}
 
 		const synthesizeBuffered = async (): Promise<Uint8Array> => {
-			const arbiter = _tryGetTtsArbiter(service);
-			if (arbiter) {
-				const request = { text, ...(signal ? { signal } : {}) };
-				const requestSpeech =
-					arbiter.requestTextToSpeech ?? arbiter.requestSpeak;
-				if (!requestSpeech) {
-					throw unavailable(
-						ModelType.TEXT_TO_SPEECH,
-						"capability_unavailable",
-						"[local-inference] Active local arbiter does not implement TEXT_TO_SPEECH",
-					);
-				}
-				const modelKeyCandidate =
-					typeof params === "object"
-						? (params as unknown as { modelKey?: unknown }).modelKey
-						: undefined;
-				const modelKey =
-					typeof modelKeyCandidate === "string" && modelKeyCandidate
-						? modelKeyCandidate
-						: "eliza-1-voice";
-				const result = await requestSpeech<typeof request, Uint8Array>({
-					modelKey,
-					payload: request,
-				});
-				return normalizeAudioBytes(result);
-			}
 			if (typeof service.synthesizeSpeech === "function") {
-				return normalizeAudioBytes(await service.synthesizeSpeech(text, signal));
+				return normalizeAudioBytes(
+					await service.synthesizeSpeech(text, signal),
+				);
 			}
 			if (typeof service.textToSpeech === "function") {
 				return normalizeAudioBytes(
@@ -657,25 +638,6 @@ function createTranscriptionHandler() {
 		const service = requireService(runtime, ModelType.TRANSCRIPTION);
 		const signal = extractTranscriptionSignal(params);
 		throwIfAborted(signal);
-		const arbiter = _tryGetTranscribeArbiter(service);
-		if (arbiter?.requestTranscribe) {
-			const modelKeyCandidate =
-				typeof params === "object" && params !== null
-					? (params as { modelKey?: unknown }).modelKey
-					: undefined;
-			const modelKey =
-				typeof modelKeyCandidate === "string" && modelKeyCandidate
-					? modelKeyCandidate
-					: "eliza-1-transcribe";
-			const transcript = normalizeTranscript(
-				await arbiter.requestTranscribe<
-					TranscriptionParams | Buffer | string | unknown,
-					string | { text?: string }
-				>({ modelKey, payload: params }),
-			);
-			throwIfAborted(signal);
-			return transcript;
-		}
 		if (typeof service.transcribe === "function") {
 			const transcript = normalizeTranscript(await service.transcribe(params));
 			throwIfAborted(signal);
@@ -722,18 +684,6 @@ interface ArbiterLike {
 		modelKey: string;
 		payload: Req;
 	}) => Promise<Res>;
-	requestTranscribe?: <Req, Res>(req: {
-		modelKey: string;
-		payload: Req;
-	}) => Promise<Res>;
-	requestTextToSpeech?: <Req, Res>(req: {
-		modelKey: string;
-		payload: Req;
-	}) => Promise<Res>;
-	requestSpeak?: <Req, Res>(req: {
-		modelKey: string;
-		payload: Req;
-	}) => Promise<Res>;
 }
 
 function tryGetArbiter(
@@ -764,47 +714,6 @@ function tryGetImageGenArbiter(
 		typeof cand.hasCapability === "function" &&
 		typeof cand.requestImageGen === "function" &&
 		cand.hasCapability("image-gen")
-	) {
-		return cand;
-	}
-	return null;
-}
-
-/**
- * Return the arbiter if it has the WS5 `"speak"` capability registered.
- * Mirrors `tryGetArbiter` / `tryGetImageGenArbiter`. Either of
- * `requestTextToSpeech` or `requestSpeak` is sufficient — they both
- * route through the same `"speak"` queue.
- */
-function _tryGetTtsArbiter(
-	service: LocalInferenceRuntimeService | null,
-): ArbiterLike | null {
-	if (!service?.getMemoryArbiter) return null;
-	const arbiter = service.getMemoryArbiter();
-	if (!arbiter || typeof arbiter !== "object") return null;
-	const cand = arbiter as ArbiterLike;
-	if (
-		typeof cand.hasCapability === "function" &&
-		(typeof cand.requestTextToSpeech === "function" ||
-			typeof cand.requestSpeak === "function") &&
-		cand.hasCapability("speak")
-	) {
-		return cand;
-	}
-	return null;
-}
-
-function _tryGetTranscribeArbiter(
-	service: LocalInferenceRuntimeService | null,
-): ArbiterLike | null {
-	if (!service?.getMemoryArbiter) return null;
-	const arbiter = service.getMemoryArbiter();
-	if (!arbiter || typeof arbiter !== "object") return null;
-	const cand = arbiter as ArbiterLike;
-	if (
-		typeof cand.hasCapability === "function" &&
-		typeof cand.requestTranscribe === "function" &&
-		cand.hasCapability("transcribe")
 	) {
 		return cand;
 	}
@@ -1121,7 +1030,12 @@ export const localInferencePlugin: Plugin = {
 	description:
 		"Eliza-1 local provider for text, embeddings, text-to-speech, and transcription.",
 	priority: LOCAL_INFERENCE_PRIORITY,
-	actions: [generateMediaAction, identifySpeakerAction],
+	actions: [
+		generateMediaAction,
+		identifySpeakerAction,
+		startTranscriptionAction,
+		stopTranscriptionAction,
+	],
 	events: {
 		// Round-trip half of the voice→entity binding: when the merge engine
 		// (plugin-lifeops) reports a binding, persist entityId onto the matching
@@ -1132,7 +1046,7 @@ export const localInferencePlugin: Plugin = {
 	// VoiceProfileSection management UI). Registered as rawPath plugin routes
 	// because no server forwards these namespaces to the local-inference
 	// route dispatcher. See routes/voice-profile-plugin-routes.ts.
-	routes: voiceProfilePluginRoutes,
+	routes: [...voiceProfilePluginRoutes, ...transcriptsRoutes],
 	// TEXT_EMBEDDING is wired by ensureLocalInferenceHandler(), not the static
 	// plugin object. Runtime bootstrap probes embeddings before the user has
 	// activated an Eliza-1 bundle; registering the static handler there claims a

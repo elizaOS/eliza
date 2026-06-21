@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.imessage.certify-helper-disconnected",
   title: "Certify iMessage helper-disconnected degradation handling",
   connector: "imessage",

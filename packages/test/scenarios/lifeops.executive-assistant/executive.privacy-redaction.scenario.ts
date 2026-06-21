@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.privacy-redaction",
   title: "Privacy redaction prepares a shareable brief without secrets",
   domain: "lifeops.executive-assistant",

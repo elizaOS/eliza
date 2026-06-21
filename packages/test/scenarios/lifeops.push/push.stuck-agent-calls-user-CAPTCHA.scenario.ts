@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.stuck-agent-calls-user-CAPTCHA",
   title: "Browser CAPTCHA blocks the agent — escalate via voice call",
   domain: "lifeops.push",

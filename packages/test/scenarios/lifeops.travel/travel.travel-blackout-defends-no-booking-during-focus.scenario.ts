@@ -9,6 +9,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
 
 export default scenario({
+  lane: "live-only",
   id: "travel.travel-blackout-defends-no-booking-during-focus",
   title:
     "Travel blackout defends against booking flights during a focus window",

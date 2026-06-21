@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "subpoena-intake-counsel-hold",
   title: "Assistant holds subpoena intake for counsel",
   domain: "executive.legal",

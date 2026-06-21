@@ -36,6 +36,7 @@ function checkAgentReportsPartialState(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.bulk-reschedule-rollback-on-error",
   title: "Bulk reschedule reports partial success/failure transparently",
   domain: "lifeops.calendar",

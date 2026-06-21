@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.imessage.certify-core",
   title: "Certify iMessage bridge health and delivery",
   connector: "imessage",

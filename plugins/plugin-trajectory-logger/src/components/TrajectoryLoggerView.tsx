@@ -55,7 +55,11 @@ export function TrajectoryLoggerView({ exitToApps }: OverlayAppContext) {
           </span>
           <span className="text-sm font-semibold text-txt">Trajectories</span>
         </div>
-        {state.error ? (
+        {state.unavailable ? (
+          <span className="max-w-[42vw] truncate text-2xs text-muted/60">
+            Trajectory logging unavailable on this surface
+          </span>
+        ) : state.error ? (
           <span className="max-w-[42vw] truncate text-2xs text-danger">
             {state.error}
           </span>

@@ -172,27 +172,22 @@ describe("defaultMasterKey — fallback chain", () => {
     },
   );
 
-  // Windows Credential Manager accepts an empty service name in
-  // `new Entry("", "...")` and returns the existing entry (or creates
-  // one), so the "guaranteed-bad keychain entry" sentinel that works on
-  // macOS Keychain and libsecret doesn't trigger a failure path here.
-  // The fallback-chain error-message contract still holds on POSIX
-  // platforms, which is the case the test is documenting.
-  test.skipIf(process.platform !== "darwin")(
-    "error message names every remediation when both fail",
-    async () => {
-      delete process.env.ELIZA_VAULT_PASSPHRASE;
-      const r = defaultMasterKey({ service: "" });
-      await expect(r.load()).rejects.toThrow(MasterKeyUnavailableError);
-      try {
-        await r.load();
-        throw new Error("expected throw");
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        expect(msg).toMatch(/ELIZA_VAULT_PASSPHRASE/);
-      }
-    },
-  );
+  test("error message names passphrase remediation when both paths are unavailable", async () => {
+    delete process.env.ELIZA_VAULT_PASSPHRASE;
+    // Force the keychain bypass path instead of depending on platform-specific
+    // invalid service-name behavior. macOS `/usr/bin/security` accepts inputs
+    // that @napi-rs/keyring used to reject, so the old sentinel was brittle.
+    process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = "1";
+    const r = defaultMasterKey({ service: "test" });
+    await expect(r.load()).rejects.toThrow(MasterKeyUnavailableError);
+    try {
+      await r.load();
+      throw new Error("expected throw");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      expect(msg).toMatch(/ELIZA_VAULT_PASSPHRASE/);
+    }
+  });
 
   test("describe surfaces both paths when passphrase env is set", () => {
     process.env.ELIZA_VAULT_PASSPHRASE = "fine-test-passphrase-env";

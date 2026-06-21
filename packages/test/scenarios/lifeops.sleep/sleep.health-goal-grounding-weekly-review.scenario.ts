@@ -17,6 +17,7 @@ import {
 import { seedLifeOpsGoal } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "sleep.health-goal-grounding-weekly-review",
   title: "Weekly sleep review marks under-target as needs-attention",
   domain: "lifeops.sleep",

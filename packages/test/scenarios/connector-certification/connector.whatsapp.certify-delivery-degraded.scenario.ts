@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.whatsapp.certify-delivery-degraded",
   title: "Certify WhatsApp degraded-delivery handling",
   connector: "whatsapp",

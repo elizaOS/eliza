@@ -784,8 +784,15 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     let outputTokens = 0;
     let durationMs = 0;
     let lastError: string | null = null;
+    // Wall-clock time-to-first-token: from the call start to the first decoded
+    // token event. This is the on-device prefill wall-clock the resource
+    // workbench differences into prefill vs decode throughput. Stays undefined
+    // when the generation yields no tokens.
+    const startedAt = Date.now();
+    let ttftMs: number | undefined;
     for await (const event of this.generateStream(options)) {
       if (event.kind === "token") {
+        if (ttftMs === undefined) ttftMs = Date.now() - startedAt;
         text += event.text;
       } else if (event.kind === "telemetry") {
         // Native bridge currently emits no telemetry events; ignored here
@@ -818,6 +825,7 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       promptTokens,
       outputTokens,
       durationMs,
+      ...(ttftMs !== undefined ? { ttftMs } : {}),
     };
   }
 
@@ -977,7 +985,9 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     if (level === "major") {
       this.tokenListeners.clear();
     }
-    console.debug(`[capacitor-llama] trimMemory(${level}) — bridge hook unavailable`);
+    console.debug(
+      `[capacitor-llama] trimMemory(${level}) — bridge hook unavailable`,
+    );
   }
 
   async cancelGenerate(): Promise<void> {

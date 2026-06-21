@@ -260,6 +260,7 @@ async function finalLedgerCheck(
 
 export default scenario({
   id: "deterministic-media-emote-actions",
+  lane: "pr-deterministic",
   title: "Deterministic media generation and companion emote actions",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "media", "companion"],

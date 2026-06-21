@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "reminder.water.hourly-weekdays",
   title: "Drink water hourly on weekdays",
   domain: "reminders",

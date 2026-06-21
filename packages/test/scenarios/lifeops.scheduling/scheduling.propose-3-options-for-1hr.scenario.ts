@@ -40,6 +40,7 @@ function checkThreeOneHourSlots(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "scheduling.propose-3-options-for-1hr",
   title: "Proposes three 1-hour slots when asked",
   domain: "lifeops.scheduling",

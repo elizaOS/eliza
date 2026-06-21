@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "cross-channel-composition",
   title: "Cross-channel composition drafts a message for approval",
   domain: "messaging.cross-platform",

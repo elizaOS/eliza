@@ -34,6 +34,7 @@ function assertApiBody(options: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "reminder.escalation.intensity-up",
   title: "Ignored reminder escalates intensity on next check",
   domain: "reminders",

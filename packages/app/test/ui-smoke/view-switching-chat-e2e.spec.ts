@@ -366,6 +366,13 @@ test("agent navigate by viewId-only resolves to /apps/<viewId>", async ({
 test("agent close-view navigate returns to chat", async ({ page }) => {
   test.skip(LIVE_STACK, "close-frame teardown is a renderer-contract guard");
   await openAppPath(page, "/chat");
+  // `eliza:navigate:view` is a one-shot DOM event with no queue; its listener is
+  // attached in a post-paint App effect (App.tsx). The interactive chat shell
+  // (composer visible) is the proof that effect has committed — the other cases
+  // implicitly wait for it via sendChatCommand. Without this wait, dispatching
+  // the navigate ~1.5s after load races the listener attach and the event is
+  // dropped, leaving the URL on /chat.
+  await expect(chatComposer(page)).toBeVisible({ timeout: 60_000 });
 
   // Open a view first.
   await deliverAgentNavigate(page, {

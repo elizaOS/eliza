@@ -1,0 +1,1033 @@
+{
+  "schema": "eliza_e2e_coverage_matrix_v1",
+  "generatedAt": "2026-06-20T21:27:25.311Z",
+  "summary": {
+    "commands": {
+      "total": 37,
+      "covered": 37
+    },
+    "shortcuts": {
+      "total": 0,
+      "covered": 0,
+      "gated": true
+    },
+    "pluginRoutes": {
+      "total": 30,
+      "covered": 25,
+      "exempt": 5
+    },
+    "views": {
+      "gates": 3
+    },
+    "blockingGaps": 0,
+    "advisoryGaps": 0
+  },
+  "items": [
+    {
+      "id": "command:help",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:commands",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:status",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:context",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:whoami",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:stop",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:restart",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:reset",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:new",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:compact",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:think",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:verbose",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:reasoning",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:elevated",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:model",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:models",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:usage",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:queue",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:allowlist",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:approve",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:subagents",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:tts",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=agent; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "agent"
+      }
+    },
+    {
+      "id": "command:settings",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=navigate; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "navigate"
+      }
+    },
+    {
+      "id": "command:chat",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=navigate; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "navigate"
+      }
+    },
+    {
+      "id": "command:views",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=navigate; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "navigate"
+      }
+    },
+    {
+      "id": "command:orchestrator",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=navigate; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "navigate"
+      }
+    },
+    {
+      "id": "command:character",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=navigate; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "navigate"
+      }
+    },
+    {
+      "id": "command:knowledge",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=navigate; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "navigate"
+      }
+    },
+    {
+      "id": "command:wallet",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=navigate; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "navigate"
+      }
+    },
+    {
+      "id": "command:automations",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=navigate; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "navigate"
+      }
+    },
+    {
+      "id": "command:tasks",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=navigate; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "navigate"
+      }
+    },
+    {
+      "id": "command:skills",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=navigate; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "navigate"
+      }
+    },
+    {
+      "id": "command:plugins",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=navigate; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "navigate"
+      }
+    },
+    {
+      "id": "command:logs",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=navigate; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "navigate"
+      }
+    },
+    {
+      "id": "command:database",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=navigate; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "navigate"
+      }
+    },
+    {
+      "id": "command:clear",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=client; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "client"
+      }
+    },
+    {
+      "id": "command:fullscreen",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=client; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "client"
+      }
+    },
+    {
+      "id": "plugin-route:app-model-tester",
+      "kind": "plugin-route",
+      "status": "exempt",
+      "detail": "model-tester is a dev-only diagnostic surface whose routes proxy live model providers; it has no deterministic fixture and is not shipped in the default agent.",
+      "artifacts": [],
+      "blocking": true,
+      "meta": {
+        "wiring": "modelTesterRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-agent-orchestrator",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-agent-orchestrator/__tests__/unit/agent-routes-goal-wrapper.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "codingAgentRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-app-control",
+      "kind": "plugin-route",
+      "status": "exempt",
+      "detail": "app-control's HTTP routes are exercised end to end by the deterministic-app-control-actions and deterministic-generated-app-routes api-turn scenarios in the PR lane (real route dispatch over the scenario loopback server).",
+      "artifacts": [
+        "packages/scenario-runner/test/scenarios/deterministic-app-control-actions.scenario.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "check.routes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-bluebubbles",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-bluebubbles/__tests__/data-routes.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "[...blueBubblesSetupRoutes, ...blueBubblesDataRoutes],"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-browser",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-browser/src/routes/workspace-routes.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "[...browserBridgePluginRoutes, ...browserWorkspaceRoutes],"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-computeruse",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-computeruse/src/__tests__/routes-e2e.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "computerUseRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-discord-local",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-discord-local/src/__tests__/routes-e2e.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "discordLocalSetupRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-documents",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-documents/test/routes.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "documentsRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-elizacloud",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-elizacloud/__tests__/cloud-billing-routes.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "cloudRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-elizamaker",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-elizamaker/src/__tests__/routes-e2e.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "elizaMakerRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-facewear",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-facewear/src/__tests__/routes-e2e.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "["
+      }
+    },
+    {
+      "id": "plugin-route:plugin-github",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-github/src/routes-e2e.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "githubRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-hyperliquid-app",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-hyperliquid-app/src/routes.real.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "hyperliquidRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-imessage",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-imessage/src/routes-e2e.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "[...imessageSetupRoutes, ...imessageDataRoutes],"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-local-inference",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-local-inference/__tests__/voice-models-routes.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "voiceProfilePluginRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-music",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-music/src/__tests__/routes-e2e.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "musicPlayerRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-mysticism",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-mysticism/src/__tests__/routes-e2e.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "createReadingRoutes(),"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-personal-assistant",
+      "kind": "plugin-route",
+      "status": "exempt",
+      "detail": "lifeOps HTTP routes are exercised by the live scenario matrix (scenario-matrix.yml lifeops shards) and the plugin-personal-assistant test suite; a keyless route e2e would duplicate that coverage without a deterministic backend.",
+      "artifacts": [],
+      "blocking": true,
+      "meta": {
+        "wiring": "lifeOpsPluginRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-polymarket-app",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-polymarket-app/src/routes.real.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "polymarketRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-shopify-ui",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-shopify-ui/src/routes.contract.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "shopifyRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-signal",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-signal/src/setup-routes.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "signalSetupRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-social-alpha",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-social-alpha/src/routes.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "communityInvestorRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-steward-app",
+      "kind": "plugin-route",
+      "status": "exempt",
+      "detail": "steward-app routes proxy the hosted Steward cloud backend; they require live Steward credentials and have no keyless mock yet (tracked for the e2e-mock-infra issue).",
+      "artifacts": [],
+      "blocking": true,
+      "meta": {
+        "wiring": "stewardRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-telegram",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-telegram/src/routes-e2e.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "[...telegramSetupRoutes, ...telegramAccountRoutes],"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-training",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-training/src/routes/trajectory-routes.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "trainingRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-vincent",
+      "kind": "plugin-route",
+      "status": "exempt",
+      "detail": "vincent routes broker the Lit/Vincent agent-wallet backend over live credentials; no deterministic fixture exists for the keyless lane yet.",
+      "artifacts": [],
+      "blocking": true,
+      "meta": {
+        "wiring": "vincentRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-wallet",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-wallet/src/plugin.routes.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "concatPlugins(evmPlugin.routes, solanaPlugin.routes),"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-whatsapp",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-whatsapp/__tests__/webhook-routes.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "whatsappSetupRoutes,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-workflow",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-workflow/__tests__/integration/routes-e2e.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "workflowRouteList,"
+      }
+    },
+    {
+      "id": "plugin-route:plugin-xr",
+      "kind": "plugin-route",
+      "status": "covered",
+      "detail": "covered by 1 artifact(s)",
+      "artifacts": [
+        "plugins/plugin-xr/src/__tests__/routes-e2e.test.ts"
+      ],
+      "blocking": true,
+      "meta": {
+        "wiring": "["
+      }
+    },
+    {
+      "id": "view-gate:packages/app/test/route-coverage.test.ts",
+      "kind": "view",
+      "status": "covered",
+      "detail": "views covered by the existing view ship-gate (referenced, not re-implemented per #8796/#8797/#8798)",
+      "artifacts": [
+        "packages/app/test/route-coverage.test.ts"
+      ],
+      "blocking": true
+    },
+    {
+      "id": "view-gate:packages/app/test/view-interaction-coverage.test.ts",
+      "kind": "view",
+      "status": "covered",
+      "detail": "views covered by the existing view ship-gate (referenced, not re-implemented per #8796/#8797/#8798)",
+      "artifacts": [
+        "packages/app/test/view-interaction-coverage.test.ts"
+      ],
+      "blocking": true
+    },
+    {
+      "id": "view-gate:packages/agent/src/__tests__/plugin-tui-view-coverage.test.ts",
+      "kind": "view",
+      "status": "covered",
+      "detail": "views covered by the existing view ship-gate (referenced, not re-implemented per #8796/#8797/#8798)",
+      "artifacts": [
+        "packages/agent/src/__tests__/plugin-tui-view-coverage.test.ts"
+      ],
+      "blocking": true
+    }
+  ],
+  "blockingGaps": [],
+  "advisoryGaps": []
+}

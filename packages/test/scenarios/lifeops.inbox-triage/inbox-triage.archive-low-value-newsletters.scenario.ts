@@ -49,6 +49,7 @@ function checkPersonEmailNotArchived(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.archive-low-value-newsletters",
   title: "Archive newsletters >7d old via approval gate; person mail untouched",
   domain: "lifeops.inbox-triage",

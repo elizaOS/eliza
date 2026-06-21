@@ -305,10 +305,17 @@ export function useDataLoaders(deps: DataLoadersDeps) {
             setActiveConversationId(null);
             activeConversationIdRef.current = null;
           }
+          // The conversation is definitively gone (404) — clear the thread.
+          greetingFiredRef.current = false;
+          conversationMessagesRef.current = [];
+          setConversationMessages([]);
         }
-        greetingFiredRef.current = false;
-        conversationMessagesRef.current = [];
-        setConversationMessages([]);
+        // For TRANSIENT errors (network drop mid-stream, timeout, 5xx) do NOT
+        // wipe the thread. The message store is reused as the on-screen history,
+        // and blanking it on a flaky-connection reload looked like the app ate
+        // the entire conversation (the data is still server-side; a later reload
+        // restores it). Keep the existing messages and let the caller surface a
+        // transient error instead.
         return {
           ok: false,
           status,

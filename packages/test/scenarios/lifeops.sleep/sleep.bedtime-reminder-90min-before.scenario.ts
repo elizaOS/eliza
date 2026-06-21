@@ -6,6 +6,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "sleep.bedtime-reminder-90min-before",
   title: "Bedtime wind-down reminder 90 minutes before sleep",
   domain: "lifeops.sleep",

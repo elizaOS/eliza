@@ -240,6 +240,7 @@ import "./client-notifications";
 import "./client-voice-models";
 import "./client-workflow";
 import "./client-skills";
+import "./client-transcripts";
 import "./client-vault";
 import "./client-wallet";
 import "./client-xr";

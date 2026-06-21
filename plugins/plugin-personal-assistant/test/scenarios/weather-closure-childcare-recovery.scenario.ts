@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "weather-closure-childcare-recovery",
   title: "Assistant recovers childcare after a weather closure",
   domain: "executive.family",

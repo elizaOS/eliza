@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "bill-approval-and-payment",
   title: "Assistant surfaces a bill, requests approval, and records payment follow-up",
   domain: "executive.money",

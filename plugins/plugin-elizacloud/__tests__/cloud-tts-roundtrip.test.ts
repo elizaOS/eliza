@@ -152,7 +152,13 @@ describe("plugin-elizacloud TEXT_TO_SPEECH roundtrip", () => {
               controller.close();
             },
           });
-          return { ok: true, status: 200, statusText: "OK", body, text: async () => "" } as unknown as T;
+          return {
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            body,
+            text: async () => "",
+          } as unknown as T;
         },
       },
     };

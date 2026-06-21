@@ -17,6 +17,7 @@ import {
  * facts it needs to summarize.
  */
 export default scenario({
+  lane: "live-only",
   id: "payments.dashboard-spending-summary",
   title: "User asks for a spending summary → PAYMENTS returns the dashboard",
   domain: "payments",

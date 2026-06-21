@@ -6,6 +6,7 @@ import {
 import { seedBrowserCurrentPageContext } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "lifeops-extension.see-what-user-sees",
   title: "Agent reads current page context from extension",
   domain: "browser.lifeops",

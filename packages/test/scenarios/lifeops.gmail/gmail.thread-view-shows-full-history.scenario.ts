@@ -14,6 +14,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.thread-view-shows-full-history",
   title: "Gmail thread view fetches full message history",
   domain: "lifeops.gmail",

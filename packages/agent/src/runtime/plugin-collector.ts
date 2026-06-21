@@ -200,6 +200,11 @@ export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> = {
   NEARAI_API_KEY: "@elizaos/plugin-nearai",
   ZAI_API_KEY: "@elizaos/plugin-zai",
   Z_AI_API_KEY: "@elizaos/plugin-zai",
+  // CLI-backed inference (claude --print / codex exec on the user's subscription
+  // via the sanctioned CLI). Loads only when ELIZA_CHAT_VIA_CLI=claude|codex; the
+  // plugin self-gates its models map on the same var, and registers at priority
+  // 100 so it wins the large tier over a co-loaded API provider.
+  ELIZA_CHAT_VIA_CLI: "@elizaos/plugin-cli-inference",
   // ElizaCloud — loaded when API key is present OR cloud is explicitly enabled
   ELIZAOS_CLOUD_API_KEY: "@elizaos/plugin-elizacloud",
   ELIZAOS_CLOUD_ENABLED: "@elizaos/plugin-elizacloud",

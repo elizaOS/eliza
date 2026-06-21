@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "identity.unmerge-conflict-detected",
   title:
     "Detect a wrong-merge and unmerge while preserving each side's history",

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "regulatory-comment-deadline",
   title: "Assistant coordinates a regulatory comment deadline",
   domain: "executive.legal",

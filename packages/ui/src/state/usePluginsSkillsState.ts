@@ -7,6 +7,7 @@
  * Accepts `{ setActionNotice }` for cross-domain notifications.
  */
 
+import { logger } from "@elizaos/logger";
 import { useCallback, useRef, useState } from "react";
 import {
   type CatalogSkill,
@@ -18,7 +19,10 @@ import {
   type SkillScanReportSummary,
 } from "../api";
 import { normalizeFirstRunProviderId } from "../providers";
-import { confirmDesktopAction } from "../utils";
+import {
+  confirmDesktopAction,
+  isTransientOptionalFetchFailure,
+} from "../utils";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -87,6 +91,8 @@ export function usePluginsSkillsState({
   // --- Plugins ---
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [pluginsLoaded, setPluginsLoaded] = useState(false);
+  const [isLoadingPlugins, setIsLoadingPlugins] = useState(false);
+  const [pluginsLoadError, setPluginsLoadError] = useState<string | null>(null);
   const [pluginFilter, setPluginFilter] = useState<
     "all" | "ai-provider" | "connector" | "feature" | "streaming"
   >("all");
@@ -172,13 +178,46 @@ export function usePluginsSkillsState({
 
   // ── Plugin callbacks ────────────────────────────────────────────────
 
-  const loadPlugins = useCallback(async (_options?: { silent?: boolean }) => {
+  const loadPlugins = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setIsLoadingPlugins(true);
     try {
-      const { plugins: p } = await client.getPlugins();
-      setPlugins(p);
-      setPluginsLoaded(true);
-    } catch {
-      /* ignore */
+      // The first load fires during boot (fire-and-forget from runHydrating),
+      // when the dev/desktop API may still be coming up. A connection-refused
+      // there surfaces as a transient "Failed to fetch" — not a real failure,
+      // the server just isn't listening yet. Retry those a few times with a
+      // short backoff so the boot race resolves itself before we report an
+      // error. Non-transient failures (HTTP errors, bad JSON) are real and
+      // surface immediately with no retry.
+      const maxAttempts = 5;
+      const backoffMs = 300;
+      let lastError: unknown;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+          const { plugins: p } = await client.getPlugins();
+          setPlugins(p);
+          setPluginsLoadError(null);
+          setPluginsLoaded(true);
+          return;
+        } catch (e) {
+          lastError = e;
+          if (
+            !isTransientOptionalFetchFailure(e) ||
+            attempt === maxAttempts - 1
+          ) {
+            throw e;
+          }
+          await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        }
+      }
+      throw lastError;
+    } catch (e) {
+      logger.error(
+        { error: e },
+        "[usePluginsSkillsState] failed to load plugins",
+      );
+      setPluginsLoadError(e instanceof Error ? e.message : "unknown error");
+    } finally {
+      if (!options?.silent) setIsLoadingPlugins(false);
     }
   }, []);
 
@@ -717,6 +756,9 @@ export function usePluginsSkillsState({
     // Plugin state
     plugins,
     setPlugins,
+    isLoadingPlugins,
+    pluginsLoadError,
+    pluginsLoaded,
     pluginFilter,
     setPluginFilter,
     pluginStatusFilter,

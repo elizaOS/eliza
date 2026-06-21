@@ -103,6 +103,7 @@ function checkAgentDoesNotFabricate(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "documents.ocr-fail",
   title:
     "OCR-failed PDF: agent surfaces the failure honestly, offers retry, no fabrication",

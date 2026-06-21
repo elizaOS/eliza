@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail-retry-followup",
   title: "Gmail retry and refinement follow-up",
   domain: "gmail",

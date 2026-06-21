@@ -99,6 +99,7 @@ function checkResponseIsHonestlyEmpty(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "morning-brief.empty-inbox",
   title:
     "Morning brief on a truly empty inbox reports the empty state honestly",

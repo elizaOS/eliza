@@ -1,5 +1,6 @@
 import Capacitor
 import Foundation
+import MetricKit
 import UIKit
 import UserNotifications
 
@@ -39,7 +40,20 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "getPairingStatus", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setPairingStatus", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getDeviceCapabilities", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getResourceSnapshot", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getMetricKitPayloads", returnType: CAPPluginReturnPromise),
     ]
+
+    /// Register the MetricKit subscriber once the plugin loads so daily
+    /// `MXMetricPayload`s (CPU, energy, app-runtime) are captured to disk for the
+    /// Mobile Resource Workbench to ingest. MetricKit is iOS 13+; on older OSes
+    /// this is a no-op and `getMetricKitPayloads` returns an empty list.
+    public override func load() {
+        super.load()
+        if #available(iOS 13.0, *) {
+            MXMetricManager.shared.add(ElizaMetricKitSink.shared)
+        }
+    }
 
     private static let pairingDeviceIdKey = "com.eliza.companion.pairing.deviceId"
     private static let pairingAgentUrlKey = "com.eliza.companion.pairing.agentUrl"
@@ -282,6 +296,137 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         ])
     }
 
+    /// Returns a *live* resource snapshot for the Mobile Resource Workbench
+    /// (issue #8800) — distinct from the one-shot `getDeviceCapabilities`. Every
+    /// numeric field is sampled fresh on each call so the harness can build a
+    /// thermal/RSS/battery timeline across a sustained run. A value the OS cannot
+    /// provide is returned as `NSNull()`, never a fabricated zero.
+    ///
+    /// Sources:
+    ///   - `residentMemoryMb` — `task_vm_info.phys_footprint` (the figure Jetsam
+    ///     uses to kill the app), not `os.totalmem`.
+    ///   - `availableRamMb` — `os_proc_available_memory()` (iOS 13+): bytes left
+    ///     before Jetsam pressure; the real inference RAM budget.
+    ///   - `thermalState` / `lowPowerMode` — `ProcessInfo`.
+    ///   - `cpuTimeMs` — summed user+system time across live threads.
+    ///   - `batteryLevelPct` — `UIDevice` (monitoring toggled on for the read).
+    @objc public func getResourceSnapshot(_ call: CAPPluginCall) {
+        let info = ProcessInfo.processInfo
+
+        let thermal: String
+        switch info.thermalState {
+        case .nominal: thermal = "nominal"
+        case .fair: thermal = "fair"
+        case .serious: thermal = "serious"
+        case .critical: thermal = "critical"
+        @unknown default: thermal = "unknown"
+        }
+
+        let residentMb: Any = ElizaIntentPlugin.physFootprintBytes()
+            .map { Double($0) / 1_048_576.0 } ?? NSNull()
+        let availableMb: Any = ElizaIntentPlugin.availableMemoryBytes()
+            .map { Double($0) / 1_048_576.0 } ?? NSNull()
+        let cpuMs: Any = ElizaIntentPlugin.cpuTimeMs() ?? NSNull()
+
+        // Battery level is -1 when monitoring is disabled; toggle it on for the
+        // read, then restore. Returns NSNull when the device can't report it
+        // (e.g. some simulators).
+        let device = UIDevice.current
+        let priorMonitoring = device.isBatteryMonitoringEnabled
+        device.isBatteryMonitoringEnabled = true
+        let rawLevel = device.batteryLevel
+        let batteryPct: Any = rawLevel >= 0 ? Double(rawLevel) * 100.0 : NSNull()
+        let charging = device.batteryState == .charging || device.batteryState == .full
+        device.isBatteryMonitoringEnabled = priorMonitoring
+
+        call.resolve([
+            "platform": "ios",
+            "thermalState": thermal,
+            "lowPowerMode": info.isLowPowerModeEnabled,
+            "residentMemoryMb": residentMb,
+            "availableRamMb": availableMb,
+            "cpuTimeMs": cpuMs,
+            "batteryLevelPct": batteryPct,
+            "isCharging": charging,
+            "capturedAtMs": Date().timeIntervalSince1970 * 1000.0,
+        ])
+    }
+
+    /// Drains the MetricKit payloads captured since the last call (CPU / energy /
+    /// app-runtime) as an array of JSON strings, then clears them. Empty on
+    /// iOS < 13 or before the first daily delivery.
+    @objc public func getMetricKitPayloads(_ call: CAPPluginCall) {
+        if #available(iOS 13.0, *) {
+            let payloads = ElizaMetricKitSink.shared.drainPayloads()
+            call.resolve(["payloads": payloads])
+        } else {
+            call.resolve(["payloads": []])
+        }
+    }
+
+    /// `task_vm_info.phys_footprint` in bytes — the resident footprint Jetsam
+    /// measures. nil when the mach call fails.
+    private static func physFootprintBytes() -> UInt64? {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(
+            MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size
+        )
+        let kr = withUnsafeMutablePointer(to: &info) { ptr -> kern_return_t in
+            ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        guard kr == KERN_SUCCESS else { return nil }
+        return UInt64(info.phys_footprint)
+    }
+
+    /// Bytes available before Jetsam pressure (`os_proc_available_memory`,
+    /// iOS 13+). nil on older OSes / when it returns 0.
+    private static func availableMemoryBytes() -> UInt64? {
+        if #available(iOS 13.0, *) {
+            let available = os_proc_available_memory()
+            return available > 0 ? UInt64(available) : nil
+        }
+        return nil
+    }
+
+    /// Total user+system CPU time across live (non-idle) threads, in ms.
+    private static func cpuTimeMs() -> Double? {
+        var threadList: thread_act_array_t?
+        var threadCount = mach_msg_type_number_t(0)
+        guard task_threads(mach_task_self_, &threadList, &threadCount) == KERN_SUCCESS,
+              let threads = threadList else {
+            return nil
+        }
+        defer {
+            vm_deallocate(
+                mach_task_self_,
+                vm_address_t(UInt(bitPattern: threads)),
+                vm_size_t(threadCount) * vm_size_t(MemoryLayout<thread_t>.stride)
+            )
+        }
+        var totalMs: Double = 0
+        let basicInfoCount = mach_msg_type_number_t(
+            MemoryLayout<thread_basic_info_data_t>.size / MemoryLayout<integer_t>.size
+        )
+        for index in 0..<Int(threadCount) {
+            var info = thread_basic_info_data_t()
+            var count = basicInfoCount
+            let kr = withUnsafeMutablePointer(to: &info) { ptr -> kern_return_t in
+                ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                    thread_info(threads[index], thread_flavor_t(THREAD_BASIC_INFO), $0, &count)
+                }
+            }
+            if kr == KERN_SUCCESS, (info.flags & TH_FLAGS_IDLE) == 0 {
+                totalMs += Double(info.user_time.seconds) * 1000.0
+                    + Double(info.user_time.microseconds) / 1000.0
+                totalMs += Double(info.system_time.seconds) * 1000.0
+                    + Double(info.system_time.microseconds) / 1000.0
+            }
+        }
+        return totalMs
+    }
+
     /// Returns the hardware machine identifier (e.g. `iPhone17,2`). On the
     /// simulator `utsname.machine` returns the host arch, so we fall back
     /// to `SIMULATOR_MODEL_IDENTIFIER` from the env.
@@ -303,5 +448,75 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         #endif
         return raw
+    }
+}
+
+/// MetricKit subscriber that captures the OS-delivered `MXMetricPayload`s
+/// (CPU, energy, app-runtime, animation) — the Apple-sanctioned on-device
+/// energy/CPU source — to disk so the Mobile Resource Workbench can ingest them.
+///
+/// MetricKit delivers payloads roughly once per day (and on the simulator via
+/// Xcode's "Simulate MetricKit Payloads"), so this is a nightly-trend source,
+/// not a per-run gate. Payloads are written as one JSON file each under
+/// Application Support/`ElizaMetricKit/`; `drainPayloads()` reads and removes
+/// them. Bounded to the most recent files so a long-lived install can't grow the
+/// directory without limit.
+@available(iOS 13.0, *)
+final class ElizaMetricKitSink: NSObject, MXMetricManagerSubscriber {
+    static let shared = ElizaMetricKitSink()
+
+    private static let maxStoredPayloads = 32
+
+    private let directory: URL? = {
+        let fm = FileManager.default
+        guard let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        else { return nil }
+        let dir = base.appendingPathComponent("ElizaMetricKit", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    func didReceive(_ payloads: [MXMetricPayload]) {
+        guard let dir = directory else { return }
+        let fm = FileManager.default
+        for payload in payloads {
+            let json = payload.jsonRepresentation()
+            guard !json.isEmpty else { continue }
+            let name = "metric-\(Int(Date().timeIntervalSince1970 * 1000))-\(UUID().uuidString).json"
+            try? json.write(to: dir.appendingPathComponent(name))
+        }
+        pruneOldest(in: dir, fileManager: fm)
+    }
+
+    /// Reads and removes every stored payload JSON, returning each as a string.
+    func drainPayloads() -> [String] {
+        guard let dir = directory else { return [] }
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: nil
+        ) else { return [] }
+        var out: [String] = []
+        for file in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            if let data = try? Data(contentsOf: file),
+               let text = String(data: data, encoding: .utf8) {
+                out.append(text)
+            }
+            try? fm.removeItem(at: file)
+        }
+        return out
+    }
+
+    private func pruneOldest(in dir: URL, fileManager fm: FileManager) {
+        guard let files = try? fm.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: nil
+        ) else { return }
+        let sorted = files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+        let overflow = sorted.count - ElizaMetricKitSink.maxStoredPayloads
+        guard overflow > 0 else { return }
+        for file in sorted.prefix(overflow) {
+            try? fm.removeItem(at: file)
+        }
     }
 }

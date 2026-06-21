@@ -139,6 +139,7 @@ async function checkPlannerRetryRecorded(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "planner.invalid-json-retry",
   title: "Planner recovers when model output is malformed on the first attempt",
   domain: "lifeops.planner",

@@ -243,6 +243,22 @@ describe("useShellController — voice capture routing", () => {
     });
   });
 
+  it("a spoken 'start transcription' in converse flips into transcription mode and is not sent", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    expect(result.current.handsFree).toBe(true);
+    appMock.value.sendChatText.mockClear();
+
+    act(() => fireFinalTranscript("ok start transcription"));
+    // The command flips INTO record-only transcription mode (disabling
+    // hands-free) and is NOT sent as a normal conversational turn.
+    expect(result.current.transcriptionMode).toBe(true);
+    expect(result.current.handsFree).toBe(false);
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+  });
+
   it("does NOT respond to pure thinking-noise in always-on (shouldRespond gate)", async () => {
     const { result } = renderHook(() => useShellController());
     await act(async () => {
@@ -427,54 +443,105 @@ describe("useShellController — transcription mode", () => {
     vi.useRealTimers();
   });
 
-  it("records every final VERBATIM as a silent DM carrying transcriptionMode", async () => {
+  it("starts/stops transcription on a voice-control window event (agent action)", () => {
     const { result } = renderHook(() => useShellController());
+    expect(result.current.transcriptionMode).toBe(false);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("eliza:voice-control", {
+          detail: { command: "start" },
+        }),
+      );
+    });
+    expect(result.current.transcriptionMode).toBe(true);
+    // Idempotent: a second "start" is a no-op.
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("eliza:voice-control", {
+          detail: { command: "start" },
+        }),
+      );
+    });
+    expect(result.current.transcriptionMode).toBe(true);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("eliza:voice-control", { detail: { command: "stop" } }),
+      );
+    });
+    expect(result.current.transcriptionMode).toBe(false);
+  });
+
+  /** Capture finalized recording sessions delivered to the sink. */
+  function sinkSessions(result: {
+    current: ReturnType<typeof useShellController>;
+  }) {
+    const sessions: Array<{
+      segments: Array<{ text: string }>;
+      startedAt: number;
+    }> = [];
+    act(() =>
+      result.current.setTranscriptSessionSink((segments, startedAt) =>
+        sessions.push({
+          segments: segments as Array<{ text: string }>,
+          startedAt,
+        }),
+      ),
+    );
+    return sessions;
+  }
+
+  it("accumulates finals into ONE recording session, not per-utterance DMs", async () => {
+    const { result } = renderHook(() => useShellController());
+    const sessions = sinkSessions(result);
     await act(async () => {
       result.current.toggleTranscriptionMode();
     });
     expect(result.current.transcriptionMode).toBe(true);
     expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
 
-    // Unlike converse, a trailing mid-clause utterance is NOT held by the EOT
-    // aggregator — it is recorded verbatim.
     act(() => fireFinalTranscript("schedule a meeting with"));
-    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
-    expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe(
-      "schedule a meeting with",
-    );
-    expect(appMock.value.sendChatText.mock.calls[0]?.[1]).toMatchObject({
-      channelType: "DM",
-      metadata: { transcriptionMode: true },
+    act(() => fireFinalTranscript("the design team tomorrow"));
+    // No per-utterance chat bubbles, and not finalized while still recording.
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+    expect(sessions).toHaveLength(0);
+
+    // Toggling off finalizes the session with both utterances as segments.
+    await act(async () => {
+      result.current.toggleTranscriptionMode();
     });
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].segments.map((s) => s.text)).toEqual([
+      "schedule a meeting with",
+      "the design team tomorrow",
+    ]);
   });
 
-  it("an exit phrase turns the mode OFF and is not itself sent", async () => {
+  it("an exit phrase finalizes the session and exits (exit utterance not recorded)", async () => {
     const { result } = renderHook(() => useShellController());
+    const sessions = sinkSessions(result);
     await act(async () => {
       result.current.toggleTranscriptionMode();
     });
     act(() => fireFinalTranscript("first paragraph of my notes"));
-    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
-
     act(() => fireFinalTranscript("exit transcription mode"));
     expect(result.current.transcriptionMode).toBe(false);
-    // The bare exit utterance produced no additional send.
-    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].segments.map((s) => s.text)).toEqual([
+      "first paragraph of my notes",
+    ]);
   });
 
-  it("commits the text preceding an inline exit phrase, then exits", async () => {
+  it("includes the text preceding an inline exit phrase, then exits", async () => {
     const { result } = renderHook(() => useShellController());
+    const sessions = sinkSessions(result);
     await act(async () => {
       result.current.toggleTranscriptionMode();
     });
     act(() => fireFinalTranscript("wrap up here stop transcription"));
-    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
-    expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe("wrap up here");
-    expect(appMock.value.sendChatText.mock.calls[0]?.[1]).toMatchObject({
-      channelType: "DM",
-      metadata: { transcriptionMode: true },
-    });
     expect(result.current.transcriptionMode).toBe(false);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].segments.map((s) => s.text)).toEqual(["wrap up here"]);
   });
 
   it("toggling it off stops the capture and disables hands-free", async () => {

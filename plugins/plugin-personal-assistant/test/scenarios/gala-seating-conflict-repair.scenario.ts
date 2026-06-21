@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "gala-seating-conflict-repair",
   title: "Assistant repairs gala seating conflict",
   domain: "executive.messaging",

@@ -1,6 +1,10 @@
+import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import * as React from "react";
-
 import type { ImageAttachment } from "../../api/client-types-chat";
+import {
+  VOICE_CONTROL_EVENT,
+  type VoiceControlEventDetail,
+} from "../../events";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import { useApp } from "../../state";
 import {
@@ -11,8 +15,10 @@ import {
 import { deriveAgentReady } from "../../state/types";
 import { TurnAggregator } from "../../voice/end-of-turn";
 import { shouldRespondToVoiceTurn } from "../../voice/should-respond";
+import { TranscriptSessionAccumulator } from "../../voice/transcript-session";
 import {
   isTranscriptionExitPhrase,
+  isTranscriptionStartPhrase,
   stripExitPhrase,
 } from "../../voice/transcription-exit";
 import {
@@ -27,9 +33,10 @@ import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
 
 /** How a voice capture turn is consumed when it produces a final transcript.
- *  `"transcription"` records long-form: every final lands in the conversation
- *  silently (metadata.transcriptionMode) and the agent stays quiet until an
- *  exit phrase. */
+ *  `"transcription"` records long-form: finals accumulate into ONE recording
+ *  session (not per-utterance chat bubbles) and the agent stays quiet until an
+ *  exit phrase, at which point the session becomes a Transcript record + a chat
+ *  link-widget. */
 export type CaptureIntent = "converse" | "dictate" | "transcription";
 
 export interface ShellController {
@@ -86,9 +93,9 @@ export interface ShellController {
   handsFree: boolean;
   /** Toggle the hands-free conversation loop (mic ↔ spoken reply ↔ mic). */
   toggleHandsFree: () => void;
-  /** True while transcription mode is active — the mic records continuously and
-   *  every utterance lands in the conversation silently (the agent does not
-   *  reply) until the user says an exit phrase ("exit transcription mode"). */
+  /** True while transcription mode is active — the mic records continuously into
+   *  one recording session (the agent does not reply) until the user says an exit
+   *  phrase ("exit transcription mode"), then the session becomes a Transcript. */
   transcriptionMode: boolean;
   /** Toggle transcription mode on/off. Enabling opens a long-running capture
    *  that suppresses replies; disabling stops it and resumes normal evaluation. */
@@ -96,6 +103,19 @@ export interface ShellController {
   /** Register where push-to-talk dictation drops its final transcript (the
    *  overlay wires this to its composer draft). Pass null to clear. */
   setDictationSink: (sink: ((text: string) => void) | null) => void;
+  /** Register where a completed transcription SESSION is delivered (its segments,
+   *  the absolute session-start ms, and the concatenated session WAV when audio
+   *  was retained). The overlay wires this to create the Transcript record (+
+   *  audio) + drop a chat link-widget. Pass null to clear. */
+  setTranscriptSessionSink: (
+    sink:
+      | ((
+          segments: TranscriptSegment[],
+          startedAtMs: number,
+          audioWav: Uint8Array | null,
+        ) => void)
+      | null,
+  ) => void;
   /** Tell the controller whether the composer holds a pending typed/dictated
    *  draft. While a draft exists the hands-free ("always-on") loop is paused so
    *  the mic isn't listening over the keyboard; clearing the draft (on send)
@@ -197,6 +217,10 @@ export function useShellController(): ShellController {
   const [transcriptionMode, setTranscriptionMode] = React.useState(false);
   const transcriptionModeRef = React.useRef(false);
   transcriptionModeRef.current = transcriptionMode;
+  // Forward handle to `toggleTranscriptionMode` (defined far below) so the
+  // converse capture loop can flip INTO transcription on a spoken "start
+  // transcription" without a definition-order/closure problem.
+  const toggleTranscriptionModeRef = React.useRef<() => void>(() => {});
   // The continuous-chat-mode persisted before hands-free engaged, restored when
   // the user taps the mic off so a deliberate ChatView "vad-gated" choice isn't
   // clobbered to "off". Defaults to "off" — tapping the mic off means voice off.
@@ -225,6 +249,53 @@ export function useShellController(): ShellController {
     },
     [],
   );
+
+  // Transcription mode accumulates utterances into ONE recording session (not N
+  // chat bubbles); on exit the segments become a Transcript record + a chat
+  // link-widget, delivered through this sink.
+  const transcriptSessionRef =
+    React.useRef<TranscriptSessionAccumulator | null>(null);
+  const transcriptSessionStartRef = React.useRef(0);
+  const onTranscriptSessionRef = React.useRef<
+    | ((
+        segments: TranscriptSegment[],
+        startedAtMs: number,
+        audioWav: Uint8Array | null,
+      ) => void)
+    | null
+  >(null);
+  const setTranscriptSessionSink = React.useCallback(
+    (
+      sink:
+        | ((
+            segments: TranscriptSegment[],
+            startedAtMs: number,
+            audioWav: Uint8Array | null,
+          ) => void)
+        | null,
+    ) => {
+      onTranscriptSessionRef.current = sink;
+    },
+    [],
+  );
+  /** Begin a fresh recording session (every transcription-start path calls this). */
+  const beginTranscriptSession = React.useCallback(() => {
+    transcriptSessionStartRef.current = Date.now();
+    transcriptSessionRef.current = new TranscriptSessionAccumulator(
+      transcriptSessionStartRef.current,
+    );
+  }, []);
+  /** Close the session and hand its segments to the sink (no-op if empty). */
+  const finalizeTranscriptSession = React.useCallback(() => {
+    const session = transcriptSessionRef.current;
+    transcriptSessionRef.current = null;
+    if (!session || session.count === 0) return;
+    onTranscriptSessionRef.current?.(
+      session.build(),
+      transcriptSessionStartRef.current,
+      session.buildAudioWav(),
+    );
+  }, []);
 
   // Identity-preserving projection: reuse the previously-mapped ShellMessage for
   // any turn whose content/failureKind/reasoning is unchanged, so the React.memo
@@ -426,27 +497,28 @@ export function useShellController(): ShellController {
           if (intent === "transcription") {
             // Long-form record-only. Run exit detection on every final.
             if (isTranscriptionExitPhrase(text)) {
-              // Commit any preceding non-exit content as a final silent turn,
-              // then leave the mode so the NEXT turn is evaluated normally.
+              // Fold any preceding non-exit content into the session, then close
+              // it (→ Transcript record + chat link-widget) and leave the mode so
+              // the NEXT turn is evaluated normally.
               const preceding = stripExitPhrase(text);
               if (preceding) {
-                send(preceding, {
-                  channelType: "DM",
-                  metadata: { transcriptionMode: true },
-                });
+                transcriptSessionRef.current?.addFinal(preceding, Date.now());
               }
               setTranscript("");
               setTranscriptionMode(false);
               transcriptionModeRef.current = false;
+              finalizeTranscriptSession();
               stopCapture();
               return;
             }
-            // Record this utterance into the conversation silently (the
-            // `core.transcription_mode` server evaluator suppresses the reply).
+            // Accumulate this utterance into the recording session — it does NOT
+            // post as its own chat bubble; the whole session becomes one record.
+            // Carry the utterance WAV + per-word timings (fused ASR v12) so the
+            // transcript retains audio + word-synced highlight.
             setTranscript("");
-            send(text, {
-              channelType: "DM",
-              metadata: { transcriptionMode: true },
+            transcriptSessionRef.current?.addFinal(text, Date.now(), {
+              audioWav: segment.audioWav,
+              words: segment.words,
             });
           } else if (intent === "dictate") {
             // Push-to-talk dictation: hand the text to the composer draft —
@@ -454,6 +526,17 @@ export function useShellController(): ShellController {
             setTranscript("");
             onDictatedTextRef.current?.(text);
           } else if (aggregator) {
+            // A spoken "start transcription" flips INTO long-form record-only
+            // mode instead of being sent as a normal turn. (Exit is handled
+            // above once already in transcription mode.)
+            if (
+              !transcriptionModeRef.current &&
+              isTranscriptionStartPhrase(text)
+            ) {
+              setTranscript("");
+              toggleTranscriptionModeRef.current();
+              return;
+            }
             lastBackend = segment.backend;
             const committed = aggregator.addFinal(text);
             // Keep the held turn visible while we wait for the speaker to
@@ -499,7 +582,7 @@ export function useShellController(): ShellController {
           setRecording(false);
         });
     },
-    [send, stopCapture],
+    [send, stopCapture, finalizeTranscriptSession],
   );
 
   const toggleRecording = React.useCallback(() => {
@@ -614,15 +697,20 @@ export function useShellController(): ShellController {
     }
   }, [responding, startCapture, stopCapture, voiceOutput]);
 
-  // Toggle transcription mode (long-form record-only). Mutually exclusive with
-  // the hands-free reply loop — enabling it disables hands-free and opens a
-  // long-running capture that sends every utterance silently until an exit
-  // phrase (or this toggle) turns it off.
+  // Toggle transcription mode (long-form, record-only — the agent never replies
+  // to a transcribed turn). It is an ADDITIVE voice layer: the mic stays on and
+  // the composer keeps working; enabling it just pauses the hands-free REPLY
+  // loop and opens a long-running capture that accumulates every utterance
+  // silently. Turning it off (this toggle, the mic button, or a spoken exit
+  // phrase) finalizes the session, which drops the transcript into the composer
+  // as an attachment the user sends with their next message.
   const toggleTranscriptionMode = React.useCallback(() => {
     if (transcriptionModeRef.current) {
       setTranscriptionMode(false);
       transcriptionModeRef.current = false;
       if (captureRef.current) stopCapture();
+      // Close the recording session → Transcript record + chat link-widget.
+      finalizeTranscriptSession();
     } else {
       if (handsFreeRef.current) {
         setHandsFree(false);
@@ -632,10 +720,39 @@ export function useShellController(): ShellController {
       transcriptionModeRef.current = true;
       setIsOpen(true);
       voiceOutput.unlockAudio();
+      beginTranscriptSession();
       if (captureRef.current) stopCapture();
       startCapture("transcription");
     }
-  }, [startCapture, stopCapture, voiceOutput]);
+  }, [
+    startCapture,
+    stopCapture,
+    voiceOutput,
+    beginTranscriptSession,
+    finalizeTranscriptSession,
+  ]);
+  // Keep the forward ref current so the converse capture loop (defined above)
+  // can flip into transcription on a spoken start phrase.
+  toggleTranscriptionModeRef.current = toggleTranscriptionMode;
+
+  // A server-side agent action (START/STOP_TRANSCRIPTION) reaches the shell as a
+  // window `voice-control` event (the agent-event bus → client bridge); flip
+  // transcription to match. Idempotent — "start" while already transcribing (or
+  // "stop" while idle) is a no-op.
+  React.useEffect(() => {
+    const onVoiceControl = (e: Event) => {
+      const detail = (e as CustomEvent<VoiceControlEventDetail>).detail;
+      if (!detail) return;
+      if (detail.command === "start" && !transcriptionModeRef.current) {
+        toggleTranscriptionModeRef.current();
+      } else if (detail.command === "stop" && transcriptionModeRef.current) {
+        toggleTranscriptionModeRef.current();
+      }
+    };
+    window.addEventListener(VOICE_CONTROL_EVENT, onVoiceControl);
+    return () =>
+      window.removeEventListener(VOICE_CONTROL_EVENT, onVoiceControl);
+  }, []);
 
   // Transcription re-listen loop: a one-shot capture backend (local-inference
   // auto-stop on silence) ends after each utterance — re-open it so long-form
@@ -748,6 +865,7 @@ export function useShellController(): ShellController {
     transcriptionMode,
     toggleTranscriptionMode,
     setDictationSink,
+    setTranscriptSessionSink,
     setComposerHasDraft,
     transcript,
     speaking: voiceOutput.speaking,

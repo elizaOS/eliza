@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "reputation-crisis-screenshot-preservation",
   title: "Assistant preserves evidence during reputation crisis",
   domain: "executive.escalation",

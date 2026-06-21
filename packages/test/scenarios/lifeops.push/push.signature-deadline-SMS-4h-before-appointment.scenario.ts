@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.signature-deadline-SMS-4h-before-appointment",
   title:
     "SMS the user 4h before an appointment if a required signature is still pending",

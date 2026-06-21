@@ -39,10 +39,7 @@ describe("ChatTranscript memoization", () => {
 
     rendered.rerender(
       <ChatTranscript
-        messages={[
-          { ...first },
-          { ...second, text: "thinking harder" },
-        ]}
+        messages={[{ ...first }, { ...second, text: "thinking harder" }]}
         renderMessageContent={renderMessageContent}
       />,
     );

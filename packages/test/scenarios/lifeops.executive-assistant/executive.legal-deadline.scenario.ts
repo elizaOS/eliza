@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.legal-deadline",
   title:
     "Legal deadline tracks docs, calendar, approvals, and counsel follow-up",
