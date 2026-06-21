@@ -200,3 +200,77 @@ export function activeWordIndex(
   }
   return found;
 }
+
+/** A single invariant violation found by {@link validateAsrWordTimings}. */
+export interface WordTimingViolation {
+  index: number;
+  word: string;
+  reason: string;
+}
+
+/** Result of validating a word-timed sequence against the player contract. */
+export interface WordTimingValidation {
+  ok: boolean;
+  violations: WordTimingViolation[];
+}
+
+/**
+ * Validate per-word timings against the contract the transcript player relies
+ * on — and that the fused ASR v12 (`eliza_inference_asr_transcribe_timed`) MUST
+ * satisfy for its output to be playable:
+ *
+ *   - every word has non-empty text and finite `0 <= startMs <= endMs`,
+ *   - spans are ordered and non-overlapping (each word starts no earlier than
+ *     the previous word ends, within `toleranceMs`),
+ *   - every span lies within `[0, audioDurationMs]` (the exact decoded audio
+ *     length, `1000 * n_samples / sample_rate`).
+ *
+ * Pass `audioDurationMs = 0` to skip the upper-bound check. `toleranceMs`
+ * absorbs the integer rounding the native char-proportional timing applies at
+ * word boundaries. The same function gates the player highlight, the ASR bench,
+ * and the real-audio FFI test so all three agree on what "well-formed" means.
+ */
+export function validateAsrWordTimings(
+  words: ReadonlyArray<TranscriptWord>,
+  audioDurationMs = 0,
+  toleranceMs = 1,
+): WordTimingValidation {
+  const violations: WordTimingViolation[] = [];
+  let prevEndMs = 0;
+  words.forEach((w, index) => {
+    const word = w.text;
+    if (typeof word !== "string" || word.trim().length === 0) {
+      violations.push({ index, word: String(word), reason: "empty word text" });
+    }
+    if (!Number.isFinite(w.startMs) || !Number.isFinite(w.endMs)) {
+      violations.push({ index, word, reason: "non-finite timing" });
+      return;
+    }
+    if (w.startMs < -toleranceMs) {
+      violations.push({ index, word, reason: `startMs ${w.startMs} < 0` });
+    }
+    if (w.endMs < w.startMs - toleranceMs) {
+      violations.push({
+        index,
+        word,
+        reason: `endMs ${w.endMs} precedes startMs ${w.startMs}`,
+      });
+    }
+    if (w.startMs < prevEndMs - toleranceMs) {
+      violations.push({
+        index,
+        word,
+        reason: `startMs ${w.startMs} overlaps previous end ${prevEndMs}`,
+      });
+    }
+    if (audioDurationMs > 0 && w.endMs > audioDurationMs + toleranceMs) {
+      violations.push({
+        index,
+        word,
+        reason: `endMs ${w.endMs} exceeds audio duration ${audioDurationMs}`,
+      });
+    }
+    prevEndMs = Math.max(prevEndMs, w.endMs);
+  });
+  return { ok: violations.length === 0, violations };
+}

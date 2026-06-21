@@ -5,10 +5,12 @@ import {
   summarizeTranscript,
   type Transcript,
   type TranscriptSegment,
+  type TranscriptWord,
   transcriptDurationMs,
   transcriptPlainText,
   transcriptPreview,
   transcriptSpeakerCount,
+  validateAsrWordTimings,
 } from "./transcripts.js";
 
 const segs: TranscriptSegment[] = [
@@ -140,5 +142,67 @@ describe("summarizeTranscript", () => {
       preview: "hello there hi bye",
       hasAudio: true,
     });
+  });
+});
+
+describe("validateAsrWordTimings", () => {
+  it("accepts ordered, non-overlapping, bounded word spans", () => {
+    const words: TranscriptWord[] = [
+      { text: "turn", startMs: 0, endMs: 250 },
+      { text: "on", startMs: 250, endMs: 380 },
+      { text: "the", startMs: 380, endMs: 520 },
+      { text: "lights", startMs: 520, endMs: 1000 },
+    ];
+    const result = validateAsrWordTimings(words, 1000);
+    expect(result.ok).toBe(true);
+    expect(result.violations).toEqual([]);
+  });
+
+  it("flags overlapping spans", () => {
+    const words: TranscriptWord[] = [
+      { text: "a", startMs: 0, endMs: 600 },
+      { text: "b", startMs: 400, endMs: 800 },
+    ];
+    const result = validateAsrWordTimings(words, 800);
+    expect(result.ok).toBe(false);
+    expect(result.violations[0]?.reason).toMatch(/overlaps previous end/);
+  });
+
+  it("flags a word whose end exceeds the audio duration", () => {
+    const words: TranscriptWord[] = [{ text: "a", startMs: 0, endMs: 1200 }];
+    const result = validateAsrWordTimings(words, 1000);
+    expect(result.ok).toBe(false);
+    expect(result.violations[0]?.reason).toMatch(/exceeds audio duration/);
+  });
+
+  it("flags inverted (end before start) and empty-text words", () => {
+    const words: TranscriptWord[] = [
+      { text: "", startMs: 0, endMs: 100 },
+      { text: "x", startMs: 300, endMs: 200 },
+    ];
+    const result = validateAsrWordTimings(words, 1000);
+    expect(result.ok).toBe(false);
+    expect(result.violations.some((v) => v.reason === "empty word text")).toBe(
+      true,
+    );
+    expect(
+      result.violations.some((v) => /precedes startMs/.test(v.reason)),
+    ).toBe(true);
+  });
+
+  it("absorbs integer rounding at boundaries within tolerance", () => {
+    // The native char-proportional timing rounds each boundary independently,
+    // so adjacent words can touch off-by-one. Default tolerance accepts it.
+    const words: TranscriptWord[] = [
+      { text: "one", startMs: 0, endMs: 333 },
+      { text: "two", startMs: 332, endMs: 667 },
+      { text: "three", startMs: 667, endMs: 1000 },
+    ];
+    expect(validateAsrWordTimings(words, 1000).ok).toBe(true);
+  });
+
+  it("skips the upper-bound check when no duration is given", () => {
+    const words: TranscriptWord[] = [{ text: "a", startMs: 0, endMs: 9_999 }];
+    expect(validateAsrWordTimings(words).ok).toBe(true);
   });
 });

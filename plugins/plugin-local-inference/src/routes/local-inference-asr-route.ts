@@ -1,36 +1,14 @@
 import type http from "node:http";
-import { type AgentRuntime, ModelType } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import {
 	type CompatRuntimeState,
 	ensureRouteAuthorized,
 	readCompatJsonBody,
 	sendJson,
 } from "./compat-helpers";
+import { transcribeWavWithWords } from "./local-inference-asr-transcribe";
 
 const MAX_LOCAL_ASR_AUDIO_BYTES = 16 * 1024 * 1024;
-
-const LOCAL_TRANSCRIPTION_PROVIDER_IDS = [
-	"eliza-local-inference",
-	"capacitor-llama",
-	"eliza-device-bridge",
-	"eliza-aosp-llama",
-] as const;
-
-function isMissingTranscriptionProviderError(error: unknown): boolean {
-	return (
-		error instanceof Error &&
-		/No handler found for delegate type: TRANSCRIPTION/.test(error.message)
-	);
-}
-
-function normalizeTranscriptResult(value: unknown): string {
-	if (typeof value === "string") return value.trim();
-	if (value && typeof value === "object") {
-		const text = (value as { text?: unknown }).text;
-		if (typeof text === "string") return text.trim();
-	}
-	throw new Error("TRANSCRIPTION returned an invalid transcript");
-}
 
 function toUint8Array(value: Uint8Array | ArrayBuffer): Uint8Array {
 	return value instanceof Uint8Array ? value : new Uint8Array(value);
@@ -99,34 +77,6 @@ async function readLocalInferenceAsrAudio(
 	return readRawAudioBody(req, res);
 }
 
-async function useLocalInferenceAsr(
-	runtime: AgentRuntime,
-	audio: Uint8Array,
-	signal?: AbortSignal,
-): Promise<string> {
-	let lastError: unknown;
-	for (const provider of LOCAL_TRANSCRIPTION_PROVIDER_IDS) {
-		try {
-			const transcript = normalizeTranscriptResult(
-				await runtime.useModel(
-					ModelType.TRANSCRIPTION,
-					{ audio, ...(signal ? { signal } : {}) } as never,
-					provider,
-				),
-			);
-			if (!transcript) {
-				throw new Error("TRANSCRIPTION returned an empty transcript");
-			}
-			return transcript;
-		} catch (err) {
-			lastError = err;
-			if (!isMissingTranscriptionProviderError(err)) throw err;
-		}
-	}
-	if (lastError instanceof Error) throw lastError;
-	throw new Error("No local-inference TRANSCRIPTION provider is registered");
-}
-
 function isClosed(res: http.ServerResponse): boolean {
 	return res.destroyed || res.writableEnded;
 }
@@ -188,13 +138,13 @@ export async function handleLocalInferenceAsrRoute(
 			});
 			return true;
 		}
-		const text = await useLocalInferenceAsr(
+		const { text, words } = await transcribeWavWithWords(
 			runtime,
 			audio,
 			abortController.signal,
 		);
 		completed = true;
-		sendJson(res, 200, { text });
+		sendJson(res, 200, { text, words });
 	} catch (err) {
 		if (!clientClosed && !abortController.signal.aborted && !isClosed(res)) {
 			sendJson(res, 502, {
