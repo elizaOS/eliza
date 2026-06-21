@@ -199,8 +199,19 @@ export class AinexService extends Service {
   }
 
   private async _tryConnect(): Promise<void> {
-    const url =
-      this._readSetting("ELIZA_AINEX_BRIDGE_URL") ?? "ws://localhost:9100";
+    const configuredUrl = this._readSetting("ELIZA_AINEX_BRIDGE_URL");
+    // Only dial when a bridge URL is explicitly configured. Auto-connecting to a
+    // hardcoded `ws://localhost:9100` default when no robot is configured starts
+    // an endless background reconnect loop; under Bun (where the `ws` import is
+    // the native EventTarget WebSocket, not an EventEmitter) the reconnect
+    // socket's error event has no listener and crashes the whole agent process.
+    if (!configuredUrl) {
+      logger.info(
+        "[AinexService] no ELIZA_AINEX_BRIDGE_URL configured; staying disconnected (no robot bridge to dial)",
+      );
+      return;
+    }
+    const url = configuredUrl;
     const client = new AinexBridgeClient({ url });
     this._registerEventHandlers(client);
     try {
