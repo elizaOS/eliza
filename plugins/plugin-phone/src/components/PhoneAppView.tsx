@@ -19,7 +19,7 @@ import { Phone } from "@elizaos/capacitor-phone";
 import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, useAgentElement } from "@elizaos/ui";
 import { consumePendingPhoneNumber } from "@elizaos/ui/app-navigate-view";
-import { PermissionRecoveryCallout } from "@elizaos/ui/components";
+import { PermissionRecoveryCallout } from "@elizaos/ui/components/permissions/PermissionRecoveryCallout";
 import {
   Tabs,
   TabsContent,

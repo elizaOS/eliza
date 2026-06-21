@@ -161,13 +161,20 @@ final class ElizaBionicInferenceServer {
             int maxTokens = req.optInt("maxTokens", 256);
             Log.i(TAG, "GENERATE from agent: " + prompt.length() + " prompt chars,"
                 + " maxTokens=" + maxTokens + ", bundle=" + bundleDir);
-            // nativeLlmSelfTest creates a FRESH context per call (clean KV) and
-            // runs the proven greedy decode on the GPU, returning {ok,text,tokens,
-            // ms,tokS}. Context REUSE (keep the model resident to skip the cold
-            // load) is the perf follow-up — it needs a fork FFI change to reset
-            // the stream KV between generations (stream_open does NOT clear the
-            // slot-0 KV, so a reused ctx contaminates the 2nd+ turn). Correctness
-            // first: a fresh ctx is slower (~5 s) but always produces clean text.
+            // nativeLlmSelfTest creates a FRESH context per call (reloads the model
+            // → fresh GPU weights) and runs the proven greedy decode, returning
+            // {ok,text,tokens,ms,tokS}. ~5 s/turn, always clean.
+            //
+            // PERF NOTE: model/context REUSE (to skip the cold load) was tried in
+            // THREE forms and device-tested — fresh-lctx-per-call, one persistent
+            // lctx, and one persistent lctx + a fork-side KV reset
+            // (eliza_inference_llm_stream_reset, which IS wired and clears the KV +
+            // sampler). ALL three intermittently corrupt the output (~1 in 3 turns
+            // degenerate into "His!!!!" token repetition) while nativeLlmSelfTest
+            // is always clean. Reloading the model per call is what differs, so the
+            // root cause is the fork's Vulkan backend corrupting the SHARED GPU
+            // model weights across reuse — a backend bug, not a KV/lctx issue.
+            // Until that's fixed in the fork, reload-per-call is the reliable path.
             String result = ElizaVoiceNative.nativeLlmSelfTest(bundleDir, prompt, maxTokens);
             Log.i(TAG, "GENERATE result: "
                 + (result.length() > 200 ? result.substring(0, 200) + "…" : result));
