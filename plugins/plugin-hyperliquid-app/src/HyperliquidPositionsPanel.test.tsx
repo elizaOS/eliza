@@ -2,12 +2,14 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { HyperliquidPosition } from "./hyperliquid-contracts";
 import { HyperliquidPositionsPanel } from "./HyperliquidPositionsPanel";
+import type { HyperliquidPosition } from "./hyperliquid-contracts";
 
 afterEach(() => cleanup());
 
-function position(over: Partial<HyperliquidPosition> = {}): HyperliquidPosition {
+function position(
+  over: Partial<HyperliquidPosition> = {},
+): HyperliquidPosition {
   return {
     coin: "BTC",
     size: "1",
