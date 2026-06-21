@@ -24,7 +24,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { StatusBadge } from "../ui/status-badge";
 import {
-  statusLabelForState,
+  agentLifecycleLabel,
   statusToneForState,
 } from "../ui/status-badge.helpers";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -592,7 +592,7 @@ export function CloudAgentsSection() {
                               ? "danger"
                               : statusToneForState(agent.status)
                           }
-                          label={statusLabelForState(agent.status)}
+                          label={agentLifecycleLabel(agent.status)}
                           data-testid={`cloud-agent-status-${agent.agent_id}`}
                         />
                       )}

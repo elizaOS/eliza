@@ -119,6 +119,18 @@ export interface CloudHandoffPhaseDetail {
   error?: string;
 }
 
+/**
+ * Re-run a `timed-out`/`failed` shared→dedicated handoff for `agentId`. The
+ * failure surface (banner) dispatches this when the user asks to retry; the
+ * handoff runner that armed the retry re-invokes the (idempotent) supervisor,
+ * so a transient container-boot failure isn't a silent permanent fallback.
+ */
+export const CLOUD_HANDOFF_RETRY_EVENT = "eliza:cloud-handoff-retry" as const;
+
+export interface CloudHandoffRetryDetail {
+  agentId: string;
+}
+
 // ── Tutorial ─────────────────────────────────────────────────────────────
 /**
  * The interactive tour drives the floating chat into a known state at the start
@@ -191,7 +203,8 @@ export type ElizaWindowEventName =
   | typeof FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT
   | typeof SELF_STATUS_SYNC_EVENT
   | typeof TUTORIAL_CHAT_CONTROL_EVENT
-  | typeof CLOUD_HANDOFF_PHASE_EVENT;
+  | typeof CLOUD_HANDOFF_PHASE_EVENT
+  | typeof CLOUD_HANDOFF_RETRY_EVENT;
 
 export type ElizaEventName = ElizaDocumentEventName | ElizaWindowEventName;
 
@@ -234,6 +247,13 @@ export function dispatchCloudHandoffPhase(
   detail: CloudHandoffPhaseDetail,
 ): void {
   dispatchWindowEvent(CLOUD_HANDOFF_PHASE_EVENT, detail);
+}
+
+/** Ask the armed handoff runner to retry a failed shared→dedicated handoff. */
+export function dispatchCloudHandoffRetry(
+  detail: CloudHandoffRetryDetail,
+): void {
+  dispatchWindowEvent(CLOUD_HANDOFF_RETRY_EVENT, detail);
 }
 
 export function readPendingFocusConnector(): string | null {

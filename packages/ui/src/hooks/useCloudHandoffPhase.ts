@@ -4,11 +4,12 @@ import {
   type CloudHandoffPhaseDetail,
 } from "../events";
 
-// How long a terminal phase lingers before the banner self-clears. `migrating`
-// has no timer — it persists until the swap resolves (the container boot can
-// take 60-90s).
+// How long a successful terminal phase lingers before the banner self-clears.
+// `migrating` has no timer — it persists until the swap resolves (the container
+// boot can take 60-90s). `timed-out`/`failed` also have NO timer: they stay
+// until the user retries (or a retry resolves), so the failure isn't a silent
+// auto-dismissed fallback.
 const SUCCESS_LINGER_MS = 4000;
-const FAILURE_LINGER_MS = 6000;
 
 /**
  * Subscribe to the shared→dedicated cloud-agent handoff lifecycle
@@ -32,12 +33,18 @@ export function useCloudHandoffPhase(): CloudHandoffPhaseDetail | null {
   }, []);
 
   useEffect(() => {
-    if (!detail || detail.phase === "migrating") return;
-    const lingerMs =
-      detail.phase === "timed-out" || detail.phase === "failed"
-        ? FAILURE_LINGER_MS
-        : SUCCESS_LINGER_MS;
-    const id = window.setTimeout(() => setDetail(null), lingerMs);
+    if (!detail) return;
+    // `migrating` persists until the swap resolves; `timed-out`/`failed` persist
+    // until the user retries (the banner offers a retry). Only the success
+    // phases self-dismiss.
+    if (
+      detail.phase === "migrating" ||
+      detail.phase === "timed-out" ||
+      detail.phase === "failed"
+    ) {
+      return;
+    }
+    const id = window.setTimeout(() => setDetail(null), SUCCESS_LINGER_MS);
     return () => window.clearTimeout(id);
   }, [detail]);
 

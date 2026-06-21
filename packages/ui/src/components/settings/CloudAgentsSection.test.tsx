@@ -444,7 +444,9 @@ describe("CloudAgentsSection lifecycle (suspend/resume)", () => {
       () =>
         expect(
           screen.getByTestId("cloud-agent-status-agent-1").textContent,
-        ).toBe("Running"),
+          // `agentLifecycleLabel` renders the product copy for the lifecycle
+          // enum: a `running` cloud agent shows "Ready", not the raw "Running".
+        ).toBe("Ready"),
       { timeout: 6000 },
     );
   });

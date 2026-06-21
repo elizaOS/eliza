@@ -51,16 +51,23 @@ describe("useCloudHandoffPhase", () => {
     expect(result.current).toBeNull();
   });
 
-  it("keeps a failure visible longer, then clears", () => {
+  it("keeps a failure visible until retried (no silent auto-dismiss)", () => {
     const { result } = renderHook(() => useCloudHandoffPhase());
     emit({ agentId: "a1", phase: "failed", error: "boom" });
     expect(result.current?.phase).toBe("failed");
 
-    act(() => vi.advanceTimersByTime(4000));
-    expect(result.current?.phase).toBe("failed"); // still inside the 6s window
+    // The failure must NOT self-dismiss — it stays so the user can retry.
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(result.current?.phase).toBe("failed");
+  });
 
-    act(() => vi.advanceTimersByTime(2000));
-    expect(result.current).toBeNull();
+  it("keeps a timed-out handoff visible until retried", () => {
+    const { result } = renderHook(() => useCloudHandoffPhase());
+    emit({ agentId: "a1", phase: "timed-out" });
+    expect(result.current?.phase).toBe("timed-out");
+
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(result.current?.phase).toBe("timed-out");
   });
 });
 
@@ -89,5 +96,33 @@ describe("CloudHandoffBanner", () => {
     render(<CloudHandoffBanner />);
     emit({ agentId: "a1", phase: "timed-out" });
     expect(screen.queryByText(/still on the shared one/i)).not.toBeNull();
+  });
+
+  it("offers a retry on failure that dispatches a retry event for the agent", () => {
+    render(<CloudHandoffBanner />);
+    emit({ agentId: "a1", phase: "failed", error: "boom" });
+
+    const retried: string[] = [];
+    const onRetry = (event: Event) => {
+      retried.push((event as CustomEvent<{ agentId: string }>).detail.agentId);
+    };
+    window.addEventListener("eliza:cloud-handoff-retry", onRetry);
+
+    const button = screen.getByTestId("cloud-handoff-retry");
+    act(() => {
+      button.click();
+    });
+    window.removeEventListener("eliza:cloud-handoff-retry", onRetry);
+
+    expect(retried).toEqual(["a1"]);
+  });
+
+  it("shows no retry button on the migrating / success phases", () => {
+    render(<CloudHandoffBanner />);
+    emit({ agentId: "a1", phase: "migrating" });
+    expect(screen.queryByTestId("cloud-handoff-retry")).toBeNull();
+
+    emit({ agentId: "a1", phase: "switched", imported: 1 });
+    expect(screen.queryByTestId("cloud-handoff-retry")).toBeNull();
   });
 });

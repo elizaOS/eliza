@@ -7,8 +7,8 @@ import {
 } from "../api/client-cloud";
 import type { CloudCompatAgent } from "../api/client-types-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
+import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
 import { getBootConfig } from "../config/boot-config";
-import { dispatchCloudHandoffPhase } from "../events";
 import {
   canSelectLocalRuntime,
   isAndroid,
@@ -790,13 +790,13 @@ export function useFirstRunController(): FirstRunController {
       // adapter, which keeps working.
       if (selectedAgent.created && !selectedAgent.bridgeUrl) {
         const handoffAgentId = selectedAgent.agentId;
-        // Tell the UI a migration is in flight instead of swapping silently.
-        dispatchCloudHandoffPhase({
-          agentId: handoffAgentId,
-          phase: "migrating",
-        });
-        void client
-          .startCloudAgentHandoff({
+        // Surface the handoff lifecycle (migrating → switched | timed-out |
+        // failed) as typed phase events instead of swapping silently, and keep
+        // a `timed-out`/`failed` retryable rather than a silent permanent
+        // fallback. The supervisor's import is idempotent, so a retry just
+        // re-runs the same call.
+        runCloudAgentHandoff(handoffAgentId, () =>
+          client.startCloudAgentHandoff({
             agentId: handoffAgentId,
             sharedApiBase: cloudAgentApiBase,
             // The shared adapter keeps one canonical conversation per agent id.
@@ -822,27 +822,8 @@ export function useFirstRunController(): FirstRunController {
               });
               switchAgentProfile(profile.id);
             },
-          })
-          // Stop discarding the ConversationHandoffResult: surface each terminal
-          // status (switched | switched-empty | timed-out | failed) as a typed
-          // handoff phase so the UI can render real progress and an honest
-          // failure notice. Still best-effort — the shared adapter keeps working
-          // regardless of outcome.
-          .then((result) => {
-            dispatchCloudHandoffPhase({
-              agentId: handoffAgentId,
-              phase: result.status,
-              imported: result.imported,
-              ...(result.error ? { error: result.error } : {}),
-            });
-          })
-          .catch((err: unknown) => {
-            dispatchCloudHandoffPhase({
-              agentId: handoffAgentId,
-              phase: "failed",
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
+          }),
+        );
       }
     },
     [completeFirstRun, switchAgentProfile, uiLanguage],

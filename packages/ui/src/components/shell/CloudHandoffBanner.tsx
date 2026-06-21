@@ -1,7 +1,11 @@
 import { Check } from "lucide-react";
-import type { CloudHandoffPhase } from "../../events";
+import {
+  type CloudHandoffPhase,
+  dispatchCloudHandoffRetry,
+} from "../../events";
 import { useCloudHandoffPhase } from "../../hooks/useCloudHandoffPhase";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 
 // z-[9999] mirrors Z_SYSTEM_CRITICAL in ../../lib/floating-layers.ts, matching
@@ -22,13 +26,15 @@ const MESSAGE: Record<CloudHandoffPhase, string> = {
  * visible instead of silent. While a freshly-provisioned agent's container
  * boots the user chats on the shared adapter; once it's ready the live client
  * swaps over automatically. Renders in document flow like the other top banners
- * and self-dismisses via {@link useCloudHandoffPhase}.
+ * and self-dismisses on success via {@link useCloudHandoffPhase}. On a
+ * `timed-out`/`failed` handoff it stays put and offers a retry (instead of a
+ * silent permanent fallback) that re-invokes the handoff supervisor.
  */
 export function CloudHandoffBanner() {
   const handoff = useCloudHandoffPhase();
   if (!handoff) return null;
 
-  const { phase } = handoff;
+  const { phase, agentId } = handoff;
   const isFailure = phase === "timed-out" || phase === "failed";
 
   return (
@@ -38,18 +44,31 @@ export function CloudHandoffBanner() {
       data-window-titlebar-banner="true"
       className={cn(
         "mobile-top-banner shrink-0 z-[9999] flex items-center gap-3 px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)]",
-        isFailure ? "bg-warn" : "bg-accent",
+        isFailure ? "bg-warn justify-between" : "bg-accent",
       )}
     >
-      {phase === "migrating" ? (
-        <Spinner
-          size={16}
-          className="shrink-0 text-[color:var(--accent-foreground)]"
-        />
-      ) : isFailure ? null : (
-        <Check size={16} className="shrink-0" aria-hidden />
-      )}
-      <span className="truncate">{MESSAGE[phase]}</span>
+      <span className="flex items-center gap-3 min-w-0">
+        {phase === "migrating" ? (
+          <Spinner
+            size={16}
+            className="shrink-0 text-[color:var(--accent-foreground)]"
+          />
+        ) : isFailure ? null : (
+          <Check size={16} className="shrink-0" aria-hidden />
+        )}
+        <span className="truncate">{MESSAGE[phase]}</span>
+      </span>
+      {isFailure ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => dispatchCloudHandoffRetry({ agentId })}
+          className="shrink-0 rounded-sm px-2 py-0.5 text-xs text-[color:var(--accent-foreground)]/80 hover:bg-black/10"
+          data-testid="cloud-handoff-retry"
+        >
+          Retry
+        </Button>
+      ) : null}
     </div>
   );
 }
