@@ -78,9 +78,10 @@ function tileIds(container: HTMLElement): string[] {
 }
 
 describe("HomeScreen", () => {
-  it("renders the clock, activity (when present), messages, and NO pinned tiles off-AOSP", async () => {
+  it("is minimal: no clock, activity + messages when present, NO pinned tiles off-AOSP", async () => {
     const { container } = render(<HomeScreen onOpenTile={vi.fn()} />);
-    expect(screen.getByTestId("home-clock")).toBeTruthy();
+    // The clock/date was removed — the home stays simple.
+    expect(screen.queryByTestId("home-clock")).toBeNull();
     // Activity card shows because the mock has events.
     expect(screen.getByTestId("home-widget-activity")).toBeTruthy();
     expect(screen.getByText("Finished the build")).toBeTruthy();

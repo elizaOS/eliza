@@ -85,7 +85,10 @@ try {
   await mobile.goto(`${url}?native`);
   await mobile.waitForSelector('[data-testid="home-screen"]');
   await mobile.waitForTimeout(600);
-  assert(await mobile.getByTestId("home-clock").isVisible(), "clock renders");
+  assert(
+    (await mobile.getByTestId("home-clock").count()) === 0,
+    "no clock (home kept minimal)",
+  );
   assert(
     await mobile.getByTestId("home-widget-activity").isVisible(),
     "activity widget renders",
