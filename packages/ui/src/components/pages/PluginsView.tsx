@@ -942,7 +942,7 @@ function PluginListView({
     }
 
     return (
-      <div className="space-y-8">
+      <div className="space-y-6">
         {orderedGroups.map((groupId) => {
           const groupPlugins = groupMap.get(groupId) ?? [];
           if (groupPlugins.length === 0) return null;

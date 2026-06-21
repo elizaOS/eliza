@@ -11,7 +11,14 @@ import {
   type NativeStreamingAgentPlugin,
   supportsNativeStreaming,
 } from "./native-agent-stream";
-import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
+import {
+  type AgentRequestTransport,
+  bodyToString,
+  fetchAgentTransport,
+  headersToRecord,
+  isStreamingRequest,
+  methodAllowsBody,
+} from "./transport";
 
 export interface NativeAgentRequestOptions {
   method?: string;
@@ -82,24 +89,6 @@ function toNativeAgentPlugin(
   const addListener = plugin.addListener?.bind(plugin);
   if (!start && !stop && !getStatus && !request) return null;
   return { start, stop, getStatus, request, requestStream, addListener };
-}
-
-/**
- * An SSE / streaming request — the chat reply's token stream. Detected by the
- * `Accept: text/event-stream` header or a `…/stream` path. These are the only
- * requests routed through the streaming bridge; everything else stays buffered.
- */
-function isStreamingRequest(
-  url: string,
-  headers: HeadersInit | undefined,
-): boolean {
-  const accept = new Headers(headers ?? {}).get("accept") ?? "";
-  if (accept.toLowerCase().includes("text/event-stream")) return true;
-  try {
-    return new URL(url, "http://localhost").pathname.endsWith("/stream");
-  } catch {
-    return url.includes("/stream");
-  }
 }
 
 function isNativeAndroid(): boolean {
@@ -182,32 +171,6 @@ async function resolveNativeAgentPlugin(): Promise<NativeAgentPlugin | null> {
   }
 
   return null;
-}
-
-function headersToRecord(
-  headers: HeadersInit | undefined,
-): Record<string, string> {
-  if (!headers) return {};
-  const record: Record<string, string> = {};
-  new Headers(headers).forEach((value, key) => {
-    record[key] = value;
-  });
-  return record;
-}
-
-function methodAllowsBody(method: string): boolean {
-  const normalized = method.toUpperCase();
-  return normalized !== "GET" && normalized !== "HEAD";
-}
-
-function bodyToString(
-  body: BodyInit | null | undefined,
-): string | null | undefined {
-  if (body === null) return null;
-  if (body === undefined) return undefined;
-  if (typeof body === "string") return body;
-  if (body instanceof URLSearchParams) return body.toString();
-  return undefined;
 }
 
 function shouldBridgeFetchUrl(url: URL, rawUrl: string): boolean {

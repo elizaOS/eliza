@@ -72,7 +72,15 @@ export default defineConfig({
 			"node_modules/**",
 			"**/*.e2e.test.ts",
 			"**/*.live.test.ts",
-			"**/*.real.test.ts",
+			// Real-FFI / real-model tests (need a built libelizainference +
+			// staged models) run ONLY in the post-merge lane, matching the
+			// documented `TEST_LANE=post-merge bun run test`. They were excluded
+			// unconditionally before, so the real STT/TTS lane ran nothing while
+			// appearing green.
+			...(process.env.TEST_LANE === "post-merge" ||
+			process.env.VITEST_LANE === "post-merge"
+				? []
+				: ["**/*.real.test.ts"]),
 		],
 	},
 });

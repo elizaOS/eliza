@@ -20,6 +20,7 @@ import type {
   createMessageMemory,
   UUID,
 } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/core";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { extractCompatTextContent } from "./compat-utils.ts";
 import {
@@ -130,31 +131,6 @@ function resolveRecoveryTimeoutMs(explicit?: number): number {
     DEFAULT_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS,
     MAX_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS,
   );
-}
-
-function parseJsonObjectFromModelText(
-  text: string,
-): Record<string, unknown> | null {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  const parseCandidate = (
-    candidate: string,
-  ): Record<string, unknown> | null => {
-    try {
-      const parsed = JSON.parse(candidate);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        ? (parsed as Record<string, unknown>)
-        : null;
-    } catch {
-      return null;
-    }
-  };
-  const direct = parseCandidate(trimmed);
-  if (direct) return direct;
-  const start = trimmed.indexOf("{");
-  const end = trimmed.lastIndexOf("}");
-  if (start === -1 || end <= start) return null;
-  return parseCandidate(trimmed.slice(start, end + 1));
 }
 
 async function withOptionalTimeout<T>(
@@ -351,7 +327,7 @@ export async function maybeAugmentChatMessageWithDocuments(
 
       const result = await Promise.race([modelPromise, timeoutPromise]);
       const raw = typeof result === "string" ? result : "";
-      const parsed = parseJsonObjectFromModelText(raw);
+      const parsed = parseJSONObjectFromText(raw);
       if (!parsed) {
         return [];
       }
@@ -365,10 +341,9 @@ export async function maybeAugmentChatMessageWithDocuments(
           rawQueries
             .filter((value): value is string => typeof value === "string")
             .map((value) => value.trim())
-            .filter((value) => value.length > 0)
-            .slice(0, CHAT_DOCUMENTS_RECOVERY_QUERY_LIMIT),
+            .filter((value) => value.length > 0),
         ),
-      ];
+      ].slice(0, CHAT_DOCUMENTS_RECOVERY_QUERY_LIMIT);
     } catch (error) {
       runtime.logger.warn(
         {

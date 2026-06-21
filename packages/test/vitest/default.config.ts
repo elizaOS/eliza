@@ -286,6 +286,46 @@ const vitestResolveAlias: ModuleAlias[] = [
       "plugins/plugin-sql/src/index.node.ts",
     ),
   },
+  // Server-safe DB subpaths of the carved LifeOps plugins. PA's
+  // lifeops/repository.ts imports its schemas/repos/factories from these leaf
+  // modules (not the package barrels, which re-export React views → @elizaos/ui).
+  // The `./*` wildcard export is skipped by the auto-alias builder, so anchor the
+  // exact subpaths to source here for every base-config consumer.
+  {
+    find: /^@elizaos\/plugin-inbox\/db\/schema$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins/plugin-inbox/src/db/schema.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/plugin-finances\/db\/finances-repository$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins/plugin-finances/src/db/finances-repository.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/plugin-health\/health-bridge\/health-records$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins/plugin-health/src/health-bridge/health-records.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/plugin-health\/sleep\/sleep-episode-types$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins/plugin-health/src/sleep/sleep-episode-types.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/plugin-browser\/schema$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins/plugin-browser/src/schema.ts",
+    ),
+  },
   {
     find: /^@elizaos\/cloud-routing$/,
     replacement: path.join(cloudRoutingSourceRoot, "index.ts"),

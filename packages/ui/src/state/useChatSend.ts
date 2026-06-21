@@ -671,6 +671,20 @@ export function useChatSend(deps: UseChatSendDeps) {
     [appendLocalCommandTurn],
   );
 
+  // Drop the empty assistant placeholder bubble (a temp-resp-* that never got
+  // any streamed text) while preserving the user's message. Shared by every
+  // send-failure branch so the predicate lives in one place and can't drift.
+  const dropEmptyAssistantPlaceholder = useCallback(
+    (assistantMsgId: string) => {
+      setConversationMessages((prev) =>
+        prev.filter(
+          (message) => !(message.id === assistantMsgId && !message.text.trim()),
+        ),
+      );
+    },
+    [setConversationMessages],
+  );
+
   const runQueuedChatSend = useCallback(
     async (turn: Omit<QueuedChatSend, "resolve" | "reject">) => {
       const hasAttachedImages = Boolean(turn.images?.length);
@@ -928,12 +942,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       } catch (err) {
         const abortError = err as Error;
         if (abortError.name === "AbortError" || controller?.signal.aborted) {
-          setConversationMessages((prev) =>
-            prev.filter(
-              (message) =>
-                !(message.id === assistantMsgId && !message.text.trim()),
-            ),
-          );
+          dropEmptyAssistantPlaceholder(assistantMsgId);
           return;
         }
 
@@ -966,22 +975,12 @@ export function useChatSend(deps: UseChatSendDeps) {
                 "error",
                 10_000,
               );
-              setConversationMessages((prev) =>
-                prev.filter(
-                  (message) =>
-                    !(message.id === assistantMsgId && !message.text.trim()),
-                ),
-              );
+              dropEmptyAssistantPlaceholder(assistantMsgId);
               return;
             }
             // Non-cloud base, or a different create failure — preserve the prior
             // behaviour (drop the empty assistant placeholder).
-            setConversationMessages((prev) =>
-              prev.filter(
-                (message) =>
-                  !(message.id === assistantMsgId && !message.text.trim()),
-              ),
-            );
+            dropEmptyAssistantPlaceholder(assistantMsgId);
             return;
           }
 
@@ -1023,12 +1022,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               ]),
             );
           } catch {
-            setConversationMessages((prev) =>
-              prev.filter(
-                (message) =>
-                  !(message.id === assistantMsgId && !message.text.trim()),
-              ),
-            );
+            dropEmptyAssistantPlaceholder(assistantMsgId);
           }
         } else {
           // Non-abort, non-404 send failure (network/timeout/5xx/auth/429).
@@ -1037,12 +1031,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           // silent dead air (the typing indicator stalls at ~30s while the SSE
           // idle timeout is 60s — without this the user just sees the dots
           // vanish and nothing replace them, reading as "my message was lost").
-          setConversationMessages((prev) =>
-            prev.filter(
-              (message) =>
-                !(message.id === assistantMsgId && !message.text.trim()),
-            ),
-          );
+          dropEmptyAssistantPlaceholder(assistantMsgId);
           const kind = (err as { kind?: string }).kind;
           const isAuth = status === 401 || status === 403;
           const notice = isAuth
@@ -1089,6 +1078,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       setChatLastUsage,
       setCompanionMessageCutoffTs,
       setConversationMessages,
+      dropEmptyAssistantPlaceholder,
       setConversations,
       setActionNotice,
       setChatInput,
@@ -1362,12 +1352,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         } catch (err) {
           const abortError = err as Error;
           if (abortError.name === "AbortError" || controller?.signal.aborted) {
-            setConversationMessages((prev) =>
-              prev.filter(
-                (message) =>
-                  !(message.id === assistantMsgId && !message.text.trim()),
-              ),
-            );
+            dropEmptyAssistantPlaceholder(assistantMsgId);
             return;
           }
           await loadConversationMessages(convId);

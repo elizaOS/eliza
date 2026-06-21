@@ -721,4 +721,27 @@ describe("local inference downloader status", () => {
 			false,
 		);
 	});
+
+	it("dedups concurrent start(sameId) onto one job (no .part write race)", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+		});
+		// Fire two starts for the same id concurrently. The first reserves the
+		// active slot synchronously before its first await, so the second sees it
+		// and returns the SAME job instead of racing a second write onto the .part.
+		const [a, b] = await Promise.all([
+			downloader.start(model.id),
+			downloader.start(model.id),
+		]);
+		expect(a.jobId).toBe(b.jobId);
+		expect(
+			downloader.snapshot().filter((j) => j.modelId === model.id),
+		).toHaveLength(1);
+		downloader.cancel(model.id);
+	});
 });

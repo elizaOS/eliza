@@ -21,7 +21,7 @@ export function SettingsStack({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-col gap-6", className)} {...props} />;
+  return <div className={cn("flex flex-col gap-5", className)} {...props} />;
 }
 
 export interface SettingsGroupProps

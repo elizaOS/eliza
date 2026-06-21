@@ -71,10 +71,22 @@ let x402PluginModule: X402PluginModule | null = null;
 let browserPluginModulePromise: Promise<BrowserPluginModule> | null = null;
 let x402PluginModulePromise: Promise<X402PluginModule> | null = null;
 
+// Vite 7's import-analysis eagerly resolves string-literal dynamic imports even
+// when a `@vite-ignore` comment is present, throwing "Failed to resolve entry"
+// for the optional plugins below whose dist isn't built in the unit Plugin
+// Tests lane (any spec that transitively transforms this file then fails to
+// collect). Funnel optional plugin loads through a variable specifier so the
+// analyzer leaves them as pure runtime imports — the host resolves them from
+// node_modules on demand. Mirrors the variable-specifier bundle loader further
+// down this file.
+function importOptionalPlugin<T = unknown>(specifier: string): Promise<T> {
+  return import(/* @vite-ignore */ specifier) as Promise<T>;
+}
+
 async function getBrowserPlugin(): Promise<BrowserPluginModule> {
   if (browserPluginModule) return browserPluginModule;
-  browserPluginModulePromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-browser"
+  browserPluginModulePromise ??= importOptionalPlugin<BrowserPluginModule>(
+    "@elizaos/plugin-browser",
   ).then((browser) => {
     browserPluginModule = browser;
     return browser;
@@ -120,8 +132,8 @@ const EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS = {
 
 async function getX402Plugin(): Promise<X402PluginModule> {
   if (x402PluginModule) return x402PluginModule;
-  x402PluginModulePromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-x402"
+  x402PluginModulePromise ??= importOptionalPlugin<X402PluginModule>(
+    "@elizaos/plugin-x402",
   ).then((x402) => {
     x402PluginModule = x402;
     return x402;
@@ -130,16 +142,15 @@ async function getX402Plugin(): Promise<X402PluginModule> {
 }
 
 const optionalPluginImports = {
-  capacitor: () =>
-    import(/* @vite-ignore */ "@elizaos/plugin-capacitor-bridge"),
-  computerUse: () => import(/* @vite-ignore */ "@elizaos/plugin-computeruse"),
-  cloud: () => import(/* @vite-ignore */ "@elizaos/plugin-elizacloud"),
-  imessage: () => import(/* @vite-ignore */ "@elizaos/plugin-imessage"),
-  mcp: () => import(/* @vite-ignore */ "@elizaos/plugin-mcp"),
-  signal: () => import(/* @vite-ignore */ "@elizaos/plugin-signal"),
-  streaming: () => import(/* @vite-ignore */ "@elizaos/plugin-streaming"),
-  whatsapp: () => import(/* @vite-ignore */ "@elizaos/plugin-whatsapp"),
-  workflow: () => import(/* @vite-ignore */ "@elizaos/plugin-workflow"),
+  capacitor: () => importOptionalPlugin("@elizaos/plugin-capacitor-bridge"),
+  computerUse: () => importOptionalPlugin("@elizaos/plugin-computeruse"),
+  cloud: () => importOptionalPlugin("@elizaos/plugin-elizacloud"),
+  imessage: () => importOptionalPlugin("@elizaos/plugin-imessage"),
+  mcp: () => importOptionalPlugin("@elizaos/plugin-mcp"),
+  signal: () => importOptionalPlugin("@elizaos/plugin-signal"),
+  streaming: () => importOptionalPlugin("@elizaos/plugin-streaming"),
+  whatsapp: () => importOptionalPlugin("@elizaos/plugin-whatsapp"),
+  workflow: () => importOptionalPlugin("@elizaos/plugin-workflow"),
 };
 
 type LocalInferenceServerApi = {
@@ -258,7 +269,9 @@ let walletApiPromise:
   | Promise<typeof import("@elizaos/plugin-wallet")>
   | undefined;
 function getWalletApi(): Promise<typeof import("@elizaos/plugin-wallet")> {
-  walletApiPromise ??= import(/* @vite-ignore */ "@elizaos/plugin-wallet");
+  walletApiPromise ??= importOptionalPlugin<
+    typeof import("@elizaos/plugin-wallet")
+  >("@elizaos/plugin-wallet");
   return walletApiPromise;
 }
 

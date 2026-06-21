@@ -126,6 +126,17 @@ export default defineConfig({
         path.join(repoRoot, "plugins/plugin-groq/index.ts"),
       ),
       pluginAlias("plugin-health"),
+      // @elizaos/ui's DynamicViewLoader statically imports this plugin-health
+      // subpath; the keyless lane has no built plugin-health dist, so anchor the
+      // exact subpath to source (the barrel alias above only matches the bare
+      // specifier). Matches plugin-contacts/phone/wallet-ui/facewear.
+      {
+        find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
+        replacement: path.join(
+          repoRoot,
+          "plugins/plugin-health/src/screen-time/mobile-signal-setup.ts",
+        ),
+      },
       pluginAlias("plugin-imessage"),
       pluginAlias(
         "plugin-inmemorydb",

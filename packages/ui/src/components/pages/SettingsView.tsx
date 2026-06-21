@@ -210,11 +210,11 @@ function SettingsSectionContent({
   return (
     <div id={section.id}>
       {onBack ? (
-        <div className="mb-4">
+        <div className="mb-2.5">
           <SectionBackButton onBack={onBack} />
         </div>
       ) : null}
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-3 flex items-center gap-3">
         <div
           className={cn(
             "flex h-10 w-10 items-center justify-center rounded-md",
@@ -304,7 +304,7 @@ function MobileHub({
 }) {
   return (
     <div className="w-full pb-32">
-      <h1 className="mb-5 text-2xl font-semibold tracking-tight text-txt-strong">
+      <h1 className="mb-4 text-2xl font-semibold tracking-tight text-txt-strong">
         {t("nav.settings", { defaultValue: "Settings" })}
       </h1>
       <SettingsStack>

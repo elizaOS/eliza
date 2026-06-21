@@ -1435,6 +1435,17 @@ public class ElizaAgentService extends Service {
             if (delegateToBionicHost) {
                 agentEnv.put("ELIZA_BIONIC_HOST_DELEGATED", "1");
                 agentEnv.put("ELIZA_BIONIC_INFERENCE_SOCK", BIONIC_INFERENCE_SOCKET_NAME);
+                // The bionic host reloads the model per call (the fork's Vulkan
+                // backend corrupts shared GPU weights on reuse), so even a
+                // token-capped post-turn reflection runs ~40-60s — past the
+                // 30s default post-delivery side-effect timeout. That reflection
+                // is non-blocking background work (the reply is already
+                // delivered), so give it room to finish and persist instead of
+                // logging a spurious timeout every turn. Don't clobber an
+                // explicit operator override.
+                if (!agentEnv.containsKey("ELIZA_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS")) {
+                    agentEnv.put("ELIZA_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS", "120000");
+                }
                 Log.i(TAG, "agent/" + abiDir.getName()
                     + "/libggml-vulkan.so present; delegating inference to the in-process"
                     + " bionic Vulkan host over UDS \"" + BIONIC_INFERENCE_SOCKET_NAME
