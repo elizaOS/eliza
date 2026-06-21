@@ -118,12 +118,12 @@ jobs:
           exit 0
 
       - name: Install dependencies
-        working-directory: packages/vault
         # This matrix verifies @elizaos/vault itself against each OS keyring.
         # Running the repo postinstall chain here adds unrelated workspace setup
         # and can strand the Windows leg in dependency install before the vault
-        # typecheck/test gate ever runs.
-        run: bun install --ignore-scripts --no-frozen-lockfile
+        # typecheck/test gate ever runs. The workspace filter keeps the install
+        # scoped to vault's dependency graph while preserving the same tests.
+        run: bun install --filter @elizaos/vault --ignore-scripts --no-frozen-lockfile
       - name: Typecheck
         working-directory: packages/vault
         run: bun run typecheck
