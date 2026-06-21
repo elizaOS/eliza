@@ -6,13 +6,14 @@
  */
 
 import { groundTruthMockServices } from "@elizaos/plugin-local-inference/voice-workbench";
-import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
-export default {
+export default scenario({
   id: "voice-workbench-room",
   title: "Voice Workbench: multi-speaker room over a voice turn",
   domain: "voice",
   tags: ["deterministic", "voice"],
+  lane: "pr-deterministic",
   turns: [
     {
       name: "multi-speaker voice scenario",
@@ -55,4 +56,4 @@ export default {
       },
     },
   ],
-} satisfies ScenarioDefinition;
+});
