@@ -360,7 +360,11 @@ export class Downloader {
 			return { ...existing.job };
 		}
 
-		await ensureDirs();
+		// Reserve the slot SYNCHRONOUSLY — before any await — so a second
+		// concurrent start(sameId) sees it at the check above and returns the same
+		// job instead of racing a second write stream onto the same .part file
+		// (which corrupts the GGUF). All path derivation is synchronous; the resume
+		// offset is filled in after the reservation is held.
 		const stagingPath = path.join(
 			downloadsStagingDir(),
 			stagingFilename(modelId),
@@ -371,7 +375,7 @@ export class Downloader {
 			jobId: randomUUID(),
 			modelId,
 			state: "queued",
-			received: await partialSize(stagingPath),
+			received: 0,
 			total: Math.round(catalogEntry.sizeGb * 1024 ** 3),
 			bytesPerSec: 0,
 			etaMs: null,
@@ -387,6 +391,10 @@ export class Downloader {
 			finalPath,
 		};
 		this.active.set(modelId, record);
+
+		// Slot is held — now safe to await; a concurrent caller short-circuits above.
+		await ensureDirs();
+		job.received = await partialSize(stagingPath);
 
 		// Fire-and-forget; errors are captured and emitted as a "failed" event.
 		void this.runJob(catalogEntry, record).catch(() => {
