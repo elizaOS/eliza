@@ -30,16 +30,24 @@ describe("wordErrorRate", () => {
   });
 
   it("is case- and punctuation-insensitive (still 0)", () => {
-    expect(wordErrorRate("The quick brown fox.", "the QUICK brown, fox")).toBe(0);
+    expect(wordErrorRate("The quick brown fox.", "the QUICK brown, fox")).toBe(
+      0,
+    );
   });
 
   it("scores a single substitution as 1/N", () => {
     // 3-word reference, one word wrong → 1/3
-    expect(wordErrorRate("one two three", "one four three")).toBeCloseTo(1 / 3, 10);
+    expect(wordErrorRate("one two three", "one four three")).toBeCloseTo(
+      1 / 3,
+      10,
+    );
   });
 
   it("scores a single insertion as 1/N", () => {
-    expect(wordErrorRate("one two three", "one two extra three")).toBeCloseTo(1 / 3, 10);
+    expect(wordErrorRate("one two three", "one two extra three")).toBeCloseTo(
+      1 / 3,
+      10,
+    );
   });
 
   it("scores a single deletion as 1/N", () => {
