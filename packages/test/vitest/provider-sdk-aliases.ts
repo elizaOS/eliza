@@ -20,7 +20,14 @@ const elizaCoreConnectorShimPath = path.join(
 // @elizaos/core, but `vi.mock("@elizaos/core", importOriginal)` still loads the
 // real core, which pulls @elizaos/logger — whose dist isn't built in the keyless
 // Plugin Tests lane. Resolve it to source (mirrors packages/test/vitest/default.config).
-const loggerSourceEntry = path.join(here, "..", "..", "logger", "src", "index.ts");
+const loggerSourceEntry = path.join(
+  here,
+  "..",
+  "..",
+  "logger",
+  "src",
+  "index.ts",
+);
 
 export const providerSdkAliases = [
   {
