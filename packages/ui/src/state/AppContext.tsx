@@ -48,6 +48,7 @@ import {
   clearAllChatDrafts,
   useChatComposerDraftPersistence,
 } from "./ChatComposerContext.hooks";
+import { publishAppValue, seedAppValue } from "./app-store";
 import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext.hooks";
 import { ConversationMessagesCtx } from "./ConversationMessagesContext.hooks";
 import { AppContext, type AppContextValue, type AppState } from "./internal";
@@ -2721,6 +2722,17 @@ function AppProviderInner({
       setAnalysisMode,
     ],
   );
+
+  // Mirror the context value into the external selector store so useAppSelector
+  // consumers get field-level subscriptions (re-render only on the slice they
+  // read) instead of re-rendering on every context change. seedAppValue keeps
+  // the snapshot fresh during this render (the provider renders before its
+  // children, so no null-window); publishAppValue notifies subscribers from a
+  // commit-time effect (never a setState-during-render).
+  seedAppValue(value);
+  useEffect(() => {
+    publishAppValue(value);
+  }, [value]);
 
   const bootConfig = getBootConfig();
   const bootConfigValue = useMemo(

@@ -1,0 +1,162 @@
+/**
+ * App selector store — a `useSyncExternalStore`-backed mirror of the AppContext
+ * value that gives consumers FIELD-LEVEL subscriptions.
+ *
+ * The problem it solves: `useApp()` returns one monolithic context value
+ * (~300 fields). Plain `useContext` re-renders every consumer whenever ANY field
+ * changes. `useAppSelector(s => s.tab)` re-renders only when the *selected* slice
+ * changes, killing the monolithic-context re-render class without a new
+ * dependency (`useSyncExternalStore` is a React built-in / peer dep).
+ *
+ * Wiring (done once, in AppContext): `seedAppValue(value)` is called during the
+ * provider's render so the snapshot is fresh before any child reads it (no
+ * null-window on mount, since the provider renders top-down before its
+ * children), and `publishAppValue(value)` is called from a commit-time effect so
+ * subscribers are notified *after* render (never a setState-during-render).
+ *
+ * Singleton: the store hangs off `globalThis` (same trick as `useApp.ts`) so a
+ * single instance is shared across the host app and externalized plugin view
+ * bundles, which resolve `@elizaos/ui`/`react` to the host singletons.
+ *
+ * Migration seam: consumers can move from `useApp()` to `useAppSelector` one
+ * file at a time. The store backing can later be swapped (e.g. to zustand)
+ * behind this hook with zero consumer churn.
+ */
+
+import { useCallback, useRef, useSyncExternalStore } from "react";
+import type { AppContextValue } from "./internal";
+
+type Listener = () => void;
+
+interface AppSelectorStore {
+  value: AppContextValue | null;
+  listeners: Set<Listener>;
+}
+
+const appStoreGlobal = globalThis as typeof globalThis & {
+  __ELIZAOS_UI_APP_STORE__?: AppSelectorStore;
+};
+
+if (!appStoreGlobal.__ELIZAOS_UI_APP_STORE__) {
+  appStoreGlobal.__ELIZAOS_UI_APP_STORE__ = {
+    value: null,
+    listeners: new Set<Listener>(),
+  };
+}
+
+const store = appStoreGlobal.__ELIZAOS_UI_APP_STORE__;
+
+/**
+ * Keep the snapshot fresh during the provider's render (top-down, before any
+ * child reads it). Render-safe: it only writes a module field, never notifies.
+ */
+export function seedAppValue(value: AppContextValue): void {
+  store.value = value;
+}
+
+/**
+ * Notify subscribers of a new value. Call this from a commit-time effect so the
+ * notification (which schedules subscriber re-renders) never runs during render.
+ */
+export function publishAppValue(value: AppContextValue): void {
+  if (store.value === value && store.listeners.size === 0) return;
+  store.value = value;
+  for (const listener of store.listeners) listener();
+}
+
+function subscribe(listener: Listener): () => void {
+  store.listeners.add(listener);
+  return () => {
+    store.listeners.delete(listener);
+  };
+}
+
+function getAppValueOrThrow(): AppContextValue {
+  const value = store.value;
+  if (value == null) {
+    throw new Error(
+      "useAppSelector used before AppProvider rendered — wrap the consumer in <AppProvider> (or call __setAppValueForTests in tests).",
+    );
+  }
+  return value;
+}
+
+function shallowEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (
+    typeof a !== "object" ||
+    a === null ||
+    typeof b !== "object" ||
+    b === null
+  ) {
+    return false;
+  }
+  const aKeys = Object.keys(a as Record<string, unknown>);
+  const bKeys = Object.keys(b as Record<string, unknown>);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const key of aKeys) {
+    if (
+      !Object.prototype.hasOwnProperty.call(b, key) ||
+      !Object.is(
+        (a as Record<string, unknown>)[key],
+        (b as Record<string, unknown>)[key],
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Subscribe to a slice of the AppContext value. Re-renders only when the
+ * selected value changes per `isEqual` (default `Object.is`). For object/array
+ * selections, pass `shallowEqual` (or use {@link useAppSelectorShallow}) so a
+ * fresh-but-equal object reference does not force a re-render.
+ *
+ * Prefer a stable (module-level or `useCallback`'d) selector; an inline selector
+ * still works correctly (the snapshot is memoized in a ref).
+ */
+export function useAppSelector<T>(
+  selector: (value: AppContextValue) => T,
+  isEqual: (a: T, b: T) => boolean = Object.is,
+): T {
+  // Memoize the selected snapshot so getSnapshot returns a referentially-stable
+  // value when nothing relevant changed — required to avoid useSyncExternalStore
+  // infinite loops and to bail out of re-renders on equal slices.
+  const lastRef = useRef<{ value: AppContextValue; selected: T } | null>(null);
+
+  const getSnapshot = useCallback((): T => {
+    const value = getAppValueOrThrow();
+    const last = lastRef.current;
+    if (last && last.value === value) {
+      // Same value identity → selected slice cannot have changed.
+      return last.selected;
+    }
+    const selected = selector(value);
+    if (last && isEqual(last.selected, selected)) {
+      // Value changed but the selected slice is equal → keep the prior ref.
+      lastRef.current = { value, selected: last.selected };
+      return last.selected;
+    }
+    lastRef.current = { value, selected };
+    return selected;
+  }, [selector, isEqual]);
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/** {@link useAppSelector} with shallow equality — use for object/array slices. */
+export function useAppSelectorShallow<T>(
+  selector: (value: AppContextValue) => T,
+): T {
+  return useAppSelector(selector, shallowEqual);
+}
+
+/** Test-only: seed the store and notify subscribers (mirrors a publish). */
+export function __setAppValueForTests(value: AppContextValue | null): void {
+  store.value = value;
+  for (const listener of store.listeners) listener();
+}
+
+export { shallowEqual as __appShallowEqual };
