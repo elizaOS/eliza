@@ -17,6 +17,25 @@ interface EmbeddingQueueItem {
  * This service listens for EMBEDDING_GENERATION_REQUESTED events
  * and processes them in a queue to avoid blocking the main runtime
  */
+
+/**
+ * Drain cadence for the embedding queue WHEN a batch handler is registered.
+ * A turn's ~19 memories trickle in ~250ms apart across the ~5s turn; the prior
+ * 100ms drain caught only 1 each (a "batch of 1" — no real batching). ~1s lets
+ * ~4–10 accumulate so one drain embeds them in a single TEXT_EMBEDDING_BATCH
+ * request — ~2–5 batched calls instead of ~19 serial, taking post-turn
+ * embedding ~30s → ~5–7s. It's background work, so the sub-second drain delay
+ * is invisible. Env-tunable (`ELIZA_EMBEDDING_DRAIN_INTERVAL_MS`) for prod.
+ */
+const EMBEDDING_BATCH_DRAIN_INTERVAL_MS = (() => {
+	const raw = Number(
+		typeof process !== "undefined"
+			? process.env.ELIZA_EMBEDDING_DRAIN_INTERVAL_MS
+			: undefined,
+	);
+	return Number.isFinite(raw) && raw > 0 ? raw : 1000;
+})();
+
 export class EmbeddingGenerationService extends Service {
 	static serviceType = "embedding-generation";
 	capabilityDescription =
@@ -96,7 +115,12 @@ export class EmbeddingGenerationService extends Service {
 			name: EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
 			taskDescription: "Embedding generation drain",
 			batchSize: 10,
-			drainIntervalMs: 100,
+			// Let memories accumulate into real batches when we can batch-embed;
+			// keep the original tight 100ms for the per-item path (no accumulation
+			// benefit there, and a longer wait would just delay each embed).
+			drainIntervalMs: supportsBatchEmbedding
+				? EMBEDDING_BATCH_DRAIN_INTERVAL_MS
+				: 100,
 			getPriority: (item) => item.priority,
 			maxParallel: 10,
 			maxRetriesAfterFailure: 3,
