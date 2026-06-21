@@ -10,7 +10,7 @@ import type {
   State,
 } from "@elizaos/core";
 import type { LifeOpsGoogleCapability } from "../contracts/index.js";
-import { INTERNAL_URL } from "../lifeops/access.js";
+import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import { getConnectorRegistry } from "../lifeops/connectors/index.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { darwinUnavailableActionResult, isDarwin } from "../platform/host.js";
@@ -201,24 +201,6 @@ function unsupportedOperation(
       connector,
       subaction,
       error: "UNSUPPORTED_OPERATION",
-    },
-  };
-}
-
-function missingParamResult(
-  connector: string,
-  subaction: ConnectorSubaction,
-  missing: string[],
-): ActionResult {
-  return {
-    success: false,
-    text: `[${ACTION_NAME}] ${connector}/${subaction} requires: ${missing.join(", ")}.`,
-    data: {
-      actionName: ACTION_NAME,
-      connector,
-      subaction,
-      error: "MISSING_PARAMS",
-      missing,
     },
   };
 }
@@ -962,10 +944,9 @@ async function dispatchDiscord(
       const status = await service.getDiscordConnectorStatus(side);
       return {
         success: status.connected,
-        text:
-          status.connected
-            ? `Discord is connected through @elizaos/plugin-discord (side=${side}).`
-            : `Discord setup is managed by @elizaos/plugin-discord (side=${side}). Configure the Discord connector plugin, then check status again.`,
+        text: status.connected
+          ? `Discord is connected through @elizaos/plugin-discord (side=${side}).`
+          : `Discord setup is managed by @elizaos/plugin-discord (side=${side}). Configure the Discord connector plugin, then check status again.`,
         data: {
           actionName: ACTION_NAME,
           connector: "discord",
@@ -1483,6 +1464,14 @@ export const connectorAction: Action & {
     state?: State,
     options?: HandlerOptions,
   ): Promise<ActionResult> => {
+    if (!(await hasLifeOpsAccess(runtime, message))) {
+      return {
+        success: false,
+        text: "Connector account actions are restricted to the owner.",
+        data: { actionName: ACTION_NAME, error: "PERMISSION_DENIED" },
+      };
+    }
+
     const merged = mergeParams(message, options);
     if (merged.action === undefined && merged.subaction !== undefined) {
       merged.action = merged.subaction;

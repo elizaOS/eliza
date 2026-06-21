@@ -16,6 +16,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { runAutofillHandler } from "./autofill.js";
 import { runPasswordManagerHandler } from "./password-manager.js";
 
@@ -217,6 +218,14 @@ export const credentialsAction: Action & {
     state: State | undefined,
     options: HandlerOptions | undefined,
   ): Promise<ActionResult> => {
+    if (!(await hasLifeOpsAccess(runtime, message))) {
+      return {
+        success: false,
+        text: "Credentials actions are restricted to the owner.",
+        data: { actionName: ACTION_NAME, error: "PERMISSION_DENIED" },
+      };
+    }
+
     const params = readPlannerParams(options);
     const subactionRaw = params.action ?? params.subaction;
     const subaction =

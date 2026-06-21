@@ -14,6 +14,7 @@ import {
   sendTwilioVoiceCall,
   type TwilioDeliveryResult,
 } from "@elizaos/plugin-phone/twilio";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { LifeOpsService } from "../lifeops/service.js";
 
 const ACTION_NAME = "VOICE_CALL";
@@ -213,20 +214,6 @@ async function readPendingCallDraft(
   );
 }
 
-async function writePendingCallDraft(
-  runtime: IAgentRuntime,
-  roomId: string,
-  draft: PendingCallDraft,
-): Promise<void> {
-  if (typeof runtime.setCache !== "function") {
-    return;
-  }
-  await runtime.setCache(
-    getPendingCallCacheKey(roomId, draft.actionName),
-    draft,
-  );
-}
-
 async function clearPendingCallDraft(
   runtime: IAgentRuntime,
   roomId: string,
@@ -236,47 +223,6 @@ async function clearPendingCallDraft(
     return;
   }
   await runtime.deleteCache(getPendingCallCacheKey(roomId, actionName));
-}
-
-async function enqueueCallApprovalRequest(args: {
-  runtime: IAgentRuntime;
-  message: Memory;
-  actionName: PendingCallActionName;
-  to?: string;
-  body: string;
-}): Promise<string | null> {
-  if (typeof args.runtime.createTask !== "function") {
-    return null;
-  }
-
-  return await args.runtime.createTask({
-    name: `${args.actionName}_${Date.now()}`,
-    description:
-      args.actionName === "CALL_USER"
-        ? `Approve calling the owner${args.body ? ` with message: ${args.body}` : ""}.`
-        : `Approve calling ${args.to ?? "the selected recipient"}${args.body ? ` with message: ${args.body}` : ""}.`,
-    roomId: args.message.roomId,
-    entityId: args.message.entityId,
-    tags: ["AWAITING_CHOICE", "APPROVAL", args.actionName],
-    metadata: {
-      options: [
-        { name: "confirm", description: "Place the call" },
-        { name: "cancel", description: "Do not call" },
-      ],
-      approvalRequest: {
-        timeoutMs: 24 * 60 * 60 * 1000,
-        timeoutDefault: "cancel",
-        createdAt: Date.now(),
-        isAsync: true,
-      },
-      actionName: args.actionName,
-      channel: "phone_call",
-      payload: {
-        to: args.to ?? null,
-        message: args.body,
-      },
-    },
-  });
 }
 
 async function resolveExternalCallRecipient(args: {
@@ -906,6 +852,14 @@ export const voiceCallAction: Action & {
   ],
 
   handler: async (runtime, message, state, options): Promise<ActionResult> => {
+    if (!(await hasLifeOpsAccess(runtime, message))) {
+      return {
+        success: false,
+        text: "Voice-call actions are restricted to the owner.",
+        data: { actionName: ACTION_NAME, error: "PERMISSION_DENIED" },
+      };
+    }
+
     const resolved = await resolveActionArgs<
       VoiceCallSubaction,
       VoiceCallParams
