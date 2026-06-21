@@ -24,6 +24,7 @@ export const ALL_TRAINING_TASKS: readonly TrajectoryTrainingTask[] = [
   "action_planner",
   "response",
   "media_description",
+  "view_context",
 ] as const;
 
 export interface PerTaskOverride {

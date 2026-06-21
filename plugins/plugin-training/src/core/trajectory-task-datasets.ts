@@ -20,7 +20,8 @@ export type TrajectoryTrainingTask =
   | "context_routing"
   | "action_planner"
   | "response"
-  | "media_description";
+  | "media_description"
+  | "view_context";
 
 export interface TrajectoryTaskDatasetPaths {
   shouldRespondPath: string;
@@ -28,6 +29,7 @@ export interface TrajectoryTaskDatasetPaths {
   actionPlannerPath: string;
   responsePath: string;
   mediaDescriptionPath: string;
+  viewContextPath: string;
   summaryPath: string;
 }
 
@@ -65,6 +67,7 @@ const TASK_FILE_NAMES: Record<TrajectoryTrainingTask, string> = {
   action_planner: "action_planner_trajectories.jsonl",
   response: "response_trajectories.jsonl",
   media_description: "media_description_trajectories.jsonl",
+  view_context: "view_context_trajectories.jsonl",
 };
 
 const NATIVE_MODEL_BOUNDARIES = new Set<string>(ELIZA_NATIVE_MODEL_BOUNDARIES);
@@ -92,6 +95,7 @@ function createEmptyExampleMap(): TaskExampleMap {
     action_planner: [],
     response: [],
     media_description: [],
+    view_context: [],
   };
 }
 
@@ -102,6 +106,7 @@ function createEmptyCountMap(): TaskCountMap {
     action_planner: 0,
     response: 0,
     media_description: 0,
+    view_context: 0,
   };
 }
 
@@ -112,6 +117,7 @@ function createEmptyTrajectoryIdMap(): TaskTrajectoryIdMap {
     action_planner: new Set<string>(),
     response: new Set<string>(),
     media_description: new Set<string>(),
+    view_context: new Set<string>(),
   };
 }
 
@@ -137,7 +143,8 @@ function normalizeTrainingTask(value: unknown): TrajectoryTrainingTask | null {
     normalized === "action_planner" ||
     normalized === "response" ||
     normalized === "reply" ||
-    normalized === "media_description"
+    normalized === "media_description" ||
+    normalized === "view_context"
   ) {
     return normalized === "reply" ? "response" : normalized;
   }
@@ -181,6 +188,19 @@ function hasMessageHandlerJsonFields(text: string): boolean {
   if (!parsed) return false;
   const candidate = getMessageHandlerCandidate(parsed);
   return Boolean(candidate);
+}
+
+/**
+ * Contextual view-selection call (the `view_context` evaluator). Its response is
+ * a `{viewId, reason?}` JSON object — `viewId` is a registered view id or the
+ * decline sentinel ("none"). We classify on the structural `viewId` string field
+ * rather than a value allowlist so the bucket survives the matcher/registry
+ * growing new views, mirroring how `hasContextRoutingFields` keys on shape.
+ */
+function hasViewContextFields(text: string): boolean {
+  const parsed = parseJsonObject(text);
+  if (!parsed) return false;
+  return typeof parsed.viewId === "string" && parsed.viewId.trim().length > 0;
 }
 
 function looksLikePlannerCall(call: TrajectoryCallLike): boolean {
@@ -297,6 +317,14 @@ function inferTasksForCall(call: TrajectoryCallLike): TrajectoryTrainingTask[] {
   }
 
   if (
+    hints.includes("view_context") ||
+    hints.includes("view_selection") ||
+    hasViewContextFields(response)
+  ) {
+    tasks.add("view_context");
+  }
+
+  if (
     hints.includes("response") ||
     hints.includes("reply") ||
     hints.includes("message_response")
@@ -335,6 +363,10 @@ function buildExampleForTask(
     if (!normalizeMessageHandlerJson(response)) {
       return null;
     }
+  }
+
+  if (task === "view_context" && !hasViewContextFields(response)) {
+    return null;
   }
 
   const row = buildElizaNativeTrajectoryRows([trajectory]).find(
@@ -398,6 +430,9 @@ function isNativeRowUsableForTask(
   if (task === "should_respond" || task === "context_routing") {
     return normalizeMessageHandlerJson(row.response.text) !== null;
   }
+  if (task === "view_context") {
+    return hasViewContextFields(row.response.text);
+  }
   return true;
 }
 
@@ -422,6 +457,7 @@ function collectTrajectoryExamplesByTask(
       "action_planner",
       "response",
       "media_description",
+      "view_context",
     ],
   );
   const examples = createEmptyExampleMap();
@@ -542,6 +578,7 @@ export async function exportTrajectoryTaskDatasets(
     action_planner: examples.action_planner.length,
     response: examples.response.length,
     media_description: examples.media_description.length,
+    view_context: examples.view_context.length,
   };
 
   const paths: TrajectoryTaskDatasetPaths = {
@@ -550,6 +587,7 @@ export async function exportTrajectoryTaskDatasets(
     actionPlannerPath: join(outputDir, TASK_FILE_NAMES.action_planner),
     responsePath: join(outputDir, TASK_FILE_NAMES.response),
     mediaDescriptionPath: join(outputDir, TASK_FILE_NAMES.media_description),
+    viewContextPath: join(outputDir, TASK_FILE_NAMES.view_context),
     summaryPath: join(outputDir, "trajectory_dataset_summary.json"),
   };
   const summary: TrajectoryTaskDatasetSummary = {
@@ -568,6 +606,7 @@ export async function exportTrajectoryTaskDatasets(
       "action_planner",
       "response",
       "media_description",
+      "view_context",
     ].filter(
       (task) => tasks?.includes(task as TrajectoryTrainingTask) ?? true,
     ) as TrajectoryTrainingTask[],
@@ -601,6 +640,11 @@ export async function exportTrajectoryTaskDatasets(
         sourceTrajectoryCount:
           extraction.sourceTrajectoryIds.media_description.size,
       },
+      view_context: {
+        exampleCount: counts.view_context,
+        sourceCallCount: extraction.sourceCallCounts.view_context,
+        sourceTrajectoryCount: extraction.sourceTrajectoryIds.view_context.size,
+      },
     },
   };
 
@@ -623,6 +667,10 @@ export async function exportTrajectoryTaskDatasets(
   await writeFile(
     paths.mediaDescriptionPath,
     `${examples.media_description.map((example) => JSON.stringify(example)).join("\n")}${examples.media_description.length > 0 ? "\n" : ""}`,
+  );
+  await writeFile(
+    paths.viewContextPath,
+    `${examples.view_context.map((example) => JSON.stringify(example)).join("\n")}${examples.view_context.length > 0 ? "\n" : ""}`,
   );
 
   await writeFile(paths.summaryPath, JSON.stringify(summary, null, 2));

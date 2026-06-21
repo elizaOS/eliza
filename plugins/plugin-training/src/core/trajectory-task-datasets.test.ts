@@ -280,4 +280,88 @@ describe("trajectory task datasets", () => {
     ]);
     expect(examples.should_respond).toHaveLength(1);
   });
+
+  // #8797: the contextual view evaluator (`view_context`) is a first-class
+  // training task so the nightly trigger produces an optimized artifact through
+  // the normal path. Calls are bucketed on the structural `{viewId}` response
+  // shape (the evaluator's output), independent of how the merged evaluator call
+  // is tagged.
+  const viewContextTrajectory = (response: string): Trajectory => ({
+    trajectoryId: "traj-vc",
+    agentId: "agent-1",
+    startTime: 1,
+    steps: [
+      {
+        stepId: "step-1",
+        timestamp: 1,
+        llmCalls: [
+          {
+            callId: "call-vc",
+            // Neutral purpose: classification must come from the response shape,
+            // not a tag, since the post-turn EvaluatorService merges the call.
+            purpose: "evaluator",
+            systemPrompt: "Infer the situational view.",
+            userPrompt: "my landlord is ghosting me about the lease",
+            response,
+          },
+        ],
+      },
+    ],
+  });
+
+  it("buckets a {viewId} evaluator response into the view_context task", () => {
+    const examples = extractTrajectoryExamplesByTask(
+      [
+        viewContextTrajectory(
+          JSON.stringify({ viewId: "task-coordinator", reason: "legal task" }),
+        ),
+      ],
+      ["view_context"],
+    );
+    expect(examples.view_context).toHaveLength(1);
+    const example = examples.view_context[0];
+    if (!example) throw new Error("Expected one view_context example");
+    expect(JSON.parse(example.response.text)).toEqual({
+      viewId: "task-coordinator",
+      reason: "legal task",
+    });
+    expect(example.metadata).toMatchObject({
+      task_type: "view_context",
+      source_dataset: "eliza_native/view_context",
+    });
+  });
+
+  it("does not bucket a plain reply as view_context", () => {
+    const examples = extractTrajectoryExamplesByTask(
+      [viewContextTrajectory("Sorry to hear that — want me to draft a notice?")],
+      ["view_context"],
+    );
+    expect(examples.view_context).toHaveLength(0);
+  });
+
+  it("exports a view_context dataset file + count", async () => {
+    const outputDir = await mkdtemp(
+      join(tmpdir(), "trajectory-task-datasets-vc-"),
+    );
+    try {
+      const exported = await exportTrajectoryTaskDatasets(
+        [
+          viewContextTrajectory(
+            JSON.stringify({ viewId: "calendar", reason: "scheduling" }),
+          ),
+        ],
+        outputDir,
+        ["view_context"],
+      );
+      expect(exported.counts.view_context).toBe(1);
+      expect(exported.paths.viewContextPath).toContain(
+        "view_context_trajectories.jsonl",
+      );
+      const written = await readFile(exported.paths.viewContextPath, "utf-8");
+      expect(written.trim().length).toBeGreaterThan(0);
+      expect(exported.summary.taskMetrics.view_context.exampleCount).toBe(1);
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
 });

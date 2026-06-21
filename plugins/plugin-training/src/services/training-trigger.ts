@@ -128,6 +128,7 @@ function emptyCounters(): Record<TrajectoryTrainingTask, number> {
     action_planner: 0,
     response: 0,
     media_description: 0,
+    view_context: 0,
   };
 }
 
@@ -237,6 +238,14 @@ function tasksForTrajectory(
       ) {
         tasks.add("context_routing");
       }
+      if (
+        hint.includes("view_context") ||
+        hint.includes("view_selection") ||
+        (typeof call.response === "string" &&
+          /"viewId"\s*:/.test(call.response))
+      ) {
+        tasks.add("view_context");
+      }
     }
   }
   // Default: a trajectory with any LLM call counts toward `response`.
@@ -304,6 +313,7 @@ export class TrainingTriggerService extends Service {
       action_planner: 0,
       response: 0,
       media_description: 0,
+      view_context: 0,
     };
     const perTaskCooldownMs: Record<TrajectoryTrainingTask, number> = {
       should_respond: 0,
@@ -311,6 +321,7 @@ export class TrainingTriggerService extends Service {
       action_planner: 0,
       response: 0,
       media_description: 0,
+      view_context: 0,
     };
     for (const task of ALL_TRAINING_TASKS) {
       const policy = resolveTaskPolicy(config, task);

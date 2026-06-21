@@ -19,6 +19,7 @@ export type DspyArtifactTask =
   | "action_planner"
   | "response"
   | "media_description"
+  | "view_context"
   | "action_descriptions"
   | "autonomy";
 

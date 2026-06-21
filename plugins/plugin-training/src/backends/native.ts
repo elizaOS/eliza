@@ -44,6 +44,7 @@ import {
   runInstructionSearch,
   runPromptEvolution,
   scorePlannerAction,
+  scoreViewSelection,
   type UseModelHandler,
 } from "../optimizers/index.js";
 
@@ -431,7 +432,12 @@ export async function runNativeBackend(
   const adapter =
     options.adapter ?? createRuntimeAdapter(options.runtime.useModel);
   const scorer = createPromptScorer(adapter, {
-    compare: options.task === "action_planner" ? scorePlannerAction : undefined,
+    compare:
+      options.task === "action_planner"
+        ? scorePlannerAction
+        : options.task === "view_context"
+          ? scoreViewSelection
+          : undefined,
   });
 
   if (dataset.length === 0) {

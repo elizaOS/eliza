@@ -95,6 +95,7 @@ function emptyTaskCounters(): Record<TrajectoryTrainingTask, number> {
     action_planner: 0,
     response: 0,
     media_description: 0,
+    view_context: 0,
   };
 }
 

@@ -126,6 +126,7 @@ function taskPathMap(
     action_planner: paths.actionPlannerPath,
     response: paths.responsePath,
     media_description: paths.mediaDescriptionPath,
+    view_context: paths.viewContextPath,
   };
 }
 
@@ -360,7 +361,7 @@ function buildViewerHtml(input: {
   <script type="application/json" id="viewer-data">${escapeScriptJson(data)}</script>
   <script>
     const data = JSON.parse(document.getElementById("viewer-data").textContent);
-    const tasks = ["should_respond", "context_routing", "action_planner", "response", "media_description"];
+    const tasks = ["should_respond", "context_routing", "action_planner", "response", "media_description", "view_context"];
     const pretty = (value) => JSON.stringify(value, null, 2);
     const metric = (label, value) => '<div class="metric"><strong>' + value + '</strong><span>' + label + '</span></div>';
     function renderOverview() {
@@ -500,6 +501,7 @@ function emptyTaskCounts(): Record<TrajectoryTrainingTask, number> {
     action_planner: 0,
     response: 0,
     media_description: 0,
+    view_context: 0,
   };
 }
 
@@ -513,6 +515,7 @@ function emptyTaskExamples(): Record<
     action_planner: [],
     response: [],
     media_description: [],
+    view_context: [],
   };
 }
 

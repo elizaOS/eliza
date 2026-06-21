@@ -295,7 +295,7 @@ async function cmdCompare(args: string[]) {
     console.error("");
     console.error("Options:");
     console.error(
-      "  --task <task>          One of: should_respond, context_routing, action_planner, response, media_description",
+      "  --task <task>          One of: should_respond, context_routing, action_planner, response, media_description, view_context",
     );
     console.error(
       "  --scorer <kind>        agreement | planner_action (default: derived from --task)",
@@ -503,6 +503,7 @@ async function cmdExportTrajectories(args: string[]) {
     action_planner: [],
     response: [],
     media_description: [],
+    view_context: [],
   };
 
   const agentDirs = readdirSync(inputDir).filter((name) => {
@@ -1163,6 +1164,7 @@ const OPTIMIZED_PROMPT_TASKS_CLI = [
   "action_planner",
   "response",
   "media_description",
+  "view_context",
 ] as const;
 type OptimizedPromptTaskCli = (typeof OPTIMIZED_PROMPT_TASKS_CLI)[number];
 
@@ -1323,7 +1325,7 @@ Commands:
     --baseline PATH    Path to baseline prompt (.txt)
     --variant PATH     Path to variant prompt (.txt)
     --dataset PATH     Path to JSONL dataset (eliza_native_v1)
-    --task NAME        should_respond | context_routing | action_planner | response | media_description
+    --task NAME        should_respond | context_routing | action_planner | response | media_description | view_context
     --scorer KIND      agreement | planner_action (default: from --task)
     --mode MODE        vs_historical (default) | pairwise
     --max-examples N   Cap evaluations
@@ -1335,7 +1337,8 @@ Commands:
 
     rollback-prompt   Flip the optimized-prompt 'current' and 'previous' symlinks
       <task>            Required positional: should_respond | context_routing |
-                      action_planner | response | media_description
+                      action_planner | response | media_description |
+                      view_context
     --store-root DIR  Override the optimized-prompts store root (default:
                       $ELIZA_STATE_DIR / ~/.eliza/optimized-prompts)
 

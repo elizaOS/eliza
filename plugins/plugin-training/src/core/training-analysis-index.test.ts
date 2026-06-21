@@ -99,6 +99,7 @@ describe("training analysis index", () => {
           action_planner: 1,
           response: 1,
           media_description: 0,
+          view_context: 0,
         },
         taskFiles: 2,
         taskExamples: 2,

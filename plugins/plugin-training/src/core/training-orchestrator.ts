@@ -241,6 +241,22 @@ rules:
 return:
 JSON object only with summary, observations, text, uncertainty, and taskRelevantDetails.`;
 
+const VIEW_CONTEXT_BASELINE = `task: Infer which app view fits the user's current situation when they did not name one.
+
+context_object:
+{{contextObject}}
+
+trajectory:
+{{trajectory}}
+
+rules:
+- only choose a view when the message clearly implies an activity that maps to one (e.g. coding work → task-coordinator, scheduling → calendar, spending → finances)
+- return "none" when the message names a view directly (the navigation action handles those) or implies no specific surface
+- never guess; ambiguous or chit-chat turns return "none"
+
+return:
+JSON object only with viewId (a registered view id or "none") and an optional reason.`;
+
 function defaultBaselineForTask(task: TrajectoryTrainingTask): string {
   switch (task) {
     case "should_respond":
@@ -253,6 +269,8 @@ function defaultBaselineForTask(task: TrajectoryTrainingTask): string {
       return RESPONSE_BASELINE;
     case "media_description":
       return MEDIA_DESCRIPTION_BASELINE;
+    case "view_context":
+      return VIEW_CONTEXT_BASELINE;
   }
 }
 
@@ -284,6 +302,8 @@ function pathForTask(
       return paths.responsePath;
     case "media_description":
       return paths.mediaDescriptionPath;
+    case "view_context":
+      return paths.viewContextPath;
   }
 }
 
@@ -450,6 +470,11 @@ export async function loadBaselineForTask(
           "IMAGE_DESCRIPTION_TEMPLATE",
         ]) ?? defaultBaselineForTask(task)
       );
+    case "view_context":
+      // The runtime exposes no core template for the contextual view evaluator;
+      // its baseline lives in @elizaos/plugin-app-control. Use the bundled
+      // baseline so the optimizer always has a concrete starting prompt.
+      return defaultBaselineForTask(task);
   }
 }
 

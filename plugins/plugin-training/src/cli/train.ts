@@ -20,6 +20,7 @@ const ALLOWED_TASKS = new Set([
   "action_planner",
   "response",
   "media_description",
+  "view_context",
 ]);
 const ALLOWED_OPTIMIZERS = new Set<string>(NATIVE_OPTIMIZERS);
 
@@ -29,7 +30,7 @@ const HELP = `Usage:
 Options:
   --backend NAME       native (required)
   --dataset PATH       Path to eliza_native_v1 JSONL file (required)
-  --task NAME          should_respond | context_routing | action_planner | response | media_description
+  --task NAME          should_respond | context_routing | action_planner | response | media_description | view_context
   --optimizer NAME     instruction-search | prompt-evolution | gepa
                        | bootstrap-fewshot | dspy-bootstrap-fewshot
                        | dspy-copro | dspy-mipro
