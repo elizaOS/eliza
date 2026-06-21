@@ -73,6 +73,11 @@ const FREEMAN_WAV = fileURLToPath(
 );
 const HAVE_FREEMAN = existsSync(FREEMAN_WAV);
 
+// NOTE: vitest workers do not run the bun runtime, so bun:ffi is unavailable and
+// this suite skips under `vitest`. The RUNNABLE real-ASR lane is the direct-bun
+// smoke at scripts/asr-real-smoke.ts (`bun run test:asr:real`), which actually
+// loads the fused lib and transcribes real audio. This vitest suite stays for
+// IDE/local runs under a bun-capable runner.
 describe.skipIf(!isBun || !LIB_PATH || !HAVE_BUNDLE)(
 	"fused ASR v12 per-word timings — real FFI on real audio",
 	() => {
