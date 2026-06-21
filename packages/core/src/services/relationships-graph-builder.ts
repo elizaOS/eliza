@@ -7,7 +7,7 @@ import type {
 	Room,
 	UUID,
 } from "../types/index";
-import { asRecord } from "../utils/type-guards";
+import { asRecord } from "../utils/type-guards.ts";
 
 /** Aligns with `MergeCandidateEvidence` in `relationships.ts` (kept here to avoid a circular import). */
 export type RelationshipsMergeProposalEvidence = {
