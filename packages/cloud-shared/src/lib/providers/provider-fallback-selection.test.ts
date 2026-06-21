@@ -37,17 +37,13 @@ describe("getProviderForModelWithFallback (native-first, OpenRouter backup)", ()
     expect(bare.primary.name).toBe("cerebras");
     expect(bare.fallback).toBeNull();
 
-    const decorated = getProviderForModelWithFallback(
-      "openai/gpt-oss-120b:nitro",
-    );
+    const decorated = getProviderForModelWithFallback("openai/gpt-oss-120b:nitro");
     expect(decorated.primary.name).toBe("cerebras");
     expect(decorated.fallback).toBeNull();
   });
 
   test("Cerebras free ids stay on the gateway path, not OpenAI direct", () => {
-    const { primary, fallback } = getProviderForModelWithFallback(
-      "openai/gpt-oss-120b:free",
-    );
+    const { primary, fallback } = getProviderForModelWithFallback("openai/gpt-oss-120b:free");
     expect(primary.name).toBe("openrouter");
     expect(fallback).toBeNull();
   });
@@ -56,9 +52,7 @@ describe("getProviderForModelWithFallback (native-first, OpenRouter backup)", ()
     const previous = process.env.CEREBRAS_API_KEY;
     delete process.env.CEREBRAS_API_KEY;
     try {
-      const { primary, fallback } = getProviderForModelWithFallback(
-        "openai/gpt-oss-120b:nitro",
-      );
+      const { primary, fallback } = getProviderForModelWithFallback("openai/gpt-oss-120b:nitro");
       expect(primary.name).toBe("openrouter");
       expect(fallback).toBeNull();
     } finally {

@@ -2,11 +2,6 @@
   "version": "1.0.0",
   "actions": [
     {
-      "name": "${key.toUpperCase()}_COMMAND",
-      "description": "",
-      "parameters": []
-    },
-    {
       "name": "AINEX_BOW",
       "description": "Play the `bow` action group on the AiNex robot.",
       "parameters": [],
@@ -945,6 +940,12 @@
       ]
     },
     {
+      "name": "COMMANDS_COMMAND",
+      "description": "List all commands",
+      "parameters": [],
+      "similes": ["/commands", "/cmds"]
+    },
+    {
       "name": "COMPUTER_USE",
       "description": "computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
       "parameters": [
@@ -1340,6 +1341,21 @@
           }
         }
       ]
+    },
+    {
+      "name": "CONTEXT_COMMAND",
+      "description": "Show current context information",
+      "parameters": [
+        {
+          "name": "mode",
+          "description": "Output mode (list, detail, json)",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "similes": ["/context", "/ctx"]
     },
     {
       "name": "CREDENTIALS",
@@ -2181,6 +2197,12 @@
       ]
     },
     {
+      "name": "HELP_COMMAND",
+      "description": "Show available commands",
+      "parameters": [],
+      "similes": ["/help", "/h", "/?"]
+    },
+    {
       "name": "IDENTIFY_SPEAKER",
       "description": "Attach a name to the most recently heard, still-unidentified voice so the agent recognizes that person across sessions. Use when the owner says who a recent speaker is (\"that was Jill\", \"this is my friend Sam\").",
       "parameters": [],
@@ -2534,6 +2556,12 @@
           }
         }
       ]
+    },
+    {
+      "name": "MODELS_COMMAND",
+      "description": "List available models",
+      "parameters": [],
+      "similes": ["/models"]
     },
     {
       "name": "MUSIC",
@@ -4182,6 +4210,12 @@
       "similes": ["BEGIN_TRANSCRIPTION", "START_RECORDING", "RECORD_TRANSCRIPT"]
     },
     {
+      "name": "STATUS_COMMAND",
+      "description": "Show current session status",
+      "parameters": [],
+      "similes": ["/status", "/s"]
+    },
+    {
       "name": "STOP_TRANSCRIPTION",
       "description": "Stop the long-form voice transcription currently running on the user's device.",
       "parameters": [],
@@ -5067,6 +5101,12 @@
       ]
     },
     {
+      "name": "USAGE_COMMAND",
+      "description": "Show token usage",
+      "parameters": [],
+      "similes": ["/usage"]
+    },
+    {
       "name": "USE_SKILL",
       "description": "Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
       "parameters": [
@@ -5469,6 +5509,12 @@
           }
         }
       ]
+    },
+    {
+      "name": "WHOAMI_COMMAND",
+      "description": "Show your identity information",
+      "parameters": [],
+      "similes": ["/whoami", "/who"]
     },
     {
       "name": "WINDOW",

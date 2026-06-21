@@ -1143,6 +1143,79 @@ function extractConstLiterals(src) {
   return constants;
 }
 
+function readArrayLiteralAfter(src, marker) {
+  const markerIndex = src.indexOf(marker);
+  if (markerIndex < 0) return [];
+  const bracketStart = src.indexOf("[", markerIndex);
+  if (bracketStart < 0) return [];
+  const source = readBalancedArraySource(src, bracketStart);
+  if (!source) return [];
+  const parsed = parseTsLiteralValue(source, 0);
+  return Array.isArray(parsed.value) ? parsed.value : [];
+}
+
+function dynamicCommandActionDocs(filePath, name) {
+  const relativePath = path.relative(REPO_ROOT, filePath);
+  const commandActionNameTemplate = "$" + "{key.toUpperCase()}_COMMAND";
+  if (
+    relativePath !==
+      path.join(
+        "plugins",
+        "plugin-commands",
+        "src",
+        "actions",
+        "command-actions.ts",
+      ) ||
+    name !== commandActionNameTemplate
+  ) {
+    return null;
+  }
+
+  const pluginCommandsRoot = path.join(PLUGINS_ROOT, "plugin-commands");
+  const handlersSrc = readText(
+    path.join(pluginCommandsRoot, "src", "actions", "handlers.ts"),
+  );
+  const gateSafeKeys = extractConstLiterals(handlersSrc).get(
+    "GATE_SAFE_COMMAND_KEYS",
+  );
+  if (!Array.isArray(gateSafeKeys)) return [];
+
+  const registrySrc = readText(
+    path.join(pluginCommandsRoot, "src", "registry.ts"),
+  );
+  const commandDefinitions = readArrayLiteralAfter(
+    registrySrc,
+    "DEFAULT_COMMANDS",
+  );
+  const definitionsByKey = new Map();
+  for (const definition of commandDefinitions) {
+    if (isRecordValue(definition) && typeof definition.key === "string") {
+      definitionsByKey.set(definition.key, definition);
+    }
+  }
+
+  return gateSafeKeys
+    .filter((key) => typeof key === "string")
+    .map((key) => {
+      const definition = definitionsByKey.get(key);
+      const aliases = Array.isArray(definition?.textAliases)
+        ? definition.textAliases.filter((alias) => typeof alias === "string")
+        : [];
+      const doc = {
+        name: `${key.toUpperCase()}_COMMAND`,
+        description:
+          typeof definition?.description === "string"
+            ? definition.description
+            : "",
+        parameters: sanitizeParameters(definition?.args),
+      };
+      if (aliases.length > 0) {
+        doc.similes = aliases;
+      }
+      return doc;
+    });
+}
+
 function resolveRequireActionSpecName(src, source) {
   const match = source.trim().match(/^([A-Za-z_$][A-Za-z0-9_$]*)\.name$/);
   if (!match) return null;
@@ -1567,6 +1640,15 @@ function main() {
       if (!isRegisteredActionObject(filePath, obj.exportName)) continue;
       if (RETIRED_IMPLEMENTATION_ONLY_ACTIONS.has(name)) continue;
       if (coreActionNames.has(name)) continue;
+      const dynamicDocs = dynamicCommandActionDocs(filePath, name);
+      if (dynamicDocs) {
+        for (const doc of dynamicDocs) {
+          if (!actionDocsByName.has(doc.name)) {
+            actionDocsByName.set(doc.name, doc);
+          }
+        }
+        continue;
+      }
       const description = expandDescriptionTemplateLiterals(
         extractTopLevelStringProp(obj.objectText, "description") ?? "",
         filePath,

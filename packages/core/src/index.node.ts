@@ -261,7 +261,6 @@ export * from "./services/optimized-prompt";
 export { resolveOptimizedPromptForRuntime } from "./services/optimized-prompt-resolver";
 export * from "./services/pairing";
 export * from "./services/pairing-integration";
-export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
 export * from "./services/relationships-graph-builder";
 export * from "./services/runtime-capability-service";
@@ -285,6 +284,7 @@ export * from "./sessions";
 export * from "./settings";
 export {
 	isElizaSettingsDebugEnabled,
+	sanitizeForSettingsDebug,
 	settingsDebugCloudSummary,
 } from "./settings-debug";
 export { sanitizeSpeechText } from "./spoken-text";

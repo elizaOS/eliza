@@ -666,12 +666,13 @@ export async function* parseVoiceSseStream(
       const { value, done } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      let nl: number;
-      while ((nl = buffer.indexOf("\n")) >= 0) {
+      let nl = buffer.indexOf("\n");
+      while (nl >= 0) {
         const line = buffer.slice(0, nl);
         buffer = buffer.slice(nl + 1);
         const frame = handle(line);
         if (frame) yield frame;
+        nl = buffer.indexOf("\n");
       }
     }
     const tail = handle(buffer);

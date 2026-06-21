@@ -2865,12 +2865,6 @@ export const allActionsSpec = {
 				"Trust system: action=evaluate|record_interaction|request_elevation|update_role.",
 		},
 		{
-			name: "${key.toUpperCase()}_COMMAND",
-			description: "",
-			parameters: [],
-			descriptionCompressed: "",
-		},
-		{
 			name: "AINEX_BOW",
 			description: "Play the `bow` action group on the AiNex robot.",
 			parameters: [],
@@ -4002,6 +3996,13 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "COMMANDS_COMMAND",
+			description: "List all commands",
+			parameters: [],
+			similes: ["/commands", "/cmds"],
+			descriptionCompressed: "List all commands",
+		},
+		{
 			name: "COMPUTER_USE",
 			description:
 				"computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
@@ -4463,6 +4464,23 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "CONTEXT_COMMAND",
+			description: "Show current context information",
+			parameters: [
+				{
+					name: "mode",
+					description: "Output mode (list, detail, json)",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Output mode (list, detail, json)",
+				},
+			],
+			similes: ["/context", "/ctx"],
+			descriptionCompressed: "Show current context info",
 		},
 		{
 			name: "CREDENTIALS",
@@ -5452,6 +5470,13 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "HELP_COMMAND",
+			description: "Show available commands",
+			parameters: [],
+			similes: ["/help", "/h", "/?"],
+			descriptionCompressed: "Show available commands",
+		},
+		{
 			name: "IDENTIFY_SPEAKER",
 			description:
 				'Attach a name to the most recently heard, still-unidentified voice so the agent recognizes that person across sessions. Use when the owner says who a recent speaker is ("that was Jill", "this is my friend Sam").',
@@ -5858,6 +5883,13 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "MODELS_COMMAND",
+			description: "List available models",
+			parameters: [],
+			similes: ["/models"],
+			descriptionCompressed: "List available models",
 		},
 		{
 			name: "MUSIC",
@@ -7776,6 +7808,13 @@ export const allActionsSpec = {
 				"Start long-form voice transcription (record-only) on user's device. Use when user asks to start transcribing/recording a convo or meeting.",
 		},
 		{
+			name: "STATUS_COMMAND",
+			description: "Show current session status",
+			parameters: [],
+			similes: ["/status", "/s"],
+			descriptionCompressed: "Show current session status",
+		},
+		{
 			name: "STOP_TRANSCRIPTION",
 			description:
 				"Stop the long-form voice transcription currently running on the user's device.",
@@ -8821,6 +8860,13 @@ export const allActionsSpec = {
 				"Tunnel operations dispatched by `action`: start, stop, status. The `start` action accepts an optional `port` (defaults to 3000). `stop` and `status` take no...",
 		},
 		{
+			name: "USAGE_COMMAND",
+			description: "Show token usage",
+			parameters: [],
+			similes: ["/usage"],
+			descriptionCompressed: "Show token usage",
+		},
+		{
 			name: "USE_SKILL",
 			description:
 				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
@@ -9290,6 +9336,13 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "WHOAMI_COMMAND",
+			description: "Show your identity information",
+			parameters: [],
+			similes: ["/whoami", "/who"],
+			descriptionCompressed: "Show your identity info",
 		},
 		{
 			name: "WINDOW",

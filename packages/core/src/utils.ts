@@ -889,48 +889,6 @@ export function parseJSONObjectFromText(
 }
 
 /**
- * Normalizes a JSON-like string by correcting formatting issues:
- * - Removes extra spaces after '{' and before '}'.
- * - Wraps unquoted values in double quotes.
- * - Converts single-quoted values to double-quoted.
- * - Ensures consistency in key-value formatting.
- * - Normalizes mixed adjacent quote pairs.
- *
- * This is useful for cleaning up improperly formatted JSON strings
- * before parsing them into valid JSON.
- *
- * @param str - The JSON-like string to normalize.
- * @returns A properly formatted JSON string.
- */
-
-export const normalizeJsonString = (str: string) => {
-	// Bound input to avoid polynomial-redos on adversarial inputs.
-	str = str.length > 100_000 ? str.slice(0, 100_000) : str;
-	// Remove extra spaces after '{' and before '}'
-	str = str.replace(/\{\s+/, "{").replace(/\s+\}/, "}").trim();
-
-	// "key": unquotedValue → "key": "unquotedValue"
-	str = str.replace(
-		/("[\w\d_-]+")\s*: \s*(?!"|\[)([\s\S]+?)(?=(,\s*"|\}$))/g,
-		'$1: "$2"',
-	);
-
-	// "key": 'value' → "key": "value"
-	str = str.replace(
-		/"([^"]+)"\s*:\s*'([^']*)'/g,
-		(_, key, value) => `"${key}": "${value}"`,
-	);
-
-	// "key": someWord → "key": "someWord"
-	str = str.replace(
-		/("[\w\d_-]{1,256}")\s{0,32}:\s{0,32}([A-Za-z_]{1,256})(?!["\w])/g,
-		'$1: "$2"',
-	);
-
-	return str;
-};
-
-/**
  * Truncate text to fit within the character limit, ensuring it ends at a complete sentence.
  */
 export function truncateToCompleteSentence(
@@ -1014,19 +972,6 @@ export async function trimTokens(
 		tokens: truncatedTokens,
 		modelType: ModelType.TEXT_TOKENIZER_DECODE,
 	});
-}
-
-export function safeReplacer() {
-	const seen = new WeakSet();
-	return (_key: string, value: unknown) => {
-		if (typeof value === "object" && value !== null) {
-			if (seen.has(value)) {
-				return "[Circular]";
-			}
-			seen.add(value);
-		}
-		return value;
-	};
 }
 
 /**

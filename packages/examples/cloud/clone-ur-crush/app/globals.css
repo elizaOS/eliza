@@ -1,5 +1,4 @@
 @import "tailwindcss";
-/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS v4 @config directive processed by @tailwindcss/postcss. */
 @config "../tailwind.config.ts";
 
 :root {

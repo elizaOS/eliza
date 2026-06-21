@@ -111,6 +111,14 @@ export { AgentEventService } from "./services/agentEvent";
 export * from "./services/message";
 export * from "./services/trajectories";
 export * from "./settings";
+// Settings-debug sanitizers are pure functions (process access is feature-detected),
+// so they are safe in the browser bundle. Re-exported so @elizaos/shared can
+// forward them from its browser-safe barrel.
+export {
+	isElizaSettingsDebugEnabled,
+	sanitizeForSettingsDebug,
+	settingsDebugCloudSummary,
+} from "./settings-debug";
 export * from "./streaming-context";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";

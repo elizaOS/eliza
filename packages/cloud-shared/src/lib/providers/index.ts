@@ -16,21 +16,21 @@ import {
 import { AnthropicDirectProvider } from "./anthropic-direct";
 import { CerebrasDirectProvider } from "./cerebras-direct";
 import { GroqProvider } from "./groq";
+import { canonicalizeCerebrasModelId } from "./language-model";
 import { OpenAIDirectProvider } from "./openai-direct";
 import { OpenRouterProvider } from "./openrouter";
 import { getProviderKey, getRequiredProviderKey } from "./provider-env";
-import { canonicalizeCerebrasModelId } from "./language-model";
 import type { AIProvider } from "./types";
 import { VastProvider } from "./vast";
 import { resolveVastEndpointConfig, resolveVastFallbackModel } from "./vast-endpoints";
 import { VercelAIGatewayProvider } from "./vercel-ai-gateway";
 
 export { AnthropicDirectProvider } from "./anthropic-direct";
-export { CerebrasDirectProvider } from "./cerebras-direct";
 // Note: anthropic-thinking parse helpers (parseAnthropicCotBudgetFromEnv, etc.) are exported
 // as public API. Whitespace-only env values (e.g. "   ") will throw at startup rather than
 // silently disable thinking - this is intentional fail-fast behavior.
 export * from "./anthropic-thinking";
+export { CerebrasDirectProvider } from "./cerebras-direct";
 export { withProviderFallback } from "./failover";
 export { GroqProvider } from "./groq";
 export { OpenAIDirectProvider } from "./openai-direct";
@@ -88,8 +88,7 @@ function isCerebrasCatalogModel(model: string): boolean {
   else if (id.startsWith("cerebras:")) id = id.slice("cerebras:".length);
   const baseId = id.split(":")[0];
   return (
-    baseId === CEREBRAS_DEFAULT_TEXT_SMALL_MODEL ||
-    baseId === CEREBRAS_DEFAULT_TEXT_LARGE_MODEL
+    baseId === CEREBRAS_DEFAULT_TEXT_SMALL_MODEL || baseId === CEREBRAS_DEFAULT_TEXT_LARGE_MODEL
   );
 }
 
@@ -99,10 +98,7 @@ function hasCerebrasDirectConfigured(): boolean {
 
 function getCerebrasDirectProvider(): AIProvider {
   const apiKey = getRequiredProviderKey("CEREBRAS_API_KEY");
-  if (
-    !cerebrasDirectProviderInstance ||
-    cerebrasDirectProviderInstance.apiKey !== apiKey
-  ) {
+  if (!cerebrasDirectProviderInstance || cerebrasDirectProviderInstance.apiKey !== apiKey) {
     cerebrasDirectProviderInstance = {
       apiKey,
       provider: new CerebrasDirectProvider(apiKey),

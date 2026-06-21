@@ -7,9 +7,9 @@
  * those before forwarding so raw-fetch app chat matches the AI-SDK route.
  */
 
-import { canonicalizeCerebrasModelId } from "./language-model";
 import { logger } from "../utils/logger";
 import { type ProviderLabel, providerFetchWithTimeout } from "./_http";
+import { canonicalizeCerebrasModelId } from "./language-model";
 import type {
   AIProvider,
   OpenAIChatRequest,

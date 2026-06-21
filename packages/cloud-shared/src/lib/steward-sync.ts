@@ -447,16 +447,10 @@ export async function syncUserFromSteward(
       try {
         await organizationsService.delete(organization.id);
       } catch (rollbackError) {
-        logger.error(
-          "[StewardSync] Failed to delete organization after welcome-credit failure",
-          {
-            organizationId: organization.id,
-            error:
-              rollbackError instanceof Error
-                ? rollbackError.message
-                : String(rollbackError),
-          },
-        );
+        logger.error("[StewardSync] Failed to delete organization after welcome-credit failure", {
+          organizationId: organization.id,
+          error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+        });
       }
       throw error;
     }

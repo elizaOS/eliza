@@ -23,6 +23,10 @@ const appMock = vi.hoisted(() => ({
 
 vi.mock("../../state", () => ({
   useApp: () => appMock.value,
+  useAppSelector: (sel: (value: Record<string, unknown>) => unknown) =>
+    sel(appMock.value),
+  useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
+    sel(appMock.value),
 }));
 
 // Translation passthrough: return the provided defaultValue (or key) so we can

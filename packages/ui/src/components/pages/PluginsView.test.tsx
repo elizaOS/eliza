@@ -26,7 +26,13 @@ const clientMock = vi.hoisted(() => ({
   restartAndWait: vi.fn(),
 }));
 
-vi.mock("../../state", () => ({ useApp: () => appMock.value }));
+vi.mock("../../state", () => ({
+  useApp: () => appMock.value,
+  useAppSelector: (sel: (value: Record<string, unknown>) => unknown) =>
+    sel(appMock.value),
+  useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
+    sel(appMock.value),
+}));
 vi.mock("../../api", () => ({ client: clientMock }));
 
 function t(key: string, options?: { defaultValue?: string }) {

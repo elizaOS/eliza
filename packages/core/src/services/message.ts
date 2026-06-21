@@ -1324,14 +1324,6 @@ function _escapeHandlebars(text: string): string {
 	return text.replace(/\{\{\{|\{\{/g, (match) => `\\${match}`);
 }
 
-/**
- * Image description response from the model
- */
-interface ImageDescriptionResponse {
-	description: string;
-	title?: string;
-}
-
 type MediaWithInlineData = Media & {
 	_data?: unknown;
 	_mimeType?: unknown;

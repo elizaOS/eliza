@@ -22,9 +22,9 @@
         "import": "./src/plugin.ts",
         "default": "./src/plugin.ts"
       },
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
-      "default": "./dist/plugin.js",
-      "types": "./dist/plugin.d.ts"
+      "default": "./dist/plugin.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {

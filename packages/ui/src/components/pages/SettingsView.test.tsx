@@ -56,7 +56,13 @@ const stubSections = vi.hoisted(() => [
   },
 ]);
 
-vi.mock("../../state", () => ({ useApp: () => appMock.value }));
+vi.mock("../../state", () => ({
+  useApp: () => appMock.value,
+  useAppSelector: (sel: (value: Record<string, unknown>) => unknown) =>
+    sel(appMock.value),
+  useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
+    sel(appMock.value),
+}));
 
 vi.mock("../settings/settings-sections", () => {
   const sections = stubSections.map((section) => ({

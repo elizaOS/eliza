@@ -118,7 +118,7 @@ function clampDescription(description: string): string {
  * — no side effects.
  */
 export function buildTelegramCommandDescriptors(
-	agentId?: string | null,
+  agentId?: string | null,
 ): TelegramCommandDescriptor[] {
   const out: TelegramCommandDescriptor[] = [];
   const seen = new Set<string>();
@@ -238,7 +238,10 @@ async function dispatchAgentCommand(
       scopedTelegramKey(String(chatId), accountId),
     ) as UUID;
     const message: Memory = {
-      id: createUniqueUuid(runtime, `${chatId}-${fromId}-${Date.now()}`) as UUID,
+      id: createUniqueUuid(
+        runtime,
+        `${chatId}-${fromId}-${Date.now()}`,
+      ) as UUID,
       entityId,
       agentId: runtime.agentId,
       roomId,
@@ -309,7 +312,9 @@ function buildCommandHandler(
     if (target.kind === "client") {
       // GUI/TUI-only behaviors have no Telegram surface; the catalog should not
       // emit them for remote connectors, so this branch is defensive only.
-      await ctx.reply(`/${descriptor.name} is only available in the Eliza app.`);
+      await ctx.reply(
+        `/${descriptor.name} is only available in the Eliza app.`,
+      );
       return;
     }
 

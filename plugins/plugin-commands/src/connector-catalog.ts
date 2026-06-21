@@ -96,11 +96,13 @@ function commandName(command: CommandDefinition): string {
  * win on name collisions (they own those surfaces).
  */
 function unifiedDefinitions(agentId?: string | null): CommandDefinition[] {
-	const agent = (
-		agentId
-			? (useRuntime(agentId), getEnabledCommands())
-			: DEFAULT_COMMANDS.filter((command) => command.enabled !== false)
-	).filter(isConnectorScoped);
+	const agentCommands = agentId
+		? (() => {
+				useRuntime(agentId);
+				return getEnabledCommands();
+			})()
+		: DEFAULT_COMMANDS.filter((command) => command.enabled !== false);
+	const agent = agentCommands.filter(isConnectorScoped);
 	const navigation = navigationCommandDefinitions();
 	const navigationNames = new Set(navigation.map(commandName));
 	const agentOnly = agent.filter(

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { existsSync } from "node:fs";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
@@ -107,7 +107,13 @@ async function build() {
     throw new Error("Subpath build failed");
   }
   if (existsSync("dist/src")) {
-    await Bun.$`cp -R dist/src/. dist/ && rm -rf dist/src`;
+    const nestedDistDir = join(distDir, "src");
+    await Promise.all(
+      (await readdir(nestedDistDir)).map((entry) =>
+        cp(join(nestedDistDir, entry), join(distDir, entry), { recursive: true, force: true })
+      )
+    );
+    await rm(nestedDistDir, { recursive: true, force: true });
   }
   console.log(`✅ Exported subpaths built in ${((Date.now() - subpathStart) / 1000).toFixed(2)}s`);
 

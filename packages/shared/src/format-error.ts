@@ -1,18 +1,17 @@
 /**
  * Browser-safe error formatting helpers.
  *
- * `formatError` returns the human-readable message for `Error` instances and
- * `String(value)` for everything else. The dominant idiom across the
- * codebase — used in log lines and short user-facing surfaces.
+ * `formatError` is the canonical message extractor and lives in `@elizaos/core`;
+ * it is re-exported here so existing `@elizaos/shared` importers keep resolving.
+ * It returns the human-readable message for `Error` instances and
+ * `String(value)` for everything else — the dominant idiom across the codebase.
  *
  * `formatErrorWithStack` returns the stack when available, falling back to
  * the message. Use this only where the stack is genuinely useful (debug
  * logs, plugin crash diagnostics).
  */
 
-export function formatError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
+export { formatError } from "@elizaos/core";
 
 export function formatErrorWithStack(err: unknown): string {
   return err instanceof Error ? (err.stack ?? err.message) : String(err);
