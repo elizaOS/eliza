@@ -485,6 +485,19 @@ async function main() {
     );
   }
   syncResolvedApiPort(process.env, actualPort);
+
+  // Boot the elizaOS agent runtime without blocking server readiness. Scheduled
+  // here — before the CORS dynamic import and the cosmetic banner/pairing block
+  // below — because `scheduleRuntimeBootstrap` only queues a macrotask: the lone
+  // event-loop yield in the remaining startup tail is the `await import` of
+  // server-cors, so queueing the bootstrap first lets `createRuntime()` begin
+  // during that import (the measured win under host contention). The runtime
+  // needs seconds to become ready, so the synchronous CORS-allowlist
+  // invalidation and pairing-code setup that follow still complete long before
+  // any cross-origin request can reach the agent. The resolved API port is
+  // already synced into env above, so the runtime reads the correct port.
+  scheduleRuntimeBootstrap(0, "startup");
+
   // Invalidate cached CORS port set so the new port is allowed.
   // Dynamic import may be unavailable in non-server build targets (mobile); ignore.
   try {
@@ -531,9 +544,6 @@ async function main() {
       }),
     ),
   );
-
-  // 2. Boot the elizaOS agent runtime without blocking server readiness.
-  scheduleRuntimeBootstrap(0, "startup");
 
   console.log(
     `${getLogPrefix()} Startup init complete in ${Date.now() - startupStart}ms, agent bootstrapping...`,
