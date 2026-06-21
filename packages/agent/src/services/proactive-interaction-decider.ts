@@ -114,14 +114,14 @@ const JUDGE_INSTRUCTION = [
 
 /** Describe the interaction for the judge prompt. */
 function describeInteraction(payload: InteractionPayload): string {
+  if ("command" in payload) {
+    return `The user just ran the /${payload.command} command.`;
+  }
   if ("shortcutId" in payload) {
     return `The user just used the "${payload.shortcutId}" shortcut.`;
   }
-  if ("viewId" in payload) {
-    const where = payload.viewLabel ?? payload.viewId;
-    return `The user just opened the ${where} view.`;
-  }
-  return "The user just interacted with the app.";
+  const where = payload.viewLabel ?? payload.viewId;
+  return `The user just opened the ${where} view.`;
 }
 
 /** Build the small-model judge prompt for an interaction. */
