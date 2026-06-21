@@ -73,6 +73,7 @@ import { getCachedGatewayModelById } from "@/lib/services/model-catalog";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
+import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
 
 const ROUTE_MAX_DURATION = 800;
 
@@ -1462,18 +1463,6 @@ async function handleNonStreamingRequest(
   const toolChoice = mapToolChoice(request.tool_choice);
   const experimentalOutput = mapResponseFormat(request.response_format);
 
-  // Run post-response billing/settlement off the hot path when we have a Worker
-  // ExecutionContext (waitUntil keeps the request alive for the writes without
-  // blocking the response). Falls back to inline await otherwise so tests and
-  // non-Worker callers behave exactly as before.
-  const settleOffResponsePath = async (task: () => Promise<void>) => {
-    if (typeof executionCtx?.waitUntil === "function") {
-      executionCtx.waitUntil(task());
-      return;
-    }
-    await task();
-  };
-
   const safeParamsNonStream = getSafeModelParams(model, {
     temperature: request.temperature,
     topP: request.top_p,
@@ -1528,7 +1517,7 @@ async function handleNonStreamingRequest(
     // Bill using actual usage from SDK response. Deferred via waitUntil so the
     // ~0.7-1.1s of reconciliation/audit DB writes never block the response.
     // Same code, same amounts, same reservation — only the timing moves.
-    await settleOffResponsePath(async () => {
+    await settleOffResponsePath(executionCtx, async () => {
       try {
         const billingContext = {
           organizationId: user.organization_id,
