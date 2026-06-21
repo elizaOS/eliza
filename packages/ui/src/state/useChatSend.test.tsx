@@ -346,3 +346,74 @@ describe("useChatSend 404 recovery", () => {
     ).toBe(false);
   });
 });
+
+function httpStatusError(status: number, message = "Error"): Error {
+  return Object.assign(new Error(message), { status });
+}
+
+describe("useChatSend non-404 send failures", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+  });
+
+  it("surfaces a notice + keeps the user message on a transient (non-404) send failure", async () => {
+    // Regression: non-404 send failures (network drop mid-stream / 5xx) fell to
+    // a silent else branch that only reloaded — the typing dots vanished with no
+    // error, reading as "my message was lost". Now it drops only the empty
+    // assistant placeholder, keeps the user bubble, and surfaces a notice.
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      httpStatusError(503, "Service Unavailable"),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("are you there", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(deps.setActionNotice).toHaveBeenCalledTimes(1);
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("waking up"),
+      "error",
+      expect.any(Number),
+    );
+    const remaining = deps.conversationMessagesRef.current;
+    expect(
+      remaining.some((m) => m.role === "user" && m.text === "are you there"),
+    ).toBe(true);
+    expect(
+      remaining.some((m) => m.role === "assistant" && !m.text.trim()),
+    ).toBe(false);
+  });
+
+  it("does not reload (which could re-fail) on an auth-failure send error, and notifies", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      httpStatusError(401, "Unauthorized"),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello", { conversationId: "conv-1" });
+    });
+
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("sign in again"),
+      "error",
+      expect.any(Number),
+    );
+    // Auth failures skip the reconcile reload (it would just fail again).
+    expect(deps.loadConversationMessages).not.toHaveBeenCalled();
+  });
+});

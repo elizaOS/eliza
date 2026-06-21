@@ -730,6 +730,17 @@ export function useChatSend(deps: UseChatSendDeps) {
           convId = conversation.id;
           convRoomId = conversation.roomId;
         } catch {
+          // First-message conversation creation failed (cold open on weak
+          // signal). The composer was already cleared upstream and the
+          // optimistic bubble hasn't rendered yet, so a bare return drops the
+          // user's text with no trace. Restore it to the composer + surface the
+          // failure so the first impression isn't a vanished message.
+          setChatInput(rawText);
+          setActionNotice(
+            "Couldn't start the conversation — check your connection and try again. Your message was restored.",
+            "error",
+            8_000,
+          );
           return;
         }
       }
@@ -1020,7 +1031,36 @@ export function useChatSend(deps: UseChatSendDeps) {
             );
           }
         } else {
-          await loadConversationMessages(convId);
+          // Non-abort, non-404 send failure (network/timeout/5xx/auth/429).
+          // Drop the empty assistant placeholder but KEEP the user's message,
+          // and surface a status-specific notice so a stalled turn is never
+          // silent dead air (the typing indicator stalls at ~30s while the SSE
+          // idle timeout is 60s — without this the user just sees the dots
+          // vanish and nothing replace them, reading as "my message was lost").
+          setConversationMessages((prev) =>
+            prev.filter(
+              (message) =>
+                !(message.id === assistantMsgId && !message.text.trim()),
+            ),
+          );
+          const kind = (err as { kind?: string }).kind;
+          const isAuth = status === 401 || status === 403;
+          const notice = isAuth
+            ? "Your session expired — sign in again and resend your message."
+            : status === 429
+              ? "The agent is busy right now — wait a few seconds and resend."
+              : status === 503 || status === 502
+                ? "The agent is still waking up — give it a moment and resend."
+                : kind === "network" || kind === "timeout"
+                  ? "Couldn't reach the agent — check your connection and resend."
+                  : "That message didn't go through — please resend.";
+          setActionNotice(notice, "error", 8_000);
+          // Reconcile from the server for non-auth errors — loadConversationMessages
+          // no longer wipes the thread on transient failures (404-only clear), so
+          // this is safe; skip on auth where the reload would just fail again.
+          if (!isAuth) {
+            await loadConversationMessages(convId);
+          }
         }
       } finally {
         if (controller && abortServerTurn) {
@@ -1051,6 +1091,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       setConversationMessages,
       setConversations,
       setActionNotice,
+      setChatInput,
       uiLanguage,
       elizaCloudEnabled,
       elizaCloudConnected,
