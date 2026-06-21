@@ -551,6 +551,9 @@ export class FfiOmniVoiceBackend
 			});
 			return { text: res.text.trim(), words: res.words };
 		}
+		logger.debug(
+			"[FfiOmniVoiceBackend] timedAsrSupported()===false on the active fused build — per-word timings dropped, transcript player degrades to segment-level highlight",
+		);
 		return { text: (await this.transcribe(args)).trim(), words: [] };
 	}
 }
@@ -1731,6 +1734,9 @@ export class EngineVoiceBridge {
 			return { text: res.text.trim(), words: res.words };
 		}
 		// No timed path available — degrade to the text-only transcript.
+		logger.debug(
+			"[EngineVoiceBridge] timedAsrSupported()===false on the active fused build — per-word timings dropped, transcript player degrades to segment-level highlight",
+		);
 		return { text: await this.transcribePcm(args, signal), words: [] };
 	}
 
