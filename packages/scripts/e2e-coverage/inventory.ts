@@ -28,6 +28,7 @@ import {
   COMMAND_COVERAGE,
   LARP_TEST_ARTIFACTS,
   PLUGIN_ROUTE_COVERAGE,
+  SHORTCUT_COVERAGE,
   SHORTCUT_REGISTRY_HINTS,
   VIEW_COVERAGE_GATES,
 } from "./manifest.ts";
@@ -338,19 +339,25 @@ export function buildCoverageMatrix(options?: {
   }
 
   // ── Shortcuts (#8791 — pre-LLM shortcut registry) ───────────────────────
-  // The registry does not exist yet, so the surface is empty and advisory. When
-  // #8791 lands at one of SHORTCUT_REGISTRY_HINTS, this lights up and the gate
-  // begins requiring shortcut coverage.
+  // While the registry is absent the surface is gated (empty + advisory). Once
+  // #8791 lands at one of SHORTCUT_REGISTRY_HINTS it lights up and the gate
+  // requires shortcut coverage, resolved from SHORTCUT_COVERAGE against the real
+  // shortcut-gate e2e (runShortcutGate driving a real AgentRuntime).
   const shortcutRegistry = discoverShortcutRegistry(root);
   const shortcutsGated = shortcutRegistry.length === 0;
+  let shortcutsCovered = 0;
   if (!shortcutsGated) {
+    const resolution = resolveCoverage(SHORTCUT_COVERAGE, root);
+    if (resolution.status === "covered") shortcutsCovered += 1;
     items.push({
       id: "shortcut:registry",
       kind: "shortcut",
-      status: "missing",
-      detail: `#8791 shortcut registry present (${shortcutRegistry.join(", ")}) but no shortcut coverage manifest exists yet`,
-      artifacts: [],
-      blocking: false, // advisory until shortcut coverage is wired
+      status: resolution.status,
+      detail: `#8791 shortcut registry present (${shortcutRegistry.join(", ")}); ${resolution.detail}`,
+      artifacts: resolution.artifacts,
+      // A landed registry with no real e2e is a blocking gap (the contract:
+      // every shortcut has a deterministic e2e).
+      blocking: resolution.status !== "covered",
       meta: { registry: shortcutRegistry },
     });
   }
@@ -403,7 +410,7 @@ export function buildCoverageMatrix(options?: {
       commands: { total: commands.length, covered: commandsCovered },
       shortcuts: {
         total: shortcutRegistry.length,
-        covered: 0,
+        covered: shortcutsCovered,
         gated: shortcutsGated,
       },
       pluginRoutes: {

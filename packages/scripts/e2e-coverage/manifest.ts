@@ -86,6 +86,26 @@ export const SHORTCUT_REGISTRY_HINTS: readonly string[] = [
   "plugins/plugin-commands/src/shortcuts.ts",
 ];
 
+/**
+ * Coverage for the #8791 pre-LLM shortcut registry. The slash-command shortcuts
+ * (`createCommandShortcuts` → `<KEY>_COMMAND` action targets) are exercised
+ * end-to-end against a real `AgentRuntime`: the commands plugin's
+ * `Plugin.shortcuts` wire into `runtime.shortcutRegistry`, and `runShortcutGate`
+ * resolves `/help` / `/status` deterministically through the real pre-LLM gate
+ * with no model call. The `runShortcutGate` + `shortcutRegistry` signals are the
+ * anti-larp proof that the real gate and registry — not a mock — were driven.
+ */
+export const SHORTCUT_COVERAGE: CoverageEntry = {
+  status: "covered",
+  artifacts: [
+    "packages/agent/src/services/commands-shortcut-runtime.test.ts",
+    "packages/core/src/services/message.shortcut-gate.test.ts",
+    "packages/core/src/runtime/shortcut-registry.test.ts",
+  ],
+  signals: ["runShortcutGate", "shortcutRegistry"],
+  note: "createCommandShortcuts → runtime.shortcutRegistry; runShortcutGate resolves /help and /status deterministically through the real gate (no model).",
+};
+
 /** New keyless route tests boot the real handler via this prod entry point. */
 const REAL_DISPATCH_SIGNAL = "tryHandleRuntimePluginRoute";
 

@@ -496,13 +496,14 @@ jobs:
       - name: Scenario catalog coverage gate
         run: node packages/scripts/check-scenario-workflow-coverage.mjs --report-dir reports/scenarios/catalog-inventory
 
-      # E2E coverage gate (issue #8802). Advisory for one cycle (mirrors
-      # coverage-gate.yml): the develop-landscape-sensitive ratchets warn but do
-      # not fail; the manifested-coverage check is hard. Flip the ratchets to
-      # required by setting E2E_COVERAGE_GATE_ENFORCE=1.
+      # E2E coverage gate (issue #8802). Now REQUIRED: the baseline is green —
+      # commands 38/38, #8791 shortcuts 1/1 (wired into SHORTCUT_COVERAGE),
+      # plugin routes covered/exempt, view ship-gates intact, zero blocking gaps.
+      # The advisory cycle is complete, so the ratchets (route-manifest lockstep,
+      # zero-test plugins, no-blocking-gaps) now fail the build on regression.
       - name: E2E coverage ship-gate
         env:
-          E2E_COVERAGE_GATE_ENFORCE: "0"
+          E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun test packages/scripts/__tests__/e2e-coverage.test.ts
 
       - name: E2E coverage matrix report

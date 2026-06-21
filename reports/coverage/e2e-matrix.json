@@ -1,15 +1,15 @@
 {
   "schema": "eliza_e2e_coverage_matrix_v1",
-  "generatedAt": "2026-06-20T21:27:25.311Z",
+  "generatedAt": "2026-06-21T09:54:58.783Z",
   "summary": {
     "commands": {
-      "total": 37,
-      "covered": 37
+      "total": 38,
+      "covered": 38
     },
     "shortcuts": {
-      "total": 0,
-      "covered": 0,
-      "gated": true
+      "total": 1,
+      "covered": 1,
+      "gated": false
     },
     "pluginRoutes": {
       "total": 30,
@@ -616,6 +616,39 @@
       }
     },
     {
+      "id": "command:transcribe",
+      "kind": "command",
+      "status": "covered",
+      "detail": "target=client; Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
+      "artifacts": [
+        "packages/agent/src/api/commands-routes.real-server.test.ts",
+        "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
+        "packages/app/test/ui-smoke/slash-commands.spec.ts",
+        "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx"
+      ],
+      "blocking": true,
+      "meta": {
+        "targetKind": "client"
+      }
+    },
+    {
+      "id": "shortcut:registry",
+      "kind": "shortcut",
+      "status": "covered",
+      "detail": "#8791 shortcut registry present (packages/core/src/runtime/shortcut-registry.ts); createCommandShortcuts → runtime.shortcutRegistry; runShortcutGate resolves /help and /status deterministically through the real gate (no model).",
+      "artifacts": [
+        "packages/agent/src/services/commands-shortcut-runtime.test.ts",
+        "packages/core/src/services/message.shortcut-gate.test.ts",
+        "packages/core/src/runtime/shortcut-registry.test.ts"
+      ],
+      "blocking": false,
+      "meta": {
+        "registry": [
+          "packages/core/src/runtime/shortcut-registry.ts"
+        ]
+      }
+    },
+    {
       "id": "plugin-route:app-model-tester",
       "kind": "plugin-route",
       "status": "exempt",
@@ -805,7 +838,7 @@
       ],
       "blocking": true,
       "meta": {
-        "wiring": "voiceProfilePluginRoutes,"
+        "wiring": "[...voiceProfilePluginRoutes, ...transcriptsRoutes],"
       }
     },
     {
