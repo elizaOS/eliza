@@ -273,8 +273,8 @@ const GUI_INTERACTION_OWNERS: Readonly<
     {
       spec: "packages/app/test/ui-smoke/orchestrator-gui-workbench.spec.ts",
       proves:
-        "Exercises empty state, create task form, POST body, task rail/detail, composer, and message send.",
-      signals: ["orchestrator-create-submit", "orchestrator-send"],
+        "Exercises the read-only empty workbench and the rich build-room rail/timeline/inspector controls plus the add-agent form submit. (The GUI create-task/composer affordances moved to chat in the overlay-only redesign.)",
+      signals: ["orchestrator-workbench", "orchestrator-add-agent-submit"],
     },
   ],
   screenshare: [
