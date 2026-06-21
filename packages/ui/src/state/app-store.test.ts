@@ -60,9 +60,7 @@ describe("useAppSelector", () => {
   });
 
   it("useAppSelectorShallow bails out on a fresh-but-equal object slice", () => {
-    __setAppValueForTests(
-      makeValue({ a: 1, b: 2, unrelated: 0 }),
-    );
+    __setAppValueForTests(makeValue({ a: 1, b: 2, unrelated: 0 }));
     let renders = 0;
     const { result } = renderHook(() => {
       renders += 1;

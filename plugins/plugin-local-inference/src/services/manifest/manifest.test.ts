@@ -18,6 +18,7 @@ const VISION_TIERS = new Set<Eliza1Tier>([
 	"27b",
 	"27b-256k",
 ]);
+const MTP_TIERS = new Set<Eliza1Tier>(["2b", "4b", "9b", "27b", "27b-256k"]);
 
 function passingBackends() {
 	return {
@@ -43,6 +44,7 @@ function textFileForTier(tier: Eliza1Tier): { path: string; ctx: number } {
 
 function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 	const hasVision = VISION_TIERS.has(tier);
+	const hasMtp = MTP_TIERS.has(tier);
 	const manifest: Eliza1Manifest = {
 		id: `eliza-1-${tier}`,
 		tier,
@@ -53,14 +55,13 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 			voice: { base: "eliza-1-voice-backbone", license: "apache-2.0" },
 			asr: { base: "eliza-1-asr", license: "apache-2.0" },
 			vad: { base: "eliza-1-vad", license: "apache-2.0" },
-			drafter: { base: "eliza-1-mtp-drafter", license: "apache-2.0" },
 		},
 		files: {
 			text: [{ ...textFileForTier(tier), sha256: SHA }],
 			voice: [{ path: "tts/omnivoice-base-Q4_K_M.gguf", sha256: SHA }],
 			asr: [{ path: "asr/asr.gguf", sha256: SHA }],
 			vision: [],
-			mtp: [{ path: `mtp/drafter-${tier}.gguf`, sha256: SHA }],
+			mtp: [],
 			cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
 			vad: [{ path: "vad/silero-vad-v5.gguf", sha256: SHA }],
 		},
@@ -80,7 +81,6 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 				falseBargeInRate: 0.01,
 				passed: true,
 			},
-			mtp: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
 			e2eLoopOk: true,
 			thirtyTurnOk: true,
 		},
@@ -95,6 +95,9 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 		manifest.files.vision = [
 			{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA },
 		];
+	}
+	if (hasMtp) {
+		manifest.evals.mtp = { acceptanceRate: 0.72, speedup: 1.8, passed: true };
 	}
 	return manifest;
 }
@@ -388,6 +391,23 @@ describe("validateManifest — contract rejections", () => {
 		expect(result.ok).toBe(false);
 		if (!result.ok) {
 			expect(result.errors.some((e) => e.includes("evals.mtp.passed"))).toBe(
+				true,
+			);
+		}
+	});
+
+	it("rejects separate drafter artifacts for same-file MTP tiers", () => {
+		const m = baseManifest("9b");
+		m.lineage.drafter = {
+			base: "eliza-1-mtp-drafter",
+			license: "apache-2.0",
+		};
+		m.files.mtp = [{ path: "mtp/drafter-9b.gguf", sha256: SHA }];
+		const result = validateManifest(m);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.errors.some((e) => e.includes("files.mtp"))).toBe(true);
+			expect(result.errors.some((e) => e.includes("lineage.drafter"))).toBe(
 				true,
 			);
 		}

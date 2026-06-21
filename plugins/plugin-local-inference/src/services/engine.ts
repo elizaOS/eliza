@@ -138,6 +138,9 @@ function skeletonHasFreeStringKey(
 const DEFAULT_IDLE_UNLOAD_MS = 15 * 60 * 1000;
 /** How often the idle-unload timer checks the activity clock. */
 const IDLE_UNLOAD_CHECK_INTERVAL_MS = 60 * 1000;
+const BYTES_PER_MIB = 1024 * 1024;
+const GIB_PER_GB = 1024;
+const TEXT_RESIDENT_OVERHEAD_MB = 512;
 
 export function resolveIdleUnloadMs(): number {
 	const raw = process.env.ELIZA_LOCAL_IDLE_UNLOAD_MS?.trim();
@@ -204,6 +207,22 @@ function resolveDirectEliza1Bundle(
 		tierId: args.modelId as Eliza1TierId,
 		voiceBackends: catalog?.voiceBackends,
 	};
+}
+
+function estimateTextResidentMb(
+	installed: InstalledModel | undefined,
+	catalog: ReturnType<typeof findCatalogModel>,
+): number {
+	const installedMb =
+		typeof installed?.sizeBytes === "number" && installed.sizeBytes > 0
+			? Math.ceil(installed.sizeBytes / BYTES_PER_MIB)
+			: 0;
+	const catalogMb =
+		typeof catalog?.sizeGb === "number" && catalog.sizeGb > 0
+			? Math.ceil(catalog.sizeGb * GIB_PER_GB)
+			: 0;
+	const baseMb = Math.max(installedMb, catalogMb);
+	return baseMb > 0 ? baseMb + TEXT_RESIDENT_OVERHEAD_MB : 0;
 }
 
 /**
@@ -316,6 +335,8 @@ export class LocalInferenceEngine {
 	private idleUnloadTimer: NodeJS.Timeout | null = null;
 	/** Evictable text-target role id registered on `sharedResources`, or null. */
 	private textTargetRoleId: string | null = null;
+	/** Best-effort resident footprint for the active text bundle, in MiB. */
+	private textTargetEstimatedMb = 0;
 	/** Evictable drafter role id registered on `sharedResources`, or null. */
 
 	/**
@@ -372,6 +393,7 @@ export class LocalInferenceEngine {
 		if (this.textTargetRoleId === null) {
 			const role = createEvictableModelRole({
 				role: "text-target",
+				estimatedMb: this.textTargetEstimatedMb,
 				isResident: () => this.hasLoadedModel(),
 				evict: async () => {
 					// Last thing to go. Evicting the text target = unload it; the
@@ -494,6 +516,7 @@ export class LocalInferenceEngine {
 		// before anything else — they reference the model that's about to go.
 		await this.stopBackgroundManagement();
 		this.activeEliza1Bundle = null;
+		this.textTargetEstimatedMb = 0;
 		const bridge = this.voiceBridge;
 		if (bridge) {
 			// Drop voice resources before tearing down text. Disarm is a
@@ -518,6 +541,7 @@ export class LocalInferenceEngine {
 		const target = installed.find((m) => m.path === modelPath);
 		const modelId = target?.id ?? resolved?.modelId;
 		const catalog = modelId ? findCatalogModel(modelId) : undefined;
+		this.textTargetEstimatedMb = estimateTextResidentMb(target, catalog);
 
 		// Resolve the active Eliza-1 bundle (root + tier) so voice setup can
 		// find the bundle-relative Kokoro TTS root and the per-tier EOT

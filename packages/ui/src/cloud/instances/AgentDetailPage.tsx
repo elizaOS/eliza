@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { ApiError } from "../lib/api-client";
+import { useDocumentTitle } from "../lib/use-document-title";
 import { ElizaAgentActions } from "./components/agent-actions";
 import { DockerLogsViewer } from "./components/docker-logs-viewer";
 import { ElizaAgentBackupsPanel } from "./components/eliza-agent-backups-panel";
@@ -33,7 +34,6 @@ import { ElizaConnectButton } from "./components/eliza-connect-button";
 import { useAgent } from "./lib/data/eliza-agents";
 import { useT } from "./lib/i18n";
 import { statusBadgeColor, statusDotColor } from "./lib/sandbox-status";
-import { useDocumentTitle } from "../lib/use-document-title";
 import { useRequireAuth } from "./lib/use-session-auth";
 
 function formatDate(date: string | null): string {

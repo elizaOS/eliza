@@ -7,18 +7,26 @@
  * `getProviderForModelWithFallback`.
  */
 
-import { isGroqNativeModel, isVastNativeModel } from "../models";
+import {
+  CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+  CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+  isGroqNativeModel,
+  isVastNativeModel,
+} from "../models";
 import { AnthropicDirectProvider } from "./anthropic-direct";
+import { CerebrasDirectProvider } from "./cerebras-direct";
 import { GroqProvider } from "./groq";
 import { OpenAIDirectProvider } from "./openai-direct";
 import { OpenRouterProvider } from "./openrouter";
 import { getProviderKey, getRequiredProviderKey } from "./provider-env";
+import { canonicalizeCerebrasModelId } from "./language-model";
 import type { AIProvider } from "./types";
 import { VastProvider } from "./vast";
 import { resolveVastEndpointConfig, resolveVastFallbackModel } from "./vast-endpoints";
 import { VercelAIGatewayProvider } from "./vercel-ai-gateway";
 
 export { AnthropicDirectProvider } from "./anthropic-direct";
+export { CerebrasDirectProvider } from "./cerebras-direct";
 // Note: anthropic-thinking parse helpers (parseAnthropicCotBudgetFromEnv, etc.) are exported
 // as public API. Whitespace-only env values (e.g. "   ") will throw at startup rather than
 // silently disable thinking - this is intentional fail-fast behavior.
@@ -42,6 +50,7 @@ interface OpenAIDirectProviderSingleton extends ProviderSingleton {
 }
 
 let groqProviderInstance: ProviderSingleton | null = null;
+let cerebrasDirectProviderInstance: ProviderSingleton | null = null;
 let openAIDirectProviderInstance: OpenAIDirectProviderSingleton | null = null;
 let anthropicDirectProviderInstance: ProviderSingleton | null = null;
 let openRouterProviderInstance: OpenAIDirectProviderSingleton | null = null;
@@ -62,6 +71,44 @@ export function getGroqProvider(): AIProvider {
   }
 
   return groqProviderInstance.provider;
+}
+
+function cerebrasModelId(model: string): string | null {
+  const canonical = canonicalizeCerebrasModelId(model);
+  return canonical === CEREBRAS_DEFAULT_TEXT_SMALL_MODEL ||
+    canonical === CEREBRAS_DEFAULT_TEXT_LARGE_MODEL
+    ? canonical
+    : null;
+}
+
+function isCerebrasCatalogModel(model: string): boolean {
+  let id = model.trim();
+  if (id.startsWith("openai/")) id = id.slice("openai/".length);
+  else if (id.startsWith("cerebras/")) id = id.slice("cerebras/".length);
+  else if (id.startsWith("cerebras:")) id = id.slice("cerebras:".length);
+  const baseId = id.split(":")[0];
+  return (
+    baseId === CEREBRAS_DEFAULT_TEXT_SMALL_MODEL ||
+    baseId === CEREBRAS_DEFAULT_TEXT_LARGE_MODEL
+  );
+}
+
+function hasCerebrasDirectConfigured(): boolean {
+  return Boolean(getProviderKey("CEREBRAS_API_KEY"));
+}
+
+function getCerebrasDirectProvider(): AIProvider {
+  const apiKey = getRequiredProviderKey("CEREBRAS_API_KEY");
+  if (
+    !cerebrasDirectProviderInstance ||
+    cerebrasDirectProviderInstance.apiKey !== apiKey
+  ) {
+    cerebrasDirectProviderInstance = {
+      apiKey,
+      provider: new CerebrasDirectProvider(apiKey),
+    };
+  }
+  return cerebrasDirectProviderInstance.provider;
 }
 
 function hasOpenAIDirectConfigured(): boolean {
@@ -180,6 +227,17 @@ export function getProviderForModel(model: string): AIProvider {
     return getVastProvider(model);
   }
 
+  const directCerebrasModel = cerebrasModelId(model);
+  if (directCerebrasModel || isCerebrasCatalogModel(model)) {
+    if (directCerebrasModel && hasCerebrasDirectConfigured()) {
+      return getCerebrasDirectProvider();
+    }
+    if (hasOpenRouterProviderConfigured()) {
+      return getOpenRouterProvider();
+    }
+    return getVercelAIGatewayProvider();
+  }
+
   if (model.startsWith("openai/") && hasOpenAIDirectConfigured()) {
     return getOpenAIDirectProvider();
   }
@@ -226,6 +284,17 @@ export function getProviderForModelWithFallback(model: string): {
   }
 
   const openRouterBackup = hasOpenRouterProviderConfigured() ? getOpenRouterProvider() : null;
+
+  const directCerebrasModel = cerebrasModelId(model);
+  if (directCerebrasModel || isCerebrasCatalogModel(model)) {
+    if (directCerebrasModel && hasCerebrasDirectConfigured()) {
+      return { primary: getCerebrasDirectProvider(), fallback: null };
+    }
+    if (openRouterBackup) {
+      return { primary: openRouterBackup, fallback: null };
+    }
+    return { primary: getVercelAIGatewayProvider(), fallback: null };
+  }
 
   if (model.startsWith("openai/") && hasOpenAIDirectConfigured()) {
     return { primary: getOpenAIDirectProvider(), fallback: openRouterBackup };

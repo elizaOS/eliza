@@ -29,8 +29,10 @@ import {
   withProviderFallback,
 } from "@/lib/providers";
 import {
+  canonicalizeCerebrasModelId,
   getAiProviderConfigurationError,
   hasLanguageModelProviderConfigured,
+  resolveAiProviderSource,
 } from "@/lib/providers/language-model";
 import type {
   OpenAIChatMessage,
@@ -250,7 +252,8 @@ async function handlePOST(
       );
     }
 
-    const model = chatRequest.model;
+    const model = canonicalizeCerebrasModelId(chatRequest.model);
+    chatRequest.model = model;
     if (!hasLanguageModelProviderConfigured(model)) {
       return withCors(
         Response.json(
@@ -268,6 +271,7 @@ async function handlePOST(
 
     const provider = getProviderFromModel(model);
     const normalizedModel = normalizeModelName(model);
+    const billingSource = resolveAiProviderSource(model) ?? "gateway";
     const isStreaming = chatRequest.stream ?? false;
 
     // Estimate cost
@@ -284,6 +288,7 @@ async function handlePOST(
       provider,
       estimatedInputTokens,
       estimatedOutputTokens,
+      billingSource,
     );
 
     // Apply safety buffer to reduce undercharging risk
@@ -300,6 +305,7 @@ async function handlePOST(
       metadata: {
         model,
         provider,
+        billingSource,
         estimatedInputTokens,
         estimatedOutputTokens,
         safetyMultiplier: COST_SAFETY_MULTIPLIER,
@@ -543,6 +549,7 @@ async function handlePOST(
             provider,
             inputTokens,
             outputTokens,
+            billingSource,
           );
 
           // Reconcile the difference between reserved and actual costs
@@ -556,6 +563,7 @@ async function handlePOST(
             metadata: {
               model,
               provider,
+              billingSource,
               inputTokens,
               outputTokens,
               streaming: true,
@@ -656,6 +664,7 @@ async function handlePOST(
       provider,
       actualInputTokens,
       actualOutputTokens,
+      billingSource,
     );
 
     // Reconcile the difference between reserved and actual costs
@@ -669,6 +678,7 @@ async function handlePOST(
       metadata: {
         model,
         provider,
+        billingSource,
         inputTokens: actualInputTokens,
         outputTokens: actualOutputTokens,
         streaming: false,

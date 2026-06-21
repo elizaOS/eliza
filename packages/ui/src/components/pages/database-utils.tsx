@@ -189,54 +189,49 @@ export function ResultsGrid({
         </thead>
         <tbody>
           {rows.map((row, i) => {
-            const rowKey = buildResultsGridRowKey(
-              columns,
-              row,
-              i,
-              columnMeta,
-            );
+            const rowKey = buildResultsGridRowKey(columns, row, i, columnMeta);
             return (
-            <tr
-              key={rowKey}
-              className="border-b border-border/20 hover:bg-bg-hover transition-colors group"
-            >
-              <td className="px-3 py-2 text-2xs text-muted text-right border-r border-border/30 bg-bg/20 tabular-nums group-hover:text-txt/70 transition-colors">
-                {i + 1}
-              </td>
-              {columns.map((col) => {
-                const raw = row[col];
-                const display = formatCell(raw);
-                const isNull = raw === null || raw === undefined;
-                const isExpandable = display.length > 40 && !!onCellClick;
-                return (
-                  <td
-                    key={col}
-                    className="px-4 py-2 border-r border-border/20 max-w-[280px] truncate cursor-default transition-colors"
-                    title={display}
-                    onClick={() => {
-                      if (isExpandable) onCellClick(display);
-                    }}
-                    onKeyDown={(e) => {
-                      if (!isExpandable) return;
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onCellClick(display);
-                      }
-                    }}
-                    role={isExpandable ? "button" : undefined}
-                    tabIndex={isExpandable ? 0 : undefined}
-                  >
-                    {isNull ? (
-                      <span className="text-muted italic opacity-50">
-                        {t("databaseview.NULL")}
-                      </span>
-                    ) : (
-                      <span className="text-txt">{display}</span>
-                    )}
-                  </td>
-                );
-              })}
-            </tr>
+              <tr
+                key={rowKey}
+                className="border-b border-border/20 hover:bg-bg-hover transition-colors group"
+              >
+                <td className="px-3 py-2 text-2xs text-muted text-right border-r border-border/30 bg-bg/20 tabular-nums group-hover:text-txt/70 transition-colors">
+                  {i + 1}
+                </td>
+                {columns.map((col) => {
+                  const raw = row[col];
+                  const display = formatCell(raw);
+                  const isNull = raw === null || raw === undefined;
+                  const isExpandable = display.length > 40 && !!onCellClick;
+                  return (
+                    <td
+                      key={col}
+                      className="px-4 py-2 border-r border-border/20 max-w-[280px] truncate cursor-default transition-colors"
+                      title={display}
+                      onClick={() => {
+                        if (isExpandable) onCellClick(display);
+                      }}
+                      onKeyDown={(e) => {
+                        if (!isExpandable) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onCellClick(display);
+                        }
+                      }}
+                      role={isExpandable ? "button" : undefined}
+                      tabIndex={isExpandable ? 0 : undefined}
+                    >
+                      {isNull ? (
+                        <span className="text-muted italic opacity-50">
+                          {t("databaseview.NULL")}
+                        </span>
+                      ) : (
+                        <span className="text-txt">{display}</span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
             );
           })}
         </tbody>

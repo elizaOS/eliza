@@ -189,7 +189,6 @@ const VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 ]);
 
 const MTP_TIERS: ReadonlySet<Eliza1Tier> = new Set([
-	"0_8b",
 	"2b",
 	"4b",
 	"9b",
@@ -282,11 +281,10 @@ function collectContractErrors(
 
 	const mtpEnabled = MTP_TIERS.has(m.tier);
 	if (mtpEnabled) {
-		if (m.files.mtp.length === 0) {
-			errors.push(`files.mtp: required for MTP-enabled tier ${m.tier}`);
-		}
-		if (!m.lineage.drafter) {
-			errors.push(`lineage.drafter: required for MTP-enabled tier ${m.tier}`);
+		if (m.files.mtp.length > 0) {
+			errors.push(
+				`files.mtp: separate drafter files are unsupported for same-file MTP tier ${m.tier}`,
+			);
 		}
 		if (!m.evals.mtp) {
 			errors.push(`evals.mtp: required for MTP-enabled tier ${m.tier}`);
@@ -396,8 +394,8 @@ function collectContractErrors(
 			errors.push(`files.${slot}: required when lineage.${slot} is present`);
 		}
 	}
-	if (m.lineage.drafter && m.files.mtp.length === 0) {
-		errors.push("files.mtp: required when lineage.drafter is present");
+	if (m.lineage.drafter) {
+		errors.push("lineage.drafter: unsupported for same-file MTP bundles");
 	}
 
 	if (m.files.asr.length > 0) {

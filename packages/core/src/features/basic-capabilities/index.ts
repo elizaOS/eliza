@@ -173,6 +173,8 @@ interface PostCreationJson {
 	thought?: string;
 }
 
+const MAX_POST_GENERATION_ATTEMPTS = 3;
+
 function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -519,14 +521,10 @@ const reactionReceivedHandler = async ({
 	await runtime.createMemories([{ memory: message, tableName: "messages" }]);
 };
 
-const postGeneratedHandler = async ({
-	runtime,
-	callback,
-	worldId,
-	userId,
-	roomId,
-	source,
-}: InvokePayload) => {
+const postGeneratedHandler = async (
+	{ runtime, callback, worldId, userId, roomId, source }: InvokePayload,
+	attempt = 1,
+) => {
 	const safeSource = source ?? "unknown";
 	const safeUserId = (userId ?? runtime.agentId) as UUID;
 
@@ -637,14 +635,28 @@ const postGeneratedHandler = async ({
 					{ src: "basic-capabilities", agentId: runtime.agentId, cleanedText },
 					"Already recently posted that, retrying",
 				);
-				postGeneratedHandler({
-					runtime,
-					callback,
-					worldId,
-					userId,
-					roomId,
-					source,
-				});
+				if (attempt >= MAX_POST_GENERATION_ATTEMPTS) {
+					runtime.logger.warn(
+						{
+							src: "basic-capabilities",
+							agentId: runtime.agentId,
+							cleanedText,
+						},
+						"Post generation retry limit reached for repeated content",
+					);
+					return;
+				}
+				await postGeneratedHandler(
+					{
+						runtime,
+						callback,
+						worldId,
+						userId,
+						roomId,
+						source,
+					},
+					attempt + 1,
+				);
 				return; // don't call callbacks
 			}
 		}
@@ -671,14 +683,24 @@ const postGeneratedHandler = async ({
 			{ src: "basic-capabilities", agentId: runtime.agentId, cleanedText },
 			"Got prompt moderation refusal, retrying",
 		);
-		postGeneratedHandler({
-			runtime,
-			callback,
-			worldId,
-			userId,
-			roomId,
-			source,
-		});
+		if (attempt >= MAX_POST_GENERATION_ATTEMPTS) {
+			runtime.logger.warn(
+				{ src: "basic-capabilities", agentId: runtime.agentId, cleanedText },
+				"Post generation retry limit reached for moderation refusals",
+			);
+			return;
+		}
+		await postGeneratedHandler(
+			{
+				runtime,
+				callback,
+				worldId,
+				userId,
+				roomId,
+				source,
+			},
+			attempt + 1,
+		);
 		return; // don't call callbacks
 	}
 

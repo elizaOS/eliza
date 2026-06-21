@@ -96,7 +96,7 @@ function shallowEqual(a: unknown, b: unknown): boolean {
   if (aKeys.length !== bKeys.length) return false;
   for (const key of aKeys) {
     if (
-      !Object.prototype.hasOwnProperty.call(b, key) ||
+      !Object.hasOwn(b, key) ||
       !Object.is(
         (a as Record<string, unknown>)[key],
         (b as Record<string, unknown>)[key],

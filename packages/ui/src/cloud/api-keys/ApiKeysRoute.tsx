@@ -21,11 +21,11 @@ import type {
   ApiKeyStatus,
   ApiKeysSummaryData,
 } from "../../cloud-ui/components/data-list";
+import { useDocumentTitle } from "../lib/use-document-title";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { LocalStewardAuthContext } from "../shell/StewardProvider";
 import { ApiKeysView } from "./ApiKeysView";
 import { type ApiKeyRecord, useApiKeys } from "./use-api-keys";
-import { useDocumentTitle } from "../lib/use-document-title";
 
 function getApiKeyStatus(
   isActive: boolean,

@@ -278,6 +278,73 @@ describe("MemoryArbiter — fit-to-budget LRU eviction", () => {
 });
 
 describe("MemoryArbiter — memory pressure", () => {
+	it("preloads under nominal pressure when the budget fits", async () => {
+		const registry = new SharedResourceRegistry();
+		const arbiter = new MemoryArbiter({ registry, now, budgetMb: () => 1000 });
+		const embedding = makeCapability("embedding", {
+			residentRole: "embedding",
+			estimatedMb: 400,
+		});
+		arbiter.registerCapability(embedding.registration);
+
+		const loaded = await arbiter.preload("embedding", "emb");
+
+		expect(loaded).toBe(true);
+		expect(embedding.loads).toEqual(["emb"]);
+		expect(arbiter.residentSnapshot()).toMatchObject([
+			{ capability: "embedding", modelKey: "emb", refCount: 0 },
+		]);
+		await arbiter.shutdown();
+	});
+
+	it("refuses preload under memory pressure", async () => {
+		const registry = new SharedResourceRegistry();
+		const source: CapacitorPressureSource = capacitorPressureSource({ now });
+		const arbiter = new MemoryArbiter({
+			registry,
+			pressureSource: source,
+			now,
+			budgetMb: () => 1000,
+		});
+		const embedding = makeCapability("embedding", {
+			residentRole: "embedding",
+			estimatedMb: 400,
+		});
+		arbiter.registerCapability(embedding.registration);
+		arbiter.start();
+
+		source.dispatch("low");
+		await flush();
+		expect(await arbiter.preload("embedding", "emb-low")).toBe(false);
+
+		source.dispatch("critical");
+		await flush();
+		expect(await arbiter.preload("embedding", "emb-critical")).toBe(false);
+		expect(embedding.loads).toEqual([]);
+		await arbiter.shutdown();
+	});
+
+	it("refuses preload when the resident set would exceed budget", async () => {
+		const registry = new SharedResourceRegistry();
+		const arbiter = new MemoryArbiter({ registry, now, budgetMb: () => 1000 });
+		const text = makeCapability("text", { estimatedMb: 700 });
+		const embedding = makeCapability("embedding", {
+			residentRole: "embedding",
+			estimatedMb: 400,
+		});
+		arbiter.registerCapability(text.registration);
+		arbiter.registerCapability(embedding.registration);
+
+		await (await arbiter.acquire("text", "txt")).release();
+
+		expect(await arbiter.preload("embedding", "emb")).toBe(false);
+		expect(embedding.loads).toEqual([]);
+		expect(arbiter.residentSnapshot()).toMatchObject([
+			{ capability: "text", modelKey: "txt" },
+		]);
+		await arbiter.shutdown();
+	});
+
 	it("critical evicts every non-text role but keeps the text target", async () => {
 		const registry = new SharedResourceRegistry();
 		const source: CapacitorPressureSource = capacitorPressureSource({ now });

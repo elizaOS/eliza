@@ -39,6 +39,7 @@ import {
   resolveAnthropicThinkingBudgetTokens,
 } from "@/lib/providers/anthropic-thinking";
 import {
+  canonicalizeCerebrasModelId,
   getLanguageModel,
   resolveAiProviderSource,
 } from "@/lib/providers/language-model";
@@ -143,6 +144,8 @@ type AppCreditsInfo = {
 };
 
 function normalizeModelId(model: string): string {
+  const canonicalCerebrasModel = canonicalizeCerebrasModelId(model);
+  if (canonicalCerebrasModel !== model) return canonicalCerebrasModel;
   if (model.includes("/")) return model;
   if (model.startsWith("claude-")) return `anthropic/${model}`;
   return model;

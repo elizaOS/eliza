@@ -15,9 +15,9 @@
 //   layers map but are not the same enum.
 // - The schema URL `https://elizaos.ai/schemas/eliza-1.manifest.v1.json` is
 //   exported as a JSON Schema sibling file in this directory.
-// - Eliza-1 speculative decoding is native llama.cpp MTP. MTP-enabled tiers
-//   ship a bundled drafter GGUF under `files.mtp`; the runtime resolves it at
-//   load time and passes it as the draft model.
+// - Eliza-1 speculative decoding is native llama.cpp same-file MTP. MTP-enabled
+//   tiers carry the NextN head in the primary text GGUF, so `files.mtp` is
+//   intentionally empty for current bundles.
 // - Per-sub-model versioning (kokoro, omnivoice, turn-detector, voice-emotion,
 //   diarizer, speaker-encoder, vad, wakeword, embedding, asr) lives in
 //   `packages/shared/src/local-inference/voice-models.ts` and the matching
@@ -122,24 +122,28 @@ export const ELIZA_1_BACKENDS = [
 export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
 // Required-kernel set per tier. Mirrors the active Eliza-1 release policy:
-// - All tiers require turboquant + qjl + polarquant.
+// - All tiers require the TurboQuant text-weight kernels.
 // - All current text GGUFs ship at the 128k half-context floor or the 262k
 //   native tier, so every tier requires `turbo3_tcq`. The validator also
 //   enforces the same requirement dynamically for any bundle that declares
 //   a >64k text file, so additional tiers cannot publish long-context text
 //   without TCQ.
+// - QJL/Polar KV-cache kernels are intentionally not required for the shipped
+//   qwen35 tiers: the available QJL1_256/fused route is head_dim=128 while
+//   these models are head_dim=256. Keep F16 KV until a compatible kernel or
+//   model variant lands.
 //
 // Q4 is the release text quant baseline. TCQ is part of the release contract
 // for the full text ladder, including the smallest 0.8B and 2B bundles.
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-	"0_8b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
-	"2b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
-	"4b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
-	"9b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
-	"27b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
-	"27b-256k": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
+	"0_8b": ["turboquant_q4", "turbo3_tcq"],
+	"2b": ["turboquant_q4", "turbo3_tcq"],
+	"4b": ["turboquant_q4", "turbo3_tcq"],
+	"9b": ["turboquant_q4", "turbo3_tcq"],
+	"27b": ["turboquant_q4", "turbo3_tcq"],
+	"27b-256k": ["turboquant_q4", "turbo3_tcq"],
 };
 
 // Backends each tier is expected to support on shipped hardware.

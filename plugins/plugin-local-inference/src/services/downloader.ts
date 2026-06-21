@@ -335,9 +335,10 @@ export class Downloader {
 	}
 
 	/**
-	 * Start a download for a model. Accepts either a curated catalog id, or
-	 * a full `CatalogModel` spec for ad-hoc HF-search results. Idempotent —
-	 * returns the existing job if one is already running for the same id.
+	 * Start a download for a curated Eliza-1 catalog entry. Object specs are
+	 * accepted only for internal tests that decorate a known Eliza-1 id; ad-hoc
+	 * Hugging Face / ModelScope specs are rejected before any reservation or
+	 * network I/O.
 	 */
 	async start(modelIdOrSpec: string | CatalogModel): Promise<DownloadJob> {
 		const catalogEntry =
@@ -347,6 +348,12 @@ export class Downloader {
 		if (!catalogEntry) {
 			throw new Error(
 				`Unknown model id: ${typeof modelIdOrSpec === "string" ? modelIdOrSpec : "(no id)"}`,
+			);
+		}
+		const curated = findCatalogModel(catalogEntry.id);
+		if (!curated || !isDefaultEligibleId(curated.id)) {
+			throw new Error(
+				"Custom model downloads are disabled; choose an Eliza-1 tier from the curated catalog.",
 			);
 		}
 		const modelId = catalogEntry.id;
@@ -611,8 +618,7 @@ export class Downloader {
 			await upsertElizaModel(installed);
 
 			// First-light convenience: only default-eligible Eliza-1 downloads
-			// can fill empty slots. Ad-hoc Hugging Face downloads remain
-			// explicit opt-in even though Eliza owns the downloaded file.
+			// can fill empty slots.
 			if (isDefaultEligibleId(installed.id)) {
 				await ensureDefaultAssignment(installed.id);
 			}

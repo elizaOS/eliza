@@ -35,7 +35,6 @@ import type {
 	SendHandlerResult,
 	TargetInfo,
 } from "./messaging";
-import type { ShortcutDefinition } from "./shortcut";
 import type {
 	GenerateTextOptions,
 	GenerateTextParams,
@@ -62,6 +61,7 @@ import type {
 	SearchCategoryRegistration,
 } from "./search";
 import type { Service, ServiceTypeName } from "./service";
+import type { ShortcutDefinition } from "./shortcut";
 import type { State } from "./state";
 import type { Task, TaskWorker } from "./task";
 import type { ToolPolicyConfig, ToolProfileId } from "./tools";

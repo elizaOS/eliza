@@ -21,17 +21,28 @@ async function j(method, path, { token, body, base } = {}) {
   });
   let data = null;
   const txt = await res.text();
-  try { data = txt ? JSON.parse(txt) : null; } catch { data = txt; }
+  try {
+    data = txt ? JSON.parse(txt) : null;
+  } catch {
+    data = txt;
+  }
   return { status: res.status, data };
 }
 
 const results = [];
-const step = (name, ok, detail) => { results.push({ name, ok, detail }); log(`${ok ? "✅" : "❌"} ${name}${detail ? " — " + detail : ""}`); };
+const step = (name, ok, detail) => {
+  results.push({ name, ok, detail });
+  log(`${ok ? "✅" : "❌"} ${name}${detail ? ` — ${detail}` : ""}`);
+};
 
 async function main() {
   // 1. SIWE mint
   const nonceRes = await j("GET", "/api/auth/siwe/nonce?chainId=1");
-  step("SIWE nonce", nonceRes.status === 200 && !!nonceRes.data?.nonce, `status=${nonceRes.status}`);
+  step(
+    "SIWE nonce",
+    nonceRes.status === 200 && !!nonceRes.data?.nonce,
+    `status=${nonceRes.status}`,
+  );
   if (nonceRes.status !== 200) return done();
   const n = nonceRes.data;
   const account = privateKeyToAccount(generatePrivateKey());
@@ -45,9 +56,15 @@ async function main() {
     statement: n.statement,
   });
   const signature = await account.signMessage({ message });
-  const verifyRes = await j("POST", "/api/auth/siwe/verify", { body: { message, signature } });
+  const verifyRes = await j("POST", "/api/auth/siwe/verify", {
+    body: { message, signature },
+  });
   const token = verifyRes.data?.apiKey;
-  step("SIWE verify -> apiKey", verifyRes.status === 200 && !!token, `status=${verifyRes.status} org=${verifyRes.data?.organization?.id || "?"}`);
+  step(
+    "SIWE verify -> apiKey",
+    verifyRes.status === 200 && !!token,
+    `status=${verifyRes.status} org=${verifyRes.data?.organization?.id || "?"}`,
+  );
   if (!token) return done();
 
   // sanity: authed call
@@ -56,24 +73,55 @@ async function main() {
 
   // 2. Create agent
   const agentName = `e2e-test-${account.address.slice(2, 8)}`;
-  const createRes = await j("POST", "/api/v1/eliza/agents", { token, body: { agentName, alwaysOn: true, autoProvision: false } });
+  const createRes = await j("POST", "/api/v1/eliza/agents", {
+    token,
+    body: { agentName, alwaysOn: true, autoProvision: false },
+  });
   const d = createRes.data?.data || createRes.data || {};
   const agentId = d.id || d.agentId || createRes.data?.id;
   const tier = d.executionTier || d.execution_tier;
-  step("create agent", (createRes.status === 200 || createRes.status === 201 || createRes.status === 202) && !!agentId, `status=${createRes.status} id=${agentId} tier=${tier} source=${createRes.data?.source}`);
+  step(
+    "create agent",
+    (createRes.status === 200 ||
+      createRes.status === 201 ||
+      createRes.status === 202) &&
+      !!agentId,
+    `status=${createRes.status} id=${agentId} tier=${tier} source=${createRes.data?.source}`,
+  );
   if (!agentId) return done();
 
   // 3. Provision (dedicated container)
-  const provRes = await j("POST", `/api/v1/eliza/agents/${agentId}/provision`, { token });
+  const provRes = await j("POST", `/api/v1/eliza/agents/${agentId}/provision`, {
+    token,
+  });
   const pd = provRes.data?.data || {};
-  step("provision", provRes.status >= 200 && provRes.status < 300, `status=${provRes.status} source=${provRes.data?.source} jobId=${pd.jobId} bridge=${pd.bridgeUrl ? "Y" : "N"} webUi=${pd.webUiUrl ? "Y" : "N"}`);
+  step(
+    "provision",
+    provRes.status >= 200 && provRes.status < 300,
+    `status=${provRes.status} source=${provRes.data?.source} jobId=${pd.jobId} bridge=${pd.bridgeUrl ? "Y" : "N"} webUi=${pd.webUiUrl ? "Y" : "N"}`,
+  );
 
   // 4. Shared chat immediately (while container boots) — conversationId === agentId
   const sharedBase = `${API}/api/v1/eliza/agents/${agentId}`;
-  const chatRes = await j("POST", `/api/conversations/${agentId}/messages`, { token, base: sharedBase, body: { text: "Hello, reply with the single word: working" } });
-  step("shared chat send", chatRes.status === 200 && typeof (chatRes.data?.text) === "string", `status=${chatRes.status} reply="${String(chatRes.data?.text || chatRes.data?.error || "").slice(0, 50)}"`);
-  const readRes = await j("GET", `/api/conversations/${agentId}/messages`, { token, base: sharedBase });
-  step("shared chat read", readRes.status === 200 && Array.isArray(readRes.data?.messages), `status=${readRes.status} msgs=${readRes.data?.messages?.length}`);
+  const chatRes = await j("POST", `/api/conversations/${agentId}/messages`, {
+    token,
+    base: sharedBase,
+    body: { text: "Hello, reply with the single word: working" },
+  });
+  step(
+    "shared chat send",
+    chatRes.status === 200 && typeof chatRes.data?.text === "string",
+    `status=${chatRes.status} reply="${String(chatRes.data?.text || chatRes.data?.error || "").slice(0, 50)}"`,
+  );
+  const readRes = await j("GET", `/api/conversations/${agentId}/messages`, {
+    token,
+    base: sharedBase,
+  });
+  step(
+    "shared chat read",
+    readRes.status === 200 && Array.isArray(readRes.data?.messages),
+    `status=${readRes.status} msgs=${readRes.data?.messages?.length}`,
+  );
 
   // 5. Wait for dedicated container ready (bridge/web_ui + running), bounded ~5min
   let ready = null;
@@ -84,33 +132,75 @@ async function main() {
     const a = det.data?.data || det.data || {};
     lastStatus = a.status || a.execution_status || "?";
     const base = a.bridge_url || a.bridgeUrl || a.web_ui_url || a.webUiUrl;
-    if (base && (!a.status || a.status === "running")) { ready = { base, status: a.status }; break; }
+    if (base && (!a.status || a.status === "running")) {
+      ready = { base, status: a.status };
+      break;
+    }
     await sleep(8000);
   }
-  step("dedicated container ready", !!ready, ready ? `base=${ready.base} status=${ready.status}` : `timed out, lastStatus=${lastStatus}`);
+  step(
+    "dedicated container ready",
+    !!ready,
+    ready
+      ? `base=${ready.base} status=${ready.status}`
+      : `timed out, lastStatus=${lastStatus}`,
+  );
 
   // 6. Conversation import to the dedicated container (idempotent, inference-free)
   if (ready) {
-    const importRes = await j("POST", `/api/conversations/${agentId}/import`, { token, base: ready.base, body: { messages: [{ role: "user", text: "Hello, reply with the single word: working" }] } });
-    step("conversation import", importRes.status === 200, `status=${importRes.status} inserted=${importRes.data?.inserted} alreadyPopulated=${importRes.data?.alreadyPopulated}`);
+    const importRes = await j("POST", `/api/conversations/${agentId}/import`, {
+      token,
+      base: ready.base,
+      body: {
+        messages: [
+          { role: "user", text: "Hello, reply with the single word: working" },
+        ],
+      },
+    });
+    step(
+      "conversation import",
+      importRes.status === 200,
+      `status=${importRes.status} inserted=${importRes.data?.inserted} alreadyPopulated=${importRes.data?.alreadyPopulated}`,
+    );
     // dedicated chat works?
-    const ded = await j("POST", `/api/conversations/${agentId}/messages`, { token, base: ready.base, body: { text: "Say: dedicated-ok" } });
-    step("dedicated chat", ded.status === 200 || ded.status === 201, `status=${ded.status} reply="${String(ded.data?.text || "").slice(0, 40)}"`);
+    const ded = await j("POST", `/api/conversations/${agentId}/messages`, {
+      token,
+      base: ready.base,
+      body: { text: "Say: dedicated-ok" },
+    });
+    step(
+      "dedicated chat",
+      ded.status === 200 || ded.status === 201,
+      `status=${ded.status} reply="${String(ded.data?.text || "").slice(0, 40)}"`,
+    );
   }
 
   // 7. Deprovision (delete container) + poll to gone
-  const delRes = await j("DELETE", `/api/v1/eliza/agents/${agentId}`, { token });
+  const delRes = await j("DELETE", `/api/v1/eliza/agents/${agentId}`, {
+    token,
+  });
   const jobId = delRes.data?.data?.jobId || delRes.data?.jobId;
-  step("delete agent", delRes.status >= 200 && delRes.status < 300, `status=${delRes.status} jobId=${jobId}`);
+  step(
+    "delete agent",
+    delRes.status >= 200 && delRes.status < 300,
+    `status=${delRes.status} jobId=${jobId}`,
+  );
   // poll until 404 (gone), bounded ~3min
   let gone = false;
   const dl2 = Date.now() + 3 * 60 * 1000;
   while (Date.now() < dl2) {
     const det = await j("GET", `/api/v1/eliza/agents/${agentId}`, { token });
-    if (det.status === 404) { gone = true; break; }
+    if (det.status === 404) {
+      gone = true;
+      break;
+    }
     await sleep(6000);
   }
-  step("container deprovisioned (404)", gone, gone ? "agent gone" : "still present after 3min");
+  step(
+    "container deprovisioned (404)",
+    gone,
+    gone ? "agent gone" : "still present after 3min",
+  );
 
   done();
 }
@@ -118,7 +208,11 @@ async function main() {
 function done() {
   const pass = results.filter((r) => r.ok).length;
   log(`\n=== REAL CLOUD FLOW: ${pass}/${results.length} passed ===`);
-  for (const r of results.filter((x) => !x.ok)) log(`  FAIL: ${r.name} — ${r.detail}`);
+  for (const r of results.filter((x) => !x.ok))
+    log(`  FAIL: ${r.name} — ${r.detail}`);
   process.exit(results.every((r) => r.ok) ? 0 : 1);
 }
-main().catch((e) => { log("FATAL:", e.message); process.exit(2); });
+main().catch((e) => {
+  log("FATAL:", e.message);
+  process.exit(2);
+});

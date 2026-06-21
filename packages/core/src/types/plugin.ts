@@ -8,10 +8,10 @@ import type { RegisteredEvaluator } from "./evaluator";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
 import type { X402Config, X402RequestValidator } from "./payment";
-import type { ShortcutDefinition } from "./shortcut";
 import type { JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { Service } from "./service";
+import type { ShortcutDefinition } from "./shortcut";
 import type { TestSuite } from "./testing";
 
 /**

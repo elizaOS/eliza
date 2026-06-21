@@ -20,6 +20,30 @@ The arbiter exists so loading a vision model can unload the text model
 gracefully and we don't get jetsam'd on iPhone or `lmkd`-killed on
 Android.
 
+## Validation status (2026-06-21)
+
+Live in this checkout:
+
+- Fit-to-budget LRU eviction uses non-zero resident estimates and evicts
+  the coldest evictable non-text role before a new load would exceed the
+  configured budget.
+- `MemoryArbiter.preload(capability, modelKey)` warm-loads only under
+  nominal pressure and only when the budget proves the resident set fits.
+  It returns `false` under `low` / `critical` pressure or when the load
+  would overrun the budget.
+- The active text target registers a catalog/file-size-derived resident
+  estimate with the shared registry, so pressure telemetry no longer
+  reports the dominant text role as `0 MB`.
+
+Still deferred:
+
+- The desktop/server memory benchmark harness and CI `budgets.json`
+  regression gate.
+- Voice next-stage predictors that call `preload()` during ASR / LM /
+  TTS transitions.
+- Dedicated embedding-sidecar residency registration for the larger
+  Eliza-1 tiers.
+
 ## Why one arbiter
 
 Before WS1, every plugin loaded its own models with no shared budget:

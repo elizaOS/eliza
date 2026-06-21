@@ -78,7 +78,6 @@ import {
 } from "./pipeline-impls";
 import type { VoiceProfileStore } from "./profile-store";
 import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
-import { decodeMonoPcm16Wav, encodeMonoPcm16Wav } from "./wav-codec";
 import {
 	type MmapRegionHandle,
 	SharedResourceRegistry,
@@ -121,6 +120,7 @@ import type {
 	TranscriptionAudio,
 	VadEventSource,
 } from "./types";
+import { decodeMonoPcm16Wav, encodeMonoPcm16Wav } from "./wav-codec";
 
 const SAMPLE_RATE_DEFAULT = 24_000;
 const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s

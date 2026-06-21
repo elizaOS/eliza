@@ -50,10 +50,10 @@ import { OpenApiViewer } from "../../cloud-ui/components/docs/openapi-viewer";
 import { DashboardPageContainer } from "../../cloud-ui/components/layout/dashboard-page";
 import { cn } from "../../cloud-ui/lib/utils";
 import { api } from "../lib/api-client";
+import { useDocumentTitle } from "../lib/use-document-title";
 import { ApiTester } from "./api-tester";
 import { AuthManager } from "./auth-manager";
 import { toast } from "./toast";
-import { useDocumentTitle } from "../lib/use-document-title";
 import { useExplorerApiKey } from "./use-explorer-api-key";
 import { useRequireAuth } from "./use-session-auth";
 

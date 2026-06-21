@@ -47,7 +47,6 @@ import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-f
 import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
 import { RoomHandlerQueue } from "./runtime/room-handler-queue";
 import { ShortcutRegistry } from "./runtime/shortcut-registry";
-import type { ShortcutDefinition } from "./types/shortcut";
 import {
 	buildCanonicalSystemPrompt,
 	resolveEffectiveSystemPrompt,
@@ -201,6 +200,7 @@ import {
 	type SearchCategoryRegistration,
 	SearchCategoryRegistryError,
 } from "./types/search";
+import type { ShortcutDefinition } from "./types/shortcut";
 import type {
 	RetryBackoffConfig,
 	SchemaRow,

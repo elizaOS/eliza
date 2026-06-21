@@ -41,7 +41,7 @@ function resolveTrust(message: Memory): {
 
 function buildAction(
 	key: string,
-	nativeName: string,
+	_nativeName: string,
 	description: string,
 	aliases: string[],
 ): Action {

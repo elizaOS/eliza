@@ -110,16 +110,16 @@ describe("Eliza-1 runtime quant metadata", () => {
     }
   });
 
-  it("uses QJL K-cache and TurboQuant V-cache for every chat tier", () => {
+  it("advertises only safe runtime optimizations for the shipped qwen35 tiers", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
-      expect(entry?.runtime?.kvCache?.typeK).toBe("qjl1_256");
-      expect(entry?.runtime?.kvCache?.typeV).toBe("tbq3_0");
-      expect(entry?.runtime?.optimizations?.requiresKernel).toContain(
+      expect(entry?.runtime?.kvCache).toBeUndefined();
+      expect(entry?.runtime?.optimizations?.requiresKernel).toContain("turbo3");
+      expect(entry?.runtime?.optimizations?.requiresKernel).toContain("turbo4");
+      expect(entry?.runtime?.optimizations?.requiresKernel).not.toContain(
         "qjl_full",
       );
-      expect(entry?.runtime?.optimizations?.requiresKernel).toContain("turbo3");
-      expect(entry?.runtime?.optimizations?.requiresKernel).toContain(
+      expect(entry?.runtime?.optimizations?.requiresKernel).not.toContain(
         "polarquant",
       );
       if (ELIZA_1_MTP_TIER_IDS.some((mtpId) => mtpId === id)) {
@@ -131,6 +131,7 @@ describe("Eliza-1 runtime quant metadata", () => {
   });
 
   it("enables same-file native MTP metadata (no separate drafter) for MTP tiers", () => {
+    expect(ELIZA_1_MTP_TIER_IDS).not.toContain("eliza-1-0_8b");
     for (const id of ELIZA_1_MTP_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.runtime?.mtp?.specType).toBe("draft-mtp");

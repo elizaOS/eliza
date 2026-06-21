@@ -21,7 +21,6 @@ import { navigationCommandDefinitions } from "./navigation-commands";
 import { DEFAULT_COMMANDS, getEnabledCommands, useRuntime } from "./registry";
 import { commandVisibleForSurface, serializeCommand } from "./serialize";
 import type {
-	ClientCommandAction,
 	CommandDefinition,
 	CommandSurface,
 	CommandTarget,
@@ -97,9 +96,10 @@ function commandName(command: CommandDefinition): string {
  * win on name collisions (they own those surfaces).
  */
 function unifiedDefinitions(agentId?: string | null): CommandDefinition[] {
-	const agent = (agentId
-		? (useRuntime(agentId), getEnabledCommands())
-		: DEFAULT_COMMANDS.filter((command) => command.enabled !== false)
+	const agent = (
+		agentId
+			? (useRuntime(agentId), getEnabledCommands())
+			: DEFAULT_COMMANDS.filter((command) => command.enabled !== false)
 	).filter(isConnectorScoped);
 	const navigation = navigationCommandDefinitions();
 	const navigationNames = new Set(navigation.map(commandName));
@@ -180,11 +180,11 @@ export function getCatalogCommands(
 		source?: SerializedCommandSource;
 	} = {},
 ): SerializedCommand[] {
-	return visibleDefinitions(
-		surface,
-		options.activeViewId,
-		options.agentId,
-	).map((command) =>
-		serializeCommand(command, options.source ? { source: options.source } : {}),
+	return visibleDefinitions(surface, options.activeViewId, options.agentId).map(
+		(command) =>
+			serializeCommand(
+				command,
+				options.source ? { source: options.source } : {},
+			),
 	);
 }

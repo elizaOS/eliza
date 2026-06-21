@@ -26,7 +26,6 @@ import { MODEL_CATALOG } from "./catalog";
 import { Downloader } from "./downloader";
 import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
-import { searchHuggingFaceGguf, searchModelHubGguf } from "./hf-search";
 import {
 	createImageGenCapabilityRegistration,
 	type ImageGenBackend,
@@ -314,7 +313,9 @@ export class LocalInferenceService {
 		query: string,
 		limit?: number,
 	): Promise<CatalogModel[]> {
-		return searchHuggingFaceGguf(query, limit);
+		void query;
+		void limit;
+		return [];
 	}
 
 	async searchModelHub(
@@ -322,7 +323,10 @@ export class LocalInferenceService {
 		hub: "huggingface" | "modelscope",
 		limit?: number,
 	): Promise<CatalogModel[]> {
-		return searchModelHubGguf(query, hub, limit);
+		void query;
+		void hub;
+		void limit;
+		return [];
 	}
 
 	/**

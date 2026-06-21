@@ -43,7 +43,7 @@
  *   →first-replyText-char=Yms llm-first-token → llm-first-replytext-char
  *   →first-TTS-audio=Zms      vad-trigger → tts-first-audio-chunk
  *   →audio-played=Wms         vad-trigger → audio-first-played (the headline TTAP)
- *   mtp-accept=N%          MTP drafter token-acceptance rate (from llama-server /metrics)
+ *   mtp-accept=N%          MTP draft token-acceptance rate (from llama-server /metrics)
  */
 
 import { existsSync } from "node:fs";
@@ -956,41 +956,12 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
     `registered ${catalogEntry.id} bundle in the local-inference registry (text=${textGguf})`,
   );
 
-  // Register the MTP drafter companion too (so the engine wires -md).
-  const companionId =
-    catalogEntry.runtime?.mtp?.drafterModelId ??
-    catalogEntry.companionModelIds?.[0];
-  if (companionId) {
-    const { findCatalogModel } = await import(
-      "../../shared/src/local-inference/catalog.ts"
+  if (catalogEntry.runtime?.mtp?.enabled) {
+    tag(
+      "setup",
+      "blue",
+      `${catalogEntry.id} declares same-file MTP metadata; no separate drafter registration is needed`,
     );
-    const companion = findCatalogModel(companionId);
-    if (companion) {
-      const drafterGguf = path.join(bundleRoot, companion.ggufFile);
-      if (existsSync(drafterGguf)) {
-        const dstat = await fs.stat(drafterGguf);
-        await upsertElizaModel({
-          id: companion.id,
-          displayName: companion.displayName ?? companion.id,
-          path: drafterGguf,
-          sizeBytes: dstat.size,
-          hfRepo: companion.hfRepo,
-          installedAt: now,
-          lastUsedAt: null,
-          source: "eliza-download",
-          sha256: null,
-          lastVerifiedAt: now,
-          runtimeRole: "mtp-drafter",
-          companionFor: catalogEntry.id,
-          ...bundleMeta,
-        });
-        tag(
-          "setup",
-          "blue",
-          `registered ${companion.id} (MTP drafter) at ${drafterGguf}`,
-        );
-      }
-    }
   }
   return model;
 }
@@ -1012,7 +983,7 @@ async function bootStandaloneRuntime({ roomId }) {
   // The runtime needs plugin-sql (storage) + the local-inference model handler.
   // Core wires DefaultMessageService during initialize(). Fail loudly if a
   // piece is missing rather than half-booting.
-  const { AgentRuntime, ModelType } = await import("@elizaos/core");
+  const { AgentRuntime } = await import("@elizaos/core");
   let sqlPlugin;
   try {
     sqlPlugin =

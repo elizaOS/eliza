@@ -191,10 +191,11 @@ export function useSlashCommandController(
     // surface (hide non-gui commands) and sender authorization (hide
     // requiresAuth/requiresElevated commands the sender can't run).
     () =>
-      filterCommandsForSurface(
-        mergeByAlias([serverCommands, customCommands]),
-        { surface: GUI_SURFACE, isAuthorized, isElevated },
-      ),
+      filterCommandsForSurface(mergeByAlias([serverCommands, customCommands]), {
+        surface: GUI_SURFACE,
+        isAuthorized,
+        isElevated,
+      }),
     [serverCommands, customCommands, isAuthorized, isElevated],
   );
 

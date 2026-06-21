@@ -29,8 +29,7 @@ export function DownloadQueue({
     return (
       <div className="rounded-sm border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
         {t("downloadqueue.empty", {
-          defaultValue:
-            "No downloads in progress. Start one from Eliza-1 or use explicit custom search.",
+          defaultValue: "No downloads in progress. Start one from Eliza-1.",
         })}
       </div>
     );

@@ -28,9 +28,9 @@ import {
 } from "../../../components/ui/dialog";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
+import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { APPS_QUERY_KEY, checkAppNameAvailable, createApp } from "../lib/apps";
-import { useCopyFeedback } from "../../lib/use-copy-feedback";
 
 interface CreateAppDialogProps {
   open: boolean;

@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useT } from "../lib/i18n";
 import { useCopyFeedback } from "../../lib/use-copy-feedback";
+import { useT } from "../lib/i18n";
 
 interface WalletAddresses {
   evmAddress?: string;

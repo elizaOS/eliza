@@ -114,6 +114,14 @@ interface CatalogModel extends SharedCatalogModel {
 	role: ModelRole;
 }
 
+const ASSIGNMENT_SLOTS = new Set<keyof Assignments>([
+	"TEXT_SMALL",
+	"TEXT_LARGE",
+	"TEXT_EMBEDDING",
+	"TEXT_TO_SPEECH",
+	"TRANSCRIPTION",
+]);
+
 interface InstalledModel {
 	id: string;
 	displayName: string;
@@ -211,6 +219,27 @@ const CATALOG: CatalogModel[] = SHARED_MODEL_CATALOG.map((model) => ({
 	...model,
 	role: catalogRole(model),
 }));
+
+function isCuratedCatalogModelId(modelId: string): boolean {
+	return CATALOG.some(
+		(model) =>
+			model.id === modelId &&
+			!model.hiddenFromCatalog &&
+			model.runtimeRole !== "mtp-drafter",
+	);
+}
+
+function sanitizeAssignments(assignments: Assignments): Assignments {
+	const next: Assignments = {};
+	for (const [slot, modelId] of Object.entries(assignments) as Array<
+		[keyof Assignments, string | undefined]
+	>) {
+		if (!modelId || !ASSIGNMENT_SLOTS.has(slot)) continue;
+		if (!isCuratedCatalogModelId(modelId)) continue;
+		next[slot] = modelId;
+	}
+	return next;
+}
 
 const activeDownloads = new Map<
 	string,
@@ -446,7 +475,7 @@ async function readAssignments(): Promise<Assignments> {
 			assignments: {},
 		},
 	);
-	return file.assignments ?? {};
+	return sanitizeAssignments(file.assignments ?? {});
 }
 
 async function writeAssignments(
@@ -1307,13 +1336,22 @@ export async function handleLocalInferenceRoutes(
 		const body = await readJsonBody<Record<string, unknown>>(req, res);
 		if (!body) return true;
 		const slot = typeof body.slot === "string" ? body.slot : null;
-		if (!slot) {
+		if (!slot || !ASSIGNMENT_SLOTS.has(slot as keyof Assignments)) {
 			sendJsonError(res, "slot is required");
 			return true;
 		}
 		const assignments = await readAssignments();
 		if (typeof body.modelId === "string" && body.modelId.trim()) {
-			assignments[slot as keyof Assignments] = body.modelId.trim();
+			const modelId = body.modelId.trim();
+			if (!isCuratedCatalogModelId(modelId)) {
+				sendJsonError(
+					res,
+					"Local inference assignments are limited to curated Eliza-1 tiers.",
+					400,
+				);
+				return true;
+			}
+			assignments[slot as keyof Assignments] = modelId;
 		} else {
 			delete assignments[slot as keyof Assignments];
 		}
@@ -1535,7 +1573,11 @@ export async function handleLocalInferenceRoutes(
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/hf-search") {
-		sendJson(res, { models: [] });
+		sendJson(res, {
+			models: [],
+			disabled: true,
+			reason: "custom-model-search-disabled",
+		});
 		return true;
 	}
 

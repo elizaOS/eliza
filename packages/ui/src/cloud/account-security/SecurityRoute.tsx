@@ -16,6 +16,7 @@ import {
   PageHeaderProvider,
   useSetPageHeader,
 } from "../../cloud-ui";
+import { useDocumentTitle } from "../lib/use-document-title";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { ActiveSessionsPanel } from "./components/active-sessions-panel";
 import { ApiKeysLink } from "./components/api-keys-link";
@@ -23,7 +24,6 @@ import { IncidentReportPanel } from "./components/incident-report-panel";
 import { MfaPanel } from "./components/mfa-panel";
 import { PrivacyPanel } from "./components/privacy-panel";
 import { RecentAuditEvents } from "./components/recent-audit-events";
-import { useDocumentTitle } from "../lib/use-document-title";
 
 /**
  * The security surface. Embeddable: handed to the Wave-3 settings section and

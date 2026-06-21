@@ -22,10 +22,7 @@ import type {
 	CommandResult,
 	ParsedCommand,
 } from "../types";
-import {
-	type CommandSettings,
-	getCommandSettings,
-} from "./command-settings";
+import { type CommandSettings, getCommandSettings } from "./command-settings";
 
 /**
  * Commands whose entire effect is the reply `runCommand` produces — safe to
@@ -176,9 +173,9 @@ export async function runCommand(
 			);
 		}
 
-	default:
-		// Not a gate-safe command this layer owns — let it flow to the pipeline.
-		return { handled: false, shouldContinue: true };
+		default:
+			// Not a gate-safe command this layer owns — let it flow to the pipeline.
+			return { handled: false, shouldContinue: true };
 	}
 }
 

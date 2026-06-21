@@ -102,13 +102,13 @@ src/
     types.ts                      Re-exports from @elizaos/shared (CatalogModel, InstalledModel, …)
     hardware.ts                   probeHardware(), assessFit()
     recommendation.ts             selectRecommendedModels(), recommendForFirstRun()
-    downloader.ts                 Downloader — HuggingFace GGUF download with resume + progress events
+    downloader.ts                 Downloader — curated Eliza-1 bundle download with resume + progress events
     device-tier.ts                classifyDeviceTier(), DeviceTier thresholds
     router-handler.ts             installRouterHandler() — routing-policy layer (manual/cloud/local)
     cloud-fallback.ts             makeCloudFallbackHandler() — local → cloud fallback on error
     paths.ts                      localInferenceRoot(), elizaModelsDir(), registryPath()
     registry.ts                   listInstalledModels(), upsertElizaModel(), removeElizaModel()
-    hf-search.ts                  searchHuggingFaceGguf(), searchModelHubGguf()
+    hf-search.ts                  legacy custom-search compatibility shim (disabled in setup)
     imagegen/                     Image generation backends (sd.cpp, CoreML, mflux, AOSP, TensorRT)
     tts/                          TTS pipeline helpers and audio cache
     asr/                          ASR backend interface and capability registration
@@ -159,7 +159,6 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `ELIZA_NETWORK_POLICY` | No | Network access policy override for inference routing |
 | `ELIZA_VOICE_EOT_BACKEND` | No | End-of-turn detector backend selection for voice pipeline |
 | `ELIZA_VOICE_UPDATE_INTERVAL_MS` | No | Polling interval (ms) for voice model update checks |
-| `HF_TOKEN` / `HUGGINGFACE_TOKEN` / `HF_HUB_TOKEN` | No | HuggingFace token for gated model downloads |
 | `SD_CPP_BIN` | No | Absolute path to sd.cpp binary |
 | `MFLUX_BIN` | No | Absolute path to mflux binary |
 | `IMAGEGEN_TRT_BIN` | No | Absolute path to TensorRT image-gen binary |

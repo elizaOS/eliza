@@ -993,7 +993,8 @@ export function ContinuousChatOverlay({
   const followRafRef = React.useRef<number | null>(null);
   React.useEffect(
     () => () => {
-      if (followRafRef.current != null) cancelAnimationFrame(followRafRef.current);
+      if (followRafRef.current != null)
+        cancelAnimationFrame(followRafRef.current);
     },
     [],
   );

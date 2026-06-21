@@ -64,9 +64,9 @@ function mtpSupportedForTier(id: Eliza1TierId): boolean {
 }
 
 // The quantized 4B (Qwen3.5) is the minimum tier that is good enough to ship
-// as the default chat model. The 0.8B/2B tiers remain in the catalog (and as
-// MTP drafter companions) but are no longer first-run defaults — they are too
-// small for a quality conversational experience.
+// as the default chat model. The 0.8B/2B tiers remain in the catalog but are
+// no longer first-run defaults — they are too small for a quality
+// conversational experience.
 export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-4b";
 
 export const DEFAULT_ELIGIBLE_MODEL_IDS: ReadonlySet<string> = new Set(
@@ -176,10 +176,7 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   "eliza-1-27b-256k": ["omnivoice"],
 };
 
-const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = [
-  "turbo3",
-  "turbo4",
-];
+const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = ["turbo3", "turbo4"];
 
 interface TierSpec {
   id: Eliza1TierId;
@@ -250,9 +247,9 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     params: "4B",
     sizeGb: 2.6,
     // 4B is the shipped mobile minimum/default. The Q4_K_M weights are 2.6 GB
-    // and the mobile bundle runs a 64k context with compressed KV
-    // (qjl1_256/tbq3_0), so an 8 GB-class phone clears it. The floor stays
-    // above the model size to leave headroom for the OS, app, and KV cache.
+    // and the mobile bundle runs a 64k context with F16 KV until the
+    // head_dim=256 QJL path exists. The floor stays above the model size to
+    // leave headroom for the OS, app, and KV cache.
     minRamGb: 6,
     q4MinRamGb: 6,
     bucket: "mid",
@@ -577,66 +574,6 @@ function blurbForTier(id: Eliza1TierId): string {
   return exhaustive;
 }
 
-const drafterId = (id: Eliza1TierId): `${Eliza1TierId}-drafter` =>
-  `${id}-drafter`;
-
-// DFlash speculative-decoding draft companions published under each tier's
-// HuggingFace bundle (elizaos/eliza-1 -> bundles/<slug>/dflash/drafter-<slug>.gguf).
-// Sizes are the published gguf byte sizes verified against the HF repo (2026-05);
-// params/minRamGb are companion metadata (these are hidden, runtimeRole-gated).
-const TIER_DRAFTERS: Partial<
-  Record<
-    Eliza1TierId,
-    {
-      ggufRel: string;
-      params: CatalogModel["params"];
-      sizeGb: number;
-      minRamGb: number;
-      bucket: CatalogModel["bucket"];
-    }
-  >
-> = {
-  "eliza-1-0_8b": {
-    ggufRel: "dflash/drafter-0_8b.gguf",
-    params: "0.5B",
-    sizeGb: 0.24,
-    minRamGb: 2,
-    bucket: "small",
-  },
-  "eliza-1-2b": {
-    ggufRel: "dflash/drafter-2b.gguf",
-    params: "0.8B",
-    sizeGb: 0.68,
-    minRamGb: 4,
-    bucket: "small",
-  },
-};
-
-function drafterCompanion(id: Eliza1TierId): CatalogModel {
-  const drafter = TIER_DRAFTERS[id];
-  if (!drafter) {
-    throw new Error(`No DFlash drafter spec for tier ${id}`);
-  }
-  return {
-    id: drafterId(id),
-    displayName: `${tierDisplayName(id)} drafter`,
-    hfRepo: ELIZA_1_HF_REPO,
-    hfPathPrefix: bundleRemotePrefix(id),
-    ggufFile: bundlePath(id, drafter.ggufRel),
-    params: drafter.params,
-    quant: "Eliza-1 DFlash drafter companion",
-    sizeGb: drafter.sizeGb,
-    minRamGb: drafter.minRamGb,
-    category: "chat",
-    bucket: drafter.bucket,
-    tokenizerFamily: "qwen35",
-    hiddenFromCatalog: true,
-    runtimeRole: "mtp-drafter",
-    companionForModelId: id,
-    blurb: "DFlash speculative-decoding draft companion.",
-  };
-}
-
 function chatTier(id: Eliza1TierId): CatalogModel {
   const spec = TIER_SPECS[id];
   return {
@@ -673,19 +610,8 @@ export const MODEL_CATALOG: CatalogModel[] = ELIZA_1_TIER_IDS.map((id) =>
   chatTier(id),
 );
 
-// DFlash speculative-decoding drafter companions. Findable by id (installer
-// companion download + registry self-heal via findCatalogModel) but
-// intentionally NOT part of the published hub catalog (MODEL_CATALOG) — they are
-// hidden, mtp-drafter companion entries keyed to their parent tier.
-const DRAFTER_COMPANIONS: CatalogModel[] = ELIZA_1_TIER_IDS.filter(
-  (id) => TIER_DRAFTERS[id],
-).map((id) => drafterCompanion(id));
-
 export function findCatalogModel(id: string): CatalogModel | undefined {
-  return (
-    MODEL_CATALOG.find((m) => m.id === id) ??
-    DRAFTER_COMPANIONS.find((m) => m.id === id)
-  );
+  return MODEL_CATALOG.find((m) => m.id === id);
 }
 
 export function buildHuggingFaceResolveUrlForPath(

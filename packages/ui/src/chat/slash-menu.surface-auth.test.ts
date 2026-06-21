@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type {
-  CommandSurface,
-  SlashCommandCatalogItem,
-} from "./slash-menu";
+import type { CommandSurface, SlashCommandCatalogItem } from "./slash-menu";
 import { filterCommandsForSurface } from "./slash-menu";
 
 function cmd(
@@ -45,10 +42,11 @@ describe("filterCommandsForSurface — surface gating", () => {
   });
 
   it("shows a command with undefined surfaces everywhere (default)", () => {
-    const result = filterCommandsForSurface(
-      [cmd({ key: "everywhere" })],
-      { surface: GUI, isAuthorized: true, isElevated: true },
-    );
+    const result = filterCommandsForSurface([cmd({ key: "everywhere" })], {
+      surface: GUI,
+      isAuthorized: true,
+      isElevated: true,
+    });
     expect(keys(result)).toEqual(["everywhere"]);
   });
 
@@ -111,10 +109,7 @@ describe("filterCommandsForSurface — requiresElevated gating", () => {
 
   it("hides a requiresElevated command even when authorized but not elevated", () => {
     const result = filterCommandsForSurface(
-      [
-        cmd({ key: "plain" }),
-        cmd({ key: "admin", requiresElevated: true }),
-      ],
+      [cmd({ key: "plain" }), cmd({ key: "admin", requiresElevated: true })],
       { surface: GUI, isAuthorized: true, isElevated: false },
     );
     expect(keys(result)).toEqual(["plain"]);

@@ -1,13 +1,13 @@
 export { AppProvider } from "./AppContext";
 export { RESYNC_EVENT, type ResyncEventDetail } from "./AppContext.hooks";
+export * from "./action-notice";
+export * from "./agent-profiles";
 export {
+  __setAppValueForTests,
   publishAppValue,
   useAppSelector,
   useAppSelectorShallow,
-  __setAppValueForTests,
 } from "./app-store";
-export * from "./action-notice";
-export * from "./agent-profiles";
 export * from "./ChatComposerContext.hooks";
 export * from "./CompanionSceneConfigContext.hooks";
 export * from "./ConversationMessagesContext.hooks";

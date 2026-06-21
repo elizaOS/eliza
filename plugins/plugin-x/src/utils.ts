@@ -186,7 +186,7 @@ export async function sendTweet(
       false,
       mediaIds,
     );
-    logger.log("Successfully posted Tweet");
+    logger.info("Successfully posted Tweet");
   } catch (error) {
     logger.error("Error posting Tweet:", errorDetail(error));
     throw error;
@@ -223,10 +223,12 @@ export async function sendTweet(
       permanentUrl: "",
     });
 
-    logger.log("Successfully posted a tweet", tweetResult.id);
+    logger.info("Successfully posted a tweet", tweetResult.id);
   } catch (error) {
-    logger.error("Error parsing tweet response:", errorDetail(error));
-    throw error;
+    logger.error(
+      "Tweet posted, but failed to update local tweet cache:",
+      errorDetail(error),
+    );
   }
 
   return tweetResult;

@@ -423,6 +423,44 @@ export class MemoryArbiter {
 	}
 
 	/**
+	 * Predictive warm-load. Unlike `acquire`, preload never creates pressure to
+	 * make itself happen: it only loads when the system is nominal and the
+	 * configured budget proves the incoming resident footprint fits without
+	 * evicting anything. Returns `false` when the guard declines the preload.
+	 */
+	async preload(
+		capability: ArbiterCapability,
+		modelKey: string,
+	): Promise<boolean> {
+		const registration = this.capabilities.get(capability);
+		if (!registration) {
+			throw new Error(
+				`[memory-arbiter] no capability registered for "${capability}"`,
+			);
+		}
+		if (this.shuttingDown || this.currentPressure !== "nominal") {
+			return false;
+		}
+		const key = this.residentKey(capability, modelKey);
+		const existing = this.resident.get(key);
+		if (existing) {
+			existing.lastUsedAt = this.now();
+			return true;
+		}
+		const incomingMb = registration.estimatedMb ?? 0;
+		const budget = this.budgetMb();
+		if (budget === null || budget <= 0 || incomingMb <= 0) {
+			return false;
+		}
+		if (this.residentFootprintMb() + incomingMb > budget) {
+			return false;
+		}
+		const entry = await this.loadOrReuse(registration, modelKey);
+		entry.lastUsedAt = this.now();
+		return true;
+	}
+
+	/**
 	 * Acquire a handle for `(capability, modelKey)`. If the model is already
 	 * resident the refcount is bumped and we return immediately; otherwise we
 	 * load it (sharing the in-flight promise across concurrent acquirers).
@@ -682,17 +720,17 @@ export class MemoryArbiter {
 		if (budget === null || budget <= 0) return;
 		if (incomingMb <= 0) return;
 
-		const residentMb = (): number => {
-			let sum = 0;
-			for (const e of this.resident.values()) sum += e.estimatedMb;
-			return sum;
-		};
-
-		while (residentMb() + incomingMb > budget) {
+		while (this.residentFootprintMb() + incomingMb > budget) {
 			const candidate = this.lruEvictionCandidate();
 			if (!candidate) break;
 			await this.evictEntry(candidate, "fit");
 		}
+	}
+
+	private residentFootprintMb(): number {
+		let sum = 0;
+		for (const e of this.resident.values()) sum += e.estimatedMb;
+		return sum;
 	}
 
 	/**

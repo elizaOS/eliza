@@ -56,7 +56,7 @@ plumbing, etc. Forcing them to share would either leak server-only types
 into the UI bundle or cripple the server, so they remain split:
 
 - `catalog.ts` — UI carries the public subset of `MODEL_CATALOG`; the
-  server adds MTP drafter variants and `optimizations.requiresKernel`.
+  server adds same-file MTP metadata and `optimizations.requiresKernel`.
 - `recommendation.ts` — UI omits the server-only kernel-availability
   filter.
 - `active-model.ts`, `device-bridge.ts`, `ffi-streaming-backend.ts`,

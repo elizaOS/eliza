@@ -20,9 +20,11 @@ export interface ConversationMessagesValue {
   conversationMessages: ConversationMessage[];
 }
 
-export const ConversationMessagesCtx = createContext<ConversationMessagesValue>({
-  conversationMessages: [],
-});
+export const ConversationMessagesCtx = createContext<ConversationMessagesValue>(
+  {
+    conversationMessages: [],
+  },
+);
 
 export function useConversationMessages(): ConversationMessagesValue {
   return useContext(ConversationMessagesCtx);

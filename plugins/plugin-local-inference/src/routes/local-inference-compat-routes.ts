@@ -34,7 +34,7 @@ import {
 } from "../services/routing-preferences";
 import { localInferenceService } from "../services/service";
 import { readSystemMemory } from "../services/system-memory";
-import type { AgentModelSlot, CatalogModel } from "../services/types";
+import type { AgentModelSlot } from "../services/types";
 import { AGENT_MODEL_SLOTS } from "../services/types";
 import {
 	type CompatRuntimeState,
@@ -47,26 +47,6 @@ import {
 	sendJson as sendJsonResponse,
 	tokenMatches,
 } from "./compat-helpers";
-
-function isCatalogModel(value: unknown): value is CatalogModel {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		return false;
-	}
-	const record = value as Partial<CatalogModel>;
-	return (
-		typeof record.id === "string" &&
-		typeof record.displayName === "string" &&
-		typeof record.hfRepo === "string" &&
-		typeof record.ggufFile === "string" &&
-		typeof record.params === "string" &&
-		typeof record.quant === "string" &&
-		typeof record.sizeGb === "number" &&
-		typeof record.minRamGb === "number" &&
-		typeof record.category === "string" &&
-		typeof record.bucket === "string" &&
-		typeof record.blurb === "string"
-	);
-}
 
 function isStreamAuthorized(
 	req: http.IncomingMessage,
@@ -390,8 +370,7 @@ export async function handleLocalInferenceCompatRoutes(
 	}
 
 	// ── POST: start download ────────────────────────────────────────────
-	// Body: either `{ modelId }` for a curated entry, or
-	// `{ spec: CatalogModel }` for a HuggingFace-search result.
+	// Body: `{ modelId }` for a curated Eliza-1 entry.
 	if (method === "POST" && pathname === "/api/local-inference/downloads") {
 		if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
 		const body = await readCompatJsonBody(req, res);
@@ -401,15 +380,16 @@ export async function handleLocalInferenceCompatRoutes(
 		try {
 			let job: Awaited<ReturnType<typeof localInferenceService.startDownload>>;
 			if (rawSpec) {
-				if (!isCatalogModel(rawSpec)) {
-					sendJsonErrorResponse(res, 400, "Invalid model spec");
-					return true;
-				}
-				job = await localInferenceService.startDownload(rawSpec);
+				sendJsonErrorResponse(
+					res,
+					400,
+					"Custom model downloads are disabled; choose an Eliza-1 tier.",
+				);
+				return true;
 			} else if (modelId) {
 				job = await localInferenceService.startDownload(modelId);
 			} else {
-				sendJsonErrorResponse(res, 400, "modelId or spec is required");
+				sendJsonErrorResponse(res, 400, "modelId is required");
 				return true;
 			}
 			sendJsonResponse(res, 202, { job });
@@ -641,35 +621,14 @@ export async function handleLocalInferenceCompatRoutes(
 		return true;
 	}
 
-	// ── GET: explicit custom model search (Hugging Face / ModelScope) ───
+	// ── GET: legacy custom model search (disabled; curated Eliza-1 only) ─
 	if (method === "GET" && pathname === "/api/local-inference/hf-search") {
 		if (!(await ensureRouteAuthorized(req, res, state))) return true;
-		const q = url.searchParams.get("q")?.trim() ?? "";
-		if (q.length === 0) {
-			sendJsonResponse(res, 200, { models: [] });
-			return true;
-		}
-		const limitRaw = url.searchParams.get("limit");
-		const limit = limitRaw
-			? Math.max(1, Math.min(50, Number.parseInt(limitRaw, 10) || 12))
-			: 12;
-		const hub =
-			url.searchParams.get("hub")?.trim().toLowerCase() === "modelscope"
-				? "modelscope"
-				: "huggingface";
-		try {
-			const models =
-				typeof localInferenceService.searchModelHub === "function"
-					? await localInferenceService.searchModelHub(q, hub, limit)
-					: await localInferenceService.searchHuggingFace(q, limit);
-			sendJsonResponse(res, 200, { models });
-		} catch (err) {
-			sendJsonErrorResponse(
-				res,
-				502,
-				err instanceof Error ? err.message : "Model search failed",
-			);
-		}
+		sendJsonResponse(res, 200, {
+			models: [],
+			disabled: true,
+			reason: "custom-model-search-disabled",
+		});
 		return true;
 	}
 

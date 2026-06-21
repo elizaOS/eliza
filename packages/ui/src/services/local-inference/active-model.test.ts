@@ -8,6 +8,7 @@ import {
   resolveLocalInferenceLoadArgs,
   validateLocalInferenceLoadArgs,
 } from "./active-model";
+import { ELIZA_1_MTP_TIER_IDS } from "./catalog";
 import type { InstalledModel } from "./types";
 
 function makeInstalledModel(
@@ -122,31 +123,30 @@ describe("resolveLocalInferenceLoadArgs", () => {
     expect(args.kvOffload).toEqual({ gpuLayers: 10 });
   });
 
-  it("activates same-file MTP (no separate drafter) for every autoregressive Eliza-1 tier", async () => {
-    const bundle = makeTempElizaBundle("0_8b", { hasMtp: false });
-    try {
-      const target = makeInstalledModel(
-        "eliza-1-0_8b",
-        bundle.textPath,
-        bundle.bundleRoot,
-      );
-      const args = await resolveLocalInferenceLoadArgs(target);
-      // Same-file MTP: NextN head embedded in the text GGUF, no separate
-      // draft model resolved.
-      expect(args.draftModelPath).toBeUndefined();
-      expect(args.draftMin).toBeGreaterThan(0);
-      expect(args.draftMax).toBeGreaterThan(0);
-      expect(args.mobileSpeculative).toBe(true);
-    } finally {
-      rmSync(bundle.bundleRoot, { recursive: true, force: true });
+  it("activates same-file MTP (no separate drafter) for every MTP Eliza-1 tier", async () => {
+    for (const id of ELIZA_1_MTP_TIER_IDS) {
+      const tier = id.replace("eliza-1-", "");
+      const bundle = makeTempElizaBundle(tier, { hasMtp: false });
+      const target = makeInstalledModel(id, bundle.textPath, bundle.bundleRoot);
+      try {
+        const args = await resolveLocalInferenceLoadArgs(target);
+        // Same-file MTP: NextN head embedded in the text GGUF, no separate
+        // draft model resolved.
+        expect(args.draftModelPath).toBeUndefined();
+        expect(args.draftMin).toBeGreaterThan(0);
+        expect(args.draftMax).toBeGreaterThan(0);
+        expect(args.mobileSpeculative).toBe(true);
+      } finally {
+        rmSync(bundle.bundleRoot, { recursive: true, force: true });
+      }
     }
   });
 
   it("does not throw when no drafter GGUF is present (same-file MTP needs none)", async () => {
-    const bundle = makeTempElizaBundle("0_8b", { hasMtp: false });
+    const bundle = makeTempElizaBundle("2b", { hasMtp: false });
     try {
       const target = makeInstalledModel(
-        "eliza-1-0_8b",
+        "eliza-1-2b",
         bundle.textPath,
         bundle.bundleRoot,
       );

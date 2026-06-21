@@ -6,8 +6,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import {
-  type ReactNode,
   memo,
+  type ReactNode,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -691,10 +691,13 @@ export function MemoryViewerView({
   // All entity IDs for the selected person (multi-identity support)
   const selectedEntityIds = selectedPerson?.memberEntityIds ?? null;
 
-  const handleSelectPerson = useCallback((person: RelationshipsPersonSummary) => {
-    setSelectedPersonId(person.primaryEntityId);
-    setViewMode("browse");
-  }, []);
+  const handleSelectPerson = useCallback(
+    (person: RelationshipsPersonSummary) => {
+      setSelectedPersonId(person.primaryEntityId);
+      setViewMode("browse");
+    },
+    [],
+  );
 
   const handleClearPerson = () => {
     setSelectedPersonId(null);

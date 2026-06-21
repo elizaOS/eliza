@@ -10,6 +10,7 @@ import {
   DashboardPageContainer,
   ElizaAgentsPageWrapper,
 } from "@elizaos/ui/cloud-ui";
+import { useDocumentTitle } from "../lib/use-document-title";
 import { ElizaAgentPricingBanner } from "./components/eliza-agent-pricing-banner";
 import {
   type ElizaAgentRow,
@@ -18,7 +19,6 @@ import {
 import { useCreditsBalance } from "./lib/data/credits";
 import { type AgentListItem, useAgents } from "./lib/data/eliza-agents";
 import { useT } from "./lib/i18n";
-import { useDocumentTitle } from "../lib/use-document-title";
 import { useRequireAuth } from "./lib/use-session-auth";
 
 function toAgentRow(a: AgentListItem): ElizaAgentRow {

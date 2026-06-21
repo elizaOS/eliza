@@ -92,7 +92,8 @@ export function gateConnectorCommand(
 	if (requirements.requiresAuth && !sender.isAuthorized) {
 		return {
 			allowed: false,
-			reply: "This command requires authorization. Pair your account or ask an owner to run it.",
+			reply:
+				"This command requires authorization. Pair your account or ask an owner to run it.",
 		};
 	}
 	if (requirements.requiresElevated && !sender.isElevated) {

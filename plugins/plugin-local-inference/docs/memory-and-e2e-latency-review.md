@@ -13,7 +13,7 @@ Eliza-1 model (text, ASR, TTS, VAD, embedding, vision) works.
 
 ## 1. The end-to-end voice waterfall (what actually happens today)
 
-mic → VAD → ASR → (MTP drafter ∥ target verifier) → phrase chunker → TTS → ring buffer → speaker.
+mic → VAD → ASR → (MTP draft head ∥ target verifier) → phrase chunker → TTS → ring buffer → speaker.
 Source: `services/voice/pipeline.ts`, `scheduler.ts`, `phrase-chunker.ts`, `engine.ts`.
 
 Instrumented checkpoints already exist (`services/latency-trace.ts:72-86`,
@@ -98,13 +98,12 @@ time-budget flush (700 ms default).**
 13. **No KV reuse across stateless turns** (`engine.ts:721-723`): the default
     session resets chat history each turn → full prompt re-prefill. Conversation-
     pinned `cacheKey` slots avoid this; voice partials do not.
-14. **MTP is a runtime/engine concern, not catalog-gated** (`catalog.ts:493-506`):
-    the catalog declares MTP support **uniformly** across tiers — 0.8B uses
-    **same-file MTP** (`:494-495`), not a separate DFlash drafter (the `TIER_DRAFTERS`
-    entries at `:595-609` are hidden, runtime-role-gated; `:458-460` confirms no
-    separate drafter component for these tiers). Correctness note (verified): the
-    "only the fused backend speculates" behavior lives in the engine/backend, **not**
-    in `catalog.ts`; do not attribute the gating to the catalog.
+14. **MTP is a runtime/engine concern, with catalog metadata limited to 2B+**:
+    the 0.8B tier is intentionally non-MTP. 2B+ tiers use **same-file MTP**:
+    the NextN head is embedded in the text GGUF, and the catalog carries no
+    separate drafter component. Correctness note (verified): the "only the fused
+    backend speculates" behavior lives in the engine/backend; the catalog only
+    advertises the draft window for tiers that carry a usable head.
 
 ---
 
@@ -119,7 +118,7 @@ The user asked specifically about 8/12/16/20/24/48/128 GB. Proposed resident set
 
 | Device RAM | Text tier | Voice resident set (no evict) | Notes |
 |---|---|---|---|
-| **8 GB** (iPhone/base Mac) | 0.8B Q4 + DFlash drafter | ASR(0.6B) **xor** TTS resident; VAD(2 MB) always; embedding via text `--pooling last` | Tight: keep VAD+text hot; ASR and TTS alternate but pre-warm the next. q8_0 KV. **This is the eviction-sensitive tier.** |
+| **8 GB** (iPhone/base Mac) | 0.8B Q4 (non-MTP) | ASR(0.6B) **xor** TTS resident; VAD(2 MB) always; embedding via text `--pooling last` | Tight: keep VAD+text hot; ASR and TTS alternate but pre-warm the next. F16 KV remains the safe shipped path until a head_dim=256 KV-quant route lands. **This is the eviction-sensitive tier.** |
 | **12 GB** | 0.8B/2B | text + ASR + TTS(kokoro) + VAD all resident | GOOD: no per-turn swaps; vision projector co-resident with text. |
 | **16 GB** | 2B/4B | + vision mmproj + OmniVoice co-resident | full multimodal hot. |
 | **20–24 GB** | 4B (MAX) | + image-gen warm, larger KV / longer ctx | all models parallelized + resident. |
@@ -134,7 +133,9 @@ The user asked specifically about 8/12/16/20/24/48/128 GB. Proposed resident set
 - **Pre-warm the next stage's model** during the current stage (ASR running → warm
   TTS; LM generating → keep ASR warm for barge-in re-ASR) instead of fire-and-forget
   evicting ASR (`pipeline.ts:326-328`).
-- Default **q8_0 KV on memory-constrained tiers** (8/12 GB, iOS) to fit the resident set.
+- Keep F16 KV on shipped qwen35 tiers until a head_dim=256 QJL/Polar route or
+  head_dim=128 model variant lands; use smaller Eliza-1 tiers, context clamps,
+  and resident-set preloading for memory-constrained devices.
 - Cache the resolved RAM budget per (modelKey, ctx) instead of re-deriving (`ram-budget.ts`).
 
 ---
@@ -146,8 +147,9 @@ High confidence (implement + verify):
    seconds-scale ASR↔TTS↔vision reload on GOOD+ tiers. (`memory-arbiter.ts`)
 2. **iOS PCM IPC: base64/binary, not JSON array** — removes ~100 KB JSON encode/parse
    per ASR call. (`bridge.ts` ASR route + Swift `handleAsrTranscribe`)
-3. **q8_0 KV default on iOS + 8/12 GB tiers** — halves KV RAM, enables co-residency
-   + MTP on more devices. (`LlamaBridgeImpl.swift`, load-args resolution)
+3. **Memory-aware tier/context selection on iOS + 8/12 GB tiers** — preserve
+   correctness with F16 KV while selecting the smaller Eliza-1 tier/context that
+   fits. (`LlamaBridgeImpl.swift`, load-args resolution)
 4. **Pin VAD + active text model in voice mode; pre-warm next stage** — removes
    cold-load stalls between ASR and TTS. (`pipeline.ts`, `memory-arbiter.ts`)
 5. **Lower/condition the phrase-flush budget + flush on first clause** — cut up to

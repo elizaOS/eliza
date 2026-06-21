@@ -10,10 +10,12 @@ import { runShortcutGate } from "./message";
  * runs the target action and returns its reply with ZERO model calls. The fake
  * runtime's useModel throws, so any inference attempt fails the test.
  */
-function echoAction(opts: {
-	validate?: () => Promise<boolean>;
-	onOptions?: (options: Record<string, unknown> | undefined) => void;
-} = {}): Action {
+function echoAction(
+	opts: {
+		validate?: () => Promise<boolean>;
+		onOptions?: (options: Record<string, unknown> | undefined) => void;
+	} = {},
+): Action {
 	return {
 		name: "ECHO_COMMAND",
 		description: "echo",
