@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 
@@ -30,7 +30,7 @@ function resolveWebhookTarget(status: BlueBubblesStatus | null): string | null {
 }
 
 export function BlueBubblesStatusPanel() {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [status, setStatus] = useState<BlueBubblesStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

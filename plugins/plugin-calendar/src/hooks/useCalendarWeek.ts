@@ -6,7 +6,7 @@
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
-import { client, useApp } from "@elizaos/ui";
+import { client, useAppSelector } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type CalendarViewMode = "day" | "week" | "month";
@@ -60,7 +60,7 @@ function startOfMonthGrid(date: Date): Date {
 export function useCalendarWeek(
   opts: UseCalendarWeekOptions = {},
 ): UseCalendarWeekResult {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const loadFailedMessage = t("lifeopsCalendar.loadFailed", {
     defaultValue: "Calendar failed to load.",
   });

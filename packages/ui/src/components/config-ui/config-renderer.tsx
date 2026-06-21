@@ -18,7 +18,7 @@ import {
   resolveFields,
   runValidation,
 } from "../../config/config-catalog";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import type { ConfigUiHint, PluginUiTheme } from "../../types";
 import { Button } from "../ui/button";
 import { ConfigField } from "./config-field";
@@ -176,7 +176,7 @@ function ValidationSummary({
   fieldLabels,
   pluginId,
 }: ValidationSummaryProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const errorEntries = [...fieldErrors.entries()].filter(
     ([, errors]) => errors.length > 0,
   );
@@ -545,8 +545,8 @@ export const ConfigRenderer = forwardRef<
     return Object.keys(style).length > 0 ? style : undefined;
   }, [theme]);
 
-  // ── useApp for i18n ─────────────────────────────────────────────────
-  const { t: tFn } = useApp();
+  // ── i18n ────────────────────────────────────────────────────────────
+  const tFn = useAppSelector((s) => s.t);
 
   // ── Empty state ──────────────────────────────────────────────────────
 
@@ -632,7 +632,7 @@ function ConfigProgressText({
     total: number;
   };
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   return (
     <div className="flex items-center justify-between mb-1.5">
       <span className="text-xs font-semibold text-[var(--warning,#f39c12)]">
@@ -658,7 +658,7 @@ function AdvancedSectionToggle({
   advancedOpen: boolean;
   setAdvancedOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   return (
     <Button
       type="button"

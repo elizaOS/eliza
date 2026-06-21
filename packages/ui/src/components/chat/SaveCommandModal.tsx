@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -26,7 +26,7 @@ export function SaveCommandModal({
   onSave,
   onClose,
 }: SaveCommandModalProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);

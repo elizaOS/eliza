@@ -14,6 +14,8 @@ const appState = vi.hoisted(() => ({
 
 vi.mock("@elizaos/ui", () => ({
   useApp: () => appState,
+  useAppSelector: <T,>(selector: (s: typeof appState) => T): T =>
+    selector(appState),
 }));
 
 const { render, screen, cleanup } = await import("@testing-library/react");

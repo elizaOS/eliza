@@ -14,7 +14,7 @@ import type {
   UiRenderContext,
   UiSpec,
 } from "../../config/ui-spec";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { confirmDesktopAction, resolveAppAssetUrl } from "../../utils";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -688,7 +688,7 @@ const TableComponent: ComponentFn = (props) => {
 };
 
 const CarouselComponent: ComponentFn = (props) => {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const items =
     (props.items as Array<{ title: string; description: string }>) ?? [];
   const [current, setCurrent] = useState(0);
@@ -1470,7 +1470,7 @@ const COMPONENTS: Record<SupportedUiComponentType, ComponentFn> = {
 // ══════════════════════════════════════════════════════════════════════
 
 function ElementRenderer({ elementId }: { elementId: string }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const ctx = useUiCtx();
   const el = ctx.spec.elements[elementId];
   if (!el) return null;

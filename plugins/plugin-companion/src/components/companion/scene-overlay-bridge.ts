@@ -1,5 +1,5 @@
 import {
-  useApp,
+  useAppSelector,
   useConversationMessages,
   usePtySessions,
 } from "@elizaos/ui/state";
@@ -32,7 +32,8 @@ function findOverlayManager(): SceneOverlayManager | null {
  * overlay manager. Render this at the app level, outside CompanionSceneHost.
  */
 export function SceneOverlayDataBridge(): null {
-  const { agentStatus, triggers } = useApp();
+  const agentStatus = useAppSelector((s) => s.agentStatus);
+  const triggers = useAppSelector((s) => s.triggers);
   const { conversationMessages } = useConversationMessages();
   const { ptySessions } = usePtySessions();
   const managerRef = useRef<SceneOverlayManager | null>(null);

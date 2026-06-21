@@ -5,7 +5,7 @@ import {
   type GameOperatorAction,
   type GameOperatorEvent,
   GameOperatorShell,
-  useApp,
+  useAppSelector,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
@@ -143,13 +143,7 @@ const CHIP_DOT_COLOR: Record<ChipState, string> = {
   idle: "rgba(125,125,125,0.55)",
 };
 
-function HeroStatusChip({
-  state,
-  label,
-}: {
-  state: ChipState;
-  label: string;
-}) {
+function HeroStatusChip({ state, label }: { state: ChipState; label: string }) {
   return (
     <span
       style={{
@@ -417,7 +411,8 @@ export function ClawvilleOperatorSurface({
   appName,
   variant = "detail",
 }: AppOperatorSurfaceProps) {
-  const { appRuns, setState } = useApp();
+  const appRuns = useAppSelector((s) => s.appRuns);
+  const setState = useAppSelector((s) => s.setState);
   const run = useMemo(
     () =>
       [...(Array.isArray(appRuns) ? appRuns : [])]
@@ -573,8 +568,7 @@ export function ClawvilleOperatorSurface({
             canSend
               ? {
                   label: "Visit nearest",
-                  onClick: () =>
-                    void sendCommand(PRIMARY_COMMANDS[0].command),
+                  onClick: () => void sendCommand(PRIMARY_COMMANDS[0].command),
                   disabled: Boolean(sendingCommand),
                 }
               : null
@@ -806,7 +800,9 @@ function ClawvilleSendButton({
 }
 
 export function ClawvilleTuiView() {
-  const { appRuns, setActionNotice, setState } = useApp();
+  const appRuns = useAppSelector((s) => s.appRuns);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const setState = useAppSelector((s) => s.setState);
   const run = useMemo(
     () =>
       [...(Array.isArray(appRuns) ? appRuns : [])]

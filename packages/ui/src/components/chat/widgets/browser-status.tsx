@@ -17,7 +17,7 @@ import {
   client,
 } from "../../../api";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
-import { useApp } from "../../../state";
+import { useAppSelector } from "../../../state";
 import { WidgetSection } from "./shared";
 import type { ChatSidebarWidgetProps } from "./types";
 
@@ -58,7 +58,7 @@ function tabStatus(tab: BrowserWorkspaceTab): TabStatusStyle {
 }
 
 export function BrowserStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
-  const { setTab } = useApp();
+  const setTab = useAppSelector((s) => s.setTab);
   const [snapshot, setSnapshot] = useState<BrowserWorkspaceSnapshot | null>(
     null,
   );

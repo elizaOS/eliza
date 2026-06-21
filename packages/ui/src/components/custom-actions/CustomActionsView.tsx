@@ -1,7 +1,7 @@
 import type { CustomActionDef } from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api/client";
-import { useApp } from "../../state/useApp";
+import { useAppSelector } from "../../state";
 import {
   alertDesktopMessage,
   confirmDesktopAction,
@@ -26,7 +26,7 @@ const HANDLER_BADGE_CLASS: Record<string, string> = {
 };
 
 export function CustomActionsView() {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [actions, setActions] = useState<CustomActionDef[]>([]);
   const [search, setSearch] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);

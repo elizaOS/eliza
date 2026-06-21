@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useWhatsAppPairing } from "../../hooks";
 import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "../../hooks/useConnectorAccounts";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { ConnectorQrPairingOverlay } from "./ConnectorQrPairingOverlay";
 
 interface WhatsAppQrOverlayProps {
@@ -17,7 +17,7 @@ export function WhatsAppQrOverlay({
   connectedMessage,
 }: WhatsAppQrOverlayProps) {
   const pairing = useWhatsAppPairing(accountId);
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const steps = useMemo(
     () => [
       {

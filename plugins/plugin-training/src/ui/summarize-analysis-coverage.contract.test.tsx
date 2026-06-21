@@ -32,6 +32,16 @@ const { reactEntry } = vi.hoisted(() => {
 
 vi.mock("react", async () => await import(reactEntry));
 
+// Single shared app-state ref so the legacy `useApp` API and the per-slice
+// `useAppSelector` reads the migrated view now uses both resolve to the same
+// value.
+const fineTuningAppState = vi.hoisted(() => ({
+  handleRestart: vi.fn(),
+  setActionNotice: vi.fn(),
+  t: (_key: string, options?: { defaultValue?: string }) =>
+    options?.defaultValue ?? _key,
+}));
+
 const trainingClient = vi.hoisted(() => ({
   getTrainingStatus: vi.fn(),
   listTrainingTrajectories: vi.fn(),
@@ -51,12 +61,9 @@ vi.mock("@elizaos/ui", () => ({
     React.createElement("button", { type: "button", ...props }, children),
   client: trainingClient,
   registerDetailExtension: vi.fn(),
-  useApp: () => ({
-    handleRestart: vi.fn(),
-    setActionNotice: vi.fn(),
-    t: (_key: string, options?: { defaultValue?: string }) =>
-      options?.defaultValue ?? _key,
-  }),
+  useApp: () => fineTuningAppState,
+  useAppSelector: <T,>(selector: (s: typeof fineTuningAppState) => T): T =>
+    selector(fineTuningAppState),
 }));
 
 vi.mock("@elizaos/ui/agent-surface", () => ({

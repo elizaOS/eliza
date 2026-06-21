@@ -20,6 +20,12 @@ import type { UseCalendarWeekResult } from "../hooks/useCalendarWeek.js";
 
 const mediaQueryState = vi.hoisted(() => ({ compact: false }));
 
+const calendarSectionAppValue = vi.hoisted(() => ({
+  t: (_key: string, opts?: { defaultValue?: string }) =>
+    opts?.defaultValue ?? _key,
+  setActionNotice: vi.fn(),
+}));
+
 vi.mock("@elizaos/ui", () => ({
   Button: ({
     children,
@@ -63,11 +69,13 @@ vi.mock("@elizaos/ui", () => ({
       ))}
     </div>
   ),
-  useApp: () => ({
-    t: (_key: string, opts?: { defaultValue?: string }) =>
-      opts?.defaultValue ?? _key,
-    setActionNotice: vi.fn(),
-  }),
+  useApp: () => calendarSectionAppValue,
+  useAppSelector: <T,>(
+    selector: (value: typeof calendarSectionAppValue) => T,
+  ) => selector(calendarSectionAppValue),
+  useAppSelectorShallow: <T,>(
+    selector: (value: typeof calendarSectionAppValue) => T,
+  ) => selector(calendarSectionAppValue),
   useMediaQuery: () => mediaQueryState.compact,
 }));
 

@@ -11,12 +11,19 @@ const uiClient = vi.hoisted(() => ({
   getLifeOpsCalendarFeed: vi.fn(),
 }));
 
+const calendarWeekAppValue = vi.hoisted(() => ({
+  t: (_key: string, opts?: { defaultValue?: string }) =>
+    opts?.defaultValue ?? _key,
+}));
+
 vi.mock("@elizaos/ui", () => ({
   client: uiClient,
-  useApp: () => ({
-    t: (_key: string, opts?: { defaultValue?: string }) =>
-      opts?.defaultValue ?? _key,
-  }),
+  useApp: () => calendarWeekAppValue,
+  useAppSelector: <T>(selector: (value: typeof calendarWeekAppValue) => T) =>
+    selector(calendarWeekAppValue),
+  useAppSelectorShallow: <T>(
+    selector: (value: typeof calendarWeekAppValue) => T,
+  ) => selector(calendarWeekAppValue),
 }));
 
 import { useCalendarWeek } from "./useCalendarWeek.js";

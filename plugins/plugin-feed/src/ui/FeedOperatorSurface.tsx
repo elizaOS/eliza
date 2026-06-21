@@ -11,9 +11,8 @@ import {
   SurfaceCard,
   SurfaceSection,
   selectLatestRunForApp,
-  useApp,
 } from "@elizaos/app-core/ui-compat";
-import { Button, TerminalPluginView } from "@elizaos/ui";
+import { Button, TerminalPluginView, useAppSelector } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -27,6 +26,7 @@ import {
 } from "./game-surface-shell";
 
 const FEED_ACCENT = "#ff8a24";
+
 import {
   extractAgentSummary,
   extractChatMessages,
@@ -134,7 +134,7 @@ export function FeedOperatorSurface({
   variant = "detail",
   focus = "all",
 }: AppOperatorSurfaceProps) {
-  const { appRuns } = useApp();
+  const appRuns = useAppSelector((s) => s.appRuns);
   const { run, matchingRuns } = useMemo(
     () => selectLatestRunForApp(appName, appRuns),
     [appName, appRuns],
@@ -353,9 +353,7 @@ export function FeedOperatorSurface({
     {
       icon: "◒",
       label: "Portfolio",
-      value: agentPortfolio
-        ? formatCurrency(agentPortfolio.totalAssets)
-        : "—",
+      value: agentPortfolio ? formatCurrency(agentPortfolio.totalAssets) : "—",
       state: agentPortfolio ? "active" : "idle",
     },
     {
@@ -403,9 +401,7 @@ export function FeedOperatorSurface({
                 className="size-2 rounded-full"
                 style={{
                   background:
-                    run.health.state === "healthy"
-                      ? FEED_ACCENT
-                      : "#ef4444",
+                    run.health.state === "healthy" ? FEED_ACCENT : "#ef4444",
                 }}
               />
               <span className="text-txt">{run.status}</span>
@@ -417,189 +413,205 @@ export function FeedOperatorSurface({
             </span>
           </div>
 
-      {showDashboard ? (
-        <SurfaceSection title="Live Status">
-          <div className="space-y-2">
-            <SurfaceCard
-              label="Agent"
-              value={agentStatus?.displayName ?? agentStatus?.name ?? "Waiting"}
-              subtitle={
-                agentStatus
-                  ? `${agentStatus.agentStatus ?? "idle"} · ${agentStatus.autonomous ? "autonomous" : "operator-led"}`
-                  : "No status"
-              }
-            />
-            <SurfaceCard
-              label="Current Focus"
-              value={activeGoal?.description ?? "—"}
-              subtitle={
-                activeGoal
-                  ? (() => {
-                      const progress = formatDecimal(activeGoal.progress, 0);
-                      return progress
-                        ? `${activeGoal.status} · ${progress}%`
-                        : activeGoal.status;
-                    })()
-                  : undefined
-              }
-            />
-            <SurfaceCard
-              label="Portfolio"
-              value={
-                agentPortfolio
-                  ? `${formatCurrency(agentPortfolio.totalAssets)} total assets`
-                  : "—"
-              }
-              subtitle={
-                agentPortfolio
-                  ? `${agentPortfolio.positions} positions · ${formatPnL(agentPortfolio.totalPnL)} total PnL`
-                  : undefined
-              }
-            />
-            <SurfaceCard
-              label="Team Coordination"
-              value={
-                teamDashboard.summary?.ownerName ??
-                `${teamDashboard.agents.length} team agents observed`
-              }
-              subtitle={
-                teamTotals
-                  ? `${formatCurrency(teamTotals.walletBalance)} wallet${
-                      asFiniteNumber(teamTotals.openPositions) != null
-                        ? ` · ${teamTotals.openPositions} open positions`
-                        : ""
-                    }`
-                  : "Team summary is not available yet."
-              }
-            />
-          </div>
-        </SurfaceSection>
-      ) : null}
-
-      {showDashboard ? (
-        <SurfaceSection title="Market Watch">
-          <SurfaceCard label="Markets" value={listPreview(predictionMarkets)} />
-          <div className="space-y-2">
-            {recentTrades.slice(0, 3).map((trade) => (
-              <SurfaceCard
-                key={trade.id}
-                label={summarizeFeedActivity(trade)}
-                value={formatDetailTimestamp(trade.timestamp)}
-                subtitle={
-                  trade.pnl != null ? `PnL ${formatPnL(trade.pnl)}` : undefined
-                }
-              />
-            ))}
-            {recentTrades.length === 0 ? (
-              <SurfaceCard label="Trades" value="—" />
-            ) : null}
-          </div>
-        </SurfaceSection>
-      ) : null}
-
-      {showChat ? (
-        <SurfaceSection title="Team">
-          <div className="space-y-2">
-            <SurfaceCard
-              label="Team Conversations"
-              value={
-                teamConversations.length > 0
-                  ? teamConversations
-                      .slice(0, 3)
-                      .map((conversation) => conversation.name || "Untitled")
-                      .join(" · ")
-                  : "—"
-              }
-              subtitle={
-                teamConversations.length > 0
-                  ? `${teamConversations.filter((conversation) => conversation.isActive).length} active`
-                  : undefined
-              }
-            />
-            <SurfaceCard
-              label="Operator Channel"
-              value={run.session?.canSendCommands ? "Ready" : "Reconnecting"}
-              subtitle={formatDetailTimestamp(
-                run.lastHeartbeatAt ?? run.updatedAt,
-              )}
-            />
-          </div>
-          <div className="space-y-2">
-            {recentChatMessages.map((message) => (
-              <div key={message.id} className="px-1 py-1">
-                <div className="flex items-center gap-2 text-2xs text-muted">
-                  <span>{message.senderName ?? message.senderId}</span>
-                  <span className="ml-auto">
-                    {formatDetailTimestamp(message.createdAt)}
-                  </span>
-                </div>
-                <div className="mt-1 whitespace-pre-wrap text-xs-tight leading-5 text-txt">
-                  {message.content}
-                </div>
-              </div>
-            ))}
-            {recentChatMessages.length === 0 ? (
-              <div className="px-1 py-1 text-xs-tight italic text-muted">
-                No relay yet.
-              </div>
-            ) : null}
-          </div>
-        </SurfaceSection>
-      ) : null}
-
-      {showChat ? (
-        <SurfaceSection title="Steering">
-          {suggestedPrompts.length ? (
-            <div className="flex flex-wrap gap-2">
-              {suggestedPrompts.map((prompt, index) => (
-                <FeedSuggestedPromptButton
-                  key={prompt}
-                  prompt={prompt}
-                  index={index}
-                  onSelect={(value) => void handleSuggestedPrompt(value)}
-                  disabled={sending}
+          {showDashboard ? (
+            <SurfaceSection title="Live Status">
+              <div className="space-y-2">
+                <SurfaceCard
+                  label="Agent"
+                  value={
+                    agentStatus?.displayName ?? agentStatus?.name ?? "Waiting"
+                  }
+                  subtitle={
+                    agentStatus
+                      ? `${agentStatus.agentStatus ?? "idle"} · ${agentStatus.autonomous ? "autonomous" : "operator-led"}`
+                      : "No status"
+                  }
                 />
-              ))}
-            </div>
+                <SurfaceCard
+                  label="Current Focus"
+                  value={activeGoal?.description ?? "—"}
+                  subtitle={
+                    activeGoal
+                      ? (() => {
+                          const progress = formatDecimal(
+                            activeGoal.progress,
+                            0,
+                          );
+                          return progress
+                            ? `${activeGoal.status} · ${progress}%`
+                            : activeGoal.status;
+                        })()
+                      : undefined
+                  }
+                />
+                <SurfaceCard
+                  label="Portfolio"
+                  value={
+                    agentPortfolio
+                      ? `${formatCurrency(agentPortfolio.totalAssets)} total assets`
+                      : "—"
+                  }
+                  subtitle={
+                    agentPortfolio
+                      ? `${agentPortfolio.positions} positions · ${formatPnL(agentPortfolio.totalPnL)} total PnL`
+                      : undefined
+                  }
+                />
+                <SurfaceCard
+                  label="Team Coordination"
+                  value={
+                    teamDashboard.summary?.ownerName ??
+                    `${teamDashboard.agents.length} team agents observed`
+                  }
+                  subtitle={
+                    teamTotals
+                      ? `${formatCurrency(teamTotals.walletBalance)} wallet${
+                          asFiniteNumber(teamTotals.openPositions) != null
+                            ? ` · ${teamTotals.openPositions} open positions`
+                            : ""
+                        }`
+                      : "Team summary is not available yet."
+                  }
+                />
+              </div>
+            </SurfaceSection>
           ) : null}
-          <div className="space-y-2">
-            <SurfaceCard
-              label="Autonomy"
-              value={agentStatus?.autonomous ? "Active" : "Paused"}
-              subtitle={
-                agentStatus
-                  ? `${agentStatus.autonomousTrading ? "Trading" : "Trading paused"} · ${agentStatus.autonomousPosting ? "Posting" : "Posting paused"}`
-                  : undefined
-              }
-            />
-            <SurfaceCard
-              label="Wallet"
-              value={
-                wallet ? formatCurrency(wallet.balance) : "Waiting for wallet"
-              }
-              subtitle={
-                wallet
-                  ? `${wallet.transactions.length} transactions · trading ${formatCurrency(tradingBalance)}`
-                  : undefined
-              }
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              ref={toggleAgentButton.ref}
-              type="button"
-              variant="outline"
-              size="sm"
-              className="min-h-10 rounded-xl px-3"
-              aria-current={autonomyActive}
-              onClick={() => void handleToggleAgent()}
-              {...toggleAgentButton.agentProps}
-            >
-              {controlAction === "pause" ? "Pause" : "Resume"}
-            </Button>
-          </div>
-        </SurfaceSection>
-      ) : null}
+
+          {showDashboard ? (
+            <SurfaceSection title="Market Watch">
+              <SurfaceCard
+                label="Markets"
+                value={listPreview(predictionMarkets)}
+              />
+              <div className="space-y-2">
+                {recentTrades.slice(0, 3).map((trade) => (
+                  <SurfaceCard
+                    key={trade.id}
+                    label={summarizeFeedActivity(trade)}
+                    value={formatDetailTimestamp(trade.timestamp)}
+                    subtitle={
+                      trade.pnl != null
+                        ? `PnL ${formatPnL(trade.pnl)}`
+                        : undefined
+                    }
+                  />
+                ))}
+                {recentTrades.length === 0 ? (
+                  <SurfaceCard label="Trades" value="—" />
+                ) : null}
+              </div>
+            </SurfaceSection>
+          ) : null}
+
+          {showChat ? (
+            <SurfaceSection title="Team">
+              <div className="space-y-2">
+                <SurfaceCard
+                  label="Team Conversations"
+                  value={
+                    teamConversations.length > 0
+                      ? teamConversations
+                          .slice(0, 3)
+                          .map(
+                            (conversation) => conversation.name || "Untitled",
+                          )
+                          .join(" · ")
+                      : "—"
+                  }
+                  subtitle={
+                    teamConversations.length > 0
+                      ? `${teamConversations.filter((conversation) => conversation.isActive).length} active`
+                      : undefined
+                  }
+                />
+                <SurfaceCard
+                  label="Operator Channel"
+                  value={
+                    run.session?.canSendCommands ? "Ready" : "Reconnecting"
+                  }
+                  subtitle={formatDetailTimestamp(
+                    run.lastHeartbeatAt ?? run.updatedAt,
+                  )}
+                />
+              </div>
+              <div className="space-y-2">
+                {recentChatMessages.map((message) => (
+                  <div key={message.id} className="px-1 py-1">
+                    <div className="flex items-center gap-2 text-2xs text-muted">
+                      <span>{message.senderName ?? message.senderId}</span>
+                      <span className="ml-auto">
+                        {formatDetailTimestamp(message.createdAt)}
+                      </span>
+                    </div>
+                    <div className="mt-1 whitespace-pre-wrap text-xs-tight leading-5 text-txt">
+                      {message.content}
+                    </div>
+                  </div>
+                ))}
+                {recentChatMessages.length === 0 ? (
+                  <div className="px-1 py-1 text-xs-tight italic text-muted">
+                    No relay yet.
+                  </div>
+                ) : null}
+              </div>
+            </SurfaceSection>
+          ) : null}
+
+          {showChat ? (
+            <SurfaceSection title="Steering">
+              {suggestedPrompts.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {suggestedPrompts.map((prompt, index) => (
+                    <FeedSuggestedPromptButton
+                      key={prompt}
+                      prompt={prompt}
+                      index={index}
+                      onSelect={(value) => void handleSuggestedPrompt(value)}
+                      disabled={sending}
+                    />
+                  ))}
+                </div>
+              ) : null}
+              <div className="space-y-2">
+                <SurfaceCard
+                  label="Autonomy"
+                  value={agentStatus?.autonomous ? "Active" : "Paused"}
+                  subtitle={
+                    agentStatus
+                      ? `${agentStatus.autonomousTrading ? "Trading" : "Trading paused"} · ${agentStatus.autonomousPosting ? "Posting" : "Posting paused"}`
+                      : undefined
+                  }
+                />
+                <SurfaceCard
+                  label="Wallet"
+                  value={
+                    wallet
+                      ? formatCurrency(wallet.balance)
+                      : "Waiting for wallet"
+                  }
+                  subtitle={
+                    wallet
+                      ? `${wallet.transactions.length} transactions · trading ${formatCurrency(tradingBalance)}`
+                      : undefined
+                  }
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  ref={toggleAgentButton.ref}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="min-h-10 rounded-xl px-3"
+                  aria-current={autonomyActive}
+                  onClick={() => void handleToggleAgent()}
+                  {...toggleAgentButton.agentProps}
+                >
+                  {controlAction === "pause" ? "Pause" : "Resume"}
+                </Button>
+              </div>
+            </SurfaceSection>
+          ) : null}
 
           {statusMessage ? (
             <div className="bg-card/70 px-1 py-2 text-xs-tight leading-5 text-muted-strong">

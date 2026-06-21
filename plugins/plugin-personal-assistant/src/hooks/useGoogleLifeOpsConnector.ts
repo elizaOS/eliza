@@ -1,5 +1,5 @@
 import { APP_RESUME_EVENT } from "@elizaos/shared";
-import { client, isApiError, useApp } from "@elizaos/ui";
+import { client, isApiError, useAppSelector } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   LifeOpsConnectorGrant,
@@ -508,7 +508,9 @@ export interface UseGoogleLifeOpsConnectorOptions {
 export function useGoogleLifeOpsConnector(
   options: UseGoogleLifeOpsConnectorOptions = {},
 ) {
-  const { agentStatus, backendConnection, startupPhase } = useApp();
+  const agentStatus = useAppSelector((s) => s.agentStatus);
+  const backendConnection = useAppSelector((s) => s.backendConnection);
+  const startupPhase = useAppSelector((s) => s.startupPhase);
   const includeAccounts = options.includeAccounts ?? false;
   const pollIntervalMs =
     options.pollIntervalMs ?? DEFAULT_GOOGLE_CONNECTOR_POLL_INTERVAL_MS;

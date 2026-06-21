@@ -4,6 +4,13 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Single shared app-state ref so `useApp` and the per-slice `useAppSelector`
+// reads the operator surface uses both resolve to the same value.
+const screenshareAppState = vi.hoisted(() => ({
+  appRuns: [] as unknown[],
+  setActionNotice: vi.fn(),
+}));
+
 vi.mock("@elizaos/ui", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   Button: ({
@@ -30,7 +37,9 @@ vi.mock("@elizaos/ui", () => ({
     getRestAuthToken: vi.fn(() => "rest-token"),
   },
   selectLatestRunForApp: vi.fn(() => ({ run: null })),
-  useApp: () => ({ appRuns: [], setActionNotice: vi.fn() }),
+  useApp: () => screenshareAppState,
+  useAppSelector: <T,>(selector: (s: typeof screenshareAppState) => T): T =>
+    selector(screenshareAppState),
 }));
 
 import { ScreenshareTuiView } from "./ScreenshareOperatorSurface";

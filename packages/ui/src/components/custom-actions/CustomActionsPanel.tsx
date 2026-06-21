@@ -1,7 +1,7 @@
 import type { CustomActionDef } from "@elizaos/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api/client";
-import { useApp } from "../../state/useApp";
+import { useAppSelector } from "../../state";
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -46,7 +46,7 @@ export function CustomActionsPanel({
   onClose,
   onOpenEditor,
 }: CustomActionsPanelProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [actions, setActions] = useState<CustomActionDef[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");

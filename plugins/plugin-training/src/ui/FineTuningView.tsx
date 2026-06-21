@@ -3,7 +3,7 @@ import {
   Button,
   client,
   registerDetailExtension,
-  useApp,
+  useAppSelector,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type {
@@ -793,7 +793,9 @@ export function FineTuningView({
 }: {
   contentHeader?: ReactNode;
 } = {}) {
-  const { handleRestart, setActionNotice, t } = useApp();
+  const handleRestart = useAppSelector((s) => s.handleRestart);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const t = useAppSelector((s) => s.t);
 
   const [pageLoading, setPageLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

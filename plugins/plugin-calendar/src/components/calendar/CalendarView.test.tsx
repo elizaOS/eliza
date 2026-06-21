@@ -28,6 +28,12 @@ import type { UseCalendarWeekResult } from "../../hooks/useCalendarWeek.js";
 
 const setActionNotice = vi.hoisted(() => vi.fn());
 
+const calendarViewAppValue = vi.hoisted(() => ({
+  t: (_key: string, opts?: { defaultValue?: string }) =>
+    opts?.defaultValue ?? _key,
+  setActionNotice,
+}));
+
 vi.mock("@elizaos/ui", () => ({
   Button: ({
     children,
@@ -70,11 +76,12 @@ vi.mock("@elizaos/ui", () => ({
       ))}
     </div>
   ),
-  useApp: () => ({
-    t: (_key: string, opts?: { defaultValue?: string }) =>
-      opts?.defaultValue ?? _key,
-    setActionNotice,
-  }),
+  useApp: () => calendarViewAppValue,
+  useAppSelector: <T,>(selector: (value: typeof calendarViewAppValue) => T) =>
+    selector(calendarViewAppValue),
+  useAppSelectorShallow: <T,>(
+    selector: (value: typeof calendarViewAppValue) => T,
+  ) => selector(calendarViewAppValue),
   useMediaQuery: () => false,
 }));
 

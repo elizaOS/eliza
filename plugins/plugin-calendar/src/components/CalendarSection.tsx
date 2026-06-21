@@ -21,7 +21,7 @@ import {
   PopoverTrigger,
   SegmentedControl,
   Spinner,
-  useApp,
+  useAppSelector,
   useMediaQuery,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
@@ -1019,7 +1019,7 @@ export function CalendarSection({
   onChatAboutEvent,
   getPrimedEvent,
 }: CalendarSectionProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const calendar = useCalendarWeek();
   const compactLayout = useMediaQuery("(max-width: 767px)");
   const [drawerEvent, setDrawerEvent] = useState<LifeOpsCalendarEvent | null>(

@@ -67,6 +67,16 @@ const uiExtensionMocks = vi.hoisted(() => ({
   registerDetailExtension: vi.fn(),
 }));
 
+// Single shared app-state ref so the legacy `useApp` API and the per-slice
+// `useAppSelector` reads the migrated view now uses both resolve to the same
+// value.
+const fineTuningAppState = vi.hoisted(() => ({
+  handleRestart: vi.fn(),
+  setActionNotice: vi.fn(),
+  t: (_key: string, options?: { defaultValue?: string }) =>
+    options?.defaultValue ?? _key,
+}));
+
 vi.mock("@elizaos/ui", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   Button: ({
@@ -82,12 +92,9 @@ vi.mock("@elizaos/ui", () => ({
   parsePositiveFloat: (value: string) => Number.parseFloat(value),
   parsePositiveInteger: (value: string) => Number.parseInt(value, 10),
   registerDetailExtension: uiExtensionMocks.registerDetailExtension,
-  useApp: () => ({
-    handleRestart: vi.fn(),
-    setActionNotice: vi.fn(),
-    t: (_key: string, options?: { defaultValue?: string }) =>
-      options?.defaultValue ?? _key,
-  }),
+  useApp: () => fineTuningAppState,
+  useAppSelector: <T,>(selector: (s: typeof fineTuningAppState) => T): T =>
+    selector(fineTuningAppState),
   useIntervalWhenDocumentVisible: vi.fn(),
 }));
 

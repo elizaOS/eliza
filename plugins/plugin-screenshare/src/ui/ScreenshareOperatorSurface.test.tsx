@@ -18,16 +18,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // vi.mock factories are hoisted above imports, so the spies they reference must
 // be created via vi.hoisted (not plain top-level const).
-const { setActionNotice, getBaseUrl, getRestAuthToken, selectLatestRunResult } =
-  vi.hoisted(() => ({
-    setActionNotice: vi.fn(),
+const {
+  setActionNotice,
+  getBaseUrl,
+  getRestAuthToken,
+  selectLatestRunResult,
+  appState,
+} = vi.hoisted(() => {
+  const setActionNotice = vi.fn();
+  return {
+    setActionNotice,
     getBaseUrl: vi.fn(() => ""),
     getRestAuthToken: vi.fn(() => "rest-token"),
     // Mutable so individual tests can inject a launched run with a viewer URL.
     selectLatestRunResult: { run: null } as {
       run: { viewer?: { url?: string } } | null;
     },
-  }));
+    // Single shared app-state ref so `useApp` and the per-slice
+    // `useAppSelector` reads the surface now uses both resolve to the same value.
+    appState: { appRuns: [] as unknown[], setActionNotice },
+  };
+});
 
 vi.mock("@elizaos/ui", () => ({
   Button: ({
@@ -64,7 +75,9 @@ vi.mock("@elizaos/ui", () => ({
     getRestAuthToken,
   },
   selectLatestRunForApp: vi.fn(() => selectLatestRunResult),
-  useApp: () => ({ appRuns: [], setActionNotice }),
+  useApp: () => appState,
+  useAppSelector: <T,>(selector: (s: typeof appState) => T): T =>
+    selector(appState),
 }));
 
 vi.mock("@elizaos/ui/agent-surface", () => ({

@@ -9,7 +9,7 @@ import {
   SurfaceEmptyState,
   SurfaceSection,
   selectLatestRunForApp,
-  useApp,
+  useAppSelector,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
@@ -157,7 +157,8 @@ export function ScreenshareOperatorSurface({
   appName,
   focus = "all",
 }: AppOperatorSurfaceProps) {
-  const { appRuns, setActionNotice } = useApp();
+  const appRuns = useAppSelector((s) => s.appRuns);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const { run } = useMemo(
     () => selectLatestRunForApp(appName || APP_NAME, appRuns),
     [appName, appRuns],

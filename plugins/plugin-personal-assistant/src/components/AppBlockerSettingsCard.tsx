@@ -1,4 +1,4 @@
-import { Badge, Button, client, useApp } from "@elizaos/ui";
+import { Badge, Button, client, useAppSelector } from "@elizaos/ui";
 import {
   CheckCircle2,
   Clock3,
@@ -87,7 +87,7 @@ function AppBlockerStatusIcon({ label }: { label: string }) {
 }
 
 export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
-  const { t: rawT } = useApp();
+  const rawT = useAppSelector((s) => s.t);
   const t = typeof rawT === "function" ? rawT : (key: string): string => key;
 
   const [permission, setPermission] = useState<AppBlockerPermission | null>(

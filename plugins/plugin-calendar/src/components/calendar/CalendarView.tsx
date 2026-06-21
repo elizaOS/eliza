@@ -14,13 +14,13 @@
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
-import { useApp } from "@elizaos/ui";
+import { useAppSelector } from "@elizaos/ui";
 import type { ReactElement } from "react";
 import { useCallback, useState } from "react";
 import { CalendarSection } from "../CalendarSection.js";
 
 export function CalendarView(): ReactElement {
-  const { setActionNotice } = useApp();
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   const handleChatAboutEvent = useCallback(

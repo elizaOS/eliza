@@ -20,7 +20,7 @@ import {
   SelectValue,
   TagEditor,
   Textarea,
-  useApp,
+  useAppSelector,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
@@ -389,7 +389,8 @@ export function EventEditorDrawer({
   onDeleted,
   onChat,
 }: EventEditorDrawerProps) {
-  const { setActionNotice, t } = useApp();
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const t = useAppSelector((s) => s.t);
   const [form, setForm] = useState<FormState>(() =>
     event ? formStateFromEvent(event) : blankFormState(createDefaults),
   );

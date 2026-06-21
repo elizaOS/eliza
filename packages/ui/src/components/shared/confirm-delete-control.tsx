@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from "react";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 
 type ConfirmDeleteControlProps = {
@@ -33,7 +33,7 @@ export function ConfirmDeleteControl({
   triggerTitle,
   triggerVariant = "destructive",
 }: ConfirmDeleteControlProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [confirming, setConfirming] = useState(false);
   const resolvedTriggerLabel =
     triggerLabel ?? t("common.delete", { defaultValue: "Delete" });

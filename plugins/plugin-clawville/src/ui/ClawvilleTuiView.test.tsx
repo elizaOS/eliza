@@ -15,6 +15,8 @@ const appState = vi.hoisted(() => ({
 vi.mock("@elizaos/ui", () => ({
   client: { sendAppRunMessage },
   useApp: () => appState,
+  useAppSelector: <T,>(selector: (s: typeof appState) => T): T =>
+    selector(appState),
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 

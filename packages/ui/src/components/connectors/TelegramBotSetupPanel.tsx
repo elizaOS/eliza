@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { client } from "../../api";
-import { useAppSelector } from "../../state";
+import { useApp } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 
@@ -25,7 +25,7 @@ type TelegramStatusResponse = {
 type SetupErrorBody = { error?: { code?: string; message?: string } };
 
 export function TelegramBotSetupPanel() {
-  const t = useAppSelector((s) => s.t);
+  const { t } = useApp();
   const [status, setStatus] = useState<TelegramSetupStatus>("idle");
   const [token, setToken] = useState("");
   const [botInfo, setBotInfo] = useState<BotInfo | null>(null);

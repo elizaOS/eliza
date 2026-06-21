@@ -8,12 +8,12 @@ import {
   toneForHealthState,
   toneForStatusText,
   toneForViewerAttachment,
-  useApp,
 } from "@elizaos/app-core/ui-compat";
+import { useAppSelector } from "@elizaos/ui/state";
 import { useMemo } from "react";
 
 export function FeedDetailExtension({ app }: AppDetailExtensionProps) {
-  const { appRuns } = useApp();
+  const appRuns = useAppSelector((s) => s.appRuns);
   const { run, matchingRuns } = useMemo(
     () => selectLatestRunForApp(app.name, appRuns),
     [app.name, appRuns],

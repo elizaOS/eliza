@@ -1,5 +1,5 @@
 import type { PermissionStatus } from "@elizaos/shared";
-import { Badge, Button, useApp } from "@elizaos/ui";
+import { Badge, Button, useAppSelector } from "@elizaos/ui";
 import { CheckCircle2, Monitor, Settings, ShieldBan } from "lucide-react";
 import type { WebsiteBlockerSettingsCardProps } from "../types/website-blocker-settings-card";
 
@@ -77,7 +77,7 @@ export function WebsiteBlockerSettingsCard({
   onOpenPermissionSettings,
   onRequestPermission,
 }: WebsiteBlockerSettingsCardProps) {
-  const { t: rawT } = useApp();
+  const rawT = useAppSelector((s) => s.t);
   const t = typeof rawT === "function" ? rawT : (key: string): string => key;
 
   const title = translate(

@@ -28,7 +28,7 @@ import { ListSkeleton } from "@elizaos/ui/components/ui/skeleton-layouts";
 import { getBootConfig } from "@elizaos/ui/config";
 import { useRenderGuard } from "@elizaos/ui/hooks";
 import { WorkspaceLayout } from "@elizaos/ui/layouts";
-import { useApp } from "@elizaos/ui/state";
+import { useAppSelector } from "@elizaos/ui/state";
 import { Clock3, Database, Hash, Layers3 } from "lucide-react";
 import type { ReactNode } from "react";
 import {
@@ -143,7 +143,7 @@ function VectorGraph({
   memories: MemoryRecord[];
   onSelect: (mem: MemoryRecord) => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
@@ -388,7 +388,7 @@ export function VectorGraph3D({
   onSelect: (mem: MemoryRecord) => void;
   createRenderer?: () => Promise<Three.WebGLRenderer>;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<Three.WebGLRenderer | null>(null);
   const sceneRef = useRef<Three.Scene | null>(null);
@@ -932,7 +932,7 @@ export function VectorBrowserView({
   contentHeader?: ReactNode;
 }) {
   useRenderGuard("VectorBrowserView");
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [selectedTable, setSelectedTable] = useState("");
   const [memories, setMemories] = useState<MemoryRecord[]>([]);
@@ -1510,9 +1510,7 @@ export function VectorBrowserView({
               key={mem.id || `${mem.content.slice(0, 30)}-${mem.createdAt}`}
               onClick={() => openDetail(mem)}
               className={`flex w-full items-center gap-3 rounded-sm px-3 py-2.5 text-left transition-colors ${
-                isActive
-                  ? "bg-accent/12 text-txt"
-                  : "hover:bg-bg-hover"
+                isActive ? "bg-accent/12 text-txt" : "hover:bg-bg-hover"
               }`}
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-bg-muted/55 text-xs font-semibold uppercase text-muted">

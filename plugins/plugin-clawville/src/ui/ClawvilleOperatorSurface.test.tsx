@@ -90,6 +90,8 @@ const GameOperatorShell = vi.hoisted(
 vi.mock("@elizaos/ui", () => ({
   client: { sendAppRunMessage },
   useApp: () => appState,
+  useAppSelector: <T,>(selector: (s: typeof appState) => T): T =>
+    selector(appState),
   GameOperatorShell,
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));

@@ -90,6 +90,14 @@ const uiMock = vi.hoisted(() => ({
 
 vi.mock("@elizaos/app-core/ui-compat", () => uiMock);
 
+vi.mock("@elizaos/ui/state", () => ({
+  useApp: () => appState,
+  useAppSelector: <T,>(selector: (value: typeof appState) => T) =>
+    selector(appState),
+  useAppSelectorShallow: <T,>(selector: (value: typeof appState) => T) =>
+    selector(appState),
+}));
+
 const { FeedDetailExtension } = await import("./FeedDetailExtension");
 
 const mountedRoots: Array<{

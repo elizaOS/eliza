@@ -251,6 +251,7 @@ export * from "./lifeops-normalize/index.js";
 // Local-inference shared subset (types, paths, routing-preferences, verify).
 // Server runtime (KV cache, llama-server lifecycle, etc.) stays in @elizaos/app-core.
 export * from "./local-inference/index.js";
+export * from "./loopback-trust.js";
 export * from "./platform/is-native-server.js";
 export * from "./recent-messages-state.js";
 export * from "./restart.js";

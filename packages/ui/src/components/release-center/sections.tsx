@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { useBranding } from "../../config/branding";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { formatDateTime } from "../../utils/format";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -45,7 +45,7 @@ export function ReleaseStatusSection({
   onDetach: () => void;
   onRefresh: () => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const appReleaseTone = updateStatus?.updateAvailable ? "warning" : "good";
   const autoUpdateDisabled =
     nativeUpdater != null && !nativeUpdater.canAutoUpdate;
@@ -242,7 +242,7 @@ export function ReleaseNotesSection({
   onReleaseNotesUrlChange: (value: string) => void;
   onResetUrl: () => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const { appUrl } = useBranding();
   const defaultReleaseNotesUrl = `${appUrl}/releases/`;
 
@@ -333,7 +333,7 @@ export function BuildRuntimeSection({
   nativeUpdater: DesktopUpdaterSnapshot | null;
   onToggleDock: () => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const { appUrl } = useBranding();
   const defaultReleaseNotesUrl = `${appUrl}/releases/`;
 
@@ -427,7 +427,7 @@ export function SessionControlsSection({
   onClearCookies: (partition: string) => void;
   onClearSession: (partition: string) => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   return (
     <section className="rounded-sm border border-border bg-bg-accent p-4">
       <div className="mb-4">
@@ -550,7 +550,7 @@ export function WgpuSurfaceSection({
   onTogglePassthrough: () => void;
   onToggleTransparent: () => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   return (
     <section className="rounded-sm border border-border bg-bg-accent p-4">
       <div className="mb-4">

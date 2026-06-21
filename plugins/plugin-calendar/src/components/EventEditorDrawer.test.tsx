@@ -46,6 +46,12 @@ vi.mock("@elizaos/ui", () => {
     fetch = vi.fn(async () => ({}) as never);
   }
 
+  const appValue = {
+    t: (_key: string, opts?: { defaultValue?: string }) =>
+      opts?.defaultValue ?? _key,
+    setActionNotice: vi.fn(),
+  };
+
   return {
     ElizaClient,
     client: uiClient,
@@ -185,11 +191,11 @@ vi.mock("@elizaos/ui", () => {
           </button>
         </div>
       ) : null,
-    useApp: () => ({
-      t: (_key: string, opts?: { defaultValue?: string }) =>
-        opts?.defaultValue ?? _key,
-      setActionNotice: vi.fn(),
-    }),
+    useApp: () => appValue,
+    useAppSelector: <T,>(selector: (value: typeof appValue) => T) =>
+      selector(appValue),
+    useAppSelectorShallow: <T,>(selector: (value: typeof appValue) => T) =>
+      selector(appValue),
   };
 });
 

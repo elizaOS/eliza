@@ -1,4 +1,4 @@
-import { useApp } from "../../state";
+import { useApp, useAppSelector } from "../../state";
 import type { AppState, FlaminaGuideTopic } from "../../state/types";
 import { Button } from "../ui/button";
 
@@ -88,7 +88,7 @@ export function FlaminaGuideCard({
   topic: FlaminaGuideTopic;
   className?: string;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const guide = GUIDE_CONTENT[topic];
 
   return (

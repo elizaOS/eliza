@@ -167,6 +167,10 @@ vi.mock("@elizaos/ui", () => ({
       { "data-terminal-view": true },
       (commands ?? []).join(","),
     ),
+  useAppSelector: <T,>(selector: (value: typeof appState) => T) =>
+    selector(appState),
+  useAppSelectorShallow: <T,>(selector: (value: typeof appState) => T) =>
+    selector(appState),
 }));
 
 const { FeedOperatorSurface } = await import("./FeedOperatorSurface");

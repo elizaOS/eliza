@@ -20,6 +20,12 @@ const lifeOpsClient = vi.hoisted(() => ({
   stopAppBlock: vi.fn(),
 }));
 
+// Single shared app-state ref so `useApp` and the per-slice `useAppSelector`
+// reads the blocker cards now use both resolve to the same value.
+const blockerAppState = vi.hoisted(() => ({
+  t: (_key: string) => _key,
+}));
+
 vi.mock("@elizaos/ui", () => ({
   Badge: ({ children, variant }: { children: ReactNode; variant?: string }) => (
     <span data-variant={variant}>{children}</span>
@@ -33,9 +39,9 @@ vi.mock("@elizaos/ui", () => ({
     </button>
   ),
   client: lifeOpsClient,
-  useApp: () => ({
-    t: (_key: string) => _key,
-  }),
+  useApp: () => blockerAppState,
+  useAppSelector: <T,>(selector: (s: typeof blockerAppState) => T): T =>
+    selector(blockerAppState),
 }));
 
 import { AppBlockerSettingsCard } from "./AppBlockerSettingsCard.js";

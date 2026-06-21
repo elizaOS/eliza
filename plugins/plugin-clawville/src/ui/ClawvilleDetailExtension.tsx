@@ -1,7 +1,7 @@
 import {
   type AppDetailExtensionProps,
   type AppRunSummary,
-  useApp,
+  useAppSelector,
 } from "@elizaos/ui";
 import { useMemo } from "react";
 
@@ -11,7 +11,7 @@ type AppSessionActivity = NonNullable<
 >[number];
 
 export function ClawvilleDetailExtension({ app }: AppDetailExtensionProps) {
-  const { appRuns } = useApp();
+  const appRuns = useAppSelector((s) => s.appRuns);
   const run = useMemo(() => selectRun(app.name, appRuns), [app.name, appRuns]);
 
   if (!run) {
