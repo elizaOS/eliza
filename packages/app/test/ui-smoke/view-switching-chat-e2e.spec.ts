@@ -225,6 +225,134 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
         .first()
         .or(page.locator('section[aria-label="Todos"]').first()),
   },
+  // --- Wider language matrix (deterministic tier): the navigate→render pipeline
+  // must hold for the full set of matcher languages, not just the es/fr/zh
+  // samples above. Each command is a curated, fully-in-language phrase lifted
+  // verbatim from CURATED_MULTILINGUAL (plugin-app-control view-matrix.fixtures),
+  // where view-matrix.test.ts proves resolveIntentView(phrase) === viewId for all
+  // 10 languages — so the live tier's real-LLM routing is exercised by the same
+  // phrases the deterministic resolver is asserted to land. calendar + wallet are
+  // covered here for pt/de/ja/ko/vi/tl (es/fr/zh already sampled above).
+  {
+    name: 'ACTIVE (pt): "abra meu calendário" opens the calendar view',
+    kind: "active",
+    command: "abra meu calendário",
+    view: { id: "calendar", path: "/calendar", label: "Calendar" },
+    expectedPath: "/calendar",
+    onView: (page) => page.getByTestId("calendar-view").first(),
+  },
+  {
+    name: 'ACTIVE (de): "öffne meinen kalender" opens the calendar view',
+    kind: "active",
+    command: "öffne meinen kalender",
+    view: { id: "calendar", path: "/calendar", label: "Calendar" },
+    expectedPath: "/calendar",
+    onView: (page) => page.getByTestId("calendar-view").first(),
+  },
+  {
+    name: 'ACTIVE (ja): "カレンダーを開いて" opens the calendar view',
+    kind: "active",
+    command: "カレンダーを開いて",
+    view: { id: "calendar", path: "/calendar", label: "Calendar" },
+    expectedPath: "/calendar",
+    onView: (page) => page.getByTestId("calendar-view").first(),
+  },
+  {
+    name: 'ACTIVE (ko): "캘린더 열어" opens the calendar view',
+    kind: "active",
+    command: "캘린더 열어",
+    view: { id: "calendar", path: "/calendar", label: "Calendar" },
+    expectedPath: "/calendar",
+    onView: (page) => page.getByTestId("calendar-view").first(),
+  },
+  {
+    name: 'ACTIVE (vi): "mở lịch" opens the calendar view',
+    kind: "active",
+    command: "mở lịch",
+    view: { id: "calendar", path: "/calendar", label: "Calendar" },
+    expectedPath: "/calendar",
+    onView: (page) => page.getByTestId("calendar-view").first(),
+  },
+  {
+    name: 'ACTIVE (tl): "buksan ang calendar" opens the calendar view',
+    kind: "active",
+    command: "buksan ang calendar",
+    view: { id: "calendar", path: "/calendar", label: "Calendar" },
+    expectedPath: "/calendar",
+    onView: (page) => page.getByTestId("calendar-view").first(),
+  },
+  {
+    name: 'ACTIVE (pt): "abra minha carteira" opens the wallet view',
+    kind: "active",
+    command: "abra minha carteira",
+    view: { id: "wallet", path: "/wallet", label: "Wallet" },
+    expectedPath: "/wallet",
+    onView: (page) =>
+      page
+        .getByTestId("wallet-shell")
+        .first()
+        .or(page.getByRole("heading", { name: "Wallet" }).first()),
+  },
+  {
+    name: 'ACTIVE (de): "öffne meine brieftasche" opens the wallet view',
+    kind: "active",
+    command: "öffne meine brieftasche",
+    view: { id: "wallet", path: "/wallet", label: "Wallet" },
+    expectedPath: "/wallet",
+    onView: (page) =>
+      page
+        .getByTestId("wallet-shell")
+        .first()
+        .or(page.getByRole("heading", { name: "Wallet" }).first()),
+  },
+  {
+    name: 'ACTIVE (ja): "ウォレットを開いて" opens the wallet view',
+    kind: "active",
+    command: "ウォレットを開いて",
+    view: { id: "wallet", path: "/wallet", label: "Wallet" },
+    expectedPath: "/wallet",
+    onView: (page) =>
+      page
+        .getByTestId("wallet-shell")
+        .first()
+        .or(page.getByRole("heading", { name: "Wallet" }).first()),
+  },
+  {
+    name: 'ACTIVE (ko): "지갑 열어" opens the wallet view',
+    kind: "active",
+    command: "지갑 열어",
+    view: { id: "wallet", path: "/wallet", label: "Wallet" },
+    expectedPath: "/wallet",
+    onView: (page) =>
+      page
+        .getByTestId("wallet-shell")
+        .first()
+        .or(page.getByRole("heading", { name: "Wallet" }).first()),
+  },
+  {
+    name: 'ACTIVE (vi): "mở ví" opens the wallet view',
+    kind: "active",
+    command: "mở ví",
+    view: { id: "wallet", path: "/wallet", label: "Wallet" },
+    expectedPath: "/wallet",
+    onView: (page) =>
+      page
+        .getByTestId("wallet-shell")
+        .first()
+        .or(page.getByRole("heading", { name: "Wallet" }).first()),
+  },
+  {
+    name: 'ACTIVE (tl): "buksan ang wallet" opens the wallet view',
+    kind: "active",
+    command: "buksan ang wallet",
+    view: { id: "wallet", path: "/wallet", label: "Wallet" },
+    expectedPath: "/wallet",
+    onView: (page) =>
+      page
+        .getByTestId("wallet-shell")
+        .first()
+        .or(page.getByRole("heading", { name: "Wallet" }).first()),
+  },
 ];
 
 function chatComposer(page: Page): Locator {
