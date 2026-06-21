@@ -122,7 +122,12 @@ describe("streaming → incremental assistant-bubble render", () => {
     );
 
     const bubble = () => getByTestId(ASSISTANT_ID).textContent ?? "";
-    const tokens = ["Two plus two", " is four", ". Anything else", " I can do?"];
+    const tokens = [
+      "Two plus two",
+      " is four",
+      ". Anything else",
+      " I can do?",
+    ];
     const renders: string[] = [];
 
     for (const token of tokens) {

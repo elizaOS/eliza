@@ -18,6 +18,11 @@
     "declarationMap": true,
     "sourceMap": true,
     "noEmit": true,
+    "paths": {
+      "@elizaos/plugin-remote-manifest": [
+        "../plugin-remote-manifest/dist/index.d.ts"
+      ]
+    },
     "rootDir": "src",
     "outDir": "dist"
   },
