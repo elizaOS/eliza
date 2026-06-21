@@ -7,6 +7,7 @@ import baseConfig from "../../packages/test/vitest/default.config";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
 const require = createRequire(import.meta.url);
+const tuiSrc = path.join(repoRoot, "packages/tui/src/index.ts");
 const baseAliases = Array.isArray(baseConfig.resolve?.alias)
   ? baseConfig.resolve.alias
   : [];
@@ -47,6 +48,10 @@ export default defineConfig({
       {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(repoRoot, "packages/ui/src/$1"),
+      },
+      {
+        find: /^@elizaos\/tui$/,
+        replacement: tuiSrc,
       },
       {
         find: /^react$/,

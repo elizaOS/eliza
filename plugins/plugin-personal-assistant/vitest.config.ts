@@ -152,6 +152,7 @@ const uiSpatialTuiSrc = path.join(
   "tui",
   "index.ts",
 );
+const tuiSrc = path.join(elizaRoot, "packages", "tui", "src", "index.ts");
 
 const defaultUnitExcludes = [
   "dist/**",
@@ -315,6 +316,58 @@ export default defineConfig({
           "src",
           "index.ts",
         ),
+      },
+      {
+        find: /^@elizaos\/plugin-scheduling\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-scheduling",
+          "src",
+          "$1.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-scheduling$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-scheduling",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-finances\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-finances",
+          "src",
+          "$1.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-finances$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-finances",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/(plugin-(?:calendar|goals|health|reminders|remote-desktop))\/(.+)$/,
+        replacement: path.join(elizaRoot, "plugins", "$1", "src", "$2.ts"),
+      },
+      {
+        find: /^@elizaos\/(plugin-(?:calendar|goals|health|reminders|remote-desktop))$/,
+        replacement: path.join(elizaRoot, "plugins", "$1", "src", "index.ts"),
+      },
+      {
+        find: /^@elizaos\/tui$/,
+        replacement: tuiSrc,
       },
       {
         find: /^react\/jsx-dev-runtime$/,
