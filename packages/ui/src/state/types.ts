@@ -249,7 +249,7 @@ export function isCloudAgentWaking(
   phase: CloudHandoffPhaseDetail | null,
   agentId?: string,
 ): boolean {
-  if (!phase || phase.phase !== "migrating") return false;
+  if (phase?.phase !== "migrating") return false;
   return agentId === undefined || phase.agentId === agentId;
 }
 
