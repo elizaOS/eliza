@@ -34,7 +34,10 @@ test("ELIZA_BUILD_VARIANT=store embeds the engine by default", () => {
 });
 
 test("ELIZA_BUILD_VARIANT=store is case-insensitive", () => {
-  assert.equal(shouldIncludeIosFullBunEngine({ ELIZA_BUILD_VARIANT: "STORE" }), true);
+  assert.equal(
+    shouldIncludeIosFullBunEngine({ ELIZA_BUILD_VARIANT: "STORE" }),
+    true,
+  );
 });
 
 test("ELIZA_RELEASE_AUTHORITY=apple-app-store embeds the engine by default", () => {
