@@ -124,6 +124,14 @@ export type ChatFailureKind =
   | "provider_issue"
   | "local_inference";
 
+export interface ChatActionResultSummary {
+  actionName?: string;
+  success: boolean;
+  text?: string;
+  error?: string;
+  values?: Record<string, unknown>;
+}
+
 export type LocalInferenceChatStatus =
   | "missing"
   | "downloading"
@@ -738,7 +746,13 @@ export interface WorkflowEvaluationSuite {
   optimizer: {
     engine: "smithers-gepa";
     target: "workflow-generation";
+    suiteName: string;
+    caseFile: string;
     recommendedCommand: string;
+    recommendedEvalCommand: string;
+    recommendedOptimizeCommand: string;
+    recommendedObservabilityCommand: string;
+    recommendedMetricsCommand: string;
     notes: string[];
   };
 }

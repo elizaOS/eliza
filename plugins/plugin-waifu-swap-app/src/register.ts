@@ -10,3 +10,20 @@
 // no read-only snapshot shape to render, so a TUI view is intentionally
 // omitted rather than fabricated.
 import "./swap-app";
+import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+
+// iOS/Android disable DynamicViewLoader, so register this view's already-bundled
+// component as an in-process app-shell page. Web/desktop dedupe it against the
+// agent-served bundle entry (network wins -> DynamicViewLoader), so it only adds
+// the render path on native. See packages/app/src/mobile-plugin-views.ts.
+registerAppShellPage({
+  id: "waifu-swap",
+  pluginId: "@elizaos/plugin-waifu-swap-app",
+  label: "Swap",
+  icon: "ArrowLeftRight",
+  path: "/waifu-swap",
+  loader: () =>
+    import("./swap-app-view-bundle.ts").then((m) => ({
+      default: m.SwapAppView,
+    })),
+});

@@ -67,6 +67,9 @@ function PluginListView({
     pluginSettingsOpen = new Set<string>(),
     pluginSaving,
     pluginSaveSuccess,
+    isLoadingPlugins = false,
+    pluginsLoadError = null,
+    pluginsLoaded = false,
     loadPlugins,
     ensurePluginsLoaded = async () => {
       await loadPlugins();
@@ -1319,7 +1322,42 @@ function PluginListView({
               </PagePanel.Notice>
             )}
 
-            {sorted.length === 0 ? (
+            {sorted.length === 0 && isLoadingPlugins ? (
+              <PagePanel.Loading
+                variant="surface"
+                className="min-h-[18rem] rounded-lg px-5 py-10"
+                heading={t("pluginsview.LoadingTitle", {
+                  defaultValue: "Loading {{label}}…",
+                  label: label.toLowerCase(),
+                })}
+              />
+            ) : sorted.length === 0 && pluginsLoadError ? (
+              <PagePanel.Empty
+                variant="surface"
+                className="min-h-[18rem] rounded-lg px-5 py-10"
+                description={t("pluginsview.LoadFailedDesc", {
+                  defaultValue:
+                    "Couldn't load {{label}}: {{error}}. Check your connection and try again.",
+                  label: resultLabel,
+                  error: pluginsLoadError,
+                })}
+                title={t("pluginsview.LoadFailedTitle", {
+                  defaultValue: "Couldn't load {{label}}",
+                  label: label.toLowerCase(),
+                })}
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      void loadPlugins();
+                    }}
+                  >
+                    {t("pluginsview.Retry", { defaultValue: "Retry" })}
+                  </Button>
+                }
+              />
+            ) : sorted.length === 0 && pluginsLoaded ? (
               <PagePanel.Empty
                 variant="surface"
                 className="min-h-[18rem] rounded-lg px-5 py-10"
@@ -1329,6 +1367,15 @@ function PluginListView({
                 })}
                 title={t("pluginsview.NoneAvailableTitle", {
                   defaultValue: "No {{label}} available",
+                  label: label.toLowerCase(),
+                })}
+              />
+            ) : sorted.length === 0 ? (
+              <PagePanel.Loading
+                variant="surface"
+                className="min-h-[18rem] rounded-lg px-5 py-10"
+                heading={t("pluginsview.LoadingTitle", {
+                  defaultValue: "Loading {{label}}…",
                   label: label.toLowerCase(),
                 })}
               />

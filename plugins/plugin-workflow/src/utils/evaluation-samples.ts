@@ -201,6 +201,13 @@ export function buildWorkflowEvaluationSuite(
   const limit = clampLimit(options?.limit);
   const samples = executions.slice(0, limit).map((execution) => buildSample(workflow, execution));
   const safeName = slugify(workflow.name) || slugify(workflow.id) || 'workflow';
+  const suiteName = safeName;
+  const caseFile = `evals/${suiteName}.jsonl`;
+  const recommendedEvalCommand = `bunx smithers-orchestrator eval <workflow.tsx> --cases ${caseFile} --suite ${suiteName}`;
+  const recommendedOptimizeCommand = 'bunx smithers-orchestrator optimize';
+  const recommendedObservabilityCommand = 'bunx smithers-orchestrator observability --detach';
+  const recommendedMetricsCommand =
+    'bunx smithers-orchestrator up <workflow.tsx> --serve --metrics';
   const jsonl = samples.map((sample) => JSON.stringify(sample)).join('\n');
   return {
     workflowId: workflow.id,
@@ -213,9 +220,17 @@ export function buildWorkflowEvaluationSuite(
     optimizer: {
       engine: 'smithers-gepa',
       target: 'workflow-generation',
-      recommendedCommand: `bunx smithers-orchestrator eval <workflow.tsx> --cases evals/${safeName}.jsonl --suite ${safeName}`,
+      suiteName,
+      caseFile,
+      recommendedCommand: recommendedEvalCommand,
+      recommendedEvalCommand,
+      recommendedOptimizeCommand,
+      recommendedObservabilityCommand,
+      recommendedMetricsCommand,
       notes: [
-        'Copy jsonl to a Smithers eval cases file before running eval or optimize.',
+        `Copy jsonl to ${caseFile} before running eval.`,
+        'Run GEPA optimization after the eval suite is configured; Smithers writes an optimized prompt artifact only when score improves.',
+        'Use the observability and metrics commands when inspecting long-running or flaky workflows.',
         'Successful executions are positive examples; failed executions remain useful regression cases.',
         'Samples are generated from persisted workflow executions and compact large payloads.',
       ],

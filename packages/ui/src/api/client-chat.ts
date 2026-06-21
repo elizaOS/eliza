@@ -8,6 +8,7 @@ import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
+  ChatActionResultSummary,
   ChatFailureKind,
   ChatTokenUsage,
   ConnectionTestResult,
@@ -283,6 +284,7 @@ declare module "./client-base" {
       noResponseReason?: "ignored";
       failureKind?: ChatFailureKind;
       localInference?: LocalInferenceChatMetadata;
+      actionResults?: ChatActionResultSummary[];
     }>;
     sendChatStream(
       text: string,
@@ -297,6 +299,7 @@ declare module "./client-base" {
       usage?: ChatTokenUsage;
       failureKind?: ChatFailureKind;
       localInference?: LocalInferenceChatMetadata;
+      actionResults?: ChatActionResultSummary[];
     }>;
     listConversations(): Promise<{ conversations: Conversation[] }>;
     createConversation(
@@ -404,6 +407,7 @@ declare module "./client-base" {
        */
       failureKind?: ChatFailureKind;
       localInference?: LocalInferenceChatMetadata;
+      actionResults?: ChatActionResultSummary[];
     }>;
     sendConversationMessageStream(
       id: string,
@@ -424,6 +428,7 @@ declare module "./client-base" {
       /** See sendConversationMessage above. */
       failureKind?: ChatFailureKind;
       localInference?: LocalInferenceChatMetadata;
+      actionResults?: ChatActionResultSummary[];
     }>;
     abortConversationTurn(
       roomId: string,
@@ -1067,6 +1072,7 @@ ElizaClient.prototype.sendConversationMessage = async function (
     noResponseReason?: "ignored";
     failureKind?: ChatFailureKind;
     localInference?: LocalInferenceChatMetadata;
+    actionResults?: ChatActionResultSummary[];
   }>(`/api/conversations/${encodeURIComponent(id)}/messages`, {
     method: "POST",
     body: JSON.stringify({

@@ -57,6 +57,7 @@ function makeController(
     handsFree: false,
     toggleHandsFree: vi.fn(),
     setDictationSink: vi.fn(),
+    setTranscriptSessionSink: vi.fn(),
     setComposerHasDraft: vi.fn(),
     clearConversation: vi.fn(),
     ...overrides,
@@ -119,6 +120,56 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
+  });
+
+  it("blurs the focused composer when the active view leaves chat (drops the iOS accessory bar)", () => {
+    const { rerender } = render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
+      />,
+    );
+    const composer = screen.getByLabelText("message");
+    act(() => {
+      composer.focus();
+    });
+    expect(document.activeElement).toBe(composer);
+
+    // Navigate to a non-chat view. The overlay floats over every view, so
+    // without an explicit blur the textarea keeps DOM focus on Settings and iOS
+    // strands the keyboard input-accessory bar (the ‹ › chevrons + "Done").
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          currentTab: "settings",
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(document.activeElement).not.toBe(composer);
+  });
+
+  it("keeps composer focus when the active view stays on chat (no spurious blur)", () => {
+    const { rerender } = render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
+      />,
+    );
+    const composer = screen.getByLabelText("message");
+    act(() => {
+      composer.focus();
+    });
+    // A re-render that does not change the active view must not steal focus.
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(document.activeElement).toBe(composer);
   });
 
   it("opens the sheet on a pull-up drag of the grabber", () => {

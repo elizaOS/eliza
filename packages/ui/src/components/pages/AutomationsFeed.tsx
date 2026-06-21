@@ -42,6 +42,7 @@ import type {
   AutomationItem,
   AutomationListResponse,
 } from "../../api/client-types-config";
+import { isApiError } from "../../api/client-types-core";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
 import { useFetchData } from "../../hooks/useFetchData";
@@ -106,6 +107,24 @@ const FILTER_ICONS: Record<FeedFilter, ReactNode> = {
 const NEW_AUTOMATION_LINK_ID = "__new__";
 const CHAT_PREFILL_EVENT = "eliza:chat:prefill";
 const NEW_AUTOMATION_PROMPT = "Create an automation that ";
+
+// On mobile the workflow runtime (and its `GET /api/automations` route) is
+// intentionally absent — phones cannot host it — even though the Automations
+// tile is registered via plugin-task-coordinator. A 404 therefore means the
+// feature is unavailable, not an error, so we render the empty state instead
+// of a red banner.
+const EMPTY_AUTOMATIONS: AutomationListResponse = {
+  automations: [],
+  summary: {
+    total: 0,
+    coordinatorCount: 0,
+    workflowCount: 0,
+    scheduledCount: 0,
+    draftCount: 0,
+  },
+  workflowStatus: null,
+  workflowFetchError: null,
+};
 
 interface FeedRow {
   key: string;
@@ -236,6 +255,13 @@ export function AutomationsFeed({
         setData(res);
         setCached("automations:list", res);
       } catch (e) {
+        // A 404 means the workflow runtime isn't hosted here (e.g. mobile) —
+        // render the clean empty state, not an error banner. Any other failure
+        // is surfaced so a broken endpoint doesn't masquerade as "no automations".
+        if (isApiError(e) && e.status === 404) {
+          setData(EMPTY_AUTOMATIONS);
+          return;
+        }
         setError(
           e instanceof Error
             ? e.message

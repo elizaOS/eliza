@@ -121,6 +121,7 @@ Follow the pattern in `utils/config.ts`: `getRawSetting(runtime, "ANTHROPIC_X_MO
 - **topP + temperature mutual exclusion:** Anthropic's API rejects requests with both set. The plugin warns and drops `topP` when both are supplied.
 - **maxTokens cap:** Opus 4 = 32k, all others = 64k. Values above these are silently capped before the API call.
 - **Prompt caching:** `cache_control: ephemeral` is emitted by default on system prompts and stable `promptSegments`. TTL is `5m` unless `ANTHROPIC_PROMPT_CACHE_TTL=1h`. Up to 4 cache breakpoints per request (configurable via `anthropic.maxBreakpoints` in `providerOptions`).
+- **Per-call model override.** Text handlers honor `params.model` before slot-level model settings. Workflow generation uses this for isolated Claude tests without changing every Anthropic text call.
 - **Browser build:** `exports.browser` omits `process.env` and `node:*` imports. Use `ANTHROPIC_BROWSER_BASE_URL` to point the browser at a proxy (never expose the API key client-side).
 - **Multi-account OAuth pool:** The credential store checks `globalThis[Symbol.for("eliza.account-pool.anthropic.v1")]` for a bridge object. When present, token selection and 401/429 failover route through the pool (`utils/credential-store.ts`).
 - **Usage events:** Every successful model call emits `EventType.MODEL_USED` via `emitModelUsageEvent` (`utils/events.ts`), including cache hit/write token counts.

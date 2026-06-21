@@ -137,6 +137,17 @@ The Smithers execution runtime also reads these optional environment variables (
 | `SMITHERS_DB_URL` | — | Connection string when `SMITHERS_DB_PROVIDER=postgres`. |
 | `SMITHERS_DB_DATA_DIR` | — | Data directory for SQLite storage. |
 | `ELIZA_SMITHERS_RUN_PAYLOAD` | `{}` | JSON payload injected into Smithers worker runs. |
+| `BUN_BIN` | `bun` | Bun executable fallback for Node-hosted dev/test processes; Smithers workers still run under Bun for `bun:sqlite`. |
+
+Workflow generation/repair model calls also read optional primitive settings or env vars:
+
+| Setting / env var | Default | Description |
+|---|---|---|
+| `WORKFLOW_LLM_PROVIDER` / `WORKFLOW_MODEL_PROVIDER` / `WORKFLOW_TEST_PROVIDER` | inferred | Provider intent for workflow generation, repair, and action-copy LLM calls. `cerebras` is mapped to the registered `openai` provider because Cerebras is served through the OpenAI-compatible plugin. |
+| `WORKFLOW_LLM_MODEL` / `WORKFLOW_MODEL` / `WORKFLOW_TEST_MODEL` | `gpt-oss-120b` in Cerebras mode | Per-workflow model hint attached to generation/repair calls and `providerOptions.workflow`. |
+| `WORKFLOW_LLM_RUNTIME_PROVIDER` / `WORKFLOW_MODEL_RUNTIME_PROVIDER` | `openai` when provider is `cerebras` | Override the registered runtime provider name used as the third `runtime.useModel()` argument. |
+
+Cerebras mode is inferred from `ELIZA_PROVIDER=cerebras`, an `OPENAI_BASE_URL` on `cerebras.ai`, or a standalone `CEREBRAS_API_KEY` with no OpenAI key/base URL. The OpenAI plugin then reads `CEREBRAS_MODEL` / `CEREBRAS_API_KEY` / `CEREBRAS_BASE_URL`.
 
 ## How to extend
 
@@ -173,7 +184,8 @@ Node definitions live in `src/data/defaultNodes.json`. Add new entries and updat
 - **Nested settings read-path.** `runtime.getSetting()` only surfaces primitive values. Nested objects like `character.settings.workflows.credentials` must be read directly from `runtime.character.settings?.workflows`.
 - **`TRIGGER` action is separate.** Trigger CRUD (cron schedules, promoting a task to a workflow) lives in the agent-internal `TRIGGER` action, not here. `WORKFLOW_DISPATCH` service bridges the two: trigger tasks call `runtime.getService("WORKFLOW_DISPATCH").execute(workflowId)`.
 - **Idempotency keys.** `WorkflowDispatchOptions.idempotencyKey` prevents duplicate executions when the same trigger fires concurrently.
-- **Smithers orchestrator.** Workflow node execution delegates to `smithers-orchestrator@0.22.0` (see `src/services/smithers-runtime.ts`). The `effect` and `quickjs-emscripten` packages support the orchestrator's functional pipeline and sandboxed JS evaluation respectively.
+- **Smithers orchestrator.** Workflow node execution delegates to `smithers-orchestrator@0.22.0` (see `src/services/smithers-runtime.ts`). The `effect` and `quickjs-emscripten` packages support the orchestrator's functional pipeline and sandboxed JS evaluation respectively. Failed delegated nodes are echoed before Smithers' wrapper error so execution diagnostics retain the original node error.
+- **Workflow eval kits.** `WORKFLOW eval_samples` and `/api/workflow/workflows/:id/evaluation-samples` return compact JSONL cases plus Smithers eval, GEPA optimize, observability, and metrics command hints. Keep `jsonl` pure so it can be written directly to the returned `optimizer.caseFile`.
 - **Drizzle ORM.** The plugin manages its own Postgres schema via Drizzle. Tables are exported from `src/db/schema.ts` and registered on the plugin's `schema` field.
 - **validateAndRepair retry loop.** Generation and modification both run up to 3 LLM-retry passes via `validateAndRepair` + `fixWorkflowErrors` to correct typeVersion hallucinations, missing credential blocks, and invalid output references before deploy.
 - **Auto-enable.** `auto-enable.ts` (referenced by `elizaos.plugin.autoEnableModule` in `package.json`) returns `false` only when `config.workflow.enabled === false`. Default is enabled.

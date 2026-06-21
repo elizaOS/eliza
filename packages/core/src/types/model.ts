@@ -532,6 +532,12 @@ export interface GenerateTextParams {
 	 */
 	providerOptions?: Record<string, JsonValue | object | undefined>;
 	/**
+	 * Provider model id for this single generation call. Adapters that support
+	 * per-call model selection should prefer this over their slot default; other
+	 * adapters may ignore it.
+	 */
+	model?: string;
+	/**
 	 * Per-request cancellation. Honoured by adapters that wire it into their
 	 * underlying transport (e.g. local llama backends forward to
 	 * `LlamaChatSession.prompt({ stopOnAbortSignal })` and the FFI decode

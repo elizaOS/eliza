@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,24 +9,6 @@ import type {
   WorkflowExecutionEngineMetrics,
   WorkflowNode,
 } from '../types/index';
-
-declare const Bun: {
-  spawn(
-    command: string[],
-    options: {
-      cwd: string;
-      env: NodeJS.ProcessEnv;
-      stdin: 'pipe';
-      stdout: 'pipe';
-      stderr: 'pipe';
-    }
-  ): {
-    stdin: { write(chunk: string): void; end(): void };
-    stdout: ReadableStream<BufferSource>;
-    stderr: ReadableStream<Uint8Array>;
-    exited: Promise<number>;
-  };
-};
 
 interface SmithersNodeExecutionData {
   json: Record<string, unknown>;
@@ -87,6 +70,11 @@ function sanitizeWorkflowName(name: string): string {
 function resolveSmithersDbPath(workflowId: string): string {
   const safeId = sanitizeWorkflowName(workflowId || 'anonymous');
   return join(process.cwd(), '.eliza', 'smithers', `${safeId}.sqlite`);
+}
+
+function resolveBunBinary(): string {
+  if (typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined') return process.execPath;
+  return process.env.BUN_BIN || 'bun';
 }
 
 /**
@@ -178,6 +166,7 @@ function createSmithersScript(): string {
     const pending = new Map();
     let requestSeq = 0;
     const metrics = { nodes: 0, levels: 0, maxConcurrency: 0, started: 0, finished: 0, failed: 0, skipped: 0, retries: 0 };
+    let lastNodeError = null;
 
     function emit(message) {
       process.stdout.write(JSON.stringify(message) + '\n');
@@ -258,7 +247,11 @@ function createSmithersScript(): string {
       let lastError;
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         try { return await sendNodeRequest(node.name, inputData); }
-        catch (error) { lastError = error; if (attempt < maxAttempts) { metrics.retries += 1; await delay(node.waitBetweenTries ?? 1000); } }
+        catch (error) {
+          lastError = error;
+          lastNodeError = { nodeName: node.name, message: error?.message ?? String(error) };
+          if (attempt < maxAttempts) { metrics.retries += 1; await delay(node.waitBetweenTries ?? 1000); }
+        }
       }
       if (node.continueOnFail) return [[{ json: { error: lastError?.message ?? String(lastError) } }]];
       throw lastError;
@@ -369,6 +362,9 @@ function createSmithersScript(): string {
       emit({ type: 'workflowResult', execution, metrics });
       process.exit(0);
     } catch (error) {
+      if (lastNodeError) {
+        console.error('Node "' + lastNodeError.nodeName + '" failed: ' + lastNodeError.message);
+      }
       console.error(error?.stack ?? error?.message ?? String(error));
       process.exit(1);
     }
@@ -400,12 +396,10 @@ export async function runWorkflowWithSmithers({
     rootDir: process.cwd(),
   });
   const pluginRoot = await resolvePluginRoot();
-  const proc = Bun.spawn([process.execPath, '-e', createSmithersScript()], {
+  const proc = spawn(resolveBunBinary(), ['-e', createSmithersScript()], {
     cwd: pluginRoot,
     env: buildSmithersWorkerEnv(payload),
-    stdin: 'pipe',
-    stdout: 'pipe',
-    stderr: 'pipe',
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
   const byName = new Map(plan.enabledNodes.map((node) => [node.name, node]));
   let executionResult: WorkflowExecution | null = null;
@@ -419,7 +413,7 @@ export async function runWorkflowWithSmithers({
   };
 
   const writeResponse = (response: SmithersProtocolResponse): void => {
-    proc.stdin.write(`${JSON.stringify(response)}\n`);
+    if (proc.stdin.writable) proc.stdin.write(`${JSON.stringify(response)}\n`);
   };
 
   // Node executions are dispatched concurrently so a parallel level's nodes
@@ -464,26 +458,26 @@ export async function runWorkflowWithSmithers({
     );
   };
 
-  const readStdout = async (): Promise<void> => {
-    const reader = proc.stdout.pipeThrough(new TextDecoderStream()).getReader();
-    let buffer = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += value;
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() ?? '';
-      for (const line of lines) handleLine(line);
-    }
-    if (buffer.trim()) handleLine(buffer);
-  };
+  let stdoutBuffer = '';
+  let stderr = '';
+  proc.stdout.setEncoding('utf8');
+  proc.stdout.on('data', (chunk: string) => {
+    stdoutBuffer += chunk;
+    const lines = stdoutBuffer.split(/\r?\n/);
+    stdoutBuffer = lines.pop() ?? '';
+    for (const line of lines) handleLine(line);
+  });
+  proc.stderr.setEncoding('utf8');
+  proc.stderr.on('data', (chunk: string) => {
+    stderr += chunk;
+  });
 
-  const stderrPromise = new Response(proc.stderr).text();
-  const exitPromise = proc.exited;
-  await Promise.all([readStdout(), exitPromise]);
-  await Promise.all(inflight);
-  const stderr = await stderrPromise;
-  const exitCode = await exitPromise;
+  const exitCode = await new Promise<number>((resolve, reject) => {
+    proc.on('error', reject);
+    proc.on('close', (code) => resolve(code ?? 1));
+  });
+  if (stdoutBuffer.trim()) handleLine(stdoutBuffer);
+  if (exitCode === 0) await Promise.all(inflight);
 
   endStdin();
 

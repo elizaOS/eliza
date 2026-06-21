@@ -603,6 +603,9 @@ jobs:
 
           # Configure npm for authentication
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          # Ensure new scoped /* packages publish as public (lerna reads
+          # publishConfig.access per-package; the npmrc access key is ignored).
+          node scripts/release-set-public-access.mjs
 
           # Publish with appropriate dist-tag
           # Commit workspace reference changes so lerna doesn't complain about uncommitted files

@@ -36,6 +36,24 @@ export interface NetworkStatusChangeDetail {
 
 // ── Voice / config ───────────────────────────────────────────────────────
 export const VOICE_CONFIG_UPDATED_EVENT = "eliza:voice-config-updated" as const;
+/**
+ * A server-side agent action (START/STOP_TRANSCRIPTION) drives the shell's
+ * transcription capture through this event: the `voice-control` agent-event
+ * stream is re-dispatched here, and {@link useShellController} toggles the mic
+ * accordingly. Keeps the agent→shell command decoupled (same pattern as the
+ * tutorial/slash navigation events).
+ */
+export const VOICE_CONTROL_EVENT = "eliza:voice-control" as const;
+export interface VoiceControlEventDetail {
+  command: "start" | "stop";
+}
+
+/** Dispatch a transcription start/stop command to the shell. */
+export function dispatchVoiceControl(detail: VoiceControlEventDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(VOICE_CONTROL_EVENT, { detail }));
+}
+
 export const CHAT_AVATAR_VOICE_EVENT = "eliza:chat-avatar-voice" as const;
 export const APP_EMOTE_EVENT = "eliza:app-emote" as const;
 /** After `/api/cloud/status` — chat voice reloads config so cloud-backed TTS mode matches the server snapshot. */

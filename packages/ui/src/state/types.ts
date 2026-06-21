@@ -412,6 +412,9 @@ export interface AppState {
   pluginAdvancedOpen: Set<string>;
   pluginSaving: Set<string>;
   pluginSaveSuccess: Set<string>;
+  isLoadingPlugins: boolean;
+  pluginsLoadError: string | null;
+  pluginsLoaded: boolean;
 
   // Skills
   skills: SkillInfo[];
