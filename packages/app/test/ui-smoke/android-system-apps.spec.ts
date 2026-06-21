@@ -232,7 +232,9 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
     context,
     getAndroidSystemRoute("contacts"),
   ));
-  await page.getByTestId("contacts-search").fill("ada");
+  // Per-view contact search was removed; searching is now driven via the chat
+  // composer (ContactsAppView renders a hint instead of a search input).
+  await expect(page.getByTestId("contacts-search-hint")).toBeVisible();
   await page.getByTestId("contacts-new").click();
   await page.getByLabel(/^(Name|contacts\.form\.name)$/).fill("Ada Lovelace");
   await page.getByPlaceholder("+1 555 123 4567").fill("+1 555 0100");

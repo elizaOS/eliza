@@ -38,7 +38,14 @@ const READY_CHECKS_BY_PATH: Record<string, readonly ReadyCheck[]> = {
     { selector: '[data-testid="conversations-sidebar"]' },
     { selector: '[data-testid="chat-composer-textarea"]' },
   ],
-  "/connectors": [{ selector: "#root" }],
+  // Settings/lazy-view routes: wait for the actual rendered view marker, not the
+  // always-present #root, so the screenshot is captured after the lazy chunk
+  // mounts and paints (a bare #root check races the chunk and yields a blank,
+  // one-solid-color capture that fails the screenshot-quality gate).
+  "/connectors": [{ selector: '[data-testid="settings-shell"]' }],
+  "/tutorial": [{ selector: '[data-testid="tutorial-launcher"]' }],
+  "/help": [{ selector: '[data-testid="help-view"]' }],
+  "/apps/transcripts": [{ selector: '[data-testid="transcripts-view"]' }],
   "/apps": [{ selector: '[data-testid="apps-shell"]' }],
   "/views": [{ text: "Views" }],
   "/apps/lifeops": [{ selector: '[data-testid="lifeops-shell"]' }],
