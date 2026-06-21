@@ -186,8 +186,8 @@ interface WorkbenchReport {
 
 /**
  * Drive one scenario end-to-end through the headful player and assert the
- * per-turn DOM verdicts. Mocked backends are always CI-runnable, so this PASSES
- * (or, if a clip is absent, honestly SKIPS) — it never fakes a pass.
+ * per-turn DOM verdicts. Mocked backends are always CI-runnable, so this must
+ * PASS; skipped cases are failures in this keyless lane.
  */
 export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
   test.beforeEach(async ({ page }) => {
@@ -223,12 +223,12 @@ export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
       scenario,
     );
 
-    // Mocked backends are present, so the scenario must resolve cleanly (pass)
-    // — never `fail`. (`skipped` would only happen if ASR readiness 502'd.)
+    // Mocked backends are present, so the scenario must resolve cleanly.
+    // A skipped case in this lane is a missing mock/fixture, not coverage.
     expect(
       report.overall,
       `turns: ${JSON.stringify(report.turns, null, 2)}`,
-    ).not.toBe("fail");
+    ).toBe("pass");
     expect(report.scenarioId).toBe(scenario.id);
     expect(report.turns).toHaveLength(scenario.turns.length);
 
@@ -236,14 +236,12 @@ export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
     for (let i = 0; i < scenario.turns.length; i += 1) {
       const turn = report.turns[i];
       const expected = scenario.turns[i];
-      expect(turn.status, `turn ${i} (${turn.error ?? "no error"})`).not.toBe(
-        "fail",
+      expect(turn.status, `turn ${i} (${turn.error ?? "no error"})`).toBe(
+        "pass",
       );
-      if (turn.status === "pass") {
-        expect(turn.responded, `turn ${i} respond decision`).toBe(
-          expected.expectRespond,
-        );
-      }
+      expect(turn.responded, `turn ${i} respond decision`).toBe(
+        expected.expectRespond,
+      );
     }
 
     // DOM mirror: per-turn elements carry the verdict for a non-JS scraper.
@@ -251,7 +249,7 @@ export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
       const turnEl = page.getByTestId(`voice-workbench-turn-${i}`);
       await expect(turnEl).toBeVisible();
       const status = await turnEl.getAttribute("data-status");
-      expect(status, `turn ${i} DOM status`).not.toBe("fail");
+      expect(status, `turn ${i} DOM status`).toBe("pass");
     }
 
     // Overall DOM verdict reflects the report.

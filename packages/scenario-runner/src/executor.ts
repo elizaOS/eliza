@@ -1435,11 +1435,12 @@ async function runTurnAssertions(
   }
 
   if (kind === "voice") {
-    // A voice turn fails when the scored run regressed; a `skipped` run (no
-    // backend provisioned) is not a failure (the workbench honesty contract).
+    // A voice turn fails when the scored run regressed or silently skipped.
+    // Optional/manual voice coverage must opt in with allowVoiceSkip.
     failures.push(
       ...voiceTurnAssertionFailures(
         execution.responseBody as VoiceWorkbenchScenarioRun | undefined,
+        { allowVoiceSkip: turn.allowVoiceSkip === true },
       ),
     );
   }

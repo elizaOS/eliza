@@ -28,6 +28,7 @@ const VOICE_SCENARIO: VoiceScenario = {
 function voiceTurn(extra: {
   voiceScenario?: VoiceScenario;
   voiceServices?: VoiceWorkbenchServices | null;
+  allowVoiceSkip?: boolean;
 }): ScenarioTurn {
   return { name: "voice", kind: "voice", ...extra } as ScenarioTurn;
 }
@@ -46,12 +47,24 @@ describe("executeVoiceTurn", () => {
     expect(voiceTurnAssertionFailures(exec.responseBody)).toEqual([]);
   });
 
-  it("skips (not fails) when no services are provisioned", async () => {
+  it("fails skipped voice turns unless explicitly allowed", async () => {
     const exec = await executeVoiceTurn(
       voiceTurn({ voiceScenario: VOICE_SCENARIO }),
     );
     expect(exec.responseBody?.status).toBe("skipped");
-    expect(voiceTurnAssertionFailures(exec.responseBody)).toEqual([]);
+    expect(voiceTurnAssertionFailures(exec.responseBody)[0]).toContain(
+      "skipped",
+    );
+  });
+
+  it("allows skipped voice turns for optional/manual coverage", async () => {
+    const exec = await executeVoiceTurn(
+      voiceTurn({ voiceScenario: VOICE_SCENARIO, allowVoiceSkip: true }),
+    );
+    expect(exec.responseBody?.status).toBe("skipped");
+    expect(
+      voiceTurnAssertionFailures(exec.responseBody, { allowVoiceSkip: true }),
+    ).toEqual([]);
   });
 
   it("fails the turn when the workbench run regresses", async () => {

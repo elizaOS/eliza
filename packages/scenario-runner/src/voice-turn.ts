@@ -7,8 +7,8 @@
  * `VoiceWorkbenchScenarioRun` lands on `execution.responseBody` for assertions.
  *
  * Backend gating follows the workbench honesty contract: with no `voiceServices`
- * the run is `skipped` (not a failure); inject `groundTruthMockServices()` for a
- * deterministic CI run, or a real services adapter where provisioned.
+ * the run is `skipped`; inject `groundTruthMockServices()` for deterministic CI
+ * or set `allowVoiceSkip` only for explicitly optional/manual voice coverage.
  */
 
 import {
@@ -24,6 +24,7 @@ import type { ScenarioTurn } from "@elizaos/scenario-runner/schema";
 export type VoiceScenarioTurn = ScenarioTurn & {
   voiceScenario?: VoiceScenario;
   voiceServices?: VoiceWorkbenchServices | null;
+  allowVoiceSkip?: boolean;
 };
 
 export interface VoiceTurnExecutionResult {
@@ -61,13 +62,20 @@ export async function executeVoiceTurn(
 /** Per-turn assertion for a `voice` turn (mirrors api's `expectedStatus`). */
 export function voiceTurnAssertionFailures(
   run: VoiceWorkbenchScenarioRun | undefined,
+  options: { allowVoiceSkip?: boolean } = {},
 ): string[] {
   if (!run) {
     return [
       "voice turn requires a `voiceScenario` (a VoiceScenario object on the turn)",
     ];
   }
-  if (voiceRunVerdict(run) === "fail") {
+  const verdict = voiceRunVerdict(run);
+  if (verdict === "skipped" && !options.allowVoiceSkip) {
+    return [
+      `voice scenario "${run.scenarioId}" skipped; provide voiceServices or set allowVoiceSkip for optional/manual voice coverage`,
+    ];
+  }
+  if (verdict === "fail") {
     const failed = run.cases.filter((c) => !c.passed).map((c) => c.kind);
     return [
       `voice scenario "${run.scenarioId}" regressed: ${failed.join(", ")}`,
