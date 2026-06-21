@@ -17,6 +17,17 @@ export default defineConfig({
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: [
+      // @elizaos/ui's DynamicViewLoader (dist) statically imports this
+      // plugin-health subpath; in the keyless Phone test env it has no built
+      // dist to resolve against, so collection of every Phone view test fails.
+      // The module is self-contained (zero imports) — anchor it to source.
+      {
+        find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
+        replacement: resolve(
+          rootDir,
+          "../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts",
+        ),
+      },
       {
         find: /^react$/,
         replacement: reactRoot,
