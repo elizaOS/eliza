@@ -316,6 +316,68 @@ export default defineConfig({
           "index.ts",
         ),
       },
+      // Further lifeops carves p-a imports as bare barrels (data-layer plugins not
+      // in build:core, no eliza-source condition) — anchor each to source too.
+      {
+        find: /^@elizaos\/plugin-finances$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-finances",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-goals$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-goals",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-reminders$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-reminders",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-remote-desktop$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-remote-desktop",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-scheduling$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-scheduling",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-whatsapp$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-whatsapp",
+          "src",
+          "index.ts",
+        ),
+      },
       {
         find: /^react\/jsx-dev-runtime$/,
         replacement: path.join(reactRoot, "jsx-dev-runtime.js"),
