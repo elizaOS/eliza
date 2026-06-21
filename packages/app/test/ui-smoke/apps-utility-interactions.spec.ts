@@ -413,8 +413,10 @@ test("market utility controls show fixture data on load", async ({ page }) => {
   const hyperliquid = routeCaseByName("hyperliquid");
   await openAppWindow(page, hyperliquid);
   await expect(page.getByRole("heading", { name: "Markets" })).toBeVisible();
-  await expect(page.getByText("BTC", { exact: true })).toBeVisible();
-  await expect(page.getByText("ETH", { exact: true })).toBeVisible();
+  // BTC/ETH appear in both the markets table and the positions list — assert
+  // the symbol is present (first match) rather than requiring a single node.
+  await expect(page.getByText("BTC", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("ETH", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Positions" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Orders" })).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "hyperliquid load");

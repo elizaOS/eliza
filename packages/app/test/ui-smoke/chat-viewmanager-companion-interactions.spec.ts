@@ -32,9 +32,11 @@ test("view catalog: loading the page queries the views list", async ({
   await expect.poll(() => viewsReqs).toBeGreaterThan(0);
 
   // The fetched list actually populates the launcher grid.
-  await expect(page.locator('[data-testid^="view-card-"]').first()).toBeVisible({
-    timeout: 15_000,
-  });
+  await expect(page.locator('[data-testid^="view-card-"]').first()).toBeVisible(
+    {
+      timeout: 15_000,
+    },
+  );
 });
 
 async function readViewState(page: Page): Promise<Record<string, unknown>> {

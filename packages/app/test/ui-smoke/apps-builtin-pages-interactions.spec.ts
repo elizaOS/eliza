@@ -39,9 +39,7 @@ test("runtime view loads a snapshot and re-queries it on a poll", async ({
   await expect.poll(runtimeReqs).toBeGreaterThan(0);
 
   const before = runtimeReqs();
-  await expect
-    .poll(runtimeReqs, { timeout: 30_000 })
-    .toBeGreaterThan(before);
+  await expect.poll(runtimeReqs, { timeout: 30_000 }).toBeGreaterThan(before);
 });
 
 test("plugins view loads plugins and search filters the list", async ({

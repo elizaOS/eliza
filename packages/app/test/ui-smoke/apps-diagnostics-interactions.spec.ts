@@ -61,7 +61,9 @@ test("logs page re-queries the log source on a poll", async ({ page }) => {
   await expect(page.getByTestId("log-entry")).toHaveCount(1);
 
   const before = logRequests;
-  await expect.poll(() => logRequests, { timeout: 30_000 }).toBeGreaterThan(before);
+  await expect
+    .poll(() => logRequests, { timeout: 30_000 })
+    .toBeGreaterThan(before);
 });
 
 test("memory viewer queries memory data and the Browse toggle switches the surface", async ({
