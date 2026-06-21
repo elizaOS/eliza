@@ -49,6 +49,8 @@ export function fakeFfi(
 			return n;
 		},
 		asrTranscribe: () => transcript,
+		timedAsrSupported: () => false,
+		asrTranscribeTimed: () => ({ text: transcript, words: [] }),
 		ttsStreamSupported: () => ttsStreamSupported,
 		ttsSynthesizeStream: ({ onChunk }) => {
 			const body = new Float32Array(ttsSamples).fill(0.1);
