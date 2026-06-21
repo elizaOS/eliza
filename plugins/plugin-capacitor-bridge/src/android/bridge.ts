@@ -243,6 +243,30 @@ export async function runAndroidBridgeCli(): Promise<void> {
 			"../mobile-device-bridge-bootstrap.ts"
 		);
 		await ensureMobileDeviceBridgeInferenceHandlers(runtime as never);
+
+		// Install the cross-provider prefer-local router. Without it, cloud
+		// providers (plugin-elizacloud registers at priority 50) win over the
+		// local handlers (priority 0) and the chat 401s on a fresh local install
+		// ("stuck-cloud"). ensureLocalInferenceHandler installs this on desktop,
+		// but that boot path does not run on mobile — so do it here. The router
+		// sits at MAX_SAFE_INTEGER, dispatches first, and picks a real provider
+		// per the routing policy (default prefer-local), recognising
+		// capacitor-llama as a local provider.
+		try {
+			const { installRouterHandler } = (await import(
+				"@elizaos/plugin-local-inference/runtime"
+			)) as { installRouterHandler: (rt: unknown, opts: unknown) => void };
+			installRouterHandler(runtime, {});
+			_logToFile(
+				"[android-bridge] installed prefer-local cross-provider router",
+			);
+		} catch (err) {
+			_logToFile(
+				`[android-bridge] router install failed (local routing may defer to priority): ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+			);
+		}
 	}
 
 	// Keep the process alive indefinitely — ElizaAgentService will SIGTERM
