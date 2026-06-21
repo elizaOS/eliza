@@ -333,7 +333,11 @@ describe("trajectory task datasets", () => {
 
   it("does not bucket a plain reply as view_context", () => {
     const examples = extractTrajectoryExamplesByTask(
-      [viewContextTrajectory("Sorry to hear that — want me to draft a notice?")],
+      [
+        viewContextTrajectory(
+          "Sorry to hear that — want me to draft a notice?",
+        ),
+      ],
       ["view_context"],
     );
     expect(examples.view_context).toHaveLength(0);

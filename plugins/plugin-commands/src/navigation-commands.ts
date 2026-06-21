@@ -245,9 +245,7 @@ const VIEW_SCOPED_COMMANDS: CommandDefinition[] = [
 		views: ["calendar"],
 		target: { kind: "agent" },
 		acceptsArgs: true,
-		args: [
-			{ name: "event", description: "What to schedule", required: false },
-		],
+		args: [{ name: "event", description: "What to schedule", required: false }],
 	},
 	{
 		key: "todos-add",
@@ -275,7 +273,9 @@ const VIEW_SCOPED_COMMANDS: CommandDefinition[] = [
 		views: ["todos"],
 		target: { kind: "agent" },
 		acceptsArgs: true,
-		args: [{ name: "task", description: "Which to-do to complete", required: false }],
+		args: [
+			{ name: "task", description: "Which to-do to complete", required: false },
+		],
 	},
 	{
 		key: "documents-search",
@@ -289,7 +289,9 @@ const VIEW_SCOPED_COMMANDS: CommandDefinition[] = [
 		views: ["documents"],
 		target: { kind: "agent" },
 		acceptsArgs: true,
-		args: [{ name: "query", description: "What to search for", required: false }],
+		args: [
+			{ name: "query", description: "What to search for", required: false },
+		],
 	},
 ];
 
