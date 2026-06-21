@@ -11349,12 +11349,14 @@ export class DefaultMessageService implements IMessageService {
 			// character.templates.transientFailureReply (or
 			// rateLimitedReply for the throttling-specific case).
 			if (attempt.kind === "rateLimited") {
+				const tmpl = runtime.character.templates?.rateLimitedReply;
 				replyText =
-					runtime.character.templates?.rateLimitedReply ||
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
 					"My model provider is rate-limiting me right now — give it a few seconds and try again.";
 			} else {
+				const tmpl = runtime.character.templates?.transientFailureReply;
 				replyText =
-					runtime.character.templates?.transientFailureReply ||
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
 					"Something went wrong on my end. Please try again.";
 			}
 		}
@@ -11402,8 +11404,11 @@ export class DefaultMessageService implements IMessageService {
 		responseId: UUID,
 		stage: string,
 	): StrategyResult {
+		const noProviderTmpl = runtime.character.templates?.noModelProviderReply;
 		const replyText =
-			runtime.character.templates?.noModelProviderReply ||
+			(typeof noProviderTmpl === "function"
+				? noProviderTmpl({ state })
+				: noProviderTmpl) ||
 			"This agent has no LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY in your environment, or sign in to Eliza Cloud (ELIZAOS_CLOUD_API_KEY).";
 
 		runtime.logger.warn(

@@ -25,9 +25,9 @@ type OverlayAppRegistryHost = {
 // access — never freeze a Map reference at module scope — so all copies of this
 // module converge on one shared registry regardless of evaluation order.
 function getOverlayRegistryHost(): OverlayAppRegistryHost {
-  return (
-    typeof window !== "undefined" ? window : globalThis
-  ) as unknown as OverlayAppRegistryHost;
+  return (typeof window !== "undefined"
+    ? window
+    : globalThis) as unknown as OverlayAppRegistryHost;
 }
 
 function getOverlayRegistry(): Map<string, OverlayApp> {

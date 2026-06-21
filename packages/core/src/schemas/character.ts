@@ -1,5 +1,5 @@
 import z from "zod";
-import type { Character } from "../types/agent";
+import type { Character, TemplateType } from "../types/agent";
 import type { JsonValue } from "../types/primitives";
 import { ChannelType, ContentType } from "../types/primitives";
 
@@ -251,7 +251,17 @@ export const characterSchema = z
 				"System prompt that defines the character's core behavior and response style",
 			),
 		templates: z
-			.record(z.string(), z.string())
+			.record(
+				z.string(),
+				// A template is either a string or a `({ state }) => string`
+				// callback (resolved at compose time). Functions only arrive from
+				// in-process character objects — JSON-loaded characters can only
+				// carry strings — so accept both rather than rejecting callbacks.
+				z.union([
+					z.string(),
+					z.custom<TemplateType>((value) => typeof value === "function"),
+				]),
+			)
 			.default({})
 			.describe("Custom templates for generating different types of content"),
 		bio: z
