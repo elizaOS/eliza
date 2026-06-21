@@ -38,10 +38,10 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Build the e2e coverage matrix (advisory)
+      - name: Build the e2e coverage matrix (required)
         env:
           # Flip to "1" to make this standalone gate required.
-          E2E_COVERAGE_GATE_ENFORCE: "0"
+          E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun packages/scripts/check-e2e-coverage.ts --report-dir reports/coverage
 
       - name: Upload e2e coverage matrix

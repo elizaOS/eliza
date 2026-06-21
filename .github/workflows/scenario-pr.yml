@@ -502,7 +502,7 @@ jobs:
       # required by setting E2E_COVERAGE_GATE_ENFORCE=1.
       - name: E2E coverage ship-gate
         env:
-          E2E_COVERAGE_GATE_ENFORCE: "0"
+          E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun test packages/scripts/__tests__/e2e-coverage.test.ts
 
       - name: E2E coverage matrix report
