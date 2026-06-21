@@ -66,7 +66,7 @@ describe("commands plugin → runtime shortcut wiring (real runtime)", () => {
     });
     expect(result?.kind).toBe("direct_reply");
     if (result?.kind !== "direct_reply") throw new Error("expected direct_reply");
-    expect(result.result.responseContent.text).toContain("Available commands");
+    expect(result.result.responseContent?.text).toContain("Available commands");
   });
 
   it("resolves /status through the real gate", async () => {
@@ -79,7 +79,7 @@ describe("commands plugin → runtime shortcut wiring (real runtime)", () => {
     });
     expect(result?.kind).toBe("direct_reply");
     if (result?.kind !== "direct_reply") throw new Error("expected direct_reply");
-    expect(result.result.responseContent.text).toContain("Agent: TestAgent");
+    expect(result.result.responseContent?.text).toContain("Agent: TestAgent");
   });
 
   it("does not fire the gate for a plain message", async () => {
