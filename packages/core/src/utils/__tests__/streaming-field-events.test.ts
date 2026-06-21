@@ -265,4 +265,64 @@ describe("ResponseSkeletonStreamExtractor", () => {
 
 		expect(chunks.join("")).toBe("Hello there");
 	});
+
+	it("surfaces a 'Cancelled by user' error and emits nothing when already aborted", () => {
+		const controller = new AbortController();
+		controller.abort();
+		const chunks: string[] = [];
+		const events: Array<{ eventType: string; error?: string }> = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (chunk) => chunks.push(chunk),
+			onEvent: (event) => events.push(event),
+			abortSignal: controller.signal,
+		});
+
+		const out = extractor.push(
+			'{"shouldRespond":"RESPOND","contexts":[],"intents":[],"replyText":"hi","facts":[]}',
+		);
+
+		expect(out).toBe("");
+		// No field content leaks once aborted.
+		expect(chunks).toEqual([]);
+		expect(extractor.done).toBe(true);
+		expect(events).toContainEqual(
+			expect.objectContaining({ eventType: "error", error: "Cancelled by user" }),
+		);
+	});
+
+	it("aborting mid-stream stops further field chunks and does not double-signal", () => {
+		const controller = new AbortController();
+		const chunks: string[] = [];
+		const events: Array<{ eventType: string; error?: string }> = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (chunk) => chunks.push(chunk),
+			onEvent: (event) => events.push(event),
+			abortSignal: controller.signal,
+		});
+
+		// A partial reply streams normally before the abort.
+		extractor.push(
+			'{"shouldRespond":"RESPOND","contexts":[],"intents":[],"replyText":"Hel',
+		);
+		expect(chunks.join("")).toBe("Hel");
+		const chunkCountBeforeAbort = chunks.length;
+
+		// Abort, then push the rest — the abort branch fires; no new chunk emits.
+		controller.abort();
+		const out = extractor.push('lo there","facts":[]}');
+		expect(out).toBe("");
+		expect(chunks.length).toBe(chunkCountBeforeAbort);
+		expect(extractor.done).toBe(true);
+		expect(
+			events.filter((e) => e.eventType === "error" && e.error === "Cancelled by user"),
+		).toHaveLength(1);
+
+		// A further push after abort must NOT emit a duplicate error event.
+		extractor.push("ignored");
+		expect(events.filter((e) => e.eventType === "error")).toHaveLength(1);
+	});
 });

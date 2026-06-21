@@ -1016,6 +1016,86 @@ android smoke model works`,
 		expect(runtime.logger.warn).toHaveBeenCalledTimes(2);
 	});
 
+	it("ELIZA_RESPONSE_HANDLER_EMPTY_RETRIES=0 disables the retry (exactly 1 attempt)", async () => {
+		// A single empty completion with the retry budget set to 0 must fail
+		// immediately — no second model call — even though a usable response is
+		// queued behind it.
+		const runtime = makeRuntime(
+			["", stage1Response({ contexts: ["simple"], replyText: "never reached" })],
+			{ ELIZA_RESPONSE_HANDLER_EMPTY_RETRIES: "0" },
+		);
+
+		await expect(
+			runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			}),
+		).rejects.toThrow(/empty Stage 1 result after 1 attempt/);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(runtime.logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("ELIZA_RESPONSE_HANDLER_EMPTY_RETRIES clamps an out-of-range value to 5 (6 attempts)", async () => {
+		// "99" clamps to the max of 5 retries → 6 total attempts before giving up.
+		const runtime = makeRuntime(["", "", "", "", "", ""], {
+			ELIZA_RESPONSE_HANDLER_EMPTY_RETRIES: "99",
+		});
+
+		await expect(
+			runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			}),
+		).rejects.toThrow(/empty Stage 1 result after 6 attempts/);
+		expect(runtime.useModel).toHaveBeenCalledTimes(6);
+	});
+
+	it("ELIZA_RESPONSE_HANDLER_EMPTY_RETRIES falls back to the default 2 on a non-numeric value", async () => {
+		// "abc" → NaN → the hardcoded default of 2 retries → 3 total attempts.
+		const runtime = makeRuntime(["", "", ""], {
+			ELIZA_RESPONSE_HANDLER_EMPTY_RETRIES: "abc",
+		});
+
+		await expect(
+			runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			}),
+		).rejects.toThrow(/empty Stage 1 result after 3 attempts/);
+		expect(runtime.useModel).toHaveBeenCalledTimes(3);
+	});
+
+	it("a usable Stage 1 reply makes exactly ONE model call (no TEXT_SMALL regen)", async () => {
+		// The HANDLE_RESPONSE envelope already carries replyText, so the
+		// double-generation consolidation must NOT fire a second direct-reply
+		// model call. The queue holds a single response; a second useModel would
+		// throw "Unexpected useModel call", but assert the count explicitly so a
+		// regression that re-adds the regen is caught directly.
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "The answer is four." }),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "What is 2+2?" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(useModelCalls(runtime)[0][0]).toBe(ModelType.RESPONSE_HANDLER);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("The answer is four.");
+		}
+	});
+
 	it("falls back to the planner when an explicitly addressed Stage 1 turn stays empty", async () => {
 		const runtime = makeRuntime([
 			"",
