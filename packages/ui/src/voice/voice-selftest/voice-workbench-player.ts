@@ -1,0 +1,441 @@
+/**
+ * Multi-turn voice SCENARIO player — the headful half of the Voice Workbench
+ * (#8785). Where {@link runVoiceSelfTest} drives ONE phrase through the real
+ * client pipeline, this drives an ordered {@link VoiceScenario} turn-by-turn
+ * through the SAME real production functions (transcribeLocalInferenceWav,
+ * ElizaClient.sendConversationMessageStream, a real TTS fetch +
+ * AudioContext.decodeAudioData), honouring injected pauses and scoring every
+ * turn against the scenario's ground truth (expected transcript, respond
+ * decision, speaker label, entity).
+ *
+ * Reused by:
+ *   - the in-app voice workbench screen (?shellMode=voice-workbench)
+ *   - the web / android / desktop e2e lanes (they navigate to that screen and
+ *     scrape `window.__voiceWorkbench(scenario)` / the DOM-mirrored report).
+ *
+ * Honesty contract (identical to the self-test): a turn whose backend / corpus
+ * artifact is genuinely absent on this host reports `skipped` — NEVER `pass` —
+ * so CI can tell "can't run here" from "verified working" and never false-green.
+ *
+ * Scenario type: the canonical `VoiceScenario` schema lives in
+ * `@elizaos/plugin-local-inference` (`src/services/voice/voice-scenario.ts`).
+ * That plugin depends inward on `@elizaos/ui`; importing it back here would
+ * invert the dependency direction, so we mirror the exact transport shape as a
+ * local structural type. The plugin's `validateVoiceScenario` remains the single
+ * source of truth for cross-field validity; the player only reads the fields it
+ * drives and never re-implements scenario validation.
+ */
+
+import { wordErrorRate } from "@elizaos/shared/voice-wer";
+import type { ElizaClient } from "../../api/client-base";
+import { fetchWithCsrf } from "../../api/csrf-client";
+import { resolveApiUrl } from "../../utils";
+import {
+  isLocalInferenceAsrReady,
+  transcribeLocalInferenceWav,
+} from "../local-asr-transcribe";
+
+export type TurnStatus = "pass" | "fail" | "skipped";
+
+/** Structural mirror of `VoiceScenarioParticipant` (@elizaos/plugin-local-inference). */
+export interface WorkbenchParticipant {
+  label: string;
+  ttsVoiceId?: string;
+  entityId?: string;
+  isOwner?: boolean;
+}
+
+/** Structural mirror of `VoiceScenarioTurn` (@elizaos/plugin-local-inference). */
+export interface WorkbenchTurn {
+  speaker: string;
+  text?: string;
+  audioRef?: string;
+  ttsVoiceId?: string;
+  pausesMs?: number[];
+  expectRespond: boolean;
+  expectedTranscript?: string;
+  expectedSpeakerLabel?: string;
+  expectedEntity?: string;
+}
+
+/** Structural mirror of `VoiceScenario` (@elizaos/plugin-local-inference). */
+export interface WorkbenchScenario {
+  id: string;
+  description?: string;
+  classes: string[];
+  participants: WorkbenchParticipant[];
+  turns: WorkbenchTurn[];
+  agents?: string[];
+}
+
+export type VoiceWorkbenchPlatform = "web" | "android" | "desktop";
+
+/** A single scored turn of the scenario. */
+export interface VoiceWorkbenchTurnReport {
+  index: number;
+  speaker: string;
+  status: TurnStatus;
+  /** Did the real client pipeline produce a reply for this turn? */
+  responded: boolean;
+  /** Ground-truth respond decision for this turn. */
+  expectRespond: boolean;
+  /** ASR transcript for this turn (empty when ASR was skipped). */
+  transcript: string;
+  /** Expected ASR reference (explicit `expectedTranscript` or the turn text). */
+  expectedTranscript: string;
+  /** Agent reply text ("" when the agent did not respond / send was skipped). */
+  reply: string;
+  durationMs: number;
+  detail: Record<string, string | number | boolean>;
+  error?: string;
+}
+
+export interface VoiceWorkbenchReport {
+  schemaVersion: 1;
+  overall: "pass" | "fail" | "skipped";
+  scenarioId: string;
+  classes: string[];
+  platform: VoiceWorkbenchPlatform;
+  ttsRoute: string;
+  startedAt: string;
+  finishedAt: string;
+  turns: VoiceWorkbenchTurnReport[];
+}
+
+export interface VoiceWorkbenchOptions {
+  scenario: WorkbenchScenario;
+  platform: VoiceWorkbenchPlatform;
+  /**
+   * Resolves a turn to a decodable WAV (`Uint8Array`). The corpus generator
+   * synthesizes one clip per turn; the player fetches it by `audioRef` or by a
+   * deterministic per-turn url. When a turn's clip is absent the resolver
+   * throws and the turn is reported `skipped`, never `pass`.
+   */
+  resolveTurnWav: (turn: WorkbenchTurn, index: number) => Promise<Uint8Array>;
+  /** TTS route to exercise. local for desktop/android, cloud for web. */
+  ttsRoute: "/api/tts/local-inference" | "/api/tts/cloud";
+  /** Extra TTS body fields (e.g. voiceId/modelId for the cloud route). */
+  ttsExtraBody?: Record<string, unknown>;
+  /** Max word-error-rate a turn's ASR transcript may have vs its reference. */
+  werTolerance?: number;
+  client: ElizaClient;
+  audioCtx: AudioContext;
+  signal?: AbortSignal;
+}
+
+const now = (): number =>
+  typeof performance !== "undefined" ? performance.now() : 0;
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+/** The expected ASR reference for a turn (explicit override or its text). */
+function turnReference(turn: WorkbenchTurn): string {
+  return (turn.expectedTranscript ?? turn.text ?? "").trim();
+}
+
+/**
+ * Peak + RMS amplitude across every channel of a decoded buffer. A buffer of
+ * pure silence decodes fine and reports a positive `duration`, so duration
+ * alone never proves the TTS produced audible sound — these levels do.
+ */
+function measureBufferLevel(buffer: AudioBuffer): {
+  peak: number;
+  rms: number;
+} {
+  let peak = 0;
+  let sumSquares = 0;
+  let count = 0;
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const data = buffer.getChannelData(channel);
+    for (let i = 0; i < data.length; i += 1) {
+      const v = Math.abs(data[i] ?? 0);
+      if (v > peak) peak = v;
+      sumSquares += v * v;
+      count += 1;
+    }
+  }
+  return { peak, rms: count > 0 ? Math.sqrt(sumSquares / count) : 0 };
+}
+
+/** Decode + amplitude-check a synthesized reply clip; "" reply yields no clip. */
+async function synthesizeReply(
+  opts: VoiceWorkbenchOptions,
+  reply: string,
+): Promise<{ ok: boolean; detail: Record<string, number>; error?: string }> {
+  const res = await fetchWithCsrf(resolveApiUrl(opts.ttsRoute), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "audio/*" },
+    body: JSON.stringify({ text: reply, ...(opts.ttsExtraBody ?? {}) }),
+    signal: opts.signal,
+  });
+  if (!res.ok) {
+    return {
+      ok: false,
+      detail: { ttsStatus: res.status },
+      error: `TTS ${opts.ttsRoute} returned ${res.status}`,
+    };
+  }
+  const bytes = await res.arrayBuffer();
+  if (bytes.byteLength === 0) {
+    return {
+      ok: false,
+      detail: { audioBytes: 0 },
+      error: "TTS returned empty audio",
+    };
+  }
+  const audioBuffer = await opts.audioCtx.decodeAudioData(bytes.slice(0));
+  const { peak, rms } = measureBufferLevel(audioBuffer);
+  // Require real signal, not just a positive duration: a silent (all-zero)
+  // buffer decodes fine and would otherwise false-green.
+  const nonSilent = peak >= 0.02 && rms >= 1e-4;
+  const ok = audioBuffer.duration > 0 && nonSilent;
+  return {
+    ok,
+    detail: {
+      audioBytes: bytes.byteLength,
+      durationSec: Number(audioBuffer.duration.toFixed(3)),
+      peak: Number(peak.toFixed(4)),
+      rms: Number(rms.toFixed(5)),
+    },
+    error: ok
+      ? undefined
+      : !nonSilent
+        ? `TTS audio is silent (peak=${peak.toFixed(4)}, rms=${rms.toFixed(5)})`
+        : "decoded audio has zero duration",
+  };
+}
+
+/**
+ * Drive ONE scenario turn through the real client pipeline:
+ *   ASR (turn audio -> transcript)
+ *   SEND (transcript -> agent reply over real SSE; reply "" == "did not respond")
+ *   TTS (reply text -> decodable audio; only when the agent responded)
+ * then score the respond decision + transcript WER against ground truth.
+ */
+async function runTurn(
+  opts: VoiceWorkbenchOptions,
+  turn: WorkbenchTurn,
+  index: number,
+  conversationId: string,
+): Promise<VoiceWorkbenchTurnReport> {
+  const t0 = now();
+  const expectedTranscript = turnReference(turn);
+  const werTolerance = opts.werTolerance ?? 0.34;
+
+  let wav: Uint8Array;
+  try {
+    wav = await opts.resolveTurnWav(turn, index);
+  } catch (error) {
+    // No corpus clip for this turn on this host — skip, never pass.
+    return {
+      index,
+      speaker: turn.speaker,
+      status: "skipped",
+      responded: false,
+      expectRespond: turn.expectRespond,
+      transcript: "",
+      expectedTranscript,
+      reply: "",
+      durationMs: Math.round(now() - t0),
+      detail: { reason: "turn audio clip not available on this host" },
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  let transcript = "";
+  try {
+    const result = await transcribeLocalInferenceWav(wav, {
+      signal: opts.signal,
+    });
+    transcript = result.text;
+  } catch (error) {
+    return {
+      index,
+      speaker: turn.speaker,
+      status: "fail",
+      responded: false,
+      expectRespond: turn.expectRespond,
+      transcript: "",
+      expectedTranscript,
+      reply: "",
+      durationMs: Math.round(now() - t0),
+      detail: { stage: "asr" },
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  const wer = expectedTranscript
+    ? wordErrorRate(expectedTranscript, transcript)
+    : 0;
+  const transcriptOk = wer <= werTolerance;
+
+  // SEND: the same conversation across turns so context (and the respond
+  // decision) carries forward exactly as it does in a real voice session.
+  let reply = "";
+  let completed = false;
+  let agentName = "";
+  let noResponseReason: string | undefined;
+  try {
+    const send = await opts.client.sendConversationMessageStream(
+      conversationId,
+      transcript,
+      () => {},
+      "VOICE_DM",
+      opts.signal,
+    );
+    reply = (send.text ?? "").trim();
+    completed = send.completed;
+    agentName = send.agentName;
+    noResponseReason = send.noResponseReason;
+  } catch (error) {
+    return {
+      index,
+      speaker: turn.speaker,
+      status: "fail",
+      responded: false,
+      expectRespond: turn.expectRespond,
+      transcript,
+      expectedTranscript,
+      reply: "",
+      durationMs: Math.round(now() - t0),
+      detail: { stage: "send", wer: Number(wer.toFixed(3)) },
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  const responded = completed && reply.length > 0;
+  const respondDecisionOk = responded === turn.expectRespond;
+
+  // TTS only runs when the agent actually replied — a no-respond turn has
+  // nothing to synthesize, and that absence is correct, not a failure.
+  let ttsDetail: Record<string, number> = {};
+  let ttsOk = true;
+  let ttsError: string | undefined;
+  if (responded) {
+    try {
+      const tts = await synthesizeReply(opts, reply);
+      ttsDetail = tts.detail;
+      ttsOk = tts.ok;
+      ttsError = tts.error;
+    } catch (error) {
+      ttsOk = false;
+      ttsError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  // Inject this turn's silent pauses AFTER the round-trip so the next turn is
+  // separated by the scenario's declared gap (barge-in / EOT timing).
+  if (turn.pausesMs?.length) {
+    for (const ms of turn.pausesMs) {
+      if (opts.signal?.aborted) break;
+      await sleep(Math.max(0, Math.min(ms, 2_000)));
+    }
+  }
+
+  const ok = transcriptOk && respondDecisionOk && ttsOk;
+  const detail: Record<string, string | number | boolean> = {
+    transcript,
+    expectedTranscript,
+    wer: Number(wer.toFixed(3)),
+    werTolerance,
+    responded,
+    expectRespond: turn.expectRespond,
+    respondDecisionOk,
+    completed,
+    agentName,
+    ...ttsDetail,
+  };
+  if (noResponseReason) detail.noResponseReason = noResponseReason;
+  if (turn.pausesMs?.length) {
+    detail.pausesMs = turn.pausesMs.join(",");
+  }
+  if (turn.expectedSpeakerLabel) {
+    detail.expectedSpeakerLabel = turn.expectedSpeakerLabel;
+  }
+  if (turn.expectedEntity) detail.expectedEntity = turn.expectedEntity;
+
+  return {
+    index,
+    speaker: turn.speaker,
+    status: ok ? "pass" : "fail",
+    responded,
+    expectRespond: turn.expectRespond,
+    transcript,
+    expectedTranscript,
+    reply,
+    durationMs: Math.round(now() - t0),
+    detail,
+    error: ok
+      ? undefined
+      : !transcriptOk
+        ? `ASR WER ${wer.toFixed(3)} exceeds tolerance ${werTolerance}`
+        : !respondDecisionOk
+          ? `respond decision: got ${responded}, expected ${turn.expectRespond}`
+          : (ttsError ?? "turn failed"),
+  };
+}
+
+export async function runVoiceWorkbench(
+  opts: VoiceWorkbenchOptions,
+): Promise<VoiceWorkbenchReport> {
+  const { scenario } = opts;
+  const startedAt = new Date().toISOString();
+  const base: Omit<VoiceWorkbenchReport, "overall" | "finishedAt" | "turns"> = {
+    schemaVersion: 1,
+    scenarioId: scenario.id,
+    classes: scenario.classes,
+    platform: opts.platform,
+    ttsRoute: opts.ttsRoute,
+    startedAt,
+  };
+
+  // If ASR genuinely cannot run on this host, every turn is `skipped` — the
+  // whole scenario reports `skipped`, never a false `pass`.
+  if (!(await isLocalInferenceAsrReady({ signal: opts.signal }))) {
+    const turns: VoiceWorkbenchTurnReport[] = scenario.turns.map((t, i) => ({
+      index: i,
+      speaker: t.speaker,
+      status: "skipped",
+      responded: false,
+      expectRespond: t.expectRespond,
+      transcript: "",
+      expectedTranscript: turnReference(t),
+      reply: "",
+      durationMs: 0,
+      detail: { reason: "local-inference ASR not ready on this host" },
+    }));
+    return {
+      ...base,
+      overall: "skipped",
+      finishedAt: new Date().toISOString(),
+      turns,
+    };
+  }
+
+  const { conversation } = await opts.client.createConversation(
+    `voice-workbench:${scenario.id}`,
+  );
+
+  const turns: VoiceWorkbenchTurnReport[] = [];
+  for (let i = 0; i < scenario.turns.length; i += 1) {
+    if (opts.signal?.aborted) break;
+    turns.push(await runTurn(opts, scenario.turns[i], i, conversation.id));
+  }
+
+  const hasFail = turns.some((t) => t.status === "fail");
+  const allSkipped =
+    turns.length > 0 && turns.every((t) => t.status === "skipped");
+  const overall: VoiceWorkbenchReport["overall"] = hasFail
+    ? "fail"
+    : allSkipped
+      ? "skipped"
+      : "pass";
+
+  return {
+    ...base,
+    overall,
+    finishedAt: new Date().toISOString(),
+    turns,
+  };
+}

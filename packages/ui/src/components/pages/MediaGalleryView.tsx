@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type QueryResult } from "../../api";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
@@ -207,7 +207,7 @@ function MediaFilterChip({
   );
 }
 
-function MediaListItem({
+const MediaListItem = memo(function MediaListItem({
   item,
   index,
   isActive,
@@ -256,7 +256,7 @@ function MediaListItem({
       </SidebarContent.ItemBody>
     </SidebarContent.Item>
   );
-}
+});
 
 export function MediaGalleryView({
   leftNav,
@@ -389,6 +389,10 @@ export function MediaGalleryView({
     filtered[0] ??
     null;
 
+  const mediaItemFallbackTitle = t("mediagalleryview.MediaItem", {
+    defaultValue: "Media item",
+  });
+
   const mediaSidebar = (
     <AppPageSidebar testId="media-sidebar" collapsible contentIdentity="media">
       <SidebarPanel>
@@ -451,9 +455,7 @@ export function MediaGalleryView({
                 index={index}
                 isActive={selectedItem?.url === item.url}
                 typeLabel={mediaTypeLabel(t, item.type)}
-                fallbackTitle={t("mediagalleryview.MediaItem", {
-                  defaultValue: "Media item",
-                })}
+                fallbackTitle={mediaItemFallbackTitle}
                 onSelect={setSelectedMediaUrl}
               />
             ))

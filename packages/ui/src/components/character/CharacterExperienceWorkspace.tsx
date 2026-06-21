@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
@@ -533,7 +533,7 @@ function ExperienceGraphPanel({
   );
 }
 
-function ExperienceQueueRow({
+const ExperienceQueueRow = memo(function ExperienceQueueRow({
   experience,
   isSelected,
   onSelect,
@@ -592,7 +592,7 @@ function ExperienceQueueRow({
       </div>
     </button>
   );
-}
+});
 
 function RelatedExperienceButton({
   experience,

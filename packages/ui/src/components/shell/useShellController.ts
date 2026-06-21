@@ -6,7 +6,7 @@ import {
   type VoiceControlEventDetail,
 } from "../../events";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
-import { useApp } from "../../state";
+import { useApp, useConversationMessages } from "../../state";
 import {
   loadContinuousChatMode,
   loadVadAutoStop,
@@ -149,7 +149,6 @@ export interface ShellController {
 export function useShellController(): ShellController {
   const app = useApp();
   const {
-    conversationMessages,
     chatSending,
     sendChatText,
     agentStatus,
@@ -159,6 +158,9 @@ export function useShellController(): ShellController {
     setTab,
     handleChatStop,
   } = app;
+  // Read per-token streaming messages from the isolated context so token updates
+  // don't depend on the giant AppContext value identity.
+  const { conversationMessages } = useConversationMessages();
 
   // Jump to Settings from the chat's no_provider gate. Stable identity.
   const openSettings = React.useCallback(() => setTab("settings"), [setTab]);

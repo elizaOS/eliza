@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import {
   type ReactNode,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -1478,7 +1479,7 @@ function WalletRailEmpty({
   );
 }
 
-function TokenRailRow({
+function TokenRailRowImpl({
   row,
   profile,
   maxPnl,
@@ -1533,6 +1534,27 @@ function TokenRailRow({
     </div>
   );
 }
+
+// The 20s balance poll replaces row objects wholesale, so default shallow
+// compare always sees a new `row` reference. Compare only the fields that drive
+// rendering (identity, displayed balance/value, performance inputs) so the row
+// re-renders only when its visible content actually changes.
+const TokenRailRow = memo(
+  TokenRailRowImpl,
+  (prev, next) =>
+    prev.onHideToken === next.onHideToken &&
+    prev.maxPnl === next.maxPnl &&
+    prev.profile === next.profile &&
+    prev.row.chain === next.row.chain &&
+    prev.row.symbol === next.row.symbol &&
+    prev.row.name === next.row.name &&
+    prev.row.contractAddress === next.row.contractAddress &&
+    prev.row.logoUrl === next.row.logoUrl &&
+    prev.row.balance === next.row.balance &&
+    prev.row.valueUsd === next.row.valueUsd &&
+    prev.row.balanceRaw === next.row.balanceRaw &&
+    prev.row.isNative === next.row.isNative,
+);
 
 function RailNftList({ nfts }: { nfts: NftItem[] }) {
   if (nfts.length === 0) {

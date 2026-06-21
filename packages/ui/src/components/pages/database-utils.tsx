@@ -117,6 +117,9 @@ export function ResultsGrid({
   onCellClick?: (value: string) => void;
 }) {
   const { t } = useApp();
+  const primaryKeyCol = columns.find(
+    (col) => columnMeta?.get(col)?.isPrimaryKey,
+  );
   return (
     <div
       className="overflow-auto border border-border/40 bg-card/40 backdrop-blur-md rounded-sm "
@@ -170,9 +173,15 @@ export function ResultsGrid({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => (
+          {rows.map((row, i) => {
+            const pkValue = primaryKeyCol ? row[primaryKeyCol] : undefined;
+            const rowKey =
+              pkValue === null || pkValue === undefined
+                ? i
+                : String(pkValue);
+            return (
             <tr
-              key={JSON.stringify(row)}
+              key={rowKey}
               className="border-b border-border/20 hover:bg-bg-hover transition-colors group"
             >
               <td className="px-3 py-2 text-2xs text-muted text-right border-r border-border/30 bg-bg/20 tabular-nums group-hover:text-txt/70 transition-colors">
@@ -212,7 +221,8 @@ export function ResultsGrid({
                 );
               })}
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

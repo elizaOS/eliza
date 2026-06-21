@@ -1690,10 +1690,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     };
     const observer = new ResizeObserver(() => pokeAll());
     observer.observe(surface);
-    window.addEventListener("resize", pokeAll);
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", pokeAll);
     };
   }, []);
 

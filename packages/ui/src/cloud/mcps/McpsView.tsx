@@ -11,7 +11,7 @@
  */
 
 import { Plus, Puzzle, Search, Zap } from "lucide-react";
-import { useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { BrandButton } from "../../cloud-ui/components/brand/brand-button";
 import { DashboardPageContainer } from "../../cloud-ui/components/layout/dashboard-page";
 import { useSetPageHeader } from "../../cloud-ui/components/layout/page-header-context.hooks";
@@ -83,20 +83,28 @@ export function McpsView() {
     return ["all", ...[...set].sort()];
   }, [records, builtins]);
 
-  const matches = (text: string) =>
-    search.trim() === "" ||
-    text.toLowerCase().includes(search.trim().toLowerCase());
+  const filteredRecords = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    const matches = (text: string) =>
+      needle === "" || text.toLowerCase().includes(needle);
+    return records.filter(
+      (r) =>
+        (category === "all" || r.category === category) &&
+        (matches(r.name) || matches(r.description)),
+    );
+  }, [records, category, search]);
+  const filteredBuiltins = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    const matches = (text: string) =>
+      needle === "" || text.toLowerCase().includes(needle);
+    return builtins.filter(
+      (b) =>
+        (category === "all" || b.category === category) &&
+        (matches(b.name) || matches(b.description)),
+    );
+  }, [builtins, category, search]);
 
-  const filteredRecords = records.filter(
-    (r) =>
-      (category === "all" || r.category === category) &&
-      (matches(r.name) || matches(r.description)),
-  );
-  const filteredBuiltins = builtins.filter(
-    (b) =>
-      (category === "all" || b.category === category) &&
-      (matches(b.name) || matches(b.description)),
-  );
+  const handleSelect = useCallback((id: string) => setDetailId(id), []);
 
   const isLoading =
     (tab === "own" && ownQuery.isLoading) ||
@@ -218,11 +226,7 @@ export function McpsView() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {filteredRecords.map((mcp) => (
-            <UserMcpCard
-              key={mcp.id}
-              mcp={mcp}
-              onSelect={() => setDetailId(mcp.id)}
-            />
+            <UserMcpCard key={mcp.id} mcp={mcp} onSelect={handleSelect} />
           ))}
         </div>
       )}
@@ -249,18 +253,18 @@ export function McpsView() {
   );
 }
 
-function UserMcpCard({
+const UserMcpCard = memo(function UserMcpCard({
   mcp,
   onSelect,
 }: {
   mcp: UserMcpRecord;
-  onSelect: () => void;
+  onSelect: (id: string) => void;
 }) {
   const t = useCloudT();
   return (
     <button
       type="button"
-      onClick={onSelect}
+      onClick={() => onSelect(mcp.id)}
       className="text-left rounded-sm border border-white/10 bg-white/5 p-4 transition-colors hover:border-white/20 hover:bg-white/[0.07]"
     >
       <div className="flex items-start justify-between gap-2">
@@ -297,9 +301,13 @@ function UserMcpCard({
       </div>
     </button>
   );
-}
+});
 
-function BuiltinCard({ mcp }: { mcp: BuiltinMcpDefinition }) {
+const BuiltinCard = memo(function BuiltinCard({
+  mcp,
+}: {
+  mcp: BuiltinMcpDefinition;
+}) {
   const t = useCloudT();
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<McpConnectionTestResult | null>(null);
@@ -364,7 +372,7 @@ function BuiltinCard({ mcp }: { mcp: BuiltinMcpDefinition }) {
       )}
     </div>
   );
-}
+});
 
 function GridSkeleton() {
   return (

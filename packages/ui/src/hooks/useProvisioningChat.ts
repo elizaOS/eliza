@@ -105,12 +105,31 @@ export function useProvisioningChat(
 
     void poll();
     const timer = setInterval(() => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
       void poll();
     }, POLL_INTERVAL_MS);
+
+    const visibilityHandler =
+      typeof document !== "undefined"
+        ? () => {
+            if (document.visibilityState === "visible") void poll();
+          }
+        : undefined;
+    if (visibilityHandler) {
+      document.addEventListener("visibilitychange", visibilityHandler);
+    }
 
     return () => {
       stopped = true;
       clearInterval(timer);
+      if (visibilityHandler && typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", visibilityHandler);
+      }
     };
   }, [agentId, cloudApiBase, isContainerReady, containerStatus]);
 

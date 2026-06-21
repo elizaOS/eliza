@@ -4,6 +4,7 @@ export * from "./action-notice";
 export * from "./agent-profiles";
 export * from "./ChatComposerContext.hooks";
 export * from "./CompanionSceneConfigContext.hooks";
+export * from "./ConversationMessagesContext.hooks";
 export * from "./internal";
 export * from "./PtySessionsContext.hooks";
 export * from "./parsers";

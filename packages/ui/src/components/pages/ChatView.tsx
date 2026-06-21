@@ -22,6 +22,7 @@ import {
   PtyConsoleBase,
 } from "../../slots/task-coordinator-slots.js";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
+import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import {
   loadContinuousChatMode,
@@ -149,7 +150,6 @@ export function ChatView({
     characterData,
     chatFirstTokenReceived,
     companionMessageCutoffTs,
-    conversationMessages,
     handleChatSend,
     handleChatStop,
     handleChatEdit,
@@ -168,6 +168,9 @@ export function ChatView({
     t: appTranslate,
   } = app;
   const { ptySessions } = usePtySessions();
+  // Per-token streaming messages come from the isolated context so token updates
+  // don't ride on the giant AppContext value identity.
+  const { conversationMessages } = useConversationMessages();
   const {
     chatInput: rawChatInput,
     chatSending,

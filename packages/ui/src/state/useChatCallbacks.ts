@@ -1017,7 +1017,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       setActionNotice,
       activeConversationIdRef,
       conversationHydrationEpochRef,
-      conversationMessagesRef.current,
+      conversationMessagesRef,
       send.interruptActiveChatPipeline,
       setActiveConversationId,
       setConversationMessages,

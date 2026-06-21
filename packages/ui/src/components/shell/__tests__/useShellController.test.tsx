@@ -75,6 +75,9 @@ const appMock = vi.hoisted(() => ({
 
 vi.mock("../../../state", () => ({
   useApp: () => appMock.value,
+  useConversationMessages: () => ({
+    conversationMessages: appMock.value.conversationMessages,
+  }),
 }));
 
 vi.mock("../../local-inference/useHomeModelStatus", () => ({

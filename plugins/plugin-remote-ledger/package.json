@@ -1,0 +1,8 @@
+{
+  "name": "@elizaos/plugin-remote-ledger",
+  "version": "1.0.0",
+  "files": [
+    "assets",
+    "dist"
+  ]
+}

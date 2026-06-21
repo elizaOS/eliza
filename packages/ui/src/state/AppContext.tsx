@@ -49,6 +49,7 @@ import {
   useChatComposerDraftPersistence,
 } from "./ChatComposerContext.hooks";
 import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext.hooks";
+import { ConversationMessagesCtx } from "./ConversationMessagesContext.hooks";
 import { AppContext, type AppContextValue, type AppState } from "./internal";
 import { PtySessionsCtx } from "./PtySessionsContext.hooks";
 import {
@@ -1851,6 +1852,15 @@ function AppProviderInner({
   // cascade through AppContext to all subscribers.
   const ptySessionsValue = useMemo(() => ({ ptySessions }), [ptySessions]);
 
+  // conversationMessages lives in ConversationMessagesContext so per-token
+  // streaming updates re-render only the chat surfaces (ChatView + the shell
+  // controller behind ContinuousChatOverlay) instead of cascading through
+  // AppContext to all ~135 useApp() subscribers.
+  const conversationMessagesValue = useMemo(
+    () => ({ conversationMessages }),
+    [conversationMessages],
+  );
+
   // The AppContext value is memoized and does NOT include chatInput/chatSending/
   // chatPendingImages (in ChatComposerCtx) or ptySessions (in PtySessionsCtx).
   // autonomousEvents/autonomousLatestEventId/autonomousRunHealthByRunId are also
@@ -2327,10 +2337,16 @@ function AppProviderInner({
       conversations,
       activeConversationId,
       companionMessageCutoffTs,
-      conversationMessages,
-      autonomousEvents,
-      autonomousLatestEventId,
-      autonomousRunHealthByRunId,
+      // NOTE: conversationMessages intentionally EXCLUDED — it gets a new array
+      // reference on every streamed token. Provided fresh via
+      // ConversationMessagesCtx (useConversationMessages()); the copy left in the
+      // value object is stale and unread.
+      // NOTE: autonomousEvents/autonomousLatestEventId/autonomousRunHealthByRunId
+      // intentionally EXCLUDED — they update on every heartbeat/agent/proactive WS
+      // event but no component reads them from useApp() (readers use the *Ref handles
+      // off useChatState). A stale copy remains in the value object purely to satisfy
+      // the AppContextValue type; excluding them from deps stops the heartbeat stream
+      // from re-rendering all AppContext subscribers.
       // NOTE: ptySessions intentionally EXCLUDED — provided fresh via PtySessionsCtx.
       unreadConversations,
       triggers,
@@ -2724,15 +2740,17 @@ function AppProviderInner({
       <BrandingContext.Provider value={mergedBranding}>
         <CompanionSceneConfigCtx.Provider value={companionSceneConfig}>
           <PtySessionsCtx.Provider value={ptySessionsValue}>
-            <ChatInputRefCtx.Provider value={chatInputRef}>
-              <ChatComposerCtx.Provider value={composerValue}>
-                <AppContext.Provider value={value}>
-                  {children}
-                  <ConfirmDialog {...modalProps} />
-                  <PromptDialog {...promptModalProps} />
-                </AppContext.Provider>
-              </ChatComposerCtx.Provider>
-            </ChatInputRefCtx.Provider>
+            <ConversationMessagesCtx.Provider value={conversationMessagesValue}>
+              <ChatInputRefCtx.Provider value={chatInputRef}>
+                <ChatComposerCtx.Provider value={composerValue}>
+                  <AppContext.Provider value={value}>
+                    {children}
+                    <ConfirmDialog {...modalProps} />
+                    <PromptDialog {...promptModalProps} />
+                  </AppContext.Provider>
+                </ChatComposerCtx.Provider>
+              </ChatInputRefCtx.Provider>
+            </ConversationMessagesCtx.Provider>
           </PtySessionsCtx.Provider>
         </CompanionSceneConfigCtx.Provider>
       </BrandingContext.Provider>

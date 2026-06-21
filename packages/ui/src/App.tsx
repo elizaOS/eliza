@@ -84,6 +84,7 @@ import { RetainedLazyComponent } from "./retained-lazy";
 import { type ActionNotice, useApp } from "./state";
 import { isShellPaintable } from "./state/startup-coordinator";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
+import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
 const MOBILE_NAV_PADDING_CLASS =
   "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem))]";
@@ -342,6 +343,7 @@ type ShellMode =
   | "chat-overlay"
   | "onboarding-overlay"
   | "voice-selftest"
+  | "voice-workbench"
   | "launcher"
   | "kiosk"
   | "full";
@@ -359,6 +361,7 @@ function readShellMode(): ShellMode {
   if (raw === "chat-overlay") return "chat-overlay";
   if (raw === "onboarding-overlay") return "onboarding-overlay";
   if (raw === "voice-selftest") return "voice-selftest";
+  if (raw === "voice-workbench") return "voice-workbench";
   if (raw === "launcher") return "launcher";
   if (raw === "kiosk") return "kiosk";
   return "full";
@@ -1717,6 +1720,13 @@ export function App() {
   // Self-contained (its own ElizaClient + AudioContext); no app chrome / gate.
   if (shellMode === "voice-selftest") {
     return <VoiceSelfTestShell />;
+  }
+
+  // Multi-turn voice SCENARIO player — drives a declarative VoiceScenario through
+  // the real STT->agent->TTS loop turn-by-turn and reports a per-turn verdict.
+  // Self-contained (its own ElizaClient + AudioContext); no app chrome / gate.
+  if (shellMode === "voice-workbench") {
+    return <VoiceWorkbenchShell />;
   }
 
   // OS chat-overlay window — render JUST the floating assistant pill +
