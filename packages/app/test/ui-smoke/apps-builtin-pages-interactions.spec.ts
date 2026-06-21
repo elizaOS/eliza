@@ -25,9 +25,12 @@ function countRequests(page: Page, pattern: RegExp): () => number {
   return () => n;
 }
 
-test("runtime view loads a snapshot and refresh re-queries it", async ({
+test("runtime view loads a snapshot and re-queries it on a poll", async ({
   page,
 }) => {
+  // The minimal redesign dropped the manual Refresh button: the snapshot stays
+  // live via a silent background poll. Assert the load query fires on mount and
+  // the poll re-queries the source (no user-facing refresh control).
   const runtimeReqs = countRequests(page, /\/api\/runtime(?:\?|$)/);
   await openAppPath(page, "/apps/runtime");
   await expect(page.getByTestId("runtime-view")).toBeVisible({
@@ -36,12 +39,9 @@ test("runtime view loads a snapshot and refresh re-queries it", async ({
   await expect.poll(runtimeReqs).toBeGreaterThan(0);
 
   const before = runtimeReqs();
-  await page
-    .getByTestId("runtime-view")
-    .getByRole("button", { name: /refresh/i })
-    .first()
-    .click();
-  await expect.poll(runtimeReqs).toBeGreaterThan(before);
+  await expect
+    .poll(runtimeReqs, { timeout: 30_000 })
+    .toBeGreaterThan(before);
 });
 
 test("plugins view loads plugins and search filters the list", async ({

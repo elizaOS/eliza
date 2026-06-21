@@ -1028,13 +1028,12 @@ test("trajectory viewer route refreshes, filters, and changes selected detail", 
   await expect(page.getByTestId("trajectories-view")).toBeVisible();
   let sidebar = await openVisiblePageSidebar(page, "trajectories-sidebar");
   await expect(sidebar.getByText("scenario-alpha")).toBeVisible();
+  // The minimal redesign dropped the manual Refresh button: the list stays
+  // current via a silent ~15s background poll. Assert the poll re-queries the
+  // list source (no user-facing refresh control).
   const listCount = recorder.listRequestCount();
-  await clickRequired(
-    sidebar.locator("button[title]").first(),
-    "trajectory refresh",
-  );
   await expect
-    .poll(() => recorder.listRequestCount())
+    .poll(() => recorder.listRequestCount(), { timeout: 30_000 })
     .toBeGreaterThan(listCount);
   await closeMobilePageSidebar(page);
 

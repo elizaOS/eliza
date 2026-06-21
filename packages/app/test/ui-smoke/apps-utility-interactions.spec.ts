@@ -403,33 +403,26 @@ test("vector browser controls search and switch projection modes", async ({
   await expectNoIssues(page, issues, "vector browser interactions");
 });
 
-test("market utility controls refresh and show fixture data", async ({
-  page,
-}) => {
+test("market utility controls show fixture data on load", async ({ page }) => {
+  // The minimal redesign dropped the GUI Refresh buttons: market data loads on
+  // mount and stays current via a quiet background poll. Assert the loaded
+  // fixture state (no user-facing refresh control to click).
   skipUnlessRoutesRegistered(["hyperliquid", "polymarket"]);
   const issues = installIssueGuards(page);
 
   const hyperliquid = routeCaseByName("hyperliquid");
   await openAppWindow(page, hyperliquid);
-  await clickRequired(
-    page.getByRole("button", { name: "Refresh" }),
-    "Hyperliquid refresh",
-  );
   await expect(page.getByRole("heading", { name: "Markets" })).toBeVisible();
   await expect(page.getByText("BTC", { exact: true })).toBeVisible();
   await expect(page.getByText("ETH", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Positions" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Orders" })).toBeVisible();
-  await expectNoIssues(page, issues.splice(0), "hyperliquid refresh");
+  await expectNoIssues(page, issues.splice(0), "hyperliquid load");
 
   const polymarket = routeCaseByName("polymarket");
   await openAppWindow(page, polymarket);
-  await clickRequired(
-    page.getByRole("button", { name: "Refresh" }),
-    "Polymarket refresh",
-  );
   await expect(page.getByRole("heading", { name: "Polymarket" })).toBeVisible();
-  await expectNoIssues(page, issues.splice(0), "polymarket refresh");
+  await expectNoIssues(page, issues.splice(0), "polymarket load");
 });
 
 test("shopify utility controls exercise commerce workflows", async ({
@@ -440,17 +433,16 @@ test("shopify utility controls exercise commerce workflows", async ({
 
   const shopify = routeCaseByName("shopify");
   await openAppWindow(page, shopify);
-  await clickRequired(
-    page.getByRole("button", { name: "Refresh" }),
-    "Shopify refresh",
-  );
+  // Store data loads on mount (the manual Refresh button was dropped).
   await expect(page.getByText("smoke-store.example").first()).toBeVisible();
   await clickRequired(
     page.getByRole("tab", { name: /Products/i }),
     "Shopify products tab",
   );
+  // Per-view product search moved to the chat composer — the panel shows a
+  // hint, not a search box. Both fixture products render in the unfiltered list.
+  await expect(page.getByTestId("chat-search-hint")).toBeVisible();
   await expect(page.getByText("Example Hoodie")).toBeVisible();
-  await page.getByPlaceholder("Search products…").fill("Sticker");
   await expect(page.getByText("Agent Sticker Pack")).toBeVisible();
   await clickRequired(
     page.getByRole("button", { name: /^Create$/ }),
@@ -493,9 +485,9 @@ test("shopify utility controls exercise commerce workflows", async ({
     page.getByRole("tab", { name: /Customers/i }),
     "Shopify customers tab",
   );
-  await page
-    .getByPlaceholder("Search customers by name or email…")
-    .fill("Grace");
+  // Per-view customer search also moved to the chat composer — the panel shows
+  // a hint, and the fixture customer renders in the unfiltered list.
+  await expect(page.getByTestId("chat-search-hint")).toBeVisible();
   await expect(page.getByText("Grace Hopper")).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "shopify interactions");
 });
@@ -555,14 +547,14 @@ test("wallet inventory controls update visible deterministic state", async ({
     walletSidebar.getByText("USDC", { exact: true }).first(),
   ).toBeVisible();
 
+  // The minimal redesign dropped the manual "Refresh wallet" button: balances
+  // stay current via a quiet ~20s background poll. Assert the poll re-requests
+  // the deterministic balances (no user-facing refresh control).
   const requestCountBeforeRefresh = balanceRequestCount;
-  await clickRequired(
-    walletSidebar.getByRole("button", { name: "Refresh wallet" }),
-    "Wallet refresh",
-  );
   await expect
     .poll(() => balanceRequestCount, {
-      message: "wallet refresh should request deterministic balances",
+      message: "wallet poll should request deterministic balances",
+      timeout: 30_000,
     })
     .toBeGreaterThan(requestCountBeforeRefresh);
 
@@ -616,10 +608,8 @@ test("steward approvals and history controls consume deterministic API stubs", a
     page.getByText("Manual approval required for UI smoke.").first(),
   ).toBeVisible();
 
-  await clickRequired(
-    page.getByRole("button", { name: "Refresh" }),
-    "Steward approvals refresh",
-  );
+  // The minimal redesign dropped the manual approvals Refresh button (the
+  // queue auto-loads + polls). Drive the approve/reject controls directly.
   await clickRequired(
     page.getByRole("button", { name: "Approve" }).first(),
     "Steward approve pending transaction",

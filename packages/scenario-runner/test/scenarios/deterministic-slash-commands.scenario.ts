@@ -25,14 +25,6 @@ import { handleCommandsRoutes } from "../../../agent/src/api/commands-routes.ts"
  *   - chat connectors (Discord) drop GUI-only client commands but keep navigation.
  */
 
-const VALID_CLIENT_ACTIONS: ReadonlySet<ClientCommandAction> = new Set([
-  "clear-chat",
-  "new-conversation",
-  "toggle-fullscreen",
-  "open-command-palette",
-  "show-commands",
-]);
-
 type ScenarioRoute = {
   type?: string;
   path: string;
@@ -161,8 +153,13 @@ function expectGuiCatalog(status: number, body: unknown): string | undefined {
         return `navigate command ${command.key} has no in-app path`;
       }
     } else if (command.target.kind === "client") {
-      if (!VALID_CLIENT_ACTIONS.has(command.target.clientAction)) {
-        return `client command ${command.key} has unknown action ${command.target.clientAction}`;
+      // The set of client actions evolves with the catalog, so validate shape
+      // (a non-empty client action), not a frozen allowlist.
+      if (
+        typeof command.target.clientAction !== "string" ||
+        command.target.clientAction.length === 0
+      ) {
+        return `client command ${command.key} has no client action`;
       }
     } else if (command.target.kind !== "agent") {
       return `command ${command.key} has unknown target kind`;

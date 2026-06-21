@@ -47,7 +47,10 @@ test("logs page search really filters entries and clear restores them", async ({
   await expect(entries).toHaveCount(1);
 });
 
-test("logs page refresh re-queries the log source", async ({ page }) => {
+test("logs page re-queries the log source on a poll", async ({ page }) => {
+  // The minimal redesign dropped the manual Refresh button: the view stays
+  // current via a silent ~5s background poll. Assert the load query fires and
+  // the poll re-queries the source (no user-facing refresh control).
   let logRequests = 0;
   page.on("request", (req) => {
     if (/\/api\/logs(?:\?|$)/.test(req.url())) logRequests += 1;
@@ -58,11 +61,7 @@ test("logs page refresh re-queries the log source", async ({ page }) => {
   await expect(page.getByTestId("log-entry")).toHaveCount(1);
 
   const before = logRequests;
-  await page
-    .getByTestId("logs-view")
-    .getByRole("button", { name: /refresh/i })
-    .click();
-  await expect.poll(() => logRequests).toBeGreaterThan(before);
+  await expect.poll(() => logRequests, { timeout: 30_000 }).toBeGreaterThan(before);
 });
 
 test("memory viewer queries memory data and the Browse toggle switches the surface", async ({

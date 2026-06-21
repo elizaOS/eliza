@@ -198,7 +198,8 @@ export function tierActionResults(
 		}
 		tierAParents.sort(compareTieredParents);
 
-		const kept: TieredParentAction[] = [];
+		const candidateKept: TieredParentAction[] = [];
+		const overrideKept: TieredParentAction[] = [];
 		const demotedFromTierA: TieredParentAction[] = [];
 		for (const parent of tierAParents) {
 			// Keep a parent the candidates named, OR one the retrieval matched so
@@ -210,18 +211,28 @@ export function tierActionResults(
 			// the surface and the planner could only show a VIEWS panel instead of
 			// fetching. A top-scoring match must still reach the planner so it can
 			// choose it; this does not force the choice, only keeps it available.
-			if (
-				matchesCandidate(parent) ||
-				parent.score >= RETRIEVAL_OVERRIDE_SCORE
-			) {
-				kept.push(parent);
+			//
+			// Candidate matches and override matches are tracked separately so the
+			// candidate (the explicit Stage-1 routing decision) is always ordered
+			// ahead of merely-high-scoring override parents. Without this split, a
+			// degenerate retrieval that ties many actions at score 1.0 fills the
+			// kept list with override parents that sort ahead of the candidate by
+			// name; the later maxTierAParents cap then evicts the candidate itself
+			// — exactly what the narrow exists to prevent.
+			if (matchesCandidate(parent)) {
+				candidateKept.push(parent);
+			} else if (parent.score >= RETRIEVAL_OVERRIDE_SCORE) {
+				overrideKept.push(parent);
 			} else {
 				demotedFromTierA.push(parent);
 			}
 		}
-		// No-op safety: when nothing in the catalog matches any candidate
-		// (Stage-1 named an action that does not exist), leave the surface
-		// untouched rather than collapsing it to empty.
+		candidateKept.sort(compareTieredParents);
+		overrideKept.sort(compareTieredParents);
+		const kept = [...candidateKept, ...overrideKept];
+		// No-op safety: when nothing in the catalog matches any candidate and
+		// no override survives (Stage-1 named an action that does not exist),
+		// leave the surface untouched rather than collapsing it to empty.
 		if (kept.length > 0) {
 			tierAParents.length = 0;
 			tierAParents.push(...kept);

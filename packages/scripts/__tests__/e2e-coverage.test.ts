@@ -94,6 +94,30 @@ describe("e2e coverage ship-gate", () => {
     expect(matrix.summary.commands.covered).toBe(matrix.summary.commands.total);
   });
 
+  test("every manifested command and route plugin resolves to real coverage (hard)", () => {
+    // This is the hard ship-gate enforcement (independent of ENFORCE): every
+    // surface the manifest CLAIMS to cover must actually resolve — its artifact
+    // exists AND carries the anti-larp signal. Unlike the discovery ratchets,
+    // this is not develop-landscape-sensitive (it only reads the committed
+    // manifest's own artifacts), so it stays hard and fails when a claimed
+    // command/route e2e is deleted, renamed, or downgraded to a larp test.
+    const failures: string[] = [];
+    const command = resolveCoverage(COMMAND_COVERAGE);
+    if (command.status !== "covered") {
+      failures.push(`commands — ${command.detail}`);
+    }
+    for (const [plugin, entry] of Object.entries(PLUGIN_ROUTE_COVERAGE)) {
+      const resolution = resolveCoverage(entry);
+      if (resolution.status === "missing") {
+        failures.push(`plugin-route:${plugin} — ${resolution.detail}`);
+      }
+    }
+    expect(
+      failures,
+      `manifested coverage is broken (a claimed artifact is missing or fails its anti-larp signal):\n  ${failures.join("\n  ")}`,
+    ).toEqual([]);
+  });
+
   test("the existing view ship-gates are referenced, not regressed", () => {
     const matrix = buildCoverageMatrix({
       generatedAt: "1970-01-01T00:00:00.000Z",

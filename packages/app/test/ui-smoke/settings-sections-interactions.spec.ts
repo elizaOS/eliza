@@ -49,19 +49,31 @@ test("voice settings: the strategy select changes value", async ({ page }) => {
   await expect.poll(() => strategy.inputValue()).toBe(next);
 });
 
-test("appearance settings: selecting the Dark theme marks it active", async ({
+test("appearance settings: selecting a language tile marks it active", async ({
   page,
 }) => {
+  // The app ships a single curated light look (no dark/light/system toggle).
+  // Appearance now exposes the language tiles; selecting one is the real
+  // "pick an option, it marks active via aria-current" interaction here.
   await openAppPath(page, "/settings");
   await openSettingsSection(page, /Appearance/);
   await expect(page.locator("#appearance")).toBeVisible({ timeout: 30_000 });
 
-  const dark = page.locator('[data-agent-id="appearance-mode-dark"]').first();
-  await expect(dark).toBeVisible({ timeout: 15_000 });
-  await dark.click();
-  await expect(dark).toHaveAttribute("aria-current", "true", {
+  const english = page
+    .locator('[data-agent-id="appearance-language-en"]')
+    .first();
+  const spanish = page
+    .locator('[data-agent-id="appearance-language-es"]')
+    .first();
+  await expect(english).toBeVisible({ timeout: 15_000 });
+  await expect(english).toHaveAttribute("aria-current", "true");
+  await expect(spanish).not.toHaveAttribute("aria-current", "true");
+
+  await spanish.click();
+  await expect(spanish).toHaveAttribute("aria-current", "true", {
     timeout: 10_000,
   });
+  await expect(english).not.toHaveAttribute("aria-current", "true");
 });
 
 test("app-permissions settings: Refresh re-queries the app permissions", async ({

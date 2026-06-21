@@ -14,24 +14,27 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("view catalog: Refresh re-queries the views list", async ({ page }) => {
+test("view catalog: loading the page queries the views list", async ({
+  page,
+}) => {
+  // The minimal launcher redesign dropped the manual Refresh button — the
+  // catalog loads its views from /api/views on mount (and re-queries on
+  // register/delete). Assert the load path: the section renders and the
+  // views endpoint is queried, surfacing at least one catalog entry.
   let viewsReqs = 0;
   page.on("request", (req) => {
     if (/\/api\/views(?:\?|$)/.test(req.url())) viewsReqs += 1;
   });
 
   await openAppPath(page, "/views");
-  await expect(page.getByTestId("views-catalog-section").first()).toBeVisible({
-    timeout: 60_000,
-  });
+  const catalog = page.getByTestId("views-catalog-section").first();
+  await expect(catalog).toBeVisible({ timeout: 60_000 });
   await expect.poll(() => viewsReqs).toBeGreaterThan(0);
 
-  const before = viewsReqs;
-  await page
-    .getByRole("button", { name: /refresh views/i })
-    .first()
-    .click();
-  await expect.poll(() => viewsReqs).toBeGreaterThan(before);
+  // The fetched list actually populates the launcher grid.
+  await expect(page.locator('[data-testid^="view-card-"]').first()).toBeVisible({
+    timeout: 15_000,
+  });
 });
 
 async function readViewState(page: Page): Promise<Record<string, unknown>> {
