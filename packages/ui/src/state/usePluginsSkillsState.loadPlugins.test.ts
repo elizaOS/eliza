@@ -70,6 +70,14 @@ function httpError(): Error {
   return err;
 }
 
+function timeoutError(): Error {
+  // The dev API is briefly too slow under boot load — the request times out.
+  const err = new Error("Request timed out after 10000ms");
+  err.name = "ApiError";
+  (err as Error & { kind?: string }).kind = "timeout";
+  return err;
+}
+
 describe("loadPlugins boot-race retry", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -105,6 +113,29 @@ describe("loadPlugins boot-race retry", () => {
     expect(result.current.pluginsLoadError).toBeNull();
     expect(result.current.pluginsLoaded).toBe(true);
     expect(result.current.plugins).toEqual([{ id: "p1" }]);
+  });
+
+  it("retries a transient request timeout and succeeds without logging an error", async () => {
+    // A heavy dev cold-start can blow the per-request timeout; a later poll wins.
+    getPlugins
+      .mockRejectedValueOnce(timeoutError())
+      .mockResolvedValueOnce({ plugins: [{ id: "p2" }] });
+
+    const { result } = renderHook(() => usePluginsSkillsState(params));
+
+    let done: Promise<void>;
+    act(() => {
+      done = result.current.loadPlugins();
+    });
+    await act(async () => {
+      await vi.runAllTimersAsync();
+      await done;
+    });
+
+    expect(getPlugins).toHaveBeenCalledTimes(2);
+    expect(loggerError).not.toHaveBeenCalled();
+    expect(result.current.pluginsLoaded).toBe(true);
+    expect(result.current.plugins).toEqual([{ id: "p2" }]);
   });
 
   it("surfaces a non-transient HTTP failure immediately with no retry", async () => {
