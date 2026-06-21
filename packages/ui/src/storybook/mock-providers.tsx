@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { createTranslator, type UiLanguage } from "../i18n";
+import { publishAppValue } from "../state/app-store";
 import {
   type TranslationContextValue,
   TranslationCtx,
@@ -102,11 +103,14 @@ export function MockAppProvider({
 }) {
   // Provide both the app context and the translation context so components that
   // read either `useApp()` or `useTranslation()` (or both) render in isolation.
+  const mockValue = createMockApp(value);
+  // This provider supplies a custom AppContext value WITHOUT the real
+  // AppProvider, so the useAppSelector external store is never seeded. Publish
+  // the same mock value into the store so selector-based consumers resolve.
+  publishAppValue(mockValue);
   return (
     <MockTranslationProvider uiLanguage={value?.uiLanguage}>
-      <AppContext.Provider value={createMockApp(value)}>
-        {children}
-      </AppContext.Provider>
+      <AppContext.Provider value={mockValue}>{children}</AppContext.Provider>
     </MockTranslationProvider>
   );
 }
