@@ -387,7 +387,13 @@ const optionalPluginStubs = {
   "@elizaos/plugin-agent-orchestrator": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-shell": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-coding-tools": path.join(stubsDir, "null-plugin.cjs"),
-  "@elizaos/plugin-commands": path.join(stubsDir, "null-plugin.cjs"),
+  // NOTE: @elizaos/plugin-commands is intentionally NOT stubbed. Its only
+  // dependency is `@elizaos/core` (workspace:*), so it does not drag an
+  // incompatible core into the bundle, and `api/commands-routes.ts` imports the
+  // pure `getConnectorCommands` from it by name. The null-plugin Proxy stub does
+  // not carry that own-key, so stubbing it made the /api/commands route throw
+  // `getConnectorCommands is not a function` on device. It belongs to the
+  // "let it bundle, the runtime plugin filter handles registration" group.
   "@elizaos/plugin-video": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-pdf": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-computeruse": path.join(stubsDir, "null-plugin.cjs"),
