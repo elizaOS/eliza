@@ -69,7 +69,7 @@ type X402PluginModule = typeof import("@elizaos/plugin-x402");
 let browserPluginModule: BrowserPluginModule | null = null;
 let x402PluginModule: X402PluginModule | null = null;
 let browserPluginModulePromise: Promise<BrowserPluginModule> | null = null;
-let x402PluginModulePromise: Promise<X402PluginModule> | null = null;
+let x402PluginModulePromise: Promise<X402PluginModule | null> | null = null;
 
 // Vite 7's import-analysis eagerly resolves string-literal dynamic imports even
 // when a `@vite-ignore` comment is present, throwing "Failed to resolve entry"
@@ -130,14 +130,20 @@ const EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS = {
   BrowserPluginModule["getBrowserBridgeCompanionPackageStatus"]
 >;
 
-async function getX402Plugin(): Promise<X402PluginModule> {
+async function getX402Plugin(): Promise<X402PluginModule | null> {
   if (x402PluginModule) return x402PluginModule;
+  // x402 is desktop/cloud-only; on mobile it is not in the agent bundle, so the
+  // "optional" dynamic import REJECTS (no node_modules). Treat a missing module
+  // as "no x402" instead of letting the rejection crash API-server startup —
+  // `importOptionalPlugin` is named optional but does not itself swallow.
   x402PluginModulePromise ??= importOptionalPlugin<X402PluginModule>(
     "@elizaos/plugin-x402",
-  ).then((x402) => {
-    x402PluginModule = x402;
-    return x402;
-  });
+  )
+    .then((x402) => {
+      x402PluginModule = x402;
+      return x402;
+    })
+    .catch(() => null);
   return x402PluginModulePromise;
 }
 
@@ -5055,7 +5061,9 @@ export async function startApiServer(opts?: {
       rt.agentId != null && String(rt.agentId).length > 0
         ? String(rt.agentId)
         : undefined;
-    const { validateX402Startup } = await getX402Plugin();
+    const x402 = await getX402Plugin();
+    if (!x402) return; // x402 module unavailable (e.g. mobile bundle) — nothing to validate
+    const { validateX402Startup } = x402;
     const result = validateX402Startup(rt.routes as Route[], rt.character, {
       agentId,
     });
