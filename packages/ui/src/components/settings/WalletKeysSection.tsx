@@ -116,6 +116,13 @@ export function WalletKeysSection() {
     setEntries(null);
     try {
       const res = await fetch("/api/secrets/inventory?category=wallet");
+      if (res.status === 404) {
+        // Secrets/vault route not mounted on this surface (e.g. the mobile
+        // agent) — show the empty "no wallet keys" state, not a raw red
+        // "HTTP 404" error banner.
+        setEntries([]);
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as { entries?: unknown };
       if (!Array.isArray(json.entries)) {
