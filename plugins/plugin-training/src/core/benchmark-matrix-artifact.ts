@@ -19,7 +19,6 @@ export const LOCAL_EVAL_COMPARISON_BENCHMARK_ID =
 
 export const ELIZA_ONE_MATRIX_TIERS = [
   "0b",
-  "0_8b",
   "2b",
   "4b",
   "9b",
@@ -174,7 +173,6 @@ function inferTier(modelId: string, explicit?: string): string | null {
   if (normalized.includes("9b")) return "9b";
   if (normalized.includes("4b")) return "4b";
   if (normalized.includes("2b")) return "2b";
-  if (normalized.includes("0_8b") || normalized.includes("0.8b")) return "0_8b";
   if (normalized.includes("0b")) return "0b";
   return null;
 }

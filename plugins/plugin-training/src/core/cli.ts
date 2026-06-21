@@ -565,7 +565,7 @@ export function buildRunCollectionOptionsFromCliArgs(
     options: {
       output: { type: "string", short: "o" },
       "workspace-root": { type: "string" },
-      tiers: { type: "string", default: "0_8b" },
+      tiers: { type: "string", default: "2b" },
       benchmark: { type: "string", default: "eliza_harness_action_selection" },
       provider: { type: "string", default: "local-llama-cpp" },
       "base-url": { type: "string", default: "http://localhost:11434/v1" },
@@ -771,8 +771,8 @@ export function buildRunCollectionOptionsFromCliArgs(
       dryRun,
     },
     evalComparison: {
-      model: elizaOneBenchmarkModelId(tiers[0] ?? "0_8b", "base"),
-      trainedModelPath: elizaOneBenchmarkModelId(tiers[0] ?? "0_8b", "trained"),
+      model: elizaOneBenchmarkModelId(tiers[0] ?? "2b", "base"),
+      trainedModelPath: elizaOneBenchmarkModelId(tiers[0] ?? "2b", "trained"),
       backend: "cpu",
       dryRun,
     },
@@ -821,7 +821,7 @@ export function buildRunCollectionOptionsFromCliArgs(
     },
     eliza1BundleStage: {
       repoId: "elizaos/eliza-1",
-      tier: tiers[0] ?? "0_8b",
+      tier: tiers[0] ?? "2b",
       localDir: "/tmp/eliza-1-bundles",
       maxBytes: 8589934592,
       apply: false,
@@ -1285,7 +1285,7 @@ Commands:
 
   run-collection    Collect HF/feed/natural/test/scenario/eval/benchmark evidence
     -o, --output DIR   Output dir (default: training state collection dir)
-    --tiers LIST       Eliza-1 benchmark tiers, comma-separated, or "all" (default: 0_8b)
+    --tiers LIST       Eliza-1 benchmark tiers, comma-separated, or "all" (default: 2b)
                        (all expands to ${ELIZA_ONE_BENCHMARK_TIER_LIST})
     --live             Execute live external work instead of dry-run defaults
     --preflight-only   Print live-readiness checks without collecting artifacts
