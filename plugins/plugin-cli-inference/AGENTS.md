@@ -29,9 +29,8 @@ No actions, providers, evaluators, or routes. Model handlers only, and **only th
 | `TEXT_LARGE` | `claude --print` or `codex exec` |
 | `TEXT_MEGA` | "" |
 | `RESPONSE_HANDLER` | "" |
-| `ACTION_PLANNER` | "" |
 
-`TEXT_SMALL` / `TEXT_NANO` / `TEXT_MEDIUM` are intentionally **not** registered.
+`TEXT_SMALL` / `TEXT_NANO` / `TEXT_MEDIUM` and `ACTION_PLANNER` are intentionally **not** registered (the planner needs GBNF / native-tool enforcement the CLI cannot honor).
 
 ## Layout
 

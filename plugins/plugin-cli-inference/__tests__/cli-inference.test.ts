@@ -1,4 +1,3 @@
-import { execSync } from "node:child_process";
 import type { ChatMessage } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -22,10 +21,15 @@ import {
 import { flattenPrompt } from "../src/prompt-flatten";
 import { resolveSafeBinary } from "../src/sandbox";
 
-/** True iff `bin` resolves on this box (gates the real-binary tests). */
+/**
+ * True iff `bin` resolves THROUGH THE SOC2 ALLOWLIST on this box (gates the
+ * real-binary tests). Must probe via `resolveSafeBinary` — not the full `$PATH`
+ * — because a `claude`/`codex` install on `$PATH` but outside the allowlist (the
+ * common CI case) would otherwise leave the test un-skipped and then throw.
+ */
 function binaryOnPath(bin: string): boolean {
   try {
-    execSync(`command -v ${bin}`, { stdio: "ignore" });
+    resolveSafeBinary(bin);
     return true;
   } catch {
     return false;

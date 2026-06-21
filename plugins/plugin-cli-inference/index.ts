@@ -36,8 +36,8 @@ import { CodexCli } from "./src/codex-cli-exec";
  * not the cheap triage calls.
  */
 
-const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as string;
-const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ?? "RESPONSE_HANDLER") as string;
+const TEXT_MEGA_MODEL_TYPE: string = ModelType.TEXT_MEGA;
+const RESPONSE_HANDLER_MODEL_TYPE: string = ModelType.RESPONSE_HANDLER;
 
 /** Large-tier model types this plugin registers (when enabled). */
 const LARGE_TIER_MODEL_TYPES: readonly string[] = [
