@@ -165,6 +165,20 @@ function linkPackageTarget({ packageDir, pkg, rewroteExports, target }) {
     return;
   }
 
+  // rewroteExports === true means this package had no built dist, so its
+  // exports were rewritten from ./dist/*.js to ./src/*.ts (rewriteDistExportsToSource).
+  // The production image now starts the agent under plain `node` (no tsx loader,
+  // #8837), so importing a .ts entry at runtime throws ERR_UNKNOWN_FILE_EXTENSION
+  // on the core boot path or silently fails an app-route plugin (post-ready,
+  // swallowed → that plugin registers zero routes). Surface it loudly so a
+  // missing-dist build is visible instead of shipping a half-broken image.
+  console.warn(
+    `[link-docker] WARNING: ${pkg.name ?? "(unknown package)"} has no built dist; ` +
+      "its exports were rewritten to .ts source. The production agent starts under " +
+      "plain node (tsx removed in #8837), so this package will fail to import at " +
+      "runtime — build its dist before imaging.",
+  );
+
   fs.mkdirSync(target, { recursive: true });
   fs.writeFileSync(
     path.join(target, "package.json"),
