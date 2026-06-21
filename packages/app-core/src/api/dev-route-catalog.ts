@@ -238,6 +238,16 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
+    tabId: "transcripts",
+    path: "/apps/transcripts",
+    label: "Transcripts",
+    group: "Apps",
+    visibility: "all",
+    featureFlag: "VITE_ENABLE_APPS",
+    requiresAuth: true,
+    platformGate: null,
+  },
+  {
     tabId: "memories",
     path: "/apps/memories",
     label: "Memories",
