@@ -39,6 +39,7 @@ import {
 } from "./cancellation-coordinator";
 import { VoiceStartupError } from "./errors";
 import type {
+	AsrWordTiming,
 	ElizaInferenceContextHandle,
 	ElizaInferenceFfi,
 	NativeVerifierEvent,
@@ -535,6 +536,22 @@ export class FfiOmniVoiceBackend
 			pcm: args.pcm,
 			sampleRateHz: args.sampleRate,
 		});
+	}
+
+	/** Transcribe + per-word timings when the fused build is ABI v12+; otherwise
+	 *  the text with empty `words` (the caller degrades to segment highlight). */
+	async transcribeTimed(
+		args: TranscriptionAudio,
+	): Promise<{ text: string; words: AsrWordTiming[] }> {
+		if (this.ffi.timedAsrSupported()) {
+			const res = this.ffi.asrTranscribeTimed({
+				ctx: this.getContext(),
+				pcm: args.pcm,
+				sampleRateHz: args.sampleRate,
+			});
+			return { text: res.text.trim(), words: res.words };
+		}
+		return { text: (await this.transcribe(args)).trim(), words: [] };
 	}
 }
 
@@ -1664,6 +1681,59 @@ export class EngineVoiceBridge {
 	 * `flush()`ing. Throws `AsrUnavailableError` when no ASR backend is
 	 * available — never a silent empty string.
 	 */
+	/** Transcribe + per-word timings through the fused ASR (v12). Prefers the
+	 *  backend's timed path; falls back to the plain transcript with empty
+	 *  `words` when timing isn't available. */
+	async transcribePcmTimed(
+		args: TranscriptionAudio,
+		signal?: AbortSignal,
+	): Promise<{ text: string; words: AsrWordTiming[] }> {
+		this.assertVoiceOn("transcribe audio");
+		if (signal?.aborted) {
+			throw signal.reason instanceof Error
+				? signal.reason
+				: new DOMException("Aborted", "AbortError");
+		}
+		const backendTimed = this.backend as OmniVoiceBackend & {
+			transcribeTimed?: (
+				args: TranscriptionAudio,
+			) => Promise<{ text: string; words: AsrWordTiming[] }>;
+		};
+		if (typeof backendTimed.transcribeTimed === "function") {
+			const result = await backendTimed.transcribeTimed(args);
+			if (signal?.aborted) {
+				throw signal.reason instanceof Error
+					? signal.reason
+					: new DOMException("Aborted", "AbortError");
+			}
+			return result;
+		}
+		if (
+			this.ffi &&
+			this.ffiContextRef &&
+			this.asrAvailable &&
+			this.ffi.timedAsrSupported()
+		) {
+			const pcm =
+				args.sampleRate === ASR_SAMPLE_RATE
+					? args.pcm
+					: resampleLinear(args.pcm, args.sampleRate, ASR_SAMPLE_RATE);
+			const res = this.ffi.asrTranscribeTimed({
+				ctx: this.ffiContextRef.ensure(),
+				pcm,
+				sampleRateHz: ASR_SAMPLE_RATE,
+			});
+			if (signal?.aborted) {
+				throw signal.reason instanceof Error
+					? signal.reason
+					: new DOMException("Aborted", "AbortError");
+			}
+			return { text: res.text.trim(), words: res.words };
+		}
+		// No timed path available — degrade to the text-only transcript.
+		return { text: await this.transcribePcm(args, signal), words: [] };
+	}
+
 	async transcribePcm(
 		args: TranscriptionAudio,
 		signal?: AbortSignal,
