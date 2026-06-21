@@ -120,6 +120,12 @@ jobs:
       - name: Install dependencies
         working-directory: packages/vault
         run: bun install
+        env:
+          # Vault tests exercise package code + OS keyring adapters only. The
+          # root postinstall artifact bundle is large and unrelated here, and
+          # downloading it makes the Windows leg spend minutes in install before
+          # the actual typecheck/test signal can run.
+          ELIZA_SKIP_ARTIFACT_SYNC: "1"
 
       - name: Typecheck
         working-directory: packages/vault
@@ -149,6 +155,10 @@ jobs:
 
       - name: Install workspace dependencies
         run: bun install
+        env:
+          # App-core wiring tests mock vault at the boundary and do not need the
+          # large generated/downloaded artifact bundle from root postinstall.
+          ELIZA_SKIP_ARTIFACT_SYNC: "1"
 
       - name: Generate i18n keyword data (transitive prerequisite)
         working-directory: packages/shared
