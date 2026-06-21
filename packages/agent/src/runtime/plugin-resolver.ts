@@ -705,6 +705,16 @@ function wrapPluginWithErrorBoundary(
 // ---------------------------------------------------------------------------
 
 /**
+ * Process-local record of plugin package names that have already been imported
+ * in this process. The presence of a name is the decisive, race-free signal
+ * that a module record *may* exist for it — so any subsequent import of the
+ * same name is a hot-reload/re-import that MUST go through staging to bust the
+ * ESM module graph. The cold-boot fast-path is only safe on the very first
+ * import of a name, when this set does not yet contain it.
+ */
+const importedPluginPackageNames = new Set<string>();
+
+/**
  * Import a plugin module from its install directory on disk.
  *
  * Handles two install layouts:
@@ -741,17 +751,36 @@ export async function importPluginModuleFromPath(
 
   const packageRelativePath =
     pkgRoot === absPath ? [] : ["node_modules", ...packageName.split("/")];
-  const stagedPkgRoot = await stagePluginImportRoot({
-    installRoot: absPath,
-    packageRoot: pkgRoot,
-    packageRelativePath,
-    packageName,
-  });
 
-  // Resolve entry point from a staged filesystem snapshot so reloads pick up
-  // updated relative modules and bundled dependencies instead of reusing the
-  // previous ESM module graph from the original path.
-  const entryPoint = await resolvePackageEntry(stagedPkgRoot, exportSubpath);
+  // Cold-boot fast-path (opt-in): on the FIRST import of this package in this
+  // process there is no ESM module record to bust, so staging's recursive
+  // `fs.cp` copy is pure I/O waste + unbounded `.runtime-imports/` growth.
+  // Import in place from the real package root instead, but ONLY when a stable
+  // built `dist/` exists. Any re-import (name already in the set) falls back to
+  // staging so hot-reloads still force a fresh module evaluation.
+  const useColdFastPath =
+    coldImportInPlaceEnabled() &&
+    !importedPluginPackageNames.has(packageName) &&
+    existsSync(path.join(pkgRoot, "dist"));
+  const importRoot = useColdFastPath
+    ? pkgRoot
+    : await stagePluginImportRoot({
+        installRoot: absPath,
+        packageRoot: pkgRoot,
+        packageRelativePath,
+        packageName,
+      });
+  // Record the name BEFORE the import() can fail: if a cold in-place import
+  // throws during module evaluation, the caller's retry re-enters here, finds
+  // the name already recorded, and escalates to staging — a fresh staged URL
+  // busts any poisoned ESM module record left by the failed in-place attempt.
+  importedPluginPackageNames.add(packageName);
+
+  // Resolve entry point from the chosen import root. The staged path is a
+  // filesystem snapshot so reloads pick up updated relative modules and bundled
+  // dependencies instead of reusing the previous ESM module graph; the cold
+  // fast-path resolves directly from the real package root.
+  const entryPoint = await resolvePackageEntry(importRoot, exportSubpath);
   return (await import(pathToFileURL(entryPoint).href)) as PluginModuleShape;
 }
 
@@ -1042,6 +1071,24 @@ function stageAllHoistedNodeModulesEnabled(): boolean {
 
 function stageFullPluginPackageEnabled(): boolean {
   const raw = process.env.ELIZA_STAGE_FULL_PLUGIN_PACKAGE;
+  if (!raw) return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+/**
+ * Cold-boot fast-path opt-in. When enabled, the *first* import of a given
+ * plugin package in this process is loaded in place from its real package root
+ * — skipping the `fs.cp` staging copy — provided a built `dist/` is present.
+ *
+ * Staging exists only to bust the ESM module graph when hot-reloading a mutated
+ * plugin (a fresh staged URL forces re-evaluation since ESM has no
+ * cache-eviction API). On a cold boot the plugin was never imported, so there
+ * is no module record to bust and staging is pure I/O waste. Default OFF; only
+ * the literal "1"/"true"/"yes" enables it.
+ */
+function coldImportInPlaceEnabled(): boolean {
+  const raw = process.env.ELIZA_PLUGIN_COLD_IMPORT_IN_PLACE;
   if (!raw) return false;
   const normalized = raw.trim().toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes";
