@@ -69,7 +69,7 @@ type X402PluginModule = typeof import("@elizaos/plugin-x402");
 let browserPluginModule: BrowserPluginModule | null = null;
 let x402PluginModule: X402PluginModule | null = null;
 let browserPluginModulePromise: Promise<BrowserPluginModule> | null = null;
-let x402PluginModulePromise: Promise<X402PluginModule> | null = null;
+let x402PluginModulePromise: Promise<X402PluginModule | null> | null = null;
 
 // Vite 7's import-analysis eagerly resolves string-literal dynamic imports even
 // when a `@vite-ignore` comment is present, throwing "Failed to resolve entry"
@@ -130,14 +130,20 @@ const EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS = {
   BrowserPluginModule["getBrowserBridgeCompanionPackageStatus"]
 >;
 
-async function getX402Plugin(): Promise<X402PluginModule> {
+async function getX402Plugin(): Promise<X402PluginModule | null> {
   if (x402PluginModule) return x402PluginModule;
+  // x402 is desktop/cloud-only; on mobile it is not in the agent bundle, so the
+  // "optional" dynamic import REJECTS (no node_modules). Treat a missing module
+  // as "no x402" instead of letting the rejection crash API-server startup —
+  // `importOptionalPlugin` is named optional but does not itself swallow.
   x402PluginModulePromise ??= importOptionalPlugin<X402PluginModule>(
     "@elizaos/plugin-x402",
-  ).then((x402) => {
-    x402PluginModule = x402;
-    return x402;
-  });
+  )
+    .then((x402) => {
+      x402PluginModule = x402;
+      return x402;
+    })
+    .catch(() => null);
   return x402PluginModulePromise;
 }
 
@@ -4421,6 +4427,13 @@ export async function startApiServer(opts?: {
 
   // ── WebSocket Server ─────────────────────────────────────────────────────
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+  // A server-level 'error' with no listener crashes the process. Abrupt client
+  // disconnects (RST during/after the upgrade handshake) surface here.
+  wss.on("error", (err: unknown) => {
+    logger.warn(
+      `[eliza-api] WebSocketServer error: ${err instanceof Error ? err.message : err}`,
+    );
+  });
   const wsClients = new Set<WebSocket>();
   const wsClientIds = new WeakMap<WebSocket, string>();
   /**
@@ -4486,6 +4499,17 @@ export async function startApiServer(opts?: {
 
   // Handle upgrade requests for WebSocket
   server.on("upgrade", (request, socket, head) => {
+    // The raw upgrade socket can emit 'error' (client RST mid-handshake) before
+    // a WebSocket — and its error handler — exists. Unhandled, it crashes the
+    // process. Attach a no-op-ish guard for the whole upgrade window.
+    socket.on("error", (err: unknown) => {
+      logger.warn(
+        `[eliza-api] WS upgrade socket error: ${err instanceof Error ? err.message : err}`,
+      );
+      try {
+        socket.destroy();
+      } catch {}
+    });
     try {
       const wsUrl = new URL(
         request.url ?? "/",
@@ -4500,6 +4524,15 @@ export async function startApiServer(opts?: {
         return;
       }
       wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+        // Attach an 'error' listener IMMEDIATELY — before emit('connection')
+        // runs the (long) connection handler that only attaches its own error
+        // listener near the end. A client that RSTs in that window otherwise
+        // emits an unhandled 'error' on the ws and crashes the process.
+        ws.on("error", (err: unknown) => {
+          logger.warn(
+            `[eliza-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
+          );
+        });
         wss.emit("connection", ws, request);
       });
     } catch (err) {
@@ -5028,7 +5061,9 @@ export async function startApiServer(opts?: {
       rt.agentId != null && String(rt.agentId).length > 0
         ? String(rt.agentId)
         : undefined;
-    const { validateX402Startup } = await getX402Plugin();
+    const x402 = await getX402Plugin();
+    if (!x402) return; // x402 module unavailable (e.g. mobile bundle) — nothing to validate
+    const { validateX402Startup } = x402;
     const result = validateX402Startup(rt.routes as Route[], rt.character, {
       agentId,
     });

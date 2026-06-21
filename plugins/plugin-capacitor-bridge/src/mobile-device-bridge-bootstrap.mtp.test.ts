@@ -17,9 +17,8 @@ describe("buildLoadArgsFromRegistryModel — same-file MTP", () => {
 		expect(args.mobileSpeculative).toBe(true);
 	});
 
-	it("enables MTP for every Eliza-1 tier (all carry an embedded NextN head)", () => {
+	it("enables MTP for every Eliza-1 MTP tier (2B+ carry an embedded NextN head)", () => {
 		for (const id of [
-			"eliza-1-0_8b",
 			"eliza-1-2b",
 			"eliza-1-4b",
 			"eliza-1-9b",
@@ -32,6 +31,37 @@ describe("buildLoadArgsFromRegistryModel — same-file MTP", () => {
 			});
 			expect(args.draftMin, `${id} draftMin`).toBe(1);
 			expect(args.draftMax, `${id} draftMax`).toBe(2);
+		}
+	});
+
+	it("leaves MTP off for the low-memory 0.8B tier (no usable NextN draft head)", () => {
+		// eliza-1-0_8b is the low-memory NON-MTP path: it is a recognized Eliza-1
+		// tier (gets a context size) but carries no usable NextN draft head, so
+		// ELIZA_1_LOAD_METADATA intentionally omits its `mtp` window.
+		const args = buildLoadArgsFromRegistryModel({
+			id: "eliza-1-0_8b",
+			path: "/models/eliza-1-0_8b.gguf",
+		});
+		expect(args.draftMin, "eliza-1-0_8b draftMin").toBeUndefined();
+		expect(args.draftMax, "eliza-1-0_8b draftMax").toBeUndefined();
+	});
+
+	it("keeps QJL/TBQ KV-cache hints off by default for shipped qwen35 tiers", () => {
+		const previous = process.env.ELIZA_BIONIC_KV_QUANT;
+		delete process.env.ELIZA_BIONIC_KV_QUANT;
+		try {
+			const args = buildLoadArgsFromRegistryModel({
+				id: "eliza-1-4b",
+				path: "/models/eliza-1-4b.gguf",
+			});
+			expect(args.cacheTypeK).toBeUndefined();
+			expect(args.cacheTypeV).toBeUndefined();
+		} finally {
+			if (previous === undefined) {
+				delete process.env.ELIZA_BIONIC_KV_QUANT;
+			} else {
+				process.env.ELIZA_BIONIC_KV_QUANT = previous;
+			}
 		}
 	});
 

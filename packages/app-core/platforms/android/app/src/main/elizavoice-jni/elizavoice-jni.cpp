@@ -392,6 +392,81 @@ void cleanup_session_for_selftest(PipelineSession* s, EliInferenceContext* ctx) 
     if (ctx) eliza_inference_destroy(ctx);
 }
 
+// True unless the env var is explicitly "0"/"false"/"no"/"off" (case-insensitive).
+// Absent / unrecognized → the `fallback`.
+bool bionic_bool_env_or_default(const char* name, bool fallback) {
+    const char* v = std::getenv(name);
+    if (!v || v[0] == '\0') return fallback;
+    std::string s(v);
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    if (s == "0" || s == "false" || s == "no" || s == "off") return false;
+    if (s == "1" || s == "true" || s == "yes" || s == "on") return true;
+    return fallback;
+}
+
+bool bionic_bundle_allows_same_file_mtp(const char* bundle_dir) {
+    if (!bundle_dir || bundle_dir[0] == '\0') return false;
+    const std::string path(bundle_dir);
+    return path.find("eliza-1-2b") != std::string::npos ||
+           path.find("eliza-1-4b") != std::string::npos ||
+           path.find("eliza-1-9b") != std::string::npos ||
+           path.find("eliza-1-27b") != std::string::npos ||
+           path.find("/2b") != std::string::npos ||
+           path.find("/4b") != std::string::npos ||
+           path.find("/9b") != std::string::npos ||
+           path.find("/27b") != std::string::npos;
+}
+
+int bionic_int_env_or_default(const char* name, int fallback) {
+    const char* v = std::getenv(name);
+    if (!v || v[0] == '\0') return fallback;
+    int parsed = std::atoi(v);
+    return parsed > 0 ? parsed : fallback;
+}
+
+// Arm the eliza-1 text-model bionic config for runtime optimizations that are
+// correct for the shipped model.
+//
+// KV-quant stays OFF by default. The current shipped qwen35 Eliza-1 tiers use
+// head_dim=256, while QJL1_256/fused QJL-TBQ kernels are head_dim=128. Enabling
+// cache_type_k=qjl1_256/cache_type_v=tbq3_0 on these tiers regresses or crashes;
+// F16 KV is the correct path until a head_dim=256 QJL type or head_dim=128 model
+// variant ships. ELIZA_BIONIC_KV_QUANT=1 is left as an explicit lab override
+// for compatible test bundles only.
+//
+// MTP is enabled by default for same-file NextN tiers (2B+) when a bundle path is
+// known, and remains off for 0.8B. ELIZA_BIONIC_MTP can force on/off for native
+// experiments.
+//
+// The two static names below outlive the cfg they're attached to (cfg is a
+// stack struct consumed synchronously by eliza_inference_llm_stream_open).
+void arm_bionic_text_cfg(eliza_llm_stream_config_t& cfg,
+                         const char* bundle_dir = nullptr) {
+    static const char* kKvTypeK = "qjl1_256";
+    static const char* kKvTypeV = "tbq3_0";
+    if (bionic_bool_env_or_default("ELIZA_BIONIC_KV_QUANT", false)) {
+        cfg.cache_type_k = kKvTypeK;
+        cfg.cache_type_v = kKvTypeV;
+        LOGI("bionic text cfg: KV-quant ON by explicit override (k=%s v=%s)",
+             kKvTypeK, kKvTypeV);
+    } else {
+        LOGI("bionic text cfg: KV-quant OFF (F16 KV; shipped qwen35 head_dim=256)");
+    }
+
+    const bool default_mtp = bionic_bundle_allows_same_file_mtp(bundle_dir);
+    if (bionic_bool_env_or_default("ELIZA_BIONIC_MTP", default_mtp)) {
+        int draft_min = bionic_int_env_or_default("ELIZA_BIONIC_MTP_DRAFT_MIN", 1);
+        int draft_max = bionic_int_env_or_default("ELIZA_BIONIC_MTP_DRAFT_MAX", 2);
+        if (draft_min < 1) draft_min = 1;
+        if (draft_max < draft_min) draft_max = draft_min;
+        cfg.draft_min = draft_min;
+        cfg.draft_max = draft_max;
+        LOGI("bionic text cfg: MTP ON (draft_min=%d draft_max=%d, same-file)",
+             draft_min, draft_max);
+    }
+}
+
 }  // namespace
 
 extern "C" {
@@ -1163,6 +1238,18 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamOpen(
     cfg.repeat_penalty = 1.0f;
     cfg.n_gpu_layers = nGpuLayers;
     cfg.mtp_drafter_path = drafter.empty() ? nullptr : drafter.c_str();
+    // Arm safe runtime optimizations (F16 KV for shipped qwen35; MTP when a
+    // caller/env supplies a draft window).
+    // A caller-supplied drafter path is separate-drafter MTP and needs its own
+    // draft window — only arm the same-file MTP env override when no drafter
+    // was passed.
+    arm_bionic_text_cfg(cfg);
+    if (!drafter.empty() && cfg.draft_min <= 0) {
+        // Separate drafter supplied but env left the window 0; give it the
+        // single-head default so the drafter actually drives speculation.
+        cfg.draft_min = 1;
+        cfg.draft_max = 2;
+    }
     char* outError = nullptr;
     EliLlmStream* s = eliza_inference_llm_stream_open(ctx, &cfg, &outError);
     if (!s) {
@@ -1288,6 +1375,9 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
     cfg.top_p = 1.0f;
     cfg.repeat_penalty = 1.0f;
     cfg.n_gpu_layers = -1;   // all-GPU when the vulkan lib is staged
+    // Arm safe runtime optimizations (F16 KV for shipped qwen35; same-file MTP
+    // on 2B+ bundles, or env override for lab runs).
+    arm_bionic_text_cfg(cfg, bundle.c_str());
     EliLlmStream* s = eliza_inference_llm_stream_open(ctx, &cfg, &outError);
     if (!s) {
         if (tok) eliza_inference_free_tokens(tok);
@@ -1355,6 +1445,58 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
                        ",\"ms\":" + std::to_string(ms) + ",\"tokS\":" +
                        std::to_string(tokS) + ",\"text\":\"" + esc + "\"}";
     return to_jstring(env, json);
+}
+
+// ── Kokoro TTS (ABI v10) ─────────────────────────────────────────────────
+// Synthesize speech in-process via the fused Kokoro-82M head. This is what lets
+// the Android app speak with the real on-device voice instead of falling back to
+// the platform TextToSpeech: TalkMode (this bionic process) → bionic host "tts"
+// op → here. Returns a float[] of 24 kHz PCM (the model's native rate).
+
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSampleRate(JNIEnv*, jclass,
+                                                            jlong ctxHandle) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    return ctx ? eliza_inference_kokoro_sample_rate(ctx) : -1;
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesize(JNIEnv* env, jclass,
+                                                            jlong ctxHandle,
+                                                            jstring jGguf,
+                                                            jstring jVoiceBin,
+                                                            jstring jText,
+                                                            jfloat speed) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    if (!ctx) {
+        throw_runtime(env, "kokoroSynthesize: null context", nullptr);
+        return nullptr;
+    }
+    const std::string gguf = from_jstring(env, jGguf);
+    const std::string voiceBin = from_jstring(env, jVoiceBin);
+    const std::string text = from_jstring(env, jText);
+    char* err = nullptr;
+    // style_dim 256 for Kokoro v1.0. Reloads only when the model/voice changed
+    // (the FFI caches the resident model + voice preset).
+    if (eliza_inference_kokoro_load(ctx, gguf.c_str(), voiceBin.c_str(), 256, &err) != 0) {
+        throw_runtime(env, "kokoro_load failed", err);
+        return nullptr;
+    }
+    // Cap at 30 s @ 24 kHz — far longer than any single reply phrase.
+    const size_t cap = 24000u * 30u;
+    std::vector<float> pcm(cap);
+    err = nullptr;
+    int n = eliza_inference_kokoro_synthesize(
+        ctx, text.c_str(), text.size(), speed, pcm.data(), cap, &err);
+    if (n < 0) {
+        throw_runtime(env, "kokoro_synthesize failed", err);
+        return nullptr;
+    }
+    jfloatArray out = env->NewFloatArray(n);
+    if (!out) return nullptr;
+    env->SetFloatArrayRegion(out, 0, n, pcm.data());
+    LOGI("nativeKokoroSynthesize: %zu chars -> %d samples", text.size(), n);
+    return out;
 }
 
 }  // extern "C"

@@ -271,10 +271,11 @@ function Harness(): React.JSX.Element {
     toggleAgentVoiceMute,
     unlockAudio: () => console.log("[fixture] unlockAudio"),
     openSettings: () => console.log("[fixture] openSettings"),
-    // `?tab=chat` hides the Home button (already home); `?tab=settings` hides
-    // the Settings button. Unset → both header buttons show.
+    // `?tab=chat` disables the Home button (already home); `?tab=views` disables
+    // Views; `?tab=settings` disables Settings. Unset → all three are enabled.
     currentTab: params.get("tab") ?? undefined,
     navigateHome: () => console.log("[fixture] navigateHome"),
+    navigateToViews: () => console.log("[fixture] navigateToViews"),
     clearConversation: () => console.log("[fixture] clearConversation"),
     stop: () => {
       console.log("[fixture] stop");

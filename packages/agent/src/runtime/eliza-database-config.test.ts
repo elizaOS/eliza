@@ -6,7 +6,13 @@ import {
   installRuntimeMethodBindings,
 } from "./eliza.ts";
 
-const ENV_KEYS = ["POSTGRES_URL", "DATABASE_URL", "PGLITE_DATA_DIR"] as const;
+const ENV_KEYS = [
+  "POSTGRES_URL",
+  "DATABASE_URL",
+  "PGLITE_DATA_DIR",
+  "ELIZA_MANAGED_DATABASE_URL",
+  "ELIZA_AGENT_LOCAL_STATE",
+] as const;
 
 let savedEnv: Record<string, string | undefined>;
 
@@ -44,6 +50,36 @@ describe("database runtime config", () => {
 
     expect(process.env.POSTGRES_URL).toBe(
       "postgresql://elizaos@127.0.0.1:5432/elizaos",
+    );
+    expect(process.env.PGLITE_DATA_DIR).toBeUndefined();
+  });
+
+  it("boots PGlite when only ELIZA_MANAGED_DATABASE_URL is set (local-state container) (#8771/#8783)", () => {
+    // The managed-url is deliberately NOT one of the keys resolveEffectiveDbProvider
+    // reads, so a local-state agent carrying only ELIZA_MANAGED_DATABASE_URL (the
+    // opt-in marker) + the local-state flag stays on PGlite — never the shared
+    // remote Postgres. This is the consumer-side half of the locality fix.
+    process.env.ELIZA_MANAGED_DATABASE_URL = "postgres://shared/db";
+    process.env.ELIZA_AGENT_LOCAL_STATE = "1";
+
+    applyDatabaseConfigToEnv({} as ElizaConfig);
+
+    expect(process.env.POSTGRES_URL).toBeUndefined();
+    expect(process.env.PGLITE_DATA_DIR).toBeTruthy();
+  });
+
+  it("an explicit DATABASE_URL still wins over ELIZA_AGENT_LOCAL_STATE (documented boundary)", () => {
+    // local-state does NOT override an explicit caller DATABASE_URL — that is the
+    // exact 'if any env path re-introduces DATABASE_URL the locality breaks'
+    // boundary. Pin the behavior so a future change is a conscious one.
+    process.env.DATABASE_URL = "postgresql://own@127.0.0.1:5432/elizaos";
+    process.env.ELIZA_AGENT_LOCAL_STATE = "1";
+    process.env.ELIZA_MANAGED_DATABASE_URL = "postgres://shared/db";
+
+    applyDatabaseConfigToEnv({} as ElizaConfig);
+
+    expect(process.env.POSTGRES_URL).toBe(
+      "postgresql://own@127.0.0.1:5432/elizaos",
     );
     expect(process.env.PGLITE_DATA_DIR).toBeUndefined();
   });

@@ -27,7 +27,7 @@ const MAX_BATCH_SIZE = 100;
 // defers sustained pressure to the queue — otherwise the two backoffs compound.
 const EMBED_MAX_ATTEMPTS = 2;
 const EMBED_BACKOFF_BASE_MS = 1_000;
-const EMBED_BACKOFF_CAP_MS = 8_000;
+export const EMBED_BACKOFF_CAP_MS = 8_000;
 const EMBED_REQUEST_TIMEOUT_MS = 60_000;
 
 /**
@@ -35,7 +35,7 @@ const EMBED_REQUEST_TIMEOUT_MS = 60_000;
  * floor, honoring the server's `retry-after` when present, but never longer
  * than {@link EMBED_BACKOFF_CAP_MS}; ±25% jitter spreads retries from a burst.
  */
-function embeddingBackoffMs(attempt: number, retryAfterSec?: number): number {
+export function embeddingBackoffMs(attempt: number, retryAfterSec?: number): number {
   const exp = EMBED_BACKOFF_BASE_MS * 2 ** attempt;
   const serverHint =
     typeof retryAfterSec === "number" && retryAfterSec > 0
@@ -197,6 +197,13 @@ export async function handleBatchTextEmbedding(
               json: {
                 model: embeddingModelName,
                 input: batchTexts,
+                // Pin the output width to the agent's configured dimension
+                // (text-embedding-3-* honor `dimensions`). Without it the
+                // gateway returns the model's native width — e.g. 1536 for a
+                // 384-configured agent — which the store then silently drops as
+                // a dimension mismatch (#8769). Asking for the exact width makes
+                // the contract explicit and the width-check below authoritative.
+                dimensions: embeddingDimension,
               },
               timeoutMs: EMBED_REQUEST_TIMEOUT_MS,
             }),
@@ -266,9 +273,38 @@ export async function handleBatchTextEmbedding(
         throw new Error("[BatchEmbeddings] API returned invalid response structure");
       }
 
+      // A partial response (fewer vectors than inputs) would leave `undefined`
+      // holes in `results` that escape as a non-array "embedding" to the runtime
+      // and silently corrupt the store. Demand one vector per input (Commandment
+      // 8: fail loudly, never return holes).
+      if (data.data.length !== batch.length) {
+        throw new Error(
+          `[BatchEmbeddings] expected ${batch.length} embeddings, got ${data.data.length}`
+        );
+      }
+
       for (const item of data.data) {
-        const originalIndex = batch[item.index].originalIndex;
-        results[originalIndex] = item.embedding;
+        // The response `index` addresses this batch slice. A malformed/duplicated
+        // or cross-batch (absolute) index would make `batch[item.index]` undefined
+        // and crash on `.originalIndex`; guard it explicitly.
+        const slot =
+          typeof item.index === "number" ? batch[item.index] : undefined;
+        if (!slot) {
+          throw new Error(
+            `[BatchEmbeddings] response index out of range: ${String(item.index)} (batch size ${batch.length})`
+          );
+        }
+        // Width must match the configured dimension exactly. A wrong width is the
+        // root of the "Skipping embedding insert: dimension mismatch" (#8769)
+        // silent drop downstream — surface it here so the router can fall through.
+        if (!Array.isArray(item.embedding) || item.embedding.length !== embeddingDimension) {
+          throw new Error(
+            `[BatchEmbeddings] dimension mismatch: model returned ${
+              Array.isArray(item.embedding) ? item.embedding.length : "non-array"
+            }d but agent is configured for ${embeddingDimension}d`
+          );
+        }
+        results[slot.originalIndex] = item.embedding;
       }
 
       if (data.usage) {

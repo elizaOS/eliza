@@ -229,6 +229,40 @@ describe("useChatSend stop handling", () => {
       "ui-chat-stop",
     );
   });
+
+  it("does NOT surface an error notice when the send is aborted by the user", async () => {
+    // A user-initiated stop rejects the stream with AbortError. The send catch
+    // has a dedicated abort branch (drop the empty assistant placeholder, return)
+    // that must NOT fall through to the error-toast path — a Stop is intentional,
+    // not a failure.
+    const started = deferred();
+    mockStreamingUntilAbort(started);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("hello", {
+        conversationId: "conv-1",
+      });
+      await started.promise;
+    });
+
+    act(() => {
+      result.current.handleChatStop();
+    });
+
+    await act(async () => {
+      await sendPromise;
+    });
+
+    // The abort path ran (server turn aborted) but no error notice was shown.
+    expect(mocks.client.abortConversationTurn).toHaveBeenCalledTimes(1);
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
 });
 
 function http404(): Error {

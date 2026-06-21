@@ -145,6 +145,69 @@ function rpathCmakeFlags() {
   ];
 }
 
+/**
+ * CUDA target architectures. `-arch=native` (ggml's default) requires nvcc to
+ * query the live GPU at BUILD time — which fails in headless/background builds
+ * ("Cannot find valid GPU for '-arch=native'") and silently bakes a fallback
+ * arch that omits the host GPU, so at runtime CUDA reports "no CUDA-capable
+ * device" and the lib drops to CPU. Detect the real compute capability from
+ * nvidia-smi instead (e.g. 12.0 → "120"), with a broad modern fallback list.
+ */
+/**
+ * Path to the CUDA compiler. A box can have BOTH an old `/usr/bin/nvcc` (from a
+ * distro package) and a newer `/usr/local/cuda-X.Y/bin/nvcc`; CMake picks the
+ * PATH one, which on a Blackwell host is too old for sm_120 ("nvcc broken" at
+ * configure, or a silent CPU-only lib). Honor CUDACXX, else pick the highest
+ * versioned nvcc under /usr/local/cuda-X.Y/bin, else fall back to PATH.
+ */
+function cudaCompiler() {
+  const explicit = process.env.CUDACXX?.trim();
+  if (explicit && existsSync(explicit)) return explicit;
+  let best = null;
+  let bestVer = -1;
+  try {
+    for (const d of readdirSync("/usr/local")) {
+      const m = d.match(/^cuda-(\d+)\.(\d+)$/);
+      const nvcc = path.join("/usr/local", d, "bin", "nvcc");
+      if (m && existsSync(nvcc)) {
+        const ver = Number(m[1]) * 100 + Number(m[2]);
+        if (ver > bestVer) {
+          bestVer = ver;
+          best = nvcc;
+        }
+      }
+    }
+  } catch {
+    /* /usr/local unreadable — fall through to PATH nvcc */
+  }
+  const generic = "/usr/local/cuda/bin/nvcc";
+  if (!best && existsSync(generic)) best = generic;
+  return best; // null → let CMake find nvcc on PATH
+}
+
+function cudaArchitectures() {
+  const explicit = process.env.ELIZA_CUDA_ARCHITECTURES?.trim();
+  if (explicit) return explicit;
+  const res = spawnSync(
+    "nvidia-smi",
+    ["--query-gpu=compute_cap", "--format=csv,noheader"],
+    { encoding: "utf8" },
+  );
+  if (res.status === 0 && typeof res.stdout === "string") {
+    const caps = [
+      ...new Set(
+        res.stdout
+          .split(/\r?\n/)
+          .map((l) => l.trim().replace(".", ""))
+          .filter((c) => /^\d+$/.test(c)),
+      ),
+    ];
+    if (caps.length) return caps.join(";");
+  }
+  // Fallback: Turing → Blackwell real archs + PTX for forward compat.
+  return "75-real;80-real;86-real;89-real;90-real;120-real;120-virtual";
+}
+
 function backendCmakeFlags(backend) {
   switch (backend) {
     case "metal":
@@ -154,8 +217,14 @@ function backendCmakeFlags(backend) {
         "-DGGML_METAL_USE_BF16=ON",
         "-DGGML_ACCELERATE=ON",
       ];
-    case "cuda":
-      return ["-DGGML_CUDA=ON"];
+    case "cuda": {
+      const nvcc = cudaCompiler();
+      return [
+        "-DGGML_CUDA=ON",
+        `-DCMAKE_CUDA_ARCHITECTURES=${cudaArchitectures()}`,
+        ...(nvcc ? [`-DCMAKE_CUDA_COMPILER=${nvcc}`] : []),
+      ];
+    }
     case "vulkan":
       return ["-DGGML_VULKAN=ON"];
     case "hip":

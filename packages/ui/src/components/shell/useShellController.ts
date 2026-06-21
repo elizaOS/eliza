@@ -127,10 +127,13 @@ export interface ShellController {
    *  `no_provider` failure gate to let the user wire a provider in one tap. */
   openSettings: () => void;
   /** Return to the home dashboard (the /chat route). Drives the chat header's
-   *  Home button, which is hidden while already on the home screen. */
+   *  Home button, which is disabled while already on the home screen. */
   navigateHome?: () => void;
-  /** The active app tab. Lets the chat header hide the Home button on the home
-   *  screen ("chat") and the Settings button on the settings screen. */
+  /** Open the Views catalog. Drives the chat header's Views button, which is
+   *  disabled while already on the views screen. */
+  navigateToViews?: () => void;
+  /** The active app tab. Lets the chat header DISABLE the Home button on the
+   *  home screen ("chat"), Views on "views", and Settings on "settings". */
   currentTab?: string;
   /** Stop an in-flight reply stream (the composer's stop control). */
   stop: () => void;
@@ -167,6 +170,8 @@ export function useShellController(): ShellController {
   // Return to the home dashboard (the /chat route) from the chat header's Home
   // button. Stable identity.
   const navigateHome = React.useCallback(() => setTab("chat"), [setTab]);
+  // Open the Views catalog from the chat header's Views button. Stable identity.
+  const navigateToViews = React.useCallback(() => setTab("views"), [setTab]);
 
   // DEV-only debug affordance: drop the current conversation and start a fresh,
   // greeted one (handleNewConversation resets draft state + creates a new
@@ -878,6 +883,7 @@ export function useShellController(): ShellController {
     clearConversation,
     openSettings,
     navigateHome,
+    navigateToViews,
     currentTab: app.tab,
     stop: stopTurn,
   };

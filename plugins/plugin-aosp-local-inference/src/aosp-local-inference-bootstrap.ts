@@ -1226,6 +1226,69 @@ function ensureOmnivoiceTtsAssetsInBackground(bundleRoot: string): void {
     });
 }
 
+// Kokoro-82M is the small/fast on-device voice (catalog policy makes the mobile
+// 0_8b/2b/4b tiers Kokoro-default). Like OmniVoice it isn't always bundled into
+// the APK, so fetch the acoustic GGUF + the af_sam speaker preset into the
+// bundle's `tts/kokoro/` dir — the exact dir ElizaBionicInferenceServer.tts()
+// and the fused Kokoro loader read. The on-device voice is an ESSENTIAL feature
+// (without it the app speaks with the platform TextToSpeech — the "android
+// voice"), so unlike the general recommended-model auto-download it fetches by
+// default; opt out with ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1 (offline/kiosk).
+// `af_sam.bin` lives under voice/kokoro/voices/, not the per-tier bundle.
+const KOKORO_GGUF_FILE = "kokoro-82m-v1_0-Q4_K_M.gguf";
+const KOKORO_VOICE_FILE = "af_sam.bin";
+let kokoroTtsDownloadInflight: Promise<void> | null = null;
+
+function ensureKokoroTtsAssetsInBackground(bundleRoot: string): void {
+  if (process.env.ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD?.trim() === "1") return;
+  if (kokoroTtsDownloadInflight) return;
+  const kokoroDir = path.join(bundleRoot, "tts", "kokoro");
+  if (existsSync(kokoroDir)) return;
+  const tier = path.basename(bundleRoot) || "0_8b";
+  const stagingDir = path.join(bundleRoot, "tts", "kokoro.staging");
+  kokoroTtsDownloadInflight = (async () => {
+    rmSync(stagingDir, { recursive: true, force: true });
+    mkdirSync(stagingDir, { recursive: true });
+    const downloads: Array<{ url: string; name: string }> = [
+      {
+        url: `https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/${tier}/tts/kokoro/${KOKORO_GGUF_FILE}`,
+        name: KOKORO_GGUF_FILE,
+      },
+      {
+        url: `https://huggingface.co/elizaos/eliza-1/resolve/main/voice/kokoro/voices/${KOKORO_VOICE_FILE}`,
+        name: KOKORO_VOICE_FILE,
+      },
+    ];
+    for (const { url, name } of downloads) {
+      logger.info(`[aosp-local-inference] Auto-downloading Kokoro voice ${name} from ${url}`);
+      const response = await fetch(url, { redirect: "follow" });
+      if (!response.ok || !response.body) {
+        throw new Error(
+          `Kokoro voice download failed (${name}): HTTP ${response.status} ${response.statusText}`,
+        );
+      }
+      await pipeline(
+        Readable.fromWeb(response.body as never),
+        createWriteStream(path.join(stagingDir, name)),
+      );
+    }
+    // Atomic publish: tts/kokoro/ appears only when both files are complete.
+    renameSync(stagingDir, kokoroDir);
+    logger.info(`[aosp-local-inference] Kokoro voice staged under ${kokoroDir}`);
+  })()
+    .catch((err) => {
+      logger.warn(
+        `[aosp-local-inference] Kokoro voice auto-download failed (falling back to system TTS): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      rmSync(stagingDir, { recursive: true, force: true });
+    })
+    .finally(() => {
+      kokoroTtsDownloadInflight = null;
+    });
+}
+
 /**
  * Glob-fallback for missing manifest: pick the first `*.gguf` whose name
  * matches one of the well-known role prefixes. Keeps the bootstrap
@@ -2011,9 +2074,14 @@ function resolveAospFusedOmnivoiceConfig(): AospFusedOmnivoiceConfig | null {
   } catch {
     return null;
   }
+  // Ensure the on-device Kokoro voice is present (the mobile tiers are
+  // Kokoro-default). Without tts/kokoro/, on-device TTS has nothing to
+  // synthesize and the app falls back to the platform "android voice". This
+  // fetches in the background; the platform TTS covers replies until it lands.
+  ensureKokoroTtsAssetsInBackground(bundleRoot);
   if (!existsSync(path.join(bundleRoot, "tts"))) {
-    // No neural-voice assets yet — kick off a background fetch (system TTS
-    // covers replies meanwhile) and report unavailable for now.
+    // No neural-voice assets yet — also kick off the OmniVoice fetch (larger
+    // tiers ship it) and report unavailable for now.
     ensureOmnivoiceTtsAssetsInBackground(bundleRoot);
     return null;
   }

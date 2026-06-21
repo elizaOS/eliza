@@ -253,6 +253,27 @@ export function isCloudAgentWaking(
   return agentId === undefined || phase.agentId === agentId;
 }
 
+/**
+ * Whether the chat lifecycle should keep polling agent status to clear the
+ * "waking up" banner (#8777). Poll while the agent is NOT ready
+ * ({@link deriveAgentReady}) and NOT in a terminal state — a null/early status
+ * counts as not-ready-yet. The instant `canRespond` flips true (or a local model
+ * resolves), `deriveAgentReady` returns true and polling stops, clearing the
+ * banner. A cloud agent (no local `model`, `canRespond` still absent) keeps
+ * polling until the broadcast carries `canRespond`.
+ */
+export function shouldAwaitAgentReadiness(
+  agentStatus: AgentStatus | null,
+): boolean {
+  const state = agentStatus?.state;
+  return (
+    !deriveAgentReady(agentStatus) &&
+    state !== "error" &&
+    state !== "stopped" &&
+    state !== "not_started"
+  );
+}
+
 export type SlashCommandInput = {
   name: string;
   argsRaw: string;

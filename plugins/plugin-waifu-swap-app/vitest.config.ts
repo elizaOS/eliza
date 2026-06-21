@@ -46,6 +46,16 @@ export default defineConfig({
     // Dedupe react so a single copy backs both react and react-dom.
     dedupe: ["react", "react-dom"],
     alias: [
+      {
+        // @elizaos/ui DynamicViewLoader statically imports this plugin-health
+        // subpath; anchor it to source (no built plugin-health dist in the
+        // keyless lane). Self-contained so it needs no config-local path vars.
+        find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
+        replacement: new URL(
+          "../plugin-health/src/screen-time/mobile-signal-setup.ts",
+          import.meta.url,
+        ).pathname,
+      },
       { find: /^react$/, replacement: reactDir },
       {
         find: /^react\/jsx-runtime$/,

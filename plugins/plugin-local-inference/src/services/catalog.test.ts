@@ -125,16 +125,22 @@ describe("local inference catalog", () => {
 		expect(offenders).toEqual([]);
 	});
 
-	it("declares native MTP on every Eliza-1 tier", () => {
+	it("declares native MTP only on Eliza-1 tiers with embedded NextN heads", () => {
+		const mtpTiers = new Set(ELIZA_1_MTP_TIER_IDS);
 		for (const id of ELIZA_1_MTP_TIER_IDS) {
 			const model = findCatalogModel(id);
 			expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
 			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
 		}
+		for (const id of ELIZA_1_TIER_IDS.filter((tier) => !mtpTiers.has(tier))) {
+			const model = findCatalogModel(id);
+			expect(model?.runtime?.mtp, `${id} mtp`).toBeUndefined();
+		}
 	});
 
 	it("declares the mandatory local runtime contract for every default tier", () => {
-		const baseKernels = ["turbo3", "turbo4", "qjl_full", "polarquant"];
+		const baseKernels = ["turbo3", "turbo4"];
+		const mtpTiers = new Set(ELIZA_1_MTP_TIER_IDS);
 		for (const id of ELIZA_1_TIER_IDS) {
 			const model = findCatalogModel(id);
 			expect(model?.runtime?.preferredBackend, `${id} backend`).toBe(
@@ -146,8 +152,12 @@ describe("local inference catalog", () => {
 					`${id} kernel ${kernel}`,
 				).toContain(kernel);
 			}
-			expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
 			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
+			if (mtpTiers.has(id)) {
+				expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
+			} else {
+				expect(model?.runtime?.mtp, `${id} mtp`).toBeUndefined();
+			}
 			if ((model?.contextLength ?? 0) >= 65536) {
 				expect(model?.runtime?.optimizations?.requiresKernel).toContain(
 					"turbo3_tcq",

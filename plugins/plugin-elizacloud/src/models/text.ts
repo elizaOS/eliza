@@ -112,7 +112,7 @@ export function resolveStreamingEnabled(): boolean {
  * a caller cancel OR the timeout — `requestRaw` honors only a single signal, so
  * merge them here.
  */
-function buildStreamAbortSignal(
+export function buildStreamAbortSignal(
   abortSignal: AbortSignal | undefined,
   timeoutMs: number | undefined
 ): AbortSignal | undefined {

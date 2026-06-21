@@ -118,12 +118,10 @@ describe("per-tier text + embedding bundle resolution", () => {
 				expect(url).toContain("embedding/eliza-1-embedding.gguf");
 			});
 
-
-			it("declares a kvCache profile (TurboQuant / QJL / PolarQuant types) — these are wired into llama-server args at boot", () => {
-				expect(model?.runtime?.kvCache).toBeTruthy();
-				expect(model?.runtime?.kvCache?.typeK).toBe("qjl1_256");
-				expect(model?.runtime?.kvCache?.typeV).toBe("tbq3_0");
-				expect(model?.runtime?.kvCache?.requiresFork).toBe("buun-llama-cpp");
+			it("does not declare a default KV-cache override for shipped tiers", () => {
+				// Shipped qwen35 tiers stay on F16 KV by default. QJL/TBQ cache
+				// experiments are opt-in per runtime/backend, not catalog defaults.
+				expect(model?.runtime?.kvCache).toBeUndefined();
 			});
 		});
 	}

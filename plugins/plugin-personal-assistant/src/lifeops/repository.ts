@@ -195,22 +195,24 @@ export interface LifeOpsScheduleObservationRecord
 export interface LifeOpsScheduleMergedStateRecord
   extends LifeOpsScheduleMergedState {}
 
-// Sleep- and health-record types + factories owned by `@elizaos/plugin-health`,
-// re-exported here so existing app-lifeops importers keep resolving via the
-// repository module.
-export type {
-  LifeOpsPersistedSleepEpisodeSource,
-  LifeOpsSleepEpisodeRecord,
-} from "@elizaos/plugin-health";
 export {
   createLifeOpsHealthMetricSample,
   createLifeOpsHealthSleepEpisode,
   createLifeOpsHealthSyncState,
   createLifeOpsHealthWorkout,
 } from "@elizaos/plugin-health/health-bridge/health-records";
+// Sleep- and health-record types + factories owned by `@elizaos/plugin-health`,
+// re-exported here so existing app-lifeops importers keep resolving via the
+// repository module. Sourced from the leaf modules (not the package barrel)
+// because Vite's dep-optimizer scans even these type-only barrel specifiers and
+// chokes on the dist-less @elizaos/plugin-health entry in the keyless lane.
+export type {
+  LifeOpsPersistedSleepEpisodeSource,
+  LifeOpsSleepEpisodeRecord,
+} from "@elizaos/plugin-health/sleep/sleep-episode-types";
 export { createLifeOpsSleepEpisode } from "@elizaos/plugin-health/sleep/sleep-episode-types";
 
-import type { LifeOpsSleepEpisodeRecord } from "@elizaos/plugin-health";
+import type { LifeOpsSleepEpisodeRecord } from "@elizaos/plugin-health/sleep/sleep-episode-types";
 
 export interface LifeOpsCachedInboxMessage extends LifeOpsInboxMessage {
   cachedAt: string;

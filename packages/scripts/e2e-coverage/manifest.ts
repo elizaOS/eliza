@@ -256,14 +256,8 @@ export const ZERO_TEST_EXEMPT: Record<string, string> = {
     "Benchmark/eval harness plugin used to drive scenario benchmarks; it has no shipped runtime behavior to unit-test and runs only under the benchmark lanes.",
   "plugin-google-meet-cute":
     "Experimental Google Meet companion surface gated behind live Google Meet credentials; no deterministic fixture exists.",
-  "plugin-local-embedding":
-    "Native on-device embedding backend; requires downloaded model weights + native runtime, validated by the local-model validation lane rather than keyless unit tests.",
-  "plugin-mlx":
-    "Apple MLX native inference backend; requires the MLX framework + model weights on Apple Silicon, validated on-device rather than in keyless CI.",
   "plugin-native-shared-types":
     "Pure shared TypeScript type/contract definitions for the native bridges; there is no runtime behavior to test.",
-  "plugin-omnivoice":
-    "Native voice (TTS/ASR) backend; requires built native dylibs + voice models, validated by the local-model validation lane rather than keyless CI.",
   "plugin-tee":
     "Trusted-execution (dstack TEE) attestation/key-release; requires real TEE hardware + a dstack socket, validated by the dedicated TEE smoke scripts.",
   "plugin-xmtp":

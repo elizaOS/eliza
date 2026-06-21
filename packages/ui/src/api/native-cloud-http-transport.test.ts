@@ -109,6 +109,47 @@ describe("SSE streaming bypass", () => {
     expect(res?.body).not.toBeNull();
   });
 
+  it("passes the native fetch's streaming body through incrementally — no buffering (#8773)", async () => {
+    const encoder = new TextEncoder();
+    let enqueueB: () => void = () => {};
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode("data: a\n\n"));
+        enqueueB = () => {
+          controller.enqueue(encoder.encode("data: b\n\n"));
+          controller.close();
+        };
+      },
+    });
+    webFetchMock.mockResolvedValueOnce(
+      new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    );
+
+    const transport = nativeCloudHttpTransportForUrl(AGENT_URL);
+    const res = await transport?.request(AGENT_URL, {
+      method: "POST",
+      headers: { Accept: "text/event-stream" },
+      body: "{}",
+    });
+    expect(res?.body).not.toBeNull();
+
+    const reader = (res?.body as ReadableStream<Uint8Array>).getReader();
+    const decoder = new TextDecoder();
+
+    // The first chunk is readable BEFORE 'b' is enqueued — proving the transport
+    // hands back the live streaming body (CapacitorHttp would have buffered the
+    // whole response into one blob).
+    const first = await reader.read();
+    expect(decoder.decode(first.value)).toBe("data: a\n\n");
+
+    enqueueB();
+    const second = await reader.read();
+    expect(decoder.decode(second.value)).toBe("data: b\n\n");
+  });
+
   it("detects streaming by the /stream path even without the Accept header", async () => {
     const transport = nativeCloudHttpTransportForUrl(AGENT_URL);
     await transport?.request(AGENT_URL, { method: "POST", body: "{}" });

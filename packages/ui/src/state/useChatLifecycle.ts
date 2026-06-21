@@ -36,7 +36,7 @@ import {
   parseAgentStatusFromMainMenuResetPayload,
 } from "./internal";
 import type { FirstRunMode, SetupStep } from "./types";
-import { deriveAgentReady } from "./types";
+import { shouldAwaitAgentReadiness } from "./types";
 
 // ── Helpers (file-local) ────────────────────────────────────────────
 
@@ -540,12 +540,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
   // hands-free never unblocks. Runs whenever we're not ready and not in a
   // terminal state (covers a null/early status, not just `state:"running"`);
   // self-limiting — the boolean dep flips false the instant the agent is ready.
-  const agentLifecycleState = agentStatus?.state;
-  const awaitingAgentReadiness =
-    !deriveAgentReady(agentStatus) &&
-    agentLifecycleState !== "error" &&
-    agentLifecycleState !== "stopped" &&
-    agentLifecycleState !== "not_started";
+  const awaitingAgentReadiness = shouldAwaitAgentReadiness(agentStatus);
   useEffect(() => {
     if (!awaitingAgentReadiness) return;
     let active = true;

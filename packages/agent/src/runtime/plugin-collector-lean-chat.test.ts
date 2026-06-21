@@ -12,6 +12,9 @@ const ENV_KEYS = [
   "ELIZA_AGENT_ORCHESTRATOR",
   "ELIZA_LOCAL_LLAMA",
   "ELIZA_BUILD_VARIANT",
+  "ELIZAOS_CLOUD_ENABLED",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZA_CLOUD_PROVISIONED",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -82,6 +85,30 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     expect(names.has("@elizaos/plugin-shell")).toBe(false);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
     expect(names.has("@elizaos/plugin-browser")).toBe(false);
+  });
+
+  it("force-excludes the perf-critical local-inference/wallet/workflow surfaces (#8769/#8434)", () => {
+    // These three are in LEAN_CHAT_EXCLUDED_PLUGINS for cold-start + the
+    // 384/1536 embedding-dim reasons; a regression re-adding any of them would
+    // regress lean cold-start and (local-inference) re-introduce the dim
+    // mismatch. The existing tests only cover shell/coding/browser/orchestrator.
+    process.env.ELIZA_PLUGIN_SET = "lean-chat";
+    const names = collectPluginNames(emptyConfig);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+    expect(names.has("@elizaos/plugin-wallet")).toBe(false);
+    expect(names.has("@elizaos/plugin-workflow")).toBe(false);
+  });
+
+  it("keeps plugin-elizacloud for a lean CLOUD agent (cloud serves models + 1536 embeddings)", () => {
+    // A lean dedicated cloud agent drops local-inference but MUST keep
+    // elizacloud — that is the inference + 1536-embedding provider for the
+    // cloud chat path. Dropping both would leave the agent with no model.
+    process.env.ELIZA_PLUGIN_SET = "lean-chat";
+    process.env.ELIZAOS_CLOUD_ENABLED = "true";
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    const names = collectPluginNames(emptyConfig);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
   });
 
   it("leaves the default (non-lean) desktop set carrying the full surfaces", () => {

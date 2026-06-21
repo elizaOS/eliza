@@ -3,6 +3,7 @@
 import { openExternalUrl } from "@elizaos/ui/utils";
 import {
   cleanup,
+  configure,
   fireEvent,
   render,
   screen,
@@ -10,6 +11,14 @@ import {
 } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// This is a large multi-step integration view test (7 waitFor gates, each
+// awaiting a controlled-input re-render or an async client round-trip). RTL's
+// 1s default async timeout is too tight when the Plugin/Client Tests lanes run
+// the workspace at full concurrency on a saturated runner — the controlled
+// edits do land, just slower than 1s, which intermittently fails the value
+// assertions. Give the async utilities headroom; the assertions stay strict.
+configure({ asyncUtilTimeout: 5000 });
 
 // Resolve the actual react entry the runtime uses so the mock deduplicates the
 // React instance regardless of the installed version (the bun store layout and

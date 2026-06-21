@@ -70,14 +70,14 @@ function createUseModelMock(
   return mock as unknown as UseModelMock;
 }
 
-function createStreamingMessageService(
-  tokens: string[],
-  delayMs: number,
-): MessageService {
+function createStreamingMessageService(tokens: string[]): MessageService {
   return {
     async handleMessage(_runtime, _message, _callback, options) {
       for (const token of tokens) {
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        // Yield to the event loop between tokens (a real async boundary, as a
+        // network stream would have) WITHOUT a wall-clock setTimeout, so the
+        // ordering/accumulation assertions stay deterministic and never flake.
+        await Promise.resolve();
         await options?.onStreamChunk?.(token);
       }
       return {
@@ -105,7 +105,7 @@ describe("generateChatResponse token streaming", () => {
     const tokens = ["Once ", "upon ", "a ", "midnight ", "dreary."];
 
     const runtime = createRuntime({
-      messageService: createStreamingMessageService(tokens, 1),
+      messageService: createStreamingMessageService(tokens),
     });
 
     const chunks: string[] = [];
@@ -153,7 +153,7 @@ describe("generateChatResponse token streaming", () => {
     const tokens = ["alpha", " beta", " gamma"];
 
     const runtime = createRuntime({
-      messageService: createStreamingMessageService(tokens, 5),
+      messageService: createStreamingMessageService(tokens),
     });
 
     let runningTotal = "";
@@ -192,7 +192,7 @@ describe("generateChatResponse token streaming", () => {
     ]);
     const runtime = createRuntime({
       getActionResults: getActionResults as AgentRuntime["getActionResults"],
-      messageService: createStreamingMessageService(["Created workflow."], 1),
+      messageService: createStreamingMessageService(["Created workflow."]),
     });
 
     const result = await generateChatResponse(

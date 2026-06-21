@@ -2,13 +2,17 @@ package ai.elizaos.app;
 
 import android.net.LocalServerSocket;
 import android.net.LocalSocket;
+import android.util.Base64;
 import android.util.Log;
 
 import org.json.JSONObject;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -157,6 +161,10 @@ final class ElizaBionicInferenceServer {
             if ("embed".equals(op)) {
                 return embed(bundleDir, req.optString("text", ""));
             }
+            if ("tts".equals(op)) {
+                return tts(bundleDir, req.optString("text", ""),
+                    (float) req.optDouble("speed", 1.0));
+            }
             if (!"generate".equals(op)) {
                 return errorJson("unsupported op: " + op);
             }
@@ -214,6 +222,66 @@ final class ElizaBionicInferenceServer {
         } finally {
             ElizaVoiceNative.nativeContextDestroy(ctx);
         }
+    }
+
+    /**
+     * Synthesize {@code text} with the fused Kokoro-82M head and return base64
+     * fp32 PCM at the model's native rate. This is the on-device voice the
+     * Android app speaks with: TalkMode delegates here instead of falling back to
+     * the platform TextToSpeech (the HTTP /api/tts/local-inference path can't
+     * reach the fused lib from the musl agent, so it 502'd and the app spoke with
+     * the system voice). Resolves the Kokoro GGUF + voice preset from the bundle's
+     * {@code tts/kokoro/} dir.
+     */
+    private String tts(String bundleDir, String text, float speed) throws org.json.JSONException {
+        if (text.trim().isEmpty()) {
+            return errorJson("tts: empty text");
+        }
+        File kokoroDir = new File(bundleDir, "tts/kokoro");
+        String gguf = firstMatch(kokoroDir, ".gguf");
+        String voiceBin = firstMatch(kokoroDir, ".bin");
+        if (gguf == null || voiceBin == null) {
+            return errorJson("tts: Kokoro GGUF + voice .bin not found under " + kokoroDir);
+        }
+        long ctx = ElizaVoiceNative.nativeContextCreate(bundleDir);
+        if (ctx == 0L) {
+            return errorJson("tts: failed to create context for " + bundleDir);
+        }
+        try {
+            float[] pcm = ElizaVoiceNative.nativeKokoroSynthesize(
+                ctx, gguf, voiceBin, text, speed <= 0f ? 1.0f : speed);
+            int sampleRate = ElizaVoiceNative.nativeKokoroSampleRate(ctx);
+            // Pack fp32 PCM little-endian and base64 it for the JSON frame.
+            ByteBuffer buf = ByteBuffer.allocate(pcm.length * 4).order(ByteOrder.LITTLE_ENDIAN);
+            for (float v : pcm) {
+                buf.putFloat(v);
+            }
+            String b64 = Base64.encodeToString(buf.array(), Base64.NO_WRAP);
+            Log.i(TAG, "TTS (kokoro) from agent: " + text.length() + " chars -> "
+                + pcm.length + " samples @ " + sampleRate + " Hz");
+            return new JSONObject()
+                .put("ok", true)
+                .put("sampleRate", sampleRate)
+                .put("samples", pcm.length)
+                .put("pcmBase64", b64)
+                .toString();
+        } finally {
+            ElizaVoiceNative.nativeContextDestroy(ctx);
+        }
+    }
+
+    /** First file in {@code dir} whose name ends with {@code suffix}, or null. */
+    private static String firstMatch(File dir, String suffix) {
+        File[] files = dir.listFiles();
+        if (files == null) {
+            return null;
+        }
+        for (File f : files) {
+            if (f.isFile() && f.getName().endsWith(suffix)) {
+                return f.getAbsolutePath();
+            }
+        }
+        return null;
     }
 
     private static String errorJson(String message) {

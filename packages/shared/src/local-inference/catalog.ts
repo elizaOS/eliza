@@ -48,7 +48,6 @@ const _ELIZA_1_VISION_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
 );
 
 export const ELIZA_1_MTP_TIER_IDS = [
-  "eliza-1-0_8b",
   "eliza-1-2b",
   "eliza-1-4b",
   "eliza-1-9b",
@@ -180,8 +179,6 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
 const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = [
   "turbo3",
   "turbo4",
-  "qjl_full",
-  "polarquant",
 ];
 
 interface TierSpec {
@@ -467,9 +464,9 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       `vision/mmproj-${tierSlug(id)}.gguf`,
     );
   }
-  // Same-file MTP: the NextN head is embedded in the text GGUF
-  // (`qwen35.nextn_predict_layers > 0`), so there is no separate `mtp`
-  // drafter component to download.
+  // Same-file MTP on 2B+ tiers: the NextN head is embedded in the text GGUF,
+  // so there is no separate `mtp` drafter component to download. The 0.8B
+  // low-memory tier is intentionally non-MTP.
 
   return { finetuned: false, components };
 }
@@ -494,11 +491,6 @@ function runtimeForTier(
       unsupportedKernels: ["openvino"],
       ctxCheckpoints: 4,
       ctxCheckpointInterval: 4096,
-    },
-    kvCache: {
-      typeK: "qjl1_256",
-      typeV: "tbq3_0",
-      requiresFork: "buun-llama-cpp",
     },
   };
 

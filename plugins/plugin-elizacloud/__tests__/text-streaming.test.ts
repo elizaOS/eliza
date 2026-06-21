@@ -55,9 +55,12 @@ vi.mock("../src/utils/sdk-client", () => ({
 import {
   __resetNativeChatLimiterForTests,
   accumulateToolCallDeltas,
+  buildStreamAbortSignal,
   finalizeStreamedToolCalls,
+  handleResponseHandler,
   parseOpenAiSseStream,
   resolveStreamingEnabled,
+  resolveTextTimeoutMs,
   streamNativeChatCompletion,
 } from "../src/models/text";
 
@@ -83,6 +86,37 @@ function sseResponse(chunks: string[], contentType = "text/event-stream"): Respo
     status: 200,
     headers: { "content-type": contentType },
   });
+}
+
+/**
+ * Like {@link sseResponse} but the underlying stream is left OPEN (never
+ * `close()`d) and its `cancel` is observable. An early consumer break must call
+ * `reader.cancel()` (parseOpenAiSseStream's finally), which on an open stream
+ * invokes the source `cancel` — directly proving the upstream connection is torn
+ * down (not just that the permit is freed).
+ */
+function openSseResponseWithCancelSpy(chunks: string[]): {
+  response: Response;
+  cancelSpy: ReturnType<typeof vi.fn>;
+} {
+  const cancelSpy = vi.fn();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      // Enqueue all frames but DO NOT close — so the stream is still readable
+      // when the consumer breaks and reader.cancel() reaches the source.
+      for (const c of chunks) controller.enqueue(enc.encode(c));
+    },
+    cancel(reason) {
+      cancelSpy(reason);
+    },
+  });
+  return {
+    response: new Response(stream, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }),
+    cancelSpy,
+  };
 }
 
 function dataFrame(obj: unknown): string {
@@ -352,6 +386,39 @@ describe("streamNativeChatCompletion", () => {
     await readStream(second);
   });
 
+  it("cancels the upstream reader on an early consumer break (tears down the connection)", async () => {
+    process.env.ELIZAOS_CLOUD_NATIVE_CONCURRENCY = "1";
+    __resetNativeChatLimiterForTests();
+
+    const { response, cancelSpy } = openSseResponseWithCancelSpy([
+      dataFrame(contentDelta("one")),
+      dataFrame(contentDelta("two")),
+      dataFrame(contentDelta("three")),
+    ]);
+    nextResponse = response;
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      nativeParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+
+    // Pull exactly one token then break — the generator's return() chain must
+    // reach parseOpenAiSseStream's finally and call reader.cancel() on the
+    // still-open upstream stream.
+    let pulled = 0;
+    for await (const _chunk of result.textStream) {
+      pulled += 1;
+      break;
+    }
+    expect(pulled).toBe(1);
+    // Give the unwinding finally blocks a microtask to run reader.cancel().
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(cancelSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("ELIZAOS_CLOUD_STREAMING=0 disables streaming (kill-switch)", () => {
     process.env.ELIZAOS_CLOUD_STREAMING = "0";
     expect(resolveStreamingEnabled()).toBe(false);
@@ -359,5 +426,147 @@ describe("streamNativeChatCompletion", () => {
     expect(resolveStreamingEnabled()).toBe(true);
     delete process.env.ELIZAOS_CLOUD_STREAMING;
     expect(resolveStreamingEnabled()).toBe(true);
+  });
+});
+
+describe("resolveTextTimeoutMs", () => {
+  afterEach(() => {
+    delete process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS;
+  });
+
+  it("defaults to 120000 when the env is unset or blank", () => {
+    delete process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS;
+    expect(resolveTextTimeoutMs()).toBe(120_000);
+    process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "   ";
+    expect(resolveTextTimeoutMs()).toBe(120_000);
+  });
+
+  it("uses a positive override value", () => {
+    process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "5000";
+    expect(resolveTextTimeoutMs()).toBe(5_000);
+  });
+
+  it("treats 0 / negative as opt-out (no client-side timeout)", () => {
+    process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "0";
+    expect(resolveTextTimeoutMs()).toBeUndefined();
+    process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "-1";
+    expect(resolveTextTimeoutMs()).toBeUndefined();
+  });
+
+  it("falls back to the default on a non-numeric value", () => {
+    process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "abc";
+    expect(resolveTextTimeoutMs()).toBe(120_000);
+  });
+});
+
+/**
+ * The routing DECISION in generateTextWithModel (text.ts wantsStream gate): only
+ * the structured RESPONSE_HANDLER reply (`stream && streamStructured===true`)
+ * streams token-by-token; everything else stays buffered so the planner/raw
+ * envelope can't leak into the UI token stream. Distinguished by whether the
+ * outgoing /chat/completions body carries `stream:true`.
+ */
+describe("cloud streaming gate decision (wantsStream)", () => {
+  function bufferedChatResponse(text: string): Response {
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: text }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  }
+
+  function lastJson(): { stream?: unknown } {
+    const call = requestRaw.mock.calls.at(-1) as [string, string, { json?: { stream?: unknown } }];
+    return call[2].json ?? {};
+  }
+
+  beforeEach(() => {
+    transport.reset();
+    nextResponse = null;
+    requestRaw.mockClear();
+    delete process.env.ELIZAOS_CLOUD_NATIVE_CONCURRENCY;
+    delete process.env.ELIZAOS_CLOUD_STREAMING;
+    __resetNativeChatLimiterForTests();
+  });
+  afterEach(() => {
+    delete process.env.ELIZAOS_CLOUD_STREAMING;
+    __resetNativeChatLimiterForTests();
+  });
+
+  it("streams when native + stream + streamStructured===true (streaming enabled)", async () => {
+    nextResponse = sseResponse([dataFrame(contentDelta("hi")), "data: [DONE]\n\n"]);
+    const result = (await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+      stream: true,
+      streamStructured: true,
+    } as never)) as { textStream: AsyncIterable<string> };
+    await readStream(result);
+    expect(requestRaw).toHaveBeenCalledWith("POST", "/chat/completions", expect.anything());
+    expect(lastJson().stream).toBe(true);
+  });
+
+  it("stays buffered when streamStructured===false (no leak of the raw envelope)", async () => {
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+      stream: true,
+      streamStructured: false,
+    } as never);
+    expect(lastJson().stream).not.toBe(true);
+  });
+
+  it("stays buffered when streamStructured is absent (planner-shaped call)", async () => {
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+      stream: true,
+    } as never);
+    expect(lastJson().stream).not.toBe(true);
+  });
+
+  it("stays buffered when the kill-switch is on even with streamStructured===true", async () => {
+    process.env.ELIZAOS_CLOUD_STREAMING = "0";
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+      stream: true,
+      streamStructured: true,
+    } as never);
+    expect(lastJson().stream).not.toBe(true);
+  });
+});
+
+describe("buildStreamAbortSignal", () => {
+  it("returns undefined when neither a runtime signal nor a positive timeout is given", () => {
+    expect(buildStreamAbortSignal(undefined, undefined)).toBeUndefined();
+    expect(buildStreamAbortSignal(undefined, 0)).toBeUndefined();
+    expect(buildStreamAbortSignal(undefined, -5)).toBeUndefined();
+  });
+
+  it("returns the runtime signal alone when no positive timeout", () => {
+    const ac = new AbortController();
+    expect(buildStreamAbortSignal(ac.signal, 0)).toBe(ac.signal);
+    expect(buildStreamAbortSignal(ac.signal, undefined)).toBe(ac.signal);
+  });
+
+  it("returns a timeout-only signal when no runtime signal", () => {
+    const sig = buildStreamAbortSignal(undefined, 10_000);
+    expect(sig).toBeInstanceOf(AbortSignal);
+    expect(sig).not.toBeNull();
+  });
+
+  it("merges both so aborting the runtime signal aborts the result", () => {
+    const ac = new AbortController();
+    const merged = buildStreamAbortSignal(ac.signal, 10_000);
+    expect(merged).toBeInstanceOf(AbortSignal);
+    expect(merged?.aborted).toBe(false);
+    ac.abort();
+    expect(merged?.aborted).toBe(true);
   });
 });

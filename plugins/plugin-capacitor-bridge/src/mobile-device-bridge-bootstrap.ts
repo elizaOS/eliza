@@ -51,12 +51,12 @@ const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
 	"eliza-1-4b": 2560,
 };
 
-// Same-file MTP draft window. Every Eliza-1 tier embeds a single NextN head
-// (`qwen35.nextn_predict_layers = 1`) in its text GGUF, so speculative
-// decoding needs no separate drafter download — just a draft window. Mirrors
-// `runtime.mtp` in @elizaos/shared catalog.ts (draftMin 1 / draftMax 2 is the
-// throughput peak for a single head). Kept local so this package does not take
-// a dependency on @elizaos/shared.
+// Same-file MTP draft window. Eliza-1 tiers at 2B and larger embed a single
+// NextN head in the text GGUF, so speculative decoding needs no separate
+// drafter download, just a draft window. The 0.8B low-memory tier is explicitly
+// non-MTP. Mirrors `runtime.mtp` in @elizaos/shared catalog.ts (draftMin 1 /
+// draftMax 2 is the throughput peak for a single head). Kept local so this
+// package does not take a dependency on @elizaos/shared.
 const SAME_FILE_MTP_DRAFT = { draftMin: 1, draftMax: 2 } as const;
 
 const ELIZA_1_LOAD_METADATA: Record<
@@ -66,13 +66,34 @@ const ELIZA_1_LOAD_METADATA: Record<
 		mtp?: { draftMin: number; draftMax: number };
 	}
 > = {
-	"eliza-1-0_8b": { contextSize: 131072, mtp: SAME_FILE_MTP_DRAFT },
+	// 0.8b is the low-memory NON-MTP path: it carries no usable NextN draft
+	// head (per native/AGENTS.md §1 "MTP ships on 2B and larger tiers"), so
+	// draft stays 0 and the device runs the plain decode loop.
+	"eliza-1-0_8b": { contextSize: 131072 },
 	"eliza-1-2b": { contextSize: 131072, mtp: SAME_FILE_MTP_DRAFT },
 	"eliza-1-4b": { contextSize: 65536, mtp: SAME_FILE_MTP_DRAFT },
 	"eliza-1-9b": { contextSize: 65536, mtp: SAME_FILE_MTP_DRAFT },
 	"eliza-1-27b": { contextSize: 131072, mtp: SAME_FILE_MTP_DRAFT },
 	"eliza-1-27b-256k": { contextSize: 262144, mtp: SAME_FILE_MTP_DRAFT },
 };
+
+// Native bionic-host override for the same-file MTP draft window. When
+// ELIZA_BIONIC_MTP is set this forces speculative decoding on/off regardless
+// of the tier default above (the JNI keystone path reads the same env). "0"/
+// "false"/"no"/"off" → force OFF; "1"/"true"/"yes"/"on" → force ON; absent →
+// fall back to the tier default. Mirrors arm_bionic_text_cfg() in
+// elizavoice-jni.cpp.
+function bionicMtpOverride(): boolean | undefined {
+	const raw = process.env.ELIZA_BIONIC_MTP?.trim().toLowerCase();
+	if (!raw) return undefined;
+	if (raw === "0" || raw === "false" || raw === "no" || raw === "off") {
+		return false;
+	}
+	if (raw === "1" || raw === "true" || raw === "yes" || raw === "on") {
+		return true;
+	}
+	return undefined;
+}
 
 type GenerateTextHandler = (
 	runtime: IAgentRuntime,
@@ -827,12 +848,23 @@ export function buildLoadArgsFromRegistryModel(model: {
 	const eliza1 = ELIZA_1_LOAD_METADATA[model.id];
 	if (eliza1) {
 		args.contextSize = eliza1.contextSize;
-		if (eliza1.mtp) {
-			// Same-file MTP: enable the draft window so the device's llama.cpp
-			// binding runs speculative decoding off the embedded NextN head. No
-			// `draftModelPath` — the head lives in the text GGUF already.
-			args.draftMin = eliza1.mtp.draftMin;
-			args.draftMax = eliza1.mtp.draftMax;
+		// Keep F16 KV by default for shipped qwen35 Eliza-1 tiers. Their
+		// head_dim=256 is incompatible with the current QJL1_256/fused QJL-TBQ
+		// path (head_dim=128). ELIZA_BIONIC_KV_QUANT=1 is an explicit lab
+		// override for compatible test bundles only.
+		if (process.env.ELIZA_BIONIC_KV_QUANT?.trim() === "1") {
+			args.cacheTypeK = "qjl1_256";
+			args.cacheTypeV = "tbq3_0";
+		}
+		// Same-file MTP draft window for the tier's NextN head. The tier table
+		// already excludes 0.8b (no NextN head). ELIZA_BIONIC_MTP forces it
+		// on/off regardless of the tier default.
+		const mtpOverride = bionicMtpOverride();
+		const mtpEnabled = mtpOverride ?? eliza1.mtp !== undefined;
+		if (mtpEnabled) {
+			const draft = eliza1.mtp ?? SAME_FILE_MTP_DRAFT;
+			args.draftMin = draft.draftMin;
+			args.draftMax = draft.draftMax;
 			args.mobileSpeculative = true;
 		}
 	}

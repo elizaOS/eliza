@@ -1937,9 +1937,30 @@ export class AgentRuntime implements IAgentRuntime {
 				"Stopping service",
 			);
 			for (const service of services) {
-				const maybe = service as { stop?: () => Promise<void> };
-				if (typeof maybe.stop === "function") {
-					await maybe.stop();
+				const maybe = service as { stop?: () => Promise<void> } | null;
+				// A null/undefined service entry must not throw "null is not an
+				// object" and abort the whole stop loop (this breaks agent reset).
+				if (maybe && typeof maybe.stop === "function") {
+					// Isolate each service's stop() — one failing service should not
+					// prevent the rest from stopping (also critical for reset).
+					try {
+						await maybe.stop();
+					} catch (err) {
+						this.logger.warn(
+							{
+								src: "agent",
+								agentId: this.agentId,
+								serviceType,
+								error: err instanceof Error ? err.message : String(err),
+							},
+							"Service stop() threw; continuing",
+						);
+					}
+				} else if (!maybe) {
+					this.logger.warn(
+						{ src: "agent", agentId: this.agentId, serviceType },
+						"Null service instance during stop; skipping",
+					);
 				} else {
 					this.logger.warn(
 						{ src: "agent", agentId: this.agentId, serviceType },

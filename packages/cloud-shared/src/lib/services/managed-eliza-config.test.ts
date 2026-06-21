@@ -204,4 +204,62 @@ describe("managed Eliza environment", () => {
     expect(result.environmentVars.ELIZA_PLUGIN_SET).toBe("full");
     expect(result.environmentVars.PGLITE_DATA_DIR).toBe("/custom/pgdata");
   });
+
+  test("strips an inherited control-plane DATABASE_URL so a local-state agent stays off shared Postgres (#8783/#8696)", async () => {
+    // The provisioning Worker/daemon carries its OWN DATABASE_URL in process env,
+    // which spreads in via existingEnv. If it leaks through, the agent's
+    // resolveEffectiveDbProvider selects Postgres and silently overrides
+    // ELIZA_AGENT_LOCAL_STATE=1 — forcing every local-state agent back onto the
+    // shared Railway DB (the latency + blast-radius regression #8779 had to
+    // restore the strip for). The strip is THE mechanism; guard it directly.
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
+
+    const result = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-1",
+      existingEnv: {
+        DATABASE_URL: "postgres://control-plane/leak",
+        ELIZA_MANAGED_DATABASE_URL: "postgres://stale/x",
+      },
+    });
+
+    expect(result.environmentVars.DATABASE_URL).toBeUndefined();
+    expect(result.environmentVars.ELIZA_MANAGED_DATABASE_URL).toBeUndefined();
+    // ...and the local-state intent survives the strip.
+    expect(result.environmentVars.ELIZA_AGENT_LOCAL_STATE).toBe("1");
+  });
+
+  test("pins both embedding dimensions to 1536 so the storage column and the cloud probe agree (#8769)", async () => {
+    // plugin-sql storage defaults to dim_384 unless EMBEDDING_DIMENSION is set,
+    // while the cloud embedding model returns 1536-d vectors — a drift to a
+    // single value re-introduces "Skipping embedding insert: dimension mismatch".
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
+
+    const result = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-1",
+    });
+
+    expect(result.environmentVars.EMBEDDING_DIMENSION).toBe("1536");
+    expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
+  });
+
+  test("honors explicit per-agent embedding-dimension overrides", async () => {
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
+
+    const result = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-1",
+      existingEnv: {
+        EMBEDDING_DIMENSION: "768",
+        ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: "768",
+      },
+    });
+
+    expect(result.environmentVars.EMBEDDING_DIMENSION).toBe("768");
+    expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("768");
+  });
 });
