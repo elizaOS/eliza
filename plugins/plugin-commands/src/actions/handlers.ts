@@ -195,7 +195,7 @@ export async function runCommand(
 				completionTokens?: number;
 				totalTokens?: number;
 			}>(`token-usage:${roomId}`);
-			if (!usage || !usage.totalTokens) {
+			if (!usage?.totalTokens) {
 				return reply("No token usage recorded for this conversation yet.");
 			}
 			return reply(
