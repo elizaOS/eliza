@@ -418,6 +418,10 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
 
   useEffect(() => {
     let cancelled = false;
+    // The 5s poll pushes appRuns into the global AppContext, which re-renders
+    // every useApp() consumer. Only push when the run set actually changed so a
+    // steady poll doesn't bust the whole app every 5 seconds.
+    let lastAppRunsKey = "";
 
     const refreshRuns = async () => {
       try {
@@ -425,9 +429,12 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
         const nextRunsSafe = Array.isArray(nextRuns) ? nextRuns : [];
         if (cancelled) return;
         setError(null);
+        const nextKey = JSON.stringify(nextRunsSafe);
+        const changed = nextKey !== lastAppRunsKey;
+        lastAppRunsKey = nextKey;
         startTransition(() => {
           setRuns(nextRunsSafe);
-          setState("appRuns", nextRunsSafe);
+          if (changed) setState("appRuns", nextRunsSafe);
         });
       } catch (refreshError) {
         if (cancelled) return;
