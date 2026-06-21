@@ -12,7 +12,14 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 // The resting overlay's suggestion strip fetches model suggestions via the
 // shared client; stub it so the strip stays on its static fallback in tests.
 vi.mock("../../api/client", () => ({
-  client: { fetch: vi.fn().mockRejectedValue(new Error("no api in test")) },
+  client: {
+    fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
+    // Transcription archival is best-effort and fire-and-forget; resolve so the
+    // attachment path (the user-facing behavior) is what the test asserts.
+    createTranscript: vi
+      .fn()
+      .mockResolvedValue({ transcript: { id: "t1", title: "Transcript" } }),
+  },
 }));
 
 // The press-and-hold copy path writes to the clipboard; stub it so the gesture
@@ -845,5 +852,75 @@ describe("ContinuousChatOverlay", () => {
     expect(btn.getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(btn);
     expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the mic button ON while transcribing (additive, not a takeover)", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          toggleTranscriptionMode: vi.fn(),
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    const mic = screen.getByTestId("chat-composer-mic");
+    // The mic stays active (lit) the whole time transcription runs.
+    expect(mic.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("a mic tap while transcribing ends transcription, never starts a conversation", () => {
+    const toggleTranscriptionMode = vi.fn();
+    const toggleHandsFree = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          toggleTranscriptionMode,
+          toggleHandsFree,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("chat-composer-mic"));
+    // Ends transcription (→ composer attachment); does NOT open a second capture.
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+    expect(toggleHandsFree).not.toHaveBeenCalled();
+  });
+
+  it("drops the finished transcript into the composer as an attachment, not an auto-sent message", () => {
+    let sink:
+      | ((
+          segments: Array<Record<string, unknown>>,
+          startedAt: number,
+          audioWav: Uint8Array | null,
+        ) => void)
+      | null = null;
+    const controller = makeController({
+      setTranscriptSessionSink: ((fn: unknown) => {
+        sink = fn as typeof sink;
+      }) as unknown as ShellController["setTranscriptSessionSink"],
+    });
+    render(<ContinuousChatOverlay controller={controller} />);
+    expect(typeof sink).toBe("function");
+
+    act(() => {
+      sink?.(
+        [
+          {
+            id: "s1",
+            startMs: 0,
+            endMs: 1000,
+            text: "hello world",
+            words: [],
+          },
+        ],
+        1_700_000_000_000,
+        null,
+      );
+    });
+
+    // The transcript becomes a composer attachment chip (document kind) …
+    expect(screen.getByText(/^Transcript .*\.md$/)).toBeTruthy();
+    // … and is NOT auto-sent — the user sends it with their next message.
+    expect(controller.send).not.toHaveBeenCalled();
   });
 });

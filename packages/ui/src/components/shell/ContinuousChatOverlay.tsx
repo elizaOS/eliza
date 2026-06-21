@@ -1,3 +1,4 @@
+import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
   FileText,
   Film,
@@ -222,6 +223,11 @@ function wavBytesToBase64(bytes: Uint8Array): string {
     );
   }
   return btoa(binary);
+}
+
+/** UTF-8-safe base64 for a transcript turned into a composer text attachment. */
+function textToBase64(text: string): string {
+  return wavBytesToBase64(new TextEncoder().encode(text));
 }
 // Muted-speaker glyph for the autoplay-blocked "tap to enable sound" prompt.
 const SPEAKER_MUTED_GLYPH =
@@ -1174,10 +1180,23 @@ export function ContinuousChatOverlay({
     // Voice can't be turned ON while a reply is in flight (it's gated until the
     // turn finishes), but an active hands-free session can always be turned OFF.
     if (responding && !handsFree) return;
+    // While transcribing, the mic is the master voice control: a tap ENDS the
+    // transcription (which drops the transcript into the composer as an
+    // attachment) instead of starting a second, conflicting capture.
+    if (transcriptionMode) {
+      toggleTranscriptionMode();
+      return;
+    }
     // Quick tap = hands-free conversation: the agent speaks its replies back and
     // the mic re-opens after each one. Tap again to end.
     toggleHandsFree();
-  }, [responding, handsFree, toggleHandsFree]);
+  }, [
+    responding,
+    handsFree,
+    toggleHandsFree,
+    transcriptionMode,
+    toggleTranscriptionMode,
+  ]);
 
   const hasThread = visibleMessages.length > 0;
 
@@ -1713,16 +1732,32 @@ export function ContinuousChatOverlay({
     return () => setDictationSink(null);
   }, [setDictationSink, expand]);
 
-  // A completed transcription SESSION becomes a Transcript record (+ knowledge
-  // mirror) via the API; on success we surface a dismissible card in the chat —
-  // the in-chat link-widget pointing at the saved recording.
-  const [savedTranscript, setSavedTranscript] = React.useState<{
-    id: string;
-    title: string;
-  } | null>(null);
+  // A completed transcription SESSION drops its transcript into the composer as
+  // an ATTACHMENT — it does NOT auto-send as a message. The user sends it (with
+  // any typed text) when ready; the mic stays on the whole time, so transcribing
+  // is an additive layer, not a mode that takes over the conversation. The
+  // recording is also archived (Transcript record + audio + knowledge mirror)
+  // for the Transcripts view, best-effort and silent.
   React.useEffect(() => {
     setTranscriptSessionSink((segments, startedAtMs, audioWav) => {
       if (segments.length === 0) return;
+      const text = transcriptPlainText(segments);
+      if (text) {
+        const stamp = new Date(startedAtMs)
+          .toISOString()
+          .slice(0, 16)
+          .replace("T", " ");
+        const attachment: ImageAttachment = {
+          data: textToBase64(text),
+          mimeType: "text/markdown",
+          name: `Transcript ${stamp}.md`,
+        };
+        setPendingImages((prev) =>
+          [...prev, attachment].slice(0, MAX_CHAT_IMAGES),
+        );
+        expand();
+        inputRef.current?.focus();
+      }
       void client
         .createTranscript({
           segments,
@@ -1734,18 +1769,12 @@ export function ContinuousChatOverlay({
               }
             : {}),
         })
-        .then((res) =>
-          setSavedTranscript({
-            id: res.transcript.id,
-            title: res.transcript.title,
-          }),
-        )
         .catch(() => {
-          /* recording is best-effort; a failed save just shows no card */
+          /* archival is best-effort; a failed save just skips the record */
         });
     });
     return () => setTranscriptSessionSink(null);
-  }, [setTranscriptSessionSink]);
+  }, [setTranscriptSessionSink, expand]);
 
   // Tell the controller whether a draft is pending so the hands-free always-on
   // loop pauses while the user is typing (or editing a PTT dictation) and
@@ -2146,30 +2175,6 @@ export function ContinuousChatOverlay({
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
     >
-      {/* In-chat transcript link-widget: a dismissible card shown when a
-          recording session has just been saved, pointing at the new transcript
-          (find it in the Transcripts view). */}
-      {savedTranscript ? (
-        <div
-          data-testid="transcript-saved-card"
-          className="pointer-events-auto absolute inset-x-0 top-3 z-50 mx-auto flex w-fit max-w-[90%] items-center gap-2 rounded-full border border-border/30 bg-bg/95 px-3 py-1.5 text-sm text-txt shadow-lg backdrop-blur"
-        >
-          <FileText className="h-4 w-4 shrink-0 text-accent-fg" aria-hidden />
-          <span className="truncate">
-            Transcript saved: {savedTranscript.title}
-          </span>
-          <button
-            type="button"
-            aria-label="dismiss"
-            data-testid="transcript-saved-dismiss"
-            onClick={() => setSavedTranscript(null)}
-            className="ml-1 shrink-0 rounded-full px-1 text-muted hover:text-txt"
-          >
-            ×
-          </button>
-        </div>
-      ) : null}
-
       {/* Dimming scrim behind the open chat. It fades in WITH the reveal and
           captures pointer events while open; clicking it COLLAPSES the chat back
           to the input. Collapsed → pointer-events-none, so the view behind stays
@@ -2914,13 +2919,15 @@ export function ContinuousChatOverlay({
                       label={
                         pttHolding
                           ? "release to send"
-                          : handsFree
-                            ? "end conversation"
-                            : recording
-                              ? "stop listening"
-                              : "talk"
+                          : transcriptionMode
+                            ? "stop transcription"
+                            : handsFree
+                              ? "end conversation"
+                              : recording
+                                ? "stop listening"
+                                : "talk"
                       }
-                      active={recording || handsFree}
+                      active={recording || handsFree || transcriptionMode}
                       onClick={handleMicClick}
                       onPointerDown={beginPushToTalkPress}
                       onPointerUp={(e) => finishPushToTalkPress(e, false)}
