@@ -161,13 +161,16 @@ final class ElizaBionicInferenceServer {
             int maxTokens = req.optInt("maxTokens", 256);
             Log.i(TAG, "GENERATE from agent: " + prompt.length() + " prompt chars,"
                 + " maxTokens=" + maxTokens + ", bundle=" + bundleDir);
-            // nativeLlmSelfTest creates a FRESH context per call (clean KV) and
-            // runs the proven greedy decode on the GPU, returning {ok,text,tokens,
-            // ms,tokS}. Context REUSE (keep the model resident to skip the cold
-            // load) is the perf follow-up — it needs a fork FFI change to reset
-            // the stream KV between generations (stream_open does NOT clear the
-            // slot-0 KV, so a reused ctx contaminates the 2nd+ turn). Correctness
-            // first: a fresh ctx is slower (~5 s) but always produces clean text.
+            // nativeLlmSelfTest creates a FRESH context per call (reloads the model
+            // → fresh GPU weights) and runs the proven greedy decode, returning
+            // {ok,text,tokens,ms,tokS}. ~5 s/turn. CONTEXT REUSE (cache the model,
+            // open a fresh stream per call) was tried + device-tested: it halves
+            // the latency BUT intermittently corrupts the output ("His!!!!" token
+            // degeneration on ~1 in 3 turns) — reusing the GPU model weights across
+            // repeated lctx create/destroy cycles is a Vulkan-backend lifecycle bug
+            // in the fork. Reloading the model per call sidesteps it (always clean).
+            // The real perf fix is a fork change: one resident lctx + a KV reset
+            // (eliza_inference_context_reset) between turns. Correctness first.
             String result = ElizaVoiceNative.nativeLlmSelfTest(bundleDir, prompt, maxTokens);
             Log.i(TAG, "GENERATE result: "
                 + (result.length() > 200 ? result.substring(0, 200) + "…" : result));

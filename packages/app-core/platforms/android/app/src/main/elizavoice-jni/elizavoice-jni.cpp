@@ -1228,6 +1228,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamNext(JNIEnv* env, jclass,
     }
     std::string json = "{\"text\":\"" + esc +
                        "\",\"done\":" + (rc == 1 ? "true" : "false") +
+                       ",\"nout\":" + std::to_string(nout) +
                        ",\"drafted\":" + std::to_string(drafted) +
                        ",\"accepted\":" + std::to_string(accepted) + "}";
     return to_jstring(env, json);
