@@ -19,6 +19,7 @@ import {
   ChannelType,
   type Content,
   createMessageMemory,
+  isRateLimitError,
   logger,
   ModelType,
   type RouteRequestContext,
@@ -66,7 +67,6 @@ import {
 import {
   isInsufficientCreditsError,
   isInsufficientCreditsMessage,
-  isRateLimitError,
 } from "./credit-detection.ts";
 import {
   buildWalletActionNotExecutedReply,

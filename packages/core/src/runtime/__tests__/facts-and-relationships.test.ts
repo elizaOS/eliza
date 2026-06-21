@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Memory } from "../../types/memory";
 import { ModelType } from "../../types/model";
-import type { UUID } from "../../types/primitives";
+import { ChannelType, type UUID } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { State } from "../../types/state";
 import {
@@ -412,5 +412,85 @@ describe("runFactsAndRelationshipsStage", () => {
 		expect(result.parsed.facts).toEqual([]);
 		expect(result.written).toEqual({ facts: 0, relationships: 0 });
 		expect(runtime.createMemory).not.toHaveBeenCalled();
+	});
+});
+
+// ── Voice extraction parity (#8786) ──────────────────────────────────────────
+//
+// Regression-proves criterion 5: a voice message (VOICE_DM / VOICE_GROUP) runs
+// the IDENTICAL facts/relationships extraction as the same text message. The
+// stage must never branch on channel type — if a future change added an
+// `if (isVoiceChannelMessage) skip` it would drop name/relationship inference
+// from speech ("John is my brother"), exactly the bug #8786 set out to prevent.
+describe("runFactsAndRelationshipsStage — voice/text parity (#8786)", () => {
+	function messageOn(channelType?: ChannelType): Memory {
+		return {
+			id: "00000000-0000-0000-0000-00000000aaaa" as UUID,
+			entityId: "00000000-0000-0000-0000-000000000001" as UUID,
+			agentId: "00000000-0000-0000-0000-000000000002" as UUID,
+			roomId: "00000000-0000-0000-0000-000000000003" as UUID,
+			content: {
+				text: "John is my brother",
+				source: "test",
+				...(channelType ? { channelType } : {}),
+			},
+			createdAt: 1,
+		};
+	}
+
+	const MODEL_RESPONSE = JSON.stringify({
+		facts: ["the user has a brother named John"],
+		relationships: [
+			{ subject: "user", predicate: "has_brother", object: "John" },
+		],
+		thought: "new family relationship",
+	});
+
+	const EXTRACT = {
+		facts: ["the user has a brother named John"],
+		relationships: [
+			{ subject: "user", predicate: "has_brother", object: "John" },
+		],
+	};
+
+	async function runOn(channelType?: ChannelType) {
+		const runtime = makeRuntime(MODEL_RESPONSE);
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: messageOn(channelType),
+			state: makeState(),
+			extract: EXTRACT,
+		});
+		return { runtime, result };
+	}
+
+	it("VOICE_DM extracts the same facts + relationships as a text message", async () => {
+		const text = await runOn();
+		const voice = await runOn(ChannelType.VOICE_DM);
+
+		// Identical parsed extraction.
+		expect(voice.result.parsed.facts).toEqual(text.result.parsed.facts);
+		expect(voice.result.parsed.relationships).toEqual(
+			text.result.parsed.relationships,
+		);
+		// Identical persistence (the name/relationship is written either way).
+		expect(voice.result.written).toEqual(text.result.written);
+		expect(voice.result.written.facts).toBe(1);
+		expect(voice.result.written.relationships).toBe(1);
+		// The extraction model was invoked for the voice turn just like text.
+		expect(voice.runtime.useModel).toHaveBeenCalled();
+		expect(voice.runtime.createRelationship).toHaveBeenCalledTimes(
+			text.runtime.createRelationship.mock.calls.length,
+		);
+	});
+
+	it("VOICE_GROUP also runs the identical extraction (no channel gate)", async () => {
+		const text = await runOn();
+		const group = await runOn(ChannelType.VOICE_GROUP);
+		expect(group.result.parsed.facts).toEqual(text.result.parsed.facts);
+		expect(group.result.parsed.relationships).toEqual(
+			text.result.parsed.relationships,
+		);
+		expect(group.result.written).toEqual(text.result.written);
 	});
 });

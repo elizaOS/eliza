@@ -1,3 +1,4 @@
+import { APICallError, RetryError } from "ai";
 import { v4 } from "uuid";
 import z from "zod";
 import { formatActionNames, formatActions } from "../actions";
@@ -1474,10 +1475,28 @@ type FailureReplyAttempt =
 /**
  * Detect provider rate-limit / 429 failures so the user-facing failure reply
  * can say "I'm being rate-limited, try again shortly" instead of the opaque
- * generic "something went wrong". The AI SDK surfaces these as
- * `AI_RetryError: Failed after N attempts. Last error: Too Many Requests`.
+ * generic "something went wrong".
+ *
+ * The structural check runs FIRST and is the canonical signal: the AI SDK
+ * carries the upstream HTTP status on `APICallError.statusCode` (wrapped by
+ * `RetryError` when retries are exhausted), so we unwrap the retry envelope and
+ * read `statusCode === 429` directly — mirroring cloud-shared `aiSdkErrorStatus`.
+ * The message substring scan is only a status-less fallback for errors that do
+ * not surface a structured status (e.g. raw text), and the legacy `.status`
+ * duck-type covers raw OpenAI-SDK errors that expose `.status` instead.
  */
 export function isRateLimitError(error: unknown): boolean {
+	const unwrapped = RetryError.isInstance(error) ? error.lastError : error;
+	if (APICallError.isInstance(unwrapped) && unwrapped.statusCode === 429) {
+		return true;
+	}
+	if (
+		typeof unwrapped === "object" &&
+		unwrapped !== null &&
+		(unwrapped as { status?: unknown }).status === 429
+	) {
+		return true;
+	}
 	if (!(error instanceof Error)) return false;
 	const haystack = `${error.name} ${error.message}`.toLowerCase();
 	return (
@@ -1485,6 +1504,10 @@ export function isRateLimitError(error: unknown): boolean {
 		haystack.includes("rate limit") ||
 		haystack.includes("rate_limit") ||
 		haystack.includes("ratelimit") ||
+		haystack.includes("requests per minute") ||
+		haystack.includes("requests per second") ||
+		haystack.includes("requests per hour") ||
+		haystack.includes("slow down") ||
 		/\b429\b/.test(haystack)
 	);
 }
