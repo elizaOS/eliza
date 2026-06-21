@@ -88,6 +88,14 @@ final class ElizaBionicInferenceServer {
     private static void applyBionicInferenceMemoryDefaults() {
         setEnvIfAbsent("ELIZA_LLM_N_BATCH", "128");
         setEnvIfAbsent("ELIZA_LLM_N_CTX", "8192");
+        // The JNI bridge defaults the KV cache to the fused QJL/TBQ quant
+        // (cache_type_k="qjl1_256"). QJL1_256 is a head_dim=128 sketch, but the
+        // active eliza-1 tiers are qwen3.5 with head_dim=256, so llama can't
+        // build that KV cache and llm_stream_open returns "failed to init llama
+        // context" (elizaOS/eliza#8848). Fall back to the f16 KV cache, which is
+        // only ~0.4 GB at 8k ctx for the 2B. Re-enable per device once a
+        // head_dim=256 QJL/TBQ path is verified.
+        setEnvIfAbsent("ELIZA_BIONIC_KV_QUANT", "0");
     }
 
     private static void setEnvIfAbsent(String key, String value) {
