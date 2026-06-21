@@ -205,6 +205,9 @@ function edgeMeta(edge: RelationshipEdgeItem): string {
 
 const STYLE_TAG_ID = "relationships-view-styles";
 
+/** Interval for the quiet background graph refresh (no manual Refresh control). */
+const RELATIONSHIPS_POLL_INTERVAL_MS = 20_000;
+
 const RELATIONSHIPS_VIEW_CSS = `
 .relationships-view-btn {
   min-height: 44px;
@@ -554,6 +557,32 @@ export function RelationshipsView(
   }, []);
 
   useEffect(() => load(), [load]);
+
+  // The manual Refresh control was removed; the graph stays fresh through a
+  // quiet 20s background poll that re-runs the loader in place. Unlike `load`
+  // it never flips back to the loading state, so the populated graph never
+  // flashes — a transient poll failure simply keeps the last good graph.
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      void Promise.all([
+        fetchersRef.current.fetchEntities(),
+        fetchersRef.current.fetchRelationships(),
+      ])
+        .then(([entitiesWire, relationshipsWire]) => {
+          setState({
+            kind: "ready",
+            nodes: buildNodes(
+              entitiesWire.entities,
+              relationshipsWire.relationships,
+            ),
+          });
+        })
+        .catch(() => {
+          // Keep the last good graph; the next poll tick retries.
+        });
+    }, RELATIONSHIPS_POLL_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, []);
 
   const toggleKind = useCallback((kind: EntityKindFilter) => {
     setActiveKinds((prev) => {
