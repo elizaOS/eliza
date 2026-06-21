@@ -171,7 +171,7 @@ jobs:
           # this in sync with CORE_PLUGINS.
           for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf \
             plugin-browser plugin-capacitor-bridge plugin-coding-tools \
-            plugin-device-filesystem \
+            plugin-device-filesystem plugin-shell \
             plugin-commands plugin-computeruse plugin-discord plugin-edge-tts plugin-elizacloud \
             plugin-imessage plugin-local-inference plugin-mcp plugin-signal \
             plugin-streaming plugin-telegram plugin-whatsapp plugin-wallet plugin-workflow \
@@ -186,6 +186,15 @@ jobs:
                 bun install --no-frozen-lockfile --ignore-scripts
               )
               (cd "$plugin_dir" && bun run build)
+              # The container starts the agent under plain `node` (no tsx loader,
+              # #8837), and tsc/build.ts plugin builds can emit extensionless or
+              # directory specifiers (e.g. plugin-workflow `./actions/index`,
+              # plugin-shell `./approvals`) that tsx resolved but native ESM
+              # rejects. Apply the same Node-ESM rewrite the agent's own
+              # build:docker-dist uses so every built plugin loads under plain node.
+              if [[ -d "$plugin_dir/dist" ]]; then
+                node packages/scripts/rewrite-dist-relative-imports-node-esm.mjs "$plugin_dir"
+              fi
               echo "::endgroup::"
             fi
           done
