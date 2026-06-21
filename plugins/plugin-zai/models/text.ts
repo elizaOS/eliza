@@ -2,7 +2,7 @@ import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateText } from "ai";
 import { createZaiClient, type ZaiFetch } from "../providers";
-import type { ModelName, ModelSize, ProviderOptions } from "../types";
+import { createModelName, type ModelName, type ModelSize, type ProviderOptions } from "../types";
 import {
   getExperimentalTelemetry,
   getLargeModel,
@@ -22,6 +22,13 @@ interface ResolvedTextParams {
   readonly presencePenalty: number;
   readonly providerOptions: ProviderOptions;
   readonly thinking: ZaiThinkingConfig | null;
+}
+
+function resolveRequestedModelName(params: GenerateTextParams, fallback: ModelName): ModelName {
+  const requestedModel = (params as GenerateTextParams & { model?: unknown }).model;
+  return typeof requestedModel === "string" && requestedModel.trim().length > 0
+    ? createModelName(requestedModel.trim())
+    : fallback;
 }
 
 function resolveTextParams(
@@ -133,7 +140,7 @@ export async function handleTextSmall(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string> {
-  const modelName = getSmallModel(runtime);
+  const modelName = resolveRequestedModelName(params, getSmallModel(runtime));
   return generateTextWithModel(runtime, params, modelName, "small", ModelType.TEXT_SMALL);
 }
 
@@ -141,6 +148,6 @@ export async function handleTextLarge(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string> {
-  const modelName = getLargeModel(runtime);
+  const modelName = resolveRequestedModelName(params, getLargeModel(runtime));
   return generateTextWithModel(runtime, params, modelName, "large", ModelType.TEXT_LARGE);
 }

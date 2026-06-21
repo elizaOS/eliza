@@ -27,6 +27,7 @@ import {
 import { mergeStreamingText } from "../utils/streaming-text";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import type {
+  ChatActionResultSummary,
   ChatFailureKind,
   ChatTokenUsage,
   ConnectionStateInfo,
@@ -70,6 +71,7 @@ type StreamChatEvent = {
   noResponseReason?: string;
   failureKind?: ChatFailureKind;
   localInference?: LocalInferenceChatMetadata;
+  actionResults?: ChatActionResultSummary[];
   usage?: {
     promptTokens?: number;
     completionTokens?: number;
@@ -87,6 +89,7 @@ type StreamChatState = {
   doneUsage: ChatTokenUsage | undefined;
   doneFailureKind: ChatFailureKind | undefined;
   doneLocalInference: LocalInferenceChatMetadata | undefined;
+  doneActionResults: ChatActionResultSummary[] | undefined;
   receivedDone: boolean;
 };
 
@@ -175,6 +178,9 @@ function applyStreamChatDoneEvent(
   }
   if (parsed.localInference && typeof parsed.localInference === "object") {
     state.doneLocalInference = parsed.localInference;
+  }
+  if (Array.isArray(parsed.actionResults)) {
+    state.doneActionResults = parsed.actionResults;
   }
   if (parsed.usage) {
     state.doneUsage = {
@@ -1304,6 +1310,7 @@ export class ElizaClient {
     usage?: ChatTokenUsage;
     failureKind?: ChatFailureKind;
     localInference?: LocalInferenceChatMetadata;
+    actionResults?: ChatActionResultSummary[];
   }> {
     // Idempotency key for the chat send. The HTTP chat path (POST
     // /api/chat[/:conversationId]/stream) lives in
@@ -1345,6 +1352,7 @@ export class ElizaClient {
       doneUsage: undefined,
       doneFailureKind: undefined,
       doneLocalInference: undefined,
+      doneActionResults: undefined,
       receivedDone: false,
     };
 
@@ -1422,6 +1430,9 @@ export class ElizaClient {
         : {}),
       ...(streamState.doneLocalInference
         ? { localInference: streamState.doneLocalInference }
+        : {}),
+      ...(streamState.doneActionResults?.length
+        ? { actionResults: streamState.doneActionResults }
         : {}),
     };
   }

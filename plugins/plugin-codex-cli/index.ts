@@ -45,6 +45,13 @@ function getCodexModel(runtime: IAgentRuntime): string {
   return getSetting(runtime, "CODEX_MODEL") ?? "gpt-5.5";
 }
 
+function getRequestedCodexModel(runtime: IAgentRuntime, params: GenerateTextParams): string {
+  const requestedModel = (params as GenerateTextParams & { model?: unknown }).model;
+  return typeof requestedModel === "string" && requestedModel.trim().length > 0
+    ? requestedModel.trim()
+    : getCodexModel(runtime);
+}
+
 const backendByRuntime = new WeakMap<IAgentRuntime, CodexBackend>();
 
 function createBackend(runtime: IAgentRuntime): CodexBackend {
@@ -105,7 +112,7 @@ function buildCodexGenerateParams(
     messages: params.messages,
     tools: params.tools,
     toolChoice: params.toolChoice,
-    model: getCodexModel(runtime),
+    model: getRequestedCodexModel(runtime, params),
     temperature: params.temperature,
     maxTokens: params.maxTokens,
     responseFormat,
@@ -175,7 +182,7 @@ function streamTextWithCodex(runtime: IAgentRuntime, params: GenerateTextParams)
         : undefined
     ),
     finishReason: resultPromise.then((result) => result.finishReason),
-    providerMetadata: { modelName: getCodexModel(runtime) },
+    providerMetadata: { modelName: getRequestedCodexModel(runtime, params) },
   };
 }
 
@@ -184,7 +191,7 @@ async function generateTextWithCodex(
   params: GenerateTextParams,
   modelType: string
 ): Promise<string | TextResultWithNativeTools | TextStreamResult> {
-  const model = getCodexModel(runtime);
+  const model = getRequestedCodexModel(runtime, params);
   logger.debug(`[codex-cli] Using ${modelType} model: ${model}`);
   if (params.stream) return streamTextWithCodex(runtime, params);
   const result = await createBackend(runtime).generate(buildCodexGenerateParams(runtime, params));
@@ -207,6 +214,9 @@ const codexModels = {
   [ACTION_PLANNER_MODEL_TYPE]: (runtime: IAgentRuntime, params: GenerateTextParams) =>
     generateTextWithCodex(runtime, params, ACTION_PLANNER_MODEL_TYPE),
 } as Plugin["models"];
+
+/** @internal - exported for shape tests only. */
+export const __INTERNAL_buildCodexGenerateParams = buildCodexGenerateParams;
 
 export const codexCliPlugin: Plugin = {
   name: "codex-cli",

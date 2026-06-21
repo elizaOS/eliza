@@ -99,5 +99,6 @@ All values are read via `runtime.getSetting(key)` first, then `process.env[key]`
 - **Browser build omits the API key.** In browsers, use `ZAI_BROWSER_BASE_URL` to route through a proxy that holds the key server-side.
 - **`air`/`flash` models cap at 4096 max tokens** by default; all other models cap at 8192. This is hardcoded in `resolveTextParams`.
 - **`glm-4.5-air`** is the default small model; **`glm-5.1`** is the default large model. Both can be overridden per-runtime via settings.
+- **Per-call model override.** Text handlers honor `params.model` before slot-level model settings. Workflow generation uses this for isolated z.ai tests without changing every z.ai text call.
 - `AI_SDK_LOG_WARNINGS` is silenced globally at plugin init to suppress Vercel AI SDK noise; this fires once at startup regardless of whether a key is present.
 - For architecture conventions (logger-only logging, ESM module rules, layer boundaries), see the root `AGENTS.md`.

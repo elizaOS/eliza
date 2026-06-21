@@ -14,6 +14,7 @@
  *   executions    — fetch recent executions for a workflow id
  *   revisions     — fetch restorable workflow versions
  *   restore       — restore a workflow by version id
+ *   diagnose      — inspect a failed/recent workflow execution
  *   eval_samples  — generate JSONL evaluation samples from recent executions
  *
  * All actions talk to the in-process `WorkflowService` via
@@ -40,7 +41,13 @@ import type {
   WorkflowCreationResult,
   WorkflowDefinition,
   WorkflowDefinitionResponse,
+  WorkflowExecution,
 } from '../types/index';
+import {
+  buildWorkflowExecutionDiagnostics,
+  getWorkflowExecutionError,
+  summarizeWorkflowExecution,
+} from '../utils/execution-diagnostics';
 
 const WORKFLOW_ACTION = 'WORKFLOW';
 
@@ -57,6 +64,7 @@ const WORKFLOW_OPS = [
   'executions',
   'revisions',
   'restore',
+  'diagnose',
   'eval_samples',
 ] as const;
 type WorkflowOp = (typeof WORKFLOW_OPS)[number];
@@ -70,6 +78,7 @@ interface WorkflowActionParameters {
   name?: unknown;
   workflowId?: unknown;
   workflowName?: unknown;
+  executionId?: unknown;
   active?: unknown;
   limit?: unknown;
   versionId?: unknown;
@@ -519,6 +528,90 @@ async function handleRestoreRevision(
   }
 }
 
+function isProblemExecution(execution: WorkflowExecution): boolean {
+  return (
+    execution.status === 'error' ||
+    execution.status === 'crashed' ||
+    execution.status === 'canceled' ||
+    Boolean(getWorkflowExecutionError(execution))
+  );
+}
+
+async function handleDiagnoseExecution(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const workflowId = readString(params.workflowId);
+  const executionId = readString(params.executionId);
+  const limit = Math.min(Math.max(1, readNumber(params.limit) ?? 10), 50);
+  if (!executionId && !workflowId) {
+    return {
+      success: false,
+      text: 'workflowId or executionId is required to diagnose a workflow run.',
+    };
+  }
+
+  try {
+    let execution: WorkflowExecution | undefined;
+    if (executionId) {
+      execution = await service.getExecutionDetail(executionId);
+      if (workflowId && execution.workflowId !== workflowId) {
+        return {
+          success: false,
+          text: `Execution ${executionId} belongs to workflow ${execution.workflowId}, not ${workflowId}.`,
+        };
+      }
+    } else if (workflowId) {
+      const response = await service.listExecutions({ workflowId, limit });
+      execution = response.data.find(isProblemExecution) ?? response.data[0];
+      if (!execution) {
+        return {
+          success: false,
+          text: `No executions found for workflow ${workflowId}. Run it before diagnosing.`,
+        };
+      }
+    }
+
+    if (!execution) {
+      return { success: false, text: 'No workflow execution was available to diagnose.' };
+    }
+
+    const summary = summarizeWorkflowExecution(execution);
+    const diagnostics = buildWorkflowExecutionDiagnostics(execution);
+    const text = summary.error
+      ? `Diagnosed workflow ${execution.workflowId} execution ${execution.id}: ${summary.statusLabel} - ${summary.error}`
+      : `Diagnosed workflow ${execution.workflowId} execution ${execution.id}: ${summary.statusLabel}.`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: {
+          workflowId: execution.workflowId,
+          executionId: execution.id,
+          status: execution.status,
+          ...(summary.error ? { error: summary.error } : {}),
+        },
+      });
+    }
+    return {
+      success: true,
+      text,
+      values: {
+        workflowId: execution.workflowId,
+        executionId: execution.id,
+        status: execution.status,
+        ...(summary.error ? { error: summary.error } : {}),
+      },
+      data: { execution, summary, diagnostics },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:diagnose' }, msg);
+    return { success: false, text: msg };
+  }
+}
+
 async function handleEvaluationSamples(
   service: WorkflowService,
   params: WorkflowActionParameters,
@@ -537,18 +630,33 @@ async function handleEvaluationSamples(
     const text =
       suite.sampleCount === 0
         ? `No executions found for workflow ${workflowId}; run it before generating eval samples.`
-        : `Generated ${suite.sampleCount} workflow eval sample${suite.sampleCount === 1 ? '' : 's'} for ${workflowId}.`;
+        : [
+            `Generated ${suite.sampleCount} workflow eval sample${suite.sampleCount === 1 ? '' : 's'} for ${workflowId}.`,
+            `Save cases to ${suite.optimizer.caseFile}.`,
+            `Eval: ${suite.optimizer.recommendedEvalCommand}`,
+            `Optimize: ${suite.optimizer.recommendedOptimizeCommand}`,
+          ].join('\n');
     if (callback) {
       await callback({
         text,
         action: WORKFLOW_ACTION,
-        metadata: { workflowId, count: suite.sampleCount },
+        metadata: {
+          workflowId,
+          count: suite.sampleCount,
+          caseFile: suite.optimizer.caseFile,
+          suiteName: suite.optimizer.suiteName,
+        },
       });
     }
     return {
       success: true,
       text,
-      values: { workflowId, count: suite.sampleCount },
+      values: {
+        workflowId,
+        count: suite.sampleCount,
+        caseFile: suite.optimizer.caseFile,
+        suiteName: suite.optimizer.suiteName,
+      },
       data: { suite },
     };
   } catch (err) {
@@ -596,6 +704,11 @@ export const workflowAction: Action = {
     'RESTORE_WORKFLOW',
     'ROLL_BACK_WORKFLOW',
     'ROLLBACK_WORKFLOW',
+    'DIAGNOSE_WORKFLOW',
+    'TROUBLESHOOT_WORKFLOW',
+    'EXPLAIN_WORKFLOW_FAILURE',
+    'GET_WORKFLOW_DIAGNOSTICS',
+    'WORKFLOW_RUN_DIAGNOSTICS',
     'WORKFLOW_EVAL_SAMPLES',
     'GENERATE_WORKFLOW_TRAINING_SAMPLES',
     'GENERATE_WORKFLOW_EVAL_CASES',
@@ -604,21 +717,27 @@ export const workflowAction: Action = {
   ],
   description:
     'Manage workflows. Action-based dispatch - provide an `action` parameter:\n' +
-    '  list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, eval_samples.\n' +
+    '  list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.\n' +
     'For creating/updating scheduled triggers (including promoting a task to a workflow), use the TRIGGER action.',
   descriptionCompressed:
-    'workflow list|get|create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore|eval_samples',
+    'workflow list|get|create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore|diagnose|eval_samples',
   parameters: [
     {
       name: 'action',
       description:
-        'Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, eval_samples.',
+        'Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.',
       required: true,
       schema: { type: 'string' as const, enum: [...WORKFLOW_OPS] },
     },
     {
       name: 'workflowId',
       description: 'Workflow id.',
+      required: false,
+      schema: { type: 'string' as const },
+    },
+    {
+      name: 'executionId',
+      description: 'Workflow execution id for action=diagnose.',
       required: false,
       schema: { type: 'string' as const },
     },
@@ -706,6 +825,8 @@ export const workflowAction: Action = {
         return handleRevisions(service, params, callback);
       case 'restore':
         return handleRestoreRevision(service, params, callback);
+      case 'diagnose':
+        return handleDiagnoseExecution(service, params, callback);
       case 'eval_samples':
         return handleEvaluationSamples(service, params, callback);
     }

@@ -163,8 +163,17 @@ beforeEach(() => {
     optimizer: {
       engine: "smithers-gepa",
       target: "workflow-generation",
+      suiteName: "cerebras-review-workflow",
+      caseFile: "evals/cerebras-review-workflow.jsonl",
       recommendedCommand:
         "bunx smithers-orchestrator eval <workflow.tsx> --cases evals/cerebras-review-workflow.jsonl --suite cerebras-review-workflow",
+      recommendedEvalCommand:
+        "bunx smithers-orchestrator eval <workflow.tsx> --cases evals/cerebras-review-workflow.jsonl --suite cerebras-review-workflow",
+      recommendedOptimizeCommand: "bunx smithers-orchestrator optimize",
+      recommendedObservabilityCommand:
+        "bunx smithers-orchestrator observability --detach",
+      recommendedMetricsCommand:
+        "bunx smithers-orchestrator up <workflow.tsx> --serve --metrics",
       notes: [],
     },
   });
@@ -185,6 +194,26 @@ describe("WorkflowEditor", () => {
       "Manual Trigger -> Add Review Fields",
     );
     expect(screen.getByRole("button", { name: /run now/i })).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /generate from prompt/i }),
+    ).toBeNull();
+
+    const editPrefill = vi.fn();
+    window.addEventListener("eliza:chat:prefill", editPrefill as EventListener);
+    fireEvent.click(screen.getByRole("button", { name: /edit in chat/i }));
+    expect(editPrefill).toHaveBeenCalledTimes(1);
+    const editEvent = editPrefill.mock.calls[0]?.[0] as CustomEvent<{
+      text: string;
+      select: boolean;
+    }>;
+    expect(editEvent.detail.select).toBe(false);
+    expect(editEvent.detail.text).toBe(
+      "Modify workflow workflow-1 (Cerebras review workflow). ",
+    );
+    window.removeEventListener(
+      "eliza:chat:prefill",
+      editPrefill as EventListener,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /run now/i }));
 
@@ -213,6 +242,28 @@ describe("WorkflowEditor", () => {
     );
     expect(clipboardWriteText.mock.calls[0]?.[0]).toContain(
       "Add Review Fields: success; 1 item",
+    );
+
+    const chatPrefill = vi.fn();
+    window.addEventListener("eliza:chat:prefill", chatPrefill as EventListener);
+    fireEvent.click(
+      screen.getByRole("button", { name: /troubleshoot run in chat/i }),
+    );
+    expect(chatPrefill).toHaveBeenCalledTimes(1);
+    const event = chatPrefill.mock.calls[0]?.[0] as CustomEvent<{
+      text: string;
+      select: boolean;
+    }>;
+    expect(event.detail.select).toBe(false);
+    expect(event.detail.text).toContain(
+      "Troubleshoot workflow workflow-1 execution execution-1.",
+    );
+    expect(event.detail.text).toContain(
+      "Engine: 2 nodes / 2 levels / 1 max parallel",
+    );
+    window.removeEventListener(
+      "eliza:chat:prefill",
+      chatPrefill as EventListener,
     );
 
     clipboardWriteText.mockClear();

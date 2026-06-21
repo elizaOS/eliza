@@ -173,6 +173,50 @@ describe("generateChatResponse token streaming", () => {
     expect(result.text).toBe("alpha beta gamma");
   });
 
+  it("returns sanitized action result summaries for UI handoffs", async () => {
+    const message = createChatMessage("create a workflow");
+    const getActionResults = vi.fn(() => [
+      {
+        success: true,
+        text: "Created workflow.",
+        values: {
+          workflowId: "workflow-1",
+          workflowName: "Daily summary",
+          longText: "x".repeat(1200),
+        },
+        data: {
+          actionName: "WORKFLOW",
+          workflow: { nodes: [{ id: "large-node" }] },
+        },
+      },
+    ]);
+    const runtime = createRuntime({
+      getActionResults: getActionResults as AgentRuntime["getActionResults"],
+      messageService: createStreamingMessageService(["Created workflow."], 1),
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      message,
+      "Streaming Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(getActionResults).toHaveBeenCalledWith(message.id);
+    expect(result.actionResults).toEqual([
+      {
+        actionName: "WORKFLOW",
+        success: true,
+        text: "Created workflow.",
+        values: {
+          workflowId: "workflow-1",
+          workflowName: "Daily summary",
+          longText: `${"x".repeat(997)}...`,
+        },
+      },
+    ]);
+  });
+
   it("streams cleaned snapshots from the Android local direct path", async () => {
     const chunks: string[] = [];
     const snapshots: string[] = [];

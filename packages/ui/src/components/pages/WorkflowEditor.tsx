@@ -29,21 +29,17 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
-  Sparkles,
   Wand2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
-import {
-  isMissingCredentialsResponse,
-  type WorkflowDefinition,
-  type WorkflowDefinitionGenerateResponse,
-  type WorkflowExecution,
-  type WorkflowRevision,
+import type {
+  WorkflowDefinition,
+  WorkflowExecution,
+  WorkflowRevision,
 } from "../../api/client-types-chat";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { useModalState } from "../../hooks/useModalState";
 import {
   buildWorkflowExecutionDiagnostics,
   formatWorkflowEngineMetrics,
@@ -58,11 +54,11 @@ import {
 } from "../../utils/workflow-json";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
-import { Textarea } from "../ui/textarea";
 import { WorkflowGraphViewer } from "./WorkflowGraphViewer";
+
+const CHAT_PREFILL_EVENT = "eliza:chat:prefill";
 
 export interface WorkflowEditorProps {
   initial?: WorkflowDefinition | null;
@@ -113,14 +109,6 @@ export function WorkflowEditor({
   );
   const [revisionsLoading, setRevisionsLoading] = useState(false);
   const [revisionsError, setRevisionsError] = useState<string | null>(null);
-  const [generatorPrompt, setGeneratorPrompt] = useState("");
-  const generatorModal = useModalState();
-  const generatorOpen = generatorModal.state.status !== "closed";
-  const generating = generatorModal.state.status === "submitting";
-  const generatorError =
-    generatorModal.state.status === "error"
-      ? generatorModal.state.error.message
-      : null;
 
   useEffect(() => {
     setPersistedWorkflowId(initial?.id ?? null);
@@ -325,54 +313,6 @@ export function WorkflowEditor({
     }
   }, [persistedWorkflowId]);
 
-  const handleGenerate = useCallback(async () => {
-    const prompt = generatorPrompt.trim();
-    if (!prompt) return;
-    await generatorModal.submit(async () => {
-      let res: WorkflowDefinitionGenerateResponse;
-      try {
-        res = await client.generateWorkflowDefinition({
-          prompt,
-          workflowId: persistedWorkflowId ?? undefined,
-        });
-      } catch (e) {
-        throw e instanceof Error
-          ? e
-          : new Error("Failed to generate workflow.");
-      }
-      if ("status" in res && res.status === "needs_clarification") {
-        throw new Error(
-          "The workflow generator needs clarification — open the Automations chat to answer.",
-        );
-      }
-      if (isMissingCredentialsResponse(res)) {
-        throw new Error(
-          `Generated, but missing credentials: ${res.missingCredentials
-            .map((c) => c.credType)
-            .join(", ")}`,
-        );
-      }
-      const definition = res as WorkflowDefinition;
-      setPersistedWorkflowId(definition.id);
-      setCurrentVersionId(definition.versionId ?? null);
-      setLastValidWorkflow(definition);
-      setText(workflowToJsonText(definition));
-      setGeneratorPrompt("");
-      void refreshExecutions();
-      void loadRevisionsForWorkflow(
-        definition.id,
-        definition.versionId ?? null,
-      );
-      return definition;
-    });
-  }, [
-    generatorPrompt,
-    generatorModal,
-    persistedWorkflowId,
-    refreshExecutions,
-    loadRevisionsForWorkflow,
-  ]);
-
   const handleRestoreRevision = useCallback(
     async (versionId: string) => {
       if (!persistedWorkflowId) return;
@@ -423,6 +363,44 @@ export function WorkflowEditor({
       setDiagnosticsCopying(false);
     }
   }, [selectedExecution]);
+
+  const handleTroubleshootInChat = useCallback(() => {
+    if (!selectedExecution || typeof window === "undefined") return;
+    const workflowId =
+      persistedWorkflowId ?? selectedExecution.workflowId ?? "unknown";
+    const diagnostics = buildWorkflowExecutionDiagnostics(selectedExecution);
+    window.dispatchEvent(
+      new CustomEvent(CHAT_PREFILL_EVENT, {
+        detail: {
+          text: [
+            `Troubleshoot workflow ${workflowId} execution ${selectedExecution.id}.`,
+            "",
+            diagnostics,
+          ].join("\n"),
+          select: false,
+        },
+      }),
+    );
+  }, [persistedWorkflowId, selectedExecution]);
+
+  const handleEditInChat = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const workflowName = lastValidWorkflow?.name ?? "this workflow";
+    const workflowId =
+      persistedWorkflowId ?? lastValidWorkflow?.id ?? initial?.id ?? "draft";
+    const text =
+      workflowId === "draft"
+        ? "Create a workflow that "
+        : `Modify workflow ${workflowId} (${workflowName}). `;
+    window.dispatchEvent(
+      new CustomEvent(CHAT_PREFILL_EVENT, {
+        detail: {
+          text,
+          select: false,
+        },
+      }),
+    );
+  }, [initial?.id, lastValidWorkflow, persistedWorkflowId]);
 
   const handleCopyEvaluationSamples = useCallback(async () => {
     if (!persistedWorkflowId) return;
@@ -478,13 +456,13 @@ export function WorkflowEditor({
     onFill: (value) => setText(value),
   });
 
-  const generateButton = useAgentElement<HTMLButtonElement>({
-    id: "generate-from-prompt",
+  const editInChatButton = useAgentElement<HTMLButtonElement>({
+    id: "edit-workflow-in-chat",
     role: "button",
-    label: "Generate from prompt",
+    label: "Edit workflow in chat",
     group: "workflow-toolbar",
-    description: "Open the prompt-driven workflow generator.",
-    onActivate: generatorModal.open,
+    description: "Ask the page chat to create or modify this workflow.",
+    onActivate: handleEditInChat,
   });
 
   const formatButton = useAgentElement<HTMLButtonElement>({
@@ -553,6 +531,16 @@ export function WorkflowEditor({
     onActivate: () => void handleCopyDiagnostics(),
   });
 
+  const troubleshootRunButton = useAgentElement<HTMLButtonElement>({
+    id: "troubleshoot-run-in-chat",
+    role: "button",
+    label: "Troubleshoot run in chat",
+    group: "workflow-executions",
+    description: "Send the selected workflow run diagnostics to the page chat.",
+    status: selectedExecution ? "active" : "inactive",
+    onActivate: handleTroubleshootInChat,
+  });
+
   const copyEvaluationSamplesButton = useAgentElement<HTMLButtonElement>({
     id: "copy-eval-samples",
     role: "button",
@@ -577,35 +565,6 @@ export function WorkflowEditor({
     onActivate: () => onCancel?.(),
   });
 
-  const generatorPromptField = useAgentElement<HTMLTextAreaElement>({
-    id: "generator-prompt",
-    role: "textarea",
-    label: "Workflow prompt",
-    group: "workflow-generator",
-    description: "Describe the workflow to generate.",
-    getValue: () => generatorPrompt,
-    onFill: (value) => setGeneratorPrompt(value),
-  });
-
-  const generatorSubmitButton = useAgentElement<HTMLButtonElement>({
-    id: "generator-generate",
-    role: "button",
-    label: "Generate",
-    group: "workflow-generator",
-    description: "Generate the workflow from the prompt.",
-    status: generating ? "busy" : undefined,
-    onActivate: () => void handleGenerate(),
-  });
-
-  const generatorCancelButton = useAgentElement<HTMLButtonElement>({
-    id: "generator-cancel",
-    role: "button",
-    label: "Cancel generation",
-    group: "workflow-generator",
-    description: "Close the workflow generator without generating.",
-    onActivate: generatorModal.close,
-  });
-
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-auto pb-28 lg:overflow-hidden lg:pb-0">
       {/* Toolbar */}
@@ -620,16 +579,15 @@ export function WorkflowEditor({
           />
         </div>
         <Button
-          ref={generateButton.ref}
-          {...generateButton.agentProps}
+          ref={editInChatButton.ref}
+          {...editInChatButton.agentProps}
           variant="outline"
           size="sm"
-          onClick={generatorModal.open}
-          disabled={generating}
+          onClick={handleEditInChat}
         >
-          <Sparkles className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-          <span className="hidden sm:inline">Generate from prompt</span>
-          <span className="sm:hidden">Generate</span>
+          <ClipboardList className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+          <span className="hidden sm:inline">Edit in chat</span>
+          <span className="sm:hidden">Chat</span>
         </Button>
         <Button
           ref={formatButton.ref}
@@ -743,7 +701,7 @@ export function WorkflowEditor({
               <WorkflowGraphViewer
                 workflow={lastValidWorkflow}
                 loading={false}
-                isGenerating={generating}
+                isGenerating={false}
                 emptyStateHelpText="Draft in chat. Review the graph, runs, and logs here."
               />
             </div>
@@ -901,6 +859,22 @@ export function WorkflowEditor({
                         )}
                         {diagnosticsCopied ? "Copied" : "Copy diagnostics"}
                       </Button>
+                      <Button
+                        ref={troubleshootRunButton.ref}
+                        {...troubleshootRunButton.agentProps}
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-2xs"
+                        aria-label="Troubleshoot run in chat"
+                        onClick={handleTroubleshootInChat}
+                        disabled={!selectedExecution}
+                      >
+                        <AlertTriangle
+                          className="mr-0 h-3.5 w-3.5 sm:mr-1.5"
+                          aria-hidden
+                        />
+                        <span className="hidden sm:inline">Troubleshoot</span>
+                      </Button>
                     </div>
                     {selectedExecutionSummary.error && (
                       <div className="rounded-sm border border-danger/20 bg-danger/10 p-2 text-xs text-danger">
@@ -995,63 +969,6 @@ export function WorkflowEditor({
           </PagePanel>
         </div>
       </div>
-
-      {/* Generator modal */}
-      <Dialog
-        open={generatorOpen}
-        onOpenChange={(open) => {
-          if (!open && !generating) generatorModal.close();
-        }}
-      >
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Generate workflow from prompt</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Textarea
-              ref={generatorPromptField.ref}
-              {...generatorPromptField.agentProps}
-              value={generatorPrompt}
-              onChange={(e) => setGeneratorPrompt(e.target.value)}
-              placeholder="When a new starred email arrives in Gmail, post a summary in #ops on Slack."
-              rows={5}
-              autoFocus
-            />
-            {generatorError && (
-              <div className="rounded-sm border border-danger/20 bg-danger/10 p-2 text-xs text-danger">
-                {generatorError}
-              </div>
-            )}
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                ref={generatorCancelButton.ref}
-                {...generatorCancelButton.agentProps}
-                variant="ghost"
-                size="sm"
-                onClick={generatorModal.close}
-                disabled={generating}
-              >
-                Cancel
-              </Button>
-              <Button
-                ref={generatorSubmitButton.ref}
-                {...generatorSubmitButton.agentProps}
-                variant="default"
-                size="sm"
-                onClick={() => void handleGenerate()}
-                disabled={generating || !generatorPrompt.trim()}
-              >
-                {generating ? (
-                  <Spinner className="mr-1.5 h-3.5 w-3.5" />
-                ) : (
-                  <Sparkles className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-                )}
-                Generate
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

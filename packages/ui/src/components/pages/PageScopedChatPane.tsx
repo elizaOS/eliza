@@ -17,9 +17,9 @@ import type {
   ConversationMessage,
   ImageAttachment,
 } from "../../api/client-types";
+import { useBranding } from "../../config/branding";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useContinuousChat } from "../../hooks/useContinuousChat";
-import { useBranding } from "../../config/branding";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import { consumeAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import { useApp } from "../../state";
@@ -55,6 +55,7 @@ import {
   resetPageScopedConversation,
   resolvePageScopedConversation,
 } from "./page-scoped-conversations";
+import { dispatchWorkflowActionHandoff } from "./workflow-action-handoff";
 
 const CHAT_PREFILL_EVENT = "eliza:chat:prefill";
 
@@ -535,6 +536,7 @@ export function PageScopedChatPane({
             ),
           );
         }
+        dispatchWorkflowActionHandoff(response.actionResults);
         conversationAdapter?.onAfterSend?.();
         setAccountRequiredReason(null);
       } catch (error) {

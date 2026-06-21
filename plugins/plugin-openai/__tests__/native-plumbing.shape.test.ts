@@ -170,6 +170,22 @@ describe("OpenAI native text plumbing", () => {
     });
   }, 180_000);
 
+  it("honors a per-call model override before slot defaults", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: "ok",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(createRuntime(), {
+      prompt: "use the workflow model",
+      model: " gpt-oss-120b ",
+    });
+
+    const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.model).toEqual({ modelName: "gpt-oss-120b" });
+  });
+
   it("keeps streaming native tool-call plumbing in parity with non-streaming", async () => {
     const toolCalls = [{ toolName: "lookup", input: { q: "x" } }];
     const usage = { inputTokens: 7, outputTokens: 3, cachedInputTokens: 5 };
