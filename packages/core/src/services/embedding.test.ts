@@ -28,7 +28,7 @@ function makeRuntime(opts: { batch: boolean }): IAgentRuntime {
 }
 
 describe("EmbeddingGenerationService drain config", () => {
-	test("uses an accumulating drain and processBatch when a batch embedding model is registered", async () => {
+	test("uses the per-item drain even when a batch embedding model is registered", async () => {
 		const runtime = makeRuntime({ batch: true });
 		const service = (await EmbeddingGenerationService.start(
 			runtime,
@@ -37,8 +37,8 @@ describe("EmbeddingGenerationService drain config", () => {
 		// biome-ignore lint/suspicious/noExplicitAny: inspect the private queue config the service chose
 		const queue = (service as any).batchQueue;
 		expect(queue).toBeTruthy();
-		expect(queue.options.drainIntervalMs).toBeGreaterThanOrEqual(1000);
-		expect(typeof queue.options.processBatch).toBe("function");
+		expect(queue.options.drainIntervalMs).toBe(100);
+		expect(queue.options.processBatch).toBeUndefined();
 
 		await service.stop();
 	});

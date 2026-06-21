@@ -68,7 +68,7 @@ start, model won't download/run, a route won't render, cloud won't provision
 - **Route navigation.** Capacitor's WebView has no SPA fallback for nested
   paths, so a hard `page.goto('/apps/x')` 404s. The harness navigates
   client-side via the History API (`gotoRoute`), like a user tap.
-- **Smallest model.** `eliza-1-0_8b` (Q-quant, 32k ctx, ~556MB) — the smallest
+- **Smallest model.** `eliza-1-2b` (Q-quant, 128k ctx) — the smallest
   catalog tier. Node `fetch` chokes on HF's Xet LFS redirect; the orchestrator
   pre-caches via `curl`.
 

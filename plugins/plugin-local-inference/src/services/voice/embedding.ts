@@ -2,9 +2,9 @@
  * Local embedding wiring for Eliza-1 bundles.
  *
  * Per `packages/inference/AGENTS.md` §1:
- *   - On the `0_8b` and `2b` tiers the **embedding model IS the text backbone**,
- *     served with `--pooling last` — there is no separate `embedding/`
- *     GGUF and no duplicate parameters in the mobile/default tiers.
+ *   - On the `2b` tier (the entry/floor tier) the **embedding model IS the
+ *     text backbone**, served with `--pooling last` — there is no separate
+ *     `embedding/` GGUF and no duplicate parameters on the entry tier.
  *   - On `4b` and larger tiers, a dedicated
  *     `embedding/` GGUF region (Apache-2.0,
  *     1024-dim Matryoshka, 32k ctx) is acquired lazily through the same
@@ -96,7 +96,7 @@ function l2Normalize(vec: number[]): number[] {
 
 export type LocalEmbeddingSource =
 	| {
-			/** `0_8b` / `2b`: reuse the text backbone GGUF; serve with `--pooling last`. */
+			/** `2b` (entry tier): reuse the text backbone GGUF; serve with `--pooling last`. */
 			readonly kind: "pooled-text";
 			readonly textModelPath: string;
 			readonly poolingType: "last";
@@ -134,7 +134,6 @@ function firstGguf(dir: string): string | null {
  * parameters; larger tiers may use a dedicated embedding region.
  */
 export const POOLED_TEXT_EMBEDDING_TIERS: ReadonlySet<Eliza1TierId> = new Set([
-	"eliza-1-0_8b",
 	"eliza-1-2b",
 ]);
 
@@ -142,7 +141,7 @@ export const POOLED_TEXT_EMBEDDING_TIERS: ReadonlySet<Eliza1TierId> = new Set([
  * Resolve the embedding source for an activated Eliza-1 bundle.
  *
  * @param bundleRoot   Bundle directory on disk.
- * @param tierId       The Eliza-1 tier id (`eliza-1-0_8b`, ...).
+ * @param tierId       The Eliza-1 tier id (`eliza-1-2b`, ...).
  * @param textModelPath Absolute path of the activated text GGUF (needed for
  *                      the `pooled-text` case).
  *
@@ -207,8 +206,8 @@ export interface LocalEmbeddingRoute {
 	/**
 	 * `llama-server` flags for the embedding server process — always
 	 * `--embeddings --pooling last`. The embedding server is a lazily-started
-	 * sidecar over the route's GGUF (the text backbone on `0_8b` / `2b`, the
-	 * `embedding/` GGUF on larger tiers); see `embedding-server.ts`. The
+	 * sidecar over the route's GGUF (the text backbone on the `2b` entry tier,
+	 * the `embedding/` GGUF on larger tiers); see `embedding-server.ts`. The
 	 * chat `llama-server` is left untouched (completions-only) — these flags
 	 * do NOT go on it.
 	 */
@@ -230,8 +229,8 @@ export function buildLocalEmbeddingRoute(args: {
 		);
 	}
 	// Both modes serve through a sidecar `llama-server --embeddings --pooling
-	// last` (over the text GGUF on 0_8b / 2b, over the embedding/ GGUF on
-	// larger tiers). The chat server is never given these flags.
+	// last` (over the text GGUF on the 2b entry tier, over the embedding/ GGUF
+	// on larger tiers). The chat server is never given these flags.
 	const serverFlags = ["--embeddings", "--pooling", source.poolingType];
 	return {
 		tierId: args.tierId,

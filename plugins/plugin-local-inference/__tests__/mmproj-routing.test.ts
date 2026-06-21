@@ -197,12 +197,11 @@ describe("WS2 mmproj routing", () => {
 		);
 	});
 
-	it("plumbs mmproj for the 0_8b tier — the smallest vision-enabled bundle", async () => {
-		// WS2 flipped hasVision: true on 0_8b specifically because the
-		// 220 MB mmproj is the smallest practical projector and fits the
-		// 2 GB-floor low-tier-Android target. Validate the resolver
-		// honours that catalog flip.
-		const tier = "0_8b";
+	it("plumbs mmproj for the 2b tier — the smallest vision-enabled bundle", async () => {
+		// The 2B entry tier ships hasVision: true; the 220 MB mmproj is the
+		// smallest practical projector and fits the small-phone target.
+		// Validate the resolver honours that catalog flag.
+		const tier = "2b";
 		const bundle = makeTempBundle({ hasMmproj: true, tier });
 		const installed = installedModel({
 			id: `eliza-1-${tier}`,

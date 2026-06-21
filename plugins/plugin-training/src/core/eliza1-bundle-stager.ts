@@ -101,7 +101,7 @@ export function buildStageEliza1BundleArgs(
     "manifest",
     "stage_hf_eliza1_bundle.py",
   );
-  const args = [scriptPath, "--tier", options.tier ?? "0_8b"];
+  const args = [scriptPath, "--tier", options.tier ?? "2b"];
   if (options.repoId?.trim()) args.push("--repo-id", options.repoId.trim());
   if (options.localDir?.trim())
     args.push("--local-dir", resolve(options.localDir.trim()));
@@ -185,7 +185,7 @@ export async function stageEliza1Bundle(
       trainingStateRoot(),
       "models",
       "staged-bundles",
-      `${options.tier ?? "0_8b"}-${safeTimestamp(generatedAt)}`,
+      `${options.tier ?? "2b"}-${safeTimestamp(generatedAt)}`,
     );
   await mkdir(outputDir, { recursive: true });
   const proc = await collectProcess(command, args, trainingRoot);

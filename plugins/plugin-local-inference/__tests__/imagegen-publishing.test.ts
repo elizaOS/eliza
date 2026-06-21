@@ -235,7 +235,7 @@ describe("WS3 imagegen publishing pipeline", () => {
 		// path can hand back a model id that has no bundle entry.
 		const extras = loadExtras();
 		const expectedTiers = [
-			"eliza-1-0_8b",
+			"eliza-1-2b",
 			"eliza-1-2b",
 			"eliza-1-4b",
 			"eliza-1-9b",

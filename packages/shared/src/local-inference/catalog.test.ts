@@ -9,11 +9,10 @@ import {
   voiceQuantLadderForTier,
 } from "./catalog.js";
 
-const SMALL_TIERS = ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"] as const;
+const SMALL_TIERS = ["eliza-1-2b", "eliza-1-4b"] as const;
 const LARGE_TIERS = ["eliza-1-9b", "eliza-1-27b"] as const;
 const OMNIVOICE_TIERS = ELIZA_1_TIER_IDS;
 const EXPECTED_DISPLAY_NAMES: Record<string, string> = {
-  "eliza-1-0_8b": "eliza-1-0.8B",
   "eliza-1-2b": "eliza-1-2B",
   "eliza-1-4b": "eliza-1-4B",
   "eliza-1-9b": "eliza-1-9B",
@@ -21,7 +20,6 @@ const EXPECTED_DISPLAY_NAMES: Record<string, string> = {
   "eliza-1-27b-256k": "eliza-1-27B-256k",
 };
 const EXPECTED_CHAT_PARAMS: Record<string, string> = {
-  "eliza-1-0_8b": "0.8B",
   "eliza-1-2b": "2B",
   "eliza-1-4b": "4B",
   "eliza-1-9b": "9B",

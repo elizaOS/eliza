@@ -69,10 +69,6 @@ function isPng(buf: Buffer): boolean {
 }
 
 const PER_TIER_DEFAULT: Record<string, { modelId: string; file: string }> = {
-  "eliza-1-0_8b": {
-    modelId: "imagegen-sd-1_5-q5_0",
-    file: "imagegen/sd-1.5-Q5_0.gguf",
-  },
   "eliza-1-2b": {
     modelId: "imagegen-sd-1_5-q5_0",
     file: "imagegen/sd-1.5-Q5_0.gguf",

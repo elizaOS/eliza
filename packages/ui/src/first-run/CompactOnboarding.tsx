@@ -183,7 +183,7 @@ export function CompactOnboarding(): React.ReactElement {
                     htmlFor="onboarding-remote-password"
                     className="text-[12px] font-medium text-white/70"
                   >
-                    Password
+                    Access token
                   </label>
                   <input
                     id="onboarding-remote-password"
@@ -195,9 +195,13 @@ export function CompactOnboarding(): React.ReactElement {
                     onKeyDown={(e) => {
                       if (e.key === "Enter") void finishAndMaybeClose();
                     }}
-                    placeholder="Optional"
+                    placeholder="Leave blank to pair with a code"
                     className="w-full rounded-xl border border-white/25 bg-white/10 px-4 py-3 text-[15px] text-white outline-none transition-colors placeholder:text-white/40 focus:border-white/70 focus:bg-white/[0.14]"
                   />
+                  <p className="text-[11px] leading-relaxed text-white/45">
+                    The server's ELIZA_API_TOKEN. Leave blank to pair with a
+                    one-time code shown on the host.
+                  </p>
                 </div>
                 <div className="mt-1 flex items-center justify-between gap-3">
                   <button

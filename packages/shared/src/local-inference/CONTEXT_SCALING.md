@@ -40,7 +40,6 @@ Qwen3 dense base shapes (from each base model's `config.json`; the registry's
 
 | Eliza-1 tier      | base model        | layers | kv heads | head_dim | native ctx (`max_position_embeddings`) | GGUF (quant)        |
 | ----------------- | ----------------- | -----: | -------: | -------: | -------------------------------------: | ------------------- |
-| `eliza-1-0_8b`    | Qwen3.5-0.8B-Base   |     28 |        8 |      128 |                                 262144 | ~0.7 GB (Q4-class)  |
 | `eliza-1-2b`      | Qwen3.5-2B-Base     |     28 |        8 |      128 |                                 262144 | ~1.5 GB (Q4-class)  |
 | `eliza-1-4b`      | Qwen3.5-4B-Base     |     36 |        8 |      128 |                                 262144 | ~2.6 GB (Q4_K_M)    |
 | `eliza-1-9b`†     | Qwen3.5-9B        |      8‡ |        4 |      256 |                            128k target | ~5.4 GB (Q4_K_M)    |
@@ -216,14 +215,15 @@ the release contract by accident.
 
 How the catalog/harness handles low-RAM hosts today:
 
-- `FIRST_RUN_DEFAULT_MODEL_ID = "eliza-1-2b"` — the smallest tier that fits
-  "the broadest range of hardware (modern phone or laptop)". On first run with
-  no preference, that's what loads.
-- Hosts that can't fit `eliza-1-2b` fall back to `eliza-1-0_8b` via the
-  `mobile` ladder in `recommendation.ts`: `TEXT_SMALL: [0_8b, 2b]`,
-  `TEXT_LARGE: [2b, 0_8b]`. `canFit` runs `assessRamFit` against the device's
-  *total* RAM (mobile shares GPU memory with system RAM), with the OS headroom
-  reserve and a download-size guardrail (`wontFitRatio 0.8`, `tightRatio 0.65`).
+- `FIRST_RUN_DEFAULT_MODEL_ID = "eliza-1-4b"` — the smallest tier that is good
+  enough to ship as the default chat model. On first run with no preference,
+  that's what loads.
+- `eliza-1-2b` is the smallest/entry tier (the low-memory-phone floor); there is
+  no smaller fallback below it. Hosts that can't fit the first-run default fall
+  back toward `eliza-1-2b` via the `mobile` ladder in `recommendation.ts`.
+  `canFit` runs `assessRamFit` against the device's *total* RAM (mobile shares
+  GPU memory with system RAM), with the OS headroom reserve and a download-size
+  guardrail (`wontFitRatio 0.8`, `tightRatio 0.65`).
 - `assessRamFit` → `resolveRamBudget`: for an installed Eliza-1 bundle it reads
   `ramBudgetMb.{min,recommended}` from `eliza-1.manifest.json`; otherwise it
   synthesizes `recommendedMb = minRamGb + (compressed KV bytes/token ×

@@ -234,7 +234,7 @@ describe("local inference chat status", () => {
 
 	it("uses the desktop active-model service state for chat status", async () => {
 		serviceMock.setActiveState({
-			modelId: "eliza-1-0_8b",
+			modelId: "eliza-1-2b",
 			loadedAt: "2026-05-16T02:22:23.512Z",
 			status: "ready",
 			loadedContextSize: 131_072,
@@ -244,22 +244,22 @@ describe("local inference chat status", () => {
 		});
 
 		await expect(getLocalInferenceActiveSnapshot()).resolves.toMatchObject({
-			modelId: "eliza-1-0_8b",
+			modelId: "eliza-1-2b",
 			status: "ready",
 			loadedContextSize: 131_072,
 			loadedGpuLayers: 99,
 		});
-		expect(getLocalInferenceActiveModelId()).toBe("eliza-1-0_8b");
+		expect(getLocalInferenceActiveModelId()).toBe("eliza-1-2b");
 
 		const status = await getLocalInferenceChatStatus("status");
 		expect(status.localInference).toMatchObject({
 			intent: "status",
 			status: "ready",
-			modelId: "eliza-1-0_8b",
-			activeModelId: "eliza-1-0_8b",
+			modelId: "eliza-1-2b",
+			activeModelId: "eliza-1-2b",
 			provider: "eliza-local-inference",
 		});
-		expect(status.text).toContain("Model: eliza-1-0_8b.");
+		expect(status.text).toContain("Model: eliza-1-2b.");
 		expect(status.text).not.toMatch(/none is loaded|waiting to be activated/i);
 	});
 
@@ -268,9 +268,9 @@ describe("local inference chat status", () => {
 		const modelPath = path.join(
 			root,
 			"models",
-			"eliza-1-0_8b.bundle",
+			"eliza-1-2b.bundle",
 			"text",
-			"eliza-1-0_8b-32k.gguf",
+			"eliza-1-2b-32k.gguf",
 		);
 		mkdirSync(path.dirname(modelPath), { recursive: true });
 		writeFileSync(modelPath, "GGUF");
@@ -280,8 +280,8 @@ describe("local inference chat status", () => {
 				version: 1,
 				models: [
 					{
-						id: "eliza-1-0_8b",
-						displayName: "eliza-1-0_8b",
+						id: "eliza-1-2b",
+						displayName: "eliza-1-2b",
 						path: modelPath,
 						runtimeRole: "chat",
 					},
@@ -301,7 +301,7 @@ describe("local inference chat status", () => {
 		);
 
 		await expect(getLocalInferenceActiveSnapshot()).resolves.toMatchObject({
-			modelId: "eliza-1-0_8b",
+			modelId: "eliza-1-2b",
 			status: "ready",
 			loadedAt: "2026-05-16T02:09:05.833Z",
 		});

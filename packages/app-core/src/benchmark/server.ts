@@ -2038,7 +2038,7 @@ export async function startBenchmarkServer() {
   // registers a `localInferenceLoader` service, so its TEXT_EMBEDDING handler
   // falls all the way through to the zero-vector path even when an Eliza-1
   // bundle is installed locally. Calling it here makes the bench-server use
-  // the eliza-1 embedding model (text/eliza-1-0_8b-32k.gguf) when present,
+  // the eliza-1 embedding model (text/eliza-1-2b-32k.gguf) when present,
   // and harmlessly skips handler upgrades when no backend is available —
   // matching the main app's behavior so benchmark runs reflect real
   // retrieval semantics.

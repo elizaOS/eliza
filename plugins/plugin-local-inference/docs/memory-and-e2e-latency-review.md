@@ -26,7 +26,7 @@ audio-first-played`. Derived headline metrics: **TTFT** (vad→first token),
 
 ### Measured-today path (Mac, fused harness) — where time goes
 
-Approx wall-clock for first audio (0.8B tier, from harness defaults + code):
+Approx wall-clock for first audio (2B entry tier, from harness defaults + code):
 
 | Stage | Span | Typical | Blocking? |
 |---|---|---|---|
@@ -99,11 +99,11 @@ time-budget flush (700 ms default).**
     session resets chat history each turn → full prompt re-prefill. Conversation-
     pinned `cacheKey` slots avoid this; voice partials do not.
 14. **MTP is a runtime/engine concern, with catalog metadata limited to 2B+**:
-    the 0.8B tier is intentionally non-MTP. 2B+ tiers use **same-file MTP**:
-    the NextN head is embedded in the text GGUF, and the catalog carries no
-    separate drafter component. Correctness note (verified): the "only the fused
-    backend speculates" behavior lives in the engine/backend; the catalog only
-    advertises the draft window for tiers that carry a usable head.
+    active 2B+ tiers use **same-file MTP**: the NextN head is embedded in the
+    text GGUF, and the catalog carries no separate drafter component.
+    Correctness note (verified): the "only the fused backend speculates"
+    behavior lives in the engine/backend; the catalog only advertises the draft
+    window for tiers that carry a usable head.
 
 ---
 
@@ -118,8 +118,8 @@ The user asked specifically about 8/12/16/20/24/48/128 GB. Proposed resident set
 
 | Device RAM | Text tier | Voice resident set (no evict) | Notes |
 |---|---|---|---|
-| **8 GB** (iPhone/base Mac) | 0.8B Q4 (non-MTP) | ASR(0.6B) **xor** TTS resident; VAD(2 MB) always; embedding via text `--pooling last` | Tight: keep VAD+text hot; ASR and TTS alternate but pre-warm the next. F16 KV remains the safe shipped path until a head_dim=256 KV-quant route lands. **This is the eviction-sensitive tier.** |
-| **12 GB** | 0.8B/2B | text + ASR + TTS(kokoro) + VAD all resident | GOOD: no per-turn swaps; vision projector co-resident with text. |
+| **8 GB** (iPhone/base Mac) | 2B Q4 + same-file MTP | ASR(0.6B) **xor** TTS resident; VAD(2 MB) always; embedding via text `--pooling last` | Tight: keep VAD+text hot; ASR and TTS alternate but pre-warm the next. F16 KV remains the safe shipped path until a head_dim=256 KV-quant route lands. **This is the eviction-sensitive tier.** |
+| **12 GB** | 2B | text + ASR + TTS(kokoro) + VAD all resident | GOOD: no per-turn swaps; vision projector co-resident with text. |
 | **16 GB** | 2B/4B | + vision mmproj + OmniVoice co-resident | full multimodal hot. |
 | **20–24 GB** | 4B (MAX) | + image-gen warm, larger KV / longer ctx | all models parallelized + resident. |
 | **48 GB** | 9B | everything resident + multi-context (parallel rooms) | run drafter+target+voice with headroom. |

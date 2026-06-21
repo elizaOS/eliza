@@ -8,7 +8,7 @@
  * prompt-only JSON. The model's structured output is unwrapped to JSON for
  * parity with the eliza-1 modes.
  *
- * Default model is `llama3.1-8b` — the baseline for eliza-1 tiers 0.8B
+ * Default model is `llama3.1-8b` — the baseline for eliza-1 tiers 2B
  * through 9B. For the 27B tier (which should be benched on an H200), pass
  * `--cerebras-model gpt-oss-120b` or construct with `{ model: "gpt-oss-120b" }`.
  *

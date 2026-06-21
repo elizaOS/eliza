@@ -40,9 +40,9 @@ const log = (m) => console.log(`[android-e2e] ${m}`);
 
 // Smallest local tier; same id the smoke + catalog use.
 const SMOKE_MODEL = {
-  id: "eliza-1-0_8b",
-  file: "eliza-1-0_8b-32k.gguf",
-  url: "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/0_8b/text/eliza-1-0_8b-32k.gguf?download=true",
+  id: "eliza-1-2b",
+  file: "eliza-1-2b-128k.gguf",
+  url: "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/text/eliza-1-2b-128k.gguf?download=true",
   cacheDir: path.join(
     process.env.HOME ?? process.env.USERPROFILE ?? ".",
     ".cache/eliza/android-smoke-models",

@@ -176,7 +176,7 @@ function matrixSourceForReport(
 }
 
 function dryRunCaseSample(options: ActionBenchmarkRunOptions, trajectoryDir: string) {
-  const tier = stringSetting(options.tier) ?? "0_8b";
+  const tier = stringSetting(options.tier) ?? "2b";
   const variant = stringSetting(options.variant) ?? "trained";
   const modelId = stringSetting(options.modelId) ?? stringSetting(options.runtimeModel);
   return {

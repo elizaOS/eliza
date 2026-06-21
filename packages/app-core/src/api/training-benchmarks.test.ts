@@ -247,7 +247,7 @@ describe("training-benchmarks read API", () => {
     await handleTrainingBenchmarksRoute(
       fakeReq({
         pathname: "/api/training/benchmarks/scores",
-        query: { model_id: "eliza-1-0_8b", benchmark: "mmlu" },
+        query: { model_id: "eliza-1-2b", benchmark: "mmlu" },
       }),
       res.res,
       STATE,
@@ -256,7 +256,7 @@ describe("training-benchmarks read API", () => {
     expect(res.status()).toBe(200);
     const body = res.body<BenchmarkScoresResponse>();
     expect(body.schema).toBe(ELIZA_BENCHMARK_SCORES_SCHEMA);
-    expect(body.modelId).toBe("eliza-1-0_8b");
+    expect(body.modelId).toBe("eliza-1-2b");
     expect(body.benchmark).toBe("mmlu");
     expect(body.dbReady).toBe(false);
     expect(body.runs).toEqual([]);

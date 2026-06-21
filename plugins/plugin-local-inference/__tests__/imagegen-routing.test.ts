@@ -9,7 +9,7 @@
  *   2. `eliza/packages/chip/ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`
  *
  * This test asserts they agree, plus that the small/desktop split lands
- * where the bundle plan expects (sd-1.5 for 0_8b/2b/4b; z-image-turbo
+ * where the bundle plan expects (sd-1.5 for 2b/4b; z-image-turbo
  * for 9b/27b/27b-256k).
  */
 
@@ -43,7 +43,7 @@ interface ExtrasShape {
 
 describe("WS3 routing — tier → default image-gen model", () => {
 	it("mobile tiers default to sd-1.5 Q5_0", () => {
-		for (const tier of ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"]) {
+		for (const tier of ["eliza-1-2b", "eliza-1-4b"]) {
 			const entry = TIER_TO_DEFAULT_IMAGE_MODEL[tier];
 			expect(entry?.modelId).toBe("imagegen-sd-1_5-q5_0");
 			expect(entry?.file).toBe("imagegen/sd-1.5-Q5_0.gguf");

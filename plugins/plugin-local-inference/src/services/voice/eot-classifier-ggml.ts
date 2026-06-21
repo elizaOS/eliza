@@ -38,7 +38,7 @@
  * --- Planned LoRA hot-swap path ---
  *
  * The LiveKit GGUF is a separate 66 MB (EN) or 396 MB (intl) resident
- * model. The chat target model (eliza-1-{0_8b,2b,4b}) is already
+ * model. The chat target model (eliza-1-{2b,4b}) is already
  * loaded for conversation — its next-token distribution after the
  * chat-template-formatted partial transcript provides exactly the
  * same `P(<|im_end|>)` signal. A LoRA adapter (rank 8, ~5-10 MB)
@@ -144,7 +144,7 @@ export function turnDetectorGgufForTier(tierId: string): {
 	const bare = tierId.startsWith("eliza-1-")
 		? tierId.slice("eliza-1-".length)
 		: tierId;
-	if (bare === "0_8b" || bare === "2b") {
+	if (bare === "2b") {
 		return {
 			hfPath: DEFAULT_LIVEKIT_TURN_DETECTOR_GGUF_EN,
 			variant: "en",

@@ -10,9 +10,9 @@ const now = new Date().toISOString();
 
 const installed: InstalledModel[] = [
   {
-    id: "eliza-1-0_8b",
-    displayName: "Eliza-1 0.8B",
-    path: "/models/eliza-1-0_8b.gguf",
+    id: "eliza-1-2b",
+    displayName: "Eliza-1 2B",
+    path: "/models/eliza-1-2b.gguf",
     sizeBytes: 820_000_000,
     installedAt: now,
     lastUsedAt: now,
@@ -42,7 +42,7 @@ const installed: InstalledModel[] = [
 const autoAssignments: ModelAssignments = {};
 
 const customAssignments: ModelAssignments = {
-  TEXT_SMALL: "eliza-1-0_8b",
+  TEXT_SMALL: "eliza-1-2b",
   TEXT_LARGE: "eliza-1-3b",
   TEXT_TO_SPEECH: "llama-3.1-8b-q4",
 };
@@ -79,11 +79,11 @@ export const CustomAssignments: Story = {
   args: { assignments: customAssignments },
 };
 
-/** Only the Eliza-1 0.8B model is installed — every slot can pick just it or auto. */
+/** Only the Eliza-1 2B model is installed — every slot can pick just it or auto. */
 export const SingleModelInstalled: Story = {
   args: {
     installed: [installed[0]],
-    assignments: { TEXT_LARGE: "eliza-1-0_8b" },
+    assignments: { TEXT_LARGE: "eliza-1-2b" },
   },
 };
 

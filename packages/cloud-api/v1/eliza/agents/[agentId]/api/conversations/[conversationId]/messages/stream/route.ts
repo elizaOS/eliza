@@ -14,12 +14,21 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * agent runs in-Worker with no agent server, so there is no upstream SSE socket to
  * proxy — instead we run the SAME billed in-Worker turn the non-stream send uses
  * (`elizaSandboxService.bridgeStream` → shared-tier branch → bridgeSharedMessageSend)
- * and emit its reply as a single-chunk SSE response. `bridge()` (non-stream) and
- * `bridgeStream()` share the identical findRunningSandbox gate + bridgeSharedMessageSend
- * handler, so any shared agent that serves the non-stream send also serves this.
+ * and emit its reply as SSE. `bridge()` (non-stream) and `bridgeStream()` share the
+ * identical findRunningSandbox gate + bridgeSharedMessageSend handler, so any shared
+ * agent that serves the non-stream send also serves this.
  *
- * The response body is streamed directly (never buffered): we return the
- * `bridgeStream` Response as-is so a Cloudflare-edge SSE read passes through.
+ * Body shape — NOT token-by-token for the shared tier. bridgeSharedMessageSend
+ * produces a fully-materialized reply string, which bridgeStream wraps in a SINGLE
+ * SSE frame (one `chunk` + one `done`) via createBridgeSseTextResponse. So a shared
+ * reply arrives as one buffered frame, not incrementally. DEDICATED (container)
+ * agents are different: their bridgeStream branch proxies a live upstream SSE socket
+ * and forwards real token-by-token frames.
+ *
+ * This route is a true pass-through either way: it returns the `bridgeStream`
+ * Response body as-is and never awaits/reads it, so whatever the body yields
+ * (single shared frame, or a dedicated agent's token stream) flushes to the
+ * Cloudflare edge incrementally without buffering here.
  * Shared-tier + org-scoped (resolveSharedAgent gates auth, org-scope, tier).
  */
 const CORS_METHODS = "POST, OPTIONS";
@@ -93,7 +102,9 @@ app.post("/", async (c) => {
     );
   }
 
-  // Stream the bridge SSE body straight through — do NOT buffer it.
+  // Return the bridge SSE body as-is — do NOT await/read it here. A shared-tier
+  // body is a single pre-built frame; a dedicated agent's is a live token stream.
+  // Either way the route forwards it untouched and the edge flushes incrementally.
   return applyCorsHeaders(
     new Response(upstream.body, { headers: STREAM_HEADERS }),
     CORS_METHODS,

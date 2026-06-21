@@ -33,8 +33,8 @@ on:
       tier:
         description: "Eliza-1 tier to profile"
         type: choice
-        options: [eliza-1-0_8b, eliza-1-2b, eliza-1-4b]
-        default: eliza-1-0_8b
+        options: [eliza-1-2b, eliza-1-4b]
+        default: eliza-1-2b
       run_android:
         description: "Run the Android device lane (self-hosted arm64)."
         type: boolean

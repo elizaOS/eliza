@@ -45,9 +45,6 @@ function safeTimestamp(value: string): string {
 }
 
 const TRAINING_TIER_KEYS: Record<string, string> = {
-  "0_8b": "qwen3.5-0.8b",
-  "0.8b": "qwen3.5-0.8b",
-  "0-8b": "qwen3.5-0.8b",
   "2b": "qwen3.5-2b",
   "4b": "qwen3.5-4b",
   "9b": "qwen3.5-9b",

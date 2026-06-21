@@ -4,7 +4,7 @@ import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
-import { type BatchItemOutcome, BatchQueue } from "../utils/batch-queue";
+import { BatchQueue } from "../utils/batch-queue";
 
 interface EmbeddingQueueItem {
 	memory: Memory;
@@ -17,15 +17,6 @@ interface EmbeddingQueueItem {
  * This service listens for EMBEDDING_GENERATION_REQUESTED events
  * and processes them in a queue to avoid blocking the main runtime
  */
-
-const EMBEDDING_BATCH_DRAIN_INTERVAL_MS = (() => {
-	const raw = Number(
-		typeof process !== "undefined"
-			? process.env.ELIZA_EMBEDDING_DRAIN_INTERVAL_MS
-			: undefined,
-	);
-	return Number.isFinite(raw) && raw > 0 ? raw : 1000;
-})();
 
 export class EmbeddingGenerationService extends Service {
 	static serviceType = "embedding-generation";
@@ -94,23 +85,15 @@ export class EmbeddingGenerationService extends Service {
 		// model as other services so we do not maintain another bespoke queue + task stack here.
 		// Task system owns WHEN (repeat EMBEDDING_DRAIN tick); we own WHAT (dequeue, embed, persist).
 		// No maxSize — bottleneck is embedding I/O, not queue length.
-		const supportsBatchEmbedding = !!this.runtime.getModel(
-			ModelType.TEXT_EMBEDDING_BATCH,
-		);
 		this.batchQueue = new BatchQueue<EmbeddingQueueItem>({
 			name: EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
 			taskDescription: "Embedding generation drain",
 			batchSize: 10,
-			drainIntervalMs: supportsBatchEmbedding
-				? EMBEDDING_BATCH_DRAIN_INTERVAL_MS
-				: 100,
+			drainIntervalMs: 100,
 			getPriority: (item) => item.priority,
 			maxParallel: 10,
 			maxRetriesAfterFailure: 3,
 			process: (item) => this.generateEmbedding(item),
-			processBatch: supportsBatchEmbedding
-				? (items) => this.generateBatchEmbeddings(items)
-				: undefined,
 			onExhausted: async (item, error) => {
 				await this.runtime.log({
 					entityId: this.runtime.agentId,
@@ -266,78 +249,6 @@ export class EmbeddingGenerationService extends Service {
 			);
 			throw error;
 		}
-	}
-
-	private async generateBatchEmbeddings(
-		items: EmbeddingQueueItem[],
-	): Promise<BatchItemOutcome<EmbeddingQueueItem>[]> {
-		const outcomes: BatchItemOutcome<EmbeddingQueueItem>[] = [];
-		const toEmbed: { item: EmbeddingQueueItem; text: string }[] = [];
-		for (const item of items) {
-			const text = item.memory.content?.text;
-			if (!text || item.memory.embedding) {
-				outcomes.push({ item, success: true, retryCount: 0 });
-				continue;
-			}
-			toEmbed.push({ item, text });
-		}
-		if (toEmbed.length === 0) return outcomes;
-
-		const startTime = Date.now();
-		const embeddings = await this.runtime.useModel(
-			ModelType.TEXT_EMBEDDING_BATCH,
-			{
-				texts: toEmbed.map((entry) => entry.text),
-			},
-		);
-		const duration = Date.now() - startTime;
-
-		if (!Array.isArray(embeddings) || embeddings.length !== toEmbed.length) {
-			throw new Error(
-				`[embedding] batch returned ${
-					Array.isArray(embeddings) ? embeddings.length : "non-array"
-				} vectors for ${toEmbed.length} texts`,
-			);
-		}
-
-		for (let i = 0; i < toEmbed.length; i++) {
-			const { item } = toEmbed[i];
-			const embedding = embeddings[i];
-			const { memory } = item;
-			if (memory.id) {
-				await this.runtime.updateMemory({ id: memory.id, embedding });
-				memory.embedding = embedding;
-				await this.runtime.log({
-					entityId: this.runtime.agentId,
-					roomId: memory.roomId || this.runtime.agentId,
-					type: "embedding_event",
-					body: {
-						runId: item.runId,
-						memoryId: memory.id,
-						status: "completed",
-						duration,
-						source: "embeddingService:batch",
-					},
-				});
-				await this.runtime.emitEvent(EventType.EMBEDDING_GENERATION_COMPLETED, {
-					runtime: this.runtime,
-					memory: { ...memory, embedding },
-					source: "embeddingService",
-				});
-			}
-			outcomes.push({ item, success: true, retryCount: 0 });
-		}
-
-		this.runtime.logger.debug(
-			{
-				src: "plugin:basic-capabilities:service:embedding",
-				agentId: this.runtime.agentId,
-				count: toEmbed.length,
-				durationMs: duration,
-			},
-			"Generated batch embeddings",
-		);
-		return outcomes;
 	}
 
 	async stop(): Promise<void> {

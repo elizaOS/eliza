@@ -16,7 +16,6 @@ import { assessCatalogModelFit } from "../../services/local-inference/recommenda
 export type FitLevel = "fits" | "tight" | "wontfit";
 
 const ELIZA_1_DISPLAY_NAMES: Record<string, string> = {
-  "eliza-1-0_8b": "eliza-1-0_8b",
   "eliza-1-2b": "eliza-1-2b",
   "eliza-1-4b": "eliza-1-4b",
   "eliza-1-9b": "eliza-1-9b",

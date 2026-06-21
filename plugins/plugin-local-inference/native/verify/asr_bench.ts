@@ -32,7 +32,7 @@
  * Usage:
  *   bun packages/inference/verify/asr_bench.ts \
  *     --dylib ~/.eliza/local-inference/bin/mtp/linux-x64-cpu-fused/libelizainference.so \
- *     --bundle ~/.eliza/local-inference/models/eliza-1-0_8b.bundle \
+ *     --bundle ~/.eliza/local-inference/models/eliza-1-2b.bundle \
  *     --backend cpu --out packages/inference/verify/bench_results/asr_2026-05-11.json
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -89,7 +89,7 @@ const dylib = arg(
   "--dylib",
   defaultDylib(backend),
 );
-const bundle = arg("--bundle", `${HOME}/.eliza/local-inference/models/eliza-1-0_8b.bundle`);
+const bundle = arg("--bundle", `${HOME}/.eliza/local-inference/models/eliza-1-2b.bundle`);
 const outPath = arg(
   "--out",
   path.resolve(__dirname, "bench_results", `tts_asr_self_labelled_${new Date().toISOString().slice(0, 10)}.json`),

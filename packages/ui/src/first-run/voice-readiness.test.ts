@@ -112,22 +112,22 @@ describe("prepareFirstRunVoiceAndTranscription", () => {
     mockClient.getLocalInferenceHub.mockResolvedValue(
       hubSnapshot([
         {
-          id: "eliza-1-0_8b",
+          id: "eliza-1-2b",
           source: "eliza-download",
-          bundleRoot: "/tmp/models/eliza-1-0_8b.bundle",
+          bundleRoot: "/tmp/models/eliza-1-2b.bundle",
         },
       ]),
     );
     mockClient.setLocalInferenceActive.mockResolvedValue({
       status: "ready",
-      modelId: "eliza-1-0_8b",
+      modelId: "eliza-1-2b",
     });
 
     const readiness = await prepareFirstRunVoiceAndTranscription();
 
     expect(readiness.status).toBe("ready");
     expect(mockClient.setLocalInferenceActive).toHaveBeenCalledWith(
-      "eliza-1-0_8b",
+      "eliza-1-2b",
     );
     expect(mockClient.startLocalInferenceDownload).not.toHaveBeenCalled();
   });

@@ -15,8 +15,8 @@
  *
  * The catalog (`packages/shared/src/local-inference/catalog.ts`) declares
  * a single 1024-dim Matryoshka embedding region for every tier that has
- * `hasEmbedding: true` (every tier except 0_8b/2b, which serve embeddings
- * by pooling the text backbone via the lazily-started embedding sidecar).
+ * `hasEmbedding: true` (every tier except the 2b entry tier, which serves
+ * embeddings by pooling the text backbone via the lazily-started sidecar).
  * The shape is enforced by `EMBEDDING_FULL_DIM = 1024` and
  * `isValidEmbeddingDim`. The provider passes the bytes through verbatim
  * — this test asserts that pass-through, not the dimensionality of the

@@ -36,25 +36,6 @@ const TIER_SNAPSHOTS: TierSnapshot[] = [
     capabilities: ["text-generation"],
   },
   {
-    tier: "0_8b",
-    params: "0.8B",
-    displayName: "Eliza-1 0.8B",
-    sizeGb: 0.5,
-    minRamGb: 2,
-    contextLength: 131072,
-    activeTier: true,
-    roles: ["chat", "voice", "tts", "stt", "vad", "vision", "image"],
-    capabilities: [
-      "text-generation",
-      "mtp",
-      "text-to-speech",
-      "speech-to-text",
-      "voice-activity-detection",
-      "vision",
-      "image-generation",
-    ],
-  },
-  {
     tier: "1_7b",
     params: "1.7B",
     displayName: "Eliza-1 1.7B",
@@ -316,7 +297,6 @@ export function getEliza1CatalogSource(): {
     localCatalogPath: LOCAL_CATALOG_PATH,
     localCatalogPresent: present,
     activeTierIds: [
-      "eliza-1-0_8b",
       "eliza-1-2b",
       "eliza-1-4b",
       "eliza-1-9b",

@@ -260,18 +260,6 @@ const IOS_NATIVE_LLAMA_PRIORITY = 0;
 const ELIZA_1_HF_REPO = "elizaos/eliza-1";
 const IOS_NATIVE_CATALOG_MODELS: NativeCatalogModelEntry[] = [
 	{
-		id: "eliza-1-0_8b",
-		displayName: "eliza-1-0.8B",
-		hfRepo: ELIZA_1_HF_REPO,
-		hfPath: "bundles/0_8b/text/eliza-1-0_8b-128k.gguf",
-		ggufFile: "text/eliza-1-0_8b-128k.gguf",
-		sizeGb: 0.5,
-		minRamGb: 2,
-		params: "0.8B",
-		bucket: "small",
-		contextLength: 131_072,
-	},
-	{
 		id: "eliza-1-2b",
 		displayName: "eliza-1-2B",
 		hfRepo: ELIZA_1_HF_REPO,
@@ -1957,10 +1945,10 @@ function nativeCatalogModels(): Array<Record<string, unknown>> {
 				displayName: model.displayName ?? model.id,
 				hfRepo: model.hfRepo ?? "elizaos/eliza-1",
 				ggufFile: path.basename(model.path),
-				params: model.id.includes("0_8b") ? "0.8B" : "2B",
+				params: "2B",
 				quant: "Q8_0",
 				sizeGb,
-				minRamGb: model.id.includes("0_8b") ? 2 : 4,
+				minRamGb: 4,
 				category: "chat",
 				bucket: sizeGb <= 1 ? "small" : "mid",
 				blurb: "Installed Eliza-1 on-device GGUF bundle.",

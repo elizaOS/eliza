@@ -475,14 +475,54 @@ export class PgliteVaultImpl implements Vault {
       try {
         return await PGlite.create(dataDir);
       } catch (retryErr) {
-        throw new Error(
-          `vault: PGlite initialization failed after clearing a stale lock: ${
-            retryErr instanceof Error ? retryErr.message : String(retryErr)
-          }. If this persists the dir may be corrupt — stop Eliza, then move or remove ${dataDir} and restart.`,
-          { cause: retryErr },
-        );
+        // The open path is exhausted (lock cleared, retry still fails — typically
+        // a WASM `Aborted()` from a PGlite corrupted by a kill mid-write). A
+        // corrupt vault is unreadable, so its secrets are already lost; bricking
+        // the agent on every boot helps no one. Recover by moving the corrupt dir
+        // aside (preserved) and recreating a fresh vault.
+        return await this.recoverCorruptPgliteDir(dataDir, retryErr);
       }
     }
+  }
+
+  /**
+   * Last-resort recovery when a PGlite data dir is unrecoverably corrupt (open
+   * fails even after clearing a stale lock). The dir is renamed to
+   * `<dataDir>.corrupt-<ts>` (NOT deleted — preserved for forensics / manual
+   * recovery) and a fresh vault is created so the agent can boot instead of
+   * crash-looping. Stored secrets in the corrupt copy are unrecoverable; the
+   * user re-enters keys — the same outcome as the documented manual fix, but
+   * automatic. Opt out with `ELIZA_VAULT_NO_AUTO_RECOVER=1` to keep the old
+   * fail-closed behavior.
+   */
+  private async recoverCorruptPgliteDir(
+    dataDir: string,
+    cause: unknown,
+  ): Promise<PGlite> {
+    if (process.env.ELIZA_VAULT_NO_AUTO_RECOVER === "1") {
+      throw new Error(
+        `vault: PGlite initialization failed after clearing a stale lock: ${
+          cause instanceof Error ? cause.message : String(cause)
+        }. The dir appears corrupt — stop Eliza, then move or remove ${dataDir} and restart (or unset ELIZA_VAULT_NO_AUTO_RECOVER to auto-recover).`,
+        { cause },
+      );
+    }
+    const movedAside = `${dataDir}.corrupt-${Date.now()}`;
+    try {
+      await fs.rename(dataDir, movedAside);
+    } catch (renameErr) {
+      throw new Error(
+        `vault: ${dataDir} is corrupt and could not be moved aside (${
+          renameErr instanceof Error ? renameErr.message : String(renameErr)
+        }); remove it manually and restart.`,
+        { cause },
+      );
+    }
+    this.opts.logger?.warn(
+      "vault: PGlite data dir was corrupt; moved it aside and recreated a fresh vault. Stored secrets in the corrupt copy are unrecoverable — re-enter your keys. The corrupt copy is preserved for manual recovery.",
+      { dataDir, movedAside },
+    );
+    return await PGlite.create(dataDir);
   }
 
   /**

@@ -19,7 +19,7 @@
  * every backend. This test pins the per-tier components catalogue as a
  * single source of truth.
  *
- * On 0_8b the embedding model is the text backbone pooled with
+ * On the 2b entry tier the embedding model is the text backbone pooled with
  * `--pooling last` (see `services/voice/embedding.ts`), so the catalog
  * does NOT declare a `components.embedding`. The test mirrors that
  * exception explicitly.
@@ -38,13 +38,12 @@ import {
  * embeddings on these tiers are served by pooling the text backbone with
  * `--pooling last` via a lazily-started llama-server embedding sidecar
  * (see `services/voice/embedding-server.ts`). Today this is only
- * `eliza-1-0_8b` (the smallest tier, where carrying a separate embedding
- * GGUF would blow the RAM budget on the 2 GB-floor devices it targets).
+ * `eliza-1-2b` (the smallest/entry tier, where carrying a separate embedding
+ * GGUF would blow the RAM budget on the small phones it targets).
  * Every other tier ships `embedding/eliza-1-embedding.gguf` in the
  * bundle.
  */
 const TIERS_WITHOUT_DEDICATED_EMBEDDING: ReadonlySet<string> = new Set([
-	"eliza-1-0_8b",
 	"eliza-1-2b",
 ]);
 const MTP_TIERS: ReadonlySet<string> = new Set(ELIZA_1_MTP_TIER_IDS);
@@ -85,7 +84,7 @@ describe("per-tier text + embedding bundle resolution", () => {
 			it("declares the embedding GGUF component on tiers that ship a dedicated 1024-dim region", () => {
 				const components = model?.sourceModel?.components;
 				if (TIERS_WITHOUT_DEDICATED_EMBEDDING.has(tierId)) {
-					// 0_8b serves embeddings by pooling the text backbone.
+					// 2b serves embeddings by pooling the text backbone.
 					expect(components?.embedding).toBeUndefined();
 				} else {
 					expect(components?.embedding).toBeTruthy();

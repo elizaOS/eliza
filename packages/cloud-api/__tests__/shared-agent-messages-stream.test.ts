@@ -4,10 +4,16 @@
  *
  * A shared agent runs in-Worker (no agent server), so this route runs the same
  * billed turn the non-stream send uses (elizaSandboxService.bridgeStream → shared
- * branch) and streams its SSE reply body straight through — never buffered. The
+ * branch) and returns its SSE reply body as-is — the route never awaits/buffers
+ * res.body. NOTE: a shared-tier reply is a SINGLE pre-built SSE frame (the reply
+ * string is fully materialized before bridgeStream wraps it), not token-by-token;
+ * only DEDICATED (container) agents stream incrementally. The route forwarding is
+ * a true pass-through regardless, which the multi-chunk test below proves. The
  * load-bearing invariants:
  *   - the route forwards message.send (text + roomId = conversationId) to bridgeStream;
  *   - the SSE body is returned as-is with text/event-stream headers;
+ *   - chunks are forwarded incrementally — the route does not read the body to
+ *     completion before responding;
  *   - it reflects the Eliza app WebView origin (https://localhost) + credentials so
  *     the native browser fetch can read the stream cross-origin;
  *   - a missing/empty stream degrades to an SSE `error` frame (200), not a 404.
@@ -106,6 +112,52 @@ describe("shared agent messages/stream", () => {
     expect(call[1]).toBe(ORG);
     expect(call[2].method).toBe("message.send");
     expect(call[2].params).toMatchObject({ text: "say hi", roomId: AGENT });
+  });
+
+  test("forwards a multi-chunk body incrementally — the route never awaits/buffers res.body", async () => {
+    // Prove the route's pass-through contract: it returns `upstream.body` as-is
+    // and never reads it to completion. A dedicated-agent reply is a live
+    // token-by-token upstream SSE socket; here we model that with a
+    // ReadableStream we feed by hand and never close, then assert the route
+    // surfaces frame #1 to the reader BEFORE frame #2 is enqueued. If the route
+    // buffered (awaited res.text()/arrayBuffer()), this read would hang.
+    let enqueue!: (s: string) => void;
+    let closeStream!: () => void;
+    const upstreamBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const enc = new TextEncoder();
+        enqueue = (s) => controller.enqueue(enc.encode(s));
+        closeStream = () => controller.close();
+      },
+    });
+    bridgeStream.mockResolvedValue(
+      new Response(upstreamBody, {
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    );
+
+    const res = await postStream({ text: "stream please" });
+    expect(res.status).toBe(200);
+    expect(res.body).not.toBeNull();
+
+    const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+    const dec = new TextDecoder();
+
+    enqueue('event: chunk\ndata: {"text":"to"}\n\n');
+    const first = await reader.read();
+    expect(first.done).toBe(false);
+    expect(dec.decode(first.value)).toContain('"to"');
+
+    // Only now produce the second frame. Reading it proves frame #1 reached the
+    // client before frame #2 existed — i.e. true incremental forwarding.
+    enqueue('event: chunk\ndata: {"text":"ken"}\n\n');
+    const second = await reader.read();
+    expect(second.done).toBe(false);
+    expect(dec.decode(second.value)).toContain('"ken"');
+
+    closeStream();
+    const end = await reader.read();
+    expect(end.done).toBe(true);
   });
 
   test("reflects the app WebView origin + credentials for a credentialed SSE read", async () => {

@@ -8,11 +8,11 @@
  * budgets/results/gate contract as `loadperf`.
  *
  *   node packages/benchmarks/mobile-resource/run-workbench.mjs \
- *     --platform=android --tier=eliza-1-0_8b --device-class=android-phone
+ *     --platform=android --tier=eliza-1-2b --device-class=android-phone
  *
  * Flags / env:
  *   --platform=android|ios        (env MOBILE_RESOURCE_PLATFORM) — auto-detected when omitted
- *   --tier=eliza-1-0_8b|2b|4b     (env MOBILE_RESOURCE_TIER, default eliza-1-0_8b)
+ *   --tier=eliza-1-2b|4b          (env MOBILE_RESOURCE_TIER, default eliza-1-2b)
  *   --device-class=<key>          budgets.json key (default derived from platform)
  *   --workloads=a,b,c             default: cold-load,single-turn,sustained-chat
  *   --base-url=http://127.0.0.1:31337   agent API (env MOBILE_RESOURCE_BASE_URL / ELIZA_API_PORT)
@@ -54,7 +54,7 @@ function parseArgs() {
   const apiPort = Number(process.env.ELIZA_API_PORT ?? 31337);
   return {
     platform: get("platform", process.env.MOBILE_RESOURCE_PLATFORM) ?? null,
-    tier: get("tier", process.env.MOBILE_RESOURCE_TIER ?? "eliza-1-0_8b"),
+    tier: get("tier", process.env.MOBILE_RESOURCE_TIER ?? "eliza-1-2b"),
     deviceClass: get("device-class", null),
     workloads: get("workloads", DEFAULT_WORKLOAD_IDS.join(","))
       .split(",")

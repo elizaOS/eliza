@@ -36,9 +36,9 @@ export const ELIZA_1_MANIFEST_SCHEMA_URL =
 export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
-// Tiers — size-ordered across the active Eliza-1 bundles.
+// Tiers — size-ordered across the active Eliza-1 bundles. 2b is the
+// smallest/entry tier.
 export const ELIZA_1_TIERS = [
-	"0_8b",
 	"2b",
 	"4b",
 	"9b",
@@ -134,11 +134,10 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 //   model variant lands.
 //
 // Q4 is the release text quant baseline. TCQ is part of the release contract
-// for the full text ladder, including the smallest 0.8B and 2B bundles.
+// for the full text ladder, including the smallest 2B bundle.
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-	"0_8b": ["turboquant_q4", "turbo3_tcq"],
 	"2b": ["turboquant_q4", "turbo3_tcq"],
 	"4b": ["turboquant_q4", "turbo3_tcq"],
 	"9b": ["turboquant_q4", "turbo3_tcq"],
@@ -150,7 +149,6 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
 export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Backend>>
 > = {
-	"0_8b": ["metal", "vulkan", "cpu"],
 	"2b": ["metal", "vulkan", "cpu"],
 	"4b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 	"9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
@@ -224,7 +222,7 @@ export const Eliza1FilesSchema = z.object({
 	// embedding model (Qwen3-Embedding-GGUF on non-lite tiers), a
 	// Silero-VAD GGUF, and an optional openWakeWord GGUF (the combined GGUF
 	// carries the mel filterbank + speech embedding model + every per-phrase
-	// head). All three are optional in the schema — the 0_8b tier
+	// head). All three are optional in the schema — the 2b entry tier
 	// intentionally omits the dedicated embedding (pools from text backbone)
 	// and a tier may ship without wake-word support.
 	//
@@ -248,7 +246,7 @@ export const Eliza1FilesSchema = z.object({
 	// Tier mapping is data-driven (see
 	// `stage_turn_detector` in
 	// `packages/training/scripts/manifest/stage_eliza1_bundle_assets.py`):
-	// 0_8b/2b ship the EN-only SmolLM2-135M distill; 4b/9b/27b ship the
+	// 2b ships the EN-only SmolLM2-135M distill; 4b/9b/27b ship the
 	// multilingual pruned Qwen2.5-0.5B.
 	turn: z.array(Eliza1FileEntrySchema).optional(),
 	// Eliza-1 EOT LoRA adapter — optional, complements `turn`. When
@@ -268,7 +266,7 @@ export const Eliza1FilesSchema = z.object({
 	// `isFinal` transcript snapshots, and fuses the output with the Stage-1
 	// text-emotion field via the single fusion point in `emotion-attribution.ts`.
 	// All tiers ship the same Wav2Small student (the on-device budget is
-	// dominated by the LM, not this small head); a 0_8b bundle may still
+	// dominated by the LM, not this small head); a 2b entry bundle may still
 	// choose to omit it to save the cold-start cost.
 	emotion: z.array(Eliza1FileEntrySchema).optional(),
 });

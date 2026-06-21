@@ -157,7 +157,7 @@ export class HeuristicEotClassifier implements EotClassifier {
 
 /**
  * Resolve which upstream revision a given Eliza-1 tier should bundle.
- * Mobile/small tiers (`0_8b`, `2b`) get the English-only variant;
+ * Mobile/small tiers (`2b`, the entry tier) get the English-only variant;
  * desktop/server tiers (`4b`+) get the multilingual variant.
  *
  * Accepts both bare tier ids (`"4b"`) and prefixed catalog ids
@@ -174,7 +174,7 @@ export function turnDetectorRevisionForTier(
 	const bare = tierId.startsWith("eliza-1-")
 		? tierId.slice("eliza-1-".length)
 		: tierId;
-	if (bare === "0_8b" || bare === "2b") {
+	if (bare === "2b") {
 		return LIVEKIT_TURN_DETECTOR_EN_REVISION;
 	}
 	return LIVEKIT_TURN_DETECTOR_INTL_REVISION;

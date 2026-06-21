@@ -206,6 +206,6 @@ describe("lookupBaseline", () => {
   });
 
   it("returns null for an unregistered pair", () => {
-    expect(lookupBaseline("eliza-1-0_8b", "screenspot")).toBeNull();
+    expect(lookupBaseline("eliza-1-unregistered", "screenspot")).toBeNull();
   });
 });

@@ -99,7 +99,6 @@ describe("local inference catalog", () => {
 
 	it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
 		const expected: Record<string, number> = {
-			"eliza-1-0_8b": 131072,
 			"eliza-1-2b": 131072,
 			"eliza-1-4b": 131072,
 			"eliza-1-9b": 131072,
@@ -187,11 +186,10 @@ describe("local inference catalog", () => {
 			]);
 		}
 
-		// Mobile-class tiers (0_8b/2b/4b) ship Kokoro only — it is smaller +
+		// Mobile-class tiers (2b/4b) ship Kokoro only — it is smaller +
 		// faster and is the exclusive mobile TTS. 9B keeps OmniVoice first with
 		// Kokoro bundled; large tiers are OmniVoice-only.
 		// See catalog.ts ELIZA_1_VOICE_BACKENDS for the policy rationale.
-		expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual(["kokoro"]);
 		expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual(["kokoro"]);
 		expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual(["kokoro"]);
 		expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual([

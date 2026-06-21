@@ -4,14 +4,6 @@
   "deviceClasses": {
     "ios-phone": {
       "_note": "iPhone tier (baseline device TBD per #8800 open question). Jetsam ceiling ~3-4 GB phys_footprint.",
-      "eliza-1-0_8b": {
-        "minDecodeTokensPerSecond": null,
-        "minPrefillTokensPerSecond": null,
-        "maxTtftMs": null,
-        "maxPeakRssMb": 1400,
-        "maxSteadyRssMb": 1200,
-        "maxBatteryDrainPct": null
-      },
       "eliza-1-2b": {
         "minDecodeTokensPerSecond": null,
         "minPrefillTokensPerSecond": null,
@@ -31,14 +23,6 @@
     },
     "android-phone": {
       "_note": "Self-hosted arm64 device runner (Pixel-class per android-device-e2e.yml). Foreground-service memory ceiling is OEM-dependent.",
-      "eliza-1-0_8b": {
-        "minDecodeTokensPerSecond": null,
-        "minPrefillTokensPerSecond": null,
-        "maxTtftMs": null,
-        "maxPeakRssMb": 1400,
-        "maxSteadyRssMb": 1200,
-        "maxBatteryDrainPct": null
-      },
       "eliza-1-2b": {
         "minDecodeTokensPerSecond": null,
         "minPrefillTokensPerSecond": null,

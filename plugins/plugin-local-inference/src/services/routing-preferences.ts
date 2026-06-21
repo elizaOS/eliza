@@ -6,6 +6,8 @@
  */
 export {
 	DEFAULT_ROUTING_POLICY,
+	isRoutingPolicy,
+	ROUTING_POLICIES,
 	type RoutingPolicy,
 	type RoutingPreferences,
 	readRoutingPreferences,

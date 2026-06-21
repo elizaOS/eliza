@@ -1367,6 +1367,33 @@ export function MessageContent({
     );
   }
 
+  // Transient server failures (the agent was rate-limited or the provider had a
+  // hiccup) render the graceful message plus a one-tap Retry that resends the
+  // preceding user turn, so a stalled turn isn't a dead end the user has to
+  // retype. `no_provider`/`insufficient_credits` are excluded — a retry can't
+  // fix those (they have their own Settings / billing affordances).
+  if (
+    message.failureKind === "rate_limited" ||
+    message.failureKind === "provider_issue"
+  ) {
+    return (
+      <div className="border border-warn/30 bg-warn/5 rounded-sm p-3 text-sm">
+        <div className="text-muted whitespace-pre-wrap mb-2">
+          {message.text}
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => {
+            if (message.id) app.handleChatRetry(message.id);
+          }}
+        >
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
   // Fast path: single plain-text segment (most messages)
   if (segments.length === 1 && segments[0].kind === "text") {
     return (

@@ -10,11 +10,18 @@
  *   - manual       — honour `preferredProvider`; when no pref set, fall
  *                    through to the runtime's native priority order
  *                    (highest registered priority wins).
+ *   - auto         — capability-driven: consult the device-tier assessment.
+ *                    When the device can comfortably run local inference
+ *                    (recommended mode "local", or a MAX/GOOD tier) AND a
+ *                    local handler is registered for the slot, pick local.
+ *                    Otherwise pick the highest-priority cloud provider.
  *   - cheapest     — pick the provider with the lowest per-token cost.
  *   - fastest      — pick the provider with the lowest tracked p50 latency
  *                    (needs at least a few samples; falls back to native).
  *   - prefer-local — try local first; if it fails or has no handler,
- *                    fall through to the next-best non-local.
+ *                    fall through to the next-best non-local. A POOR device
+ *                    tier (cannot run a local LM) softly demotes the local
+ *                    pick so an unusable on-device path isn't forced.
  *   - round-robin  — distribute load evenly across eligible providers.
  *
  * Latency is tracked in a ring buffer per provider per model type. Cost
@@ -23,10 +30,55 @@
  * rather than dollar-accurate billing.
  */
 
+import type { DeviceTierAssessment } from "./device-tier";
 import type { HandlerRegistration } from "./handler-registry";
 import type { RoutingPolicy } from "./routing-preferences";
 
 const RING_SIZE = 32;
+
+/** Provider IDs that serve inference on-device (no network round-trip). */
+const LOCAL_PROVIDERS: ReadonlySet<string> = new Set([
+	"eliza-local-inference",
+	"capacitor-llama",
+	"eliza-device-bridge",
+]);
+
+function isLocalProvider(provider: string): boolean {
+	return LOCAL_PROVIDERS.has(provider);
+}
+
+/**
+ * The first registered local handler in priority order, or null. Prefers the
+ * in-process / Capacitor backends over the device bridge, matching the
+ * `prefer-local` precedence.
+ */
+function findLocalCandidate(
+	candidates: HandlerRegistration[],
+): HandlerRegistration | null {
+	const inProcess = candidates.find(
+		(c) =>
+			c.provider === "eliza-local-inference" ||
+			c.provider === "capacitor-llama",
+	);
+	if (inProcess) return inProcess;
+	return candidates.find((c) => c.provider === "eliza-device-bridge") ?? null;
+}
+
+/**
+ * Whether the device is strong enough to default to local inference. True when
+ * the tier classifier recommends a local-first mode or lands the device in the
+ * top two tiers (MAX/GOOD). A POOR device — or one the classifier steers to
+ * cloud — returns false so `auto` routes to cloud.
+ */
+function deviceFavoursLocal(assessment: DeviceTierAssessment | null): boolean {
+	if (!assessment) return false;
+	if (!assessment.canRunLocalLm) return false;
+	return (
+		assessment.recommendedMode === "local" ||
+		assessment.tier === "MAX" ||
+		assessment.tier === "GOOD"
+	);
+}
 
 interface LatencySample {
 	durationMs: number;
@@ -141,6 +193,12 @@ class PolicyEngine {
 		candidates: HandlerRegistration[];
 		/** Provider ID of the router itself — always excluded from candidates. */
 		selfProvider: string;
+		/**
+		 * Device-capability assessment from `classifyDeviceTier()`. Consulted by
+		 * the `auto` policy and used as a soft hint by `prefer-local`. Null when
+		 * the host hasn't probed hardware yet — `auto` then falls back to cloud.
+		 */
+		deviceTier?: DeviceTierAssessment | null;
 	}): HandlerRegistration | null {
 		const eligible = args.candidates
 			.filter((c) => c.provider !== args.selfProvider)
@@ -161,6 +219,17 @@ class PolicyEngine {
 				}
 				// Fallback: highest native priority.
 				return eligible[0] ?? null;
+			}
+			case "auto": {
+				// Capability-driven: route to local only when the device can
+				// comfortably run it AND a local handler is registered for the
+				// slot. Otherwise pick the highest-priority cloud provider.
+				const local = findLocalCandidate(eligible);
+				if (local && deviceFavoursLocal(args.deviceTier ?? null)) {
+					return local;
+				}
+				const cloud = eligible.find((c) => !isLocalProvider(c.provider));
+				return cloud ?? eligible[0] ?? null;
 			}
 			case "cheapest": {
 				const ranked = [...eligible].sort((a, b) => {
@@ -186,17 +255,17 @@ class PolicyEngine {
 				return ranked[0] ?? null;
 			}
 			case "prefer-local": {
-				const local = eligible.find(
-					(c) =>
-						c.provider === "eliza-local-inference" ||
-						c.provider === "capacitor-llama",
-				);
-				if (local) return local;
-				const bridge = eligible.find(
-					(c) => c.provider === "eliza-device-bridge",
-				);
-				if (bridge) return bridge;
-				return eligible[0] ?? null;
+				const local = findLocalCandidate(eligible);
+				// Soft capability hint: a known-POOR device (cannot run a local
+				// LM) demotes the local pick so we don't force an unusable
+				// on-device path. When no assessment is present, keep the
+				// historical local-first behaviour.
+				const tier = args.deviceTier ?? null;
+				const localUnviable = tier !== null && !tier.canRunLocalLm;
+				if (local && !localUnviable) return local;
+				const cloud = eligible.find((c) => !isLocalProvider(c.provider));
+				if (cloud) return cloud;
+				return local ?? eligible[0] ?? null;
 			}
 			case "round-robin": {
 				// Pick the one least-recently-picked. Ties broken by priority.

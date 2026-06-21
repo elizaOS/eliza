@@ -1,7 +1,7 @@
 {
   "$schema": "../profile-config.schema.json",
   "description": "AOSP arm64 profiling matrix. Targets the cuttlefish image and connected arm64 devices. Includes the QJL leg so reports continue to document kernel availability gaps when a target cannot load it.",
-  "models": ["eliza-1-0_8b", "eliza-1-2b"],
+  "models": ["eliza-1-2b", "eliza-1-4b"],
   "kvCacheConfigs": [
     { "name": "baseline-fp16", "k": "f16", "v": "f16" },
     { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" },
@@ -9,7 +9,7 @@
   ],
   "mtpConfigs": [
     { "name": "no-mtp", "drafter": null },
-    { "name": "mtp-eliza-1-0_8b", "drafter": "eliza-1-0_8b" }
+    { "name": "mtp-eliza-1-2b", "drafter": "eliza-1-2b" }
   ],
   "prompts": [
     {

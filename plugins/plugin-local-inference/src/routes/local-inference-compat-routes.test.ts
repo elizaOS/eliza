@@ -366,7 +366,7 @@ describe("POST /api/local-inference/active", () => {
 		);
 		setActiveMock.mockRejectedValue(
 			new CandidateModelActivationError({
-				modelId: "eliza-1-0_8b",
+				modelId: "eliza-1-2b",
 				manifestVersion: "1.0.0-candidate.1",
 				failedEvals: ["textEval", "voiceRtf", "asrWer", "expressive"],
 			}),
@@ -377,7 +377,7 @@ describe("POST /api/local-inference/active", () => {
 			fakeReq({
 				method: "POST",
 				pathname: "/api/local-inference/active",
-				body: { modelId: "eliza-1-0_8b" },
+				body: { modelId: "eliza-1-2b" },
 			}),
 			res.res,
 			STATE,
@@ -390,7 +390,7 @@ describe("POST /api/local-inference/active", () => {
 			manifestVersion: string;
 			failedEvals: string[];
 		};
-		expect(body.modelId).toBe("eliza-1-0_8b");
+		expect(body.modelId).toBe("eliza-1-2b");
 		expect(body.manifestVersion).toBe("1.0.0-candidate.1");
 		expect(body.failedEvals).toContain("textEval");
 		expect(body.failedEvals).toContain("voiceRtf");

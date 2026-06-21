@@ -146,7 +146,7 @@ async function inspectActiveOptimizations(args) {
     const { findCatalogModel, FIRST_RUN_DEFAULT_MODEL_ID } = await import(
       "../../shared/src/local-inference/catalog.ts"
     );
-    // The duet harness passes `args.modelId` (e.g. `eliza-1-0_8b`); the
+    // The duet harness passes `args.modelId` (e.g. `eliza-1-2b`); the
     // interactive harness leaves it unset → the first-run default.
     catalogEntry = findCatalogModel(
       args?.modelId ?? FIRST_RUN_DEFAULT_MODEL_ID,

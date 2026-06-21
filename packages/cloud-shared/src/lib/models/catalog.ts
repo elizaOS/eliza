@@ -40,7 +40,7 @@ export interface SelectorModel {
   free?: boolean;
 }
 
-export const BITROUTER_RECOMMENDED_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
+export const BITROUTER_NITRO_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
 export const BITROUTER_DEFAULT_FREE_MODEL = "openai/gpt-oss-120b:free";
 export const CEREBRAS_DEFAULT_TEXT_SMALL_MODEL = "gpt-oss-120b";
 export const CEREBRAS_DEFAULT_TEXT_LARGE_MODEL = "zai-glm-4.7";
@@ -98,7 +98,7 @@ const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
     recommended: true,
   },
   {
-    id: BITROUTER_RECOMMENDED_TEXT_MODEL,
+    id: BITROUTER_NITRO_TEXT_MODEL,
     object: "model",
     created: 0,
     owned_by: "openai",
@@ -741,7 +741,7 @@ export function getGroqCatalogModel(modelId: string): CatalogModel | null {
  * Maps gateway model IDs to BitRouter free-tier models.
  */
 export const BITROUTER_FREE_MODEL_MAP: Record<string, string> = {
-  [BITROUTER_RECOMMENDED_TEXT_MODEL]: BITROUTER_DEFAULT_FREE_MODEL,
+  [BITROUTER_NITRO_TEXT_MODEL]: BITROUTER_DEFAULT_FREE_MODEL,
   "openai/gpt-oss-120b": BITROUTER_DEFAULT_FREE_MODEL,
   "openai/gpt-4o": BITROUTER_DEFAULT_FREE_MODEL,
   "openai/gpt-5-mini": BITROUTER_DEFAULT_FREE_MODEL,

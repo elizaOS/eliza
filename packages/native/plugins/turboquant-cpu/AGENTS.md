@@ -55,7 +55,7 @@ The smoke test must print `[turboquant_smoke] PASS` and exit 0.
 ## Current tier coverage (W3 quant-matrix — 2026-05-14)
 
 This library is the user-space half of TBQ3/TBQ4 V-cache support.
-Every shipping Eliza-1 tier (`0_8b`, `2b`, `4b`, `9b`, `27b`,
+Every shipping Eliza-1 tier (`2b`, `4b`, `9b`, `27b`,
 `27b-256k`) defaults to QJL K + Q4_POLAR V at >8k context
 and falls back to QJL K + TBQ3_0 V at ≤8k context (see
 `packages/shared/src/local-inference/CONTEXT_SCALING.md` table 1 +
@@ -67,7 +67,6 @@ metadata writer used by tooling:
 
 | Tier         | TBQ3_0 V-cache | TBQ4_0 W-cache | TBQ3_TCQ K (≥64k ctx) |
 |--------------|---------------:|---------------:|----------------------:|
-| eliza-1-0_8b |          ✓ shipped | n/a (Q4_K_M weights default) | n/a |
 | eliza-1-2b   |          ✓ shipped | n/a | n/a |
 | eliza-1-4b   |          ✓ shipped | n/a | required ≥65k |
 | eliza-1-9b   |          ✓ shipped | ✓ buildable via fused_turboquant_apply | required ≥65k |

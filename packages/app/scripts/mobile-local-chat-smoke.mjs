@@ -39,9 +39,9 @@ const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_FULL_BUN_PREWARM_RESULT_KEY = "eliza:ios-full-bun-prewarm:result";
 const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
 const ANDROID_LOCAL_AGENT_IPC_BASE = IOS_LOCAL_AGENT_IPC_BASE;
-const IOS_FULL_BUN_SMOKE_MODEL_ID = "eliza-1-0_8b";
+const IOS_FULL_BUN_SMOKE_MODEL_ID = "eliza-1-2b";
 const IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH =
-  "models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf";
+  "models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf";
 // Cap the on-device context window. The bundled eliza-1 GGUF advertises a 128k
 // max context; loading it at full width allocates a multi-GB KV cache that is
 // impractically slow (and OOMs) on a phone/simulator, so the first reply never
@@ -111,19 +111,20 @@ const ANDROID_SMOKE_MODEL_CONTEXT_SIZE = Number.parseInt(
   10,
 );
 const ANDROID_SMOKE_MODEL_ID =
-  process.env.ANDROID_SMOKE_MODEL_ID?.trim() || "eliza-1-0_8b";
+  process.env.ANDROID_SMOKE_MODEL_ID?.trim() || "eliza-1-2b";
 const ANDROID_SMOKE_MODEL_RELATIVE_PATH =
   process.env.ANDROID_SMOKE_MODEL_RELATIVE_PATH?.trim() ||
-  "bundles/0_8b/text/eliza-1-0_8b-32k.gguf";
+  "bundles/2b/text/eliza-1-2b-128k.gguf";
 const ANDROID_SMOKE_MODEL_FILE =
-  process.env.ANDROID_SMOKE_MODEL_FILE?.trim() || "eliza-1-0_8b-32k.gguf";
+  process.env.ANDROID_SMOKE_MODEL_FILE?.trim() || "eliza-1-2b-128k.gguf";
+// Size/sha defaults are unset for the 2B entry tier — set them via env to
+// re-enable the exact-match download verification against a known artifact.
 const ANDROID_SMOKE_MODEL_SIZE_BYTES = Number.parseInt(
-  process.env.ANDROID_SMOKE_MODEL_SIZE_BYTES?.trim() || "556982432",
+  process.env.ANDROID_SMOKE_MODEL_SIZE_BYTES?.trim() || "",
   10,
 );
 const ANDROID_SMOKE_MODEL_SHA256 =
-  process.env.ANDROID_SMOKE_MODEL_SHA256?.trim() ||
-  "9d8472987aed5b36a0d167543a695bcbf349939445ca5382a4245219829f4581";
+  process.env.ANDROID_SMOKE_MODEL_SHA256?.trim() || "";
 const ANDROID_SMOKE_MODEL_URL =
   process.env.ANDROID_SMOKE_MODEL_URL?.trim() ||
   `https://huggingface.co/elizaos/eliza-1/resolve/main/${ANDROID_SMOKE_MODEL_RELATIVE_PATH.split(

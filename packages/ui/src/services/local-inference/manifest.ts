@@ -1,6 +1,6 @@
 import type { CpuFeatureProbe } from "@elizaos/shared";
 
-export type Eliza1Tier = "0_8b" | "2b" | "4b" | "9b" | "27b" | "27b-256k";
+export type Eliza1Tier = "2b" | "4b" | "9b" | "27b" | "27b-256k";
 
 export type Eliza1Backend = "cpu" | "metal" | "cuda" | "vulkan" | "rocm";
 
@@ -51,7 +51,6 @@ export interface Eliza1Manifest {
 export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Backend>>
 > = {
-  "0_8b": ["cpu", "metal", "cuda", "vulkan"],
   "2b": ["cpu", "metal", "cuda", "vulkan"],
   "4b": ["cpu", "metal", "cuda", "vulkan"],
   "9b": ["cpu", "metal", "cuda", "vulkan"],

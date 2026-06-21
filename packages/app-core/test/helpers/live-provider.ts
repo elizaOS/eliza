@@ -225,7 +225,7 @@ const PROVIDERS: Array<{
     defaultBaseUrl: "http://localhost:11434/v1",
     smallModelEnvVar: "OPENAI_SMALL_MODEL",
     largeModelEnvVar: "OPENAI_LARGE_MODEL",
-    defaultSmallModel: "eliza-1-0_8b",
+    defaultSmallModel: "eliza-1-2b",
     defaultLargeModel: "eliza-1-2b",
   },
 ];

@@ -25,9 +25,9 @@
 //
 // APK size impact (Q4_K_M quants):
 //   eliza-1-2B                   ~1.2 GB
-//   eliza-1-0.8B                   ~0.5 GB
+//   kokoro voice + preset        ~0.2 GB
 //   --------------------------------------
-//   total                          ~1.7 GB
+//   total                          ~1.4 GB
 //
 // Opt out for builders who want to download at runtime instead:
 //   --skip-bundled-models       (passed by build-aosp.mjs)
@@ -56,8 +56,8 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
  * eliza/packages/app-core/src/services/local-inference/catalog.ts so the
  * runtime registry treats them as known catalog models, not orphans.
  *
- * The Android image bundles the two mobile-friendly chat tiers so first boot
- * can pick 2B on modern devices and fall back to 0.8B on tight RAM.
+ * The Android image bundles the 2B chat tier — the smallest/entry tier and the
+ * small-phone floor — so first boot has a local chat model on tight RAM.
  *
  * Sizes are sanity-checked at download time. If HuggingFace serves
  * a smaller file (e.g. partial download, repo deleted, replaced) the
@@ -74,17 +74,6 @@ const CHAT_MODEL_ELIZA_1_MOBILE = {
   role: "chat",
 };
 
-const CHAT_MODEL_ELIZA_1_LITE = {
-  id: "eliza-1-0_8b",
-  displayName: "eliza-1-0.8B",
-  hfRepo: "elizaos/eliza-1",
-  hfPath: "bundles/0_8b/text/eliza-1-0_8b-128k.gguf",
-  ggufFile: "text/eliza-1-0_8b-128k.gguf",
-  expectedMinBytes: 300 * 1024 * 1024,
-  expectedMaxBytes: 800 * 1024 * 1024,
-  role: "chat",
-};
-
 // Kokoro-82M voice — the on-device TTS voice. Without it the bundle has no
 // tts/ model, so the runtime can't synthesize and the app falls back to the
 // platform TextToSpeech (the "android voice"). Kokoro is the small/fast voice
@@ -96,7 +85,7 @@ const VOICE_MODEL_KOKORO = {
   id: "eliza-1-kokoro",
   displayName: "Eliza-1 Voice (Kokoro)",
   hfRepo: "elizaos/eliza-1",
-  hfPath: "bundles/0_8b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+  hfPath: "bundles/2b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
   ggufFile: "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
   expectedMinBytes: 150 * 1024 * 1024,
   expectedMaxBytes: 200 * 1024 * 1024,
@@ -116,7 +105,6 @@ const VOICE_PRESET_KOKORO = {
 
 export const DEFAULT_MODELS = [
   CHAT_MODEL_ELIZA_1_MOBILE,
-  CHAT_MODEL_ELIZA_1_LITE,
   VOICE_MODEL_KOKORO,
   VOICE_PRESET_KOKORO,
 ];

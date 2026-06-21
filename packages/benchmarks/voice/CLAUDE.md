@@ -76,7 +76,7 @@ count and exits 1 on any failure.
 
 ## Notes
 
-- Full E2E requires the eliza-1-0_8b.bundle at `~/.eliza/local-inference/models/`
+- Full E2E requires the eliza-1-2b.bundle at `~/.eliza/local-inference/models/`
   and the compiled `libvoice_classifier.dylib` + `omnivoice-tts` binary.
 - Reports write to `packages/benchmarks/voice/reports/` at runtime (not in git).
 - Not registered in `registry/commands.py` — no orchestrator `--benchmarks` ID.

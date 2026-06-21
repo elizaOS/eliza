@@ -120,13 +120,13 @@ describe("ElizaClient desktop status RPC fallback", () => {
       getRuntimeSnapshot: vi.fn(() => new Promise(() => undefined)),
     });
     const { client, request } = makeClientWithTransport({
-      "/api/agent/self-status": { state: "running", model: "eliza-1-0_8b" },
+      "/api/agent/self-status": { state: "running", model: "eliza-1-2b" },
       "/api/runtime?depth=1&maxArrayLength=2": { ok: true },
     });
 
     await expect(client.getAgentSelfStatus()).resolves.toEqual({
       state: "running",
-      model: "eliza-1-0_8b",
+      model: "eliza-1-2b",
     });
     await expect(
       client.getRuntimeSnapshot({ depth: 1, maxArrayLength: 2 }),

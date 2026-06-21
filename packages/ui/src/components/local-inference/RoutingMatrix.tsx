@@ -32,6 +32,13 @@ const POLICIES: Array<{
     hint: "Use the preferred provider below.",
   },
   {
+    value: "auto",
+    labelKey: "routingmatrix.policy.auto.label",
+    label: "Auto (by device)",
+    hintKey: "routingmatrix.policy.auto.hint",
+    hint: "Run local when this device can handle it, else cloud.",
+  },
+  {
     value: "cheapest",
     labelKey: "routingmatrix.policy.cheapest.label",
     label: "Cheapest",

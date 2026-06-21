@@ -449,18 +449,18 @@ describe("iOS local-agent local inference flow", () => {
     const kernel = await loadKernel({
       availableModels: [
         {
-          name: "eliza-1-0_8b-128k.gguf",
-          path: "/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+          name: "eliza-1-2b-128k.gguf",
+          path: "/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
           size: 600_000_000,
         },
         {
           name: "kokoro-82m-v1_0-Q4_K_M.gguf",
-          path: "/models/eliza-1-0_8b.bundle/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+          path: "/models/eliza-1-2b.bundle/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
           size: 200_000_000,
         },
         {
           name: "af_bella.bin",
-          path: "/models/eliza-1-0_8b.bundle/tts/kokoro/voices/af_bella.bin",
+          path: "/models/eliza-1-2b.bundle/tts/kokoro/voices/af_bella.bin",
           size: 500_000,
         },
       ],
@@ -482,7 +482,7 @@ describe("iOS local-agent local inference flow", () => {
     expect(hub.voiceReadiness).toMatchObject({
       status: "unavailable",
       installedFiles: 2,
-      modelId: "eliza-1-0_8b",
+      modelId: "eliza-1-2b",
     });
     expect(hub.voiceReadiness?.message).toContain(
       "missing the iOS local voice playback engine",

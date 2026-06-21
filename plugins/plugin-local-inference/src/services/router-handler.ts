@@ -68,9 +68,11 @@ import {
 	NoModelProviderConfiguredError,
 } from "@elizaos/core";
 import { readEffectiveAssignments } from "./assignments";
+import { classifyDeviceTier, type DeviceTierAssessment } from "./device-tier";
 import { localInferenceEngine } from "./engine";
 import type { HandlerRegistration } from "./handler-registry";
 import { handlerRegistry } from "./handler-registry";
+import { probeHardware } from "./hardware";
 import { policyEngine } from "./routing-policy";
 import {
 	DEFAULT_ROUTING_POLICY,
@@ -85,6 +87,27 @@ export const ROUTER_PROVIDER = "eliza-router";
  * they can register with Infinity — unlikely in practice.
  */
 const ROUTER_PRIORITY = Number.MAX_SAFE_INTEGER;
+
+/**
+ * The device-tier assessment drives the `auto` policy (and softly hints
+ * `prefer-local`). Probing hardware is cheap but not free, so cache the
+ * assessment for a short window — long enough to avoid re-probing on every
+ * model call, short enough that free-RAM demotion stays roughly current.
+ */
+const DEVICE_TIER_TTL_MS = 30_000;
+let cachedDeviceTier: { at: number; assessment: DeviceTierAssessment } | null =
+	null;
+
+async function resolveDeviceTier(): Promise<DeviceTierAssessment | null> {
+	const now = Date.now();
+	if (cachedDeviceTier && now - cachedDeviceTier.at < DEVICE_TIER_TTL_MS) {
+		return cachedDeviceTier.assessment;
+	}
+	const probe = await probeHardware();
+	const assessment = classifyDeviceTier(probe);
+	cachedDeviceTier = { at: now, assessment };
+	return assessment;
+}
 
 function readBooleanEnv(name: string): boolean {
 	const value =
@@ -246,6 +269,13 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 				? registeredCandidates
 				: getRuntimeModelCandidates(runtime, modelType),
 		);
+
+		// Only the capability-aware policies need a hardware assessment.
+		const deviceTier =
+			policy === "auto" || policy === "prefer-local"
+				? await resolveDeviceTier()
+				: null;
+
 		const failedProviders = new Set<string>();
 		let lastError: unknown = null;
 
@@ -259,6 +289,7 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 				preferredProvider: preferred,
 				candidates: remaining,
 				selfProvider: ROUTER_PROVIDER,
+				deviceTier,
 			});
 
 			if (!pick) {

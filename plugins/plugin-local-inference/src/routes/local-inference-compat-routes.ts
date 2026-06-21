@@ -27,7 +27,8 @@ import {
 import { tryGetMemoryArbiter } from "../services/memory-arbiter";
 import { snapshotProviders } from "../services/providers";
 import {
-	type RoutingPolicy,
+	isRoutingPolicy,
+	ROUTING_POLICIES,
 	readRoutingPreferences,
 	setPolicy,
 	setPreferredProvider,
@@ -495,25 +496,12 @@ export async function handleLocalInferenceCompatRoutes(
 			return true;
 		}
 		const raw = body.policy;
-		const validPolicies: RoutingPolicy[] = [
-			"manual",
-			"cheapest",
-			"fastest",
-			"prefer-local",
-			"round-robin",
-		];
-		const policy =
-			raw === null
-				? null
-				: typeof raw === "string" &&
-						validPolicies.includes(raw as RoutingPolicy)
-					? (raw as RoutingPolicy)
-					: null;
+		const policy = raw === null ? null : isRoutingPolicy(raw) ? raw : null;
 		if (raw !== null && policy === null) {
 			sendJsonErrorResponse(
 				res,
 				400,
-				`policy must be one of ${validPolicies.join(", ")} or null`,
+				`policy must be one of ${ROUTING_POLICIES.join(", ")} or null`,
 			);
 			return true;
 		}

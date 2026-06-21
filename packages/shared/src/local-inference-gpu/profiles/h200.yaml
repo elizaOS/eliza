@@ -17,18 +17,6 @@ fp4_supported: false
 nvlink: true                       # SXM has NVLink, but single-GPU only here
 
 bundle_recommendations:
-  eliza-1-0_8b:
-    n_gpu_layers: -1
-    ctx_size: 32768
-    parallel: 64
-    batch_size: 8192
-    ubatch_size: 2048
-    kv_cache_k: qjl1_256
-    kv_cache_v: q4_polar
-    flash_attention: true
-    estimated_decode_tps: 1100
-    estimated_prefill_tps: 90000
-    notes: "Smallest active Qwen3.5 local tier; smoke/default fallback."
   eliza-1-2b:
     n_gpu_layers: -1
     ctx_size: 32768
@@ -40,7 +28,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 780
     estimated_prefill_tps: 56000
-    notes: "First-run active Qwen3.5 tier."
+    notes: "Smallest/entry active Qwen3.5 local tier; smoke/default fallback."
   eliza-1-4b:
     n_gpu_layers: -1
     ctx_size: 65536

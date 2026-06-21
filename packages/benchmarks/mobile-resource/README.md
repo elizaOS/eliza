@@ -30,7 +30,7 @@ node packages/benchmarks/mobile-resource/run-workbench.mjs
 
 # Pin platform + tier + device class:
 node packages/benchmarks/mobile-resource/run-workbench.mjs \
-  --platform=android --tier=eliza-1-0_8b --device-class=android-phone
+  --platform=android --tier=eliza-1-2b --device-class=android-phone
 
 # Pick workloads (voice loop is opt-in, needs MOBILE_RESOURCE_VOICE=1):
 node packages/benchmarks/mobile-resource/run-workbench.mjs \

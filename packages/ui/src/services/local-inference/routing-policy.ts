@@ -185,7 +185,12 @@ class PolicyEngine {
         });
         return ranked[0] ?? null;
       }
+      case "auto":
       case "prefer-local": {
+        // "auto" is capability-driven server-side (the local-inference plugin's
+        // PolicyEngine consults device tier). This client-side engine has no
+        // device classifier, so it mirrors prefer-local (local-first) — a safe,
+        // consistent fallback for any client-side routing preview.
         const local = eligible.find(
           (c) =>
             c.provider === "eliza-local-inference" ||
