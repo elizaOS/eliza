@@ -348,6 +348,18 @@ function isReasoningModel(modelName: string): boolean {
   return REASONING_MODEL_PATTERNS.some((pattern) => lower.includes(pattern));
 }
 
+/**
+ * True when the Cloud gateway routes this model to Cerebras (the gpt-oss
+ * family). Cerebras's OpenAI-compatible endpoint rejects
+ * `response_format: { type: "json_schema", ... }` with a 400, so structured
+ * output for these models must fall back to `{ type: "json_object" }`.
+ * Mirrors plugin-openai's `isCerebrasMode` json_object scrub, detected by
+ * model name here because one Cloud key serves many providers.
+ */
+function isCerebrasServedModel(modelName: string): boolean {
+  return modelName.toLowerCase().includes("gpt-oss");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -535,9 +547,15 @@ function normalizeNativeToolChoice(toolChoice: unknown): unknown {
   return toolName ? { type: "function", function: { name: toolName } } : toolChoice;
 }
 
-function buildNativeResponseFormat(responseSchema: unknown): unknown {
+function buildNativeResponseFormat(responseSchema: unknown, modelName: string): unknown {
   if (!responseSchema) {
     return undefined;
+  }
+
+  // Cerebras-served models (gpt-oss) 400 on `response_format: json_schema`, so
+  // emit `json_object` and rely on the schema embedded in the prompt body.
+  if (isCerebrasServedModel(modelName)) {
+    return { type: "json_object" };
   }
 
   const schemaRecord = asRecord(responseSchema);
@@ -653,7 +671,7 @@ function buildNativeRequestBody(
   const promptCacheKey = providerOptions ? resolvePromptCacheKey(providerOptions) : undefined;
   const tools = normalizeNativeTools(params.tools);
   const toolChoice = normalizeNativeToolChoice(params.toolChoice);
-  const responseFormat = buildNativeResponseFormat(params.responseSchema);
+  const responseFormat = buildNativeResponseFormat(params.responseSchema, modelName);
   const requestBody: Record<string, unknown> = {
     model: modelName,
     messages: buildNativeMessages(params, promptText, systemPrompt),
