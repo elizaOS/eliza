@@ -13,6 +13,7 @@ export * from "./command-actions";
 export * from "./command-settings";
 export * from "./dispatch";
 export * from "./handlers";
+export * from "./shortcuts";
 
 /**
  * The deterministic command actions for the built-in gate-safe commands. Built

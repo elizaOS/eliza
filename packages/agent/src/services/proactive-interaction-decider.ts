@@ -18,6 +18,8 @@ import {
   type IAgentRuntime,
   logger,
   ModelType,
+  type ShortcutFiredPayload,
+  type SlashCommandInvokedPayload,
   type ViewSwitchedPayload,
 } from "@elizaos/core";
 import {
@@ -28,16 +30,36 @@ import {
 /** Source tag for proactive comments driven by UI interactions. */
 export const PROACTIVE_INTERACTION_SOURCE = "proactive-interaction";
 
-/** A model judge: given a view-switch context, return an offer or null. */
+/** Any interaction the decider reacts to (#8792). */
+export type InteractionPayload =
+  | ViewSwitchedPayload
+  | SlashCommandInvokedPayload
+  | ShortcutFiredPayload;
+
+/** A model judge: given an interaction context, return an offer or null. */
 export type ProactiveJudge = (
-  payload: ViewSwitchedPayload,
+  payload: InteractionPayload,
 ) => Promise<string | null>;
 
 export interface DecideProactiveInput {
-  payload: ViewSwitchedPayload;
+  payload: InteractionPayload;
   gate: ProactiveInteractionGate;
   judge: ProactiveJudge;
   now: number;
+}
+
+/**
+ * The governance surface for an interaction, or `null` when policy says never
+ * comment. Explicitly-typed slash commands return `null`: the user already
+ * expressed intent and the command produced its own reply, so a proactive
+ * comment would be double-talk (#8792 open question). View switches key on the
+ * view; shortcuts key on the shortcut id.
+ */
+export function interactionSurface(payload: InteractionPayload): string | null {
+  if ("command" in payload) return null; // explicit slash — stay silent
+  if ("shortcutId" in payload) return `shortcut:${payload.shortcutId}`;
+  if ("viewId" in payload && payload.viewId) return payload.viewId;
+  return null;
 }
 
 export interface DecideProactiveResult {
@@ -60,8 +82,8 @@ export async function decideProactiveComment(
   input: DecideProactiveInput,
 ): Promise<DecideProactiveResult> {
   const { payload, gate, judge, now } = input;
-  const surface = payload.viewId;
-  if (!surface) return { text: null, reason: "no surface" };
+  const surface = interactionSurface(payload);
+  if (!surface) return { text: null, reason: "no surface (policy-silent)" };
 
   if (payload.initiatedBy === "agent") {
     return { text: null, reason: "agent-initiated (already acknowledged)" };
@@ -84,18 +106,27 @@ export async function decideProactiveComment(
 }
 
 const JUDGE_INSTRUCTION = [
-  "The user just switched to an app view. Decide if there is ONE specific, helpful thing you can proactively offer about that view right now.",
+  "The user just took an action in the app. Decide if there is ONE specific, helpful thing you can proactively offer right now.",
   'Examples: switched to wallet → "Want me to pull your latest balances?"; opened task-coordinator → "Want me to summarize your open tasks?".',
-  "Stay silent (return none) for ambiguous or low-value switches, settings/config screens, or anything where a comment would be noise.",
+  "Stay silent (return none) for ambiguous or low-value interactions, settings/config screens, or anything where a comment would be noise.",
   'Respond as JSON: {"comment": <a short offer, or null>}.',
 ].join("\n");
 
-/** Build the small-model judge prompt for a view switch. */
-export function buildProactiveJudgePrompt(
-  payload: ViewSwitchedPayload,
-): string {
-  const where = payload.viewLabel ?? payload.viewId;
-  return `${JUDGE_INSTRUCTION}\nThe user just opened the ${where} view.`;
+/** Describe the interaction for the judge prompt. */
+function describeInteraction(payload: InteractionPayload): string {
+  if ("shortcutId" in payload) {
+    return `The user just used the "${payload.shortcutId}" shortcut.`;
+  }
+  if ("viewId" in payload) {
+    const where = payload.viewLabel ?? payload.viewId;
+    return `The user just opened the ${where} view.`;
+  }
+  return "The user just interacted with the app.";
+}
+
+/** Build the small-model judge prompt for an interaction. */
+export function buildProactiveJudgePrompt(payload: InteractionPayload): string {
+  return `${JUDGE_INSTRUCTION}\n${describeInteraction(payload)}`;
 }
 
 /** Parse the judge model output into an offer string or null. */
@@ -160,17 +191,16 @@ export function registerProactiveInteractionDecider(
     }
   };
 
-  runtime.registerEvent(EventType.VIEW_SWITCHED, async (payload) => {
-    const viewPayload = payload as ViewSwitchedPayload;
-    const surface = viewPayload.viewId;
-    if (!surface) return;
+  const handle = (payload: InteractionPayload) => {
+    const surface = interactionSurface(payload);
+    if (!surface) return; // policy-silent (e.g. explicit slash commands)
 
     wiring.gate.noteSwitch(surface, clock());
 
     const run = async () => {
       try {
         const decision = await decideProactiveComment({
-          payload: viewPayload,
+          payload,
           gate: wiring.gate,
           judge,
           now: clock(),
@@ -190,5 +220,17 @@ export function registerProactiveInteractionDecider(
     } else {
       void run();
     }
+  };
+
+  // All three interaction events flow through the same governed decider. Slash
+  // commands are consumed but stay silent by policy (see interactionSurface).
+  runtime.registerEvent(EventType.VIEW_SWITCHED, async (payload) => {
+    handle(payload as ViewSwitchedPayload);
+  });
+  runtime.registerEvent(EventType.SHORTCUT_FIRED, async (payload) => {
+    handle(payload as ShortcutFiredPayload);
+  });
+  runtime.registerEvent(EventType.SLASH_COMMAND_INVOKED, async (payload) => {
+    handle(payload as SlashCommandInvokedPayload);
   });
 }

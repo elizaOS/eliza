@@ -8,6 +8,7 @@ import type { RegisteredEvaluator } from "./evaluator";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
 import type { X402Config, X402RequestValidator } from "./payment";
+import type { ShortcutDefinition } from "./shortcut";
 import type { JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { Service } from "./service";
@@ -940,6 +941,12 @@ export interface Plugin {
 	// Optional plugin features
 	actions?: Action[];
 	providers?: Provider[];
+	/**
+	 * Pre-LLM action shortcuts (#8791): deterministic slash/`!` commands and
+	 * (flag-gated) natural-language phrases that resolve to a target before the
+	 * first model call. Registered into the runtime's `ShortcutRegistry`.
+	 */
+	shortcuts?: ShortcutDefinition[];
 	evaluators?: RegisteredEvaluator[];
 	responseHandlerEvaluators?: ResponseHandlerEvaluator[];
 	/**

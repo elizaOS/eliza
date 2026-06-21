@@ -16,9 +16,10 @@ list.
 
 ```
             @elizaos/plugin-commands  (per-runtime registry)
-            DEFAULT_COMMANDS + NAVIGATION_COMMANDS + skill/custom commands
+            DEFAULT_COMMANDS + navigationCommandDefinitions() + skill/custom commands
                                    │
-                  serializeCommands(surface)  ── wire-safe, no functions
+              getCatalogCommands(surface) / getConnectorCommands(surface)
+              each definition → serializeCommand()  ── wire-safe, no functions
                                    │
         ┌──────────────────┬───────┴────────┬───────────────────┐
    GET /api/commands   getConnectorCommands  getConnectorCommands  GET /api/commands
@@ -29,63 +30,84 @@ list.
    (SlashCommandMenu)  (application.commands) bot.command handlers    (CombinedAutocompleteProvider)
 ```
 
+`GET /api/commands` is a pure projection: the route
+(`packages/agent/src/api/commands-routes.ts`) calls
+`getCatalogCommands(surface, { activeViewId })` and serves the result. Every
+field — `surfaces`, `requiresAuth`, `requiresElevated`, `category`,
+`args[].dynamicChoices`, `target`, `icon`, `source` — comes from the
+`CommandDefinition` via `serializeCommand()` (`src/serialize.ts`). Nothing is
+fabricated at the HTTP boundary.
+
 ## The command model
 
-A `CommandDefinition` (see `src/types.ts`) carries two dimensions beyond name +
+A `CommandDefinition` (see `src/types.ts`) carries these dimensions beyond name +
 description:
 
 - **`surfaces?: CommandSurface[]`** — which client surfaces it appears on
-  (`gui` · `tui` · `discord` · `telegram`). Absent = all four. e.g.
-  `/fullscreen` is `["gui"]`; `/clear` and `/new` are `["gui", "tui"]`.
-- **`target?: CommandTarget`** — what it *does*, surface-agnostically:
-  - `{ kind: "navigate", tab?, viewId?, path?, section? }` — jump to a view /
+  (`gui` · `tui` · `discord` · `telegram`). Absent = all four. e.g. `/clear`,
+  `/fullscreen`, and `/transcribe` are `["gui", "tui"]`, so they are filtered
+  off the chat connectors by surface.
+- **`target?: CommandTarget`** — what it *does*, surface-agnostically. Absent =
+  `{ kind: "agent" }`:
+  - `{ kind: "navigate", path, tab?, viewId?, section? }` — jump to a view /
     sub-view. GUI selects the tab/section, TUI navigates the view registry,
     chat connectors reply with a deep link.
-  - `{ kind: "agent", action? }` — send the command text to the agent; an
-    action/handler produces the reply. Works on every surface.
+  - `{ kind: "agent", action? }` — send the command text to the agent; a
+    deterministic `*_COMMAND` action produces the reply. Works on every surface.
   - `{ kind: "client", clientAction }` — a pure-client behavior (clear chat,
-    new conversation, toggle fullscreen). GUI/TUI only.
+    toggle fullscreen, toggle transcription). GUI/TUI only.
+- **`icon?: string`** — a lucide icon hint for menu rendering.
+- **`views?: string[]`** — view-scoping (#8798): the command is surfaced only
+  while one of these views is the active foreground surface. Omitted = global.
 
 Arguments (`args[]`) can declare static `choices` or a `dynamicChoices` source
-(`models` · `views` · `settings-sections` · `skills` · `providers`) that each
-surface resolves against its own live data. `serializeCommand()` drops
-function-valued choices so the catalog is always JSON-safe over the wire.
+(a `CommandArgSource` — e.g. `views` · `settings-sections`) that each surface
+resolves against its own live data. `serializeCommand()` (`src/serialize.ts`)
+drops function-valued `choices` and carries `dynamicChoices` through so the
+catalog is always JSON-safe over the wire. Navigation + client commands are
+first-class `CommandDefinition`s in `src/navigation-commands.ts`
+(`navigationCommandDefinitions()`); the catalog unions them with the agent
+registry, so all three target kinds flow through one serializer.
 
 ## The catalog
 
 ### Navigation (target: `navigate`) — `src/navigation-commands.ts`
 
-| Command | Aliases | Destination |
-|---|---|---|
-| `/settings [section]` | `/preferences` `/config-ui` | settings tab; `section` arg jumps to a sub-view (model→`ai-model`, voice, connectors, security, secrets, …) |
-| `/orchestrator` | `/workbench` `/agents` | orchestrator workbench view |
-| `/views` | `/apps` | apps & views launcher |
-| `/chat` | | chat surface |
-| `/plugins` | | installed plugins |
-| `/skills` | | skills library |
-| `/wallet` | `/inventory` | wallet & inventory |
-| `/knowledge` | `/documents` `/docs` | knowledge & documents |
-| `/character` | `/persona` | character editor |
-| `/automations` | `/triggers` `/heartbeats` | automations & heartbeats |
-| `/tasks` | | tasks view |
-| `/logs` | | logs view |
-| `/database` | `/db` | database browser |
+| Command | Destination |
+|---|---|
+| `/settings [section]` | settings tab; `section` arg (`dynamicChoices: settings-sections`) jumps to a sub-view (model→`ai-model`, voice, connectors, security, …) |
+| `/chat` | chat surface |
+| `/views [view]` | apps & views launcher; `view` arg `dynamicChoices: views` |
+| `/orchestrator` | orchestrator workbench view |
+| `/character` | character editor |
+| `/knowledge` | knowledge & documents |
+| `/wallet` | wallet & inventory |
+| `/automations` | automations & heartbeats |
+| `/tasks` | tasks view |
+| `/skills` | skills library |
+| `/plugins` | installed plugins |
+| `/logs` | logs view |
+| `/database` | database browser |
 
-### Client (target: `client`) — gui/tui only
+### Client (target: `client`) — `surfaces: ["gui", "tui"]`
 
-| Command | Aliases | Action |
-|---|---|---|
-| `/clear` | `/cls` | clear the current chat thread |
-| `/new` | | start a new conversation |
-| `/fullscreen` | `/expand` | toggle full-screen chat (gui only) |
+| Command | Action |
+|---|---|
+| `/clear` | clear the current chat thread |
+| `/fullscreen` | toggle full-screen chat |
+| `/transcribe` | toggle long-form transcription mode |
 
 ### Agent capability (target: `agent`) — `src/registry.ts` `DEFAULT_COMMANDS`
 
 `/help` `/commands` `/status` `/context` `/whoami` · `/stop` `/restart`
-`/reset` `/compact` · `/think` `/verbose` `/reasoning` `/elevated` `/model`
-`/models` `/usage` `/queue` · `/allowlist` `/approve` `/subagents` · `/tts` ·
-plus `skill-<slug>` commands registered from loaded skills and any custom
-actions the user has defined. These flow to the agent and reply in-channel.
+`/reset` `/new` `/compact` · `/think` `/verbose` `/reasoning` `/elevated`
+`/model` `/models` `/usage` `/queue` · `/allowlist` `/approve` `/subagents` ·
+`/tts` · `/bash` (and `/config` `/debug`, gated off by default) · plus
+`skill-<slug>` commands registered from loaded skills and any custom actions the
+user has defined. These flow to the agent and reply in-channel. Auth-gated
+commands (`/restart` `/reset` `/elevated` `/allowlist` `/approve` `/subagents`
+`/bash` `/config` `/debug`) carry `requiresAuth: true`, which survives
+serialization onto the wire.
 
 ### Design decisions — what is *not* a command
 
@@ -96,8 +118,10 @@ actions the user has defined. These flow to the agent and reply in-channel.
 - Connector navigation degrades gracefully: a Discord/Telegram user has no app
   view to jump to, so `navigate` commands reply with a destination + deep link
   rather than failing.
-- `client` commands are filtered out of the connector surfaces entirely
-  (`/fullscreen` makes no sense in Telegram).
+- `client` commands declare `surfaces: ["gui", "tui"]`, so they are filtered out
+  of the connector surfaces entirely (`/fullscreen` makes no sense in Telegram).
+- `/new` is an **agent** command (a new conversation is a runtime concern), not a
+  client command — only `/clear`, `/fullscreen`, and `/transcribe` are `client`.
 
 ## Per-surface rendering
 
@@ -157,8 +181,13 @@ agent; `navigate` (view) → `POST /api/views/:id/navigate?viewType=tui`;
 - **Web (gui):** live-verified — Storybook story + Playwright screenshots
   (desktop + mobile: all-commands / filtered / sections / filtered-section),
   22 pure-logic tests + 12 jsdom integration tests, all green.
-- **plugin-commands:** 42 unit tests (catalog, surface filtering, serialization,
-  settings-section resolution, connector mapping) + the route handler's 6 tests.
+- **plugin-commands:** 51 unit tests (catalog, surface + view filtering,
+  serialization, settings-section resolution, connector mapping, navigation
+  command defs, dispatch/handlers) + the route handler's 17 tests
+  (`packages/agent/src/api/commands-routes.test.ts` drives `handleCommandsRoutes`
+  with mocked `json`/`error`: surface filtering, auth pass-through, dynamic-choice
+  emission; `commands-routes.real-server.test.ts` exercises the wire over a real
+  loopback socket).
 - **TUI:** live-verified — `packages/agent/scripts/verify-tui-slash.ts` drives
   the real `AgentTerminalView` + Editor against a booted agent (open menu / 36
   commands, filter, 39 section completions, dispatch — 4/4), and a real-PTY
@@ -180,7 +209,7 @@ registerCommand({
   description: "Open my custom view",
   textAliases: ["/myview"],
   scope: "both",
-  category: "navigation",
+  category: "docks",
   surfaces: ["gui", "tui"],          // omit for everywhere
   target: { kind: "navigate", viewId: "my-view", path: "/my-view" },
 });

@@ -4,9 +4,15 @@ Chat command system for Eliza agents — registers a slash-command surface (`/he
 
 ## Purpose / role
 
-Adds a structured slash-command system to any Eliza agent. Commands are detected by text prefix (`/` or `!`) and registered as a `COMMAND_REGISTRY` provider; the actual handlers are expected to be implemented by the consuming agent or other plugins (this plugin supplies the registry, parser, and types — not action handlers). Auto-enabled when `config.features.commands` is truthy; controlled by `auto-enable.ts`.
+Adds a structured slash-command system to any Eliza agent. Commands are detected by text prefix (`/` or `!`), registered as a `COMMAND_REGISTRY` provider, and handled by deterministic `*_COMMAND` actions this plugin registers directly (the `commandActions` array). The plugin also owns the wire-serialization (`serializeCommand`), connector catalog, and dispatch layer that every surface consumes. Auto-enabled when `config.features.commands` is truthy; controlled by `auto-enable.ts`.
 
 ## Plugin surface
+
+**Actions**
+
+| Name | Description |
+|---|---|
+| `*_COMMAND` (one per gate-safe key, e.g. `HELP_COMMAND`, `RESTART_COMMAND`) | Deterministic handlers for the built-in agent-target commands, built from `GATE_SAFE_COMMAND_KEYS` via `createCommandActions()`. Each `validate()` is strictly slash-only (never intercepts conversational text) and re-scopes to the per-runtime store. The pre-LLM shortcut gate dispatches these before inference; they are also registered so the planner can route to them as a fallback. |
 
 **Providers**
 
@@ -16,34 +22,40 @@ Adds a structured slash-command system to any Eliza agent. Commands are detected
 
 **Exported plugin object**: `commandsPlugin` (default export, also named export)
 
-No actions, services, evaluators, routes, or events are registered directly by this plugin. It provides the registry and parser infrastructure; other plugins register handlers against it.
+No services, evaluators, routes, or events are registered by this plugin. Beyond the actions + provider it exports the catalog layer (`serializeCommand`, `getCatalogCommands`, `getConnectorCommands`, `navigationCommandDefinitions`) and the dispatch helpers that consuming surfaces use.
 
 ## Layout
 
 ```
 src/
-  index.ts              Plugin entry — exports commandsPlugin, commandRegistryProvider,
-                        formatCommandResult, isAuthorized, isElevated, and re-exports
-                        parser/registry/types/connector-catalog/settings-sections
-  registry.ts           Per-runtime command store: DEFAULT_COMMANDS (25 built-in defs),
+  index.ts              Plugin entry — exports commandsPlugin (with actions: commandActions),
+                        commandRegistryProvider, formatCommandResult, isAuthorized, isElevated,
+                        and re-exports actions/parser/registry/types/serialize/connector-catalog/
+                        connector-bridge/navigation-commands/settings-sections
+  registry.ts           Per-runtime command store: DEFAULT_COMMANDS (built-in defs),
                         initForRuntime(), useRuntime(), registerCommand(), registerCommands(),
                         unregisterCommand(), resetCommands(), getCommands(),
                         getEnabledCommands(), getCommandsByCategory(),
                         findCommandByAlias(), findCommandByKey(), startsWithCommand()
   parser.ts             Text parsing: hasCommand(), detectCommand(), parseCommand(),
                         normalizeCommandBody(), extractCommand(), isCommandOnly()
-  types.ts              Shared types: CommandDefinition, CommandContext, CommandResult,
-                        ParsedCommand, CommandDetectionResult, ResolvedCommand,
-                        CommandScope, CommandCategory, CommandArgDefinition
-  connector-catalog.ts  Connector-neutral command catalog: ConnectorCommand,
-                        ConnectorCommandTarget, ConnectorCommandOption,
-                        ClientCommandAction, getConnectorCommands(surface)
-                        — re-projects the text
-                        command registry into a shape connectors (Discord, Telegram, …)
-                        map onto their native command surfaces.
-  settings-sections.ts  Settings section registry: SettingsSection, SETTINGS_SECTIONS,
-                        resolveSettingsSection(), getSettingsSectionChoices() — canonical
-                        destination tokens for the /settings <section> command.
+  types.ts              Shared types: CommandDefinition, CommandTarget, CommandSurface,
+                        CommandArgSource, SerializedCommand, SerializedCommandArg,
+                        CommandContext, CommandResult, ParsedCommand, CommandScope,
+                        CommandCategory, CommandArgDefinition, ClientCommandAction
+  serialize.ts          serializeCommand() — the canonical CommandDefinition → SerializedCommand
+                        projection (the GET /api/commands wire shape); commandVisibleForSurface()
+  navigation-commands.ts  navigationCommandDefinitions() — navigate + client commands as
+                        first-class CommandDefinitions (target navigate/client, surfaces, icons)
+  connector-catalog.ts  Connector-neutral catalog: getConnectorCommands(surface) (→ ConnectorCommand)
+                        and getCatalogCommands(surface) (→ SerializedCommand[]); unions the agent
+                        registry with navigation/client commands, filters by surface + active view.
+  actions/              Deterministic command action layer: command-actions.ts (createCommandActions,
+                        commandActions), handlers.ts (GATE_SAFE_COMMAND_KEYS + handlers),
+                        dispatch.ts (dispatch helper for the pre-LLM gate / connectors),
+                        command-settings.ts (per-conversation settings store)
+  settings-sections.ts  Settings section registry: SETTINGS_SECTIONS, resolveSettingsSection(),
+                        getSettingsSectionChoices() — canonical /settings <section> tokens.
 
 auto-enable.ts  Lightweight shouldEnable() — reads config.features.commands;
                 loaded by the auto-enable engine at boot (no full plugin import)
@@ -92,7 +104,7 @@ Defined in `src/registry.ts` as `DEFAULT_COMMANDS`. Each agent runtime receives 
 
 ## How to extend
 
-**Add a command definition** (registers it in the registry; you still need an action handler elsewhere):
+**Add a command definition** (registers it in the registry; built-in gate-safe keys get a `*_COMMAND` action automatically — see `actions/`; a custom command still needs a handler):
 
 ```ts
 import { registerCommand } from "@elizaos/plugin-commands";
@@ -115,7 +127,7 @@ registerCommand({
 ## Conventions / gotchas
 
 - **Registry is per-agent.** `initForRuntime(agentId)` must be called in `plugin.init()` before any registry access; otherwise all agents share the fallback store. The plugin's own `init()` already does this.
-- **No action handlers here.** This plugin registers command *definitions* and the provider. The actual Action objects that handle commands live in the agent or other plugins.
+- **Built-in actions live here now.** The plugin registers `*_COMMAND` actions for the gate-safe built-in keys (`commandActions`, built from `GATE_SAFE_COMMAND_KEYS` via `createCommandActions()` in `actions/`). Plugin-specific or skill commands still register their own Action objects elsewhere.
 - **Similes must be slash-only.** Never add natural-language similes to command actions — the LLM will misroute conversational messages.
 - **`bash` command is elevated + disabled by default.** `requiresElevated: true` in the definition; `enabled` is set to `false` during `init()` because `COMMANDS_BASH_ENABLED` defaults to `"false"`. Set `COMMANDS_BASH_ENABLED=true` to enable it.
 - **Provider context-gates itself.** For non-command messages the provider returns an empty string to keep the prompt clean.

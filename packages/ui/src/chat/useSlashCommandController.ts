@@ -22,6 +22,10 @@ import type { Tab } from "../navigation";
 import { useApp } from "../state";
 import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
 import { loadSavedCustomCommands, normalizeSlashCommandName } from "./index";
+import { filterCommandsForSurface } from "./slash-menu";
+
+/** The surface the dashboard chat composer renders on. */
+const GUI_SURFACE = "gui" as const;
 
 /** Event the App shell listens for to open settings at a specific section. */
 export const NAVIGATE_SETTINGS_EVENT = "eliza:navigate:settings";
@@ -126,7 +130,26 @@ function mergeByAlias(
   return merged;
 }
 
-export function useSlashCommandController(): SlashCommandController {
+export interface SlashCommandControllerOptions {
+  /**
+   * Whether the current sender is authenticated. Commands flagged
+   * `requiresAuth` are hidden when this is false. Defaults to `true`: the local
+   * dashboard composer is the trusted owner surface (gated by the agent's own
+   * API token), so the dashboard user is authorized by definition.
+   */
+  isAuthorized?: boolean;
+  /**
+   * Whether the current sender has elevated/owner privileges. Commands flagged
+   * `requiresElevated` are hidden when this is false. Defaults to `true` for the
+   * same reason as {@link isAuthorized}.
+   */
+  isElevated?: boolean;
+}
+
+export function useSlashCommandController(
+  options: SlashCommandControllerOptions = {},
+): SlashCommandController {
+  const { isAuthorized = true, isElevated = true } = options;
   const { setTab, handleChatClear } = useApp();
   const { views } = useAvailableViews();
   const [serverCommands, setServerCommands] = React.useState<
@@ -164,9 +187,15 @@ export function useSlashCommandController(): SlashCommandController {
   }, []);
 
   const commands = React.useMemo(
-    // Server catalog wins over custom/saved on alias collisions.
-    () => mergeByAlias([serverCommands, customCommands]),
-    [serverCommands, customCommands],
+    // Server catalog wins over custom/saved on alias collisions; then gate by
+    // surface (hide non-gui commands) and sender authorization (hide
+    // requiresAuth/requiresElevated commands the sender can't run).
+    () =>
+      filterCommandsForSurface(
+        mergeByAlias([serverCommands, customCommands]),
+        { surface: GUI_SURFACE, isAuthorized, isElevated },
+      ),
+    [serverCommands, customCommands, isAuthorized, isElevated],
   );
 
   const resolveChoices = React.useCallback(

@@ -1,6 +1,20 @@
 import type { Content, IAgentRuntime, Memory } from "@elizaos/core";
 import { getConnectorCommands } from "@elizaos/plugin-commands";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// The connector bridge gates auth via the agent role model (`hasRoleAccess`).
+// Mock it so each test controls the sender's resolved trust level without
+// standing up a full world/role graph. The default returns true (lenient
+// no-world path), matching real local-only behavior. `vi.hoisted` is required
+// because `vi.mock` factories are hoisted above imports.
+const { hasRoleAccess } = vi.hoisted(() => ({
+	hasRoleAccess: vi.fn(async () => true),
+}));
+vi.mock("@elizaos/core", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@elizaos/core")>();
+	return { ...actual, hasRoleAccess };
+});
+
 import {
 	buildCatalogSlashCommands,
 	mapCatalogCommand,
@@ -15,9 +29,17 @@ import {
 const AGENT_ID = "11111111-1111-1111-1111-111111111111";
 
 function makeRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
+	const cache = new Map<string, unknown>();
 	return {
 		agentId: AGENT_ID,
 		messageService: null,
+		getCache: vi.fn(async (key: string) => cache.get(key)),
+		setCache: vi.fn(async (key: string, value: unknown) => {
+			cache.set(key, value);
+			return true;
+		}),
+		getSetting: vi.fn(() => undefined),
+		character: { name: "TestAgent" },
 		logger: {
 			debug: vi.fn(),
 			error: vi.fn(),
@@ -31,7 +53,7 @@ function makeRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
 interface MockInteraction {
 	id: string;
 	channelId: string;
-	user: { id: string };
+	user: { id: string; username: string };
 	options: { getString: ReturnType<typeof vi.fn> };
 	reply: ReturnType<typeof vi.fn>;
 	deferReply: ReturnType<typeof vi.fn>;
@@ -44,7 +66,7 @@ function makeInteraction(
 	return {
 		id: "interaction-1",
 		channelId: "987654321098765432",
-		user: { id: "123456789012345678" },
+		user: { id: "123456789012345678", username: "tester" },
 		options: {
 			getString: vi.fn((name: string) => stringOptions[name] ?? null),
 		},
@@ -59,6 +81,11 @@ function findCatalog(name: string): SlashCommand {
 	if (!cmd) throw new Error(`catalog command "${name}" not found`);
 	return cmd;
 }
+
+beforeEach(() => {
+	hasRoleAccess.mockReset();
+	hasRoleAccess.mockResolvedValue(true);
+});
 
 describe("catalog → DiscordSlashCommand mapping", () => {
 	it("maps every discord catalog command to a SlashCommand with an execute", () => {
@@ -148,9 +175,33 @@ describe("per-target execute branching", () => {
 		expect(arg.content).toContain("ai-model");
 	});
 
-	it("agent: routes the command text through the message service and replies", async () => {
+	it("agent (gate-safe): resolves a deterministic local reply without touching the pipeline", async () => {
 		const think = findCatalog("think");
 		const interaction = makeInteraction({ level: "high" });
+		const handleMessage = vi.fn(async () => undefined);
+		const runtime = makeRuntime({
+			messageService: { handleMessage } as never,
+		});
+
+		await think.execute(interaction as never, runtime);
+
+		// Gate-safe commands answer locally — no pipeline round-trip, no defer.
+		expect(handleMessage).not.toHaveBeenCalled();
+		expect(interaction.deferReply).not.toHaveBeenCalled();
+		expect(interaction.reply).toHaveBeenCalledTimes(1);
+		const arg = interaction.reply.mock.calls[0][0] as {
+			content: string;
+			ephemeral: boolean;
+		};
+		expect(arg.ephemeral).toBe(true);
+		expect(arg.content).toContain("high");
+	});
+
+	it("agent (non-gate-safe): routes the command text through the message service and replies", async () => {
+		// `stop` is an agent command with side effects owned by the pipeline, so
+		// it is NOT gate-safe and must route through the agent.
+		const stop = findCatalog("stop");
+		const interaction = makeInteraction();
 
 		const handleMessage = vi.fn(
 			async (
@@ -158,45 +209,110 @@ describe("per-target execute branching", () => {
 				_message: Memory,
 				callback: (content: Content) => Promise<Memory[]>,
 			) => {
-				await callback({
-					text: "Thinking level set to high.",
-					source: "discord",
-				});
+				await callback({ text: "Stopped.", source: "discord" });
 			},
 		);
 		const runtime = makeRuntime({
 			messageService: { handleMessage } as never,
 		});
 
-		await think.execute(interaction as never, runtime);
+		await stop.execute(interaction as never, runtime);
 
 		expect(interaction.deferReply).toHaveBeenCalledTimes(1);
 		expect(handleMessage).toHaveBeenCalledTimes(1);
-		// The reconstructed command text is fed to the agent.
 		const routedMessage = handleMessage.mock.calls[0][1] as Memory;
-		expect(routedMessage.content.text).toBe("/think high");
+		expect(routedMessage.content.text).toBe("/stop");
 		expect(routedMessage.content.source).toBe("discord");
-		// The captured agent reply is surfaced via editReply.
 		const editArg = interaction.editReply.mock.calls[0][0] as {
 			content: string;
 		};
-		expect(editArg.content).toBe("Thinking level set to high.");
+		expect(editArg.content).toBe("Stopped.");
 	});
 
-	it("agent: falls back to a confirmation when the agent produces no text", async () => {
-		const status = findCatalog("status");
+	it("agent (non-gate-safe): falls back to a confirmation when the agent produces no text", async () => {
+		const stop = findCatalog("stop");
 		const interaction = makeInteraction();
 		const handleMessage = vi.fn(async () => undefined);
 		const runtime = makeRuntime({
 			messageService: { handleMessage } as never,
 		});
 
-		await status.execute(interaction as never, runtime);
+		await stop.execute(interaction as never, runtime);
 
 		const editArg = interaction.editReply.mock.calls[0][0] as {
 			content: string;
 		};
-		expect(editArg.content).toContain("/status");
+		expect(editArg.content).toContain("/stop");
+	});
+});
+
+describe("auth gating", () => {
+	it("refuses a requiresAuth command when the sender is not an owner", async () => {
+		// `restart` requires auth and is not gate-safe. Deny both roles.
+		hasRoleAccess.mockResolvedValue(false);
+		const restart = findCatalog("restart");
+		const interaction = makeInteraction();
+		const handleMessage = vi.fn(async () => undefined);
+		const runtime = makeRuntime({
+			messageService: { handleMessage } as never,
+		});
+
+		await restart.execute(interaction as never, runtime);
+
+		// Refused before any dispatch: no pipeline call, no defer — just a reply.
+		expect(handleMessage).not.toHaveBeenCalled();
+		expect(interaction.deferReply).not.toHaveBeenCalled();
+		expect(interaction.reply).toHaveBeenCalledTimes(1);
+		const arg = interaction.reply.mock.calls[0][0] as {
+			content: string;
+			ephemeral: boolean;
+		};
+		expect(arg.ephemeral).toBe(true);
+		expect(arg.content).toContain("requires authorization");
+	});
+
+	it("allows a requiresAuth command when the sender is an owner", async () => {
+		// OWNER access satisfies requiresAuth; the command then routes to the agent.
+		hasRoleAccess.mockResolvedValue(true);
+		const restart = findCatalog("restart");
+		const interaction = makeInteraction();
+		const handleMessage = vi.fn(
+			async (
+				_runtime: IAgentRuntime,
+				_message: Memory,
+				callback: (content: Content) => Promise<Memory[]>,
+			) => {
+				await callback({ text: "Restarting.", source: "discord" });
+			},
+		);
+		const runtime = makeRuntime({
+			messageService: { handleMessage } as never,
+		});
+
+		await restart.execute(interaction as never, runtime);
+
+		expect(handleMessage).toHaveBeenCalledTimes(1);
+		const editArg = interaction.editReply.mock.calls[0][0] as {
+			content: string;
+		};
+		expect(editArg.content).toBe("Restarting.");
+	});
+
+	it("resolves owner via the OWNER role and elevation via the ADMIN role", async () => {
+		// `restart` only needs the OWNER check to pass; assert the entity-scoped
+		// role resolution is consulted with the required role.
+		hasRoleAccess.mockResolvedValue(true);
+		const restart = findCatalog("restart");
+		const interaction = makeInteraction();
+		const runtime = makeRuntime({
+			messageService: { handleMessage: vi.fn(async () => undefined) } as never,
+		});
+
+		await restart.execute(interaction as never, runtime);
+
+		const requestedRoles = hasRoleAccess.mock.calls.map((call) => call[2]);
+		expect(requestedRoles).toContain("OWNER");
+		expect(requestedRoles).toContain("ADMIN");
 	});
 });
 

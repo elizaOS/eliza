@@ -46,6 +46,8 @@ import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evalua
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
 import { RoomHandlerQueue } from "./runtime/room-handler-queue";
+import { ShortcutRegistry } from "./runtime/shortcut-registry";
+import type { ShortcutDefinition } from "./types/shortcut";
 import {
 	buildCanonicalSystemPrompt,
 	resolveEffectiveSystemPrompt,
@@ -733,6 +735,8 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly evaluators: RegisteredEvaluator[] = [];
 	readonly responseHandlerEvaluators: ResponseHandlerEvaluator[] = [];
 	readonly responseHandlerFieldEvaluators: ResponseHandlerFieldEvaluator[] = [];
+	/** Pre-LLM action shortcuts (#8791), registered from `Plugin.shortcuts`. */
+	readonly shortcutRegistry = new ShortcutRegistry();
 	readonly responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
 	readonly turnControllers = new TurnControllerRegistry();
 	readonly roomHandlerQueue = new RoomHandlerQueue();
@@ -1741,6 +1745,9 @@ export class AgentRuntime implements IAgentRuntime {
 				this.registerEvaluator(evaluator);
 				existingEvaluatorNames.add(evaluator.name);
 			}
+		}
+		if (pluginToRegister.shortcuts) {
+			this.registerShortcuts(pluginToRegister.shortcuts);
 		}
 		if (pluginToRegister.responseHandlerEvaluators) {
 			const existingResponseHandlerEvaluatorNames = new Set(
@@ -2771,6 +2778,19 @@ export class AgentRuntime implements IAgentRuntime {
 				"Action registered",
 			);
 		}
+	}
+
+	/** Register a pre-LLM action shortcut (#8791) into this runtime's registry. */
+	registerShortcut(shortcut: ShortcutDefinition) {
+		this.shortcutRegistry.register(shortcut);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, shortcut: shortcut.id },
+			"Shortcut registered",
+		);
+	}
+
+	registerShortcuts(shortcuts: readonly ShortcutDefinition[]) {
+		for (const shortcut of shortcuts) this.registerShortcut(shortcut);
 	}
 
 	registerEvaluator(evaluator: RegisteredEvaluator) {

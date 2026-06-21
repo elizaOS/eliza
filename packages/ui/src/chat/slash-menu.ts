@@ -11,6 +11,7 @@
 import type {
   ClientCommandAction,
   CommandArgSource,
+  CommandSurface,
   SlashCommandCatalogItem,
 } from "../api/client-types-commands";
 
@@ -106,6 +107,44 @@ export function splitLeadingSlashCommand(
   if (!match) return null;
   const command = match[1];
   return { command, rest: text.slice(command.length) };
+}
+
+// ── Surface + authorization gating ───────────────────────────────────────────
+
+export interface SurfaceAuthContext {
+  /** The surface the menu is rendered on (e.g. "gui"). */
+  surface: CommandSurface;
+  /** Whether the current sender is authenticated. Defaults to true at callsites. */
+  isAuthorized: boolean;
+  /** Whether the current sender has elevated/owner privileges. */
+  isElevated: boolean;
+}
+
+/**
+ * Gate the raw catalog to the commands a given sender may see on a given
+ * surface. Pure so it can be unit-tested without React. Applied once, where the
+ * controller exposes its merged `commands`, so surface + auth gating flows
+ * uniformly through matching, listing, and resolution.
+ *
+ * Rules:
+ * - A command with a non-empty `surfaces` list is hidden unless that list
+ *   includes the current surface. An undefined/empty `surfaces` means the
+ *   command is surface-agnostic and shown everywhere (default).
+ * - `requiresAuth` commands are hidden when the sender is not authorized.
+ * - `requiresElevated` commands are hidden when the sender is not elevated.
+ */
+export function filterCommandsForSurface(
+  commands: SlashCommandCatalogItem[],
+  { surface, isAuthorized, isElevated }: SurfaceAuthContext,
+): SlashCommandCatalogItem[] {
+  return commands.filter((command) => {
+    if (command.surfaces?.length && !command.surfaces.includes(surface)) {
+      return false;
+    }
+    if (command.requiresAuth && !isAuthorized) return false;
+    if (command.requiresElevated && !isElevated) return false;
+    return true;
+  });
 }
 
 // ── Matching + filtering ─────────────────────────────────────────────────────

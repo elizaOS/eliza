@@ -44,6 +44,7 @@ export * from "./service-interfaces";
 export * from "./settings";
 // Setup types
 export * from "./setup";
+export * from "./shortcut";
 export * from "./state";
 export * from "./streaming";
 export * from "./task";

@@ -1,8 +1,14 @@
-import type { IAgentRuntime, ViewSwitchedPayload } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  ShortcutFiredPayload,
+  SlashCommandInvokedPayload,
+  ViewSwitchedPayload,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   buildProactiveJudgePrompt,
   decideProactiveComment,
+  interactionSurface,
   parseProactiveJudgeOutput,
 } from "./proactive-interaction-decider.ts";
 import {
@@ -124,5 +130,72 @@ describe("buildProactiveJudgePrompt", () => {
     const p = buildProactiveJudgePrompt(payload({ viewLabel: "Calendar" }));
     expect(p).toContain("Calendar");
     expect(p).toContain('{"comment":');
+  });
+  it("names the shortcut in the prompt", () => {
+    const shortcut: ShortcutFiredPayload = {
+      runtime: {} as IAgentRuntime,
+      shortcutId: "open-wallet",
+      initiatedBy: "user",
+    };
+    expect(buildProactiveJudgePrompt(shortcut)).toContain("open-wallet");
+  });
+});
+
+describe("interactionSurface — per-event policy (#8792)", () => {
+  it("keys a view switch on its view id", () => {
+    expect(interactionSurface(payload({ viewId: "wallet" }))).toBe("wallet");
+  });
+  it("keys a shortcut on its id", () => {
+    const shortcut: ShortcutFiredPayload = {
+      runtime: {} as IAgentRuntime,
+      shortcutId: "open-wallet",
+      initiatedBy: "user",
+    };
+    expect(interactionSurface(shortcut)).toBe("shortcut:open-wallet");
+  });
+  it("stays silent on explicitly-typed slash commands (no double-talk)", () => {
+    const slash: SlashCommandInvokedPayload = {
+      runtime: {} as IAgentRuntime,
+      command: "status",
+      targetKind: "agent",
+      initiatedBy: "user",
+    };
+    expect(interactionSurface(slash)).toBeNull();
+  });
+});
+
+describe("decideProactiveComment — new interaction types", () => {
+  it("judges a user-initiated shortcut and admits the offer", async () => {
+    const gate = new ProactiveInteractionGate(configForChattiness("subtle"));
+    const shortcut: ShortcutFiredPayload = {
+      runtime: {} as IAgentRuntime,
+      shortcutId: "open-wallet",
+      initiatedBy: "user",
+    };
+    const res = await decideProactiveComment({
+      payload: shortcut,
+      gate,
+      judge: async () => "Want your balances?",
+      now: 0,
+    });
+    expect(res.text).toBe("Want your balances?");
+  });
+
+  it("never comments on a slash command (policy-silent), even with a judge offer", async () => {
+    const gate = new ProactiveInteractionGate(configForChattiness("chatty"));
+    const slash: SlashCommandInvokedPayload = {
+      runtime: {} as IAgentRuntime,
+      command: "status",
+      targetKind: "agent",
+      initiatedBy: "user",
+    };
+    const res = await decideProactiveComment({
+      payload: slash,
+      gate,
+      judge: async () => "I could do X",
+      now: 0,
+    });
+    expect(res.text).toBeNull();
+    expect(res.reason).toContain("policy-silent");
   });
 });

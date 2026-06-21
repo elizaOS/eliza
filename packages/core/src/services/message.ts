@@ -115,6 +115,8 @@ import type {
 	ResponseHandlerSenderRole,
 } from "../runtime/response-handler-field-evaluator";
 import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
+import type { ShortcutRegistry } from "../runtime/shortcut-registry";
+import type { ShortcutMatch } from "../types/shortcut";
 import {
 	looksLikeNonRefusalStage1HonestyViolation,
 	looksLikeStage1HonestyViolation,
@@ -5487,6 +5489,148 @@ function collectPreviousActionResults(
 	return results;
 }
 
+/**
+ * Pre-LLM action shortcut gate (#8791).
+ *
+ * Matches the user's text against the runtime's `ShortcutRegistry` BEFORE any
+ * model call. Explicit slash/`!` commands are always eligible (this is what
+ * makes slash commands deterministic per #8790); natural-language shortcuts are
+ * gated behind `ELIZA_SHORTCUTS_NL=1`. On a confident `action`-target match the
+ * matched action runs and its reply is returned as a `direct_reply` — emitting
+ * ZERO `RESPONSE_HANDLER` tokens. Navigate/client targets are resolved on the
+ * client (the slash menu already runs them locally) so the gate ignores them.
+ *
+ * Returns `null` on no match / mis-fire so the turn proceeds unchanged
+ * (byte-identical to today). Set `ELIZA_SHORTCUTS_DISABLED=1` to bypass entirely.
+ */
+export async function runShortcutGate(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	responseId: UUID;
+	senderRole: RoleGateRole;
+}): Promise<V5MessageRuntimeStage1Result | null> {
+	if (process.env.ELIZA_SHORTCUTS_DISABLED === "1") return null;
+	const text = getUserMessageText(args.message) ?? "";
+	if (!text.trim()) return null;
+
+	const registry = (
+		args.runtime as { shortcutRegistry?: ShortcutRegistry }
+	).shortcutRegistry;
+	if (!registry || registry.size === 0) return null;
+
+	const authorized =
+		args.senderRole === "OWNER" || args.senderRole === "ADMIN";
+	const match = registry.match(text, {
+		actions: args.runtime.actions.map((action) => action.name),
+		allowNatural: process.env.ELIZA_SHORTCUTS_NL === "1",
+		isAuthorized: authorized,
+		isElevated: args.senderRole === "OWNER",
+	});
+	if (!match) return null;
+	const target = match.shortcut.target;
+	// Navigate/client targets are resolved on the client (the slash menu runs
+	// them locally with no agent round-trip), so the agent gate only fires actions.
+	if (target.kind !== "action") return null;
+
+	const action = args.runtime.actions.find((a) => a.name === target.name);
+	if (!action) return null;
+
+	let valid = false;
+	try {
+		valid = await action.validate(args.runtime, args.message, args.state);
+	} catch {
+		return null;
+	}
+	if (!valid) return null;
+
+	let captured: string | undefined;
+	try {
+		await action.handler(
+			args.runtime,
+			args.message,
+			args.state,
+			{ ...target.parameters, mode: "simple" },
+			async (content) => {
+				if (typeof content?.text === "string" && content.text) {
+					captured = content.text;
+				}
+				return [];
+			},
+		);
+	} catch (err) {
+		args.runtime.logger?.warn?.(
+			{ src: "shortcut-gate", shortcut: match.shortcut.id, err },
+			"shortcut action failed; falling through to pipeline",
+		);
+		return null;
+	}
+	if (captured === undefined) return null;
+
+	// #8792: report the interaction so the proactive-comment decider can react.
+	void emitInteractionEvent(args.runtime, match, args.message);
+
+	const thought = `Shortcut: ${match.shortcut.id}`;
+	return {
+		kind: "direct_reply",
+		messageHandler: {
+			processMessage: "RESPOND",
+			thought,
+			plan: {
+				contexts: [SIMPLE_CONTEXT_ID],
+				reply: captured,
+				simple: true,
+				requiresTool: false,
+			},
+		},
+		result: createV5ReplyStrategyResult({
+			runtime: args.runtime,
+			message: args.message,
+			state: args.state,
+			responseId: args.responseId,
+			text: captured,
+			thought,
+		}),
+	};
+}
+
+/** Emit SLASH_COMMAND_INVOKED / SHORTCUT_FIRED for a gated interaction (#8792). */
+async function emitInteractionEvent(
+	runtime: IAgentRuntime,
+	match: ShortcutMatch,
+	message: Memory,
+): Promise<void> {
+	try {
+		const roomId = message.roomId;
+		if (match.shortcut.kind === "explicit") {
+			const command = (match.shortcut.aliases?.[0] ?? match.shortcut.id)
+				.replace(/^[/!]/, "")
+				.trim();
+			await runtime.emitEvent(EventType.SLASH_COMMAND_INVOKED, {
+				runtime,
+				source: "shortcut-gate",
+				command,
+				targetKind: "agent",
+				initiatedBy: "user",
+				roomId,
+			});
+		} else {
+			await runtime.emitEvent(EventType.SHORTCUT_FIRED, {
+				runtime,
+				source: "shortcut-gate",
+				shortcutId: match.shortcut.id,
+				initiatedBy: "user",
+				roomId,
+			});
+		}
+	} catch (err) {
+		runtime.logger?.debug?.(
+			{ src: "shortcut-gate", err },
+			"interaction event emit failed",
+		);
+	}
+}
+
 export async function runV5MessageRuntimeStage1(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -5551,6 +5695,25 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.SELF;
 		const stage1TurnSignal =
 			getStreamingContext()?.abortSignal ?? new AbortController().signal;
+
+		// #8791: pre-LLM action shortcut gate. A confident match (always-on for
+		// explicit slash/`!` commands, flag-gated for natural language) runs the
+		// target action and returns its reply with zero RESPONSE_HANDLER tokens.
+		const shortcutResult = await runShortcutGate({
+			runtime: args.runtime,
+			message: args.message,
+			state: args.state,
+			responseId: args.responseId,
+			senderRole,
+		});
+		if (shortcutResult) {
+			args.runtime.logger?.debug?.(
+				{ src: "service:message", agentId: args.runtime.agentId },
+				"Stage 1 resolved via pre-LLM shortcut gate",
+			);
+			return shortcutResult;
+		}
+
 		if (
 			directMessageChannel &&
 			shouldUseDirectReplyFastPath({
