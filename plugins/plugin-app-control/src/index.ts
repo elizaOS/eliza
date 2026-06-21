@@ -20,11 +20,16 @@ import {
 	closeViewAction,
 	viewsAction,
 } from "./actions/views.js";
+import { createViewsClient } from "./actions/views-client.js";
 import { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
 import { viewContextEvaluator } from "./evaluators/view-context.js";
 import { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { currentViewProvider } from "./providers/current-view.js";
+import {
+	applyCurrentViewComposeHook,
+	CURRENT_VIEW_HOOK_ID,
+} from "./runtime/current-view-hook.js";
 import { AppRegistryService } from "./services/app-registry-service.js";
 import { AppVerificationService } from "./services/app-verification.js";
 import { AppWorkerHostService } from "./services/app-worker-host-service.js";
@@ -39,6 +44,11 @@ export {
 	createHomescreenAction,
 	homescreenAction,
 } from "./actions/homescreen.js";
+export {
+	__matcherData,
+	MATCHER_VIEW_IDS,
+	matchViewCommand,
+} from "./actions/view-command-matcher.js";
 export type { ViewsMode } from "./actions/views.js";
 export {
 	closeAllViewsAction,
@@ -48,13 +58,16 @@ export {
 	viewsAction,
 } from "./actions/views.js";
 export type { ViewSummary } from "./actions/views-client.js";
+export { INTENT_VIEW_IDS, resolveIntentView } from "./actions/views-show.js";
 export type { AppControlClient } from "./client/api.js";
 export { createAppControlClient } from "./client/api.js";
-export { currentViewProvider } from "./providers/current-view.js";
-export { matchViewCommand } from "./actions/view-command-matcher.js";
 export { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
-export { viewContextEvaluator } from "./evaluators/view-context.js";
+export {
+	CONTEXT_VIEWS,
+	viewContextEvaluator,
+} from "./evaluators/view-context.js";
 export { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
+export { currentViewProvider } from "./providers/current-view.js";
 export {
 	APP_REGISTRY_SERVICE_TYPE,
 	type AppRegistryEntry,
@@ -130,6 +143,20 @@ export const appControlPlugin: Plugin = {
 		AppWorkerHostService,
 		VerificationRoomBridgeService,
 	],
+	async init(_config, runtime) {
+		// Inject the `current_view` acknowledgement provider into the curated
+		// Stage-1 response state ONLY on switch turns (gating in
+		// applyCurrentViewComposeHook), so non-switch turns pay no prompt/token
+		// cost. The planner state already composes `current_view` by default.
+		runtime.registerPipelineHook({
+			id: CURRENT_VIEW_HOOK_ID,
+			phase: "compose_state_providers",
+			handler: (_rt, ctx) => {
+				if (ctx.phase !== "compose_state_providers") return;
+				applyCurrentViewComposeHook(ctx);
+			},
+		});
+	},
 	async dispose(runtime) {
 		await runtime
 			.getService<VerificationRoomBridgeService>(
@@ -199,6 +226,29 @@ export const appControlPlugin: Plugin = {
 					description: "Return the TUI-mode view list as structured data",
 				},
 			],
+			// Headless capability handler (#8798): both capabilities are answerable
+			// server-side over loopback, so the agent can list/open views even when
+			// no terminal frontend is actively responding to a `view:interact`
+			// round-trip. This is the reference implementation that keeps
+			// `serverInteract` a live extension point rather than dead type surface.
+			serverInteract: async (capability, params) => {
+				const client = createViewsClient();
+				if (capability === "terminal-list-views") {
+					return { views: await client.listViews() };
+				}
+				if (capability === "terminal-open-view") {
+					const viewId =
+						params && typeof params.viewId === "string"
+							? params.viewId
+							: undefined;
+					if (!viewId) {
+						return { success: false, error: "viewId is required" };
+					}
+					const ok = await client.navigate(viewId);
+					return { success: ok, viewId };
+				}
+				return { success: false, error: `unknown capability: ${capability}` };
+			},
 		},
 	],
 };

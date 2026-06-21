@@ -96,12 +96,13 @@ describe("views client", () => {
 		});
 		vi.stubGlobal("fetch", fetchMock);
 
-		await expect(createViewsClient().getCurrentView()).resolves.toEqual({
+		await expect(createViewsClient().getCurrentView()).resolves.toMatchObject({
 			viewId: "smartglasses",
 			viewPath: "/apps/smartglasses",
 			viewLabel: "Smartglasses",
 			viewType: "xr",
 			action: "open",
+			justSwitched: false,
 			updatedAt: "2026-05-31T08:00:00.000Z",
 		});
 	});

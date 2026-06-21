@@ -34,6 +34,7 @@ function assertApiBody(options: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "reminder.escalation.silent-dismiss",
   title: "User silently dismisses reminders and escalation continues",
   domain: "reminders",

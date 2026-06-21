@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "executive-device-loss-response",
   title: "Assistant runs an executive device loss response",
   domain: "executive.privacy",

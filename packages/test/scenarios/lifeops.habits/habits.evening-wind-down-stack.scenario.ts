@@ -6,6 +6,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "habits.evening-wind-down-stack",
   title: "Evening wind-down stack: dim lights, journal, stretch",
   domain: "lifeops.habits",

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "board-dinner-dietary-privacy",
   title: "Assistant coordinates board dinner dietary privacy",
   domain: "executive.messaging",

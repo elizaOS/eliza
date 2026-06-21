@@ -26,6 +26,7 @@ function checkAllThreeMeetingsAddressed(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.travel-blackout-reschedule",
   title:
     "Bulk-reschedule three meetings when the travel window slides by a day",

@@ -5,6 +5,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "remote.vnc.start-session",
   title: "Start a remote VNC session on user request",
   domain: "remote",

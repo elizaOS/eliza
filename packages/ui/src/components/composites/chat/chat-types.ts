@@ -16,6 +16,10 @@ export interface ChatLabelSet {
   copy?: string;
   delete?: string;
   deleteConfirm?: string;
+  /** Eyebrow label on a proactive suggestion bubble (#8792). */
+  suggestion?: string;
+  /** Dismiss control on a proactive suggestion bubble (#8792). */
+  dismiss?: string;
   deleteNo?: string;
   deleteYes?: string;
   edit?: string;

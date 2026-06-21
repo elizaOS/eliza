@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "home-repair-contractor-coordination",
   title: "Assistant coordinates contractor bids, access windows, and follow-up",
   domain: "executive.household",

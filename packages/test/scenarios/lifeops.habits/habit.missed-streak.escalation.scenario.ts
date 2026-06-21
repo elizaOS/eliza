@@ -52,6 +52,7 @@ async function seedSecondMissedOccurrence(ctx: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "habit.missed-streak.escalation",
   title: "Morning check-in exposes missed-streak escalation",
   domain: "habits",

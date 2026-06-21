@@ -13,6 +13,7 @@ import {
 import { seedLifeOpsDefinition } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "habits.partial-pause-only-some-habits",
   title: "Partial pause leaves unrelated habits active",
   domain: "lifeops.habits",

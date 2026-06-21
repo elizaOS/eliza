@@ -29,6 +29,7 @@ const DEFINITION_ID = "seed-def-meditate-dst";
 const OCCURRENCE_ID = "seed-occ-meditate-dst";
 
 export default scenario({
+  lane: "live-only",
   id: "habits.dst-cross-streak-integrity",
   title: "Streak counter survives DST fall-back transition",
   domain: "lifeops.habits",

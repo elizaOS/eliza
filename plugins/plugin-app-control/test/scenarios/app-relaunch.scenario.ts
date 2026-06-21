@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
 	id: "app-relaunch",
 	title: "APP action relaunch sub-mode targets the named app",
 	domain: "app-control",

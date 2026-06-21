@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hold_style.hostile.list.010",
   title: "hold_style :: pirate :: hostile :: list :: 2-turn (10)",
   domain: "personality",

@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "travel.itinerary-brief-with-links",
   title: "Itinerary brief includes flight, hotel, and ground-transport links",
   domain: "lifeops.travel",

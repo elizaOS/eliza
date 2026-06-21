@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "reminder.cross-platform.created-on-phone-fires-on-mac",
   title: "Reminder created from phone uses the standard reminder pipeline",
   domain: "reminders",

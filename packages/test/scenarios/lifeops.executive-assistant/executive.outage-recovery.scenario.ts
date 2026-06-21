@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.outage-recovery",
   title: "Outage recovery degrades across unavailable connectors",
   domain: "lifeops.executive-assistant",

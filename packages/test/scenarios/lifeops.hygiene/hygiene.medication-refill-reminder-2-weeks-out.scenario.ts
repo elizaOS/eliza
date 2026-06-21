@@ -6,6 +6,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.medication-refill-reminder-2-weeks-out",
   title: "Medication refill reminder 2 weeks before run-out",
   domain: "lifeops.hygiene",

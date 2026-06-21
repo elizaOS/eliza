@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "media-correction-escalation",
   title: "Assistant escalates a media correction with counsel and PR",
   domain: "executive.messaging",

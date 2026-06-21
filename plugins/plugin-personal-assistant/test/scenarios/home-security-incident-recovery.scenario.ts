@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "home-security-incident-recovery",
   title: "Assistant recovers a home security incident",
   domain: "executive.household",

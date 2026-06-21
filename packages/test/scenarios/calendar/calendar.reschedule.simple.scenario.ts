@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.reschedule.simple",
   title: "Reschedule a seeded calendar event to a later time",
   domain: "calendar",

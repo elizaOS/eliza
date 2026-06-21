@@ -2,6 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.draft.reply-from-context",
   title: "Draft Gmail reply using recent email context",
   domain: "messaging.gmail",

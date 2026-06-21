@@ -1,5 +1,5 @@
+import { Sparkles, X } from "lucide-react";
 import type * as React from "react";
-
 import {
   type KeyboardEvent,
   type MouseEvent,
@@ -11,7 +11,6 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-
 import { cn } from "../../../lib/utils";
 import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
@@ -58,7 +57,10 @@ let hoverMediaQueryUnsubscribe: (() => void) | null = null;
 
 function getHoverMediaQuery(): MediaQueryList | null {
   if (hoverMediaQuery) return hoverMediaQuery;
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
     return null;
   }
   hoverMediaQuery = window.matchMedia(HOVER_MEDIA_QUERY);
@@ -316,6 +318,9 @@ export const ChatMessage = memo(function ChatMessage({
     !isUser && typeof onSpeak === "function" && message.text.trim(),
   );
   const normalizedSource = normalizeChatSourceKey(message.source) ?? undefined;
+  // Proactive interaction comments (#8792) are agent-initiated *suggestions*, not
+  // replies — render them with a distinct, one-tap-dismissible affordance.
+  const isSuggestion = !isUser && normalizedSource === "proactive-interaction";
   const senderDisplayName = isUser ? resolveSenderDisplayName(message) : null;
   const senderHandle = isUser
     ? resolveSenderHandle(message, senderDisplayName)
@@ -566,9 +571,36 @@ export const ChatMessage = memo(function ChatMessage({
         <ChatBubble
           tone={isUser ? "user" : "assistant"}
           source={normalizedSource}
-          className={`relative group py-1 text-[15px] leading-[1.7] whitespace-pre-wrap break-words`}
+          className={cn(
+            "relative group py-1 text-[15px] leading-[1.7] whitespace-pre-wrap break-words",
+            // Suggestion treatment: subtle accent tint + dashed accent border so
+            // a proactive offer reads as a suggestion, not a normal reply.
+            isSuggestion &&
+              "border border-dashed border-accent/45 bg-accent/[0.06]",
+          )}
           style={{ fontFamily: "var(--font-chat)" }}
+          data-proactive-suggestion={isSuggestion ? "true" : undefined}
         >
+          {isSuggestion && !isEditing ? (
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1 text-xs-tight font-medium text-accent/85">
+                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                {labels.suggestion ?? "Suggestion"}
+              </span>
+              {onDelete ? (
+                <Button
+                  variant="surface"
+                  size="icon"
+                  onClick={() => onDelete?.(message.id)}
+                  className="h-6 w-6 rounded-sm text-muted"
+                  title={labels.dismiss ?? "Dismiss suggestion"}
+                  aria-label={labels.dismiss ?? "Dismiss suggestion"}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           {showReplyReference ? (
             <a
               href={`#${getChatMessageAnchorId(replyTargetId)}`}

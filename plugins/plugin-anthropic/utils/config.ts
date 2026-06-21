@@ -44,7 +44,23 @@ export function getApiKeyOptional(runtime: IAgentRuntime): ValidatedApiKey | nul
   return apiKey as ValidatedApiKey;
 }
 
+/**
+ * Route to the wire-level mock server when one is running. `ELIZA_MOCK_ANTHROPIC_BASE`
+ * is set only by the in-process mock runner (`packages/test/mocks`) and never in
+ * production — honoring it directly mirrors how LifeOps consumes its sibling
+ * `ELIZA_MOCK_*_BASE` vars (`mockoon-redirect.ts`). It is authoritative when set
+ * (a deliberate test action), so it wins over any configured base; in production
+ * it is unset and has no effect.
+ */
+function getMockBaseURL(): string | undefined {
+  return getEnvValue("ELIZA_MOCK_ANTHROPIC_BASE");
+}
+
 export function getBaseURL(runtime: IAgentRuntime): string {
+  const mockBaseURL = getMockBaseURL();
+  if (mockBaseURL) {
+    return mockBaseURL;
+  }
   if (isBrowser()) {
     const browserURL = getRawSetting(runtime, "ANTHROPIC_BROWSER_BASE_URL");
     if (browserURL) {

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "family-office-quarterly-board-book",
   title: "Assistant assembles a family office quarterly board book",
   domain: "executive.briefing",

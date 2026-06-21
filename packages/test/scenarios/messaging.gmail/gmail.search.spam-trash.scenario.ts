@@ -2,6 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.search.spam-trash",
   title: "Search Gmail spam and trash without modifying messages",
   domain: "messaging.gmail",

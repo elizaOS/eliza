@@ -34,6 +34,7 @@ function checkCancelIntent(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.cancel-tentative-launch-checklist",
   title: "Cancel a tentative 'launch checklist' event cleanly",
   domain: "lifeops.calendar",

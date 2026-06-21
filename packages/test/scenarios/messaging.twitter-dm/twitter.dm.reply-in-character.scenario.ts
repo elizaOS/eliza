@@ -7,6 +7,7 @@ import {
 import { seedXReadFixtures } from "../_helpers/x-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "twitter.dm.reply-in-character",
   title: "Reply to Twitter DM in user's typical tone",
   domain: "messaging.twitter-dm",

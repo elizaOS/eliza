@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.partial-ack-from-mobile-keeps-desktop",
   title:
     "Partial 'snooze' ack from mobile defers but keeps the desktop copy alive",

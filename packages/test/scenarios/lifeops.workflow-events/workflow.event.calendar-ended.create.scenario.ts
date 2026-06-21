@@ -34,6 +34,7 @@ function assertApiBody(options: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "workflow.event.calendar-ended.create",
   title: "Create an event-triggered workflow for calendar event end",
   domain: "lifeops.workflow-events",

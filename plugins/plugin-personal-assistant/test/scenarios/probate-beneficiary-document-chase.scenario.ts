@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "probate-beneficiary-document-chase",
   title: "Assistant coordinates probate documents and beneficiary follow-ups",
   domain: "executive.legal",

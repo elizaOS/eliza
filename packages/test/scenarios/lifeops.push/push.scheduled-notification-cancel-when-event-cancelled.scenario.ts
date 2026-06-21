@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.scheduled-notification-cancel-when-event-cancelled",
   title: "Cancelling a calendar event also cancels its pending push ladder",
   domain: "lifeops.push",

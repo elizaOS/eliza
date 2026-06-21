@@ -14,6 +14,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.list-unread-this-morning",
   title: "List unread Gmail from this morning, bounded query",
   domain: "lifeops.gmail",

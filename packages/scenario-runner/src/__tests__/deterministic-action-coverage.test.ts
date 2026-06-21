@@ -950,13 +950,17 @@ async function messageScenarioIds(): Promise<string[]> {
   );
 }
 
+// The deterministic CI run now selects by lane (`--lane pr-deterministic`)
+// instead of a hand-maintained id list, so the "wired" set is every scenario
+// file tagged `lane: "pr-deterministic"`.
 function ciScenarioList(): string[] {
-  const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
-    scripts?: Record<string, string>;
-  };
-  const script = pkg.scripts?.["test:deterministic:e2e"] ?? "";
-  const arg = script.match(/--scenario\s+(\S+)/)?.[1] ?? "";
-  return arg.split(",").filter(Boolean);
+  return scenarioFiles()
+    .filter((file) =>
+      /lane:\s*["']pr-deterministic["']/.test(
+        readFileSync(resolve(scenarioDir, file), "utf8"),
+      ),
+    )
+    .map((file) => file.replace(/\.scenario\.ts$/, ""));
 }
 
 describe("deterministic action coverage", () => {
@@ -1136,8 +1140,11 @@ describe("deterministic action coverage", () => {
         problems.push(`${id}: source file was not found`);
         continue;
       }
+      // `_helpers/strict-llm-action-fixtures.ts` re-exports the canonical
+      // template from `@elizaos/test-harness`; read that file for the fixture
+      // literals (RESPONSE_HANDLER / ACTION_PLANNER / register call).
       const fixtureSource = source.includes("registerStrictActionRouteFixtures")
-        ? `${source}\n${readFileSync(resolve(scenarioDir, "_helpers/strict-llm-action-fixtures.ts"), "utf8")}`
+        ? `${source}\n${readFileSync(resolve(repoRoot, "packages/test/harness/action-route-fixtures.ts"), "utf8")}`
         : source;
 
       const messageTurns = messageTurnCount(scenario);
@@ -1260,7 +1267,7 @@ describe("deterministic action coverage", () => {
       }
       if (!wired.has(base)) {
         problems.push(
-          `${file}: not in test:deterministic:e2e --scenario list — wire it or it never runs in CI`,
+          `${file}: missing 'lane: "pr-deterministic"' — tag it or it never runs in the deterministic CI lane`,
         );
       }
     }

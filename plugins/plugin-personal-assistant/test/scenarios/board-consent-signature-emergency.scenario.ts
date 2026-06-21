@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "board-consent-signature-emergency",
   title: "Assistant chases emergency board consent signatures without leaking deal terms",
   domain: "executive.documents",

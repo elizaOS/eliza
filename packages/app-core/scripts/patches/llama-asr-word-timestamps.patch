@@ -1,0 +1,218 @@
+diff --git a/tools/omnivoice/include/eliza-inference-ffi.h b/tools/omnivoice/include/eliza-inference-ffi.h
+index 16ff19e1a..8e25850fc 100644
+--- a/tools/omnivoice/include/eliza-inference-ffi.h
++++ b/tools/omnivoice/include/eliza-inference-ffi.h
+@@ -131,6 +131,20 @@ extern "C" {
+  * load and refuses to bind if they disagree.
+  *
+  * Changelog:
++ *   v12: ASR word timestamps folded into the fused ASR.
++ *        `eliza_inference_asr_timestamps_supported()` + `_asr_transcribe_timed`
++ *        run the SAME audio-in/text-out decode as `_asr_transcribe` and
++ *        additionally return per-word [start_ms, end_ms) spans. Qwen3-ASR is
++ *        autoregressive (no acoustic frame alignment, and this build's
++ *        flash-attention fuses the QK-softmax so cross-attention is not
++ *        materialized), so the timing is the honest single-model signal:
++ *        duration-proportional, character-weighted, monotonic over the cleaned
++ *        transcript words, anchored on the exactly-known total audio duration
++ *        (T_ms = 1000 * n_samples / sample_rate_hz). Single pipe — every
++ *        platform that loads the fused lib gets word-synced transcripts.
++ *        Additive symbols — a v11 caller is unaffected; a v11 library reports
++ *        `asr_timestamps_supported() == 0` and the loader falls back to the
++ *        text-only `_asr_transcribe`.
+  *   v11: end-of-turn scoring folded in-process. `eliza_inference_llm_eot_supported()`
+  *        + `_llm_eot_score` run a single causal forward pass over a tokenized
+  *        partial transcript and read the next-token probability of the
+@@ -186,9 +200,9 @@ extern "C" {
+  *   v7: real Silero VAD (same symbol surface as v6).
+  *   v6: fused wake-word, speaker, diarizer.
+  */
+-#define ELIZA_INFERENCE_ABI_VERSION 11
++#define ELIZA_INFERENCE_ABI_VERSION 12
+ 
+-/* Returns a static, NUL-terminated string of the form "11" matching
++/* Returns a static, NUL-terminated string of the form "12" matching
+  * ELIZA_INFERENCE_ABI_VERSION at the time the library was built. The
+  * pointer is owned by the library — do NOT free. */
+ const char * eliza_inference_abi_version(void);
+@@ -669,6 +683,37 @@ int eliza_inference_asr_transcribe(
+     size_t max_text_bytes,
+     char ** out_error);
+ 
++/* ---- ASR word timestamps (ABI v12) -------------------------------- */
++
++/* Capability probe: returns 1 when this build can emit per-word timestamps
++ * from `eliza_inference_asr_transcribe_timed`, 0 otherwise. A v11 library
++ * lacks the symbol entirely (loader treats absent == unsupported). */
++int eliza_inference_asr_timestamps_supported(void);
++
++/* Transcribe like `eliza_inference_asr_transcribe` AND return per-word timing.
++ * `out_text` receives the same UTF-8 NUL-terminated transcript. The caller
++ * provides `out_word_start_ms` / `out_word_end_ms` as int arrays each of
++ * capacity `*io_n_words`; the library writes one [start_ms, end_ms) pair per
++ * whitespace-delimited word of the transcript (in order), and updates
++ * `*io_n_words` to the count actually written. The word boundaries match a
++ * plain whitespace split of `out_text`, so the caller zips the two. Timing is
++ * duration-proportional + character-weighted + monotonic over the words,
++ * anchored on the exact input duration (see the v12 changelog).
++ *
++ * Returns the number of transcript bytes written (excluding the terminator)
++ * on success, or a negative ELIZA_* code on failure. */
++int eliza_inference_asr_transcribe_timed(
++    EliInferenceContext * ctx,
++    const float * pcm,
++    size_t n_samples,
++    int sample_rate_hz,
++    char * out_text,
++    size_t max_text_bytes,
++    int * out_word_start_ms,
++    int * out_word_end_ms,
++    size_t * io_n_words,
++    char ** out_error);
++
+ /* ---- Streaming ASR (ABI v2) --------------------------------------- *
+  *
+  * A streaming ASR session: feed PCM frames as they arrive (post-VAD-gate)
+diff --git a/tools/omnivoice/src/eliza-inference-ffi.cpp b/tools/omnivoice/src/eliza-inference-ffi.cpp
+index 4e68df560..c4bbcd249 100644
+--- a/tools/omnivoice/src/eliza-inference-ffi.cpp
++++ b/tools/omnivoice/src/eliza-inference-ffi.cpp
+@@ -1781,20 +1781,20 @@ int eliza_inference_tts_synthesize(
+     return written;
+ }
+ 
+-int eliza_inference_asr_transcribe(
++/* Shared ASR decode core. Takes the asr_mutex, runs the audio-in/text-out
++ * decode, and yields the cleaned transcript. Both eliza_inference_asr_transcribe
++ * and eliza_inference_asr_transcribe_timed call this so the decode lives in
++ * exactly one place. Returns 0 on success or a negative ELIZA_* code. */
++static int eliza_asr_decode_core(
+     EliInferenceContext * ctx,
+     const float * pcm,
+     size_t n_samples,
+     int sample_rate_hz,
+-    char * out_text,
+     size_t max_text_bytes,
++    std::string & out_transcript,
+     char ** out_error) {
+-    if (!ctx || !pcm || !out_text || max_text_bytes == 0 || sample_rate_hz <= 0) {
+-        eliza_set_error(out_error, "[libelizainference] asr_transcribe: invalid arguments");
+-        return ELIZA_ERR_INVALID_ARG;
+-    }
++    out_transcript.clear();
+     if (n_samples == 0) {
+-        out_text[0] = '\0';
+         return 0;
+     }
+ 
+@@ -1897,10 +1897,28 @@ int eliza_inference_asr_transcribe(
+             "[libelizainference] asr_transcribe: decode reached token cap before EOG; "
+             "refusing to return a possibly truncated transcript");
+         return ELIZA_ERR_FFI_FAULT;
+-    } else {
+-        transcript = eliza_clean_asr_transcript(transcript);
+     }
++    out_transcript = eliza_clean_asr_transcript(transcript);
++    return 0;
++}
+ 
++int eliza_inference_asr_transcribe(
++    EliInferenceContext * ctx,
++    const float * pcm,
++    size_t n_samples,
++    int sample_rate_hz,
++    char * out_text,
++    size_t max_text_bytes,
++    char ** out_error) {
++    if (!ctx || !pcm || !out_text || max_text_bytes == 0 || sample_rate_hz <= 0) {
++        eliza_set_error(out_error, "[libelizainference] asr_transcribe: invalid arguments");
++        return ELIZA_ERR_INVALID_ARG;
++    }
++    std::string transcript;
++    int rc = eliza_asr_decode_core(ctx, pcm, n_samples, sample_rate_hz, max_text_bytes, transcript, out_error);
++    if (rc < 0) {
++        return rc;
++    }
+     if (transcript.size() + 1 > max_text_bytes) {
+         eliza_set_error(out_error, "[libelizainference] asr_transcribe: output buffer too small after transcript normalization");
+         return ELIZA_ERR_INVALID_ARG;
+@@ -1910,6 +1928,79 @@ int eliza_inference_asr_transcribe(
+     return (int) transcript.size();
+ }
+ 
++int eliza_inference_asr_timestamps_supported(void) {
++    return 1;
++}
++
++int eliza_inference_asr_transcribe_timed(
++    EliInferenceContext * ctx,
++    const float * pcm,
++    size_t n_samples,
++    int sample_rate_hz,
++    char * out_text,
++    size_t max_text_bytes,
++    int * out_word_start_ms,
++    int * out_word_end_ms,
++    size_t * io_n_words,
++    char ** out_error) {
++    if (!ctx || !pcm || !out_text || max_text_bytes == 0 || sample_rate_hz <= 0 ||
++        !out_word_start_ms || !out_word_end_ms || !io_n_words) {
++        eliza_set_error(out_error, "[libelizainference] asr_transcribe_timed: invalid arguments");
++        return ELIZA_ERR_INVALID_ARG;
++    }
++    const size_t word_cap = *io_n_words;
++    *io_n_words = 0;
++
++    std::string transcript;
++    int rc = eliza_asr_decode_core(ctx, pcm, n_samples, sample_rate_hz, max_text_bytes, transcript, out_error);
++    if (rc < 0) {
++        return rc;
++    }
++    if (transcript.size() + 1 > max_text_bytes) {
++        eliza_set_error(out_error, "[libelizainference] asr_transcribe_timed: output buffer too small after transcript normalization");
++        return ELIZA_ERR_INVALID_ARG;
++    }
++    std::memcpy(out_text, transcript.data(), transcript.size());
++    out_text[transcript.size()] = '\0';
++
++    /* Per-word timing: duration-proportional, character-weighted, monotonic over
++     * the cleaned transcript words, anchored on the exact input duration. The
++     * honest single-model signal — Qwen3-ASR exposes no acoustic frame alignment
++     * and flash-attention fuses the cross-attention softmax (see the v12 ABI
++     * changelog). Word boundaries are a plain whitespace split, matching the
++     * caller's split of out_text. */
++    struct WordSpan { size_t begin; size_t end; };
++    std::vector<WordSpan> words;
++    {
++        const size_t n = transcript.size();
++        size_t i = 0;
++        while (i < n) {
++            while (i < n && std::isspace((unsigned char) transcript[i])) ++i;
++            if (i >= n) break;
++            const size_t begin = i;
++            while (i < n && !std::isspace((unsigned char) transcript[i])) ++i;
++            words.push_back(WordSpan{ begin, i });
++        }
++    }
++    size_t total_chars = 0;
++    for (const auto & w : words) total_chars += (w.end - w.begin);
++
++    const double t_ms = 1000.0 * (double) n_samples / (double) sample_rate_hz;
++    size_t written = 0;
++    size_t cum = 0;
++    for (size_t w = 0; w < words.size() && written < word_cap; ++w) {
++        const size_t wlen = words[w].end - words[w].begin;
++        const double start = total_chars > 0 ? t_ms * (double) cum / (double) total_chars : 0.0;
++        cum += wlen;
++        const double end = total_chars > 0 ? t_ms * (double) cum / (double) total_chars : t_ms;
++        out_word_start_ms[written] = (int) std::llround(start);
++        out_word_end_ms[written] = (int) std::llround(end);
++        ++written;
++    }
++    *io_n_words = written;
++    return (int) transcript.size();
++}
++
+ /* ---- Streaming ASR (ABI v2) ---------------------------------------- *
+  *
+  * The fused build ships the v1 batch \`eliza_inference_asr_transcribe\`

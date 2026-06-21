@@ -174,7 +174,9 @@ function PositionRow({ position }: { position: HyperliquidPosition }) {
   const isLong = Number.isFinite(size) ? size >= 0 : true;
   const unrealizedPnl = toNumber(position.unrealizedPnl);
   const roe = toNumber(position.returnOnEquity);
-  const liqDistance = position.distanceToLiquidationPct;
+  // Normalize undefined → null so the `=== null` guard below catches a missing
+  // DTO field; otherwise `undefined.toFixed()` crashes the whole view (#8796).
+  const liqDistance = position.distanceToLiquidationPct ?? null;
 
   return (
     <div className="grid grid-cols-[minmax(0,1.2fr)_repeat(4,minmax(0,1fr))] items-center gap-3 px-4 py-2.5 text-sm">

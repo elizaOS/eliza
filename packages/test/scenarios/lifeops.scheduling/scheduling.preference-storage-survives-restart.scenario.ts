@@ -36,6 +36,7 @@ function checkPrefsSurfaced(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "scheduling.preference-storage-survives-restart",
   title: "Seeded meeting preferences are read back, not re-asked",
   domain: "lifeops.scheduling",

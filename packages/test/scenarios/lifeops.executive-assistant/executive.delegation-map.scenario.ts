@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.delegation-map",
   title: "Delegation map identifies owners, blockers, and next asks",
   domain: "lifeops.executive-assistant",

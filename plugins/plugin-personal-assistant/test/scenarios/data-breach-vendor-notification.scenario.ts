@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "data-breach-vendor-notification",
   title: "Assistant runs a vendor breach notification and containment loop",
   domain: "executive.escalation",

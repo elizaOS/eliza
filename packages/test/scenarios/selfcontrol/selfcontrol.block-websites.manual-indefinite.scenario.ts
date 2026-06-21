@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "selfcontrol.block-websites.manual-indefinite",
   title: "Block X with no duration until manual unblock",
   domain: "selfcontrol",

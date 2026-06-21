@@ -31,6 +31,7 @@ function checkWeekendHandled(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "scheduling.weekend-availability-toggle",
   title: "Handles weekend-availability request against weekday-only prefs",
   domain: "lifeops.scheduling",

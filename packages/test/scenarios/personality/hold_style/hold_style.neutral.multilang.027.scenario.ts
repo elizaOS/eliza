@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hold_style.neutral.multilang.027",
   title: "hold_style :: no_hedging :: neutral :: multilang :: 3-turn (27)",
   domain: "personality",

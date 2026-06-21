@@ -6,6 +6,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.floss-daily-before-brush",
   title: "Floss daily before brushing teeth at night",
   domain: "lifeops.hygiene",

@@ -14,6 +14,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.create-draft-with-cc-bcc",
   title: "Draft with CC and BCC keeps roles distinct",
   domain: "lifeops.gmail",

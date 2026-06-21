@@ -3309,6 +3309,22 @@
         "vitest": "^4.0.18",
       },
     },
+    "plugins/plugin-cli-inference": {
+      "name": "@elizaos/plugin-cli-inference",
+      "version": "2.0.3-beta.0",
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@elizaos/core": "workspace:*",
+        "@types/bun": "^1.3.8",
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "workspace:*",
+        "zod": "^4.4.3",
+      },
+    },
     "plugins/plugin-codex-cli": {
       "name": "@elizaos/plugin-codex-cli",
       "version": "2.0.3-beta.0",
@@ -6663,6 +6679,8 @@
     "@elizaos/plugin-clawville": ["@elizaos/plugin-clawville@workspace:plugins/plugin-clawville"],
 
     "@elizaos/plugin-cli": ["@elizaos/plugin-cli@workspace:plugins/plugin-cli"],
+
+    "@elizaos/plugin-cli-inference": ["@elizaos/plugin-cli-inference@workspace:plugins/plugin-cli-inference"],
 
     "@elizaos/plugin-codex-cli": ["@elizaos/plugin-codex-cli@workspace:plugins/plugin-codex-cli"],
 

@@ -80,6 +80,13 @@ export enum EventType {
 	FORM_FIELD_CONFIRMED = "FORM_FIELD_CONFIRMED",
 	FORM_FIELD_CANCELLED = "FORM_FIELD_CANCELLED",
 
+	// UI interaction events (#8792) — the agent observes shortcuts, slash
+	// commands, and view switches (agent- or user-initiated) so a proactive
+	// decider can comment on them. Connect-once contract every surface emits.
+	VIEW_SWITCHED = "VIEW_SWITCHED",
+	SLASH_COMMAND_INVOKED = "SLASH_COMMAND_INVOKED",
+	SHORTCUT_FIRED = "SHORTCUT_FIRED",
+
 	// Hook system events - command lifecycle
 	HOOK_COMMAND_NEW = "HOOK_COMMAND_NEW",
 	HOOK_COMMAND_RESET = "HOOK_COMMAND_RESET",
@@ -306,6 +313,58 @@ export interface FormFieldEventPayload extends EventPayload {
 }
 
 // ============================================================================
+// UI Interaction Event Payloads (#8792)
+// ============================================================================
+
+/** Who triggered a UI interaction. */
+export type InteractionInitiator = "agent" | "user";
+
+/**
+ * Payload for {@link EventType.VIEW_SWITCHED} — the active view changed, by the
+ * agent (action/evaluator) or the user (tab click, slash navigate, tile tap).
+ */
+export interface ViewSwitchedPayload extends EventPayload {
+	viewId: string;
+	viewLabel?: string;
+	viewPath?: string | null;
+	viewType?: string;
+	/** Where the user was before this switch, when known. */
+	previousViewId?: string | null;
+	initiatedBy: InteractionInitiator;
+	/** Room the switch happened in, for room-scoped proactive gating. */
+	roomId?: UUID;
+}
+
+/**
+ * Payload for {@link EventType.SLASH_COMMAND_INVOKED} — a slash command ran
+ * (e.g. `/settings`, `/wallet`). Carries the resolved target so a decider knows
+ * whether intent was already expressed (and should usually stay quiet).
+ */
+export interface SlashCommandInvokedPayload extends EventPayload {
+	/** Canonical command name (without the leading slash). */
+	command: string;
+	args?: string[];
+	/** Resolved target kind: navigation, an agent action, or a client behavior. */
+	targetKind?: "navigate" | "agent" | "client";
+	/** Target view id when the command navigates to a view. */
+	viewId?: string;
+	initiatedBy: InteractionInitiator;
+	roomId?: UUID;
+}
+
+/**
+ * Payload for {@link EventType.SHORTCUT_FIRED} — a keyboard/UI shortcut fired.
+ */
+export interface ShortcutFiredPayload extends EventPayload {
+	/** Stable shortcut id (e.g. "toggle-voice", "open-command-palette"). */
+	shortcutId: string;
+	/** Optional free-form context (the surface it fired on). */
+	context?: string;
+	initiatedBy: InteractionInitiator;
+	roomId?: UUID;
+}
+
+// ============================================================================
 // Hook System Event Payloads
 // ============================================================================
 
@@ -509,6 +568,10 @@ export interface EventPayloadMap {
 	[EventType.CONTROL_MESSAGE]: ControlMessagePayload;
 	[EventType.FORM_FIELD_CONFIRMED]: FormFieldEventPayload;
 	[EventType.FORM_FIELD_CANCELLED]: FormFieldEventPayload;
+	// UI interaction event payloads (#8792)
+	[EventType.VIEW_SWITCHED]: ViewSwitchedPayload;
+	[EventType.SLASH_COMMAND_INVOKED]: SlashCommandInvokedPayload;
+	[EventType.SHORTCUT_FIRED]: ShortcutFiredPayload;
 	// Hook system event payloads
 	[EventType.HOOK_COMMAND_NEW]: HookCommandPayload;
 	[EventType.HOOK_COMMAND_RESET]: HookCommandPayload;

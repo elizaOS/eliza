@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.signal.certify-core",
   title: "Certify Signal inbound and delivery behavior",
   connector: "signal",

@@ -17,6 +17,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "cross-channel.group-chat-handoff-resume",
   title: "Resume after handoff — agent catches user up on group chat",
   domain: "lifeops.cross-channel",

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "caregiver-background-renewal",
   title: "Assistant coordinates caregiver background renewal",
   domain: "executive.family",

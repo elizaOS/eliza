@@ -47,6 +47,7 @@ function checkAllFourChannelsMentioned(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "cross-channel.same-person-4-platforms",
   title: "Same person across Gmail + Signal + Telegram + Discord dedupes",
   domain: "lifeops.cross-channel",

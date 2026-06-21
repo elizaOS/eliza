@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail-llm-eval-search-priority",
   title: "Gmail LLM evals cover cross-account search and priority triage",
   domain: "gmail",

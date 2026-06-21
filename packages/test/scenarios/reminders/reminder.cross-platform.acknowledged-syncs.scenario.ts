@@ -34,6 +34,7 @@ function assertApiBody(options: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "reminder.cross-platform.acknowledged-syncs",
   title: "Acknowledging one rung suppresses the remaining ladder",
   domain: "reminders",

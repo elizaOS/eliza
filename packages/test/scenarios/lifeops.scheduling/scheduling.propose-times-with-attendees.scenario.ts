@@ -24,6 +24,7 @@ function checkAttendeesNamed(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "scheduling.propose-times-with-attendees",
   title: "Proposes times that name both invitees",
   domain: "lifeops.scheduling",

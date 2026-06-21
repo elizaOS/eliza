@@ -6,6 +6,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "habits.weekend-vs-weekday-cadence",
   title: "Weekday-only running habit excludes Sat/Sun",
   domain: "lifeops.habits",

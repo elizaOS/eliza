@@ -36,7 +36,9 @@ describe("useProviderEntries provider ordering", () => {
     expect(ids[0]).toBe("__cloud__");
     expect(ids[1]).toBe("__local__");
     // local must come before any subscription/key entry on mobile
-    const firstSub = ids.findIndex((id) => id !== "__cloud__" && id !== "__local__");
+    const firstSub = ids.findIndex(
+      (id) => id !== "__cloud__" && id !== "__local__",
+    );
     expect(ids.indexOf("__local__")).toBeLessThan(firstSub);
   });
 

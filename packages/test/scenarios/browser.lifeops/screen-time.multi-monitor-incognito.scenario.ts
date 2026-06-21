@@ -66,6 +66,7 @@ function checkScreenTimeReportIsHonest(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "screen-time.multi-monitor-incognito",
   title:
     "Screen-time report covers multiple displays AND flags incognito as opaque",

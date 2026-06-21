@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "identity.search-across-handles",
   title:
     "Search the rolodex returns the same entity for any handle on any platform",

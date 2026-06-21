@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.events.asset-deadline-checklist",
   title: "Track speaker assets and event deadlines",
   domain: "executive-assistant",

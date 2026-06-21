@@ -86,6 +86,7 @@ function inspectCalendarActionForLocalTenAm(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.dst-spring-forward",
   title:
     "Reschedule across DST spring-forward keeps the event at the right LOCAL hour",

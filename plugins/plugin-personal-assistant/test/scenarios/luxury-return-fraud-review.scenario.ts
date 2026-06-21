@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "luxury-return-fraud-review",
   title: "Assistant reviews luxury return fraud risk",
   domain: "executive.money",

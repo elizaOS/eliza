@@ -17,6 +17,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "cross-channel.search-across-platforms",
   title: "Search spans Gmail + Signal + Telegram",
   domain: "lifeops.cross-channel",

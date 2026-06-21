@@ -12,6 +12,7 @@ import {
 import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "health.today-overview-walk-run-strain",
   title: "Today's overview combines walk, run, and strain in one summary",
   domain: "lifeops.health",

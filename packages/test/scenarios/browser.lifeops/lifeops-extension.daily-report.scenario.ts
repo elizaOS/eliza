@@ -6,6 +6,7 @@ import {
 import { seedScreenTimeSessions } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "lifeops-extension.daily-report",
   title: "Daily screen time report",
   domain: "browser.lifeops",

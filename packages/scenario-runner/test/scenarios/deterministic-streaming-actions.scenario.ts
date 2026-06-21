@@ -623,6 +623,7 @@ async function finalStreamingCheck(
 
 export default scenario({
   id: "deterministic-streaming-actions",
+  lane: "pr-deterministic",
   title: "Deterministic STREAM action and route coverage",
   domain: "streaming",
   tags: ["pr", "deterministic", "zero-cost", "streaming"],

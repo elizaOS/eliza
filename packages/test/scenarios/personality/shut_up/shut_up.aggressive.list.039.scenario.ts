@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "shut_up.aggressive.list.039",
   title: "shut_up :: aggressive :: list :: 20-turn (39)",
   domain: "personality",

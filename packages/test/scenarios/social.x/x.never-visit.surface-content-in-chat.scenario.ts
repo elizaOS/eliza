@@ -6,6 +6,7 @@ import {
 import { seedXReadFixtures } from "../_helpers/x-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "x.never-visit.surface-content-in-chat",
   title: "Agent surfaces X content in chat without redirecting user",
   domain: "social.x",

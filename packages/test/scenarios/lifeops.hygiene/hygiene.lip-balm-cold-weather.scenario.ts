@@ -7,6 +7,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.lip-balm-cold-weather",
   title: "Lip balm every few hours during cold weather",
   domain: "lifeops.hygiene",

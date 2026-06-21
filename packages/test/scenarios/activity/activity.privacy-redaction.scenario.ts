@@ -7,6 +7,7 @@ import {
 import { seedBrowserExtensionTelemetry } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "activity.privacy-redaction",
   title: "Activity data PII is redacted by default",
   domain: "activity",

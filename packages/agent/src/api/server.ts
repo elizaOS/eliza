@@ -332,6 +332,11 @@ import {
   type PluginManagerLike,
 } from "../services/plugin-manager-types.ts";
 import {
+  PROACTIVE_INTERACTION_SOURCE,
+  registerProactiveInteractionDecider,
+} from "../services/proactive-interaction-decider.ts";
+import { ProactiveInteractionGate } from "../services/proactive-interaction-gate.ts";
+import {
   executeTriggerTask,
   getTriggerHealthSnapshot,
   getTriggerLimit,
@@ -362,6 +367,7 @@ import {
   isUuidLike,
   patchTouchesProviderSelection,
 } from "./server-helpers.ts";
+import { routeAutonomyTextToUser as routeProactiveText } from "./server-helpers-swarm.ts";
 import {
   createConnectorHealthMonitor,
   extractConversationMetadataFromRoom,
@@ -409,6 +415,7 @@ import {
   tryHandleMusicPlayerStatusFallbackLazy,
   tryHandleRuntimePluginRoute,
 } from "./server-lazy-routes.ts";
+import { tryHandleTrajectoryFallback } from "./trajectory-fallback-routes.ts";
 import {
   EVM_PLUGIN_PACKAGE,
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
@@ -1712,6 +1719,26 @@ export {
   handleSwarmSynthesis,
   routeAutonomyTextToUser,
 } from "./server-helpers-swarm.ts";
+
+// One process-wide governance gate shared across runtime (re)registrations, so a
+// restart doesn't reset the proactive-comment cooldowns/caps (#8792).
+const proactiveInteractionGate = new ProactiveInteractionGate();
+
+/**
+ * Wire the proactive-interaction decider (#8792): subscribe to VIEW_SWITCHED and
+ * route an admitted, model-judged comment into the chat via the existing
+ * proactive-message pipeline. No-ops when disabled by config/kill-switch.
+ */
+function wireProactiveInteractionDecider(
+  rt: IAgentRuntime,
+  state: ServerState,
+): void {
+  registerProactiveInteractionDecider(rt, {
+    gate: proactiveInteractionGate,
+    route: (text) =>
+      routeProactiveText(state, text, PROACTIVE_INTERACTION_SOURCE),
+  });
+}
 
 async function handleRequest(
   req: http.IncomingMessage,
@@ -3367,6 +3394,23 @@ async function handleRequest(
     return;
   }
 
+  // ── Trajectory read fallback ────────────────────────────────────────────
+  // Serves GET /api/trajectories[/:id|/stats] from the core TrajectoriesService
+  // when no plugin owns the route (mobile / training disabled), so the realtime
+  // trajectory viewer works without @elizaos/plugin-training. Runs AFTER the
+  // plugin routes above, so plugin-training's richer route wins when present.
+  if (
+    await tryHandleTrajectoryFallback({
+      pathname,
+      method,
+      url,
+      runtime: state.runtime,
+      res,
+    })
+  ) {
+    return;
+  }
+
   // ── Hono adapter for runtime.routes with `routeHandler` (new shape) ─────
   // Covers any plugin route registered via the new return-shape RouteHandler
   // contract. Legacy Express-shaped `handler` routes are still served by
@@ -4960,6 +5004,7 @@ export async function startApiServer(opts?: {
       logger.warn("[api] Character overlay restore failed:", err);
     });
     registerClientChatSendHandler(opts.runtime, state);
+    wireProactiveInteractionDecider(opts.runtime, state);
   }
 
   const assertX402RoutesValid = async (
@@ -5036,6 +5081,7 @@ export async function startApiServer(opts?: {
 
     // Re-register client_chat send handler on the new runtime
     registerClientChatSendHandler(rt, state);
+    wireProactiveInteractionDecider(rt, state);
 
     // Wire coding-agent bridges (event-driven via getServiceLoadPromise)
     void wireCoordinatorBridgesWhenReady(state, {

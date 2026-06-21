@@ -73,6 +73,7 @@ function checkEventProposed(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.event-ingestion-from-email",
   title: "Agent extracts event from inbox entry and proposes calendar add",
   domain: "lifeops.inbox-triage",

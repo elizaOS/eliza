@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "consulate-interview-recovery",
   title: "Assistant recovers a missed consulate interview slot",
   domain: "executive.travel",

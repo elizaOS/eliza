@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "reminder.alarm.sets-macos-alarm",
   title: "Mac alarm request creates an owner calendar event",
   domain: "reminders",

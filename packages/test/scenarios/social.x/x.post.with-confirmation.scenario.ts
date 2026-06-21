@@ -3,6 +3,7 @@ import { expectTurnToCallAction } from "../_helpers/action-assertions.ts";
 import { expectScenarioActionResultData } from "../_helpers/action-result-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "x.post.with-confirmation",
   title: "Draft an X post inline in chat",
   domain: "social.x",

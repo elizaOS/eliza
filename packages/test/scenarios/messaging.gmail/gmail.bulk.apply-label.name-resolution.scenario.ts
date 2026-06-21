@@ -2,6 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.bulk.apply-label.name-resolution",
   title: "Resolve Gmail label name before applying it",
   domain: "messaging.gmail",

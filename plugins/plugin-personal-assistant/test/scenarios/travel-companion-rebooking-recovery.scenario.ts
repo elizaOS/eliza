@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "travel-companion-rebooking-recovery",
   title: "Assistant recovers companion travel rebooking",
   domain: "executive.travel",

@@ -4,6 +4,7 @@ import { expectScenarioActionResultData } from "../_helpers/action-result-assert
 import { seedCheckinTodo } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "todo.routine.morning-checkin",
   title: "Morning check-in surfaces overdue todo context",
   domain: "todos",

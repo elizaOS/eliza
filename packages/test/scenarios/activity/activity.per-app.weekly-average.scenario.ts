@@ -20,6 +20,7 @@ const WEEKLY_AVERAGE_SESSIONS = Array.from({ length: 7 }, (_, day) => [
 ]).flat();
 
 export default scenario({
+  lane: "live-only",
   id: "activity.per-app.weekly-average",
   title: "Weekly per-app average usage",
   domain: "activity",

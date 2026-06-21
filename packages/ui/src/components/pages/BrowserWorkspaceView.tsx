@@ -39,10 +39,7 @@ import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useConfirm } from "../ui/confirm-dialog.hooks";
 import { Input } from "../ui/input";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
-import {
-  AppWorkspaceChrome,
-  type AppWorkspaceChromeProps,
-} from "../workspace/AppWorkspaceChrome.js";
+import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome.js";
 import {
   decodeBase64ForPreview,
   decodeSignableMessage,
@@ -58,7 +55,6 @@ import {
   parseBrowserWorkspaceEvmChainId,
   resolveBrowserWorkspaceSignMessage,
 } from "./browser-workspace-wallet";
-import { getBrowserPageScopeCopy } from "./page-scoped-conversations";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 
 const POLL_INTERVAL_MS = 2_500;
@@ -2105,83 +2101,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     );
   }, [loadBrowserBridgeState, runBrowserWorkspaceAction, t]);
 
-  const browserPageScopeCopy = useMemo(
-    () =>
-      getBrowserPageScopeCopy({
-        browserBridgeConnected,
-        browserBridgeInstallAvailable: browserBridgeSupported,
-        browserLabel: primaryBrowserBridgeCompanion?.browser,
-        profileLabel: primaryBrowserBridgeCompanion?.profileLabel,
-      }),
-    [
-      browserBridgeConnected,
-      browserBridgeSupported,
-      primaryBrowserBridgeCompanion?.browser,
-      primaryBrowserBridgeCompanion?.profileLabel,
-    ],
-  );
-
-  const browserChatActions =
-    !browserBridgeSupported ||
-    browserBridgeUnsupportedInNativeLocalMode ||
-    browserBridgeConnected ? null : (
-      <>
-        <Button
-          size="sm"
-          disabled={busyAction !== null}
-          onClick={() => void installBrowserBridgeExtension()}
-        >
-          {t("browserworkspace.InstallBrowserBridge", {
-            defaultValue: "Install Agent Browser Bridge",
-          })}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={
-            busyAction !== null || !browserBridgePackageStatus?.chromeBuildPath
-          }
-          onClick={() => void revealBrowserBridgeFolder()}
-        >
-          <FolderOpen className="h-4 w-4" />
-          {t("browserworkspace.OpenBrowserBridgeFolder", {
-            defaultValue: "Open extension folder",
-          })}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busyAction !== null}
-          onClick={() => void openBrowserBridgeChromeExtensions()}
-        >
-          {t("browserworkspace.OpenChromeExtensions", {
-            defaultValue: "Open Chrome extensions",
-          })}
-        </Button>
-      </>
-    );
-
-  const browserPageScopedChatPaneProps = useMemo<
-    NonNullable<AppWorkspaceChromeProps["pageScopedChatPaneProps"]>
-  >(
-    () => ({
-      introOverride: {
-        title: browserPageScopeCopy.title,
-        body: browserPageScopeCopy.body,
-        actions: browserChatActions,
-      },
-      systemAddendumOverride: browserPageScopeCopy.systemAddendum,
-      placeholderOverride: browserBridgeConnected
-        ? t("browserworkspace.ChatPlaceholderConnected", {
-            defaultValue: "Message",
-          })
-        : t("browserworkspace.ChatPlaceholderInstallBridge", {
-            defaultValue: "Message",
-          }),
-    }),
-    [browserBridgeConnected, browserChatActions, browserPageScopeCopy, t],
-  );
-
   const tabsLabel = t("browserworkspace.Tabs", {
     defaultValue: "Tabs",
   });
@@ -2974,15 +2893,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
 
   return (
     <ShellViewAgentSurface viewId="browser">
-      <AppWorkspaceChrome
-        testId="browser-workspace-view"
-        main={mainNode}
-        chatScope="page-browser"
-        pageScopedChatPaneProps={browserPageScopedChatPaneProps}
-        chatCollapsed
-        chatDisabled
-        hideCollapseButton
-      />
+      <AppWorkspaceChrome testId="browser-workspace-view" main={mainNode} />
       <ConfirmDialog {...vaultAutofillModalProps} />
       <ConfirmDialog {...walletActionModalProps} />
     </ShellViewAgentSurface>

@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "note_trait_unrelated.aggressive.short_text.009",
   title:
     "note_trait :: first_name_only :: aggressive :: short_text :: 3-turn (9)",

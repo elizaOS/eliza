@@ -31,6 +31,7 @@ function checkBufferMatches30Min(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "travel-buffer.respects-user-default",
   title:
     "Travel buffer uses the seeded 30-min user default, not a generic 15-min",

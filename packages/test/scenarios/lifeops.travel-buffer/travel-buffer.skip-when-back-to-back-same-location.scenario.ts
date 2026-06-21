@@ -38,6 +38,7 @@ function checkNoBufferInserted(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "travel-buffer.skip-when-back-to-back-same-location",
   title: "No travel buffer added between back-to-back same-location meetings",
   domain: "lifeops.travel-buffer",

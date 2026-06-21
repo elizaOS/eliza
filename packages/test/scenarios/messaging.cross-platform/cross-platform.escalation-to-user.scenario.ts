@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "cross-platform.escalation-to-user",
   title: "Signature-required request escalates back to the owner",
   domain: "messaging.cross-platform",

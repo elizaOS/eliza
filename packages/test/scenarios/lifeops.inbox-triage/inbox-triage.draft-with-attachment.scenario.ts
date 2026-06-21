@@ -88,6 +88,7 @@ function checkDraftReferencesAttachment(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.draft-with-attachment",
   title:
     "Triage entry with attachment — draft acknowledges file without fabricating its contents",

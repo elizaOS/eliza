@@ -115,6 +115,7 @@ function checkAgentSurfacesActionableError(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "payments.plaid-mfa-fail",
   title: "Plaid MFA failure surfaces actionable re-auth, never claims success",
   domain: "lifeops.payments",

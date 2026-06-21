@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "selfcontrol.harsh-mode.no-bypass",
   title: "Harsh mode refuses to unblock before time elapses",
   domain: "selfcontrol",

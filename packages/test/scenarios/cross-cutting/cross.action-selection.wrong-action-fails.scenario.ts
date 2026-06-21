@@ -12,6 +12,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 const ACCEPTED_REMINDER_ACTIONS = ["CREATE_TASK", "SCHEDULE_FOLLOW_UP", "LIFE"];
 
 export default scenario({
+  lane: "live-only",
   id: "cross.action-selection.wrong-action-fails",
   title: "Reminder request routes to a reminder/task action",
   domain: "cross-cutting",

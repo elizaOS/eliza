@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "proxy-vote-instruction-deadline",
   title: "Assistant protects proxy vote instruction deadline",
   domain: "executive.money",

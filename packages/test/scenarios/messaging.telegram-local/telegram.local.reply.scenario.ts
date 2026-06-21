@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "telegram.local.reply",
   title: "Reply to Telegram chat with confirmation",
   domain: "messaging.telegram-local",

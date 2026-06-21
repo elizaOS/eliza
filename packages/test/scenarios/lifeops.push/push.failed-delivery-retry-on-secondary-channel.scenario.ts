@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.failed-delivery-retry-on-secondary-channel",
   title: "Failed ntfy delivery triggers a secondary-channel retry",
   domain: "lifeops.push",

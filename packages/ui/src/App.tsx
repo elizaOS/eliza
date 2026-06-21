@@ -121,7 +121,6 @@ import { fetchWithCsrf } from "./api/csrf-client";
 // `app-shell-components` barrel — that barrel statically re-exports every page
 // view, so importing through it folds all of them back into the main chunk.
 import {
-  type AppShellPageLoader,
   type AppShellPageRegistration,
   getAppShellPageRegistrySnapshot,
   listAppShellPages,
@@ -437,7 +436,6 @@ function TabScrollView({
   return (
     <AppWorkspaceChrome
       testId="tab-scroll-view"
-      chatDisabled
       main={
         <div
           data-shell-scroll-region="true"
@@ -454,7 +452,6 @@ function TabContentView({ children }: { children: ReactNode }) {
   return (
     <AppWorkspaceChrome
       testId="tab-content-view"
-      chatDisabled
       main={
         <div
           data-shell-content-region="true"
@@ -492,6 +489,7 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
   const { plugins } = useApp();
   const registryVersion = useAppShellPageRegistryVersion();
   return useMemo(() => {
+    void registryVersion;
     const registrations = listAppShellPages();
     const registered = registrations.find((entry) => entry.id === tab);
     if (registered) {
@@ -639,13 +637,12 @@ function visibleDynamicPage(
  */
 function useTabIsFullBleed(tab: string): boolean {
   const registryVersion = useAppShellPageRegistryVersion();
-  return useMemo(
-    () =>
-      listAppShellPages().some(
-        (entry) => entry.id === tab && entry.fullBleed === true,
-      ),
-    [registryVersion, tab],
-  );
+  return useMemo(() => {
+    void registryVersion;
+    return listAppShellPages().some(
+      (entry) => entry.id === tab && entry.fullBleed === true,
+    );
+  }, [registryVersion, tab]);
 }
 
 function trimmedNavigationPath(navigationPath: string): string {

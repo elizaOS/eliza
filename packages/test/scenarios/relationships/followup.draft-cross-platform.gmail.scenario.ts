@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "followup.draft-cross-platform.gmail",
   title: "Draft a follow-up email to a Rolodex contact",
   domain: "relationships",

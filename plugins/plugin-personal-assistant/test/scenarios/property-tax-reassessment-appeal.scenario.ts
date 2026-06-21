@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "property-tax-reassessment-appeal",
   title: "Assistant prepares a property tax reassessment appeal",
   domain: "executive.household",

@@ -106,6 +106,7 @@ function expectShowTurn(
 
 export default scenario({
   id: "deterministic-view-switching",
+  lane: "pr-deterministic",
   title: "Deterministic view switching across every built-in view",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "app-control", "views"],

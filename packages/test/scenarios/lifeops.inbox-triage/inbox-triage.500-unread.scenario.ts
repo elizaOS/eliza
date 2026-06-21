@@ -69,6 +69,7 @@ function checkAgentBatchedRatherThanEnumerated(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "inbox-triage.500-unread",
   title: "500-unread inbox is batched/summarized, not enumerated row-by-row",
   domain: "lifeops.inbox-triage",

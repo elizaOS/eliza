@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "conference-agenda-relationship-map",
   title: "Assistant maps conference meetings by relationship value and travel pressure",
   domain: "executive.schedule",

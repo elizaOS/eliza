@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.inbox.daily-brief-includes-unsent-drafts",
   title: "Morning brief includes pending drafts still waiting for sign-off",
   domain: "executive-assistant",

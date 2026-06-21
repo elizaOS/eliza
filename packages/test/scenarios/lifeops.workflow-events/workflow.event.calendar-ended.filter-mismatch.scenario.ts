@@ -14,6 +14,7 @@ interface RuntimeLike {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "workflow.event.calendar-ended.filter-mismatch",
   title: "Event-triggered workflow does not fire when filters reject the event",
   domain: "lifeops.workflow-events",

@@ -42,6 +42,14 @@ export interface CommandDefinition {
 	requiresAuth?: boolean;
 	requiresElevated?: boolean;
 	enabled?: boolean;
+	/**
+	 * View ids for which this command is *view-dependent*: it is only surfaced in
+	 * the command catalog while one of these views is the active (foreground)
+	 * surface. Omitted/undefined = globally available (the default). A non-empty
+	 * list scopes the command to those views — e.g. a `/calendar add` command that
+	 * only makes sense while the calendar view is open. (#8798)
+	 */
+	views?: string[];
 }
 
 export interface CommandContext {

@@ -88,6 +88,7 @@ function checkAgentChoseValidFallback(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "reminders.apple-permission-denied",
   title:
     "Reminder request with Apple permission denied falls back internally or asks for grant",

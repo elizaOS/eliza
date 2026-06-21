@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "vendor-access-revocation",
   title: "Assistant coordinates vendor access revocation",
   domain: "executive.vendor",

@@ -6,6 +6,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.stretch-breaks-every-90min",
   title: "Stretch break every 90 minutes during work",
   domain: "lifeops.hygiene",

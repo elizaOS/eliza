@@ -14,6 +14,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.attachment-metadata-without-download",
   title: "Attachment metadata surfaced without downloading bytes",
   domain: "lifeops.gmail",

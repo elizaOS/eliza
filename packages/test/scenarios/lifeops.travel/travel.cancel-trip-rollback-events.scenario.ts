@@ -10,6 +10,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
 
 export default scenario({
+  lane: "live-only",
   id: "travel.cancel-trip-rollback-events",
   title: "Cancelling a trip rolls back the calendar holds it created",
   domain: "lifeops.travel",

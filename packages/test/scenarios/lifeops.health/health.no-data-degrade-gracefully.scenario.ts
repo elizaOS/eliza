@@ -13,6 +13,7 @@ import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "health.no-data-degrade-gracefully",
   title: "No health data — agent admits and offers to connect a source",
   domain: "lifeops.health",

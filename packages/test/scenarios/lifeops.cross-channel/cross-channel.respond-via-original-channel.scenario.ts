@@ -45,6 +45,7 @@ function checkReplyChannelMatchesOriginal(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "cross-channel.respond-via-original-channel",
   title: "Reply preserves original channel (Telegram in, Telegram out)",
   domain: "lifeops.cross-channel",

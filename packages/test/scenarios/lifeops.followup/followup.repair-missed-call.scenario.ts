@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "followup.repair-missed-call",
   title: "Apologize specifically for a missed call and propose a reschedule",
   domain: "lifeops.followup",

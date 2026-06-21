@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "todo.cross-device.global-alarm",
   title: "Setting an alarm is confirmation-gated before saving",
   domain: "todos",

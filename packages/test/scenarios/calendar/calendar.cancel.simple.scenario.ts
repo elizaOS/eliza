@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.cancel.simple",
   title:
     "Cancel a seeded calendar event with two-turn destructive confirmation",

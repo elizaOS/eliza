@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "telegram.local.read-recent",
   title: "Read recent Telegram messages via local plugin",
   domain: "messaging.telegram-local",

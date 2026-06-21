@@ -7,10 +7,18 @@ name: External API Live Drift
 # injects the optional provider secrets.
 #
 # Public APIs (Polymarket, Hyperliquid, CoinGecko) run with no secret. Key-gated
-# ones (Calendly, Tavily) self-skip unless their secret is present, so a missing
-# secret is a clean no-op, not a failure. continue-on-error keeps a provider
-# outage / drift from red-X'ing the branch — a failure here is a real signal that
-# a mock has drifted from the live API.
+# ones (Calendly, Tavily, OpenAI, Anthropic) self-skip unless their secret is
+# present, so a missing secret is a clean no-op, not a failure. continue-on-error
+# keeps a provider outage / drift from red-X'ing the branch — a failure here is a
+# real signal that a mock has drifted from the live API.
+#
+# Drift coverage vs provider-coverage.ts (#8801): wired here = polymarket,
+# hyperliquid, coingecko, calendly, tavily, openai, anthropic. Remaining
+# providers are credential-blocked — each needs a read/sandbox token before a
+# *.real.test.ts can be added (the open question in #8801). The MTProto/native
+# surfaces (telegram-mtproto, signal, imessage-bluebubbles) have no HTTP drift
+# surface and stay hand-curated mock-only with that caveat documented in
+# packages/test/mocks/helpers/provider-coverage.ts.
 #
 # Nightly + on-demand; never on pull_request.
 
@@ -38,9 +46,13 @@ env:
   COINGECKO_LIVE_TEST: "1"
   CALENDLY_LIVE_TEST: "1"
   TAVILY_LIVE_TEST: "1"
+  OPENAI_LIVE_TEST: "1"
+  ANTHROPIC_LIVE_TEST: "1"
   # Key-gated providers (tests self-skip when absent).
   CALENDLY_ACCESS_TOKEN: ${{ secrets.CALENDLY_ACCESS_TOKEN }}
   TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
 jobs:
   live-drift:
@@ -82,3 +94,9 @@ jobs:
 
       - name: Tavily web-search live drift (key-gated, self-skips)
         run: bunx vitest run --root plugins/plugin-web-search src/services/webSearchService.real.test.ts
+
+      - name: OpenAI live drift (key-gated, self-skips)
+        run: bunx vitest run --root plugins/plugin-openai __tests__/openai-drift.real.test.ts
+
+      - name: Anthropic live drift (key-gated, self-skips)
+        run: bunx vitest run --root plugins/plugin-anthropic __tests__/anthropic-drift.real.test.ts

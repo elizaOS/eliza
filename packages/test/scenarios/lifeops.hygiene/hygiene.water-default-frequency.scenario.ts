@@ -7,6 +7,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.water-default-frequency",
   title: "Drink water default daily frequency",
   domain: "lifeops.hygiene",

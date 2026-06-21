@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -6,6 +6,13 @@ const pagesRoot = resolve(import.meta.dirname);
 
 function readPageSource(fileName: string): string {
   return readFileSync(resolve(pagesRoot, fileName), "utf8");
+}
+
+/** Every built-in view component file (the redesign targets). */
+function listViewFiles(): string[] {
+  return readdirSync(pagesRoot).filter(
+    (name) => name.endsWith("View.tsx") && !name.endsWith(".test.tsx"),
+  );
 }
 
 describe("shared view glyph cleanup", () => {
@@ -26,5 +33,19 @@ describe("shared view glyph cleanup", () => {
     expect(source).not.toContain("✓");
     expect(source).not.toContain("✗");
     expect(source).not.toContain("×");
+  });
+
+  // #8796: extend the iconography guard across EVERY built-in view — no raw
+  // check/cross glyphs anywhere; use Lucide icon components instead. (× is the
+  // multiplication sign and is intentionally not banned globally; close/delete
+  // controls use the X icon, asserted per-view above.)
+  it.each(
+    listViewFiles(),
+  )("%s uses Lucide icons, not raw check/cross glyphs", (fileName) => {
+    const source = readPageSource(fileName);
+    expect(source, `${fileName} contains a raw ✓`).not.toContain("✓");
+    expect(source, `${fileName} contains a raw ✗`).not.toContain("✗");
+    expect(source, `${fileName} contains a raw ✘`).not.toContain("✘");
+    expect(source, `${fileName} contains a raw ✕`).not.toContain("✕");
   });
 });

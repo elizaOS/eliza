@@ -10,6 +10,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
  *            `create` and the choice is resolved to an edit dispatch.
  */
 export default scenario({
+  lane: "live-only",
 	id: "app-create-with-existing-picker",
 	title: "APP create — picker shown then edit-1 selected",
 	domain: "app-control",

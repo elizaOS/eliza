@@ -12,6 +12,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 const TASK_CREATE_ACTIONS = ["CREATE_TASK", "LIFE"];
 
 export default scenario({
+  lane: "live-only",
   id: "cross.multi-action-chain.create-todo-then-block-sites",
   title: "Create todo, then block social media until it's done",
   domain: "cross-cutting",

@@ -8,6 +8,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.push.cancellation-fee-warning",
   title: "Warn the user when missing something may incur a fee",
   domain: "executive-assistant",

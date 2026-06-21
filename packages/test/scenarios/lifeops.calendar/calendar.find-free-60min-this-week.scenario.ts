@@ -27,6 +27,7 @@ function checkProposalAvoidsKnownConflicts(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.find-free-60min-this-week",
   title: "Find a free 60-minute slot this week",
   domain: "lifeops.calendar",

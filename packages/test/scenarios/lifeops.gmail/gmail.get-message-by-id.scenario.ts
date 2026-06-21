@@ -15,6 +15,7 @@ import { judgeRubric } from "../_helpers/action-assertions.ts";
 const MESSAGE_ID = "msg-julia";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.get-message-by-id",
   title: "Get a specific Gmail message by ID via mock get endpoint",
   domain: "lifeops.gmail",

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "todo.create.weekly-weekday",
   title: "Create a weekday morning recurring stretch todo",
   domain: "todos",

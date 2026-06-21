@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "estate-admin-document-safe",
   title: "Assistant organizes estate admin documents with sensitive-data controls",
   domain: "executive.legal",

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "childcare-backup-plan",
   title: "Assistant builds a backup childcare plan around work commitments",
   domain: "executive.family",

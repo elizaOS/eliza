@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.inbox.propose-group-chat-handoff",
   title: "Propose a group-chat handoff when direct coordination is messy",
   domain: "executive-assistant",

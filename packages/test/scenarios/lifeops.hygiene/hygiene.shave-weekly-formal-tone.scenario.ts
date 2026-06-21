@@ -8,6 +8,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.shave-weekly-formal-tone",
   title: "Shave twice a week — formal user phrasing",
   domain: "lifeops.hygiene",
