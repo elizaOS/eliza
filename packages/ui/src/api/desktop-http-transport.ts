@@ -1,7 +1,13 @@
 import { isLoopbackBindHost, isWildcardBindHost } from "@elizaos/shared";
 import { getElectrobunRendererRpc } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
-import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
+import {
+  type AgentRequestTransport,
+  bodyToString,
+  fetchAgentTransport,
+  headersToRecord,
+  methodAllowsBody,
+} from "./transport";
 
 interface DesktopHttpRequestResult {
   status: number;
@@ -21,32 +27,6 @@ function isExternalPlainHttpUrl(url: string): boolean {
   } catch {
     return false;
   }
-}
-
-function headersToRecord(
-  headers: HeadersInit | undefined,
-): Record<string, string> {
-  if (!headers) return {};
-  const record: Record<string, string> = {};
-  new Headers(headers).forEach((value, key) => {
-    record[key] = value;
-  });
-  return record;
-}
-
-function methodAllowsBody(method: string): boolean {
-  const normalized = method.toUpperCase();
-  return normalized !== "GET" && normalized !== "HEAD";
-}
-
-function bodyToString(
-  body: BodyInit | null | undefined,
-): string | null | undefined {
-  if (body === null) return null;
-  if (body === undefined) return undefined;
-  if (typeof body === "string") return body;
-  if (body instanceof URLSearchParams) return body.toString();
-  return undefined;
 }
 
 const desktopHttpTransport: AgentRequestTransport = {
