@@ -15,11 +15,21 @@ const elizaCoreConnectorShimPath = path.join(
   "shims",
   "elizaos-core-connector.ts",
 );
+// @elizaos/logger was extracted from @elizaos/core, whose source still re-exports
+// it (`export * from "@elizaos/logger"`). The connector shim replaces
+// @elizaos/core, but `vi.mock("@elizaos/core", importOriginal)` still loads the
+// real core, which pulls @elizaos/logger — whose dist isn't built in the keyless
+// Plugin Tests lane. Resolve it to source (mirrors packages/test/vitest/default.config).
+const loggerSourceEntry = path.join(here, "..", "..", "logger", "src", "index.ts");
 
 export const providerSdkAliases = [
   {
     find: /^@elizaos\/core$/,
     replacement: elizaCoreConnectorShimPath,
+  },
+  {
+    find: /^@elizaos\/logger$/,
+    replacement: loggerSourceEntry,
   },
   {
     find: /^@ai-sdk\/anthropic$/,
@@ -34,6 +44,9 @@ export function providerSdkShimPlugin(): ProviderSdkShimPlugin {
     resolveId(source) {
       if (source === "@elizaos/core") {
         return elizaCoreConnectorShimPath;
+      }
+      if (source === "@elizaos/logger") {
+        return loggerSourceEntry;
       }
       if (source === "@ai-sdk/anthropic") {
         return anthropicShimPath;
