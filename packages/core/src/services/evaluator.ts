@@ -161,36 +161,44 @@ ${evaluatorSections}
 `;
 }
 
-function schemaRequestLooksUnsupported(error: unknown): boolean {
-	const message = (error instanceof Error ? error.message : String(error ?? ""))
+// Schema-SPECIFIC rejection tokens: a HIGH-CONFIDENCE signal that the provider
+// STRUCTURALLY rejects schema-constrained output (vs a generic/transient HTTP
+// 400 that merely says "bad request" — rate-limit, malformed prompt, context
+// length, gateway blip). Single source of truth so the immediate-arm set can
+// never silently drift from the broader fallback set below.
+const SCHEMA_SPECIFIC_REJECTION_TOKENS = [
+	"response schema",
+	"responseschema",
+	"json_schema",
+	"structured output",
+] as const;
+
+function errorMessageText(error: unknown): string {
+	return (error instanceof Error ? error.message : String(error ?? ""))
 		.toLowerCase()
 		.trim();
-	if (!message) return false;
-	return (
-		message.includes("bad request") ||
-		message.includes("response schema") ||
-		message.includes("responseschema") ||
-		message.includes("json_schema") ||
-		message.includes("structured output")
+}
+
+// Only a schema-specific rejection should arm the lifetime memo on its own; a
+// bare "bad request" still falls back for the turn but is re-attempted next turn
+// (gated by a streak below) so a one-off blip cannot permanently downgrade a
+// schema-capable provider.
+function schemaRejectionLooksPersistent(error: unknown): boolean {
+	const message = errorMessageText(error);
+	return SCHEMA_SPECIFIC_REJECTION_TOKENS.some((token) =>
+		message.includes(token),
 	);
 }
 
-// A HIGH-CONFIDENCE signal that the provider STRUCTURALLY rejects schema-
-// constrained output (vs a generic/transient HTTP 400 that merely says "bad
-// request" — rate-limit, malformed prompt, context length, gateway blip). Only
-// a schema-specific rejection like this should arm the lifetime memo on its
-// own; a bare "bad request" still falls back for the turn but is re-attempted
-// next turn so a one-off blip cannot permanently downgrade a schema-capable
-// provider.
-function schemaRejectionLooksPersistent(error: unknown): boolean {
-	const message = (
-		error instanceof Error ? error.message : String(error ?? "")
-	).toLowerCase();
+// Generic "bad request" is intentionally broad here (it drives the per-turn
+// json_object fallback). Deriving this from schemaRejectionLooksPersistent
+// guarantees the immediate-arm token set stays a strict subset of the fallback
+// set — add a schema token in one place and both predicates pick it up.
+function schemaRequestLooksUnsupported(error: unknown): boolean {
+	const message = errorMessageText(error);
+	if (!message) return false;
 	return (
-		message.includes("response schema") ||
-		message.includes("responseschema") ||
-		message.includes("json_schema") ||
-		message.includes("structured output")
+		message.includes("bad request") || schemaRejectionLooksPersistent(error)
 	);
 }
 
