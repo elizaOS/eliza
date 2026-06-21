@@ -877,7 +877,7 @@ export function CharacterHubView({
 
     if (activeSection === "personality") {
       return (
-        <div className="flex min-w-0 flex-col gap-8">
+        <div className="flex min-w-0 flex-col gap-6">
           <section className="rounded-sm border border-border/40 bg-bg/70 px-4 py-4">
             <CharacterIdentityPanel
               bioText={bioText}
