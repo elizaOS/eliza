@@ -1218,32 +1218,6 @@ function bionicHostGenerate(
 	});
 }
 
-// The bionic GPU host runs an UNCONSTRAINED greedy decode (it has no JSON
-// grammar / responseSchema support), so a structured extraction call can't
-// self-terminate on a closing brace and would otherwise run to the model
-// metadata default ceiling (DEFAULT_MODEL_MAX_TOKENS = 8192). On the
-// reload-per-call path that is minutes of decode — long enough that the
-// post-turn reflection evaluator trips its side-effect timeout and never
-// persists. Bound the decode: structured/extraction calls (post-turn
-// evaluators, classifiers) are small JSON; free generation gets a roomier
-// mobile ceiling. Explicit small request maxTokens (e.g. should_respond=20,
-// reply=96) are below both ceilings and pass through untouched.
-export function resolveBionicMaxTokens(params: GenerateTextParams): number {
-	const structured =
-		params.responseSchema != null ||
-		params.responseFormat === "json_object" ||
-		(typeof params.responseFormat === "object" &&
-			params.responseFormat?.type === "json_object");
-	const ceiling = structured
-		? readTimeoutMs("ELIZA_BIONIC_STRUCTURED_MAX_TOKENS", 768)
-		: readTimeoutMs("ELIZA_BIONIC_MAX_TOKENS", 2048);
-	const requested =
-		typeof params.maxTokens === "number" && params.maxTokens > 0
-			? params.maxTokens
-			: ceiling;
-	return Math.min(requested, ceiling);
-}
-
 function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 	return async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
 		const loadArgs = await resolveLoadArgsWithAutoDownload(slot);
@@ -1262,7 +1236,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 				op: "generate",
 				bundleDir: deriveBionicBundleDir(loadArgs.modelPath),
 				prompt: buildChatMlPrompt(params),
-				maxTokens: resolveBionicMaxTokens(params),
+				maxTokens: params.maxTokens ?? 256,
 			});
 			if (!res.ok) {
 				throw new Error(
