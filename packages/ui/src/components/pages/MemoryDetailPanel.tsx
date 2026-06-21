@@ -11,11 +11,11 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
       memory?.embedding
         ? `[${memory.embedding.map((v) => v.toFixed(6)).join(", ")}]`
         : null,
-    [memory?.id, memory?.embedding],
+    [memory?.embedding],
   );
   const rawJson = useMemo(
     () => JSON.stringify(memory?.raw, null, 2),
-    [memory?.id, memory?.raw],
+    [memory?.raw],
   );
   if (!memory) {
     return (

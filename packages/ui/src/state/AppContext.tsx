@@ -1871,6 +1871,7 @@ function AppProviderInner({
   // all AppContext subscribers (CompanionViewOverlay, App, etc.).
   // NOTE: this dep array must stay in sync with the fields in the value object.
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // biome-ignore lint/correctness/useExhaustiveDependencies: conversationMessages, autonomous events, and ptySessions are intentionally provided through narrower contexts/refs to avoid global AppContext re-renders.
   const value: AppContextValue = useMemo(
     () => ({
       // Translations

@@ -351,10 +351,7 @@ export function useConnectorAccounts(
   );
 
   const accounts = useMemo(() => data?.accounts ?? [], [data?.accounts]);
-  const defaultAccountId = useMemo(
-    () => getPreferredAccountId(data),
-    [data?.accounts, data?.defaultAccountId],
-  );
+  const defaultAccountId = useMemo(() => getPreferredAccountId(data), [data]);
   const effectiveAccountId = selectedAccountId ?? defaultAccountId;
   const selectedAccount = useMemo(
     () => accounts.find((account) => account.id === effectiveAccountId) ?? null,
