@@ -22,6 +22,7 @@ on:
       - "packages/app-core/src/services/vault-mirror.ts"
       - "packages/app-core/src/state/usePluginsSkillsState.ts"
       - "packages/app-core/src/hooks/useSecretsManagerShortcut.ts"
+      - "packages/scripts/ensure-vitest-vite-alias.mjs"
       - ".github/workflows/vault-ci.yaml"
   pull_request:
     branches: [main, develop]
@@ -33,6 +34,7 @@ on:
       - "packages/app-core/src/services/vault-mirror.ts"
       - "packages/app-core/src/state/usePluginsSkillsState.ts"
       - "packages/app-core/src/hooks/useSecretsManagerShortcut.ts"
+      - "packages/scripts/ensure-vitest-vite-alias.mjs"
       - ".github/workflows/vault-ci.yaml"
 
 # Default to least privilege. Override per-job where needed.
@@ -124,6 +126,14 @@ jobs:
         # typecheck/test gate ever runs. The workspace filter keeps the install
         # scoped to vault's dependency graph while preserving the same tests.
         run: bun install --filter @elizaos/vault --ignore-scripts --no-frozen-lockfile
+
+      - name: Expose Vitest Vite alias
+        # Vitest resolves its Vite peer from the root virtual-store package.
+        # Bun's filtered install can place the repo alias only under the
+        # filtered workspace, so expose that same package at the root without
+        # broadening this OS matrix install.
+        run: node packages/scripts/ensure-vitest-vite-alias.mjs packages/vault
+
       - name: Typecheck
         working-directory: packages/vault
         run: bun run typecheck
