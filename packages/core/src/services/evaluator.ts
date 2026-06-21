@@ -202,25 +202,6 @@ function schemaRequestLooksUnsupported(error: unknown): boolean {
 	);
 }
 
-// A HIGH-CONFIDENCE signal that the provider STRUCTURALLY rejects schema-
-// constrained output (vs a generic/transient HTTP 400 that merely says "bad
-// request" — rate-limit, malformed prompt, context length, gateway blip). Only
-// a schema-specific rejection like this should arm the lifetime memo on its
-// own; a bare "bad request" still falls back for the turn but is re-attempted
-// next turn so a one-off blip cannot permanently downgrade a schema-capable
-// provider.
-function schemaRejectionLooksPersistent(error: unknown): boolean {
-	const message = (
-		error instanceof Error ? error.message : String(error ?? "")
-	).toLowerCase();
-	return (
-		message.includes("response schema") ||
-		message.includes("responseschema") ||
-		message.includes("json_schema") ||
-		message.includes("structured output")
-	);
-}
-
 // Once a runtime's SMALL model rejects a structured `responseSchema` request,
 // every subsequent request will be rejected the same way — the provider simply
 // does not support schema-constrained output (e.g. the cerebras gpt-oss path on
