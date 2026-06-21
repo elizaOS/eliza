@@ -7,27 +7,30 @@ import {
 } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  type BrowserBridgeCompanionStatus,
-  type BrowserBridgePageContext,
-  type BrowserBridgePermissionState,
-  type BrowserBridgeSettings,
-  type BrowserBridgeTabSummary,
-  browserBridgeSchema,
+import type {
+  BrowserBridgeCompanionStatus,
+  BrowserBridgePageContext,
+  BrowserBridgePermissionState,
+  BrowserBridgeSettings,
+  BrowserBridgeTabSummary,
 } from "@elizaos/plugin-browser";
-import { inboxDbSchema } from "@elizaos/plugin-inbox";
+// Pull runtime values from the carved plugins' server-safe DB subpaths rather
+// than their package barrels: the barrels re-export React views (→ @elizaos/ui),
+// which a DB repository must never drag into server or unit-test graphs.
+import { browserBridgeSchema } from "@elizaos/plugin-browser/schema";
 import type {
   LifeOpsScheduleMergedState,
   LifeOpsScheduleObservation,
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
-import {
-  FinancesRepository,
-  type LifeOpsPaymentSource,
-  type LifeOpsPaymentTransaction,
-  type LifeOpsSubscriptionAudit,
-  type LifeOpsSubscriptionCancellation,
-  type LifeOpsSubscriptionCandidate,
+import type {
+  LifeOpsPaymentSource,
+  LifeOpsPaymentTransaction,
+  LifeOpsSubscriptionAudit,
+  LifeOpsSubscriptionCancellation,
+  LifeOpsSubscriptionCandidate,
 } from "@elizaos/plugin-finances";
+import { FinancesRepository } from "@elizaos/plugin-finances/db/finances-repository";
+import { inboxDbSchema } from "@elizaos/plugin-inbox/db/schema";
 import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
@@ -204,8 +207,8 @@ export {
   createLifeOpsHealthSleepEpisode,
   createLifeOpsHealthSyncState,
   createLifeOpsHealthWorkout,
-  createLifeOpsSleepEpisode,
-} from "@elizaos/plugin-health";
+} from "@elizaos/plugin-health/health-bridge/health-records";
+export { createLifeOpsSleepEpisode } from "@elizaos/plugin-health/sleep/sleep-episode-types";
 
 import type { LifeOpsSleepEpisodeRecord } from "@elizaos/plugin-health";
 
