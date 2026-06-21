@@ -14,8 +14,6 @@
  *   7. GitHub access (local runtime only)
  *   8. Persist agent + style + provider + embedding config
  *
- * Extracted from eliza.ts to reduce file size.
- *
  * @module first-time-setup
  */
 

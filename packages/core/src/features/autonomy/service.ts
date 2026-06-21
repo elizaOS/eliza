@@ -7,7 +7,6 @@
  * when the autonomy section drains. No Task DB or worker.
  */
 
-// Review: Templates were relocated, and dependency on @elizaos/prompts is now obsolete in this module.
 import { v4 as uuidv4 } from "uuid";
 import {
 	autonomyContinuousContinueTemplate,

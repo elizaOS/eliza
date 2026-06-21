@@ -1,7 +1,5 @@
 /**
  * Agent self-status and ERC-8004 registry inline routes.
- *
- * Extracted from server.ts to reduce file size.
  */
 
 import type http from "node:http";

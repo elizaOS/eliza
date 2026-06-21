@@ -1,6 +1,5 @@
 /**
  * Pure helper functions for bounded in-memory data structures.
- * Extracted from server.ts so they can be unit-tested in isolation.
  *
  * @module
  */

@@ -128,6 +128,46 @@
       "import": "./dist/utils/permission-deep-links.js",
       "default": "./dist/utils/permission-deep-links.js"
     },
+    "./utils/format": {
+      "types": "./dist/utils/format.d.ts",
+      "eliza-source": {
+        "types": "./src/utils/format.ts",
+        "import": "./src/utils/format.ts",
+        "default": "./src/utils/format.ts"
+      },
+      "import": "./dist/utils/format.js",
+      "default": "./dist/utils/format.js"
+    },
+    "./utils/number-parsing": {
+      "types": "./dist/utils/number-parsing.d.ts",
+      "eliza-source": {
+        "types": "./src/utils/number-parsing.ts",
+        "import": "./src/utils/number-parsing.ts",
+        "default": "./src/utils/number-parsing.ts"
+      },
+      "import": "./dist/utils/number-parsing.js",
+      "default": "./dist/utils/number-parsing.js"
+    },
+    "./config/config-catalog": {
+      "types": "./dist/config/config-catalog.d.ts",
+      "eliza-source": {
+        "types": "./src/config/config-catalog.ts",
+        "import": "./src/config/config-catalog.ts",
+        "default": "./src/config/config-catalog.ts"
+      },
+      "import": "./dist/config/config-catalog.js",
+      "default": "./dist/config/config-catalog.js"
+    },
+    "./contracts/apps": {
+      "types": "./dist/contracts/apps.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/apps.ts",
+        "import": "./src/contracts/apps.ts",
+        "default": "./src/contracts/apps.ts"
+      },
+      "import": "./dist/contracts/apps.js",
+      "default": "./dist/contracts/apps.js"
+    },
     "./voice-wer": {
       "types": "./dist/voice-wer.d.ts",
       "eliza-source": {

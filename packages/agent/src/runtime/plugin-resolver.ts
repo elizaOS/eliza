@@ -6,8 +6,6 @@
  * directories. Each plugin is wrapped in an error boundary so a single
  * failing plugin cannot crash the agent startup.
  *
- * Extracted from eliza.ts to reduce file size.
- *
  * @module plugin-resolver
  */
 import crypto from "node:crypto";

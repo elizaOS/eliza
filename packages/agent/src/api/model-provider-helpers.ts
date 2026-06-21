@@ -1,8 +1,8 @@
 /**
  * Model and provider discovery helpers.
  *
- * Extracted from server.ts. Handles model listing, provider caching,
- * and inventory (chain/RPC) option resolution.
+ * Handles model listing, provider caching, and inventory (chain/RPC)
+ * option resolution.
  */
 
 import fs from "node:fs";

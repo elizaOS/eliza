@@ -1,9 +1,8 @@
 /**
  * Plugin discovery and categorization helpers.
  *
- * Extracted from server.ts. Handles reading the plugins.json manifest,
- * categorizing plugins, building parameter definitions, and aggregating
- * secrets for the plugin management UI.
+ * Handles reading the plugins.json manifest, categorizing plugins, building
+ * parameter definitions, and aggregating secrets for the plugin management UI.
  */
 
 import fs from "node:fs";

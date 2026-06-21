@@ -17,10 +17,6 @@
 		"src/features/working-memory/readAttachmentAction.ts",
 		"src/features/working-memory/taskClipboardPersistence.ts",
 		"src/features/working-memory/taskClipboardService.ts",
-		"src/runtime/cache-observation.ts",
-		"src/runtime/cache-observer.ts",
-		"src/runtime/context-diff.ts",
-		"src/services/triggerScheduling.ts",
-		"src/services/triggerWorker.ts"
+		"src/services/triggerScheduling.ts"
 	]
 }

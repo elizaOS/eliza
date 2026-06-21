@@ -13,7 +13,6 @@ export * from "./app-hero-art.js";
 export * from "./awareness/index.js";
 export * from "./character-presets.characters.js";
 export * from "./character-presets.js";
-export * from "./character-presets.js";
 export * from "./cli/parse-duration.js";
 // Re-export moved app-core modules so consumers can import the package barrel.
 export * from "./config/allowed-hosts.js";

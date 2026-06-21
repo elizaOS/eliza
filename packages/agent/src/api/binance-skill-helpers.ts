@@ -1,8 +1,8 @@
 /**
  * Binance direct-skill request helpers.
  *
- * Extracted from server.ts. Handles direct dispatch of Binance DeFi skills
- * (meme-rush, trading-signal, token-info, etc.) and fallback action parsing.
+ * Handles direct dispatch of Binance DeFi skills (meme-rush, trading-signal,
+ * token-info, etc.) and fallback action parsing.
  */
 
 import {

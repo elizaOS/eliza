@@ -1,9 +1,9 @@
 /**
  * Workbench task/todo normalization helpers.
  *
- * Extracted from server.ts — used exclusively by workbench-routes.ts
- * to transform elizaOS Task records into the WorkbenchTaskView / WorkbenchTodoView
- * shapes consumed by the dashboard UI.
+ * Used exclusively by workbench-routes.ts to transform elizaOS Task records
+ * into the WorkbenchTaskView / WorkbenchTodoView shapes consumed by the
+ * dashboard UI.
  */
 
 import type { Task } from "@elizaos/core";

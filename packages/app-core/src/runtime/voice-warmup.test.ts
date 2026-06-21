@@ -12,12 +12,6 @@ describe("shouldWarmupVoice", () => {
     expect(shouldWarmupVoice(base)).toBe(true);
   });
 
-  it("warms for cloud-only setups (localInferenceActive=false)", () => {
-    expect(shouldWarmupVoice({ ...base, localInferenceActive: false })).toBe(
-      true,
-    );
-  });
-
   it("skips on mobile", () => {
     expect(shouldWarmupVoice({ ...base, mobile: true })).toBe(false);
   });

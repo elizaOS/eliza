@@ -91,6 +91,11 @@
 			"import": "./dist/agent-bridge.js",
 			"default": "./dist/agent-bridge.js"
 		},
+		"./account-pool": {
+			"types": "./dist/account-pool.d.ts",
+			"import": "./dist/account-pool.js",
+			"default": "./dist/account-pool.js"
+		},
 		"./api/automation-node-contributors": {
 			"types": "./dist/api/automation-node-contributors.d.ts",
 			"import": "./dist/api/automation-node-contributors.js",

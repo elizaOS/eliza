@@ -322,6 +322,7 @@ export {
 	parseKeyValueXml,
 	parseToonKeyValue,
 } from "./utils";
+export * from "./utils/boolean";
 /** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
@@ -340,6 +341,7 @@ export {
 	llmConfirmedFlagIsAuthoritative,
 	requireConfirmation,
 } from "./utils/confirmation";
+export * from "./utils/deterministic";
 // Prompt description compression (parity with Python `compress_prompt_description`)
 export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities

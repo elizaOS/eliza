@@ -1047,17 +1047,9 @@ export function parseBooleanFromText(
 	const affirmative = ["YES", "Y", "TRUE", "T", "1", "ON", "ENABLE"];
 	const negative = ["NO", "N", "FALSE", "F", "0", "OFF", "DISABLE"];
 
-	// WHY: Defensive against non-string values (e.g. from env); avoid throws and return false on error.
-	try {
-		const normalizedText = String(value).trim().toUpperCase();
-		if (affirmative.includes(normalizedText)) return true;
-		if (negative.includes(normalizedText)) return false;
-	} catch {
-		logger.warn(
-			{ src: "core:utils", type: typeof value, value },
-			"parseBooleanFromText error",
-		);
-	}
+	const normalizedText = value.trim().toUpperCase();
+	if (affirmative.includes(normalizedText)) return true;
+	if (negative.includes(normalizedText)) return false;
 	return false;
 }
 

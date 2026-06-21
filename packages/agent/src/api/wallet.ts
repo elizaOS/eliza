@@ -463,9 +463,10 @@ export function generateWalletForChain(
   };
 }
 
-// Extracted to wallet-env-sync.ts to break circular dependency with config/config.ts.
-// Local import for internal use (setSolanaWalletEnv below), plus re-export for
-// backward compatibility so existing consumers of wallet.js keep working.
+// `syncSolanaPublicKeyEnv` lives in wallet-env-sync.ts to avoid a circular
+// dependency with config/config.ts. Imported here for internal use
+// (setSolanaWalletEnv below) and re-exported so consumers of this module
+// (e.g. runtime/eliza.ts) can reach it through wallet.ts.
 import { syncSolanaPublicKeyEnv } from "./wallet-env-sync.ts";
 
 export { syncSolanaPublicKeyEnv } from "./wallet-env-sync.ts";

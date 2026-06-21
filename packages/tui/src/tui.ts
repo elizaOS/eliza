@@ -370,8 +370,6 @@ export class TUI extends Container {
     return result;
   }
 
-  // Note: Overlay layout resolution is now delegated to the imported resolveOverlayLayout function
-
   /** Composite all overlays into content lines (in stack order, later = on top). */
   private compositeOverlays(
     lines: string[],

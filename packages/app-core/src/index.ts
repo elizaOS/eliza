@@ -1,7 +1,6 @@
 // Node/runtime barrel for @elizaos/app-core.
 // Frontend surfaces live in @elizaos/ui; pure contracts/utilities live in @elizaos/shared.
 
-export * from "./account-pool";
 export * from "./api/auth.ts";
 export * from "./api/automation-node-contributors";
 export * from "./api/compat-route-shared";
@@ -54,8 +53,6 @@ export * from "./services/account-pool";
 export * from "./services/auth-store";
 export * from "./services/github-credentials";
 export * from "./services/inference-abort";
-// === Phase 4F: plugin-installer moved to @elizaos/plugin-registry ===
-// (this used to be `export * from "./services/plugin-installer"`)
 export * from "./services/steward-credentials";
 export * from "./services/steward-sidecar/helpers";
 // Explicit .ts extension on steward-sidecar.ts disambiguates from the

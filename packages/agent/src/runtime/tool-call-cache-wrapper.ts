@@ -4,13 +4,12 @@
  * Wraps the `handler` of every registered Action that the cache registry
  * marks as `cacheable: true` so the result of a (toolName, args) pair is
  * served from the two-tier `ToolCallCache` instead of re-running the
- * underlying tool. Side-effect tools and any tool not listed in
- * `CACHEABLE_TOOL_REGISTRY` pass through unchanged.
+ * underlying tool. Side-effect tools and any tool not in the cacheable-tool
+ * registry pass through unchanged.
  *
- * Hooked into the runtime via `wrapActionsWithCache(actions, cache)` which
- * the eliza loader calls after collecting plugin actions and before handing
- * them to `AgentRuntime`. Per-tool TTL overrides come from the `tools.cache`
- * config block (see `zod-schema.agent-runtime.ts`).
+ * `plugin-lifecycle.ts` calls `wrapActionWithCache(action, cache, cfg)` per
+ * action after building the cache from config. Per-tool TTL overrides come
+ * from the `tools.cache` config block (see `zod-schema.agent-runtime.ts`).
  */
 
 import type {
@@ -20,7 +19,6 @@ import type {
   HandlerOptions,
 } from "@elizaos/core";
 import {
-  CACHEABLE_TOOL_REGISTRY,
   type CacheableToolDescriptor,
   defaultPrivacyRedactor,
   isCacheable,
@@ -112,13 +110,3 @@ export function wrapActionWithCache(
 
   return { ...action, handler: wrapped };
 }
-
-export function wrapActionsWithCache(
-  actions: Action[],
-  cache: ToolCallCache,
-  cfg: ToolCacheConfig | undefined,
-): Action[] {
-  return actions.map((a) => wrapActionWithCache(a, cache, cfg));
-}
-
-export { CACHEABLE_TOOL_REGISTRY };

@@ -133,6 +133,7 @@ export {
 	parseKeyValueXml,
 	parseToonKeyValue,
 } from "./utils";
+export * from "./utils/boolean";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 export type {
@@ -151,6 +152,7 @@ export {
 	llmConfirmedFlagIsAuthoritative,
 	requireConfirmation,
 } from "./utils/confirmation";
+export * from "./utils/deterministic";
 export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities
 export * from "./utils/environment";

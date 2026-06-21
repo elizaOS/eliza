@@ -1,8 +1,8 @@
 /**
  * Static file serving for the built React dashboard (production mode).
  *
- * Extracted from server.ts — serves packages/app/dist/ with SPA fallback,
- * caching, and API-base injection for reverse-proxy deployments.
+ * Serves packages/app/dist/ with SPA fallback, caching, and API-base
+ * injection for reverse-proxy deployments.
  */
 
 import fs from "node:fs";

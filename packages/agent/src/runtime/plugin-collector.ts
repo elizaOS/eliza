@@ -8,8 +8,6 @@
  * added each package is recorded so `resolvePlugins` (`plugin-resolver.ts`)
  * can explain optional load failures (config vs env vs feature flag).
  *
- * Extracted from eliza.ts to reduce file size.
- *
  * @module plugin-collector
  */
 import { existsSync } from "node:fs";

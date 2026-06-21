@@ -1,8 +1,8 @@
 /**
  * Shared types, constants, and utility functions for plugin resolution.
  *
- * Extracted from eliza.ts to break circular dependencies between
- * eliza.ts and plugin-resolver.ts.
+ * Owns these definitions independently of `eliza.ts` and `plugin-resolver.ts`
+ * so those two modules can both depend on it without forming a cycle.
  *
  * @module plugin-types
  */
