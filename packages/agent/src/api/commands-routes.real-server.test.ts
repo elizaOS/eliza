@@ -14,7 +14,11 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import {
   type ClientCommandAction,
+  findCommandByKey,
   getConnectorCommands,
+  initForRuntime,
+  registerCommand,
+  useRuntime,
 } from "@elizaos/plugin-commands";
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -115,6 +119,34 @@ describe("GET /api/commands (real loopback server)", () => {
     expect(body.commands.length).toBeGreaterThanOrEqual(20);
     expect(body.surface).toBe("gui");
     expect(typeof body.generatedAt).toBe("string");
+  });
+
+  it("serves runtime-registered commands and respects runtime enablement", async () => {
+    initForRuntime("commands-route-agent");
+    useRuntime("commands-route-agent");
+    const restart = findCommandByKey("restart");
+    if (!restart) throw new Error("missing restart command");
+    restart.enabled = false;
+    registerCommand({
+      key: "skill-weather",
+      description: "Answer weather questions with the weather skill",
+      textAliases: ["/weather"],
+      scope: "both",
+      category: "skills",
+      acceptsArgs: true,
+    });
+
+    const baseUrl = await startCommandsServer({
+      agentId: "commands-route-agent",
+    });
+    const response = await fetch(`${baseUrl}/api/commands?surface=gui`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as CommandsResponse;
+    const keys = new Set(body.commands.map((command) => command.key));
+
+    expect(keys.has("restart")).toBe(false);
+    expect(keys.has("skill-weather")).toBe(true);
+    expect(body.agentId).toBe("commands-route-agent");
   });
 
   it("tags every served command with a well-formed, valid target", async () => {

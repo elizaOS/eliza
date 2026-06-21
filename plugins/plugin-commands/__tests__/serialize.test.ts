@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { getCatalogCommands } from "../src/connector-catalog";
+import {
+	findCommandByKey,
+	initForRuntime,
+	registerCommand,
+	useRuntime,
+} from "../src/registry";
 import { commandVisibleForSurface, serializeCommand } from "../src/serialize";
 import type { CommandDefinition } from "../src/types";
 
@@ -136,5 +142,38 @@ describe("getCatalogCommands (the route's projection)", () => {
 		}
 		// The auth-required built-ins keep their flags (not all-false).
 		expect(gui.some((c) => c.requiresAuth)).toBe(true);
+	});
+
+	it("projects the runtime-scoped command store, including toggles and custom commands", () => {
+		initForRuntime("catalog-agent-a");
+		useRuntime("catalog-agent-a");
+		const restart = findCommandByKey("restart");
+		if (!restart) throw new Error("missing restart command");
+		restart.enabled = false;
+		registerCommand({
+			key: "skill-weather",
+			description: "Answer weather questions with the weather skill",
+			textAliases: ["/weather"],
+			scope: "both",
+			category: "skills",
+			acceptsArgs: true,
+		});
+
+		const keys = new Set(
+			getCatalogCommands("gui", { agentId: "catalog-agent-a" }).map(
+				(command) => command.key,
+			),
+		);
+		expect(keys.has("restart")).toBe(false);
+		expect(keys.has("skill-weather")).toBe(true);
+
+		initForRuntime("catalog-agent-b");
+		const otherKeys = new Set(
+			getCatalogCommands("gui", { agentId: "catalog-agent-b" }).map(
+				(command) => command.key,
+			),
+		);
+		expect(otherKeys.has("restart")).toBe(true);
+		expect(otherKeys.has("skill-weather")).toBe(false);
 	});
 });

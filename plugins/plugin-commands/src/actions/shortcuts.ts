@@ -4,7 +4,7 @@
  * Each gate-safe agent-target command is registered as an *explicit* shortcut
  * into the runtime's `ShortcutRegistry`. The pre-LLM gate matches the slash/`!`
  * alias and fires the command's `*_COMMAND` action directly — so `/help`,
- * `/status`, `/think high`, … resolve deterministically before any model call,
+ * `/status`, `/whoami`, … resolve deterministically before any model call,
  * identically on every surface. Explicit shortcuts are always-on (a slash is an
  * unambiguous invocation); they carry no auth flag here because the command
  * action re-checks sender trust itself.

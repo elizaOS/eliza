@@ -18,7 +18,7 @@
  */
 
 import { navigationCommandDefinitions } from "./navigation-commands";
-import { DEFAULT_COMMANDS } from "./registry";
+import { DEFAULT_COMMANDS, getEnabledCommands, useRuntime } from "./registry";
 import { commandVisibleForSurface, serializeCommand } from "./serialize";
 import type {
 	ClientCommandAction,
@@ -96,10 +96,11 @@ function commandName(command: CommandDefinition): string {
  * text registry plus the navigation/client commands. Navigation/client commands
  * win on name collisions (they own those surfaces).
  */
-function unifiedDefinitions(): CommandDefinition[] {
-	const agent = DEFAULT_COMMANDS.filter(
-		(command) => command.enabled !== false && isConnectorScoped(command),
-	);
+function unifiedDefinitions(agentId?: string | null): CommandDefinition[] {
+	const agent = (agentId
+		? (useRuntime(agentId), getEnabledCommands())
+		: DEFAULT_COMMANDS.filter((command) => command.enabled !== false)
+	).filter(isConnectorScoped);
 	const navigation = navigationCommandDefinitions();
 	const navigationNames = new Set(navigation.map(commandName));
 	const agentOnly = agent.filter(
@@ -116,9 +117,10 @@ function normalizeSurface(surface: string): CommandSurface | null {
 function visibleDefinitions(
 	surface: string,
 	activeViewId: string | null | undefined,
+	agentId?: string | null,
 ): CommandDefinition[] {
 	const normalized = normalizeSurface(surface);
-	return unifiedDefinitions()
+	return unifiedDefinitions(agentId)
 		.filter((command) => commandVisibleForSurface(command.surfaces, normalized))
 		.filter((command) => commandVisibleForView(command.views, activeViewId));
 }
@@ -157,9 +159,9 @@ function toConnectorCommand(command: CommandDefinition): ConnectorCommand {
  */
 export function getConnectorCommands(
 	surface: string,
-	options: { activeViewId?: string | null } = {},
+	options: { activeViewId?: string | null; agentId?: string | null } = {},
 ): ConnectorCommand[] {
-	return visibleDefinitions(surface, options.activeViewId).map(
+	return visibleDefinitions(surface, options.activeViewId, options.agentId).map(
 		toConnectorCommand,
 	);
 }
@@ -174,10 +176,15 @@ export function getCatalogCommands(
 	surface: string,
 	options: {
 		activeViewId?: string | null;
+		agentId?: string | null;
 		source?: SerializedCommandSource;
 	} = {},
 ): SerializedCommand[] {
-	return visibleDefinitions(surface, options.activeViewId).map((command) =>
+	return visibleDefinitions(
+		surface,
+		options.activeViewId,
+		options.agentId,
+	).map((command) =>
 		serializeCommand(command, options.source ? { source: options.source } : {}),
 	);
 }

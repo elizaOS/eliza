@@ -7,11 +7,12 @@
  * surface actually filters the result (commands declare the `surfaces` they
  * belong to) and is echoed in the response.
  *
- * This route is a *pure projection*: it calls `getCatalogCommands(surface)` from
- * `@elizaos/plugin-commands`, which runs every `CommandDefinition` through
- * `serializeCommand`. The route fabricates nothing — `surfaces`, `requiresAuth`,
- * `requiresElevated`, `category`, `dynamicChoices`, `icon`, and the full
- * `textAliases` all come straight from the definitions (#8790).
+ * This route is a *runtime-scoped projection*: it calls
+ * `getCatalogCommands(surface, { agentId })` from `@elizaos/plugin-commands`,
+ * which runs every enabled `CommandDefinition` through `serializeCommand`. The
+ * route fabricates nothing — `surfaces`, `requiresAuth`, `requiresElevated`,
+ * `category`, `dynamicChoices`, `icon`, and the full `textAliases` all come
+ * straight from the definitions (#8790).
  *
  * Response: `{ commands: SerializedCommand[], surface, activeViewId, agentId, generatedAt }`.
  */
@@ -65,7 +66,10 @@ export async function handleCommandsRoutes(
 
   // Absent `?surface=` defaults to the web composer's surface (its historical
   // consumer); an explicit surface filters to exactly that surface's commands.
-  const commands = getCatalogCommands(surface ?? "gui", { activeViewId });
+  const commands = getCatalogCommands(surface ?? "gui", {
+    activeViewId,
+    agentId: runtime?.agentId ?? null,
+  });
   json(res, {
     commands,
     surface,

@@ -368,10 +368,11 @@ export function mapCatalogCommand(command: ConnectorCommand): SlashCommand {
  */
 export function buildCatalogSlashCommands(
 	existingNames: ReadonlySet<string> = new Set(),
+	agentId?: string | null,
 ): SlashCommand[] {
 	const out: SlashCommand[] = [];
 	const seen = new Set<string>(existingNames);
-	for (const command of getConnectorCommands(DISCORD_SURFACE)) {
+	for (const command of getConnectorCommands(DISCORD_SURFACE, { agentId })) {
 		if (seen.has(command.name)) continue;
 		seen.add(command.name);
 		out.push(mapCatalogCommand(command));
@@ -390,7 +391,7 @@ export function registerCatalogSlashCommands(
 	runtime: IAgentRuntime,
 ): SlashCommand[] {
 	const existingNames = new Set(getRegisteredCommands().keys());
-	const commands = buildCatalogSlashCommands(existingNames);
+	const commands = buildCatalogSlashCommands(existingNames, runtime.agentId);
 	for (const command of commands) {
 		addCommand(command);
 	}

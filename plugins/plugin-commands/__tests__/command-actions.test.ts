@@ -66,44 +66,23 @@ describe("runCommand / resolveCommand — deterministic handlers (#8790)", () =>
 		expect(r.reply).toContain("Authorized: yes");
 	});
 
-	it("/think <level> validates and persists real per-room state", async () => {
-		const set = await resolveCommand(runtime, msg("/think high"));
-		expect(set.reply).toBe("Thinking level set to high.");
-		const stored = await getCommandSettings(runtime, "room-1");
-		expect(stored.thinking).toBe("high");
-		// Reading it back without an arg returns the persisted value.
-		const show = await resolveCommand(runtime, msg("/think"));
-		expect(show.reply).toContain("Thinking level is high.");
-	});
-
-	it("/think rejects an invalid level deterministically", async () => {
-		const r = await resolveCommand(runtime, msg("/think bogus"));
-		expect(r.handled).toBe(true);
-		expect(r.reply).toContain("Invalid thinking value");
-		const stored = await getCommandSettings(runtime, "room-1");
-		expect(stored.thinking).toBeUndefined();
-	});
-
-	it("/model preserves free-form casing", async () => {
-		const r = await resolveCommand(
-			runtime,
-			msg("/model Anthropic/Claude-Opus"),
-		);
-		expect(r.reply).toBe("Model set to Anthropic/Claude-Opus.");
-		expect((await getCommandSettings(runtime, "room-1")).model).toBe(
-			"Anthropic/Claude-Opus",
-		);
-	});
-
-	it("auth-gated /elevated fails closed for an unauthorized sender", async () => {
-		const denied = await resolveCommand(runtime, msg("/elevated on"), {
-			isAuthorized: false,
-		});
-		expect(denied.reply).toBe("This command requires authorization.");
-		const allowed = await resolveCommand(runtime, msg("/elevated on"), {
-			isAuthorized: true,
-		});
-		expect(allowed.reply).toBe("Elevated mode set to on.");
+	it("does NOT short-circuit runtime option commands", async () => {
+		for (const text of [
+			"/think high",
+			"/verbose on",
+			"/reasoning stream",
+			"/queue steer",
+			"/elevated on",
+			"/model Anthropic/Claude-Opus",
+			"/tts off",
+		]) {
+			const r = await resolveCommand(runtime, msg(text), {
+				isAuthorized: true,
+				isElevated: true,
+			});
+			expect(r.handled, text).toBe(false);
+		}
+		expect(await getCommandSettings(runtime, "room-1")).toEqual({});
 	});
 
 	it("does NOT short-circuit lifecycle commands (reset/new/compact)", async () => {
@@ -148,7 +127,9 @@ describe("command actions — slash-only validate (#8790)", () => {
 		const names = new Set(commandActions.map((a) => a.name));
 		expect(names.has("HELP_COMMAND")).toBe(true);
 		expect(names.has("STATUS_COMMAND")).toBe(true);
-		expect(names.has("THINK_COMMAND")).toBe(true);
+		expect(names.has("THINK_COMMAND")).toBe(false);
+		expect(names.has("MODEL_COMMAND")).toBe(false);
+		expect(names.has("TTS_COMMAND")).toBe(false);
 		// Lifecycle commands are NOT gate-safe actions.
 		expect(names.has("RESET_COMMAND")).toBe(false);
 	});

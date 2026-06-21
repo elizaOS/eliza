@@ -117,10 +117,12 @@ function clampDescription(description: string): string {
  * name (first occurrence wins) and capped at Telegram's 100-command limit. Pure
  * — no side effects.
  */
-export function buildTelegramCommandDescriptors(): TelegramCommandDescriptor[] {
+export function buildTelegramCommandDescriptors(
+	agentId?: string | null,
+): TelegramCommandDescriptor[] {
   const out: TelegramCommandDescriptor[] = [];
   const seen = new Set<string>();
-  for (const command of getConnectorCommands(TELEGRAM_SURFACE)) {
+  for (const command of getConnectorCommands(TELEGRAM_SURFACE, { agentId })) {
     if (out.length >= TELEGRAM_MAX_COMMANDS) break;
     const name = sanitizeCommandName(command.name);
     if (!name || seen.has(name)) continue;
@@ -333,7 +335,7 @@ export function registerTelegramCommandHandlers(
   messageManager: MessageManager,
   accountId: string,
 ): TelegramCommandDescriptor[] {
-  const descriptors = buildTelegramCommandDescriptors();
+  const descriptors = buildTelegramCommandDescriptors(runtime.agentId);
   for (const descriptor of descriptors) {
     const handler = buildCommandHandler(
       descriptor,
@@ -376,7 +378,7 @@ export async function applyTelegramSetMyCommands(
   runtime: IAgentRuntime,
   accountId: string,
 ): Promise<void> {
-  const descriptors = buildTelegramCommandDescriptors();
+  const descriptors = buildTelegramCommandDescriptors(runtime.agentId);
   if (descriptors.length === 0) return;
   const commands = descriptors.map((descriptor) => ({
     command: descriptor.name,

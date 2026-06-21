@@ -23,18 +23,17 @@ import type {
 	ParsedCommand,
 } from "../types";
 import {
-	COMMAND_SETTING_CHOICES,
 	type CommandSettings,
 	getCommandSettings,
-	setCommandSetting,
 } from "./command-settings";
 
 /**
  * Commands whose entire effect is the reply `runCommand` produces — safe to
  * short-circuit before the LLM. Lifecycle/management commands (reset, new,
- * compact, stop, restart, allowlist, …) have side effects owned by the existing
- * pipeline (session reset triggers, COMPACT_CONVERSATION, …) and must flow
- * through it, so they are intentionally excluded from the always-on gate.
+ * compact, stop, restart, allowlist, …) and runtime option commands (think,
+ * model, tts, elevated, …) have side effects owned by the existing pipeline and
+ * must flow through it, so they are intentionally excluded from the always-on
+ * gate.
  */
 export const GATE_SAFE_COMMAND_KEYS: readonly string[] = [
 	"help",
@@ -44,13 +43,6 @@ export const GATE_SAFE_COMMAND_KEYS: readonly string[] = [
 	"context",
 	"models",
 	"usage",
-	"think",
-	"verbose",
-	"reasoning",
-	"queue",
-	"elevated",
-	"model",
-	"tts",
 ];
 
 const GATE_SAFE_KEYS: ReadonlySet<string> = new Set(GATE_SAFE_COMMAND_KEYS);
@@ -59,17 +51,6 @@ const GATE_SAFE_KEYS: ReadonlySet<string> = new Set(GATE_SAFE_COMMAND_KEYS);
 export function isGateSafeCommand(key: string): boolean {
 	return GATE_SAFE_KEYS.has(key);
 }
-
-/** Option command key → its persisted settings field. */
-const SETTING_FIELD: Record<string, keyof CommandSettings> = {
-	think: "thinking",
-	verbose: "verbose",
-	reasoning: "reasoning",
-	queue: "queue",
-	elevated: "elevated",
-	model: "model",
-	tts: "tts",
-};
 
 const CATEGORY_ORDER: CommandCategory[] = [
 	"status",
@@ -120,14 +101,6 @@ function resolveModelLabel(runtime: IAgentRuntime): string {
 		return fromCharacter.trim();
 	}
 	return "default";
-}
-
-function parseOptionArg(
-	parsed: ParsedCommand,
-): { kind: "show" } | { kind: "set"; value: string } {
-	const arg = parsed.args[0]?.trim();
-	if (!arg) return { kind: "show" };
-	return { kind: "set", value: arg };
 }
 
 /**
@@ -203,61 +176,9 @@ export async function runCommand(
 			);
 		}
 
-		case "think":
-		case "verbose":
-		case "reasoning":
-		case "queue":
-		case "elevated":
-		case "model":
-		case "tts": {
-			const field = SETTING_FIELD[parsed.key];
-			if (!field) return { handled: false, shouldContinue: true };
-			const settings = await getCommandSettings(runtime, roomId);
-			const action = parseOptionArg(parsed);
-			if (action.kind === "show") {
-				const current = settings[field];
-				const choices = COMMAND_SETTING_CHOICES[field];
-				const choiceHint = choices ? ` (options: ${choices.join(", ")})` : "";
-				return reply(
-					current
-						? `${labelFor(parsed.key)} is ${current}.${choiceHint}`
-						: `${labelFor(parsed.key)} is not set.${choiceHint}`,
-				);
-			}
-			const result = await setCommandSetting(
-				runtime,
-				roomId,
-				field,
-				action.value,
-			);
-			if ("error" in result) return reply(result.error);
-			return reply(`${labelFor(parsed.key)} set to ${result.value}.`);
-		}
-
-		default:
-			// Not a gate-safe command this layer owns — let it flow to the pipeline.
-			return { handled: false, shouldContinue: true };
-	}
-}
-
-function labelFor(key: string): string {
-	switch (key) {
-		case "think":
-			return "Thinking level";
-		case "verbose":
-			return "Verbose level";
-		case "reasoning":
-			return "Reasoning visibility";
-		case "queue":
-			return "Queue mode";
-		case "elevated":
-			return "Elevated mode";
-		case "model":
-			return "Model";
-		case "tts":
-			return "Text-to-speech";
-		default:
-			return key;
+	default:
+		// Not a gate-safe command this layer owns — let it flow to the pipeline.
+		return { handled: false, shouldContinue: true };
 	}
 }
 
