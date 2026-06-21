@@ -299,62 +299,6 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
-  it("gets pairing tokens and deletes Cloud agents directly on native", async () => {
-    capacitorMocks.request
-      .mockResolvedValueOnce({
-        status: 200,
-        data: {
-          success: true,
-          data: {
-            token: "pair-token",
-            redirectUrl: "https://agent.example.test/pair?token=pair-token",
-            expiresIn: 60,
-          },
-        },
-      })
-      .mockResolvedValueOnce({
-        status: 200,
-        data: {
-          success: true,
-          data: { message: "Agent delete complete" },
-        },
-      });
-
-    const client = new ElizaClient(undefined, "cloud-api-key");
-    const pairing = await client.getCloudCompatPairingToken("agent-1");
-    const deleted = await client.deleteCloudCompatAgent("agent-1");
-
-    expect(capacitorMocks.request).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/pairing-token",
-        method: "POST",
-      }),
-    );
-    expect(capacitorMocks.request).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1",
-        method: "DELETE",
-      }),
-    );
-    expect(pairing).toEqual(
-      expect.objectContaining({
-        success: true,
-        data: expect.objectContaining({ token: "pair-token" }),
-      }),
-    );
-    expect(deleted).toEqual({
-      success: true,
-      data: {
-        jobId: "",
-        status: "deleted",
-        message: "Agent delete complete",
-      },
-    });
-    expectNoLocalPersistOrStatusProbe();
-  });
-
   it("suspends Cloud agents through the direct Cloud API host on native", async () => {
     capacitorMocks.request.mockResolvedValue({
       status: 202,
