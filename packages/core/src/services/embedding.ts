@@ -18,15 +18,6 @@ interface EmbeddingQueueItem {
  * and processes them in a queue to avoid blocking the main runtime
  */
 
-/**
- * Drain cadence for the embedding queue WHEN a batch handler is registered.
- * A turn's ~19 memories trickle in ~250ms apart across the ~5s turn; the prior
- * 100ms drain caught only 1 each (a "batch of 1" — no real batching). ~1s lets
- * ~4–10 accumulate so one drain embeds them in a single TEXT_EMBEDDING_BATCH
- * request — ~2–5 batched calls instead of ~19 serial, taking post-turn
- * embedding ~30s → ~5–7s. It's background work, so the sub-second drain delay
- * is invisible. Env-tunable (`ELIZA_EMBEDDING_DRAIN_INTERVAL_MS`) for prod.
- */
 const EMBEDDING_BATCH_DRAIN_INTERVAL_MS = (() => {
 	const raw = Number(
 		typeof process !== "undefined"
@@ -103,11 +94,6 @@ export class EmbeddingGenerationService extends Service {
 		// model as other services so we do not maintain another bespoke queue + task stack here.
 		// Task system owns WHEN (repeat EMBEDDING_DRAIN tick); we own WHAT (dequeue, embed, persist).
 		// No maxSize — bottleneck is embedding I/O, not queue length.
-		//
-		// Only wire the batched drain when the provider actually registers a
-		// TEXT_EMBEDDING_BATCH handler. Decided once here (vs a runtime
-		// negative-cache) so a non-batching provider (e.g. local gte-small) never
-		// pays a doomed batch attempt + per-item fallback on every drain.
 		const supportsBatchEmbedding = !!this.runtime.getModel(
 			ModelType.TEXT_EMBEDDING_BATCH,
 		);
@@ -115,9 +101,6 @@ export class EmbeddingGenerationService extends Service {
 			name: EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
 			taskDescription: "Embedding generation drain",
 			batchSize: 10,
-			// Let memories accumulate into real batches when we can batch-embed;
-			// keep the original tight 100ms for the per-item path (no accumulation
-			// benefit there, and a longer wait would just delay each embed).
 			drainIntervalMs: supportsBatchEmbedding
 				? EMBEDDING_BATCH_DRAIN_INTERVAL_MS
 				: 100,
@@ -125,11 +108,6 @@ export class EmbeddingGenerationService extends Service {
 			maxParallel: 10,
 			maxRetriesAfterFailure: 3,
 			process: (item) => this.generateEmbedding(item),
-			// Batched drain: embed the whole dequeued slice in ONE model call
-			// (TEXT_EMBEDDING_BATCH) when the provider registers it; collapses the
-			// ~19 serial single-text round-trips/turn that made post-turn embedding
-			// take ~30s. On any batch failure the queue falls back to `process`
-			// (per-item) above, preserving retry/onExhausted.
 			processBatch: supportsBatchEmbedding
 				? (items) => this.generateBatchEmbeddings(items)
 				: undefined,
@@ -228,9 +206,7 @@ export class EmbeddingGenerationService extends Service {
 			return;
 		}
 
-		// A batched drain may have already persisted this vector before throwing
-		// and falling back to this per-item path. Skip it so we don't re-embed or
-		// re-emit EMBEDDING_GENERATION_COMPLETED for an already-vectored memory.
+		// Idempotency: skip a memory that already carries a vector.
 		if (memory.embedding) {
 			return;
 		}
@@ -292,14 +268,6 @@ export class EmbeddingGenerationService extends Service {
 		}
 	}
 
-	/**
-	 * Batched drain path: embed every queued item's text in ONE
-	 * `TEXT_EMBEDDING_BATCH` model call, then persist each vector. Wired as the
-	 * BatchQueue `processBatch` — on ANY failure it throws, and the queue falls
-	 * back to the per-item {@link generateEmbedding} path (which carries the
-	 * retry / onExhausted semantics), so this only implements the happy path.
-	 * Idempotent: a fallback re-run just re-`updateMemory`s the same vectors.
-	 */
 	private async generateBatchEmbeddings(
 		items: EmbeddingQueueItem[],
 	): Promise<BatchItemOutcome<EmbeddingQueueItem>[]> {
@@ -307,27 +275,22 @@ export class EmbeddingGenerationService extends Service {
 		const toEmbed: { item: EmbeddingQueueItem; text: string }[] = [];
 		for (const item of items) {
 			const text = item.memory.content?.text;
-			// No text or already vectored -> successful no-op (mirrors per-item skips).
 			if (!text || item.memory.embedding) {
 				outcomes.push({ item, success: true, retryCount: 0 });
 				continue;
 			}
 			toEmbed.push({ item, text });
 		}
-		if (toEmbed.length === 0) {
-			return outcomes;
-		}
+		if (toEmbed.length === 0) return outcomes;
 
 		const startTime = Date.now();
-		// One request for all texts. Throws on failure -> caller falls back to
-		// the per-item path. (A single text still goes through the same batch fn.)
 		const embeddings = await this.runtime.useModel(
 			ModelType.TEXT_EMBEDDING_BATCH,
 			{
-				texts: toEmbed.map((t) => t.text),
+				texts: toEmbed.map((entry) => entry.text),
 			},
 		);
-		const durationMs = Date.now() - startTime;
+		const duration = Date.now() - startTime;
 
 		if (!Array.isArray(embeddings) || embeddings.length !== toEmbed.length) {
 			throw new Error(
@@ -343,8 +306,6 @@ export class EmbeddingGenerationService extends Service {
 			const { memory } = item;
 			if (memory.id) {
 				await this.runtime.updateMemory({ id: memory.id, embedding });
-				// Mark the in-flight memory so a fallback re-run of the per-item
-				// path (generateEmbedding) skips it instead of double-emitting.
 				memory.embedding = embedding;
 				await this.runtime.log({
 					entityId: this.runtime.agentId,
@@ -354,7 +315,7 @@ export class EmbeddingGenerationService extends Service {
 						runId: item.runId,
 						memoryId: memory.id,
 						status: "completed",
-						duration: durationMs,
+						duration,
 						source: "embeddingService:batch",
 					},
 				});
@@ -366,12 +327,13 @@ export class EmbeddingGenerationService extends Service {
 			}
 			outcomes.push({ item, success: true, retryCount: 0 });
 		}
+
 		this.runtime.logger.debug(
 			{
 				src: "plugin:basic-capabilities:service:embedding",
 				agentId: this.runtime.agentId,
 				count: toEmbed.length,
-				durationMs,
+				durationMs: duration,
 			},
 			"Generated batch embeddings",
 		);

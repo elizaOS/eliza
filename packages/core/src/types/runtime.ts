@@ -35,6 +35,7 @@ import type {
 	SendHandlerResult,
 	TargetInfo,
 } from "./messaging";
+import type { ShortcutDefinition } from "./shortcut";
 import type {
 	GenerateTextOptions,
 	GenerateTextParams,
@@ -711,6 +712,9 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
 	registerAction(action: Action): void;
 	unregisterAction(name: string): boolean;
+	registerShortcut(shortcut: ShortcutDefinition): void;
+	registerShortcuts(shortcuts: readonly ShortcutDefinition[]): void;
+	unregisterShortcut(id: string): void;
 	registerEvaluator(evaluator: RegisteredEvaluator): void;
 	unregisterEvaluator(name: string): boolean;
 	registerResponseHandlerEvaluator(evaluator: ResponseHandlerEvaluator): void;

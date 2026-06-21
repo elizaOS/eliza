@@ -5683,20 +5683,13 @@ export async function runShortcutGate(args: {
 	const action = args.runtime.actions.find((a) => a.name === target.name);
 	if (!action) return null;
 
-	// For an EXPLICIT slash/`!` match the alias IS the validation — the shortcut
-	// already identified the command unambiguously, so re-running the action's
-	// (natural-language-oriented) validate() is redundant and risks a drift
-	// mismatch (e.g. a per-runtime command registry mutated by other plugins).
-	// Natural-language matches still re-validate: their match is fuzzy.
-	if (match.shortcut.kind !== "explicit") {
-		let valid = false;
-		try {
-			valid = await action.validate(args.runtime, args.message, args.state);
-		} catch {
-			return null;
-		}
-		if (!valid) return null;
+	let valid = false;
+	try {
+		valid = await action.validate(args.runtime, args.message, args.state);
+	} catch {
+		return null;
 	}
+	if (!valid) return null;
 
 	let captured: string | undefined;
 	try {
@@ -5704,7 +5697,7 @@ export async function runShortcutGate(args: {
 			args.runtime,
 			args.message,
 			args.state,
-			{ ...target.parameters, mode: "simple" },
+			{ ...target.parameters, ...match.parameters, mode: "simple" },
 			async (content) => {
 				if (typeof content?.text === "string" && content.text) {
 					captured = content.text;

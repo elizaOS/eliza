@@ -2814,6 +2814,14 @@ export class AgentRuntime implements IAgentRuntime {
 		for (const shortcut of shortcuts) this.registerShortcut(shortcut);
 	}
 
+	unregisterShortcut(id: string) {
+		this.shortcutRegistry.unregister(id);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, shortcut: id },
+			"Shortcut unregistered",
+		);
+	}
+
 	registerEvaluator(evaluator: RegisteredEvaluator) {
 		if (this.evaluators.find((item) => item.name === evaluator.name)) {
 			this.logger.debug(

@@ -666,6 +666,7 @@ export interface PluginOwnership {
 	events: PluginEventRegistration[];
 	models: PluginModelRegistration[];
 	services: PluginServiceRegistration[];
+	shortcuts: string[];
 	sendHandlerSources: string[];
 	hasAdapter: boolean;
 	registeredAt: number;

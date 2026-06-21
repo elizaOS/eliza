@@ -174,7 +174,7 @@ export const elizaOSCloudPlugin: Plugin = {
   models: {
     [ModelType.TEXT_EMBEDDING]: handleTextEmbedding,
     // Batch path: one request embeds N texts (the embedding-drain service uses
-    // this to collapse ~19 serial single-text round-trips into ~2 batched calls).
+    // this to collapse serial single-text round-trips into fewer batched calls).
     [ModelType.TEXT_EMBEDDING_BATCH]: (runtime, params: { texts: string[] }) =>
       handleBatchTextEmbedding(runtime, params.texts),
     [TEXT_NANO_MODEL_TYPE]: handleTextNano,

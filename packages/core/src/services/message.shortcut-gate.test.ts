@@ -10,12 +10,16 @@ import { runShortcutGate } from "./message";
  * runs the target action and returns its reply with ZERO model calls. The fake
  * runtime's useModel throws, so any inference attempt fails the test.
  */
-function echoAction(): Action {
+function echoAction(opts: {
+	validate?: () => Promise<boolean>;
+	onOptions?: (options: Record<string, unknown> | undefined) => void;
+} = {}): Action {
 	return {
 		name: "ECHO_COMMAND",
 		description: "echo",
-		validate: async () => true,
-		handler: async (_rt, message, _state, _opts, callback) => {
+		validate: opts.validate ?? (async () => true),
+		handler: async (_rt, message, _state, options, callback) => {
+			opts.onOptions?.(options);
 			const text = `echoed: ${message.content.text}`;
 			if (callback) await callback({ text });
 			return { success: true, text };
@@ -148,8 +152,33 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		expect(result).toBeNull();
 	});
 
+	it("falls through when an explicit shortcut action fails validate", async () => {
+		const validate = vi.fn(async () => false);
+		const { runtime, useModel } = makeRuntime({
+			actions: [echoAction({ validate })],
+		});
+		const result = await runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message: msg("/echo hi"),
+			state: {} as State,
+			responseId,
+			senderRole: "OWNER",
+		});
+		expect(result).toBeNull();
+		expect(validate).toHaveBeenCalledTimes(1);
+		expect(useModel).not.toHaveBeenCalled();
+	});
+
 	it("fires a natural-language shortcut only when ELIZA_SHORTCUTS_NL=1 (voice/typed parity)", async () => {
-		const { runtime, useModel, emitEvent } = makeRuntime();
+		const seenOptions: Array<Record<string, unknown> | undefined> = [];
+		const { runtime, useModel, emitEvent } = makeRuntime({
+			actions: [
+				echoAction({
+					onOptions: (options) => seenOptions.push(options),
+				}),
+			],
+		});
 		// A natural shortcut targeting ECHO_COMMAND, eligible only when NL is on.
 		(runtime.shortcutRegistry as ShortcutRegistry).register({
 			id: "nl:echo",
@@ -180,6 +209,7 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 			senderRole: "OWNER",
 		});
 		expect(on?.kind).toBe("direct_reply");
+		expect(seenOptions[0]).toEqual({ what: "hello there", mode: "simple" });
 		expect(useModel).not.toHaveBeenCalled();
 		const shortcutEvents = emitEvent.mock.calls.filter(
 			(c) => c[0] === EventType.SHORTCUT_FIRED,
