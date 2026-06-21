@@ -6,6 +6,7 @@
  */
 
 import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
+import { ApiError } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { vincentClient } from "./client";
 import type {
@@ -89,6 +90,15 @@ export function useVincentDashboard(): VincentDashboardState {
       setError(null);
     } catch (err) {
       if (!mountedRef.current) return;
+      // Vincent is an opt-in server-launch app: its routes only mount once the
+      // app is launched. On the un-launched base agent the status call 404s,
+      // which is the normal "disconnected" state — not a real error. Show the
+      // Connect CTA instead of a hard error banner.
+      if (err instanceof ApiError && err.status === 404) {
+        setVincentConnected(false);
+        setError(null);
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
       if (mountedRef.current) setLoading(false);

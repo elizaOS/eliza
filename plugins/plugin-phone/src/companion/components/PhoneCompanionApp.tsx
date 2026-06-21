@@ -53,11 +53,17 @@ export function PhoneCompanionApp(): React.JSX.Element {
       apnsEnabled: apnsEnabled(),
       hasConfiguredAgentUrl: configuredAgentUrl() !== null,
     });
-    ElizaIntent.getPairingStatus().then((status) => {
-      if (status.paired && status.agentUrl !== null) {
-        setAgentUrl(status.agentUrl);
-      }
-    });
+    ElizaIntent.getPairingStatus()
+      .then((status) => {
+        if (status.paired && status.agentUrl !== null) {
+          setAgentUrl(status.agentUrl);
+        }
+      })
+      .catch((err) => {
+        logger.warn("[PhoneCompanionApp] getPairingStatus failed", {
+          message: err instanceof Error ? err.message : String(err),
+        });
+      });
   }, []);
 
   useEffect(() => {

@@ -77,7 +77,14 @@ import { VoiceLifecycleError } from "./lifecycle";
  *     degraded capability: its voice/ASR/VAD/LLM/text surface is unchanged and
  *     Kokoro just probes unsupported on it.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 11 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 12 as const;
+
+/** One transcribed word with playback-synced timing (ms from utterance start). */
+export interface AsrWordTiming {
+	text: string;
+	startMs: number;
+	endMs: number;
+}
 
 /**
  * Pooling strategies for `embed`. Mirror `enum llama_pooling_type` and the
@@ -286,6 +293,23 @@ export interface ElizaInferenceFfi {
 		sampleRateHz: number;
 		maxTextBytes?: number;
 	}): string;
+
+	/* ---- ASR word timestamps (ABI v12) --------------------------- */
+
+	/** True when this build can emit per-word ASR timestamps (v12+). v11 and
+	 *  older report false — callers fall back to the text-only `asrTranscribe`. */
+	timedAsrSupported(): boolean;
+	/** Transcribe like `asrTranscribe` AND return per-word `[startMs,endMs)`
+	 *  spans (duration-proportional, char-weighted, monotonic — the honest
+	 *  single-model signal; see the v12 ABI changelog). The word texts come from
+	 *  a whitespace split of the transcript, zipped with the native timing. */
+	asrTranscribeTimed(args: {
+		ctx: ElizaInferenceContextHandle;
+		pcm: Float32Array;
+		sampleRateHz: number;
+		maxTextBytes?: number;
+		maxWords?: number;
+	}): { text: string; words: AsrWordTiming[] };
 
 	/* ---- Streaming TTS + verifier callback (ABI v2) --------------- */
 
@@ -754,6 +778,19 @@ interface BunFfiSymbols {
 		sampleRateHz: number,
 		outText: unknown,
 		maxTextBytes: bigint | number,
+		outErr: unknown,
+	) => number;
+	eliza_inference_asr_timestamps_supported?: () => number;
+	eliza_inference_asr_transcribe_timed?: (
+		ctx: bigint,
+		pcm: unknown,
+		nSamples: bigint | number,
+		sampleRateHz: number,
+		outText: unknown,
+		maxTextBytes: bigint | number,
+		outWordStartMs: unknown,
+		outWordEndMs: unknown,
+		ioNWords: unknown,
 		outErr: unknown,
 	) => number;
 	eliza_inference_tts_stream_supported: () => number;
@@ -1291,6 +1328,28 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			returns: T.i32,
 		},
 	};
+	// ABI v12 — fused ASR word timestamps.
+	let timedAsrSymbolsAvailable = true;
+	const timedAsrDefs = {
+		eliza_inference_asr_timestamps_supported: { args: [], returns: T.i32 },
+		eliza_inference_asr_transcribe_timed: {
+			// ctx, pcm, n_samples, sr, out_text, max_text_bytes,
+			// out_word_start_ms, out_word_end_ms, io_n_words, out_error
+			args: [
+				T.ptr,
+				T.ptr,
+				T.usize,
+				T.i32,
+				T.ptr,
+				T.usize,
+				T.ptr,
+				T.ptr,
+				T.ptr,
+				T.ptr,
+			],
+			returns: T.i32,
+		},
+	};
 	const coreDefs = {
 		eliza_inference_abi_version: { args: [], returns: T.cstring },
 		eliza_inference_create: {
@@ -1367,7 +1426,34 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	const classifierDefs = { ...speakerDefs, ...diarizDefs };
 	const attempts = [
 		{
-			// Full v11 surface (v10 + the in-process end-of-turn scorer).
+			// Full v12 surface (v11 + the in-process ASR word-timestamp decoder).
+			defs: {
+				...coreDefs,
+				...referenceEncodeDefs,
+				...nativeVadDefs,
+				...wakewordDefs,
+				...classifierDefs,
+				...llmStreamDefs,
+				...llmCapabilityDefs,
+				...textModalitiesDefs,
+				...kokoroDefs,
+				...eotDefs,
+				...timedAsrDefs,
+			},
+			referenceEncode: true,
+			nativeVad: true,
+			wakeword: true,
+			classifiers: true,
+			llmStream: true,
+			llmCapability: true,
+			textModalities: true,
+			kokoro: true,
+			eot: true,
+			timedAsr: true,
+		},
+		{
+			// Full v11 surface (v10 + the in-process end-of-turn scorer); a v11
+			// build lacks the v12 timed-ASR symbols.
 			defs: {
 				...coreDefs,
 				...referenceEncodeDefs,
@@ -1389,6 +1475,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			textModalities: true,
 			kokoro: true,
 			eot: true,
+			timedAsr: false,
 		},
 		{
 			// Full v10 surface (v9 + the in-process Kokoro block).
@@ -1573,6 +1660,8 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			kokoroSymbolsAvailable =
 				(attempt as { kokoro?: boolean }).kokoro ?? false;
 			eotSymbolsAvailable = (attempt as { eot?: boolean }).eot ?? false;
+			timedAsrSymbolsAvailable =
+				(attempt as { timedAsr?: boolean }).timedAsr ?? false;
 			break;
 		} catch (err) {
 			lastOpenError = err;
@@ -1616,7 +1705,8 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// tokenizer), accepted only when those are absent too.
 	const abiOk =
 		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
-		(reported === "10" && !eotSymbolsAvailable) ||
+		(reported === "11" && !timedAsrSymbolsAvailable) ||
+		(reported === "10" && !eotSymbolsAvailable && !timedAsrSymbolsAvailable) ||
 		(reported === "9" && !kokoroSymbolsAvailable && !eotSymbolsAvailable) ||
 		(reported === "8" &&
 			!kokoroSymbolsAvailable &&
@@ -1803,6 +1893,65 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			return Buffer.from(outText.buffer, outText.byteOffset, len).toString(
 				"utf8",
 			);
+		},
+
+		timedAsrSupported(): boolean {
+			const probe = loadedLib.symbols.eliza_inference_asr_timestamps_supported;
+			return (
+				timedAsrSymbolsAvailable && typeof probe === "function" && probe() === 1
+			);
+		},
+
+		asrTranscribeTimed({ ctx, pcm, sampleRateHz, maxTextBytes, maxWords }) {
+			const fn = loadedLib.symbols.eliza_inference_asr_transcribe_timed;
+			if (!timedAsrSymbolsAvailable || typeof fn !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_asr_transcribe_timed is not exported by this build (pre-v12)",
+				);
+			}
+			const err = makeOutErr();
+			const cap = maxTextBytes ?? 4096;
+			const wordCap = maxWords ?? 1024;
+			const outText = new Uint8Array(cap);
+			const startMs = new Int32Array(wordCap);
+			const endMs = new Int32Array(wordCap);
+			const nWords = new BigUint64Array(1);
+			nWords[0] = BigInt(wordCap);
+			const rc = fn(
+				ctx,
+				ffi.ptr(pcm),
+				BigInt(pcm.length),
+				sampleRateHz,
+				ffi.ptr(outText),
+				BigInt(cap),
+				ffi.ptr(startMs),
+				ffi.ptr(endMs),
+				ffi.ptr(nWords),
+				err.ptr,
+			);
+			if (rc < 0) {
+				const message =
+					takeError(err.buf) ??
+					`[ffi-bindings] eliza_inference_asr_transcribe_timed rc=${rc}`;
+				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+			const nul = outText.indexOf(0, 0);
+			const len = nul >= 0 ? nul : rc;
+			const text = Buffer.from(
+				outText.buffer,
+				outText.byteOffset,
+				len,
+			).toString("utf8");
+			const count = Number(nWords[0]);
+			// The native side split on whitespace to size the timing arrays; mirror
+			// that split to recover the word texts, then zip with the timings.
+			const tokens = text.split(/\s+/).filter(Boolean);
+			const words: AsrWordTiming[] = [];
+			for (let i = 0; i < Math.min(count, tokens.length); i++) {
+				words.push({ text: tokens[i], startMs: startMs[i], endMs: endMs[i] });
+			}
+			return { text, words };
 		},
 
 		/* ---- Streaming TTS + verifier callback (ABI v2) ------------ */

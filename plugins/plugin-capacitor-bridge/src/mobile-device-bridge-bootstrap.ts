@@ -21,6 +21,7 @@ import {
 	unlinkSync,
 } from "node:fs";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
+import net from "node:net";
 import path from "node:path";
 import type { Duplex } from "node:stream";
 import { Readable } from "node:stream";
@@ -1092,6 +1093,119 @@ function flattenChatParamsForPrompt(params: GenerateTextParams): string {
 	return blocks.join("\n\n");
 }
 
+// ── Bionic-host GPU delegation (abstract-namespace UDS) ────────────────────
+// When the dynamic-Vulkan fused lib is staged, the GPU is reachable only from
+// the bionic app process (ElizaBionicInferenceServer). Route the TEXT decode
+// there over an abstract AF_UNIX socket instead of the device-bridge WebSocket
+// (which can't reach Vulkan and adds a pairing-token hop). The wire framing
+// matches ElizaBionicInferenceServer.java + BionicHostLoader.ts:
+// [int32 BE length][UTF-8 JSON] each direction.
+
+const BIONIC_REQUEST_TIMEOUT_MS = 120_000;
+const BIONIC_MAX_FRAME_BYTES = 64 * 1024 * 1024;
+
+interface BionicGenerateResponse {
+	ok: boolean;
+	text?: string;
+	error?: string;
+	tokens?: number;
+	ms?: number;
+	tokS?: number;
+}
+
+/** Abstract-namespace socket name set by ElizaAgentService, or null. */
+function bionicSocketName(): string | null {
+	if (process.env.ELIZA_BIONIC_HOST_DELEGATED?.trim() !== "1") return null;
+	const sock = process.env.ELIZA_BIONIC_INFERENCE_SOCK?.trim();
+	return sock ? sock : null;
+}
+
+/** Bundle root the host's eliza_inference_create expects (…/text/<model>.gguf → …). */
+function deriveBionicBundleDir(modelPath: string): string {
+	if (!modelPath) return "";
+	const dir = path.dirname(modelPath);
+	if (path.basename(dir) === "text") return path.dirname(dir);
+	return "";
+}
+
+/** Qwen/ChatML prompt — eliza-1's template — built without the device-bridge. */
+function buildChatMlPrompt(params: GenerateTextParams): string {
+	const msgs = collectMessagesForNativeTemplate(params);
+	if (!msgs || msgs.length === 0) {
+		return `<|im_start|>user\n${flattenChatParamsForPrompt(params)}<|im_end|>\n<|im_start|>assistant\n`;
+	}
+	let out = "";
+	for (const m of msgs) {
+		const role =
+			m.role === "assistant" || m.role === "system" ? m.role : "user";
+		out += `<|im_start|>${role}\n${m.content}<|im_end|>\n`;
+	}
+	return `${out}<|im_start|>assistant\n`;
+}
+
+function bionicHostGenerate(
+	socketName: string,
+	request: Record<string, unknown>,
+): Promise<BionicGenerateResponse> {
+	const payload = Buffer.from(JSON.stringify(request), "utf8");
+	const frame = Buffer.allocUnsafe(4 + payload.length);
+	frame.writeUInt32BE(payload.length, 0);
+	payload.copy(frame, 4);
+	return new Promise((resolve, reject) => {
+		const sock = net.connect({ path: `\0${socketName}` });
+		let settled = false;
+		let chunks = Buffer.alloc(0);
+		let expected = -1;
+		const finish = (err: Error | null, value?: BionicGenerateResponse) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			sock.destroy();
+			err ? reject(err) : resolve(value as BionicGenerateResponse);
+		};
+		const timer = setTimeout(
+			() => finish(new Error("[mobile-device-bridge] bionic host timed out")),
+			BIONIC_REQUEST_TIMEOUT_MS,
+		);
+		sock.on("connect", () => sock.write(frame));
+		sock.on("data", (d: Buffer) => {
+			chunks = Buffer.concat([chunks, d]);
+			if (expected < 0 && chunks.length >= 4) {
+				expected = chunks.readUInt32BE(0);
+				if (expected < 0 || expected > BIONIC_MAX_FRAME_BYTES) {
+					finish(
+						new Error(`[mobile-device-bridge] bad bionic frame ${expected}`),
+					);
+					return;
+				}
+			}
+			if (expected >= 0 && chunks.length >= 4 + expected) {
+				try {
+					finish(
+						null,
+						JSON.parse(chunks.subarray(4, 4 + expected).toString("utf8")),
+					);
+				} catch (e) {
+					finish(
+						new Error(
+							`[mobile-device-bridge] bad bionic JSON: ${(e as Error).message}`,
+						),
+					);
+				}
+			}
+		});
+		sock.on("error", (e: Error) =>
+			finish(
+				new Error(`[mobile-device-bridge] bionic socket error: ${e.message}`),
+			),
+		);
+		sock.on("close", () => {
+			if (!settled)
+				finish(new Error("[mobile-device-bridge] bionic host closed early"));
+		});
+	});
+}
+
 function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 	return async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
 		const loadArgs = await resolveLoadArgsWithAutoDownload(slot);
@@ -1100,6 +1214,31 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 				`[mobile-device-bridge] No local GGUF model installed under ${modelsDir()} and auto-download is disabled (ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1). Install a model or unset the disable flag.`,
 			);
 		}
+
+		// GPU delegation: run the whole decode in the bionic app process over the
+		// abstract UDS (the device-bridge renderer path can't reach Vulkan). Skip
+		// the device-bridge load/formatChat/generate entirely.
+		const bionicSock = bionicSocketName();
+		if (bionicSock) {
+			const res = await bionicHostGenerate(bionicSock, {
+				op: "generate",
+				bundleDir: deriveBionicBundleDir(loadArgs.modelPath),
+				prompt: buildChatMlPrompt(params),
+				maxTokens: params.maxTokens ?? 256,
+			});
+			if (!res.ok) {
+				throw new Error(
+					`[mobile-device-bridge] bionic host generate failed: ${res.error ?? "unknown"}`,
+				);
+			}
+			if (typeof res.tokS === "number") {
+				logger.info(
+					`[mobile-device-bridge] bionic GPU generate: ${res.tokens ?? "?"} tok @ ${res.tokS.toFixed(1)} tok/s`,
+				);
+			}
+			return res.text ?? "";
+		}
+
 		await mobileDeviceBridge.loadModel(loadArgs);
 		// Prefer the model's native chat template via the Capacitor
 		// `LlamaCpp.getFormattedChat()` round-trip. That path invokes

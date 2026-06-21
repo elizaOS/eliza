@@ -270,6 +270,52 @@ export default defineConfig({
           "index.ts",
         ),
       },
+      // Lifeops decomposition: plugin-inbox / plugin-blocker are carved deps that
+      // are NOT in build:core, so their unbuilt dist can't satisfy the subpath +
+      // barrel imports plugin-personal-assistant pulls from them (vitest has no
+      // eliza-source condition; bare resolution falls through to missing dist).
+      // Anchor both to source (mirrors the plugin-workflow alias above). Subpath
+      // rules must precede the barrels so deeper paths match first.
+      {
+        find: /^@elizaos\/plugin-inbox\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-inbox",
+          "src",
+          "$1.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-inbox$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-inbox",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-blocker\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-blocker",
+          "src",
+          "$1.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-blocker$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-blocker",
+          "src",
+          "index.ts",
+        ),
+      },
       {
         find: /^react\/jsx-dev-runtime$/,
         replacement: path.join(reactRoot, "jsx-dev-runtime.js"),

@@ -1,5 +1,9 @@
 import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
 import "@elizaos/ui/styles";
+// Native-only: register bundled plugin views as in-process app-shell pages so
+// they load from the view catalog on iOS/Android (where DynamicViewLoader is
+// disabled). No-op off-device.
+import "./mobile-plugin-views";
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { BackgroundRunner } from "@capacitor/background-runner";

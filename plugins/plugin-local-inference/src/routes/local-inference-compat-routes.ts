@@ -19,10 +19,12 @@ import {
 	validateLocalInferenceLoadArgs,
 } from "../services/active-model";
 import { deviceBridge } from "../services/device-bridge";
+import { classifyDeviceTier } from "../services/device-tier";
 import {
 	handlerRegistry,
 	toPublicRegistration,
 } from "../services/handler-registry";
+import { tryGetMemoryArbiter } from "../services/memory-arbiter";
 import { snapshotProviders } from "../services/providers";
 import {
 	type RoutingPolicy,
@@ -31,6 +33,7 @@ import {
 	setPreferredProvider,
 } from "../services/routing-preferences";
 import { localInferenceService } from "../services/service";
+import { readSystemMemory } from "../services/system-memory";
 import type { AgentModelSlot, CatalogModel } from "../services/types";
 import { AGENT_MODEL_SLOTS } from "../services/types";
 import {
@@ -321,6 +324,41 @@ export async function handleLocalInferenceCompatRoutes(
 				res,
 				500,
 				err instanceof Error ? err.message : "Failed to probe hardware",
+			);
+		}
+		return true;
+	}
+
+	// ── GET: device tier + live memory budget + resident model state ────
+	// The single read clients use to decide local-vs-cloud and to render what
+	// the memory arbiter currently holds. Memory is the kernel's allocatable
+	// estimate (MemAvailable on Linux/Android), not MemFree.
+	if (method === "GET" && pathname === "/api/local-inference/device-tier") {
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
+		try {
+			const probe = await localInferenceService.getHardware();
+			const tier = classifyDeviceTier(probe);
+			const sysmem = readSystemMemory();
+			const arbiter = tryGetMemoryArbiter();
+			const resident = arbiter
+				? {
+						pressure: arbiter.currentPressureLevel(),
+						models: arbiter.residentSnapshot(),
+					}
+				: null;
+			sendJsonResponse(res, 200, {
+				tier,
+				memory: {
+					availableBytes: sysmem.freeBytes,
+					totalBytes: sysmem.totalBytes,
+				},
+				resident,
+			});
+		} catch (err) {
+			sendJsonErrorResponse(
+				res,
+				500,
+				err instanceof Error ? err.message : "Failed to classify device tier",
 			);
 		}
 		return true;

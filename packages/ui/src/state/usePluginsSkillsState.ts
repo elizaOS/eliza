@@ -7,6 +7,7 @@
  * Accepts `{ setActionNotice }` for cross-domain notifications.
  */
 
+import { logger } from "@elizaos/logger";
 import { useCallback, useRef, useState } from "react";
 import {
   type CatalogSkill,
@@ -87,6 +88,8 @@ export function usePluginsSkillsState({
   // --- Plugins ---
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [pluginsLoaded, setPluginsLoaded] = useState(false);
+  const [isLoadingPlugins, setIsLoadingPlugins] = useState(false);
+  const [pluginsLoadError, setPluginsLoadError] = useState<string | null>(null);
   const [pluginFilter, setPluginFilter] = useState<
     "all" | "ai-provider" | "connector" | "feature" | "streaming"
   >("all");
@@ -172,13 +175,21 @@ export function usePluginsSkillsState({
 
   // ── Plugin callbacks ────────────────────────────────────────────────
 
-  const loadPlugins = useCallback(async (_options?: { silent?: boolean }) => {
+  const loadPlugins = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setIsLoadingPlugins(true);
     try {
       const { plugins: p } = await client.getPlugins();
       setPlugins(p);
+      setPluginsLoadError(null);
       setPluginsLoaded(true);
-    } catch {
-      /* ignore */
+    } catch (e) {
+      logger.error(
+        { error: e },
+        "[usePluginsSkillsState] failed to load plugins",
+      );
+      setPluginsLoadError(e instanceof Error ? e.message : "unknown error");
+    } finally {
+      if (!options?.silent) setIsLoadingPlugins(false);
     }
   }, []);
 
@@ -717,6 +728,9 @@ export function usePluginsSkillsState({
     // Plugin state
     plugins,
     setPlugins,
+    isLoadingPlugins,
+    pluginsLoadError,
+    pluginsLoaded,
     pluginFilter,
     setPluginFilter,
     pluginStatusFilter,

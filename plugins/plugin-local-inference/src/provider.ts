@@ -17,6 +17,11 @@ import {
 
 import { generateMediaAction } from "./actions/generate-media.js";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";
+import {
+	startTranscriptionAction,
+	stopTranscriptionAction,
+} from "./actions/transcription-control.js";
+import { transcriptsRoutes } from "./routes/transcripts-routes.js";
 import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
 import { handleVoiceEntityBound } from "./runtime/voice-entity-binding.js";
 
@@ -1123,7 +1128,12 @@ export const localInferencePlugin: Plugin = {
 	description:
 		"Eliza-1 local provider for text, embeddings, text-to-speech, and transcription.",
 	priority: LOCAL_INFERENCE_PRIORITY,
-	actions: [generateMediaAction, identifySpeakerAction],
+	actions: [
+		generateMediaAction,
+		identifySpeakerAction,
+		startTranscriptionAction,
+		stopTranscriptionAction,
+	],
 	events: {
 		// Round-trip half of the voice→entity binding: when the merge engine
 		// (plugin-lifeops) reports a binding, persist entityId onto the matching
@@ -1134,7 +1144,7 @@ export const localInferencePlugin: Plugin = {
 	// VoiceProfileSection management UI). Registered as rawPath plugin routes
 	// because no server forwards these namespaces to the local-inference
 	// route dispatcher. See routes/voice-profile-plugin-routes.ts.
-	routes: voiceProfilePluginRoutes,
+	routes: [...voiceProfilePluginRoutes, ...transcriptsRoutes],
 	// TEXT_EMBEDDING is wired by ensureLocalInferenceHandler(), not the static
 	// plugin object. Runtime bootstrap probes embeddings before the user has
 	// activated an Eliza-1 bundle; registering the static handler there claims a

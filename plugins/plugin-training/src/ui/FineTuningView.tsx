@@ -1051,10 +1051,23 @@ export function FineTuningView({
     try {
       const listed = await client.listTrainingCollections({ limit: 10 });
       setCollectionHistory(listed);
+    } catch (err) {
+      // Collection history is one panel among many. A failure here must not
+      // reject the shared refreshAll() Promise.all and blank the whole view —
+      // surface it as a non-blocking notice and keep any prior history.
+      setActionNotice(
+        err instanceof Error
+          ? err.message
+          : t("finetuningview.FailedToLoadCollectionHistory", {
+              defaultValue: "Failed to load collection history",
+            }),
+        "error",
+        4200,
+      );
     } finally {
       setCollectionHistoryLoading(false);
     }
-  }, []);
+  }, [setActionNotice, t]);
 
   const refreshAll = useCallback(async () => {
     setPageLoading(true);

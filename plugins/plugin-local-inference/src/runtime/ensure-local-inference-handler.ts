@@ -48,6 +48,7 @@ import {
 	isEmbeddingModelId,
 	readEffectiveAssignments,
 } from "../services/assignments";
+import { BionicHostLoader } from "../services/bionic-host-loader";
 import {
 	extractConversationId,
 	extractPromptCacheKey,
@@ -1026,6 +1027,45 @@ export function shouldAttemptAospLlamaLoader(
 	return false;
 }
 
+/**
+ * Bionic-host delegation gate. On Android the app shell sets
+ * `ELIZA_BIONIC_HOST_DELEGATED=1` + `ELIZA_BIONIC_INFERENCE_SOCK=<name>` when a
+ * dynamic-Vulkan `libelizainference.so` is staged — meaning the GPU is reachable
+ * only from the bionic app process, never this musl agent. When set, the agent
+ * delegates inference to that in-process host over the abstract UDS instead of
+ * dlopen'ing the native lib itself (which would hit the Vulkan/HIDL wall).
+ */
+export function bionicInferenceSocketName(
+	env: NodeJS.ProcessEnv = process.env,
+): string | null {
+	if (env.ELIZA_BIONIC_HOST_DELEGATED?.trim() !== "1") return null;
+	const sock = env.ELIZA_BIONIC_INFERENCE_SOCK?.trim();
+	return sock ? sock : null;
+}
+
+/**
+ * Register the bionic-host loader when delegation is enabled. Wins over the
+ * AOSP / Capacitor / device-bridge loaders: the whole point is that the GPU is
+ * out of reach for the in-process FFI path on this (musl) process.
+ */
+function tryRegisterBionicHostLoader(runtime: AgentRuntime): boolean {
+	const socketName = bionicInferenceSocketName();
+	if (!socketName) return false;
+	const withRegistration = runtime as AgentRuntime & {
+		registerService?: (name: string, impl: unknown) => unknown;
+	};
+	if (typeof withRegistration.registerService !== "function") return false;
+	const loader: LocalInferenceLoader = new BionicHostLoader(socketName);
+	const loaderWithArbiter = Object.assign(loader, {
+		getMemoryArbiter: () => tryGetMemoryArbiter(),
+	});
+	withRegistration.registerService("localInferenceLoader", loaderWithArbiter);
+	logger.info(
+		`[local-inference] Registered bionic-host loader; text generation delegates to the in-process GPU host over UDS "${socketName}"`,
+	);
+	return true;
+}
+
 async function tryRegisterAospLlamaLoader(
 	runtime: AgentRuntime,
 ): Promise<boolean> {
@@ -1202,10 +1242,19 @@ export async function ensureLocalInferenceHandler(
 	// LOWEST-priority order first; the AOSP loader runs last so it wins on
 	// AOSP builds. Each `try*Loader` is idempotent and gated on its own env
 	// signal, so they're safe to chain.
-	const aospRegistered = await tryRegisterAospLlamaLoader(runtime);
+	// Bionic-host delegation wins over every other loader: when set, the GPU is
+	// only reachable from the in-process app host, so the musl agent must NOT try
+	// the in-process FFI / device-bridge paths (the app shell already suppressed
+	// ELIZA_LOCAL_LLAMA in this case).
+	const bionicHostRegistered = tryRegisterBionicHostLoader(runtime);
+	const aospRegistered =
+		!bionicHostRegistered && (await tryRegisterAospLlamaLoader(runtime));
 	const capacitorRegistered =
-		!aospRegistered && (await tryRegisterCapacitorLoader(runtime));
+		!bionicHostRegistered &&
+		!aospRegistered &&
+		(await tryRegisterCapacitorLoader(runtime));
 	const deviceBridgeEnabled =
+		!bionicHostRegistered &&
 		process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
 	if (!aospRegistered && !capacitorRegistered && deviceBridgeEnabled) {
 		registerDeviceBridgeLoader(runtime);
@@ -1219,6 +1268,7 @@ export async function ensureLocalInferenceHandler(
 	// bridge is always "available" in the sense that it parks calls until a
 	// device connects, so if it is enabled we always register handlers.
 	if (
+		!bionicHostRegistered &&
 		!aospRegistered &&
 		!capacitorRegistered &&
 		!deviceBridgeEnabled &&

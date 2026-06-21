@@ -98,6 +98,7 @@ declare module "@elizaos/app-companion" {
     args: ResolveCompanionInferenceNoticeArgs,
   ): CompanionInferenceNotice | null;
   export function useCompanionSceneStatus(): CompanionSceneStatus;
+  export const CompanionView: ComponentType<Record<string, unknown>>;
 }
 
 declare module "@elizaos/plugin-companion" {
@@ -166,6 +167,7 @@ declare module "@elizaos/app-steward" {
   export const StewardLogo: ComponentType<StewardLogoProps>;
   export const ApprovalQueue: ComponentType<StewardApprovalQueueProps>;
   export const TransactionHistory: ComponentType<StewardTransactionHistoryProps>;
+  export const StewardView: ComponentType<Record<string, unknown>>;
 }
 
 declare module "@elizaos/plugin-steward-app" {
@@ -193,8 +195,7 @@ declare module "@elizaos/plugin-training" {
 }
 
 declare module "@elizaos/app-vincent" {
-  // Imported only for its self-registration side effect.
-  export {};
+  export const VincentAppView: ComponentType<Record<string, unknown>>;
 }
 
 declare module "@elizaos/plugin-vincent" {

@@ -213,6 +213,7 @@ function Harness(): React.JSX.Element {
     },
     [],
   );
+  const setTranscriptSessionSink = React.useCallback(() => {}, []);
   // Test hooks for BIDIRECTIONAL voice (asserted by the e2e): a final transcript
   // either fills the composer draft (dictate) or sends a VOICE_DM (converse),
   // routed by the active capture intent — exactly the two real directions.
@@ -262,6 +263,7 @@ function Harness(): React.JSX.Element {
     toggleRecording,
     toggleHandsFree,
     setDictationSink,
+    setTranscriptSessionSink,
     setComposerHasDraft: (hasDraft: boolean) =>
       console.log(`[fixture] setComposerHasDraft -> ${hasDraft}`),
     startRecording,

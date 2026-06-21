@@ -17,6 +17,14 @@ export {
 	identifySpeakerAction,
 } from "./actions/identify-speaker.js";
 export {
+	emitVoiceControl,
+	startTranscriptionAction,
+	stopTranscriptionAction,
+	VOICE_CONTROL_STREAM,
+	type VoiceControlCommand,
+	type VoiceControlEvent,
+} from "./actions/transcription-control.js";
+export {
 	getLocalInferenceActiveModelId,
 	getLocalInferenceActiveSnapshot,
 	getLocalInferenceChatStatus,
