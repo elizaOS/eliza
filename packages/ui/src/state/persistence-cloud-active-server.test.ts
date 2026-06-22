@@ -108,6 +108,25 @@ describe("Cloud active server persistence", () => {
     ).toBe(false);
   });
 
+  it("restores a Cloud session with a recoverable agent id even when the apiBase is missing", () => {
+    // backfillCloudApiBase recovers the runtime base from `cloud:<agentId>`, so
+    // a returning user is not forced back through onboarding just because the
+    // persisted base was absent. Only an id-less / URL-as-id session is dropped.
+    expect(
+      canRestoreActiveServer({
+        server: {
+          id: "cloud:agent-123",
+          kind: "cloud",
+          label: "Demo Agent",
+          accessToken: "cloud-token",
+        },
+        clientApiAvailable: true,
+        forceLocal: false,
+        isDesktop: false,
+      }),
+    ).toBe(true);
+  });
+
   it("preserves the injected desktop API base when restoring a local session", async () => {
     elizaWindow.__ELIZA_API_BASE__ = "http://127.0.0.1:31337";
     const setBaseUrl = vi.fn();

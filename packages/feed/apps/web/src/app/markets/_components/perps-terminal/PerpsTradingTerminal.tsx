@@ -5,7 +5,11 @@ import { BarChart2, Bell, Home, Trophy, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import {
+  Panel,
+  Group as PanelGroup,
+  Separator as PanelResizeHandle,
+} from "react-resizable-panels";
 import { Avatar } from "@/components/shared/Avatar";
 import { MarketsToggle } from "@/components/shared/MarketsToggle";
 import { Skeleton } from "@/components/shared/Skeleton";
@@ -149,13 +153,13 @@ export function PerpsTradingTerminal({
           )}
 
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            <PanelGroup direction="vertical" className="flex min-h-0 flex-1">
+            <PanelGroup orientation="vertical" className="flex min-h-0 flex-1">
               <Panel
                 defaultSize={bottomCollapsed ? 100 : 70}
                 minSize={35}
                 className="min-h-0"
               >
-                <PanelGroup direction="horizontal" className="min-h-0">
+                <PanelGroup orientation="horizontal" className="min-h-0">
                   {/* Left: Markets list */}
                   {!leftCollapsed && (
                     <>

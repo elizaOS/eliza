@@ -35,12 +35,11 @@ import { v4 as uuidv4 } from "uuid";
 import { getEventBus } from "../communication/EventBus";
 import { AuthorizationError } from "../errors";
 import type {
-  BroadcastFn,
   CoordinatorDispatchParams,
   CoordinatorDispatchResult,
 } from "../plugins/plugin-user-core/src/actions/dispatch-types";
 import { generateSnowflakeId } from "../shared/snowflake";
-import { agentService } from "./AgentService";
+import { agentService, type UserWithConfig } from "./AgentService";
 import { notifyTeamChatMessage } from "./team-chat-notifications";
 
 // =============================================================================
@@ -269,7 +268,7 @@ export async function dispatchAgentChat(
   }
 
   // --- Ownership verification (with fuzzy name fallback) ---
-  let agentWithConfig;
+  let agentWithConfig: UserWithConfig | null = null;
   let resolvedAgentId = agentId;
   try {
     agentWithConfig = await agentService.getAgentWithConfig(agentId, ownerId);
@@ -490,7 +489,9 @@ export async function dispatchAgentChat(
       state = await runtime.composeState(elizaMessage, agentProviders, true);
     } else {
       // Subsequent iterations: reuse state, skip redundant DB queries
-      state = lastState!;
+      state =
+        lastState ??
+        (await runtime.composeState(elizaMessage, agentProviders, true));
     }
 
     state.values = {

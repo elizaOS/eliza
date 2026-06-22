@@ -481,7 +481,12 @@ function SheetGrabber({
         aria-hidden="true"
         className={cn(
           // 30% wider bar (w-11 → w-14), a touch taller, brighter.
-          "h-2.5 w-16 rounded-full transition-colors duration-300",
+          // Visually hidden bar (opacity-0): the drag/tap-to-open gesture and the
+          // keyboard handlers live on the button wrapper, so the affordance still
+          // works — we just don't draw a faux grabber line; the iOS native home
+          // indicator is the only bottom bar. Kept in layout so the hit zone is
+          // unchanged.
+          "h-2.5 w-16 rounded-full opacity-0 transition-colors duration-300",
           glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
@@ -547,7 +552,12 @@ function PillHandle({
         className={cn(
           // Identical to the SheetGrabber bar — the handle keeps the same white
           // shape + color whether the chat is open or fully collapsed to the pill.
-          "h-2.5 w-16 rounded-full transition-colors duration-300",
+          // Visually hidden bar (opacity-0): the drag/tap-to-open gesture and the
+          // keyboard handlers live on the button wrapper, so the affordance still
+          // works — we just don't draw a faux grabber line; the iOS native home
+          // indicator is the only bottom bar. Kept in layout so the hit zone is
+          // unchanged.
+          "h-2.5 w-16 rounded-full opacity-0 transition-colors duration-300",
           glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
@@ -2980,7 +2990,16 @@ export function ContinuousChatOverlay({
               // padding) is untouched. Harmless when the inset is 0.
               ...(fullBleed
                 ? { top: "calc(-1 * env(safe-area-inset-top, 0px))" }
-                : null),
+                : // Resting (non-full-bleed): bleed the glass DOWN past the panel
+                  // box to fill the bottom home-gesture clearance, so the dark
+                  // glass reaches the true screen bottom and the orange ambient
+                  // never shows as a bright band below the composer. Mirrors the
+                  // overlay's resting paddingBottom exactly. overflow-visible on
+                  // the panel lets it bleed; the composer content is untouched.
+                  {
+                    bottom:
+                      "calc(-1 * (var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem))",
+                  }),
             }}
           />
           {/* CONTENT — sheen, glow, thread, composer. Crossfades with the glass

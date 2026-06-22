@@ -17,7 +17,7 @@
  */
 
 import { logger, POINTS } from "@feed/shared";
-import { Check, Lock, Twitter, X as XIcon } from "lucide-react";
+import { Check, Lock, X as XIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { getAuthToken } from "@/lib/auth";
@@ -27,7 +27,12 @@ import { ShareVerificationModal } from "./ShareVerificationModal";
 // Farcaster icon component
 function FarcasterIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 1000 1000" fill="currentColor">
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="currentColor"
+      viewBox="0 0 1000 1000"
+    >
       <path d="M257.778 155.556H742.222V844.444H671.111V528.889H670.414C662.554 441.677 589.258 373.333 500 373.333C410.742 373.333 337.446 441.677 329.586 528.889H328.889V844.444H257.778V155.556Z" />
       <path d="M128.889 253.333L157.778 351.111H182.222V844.444H128.889V253.333Z" />
       <path d="M871.111 253.333L842.222 351.111H817.778V844.444H871.111V253.333Z" />
@@ -255,10 +260,11 @@ export function ShareEarnModal({
     }));
 
     // Show verification modal after a short delay (gives user time to post)
-    if (result.success && result.shareId && user) {
+    const twitterShareId = result.shareId;
+    if (result.success && twitterShareId && user) {
       setTimeout(() => {
         setPendingVerification({
-          shareId: result.shareId!,
+          shareId: twitterShareId,
           platform: "twitter",
         });
         setShowVerification(true);
@@ -297,10 +303,11 @@ export function ShareEarnModal({
     }));
 
     // Show verification modal after a short delay (gives user time to post)
-    if (result.success && result.shareId && user) {
+    const farcasterShareId = result.shareId;
+    if (result.success && farcasterShareId && user) {
       setTimeout(() => {
         setPendingVerification({
-          shareId: result.shareId!,
+          shareId: farcasterShareId,
           platform: "farcaster",
         });
         setShowVerification(true);
@@ -313,18 +320,21 @@ export function ShareEarnModal({
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-[110] bg-black/50" onClick={onClose} />
+      <button
+        type="button"
+        aria-label="Close share modal"
+        className="fixed inset-0 z-[110] bg-black/50"
+        onClick={onClose}
+      />
 
       {/* Modal */}
-      <div className="fixed inset-0 z-[110] flex items-center justify-center p-0 md:p-4">
-        <div
-          className="flex h-full w-full flex-col bg-background md:h-auto md:max-h-[90vh] md:w-auto md:min-w-[480px] md:max-w-md md:rounded-xl md:border md:border-border md:shadow-2xl"
-          onClick={(e) => e.stopPropagation()}
-        >
+      <div className="pointer-events-none fixed inset-0 z-[111] flex items-center justify-center p-0 md:p-4">
+        <div className="pointer-events-auto flex h-full w-full flex-col bg-background md:h-auto md:max-h-[90vh] md:w-auto md:min-w-[480px] md:max-w-md md:rounded-xl md:border md:border-border md:shadow-2xl">
           {/* Header */}
           <div className="flex shrink-0 items-start justify-between border-border border-b p-6">
             <h2 className="font-bold text-xl">Share & Earn</h2>
             <button
+              type="button"
               onClick={onClose}
               className="rounded-full p-2 transition-colors hover:bg-muted"
             >
@@ -355,6 +365,7 @@ export function ShareEarnModal({
               <>
                 {/* Twitter Share */}
                 <button
+                  type="button"
                   onClick={handleShareToTwitter}
                   disabled={!isTwitterConfigured || shareStatus.twitter.loading}
                   className={`flex w-full items-center gap-4 rounded-lg border p-4 transition-all ${
@@ -367,7 +378,7 @@ export function ShareEarnModal({
                           : "cursor-pointer border-border bg-card hover:bg-muted"
                   }`}
                 >
-                  <Twitter
+                  <XIcon
                     className={`h-6 w-6 ${
                       !isTwitterConfigured
                         ? "text-muted-foreground"
@@ -413,6 +424,7 @@ export function ShareEarnModal({
 
                 {/* Farcaster Share */}
                 <button
+                  type="button"
                   onClick={handleShareToFarcaster}
                   disabled={shareStatus.farcaster.loading}
                   className={`flex w-full items-center gap-4 rounded-lg border p-4 transition-all ${

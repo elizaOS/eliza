@@ -1,5 +1,5 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { runMultiTaskSupervisorCheck } from "./_helpers/supervisor-scenario.ts";
+import { runMultiTaskSupervisorCheck } from "./_helpers/supervisor-scenario";
 
 // Two concurrent tasks in one room and a third in another exercise the
 // multi-task juggler (#8932): each room gets its own digest (isolation),

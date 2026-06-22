@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { runGrillingEvidenceBundleCheck } from "./_helpers/grilling-scenario.ts";
+import { runGrillingEvidenceBundleCheck } from "./_helpers/grilling-scenario";
 
 // Grilling evidence bundle (#8932): the verifier must judge TYPED evidence, not
 // the bare event summary. The sub-agent's completion carries a git diff and the

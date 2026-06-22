@@ -331,6 +331,19 @@ export function canRestoreActiveServer(args: {
     return args.forceLocal || args.isDesktop || args.clientApiAvailable;
   }
 
+  if (args.server.kind === "cloud") {
+    // A persisted cloud agent without a concrete apiBase is still restorable
+    // when its id carries a real agent id: applyRestoredConnection →
+    // backfillCloudApiBase recovers the base from `cloud:<agentId>` (or the
+    // live Steward session). Only an id-less / URL-as-id session (which the
+    // backfill cannot recover) falls through to agent selection. Keep this in
+    // sync with backfillCloudApiBase's recoverability check.
+    const rawId = args.server.id?.startsWith("cloud:")
+      ? args.server.id.slice("cloud:".length).trim()
+      : "";
+    return Boolean(rawId && !rawId.includes("/"));
+  }
+
   return false;
 }
 
