@@ -6,6 +6,7 @@ import type {
   LifeOpsCalendarSummary,
   LifeOpsConnectorSide,
 } from "@elizaos/shared";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import {
   Button,
@@ -22,7 +23,6 @@ import {
   Textarea,
 } from "@elizaos/ui/components";
 import { useAppSelector } from "@elizaos/ui/state";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Check,
   Loader2,

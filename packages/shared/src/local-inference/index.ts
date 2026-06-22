@@ -87,17 +87,17 @@ export {
   ROUTING_POLICIES,
 } from "./routing-preferences.js";
 export {
-  computeGenerationThroughput,
-  type GenerationCounters,
-  type GenerationThroughput,
-  isGenerationCounters,
-} from "./throughput.js";
-export {
   classifyCatalogModelRuntimeClass,
   classifyInstalledModelRuntimeClass,
   type RuntimeClass,
   withRuntimeClass,
 } from "./runtime-class.js";
+export {
+  computeGenerationThroughput,
+  type GenerationCounters,
+  type GenerationThroughput,
+  isGenerationCounters,
+} from "./throughput.js";
 export {
   type ActiveModelState,
   AGENT_MODEL_SLOTS,
