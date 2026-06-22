@@ -1,5 +1,5 @@
 import { Play, Star } from "lucide-react";
-import { type ReactNode, useMemo } from "react";
+import { memo, type ReactNode, useCallback, useMemo } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
@@ -57,6 +57,17 @@ export function AppsSidebar({
   onLaunchApp,
   onOpenRun,
 }: AppsSidebarProps) {
+  // Stable per-row handlers so the memoized AppsSidebarAppButton holds: each row
+  // receives the parent callback unchanged and passes its own payload back.
+  const handleLaunchApp = useCallback(
+    (app: RegistryAppInfo) => onLaunchApp(app),
+    [onLaunchApp],
+  );
+  const handleOpenRun = useCallback(
+    (run: AppRunSummary) => onOpenRun(run),
+    [onOpenRun],
+  );
+
   const appsByName = useMemo(() => {
     const map = new Map<string, RegistryAppInfo>();
     for (const app of apps) map.set(app.name, app);
@@ -84,7 +95,14 @@ export function AppsSidebar({
       .map((run) => {
         const app = appsByName.get(run.appName);
         const displayName = app?.displayName ?? run.displayName ?? run.appName;
-        return { run, app, displayName };
+        const identitySource: AppIdentitySource = app ?? {
+          name: run.appName,
+          displayName,
+          icon: null,
+          category: "",
+          description: "",
+        };
+        return { run, displayName, identitySource };
       })
       .sort((a, b) => b.run.updatedAt.localeCompare(a.run.updatedAt));
   }, [appsByName, runs]);
@@ -167,12 +185,12 @@ export function AppsSidebar({
                   {starredEntries.map((app) => (
                     <AppsSidebarAppButton
                       key={app.name}
-                      name={app.name}
                       displayName={app.displayName ?? getAppShortName(app)}
                       active={activeAppNames.has(app.name)}
                       selected={selectedAppName === app.name}
                       identitySource={app}
-                      onClick={() => onLaunchApp(app)}
+                      payload={app}
+                      onSelect={handleLaunchApp}
                     />
                   ))}
                 </AppsSidebarSection>
@@ -186,12 +204,12 @@ export function AppsSidebar({
                   {featuredEntries.map((app) => (
                     <AppsSidebarAppButton
                       key={app.name}
-                      name={app.name}
                       displayName={app.displayName ?? getAppShortName(app)}
                       active={activeAppNames.has(app.name)}
                       selected={selectedAppName === app.name}
                       identitySource={app}
-                      onClick={() => onLaunchApp(app)}
+                      payload={app}
+                      onSelect={handleLaunchApp}
                     />
                   ))}
                 </AppsSidebarSection>
@@ -202,23 +220,15 @@ export function AppsSidebar({
                   label="Active"
                   icon={<Play className="h-3 w-3" aria-hidden />}
                 >
-                  {activeEntries.map(({ run, app, displayName }) => (
+                  {activeEntries.map(({ run, displayName, identitySource }) => (
                     <AppsSidebarAppButton
                       key={run.runId}
-                      name={run.appName}
                       displayName={displayName}
                       active
                       selected={selectedAppName === run.appName}
-                      identitySource={
-                        app ?? {
-                          name: run.appName,
-                          displayName,
-                          icon: null,
-                          category: "",
-                          description: "",
-                        }
-                      }
-                      onClick={() => onOpenRun(run)}
+                      identitySource={identitySource}
+                      payload={run}
+                      onSelect={handleOpenRun}
                     />
                   ))}
                 </AppsSidebarSection>
@@ -229,12 +239,12 @@ export function AppsSidebar({
                   {section.apps.map((app) => (
                     <AppsSidebarAppButton
                       key={app.name}
-                      name={app.name}
                       displayName={app.displayName ?? getAppShortName(app)}
                       active={activeAppNames.has(app.name)}
                       selected={selectedAppName === app.name}
                       identitySource={app}
-                      onClick={() => onLaunchApp(app)}
+                      payload={app}
+                      onSelect={handleLaunchApp}
                     />
                   ))}
                 </AppsSidebarSection>
@@ -267,28 +277,33 @@ function AppsSidebarSection({
   );
 }
 
-interface AppsSidebarAppButtonProps {
-  name: string;
+interface AppsSidebarAppButtonProps<TPayload> {
   displayName: string;
   active: boolean;
   selected: boolean;
   identitySource: AppIdentitySource;
-  onClick: () => void;
+  payload: TPayload;
+  onSelect: (payload: TPayload) => void;
 }
 
-function AppsSidebarAppButton({
+function AppsSidebarAppButtonInner<TPayload>({
   displayName,
   active,
   selected,
   identitySource,
-  onClick,
-}: AppsSidebarAppButtonProps) {
+  payload,
+  onSelect,
+}: AppsSidebarAppButtonProps<TPayload>) {
   const { t } = useTranslation();
   const Icon = getAppCategoryIcon(identitySource);
+  const handleClick = useCallback(() => {
+    onSelect(payload);
+  }, [onSelect, payload]);
+
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={handleClick}
       aria-current={selected ? "page" : undefined}
       className={`group flex w-full min-w-0 items-center gap-2 rounded-sm px-2 py-1 text-left transition-colors ${
         selected ? "bg-accent/15 text-txt" : "text-txt hover:bg-bg-muted/50"
@@ -312,3 +327,9 @@ function AppsSidebarAppButton({
     </button>
   );
 }
+
+// React.memo erases the generic call signature; cast back so each call site
+// keeps payload type inference per row.
+const AppsSidebarAppButton = memo(
+  AppsSidebarAppButtonInner,
+) as typeof AppsSidebarAppButtonInner;

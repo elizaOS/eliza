@@ -2,6 +2,7 @@ import { Brain, Store } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo } from "../../api";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
@@ -219,15 +220,16 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
 
   // The skills list polls itself in the background instead of exposing a manual
   // refresh control — silently revalidate on a slow interval and on window focus.
+  // The interval is gated on document visibility so a backgrounded window goes
+  // quiet; the focus listener still gives an immediate refresh on return.
   useEffect(() => {
     const poll = () => void refreshSkills();
     window.addEventListener("focus", poll);
-    const interval = window.setInterval(poll, 20_000);
     return () => {
       window.removeEventListener("focus", poll);
-      window.clearInterval(interval);
     };
   }, [refreshSkills]);
+  useIntervalWhenDocumentVisible(() => void refreshSkills(), 20_000);
 
   const filteredSkills = useMemo(() => {
     const query = filterText.toLowerCase();

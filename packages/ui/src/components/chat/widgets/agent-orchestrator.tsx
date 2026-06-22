@@ -52,6 +52,7 @@ import type {
   OrchestratorRoomRosterOverview,
 } from "../../../api/client-types-cloud";
 import type { ActivityEvent } from "../../../hooks/useActivityEvents";
+import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import { useAppSelectorShallow } from "../../../state";
 import type { TranslateFn } from "../../../types";
 import { AppHero, type AppIdentitySource } from "../../apps/app-identity";
@@ -698,27 +699,25 @@ function OrchestratorAccountsWidget(_props: ChatSidebarWidgetProps) {
   );
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    const refresh = async () => {
-      const [acctRes, ovRes, roomsRes] = await Promise.allSettled([
-        client.listAccounts(),
-        client.getOrchestratorAccounts(),
-        client.getOrchestratorRooms(),
-      ]);
-      if (cancelled) return;
-      if (acctRes.status === "fulfilled") setAccounts(acctRes.value);
-      if (ovRes.status === "fulfilled") setOverview(ovRes.value);
-      if (roomsRes.status === "fulfilled") setRooms(roomsRes.value);
-      setLoading(false);
-    };
-    void refresh();
-    const timer = setInterval(() => void refresh(), 15_000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
+  const refresh = useCallback(async () => {
+    const [acctRes, ovRes, roomsRes] = await Promise.allSettled([
+      client.listAccounts(),
+      client.getOrchestratorAccounts(),
+      client.getOrchestratorRooms(),
+    ]);
+    if (acctRes.status === "fulfilled") setAccounts(acctRes.value);
+    if (ovRes.status === "fulfilled") setOverview(ovRes.value);
+    if (roomsRes.status === "fulfilled") setRooms(roomsRes.value);
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  // The widget fires three parallel calls per tick — gate the recurring poll on
+  // document visibility so a backgrounded window stops hitting the API.
+  useIntervalWhenDocumentVisible(() => void refresh(), 15_000);
 
   if (loading) return null;
 

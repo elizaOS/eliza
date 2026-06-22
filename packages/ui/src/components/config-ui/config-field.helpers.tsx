@@ -1,5 +1,13 @@
 import { ChevronDown, X } from "lucide-react";
-import React, { useCallback, useEffect, useId, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import type {
   FieldRenderer,
@@ -440,18 +448,35 @@ function SearchableSelectInner({
   );
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  const deferredFilter = useDeferredValue(filter);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
 
-  const filtered = filter
-    ? options.filter(
-        (o) =>
-          o.label.toLowerCase().includes(filter.toLowerCase()) ||
-          o.value.toLowerCase().includes(filter.toLowerCase()),
+  // Precompute lowercased label/value once per option list so the per-keystroke
+  // filter is a simple substring scan rather than re-lowercasing the whole list.
+  const searchIndex = useMemo(
+    () =>
+      options.map((o) => ({
+        option: o,
+        searchLabel: o.label.toLowerCase(),
+        searchValue: o.value.toLowerCase(),
+      })),
+    [options],
+  );
+
+  const filtered = useMemo(() => {
+    if (!deferredFilter) return options;
+    const needle = deferredFilter.toLowerCase();
+    return searchIndex
+      .filter(
+        (entry) =>
+          entry.searchLabel.includes(needle) ||
+          entry.searchValue.includes(needle),
       )
-    : options;
+      .map((entry) => entry.option);
+  }, [deferredFilter, options, searchIndex]);
 
   const select = useCallback(
     (opt: { value: string; label: string }) => {
