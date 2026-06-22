@@ -85,7 +85,18 @@ test.describe("builtin views visual coverage (desktop + mobile)", () => {
         await installDefaultAppRoutes(page);
         await openAppPath(page, view.path);
 
-        const viewRoot = page.locator("main").first();
+        // Most views render inside <main>; a few full-screen surfaces (e.g.
+        // /chat, which is the floating chat composer itself) have no <main> —
+        // fall back to <body> so those are still covered.
+        const hasMain = await page
+          .locator("main")
+          .first()
+          .waitFor({ state: "attached", timeout: 15_000 })
+          .then(() => true)
+          .catch(() => false);
+        const viewRoot = hasMain
+          ? page.locator("main").first()
+          : page.locator("body");
         await expect(viewRoot).toBeVisible({ timeout: 60_000 });
         // A view is "rendered" if it shows readable text OR interactive/visual
         // content — input/canvas-heavy views (chat composer, the background
@@ -108,15 +119,11 @@ test.describe("builtin views visual coverage (desktop + mobile)", () => {
           )
           .toBeGreaterThan(10);
 
-        await captureScreenshotWithQualityRetry(
-          page,
-          `${view.id} ${vp.name}`,
-          {
-            fullPage: false,
-            path: path.join(screenshotDir, `${view.id}-${vp.name}.png`),
-            attempts: 3,
-          },
-        );
+        await captureScreenshotWithQualityRetry(page, `${view.id} ${vp.name}`, {
+          fullPage: false,
+          path: path.join(screenshotDir, `${view.id}-${vp.name}.png`),
+          attempts: 3,
+        });
 
         expect(
           pageErrors,
