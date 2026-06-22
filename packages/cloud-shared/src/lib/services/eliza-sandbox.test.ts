@@ -4,6 +4,7 @@ import type { AgentSandbox, AgentSandboxBackup } from "../../db/repositories/age
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
+import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import type { SandboxProvider } from "./sandbox-provider-types";
@@ -801,10 +802,219 @@ describe("ElizaSandboxService deletion-state guards (resume/wake/restart)", () =
   }
 });
 
-// FIX 1 (orphaned shared-runtime history on delete) is covered at the repository
-// level in shared-runtime-history.test.ts: deleteAgent runs inside a
-// dbWrite.transaction (a Proxy that can't be spied here) and the cleanup is a
-// best-effort post-commit call to sharedRuntimeHistoryRepository.deleteByAgent.
+// Orphaned shared-runtime history on delete is covered at the repository level
+// in shared-runtime-history.test.ts: the post-commit cleanup is a best-effort
+// call to sharedRuntimeHistoryRepository.deleteByAgent.
+
+// The anti-wedge teardown cap (PR #9066). deleteAgent now runs its three short
+// DB phases (precheck → bounded teardown OUTSIDE the lock/txn → row delete) so
+// we can spy each seam and assert the three-way teardown classification without
+// a real DB or a 120s wait. dbWrite.transaction itself stays a Proxy we don't
+// touch — the prepare/commit phases are spied at the method boundary.
+describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
+  const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+  const ORG = "22222222-2222-4222-8222-222222222222";
+  const SANDBOX_ID = "sandbox-e06bb509";
+
+  type Svc = {
+    deleteAgent(agentId: string, orgId: string): Promise<unknown>;
+    prepareAgentDelete(
+      agentId: string,
+      orgId: string,
+    ): Promise<
+      { ok: true; sandboxId: string | null; status: string } | { ok: false; error: string }
+    >;
+    commitAgentRowDelete(agentId: string, orgId: string): Promise<unknown>;
+    runBoundedSandboxStop(sandboxId: string): Promise<unknown>;
+  };
+
+  async function makeSvc(): Promise<Svc> {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    return new ElizaSandboxService() as unknown as Svc;
+  }
+
+  test("(a) teardown timeout → delete still proceeds (row deleted) + leak warning, no phantom 'handled'", async () => {
+    const svc = await makeSvc();
+    const deletedSandbox = { ...customSandbox(), id: AGENT, organization_id: ORG };
+    const prepare = spyOn(svc, "prepareAgentDelete").mockResolvedValue({
+      ok: true,
+      sandboxId: SANDBOX_ID,
+      status: "running",
+    });
+    // Timed-out teardown is reported as the { error, timedOut } shape.
+    const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
+      error: new Error("agent-delete stop sandbox-e06bb509 timed out after 120000ms"),
+      timedOut: true,
+    });
+    const commit = spyOn(svc, "commitAgentRowDelete").mockResolvedValue({
+      success: true,
+      deletedSandbox,
+    });
+    const apiKeySpy = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined as never);
+    const historySpy = spyOn(sharedRuntimeHistoryRepository, "deleteByAgent").mockResolvedValue(0);
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const res = (await svc.deleteAgent(AGENT, ORG)) as {
+        success: boolean;
+        deletedSandbox?: unknown;
+      };
+      // A hang must NOT block the delete — the row is still removed.
+      expect(res.success).toBe(true);
+      expect(res.deletedSandbox).toEqual(deletedSandbox);
+      expect(commit).toHaveBeenCalledTimes(1);
+      // The warning must flag a real leak — not pretend an orphan got swept.
+      const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(warned).toContain("timed out");
+      expect(warned).toContain("ABANDONING");
+      expect(warned).toContain("LEAK");
+      expect(warned).not.toContain("reconciler sweeps");
+    } finally {
+      prepare.mockRestore();
+      stop.mockRestore();
+      commit.mockRestore();
+      apiKeySpy.mockRestore();
+      historySpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  test("(b) a real stop failure on a reachable node → delete aborts (failure), row never deleted", async () => {
+    const svc = await makeSvc();
+    const prepare = spyOn(svc, "prepareAgentDelete").mockResolvedValue({
+      ok: true,
+      sandboxId: SANDBOX_ID,
+      status: "running",
+    });
+    // Bounded (non-timeout) failure with a non-ignorable message.
+    const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
+      error: new Error("docker stop -> daemon hung; docker rm -f -> daemon hung"),
+    });
+    const commit = spyOn(svc, "commitAgentRowDelete");
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const res = (await svc.deleteAgent(AGENT, ORG)) as { success: boolean; error?: string };
+      expect(res.success).toBe(false);
+      expect(res.error).toBe("Failed to delete sandbox");
+      // Critically: the row delete is never attempted when the container may
+      // still be running.
+      expect(commit).not.toHaveBeenCalled();
+    } finally {
+      prepare.mockRestore();
+      stop.mockRestore();
+      commit.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  test("(c) an ignorable 'already gone' failure → info + delete proceeds (row deleted)", async () => {
+    const svc = await makeSvc();
+    const deletedSandbox = { ...customSandbox(), id: AGENT, organization_id: ORG };
+    const prepare = spyOn(svc, "prepareAgentDelete").mockResolvedValue({
+      ok: true,
+      sandboxId: SANDBOX_ID,
+      status: "running",
+    });
+    const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
+      error: new Error("container not found"),
+    });
+    const commit = spyOn(svc, "commitAgentRowDelete").mockResolvedValue({
+      success: true,
+      deletedSandbox,
+    });
+    const apiKeySpy = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined as never);
+    const historySpy = spyOn(sharedRuntimeHistoryRepository, "deleteByAgent").mockResolvedValue(0);
+    const infoSpy = spyOn(logger, "info").mockImplementation(() => {});
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const res = (await svc.deleteAgent(AGENT, ORG)) as { success: boolean };
+      expect(res.success).toBe(true);
+      expect(commit).toHaveBeenCalledTimes(1);
+      const infoed = infoSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(infoed).toContain("already absent");
+      // An ignorable absence is NOT a leak warning.
+      const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(warned).not.toContain("ABANDONING");
+    } finally {
+      prepare.mockRestore();
+      stop.mockRestore();
+      commit.mockRestore();
+      apiKeySpy.mockRestore();
+      historySpy.mockRestore();
+      infoSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  test("the bounded teardown runs OUTSIDE the row-delete phase (sequenced, not nested)", async () => {
+    const svc = await makeSvc();
+    const order: string[] = [];
+    const prepare = spyOn(svc, "prepareAgentDelete").mockImplementation(async () => {
+      order.push("prepare");
+      return { ok: true, sandboxId: SANDBOX_ID, status: "running" };
+    });
+    const stop = spyOn(svc, "runBoundedSandboxStop").mockImplementation(async () => {
+      order.push("teardown");
+      return null;
+    });
+    const commit = spyOn(svc, "commitAgentRowDelete").mockImplementation(async () => {
+      order.push("commit");
+      return { success: true, deletedSandbox: { ...customSandbox(), id: AGENT } };
+    });
+    const apiKeySpy = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined as never);
+    const historySpy = spyOn(sharedRuntimeHistoryRepository, "deleteByAgent").mockResolvedValue(0);
+    try {
+      await svc.deleteAgent(AGENT, ORG);
+      // Teardown must happen between the precheck txn and the row-delete txn,
+      // never inside the write-lock/transaction.
+      expect(order).toEqual(["prepare", "teardown", "commit"]);
+    } finally {
+      prepare.mockRestore();
+      stop.mockRestore();
+      commit.mockRestore();
+      apiKeySpy.mockRestore();
+      historySpy.mockRestore();
+    }
+  });
+
+  test("runBoundedSandboxStop returns null on a clean provider stop", async () => {
+    const svc = await makeSvc();
+    const getProvider = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue({ stop: async () => {} } as unknown as SandboxProvider);
+    try {
+      const res = await svc.runBoundedSandboxStop(SANDBOX_ID);
+      expect(res).toBeNull();
+    } finally {
+      getProvider.mockRestore();
+    }
+  });
+
+  test("runBoundedSandboxStop captures a provider error as a value (not a timeout)", async () => {
+    const svc = await makeSvc();
+    const boom = new Error("docker rm -f -> daemon hung");
+    const getProvider = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue({
+      stop: async () => {
+        throw boom;
+      },
+    } as unknown as SandboxProvider);
+    try {
+      const res = (await svc.runBoundedSandboxStop(SANDBOX_ID)) as {
+        error: unknown;
+        timedOut?: true;
+      };
+      expect(res.error).toBe(boom);
+      // A captured error is NOT a timeout — the delete must treat it as a real
+      // failure, not abandon-and-proceed.
+      expect("timedOut" in res).toBe(false);
+    } finally {
+      getProvider.mockRestore();
+    }
+  });
+});
 
 describe("computeManagedAgentDbEnv (#8696 local agent state)", () => {
   const DB = "postgres://shared.example/railway";
