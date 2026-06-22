@@ -6,8 +6,9 @@
  * Before a coding agent edits a view/plugin workdir we take a pre-edit
  * snapshot: a non-destructive `git commit --no-verify --allow-empty` that
  * captures the working tree exactly as it was. The resulting SHA is recorded
- * on a Task so the `rollback` sub-mode can later run `git reset --hard <sha>`
- * to restore the source if the edit goes wrong (the user's "undo creation"
+ * on a Task so the `rollback` sub-mode can later restore that workdir (scoped
+ * `git checkout <sha> -- .` + `git clean`, never a repo-wide `git reset --hard`)
+ * if the edit goes wrong (the user's "undo creation"
  * ask, #8915).
  *
  * We shell out to `git` directly against the target `workdir` (mirroring
@@ -87,10 +88,12 @@ export function isLikelySha(value: string): boolean {
 }
 
 /**
- * Take a pre-edit snapshot of `workdir`. Stages every change (`git add -A`) and
- * writes a non-destructive commit (`--no-verify --allow-empty`) so the working
- * tree is preserved verbatim and the returned SHA points at it. The commit is
- * non-destructive: nothing in the working tree is reset or discarded.
+ * Take a pre-edit snapshot of `workdir`. Stages changes **scoped to the workdir**
+ * (`git add -A -- .`, run with `cwd=workdir`, so the snapshot never sweeps in
+ * unrelated repo changes) and writes a non-destructive commit
+ * (`--no-verify --allow-empty`) so the workdir is preserved verbatim and the
+ * returned SHA points at it. The commit is non-destructive: nothing in the
+ * working tree is reset or discarded.
  *
  * Returns the snapshot SHA on success. On any git failure (not a repo, no
  * identity, etc.) returns `{ ok: false }` with the reason — callers treat a
@@ -111,7 +114,9 @@ export async function createPreEditSnapshot(
 		};
 	}
 
-	const add = await git(["add", "-A"], workdir);
+	// Scope staging to the workdir subtree (cwd=workdir) so a snapshot never
+	// stages unrelated changes elsewhere in the repo.
+	const add = await git(["add", "-A", "--", "."], workdir);
 	if (add.exitCode !== 0) {
 		return {
 			ok: false,
@@ -146,9 +151,11 @@ export async function createPreEditSnapshot(
 }
 
 /**
- * Restore `workdir` to the snapshot `sha` via `git reset --hard <sha>`. This
- * discards every change made after the snapshot — exactly the "undo creation"
- * semantics the rollback sub-mode promises.
+ * Restore `workdir` to the snapshot `sha`, **scoped to the workdir only**:
+ * `git checkout <sha> -- .` restores tracked files and `git clean -fd -- .`
+ * removes files created after the snapshot (respecting `.gitignore`). We
+ * deliberately do NOT `git reset --hard`, which would discard unrelated
+ * working-tree changes across the entire repo — a data-loss footgun.
  */
 export async function rollbackToSnapshot(
 	workdir: string,
@@ -169,11 +176,23 @@ export async function rollbackToSnapshot(
 		};
 	}
 
-	const reset = await git(["reset", "--hard", trimmed], workdir);
-	if (reset.exitCode !== 0) {
+	// Restore only this workdir — NEVER `git reset --hard`, which is repo-wide
+	// and would discard unrelated uncommitted work elsewhere in the checkout.
+	const restore = await git(["checkout", trimmed, "--", "."], workdir);
+	if (restore.exitCode !== 0) {
 		return {
 			ok: false,
-			reason: `git reset --hard failed: ${(reset.stderr || reset.stdout).trim()}`,
+			reason: `git checkout ${trimmed} failed: ${(restore.stderr || restore.stdout).trim()}`,
+		};
+	}
+
+	// Remove files created after the snapshot, scoped to the workdir. `-d` for
+	// new dirs; no `-x`, so .gitignore'd build output / deps are left untouched.
+	const clean = await git(["clean", "-fd", "--", "."], workdir);
+	if (clean.exitCode !== 0) {
+		return {
+			ok: false,
+			reason: `git clean failed: ${(clean.stderr || clean.stdout).trim()}`,
 		};
 	}
 
