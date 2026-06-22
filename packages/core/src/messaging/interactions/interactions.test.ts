@@ -372,7 +372,9 @@ describe("buildInteractionUrlResolver (#8908)", () => {
 		// resolver returns undefined → layout falls back to block.url
 		expect(resolver.resolveUrl?.(block)).toBeUndefined();
 		const layout = toNeutralLayout(block, resolver);
-		expect(layout.rows[0]?.buttons?.[0]?.url).toBe("https://oauth.test/consent");
+		expect(layout.rows[0]?.buttons?.[0]?.url).toBe(
+			"https://oauth.test/consent",
+		);
 	});
 });
 

@@ -122,7 +122,9 @@ export const oauthPlugin: Plugin = {
 				"[OAuthPlugin] Initialized with in-process LocalOAuthCallbackBus (no cloud bus present)",
 			);
 		} else {
-			logger.info("[OAuthPlugin] Initialized (using existing OAuthCallbackBus)");
+			logger.info(
+				"[OAuthPlugin] Initialized (using existing OAuthCallbackBus)",
+			);
 		}
 	},
 };

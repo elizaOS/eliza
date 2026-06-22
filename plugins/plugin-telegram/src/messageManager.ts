@@ -759,8 +759,7 @@ export class MessageManager {
       const rawAppUrl =
         this.runtime.getSetting("ELIZA_APP_URL") ||
         this.runtime.getSetting("ELIZA_CLOUD_URL");
-      const appBaseUrl =
-        typeof rawAppUrl === "string" ? rawAppUrl : undefined;
+      const appBaseUrl = typeof rawAppUrl === "string" ? rawAppUrl : undefined;
       const rendered = renderTelegramInteractions(
         content,
         buildInteractionUrlResolver(appBaseUrl),

@@ -1055,8 +1055,7 @@ function SensitiveRequestBlock({
         <form className="space-y-3" onSubmit={handleSubmit}>
           {fields.map((field) => {
             const label = field.label ?? field.name;
-            const isUpload =
-              field.input === "image" || field.input === "file";
+            const isUpload = field.input === "image" || field.input === "file";
             if (isUpload) {
               const accept =
                 field.mimeTypes && field.mimeTypes.length > 0
@@ -1075,7 +1074,9 @@ function SensitiveRequestBlock({
                     type="file"
                     accept={accept}
                     // Mobile: prefer the rear camera for image capture (2FA QR/seed).
-                    capture={field.input === "image" ? "environment" : undefined}
+                    capture={
+                      field.input === "image" ? "environment" : undefined
+                    }
                     required={field.required && !hasValue}
                     onChange={(event) => {
                       const file = event.currentTarget.files?.[0];

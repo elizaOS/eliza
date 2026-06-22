@@ -1,9 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 import {
 	OAUTH_INTENTS_CLIENT_SERVICE,
+	OAUTH_PROVIDERS,
 	type OAuthIntentEnvelope,
 	type OAuthIntentsClient,
-	OAUTH_PROVIDERS,
 	type OAuthProvider,
 } from "../types";
 import { createOAuthIntentAction } from "./create-oauth-intent";
@@ -105,7 +105,9 @@ describe("CREATE_OAUTH_INTENT", () => {
 
 			const create = vi
 				.fn()
-				.mockResolvedValue(envelope({ provider, oauthIntentId: `oauth_${provider}` }));
+				.mockResolvedValue(
+					envelope({ provider, oauthIntentId: `oauth_${provider}` }),
+				);
 			const client: OAuthIntentsClient = {
 				create,
 				get: vi.fn(),
