@@ -19,6 +19,24 @@ import type { VoiceScenarioClass } from "./voice-scenario";
 export type VoiceWorkbenchStatus = "ran" | "skipped";
 export type VoiceWorkbenchVerdict = "pass" | "fail" | "skipped";
 
+/**
+ * A `.wav` artifact written for one scenario run when a capture sink is active.
+ * `path` is RELATIVE to the run dir the headless runner was told to write under,
+ * so the scenario run viewer (served from that dir) can reference it directly.
+ */
+export interface VoiceAudioArtifact {
+	/** Turn index this artifact belongs to; the full corpus uses turn 0. */
+	turnIndex: number;
+	/** `generated` = the full synthesized corpus; `consumed` = a per-turn slice. */
+	kind: "generated" | "consumed";
+	/** Path to the `.wav`, relative to the run dir (forward-slash separated). */
+	path: string;
+	sampleRate: number;
+	durationMs?: number;
+	/** Diarization ground-truth speaker label for a consumed per-turn slice. */
+	speakerLabel?: string;
+}
+
 /** One scenario's outcome in a workbench run. */
 export interface VoiceWorkbenchScenarioRun {
 	scenarioId: string;
@@ -29,6 +47,8 @@ export interface VoiceWorkbenchScenarioRun {
 	cases: VoiceE2eCaseResult[];
 	/** Why the scenario was skipped (artifact/backend absence), if it was. */
 	skipReason?: string;
+	/** `.wav` artifacts written when a capture sink was active (else absent). */
+	audioArtifacts?: VoiceAudioArtifact[];
 }
 
 export interface VoiceWorkbenchScenarioReport {

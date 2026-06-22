@@ -36,6 +36,7 @@ export {
 	formatVoiceWorkbenchMarkdown,
 	type MetricRollup,
 	regressionsAgainstBaseline,
+	type VoiceAudioArtifact,
 	type VoiceWorkbenchMetrics,
 	type VoiceWorkbenchReport,
 	type VoiceWorkbenchScenarioReport,
@@ -55,6 +56,7 @@ export {
 	type RunVoiceWorkbenchArgs,
 	runVoiceScenarioHeadless,
 	runVoiceWorkbenchHeadless,
+	type VoiceAudioCaptureSink,
 	type VoiceTurnObservation,
 	type VoiceWorkbenchServices,
 } from "./services/voice/workbench-headless-runner";
