@@ -126,7 +126,13 @@
       "@elizaos/plugin-sql": [
         "../../../../plugins/plugin-sql/src/index.node.ts"
       ],
-      "@elizaos/plugin-sql/*": ["../../../../plugins/plugin-sql/src/*"]
+      "@elizaos/plugin-sql/*": ["../../../../plugins/plugin-sql/src/*"],
+      "@elizaos/plugin-streaming": [
+        "../../../../plugins/plugin-streaming/src/index.ts"
+      ],
+      "@elizaos/plugin-streaming/*": [
+        "../../../../plugins/plugin-streaming/src/*"
+      ]
     }
   },
   "include": [
