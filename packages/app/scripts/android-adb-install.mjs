@@ -61,10 +61,7 @@ function findAapt() {
     path.join(process.env.HOME ?? "", "Android", "Sdk");
   const buildTools = path.join(sdk, "build-tools");
   if (!fs.existsSync(buildTools)) return null;
-  const versions = fs
-    .readdirSync(buildTools)
-    .sort()
-    .reverse();
+  const versions = fs.readdirSync(buildTools).sort().reverse();
   for (const v of versions) {
     for (const name of ["aapt2", "aapt"]) {
       const p = path.join(buildTools, v, name);
@@ -230,10 +227,9 @@ const onDevicePath = packageCheck.stdout
   .map((line) => line.replace("package:", "").trim())
   .find((line) => line.endsWith("base.apk"));
 if (onDevicePath) {
-  const deviceHash = run(
-    "adb",
-    adbArgs(["shell", "sha256sum", onDevicePath]),
-  ).stdout?.trim().split(/\s+/)[0];
+  const deviceHash = run("adb", adbArgs(["shell", "sha256sum", onDevicePath]))
+    .stdout?.trim()
+    .split(/\s+/)[0];
   const localHash = sha256File(apkPath);
   if (deviceHash && deviceHash !== localHash) {
     fail(
@@ -241,7 +237,9 @@ if (onDevicePath) {
       `device sha256=${deviceHash}\nlocal  sha256=${localHash}\nThe install did not replace the on-device APK (storage/permission/installer issue).`,
     );
   }
-  console.log(`Verified on-device APK hash matches (${localHash.slice(0, 12)}…).`);
+  console.log(
+    `Verified on-device APK hash matches (${localHash.slice(0, 12)}…).`,
+  );
 }
 
 if (shouldLaunch) {
