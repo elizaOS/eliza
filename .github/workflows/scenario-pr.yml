@@ -228,6 +228,9 @@ jobs:
       - name: Actual app agent-driven view switching browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/view-switching-chat-e2e.spec.ts --project=chromium
 
+      - name: Actual app generated-audio + file-share browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/chat-generated-audio.spec.ts test/ui-smoke/files-view-share-journey.spec.ts --project=chromium
+
       - name: Upload app browser view lifecycle artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
