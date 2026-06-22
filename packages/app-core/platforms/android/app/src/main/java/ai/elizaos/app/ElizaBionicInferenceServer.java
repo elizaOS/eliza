@@ -521,30 +521,37 @@ final class ElizaBionicInferenceServer {
         if (gguf == null || voiceBin == null) {
             return errorJson("tts: Kokoro GGUF + voice .bin not found under " + kokoroDir);
         }
-        long ctx = ElizaVoiceNative.nativeContextCreate(bundleDir);
-        if (ctx == 0L) {
-            return errorJson("tts: failed to create context for " + bundleDir);
-        }
-        try {
-            float[] pcm = ElizaVoiceNative.nativeKokoroSynthesize(
-                ctx, gguf, voiceBin, text, speed <= 0f ? 1.0f : speed);
-            int sampleRate = ElizaVoiceNative.nativeKokoroSampleRate(ctx);
-            // Pack fp32 PCM little-endian and base64 it for the JSON frame.
-            ByteBuffer buf = ByteBuffer.allocate(pcm.length * 4).order(ByteOrder.LITTLE_ENDIAN);
-            for (float v : pcm) {
-                buf.putFloat(v);
+        // Reuse the ONE resident context (the 1.27 GB model is already loaded for
+        // generation/embeddings) instead of contextCreate/Destroy per call — a
+        // fresh context reloaded the whole model every utterance. Kokoro itself
+        // is loaded once and cached on the ctx (idempotent kokoro_load), so a
+        // multi-clause reply synthesizes each clause without any reload.
+        synchronized (residentLock) {
+            final long ctx = ensureResidentCtx(bundleDir);
+            try {
+                float[] pcm = ElizaVoiceNative.nativeKokoroSynthesize(
+                    ctx, gguf, voiceBin, text, speed <= 0f ? 1.0f : speed);
+                int sampleRate = ElizaVoiceNative.nativeKokoroSampleRate(ctx);
+                // Pack fp32 PCM little-endian and base64 it for the JSON frame.
+                ByteBuffer buf = ByteBuffer.allocate(pcm.length * 4).order(ByteOrder.LITTLE_ENDIAN);
+                for (float v : pcm) {
+                    buf.putFloat(v);
+                }
+                String b64 = Base64.encodeToString(buf.array(), Base64.NO_WRAP);
+                Log.i(TAG, "TTS (kokoro) from agent: " + text.length() + " chars -> "
+                    + pcm.length + " samples @ " + sampleRate + " Hz");
+                return new JSONObject()
+                    .put("ok", true)
+                    .put("sampleRate", sampleRate)
+                    .put("samples", pcm.length)
+                    .put("pcmBase64", b64)
+                    .toString();
+            } catch (Throwable t) {
+                // A failed synth may leave the shared ctx in an unknown state;
+                // drop it so the next generate/embed/tts rebuilds cleanly.
+                resetResident();
+                throw t;
             }
-            String b64 = Base64.encodeToString(buf.array(), Base64.NO_WRAP);
-            Log.i(TAG, "TTS (kokoro) from agent: " + text.length() + " chars -> "
-                + pcm.length + " samples @ " + sampleRate + " Hz");
-            return new JSONObject()
-                .put("ok", true)
-                .put("sampleRate", sampleRate)
-                .put("samples", pcm.length)
-                .put("pcmBase64", b64)
-                .toString();
-        } finally {
-            ElizaVoiceNative.nativeContextDestroy(ctx);
         }
     }
 
