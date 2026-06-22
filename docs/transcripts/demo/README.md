@@ -3,10 +3,13 @@
 This directory holds the recorded demo for the transcript feature's real-audio
 end-to-end test.
 
-- `demo.mp4` / `demo.gif` — a screen recording of the Playwright run driving the
+- `demo.mp4` / `demo.gif` — the three `transcript-realaudio` Playwright tests
+  recorded back-to-back (capture → viewer → Transcripts/Knowledge), driving the
   REAL `ContinuousChatOverlay` transcript flow with no human and no microphone:
   Chromium is launched with `--use-file-for-fake-audio-capture=known-phrase.wav`,
   so the literal getUserMedia → WAV-encode → POST capture path runs end-to-end.
+  Recorded against the shipped UI (the minimal viewer — audio actions sit with
+  the player), all 3 tests green.
 
 The spec lives at
 [`packages/app/test/ui-smoke/transcript-realaudio.spec.ts`](../../../packages/app/test/ui-smoke/transcript-realaudio.spec.ts)
