@@ -101,6 +101,24 @@ Gemma-aware defaults rather than porting our Qwen kernels blindly.
 eliza-1 v1 is **base-not-fine-tuned** (`releaseState=base-v1`) → v1 cutover is
 *swap base + re-optimize*, **not a retraining run**.
 
+## Owner directives (2026-06-22)
+
+- **Hard cutover, remove Qwen entirely.** Not shipped, no downloaders → no staging.
+- **Local stack is ONLY eliza-1** (max-optimized Gemma). No generic single-GGUF
+  engine path, no arbitrary-model selection — remove that machinery (closes
+  #8808; M9). Cloud handles anything not local eliza-1.
+- **HF downloads proxy through Eliza Cloud** — the cloud holds the HF token and
+  streams files; **no HF keys on local/desktop/mobile**, no local token UI
+  (re-scopes #8807; M10).
+- **HF `elizaos/eliza-1` hard cutover** to Gemma bundles; purge legacy tiers
+  (`0_6b/0_8b/1_7b`) (M8).
+- **Max-optimize per platform**: fastest in-process backend behind one FFI
+  (llama.cpp default; LiteRT NPU on Android; CoreML/MLX on Apple); TurboQuant
+  weight-quant + MTP + Gemma-native SWA/shared-KV/PLE + stock KV; QJL/Polar
+  deprioritized (Gemma KV already minimal).
+- **Related issues:** #8808 closed (superseded); #8807 + #8809 kept, addressed in
+  M10 (install cloud-proxy + integrity; memory LRU/dynamic-fit/bench).
+
 ## Milestones (PR per milestone → develop)
 
 - **M1 — llama.cpp upstream sync + PR absorption.** Merge ggml-org/master (602
