@@ -130,7 +130,9 @@ export function ModelCard({
               ? t("modelcard.downloadUnavailable", {
                   defaultValue: "Download unavailable",
                 })
-              : t("modelcard.download", { defaultValue: "Download" })}
+              : failed
+                ? t("modelcard.retry", { defaultValue: "Retry" })
+                : t("modelcard.download", { defaultValue: "Download" })}
           </Button>
         )}
         {downloading && (

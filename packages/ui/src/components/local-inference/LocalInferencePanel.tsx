@@ -393,6 +393,7 @@ export function LocalInferencePanel() {
           downloads={hub.downloads}
           catalog={hub.catalog}
           onCancel={handleCancel}
+          onRetry={handleDownload}
         />
       )}
 

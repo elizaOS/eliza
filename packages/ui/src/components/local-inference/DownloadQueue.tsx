@@ -11,6 +11,12 @@ interface DownloadQueueProps {
   downloads: DownloadJob[];
   catalog: CatalogModel[];
   onCancel: (modelId: string) => void;
+  /**
+   * Re-invoke a failed download. The partial `.part` file makes this a resume,
+   * not a restart. Optional so callers that have no start handler still render
+   * the queue (the Retry button is hidden when absent).
+   */
+  onRetry?: (modelId: string) => void;
 }
 
 /**
@@ -23,6 +29,7 @@ export function DownloadQueue({
   downloads,
   catalog,
   onCancel,
+  onRetry,
 }: DownloadQueueProps) {
   const { t } = useTranslation();
   if (downloads.length === 0) {
@@ -79,8 +86,24 @@ export function DownloadQueue({
               <DownloadProgress job={job} />
             )}
 
-            {job.state === "failed" && job.error && (
-              <div className="text-xs text-rose-500">{job.error}</div>
+            {job.state === "failed" && (
+              <div className="flex items-start justify-between gap-3">
+                {job.error && (
+                  <div className="text-xs text-rose-500 min-w-0 break-words">
+                    {job.error}
+                  </div>
+                )}
+                {onRetry && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0"
+                    onClick={() => onRetry(job.modelId)}
+                  >
+                    {t("downloadqueue.retry", { defaultValue: "Retry" })}
+                  </Button>
+                )}
+              </div>
             )}
           </li>
         );
