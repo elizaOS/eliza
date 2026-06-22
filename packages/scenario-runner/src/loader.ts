@@ -8,7 +8,11 @@ import { lstat, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
+import {
+  type ScenarioDefinition,
+  type ScenarioLane,
+  scenarioLane,
+} from "@elizaos/scenario-runner/schema";
 import ts from "typescript";
 
 async function walk(dir: string, out: string[]): Promise<void> {
@@ -45,6 +49,7 @@ export interface ScenarioMetadata {
   id: string;
   status?: string;
   title?: string;
+  /** CI lane as declared in the file; absent means the default lane. */
   lane?: string;
   edgeVariant?: string;
   baseScenarioId?: string;
@@ -402,7 +407,7 @@ export async function loadAllScenarios(
   filter?: Set<string>,
   fileGlobs?: readonly string[],
   includeExpanded = shouldExpandScenarioEdges(),
-  laneFilter?: string,
+  lane?: ScenarioLane,
 ): Promise<LoadedScenario[]> {
   const files = await discoverScenarios(root);
   const loaded: LoadedScenario[] = [];
@@ -414,7 +419,7 @@ export async function loadAllScenarios(
       }
     }
     const result = await loadScenarioFile(file);
-    if (laneFilter && result.scenario.lane !== laneFilter) continue;
+    if (lane && scenarioLane(result.scenario) !== lane) continue;
     const expanded = includeExpanded
       ? expandScenarioDefinition(file, result.scenario)
       : [];
