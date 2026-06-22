@@ -14,6 +14,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
   type Plugin,
+  resolveViewKind,
   type ViewDeclaration,
   type ViewType,
 } from "@elizaos/core";
@@ -390,18 +391,33 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
 /**
  * List all registered views.
  *
- * @param filter.developerMode - When `false` (default) hidden developer-only
- *   views are excluded. Pass `true` to include them.
+ * Visibility follows the four-kind taxonomy ({@link resolveViewKind}):
+ * `system`/`release` views are always listed. `developer` views are listed
+ * only when `developerMode` is true. `preview` views are listed only when
+ * `includeAllKinds` is true. The dashboard's `GET /api/views` passes
+ * `includeAllKinds: true` so the client receives every view (with its
+ * `viewKind`) and applies the user's Settings toggles itself — the server
+ * cannot know whether it is talking to a dev build or which toggles are on.
+ *
+ * @param filter.developerMode - Include `developer`-kind views. Default false.
+ * @param filter.includeAllKinds - Include every kind regardless of toggle
+ *   (developer + preview). Default false.
  */
 export function listViews(filter?: {
   developerMode?: boolean;
+  includeAllKinds?: boolean;
   viewType?: ViewType;
 }): ViewRegistryEntry[] {
   const developerMode = filter?.developerMode ?? false;
+  const includeAllKinds = filter?.includeAllKinds ?? false;
   const requestedViewType = filter?.viewType ?? DEFAULT_VIEW_TYPE;
   const byId = new Map<string, ViewRegistryEntry>();
   for (const entry of registry.values()) {
-    if (entry.developerOnly && !developerMode) continue;
+    if (!includeAllKinds) {
+      const kind = resolveViewKind(entry);
+      if (kind === "preview") continue;
+      if (kind === "developer" && !developerMode) continue;
+    }
     const existing = byId.get(entry.id);
     if (!existing) {
       if (

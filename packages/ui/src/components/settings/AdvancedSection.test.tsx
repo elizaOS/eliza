@@ -34,6 +34,8 @@ vi.mock("../../state", () => {
       sel(appValue),
     useIsDeveloperMode: () => false,
     setDeveloperMode: vi.fn(),
+    useIsPreviewMode: () => false,
+    setPreviewMode: vi.fn(),
   };
 });
 

@@ -35,7 +35,7 @@ import {
   X,
 } from "lucide-react";
 import type * as React from "react";
-import { useCallback, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useT } from "../lib/i18n";
@@ -76,7 +76,7 @@ interface AgentCardProps {
   onRemoveSaved?: (agentId: string) => void;
 }
 
-export function AgentCard({
+function AgentCardInner({
   agent,
   viewMode = "grid",
   showDeploymentStatus = false,
@@ -834,3 +834,8 @@ export function AgentCard({
     </div>
   );
 }
+
+// Rendered in a `.map()` grid that re-renders on filter/poll; memoize so only
+// cards whose `agent` reference changes re-render. Callers pass a stable
+// `onRemoveSaved` for the comparison to hold.
+export const AgentCard = memo(AgentCardInner);

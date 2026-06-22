@@ -62,15 +62,23 @@ export { normalizeUiThemeMode };
  * keep their shape.
  */
 export function getSystemTheme(): UiTheme {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function"
+  ) {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  }
   return "light";
 }
 
 /**
- * Resolve a {@link UiThemeMode} to a concrete {@link UiTheme}. The app is
- * light-only, so every mode resolves to `light`.
+ * Resolve a {@link UiThemeMode} to a concrete {@link UiTheme}: an explicit
+ * `light`/`dark` choice wins; `system` follows the OS color-scheme.
  */
-export function resolveUiTheme(_mode: UiThemeMode): UiTheme {
-  return "light";
+export function resolveUiTheme(mode: UiThemeMode): UiTheme {
+  return mode === "system" ? getSystemTheme() : mode;
 }
 
 /**

@@ -34,50 +34,14 @@ import { checkUserInput, logger } from "@feed/shared";
 import { v4 as uuidv4 } from "uuid";
 import { getEventBus } from "../communication/EventBus";
 import { AuthorizationError } from "../errors";
+import type {
+  BroadcastFn,
+  CoordinatorDispatchParams,
+  CoordinatorDispatchResult,
+} from "../plugins/plugin-user-core/src/actions/dispatch-types";
 import { generateSnowflakeId } from "../shared/snowflake";
 import { agentService } from "./AgentService";
 import { notifyTeamChatMessage } from "./team-chat-notifications";
-
-// =============================================================================
-// Types
-// =============================================================================
-
-/** Minimal broadcast function signature matching broadcastChatMessage from @feed/api */
-export type BroadcastFn = (
-  chatId: string,
-  message: {
-    id: string;
-    content: string;
-    chatId: string;
-    senderId: string;
-    type?: string;
-    createdAt: string;
-    metadata?: MessageMetadata | null;
-  },
-) => Promise<void>;
-
-export interface CoordinatorDispatchParams {
-  agentId: string;
-  ownerId: string;
-  /** The command/instruction to send to the agent */
-  message: string;
-  teamChatId: string;
-  ownerName?: string;
-  ownerUsername?: string;
-  /** Injected from route layer — avoids importing @feed/api in packages/agents */
-  broadcastFn: BroadcastFn;
-}
-
-export interface CoordinatorDispatchResult {
-  success: boolean;
-  response: string;
-  agentId: string;
-  agentUsername?: string;
-  actionsExecuted: number;
-  isLLMFailure: boolean;
-  /** Set on ownership / not-found failures */
-  error?: string;
-}
 
 // =============================================================================
 // Decision + Summary Templates
@@ -632,6 +596,8 @@ export async function dispatchAgentChat(
     state.data = {
       ...state.data,
       actionParams,
+      broadcastFn,
+      dispatchAgentChat,
     };
 
     // Persist actionParams to stateCache so processActions' internal
@@ -652,7 +618,12 @@ export async function dispatchAgentChat(
     if (stateCache && elizaMessage.id) {
       const cached = stateCache.get(elizaMessage.id);
       if (cached) {
-        cached.data = { ...cached.data, actionParams };
+        cached.data = {
+          ...cached.data,
+          actionParams,
+          broadcastFn,
+          dispatchAgentChat,
+        };
       }
     }
 

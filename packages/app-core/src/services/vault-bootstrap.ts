@@ -16,6 +16,15 @@
  * failures are isolated; if every write fails the function throws.
  */
 
+import type {
+  persistConfigEnv as PersistConfigEnvFn,
+  readConfigEnv as ReadConfigEnvFn,
+} from "@elizaos/agent/api/config-env";
+import type {
+  loadElizaConfig as LoadElizaConfigFn,
+  saveElizaConfig as SaveElizaConfigFn,
+} from "@elizaos/agent/config/config";
+import type { resolveStateDir as ResolveStateDirFn } from "@elizaos/agent/config/paths";
 // IMPORTANT — circular-import hardening
 //
 // `@elizaos/agent` depends on `@elizaos/app-core` (via plugin loading, server
@@ -32,19 +41,14 @@
 // the Electrobun shell stayed stuck on "Backend Timeout".
 //
 // Fix: keep agent imports type-only (erased at compile time, no runtime
-// edge), and load the runtime helpers lazily through a single dynamic
-// `import("@elizaos/agent")` inside `agentBridge()`. That defers the cycle
-// closure until after both modules have fully evaluated.
+// edge), and load the runtime helpers lazily from narrow agent subpaths inside
+// `agentBridge()`. That keeps this module off the agent barrel and defers any
+// runtime edge until after both modules have fully evaluated.
+import type { ElizaConfig } from "@elizaos/agent/config/types.eliza";
 import type {
-  ElizaConfig,
   formatVaultRef as FormatVaultRefFn,
   isVaultRef as IsVaultRefFn,
-  loadElizaConfig as LoadElizaConfigFn,
-  persistConfigEnv as PersistConfigEnvFn,
-  readConfigEnv as ReadConfigEnvFn,
-  resolveStateDir as ResolveStateDirFn,
-  saveElizaConfig as SaveElizaConfigFn,
-} from "@elizaos/agent";
+} from "@elizaos/agent/runtime/operations/vault-bridge";
 import { logger } from "@elizaos/core";
 import type { Vault } from "@elizaos/vault";
 
@@ -67,25 +71,21 @@ async function agentBridge(): Promise<AgentBridge> {
   if (bridgeCache) return bridgeCache;
   // Dynamic import defers the agent ↔ app-core edge until after both
   // modules have fully evaluated. By the time this runs the runVaultBootstrap
-  // call site is already inside an async function body, so the cycle is
-  // long closed.
-  const mod = (await import("@elizaos/agent")) as unknown as {
-    formatVaultRef: typeof FormatVaultRefFn;
-    isVaultRef: typeof IsVaultRefFn;
-    loadElizaConfig: typeof LoadElizaConfigFn;
-    persistConfigEnv: typeof PersistConfigEnvFn;
-    readConfigEnv: typeof ReadConfigEnvFn;
-    resolveStateDir: typeof ResolveStateDirFn;
-    saveElizaConfig: typeof SaveElizaConfigFn;
-  };
+  // call site is already inside an async function body.
+  const [vaultBridge, configEnv, config, paths] = await Promise.all([
+    import("@elizaos/agent/runtime/operations/vault-bridge"),
+    import("@elizaos/agent/api/config-env"),
+    import("@elizaos/agent/config/config"),
+    import("@elizaos/agent/config/paths"),
+  ]);
   bridgeCache = {
-    formatVaultRef: mod.formatVaultRef,
-    isVaultRef: mod.isVaultRef,
-    loadElizaConfig: mod.loadElizaConfig,
-    persistConfigEnv: mod.persistConfigEnv,
-    readConfigEnv: mod.readConfigEnv,
-    resolveStateDir: mod.resolveStateDir,
-    saveElizaConfig: mod.saveElizaConfig,
+    formatVaultRef: vaultBridge.formatVaultRef,
+    isVaultRef: vaultBridge.isVaultRef,
+    loadElizaConfig: config.loadElizaConfig,
+    persistConfigEnv: configEnv.persistConfigEnv,
+    readConfigEnv: configEnv.readConfigEnv,
+    resolveStateDir: paths.resolveStateDir,
+    saveElizaConfig: config.saveElizaConfig,
   };
   return bridgeCache;
 }

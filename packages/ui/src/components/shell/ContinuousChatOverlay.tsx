@@ -50,9 +50,13 @@ import {
   chatUploadKind,
   intakeAttachmentFiles,
   MAX_CHAT_IMAGES,
+  pastedTextToAttachment,
+  shouldConvertPasteToAttachment,
   summarizeDroppedAttachments,
 } from "../../utils/image-attachment";
+import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
+import { SensitiveRequestBlock } from "../chat/MessageContent";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
@@ -877,10 +881,23 @@ const ThreadLine = React.memo(function ThreadLine({
         ) : isUser ? (
           <ThreadLineText content={message.content} />
         ) : (
-          message.content
+          // Assistant text renders its inline widgets (task/choice/form/
+          // followups) instead of leaking the raw `[TASK:…]`/`[CHOICE]`/… markers
+          // as text (#8997). Plain replies fall through the fast path unchanged.
+          <InlineWidgetText content={message.content} />
         )}
         {message.attachments?.length ? (
           <MessageAttachments attachments={message.attachments} />
+        ) : null}
+        {isAssistant && message.secretRequest ? (
+          // Secret / OAuth requests are a structured field, not a text marker —
+          // render the same block the full chat surface uses so they're
+          // actionable in the overlay instead of invisible (#8997).
+          // `pointer-events-auto` keeps it clickable inside the peek sheet
+          // (pointer-events-none / pass-through by design).
+          <div className="pointer-events-auto">
+            <SensitiveRequestBlock request={message.secretRequest} />
+          </div>
         ) : null}
         {isAssistant && message.reasoning?.trim() ? (
           <ThinkingBlock reasoning={message.reasoning} />
@@ -3033,6 +3050,21 @@ export function ContinuousChatOverlay({
                   if (files.length > 0) {
                     e.preventDefault();
                     addImageFiles(files);
+                    return;
+                  }
+                  // A large plain-text paste becomes a collapsed text
+                  // attachment chip (Claude-Code style) instead of flooding the
+                  // textarea; small pastes fall through to the textarea as
+                  // normal.
+                  const text = e.clipboardData?.getData("text") ?? "";
+                  if (shouldConvertPasteToAttachment(text)) {
+                    e.preventDefault();
+                    setPendingImages((prev) =>
+                      [...prev, pastedTextToAttachment(text)].slice(
+                        0,
+                        MAX_CHAT_IMAGES,
+                      ),
+                    );
                   }
                 }}
                 onKeyDown={(e) => {

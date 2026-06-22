@@ -24,10 +24,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  type BroadcastFn,
-  dispatchAgentChat,
-} from "../../../../services/AgentChatService";
+import type { BroadcastFn, DispatchAgentChatFn } from "./dispatch-types";
 
 export const dispatchToAgentAction: Action = {
   name: "DISPATCH_TO_AGENT",
@@ -103,6 +100,9 @@ export const dispatchToAgentAction: Action = {
 
     // broadcastFn is injected by the coordinator route into state.data
     const broadcastFn = state?.data?.broadcastFn as BroadcastFn | undefined;
+    const dispatchAgentChat = state?.data?.dispatchAgentChat as
+      | DispatchAgentChatFn
+      | undefined;
 
     const agentId = actionParams?.agentId;
     const command = actionParams?.command;
@@ -111,7 +111,14 @@ export const dispatchToAgentAction: Action = {
     const ownerName = state?.values?.ownerName as string | undefined;
     const ownerUsername = state?.values?.ownerUsername as string | undefined;
 
-    if (!agentId || !command || !ownerId || !teamChatId || !broadcastFn) {
+    if (
+      !agentId ||
+      !command ||
+      !ownerId ||
+      !teamChatId ||
+      !broadcastFn ||
+      !dispatchAgentChat
+    ) {
       const failResult: ActionResult = {
         success: false,
         text: "Missing required parameters for agent dispatch.",

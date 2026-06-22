@@ -255,7 +255,11 @@ describe("GET /api/views", () => {
     expect(Array.isArray(payload.views)).toBe(true);
   });
 
-  it("excludes developerOnly views by default", async () => {
+  it("returns all view kinds with metadata so the client can gate them", async () => {
+    // GET /api/views deliberately surfaces every kind (incl. developer/preview)
+    // annotated with developerOnly/viewKind. The server cannot know whether it
+    // is talking to a dev build or which Settings toggles are on, so kind-gating
+    // is a client responsibility — the route just hands over the full catalog.
     await registerPluginViews(
       {
         name: "views-integration-wallet",
@@ -280,11 +284,15 @@ describe("GET /api/views", () => {
 
     const [, payload] = json.mock.calls[0] as [
       unknown,
-      { views: { id: string }[] },
+      { views: { id: string; developerOnly?: boolean }[] },
     ];
     const ids = payload.views.map((v) => v.id);
     expect(ids).toContain("wallet.inventory");
-    expect(ids).not.toContain("dev.logs");
+    // Developer-only views are now included (the client hides them unless the
+    // Developer-views toggle is on) and still carry the developerOnly flag.
+    expect(ids).toContain("dev.logs");
+    const devView = payload.views.find((v) => v.id === "dev.logs");
+    expect(devView?.developerOnly).toBe(true);
   });
 
   it("includes developerOnly views when developerMode query param is true", async () => {

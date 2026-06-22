@@ -137,7 +137,14 @@ const workspaceReactTestRendererEntry = path.join(
   "index.js",
 );
 const workspaceAdzeEntry = path.join(workspaceAdzeDir, "dist", "index.js");
-const asViteFsPath = (targetPath: string) => `/@fs${targetPath}`;
+// Vite's `/@fs/` protocol expects a POSIX, forward-slash absolute path. On
+// POSIX `path.join(...)` already yields `/abs/...` so `/@fs` + that gives
+// `/@fs/abs/...`. On Windows it yields `C:\abs\...` (backslashes, no leading
+// slash), so a naive `/@fs${p}` produces `/@fsC:\abs\...` which vite's
+// `/@fs/`-prefix check never matches → "Cannot find package". Normalize
+// backslashes to `/` and ensure exactly one separator after `/@fs`.
+const asViteFsPath = (targetPath: string) =>
+  `/@fs/${targetPath.split("\\").join("/").replace(/^\/+/, "")}`;
 const workspacePluginPackageNames = Object.keys({
   ...(packageManifest.dependencies ?? {}),
   ...(packageManifest.devDependencies ?? {}),

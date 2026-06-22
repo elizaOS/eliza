@@ -24,4 +24,6 @@ export * from "./useApp";
 export * from "./useBackgroundConfig";
 export * from "./useContentPack";
 export * from "./useDeveloperMode";
+export * from "./usePreviewMode";
+export * from "./useViewKinds";
 export * from "./useWalletState";

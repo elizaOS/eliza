@@ -29,6 +29,11 @@ import {
   resolveCodingAccountStrategy,
 } from "./coding-account-selection.js";
 import {
+  buildCompletionEvidenceString,
+  type EvidenceArtifactRef,
+  type EvidenceSignal,
+} from "./completion-evidence.js";
+import {
   buildAutoVerifyCorrection,
   LLM_GOAL_VERIFIER_NAME,
   MAX_AUTO_VERIFY_ATTEMPTS,
@@ -271,6 +276,37 @@ function readLastChangeSet(
   if (!Array.isArray(raw.changedFiles)) return undefined;
   if (typeof raw.capturedAt !== "number") return undefined;
   return raw as unknown as WorkspaceChangeSet;
+}
+
+/** Render an event's `data` payload to a bounded scannable string so the
+ *  completion-evidence assembler can mine build/test lines out of it. */
+function stringifyEventData(data: Record<string, unknown>): string {
+  if (!data || Object.keys(data).length === 0) return "";
+  try {
+    return truncate(JSON.stringify(data), 1500);
+  } catch {
+    return "";
+  }
+}
+
+const EVIDENCE_URL_RE = /https?:\/\/[^\s<>"'`)\]]+/g;
+
+/** Collect distinct http(s) URLs from a set of text bodies, for the verified-
+ *  URLs evidence section. Order-stable, deduped, trailing punctuation stripped. */
+function collectUrls(texts: readonly string[]): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  for (const text of texts) {
+    if (!text) continue;
+    EVIDENCE_URL_RE.lastIndex = 0;
+    for (const match of text.matchAll(EVIDENCE_URL_RE)) {
+      const url = match[0].replace(/[.,;:)\]]+$/, "");
+      if (url.length === 0 || seen.has(url)) continue;
+      seen.add(url);
+      urls.push(url);
+    }
+  }
+  return urls;
 }
 
 function findPlanRevision(
@@ -686,9 +722,18 @@ export class OrchestratorTaskService extends Service {
         await this.advanceTaskStatus(taskId, "validating");
         // Issue #8124: the orchestrator should always behave like `/goal` —
         // confirm the sub-agent met every acceptance criterion before marking
-        // the task done. Fire-and-forget so the event-bridge write path stays
-        // fast; the verifier gates itself on the flag + criteria presence.
-        void this.autoVerifyCompletion(taskId, sessionId, summary ?? "");
+        // the task done. Feed the verifier REAL completion evidence (git
+        // changeset + deliverable + final reply + verified URLs + test/build
+        // markers + artifact refs) assembled from data we already have, not the
+        // bare event summary. Fire-and-forget so the event-bridge write path
+        // stays fast; the verifier gates itself on the flag + criteria presence,
+        // and evidence assembly never throws into this path.
+        const completionEvidence = await this.buildCompletionEvidence(
+          taskId,
+          sessionId,
+          summary ?? "",
+        );
+        void this.autoVerifyCompletion(taskId, sessionId, completionEvidence);
         break;
       }
       case "error": {
@@ -783,6 +828,171 @@ export class OrchestratorTaskService extends Service {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  /**
+   * Assemble the rich, sectioned completion-evidence string the auto
+   * goal-verifier grills against, from data the orchestrator already has —
+   * instead of feeding it only the thin `task_complete` event summary.
+   *
+   * Sections (each omitted when absent):
+   *  - **CHANGESET** — the real git diff captured at completion (the same
+   *    {@link WorkspaceChangeSet} the CODING_SESSION_CHANGES provider renders),
+   *    read from the live ACP session or, failing that, the mirrored store
+   *    session metadata;
+   *  - **DELIVERABLE / FINAL REPLY** — the sub-agent's completion summary
+   *    (its reported result) and any longer captured `sub_agent` reply recorded
+   *    in the task room;
+   *  - **VERIFIED URLS** — reachable URLs mined from the completion summary and
+   *    recorded sub-agent messages (loopback-flagged so the verifier can reject
+   *    localhost-only "deploys");
+   *  - **TEST / BUILD / TYPECHECK OUTPUT** — lines that look like build/test
+   *    output, mined from the durable event/message log of this session;
+   *  - **ARTIFACTS** — screenshot/trajectory artifact references on the task or
+   *    its session metadata.
+   *
+   * Fire-and-forget safety: this runs on the `task_complete` event-write path,
+   * so it must NEVER throw. Any failure falls back to the bare summary, which is
+   * exactly the prior behavior.
+   */
+  private async buildCompletionEvidence(
+    taskId: string,
+    sessionId: string,
+    fallbackSummary: string,
+  ): Promise<string> {
+    try {
+      const doc = await this.store.getTask(taskId);
+      if (!doc) return fallbackSummary;
+
+      // Scope to this session's rows, but keep cross-session task events too
+      // (validation/build steps are sometimes recorded without a sessionId).
+      const sessionEvents = doc.events.filter(
+        (event) =>
+          event.sessionId === sessionId || event.sessionId === undefined,
+      );
+      const sessionMessages = doc.messages.filter(
+        (message) => message.sessionId === sessionId,
+      );
+
+      const changeSet = await this.resolveCompletionChangeSet(sessionId, doc);
+
+      // The longest recorded `sub_agent` stdout reply is the richest final
+      // narration; the completion summary is the reported result. Surface both.
+      const subAgentReplies = sessionMessages
+        .filter(
+          (message) =>
+            message.senderKind === "sub_agent" &&
+            message.direction === "stdout",
+        )
+        .map((message) => message.content.trim())
+        .filter((content) => content.length > 0);
+      const longestReply = subAgentReplies.sort(
+        (a, b) => b.length - a.length,
+      )[0];
+
+      const signals: EvidenceSignal[] = [
+        ...sessionEvents.map((event) => ({
+          text: `${event.summary}\n${stringifyEventData(event.data)}`,
+          source: event.eventType,
+        })),
+        ...sessionMessages.map((message) => ({
+          text: message.content,
+          source: message.senderKind,
+        })),
+      ];
+
+      const verifiedUrls = collectUrls([
+        fallbackSummary,
+        longestReply ?? "",
+        ...subAgentReplies,
+      ]);
+
+      const artifacts = this.collectArtifactRefs(doc, sessionId);
+
+      return buildCompletionEvidenceString({
+        fallbackSummary,
+        changeSet,
+        deliverable: longestReply,
+        finalReply: fallbackSummary,
+        verifiedUrls,
+        signals,
+        artifacts,
+      });
+    } catch (err) {
+      this.log("debug", "build completion evidence failed", {
+        taskId,
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return fallbackSummary;
+    }
+  }
+
+  /** The git change set for a completed session: prefer the live ACP session
+   *  metadata (freshest), fall back to the mirrored store-session metadata. */
+  private async resolveCompletionChangeSet(
+    sessionId: string,
+    doc: OrchestratorTaskDocument,
+  ): Promise<WorkspaceChangeSet | undefined> {
+    try {
+      const acp = this.acp();
+      if (acp) {
+        const live = await acp.getSession(sessionId);
+        const fromLive = readLastChangeSet(
+          live?.metadata as Record<string, unknown> | undefined,
+        );
+        if (fromLive) return fromLive;
+      }
+    } catch {
+      // best-effort — fall through to the store-session copy
+    }
+    const stored = doc.sessions.find(
+      (session) => session.sessionId === sessionId,
+    );
+    return readLastChangeSet(stored?.metadata);
+  }
+
+  /** Screenshot / trajectory / other artifact references for the verifier to
+   *  cite, from the durable artifact rows plus any artifact paths stamped on
+   *  the task or its session metadata. */
+  private collectArtifactRefs(
+    doc: OrchestratorTaskDocument,
+    sessionId: string,
+  ): EvidenceArtifactRef[] {
+    const refs: EvidenceArtifactRef[] = doc.artifacts
+      .filter(
+        (artifact) =>
+          artifact.sessionId === sessionId || artifact.sessionId === undefined,
+      )
+      .map((artifact) => ({
+        artifactType: artifact.artifactType,
+        title: artifact.title,
+        ref: artifact.path ?? artifact.uri,
+      }));
+
+    const session = doc.sessions.find((row) => row.sessionId === sessionId);
+    for (const [label, meta] of [
+      ["task", doc.task.metadata],
+      ["session", session?.metadata],
+    ] as const) {
+      const screenshot = str(meta?.screenshotPath ?? meta?.screenshot);
+      if (screenshot) {
+        refs.push({
+          artifactType: "screenshot",
+          title: `${label} screenshot`,
+          ref: screenshot,
+        });
+      }
+      const trajectory = str(meta?.trajectoryPath ?? meta?.trajectory);
+      if (trajectory) {
+        refs.push({
+          artifactType: "trajectory",
+          title: `${label} trajectory`,
+          ref: trajectory,
+        });
+      }
+    }
+    return refs;
   }
 
   /**

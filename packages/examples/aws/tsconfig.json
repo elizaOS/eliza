@@ -17,7 +17,7 @@
     "noEmit": true,
     "types": ["bun-types", "node"],
     "paths": {
-      "@elizaos/core": ["../../core/dist/index.d.ts"]
+      "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/dist/index.d.ts"]
     }
   },
   "include": ["*.ts"],

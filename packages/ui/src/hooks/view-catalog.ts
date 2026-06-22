@@ -15,6 +15,11 @@
  * This module is the pure merge/dedupe so it can be unit-tested without React.
  */
 
+import {
+  type EnabledViewKinds,
+  isViewVisible,
+  type ViewKind,
+} from "@elizaos/core";
 import type { RegistryAppInfo } from "../api";
 import type { ViewModality } from "../platform/platform-guards";
 import type { ViewRegistryEntry } from "./useAvailableViews";
@@ -51,6 +56,8 @@ export interface ViewEntry {
   launchUrl?: string | null;
   builtin?: boolean;
   developerOnly?: boolean;
+  /** Four-tier visibility category resolved from the source declaration. */
+  viewKind?: ViewKind;
   /** Source records (one is set depending on `kind`). */
   view?: ViewRegistryEntry;
   app?: RegistryAppInfo;
@@ -78,6 +85,7 @@ function viewToEntry(view: ViewRegistryEntry): ViewEntry {
     path: view.path,
     builtin: view.builtin,
     developerOnly: view.developerOnly,
+    viewKind: view.viewKind,
     view,
   };
 }
@@ -103,6 +111,7 @@ function appToEntry(app: RegistryAppInfo, isActive: boolean): ViewEntry {
     launchType: app.launchType,
     launchUrl: app.launchUrl,
     developerOnly: app.developerOnly,
+    viewKind: app.viewKind,
     app,
   };
 }
@@ -121,9 +130,10 @@ export function mergeViewCatalog(input: {
   catalog: RegistryAppInfo[];
   installed: readonly InstalledAppLike[];
   activeModality: ViewModality;
-  isDeveloperMode: boolean;
+  /** Which view kinds the user/​build has enabled (system+release always on). */
+  enabledKinds: EnabledViewKinds;
 }): ViewEntry[] {
-  const { views, catalog, installed, activeModality, isDeveloperMode } = input;
+  const { views, catalog, installed, activeModality, enabledKinds } = input;
 
   const loadedPluginNames = new Set<string>();
   for (const v of views) {
@@ -132,7 +142,7 @@ export function mergeViewCatalog(input: {
 
   const viewEntries: ViewEntry[] = [];
   for (const v of views) {
-    if (v.developerOnly && !isDeveloperMode) continue;
+    if (!isViewVisible(v, enabledKinds)) continue;
     if (v.visibleInManager === false) continue;
     if ((v.viewType ?? "gui") !== activeModality) continue;
     viewEntries.push(viewToEntry(v));
@@ -144,7 +154,7 @@ export function mergeViewCatalog(input: {
   const seen = new Set(viewEntries.map((e) => e.id));
   const catalogEntries: ViewEntry[] = [];
   for (const app of catalog) {
-    if (app.developerOnly && !isDeveloperMode) continue;
+    if (!isViewVisible(app, enabledKinds)) continue;
     if (app.visibleInAppStore === false) continue;
     // Already shown as a loaded view → don't double-list as a catalog card.
     if (loadedPluginNames.has(app.name)) continue;

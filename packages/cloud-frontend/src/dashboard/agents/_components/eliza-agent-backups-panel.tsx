@@ -2,6 +2,7 @@
 
 import { formatByteSize } from "@elizaos/shared/utils/format";
 import { Badge, BrandButton, BrandCard, Skeleton } from "@elizaos/ui";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNowStrict } from "date-fns";
 import {
   AlertTriangle,
@@ -61,6 +62,7 @@ export function ElizaAgentBackupsPanel({
   agentName,
   status,
 }: ElizaAgentBackupsPanelProps) {
+  const queryClient = useQueryClient();
   const [backups, setBackups] = useState<BackupRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -160,7 +162,14 @@ export function ElizaAgentBackupsPanel({
         );
 
         await fetchBackups();
-        window.location.reload();
+        // A restore can restart the agent, so refresh the agent detail/list
+        // queries the parent page reads from — no full document reload.
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: ["agent", "agent", agentId],
+          }),
+          queryClient.invalidateQueries({ queryKey: ["agent", "agents"] }),
+        ]);
       } catch (restoreError) {
         toast.error(
           restoreError instanceof Error
@@ -171,7 +180,7 @@ export function ElizaAgentBackupsPanel({
         setActiveRestoreTarget(null);
       }
     },
-    [agentId, fetchBackups, isRunning, latestBackup],
+    [agentId, fetchBackups, isRunning, latestBackup, queryClient],
   );
 
   return (

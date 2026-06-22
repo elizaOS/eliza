@@ -55,20 +55,11 @@
       "@elizaos/plugin-commands/*": ["../plugin-commands/src/*"],
       "@elizaos/plugin-health": ["../plugin-health/src/index.ts"],
       "@elizaos/plugin-health/*": ["../plugin-health/src/*"],
-      "@elizaos/plugin-registry": ["../plugin-registry/dist/index.d.ts"],
-      "@elizaos/plugin-remote-manifest": [
-        "../../packages/plugin-remote-manifest/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-remote-manifest/*": [
-        "../../packages/plugin-remote-manifest/dist/*.d.ts"
-      ],
-      "@elizaos/plugin-streaming": ["../plugin-streaming/src/index.ts"],
-      "@elizaos/plugin-streaming/*": ["../plugin-streaming/src/*"],
       "@elizaos/plugin-task-coordinator": [
-        "../plugin-task-coordinator/src/index.ts"
+        "../../plugins/plugin-task-coordinator/src/index.ts"
       ],
       "@elizaos/plugin-task-coordinator/*": [
-        "../plugin-task-coordinator/src/*"
+        "../../plugins/plugin-task-coordinator/src/*"
       ],
       "@elizaos/plugin-wallet-ui": [
         "../../plugins/plugin-wallet-ui/src/index.ts"
@@ -78,8 +69,6 @@
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/vault": ["../../packages/vault/src/index.ts"],
-      "@elizaos/vault/*": ["../../packages/vault/src/*"],
       "@elizaos/plugin-signal": ["../plugin-signal/src/index.ts"],
       "@elizaos/plugin-signal/*": ["../plugin-signal/src/*"],
       "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],

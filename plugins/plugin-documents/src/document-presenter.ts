@@ -30,6 +30,11 @@ export interface PresentedDocument {
   addedByRole?: string;
   addedFrom?: string;
   url?: string;
+  /** Served URL of the original-bytes file linked to this document, so the
+   *  detail view can offer "download original" (PR6). */
+  mediaUrl?: string;
+  /** Stored filename of the linked original-bytes file (PR6). */
+  mediaFileName?: string;
   provenance: DocumentProvenance;
   canEditText: boolean;
   editabilityReason?: string;
@@ -399,6 +404,12 @@ export function presentDocument(
     addedByRole: asString(metadata?.addedByRole),
     addedFrom: asString(metadata?.addedFrom),
     url: asString(metadata?.url),
+    ...(asString(metadata?.mediaUrl)
+      ? { mediaUrl: asString(metadata?.mediaUrl) }
+      : {}),
+    ...(asString(metadata?.mediaFileName)
+      ? { mediaFileName: asString(metadata?.mediaFileName) }
+      : {}),
     provenance,
     canEditText: editability.canEditText,
     editabilityReason: editability.reason,

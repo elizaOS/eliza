@@ -24,10 +24,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  type BroadcastFn,
-  dispatchAgentChat,
-} from "../../../../services/AgentChatService";
+import type { BroadcastFn, DispatchAgentChatFn } from "./dispatch-types";
 
 export const relayToAgentAction: Action = {
   name: "RELAY_TO_AGENT",
@@ -97,6 +94,9 @@ export const relayToAgentAction: Action = {
       | undefined;
 
     const broadcastFn = state?.data?.broadcastFn as BroadcastFn | undefined;
+    const dispatchAgentChat = state?.data?.dispatchAgentChat as
+      | DispatchAgentChatFn
+      | undefined;
     const ownerId = state?.values?.ownerId as string | undefined;
     const teamChatId = state?.values?.teamChatId as string | undefined;
     const ownerName = state?.values?.ownerName as string | undefined;
@@ -106,7 +106,14 @@ export const relayToAgentAction: Action = {
     const command = actionParams?.command;
     const relayContext = actionParams?.relayContext;
 
-    if (!agentId || !command || !ownerId || !teamChatId || !broadcastFn) {
+    if (
+      !agentId ||
+      !command ||
+      !ownerId ||
+      !teamChatId ||
+      !broadcastFn ||
+      !dispatchAgentChat
+    ) {
       const failResult = {
         success: false,
         text: "Missing required parameters for relay dispatch.",

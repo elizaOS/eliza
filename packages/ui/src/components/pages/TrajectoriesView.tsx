@@ -14,6 +14,7 @@ import type {
   TrajectoryRecord,
 } from "../../api/client-types-cloud";
 import { getCached, setCached } from "../../hooks/resource-cache";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useAppSelector } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
@@ -164,13 +165,11 @@ export function TrajectoriesView({
     });
   }, [loadTrajectories, cacheKey]);
 
-  useEffect(() => {
-    // Poll for new turns in the background instead of a manual refresh button.
-    const interval = setInterval(() => {
-      void loadTrajectories({ silent: true });
-    }, 15000);
-    return () => clearInterval(interval);
-  }, [loadTrajectories]);
+  // Poll for new turns in the background instead of a manual refresh button.
+  // Gated on document visibility so a backgrounded window stops polling.
+  useIntervalWhenDocumentVisible(() => {
+    void loadTrajectories({ silent: true });
+  }, 15000);
 
   useEffect(() => {
     const previousSearchQuery = previousSearchQueryRef.current;

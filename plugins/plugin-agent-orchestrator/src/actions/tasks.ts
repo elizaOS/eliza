@@ -552,13 +552,13 @@ async function runCreate(
       const label = baseLabel ?? labelFrom(task, index);
       // A matching workdir route outranks a planner-guessed workdir; a
       // scaffold-aware caller opts out with lockWorkdir — see runSpawnAgent.
-      const { workdir: sessionWorkdir, route } = resolveSpawnWorkdir(
-        runtime,
-        task,
-        routingRequest,
-        explicitWorkdir,
-        { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
-      );
+      const {
+        workdir: sessionWorkdir,
+        route,
+        isolate: isolateWorkdir,
+      } = resolveSpawnWorkdir(runtime, task, routingRequest, explicitWorkdir, {
+        lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true,
+      });
       // This path spawns WITHOUT `initialTask` and delivers the task via
       // sendPrompt (smithers or direct), so the AcpService initialTask deploy
       // injection never fires here. Re-attach the contract on the task text
@@ -569,6 +569,7 @@ async function runCreate(
       const session = await service.spawnSession({
         agentType,
         workdir: sessionWorkdir,
+        isolateWorkdir,
         memoryContent,
         approvalPreset,
         model,
@@ -840,7 +841,11 @@ async function runSpawnAgent(
     // deliberate operator policy. A scaffold-aware caller that KNOWS its
     // workdir is correct (e.g. APP_CREATE) passes `lockWorkdir: true` to
     // skip route resolution entirely.
-    const { workdir, route } = resolveSpawnWorkdir(
+    const {
+      workdir,
+      route,
+      isolate: resolvedIsolate,
+    } = resolveSpawnWorkdir(
       runtime,
       task,
       routingRequest,
@@ -877,6 +882,9 @@ async function runSpawnAgent(
         : undefined;
     const effectiveRoute = route ?? inheritedRoute;
     const effectiveWorkdir = effectiveRoute?.workdir ?? workdir;
+    // Only isolate per-session when we fell back to a shared scratch root (no
+    // route). A route resolves to a specific project dir that must be used as-is.
+    const isolateWorkdir = effectiveRoute ? false : resolvedIsolate === true;
     const taskWithRouteHints = taskWithResolvedRoute(
       task,
       effectiveRoute,
@@ -951,6 +959,7 @@ async function runSpawnAgent(
     const session = await service.spawnSession({
       agentType,
       workdir: effectiveWorkdir,
+      isolateWorkdir,
       initialTask: taskWithRouteHints,
       memoryContent,
       approvalPreset,

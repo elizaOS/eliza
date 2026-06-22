@@ -115,6 +115,7 @@ export type {
   ComputerUseApprovalSnapshot,
   ComputerUsePendingApproval,
 } from "./client-computeruse";
+export type { StoredFile } from "./client-files";
 export type {
   GetIMessageMessagesOptions,
   IMessageApiChat,
@@ -235,6 +236,7 @@ import "./client-browser-workspace";
 import "./client-chat";
 import "./client-cloud";
 import "./client-computeruse";
+import "./client-files";
 import "./client-imessage";
 import "./client-local-inference";
 import "./client-notifications";

@@ -492,10 +492,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		expect(required).not.toContain("shouldRespond");
 		expect(required).not.toContain("facts");
-		// Direct-channel Stage-1 budget is DIRECT_CHANNEL_STAGE1_MAX_TOKENS (1024).
-		// The 384 cap was deliberately raised to 1024 to stop long-answer
-		// truncation (see the constant's rationale in message.ts); this assertion
-		// was left stale at 384 (#8957).
+		// Direct channels use DIRECT_CHANNEL_STAGE1_MAX_TOKENS (1024) — the cap
+		// was raised from 384 in services/message.ts so long single-turn direct
+		// replies aren't truncated. The schema stays compact (asserted above);
+		// only the token ceiling grew.
 		expect(params.maxTokens).toBe(1024);
 		expect(
 			params.responseSkeleton?.spans?.some((s) => s.key === "shouldRespond"),

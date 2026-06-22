@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
   AppsListView,
 } from "@elizaos/ui";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -28,6 +29,7 @@ interface AppsTableProps {
 
 export function AppsTable({ apps }: AppsTableProps) {
   const t = useT();
+  const queryClient = useQueryClient();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<App | null>(null);
 
@@ -76,7 +78,9 @@ export function AppsTable({ apps }: AppsTableProps) {
           defaultValue: "App deleted successfully",
         }),
       );
-      window.location.reload();
+      // The apps list is driven by the `["apps"]` query; refetch it instead
+      // of reloading the whole document.
+      await queryClient.invalidateQueries({ queryKey: ["apps"] });
     } catch (error) {
       toast.error(
         t("cloud.apps.toast.deleteFailed", {

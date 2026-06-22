@@ -20,8 +20,8 @@ import {
 import { detectPasswordManagerBackend } from "@elizaos/plugin-browser/password-manager-bridge";
 import { detectHealthBackend } from "@elizaos/plugin-health";
 import { afterAll, beforeAll, describe, expect } from "vitest";
-import { itIf } from "../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../../test/helpers/live-provider";
+import { itIf } from "../../../test/helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../../../test/helpers/live-provider";
 import {
   expectActionCalled,
   expectActionNotCalled,

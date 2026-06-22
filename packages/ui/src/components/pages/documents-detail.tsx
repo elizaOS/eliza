@@ -92,8 +92,21 @@ export function DocumentViewer({
 
       if (cancelled) return;
 
+      // A well-formed detail response always carries `document`; if the backend
+      // returns an empty/malformed body (or the doc was deleted between the list
+      // and detail fetch), surface a clean message instead of letting a raw
+      // "Cannot read properties of undefined (reading 'content')" TypeError
+      // reach the user as the error text (#8876).
+      if (!docRes?.document) {
+        throw new Error(
+          t("documentsview.DocumentUnavailable", {
+            defaultValue: "This document is no longer available.",
+          }),
+        );
+      }
+
       setDoc(docRes.document);
-      setFragments(fragRes.fragments);
+      setFragments(fragRes?.fragments ?? []);
       setDraftText(docRes.document.content?.text ?? "");
       setEditing(false);
       setLoading(false);

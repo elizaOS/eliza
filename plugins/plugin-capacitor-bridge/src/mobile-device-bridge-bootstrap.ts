@@ -1174,6 +1174,21 @@ function deriveBionicBundleDir(modelPath: string): string {
 
 /** Qwen/ChatML prompt — eliza-1's template — built without the device-bridge. */
 function buildChatMlPrompt(params: GenerateTextParams): string {
+	// If the caller already handed us a complete ChatML prompt — e.g. the Android
+	// direct-chat fast path, whose prompt ends with an `<|im_start|>assistant`
+	// turn pre-filled with an empty `<think></think>` block (Qwen3
+	// enable_thinking=false) — use it VERBATIM. Re-wrapping it in another
+	// <|im_start|>user/…/assistant turn double-nests the markers AND drops the
+	// pre-filled think block, so the model burns its first (capped) tokens on
+	// hidden `<think>…` reasoning and the short-reply fast path returns empty —
+	// which then falls through to the full response handler and pays a SECOND
+	// cold prefill. Pass it through so the fast path can actually answer.
+	if (
+		typeof params.prompt === "string" &&
+		params.prompt.includes("<|im_start|>assistant")
+	) {
+		return params.prompt;
+	}
 	const msgs = collectMessagesForNativeTemplate(params);
 	if (!msgs || msgs.length === 0) {
 		return `<|im_start|>user\n${flattenChatParamsForPrompt(params)}<|im_end|>\n<|im_start|>assistant\n`;
@@ -1250,6 +1265,89 @@ function bionicHostGenerate(
 	});
 }
 
+/**
+ * Streaming variant of {@link bionicHostGenerate}: sends op="generateStream" and
+ * reads MANY length-prefixed frames over the same connection — one
+ * {type:"token",text} per decode step (forwarded to {@link onToken}) until a
+ * terminal {type:"done",ok,tokens,ms,tokS,text} frame, which resolves the
+ * buffered final result. Lets the chat SSE render tokens as the GPU host decodes
+ * them (first paint at the first token) instead of waiting for the whole reply.
+ */
+function bionicHostGenerateStream(
+	socketName: string,
+	request: Record<string, unknown>,
+	onToken: (text: string) => void,
+): Promise<BionicGenerateResponse> {
+	const payload = Buffer.from(
+		JSON.stringify({ ...request, op: "generateStream" }),
+		"utf8",
+	);
+	const frame = Buffer.allocUnsafe(4 + payload.length);
+	frame.writeUInt32BE(payload.length, 0);
+	payload.copy(frame, 4);
+	return new Promise((resolve, reject) => {
+		const sock = net.connect({ path: `\0${socketName}` });
+		let settled = false;
+		let chunks = Buffer.alloc(0);
+		const finish = (err: Error | null, value?: BionicGenerateResponse) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			sock.destroy();
+			err ? reject(err) : resolve(value as BionicGenerateResponse);
+		};
+		const timer = setTimeout(
+			() => finish(new Error("[mobile-device-bridge] bionic host timed out")),
+			BIONIC_REQUEST_TIMEOUT_MS,
+		);
+		sock.on("connect", () => sock.write(frame));
+		sock.on("data", (d: Buffer) => {
+			chunks = Buffer.concat([chunks, d]);
+			// Drain every complete frame currently buffered (>=1 per data event).
+			for (;;) {
+				if (chunks.length < 4) break;
+				const expected = chunks.readUInt32BE(0);
+				if (expected < 0 || expected > BIONIC_MAX_FRAME_BYTES) {
+					finish(
+						new Error(`[mobile-device-bridge] bad bionic frame ${expected}`),
+					);
+					return;
+				}
+				if (chunks.length < 4 + expected) break;
+				const json = chunks.subarray(4, 4 + expected).toString("utf8");
+				chunks = chunks.subarray(4 + expected);
+				let msg: { type?: string; text?: string } & BionicGenerateResponse;
+				try {
+					msg = JSON.parse(json);
+				} catch (e) {
+					finish(
+						new Error(
+							`[mobile-device-bridge] bad bionic JSON: ${(e as Error).message}`,
+						),
+					);
+					return;
+				}
+				if (msg.type === "token") {
+					if (typeof msg.text === "string" && msg.text) onToken(msg.text);
+					continue;
+				}
+				// Terminal {type:"done"} frame (or any non-token frame) ends the stream.
+				finish(null, msg);
+				return;
+			}
+		});
+		sock.on("error", (e: Error) =>
+			finish(
+				new Error(`[mobile-device-bridge] bionic socket error: ${e.message}`),
+			),
+		);
+		sock.on("close", () => {
+			if (!settled)
+				finish(new Error("[mobile-device-bridge] bionic host closed early"));
+		});
+	});
+}
+
 function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 	return async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
 		// GPU delegation: run the whole decode in the bionic app process over the
@@ -1264,12 +1362,26 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 		const bionicSock = bionicSocketName();
 		if (bionicSock) {
 			const installed = resolveLocalLoadArgs(slot);
-			const res = await bionicHostGenerate(bionicSock, {
-				op: "generate",
+			const baseRequest = {
 				bundleDir: installed ? deriveBionicBundleDir(installed.modelPath) : "",
 				prompt: buildChatMlPrompt(params),
 				maxTokens: params.maxTokens ?? 256,
-			});
+			};
+			// When the runtime wants streaming (chat SSE / voice), server-push the
+			// decode token-by-token over the UDS so the UI paints at the first
+			// token instead of after the whole reply. Otherwise one buffered RPC.
+			const onChunk = params.onStreamChunk;
+			let accumulated = "";
+			const res =
+				typeof onChunk === "function"
+					? await bionicHostGenerateStream(bionicSock, baseRequest, (text) => {
+							accumulated += text;
+							void onChunk(text, undefined, accumulated);
+						})
+					: await bionicHostGenerate(bionicSock, {
+							op: "generate",
+							...baseRequest,
+						});
 			if (!res.ok) {
 				throw new Error(
 					`[mobile-device-bridge] bionic host generate failed: ${res.error ?? "unknown"}`,

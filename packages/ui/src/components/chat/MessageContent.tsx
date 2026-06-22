@@ -966,7 +966,7 @@ function sensitiveRequestStatusLabel(
   }
 }
 
-function SensitiveRequestBlock({
+export function SensitiveRequestBlock({
   request,
 }: {
   request: NonNullable<ConversationMessage["secretRequest"]>;

@@ -65,6 +65,12 @@ export interface VoiceWorkbenchMetrics {
 	voiceEntityMatchRate: MetricRollup;
 	/** First-audio latency ms (`worst` = max). */
 	firstAudioMs: MetricRollup;
+	/** Self-echo rejection rate (`worst` = min). */
+	echoRejectionRate: MetricRollup;
+	/** Owner-vs-intruder accuracy (`worst` = min). */
+	ownerAccuracy: MetricRollup;
+	/** Impostor-accept rate (`worst` = max) — non-owner accepted as owner. */
+	impostorAcceptRate: MetricRollup;
 }
 
 export interface VoiceWorkbenchReport {
@@ -138,6 +144,9 @@ export function buildVoiceWorkbenchReport(
 	const entityF1: number[] = [];
 	const voiceEntityMatchRate: number[] = [];
 	const firstAudioMs: number[] = [];
+	const echoRejectionRate: number[] = [];
+	const ownerAccuracy: number[] = [];
+	const impostorAcceptRate: number[] = [];
 
 	for (const c of allCases) {
 		switch (c.kind) {
@@ -163,6 +172,13 @@ export function buildVoiceWorkbenchReport(
 				break;
 			case "first-response-latency":
 				firstAudioMs.push(c.firstAudioMs);
+				break;
+			case "echo-rejection":
+				echoRejectionRate.push(c.rejectionRate);
+				break;
+			case "owner-security":
+				ownerAccuracy.push(c.accuracy);
+				impostorAcceptRate.push(c.impostorAcceptRate);
 				break;
 			default:
 				break;
@@ -195,6 +211,9 @@ export function buildVoiceWorkbenchReport(
 			entityF1: rollupMin(entityF1),
 			voiceEntityMatchRate: rollupMin(voiceEntityMatchRate),
 			firstAudioMs: rollupMax(firstAudioMs),
+			echoRejectionRate: rollupMin(echoRejectionRate),
+			ownerAccuracy: rollupMin(ownerAccuracy),
+			impostorAcceptRate: rollupMax(impostorAcceptRate),
 		},
 	};
 }
@@ -226,6 +245,9 @@ export function formatVoiceWorkbenchMarkdown(
 		`| Entity F1 | ${fmt(m.entityF1.mean)} | ${fmt(m.entityF1.worst)} | ${m.entityF1.count} |`,
 		`| Voice→entity match | ${fmt(m.voiceEntityMatchRate.mean)} | ${fmt(m.voiceEntityMatchRate.worst)} | ${m.voiceEntityMatchRate.count} |`,
 		`| First-audio (ms) | ${fmt(m.firstAudioMs.mean)} | ${fmt(m.firstAudioMs.worst)} | ${m.firstAudioMs.count} |`,
+		`| Echo rejection rate | ${fmt(m.echoRejectionRate.mean)} | ${fmt(m.echoRejectionRate.worst)} | ${m.echoRejectionRate.count} |`,
+		`| Owner accuracy | ${fmt(m.ownerAccuracy.mean)} | ${fmt(m.ownerAccuracy.worst)} | ${m.ownerAccuracy.count} |`,
+		`| Impostor-accept rate | ${fmt(m.impostorAcceptRate.mean)} | ${fmt(m.impostorAcceptRate.worst)} | ${m.impostorAcceptRate.count} |`,
 		"",
 		"## Scenarios",
 		"",
@@ -279,6 +301,11 @@ export function regressionsAgainstBaseline(
 			current.metrics.firstAudioMs.mean,
 			baseline.metrics.firstAudioMs.mean,
 		],
+		[
+			"impostorAcceptRate",
+			current.metrics.impostorAcceptRate.mean,
+			baseline.metrics.impostorAcceptRate.mean,
+		],
 	];
 	const higherBetter: Array<[string, number | null, number | null]> = [
 		[
@@ -291,6 +318,16 @@ export function regressionsAgainstBaseline(
 			"voiceEntityMatchRate",
 			current.metrics.voiceEntityMatchRate.mean,
 			baseline.metrics.voiceEntityMatchRate.mean,
+		],
+		[
+			"echoRejectionRate",
+			current.metrics.echoRejectionRate.mean,
+			baseline.metrics.echoRejectionRate.mean,
+		],
+		[
+			"ownerAccuracy",
+			current.metrics.ownerAccuracy.mean,
+			baseline.metrics.ownerAccuracy.mean,
 		],
 	];
 	const out: MetricRegression[] = [];

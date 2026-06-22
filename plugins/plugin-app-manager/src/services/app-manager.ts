@@ -199,6 +199,21 @@ interface AppManagerOptions {
   heartbeatSweepIntervalMs?: number;
 }
 
+interface DirectInstallResult {
+  success: boolean;
+  pluginName: string;
+  version: string;
+  installPath: string;
+  requiresRestart: boolean;
+  error?: string;
+}
+
+type DirectInstallPlugin = (
+  pluginName: string,
+  onProgress?: (progress: InstallProgressLike) => void,
+  requestedVersion?: string,
+) => Promise<DirectInstallResult>;
+
 function isAppRegistryPlugin(
   plugin: RegistryPluginInfo,
 ): plugin is RegistryAppPlugin {
@@ -1876,6 +1891,7 @@ export class AppManager {
     name: string,
     onProgress?: (progress: InstallProgressLike) => void,
     _runtime?: IAgentRuntime | null,
+    installPluginDirect?: DirectInstallPlugin,
   ): Promise<AppLaunchResult> {
     let appInfo =
       (await resolveCuratedAppInfo(pluginManager, name)) ??
@@ -1923,13 +1939,20 @@ export class AppManager {
           (result.error?.includes("requires a running agent runtime") ||
             !_runtime)
         ) {
-          // Runtime plugin manager unavailable — fall back to the direct
-          // installer which writes to <stateDir>/plugins/installed and can be
-          // picked up by the app-package-modules resolver without restart.
-          const { installPlugin: installPluginDirect } = await import(
-            "@elizaos/plugin-registry"
-          );
-          result = await installPluginDirect(pluginName, onProgress);
+          // Runtime plugin manager unavailable — fall back to the
+          // host-provided direct installer, which writes to
+          // <stateDir>/plugins/installed and can be picked up by the
+          // app-package-modules resolver without restart.
+          result = installPluginDirect
+            ? await installPluginDirect(pluginName, onProgress)
+            : {
+                success: false as const,
+                pluginName,
+                version: "",
+                installPath: "",
+                requiresRestart: false,
+                error: "Direct plugin installer unavailable",
+              };
         }
         if (!result.success) {
           throw new Error(

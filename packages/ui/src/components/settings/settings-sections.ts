@@ -49,7 +49,6 @@ import {
 } from "./settings-section-registry";
 import { VoiceSectionMount } from "./VoiceSectionMount";
 import { WalletRpcSection } from "./WalletRpcSection";
-import { isAndroidCloudBuild } from "../../platform/android-runtime";
 
 export {
   getSettingsSection,

@@ -1,3 +1,4 @@
+import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
 import {
   getElizaCuratedAppCatalogOrder,
   isElizaCuratedAppName,
@@ -134,10 +135,12 @@ interface AppsCatalogFilterOptions {
   showActiveOnly?: boolean;
   walletEnabled?: boolean;
   /**
-   * When false (or omitted), apps marked `developerOnly: true` are hidden.
-   * Pass the current value from `useIsDeveloperMode()` to opt in.
+   * Which view kinds the user/​build has enabled (system + release always on;
+   * developer + preview follow the Settings toggles). Apps whose kind is not
+   * enabled are hidden. Pass the value from `useEnabledViewKinds()`. When
+   * omitted, only system/release apps are shown.
    */
-  developerMode?: boolean;
+  enabledKinds?: EnabledViewKinds;
 }
 
 function parseBooleanEnvValue(value: unknown): boolean {
@@ -241,7 +244,7 @@ export function filterAppsForCatalog(
     showAllApps,
     showActiveOnly = false,
     walletEnabled,
-    developerMode = false,
+    enabledKinds = { developer: false, preview: false },
   }: AppsCatalogFilterOptions = {},
 ): RegistryAppInfo[] {
   const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -276,8 +279,9 @@ export function filterAppsForCatalog(
     if (!shouldShowAppInAppsView(app, { isProd, showAllApps, walletEnabled })) {
       return false;
     }
-    // Developer-only apps are hidden unless Developer Mode is on.
-    if (app.developerOnly && !developerMode) {
+    // Apps are gated by their view kind: developer apps need Developer views on,
+    // preview apps need Preview views on; system/release always show.
+    if (!isViewVisible(app, enabledKinds)) {
       return false;
     }
     // Apps that opt out of the catalog are always hidden, regardless of Developer Mode.

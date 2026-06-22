@@ -24,10 +24,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  type BroadcastFn,
-  dispatchAgentChat,
-} from "../../../../services/AgentChatService";
+import type { BroadcastFn, DispatchAgentChatFn } from "./dispatch-types";
 
 /** Per-agent dispatch timeout — prevents one slow agent from blocking all others */
 const DISPATCH_TIMEOUT_MS = 15_000;
@@ -117,6 +114,9 @@ export const dispatchToAgentsAction: Action = {
       | undefined;
 
     const broadcastFn = state?.data?.broadcastFn as BroadcastFn | undefined;
+    const dispatchAgentChat = state?.data?.dispatchAgentChat as
+      | DispatchAgentChatFn
+      | undefined;
     const ownerId = state?.values?.ownerId as string | undefined;
     const teamChatId = state?.values?.teamChatId as string | undefined;
     const ownerName = state?.values?.ownerName as string | undefined;
@@ -130,7 +130,8 @@ export const dispatchToAgentsAction: Action = {
       dispatches.length === 0 ||
       !ownerId ||
       !teamChatId ||
-      !broadcastFn
+      !broadcastFn ||
+      !dispatchAgentChat
     ) {
       const failResult = {
         success: false,

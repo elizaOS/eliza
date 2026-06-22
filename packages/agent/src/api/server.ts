@@ -56,6 +56,7 @@ import {
 } from "@elizaos/shared/runtime-env";
 import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { type WebSocket, WebSocketServer } from "ws";
+import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
 
 // `@elizaos/plugin-browser` and `@elizaos/plugin-x402` were previously
 // imported via module-scope top-level await, which forced both plugins to
@@ -325,14 +326,14 @@ function getCoreWalletApi(): Promise<typeof import("./wallet.ts")> {
 }
 
 let pluginRegistryApiPromise:
-  | Promise<typeof import("@elizaos/plugin-registry")>
+  | Promise<typeof import("@elizaos/plugin-registry/api/plugin-routes")>
   | undefined;
 
 function getPluginRegistryApi(): Promise<
-  typeof import("@elizaos/plugin-registry")
+  typeof import("@elizaos/plugin-registry/api/plugin-routes")
 > {
   pluginRegistryApiPromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-registry"
+    /* @vite-ignore */ "@elizaos/plugin-registry/api/plugin-routes"
   );
   return pluginRegistryApiPromise;
 }
@@ -3229,6 +3230,7 @@ async function handleRequest(
               runtime && typeof runtime === "object"
                 ? (runtime as IAgentRuntime)
                 : null,
+              installPluginDirect,
             ),
           stop: (pluginManager, name, runId, runtime) =>
             appManager.stop(
@@ -3255,6 +3257,7 @@ async function handleRequest(
           read: () => readFavoriteAppsFromConfig(state.config),
           write: (apps) => writeFavoriteAppsToConfig(state.config, apps),
         } satisfies FavoriteAppsStore,
+        installPluginDirect,
       })
     ) {
       return;

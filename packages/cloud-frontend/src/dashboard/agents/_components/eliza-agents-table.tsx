@@ -36,6 +36,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@elizaos/ui";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpDown,
   Boxes,
@@ -54,13 +55,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { openWebUIWithPairing } from "@/lib/hooks/open-web-ui";
 import { useJobPoller } from "@/lib/hooks/use-job-poller";
-import {
-  type SandboxListAgent,
-  useSandboxListPoll,
-} from "@/lib/hooks/use-sandbox-status-poll";
+import type { AgentListItemDto } from "@/lib/types/cloud-api";
 import { useT } from "@/providers/I18nProvider";
 import { AgentCostBadge } from "./agent-cost-badge";
 import { CreateElizaAgentDialog } from "./create-eliza-agent-dialog";
+
+/** Query key for the shared `useAgents()` list cache (lib/data/eliza-agents). */
+const AGENTS_QUERY_KEY = ["agent", "agents"] as const;
 
 // ----------------------------------------------------------------
 // Types
@@ -214,95 +215,49 @@ function StatusCell({
 // ----------------------------------------------------------------
 
 export function ElizaAgentsTable({
-  sandboxes: initialSandboxes,
+  sandboxes: localSandboxes,
 }: ElizaAgentsTableProps) {
   const t = useT();
+  const queryClient = useQueryClient();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
 
-  // ── Client-side data management ──────────────────────────────
-  // Initialize from server props, then manage locally for instant UI updates.
-  const [localSandboxes, setLocalSandboxes] =
-    useState<ElizaAgentRow[]>(initialSandboxes);
-  const initialSandboxIdsRef = useRef(
-    [...initialSandboxes.map((sb) => sb.id)].sort().join(","),
+  // ── Shared cache (single source of truth) ────────────────────
+  // `sandboxes` is the live `useAgents()` list (15s-polled, auth-gated) mapped
+  // by the parent. There is no local mirror, reconcile effect, or second poll —
+  // optimistic updates are written straight into the `["agent","agents"]`
+  // TanStack cache, which re-flows back into this prop.
+
+  /** Optimistically patch a single agent's status in the shared cache. */
+  const patchAgentStatus = useCallback(
+    (id: string, status: AgentListItemDto["status"]) => {
+      queryClient.setQueriesData<AgentListItemDto[]>(
+        { queryKey: AGENTS_QUERY_KEY },
+        (prev) =>
+          prev?.map((agent) =>
+            agent.id === id ? { ...agent, status } : agent,
+          ),
+      );
+    },
+    [queryClient],
   );
 
-  // Re-sync from server props if the initial set changes (e.g. page navigation)
-  useEffect(() => {
-    const newIds = [...initialSandboxes.map((sb) => sb.id)].sort().join(",");
-    if (newIds !== initialSandboxIdsRef.current) {
-      initialSandboxIdsRef.current = newIds;
-      setLocalSandboxes(initialSandboxes);
-    }
-  }, [initialSandboxes]);
+  /** Optimistically remove an agent from the shared cache. */
+  const removeAgentFromCache = useCallback(
+    (id: string) => {
+      queryClient.setQueriesData<AgentListItemDto[]>(
+        { queryKey: AGENTS_QUERY_KEY },
+        (prev) => prev?.filter((agent) => agent.id !== id),
+      );
+    },
+    [queryClient],
+  );
 
-  /**
-   * Merge camelCase API response into local snake_case state.
-   * Preserves server-only fields (node_id, container_name, etc.) for existing
-   * agents while updating status/error/heartbeat from the API.
-   */
-  const mergeApiData = useCallback((apiAgents: SandboxListAgent[]) => {
-    setLocalSandboxes((prev) => {
-      const apiIds = new Set(apiAgents.map((a) => a.id));
-      const existingMap = new Map(prev.map((sb) => [sb.id, sb]));
-
-      // Merge API agents with existing local state
-      const merged = apiAgents.map((agent) => {
-        const existing = existingMap.get(agent.id);
-        return {
-          // Spread existing server-only fields first (infra details)
-          ...(existing ?? {}),
-          // Then overlay API data (converting camelCase → snake_case)
-          id: agent.id,
-          agent_name: agent.agentName ?? existing?.agent_name ?? null,
-          status: agent.status ?? existing?.status ?? "pending",
-          error_message: agent.errorMessage ?? existing?.error_message ?? null,
-          last_heartbeat_at:
-            agent.lastHeartbeatAt ?? existing?.last_heartbeat_at ?? null,
-          created_at:
-            agent.createdAt ?? existing?.created_at ?? new Date().toISOString(),
-          updated_at:
-            agent.updatedAt ?? existing?.updated_at ?? new Date().toISOString(),
-          // Preserve detail-only infra fields while keeping API-created agents visible.
-          node_id: existing?.node_id ?? null,
-          container_name: existing?.container_name ?? null,
-          bridge_port: existing?.bridge_port ?? null,
-          web_ui_port: existing?.web_ui_port ?? null,
-          headscale_ip: existing?.headscale_ip ?? null,
-          docker_image: agent.dockerImage ?? existing?.docker_image ?? null,
-          execution_tier:
-            agent.executionTier === undefined
-              ? existing?.execution_tier
-              : agent.executionTier,
-          sandbox_id: existing?.sandbox_id ?? null,
-          bridge_url: existing?.bridge_url ?? null,
-          canonical_web_ui_url:
-            agent.webUiUrl === undefined
-              ? (existing?.canonical_web_ui_url ?? null)
-              : agent.webUiUrl,
-        } as ElizaAgentRow;
-      });
-
-      // Preserve local-only entries (optimistic additions not yet in API response)
-      const localOnly = prev.filter((sb) => !apiIds.has(sb.id));
-      return [...merged, ...localOnly];
-    });
-  }, []);
-
-  /** Fetch fresh data from the API and update local state. */
-  const refreshData = useCallback(async () => {
-    try {
-      const res = await fetch("/api/v1/eliza/agents");
-      if (!res.ok) return;
-      const json = await res.json();
-      const agents: SandboxListAgent[] = json?.data ?? [];
-      mergeApiData(agents);
-    } catch {
-      // Silent — will retry on next action or poll
-    }
-  }, [mergeApiData]);
+  /** Refetch the shared agents list (confirms optimistic mutations). */
+  const refreshData = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: AGENTS_QUERY_KEY });
+  }, [queryClient]);
 
   const jobActionById = useRef(new Map<string, string>());
 
@@ -320,7 +275,7 @@ export function ElizaAgentsTable({
           defaultValue: "{{action}} completed",
         }),
       );
-      void refreshData();
+      refreshData();
     },
     onFailed: (job) => {
       const action = jobActionById.current.get(job.jobId);
@@ -336,32 +291,35 @@ export function ElizaAgentsTable({
             defaultValue: "{{action}} failed",
           }),
       );
-      void refreshData();
+      refreshData();
     },
   });
 
-  // Auto-refresh polling: polls the list endpoint while any sandbox is active.
-  // Pushes fresh data via onDataRefresh so the table updates without page reload.
-  useSandboxListPoll(
-    localSandboxes.map((sb) => ({
-      id: sb.id,
-      status: poller.isActive(sb.id) ? "provisioning" : sb.status,
-    })),
-    {
-      intervalMs: 10_000,
-      onTransitionToRunning: (_id, name) => {
+  // "Now running" toast: diff the live list's statuses across refreshes and
+  // announce agents that transition out of an active state into "running".
+  const previousStatusRef = useRef<Map<string, string>>(new Map());
+  useEffect(() => {
+    const prev = previousStatusRef.current;
+    const next = new Map<string, string>();
+    for (const sb of localSandboxes) {
+      const previousStatus = prev.get(sb.id);
+      if (
+        (previousStatus === "pending" || previousStatus === "provisioning") &&
+        sb.status === "running"
+      ) {
         toast.success(
           t("cloud.elizaAgentsTable.nowRunning", {
             name:
-              name ??
+              sb.agent_name ??
               t("cloud.elizaAgentsTable.agent", { defaultValue: "Agent" }),
             defaultValue: "{{name}} is now running!",
           }),
         );
-      },
-      onDataRefresh: mergeApiData,
-    },
-  );
+      }
+      next.set(sb.id, sb.status);
+    }
+    previousStatusRef.current = next;
+  }, [localSandboxes, t]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -421,9 +379,7 @@ export function ElizaAgentsTable({
   async function handleProvision(id: string) {
     setActionInProgress(id);
     // Optimistic: show provisioning status immediately
-    setLocalSandboxes((prev) =>
-      prev.map((sb) => (sb.id === id ? { ...sb, status: "provisioning" } : sb)),
-    );
+    patchAgentStatus(id, "provisioning");
     try {
       const res = await fetch(`/api/v1/eliza/agents/${id}/provision`, {
         method: "POST",
@@ -451,7 +407,7 @@ export function ElizaAgentsTable({
 
       if (!res.ok) {
         // Revert optimistic update
-        void refreshData();
+        refreshData();
         throw new Error(
           (data as { error?: string }).error ??
             t("cloud.elizaAgentsTable.provisionFailed", {
@@ -483,7 +439,7 @@ export function ElizaAgentsTable({
             defaultValue: "Agent provisioning started",
           }),
         );
-        void refreshData();
+        refreshData();
         return;
       }
 
@@ -492,7 +448,7 @@ export function ElizaAgentsTable({
           defaultValue: "Agent is already running",
         }),
       );
-      void refreshData();
+      refreshData();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       toast.error(
@@ -509,9 +465,7 @@ export function ElizaAgentsTable({
   async function handleSuspend(id: string) {
     setActionInProgress(id);
     // Optimistic: show stopped status immediately
-    setLocalSandboxes((prev) =>
-      prev.map((sb) => (sb.id === id ? { ...sb, status: "stopped" } : sb)),
-    );
+    patchAgentStatus(id, "stopped");
     try {
       const res = await fetch(`/api/v1/eliza/agents/${id}`, {
         method: "PATCH",
@@ -539,7 +493,7 @@ export function ElizaAgentsTable({
 
       if (!res.ok && res.status !== 202) {
         // Revert optimistic update
-        void refreshData();
+        refreshData();
         throw new Error(
           (data as { error?: string }).error ??
             t("cloud.elizaAgentsTable.suspendFailed", {
@@ -573,7 +527,7 @@ export function ElizaAgentsTable({
           defaultValue: "Agent suspended (snapshot saved)",
         }),
       );
-      void refreshData();
+      refreshData();
     } catch {
       toast.error(
         t("cloud.elizaAgentsTable.failedToSuspend", {
@@ -587,17 +541,16 @@ export function ElizaAgentsTable({
 
   async function handleDelete(id: string) {
     setIsDeleting(true);
-    // Optimistic: remove from list immediately
-    const previousSandboxes = localSandboxes;
-    setLocalSandboxes((prev) => prev.filter((sb) => sb.id !== id));
+    // Optimistic: remove from the shared cache immediately
+    removeAgentFromCache(id);
     try {
       const res = await fetch(`/api/v1/eliza/agents/${id}`, {
         method: "DELETE",
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        // Revert optimistic removal
-        setLocalSandboxes(previousSandboxes);
+        // Revert optimistic removal by refetching the authoritative list
+        refreshData();
         throw new Error(
           (data as { error?: string }).error ??
             t("cloud.elizaAgentsTable.deleteFailed", {
@@ -611,7 +564,7 @@ export function ElizaAgentsTable({
         }),
       );
       // Confirm with a refresh (already removed optimistically)
-      void refreshData();
+      refreshData();
     } catch (err) {
       const message =
         err instanceof Error

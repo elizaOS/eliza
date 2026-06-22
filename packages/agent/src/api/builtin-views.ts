@@ -12,6 +12,7 @@ import type { ViewDeclaration } from "@elizaos/core";
 export const BUILTIN_VIEWS: ViewDeclaration[] = [
   {
     id: "tutorial",
+    viewKind: "system",
     label: "Tutorial",
     description:
       "Interactive guided tour — learn the chat, switching views, and Settings in 90 seconds",
@@ -26,6 +27,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "help",
+    viewKind: "system",
     label: "Help",
     description:
       "Searchable FAQ and knowledge base — what Eliza is and how everything works",
@@ -40,6 +42,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "camera",
+    viewKind: "release",
     label: "Camera",
     description:
       "Live camera preview with photo capture and front/back switching",
@@ -54,6 +57,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "chat",
+    viewKind: "system",
     label: "Chat",
     description:
       "Conversations with your agent, inbound messages from every connector",
@@ -68,6 +72,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "character",
+    viewKind: "system",
     label: "Character",
     description: "Agent identity, personality, style, and knowledge documents",
     icon: "UserRound",
@@ -80,6 +85,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "automations",
+    viewKind: "release",
     label: "Automations",
     description: "Scheduled tasks and recurring workflows",
     icon: "Clock3",
@@ -91,6 +97,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "plugins-page",
+    viewKind: "release",
     label: "Plugins",
     description: "Manage installed plugins, configure credentials",
     icon: "Puzzle",
@@ -110,6 +117,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "trajectories",
+    viewKind: "developer",
+    developerOnly: true,
     label: "Trajectories",
     description: "Agent trajectory logs and training data",
     icon: "GitBranch",
@@ -117,11 +126,11 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/trajectories",
     order: 70,
     tags: ["training", "logs", "trajectories"],
-    developerOnly: true,
     visibleInManager: true,
   },
   {
     id: "transcripts",
+    viewKind: "release",
     label: "Transcripts",
     description:
       "Recorded voice transcripts — play, scrub, and read with word sync",
@@ -134,6 +143,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "memories",
+    viewKind: "developer",
+    developerOnly: true,
     label: "Memories",
     description: "Agent memory viewer and management",
     icon: "Brain",
@@ -141,11 +152,12 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/memories",
     order: 72,
     tags: ["memory", "knowledge"],
-    developerOnly: true,
     visibleInManager: true,
   },
   {
     id: "database",
+    viewKind: "developer",
+    developerOnly: true,
     label: "Database",
     description: "Raw database viewer and query interface",
     icon: "Database",
@@ -153,11 +165,12 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/database",
     order: 80,
     tags: ["database", "data", "debug"],
-    developerOnly: true,
     visibleInManager: true,
   },
   {
     id: "logs",
+    viewKind: "developer",
+    developerOnly: true,
     label: "Logs",
     description: "Runtime logs and agent debug output",
     icon: "FileText",
@@ -165,11 +178,11 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/logs",
     order: 81,
     tags: ["logs", "debug", "runtime"],
-    developerOnly: true,
     visibleInManager: true,
   },
   {
     id: "settings",
+    viewKind: "system",
     label: "Settings",
     description: "Configuration, plugins, credentials, and preferences",
     icon: "Settings",

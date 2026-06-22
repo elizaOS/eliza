@@ -9,8 +9,8 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
-import { itIf } from "../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../../test/helpers/live-provider";
+import { itIf } from "../../../test/helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../../../test/helpers/live-provider";
 import { experiencePatternEvaluator } from "../../../core/src/features/advanced-capabilities/experience/evaluators/experience-items.ts";
 import { ExperienceService } from "../../../core/src/features/advanced-capabilities/experience/service.ts";
 import {

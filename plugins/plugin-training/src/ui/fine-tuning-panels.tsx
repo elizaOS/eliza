@@ -1,4 +1,3 @@
-import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type {
   TrainingDatasetRecord,
@@ -8,7 +7,7 @@ import type {
   TrainingTrajectoryDetail,
   TrainingTrajectoryList,
 } from "@elizaos/ui/api";
-import { Input } from "@elizaos/ui/components";
+import { Button, Input } from "@elizaos/ui/components";
 import {
   Select,
   SelectContent,

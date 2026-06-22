@@ -429,7 +429,9 @@
     },
     "@elizaos/app#typecheck": {
       "dependsOn": [
+        "@elizaos/plugin-browser#build",
         "@elizaos/plugin-personal-assistant#build",
+        "@elizaos/plugin-registry#build",
         "@elizaos/ui#build"
       ],
       "outputs": []
@@ -452,6 +454,10 @@
     },
     "@elizaos/example-telegram#typecheck": {
       "dependsOn": ["@elizaos/plugin-sql#build"],
+      "outputs": []
+    },
+    "@elizaos/scenario-runner#typecheck": {
+      "dependsOn": ["@elizaos/plugin-browser#build", "^build"],
       "outputs": []
     },
     "@elizaos/example-edad#typecheck": {

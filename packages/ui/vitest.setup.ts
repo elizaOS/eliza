@@ -6,6 +6,16 @@ import {
 } from "node:stream/web";
 import { TextDecoder } from "node:util";
 
+// Deterministic timezone for any test that renders a localized date/number.
+// Set (overridably) so `toLocale*` / `Intl` output is identical on every
+// machine and in CI — the unit-test counterpart to the browser determinism
+// shim used by the story gate. Components that read the clock during render
+// are caught separately by `audit:ui-determinism`; tests that need a frozen
+// clock opt in via `test/determinism.ts`.
+if (!process.env.TZ) {
+  process.env.TZ = "UTC";
+}
+
 // Polyfill Web Streams API for jsdom (eventsource-parser, AI SDK, etc. use
 // TransformStream at module-load time; jsdom does not include it).
 if (typeof globalThis.TransformStream === "undefined") {

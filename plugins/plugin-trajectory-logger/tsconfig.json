@@ -47,13 +47,15 @@
         "../../plugins/plugin-local-inference/src/*"
       ],
       "@elizaos/plugin-registry": [
-        "../../plugins/plugin-registry/src/index.ts"
+        "../../plugins/plugin-registry/dist/index.d.ts"
       ],
-      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
+      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/dist/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/vault": ["../../packages/vault/src/index.ts"],
+      "@elizaos/vault/*": ["../../packages/vault/src/*"],
       "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"

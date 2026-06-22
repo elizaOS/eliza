@@ -6,7 +6,7 @@
  */
 
 import { asRecord } from "@elizaos/shared";
-import { type MutableRefObject, useCallback, useRef } from "react";
+import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type { Conversation, CustomActionDef } from "../api";
 import {
   type ChatTurnStatus,
@@ -394,6 +394,78 @@ export function useChatSend(deps: UseChatSendDeps) {
   const chatSendQueueRef = useRef<QueuedChatSend[]>([]);
   const activeChatTurnRef = useRef<ActiveChatTurn | null>(null);
 
+  // Streaming-commit throttle.
+  // The SSE `onToken` callback fires once per token (often >60/sec on a fast
+  // model). Instead of committing each one, the latest cumulative text is parked
+  // here and applied at most once per animation frame. Chat sends are serialized
+  // through the queue, so a single in-flight buffer is sufficient.
+  const streamingFlushRef = useRef<{
+    messageId: string;
+    pendingText: string | null;
+    frameId: number | null;
+  }>({ messageId: "", pendingText: null, frameId: null });
+
+  // Apply whatever cumulative text is parked for the in-flight turn, then clear
+  // the pending slot. Safe to call when nothing is pending (no-op).
+  const flushStreamingText = useCallback(() => {
+    const buffer = streamingFlushRef.current;
+    if (buffer.frameId !== null) {
+      cancelAnimationFrame(buffer.frameId);
+      buffer.frameId = null;
+    }
+    if (buffer.pendingText === null) return;
+    const fullText = buffer.pendingText;
+    buffer.pendingText = null;
+    applyStreamingTextModification(setConversationMessages, {
+      messageId: buffer.messageId,
+      mode: "replace",
+      fullText,
+    });
+  }, [setConversationMessages]);
+
+  // Park the latest cumulative text for `messageId` and ensure a single rAF is
+  // scheduled to commit it. Repeated calls within a frame overwrite the parked
+  // text without scheduling additional frames: N tokens become at most one
+  // commit per frame.
+  const scheduleStreamingText = useCallback(
+    (messageId: string, fullText: string) => {
+      const buffer = streamingFlushRef.current;
+      // A new turn started — drop any stale parked text from the prior turn.
+      if (buffer.messageId !== messageId) {
+        if (buffer.frameId !== null) cancelAnimationFrame(buffer.frameId);
+        buffer.messageId = messageId;
+        buffer.frameId = null;
+      }
+      buffer.pendingText = fullText;
+      if (buffer.frameId !== null) return;
+      buffer.frameId = requestAnimationFrame(() => {
+        buffer.frameId = null;
+        if (buffer.pendingText === null) return;
+        const next = buffer.pendingText;
+        buffer.pendingText = null;
+        applyStreamingTextModification(setConversationMessages, {
+          messageId: buffer.messageId,
+          mode: "replace",
+          fullText: next,
+        });
+      });
+    },
+    [setConversationMessages],
+  );
+
+  // Cancel any in-flight frame on unmount so a late rAF never commits into a
+  // torn-down tree.
+  useEffect(() => {
+    const buffer = streamingFlushRef.current;
+    return () => {
+      if (buffer.frameId !== null) {
+        cancelAnimationFrame(buffer.frameId);
+        buffer.frameId = null;
+      }
+      buffer.pendingText = null;
+    };
+  }, []);
+
   const resolveQueuedChatSends = useCallback(() => {
     const queued = chatSendQueueRef.current.splice(0);
     for (const turn of queued) {
@@ -437,6 +509,9 @@ export function useChatSend(deps: UseChatSendDeps) {
     }
     activeTurn?.controller.abort();
     chatAbortRef.current?.abort();
+    // Commit any parked partial text (so a stopped turn keeps what the user saw)
+    // and cancel the pending frame so it can't fire after the stop.
+    flushStreamingText();
     activeChatTurnRef.current = null;
     chatAbortRef.current = null;
     setChatSending(false);
@@ -444,6 +519,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     setServerTurnStatus(null);
   }, [
     chatAbortRef,
+    flushStreamingText,
     resolveQueuedChatSends,
     setChatFirstTokenReceived,
     setServerTurnStatus,
@@ -873,11 +949,9 @@ export function useChatSend(deps: UseChatSendDeps) {
             if (nextText === streamedAssistantText) return;
             streamedAssistantText = nextText;
             setChatFirstTokenReceived(true);
-            applyStreamingTextModification(setConversationMessages, {
-              messageId: assistantMsgId,
-              mode: "replace",
-              fullText: nextText,
-            });
+            // Coalesce tokens into at most one commit per frame; the parked text is
+            // flushed synchronously below before any terminal modification.
+            scheduleStreamingText(assistantMsgId, nextText);
           },
           channelType,
           controller.signal,
@@ -887,6 +961,10 @@ export function useChatSend(deps: UseChatSendDeps) {
           // streams through onToken above regardless.
           (status) => setServerTurnStatus(status),
         );
+
+        // Commit any token parked by the throttle before the terminal
+        // drop/complete/fail/interrupt — no streamed tokens may be lost.
+        flushStreamingText();
 
         if (!data.text.trim()) {
           applyStreamingTextModification(setConversationMessages, {
@@ -968,6 +1046,9 @@ export function useChatSend(deps: UseChatSendDeps) {
           void pollCloudCredits();
         }
       } catch (err) {
+        // Commit any throttled-but-uncommitted token first so an abort/error
+        // never drops a placeholder the user already saw fill with partial text.
+        flushStreamingText();
         const abortError = err as Error;
         if (abortError.name === "AbortError" || controller?.signal.aborted) {
           dropEmptyAssistantPlaceholder(assistantMsgId);
@@ -1080,6 +1161,10 @@ export function useChatSend(deps: UseChatSendDeps) {
           }
         }
       } finally {
+        // Belt-and-braces: cancel any frame still pending so it can't commit a
+        // stale snapshot into the next turn (idempotent — every exit path above
+        // already flushed).
+        flushStreamingText();
         // The turn settled (done / error / abort) — drop the live status so the
         // indicator doesn't linger on a stale phase between turns.
         setServerTurnStatus(null);
@@ -1118,6 +1203,8 @@ export function useChatSend(deps: UseChatSendDeps) {
       elizaCloudEnabled,
       elizaCloudConnected,
       pollCloudCredits,
+      scheduleStreamingText,
+      flushStreamingText,
     ],
   );
 
@@ -1330,17 +1417,19 @@ export function useChatSend(deps: UseChatSendDeps) {
               if (nextText === streamedAssistantText) return;
               streamedAssistantText = nextText;
               setChatFirstTokenReceived(true);
-              applyStreamingTextModification(setConversationMessages, {
-                messageId: assistantMsgId,
-                mode: "replace",
-                fullText: nextText,
-              });
+              // Coalesce tokens into at most one commit per frame; flushed synchronously
+              // below before any terminal modification.
+              scheduleStreamingText(assistantMsgId, nextText);
             },
             "DM",
             controller.signal,
             undefined,
             buildChatViewMetadata(tab),
           );
+
+          // Commit any token parked by the throttle before the terminal
+          // drop/complete/fail/interrupt — no streamed tokens may be lost.
+          flushStreamingText();
 
           if (!data.text.trim()) {
             applyStreamingTextModification(setConversationMessages, {
@@ -1382,6 +1471,9 @@ export function useChatSend(deps: UseChatSendDeps) {
             void pollCloudCredits();
           }
         } catch (err) {
+          // Commit any throttled-but-uncommitted token first so an abort/error
+          // never drops a placeholder the user already saw fill with text.
+          flushStreamingText();
           const abortError = err as Error;
           if (abortError.name === "AbortError" || controller?.signal.aborted) {
             dropEmptyAssistantPlaceholder(assistantMsgId);
@@ -1389,6 +1481,8 @@ export function useChatSend(deps: UseChatSendDeps) {
           }
           await loadConversationMessages(convId);
         } finally {
+          // Belt-and-braces: cancel any frame still pending (idempotent).
+          flushStreamingText();
           if (chatAbortRef.current === controller) {
             chatAbortRef.current = null;
           }
@@ -1427,6 +1521,8 @@ export function useChatSend(deps: UseChatSendDeps) {
       pollCloudCredits,
       tab,
       uiLanguage,
+      scheduleStreamingText,
+      flushStreamingText,
     ],
   );
 

@@ -3,6 +3,7 @@
 // Update*, Extension*, Workbench*, Character*, Voice*, Skill*
 // ---------------------------------------------------------------------------
 
+import type { ViewKind } from "@elizaos/core";
 import type { MessageExampleContent, PluginParamDef } from "@elizaos/shared";
 import type { ConfigUiHint } from "../types";
 import type {
@@ -168,6 +169,7 @@ export interface PluginInfo {
     defaultEnabled?: boolean;
     navGroup?: string;
     developerOnly?: boolean;
+    viewKind?: ViewKind;
     componentExport?: string;
   }>;
   /**
@@ -180,6 +182,7 @@ export interface PluginInfo {
     category?: string;
     icon?: string | null;
     developerOnly?: boolean;
+    viewKind?: ViewKind;
     visibleInAppStore?: boolean;
     navTabs?: Array<{
       id: string;
@@ -188,6 +191,7 @@ export interface PluginInfo {
       path: string;
       order?: number;
       developerOnly?: boolean;
+      viewKind?: ViewKind;
       group?: string;
       componentExport?: string;
     }>;

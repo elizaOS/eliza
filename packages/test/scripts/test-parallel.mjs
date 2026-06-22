@@ -1,1 +1,1 @@
-import "../app-core/test/scripts/test-parallel.mjs";
+import "../../app-core/test/scripts/test-parallel.mjs";

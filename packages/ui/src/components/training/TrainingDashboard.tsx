@@ -138,7 +138,7 @@ function JobsTable({
               </td>
               <td className="px-3 py-2">
                 <div className="text-xs text-muted">
-                  {new Date(job.started_at).toLocaleString()}
+                  {new Date(job.started_at).toLocaleString("en-US")}
                 </div>
               </td>
             </tr>

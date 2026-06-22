@@ -16,7 +16,7 @@ import {
   shouldUseHashNavigation,
 } from "../../navigation";
 
-import { useAppSelectorShallow, useIsDeveloperMode } from "../../state";
+import { useAppSelectorShallow, useEnabledViewKinds } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { AppsCatalogGrid } from "../apps/AppsCatalogGrid";
 import { AppsSidebar } from "../apps/AppsSidebar";
@@ -277,7 +277,7 @@ export function AppsView() {
     setActionNotice: s.setActionNotice,
     t: s.t,
   }));
-  const developerMode = useIsDeveloperMode();
+  const enabledKinds = useEnabledViewKinds();
   const [apps, setApps] = useState<RegistryAppInfo[]>(
     () => readAppsCache() ?? [],
   );
@@ -1018,13 +1018,13 @@ export function AppsView() {
       activeAppNames,
       searchQuery,
       walletEnabled,
-      developerMode,
+      enabledKinds,
     });
-  }, [activeAppNames, apps, searchQuery, walletEnabled, developerMode]);
+  }, [activeAppNames, apps, searchQuery, walletEnabled, enabledKinds]);
 
   const browseApps = useMemo(() => {
-    return filterAppsForCatalog(apps, { walletEnabled, developerMode });
-  }, [apps, walletEnabled, developerMode]);
+    return filterAppsForCatalog(apps, { walletEnabled, enabledKinds });
+  }, [apps, walletEnabled, enabledKinds]);
 
   const handleToggleFavorite = useCallback(
     (appName: string) => {

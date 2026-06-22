@@ -130,40 +130,41 @@ let localInferenceChatApiPromise: Promise<LocalInferenceChatApi> | null = null;
  * derived from the raw error, guaranteeing the actual failure surfaces.
  */
 function getLocalInferenceChatApi(): Promise<LocalInferenceChatApi> {
-  localInferenceChatApiPromise ??= (async (): Promise<LocalInferenceChatApi> => {
-    const fallback: LocalInferenceChatApi = {
-      getLocalInferenceChatStatus: async (_intent, error) => ({
-        text:
-          error instanceof Error
-            ? error.message
-            : typeof error === "string" && error
-              ? error
-              : "Local inference is unavailable.",
-        localInference: {},
-      }),
-      handleLocalInferenceChatCommand: async (_intent, prompt) => ({
-        text: prompt,
-        localInference: {},
-      }),
-    };
-    try {
-      const mod = (await import(
-        "@elizaos/plugin-local-inference"
-      )) as Partial<LocalInferenceChatApi>;
-      return {
-        getLocalInferenceChatStatus:
-          typeof mod.getLocalInferenceChatStatus === "function"
-            ? mod.getLocalInferenceChatStatus
-            : fallback.getLocalInferenceChatStatus,
-        handleLocalInferenceChatCommand:
-          typeof mod.handleLocalInferenceChatCommand === "function"
-            ? mod.handleLocalInferenceChatCommand
-            : fallback.handleLocalInferenceChatCommand,
+  localInferenceChatApiPromise ??=
+    (async (): Promise<LocalInferenceChatApi> => {
+      const fallback: LocalInferenceChatApi = {
+        getLocalInferenceChatStatus: async (_intent, error) => ({
+          text:
+            error instanceof Error
+              ? error.message
+              : typeof error === "string" && error
+                ? error
+                : "Local inference is unavailable.",
+          localInference: {},
+        }),
+        handleLocalInferenceChatCommand: async (_intent, prompt) => ({
+          text: prompt,
+          localInference: {},
+        }),
       };
-    } catch {
-      return fallback;
-    }
-  })();
+      try {
+        const mod = (await import(
+          "@elizaos/plugin-local-inference"
+        )) as Partial<LocalInferenceChatApi>;
+        return {
+          getLocalInferenceChatStatus:
+            typeof mod.getLocalInferenceChatStatus === "function"
+              ? mod.getLocalInferenceChatStatus
+              : fallback.getLocalInferenceChatStatus,
+          handleLocalInferenceChatCommand:
+            typeof mod.handleLocalInferenceChatCommand === "function"
+              ? mod.handleLocalInferenceChatCommand
+              : fallback.handleLocalInferenceChatCommand,
+        };
+      } catch {
+        return fallback;
+      }
+    })();
   return localInferenceChatApiPromise;
 }
 

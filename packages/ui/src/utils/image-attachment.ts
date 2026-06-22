@@ -301,6 +301,68 @@ export function summarizeDroppedAttachments(result: {
 }
 
 /**
+ * Character count at/above which a plain-text paste is converted into a
+ * collapsed text attachment chip (Claude-Code / claude.ai style) rather than
+ * flooding the composer textarea. Pastes shorter than this go into the textarea
+ * as normal.
+ */
+export const LARGE_PASTE_CHAR_THRESHOLD = 2000;
+
+/**
+ * True when a pasted plain-text block is large enough to become a text
+ * attachment instead of landing in the textarea. Uses the *trimmed* length so
+ * surrounding whitespace can't push a small paste over the line. A single bare
+ * URL (no internal whitespace) is never converted — pasting a link should keep
+ * working normally even when the URL is very long.
+ */
+export function shouldConvertPasteToAttachment(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length < LARGE_PASTE_CHAR_THRESHOLD) return false;
+  // A lone long URL is a link, not a document — keep it in the textarea.
+  if (/^https?:\/\/\S+$/i.test(trimmed)) return false;
+  return true;
+}
+
+/**
+ * Encode a string to base64 in a UTF-8-safe, chunk-safe way. Raw `btoa(text)`
+ * throws on any code point > 0xFF (so any non-ASCII / emoji paste would break),
+ * and `String.fromCharCode(...bytes)` can overflow the call stack on a large
+ * paste. This walks the UTF-8 bytes in fixed-size chunks instead, so it round-
+ * trips arbitrary Unicode of any length.
+ */
+function utf8ToBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+/** Default file name for a pasted-text attachment. */
+const PASTED_TEXT_DEFAULT_NAME = "pasted-text.md";
+
+/**
+ * Convert a large pasted plain-text block into an {@link ImageAttachment} (the
+ * shared chat-attachment shape) so it renders as a collapsed chip and ships to
+ * the server like any other attachment. `data` is the UTF-8-safe base64 of the
+ * text (no data-URL prefix, matching the other attachment producers here),
+ * `mimeType` is `text/markdown`, and there is no thumbnail. Pure + synchronous
+ * so it unit-tests without the DOM.
+ */
+export function pastedTextToAttachment(
+  text: string,
+  opts: { name?: string } = {},
+): ImageAttachment {
+  return {
+    data: utf8ToBase64(text),
+    mimeType: "text/markdown",
+    name: opts.name ?? PASTED_TEXT_DEFAULT_NAME,
+  };
+}
+
+/**
  * Build the translated "kept N, dropped M" notice for the composer from an
  * intake/partition result, choosing the right i18n key based on whether the
  * drops were oversized, over-count, or a mix. Returns `null` when nothing was

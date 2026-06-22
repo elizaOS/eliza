@@ -76,7 +76,7 @@ describe("resolveSpawnWorkdir — configured workspace root fallback", () => {
         NO_ROUTE_TASK,
         undefined,
       ),
-    ).toEqual({ workdir: root });
+    ).toEqual({ workdir: root, isolate: true });
   });
 
   it("honors ACPX_DEFAULT_CWD when ELIZA_ACP_WORKSPACE_ROOT is unset", () => {
@@ -88,7 +88,7 @@ describe("resolveSpawnWorkdir — configured workspace root fallback", () => {
         NO_ROUTE_TASK,
         undefined,
       ),
-    ).toEqual({ workdir: root });
+    ).toEqual({ workdir: root, isolate: true });
   });
 
   it("prefers ELIZA_ACP_WORKSPACE_ROOT over ACPX_DEFAULT_CWD", () => {
@@ -104,7 +104,7 @@ describe("resolveSpawnWorkdir — configured workspace root fallback", () => {
         NO_ROUTE_TASK,
         undefined,
       ),
-    ).toEqual({ workdir: preferred });
+    ).toEqual({ workdir: preferred, isolate: true });
   });
 
   it("still returns process.cwd() when no workspace root is configured (self-checkout default)", () => {

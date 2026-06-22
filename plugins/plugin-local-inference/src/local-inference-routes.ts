@@ -75,7 +75,7 @@ let aospLocalInferenceApiPromise: Promise<AospLocalInferenceApi> | null = null;
 
 function getMobileDeviceBridgeApi(): Promise<MobileDeviceBridgeApi> {
 	mobileDeviceBridgeApiPromise ??= import(
-		"@elizaos/plugin-capacitor-bridge"
+		"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
 	) as Promise<MobileDeviceBridgeApi>;
 	return mobileDeviceBridgeApiPromise;
 }

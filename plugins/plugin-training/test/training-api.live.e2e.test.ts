@@ -11,8 +11,8 @@
  */
 import path from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../test/helpers/conditional-tests";
-import { req } from "../../../test/helpers/http";
+import { describeIf } from "../../../packages/test/helpers/conditional-tests";
+import { req } from "../../../packages/test/helpers/http";
 
 const LIVE = process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");

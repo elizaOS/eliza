@@ -453,6 +453,7 @@ export interface AppManagerLike {
     name: string,
     onProgress?: (progress: InstallProgressLike) => void,
     runtime?: unknown | null,
+    installPluginDirect?: DirectInstallPlugin,
   ) => Promise<AppLaunchResult>;
   stop: (
     pluginManager: PluginManagerLike,
@@ -498,6 +499,21 @@ export interface FavoriteAppsStore {
   write: (apps: string[]) => string[];
 }
 
+interface DirectInstallResult {
+  success: boolean;
+  pluginName: string;
+  version: string;
+  installPath: string;
+  requiresRestart: boolean;
+  error?: string;
+}
+
+type DirectInstallPlugin = (
+  pluginName: string,
+  onProgress?: (progress: InstallProgressLike) => void,
+  requestedVersion?: string,
+) => Promise<DirectInstallResult>;
+
 export interface AppsRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "readJsonBody" | "json" | "error"> {
@@ -507,6 +523,7 @@ export interface AppsRouteContext
   parseBoundedLimit: (rawLimit: string | null, fallback?: number) => number;
   runtime: unknown | null;
   favoriteApps?: FavoriteAppsStore;
+  installPluginDirect?: DirectInstallPlugin;
 }
 
 function sanitizeFavoriteAppNames(value: unknown): string[] {
@@ -859,6 +876,7 @@ export async function handleAppsRoutes(
     json,
     error,
     runtime,
+    installPluginDirect,
   } = ctx;
 
   if (method === "GET" && pathname === "/api/apps") {
@@ -1200,13 +1218,20 @@ export async function handleAppsRoutes(
         !result.success &&
         result.error?.includes("requires a running agent runtime")
       ) {
-        // Fall back to the direct installer which writes directly to
-        // <stateDir>/plugins/installed without depending on a plugin-manager
-        // service. The runtime plugin resolver already searches that dir.
-        const { installPlugin: installPluginDirect } = await import(
-          "@elizaos/plugin-registry"
-        );
-        result = await installPluginDirect(name, recordProgress, version);
+        // Fall back to the host-provided direct installer, which writes
+        // directly to <stateDir>/plugins/installed without depending on a
+        // plugin-manager service. The runtime plugin resolver already
+        // searches that dir.
+        result = installPluginDirect
+          ? await installPluginDirect(name, recordProgress, version)
+          : {
+              success: false as const,
+              pluginName: name,
+              version: "",
+              installPath: "",
+              requiresRestart: false,
+              error: "Direct plugin installer unavailable",
+            };
       }
       if (!result.success) {
         const failure: PostInstallAppResponse = {

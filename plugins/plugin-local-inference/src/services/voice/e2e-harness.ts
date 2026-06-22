@@ -656,6 +656,115 @@ export function scoreVoiceEntityMatch(
 	};
 }
 
+// ── Echo / self-voice rejection: the agent's own TTS must not be a user turn ─
+
+export interface EchoRejectionSample {
+	/** Ground truth: this turn is the agent's own TTS echoed back through the mic. */
+	isAgentEcho: boolean;
+	/** The agent responded to (i.e. failed to suppress) this turn. */
+	responded: boolean;
+}
+
+export interface EchoRejectionResult {
+	kind: "echo-rejection";
+	/** Number of agent-echo turns scored. */
+	total: number;
+	/** Echo turns correctly suppressed (no response). */
+	rejected: number;
+	rejectionRate: number;
+	minRejectionRate: number;
+	passed: boolean;
+}
+
+/**
+ * Score self-echo rejection over the agent-echo turns only: each must be
+ * suppressed (no response). Real turns are scored by {@link scoreRespondDecision}
+ * — this isolates "did the agent talk to itself?".
+ */
+export function scoreEchoRejection(
+	samples: ReadonlyArray<EchoRejectionSample>,
+	opts: { minRejectionRate?: number } = {},
+): EchoRejectionResult {
+	const minRejectionRate = opts.minRejectionRate ?? 0.9;
+	const echo = samples.filter((s) => s.isAgentEcho);
+	const total = echo.length;
+	let rejected = 0;
+	for (const s of echo) if (!s.responded) rejected += 1;
+	const rejectionRate = total > 0 ? rejected / total : 0;
+	return {
+		kind: "echo-rejection",
+		total,
+		rejected,
+		rejectionRate: round4(rejectionRate),
+		minRejectionRate,
+		passed: total > 0 && rejectionRate >= minRejectionRate,
+	};
+}
+
+// ── Owner security: owner vs. intruder gating (never accept an impostor) ──────
+
+export interface OwnerSecuritySample {
+	/** The system judged this turn to be the device owner. */
+	predictedOwner: boolean;
+	/** Ground truth: this turn IS the owner. */
+	expectedOwner: boolean;
+}
+
+export interface OwnerSecurityResult {
+	kind: "owner-security";
+	total: number;
+	accuracy: number;
+	/** Accepted a non-owner AS the owner (the dangerous false-accept). */
+	impostorAcceptRate: number;
+	/** Rejected the real owner (a friction false-reject). */
+	ownerRejectRate: number;
+	minAccuracy: number;
+	maxImpostorAcceptRate: number;
+	passed: boolean;
+}
+
+/**
+ * Score owner-vs-intruder gating. Passing requires both high overall accuracy
+ * AND an impostor-accept rate at/below the (strict, default 0) ceiling —
+ * letting a stranger in is the failure mode that matters for security, so it is
+ * gated separately from plain accuracy.
+ */
+export function scoreOwnerSecurity(
+	samples: ReadonlyArray<OwnerSecuritySample>,
+	opts: { minAccuracy?: number; maxImpostorAcceptRate?: number } = {},
+): OwnerSecurityResult {
+	const minAccuracy = opts.minAccuracy ?? 0.9;
+	const maxImpostorAcceptRate = opts.maxImpostorAcceptRate ?? 0;
+	const total = samples.length;
+	let correct = 0;
+	let impostorAccept = 0;
+	let ownerReject = 0;
+	let owners = 0;
+	let nonOwners = 0;
+	for (const s of samples) {
+		if (s.predictedOwner === s.expectedOwner) correct += 1;
+		if (s.expectedOwner) owners += 1;
+		else nonOwners += 1;
+		if (s.predictedOwner && !s.expectedOwner) impostorAccept += 1;
+		if (!s.predictedOwner && s.expectedOwner) ownerReject += 1;
+	}
+	const accuracy = total > 0 ? correct / total : 0;
+	const impostorAcceptRate = nonOwners > 0 ? impostorAccept / nonOwners : 0;
+	return {
+		kind: "owner-security",
+		total,
+		accuracy: round4(accuracy),
+		impostorAcceptRate: round4(impostorAcceptRate),
+		ownerRejectRate: round4(owners > 0 ? ownerReject / owners : 0),
+		minAccuracy,
+		maxImpostorAcceptRate,
+		passed:
+			total > 0 &&
+			accuracy >= minAccuracy &&
+			impostorAcceptRate <= maxImpostorAcceptRate,
+	};
+}
+
 export type VoiceE2eCaseResult =
 	| TtsAsrRoundTripResult
 	| BargeInInterruptionResult
@@ -666,7 +775,9 @@ export type VoiceE2eCaseResult =
 	| RespondDecisionResult
 	| DiarizationResult
 	| EntityExtractionResult
-	| VoiceEntityMatchResult;
+	| VoiceEntityMatchResult
+	| EchoRejectionResult
+	| OwnerSecurityResult;
 
 export interface VoiceE2eSummary {
 	passed: boolean;

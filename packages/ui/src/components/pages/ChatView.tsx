@@ -13,7 +13,6 @@ import { type CodingAgentSession, client } from "../../api/client";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import { isRoutineCodingAgentMessage } from "../../chat";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
-import { deriveAgentReady } from "../../state/types";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
@@ -29,6 +28,7 @@ import {
   loadContinuousChatMode,
   saveContinuousChatMode,
 } from "../../state/persistence";
+import { deriveAgentReady } from "../../state/types";
 import { useApp } from "../../state/useApp";
 import { getVrmPreviewUrl } from "../../state/vrm";
 import type { TranslateFn } from "../../types";

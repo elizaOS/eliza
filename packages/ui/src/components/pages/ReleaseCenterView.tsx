@@ -290,7 +290,7 @@ export function ReleaseCenterView() {
   const channel = nativeUpdater?.channel ?? "—";
   const lastCheckAt = appStatus?.lastCheckAt;
   const lastChecked = lastCheckAt
-    ? new Date(lastCheckAt).toLocaleString()
+    ? new Date(lastCheckAt).toLocaleString("en-US")
     : t("releasecenter.NotYet", { defaultValue: "Not yet" });
   const updaterStatus = nativeUpdater?.updateReady
     ? t("releasecenterview.UpdateReady", { defaultValue: "Update ready" })

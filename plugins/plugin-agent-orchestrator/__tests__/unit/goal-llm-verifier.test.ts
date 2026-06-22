@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  buildAutoVerifyCorrection,
   buildVerificationPrompt,
   LLM_GOAL_VERIFIER_NAME,
   parseJudgeResponse,
@@ -85,6 +86,104 @@ describe("buildVerificationPrompt", () => {
     });
     expect(prompt).toMatch(/\[…evidence truncated…\]/);
     expect(prompt.length).toBeLessThan(20_000);
+  });
+
+  it("demands concrete proof per criterion and rejects unproven claims", () => {
+    const prompt = buildVerificationPrompt({
+      goal: "Ship X",
+      acceptanceCriteria: ["tests pass"],
+      completionEvidence: "I ran the tests and they pass",
+    });
+    // Frames the judge as a skeptical, evidence-first manager.
+    expect(prompt).toMatch(/demanding/i);
+    expect(prompt).toMatch(/concrete proof/i);
+    // Explicitly fails plausible-but-unproven claims.
+    expect(prompt).toMatch(/plausible-but-unproven claim FAILS/);
+    expect(prompt).toMatch(/is NOT proof/);
+  });
+
+  it("enumerates the acceptable kinds of proof (test/build, diff, URL, screenshot/trajectory)", () => {
+    const prompt = buildVerificationPrompt({
+      goal: "X",
+      acceptanceCriteria: ["c"],
+      completionEvidence: "e",
+    });
+    expect(prompt).toMatch(/passing test \/ build \/ typecheck/i);
+    expect(prompt).toMatch(/diff hunk/i);
+    expect(prompt).toMatch(/NON-loopback URL/i);
+    expect(prompt).toMatch(/screenshot or trajectory/i);
+  });
+
+  it("rejects loopback URLs as proof of a deploy", () => {
+    const prompt = buildVerificationPrompt({
+      goal: "X",
+      acceptanceCriteria: ["app is live"],
+      completionEvidence: "served at http://localhost:3000",
+    });
+    expect(prompt).toMatch(/localhost \/ 127\.0\.0\.1 \/ ::1 do NOT count/);
+  });
+
+  it("preserves the existing {passed,summary,missing} JSON schema unchanged", () => {
+    const prompt = buildVerificationPrompt({
+      goal: "X",
+      acceptanceCriteria: ["c"],
+      completionEvidence: "e",
+    });
+    expect(prompt).toMatch(/"passed": <true\|false>/);
+    expect(prompt).toMatch(/"summary":/);
+    expect(prompt).toMatch(/"missing":/);
+    expect(prompt).toMatch(/SINGLE JSON object/);
+    expect(prompt).toMatch(
+      /`passed` MUST be false whenever `missing` is non-empty/,
+    );
+  });
+});
+
+describe("buildAutoVerifyCorrection", () => {
+  it("names build/typecheck/test proof for a generic criterion", () => {
+    const text = buildAutoVerifyCorrection(["the parser handles nested input"]);
+    expect(text).toContain("the parser handles nested input");
+    expect(text).toMatch(/proof to produce:/);
+    expect(text).toMatch(/build\/typecheck\/tests/);
+    expect(text).toMatch(/diff hunk/i);
+  });
+
+  it("names a passing test/build output line for a test criterion", () => {
+    const text = buildAutoVerifyCorrection(["the unit test suite is green"]);
+    expect(text).toMatch(/passing output tail/);
+  });
+
+  it("demands a screenshot for a UI criterion", () => {
+    const text = buildAutoVerifyCorrection([
+      "the settings page renders the new toggle",
+    ]);
+    expect(text).toMatch(/screenshot/i);
+  });
+
+  it("demands a scenario trajectory for an agent-behavior criterion", () => {
+    const text = buildAutoVerifyCorrection([
+      "the agent replies with the weather when asked",
+    ]);
+    expect(text).toMatch(/scenario trajectory/i);
+    expect(text).toMatch(/live model/i);
+  });
+
+  it("demands a reachable non-loopback URL for a deploy criterion", () => {
+    const text = buildAutoVerifyCorrection([
+      "the app is deployed and reachable",
+    ]);
+    expect(text).toMatch(/non-loopback URL/i);
+    expect(text).toMatch(/localhost\/127\.0\.0\.1 URL does NOT count/);
+  });
+
+  it("instructs the worker to re-report WITH the proof inline", () => {
+    const text = buildAutoVerifyCorrection(["c1", "c2"]);
+    expect(text).toMatch(/report complete AGAIN/i);
+    expect(text).toMatch(/INCLUDE that proof inline/i);
+    expect(text).toMatch(/Claims without pasted evidence will fail/i);
+    // Each unmet criterion is listed with its own proof demand.
+    expect(text).toContain("- c1");
+    expect(text).toContain("- c2");
   });
 });
 

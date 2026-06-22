@@ -5,6 +5,7 @@
 "use client";
 
 import { BrandButton, BrandCard } from "@elizaos/ui";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Camera,
   ExternalLink,
@@ -37,6 +38,7 @@ export function ElizaAgentActions({
 }: ElizaAgentActionsProps) {
   const t = useT();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const jobActionById = useRef(new Map<string, string>());
@@ -203,7 +205,14 @@ export function ElizaAgentActions({
         messages[action] ??
           t("cloud.containers.agentActions.done", { defaultValue: "Done" }),
       );
-      window.location.reload();
+      // Synchronous (no-job) success: refresh the agent detail + list queries
+      // the page reads from instead of reloading the whole document.
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["agent", "agent", agentId],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["agent", "agents"] }),
+      ]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(

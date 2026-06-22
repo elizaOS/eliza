@@ -4891,6 +4891,15 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "EVAL_CODE",
+			description:
+				"Run a snippet of JavaScript in an isolated QuickJS sandbox (5s deadline, ",
+			parameters: [],
+			similes: ["RUN_CODE", "EVALUATE_CODE", "EXEC_JS", "RUN_JS", "EVAL_JS"],
+			descriptionCompressed:
+				"Run a snippet of JavaScript in an isolated QuickJS sandbox (5s deadline,",
+		},
+		{
 			name: "FACEWEAR_CONNECT",
 			description:
 				"Show connection instructions for a facewear device (Meta Quest, XReal, Even Realities, Apple Vision Pro).",
@@ -9484,6 +9493,7 @@ export const allActionsSpec = {
 						type: "string",
 						enum: [
 							"list",
+							"search",
 							"get",
 							"create",
 							"modify",

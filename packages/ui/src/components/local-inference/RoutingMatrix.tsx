@@ -8,6 +8,7 @@ import type {
   RoutingPolicy,
   RoutingPreferences,
 } from "../../api/client-local-inference";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
@@ -110,34 +111,28 @@ export function RoutingMatrix() {
     });
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    const refreshIfActive = async () => {
-      try {
-        const data = await client.getLocalInferenceRouting();
-        if (!active) return;
-        setRegistrations(data.registrations);
-        setPreferences(data.preferences);
-        setError(null);
-      } catch (err) {
-        if (active) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : t("routingmatrix.loadError", {
-                  defaultValue: "Failed to load routing",
-                }),
-          );
-        }
-      }
-    };
-    void refreshIfActive();
-    const interval = setInterval(() => void refreshIfActive(), 15_000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
+  const refreshRouting = useCallback(async () => {
+    try {
+      const data = await client.getLocalInferenceRouting();
+      setRegistrations(data.registrations);
+      setPreferences(data.preferences);
+      setError(null);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("routingmatrix.loadError", {
+              defaultValue: "Failed to load routing",
+            }),
+      );
+    }
   }, [t]);
+
+  useEffect(() => {
+    void refreshRouting();
+  }, [refreshRouting]);
+
+  useIntervalWhenDocumentVisible(() => void refreshRouting(), 15_000);
 
   useEffect(() => {
     let active = true;

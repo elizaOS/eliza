@@ -52,3 +52,20 @@ export * from "./tee";
 export type { TestCase, TestSuite } from "./testing";
 export * from "./tools";
 export * from "./trigger";
+export type {
+	EnabledViewKinds,
+	ViewKind,
+	ViewKindBearer,
+} from "./view-kind";
+// Explicit value + type re-exports: a bare `export *` here gets tree-shaken to
+// nothing because `plugin.ts` imports this module via `import type`, which leads
+// esbuild/vite to treat the whole module as type-only and drop its runtime
+// exports from the star re-export.
+export {
+	isAlwaysOnViewKind,
+	isViewKindEnabled,
+	isViewVisible,
+	resolveViewKind,
+	VIEW_KIND_META,
+	VIEW_KINDS,
+} from "./view-kind";

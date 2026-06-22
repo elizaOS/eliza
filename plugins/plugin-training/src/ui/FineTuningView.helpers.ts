@@ -2,7 +2,6 @@
 // FineTuningTuiView (in FineTuningView.tsx) and the `interact` capability handler
 // (in FineTuningView.interact.ts). Kept out of the .tsx so that file exports only
 // React components and stays Fast-Refresh-compatible in dev.
-import { client } from "@elizaos/ui";
 import type {
   TrainingDatasetRecord,
   TrainingJobRecord,
@@ -10,6 +9,7 @@ import type {
   TrainingStatus,
   TrainingTrajectoryList,
 } from "@elizaos/ui/api";
+import { client } from "@elizaos/ui/api";
 import { parseElizaOneBenchmarkTiers } from "../core/eliza1-benchmark-recipe.js";
 
 export function asArray<T>(value: T[] | null | undefined): T[] {

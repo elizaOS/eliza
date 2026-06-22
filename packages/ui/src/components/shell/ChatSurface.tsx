@@ -40,7 +40,12 @@ export function ChatSurface({
     void messageCount;
     const node = scrollRef.current;
     if (!node) return;
-    node.scrollTop = node.scrollHeight;
+    // Defer the bottom-follow write to the next frame so appending a message
+    // (every streamed turn) doesn't force a synchronous layout/reflow.
+    const frameId = requestAnimationFrame(() => {
+      node.scrollTop = node.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frameId);
   }, [messageCount]);
 
   return (

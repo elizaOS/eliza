@@ -1,5 +1,6 @@
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, resolve } from "node:path";
+import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { StorybookConfig } from "@storybook/react-vite";
 import tailwindcss from "@tailwindcss/vite";
@@ -71,6 +72,33 @@ const config: StorybookConfig = {
     // unstyled/invisible.
     cfg.plugins ??= [];
     cfg.plugins.push(tailwindcss());
+    // Native plugin dists use lazy platform loaders - `import("./web")` - with
+    // extensionless relative specifiers, and some dists ship without a given
+    // platform chunk. Rolldown's production build (unlike the dev server) does
+    // not apply `.js` extension resolution there and dies on the unresolved
+    // import. Resolve such imports to the real `.js` sibling when present, else
+    // an empty module, so the static catalog build never breaks on a
+    // platform-fallback the browser catalog never actually invokes.
+    cfg.plugins.push({
+      name: "eliza-ui-native-plugin-dist-platform-fallback",
+      enforce: "pre" as const,
+      resolveId(source: string, importer: string | undefined) {
+        if (!importer || !/[\\/]dist[\\/]/.test(importer)) return null;
+        if (!source.startsWith(".") || extname(source)) return null;
+        const baseDir = dirname(importer);
+        for (const ext of [".js", ".mjs", ".cjs"]) {
+          const candidate = resolve(baseDir, `${source}${ext}`);
+          if (existsSync(candidate)) return candidate;
+        }
+        return "\0eliza-empty-native-platform-fallback";
+      },
+      load(id: string) {
+        if (id === "\0eliza-empty-native-platform-fallback") {
+          return "export default {};";
+        }
+        return null;
+      },
+    });
     cfg.resolve ??= {};
     cfg.resolve.dedupe = [...(cfg.resolve.dedupe ?? []), "react", "react-dom"];
     // Array-form aliases (regex, first-match-wins) mirroring vitest.config.ts so
@@ -117,7 +145,11 @@ const config: StorybookConfig = {
         replacement: hostExternalStub,
       },
       {
-        find: /^@elizaos\/capacitor-(contacts|messages|mobile-signals|phone|system)$/,
+        // Native capacitor bridges → host-external stub. `camera` is included so
+        // the static catalog build never pulls plugin-native-camera's dist
+        // (gitignored / unbuilt on a clean CI checkout); the browser catalog
+        // never invokes the native bridge anyway.
+        find: /^@elizaos\/capacitor-(camera|contacts|messages|mobile-signals|phone|system)$/,
         replacement: hostExternalStub,
       },
       { find: /^llama-cpp-capacitor$/, replacement: hostExternalStub },

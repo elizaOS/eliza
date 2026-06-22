@@ -119,6 +119,67 @@ function packageRequiresRuntimeReload(
   return Boolean(previousPlugin?.adapter || nextPlugin?.adapter);
 }
 
+/**
+ * Two-phase reload rollback. A `plugin_reload` that throws partway leaves the
+ * in-memory plugin graph half-torn-down (plugins unloaded, replacements not
+ * registered) — a broken runtime. This undoes the partial mutation: it
+ * unregisters anything we newly registered, then re-registers (from their
+ * PREVIOUS resolved definitions) anything we unloaded, restoring the runtime to
+ * its pre-reload state. Returns true only when every step succeeded; a false
+ * means the graph may still be inconsistent and a full restart is the last
+ * resort. Best-effort and exception-safe — it never throws.
+ */
+async function rollbackPartialReload(opts: {
+  runtime: AgentRuntime;
+  previousResolvedMap: Map<string, ResolvedPlugin>;
+  nextResolvedMap: Map<string, ResolvedPlugin>;
+  unloadedPackages: string[];
+  registeredPackages: string[];
+}): Promise<boolean> {
+  const {
+    runtime,
+    previousResolvedMap,
+    nextResolvedMap,
+    unloadedPackages,
+    registeredPackages,
+  } = opts;
+  let ok = true;
+  // 1. Unregister anything we newly registered (its NEXT plugin name).
+  for (const packageName of registeredPackages) {
+    const name = nextResolvedMap.get(packageName)?.plugin.name;
+    if (!name) continue;
+    try {
+      await runtime.unloadPlugin(name);
+    } catch (error) {
+      ok = false;
+      logger.warn(
+        `[plugin-runtime-apply] rollback: failed to unregister newly-loaded ${packageName}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+  // 2. Re-register the plugins we unloaded, from their PREVIOUS definitions.
+  for (const packageName of unloadedPackages) {
+    const previousPlugin = previousResolvedMap.get(packageName)?.plugin;
+    if (!previousPlugin) {
+      ok = false;
+      continue;
+    }
+    try {
+      await runtime.registerPlugin(previousPlugin);
+    } catch (error) {
+      ok = false;
+      logger.warn(
+        `[plugin-runtime-apply] rollback: failed to re-register ${packageName} from previous definition: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+  return ok;
+}
+
 export async function applyPluginRuntimeMutation(
   options: ApplyPluginRuntimeMutationOptions,
 ): Promise<PluginRuntimeApplyResult> {
@@ -329,6 +390,42 @@ export async function applyPluginRuntimeMutation(
         error instanceof Error ? error.message : String(error)
       }`,
     );
+    // If we already mutated the graph, roll it back BEFORE any restart fallback
+    // so the runtime is never observed half-torn-down. A clean rollback restores
+    // the previous plugin graph; we then surface restart_required so the caller
+    // schedules a restart to actually apply the (failed) change — the old plugin
+    // keeps working in the interim instead of vanishing.
+    const mutated =
+      unloadedPackages.length > 0 ||
+      reloadedPackages.length > 0 ||
+      loadedPackages.length > 0;
+    if (mutated) {
+      const rolledBack = await rollbackPartialReload({
+        runtime,
+        previousResolvedMap,
+        nextResolvedMap,
+        unloadedPackages,
+        registeredPackages: [...reloadedPackages, ...loadedPackages],
+      });
+      if (rolledBack) {
+        logger.info(
+          `[plugin-runtime-apply] Rolled back partial reload for "${reason}"; runtime restored to previous plugin graph.`,
+        );
+        return {
+          mode: "restart_required",
+          requiresRestart: true,
+          restartedRuntime: false,
+          loadedPackages: [],
+          unloadedPackages: [],
+          reloadedPackages: [],
+          appliedConfigPackage,
+          reason: `${reason} (reload failed; rolled back to previous plugin graph)`,
+        };
+      }
+      logger.warn(
+        `[plugin-runtime-apply] Rollback after failed reload for "${reason}" was incomplete; falling back to runtime restart.`,
+      );
+    }
     const restartResult = await tryRuntimeRestart();
     return { ...restartResult, appliedConfigPackage };
   }

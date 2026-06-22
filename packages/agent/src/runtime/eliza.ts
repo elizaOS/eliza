@@ -4180,7 +4180,7 @@ export async function startEliza(
   } else if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
     try {
       const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-        "@elizaos/plugin-capacitor-bridge"
+        "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
       );
       await ensureMobileDeviceBridgeInferenceHandlers(runtime);
     } catch (err) {

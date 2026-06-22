@@ -13,7 +13,7 @@ import type {
   SynthesizeLocalTtsResult,
   StartOptions,
   StartResult,
-} from "./definitions";
+} from "./definitions.js";
 
 /**
  * Web fallback for `@elizaos/capacitor-bun-runtime`.

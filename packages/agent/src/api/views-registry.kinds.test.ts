@@ -1,0 +1,93 @@
+/**
+ * View-kind taxonomy filtering in the view registry.
+ *
+ * Verifies that `listViews` honours the four-kind taxonomy: system/release are
+ * always listed, developer is gated by `developerMode`, preview is gated by
+ * `includeAllKinds`, and the dashboard endpoint's `includeAllKinds: true`
+ * surfaces everything (so the client can apply the user's Settings toggles).
+ */
+
+import type { Plugin } from "@elizaos/core";
+import { resolveViewKind } from "@elizaos/core";
+import { afterEach, describe, expect, it } from "vitest";
+import { BUILTIN_VIEWS } from "./builtin-views.js";
+import { listViews, unregisterPluginViews } from "./views-registry.js";
+
+const PLUGIN_NAME = "@elizaos/plugin-view-kind-fixture";
+
+function fixturePlugin(): Plugin {
+  return {
+    name: PLUGIN_NAME,
+    description: "kind fixture",
+    views: [
+      { id: "vk-system", label: "Sys", viewKind: "system", bundleUrl: "x" },
+      { id: "vk-release", label: "Rel", viewKind: "release", bundleUrl: "x" },
+      { id: "vk-dev", label: "Dev", viewKind: "developer", bundleUrl: "x" },
+      { id: "vk-preview", label: "Prev", viewKind: "preview", bundleUrl: "x" },
+      // legacy gate still maps to developer
+      { id: "vk-legacy", label: "Legacy", developerOnly: true, bundleUrl: "x" },
+    ],
+  } as Plugin;
+}
+
+async function register() {
+  const { registerPluginViews } = await import("./views-registry.js");
+  await registerPluginViews(fixturePlugin(), "/tmp/does-not-matter");
+}
+
+function ids(entries: { id: string }[]): string[] {
+  return entries.map((e) => e.id).filter((id) => id.startsWith("vk-"));
+}
+
+afterEach(() => {
+  unregisterPluginViews(PLUGIN_NAME);
+});
+
+describe("BUILTIN_VIEWS categorization", () => {
+  it("sorts every built-in view into a kind, with the dev tools as developer", () => {
+    const byId = new Map(BUILTIN_VIEWS.map((v) => [v.id, resolveViewKind(v)]));
+    expect(byId.get("chat")).toBe("system");
+    expect(byId.get("settings")).toBe("system");
+    expect(byId.get("character")).toBe("system");
+    expect(byId.get("automations")).toBe("release");
+    expect(byId.get("transcripts")).toBe("release");
+    expect(byId.get("logs")).toBe("developer");
+    expect(byId.get("database")).toBe("developer");
+    expect(byId.get("memories")).toBe("developer");
+    expect(byId.get("trajectories")).toBe("developer");
+    // No built-in is left uncategorized (resolves to a concrete kind).
+    for (const v of BUILTIN_VIEWS) {
+      expect(["system", "release", "developer", "preview"]).toContain(
+        resolveViewKind(v),
+      );
+    }
+  });
+});
+
+describe("listViews kind filtering", () => {
+  it("default (no flags): only system + release", async () => {
+    await register();
+    expect(ids(listViews()).sort()).toEqual(["vk-release", "vk-system"]);
+  });
+
+  it("developerMode: adds developer (incl. legacy developerOnly), not preview", async () => {
+    await register();
+    expect(ids(listViews({ developerMode: true })).sort()).toEqual([
+      "vk-dev",
+      "vk-legacy",
+      "vk-release",
+      "vk-system",
+    ]);
+  });
+
+  it("includeAllKinds: surfaces every kind including preview", async () => {
+    await register();
+    expect(ids(listViews({ includeAllKinds: true })).sort()).toEqual([
+      "vk-dev",
+      "vk-legacy",
+      "vk-preview",
+      "vk-release",
+      "vk-system",
+    ]);
+  });
+});
