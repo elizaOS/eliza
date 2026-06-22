@@ -51,8 +51,11 @@ import {
   filesToImageAttachments,
   MAX_CHAT_IMAGES,
 } from "../../utils/image-attachment";
+import {
+  AssistantMessageBody,
+  type AssistantMessageBodySource,
+} from "../chat/AssistantMessageBody";
 import { MessageAttachments } from "../chat/MessageAttachments";
-import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import type { ShellMessage } from "./shell-state";
@@ -780,6 +783,30 @@ const ThreadLine = React.memo(function ThreadLine({
       }
     : null;
 
+  // Adapt the shell turn to the shared rich-body renderer. Memoized per turn so
+  // the memoized AssistantMessageBody isn't re-rendered on every parent tick
+  // (a live drag re-renders the overlay on every pointer frame). Only assistant
+  // turns ever feed this; `content` maps to the renderer's `text` field.
+  const assistantBodySource = React.useMemo<AssistantMessageBodySource>(
+    () => ({
+      id: message.id,
+      role: "assistant",
+      text: message.content,
+      ...(message.failureKind ? { failureKind: message.failureKind } : {}),
+      ...(message.reasoning ? { reasoning: message.reasoning } : {}),
+      ...(message.attachments?.length
+        ? { attachments: message.attachments }
+        : {}),
+    }),
+    [
+      message.id,
+      message.content,
+      message.failureKind,
+      message.reasoning,
+      message.attachments,
+    ],
+  );
+
   // A failed turn the user can't recover from without wiring a provider: render
   // a structured gate (not the raw error text) with a one-tap jump to Settings.
   if (isAssistant && message.failureKind === "no_provider") {
@@ -872,18 +899,28 @@ const ThreadLine = React.memo(function ThreadLine({
           // responding): show the rich status (thinking / running an action /
           // waking) INSIDE the bubble, anchored where the streamed text fills in
           // — then the text replaces it. Falls back to plain dots if no status.
-          <TurnStatusInner status={turnStatus ?? null} />
+          <>
+            <TurnStatusInner status={turnStatus ?? null} />
+            {message.attachments?.length ? (
+              <MessageAttachments attachments={message.attachments} />
+            ) : null}
+          </>
         ) : isUser ? (
-          <ThreadLineText content={message.content} />
+          // User turns stay raw text (slash command bolded); user uploads render
+          // through the standalone attachment renderer.
+          <>
+            <ThreadLineText content={message.content} />
+            {message.attachments?.length ? (
+              <MessageAttachments attachments={message.attachments} />
+            ) : null}
+          </>
         ) : (
-          message.content
+          // Settled assistant turn: route through the canonical rich renderer so
+          // markdown / [CONFIG:…] / widgets / permission cards / attachments and
+          // the reasoning block all render the same as the dashboard chat — not
+          // as raw marker text. AssistantMessageBody owns attachments + reasoning.
+          <AssistantMessageBody message={assistantBodySource} />
         )}
-        {message.attachments?.length ? (
-          <MessageAttachments attachments={message.attachments} />
-        ) : null}
-        {isAssistant && message.reasoning?.trim() ? (
-          <ThinkingBlock reasoning={message.reasoning} />
-        ) : null}
         <AnimatePresence>
           {copied ? (
             <motion.span

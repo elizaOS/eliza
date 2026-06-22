@@ -177,7 +177,9 @@ function ImageTile({
           // Reserve a stable box via aspect-ratio so the row height is fixed
           // before the image loads — avoids layout shift / scroll-anchor yank.
           // The type carries no intrinsic dimensions, so a 4:3 default is used.
-          className="block aspect-[4/3] max-h-80 w-full object-cover"
+          // `object-contain` letterboxes the full image inside that reserved box
+          // (mirrors the video branch + lightbox) so non-4:3 content isn't cropped.
+          className="block aspect-[4/3] max-h-80 w-full object-contain"
         />
       </button>
       <div className="pointer-events-none absolute right-1.5 top-1.5 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
