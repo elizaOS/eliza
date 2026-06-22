@@ -89,6 +89,7 @@
 		"test:asr:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/asr-real-smoke.ts",
 		"probe:sd-cpp": "node scripts/probe-sd-cpp.mjs --human",
 		"voice:workbench": "bun run scripts/voice-workbench.ts",
+		"corpus:generate": "bun run scripts/generate-voice-corpus.ts",
 		"clean": "rm -rf dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
