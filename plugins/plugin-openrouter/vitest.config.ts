@@ -9,7 +9,9 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: ["__tests__/**/*.test.ts"],
-    exclude: ["**/*.live.test.ts"],
+    // `*.harness.test.ts` boot a real PGLite runtime and need the workspace
+    // source aliases from vitest.harness.config.ts — run via `test:harness`.
+    exclude: ["**/*.live.test.ts", "**/*.harness.test.ts"],
     // Run test files sequentially to avoid shared state issues
     sequence: {
       shuffle: false,
