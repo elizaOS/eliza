@@ -1338,6 +1338,50 @@ const iosJscExternals =
       ]
     : undefined;
 
+// Pin every `@elizaos/plugin-local-inference/<subpath>` import to the WORKSPACE
+// `plugins/plugin-local-inference/src/...` tree. Without this, subpath imports
+// resolve through `node_modules/@elizaos/plugin-local-inference` (a symlink Bun
+// does NOT realpath) while the plugin's own relative imports resolve to the
+// workspace path — so shared modules like `services/device-tier.ts` get bundled
+// TWICE in two module scopes, and Bun's minifier emits a dangling
+// `selectBestEliza1Fit2` reference into one copy (crashing classifyDeviceTier
+// on-device). Forcing one tree de-dupes them. The bare package name and
+// `/runtime/embedding-presets` are intentionally stubbed earlier (null on
+// mobile), so this only catches the real subpaths (/services, /runtime, /routes,
+// /local-inference-routes, /voice-workbench, /src/*).
+const localInferenceWorkspaceSrc = path.resolve(
+  repoRoot,
+  "plugins",
+  "plugin-local-inference",
+  "src",
+);
+const localInferenceDedupePlugin = {
+  name: "eliza-mobile-local-inference-dedupe",
+  setup(build) {
+    build.onResolve(
+      { filter: /^@elizaos\/plugin-local-inference\// },
+      (args) => {
+        // Leave the explicitly-stubbed subpath to the stub plugin.
+        if (args.path === "@elizaos/plugin-local-inference/runtime/embedding-presets")
+          return undefined;
+        let sub = args.path.slice("@elizaos/plugin-local-inference/".length);
+        if (sub.startsWith("src/")) sub = sub.slice(4);
+        const cleaned = sub.replace(/\.(js|ts|tsx)$/, "");
+        for (const cand of [
+          `${cleaned}.ts`,
+          `${cleaned}.tsx`,
+          `${cleaned}/index.ts`,
+          `${cleaned}/index.tsx`,
+        ]) {
+          const full = path.join(localInferenceWorkspaceSrc, cand);
+          if (existsSync(full)) return { path: full, namespace: "file" };
+        }
+        return undefined;
+      },
+    );
+  },
+};
+
 console.log("[build-mobile] starting Bun.build...");
 const buildResult = await Bun.build({
   entrypoints: [entry],
@@ -1395,6 +1439,7 @@ const buildResult = await Bun.build({
     exactMobileStubPlugin,
     capabilityRouterStubPlugin,
     stubResolverPlugin,
+    localInferenceDedupePlugin,
     workspaceSrcFallbackPlugin,
     stripStaleJsArtifactsPlugin,
     // ios-jsc: actively mark Node built-ins as external via onResolve so
