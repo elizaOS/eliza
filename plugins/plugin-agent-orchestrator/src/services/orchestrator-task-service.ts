@@ -246,7 +246,8 @@ function readAttemptReflections(
   for (const entry of raw) {
     if (!entry || typeof entry !== "object") continue;
     const r = entry as Record<string, unknown>;
-    if (typeof r.attempt !== "number" || typeof r.summary !== "string") continue;
+    if (typeof r.attempt !== "number" || typeof r.summary !== "string")
+      continue;
     out.push({
       attempt: r.attempt,
       summary: r.summary,

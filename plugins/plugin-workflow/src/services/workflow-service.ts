@@ -156,10 +156,7 @@ function normalizeGeneratedNodeParameterShapes(
  * description, and an exact/prefix name match beats a substring. Returns 0 for
  * no match. Pure + exported so the ranking is unit-testable without a DB.
  */
-export function scoreWorkflowMatch(
-  workflow: WorkflowDefinitionResponse,
-  query: string
-): number {
+export function scoreWorkflowMatch(workflow: WorkflowDefinitionResponse, query: string): number {
   const q = query.trim().toLowerCase();
   if (!q) return 0;
   const name = String(workflow.name ?? '').toLowerCase();
@@ -924,10 +921,7 @@ export class WorkflowService extends Service {
    * description, ranked best-match-first (#8913). Lets a user find "the Slack
    * workflow" from a chat message without knowing its id.
    */
-  async searchWorkflows(
-    query: string,
-    userId?: string
-  ): Promise<WorkflowDefinitionResponse[]> {
+  async searchWorkflows(query: string, userId?: string): Promise<WorkflowDefinitionResponse[]> {
     const workflows = await this.listWorkflows(userId);
     return rankWorkflowsByQuery(workflows, query);
   }

@@ -71,9 +71,9 @@ describe("buildGoalPrompt attempt reflections (#8899)", () => {
 
   it("omits the Past Attempt Failures section when there are no reflections", () => {
     expect(buildGoalPrompt(baseInput)).not.toContain("Past Attempt Failures");
-    expect(buildGoalPrompt({ ...baseInput, attemptReflections: [] })).not.toContain(
-      "Past Attempt Failures",
-    );
+    expect(
+      buildGoalPrompt({ ...baseInput, attemptReflections: [] }),
+    ).not.toContain("Past Attempt Failures");
   });
 
   it("replays prior failed attempts (summary + missing) on re-spawn", () => {
