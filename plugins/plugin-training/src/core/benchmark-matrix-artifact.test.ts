@@ -40,15 +40,15 @@ describe("benchmark matrix artifacts", () => {
           score: 0.8,
         },
         {
-          modelId: "qwen3.5-0.8b-base",
-          tier: "qwen3.5-0.8b",
+          modelId: "qwen3.5-2b-base",
+          tier: "qwen3.5-2b",
           variant: "base",
           benchmark: "eliza_harness_action_reason",
           score: 0.4,
         },
         {
-          modelId: "qwen3.5-0.8b-trained",
-          tier: "qwen3.5-0.8b",
+          modelId: "qwen3.5-2b-trained",
+          tier: "qwen3.5-2b",
           variant: "trained",
           benchmark: "eliza_harness_action_reason",
           score: 0.5,
@@ -109,8 +109,8 @@ describe("benchmark matrix artifacts", () => {
           score: 0.55,
         },
         {
-          modelId: "eliza-1-2b-base",
-          tier: "2b",
+          modelId: "eliza-1-4b-base",
+          tier: "4b",
           variant: "base",
           benchmark: "eliza_harness_action_selection",
           score: 0.45,
@@ -125,10 +125,10 @@ describe("benchmark matrix artifacts", () => {
       ],
     });
 
-    expect(artifact.tiers).toEqual(["2b", "2b", "27b"]);
+    expect(artifact.tiers).toEqual(["2b", "4b", "27b"]);
     expect(artifact.comparisons.map((comparison) => comparison.tier)).toEqual([
       "2b",
-      "2b",
+      "4b",
       "27b",
     ]);
   });
@@ -185,8 +185,8 @@ describe("benchmark matrix artifacts", () => {
           score: 0.7,
         },
         {
-          modelId: "eliza-1-2b-trained",
-          tier: "2b",
+          modelId: "eliza-1-4b-trained",
+          tier: "4b",
           variant: "trained",
           benchmark: "eliza_harness_action_selection",
           score: 0.5,
@@ -207,8 +207,8 @@ describe("benchmark matrix artifacts", () => {
         comparison.referenceScore,
       ]),
     ).toEqual([
-      ["2b", 0.8],
       ["2b", 0.7],
+      ["4b", 0.8],
     ]);
   });
 

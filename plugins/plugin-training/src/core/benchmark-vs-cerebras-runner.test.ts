@@ -19,7 +19,7 @@ describe("benchmark_vs_cerebras runner", () => {
     expect(args.slice(0, 7)).toEqual([
       join(trainingRoot, "scripts", "benchmark_vs_cerebras.py"),
       "--tiers",
-      "qwen3.5-0.8b,qwen3.5-2b,qwen3.5-4b,qwen3.5-9b,qwen3.6-27b",
+      "qwen3.5-2b,qwen3.5-4b,qwen3.5-9b,qwen3.6-27b",
       "--benchmark",
       "eliza_harness_action_selection",
       "--variants",
@@ -31,12 +31,12 @@ describe("benchmark_vs_cerebras runner", () => {
     const trainingRoot = "/repo/packages/training";
     const args = buildBenchmarkVsCerebrasArgs(
       {
-        tiers: "qwen3.5-0.8b",
+        tiers: "2b",
         benchmark: "eliza_harness_action_selection",
         variants: "both",
         maxSamples: 12,
         resultsDb: "/tmp/results.db",
-        trainedModelPath: "/tmp/checkpoints/eliza-1-0_8b/final",
+        trainedModelPath: "/tmp/checkpoints/eliza-1-2b/final",
         datasetVersion: "eliza-native-v1",
         codeCommit: "deadbeef",
         dryRun: true,
@@ -51,7 +51,7 @@ describe("benchmark_vs_cerebras runner", () => {
     expect(args).toEqual([
       join(trainingRoot, "scripts", "benchmark_vs_cerebras.py"),
       "--tiers",
-      "qwen3.5-0.8b",
+      "qwen3.5-2b",
       "--benchmark",
       "eliza_harness_action_selection",
       "--variants",
@@ -63,7 +63,7 @@ describe("benchmark_vs_cerebras runner", () => {
       "--output-dir",
       "/tmp/run",
       "--trained-model-path",
-      "/tmp/checkpoints/eliza-1-0_8b/final",
+      "/tmp/checkpoints/eliza-1-2b/final",
       "--dry-run",
       "--results-db",
       "/tmp/results.db",
@@ -77,10 +77,10 @@ describe("benchmark_vs_cerebras runner", () => {
   });
 
   it("maps Eliza tier aliases to training registry keys", () => {
-    expect(benchmarkVsCerebrasTierList("0_8b,2b,4b,9b,27b")).toBe(
-      "qwen3.5-0.8b,qwen3.5-2b,qwen3.5-4b,qwen3.5-9b,qwen3.6-27b",
+    expect(benchmarkVsCerebrasTierList("2b,4b,9b,27b")).toBe(
+      "qwen3.5-2b,qwen3.5-4b,qwen3.5-9b,qwen3.6-27b",
     );
     expect(benchmarkVsCerebrasTierList("all")).toBe("all");
-    expect(benchmarkVsCerebrasTierList("qwen3.5-0.8b")).toBe("qwen3.5-0.8b");
+    expect(benchmarkVsCerebrasTierList("qwen3.5-2b")).toBe("qwen3.5-2b");
   });
 });
