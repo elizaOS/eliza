@@ -58,6 +58,15 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		category: "status",
 		acceptsArgs: false,
 	},
+	{
+		key: "tasks",
+		nativeName: "tasks",
+		description: "List active coding sub-agent sessions and their progress",
+		textAliases: ["/tasks", "/coding", "/agents"],
+		scope: "both",
+		category: "status",
+		acceptsArgs: false,
+	},
 
 	// Session commands
 	{

@@ -49,6 +49,8 @@ import type {
 import {
   pollAnthropicUsage,
   pollCodexUsage,
+  pollMoonshotUsage,
+  pollZaiUsage,
   recordCall as recordUsageEntry,
 } from "./account-usage.js";
 import { installCodingAgentSelectorBridge } from "./coding-account-bridge.js";
@@ -238,8 +240,13 @@ export class AccountPool {
         );
       }
       case "quota-aware": {
+        // Skip an account once EITHER its short (session) OR long (weekly)
+        // window crosses the threshold. Anthropic ships both windows and an
+        // account can be fine on the 5h window but near-exhausted on the 7d
+        // one (or vice-versa); honoring only sessionPct would keep routing to
+        // an account that's about to hard-limit on its weekly cap.
         const underQuota = eligible.filter(
-          (a) => (a.usage?.sessionPct ?? 0) < QUOTA_AWARE_SKIP_PCT,
+          (a) => quotaUtilizationPct(a) < QUOTA_AWARE_SKIP_PCT,
         );
         const pool = underQuota.length > 0 ? underQuota : eligible;
         return [...pool].sort(byPriorityThenAge)[0] ?? null;
@@ -373,8 +380,19 @@ export class AccountPool {
         );
       }
       usage = await pollCodexUsage(accessToken, codexAccountId, opts?.fetch);
+    } else if (
+      account.providerId === "zai-api" ||
+      account.providerId === "zai-coding"
+    ) {
+      // z.ai publishes no usage/quota endpoint; this records "usage
+      // unavailable" (sessionPct stays undefined) without a network call.
+      usage = await pollZaiUsage(accessToken, opts?.fetch);
+    } else if (account.providerId === "moonshot-api") {
+      // Moonshot validates the credential + flags a depleted wallet (throws on
+      // HTTP error / available_balance <= 0); no utilization percentage exists.
+      usage = await pollMoonshotUsage(accessToken, opts?.fetch);
     } else {
-      // No probe defined for direct API providers.
+      // No probe defined for the remaining direct API providers.
       return;
     }
 
@@ -516,6 +534,19 @@ function findAccountById(
   const direct = all[accountId];
   if (direct) return direct;
   return Object.values(all).find((account) => account.id === accountId) ?? null;
+}
+
+/**
+ * Worst-case quota utilization for the quota-aware strategy: the max of the
+ * session (short-window) and weekly (long-window) percentages, each defaulting
+ * to 0 when the provider doesn't report it. An account is "near quota" if
+ * *either* window is hot.
+ */
+function quotaUtilizationPct(account: LinkedAccountConfig): number {
+  return Math.max(
+    account.usage?.sessionPct ?? 0,
+    account.usage?.weeklyPct ?? 0,
+  );
 }
 
 function byPriorityThenAge(

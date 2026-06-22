@@ -1,5 +1,5 @@
 import type { LinkedAccountConfig } from "@elizaos/shared";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AccountPool } from "./account-pool";
 
 function account(
@@ -266,5 +266,146 @@ describe("AccountPool provider-scoped account resolution", () => {
     await expect(
       pool.select({ providerId: "openai-codex", strategy: "least-used" }),
     ).resolves.toMatchObject({ id: "least-used" });
+  });
+
+  it("quota-aware skips an account when weeklyPct (not sessionPct) is over the threshold", async () => {
+    const accounts = {
+      // Cool 5h window but near-exhausted weekly window — must be skipped.
+      "anthropic-subscription:weekly-hot": account("anthropic-subscription", {
+        id: "weekly-hot",
+        priority: 0,
+        usage: { sessionPct: 10, weeklyPct: 92, refreshedAt: 1 },
+      }),
+      // Both windows comfortably under the 85% skip threshold — winner.
+      "anthropic-subscription:cool": account("anthropic-subscription", {
+        id: "cool",
+        priority: 1,
+        usage: { sessionPct: 30, weeklyPct: 40, refreshedAt: 1 },
+      }),
+    };
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async () => {},
+    });
+
+    await expect(
+      pool.select({
+        providerId: "anthropic-subscription",
+        strategy: "quota-aware",
+      }),
+    ).resolves.toMatchObject({ id: "cool" });
+  });
+
+  it("quota-aware falls back to all accounts when every window is hot", async () => {
+    const accounts = {
+      "anthropic-subscription:a": account("anthropic-subscription", {
+        id: "a",
+        priority: 0,
+        usage: { sessionPct: 99, weeklyPct: 10, refreshedAt: 1 },
+      }),
+      "anthropic-subscription:b": account("anthropic-subscription", {
+        id: "b",
+        priority: 1,
+        usage: { sessionPct: 10, weeklyPct: 99, refreshedAt: 1 },
+      }),
+    };
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async () => {},
+    });
+
+    // Both are over-quota (one on session, one on weekly) — fall back to the
+    // full pool sorted by priority rather than returning null.
+    await expect(
+      pool.select({
+        providerId: "anthropic-subscription",
+        strategy: "quota-aware",
+      }),
+    ).resolves.toMatchObject({ id: "a" });
+  });
+
+  it("refreshUsage records usage-unavailable for z.ai without a network call", async () => {
+    const writes: LinkedAccountConfig[] = [];
+    const accounts = {
+      "zai-coding:plan": account("zai-coding", { id: "plan" }),
+    };
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async (next) => {
+        writes.push(next);
+      },
+    });
+    const fetchSpy = vi.fn();
+
+    await pool.refreshUsage("plan", "zai-token", {
+      providerId: "zai-coding",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.providerId).toBe("zai-coding");
+    expect(writes[0]?.health).toBe("ok");
+    expect(writes[0]?.usage?.sessionPct).toBeUndefined();
+    expect(writes[0]?.usage?.refreshedAt).toBeTypeOf("number");
+  });
+
+  it("refreshUsage probes Moonshot balance and records usage-unavailable when funded", async () => {
+    const writes: LinkedAccountConfig[] = [];
+    const accounts = {
+      "moonshot-api:key": account("moonshot-api", {
+        id: "key",
+        source: "api-key",
+      }),
+    };
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async (next) => {
+        writes.push(next);
+      },
+    });
+    const fetchSpy = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: { available_balance: 12.5 } }), {
+          status: 200,
+        }),
+    );
+
+    await pool.refreshUsage("key", "moonshot-token", {
+      providerId: "moonshot-api",
+      fetch: fetchSpy as unknown as typeof fetch,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.providerId).toBe("moonshot-api");
+    expect(writes[0]?.health).toBe("ok");
+    expect(writes[0]?.usage?.sessionPct).toBeUndefined();
+  });
+
+  it("refreshUsage propagates a Moonshot probe failure (depleted wallet) so the caller can flag it", async () => {
+    const accounts = {
+      "moonshot-api:key": account("moonshot-api", {
+        id: "key",
+        source: "api-key",
+      }),
+    };
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async () => {},
+    });
+    const fetchSpy = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: { available_balance: 0 } }), {
+          status: 200,
+        }),
+    );
+
+    await expect(
+      pool.refreshUsage("key", "moonshot-token", {
+        providerId: "moonshot-api",
+        fetch: fetchSpy as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(/quota exhausted/i);
   });
 });

@@ -38,6 +38,11 @@ export interface UsageEntry {
 
 const ANTHROPIC_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
+// Moonshot (Kimi) exposes a documented *balance* endpoint (USD wallet), not a
+// quota-utilization endpoint. We probe it to validate the credential and detect
+// a depleted wallet; there is no session/weekly percentage to report.
+// Docs: https://platform.moonshot.ai/docs/api/balance
+const MOONSHOT_BALANCE_URL = "https://api.moonshot.ai/v1/users/me/balance";
 type FetchLike = typeof fetch;
 
 function utilizationToPct(value: unknown): number | undefined {
@@ -178,6 +183,91 @@ export async function pollCodexUsage(
     ...(sessionPct !== undefined ? { sessionPct } : {}),
     ...(resetsAt !== undefined ? { resetsAt } : {}),
   };
+}
+
+/**
+ * "Probe" z.ai / GLM usage.
+ *
+ * Reality check (verified June 2026): z.ai exposes **no** programmatic
+ * usage / quota / rate-limit / balance endpoint for either the general API
+ * (`zai-api`) or the Coding Plan (`zai-coding`). Coding-plan quota progress is
+ * only viewable in the web dashboard (https://z.ai/manage-apikey/subscription),
+ * and the general API is pay-as-you-go with no per-window utilization figure.
+ *
+ * Rather than invent a fake endpoint, this probe makes **no network call** and
+ * returns a usage-unavailable snapshot — `sessionPct` / `weeklyPct` stay
+ * `undefined`, only `refreshedAt` is stamped. Callers that want to *validate*
+ * a z.ai credential should hit `/models` (see `accounts-routes.ts`); this probe
+ * deliberately reports "no usage data" instead of throwing, so it never strands
+ * a healthy z.ai account out of rotation.
+ *
+ * `accessToken` / `fetchImpl` are accepted for signature parity with the other
+ * probes and to keep the door open if z.ai ships a usage API later.
+ */
+export async function pollZaiUsage(
+  _accessToken: string,
+  _fetchImpl: FetchLike = fetch,
+): Promise<UsageSnapshot> {
+  // No documented usage endpoint — usage is unavailable, not zero.
+  return { refreshedAt: Date.now() };
+}
+
+interface MoonshotBalancePayload {
+  code?: number;
+  scode?: string;
+  status?: boolean;
+  data?: {
+    available_balance?: number;
+    voucher_balance?: number;
+    cash_balance?: number;
+  };
+}
+
+/**
+ * Probe Moonshot / Kimi's balance endpoint.
+ *
+ * Endpoint: `GET https://api.moonshot.ai/v1/users/me/balance`
+ * Headers : `Authorization: Bearer <accessToken>`
+ *
+ * Reality check (verified June 2026): Moonshot is pay-as-you-go and publishes a
+ * **wallet balance** endpoint, not a quota-utilization endpoint. There is no
+ * 5-hour / weekly window to convert into `sessionPct` / `weeklyPct`, so those
+ * stay `undefined` — a balance in USD doesn't map onto a 0..100 utilization.
+ *
+ * What this probe *does* buy us: it validates the credential (throws on any
+ * HTTP error, with the status in the message so the keep-alive sweep can route
+ * 401/403 → needs-reauth and 429 → rate-limited), and it surfaces a depleted
+ * wallet — Moonshot rejects inference once `available_balance <= 0`, so we
+ * throw a quota-shaped error in that case rather than reporting the account as
+ * healthy. The successful, funded case returns a usage-unavailable snapshot.
+ */
+export async function pollMoonshotUsage(
+  accessToken: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<UsageSnapshot> {
+  const res = await fetchImpl(MOONSHOT_BALANCE_URL, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`Moonshot usage probe failed: HTTP ${res.status}`);
+  }
+  const payload = (await res.json()) as MoonshotBalancePayload;
+  const available = payload.data?.available_balance;
+  if (typeof available === "number" && Number.isFinite(available)) {
+    // Moonshot blocks inference once the wallet is empty — treat that as a
+    // quota exhaustion so the sweep flags the account (rate-limited backoff)
+    // instead of leaving it "ok" and letting every call 4xx downstream.
+    if (available <= 0) {
+      throw new Error(
+        "Moonshot usage probe: account quota exhausted (available_balance <= 0)",
+      );
+    }
+  }
+  // Funded + valid credential, but no utilization percentage to report.
+  return { refreshedAt: Date.now() };
 }
 
 // Local JSONL counters.

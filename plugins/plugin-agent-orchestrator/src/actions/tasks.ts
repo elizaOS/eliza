@@ -416,6 +416,15 @@ async function runPromptViaSmithers(
 ): Promise<void> {
   const startedAt = Date.now();
   try {
+    // KNOWN GAP (single-turn): the durable Smithers graph supports a multi-turn
+    // agent loop + provision/approval/submit/parallel fan-out, but this caller
+    // intentionally passes only { timeoutMs, model } — so runDurableTask falls
+    // back to maxTurns:1 with none of the optional steps. That keeps this a
+    // behaviour-preserving drop-in for the old direct-prompt path. Forwarding a
+    // real cap (e.g. SubAgentRouter's round-trip cap) as maxTurns or wiring up
+    // provision/submit would change live agent behaviour and needs real-LLM
+    // trajectory evidence first. The exact config is pinned in
+    // __tests__/unit/smithers-production-wiring.test.ts so any change is visible.
     const { lastResponse } = await runDurableTask(service, session, task, {
       timeoutMs,
       model,

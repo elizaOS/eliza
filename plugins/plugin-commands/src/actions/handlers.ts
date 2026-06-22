@@ -40,6 +40,7 @@ export const GATE_SAFE_COMMAND_KEYS: readonly string[] = [
 	"context",
 	"models",
 	"usage",
+	"tasks",
 ];
 
 const GATE_SAFE_KEYS: ReadonlySet<string> = new Set(GATE_SAFE_COMMAND_KEYS);
@@ -59,6 +60,86 @@ const CATEGORY_ORDER: CommandCategory[] = [
 	"docks",
 	"skills",
 ];
+
+/**
+ * Minimal structural view of a coding sub-agent session, as exposed by the
+ * orchestrator's `ACP_SERVICE` / `ACP_SUBPROCESS_SERVICE`. plugin-commands does
+ * NOT depend on `@elizaos/plugin-agent-orchestrator` (it depends only on
+ * `@elizaos/core`); the service is reached at runtime via `runtime.getService`
+ * and read through this structural shape. The fields here are the public read
+ * fields of the orchestrator's `SessionInfo` that `/tasks` renders — keep them
+ * loose so an absent orchestrator (or an older one) degrades gracefully.
+ */
+interface CodingSessionView {
+	id: string;
+	name?: string;
+	agentType?: string;
+	workdir?: string;
+	status?: string;
+	metadata?: { label?: unknown } & Record<string, unknown>;
+}
+
+/** Structural view of the orchestrator session service we read sessions from. */
+interface CodingSessionService {
+	listSessions(): CodingSessionView[] | Promise<CodingSessionView[]>;
+}
+
+/** Statuses meaning a session is finished — never shown as "active". */
+const TERMINAL_SESSION_STATUSES: ReadonlySet<string> = new Set([
+	"completed",
+	"stopped",
+	"error",
+	"errored",
+	"cancelled",
+]);
+
+/**
+ * Resolve the orchestrator's session service without importing the orchestrator
+ * package. Mirrors how the orchestrator's own actions look it up
+ * (`getService("ACP_SERVICE") ?? getService("ACP_SUBPROCESS_SERVICE")`), which
+ * is also how plugin-commands accesses every runtime service. Returns undefined
+ * when no orchestrator is loaded, so `/tasks` works on any agent.
+ */
+function getCodingSessionService(
+	runtime: IAgentRuntime,
+): CodingSessionService | undefined {
+	const get = runtime.getService?.bind(runtime);
+	if (!get) return undefined;
+	const raw = get("ACP_SERVICE") ?? get("ACP_SUBPROCESS_SERVICE") ?? undefined;
+	if (!raw) return undefined;
+	const candidate = raw as unknown as Partial<CodingSessionService>;
+	if (typeof candidate.listSessions !== "function") return undefined;
+	return candidate as CodingSessionService;
+}
+
+/** A session's display label — explicit metadata label, else name, else short id. */
+function sessionLabel(session: CodingSessionView): string {
+	const label = session.metadata?.label;
+	if (typeof label === "string" && label.trim()) return label.trim();
+	if (session.name?.trim()) return session.name.trim();
+	return session.id.slice(0, 8).toLowerCase();
+}
+
+/** Render the active coding sub-agent sessions deterministically. */
+function formatCodingSessions(sessions: CodingSessionView[]): string {
+	const active = sessions.filter(
+		(s) => !TERMINAL_SESSION_STATUSES.has(String(s.status ?? "").toLowerCase()),
+	);
+	if (active.length === 0) {
+		return "No active coding sub-agent sessions.";
+	}
+	const lines = [`Active coding sub-agents (${active.length}):`];
+	for (const session of active) {
+		const parts = [
+			`- ${sessionLabel(session)} [${session.id.slice(0, 8).toLowerCase()}]`,
+			session.agentType ? String(session.agentType) : null,
+			session.status ? String(session.status) : "unknown",
+			session.workdir ? `in ${session.workdir}` : null,
+		].filter(Boolean);
+		lines.push(parts.join(" "));
+	}
+	return lines.join("\n");
+}
 
 function reply(text: string): CommandResult {
 	return { handled: true, reply: text, shouldContinue: false };
@@ -154,6 +235,17 @@ export async function runCommand(
 				`Active settings: ${describeSettings(settings)}`,
 			].filter(Boolean) as string[];
 			return reply(lines.join("\n"));
+		}
+
+		case "tasks": {
+			const service = getCodingSessionService(runtime);
+			if (!service) {
+				return reply(
+					"No coding orchestrator is available on this agent, so there are no sub-agent sessions to list.",
+				);
+			}
+			const sessions = await Promise.resolve(service.listSessions());
+			return reply(formatCodingSessions(sessions));
 		}
 
 		case "models":
