@@ -281,7 +281,7 @@ export class LocalInferenceEngine {
 	/**
 	 * In-process FFI backend — the sole text runtime, served by the FUSED
 	 * `libelizainference` (`desktop-fused-ffi-backend-runtime.ts`). Text gen,
-	 * same-file MTP speculative decoding, KV-cache quant, native tokenization,
+	 * MTP speculative decoding, KV-cache quant, native tokenization,
 	 * and vision-describe all run through the one fused lib the voice subsystem
 	 * already loads (ABI v9). libllama has been retired: a fused lib that is
 	 * absent or lacks the v9 capabilities is a loud `LocalInferenceUnavailable`
@@ -1158,7 +1158,7 @@ export class LocalInferenceEngine {
 		/**
 		 * Use the already-loaded eliza-1 text model as the EOT classifier — see
 		 * `voice/eliza1-eot-scorer.ts`. When set, the runtime skips the
-		 * separate LiveKit/Turnsense ONNX and reads P(`<|im_end|>`) directly
+		 * separate LiveKit/Turnsense ONNX and reads P(`<end_of_turn>`) directly
 		 * off the live model.
 		 *
 		 * `"auto"` (default): use eliza-1 EOT when `ELIZA_VOICE_EOT_BACKEND=eliza-1`
@@ -1297,7 +1297,7 @@ export class LocalInferenceEngine {
 		}
 		// Fused end-of-turn scorer (ABI v11): the model-based turn detector now
 		// runs in-process through libelizainference — a composite of the fused
-		// semantic scorer (P(<|im_end|>) over the loaded text model) and the
+		// semantic scorer (P(<end_of_turn>) over the loaded text model) and the
 		// heuristic syntactic co-signal. Built only when the loaded fused build
 		// wires the v11 EOT symbol; null on a pre-v11 library, in which case the
 		// resolver falls through to the heuristic-only classifier.

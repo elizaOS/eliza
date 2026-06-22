@@ -73,18 +73,18 @@ LOCAL_MODEL_ROOT: Final[Path] = (
 )
 DEFAULT_BUNDLE_DIR: Final[Path] = LOCAL_MODEL_ROOT / "eliza-1-2b.bundle"
 DEFAULT_TEXT_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
-    LOCAL_MODEL_ROOT / "qwen3.5-4b-mtp" / "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
-    LOCAL_MODEL_ROOT / "qwen3.5-4b-mtp.gguf",
+    LOCAL_MODEL_ROOT / "gemma4-e4b-mtp" / "Qwen_gemma-4-E4B-Q4_K_M.gguf",
+    LOCAL_MODEL_ROOT / "gemma4-e4b-mtp.gguf",
 )
 DEFAULT_DRAFTER_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT
-    / "qwen3.5-4b-mtp-drafter-q4"
-    / "Qwen3.5-4B-MTP-Q4_K_M.repaired.gguf",
+    / "gemma4-e4b-mtp-drafter-q4"
+    / "gemma-4-E4B-MTP-Q4_K_M.repaired.gguf",
     LOCAL_MODEL_ROOT
-    / "qwen3.5-4b-mtp-drafter-q4"
-    / "Qwen3.5-4B-MTP-Q4_K_M.gguf",
-    LOCAL_MODEL_ROOT / "qwen3.5-4b-mtp-drafter-q4.repaired.gguf",
-    LOCAL_MODEL_ROOT / "qwen3.5-4b-mtp-drafter-q4.gguf",
+    / "gemma4-e4b-mtp-drafter-q4"
+    / "gemma-4-E4B-MTP-Q4_K_M.gguf",
+    LOCAL_MODEL_ROOT / "gemma4-e4b-mtp-drafter-q4.repaired.gguf",
+    LOCAL_MODEL_ROOT / "gemma4-e4b-mtp-drafter-q4.gguf",
 )
 VISION_TIERS: Final[set[str]] = set(ELIZA_1_VISION_TIERS)
 MTP_TIERS: Final[set[str]] = set(ELIZA_1_MTP_TIERS)

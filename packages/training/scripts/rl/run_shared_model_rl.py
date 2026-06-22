@@ -353,7 +353,7 @@ def main():
         description="Shared-model continuous RL training",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--model", default="Qwen/Qwen3.5-9B", help="Model name (9B for Nebius H100)")
+    parser.add_argument("--model", default="google/gemma-4-12B", help="Model name (9B for Nebius H100)")
     parser.add_argument("--device", default="cuda", help="Device (cuda/cpu)")
     parser.add_argument("--agents-per-team", type=int, default=10, help="Agents per team")
     parser.add_argument("--optimizer", default="apollo", choices=["apollo", "adamw"])

@@ -157,7 +157,7 @@ function buildVisionPrompt(userPrompt?: string): string {
 	// the encoded image tokens. The `N` must match the `image_data[*].id`
 	// we send in the body; we use 12 because llama-server's stock
 	// example uses small integer ids — any positive integer works.
-	return `<|im_start|>user\n[img-12]\n${ask}<|im_end|>\n<|im_start|>assistant\n`;
+	return `<start_of_turn>user\n[img-12]\n${ask}<end_of_turn>\n<start_of_turn>model\n`;
 }
 
 function shape(

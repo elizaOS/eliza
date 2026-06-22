@@ -62,7 +62,7 @@ class ArchetypeTrainingConfig:
     """Configuration for archetype-specific training"""
 
     # Model settings
-    base_model: str = "Qwen/Qwen3.5-4B"
+    base_model: str = "google/gemma-4-E4B"
 
     # Training hyperparameters
     training_steps: int = 100

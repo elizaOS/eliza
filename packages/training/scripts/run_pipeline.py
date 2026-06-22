@@ -22,13 +22,13 @@ Stages (skippable individually; see flags):
 Usage:
     # Validation smoke on the smallest Eliza-1 size, tiny 1k-per-source mix.
     uv run --extra train python scripts/run_pipeline.py \
-        --registry-key qwen3.5-0.8b \
+        --registry-key gemma4-e2b \
         --from-scratch --sample-per-source 1000 \
         --epochs 1 --eval-mode smoke
 
     # Only build the validation dataset (skip everything else).
     uv run python scripts/run_pipeline.py \
-        --registry-key qwen3.5-0.8b --from-scratch --sample-per-source 1000 \
+        --registry-key gemma4-e2b --from-scratch --sample-per-source 1000 \
         --skip-base-bench --skip-finetune --skip-quantize --skip-bench
 
     # Production run on eliza-1-2b.
@@ -41,7 +41,7 @@ Usage:
         --trajectory-export ../trajectories/export.jsonl --epochs 1
 
     # Cloud run for eliza-1-4b — use scripts/train_vast.sh, which wraps
-    # run_pipeline.py with the active Qwen3.5 registry defaults.
+    # run_pipeline.py with the active Gemma 4 registry defaults.
 """
 
 from __future__ import annotations
@@ -216,7 +216,7 @@ def _format_ok_rate(summary: dict | None) -> float | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--registry-key", required=True,
-                    help="One of: qwen3.5-0.8b, qwen3.5-2b, qwen3.5-4b, "
+                    help="One of: gemma4-e2b, gemma4-e4b, "
                          "eliza-1-0_8b, eliza-1-2b, eliza-1-4b. "
                          "Internal upstream keys are aliases.")
     ap.add_argument("--run-name", default=None,
@@ -351,7 +351,7 @@ def main() -> int:
         help="Comma-separated list of quantizers to apply post-training. "
              "Default = polarquant (4-bit weights) + turboquant V-cache "
              "sidecar + qjl (1-bit K cache). fused_turboquant is excluded: "
-             "incompatible with Qwen3.5 hybrid linear+full attention arch.",
+             "incompatible with Gemma 4 dense attention arch.",
     )
     mb = ap.add_mutually_exclusive_group()
     mb.add_argument("--eliza1-bundle", dest="eliza1_bundle", action="store_true",

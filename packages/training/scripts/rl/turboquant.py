@@ -1,3 +1,11 @@
+"""TurboQuant KV-cache.
+
+FLAGGED DEAD CODE (Gemma 4 cutover): the Qwen3_5DynamicCache subclass path
+below targets the old hybrid-attention base's dynamic cache. Gemma 4 is dense,
+so this hybrid-cache subclass never instantiates for the active base. Retained
+until the owner removes the hybrid TurboQuant path.
+"""
+
 from __future__ import annotations
 
 import math

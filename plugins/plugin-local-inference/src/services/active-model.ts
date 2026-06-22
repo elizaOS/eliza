@@ -574,10 +574,10 @@ export async function resolveLocalInferenceLoadArgs(
 		// here; `applyCatalogDefaults` owns the chat-side context. The MTP
 		// block only owns the speculative draft window.
 		//
-		// Two MTP shapes: same-file MTP embeds the NextN head in the text
-		// GGUF (no `drafterFile` in the catalog) and runs with no separate
-		// draft model; separate-drafter MTP declares a `drafterFile` and
-		// requires the bundled drafter GGUF to be present on disk.
+		// Two MTP shapes: embedded-draft-head MTP embeds the draft head in
+		// the text GGUF (no `drafterFile` in the catalog) and runs with no
+		// separate draft model; separate-drafter MTP declares a `drafterFile`
+		// and requires the bundled drafter GGUF to be present on disk.
 		const sameFileMtp = !mtp.drafterFile;
 		const drafterPath = sameFileMtp
 			? undefined

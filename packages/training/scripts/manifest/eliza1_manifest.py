@@ -125,31 +125,31 @@ QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT: Final[Mapping[str, tuple[str, ...]]] = {
 }
 CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": (
-        "Qwen/Qwen3.5-0.8B",
-        "Qwen/Qwen3.5-0.8B-Base",
-        "unsloth/Qwen3.5-0.8B-GGUF",
+        "google/gemma-4-E2B",
+        "google/gemma-4-E2B-Base",
+        "unsloth/gemma-4-E2B-GGUF",
     ),
     "2b": (
-        "Qwen/Qwen3.5-2B",
-        "Qwen/Qwen3.5-2B-Base",
-        "unsloth/Qwen3.5-2B-GGUF",
+        "google/gemma-4-E2B",
+        "google/gemma-4-E2B-Base",
+        "unsloth/gemma-4-E2B-GGUF",
     ),
     "4b": (
-        "Qwen/Qwen3.5-4B",
-        "Qwen/Qwen3.5-4B-Base",
-        "unsloth/Qwen3.5-4B-GGUF",
+        "google/gemma-4-E4B",
+        "google/gemma-4-E4B-Base",
+        "unsloth/gemma-4-E4B-GGUF",
     ),
     "9b": (
-        "Qwen/Qwen3.5-9B",
-        "unsloth/Qwen3.5-9B-GGUF",
+        "google/gemma-4-12B",
+        "unsloth/gemma-4-12B-GGUF",
     ),
     "27b": (
-        "Qwen/Qwen3.6-27B",
-        "unsloth/Qwen3.6-27B-GGUF",
+        "google/gemma-4-31B",
+        "unsloth/gemma-4-31B-GGUF",
     ),
     "27b-256k": (
-        "Qwen/Qwen3.6-27B",
-        "unsloth/Qwen3.6-27B-GGUF",
+        "google/gemma-4-31B",
+        "unsloth/gemma-4-31B-GGUF",
     ),
 }
 
@@ -388,13 +388,13 @@ def read_gguf_context_length(path: Path) -> int | None:
     """Return the declared GGUF training/native context length, if readable.
 
     Filename suffixes are release labels. The actual context capability comes
-    from GGUF metadata such as ``qwen35.context_length``; staging should prefer
+    from GGUF metadata such as ``gemma4.context_length``; staging should prefer
     that when available so a stale ``32k`` source filename cannot force a false
     below-floor manifest.
     """
 
     preferred = (
-        "qwen35.context_length",
+        "gemma4.context_length",
         "qwen36.context_length",
         "qwen3.context_length",
         "llama.context_length",
@@ -1419,10 +1419,9 @@ def canonical_qwen_source_repo_error(
 ) -> str | None:
     """Return an error for known Qwen ASR/embedding provenance misspellings.
 
-    Text tiers are tier-specific: 0_8b/2b/4b/9b are Qwen3.5, while the 27B
-    release family is Qwen3.6. ASR and embedding are separate Qwen3 components
-    with their own published GGUF repos. The release pipeline must not invent
-    matching Qwen3.5/Qwen3.6 ASR/embedding names.
+    All text tiers (2b/4b/9b/27b) are Gemma 4. ASR and embedding are separate
+    Qwen3 components with their own published GGUF repos. The release pipeline
+    must not invent matching Gemma 4 ASR/embedding names.
     """
 
     if slot == "text" and isinstance(tier, str):
@@ -1521,7 +1520,7 @@ def build_manifest(
     recipe_manifest: Mapping[str, Mapping[str, Any]] | None = None,
     # Optional provenance block. Pass for a `base-v1` bundle:
     #   {"releaseState": "base-v1", "finetuned": False,
-    #    "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-4B", "file": "..."},
+    #    "sourceModels": {"text": {"repo": "google/gemma-4-E4B", "file": "..."},
     #                     "voice": {"repo": "Serveurperso/OmniVoice-GGUF"}, ...}}
     provenance: Mapping[str, Any] | None = None,
     bundle_id: str | None = None,

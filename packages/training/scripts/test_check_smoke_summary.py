@@ -31,10 +31,10 @@ def _passing_payload(**overrides):
 
 
 def test_validate_smoke_summary_accepts_architecture_aware_pass(tmp_path: Path):
-    _write_summary(tmp_path, "qwen3.5-0.8b", _passing_payload())
+    _write_summary(tmp_path, "gemma4-e2b", _passing_payload())
 
     ok, detail = validate_smoke_summary(
-        "qwen3.5-0.8b",
+        "gemma4-e2b",
         max_age_hours=24,
         min_applicable_pct=80,
         root=tmp_path,
@@ -47,7 +47,7 @@ def test_validate_smoke_summary_accepts_architecture_aware_pass(tmp_path: Path):
 
 def test_validate_smoke_summary_rejects_missing_file(tmp_path: Path):
     ok, detail = validate_smoke_summary(
-        "qwen3.5-0.8b",
+        "gemma4-e2b",
         max_age_hours=24,
         min_applicable_pct=80,
         root=tmp_path,
@@ -59,10 +59,10 @@ def test_validate_smoke_summary_rejects_missing_file(tmp_path: Path):
 
 
 def test_validate_smoke_summary_rejects_legacy_schema(tmp_path: Path):
-    _write_summary(tmp_path, "qwen3.5-0.8b", {"schemaVersion": 1})
+    _write_summary(tmp_path, "gemma4-e2b", {"schemaVersion": 1})
 
     ok, detail = validate_smoke_summary(
-        "qwen3.5-0.8b",
+        "gemma4-e2b",
         max_age_hours=24,
         min_applicable_pct=80,
         root=tmp_path,
@@ -73,12 +73,12 @@ def test_validate_smoke_summary_rejects_legacy_schema(tmp_path: Path):
 
 
 def test_validate_smoke_summary_rejects_stale_summary(tmp_path: Path):
-    path = _write_summary(tmp_path, "qwen3.5-0.8b", _passing_payload())
+    path = _write_summary(tmp_path, "gemma4-e2b", _passing_payload())
     old = time.time() - 49 * 3600
     os.utime(path, (old, old))
 
     ok, detail = validate_smoke_summary(
-        "qwen3.5-0.8b",
+        "gemma4-e2b",
         max_age_hours=24,
         min_applicable_pct=80,
         root=tmp_path,
@@ -91,12 +91,12 @@ def test_validate_smoke_summary_rejects_stale_summary(tmp_path: Path):
 def test_validate_smoke_summary_rejects_failed_status(tmp_path: Path):
     _write_summary(
         tmp_path,
-        "qwen3.5-0.8b",
+        "gemma4-e2b",
         _passing_payload(status="fail", failed_steps=["bench-sft"]),
     )
 
     ok, detail = validate_smoke_summary(
-        "qwen3.5-0.8b",
+        "gemma4-e2b",
         max_age_hours=24,
         min_applicable_pct=80,
         root=tmp_path,
@@ -107,10 +107,10 @@ def test_validate_smoke_summary_rejects_failed_status(tmp_path: Path):
 
 
 def test_validate_smoke_summary_rejects_low_applicable_pct(tmp_path: Path):
-    _write_summary(tmp_path, "qwen3.5-0.8b", _passing_payload(applicable_passed_pct=75.0))
+    _write_summary(tmp_path, "gemma4-e2b", _passing_payload(applicable_passed_pct=75.0))
 
     ok, detail = validate_smoke_summary(
-        "qwen3.5-0.8b",
+        "gemma4-e2b",
         max_age_hours=24,
         min_applicable_pct=80,
         root=tmp_path,

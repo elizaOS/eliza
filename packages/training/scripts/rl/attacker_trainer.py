@@ -16,7 +16,7 @@ Usage:
     from training.attacker_trainer import AttackerTrainer, AttackerConfig
 
     config = AttackerConfig(
-        base_model="Qwen/Qwen3.5-4B",
+        base_model="google/gemma-4-E4B",
         defender_endpoint="http://localhost:8002/v1",
     )
     trainer = AttackerTrainer(config)
@@ -38,18 +38,18 @@ logger = logging.getLogger(__name__)
 class AttackerConfig:
     """Configuration for attacker co-training."""
 
-    base_model: str = "Qwen/Qwen3.5-4B"
+    base_model: str = "google/gemma-4-E4B"
 
     # Attacker inference endpoint (vLLM serving attacker model)
     attacker_endpoint: str = "http://localhost:8001/v1"
-    attacker_model_name: str = "Qwen/Qwen3.5-4B"
+    attacker_model_name: str = "google/gemma-4-E4B"
     attacker_api_key: str = ""
     attacker_temperature: float = 0.7
     attacker_max_tokens: int = 200
 
     # Defender inference endpoint (vLLM serving defender model)
     defender_endpoint: str = "http://localhost:8002/v1"
-    defender_model_name: str = "Qwen/Qwen3.5-4B"
+    defender_model_name: str = "google/gemma-4-E4B"
     defender_api_key: str = ""
     defender_temperature: float = 0.0
     defender_max_tokens: int = 200

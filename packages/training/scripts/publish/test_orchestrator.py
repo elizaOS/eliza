@@ -144,7 +144,7 @@ def _build_fixture_bundle(
                     "sha256": drafter_sha,
                     "targetCheckpointSha256": text_sha,
                     "matchesTargetCheckpoint": True,
-                    "architecture": "qwen35",
+                    "architecture": "gemma4",
                     "finalElizaWeights": True,
                 },
                 "tokenizerCompatibility": {
@@ -472,7 +472,7 @@ def _build_fixture_bundle(
 
 def _source_models() -> dict[str, dict[str, str]]:
     return {
-        "text": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "text.gguf"},
+        "text": {"repo": "unsloth/gemma-4-E4B-GGUF", "file": "text.gguf"},
         "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
         "drafter": {
             "repo": ELIZA_1_HF_REPO,
@@ -480,7 +480,7 @@ def _source_models() -> dict[str, dict[str, str]]:
         },
         "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
         "vad": {"repo": "ggml-org/whisper-vad"},
-        "vision": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "mmproj.gguf"},
+        "vision": {"repo": "unsloth/gemma-4-E4B-GGUF", "file": "mmproj.gguf"},
     }
 
 
@@ -1048,10 +1048,10 @@ def test_base_v1_release_evidence_is_allowed_and_writes_manifest_provenance(
     assert manifest["provenance"]["releaseState"] == "base-v1"
     assert manifest["provenance"]["finetuned"] is False
     assert manifest["provenance"]["sourceModels"]["text"]["repo"] == (
-        "unsloth/Qwen3.5-4B-GGUF"
+        "unsloth/gemma-4-E4B-GGUF"
     )
     assert manifest["provenance"]["sourceModels"]["vision"]["repo"] == (
-        "unsloth/Qwen3.5-4B-GGUF"
+        "unsloth/gemma-4-E4B-GGUF"
     )
 
 

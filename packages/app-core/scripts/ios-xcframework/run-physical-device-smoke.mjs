@@ -1437,7 +1437,7 @@ char * eliza_ios_text_benchmark_run(const char * model_path, const char * mode) 
     const int use_cpu = mode && strcmp(mode, "cpu") == 0;
     const char * ctx_params_cpu = "{\\"n_ctx\\":512,\\"n_batch\\":512,\\"n_ubatch\\":128,\\"no_gpu_devices\\":true,\\"n_gpu_layers\\":0,\\"flash_attn\\":false,\\"use_mmap\\":true,\\"n_threads\\":4}";
     const char * ctx_params_metal = "{\\"n_ctx\\":512,\\"n_batch\\":512,\\"n_ubatch\\":128,\\"n_gpu_layers\\":999,\\"flash_attn\\":true,\\"use_mmap\\":true,\\"n_threads\\":4}";
-    const char * completion_params = "{\\"n_predict\\":32,\\"temperature\\":0,\\"seed\\":42,\\"top_k\\":1,\\"n_threads\\":4,\\"stop\\":[\\"<|im_end|>\\"]}";
+    const char * completion_params = "{\\"n_predict\\":32,\\"temperature\\":0,\\"seed\\":42,\\"top_k\\":1,\\"n_threads\\":4,\\"stop\\":[\\"<end_of_turn>\\"]}";
     const char * prompt = "You are Eliza. Write one short benchmark sentence.";
     int64_t ctx = llama_init_context(model_path, use_cpu ? ctx_params_cpu : ctx_params_metal);
     if (ctx <= 0) {

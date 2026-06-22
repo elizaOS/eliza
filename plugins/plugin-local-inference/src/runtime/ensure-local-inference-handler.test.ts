@@ -371,7 +371,7 @@ describe("ensureLocalInferenceHandler", () => {
 			description: "A tiny synthetic image.",
 		});
 		expect(arbiterState.requestVisionDescribe).toHaveBeenCalledWith({
-			modelKey: "qwen3-vl",
+			modelKey: "gemma-vl",
 			payload: {
 				image: { kind: "dataUrl", dataUrl: "data:image/png;base64,AAAA" },
 				prompt: "describe this",

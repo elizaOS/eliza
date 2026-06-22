@@ -101,7 +101,7 @@ describe("Eliza-1 manifest schema constants", () => {
 	});
 
 	it("uses Eliza-1 size-tier ids and tokenizer family", () => {
-		expect(ELIZA_1_TOKENIZER_FAMILY).toBe("qwen35");
+		expect(ELIZA_1_TOKENIZER_FAMILY).toBe("gemma");
 		expect(ELIZA_1_TIERS).toEqual(["2b", "4b", "9b", "27b", "27b-256k"]);
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
 			expect.arrayContaining(["2b", "4b"]),
@@ -176,7 +176,7 @@ describe("validateManifest — valid input", () => {
 			enabled: true,
 			capability: "eagle3",
 			specType: "draft-eagle3",
-			model: "RedHatAI/Qwen3.5-2B-EAGLE3-head",
+			model: "RedHatAI/gemma-4-E2B-EAGLE3-head",
 			maxDraftTokens: 3,
 		};
 		m.evals.eagle3 = {
@@ -382,7 +382,7 @@ describe("validateManifest — contract rejections", () => {
 		}
 	});
 
-	it("rejects separate drafter artifacts for same-file MTP tiers", () => {
+	it("rejects separate drafter artifacts for embedded-draft-head MTP tiers", () => {
 		const m = baseManifest("9b");
 		m.lineage.drafter = {
 			base: "eliza-1-mtp-drafter",
@@ -579,13 +579,13 @@ describe("canSetAsDefault", () => {
 			releaseState: "base-v1-candidate",
 			finetuned: false,
 			sourceModels: {
-				text: { repo: "Qwen/Qwen3.5-9B" },
+				text: { repo: "google/gemma-4-12B-base" },
 				voice: { repo: "Serveurperso/OmniVoice-GGUF" },
 				drafter: { repo: "elizaos/eliza-1" },
 				asr: { repo: "ggml-org/Qwen3-ASR-GGUF" },
 				embedding: { repo: "Qwen/Qwen3-Embedding-GGUF" },
 				vad: { repo: "onnx-community/silero-vad" },
-				vision: { repo: "unsloth/Qwen3.5-9B-GGUF" },
+				vision: { repo: "unsloth/gemma-4-12B-GGUF" },
 			},
 		};
 		expect(canSetAsDefault(m, device)).toBe(true);

@@ -132,15 +132,15 @@ def _download_gguf(tier: str, hf_token: str | None) -> Path | None:
 
 
 def _format_prompt_for_llama(system: str, user: str, tools: list | None = None) -> str:
-    """Format a prompt using Qwen3.5 chat template compatible with llama.cpp."""
+    """Format a prompt using Gemma 4 chat template compatible with llama.cpp."""
     parts = []
     if system:
-        parts.append(f"<|im_start|>system\n{system}<|im_end|>")
+        parts.append(f"<start_of_turn>system\n{system}<end_of_turn>")
     if tools:
         tool_json = json.dumps(tools, indent=2)
-        parts.append(f"<|im_start|>tools\n{tool_json}<|im_end|>")
-    parts.append(f"<|im_start|>user\n{user}<|im_end|>")
-    parts.append("<|im_start|>assistant\n")
+        parts.append(f"<start_of_turn>tools\n{tool_json}<end_of_turn>")
+    parts.append(f"<start_of_turn>user\n{user}<end_of_turn>")
+    parts.append("<start_of_turn>model\n")
     return "\n".join(parts)
 
 
@@ -220,7 +220,7 @@ def test_gguf(gguf_path: Path, tier: str, max_samples: int = 10) -> dict[str, An
         )
         try:
             t1 = time.perf_counter()
-            out = llm(prompt_text, max_tokens=256, temperature=0.0, stop=["<|im_end|>"])
+            out = llm(prompt_text, max_tokens=256, temperature=0.0, stop=["<end_of_turn>"])
             elapsed = time.perf_counter() - t1
             text = out["choices"][0]["text"] if out["choices"] else ""
             ok = _check_tool_call_in_output(text, prompt_spec["expected_tool"])
@@ -245,7 +245,7 @@ def test_gguf(gguf_path: Path, tier: str, max_samples: int = 10) -> dict[str, An
         prompt_text = _format_prompt_for_llama(ELIZA_SYSTEM_PROMPT, user_text)
         try:
             t1 = time.perf_counter()
-            out = llm(prompt_text, max_tokens=128, temperature=0.0, stop=["<|im_end|>"])
+            out = llm(prompt_text, max_tokens=128, temperature=0.0, stop=["<end_of_turn>"])
             elapsed = time.perf_counter() - t1
             text = out["choices"][0]["text"] if out["choices"] else ""
             ok = _check_text_response(text)
@@ -279,7 +279,7 @@ def test_gguf(gguf_path: Path, tier: str, max_samples: int = 10) -> dict[str, An
                     continue
                 system_msg = req.get("system", ELIZA_SYSTEM_PROMPT)
                 prompt_text = _format_prompt_for_llama(system_msg, user_msg)
-                out = llm(prompt_text, max_tokens=256, temperature=0.0, stop=["<|im_end|>"])
+                out = llm(prompt_text, max_tokens=256, temperature=0.0, stop=["<end_of_turn>"])
                 text = out["choices"][0]["text"] if out["choices"] else ""
                 ok = _check_text_response(text)
                 if ok:

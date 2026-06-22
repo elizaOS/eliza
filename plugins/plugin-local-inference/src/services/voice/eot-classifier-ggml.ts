@@ -436,7 +436,10 @@ export class LiveKitGgmlTurnDetector implements EotClassifier {
 		// Resolve the <end_of_turn> token id from the GGUF's BPE tokenizer.
 		// Passing `specialTokens=true` tells the tokenizer to recognize
 		// the literal as the corresponding special token.
-		const endOfTurnTokens = llamaModel.tokenize(LIVEKIT_END_OF_TURN_TOKEN, true);
+		const endOfTurnTokens = llamaModel.tokenize(
+			LIVEKIT_END_OF_TURN_TOKEN,
+			true,
+		);
 		if (endOfTurnTokens.length !== 1) {
 			await llamaModel.dispose().catch(() => undefined);
 			throw new EotGgmlUnavailableError(

@@ -289,7 +289,7 @@ class SharedModelConfig:
     """Configuration for the shared-model continuous RL trainer."""
 
     # Model — default to 9B for Nebius H100 (fits with APOLLO at ~59GB/80GB)
-    model_name: str = "Qwen/Qwen3.5-9B"
+    model_name: str = "google/gemma-4-12B"
     device: str = "cuda"
 
     # Teams

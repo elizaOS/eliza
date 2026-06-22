@@ -15,9 +15,10 @@
 //   layers map but are not the same enum.
 // - The schema URL `https://elizaos.ai/schemas/eliza-1.manifest.v1.json` is
 //   exported as a JSON Schema sibling file in this directory.
-// - Eliza-1 speculative decoding is native llama.cpp same-file MTP. MTP-enabled
-//   tiers carry the NextN head in the primary text GGUF, so `files.mtp` is
-//   intentionally empty for current bundles.
+// - Eliza-1 speculative decoding is native llama.cpp MTP. Embedded-draft-head
+//   tiers carry the draft head in the primary text GGUF, so `files.mtp` is
+//   intentionally empty for those bundles; separate-drafter tiers ship the
+//   drafter GGUF as the official Gemma 4 drafter.
 // - Per-sub-model versioning (kokoro, omnivoice, turn-detector, voice-emotion,
 //   diarizer, speaker-encoder, vad, wakeword, embedding, asr) lives in
 //   `packages/shared/src/local-inference/voice-models.ts` and the matching
@@ -33,8 +34,8 @@ export const ELIZA_1_MANIFEST_SCHEMA_URL =
 	"https://elizaos.ai/schemas/eliza-1.manifest.v1.json" as const;
 
 // The shared Eliza-1 BPE vocabulary exported so runtime code can assert it.
-export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
-export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
+export const ELIZA_1_TOKENIZER_FAMILY = "gemma" as const;
+export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 262_144 as const;
 
 // Tiers — size-ordered across the active Eliza-1 bundles. 2b is the
 // smallest/entry tier.
@@ -123,9 +124,9 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 //   a >64k text file, so additional tiers cannot publish long-context text
 //   without TCQ.
 // - QJL/Polar KV-cache kernels are intentionally not required for the shipped
-//   qwen35 tiers: the available QJL1_256/fused route is head_dim=128 while
-//   these models are head_dim=256. Keep F16 KV until a compatible kernel or
-//   model variant lands.
+//   Gemma 4 tiers: those head_dim=128 kernels do not apply to Gemma's MQA
+//   geometry (n_head_kv=1) with dual head dims (512 global / 256 SWA). Gemma 4
+//   uses stock q8_0 KV.
 //
 // Q4 is the release text quant baseline. TCQ is part of the release contract
 // for the full text ladder, including the smallest 2B bundle.
@@ -246,7 +247,7 @@ export const Eliza1FilesSchema = z.object({
 	// Eliza-1 EOT LoRA adapter — optional, complements `turn`. When
 	// present, the runtime layers this adapter onto the in-process
 	// drafter at voice-session start (`voice/eliza1-eot-scorer.ts`) so
-	// P(`<|im_end|>`) calibration matches a fine-tuned EOT head without
+	// P(`<end_of_turn>`) calibration matches a fine-tuned EOT head without
 	// shipping a second base model. When both `turn` and `eotLoraAdapter`
 	// are present the operator picks via `ELIZA_VOICE_EOT_BACKEND` or
 	// `startVoiceSession({ useEliza1Eot })`. Training recipe:

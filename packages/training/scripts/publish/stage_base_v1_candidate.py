@@ -14,7 +14,7 @@ Usage:
         --tier 2b \
         --text-gguf checkpoints/eliza-1-2b-apollo-<run>/eliza1-optimized/gguf/final-Q4_POLAR.gguf \
         --text-sidecar checkpoints/eliza-1-2b-apollo-<run>/eliza1-optimized/gguf/final-Q4_POLAR.gguf.eliza1.json \
-        --drafter-gguf /tmp/eliza1-eval-models/qwen3_5-mtp-drafter-2b.gguf \
+        --drafter-gguf /tmp/eliza1-eval-models/gemma4-mtp-drafter-2b.gguf \
         --drafter-source <license-reviewed drafter source> \
         --vision-gguf /tmp/eliza1-eval-models/mmproj-2b.gguf \
         --out /tmp/eliza1-stage/eliza-1-2b
@@ -55,11 +55,11 @@ RAM_BUDGET_MB = {
 }
 # Per-tier upstream text base used by lineage and README/provenance prose.
 TEXT_BASE_BY_TIER = {
-    "0_8b": "Qwen/Qwen3.5-0.8B",
-    "2b": "Qwen/Qwen3.5-2B",
-    "4b": "Qwen/Qwen3.5-4B",
-    "9b": "Qwen/Qwen3.5-9B",
-    "27b": "Qwen/Qwen3.6-27B",
+    "0_8b": "google/gemma-4-E2B",
+    "2b": "google/gemma-4-E2B",
+    "4b": "google/gemma-4-E4B",
+    "9b": "google/gemma-4-12B",
+    "27b": "google/gemma-4-31B",
 }
 TEXT_CONTEXT_BY_TIER = {
     tier: PP.CONTEXTS_BY_TIER[tier][0]
@@ -72,9 +72,9 @@ TEXT_CTX_BY_TIER = {
 DRAFTER_SOURCE_BY_TIER = {
     "0_8b": None,
     "2b": None,
-    "4b": "z-lab/Qwen3.5-4B-MTP",
-    "9b": "z-lab/Qwen3.5-9B-MTP",
-    "27b": "spiritbuun/Qwen3.6-27B-MTP-GGUF",
+    "4b": "z-lab/gemma-4-E4B-MTP",
+    "9b": "z-lab/gemma-4-12B-MTP",
+    "27b": "spiritbuun/gemma-4-31B-MTP-GGUF",
 }
 
 # Frozen tier-agnostic voice/ASR/VAD/cache bytes live in the canonical model repo.
@@ -241,8 +241,8 @@ def main(argv: list[str] | None = None) -> int:
             "sha256": drafter_sha,
             "source": drafter_source,
             "note": (
-                f"MTP drafter for the {tier} Qwen3.5/Qwen3.6 text target. "
-                "It must share the 248320-token Qwen3.5/Qwen3.6-family tokenizer with the target "
+                f"MTP drafter for the {tier} Gemma 4 text target. "
+                "It must share the 262144-token Gemma 4 tokenizer with the target "
                 "so speculative decoding is correct. See the drafter source repo "
                 "for whether this candidate is distilled or a tokenizer-compatible "
                 "smoke artifact."
@@ -442,7 +442,7 @@ def main(argv: list[str] | None = None) -> int:
             "vad": {"repo": A.VAD_NATIVE_REPO, "note": "frozen native Silero v5 GGUF"},
             "drafter": {
                 "repo": drafter_source,
-                "note": "MTP drafter must share the Qwen3.5/Qwen3.6-family tokenizer with the target; record whether this exact artifact is distilled or a smoke stand-in in mtp/target-meta.json.",
+                "note": "MTP drafter must share the Gemma 4 tokenizer with the target; record whether this exact artifact is distilled or a smoke stand-in in mtp/target-meta.json.",
             },
             "vision": {
                 "repo": TEXT_BASE_BY_TIER[tier],
@@ -596,7 +596,7 @@ release bar (every supported backend kernel-verified, every eval green) is met.
   Silero-VAD v5.1.2, and the default speaker preset. Not fine-tuned.
   Licenses in `licenses/`.
 - **MTP drafter** (`mtp/drafter-{tier}.gguf`): the **upstream
-  `{drafter_source}` artifact** — it must share the Qwen3.5/Qwen3.6-family tokenizer with the
+  `{drafter_source}` artifact** — it must share the Gemma 4 tokenizer with the
   text target so speculative decoding is correct. The exact distilled-vs-standin
   status is recorded in `mtp/target-meta.json` and
   `provenance.sourceModels.drafter`.

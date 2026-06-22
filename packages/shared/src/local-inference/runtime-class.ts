@@ -8,10 +8,10 @@
  *     `libelizainference` (`desktop-fused-ffi-backend-runtime.ts`). The fused
  *     context is anchored at a *bundle root* (`ffi.create(bundleRoot)` →
  *     `<bundleRoot>/text/*.gguf`) and the full optimization stack rides along:
- *     same-file MTP speculative decoding, TurboQuant/QJL/PolarQuant KV kernels,
- *     native tokenization over the resident Qwen3.5 vocab, and fused
+ *     embedded draft head speculative decoding, stock q8_0 KV cache,
+ *     native tokenization over the resident Gemma 4 (eliza-1) vocab, and fused
  *     voice/vision. It cannot load an arbitrary single GGUF — the vocab and the
- *     KV kernels are tokenizer/format-specific to Eliza-1.
+ *     KV cache layout are tokenizer/format-specific to Eliza-1.
  *
  *   - `"generic-gguf"` — a single user-picked GGUF (a Hugging Face / ModelScope
  *     download, or an external-tool scan) served from an explicit `modelPath`

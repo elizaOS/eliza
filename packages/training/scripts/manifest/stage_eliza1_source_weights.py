@@ -81,57 +81,57 @@ class SourceArtifact:
 TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
     "0_8b": SourceArtifact(
         kind="text",
-        repo="unsloth/Qwen3.5-0.8B-GGUF",
-        filename="Qwen3.5-0.8B-Q8_0.gguf",
-        destination="source/text/qwen3.5-0_8b-q8_0.gguf",
+        repo="unsloth/gemma-4-E2B-GGUF",
+        filename="gemma-4-E2B-Q8_0.gguf",
+        destination="source/text/gemma4-0_8b-q8_0.gguf",
         license="apache-2.0",
         status="source-only",
         notes=(
-            "GGUF mirror of the official Qwen/Qwen3.5-0.8B base.",
+            "GGUF mirror of the official google/gemma-4-E2B base.",
             "Final Eliza-1 0.8B still needs training plus Q4_K_M quantization.",
         ),
     ),
     "2b": SourceArtifact(
         kind="text",
-        repo="unsloth/Qwen3.5-2B-GGUF",
-        filename="Qwen3.5-2B-Q8_0.gguf",
-        destination="source/text/qwen3.5-2b-q8_0.gguf",
+        repo="unsloth/gemma-4-E2B-GGUF",
+        filename="gemma-4-E2B-Q8_0.gguf",
+        destination="source/text/gemma4-e2b-q8_0.gguf",
         license="apache-2.0",
         status="source-only",
         notes=(
-            "GGUF mirror of the official Qwen/Qwen3.5-2B base.",
+            "GGUF mirror of the official google/gemma-4-E2B base.",
             "Final Eliza-1 2B still needs training plus Q4_K_M quantization.",
         ),
     ),
     "4b": SourceArtifact(
         kind="text",
-        repo="unsloth/Qwen3.5-4B-GGUF",
-        filename="Qwen3.5-4B-Q8_0.gguf",
-        destination="source/text/qwen3.5-4b-q8_0.gguf",
+        repo="unsloth/gemma-4-E4B-GGUF",
+        filename="gemma-4-E4B-Q8_0.gguf",
+        destination="source/text/gemma4-e4b-q8_0.gguf",
         license="apache-2.0",
         status="source-only",
         notes=("Final Eliza-1 4B still needs training plus Q4_K_M quantization.",),
     ),
     "9b": SourceArtifact(
         kind="text",
-        repo="unsloth/Qwen3.5-9B-GGUF",
-        filename="Qwen3.5-9B-Q8_0.gguf",
-        destination="source/text/qwen3.5-9b-q8_0.gguf",
+        repo="unsloth/gemma-4-12B-GGUF",
+        filename="gemma-4-12B-Q8_0.gguf",
+        destination="source/text/gemma4-12b-q8_0.gguf",
         license="apache-2.0",
         status="source-only",
         notes=(
             "Final Eliza-1 9B still needs training plus Q4_K_M quantization.",
-            "Qwen3.5 is the active Eliza-1 backbone family.",
+            "Gemma 4 is the active Eliza-1 backbone family.",
         ),
     ),
     "27b": SourceArtifact(
         kind="text",
-        repo="unsloth/Qwen3.6-27B-GGUF",
-        filename="Qwen3.6-27B-Q8_0.gguf",
-        destination="source/text/qwen3.6-27b-q8_0.gguf",
+        repo="unsloth/gemma-4-31B-GGUF",
+        filename="gemma-4-31B-Q8_0.gguf",
+        destination="source/text/gemma4-31b-q8_0.gguf",
         license="apache-2.0",
         status="source-only",
-        notes=("Final Eliza-1 27B uses Qwen3.6 and still needs training plus Q4_K_M quantization.",),
+        notes=("Final Eliza-1 27B uses Gemma 4 31B and still needs training plus Q4_K_M quantization.",),
     ),
 }
 
@@ -140,46 +140,46 @@ DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
     "2b": None,
     "4b": SourceArtifact(
         kind="mtp",
-        repo="z-lab/Qwen3.5-4B-MTP",
+        repo="z-lab/gemma-4-E4B-MTP",
         filename="model.safetensors",
-        destination="source/mtp/qwen3.5-4b-mtp.safetensors",
+        destination="source/mtp/gemma4-e4b-mtp.safetensors",
         license="mit",
         status="source-safetensors",
         notes=(
-            "Official upstream MTP drafter source for Qwen/Qwen3.5-4B.",
+            "Official upstream MTP drafter source for google/gemma-4-E4B.",
             "Final Eliza-1 4B still needs tokenizer merge, GGUF conversion, quantization, and MTP acceptance against the Eliza-1 text checkpoint.",
         ),
     ),
     "9b": SourceArtifact(
         kind="mtp",
-        repo="z-lab/Qwen3.5-9B-MTP",
+        repo="z-lab/gemma-4-12B-MTP",
         filename="model.safetensors",
-        destination="source/mtp/qwen3.5-9b-mtp.safetensors",
+        destination="source/mtp/gemma4-12b-mtp.safetensors",
         license="mit",
         status="source-safetensors",
         notes=(
-            "Official upstream MTP drafter source for Qwen/Qwen3.5-9B.",
+            "Official upstream MTP drafter source for google/gemma-4-12B.",
             "Final Eliza-1 9B still needs tokenizer merge, GGUF conversion, quantization, and MTP acceptance against the Eliza-1 text checkpoint.",
         ),
     ),
     "27b": SourceArtifact(
         kind="mtp",
-        repo="spiritbuun/Qwen3.6-27B-MTP-GGUF",
+        repo="spiritbuun/gemma-4-31B-MTP-GGUF",
         filename="mtp-draft-3.6-q8_0.gguf",
-        destination="source/mtp/qwen3.6-27b-mtp-q8_0.gguf",
+        destination="source/mtp/gemma4-31b-mtp-q8_0.gguf",
         license="mit",
         status="source-gguf",
         notes=(
-            "GGUF quantization of z-lab/Qwen3.6-27B-MTP; Q8_0 is the upstream recommended quant for the Qwen3.6 drafter.",
+            "GGUF quantization of z-lab/gemma-4-31B-MTP; Q8_0 is the upstream recommended quant for the Gemma 4 drafter.",
             "Final Eliza-1 27B still needs MTP acceptance against the Eliza-1 text checkpoint before publish.",
         ),
     ),
 }
 
-# mmproj-F16 sources per tier. Every active Qwen3.5 base
+# mmproj-F16 sources per tier. Every active Gemma 4 base
 # (0.8B/2B/4B/9B) ships its own `mmproj-F16.gguf` in the matching unsloth
-# repo. The Qwen3.6 27B projector is also published in the matching
-# unsloth/Qwen3.6-27B-GGUF repo.
+# repo. The Gemma 4 31B projector is also published in the matching
+# unsloth/gemma-4-31B-GGUF repo.
 #
 # Per-tier quantization (handled downstream by `llama-quantize` against the
 # fork at `plugins/plugin-local-inference/native/llama.cpp/`):
@@ -208,11 +208,11 @@ def _vision_source(tier: str, family: str, size: str) -> SourceArtifact:
 
 
 VISION_SOURCES: Final[dict[str, SourceArtifact | None]] = {
-    "0_8b": _vision_source("0_8b", "Qwen3.5", "0.8B"),
-    "2b": _vision_source("2b", "Qwen3.5", "2B"),
-    "4b": _vision_source("4b", "Qwen3.5", "4B"),
-    "9b": _vision_source("9b", "Qwen3.5", "9B"),
-    "27b": _vision_source("27b", "Qwen3.6", "27B"),
+    "0_8b": _vision_source("0_8b", "gemma-4", "E2B"),
+    "2b": _vision_source("2b", "gemma-4", "E2B"),
+    "4b": _vision_source("4b", "gemma-4", "E4B"),
+    "9b": _vision_source("9b", "gemma-4", "12B"),
+    "27b": _vision_source("27b", "gemma-4", "31B"),
 }
 
 # Per-tier mmproj quantization target. Authoritative source: the live

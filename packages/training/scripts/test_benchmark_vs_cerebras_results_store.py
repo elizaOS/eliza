@@ -12,7 +12,7 @@ import benchmark_vs_cerebras as bench
 
 class _RegistryEntry:
     eliza_short_name = "eliza-1-0_8b"
-    hf_id = "Qwen/Qwen3.5-0.8B-Base"
+    hf_id = "google/gemma-4-E2B-Base"
 
 
 def _load_results_store():
@@ -34,7 +34,7 @@ ResultsStore = _load_results_store()
 def _sample_results() -> list[dict]:
     return [
         {
-            "tier": "qwen3.5-0.8b",
+            "tier": "gemma4-e2b",
             "eliza_short_name": "eliza-1-0_8b",
             "checkpoint": "/models/eliza-1-0_8b/final",
             "benchmarks": {
@@ -56,9 +56,9 @@ def _sample_results() -> list[dict]:
 def _sample_base_and_trained_results() -> list[dict]:
     return [
         {
-            "tier": "qwen3.5-0.8b",
+            "tier": "gemma4-e2b",
             "eliza_short_name": "eliza-1-0_8b",
-            "base_model_id": "Qwen/Qwen3.5-0.8B-Base",
+            "base_model_id": "google/gemma-4-E2B-Base",
             "checkpoint": "/models/eliza-1-0_8b/final",
             "benchmarks": {
                 "hermes": {
@@ -69,8 +69,8 @@ def _sample_base_and_trained_results() -> list[dict]:
             "variant_results": [
                 {
                     "variant": "base",
-                    "model_id": "Qwen/Qwen3.5-0.8B-Base",
-                    "model_path": "Qwen/Qwen3.5-0.8B-Base",
+                    "model_id": "google/gemma-4-E2B-Base",
+                    "model_path": "google/gemma-4-E2B-Base",
                     "tier": "0_8b",
                     "benchmarks": {
                         "hermes": {
@@ -163,7 +163,7 @@ def test_matrix_rows_include_base_and_trained_variants() -> None:
 
     assert rows[:2] == [
         {
-            "modelId": "Qwen/Qwen3.5-0.8B-Base",
+            "modelId": "google/gemma-4-E2B-Base",
             "variant": "base",
             "tier": "0_8b",
             "benchmark": "hermes",
@@ -185,15 +185,15 @@ def test_matrix_rows_preserve_dry_run_attempts() -> None:
     rows = bench.matrix_rows_from_results(
         [
             {
-                "tier": "qwen3.5-0.8b",
+                "tier": "gemma4-e2b",
                 "eliza_short_name": "eliza-1-0_8b",
-                "base_model_id": "Qwen/Qwen3.5-0.8B-Base",
+                "base_model_id": "google/gemma-4-E2B-Base",
                 "checkpoint": None,
                 "variant_results": [
                     {
                         "variant": "base",
-                        "model_id": "Qwen/Qwen3.5-0.8B-Base",
-                        "model_path": "Qwen/Qwen3.5-0.8B-Base",
+                        "model_id": "google/gemma-4-E2B-Base",
+                        "model_path": "google/gemma-4-E2B-Base",
                         "tier": "0_8b",
                         "benchmarks": {
                             "eliza_harness_action_selection": {
@@ -212,7 +212,7 @@ def test_matrix_rows_preserve_dry_run_attempts() -> None:
 
     assert rows == [
         {
-            "modelId": "Qwen/Qwen3.5-0.8B-Base",
+            "modelId": "google/gemma-4-E2B-Base",
             "variant": "base",
             "tier": "0_8b",
             "benchmark": "eliza_harness_action_selection",
@@ -253,7 +253,7 @@ def test_benchmark_tier_dry_run_preserves_trained_variant_without_checkpoint(
     monkeypatch.setattr(bench, "_load_prompts", lambda *_args: ["prompt"])
 
     result = bench.benchmark_tier(
-        "qwen3.5-0.8b",
+        "gemma4-e2b",
         _RegistryEntry(),
         tmp_path / "checkpoints",
         tmp_path / "out",
@@ -265,7 +265,7 @@ def test_benchmark_tier_dry_run_preserves_trained_variant_without_checkpoint(
         variants="both",
     )
 
-    assert calls == ["Qwen/Qwen3.5-0.8B-Base", "eliza-1-0_8b"]
+    assert calls == ["google/gemma-4-E2B-Base", "eliza-1-0_8b"]
     assert result["error"] == "no checkpoint found"
     assert [row["variant"] for row in result["variant_results"]] == [
         "base",
@@ -281,7 +281,7 @@ def test_matrix_artifact_preserves_live_reference_without_local_variant(
     path = bench.write_matrix_artifact(
         [
             {
-                "tier": "qwen3.5-0.8b",
+                "tier": "gemma4-e2b",
                 "eliza_short_name": "eliza-1-0_8b",
                 "checkpoint": None,
                 "requested_benchmarks": ["eliza_harness_action_selection"],
@@ -333,7 +333,7 @@ def test_benchmark_tier_uses_explicit_trained_model_path(tmp_path: Path, monkeyp
     monkeypatch.setattr(bench, "_run_native_tool_bench", fake_run_native_tool_bench)
 
     result = bench.benchmark_tier(
-        "qwen3.5-0.8b",
+        "gemma4-e2b",
         _RegistryEntry(),
         tmp_path / "checkpoints",
         tmp_path / "out",

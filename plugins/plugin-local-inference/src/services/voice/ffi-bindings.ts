@@ -688,7 +688,7 @@ export interface ElizaInferenceFfi {
 	/**
 	 * Single causal forward pass over `tokens` (a tokenized partial transcript)
 	 * returning the next-token softmax probability of `targetTokenId` (the
-	 * end-of-turn marker, e.g. `<|im_end|>`), plus the argmax next token and its
+	 * end-of-turn marker, e.g. `<end_of_turn>`), plus the argmax next token and its
 	 * probability. Runs on a dedicated scoring context over the loaded text
 	 * model; KV is cleared per call so scores are independent.
 	 */

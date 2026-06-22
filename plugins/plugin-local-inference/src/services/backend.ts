@@ -265,7 +265,7 @@ export interface LocalInferenceBackend {
  * Raised when a generic single-file GGUF is assigned/loaded but the current
  * platform has no explicit-`modelPath` runtime wired to serve it. This is a
  * loud, typed failure — never a silent fall-through to the Eliza-1 fused path
- * (which is bundle-locked to the Qwen3.5 vocab and would gibberish-tokenize an
+ * (which is bundle-locked to the Gemma 4 vocab and would gibberish-tokenize an
  * arbitrary GGUF).
  *
  * On mobile the explicit-path `llama-cpp-capacitor` binding serves generic

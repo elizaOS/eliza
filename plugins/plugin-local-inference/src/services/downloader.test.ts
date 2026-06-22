@@ -265,7 +265,7 @@ describe("local inference downloader status", () => {
 		expect(job?.error).toBe("network reset");
 	});
 
-	it("installs Eliza-1 manifest bundles with same-file MTP metadata", async () => {
+	it("installs Eliza-1 manifest bundles with embedded-draft-head MTP metadata", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
 		const model = findCatalogModel("eliza-1-2b");

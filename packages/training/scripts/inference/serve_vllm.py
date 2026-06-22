@@ -3,7 +3,7 @@
 Wraps `vllm serve` with the canonical flag set per (registry-key, GPU target)
 tuple. Stack composition assembled from:
 
-    - vLLM Recipes Qwen3.5 docs   (recipes.vllm.ai)
+    - vLLM Recipes Gemma 4 docs   (recipes.vllm.ai)
     - vLLM optimization guide     (docs.vllm.ai/en/stable/configuration/optimization/)
     - vLLM Speculative Decoding   (docs.vllm.ai/en/v0.10.1/features/spec_decode.html)
     - vLLM PR #38479              (turboquant_*_nc kv-cache-dtype family)
@@ -31,24 +31,24 @@ What this DOES NOT do:
 Usage:
     # eliza-1-2b on a single GPU (workstation tier, debugging / local serving)
     uv run --extra serve python scripts/inference/serve_vllm.py \\
-        --registry-key qwen3.5-2b --port 8000
+        --registry-key gemma4-e2b --port 8000
 
     # eliza-1-4b on a 24 GB workstation GPU, EAGLE-3 drafter
     uv run --extra serve python scripts/inference/serve_vllm.py \\
-        --registry-key qwen3.5-4b \\
+        --registry-key gemma4-e4b \\
         --eagle3 RedHatAI/Qwen3.5-4B-EAGLE3-head \\
         --port 8000
 
     # eliza-1-4b with MTP drafter (AEON-7 fork required)
     ELIZA_VLLM_MTP=1 \\
     uv run --extra serve python scripts/inference/serve_vllm.py \\
-        --registry-key qwen3.5-4b \\
+        --registry-key gemma4-e4b \\
         --mtp elizaos/eliza-1-mtp-4b \\
         --port 8000
 
     # Print the assembled command without executing (audit / CI)
     uv run --extra serve python scripts/inference/serve_vllm.py \\
-        --registry-key qwen3.5-4b --dry-run
+        --registry-key gemma4-e4b --dry-run
 
 The MoE expert-parallel + qwen3_next_mtp + --language-model-only branches
 are kept intact for forward compatibility with future MoE entries (gated on
@@ -230,13 +230,17 @@ def _build_speculative_config(
     return None
 
 
-_HYBRID_QWEN_PREFIXES = ("Qwen/Qwen3.5", "Qwen/Qwen3.6", "elizaos/eliza-1")
+# FLAGGED DEAD CODE (Gemma 4 cutover): Gemma 4 is dense, not hybrid, so the
+# eliza-1 series no longer matches a hybrid arch. The eliza-1 prefix is removed
+# from this list so the Gemma 4 base is not mis-flagged. Owner: delete
+# _is_hybrid_qwen and its single call site once the hybrid vLLM workaround is
+# fully retired.
+_HYBRID_QWEN_PREFIXES: tuple[str, ...] = ()
 
 
 def _is_hybrid_qwen(model_id: str) -> bool:
-    """Qwen3.5/Qwen3.6 ship the 3-GDN-:-1-GA hybrid attention pattern, and
-    our eliza-1 series is a fine-tune of those bases. omlx#825 is gated to
-    this arch family."""
+    """Legacy hybrid-attention detector. Always False under the dense Gemma 4
+    base; retained only until the hybrid vLLM workaround is removed."""
     return any(model_id.startswith(p) for p in _HYBRID_QWEN_PREFIXES)
 
 
@@ -414,7 +418,7 @@ def main() -> int:
         "--registry-key",
         required=True,
         help="Pull defaults from training/model_registry.py "
-        "(e.g. qwen3.5-0.8b, qwen3.5-2b, qwen3.5-4b, qwen3.6-27b).",
+        "(e.g. gemma4-e2b, gemma4-e4b, gemma4-12b, gemma4-31b).",
     )
     ap.add_argument(
         "--model", default=None, help="Override model id (default: registry hf_id)."

@@ -122,7 +122,11 @@ export class FfiEotScorer {
 				promptTokens: 0,
 			};
 		}
-		const { targetProb } = eotScore({ ctx, tokens, targetTokenId: endOfTurnId });
+		const { targetProb } = eotScore({
+			ctx,
+			tokens,
+			targetTokenId: endOfTurnId,
+		});
 		const probability = Number.isFinite(targetProb)
 			? Math.max(0, Math.min(1, targetProb))
 			: 0.5;

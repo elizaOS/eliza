@@ -30,7 +30,11 @@ from scripts.eagle3.common import (
 
 log = configure_logging("eagle3.train_eagle3_drafter")
 
-DEFAULT_STUDENT_BASE = "Qwen/Qwen3.5-0.8B-Base"
+# FLAGGED DEAD CODE (Gemma 4 cutover): Gemma 4 ships a separate official MTP
+# drafter (embedded draft head), not an EAGLE3 head, so this EAGLE3 student-base
+# default is retargeted to the Gemma 4 base for coherence only — the whole
+# eagle3/ pipeline is dead under the active base. Owner to retire.
+DEFAULT_STUDENT_BASE = "google/gemma-4-E2B-base"
 
 
 def _load_manifest(path: Path) -> dict[str, Any]:

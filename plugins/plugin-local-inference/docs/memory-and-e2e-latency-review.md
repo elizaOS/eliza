@@ -13,7 +13,7 @@ Eliza-1 model (text, ASR, TTS, VAD, embedding, vision) works.
 
 ## 1. The end-to-end voice waterfall (what actually happens today)
 
-mic → VAD → ASR → (MTP draft head ∥ target verifier) → phrase chunker → TTS → ring buffer → speaker.
+mic → VAD → ASR → (separate drafter ∥ target verifier) → phrase chunker → TTS → ring buffer → speaker.
 Source: `services/voice/pipeline.ts`, `scheduler.ts`, `phrase-chunker.ts`, `engine.ts`.
 
 Instrumented checkpoints already exist (`services/latency-trace.ts:72-86`,
@@ -99,8 +99,9 @@ time-budget flush (700 ms default).**
     session resets chat history each turn → full prompt re-prefill. Conversation-
     pinned `cacheKey` slots avoid this; voice partials do not.
 14. **MTP is a runtime/engine concern, with catalog metadata limited to 2B+**:
-    active 2B+ tiers use **same-file MTP**: the NextN head is embedded in the
-    text GGUF, and the catalog carries no separate drafter component.
+    active 2B+ tiers speculate via a **separate drafter**: Gemma 4 ships an
+    official drafter GGUF alongside the target, and the catalog advertises it
+    as a distinct drafter component.
     Correctness note (verified): the "only the fused backend speculates"
     behavior lives in the engine/backend; the catalog only advertises the draft
     window for tiers that carry a usable head.
@@ -118,7 +119,7 @@ The user asked specifically about 8/12/16/20/24/48/128 GB. Proposed resident set
 
 | Device RAM | Text tier | Voice resident set (no evict) | Notes |
 |---|---|---|---|
-| **8 GB** (iPhone/base Mac) | 2B Q4 + same-file MTP | ASR(0.6B) **xor** TTS resident; VAD(2 MB) always; embedding via text `--pooling last` | Tight: keep VAD+text hot; ASR and TTS alternate but pre-warm the next. F16 KV remains the safe shipped path until a head_dim=256 KV-quant route lands. **This is the eviction-sensitive tier.** |
+| **8 GB** (iPhone/base Mac) | 2B Q4 + separate drafter | ASR(0.6B) **xor** TTS resident; VAD(2 MB) always; embedding via text `--pooling last` | Tight: keep VAD+text hot; ASR and TTS alternate but pre-warm the next. Gemma 4 E2B runs stock q8_0 KV (MQA, dual head dims 512 global / 256 SWA). **This is the eviction-sensitive tier.** |
 | **12 GB** | 2B | text + ASR + TTS(kokoro) + VAD all resident | GOOD: no per-turn swaps; vision projector co-resident with text. |
 | **16 GB** | 2B/4B | + vision mmproj + OmniVoice co-resident | full multimodal hot. |
 | **20–24 GB** | 4B (MAX) | + image-gen warm, larger KV / longer ctx | all models parallelized + resident. |
@@ -133,9 +134,9 @@ The user asked specifically about 8/12/16/20/24/48/128 GB. Proposed resident set
 - **Pre-warm the next stage's model** during the current stage (ASR running → warm
   TTS; LM generating → keep ASR warm for barge-in re-ASR) instead of fire-and-forget
   evicting ASR (`pipeline.ts:326-328`).
-- Keep F16 KV on shipped qwen35 tiers until a head_dim=256 QJL/Polar route or
-  head_dim=128 model variant lands; use smaller Eliza-1 tiers, context clamps,
-  and resident-set preloading for memory-constrained devices.
+- Run stock q8_0 KV on the shipped Gemma 4 tiers (MQA, dual head dims 512 global /
+  256 SWA — the head_dim=128 QJL/Polar kernels don't apply); use smaller Eliza-1
+  tiers, context clamps, and resident-set preloading for memory-constrained devices.
 - Cache the resolved RAM budget per (modelKey, ctx) instead of re-deriving (`ram-budget.ts`).
 
 ---

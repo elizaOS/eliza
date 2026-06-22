@@ -56,13 +56,13 @@
  *
  *   ```ts
  *   const result = await arbiter.requestVisionDescribe({
- *     modelKey: "qwen3-vl-4b",
+ *     modelKey: "gemma-vl-4b",
  *     imageBytes: pixels,
  *   });
  *   ```
  *
  * The arbiter handles:
- *   1. Acquiring (or reusing) the handle for `qwen3-vl-4b`.
+ *   1. Acquiring (or reusing) the handle for `gemma-vl-4b`.
  *   2. If a different capability holds the active model and we need to
  *      swap, evicting it first.
  *   3. Running the request.

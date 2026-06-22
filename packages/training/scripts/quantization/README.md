@@ -1,9 +1,18 @@
 # Post-Training Quantization
 
 This directory holds the post-training quantization passes used to
-shrink the fine-tuned Qwen Eliza checkpoints before they leave the
+shrink the fine-tuned Eliza checkpoints before they leave the
 training rig. Each method is a self-contained CLI; they are independent
 and can be combined or compared on the same fine-tuned checkpoint.
+
+> **Gemma 4 cutover note.** The eliza-1 base is now Gemma 4 (dense:
+> alternating SWA/global, shared-KV, MQA, dual head dims 512/256, stock q8_0
+> KV). The "Qwen3.5 hybrid linear-attention" caveat sections below describe the
+> **old** hybrid-attention base and are **FLAGGED for owner review** — the
+> hybrid-attention KV path (`Qwen3_5ForConditionalGeneration`, Gated DeltaNet)
+> no longer applies, and the head_dim=128 QJL/PolarQuant KV kernels do not
+> match Gemma's geometry. TurboQuant weight-quant remains the primary recipe;
+> the KV-cache QJL/Polar passes are optional for Gemma tiers.
 
 ## PolarQuant
 
@@ -83,7 +92,7 @@ layer types — but:
    needs to load it via `AutoModelForVision2Seq` (or the
    `Qwen3_5ForConditionalGeneration` class directly) and walk the
    text decoder. We have **not** done that integration yet — for the
-   `0.8B` validation we fall back to `Qwen/Qwen3.5-0.8B`.
+   `0.8B` validation we fall back to `google/gemma-4-E2B`.
 3. Future MoE variants have router weights — those are tiny, fall under the
    `--min-numel` cutoff, and must be deliberately skipped when that line is
    reintroduced.
@@ -100,10 +109,10 @@ Quantize a fine-tuned 2B checkpoint:
 
 ```bash
 uv run python scripts/quantization/polarquant_apply.py \
-    --model checkpoints/qwen35-2b-eliza/final \
+    --model checkpoints/gemma4-e2b-eliza/final \
     --calibration data/final/val.jsonl \
     --calibration-samples 128 \
-    --output checkpoints/qwen35-2b-eliza/final-polarquant
+    --output checkpoints/gemma4-e2b-eliza/final-polarquant
 ```
 
 The `--calibration*` flags are accepted for parity with the rest of
@@ -128,8 +137,8 @@ Useful knobs:
 ### Validation
 
 `scripts/quantization/test_polarquant.py` runs the round-trip on
-`Qwen/Qwen3.5-0.8B` (the closest text-only causal-LM stand-in for
-`Qwen/Qwen3.5-0.8B` — see caveat above), using 5 native JSON-shaped samples
+`google/gemma-4-E2B` (the closest text-only causal-LM stand-in for
+`google/gemma-4-E2B` — see caveat above), using 5 native JSON-shaped samples
 from `data/final/val.jsonl`. It asserts (a) the codes-only payload is
 at least 30% smaller than the fp16 baseline checkpoint and (b) the
 quantized model produces non-degenerate text on every sample.
@@ -194,7 +203,7 @@ fp16 to keep the freshly-generated context lossless.
   in the `turbokv` 0.1.0 PyPI release we depend on. Until upstream
   ships Triton, this method is a *memory* win, not a *speed* win.
 - The savings are concentrated in the long-context regime. At 4096-
-  token prefill on Qwen3.5-0.8B we measured **3.52× per-token KV
+  token prefill on gemma-4-E2B we measured **3.52× per-token KV
   reduction** (114,688 → 32,608 bytes/token) which produced a real
   274 MB peak-VRAM drop on a tiny model — the absolute savings scale
   with `num_hidden_layers × num_kv_heads × head_dim × context_length`.
@@ -220,7 +229,7 @@ text decoder declares per-layer `layer_types`: most layers are
 D) KV cache) and only a minority (typically every 4th layer) are
 `full_attention`. TurboQuant is only meaningful for the full-attention
 layers — there is nothing to quantize in a recurrent state. Concretely
-on Qwen3.5-2B, 6 of 24 layers are full attention; the analytic ceiling
+on gemma-4-E2B, 6 of 24 layers are full attention; the analytic ceiling
 on KV reduction is therefore at most ~25% of the standard ratio
 applied to those 6 layers. The `kv_bytes_per_token_analytic` helper in
 `test_turboquant.py` honors `layer_types` so the reported reduction
@@ -234,7 +243,7 @@ the **text decoder config** — `model.config.get_text_config(decoder=True)`.
 The `cache.py` in `turbokv` 0.1.0 already calls `get_text_config` when
 available, so this should work in principle, but we have not validated
 it end-to-end on a Qwen3.5 checkpoint yet — for the 0.8B-class
-validation we fall back to `Qwen/Qwen3.5-0.8B`.
+validation we fall back to `google/gemma-4-E2B`.
 
 For future dense/MoE variants, TurboQuant is orthogonal to expert routing
 when the KV cache shape is unchanged. Revalidate that separately before
@@ -247,10 +256,10 @@ to a LoRA adapter):
 
 ```bash
 uv run python scripts/quantization/turboquant_apply.py \
-    --model checkpoints/qwen35-2b-eliza/final \
+    --model checkpoints/gemma4-e2b-eliza/final \
     --calibration data/final/val.jsonl \
     --calibration-samples 128 \
-    --output checkpoints/qwen35-2b-eliza/final-turboquant
+    --output checkpoints/gemma4-e2b-eliza/final-turboquant
 ```
 
 Useful knobs:
@@ -274,12 +283,12 @@ import json
 from turboquant import TurboQuantCache
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-side = json.load(open("checkpoints/qwen35-2b-eliza/final-turboquant/turboquant.json"))
+side = json.load(open("checkpoints/gemma4-e2b-eliza/final-turboquant/turboquant.json"))
 model = AutoModelForCausalLM.from_pretrained(
-    "checkpoints/qwen35-2b-eliza/final-turboquant",
+    "checkpoints/gemma4-e2b-eliza/final-turboquant",
     torch_dtype="bfloat16", device_map="cuda",
 )
-tok = AutoTokenizer.from_pretrained("checkpoints/qwen35-2b-eliza/final-turboquant")
+tok = AutoTokenizer.from_pretrained("checkpoints/gemma4-e2b-eliza/final-turboquant")
 
 cache = TurboQuantCache(
     model.config,
@@ -295,7 +304,7 @@ out = model.generate(**tok("...", return_tensors="pt").to("cuda"),
 ### Validation
 
 `scripts/quantization/test_turboquant.py` runs the round-trip on
-`Qwen/Qwen3.5-0.8B` (closest text-only stand-in for `Qwen/Qwen3.5-0.8B`
+`google/gemma-4-E2B` (closest text-only stand-in for `google/gemma-4-E2B`
 — see caveat above), with 5 native JSON-shaped prompts from
 `data/final/val.jsonl` and a 4096-token long-context probe. It asserts
 (a) the per-token KV-cache size shrinks by at least 30% and (b) every
@@ -307,7 +316,7 @@ uv run python scripts/quantization/test_turboquant.py
 
 The full numeric report is written to
 `scripts/quantization/turboquant_report.json`. Last measured run on
-Qwen3.5-0.8B / 5080 (4-bit, skip={0}, 4096-token long context):
+gemma-4-E2B / 5080 (4-bit, skip={0}, 4096-token long context):
 
 | metric | baseline (bf16 DynamicCache) | TurboQuant 4-bit | delta |
 |---|---|---|---|
@@ -336,8 +345,8 @@ LoRA adapter):
 
 ```bash
 uv run python scripts/quantization/fused_turboquant_apply.py \
-    --model checkpoints/qwen35-4b-eliza/final \
-    --output checkpoints/qwen35-4b-eliza/final-fused-turboquant \
+    --model checkpoints/gemma4-e4b-eliza/final \
+    --output checkpoints/gemma4-e4b-eliza/final-fused-turboquant \
     --bits 4
 ```
 
@@ -358,10 +367,10 @@ from quantization.fused_turboquant_vendored.hf import patch_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 model = AutoModelForCausalLM.from_pretrained(
-    "checkpoints/qwen35-4b-eliza/final-fused-turboquant",
+    "checkpoints/gemma4-e4b-eliza/final-fused-turboquant",
     torch_dtype="bfloat16", device_map="cuda",
 )
-tok = AutoTokenizer.from_pretrained("checkpoints/qwen35-4b-eliza/final-fused-turboquant")
+tok = AutoTokenizer.from_pretrained("checkpoints/gemma4-e4b-eliza/final-fused-turboquant")
 
 cache = patch_model(model, bits=4, compress_v=True)  # patches model.forward in-place
 out = model.generate(**tok("...", return_tensors="pt").to("cuda"),
@@ -394,7 +403,7 @@ The Triton-kernel path is more constrained than the pure-PyTorch
   layers keep their recurrent state. The compatibility checker reports
   `compatible=True` because the Triton path *will* run, but the savings
   scale only with the full-attention layer count. **Note**: the bonus
-  Qwen3.5-0.8B run in our local test failed at the *baseline* generate
+  gemma-4-E2B run in our local test failed at the *baseline* generate
   step (HF `DynamicCache` is not the right cache for a hybrid model —
   it raises `has_previous_state can only be called on LinearAttention
   layers`); fused-TurboQuant is orthogonal to that issue. Hybrid models
@@ -419,7 +428,7 @@ exact failure mode. Without the headers the JIT cannot build and
 ### Validation
 
 `scripts/quantization/test_fused_turboquant.py` runs three paths back-to-
-back on `Qwen/Qwen3.5-0.8B` with 5 prompts × 128 new tokens at a 4096-token
+back on `google/gemma-4-E2B` with 5 prompts × 128 new tokens at a 4096-token
 prompt. It writes the full report to
 `scripts/quantization/fused_turboquant_report.json` and asserts:
 
@@ -430,7 +439,7 @@ prompt. It writes the full report to
 uv run python scripts/quantization/test_fused_turboquant.py
 ```
 
-#### Last measured run (Qwen3.5-0.8B, 5080 Laptop, 4-bit, 4096-token prompt + 128 new tokens)
+#### Last measured run (gemma-4-E2B, 5080 Laptop, 4-bit, 4096-token prompt + 128 new tokens)
 
 | path | peak VRAM | tokens/sec | notes |
 |---|---|---|---|
@@ -532,7 +541,7 @@ context losslessly.
   number of bits per coord — at the canonical
   ``projection_dim_per_head=256`` the K-side ratio
   ``head_dim*2 / (projection_dim/8 + 2)`` works out to **7.53x for
-  head_dim=128** (Qwen3.5-0.8B / Llama-3 / Qwen3.5-2B), not the
+  head_dim=128** (gemma-4-E2B / Llama-3 / gemma-4-E2B), not the
   marketing-headline 16x (which would assume zero norm overhead).
   Pushing to ``projection_dim_per_head=128`` recovers ~14.2x at the
   cost of attention-score quality. The kernel hard-codes
@@ -575,7 +584,7 @@ The 0.8B / 2B / 4B vision-language variants
 `AutoModelForVision2Seq` and the text decoder extracted via
 `model.language_model` before patching the attention modules. We have
 **not** done that integration yet — `test_qjl.py` falls back to
-`Qwen/Qwen3.5-0.8B` for the 0.8B-class validation.
+`google/gemma-4-E2B` for the 0.8B-class validation.
 
 ### Build
 
@@ -611,10 +620,10 @@ a LoRA adapter):
 
 ```bash
 uv run python scripts/quantization/qjl_apply.py \
-    --model checkpoints/qwen35-2b-eliza/final \
+    --model checkpoints/gemma4-e2b-eliza/final \
     --calibration data/final/val.jsonl \
     --calibration-samples 128 \
-    --output checkpoints/qwen35-2b-eliza/final-qjl
+    --output checkpoints/gemma4-e2b-eliza/final-qjl
 ```
 
 Apply to a fine-tuned 27B checkpoint (same shape; calibration is
@@ -622,7 +631,7 @@ single-pass forward and fits in 16 GB only with offload):
 
 ```bash
 uv run python scripts/quantization/qjl_apply.py \
-    --model checkpoints/qwen35-4b-eliza/final \
+    --model checkpoints/gemma4-e4b-eliza/final \
     --calibration data/final/val.jsonl \
     --calibration-samples 128 \
     --projection-dim-per-head 256 \
@@ -630,7 +639,7 @@ uv run python scripts/quantization/qjl_apply.py \
     --initial-layers-count 15 \
     --outlier-count-general 8 \
     --value-bits 4 \
-    --output checkpoints/qwen35-4b-eliza/final-qjl
+    --output checkpoints/gemma4-e4b-eliza/final-qjl
 ```
 
 Useful knobs:
@@ -664,8 +673,8 @@ Useful knobs:
 
 ### Validation
 
-`scripts/quantization/test_qjl.py` runs on `Qwen/Qwen3.5-0.8B` (closest
-text-only stand-in for `Qwen/Qwen3.5-0.8B` — see caveat above):
+`scripts/quantization/test_qjl.py` runs on `google/gemma-4-E2B` (closest
+text-only stand-in for `google/gemma-4-E2B` — see caveat above):
 
 1. Attempts to build the vendored CUDA extension. If `nvcc` or
    `Python.h` is missing it records the exact remediation command
@@ -694,7 +703,7 @@ uv run python scripts/quantization/test_qjl.py
 
 The full numeric report is written to
 `scripts/quantization/qjl_report.json`. Last measured run on
-Qwen3.5-0.8B / 5080 (bf16 baseline cache, projection_dim=256, seed=42):
+gemma-4-E2B / 5080 (bf16 baseline cache, projection_dim=256, seed=42):
 
 | metric | value | notes |
 |---|---|---|
@@ -731,7 +740,7 @@ Qwen3.5-0.8B / 5080 (bf16 baseline cache, projection_dim=256, seed=42):
   Hopper/Ampere host for actual inference.
 - **Hard-coded `EMB_DIM 128`** in
   `qjl/csrc/qjl_quant_kernel.cu:7`. The code only works for
-  `head_dim == 128` out of the box. Qwen3.5-0.8B / Qwen3.5-2B / Llama-3
+  `head_dim == 128` out of the box. gemma-4-E2B / gemma-4-E2B / Llama-3
   all match. If we later need to apply QJL to a model with
   `head_dim != 128`, the `#define EMB_DIM` must be edited and the
   kernel rebuilt; there is no runtime arg for it.
@@ -752,8 +761,8 @@ stream. Destructive transform — save to a NEW directory.
 
 ```
 uv run python scripts/quantization/abliteration_apply.py \
-    --checkpoint Qwen/Qwen3.5-0.8B \
-    --output checkpoints/qwen3.5-0.8b-abliterated \
+    --checkpoint google/gemma-4-E2B \
+    --output checkpoints/gemma4-e2b-abliterated \
     --harmful-jsonl data/harmful.jsonl \
     --harmless-jsonl data/harmless.jsonl
 ```

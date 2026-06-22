@@ -241,7 +241,7 @@ def test_optional_eagle3_fields_do_not_change_required_tiers():
         "enabled": True,
         "capability": "eagle3",
         "specType": "draft-eagle3",
-        "model": "RedHatAI/Qwen3.5-0.8B-EAGLE3-head",
+        "model": "RedHatAI/gemma-4-E2B-EAGLE3-head",
         "maxDraftTokens": 3,
     }
     kwargs["eagle3_eval"] = True
@@ -711,14 +711,14 @@ def _base_v1_provenance() -> dict:
         "finetuned": False,
         "sourceModels": {
             "text": {
-                "repo": "unsloth/Qwen3.5-4B-GGUF",
-                "file": "Qwen3.5-4B-Q4_K_M.gguf",
+                "repo": "unsloth/gemma-4-E4B-GGUF",
+                "file": "gemma-4-E4B-Q4_K_M.gguf",
                 "convertedVia": "<fork>/convert_hf_to_gguf.py",
             },
             "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
             "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
             "vad": {"repo": "ggml-org/whisper-vad"},
-            "vision": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "mmproj-F16.gguf"},
+            "vision": {"repo": "unsloth/gemma-4-E4B-GGUF", "file": "mmproj-F16.gguf"},
             "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/4b/mtp/drafter-4b.gguf"},
         },
     }
@@ -734,7 +734,7 @@ def test_base_v1_manifest_validates_and_is_default_eligible():
     assert manifest["provenance"]["releaseState"] == "base-v1"
     assert manifest["provenance"]["finetuned"] is False
     assert manifest["provenance"]["sourceModels"]["text"]["repo"].endswith(
-        "Qwen3.5-4B-GGUF"
+        "gemma-4-E4B-GGUF"
     )
     assert validate_manifest(manifest) == ()
 
@@ -742,7 +742,7 @@ def test_base_v1_manifest_validates_and_is_default_eligible():
 def test_base_v1_27b_provenance_requires_qwen36_text_source():
     kwargs = base_kwargs("27b")
     prov = _base_v1_provenance()
-    prov["sourceModels"]["text"] = {"repo": "Qwen/Qwen3.6-27B"}
+    prov["sourceModels"]["text"] = {"repo": "google/gemma-4-31B"}
     kwargs["provenance"] = prov
     assert validate_manifest(build_manifest(**kwargs)) == ()
 

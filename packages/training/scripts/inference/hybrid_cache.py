@@ -1,4 +1,10 @@
-"""Hybrid linear-attention + full-attention KV cache for active Qwen3.5 models.
+"""Hybrid linear-attention + full-attention KV cache for hybrid-attention models.
+
+FLAGGED DEAD CODE (Gemma 4 cutover): the eliza-1 base is now Gemma 4, which is
+dense (alternating SWA/global, shared-KV, MQA) with no linear-attention layers.
+This whole hybrid-cache module (and the Qwen3_5/Qwen3_6 model_type machinery
+below) no longer fires for the active base. Retained only until the owner
+removes the hybrid path. Do NOT wire this into the Gemma 4 serving path.
 
 Background
 ----------

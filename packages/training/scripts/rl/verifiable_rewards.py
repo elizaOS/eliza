@@ -649,7 +649,7 @@ class DataBudget:
 
 
 def compute_data_budget(
-    model_name: str = "Qwen3.5-4B",
+    model_name: str = "gemma-4-E4B",
     model_params: int = 4_000_000_000,
     hidden_dim: int = 3584,
     lora_rank: int = 8,
@@ -740,7 +740,7 @@ if __name__ == "__main__":
 
     # Data budget command
     budget_parser = sub.add_parser("budget", help="Compute Chinchilla data budget")
-    budget_parser.add_argument("--model", default="Qwen3.5-4B")
+    budget_parser.add_argument("--model", default="gemma-4-E4B")
     budget_parser.add_argument("--params", type=int, default=4_000_000_000)
     budget_parser.add_argument("--hidden-dim", type=int, default=3584)
     budget_parser.add_argument("--lora-rank", type=int, default=8)
@@ -828,13 +828,13 @@ if __name__ == "__main__":
     else:
         parser.print_help()
         # Default: print data budgets for common configs
-        print("\n=== Data Budget: Qwen3.5-4B (current config) ===")
+        print("\n=== Data Budget: gemma-4-E4B (current config) ===")
         print(json.dumps(compute_data_budget(), indent=2))
-        print("\n=== Data Budget: Qwen3.5-9B (recommended config) ===")
+        print("\n=== Data Budget: gemma-4-12B (recommended config) ===")
         print(
             json.dumps(
                 compute_data_budget(
-                    model_name="Qwen3.5-9B",
+                    model_name="gemma-4-12B",
                     model_params=9_000_000_000,
                     hidden_dim=4096,
                     lora_rank=32,

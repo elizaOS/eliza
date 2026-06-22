@@ -72,7 +72,7 @@ class RLVRConfig:
     """Full pipeline configuration."""
 
     # Model
-    model_name: str = "Qwen/Qwen3.5-4B"
+    model_name: str = "google/gemma-4-E4B"
     model_params: int = 4_000_000_000
     hidden_dim: int = 3584
 
@@ -2581,7 +2581,7 @@ def main() -> int:
         default="budget",
         help="Which phase(s) to run",
     )
-    parser.add_argument("--model", default="Qwen/Qwen3.5-4B")
+    parser.add_argument("--model", default="google/gemma-4-E4B")
     parser.add_argument("--model-params", type=int, default=4_000_000_000)
     parser.add_argument("--hidden-dim", type=int, default=3584)
     parser.add_argument("--lora-rank", type=int, default=8)
@@ -2655,14 +2655,14 @@ def main() -> int:
         "--9b",
         action="store_true",
         dest="use_9b",
-        help="Use Qwen3.5-9B preset (higher rank, more layers)",
+        help="Use gemma-4-12B preset (higher rank, more layers)",
     )
 
     args = parser.parse_args()
 
     if args.use_9b:
         config = RLVRConfig(
-            model_name="Qwen/Qwen3.5-9B",
+            model_name="google/gemma-4-12B",
             model_params=9_000_000_000,
             hidden_dim=4096,
             lora_rank=32,

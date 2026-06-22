@@ -1,5 +1,10 @@
 # EAGLE3 training pipeline
 
+> **FLAGGED DEAD CODE (Gemma 4 cutover).** The eliza-1 base is now Gemma 4,
+> which ships a separate official MTP drafter (embedded draft head) rather than
+> an EAGLE3 head. This entire `eagle3/` pipeline is dead under the active base
+> and is retained only until the owner retires it.
+
 This directory contains the local EAGLE3 drafter pipeline:
 
 1. `prepare_distill_dataset.py` normalizes chat/text JSONL into

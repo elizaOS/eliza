@@ -83,10 +83,10 @@ export interface FfiBackendSession {
 	} | null;
 	/**
 	 * Absolute path to a *separate* MTP drafter GGUF resolved during load.
-	 * `null` means same-file MTP: the NextN head is embedded in the main
-	 * text GGUF and the native runner activates `--spec-type draft-mtp`
-	 * with no `-md`. Speculative decoding is governed by `mtp`, not by the
-	 * presence of this path.
+	 * `null` means embedded-draft-head MTP: the draft head is embedded in
+	 * the main text GGUF and the native runner activates `--spec-type
+	 * draft-mtp` with no `-md`. Speculative decoding is governed by `mtp`,
+	 * not by the presence of this path.
 	 */
 	readonly draftModelPath: string | null;
 	/**
@@ -286,8 +286,8 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 
 	/**
 	 * True when Eliza-1 native MTP is active for the loaded target model.
-	 * Covers both shapes: same-file MTP (NextN head embedded in the text
-	 * GGUF, `draftModelPath` null) and separate-drafter MTP.
+	 * Covers both shapes: embedded-draft-head MTP (draft head embedded in
+	 * the text GGUF, `draftModelPath` null) and separate-drafter MTP.
 	 */
 	mtpEnabled(): boolean {
 		return Boolean(this.session?.mtp);

@@ -282,7 +282,7 @@ function collectContractErrors(
 	if (mtpEnabled) {
 		if (m.files.mtp.length > 0) {
 			errors.push(
-				`files.mtp: separate drafter files are unsupported for same-file MTP tier ${m.tier}`,
+				`files.mtp: separate drafter files are unsupported for embedded-draft-head MTP tier ${m.tier}`,
 			);
 		}
 		if (!m.evals.mtp) {
@@ -394,7 +394,9 @@ function collectContractErrors(
 		}
 	}
 	if (m.lineage.drafter) {
-		errors.push("lineage.drafter: unsupported for same-file MTP bundles");
+		errors.push(
+			"lineage.drafter: unsupported for embedded-draft-head MTP bundles",
+		);
 	}
 
 	if (m.files.asr.length > 0) {

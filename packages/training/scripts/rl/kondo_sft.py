@@ -22,7 +22,7 @@ Usage:
     from training.kondo_sft import KondoSFTTrainer, KondoSFTConfig
 
     config = KondoSFTConfig(
-        model_name="Qwen/Qwen3.5-4B",
+        model_name="google/gemma-4-E4B",
         gate_rate=0.1,  # Only backprop on top 10% most informative
     )
     trainer = KondoSFTTrainer(config)
@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 class KondoSFTConfig:
     """Configuration for Kondo-Gated SFT."""
 
-    model_name: str = "Qwen/Qwen3.5-4B"
+    model_name: str = "google/gemma-4-E4B"
     learning_rate: float = 1e-5
     lora_rank: int = 16
     lora_alpha: int = 32

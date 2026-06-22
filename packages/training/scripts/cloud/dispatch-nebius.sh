@@ -88,11 +88,11 @@ NEBIUS_VM_PRESET="$(tier_to_preset "$TIER")"
 # Map --tier to model_registry.py REGISTRY key (matches dispatch-vast's mapping).
 tier_to_registry_key() {
   case "$1" in
-    0_8b) echo qwen3.5-0.8b ;;
-    2b)   echo qwen3.5-2b ;;
-    4b)   echo qwen3.5-4b ;;
-    9b)   echo qwen3.5-9b ;;
-    27b) echo qwen3.6-27b ;;
+    0_8b) echo gemma4-e2b ;;
+    2b)   echo gemma4-e2b ;;
+    4b)   echo gemma4-e4b ;;
+    9b)   echo gemma4-12b ;;
+    27b) echo gemma4-31b ;;
   esac
 }
 

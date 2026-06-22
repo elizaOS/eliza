@@ -1722,7 +1722,7 @@ export function injectNativeLibLegacyPackaging(content) {
  *
  * Fails local builds when no path is configured or the dir doesn't exist. The
  * Android Capacitor JNI wrapper links against these MTP libraries and cannot
- * honestly support Eliza-1/Qwen3.5 without them. Cloud builds skip the task.
+ * honestly support Eliza-1/Gemma 4 without them. Cloud builds skip the task.
  * CI smoke builds that intentionally install no native deps can opt out with
  * -PelizaSkipForkLlamaLib=true or ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1.
  *
@@ -1762,7 +1762,7 @@ export function injectCopyForkLlamaLibTask(content) {
   }
   const block =
     `\n// Bundle the MTP Android llama.cpp stack into the APK so mobile\n` +
-    `// gets Eliza-1/Qwen3.5 support across every supported Android ABI\n` +
+    `// gets Eliza-1/Gemma 4 support across every supported Android ABI\n` +
     `// (arm64-v8a, x86_64, riscv64). The arm64-v8a slice is mandatory for\n` +
     `// local-agent capable builds; x86_64 and riscv64 ship when their\n` +
     `// per-ABI artifacts exist (Wave 2 cross-compiles land them\n` +

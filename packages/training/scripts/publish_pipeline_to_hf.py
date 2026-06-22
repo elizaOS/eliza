@@ -177,7 +177,7 @@ def build_pipeline_card(repo_id: str) -> str:
         "\n"
         "```bash\n"
         "bash scripts/train_vast.sh provision-and-train \\\n"
-        "    --registry-key qwen3.5-4b --bootstrap hf\n"
+        "    --registry-key gemma4-e4b --bootstrap hf\n"
         "```\n"
         "\n"
         "The `--bootstrap hf` flag tells `train_vast.sh` to download both this\n"

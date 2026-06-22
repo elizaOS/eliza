@@ -212,7 +212,7 @@ def main() -> int:
     )
 
     # Model
-    parser.add_argument("--model", default="Qwen/Qwen3.5-4B")
+    parser.add_argument("--model", default="google/gemma-4-E4B")
     parser.add_argument("--device", default="cuda")
 
     # Optimizer

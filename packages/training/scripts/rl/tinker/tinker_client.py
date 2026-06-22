@@ -31,7 +31,7 @@ DEFAULT_TINKER_OPENAI_BASE_URL = os.getenv(
     "TINKER_OPENAI_BASE_URL",
     "https://tinker.thinkingmachines.dev/services/tinker-prod/oai/api/v1",
 )
-DEFAULT_TINKER_BASE_MODEL = os.getenv("TINKER_BASE_MODEL", "Qwen/Qwen3.5-4B")
+DEFAULT_TINKER_BASE_MODEL = os.getenv("TINKER_BASE_MODEL", "google/gemma-4-E4B")
 TINKER_API_KEY_ENV_VARS = (
     "TINKER_API_KEY",
     "TM_API_KEY",
@@ -117,7 +117,7 @@ class TinkerConfig:
     default_max_tokens: int = 512
     default_temperature: float = 0.7
     stop_sequences: list[str] = field(
-        default_factory=lambda: ["\n\n", "<|endoftext|>", "<|im_end|>"]
+        default_factory=lambda: ["\n\n", "<|endoftext|>", "<end_of_turn>"]
     )
 
     # Weight sync settings

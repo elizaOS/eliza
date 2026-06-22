@@ -218,7 +218,7 @@ def _mtp_command(bundle_root: str, tier: str, eval_python: str) -> str:
     target_gguf = Path(bundle) / text_artifact_name(tier, "256k")
     return _guarded(
         eval_python,
-        "regenerate the target GGUF from the Qwen3.5/3.6 HF checkpoint with "
+        "regenerate the target GGUF from the Gemma 4 HF checkpoint with "
         "packages/training/scripts/quantization/gguf_eliza1_apply.py "
         "--preserve-mtp so the GGUF contains *.nextn_predict_layers and "
         "blk.*.nextn.* tensors, then run "
@@ -242,7 +242,7 @@ def _finetune_command(eval_python: str) -> str:
         "--local-dir /tmp/eliza-1-training && "
         "cd packages/training && "
         "uv run --extra train python scripts/run_pipeline.py "
-        "--registry-key qwen3.5-0.8b "
+        "--registry-key gemma4-e2b "
         "--train-file /tmp/eliza-1-training/sft/0_8b/train.jsonl "
         "--val-file /tmp/eliza-1-training/sft/0_8b/val.jsonl "
         "--test-file /tmp/eliza-1-training/sft/0_8b/test.jsonl "

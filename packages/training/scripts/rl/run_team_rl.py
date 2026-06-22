@@ -2,7 +2,7 @@
 """
 Run Red/Blue/Gray team continuous RL training.
 
-3 team models (Qwen3.5-4B each), 10 agents per team = 30 agents total.
+3 team models (gemma-4-E4B each), 10 agents per team = 30 agents total.
 Each team's agents share one model. All experiences per tick train the shared model.
 Kondo gate filters to the most informative experiences.
 
@@ -13,7 +13,7 @@ With live Feed bridge:
     python scripts/run_team_rl.py --bridge-url http://localhost:3001 --ticks 100
 
 On Nebius H100 (recommended):
-    python scripts/run_team_rl.py --model Qwen/Qwen3.5-4B --agents-per-team 10 --ticks 100
+    python scripts/run_team_rl.py --model google/gemma-4-E4B --agents-per-team 10 --ticks 100
 """
 
 from __future__ import annotations

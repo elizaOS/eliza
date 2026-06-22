@@ -8,7 +8,7 @@
  * model.
  *
  *   - The fused lib's `eliza_inference_llm_stream_open` loads the bundle's text
- *     GGUF (`<bundleRoot>/text/*.gguf`) and applies same-file MTP speculative
+ *     GGUF (`<bundleRoot>/text/*.gguf`) and applies MTP speculative
  *     decoding + KV-cache quant + per-load GPU layers natively (ABI v9). The
  *     path is gated on the capability probes
  *     (`llmStreamSupported && llmMtpSupported && llmKvQuantSupported`).
@@ -116,7 +116,7 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 	 * Viable only when:
 	 *   - bun:ffi resolves on the current runtime,
 	 *   - the fused dylib is present AND reports ABI-v9 capability: the
-	 *     streaming-LLM surface, same-file MTP, KV-cache quant, AND native
+	 *     streaming-LLM surface, MTP, KV-cache quant, AND native
 	 *     tokenization (`eliza_inference_tokenize`).
 	 * A pre-v9 fused lib reports the probes as unsupported → refused, and the
 	 * engine raises LocalInferenceUnavailable. libllama has been retired; there

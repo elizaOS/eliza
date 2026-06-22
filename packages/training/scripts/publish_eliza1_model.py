@@ -24,13 +24,13 @@ Usage::
     # Dry-run — no HF_TOKEN required. Prints the manifest, validates the
     # GGUF metadata, refuses to continue if Q4_POLAR/QJL1_256 are missing.
     uv run python scripts/publish_eliza1_model.py \\
-        --model-dir /path/to/qwen3.5-4b-optimized \\
+        --model-dir /path/to/gemma4-e4b-optimized \\
         --repo-id elizaos/eliza-1 \\
         --dry-run
 
     # Real push.
     HF_TOKEN=hf_xxx uv run python scripts/publish_eliza1_model.py \\
-        --model-dir /path/to/qwen3.5-4b-optimized \\
+        --model-dir /path/to/gemma4-e4b-optimized \\
         --repo-id elizaos/eliza-1
 """
 
@@ -571,7 +571,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--repo-id",
         required=True,
-        help=f"Destination HF repo, e.g. {ELIZA_1_HF_ORG}/qwen3.5-4b-optimized.",
+        help=f"Destination HF repo, e.g. {ELIZA_1_HF_ORG}/gemma4-e4b-optimized.",
     )
     ap.add_argument(
         "--public",

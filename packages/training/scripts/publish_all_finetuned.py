@@ -14,7 +14,7 @@ Usage:
     # Publish models for two tiers
     uv run python scripts/publish_all_finetuned.py \
         --what models \
-        --tiers qwen3.5-0.8b,qwen3.5-2b
+        --tiers gemma4-e2b,gemma4-e4b
 
     # Publish datasets only
     uv run python scripts/publish_all_finetuned.py --what datasets
@@ -46,11 +46,10 @@ logging.basicConfig(
 log = logging.getLogger("publish_all_finetuned")
 
 ALL_TIERS: list[str] = [
-    "qwen3.5-0.8b",
-    "qwen3.5-2b",
-    "qwen3.5-4b",
-    "qwen3.5-9b",
-    "qwen3.6-27b",
+    "gemma4-e2b",
+    "gemma4-e4b",
+    "gemma4-12b",
+    "gemma4-31b",
 ]
 
 # HuggingFace repo IDs

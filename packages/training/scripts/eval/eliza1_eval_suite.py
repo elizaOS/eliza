@@ -1052,9 +1052,9 @@ def eval_text(ctx: EvalContext) -> dict[str, Any]:
             verbose=False,
         )
     except (ValueError, Exception) as exc:  # noqa: BLE001
-        # llama-cpp-python (pip) doesn't support the elizaOS-fork-only qwen35
+        # llama-cpp-python (pip) doesn't support the elizaOS-fork-only gemma4
         # architecture. The fused llama-cli CAN load these GGUFs, but the
-        # llama-cpp-python pip package doesn't know about qwen35 yet. Record
+        # llama-cpp-python pip package doesn't know about gemma4 yet. Record
         # as not-run with a precise blocker note.
         return {
             **base,
@@ -1063,12 +1063,12 @@ def eval_text(ctx: EvalContext) -> dict[str, Any]:
             "passed": None,
             "reason": (
                 f"llama-cpp-python failed to load model ({exc!s}); "
-                "the bundled GGUF uses the elizaOS-fork qwen35 architecture "
+                "the bundled GGUF uses the elizaOS-fork gemma4 architecture "
                 "which is not yet backported to the pip llama-cpp-python release. "
                 "Run text_eval via the fused llama-cli binary or a pip wheel "
                 "built from the elizaOS fork to resolve."
             ),
-            "computeGated": "qwen35-arch-not-in-pip-llama-cpp-python",
+            "computeGated": "gemma4-arch-not-in-pip-llama-cpp-python",
         }
     total_nll = 0.0
     total_tokens = 0

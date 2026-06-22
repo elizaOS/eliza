@@ -25,19 +25,19 @@
 # can target a 2× or 4× H200/B200 box.
 #
 # eliza-1 cloud-tier targets (model_registry.py REGISTRY keys):
-#   REGISTRY_KEY=qwen3.5-0.8b → eliza-1-0_8b   (single H200 — overkill, ~2 GPU-h)
-#   REGISTRY_KEY=qwen3.5-2b   → eliza-1-2b     (single H200 — fits seq 8k)
-#   REGISTRY_KEY=qwen3.5-4b   → eliza-1-4b     (single H200)
-#   REGISTRY_KEY=qwen3.5-9b   → eliza-1-9b     (single H200, ~80 GB peak)
-#   REGISTRY_KEY=qwen3.6-27b  → eliza-1-27b    (8× H200 fallback; prefer Vast)
+#   REGISTRY_KEY=gemma4-e2b → eliza-1-0_8b   (single H200 — overkill, ~2 GPU-h)
+#   REGISTRY_KEY=gemma4-e2b   → eliza-1-2b     (single H200 — fits seq 8k)
+#   REGISTRY_KEY=gemma4-e4b   → eliza-1-4b     (single H200)
+#   REGISTRY_KEY=gemma4-12b   → eliza-1-9b     (single H200, ~80 GB peak)
+#   REGISTRY_KEY=gemma4-31b  → eliza-1-27b    (8× H200 fallback; prefer Vast)
 #   (legacy Qwen3 line: qwen3-0.6b, qwen3-1.7b, qwen3-4b — kept addressable for
-#   compatibility but the eliza-1 fused-kernel stack only validates Qwen3.5.)
+#   compatibility but the eliza-1 fused-kernel stack only validates Gemma 4.)
 #
 # Required env:
 #   NEBIUS_PROJECT_ID          # the project (== parent-id), e.g. project-e00kfz6cpr00q21z892vec
 #   HUGGING_FACE_HUB_TOKEN     # for gated Qwen access + pushing results
 # Optional env:
-#   REGISTRY_KEY               # default: qwen3.5-0.8b
+#   REGISTRY_KEY               # default: gemma4-e2b
 #   RUN_NAME                   # default: <registry-key>-apollo-<unix-ts>
 #   NEBIUS_VM_PRESET           # gpu-h200x1 (default) | gpu-h200x2 — selects the
 #                              #   platform/preset pair. x2 == 8×H200 (no 2-GPU
@@ -95,7 +95,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${NEBIUS_IMAGE_PARENT:=project-e00public-images}"
 
 REMOTE_TRAIN_DIR="/opt/training"
-REGISTRY_KEY="${REGISTRY_KEY:-qwen3.5-0.8b}"
+REGISTRY_KEY="${REGISTRY_KEY:-gemma4-e2b}"
 RUN_NAME="${RUN_NAME:-${REGISTRY_KEY//./-}-apollo-$(date +%s)}"
 QUANTIZE_AFTER="${QUANTIZE_AFTER:-polarquant,turboquant,fused_turboquant,qjl}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
@@ -115,14 +115,11 @@ case "$NEBIUS_VM_PRESET" in
 esac
 FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-$DEFAULT_WORLD}"
 
-# The transformer decoder-layer class FSDP wraps. Qwen3.5 tiers use
-# Qwen3_5DecoderLayer; the active 27B-class Qwen3.6 tier uses
-# Qwen3_6DecoderLayer. Allow an operator override for emergency transformer
-# releases that rename the class before this launcher is updated.
-case "$REGISTRY_KEY" in
-  qwen3.6-27b) DEFAULT_FSDP_WRAP_CLS="Qwen3_6DecoderLayer" ;;
-  *)           DEFAULT_FSDP_WRAP_CLS="Qwen3_5DecoderLayer" ;;
-esac
+# The transformer decoder-layer class FSDP wraps. All Gemma 4 tiers
+# (E2B/E4B/12B/31B) share the single dense Gemma4DecoderLayer. Allow an
+# operator override for emergency transformer releases that rename the
+# class before this launcher is updated.
+DEFAULT_FSDP_WRAP_CLS="Gemma4DecoderLayer"
 FSDP_WRAP_CLS="${FSDP_WRAP_CLS:-$DEFAULT_FSDP_WRAP_CLS}"
 
 cmd="${1:-help}"
@@ -500,7 +497,7 @@ fetch() {
 #                            distill_mtp_drafter.py::DEFAULT_TARGET_MODEL
 #                            (e.g. elizaos/eliza-1/bundles/2b for tier=2b).
 #   MTP_STUDENT_BASE      HF id of the student base. Defaults to
-#                            Qwen/Qwen3.5-0.8B-Base (the Eliza-1 mandated
+#                            google/gemma-4-E2B-Base (the Eliza-1 mandated
 #                            student for every active tier — keep this aligned
 #                            with model_registry.py::MTP_DRAFTER_BASE).
 #   MTP_DATASET           distillation corpus (default $TRAIN_FILE).
@@ -516,7 +513,7 @@ run_distill_remote() {
   local target_ckpt="${MTP_TARGET_CHECKPOINT:-}"
   local target_gguf="${MTP_TARGET_GGUF:-}"
   local target_model_id="${MTP_TARGET_MODEL_ID:-}"
-  local student_base="${MTP_STUDENT_BASE:-Qwen/Qwen3.5-0.8B-Base}"
+  local student_base="${MTP_STUDENT_BASE:-google/gemma-4-E2B-Base}"
   local ds="${MTP_DATASET:-$TRAIN_FILE}"
   local epochs="${MTP_EPOCHS:-1}" batch="${MTP_BATCH:-8}" ga="${MTP_GRAD_ACCUM:-4}"
   local msl="${MTP_MAX_SEQ_LEN:-2048}" maxn="${MTP_MAX_SAMPLES:-0}"
@@ -544,7 +541,7 @@ export HF_HOME=/opt/hf-cache
 sudo mkdir -p \$HF_HOME && sudo chown -R \$USER \$HF_HOME || true
 ${hf_tok:+export HUGGING_FACE_HUB_TOKEN='$hf_tok'; export HF_TOKEN='$hf_tok'}
 uv sync --extra train
-# qwen3_5 (hybrid linear-attn) needs transformers >= 4.57.0.dev0; the train
+# Gemma 4 (gemma4 arch) needs transformers >= 4.57.0.dev0; the train
 # extra pins >=4.46. Upgrade in-venv (matches the local box's 5.7.0).
 uv pip install --python .venv/bin/python -U 'transformers>=4.57.0' 'accelerate>=1.1.0'
 # Same cu130-driver problem as run_remote(): the Nebius cuda12.8 image ships a

@@ -10,7 +10,7 @@
  *     `ComputerUse` bridge probe, we register a generate function that
  *     calls into Apple's framework for short prompts.
  *   - Otherwise we do nothing, and the existing llama-cpp-capacitor
- *     (Qwen3-VL-2B) path remains the active local-inference handler.
+ *     (Gemma-VL / eliza-1 2b) path remains the active local-inference handler.
  *
  * Why this lives in plugin-local-inference (not plugin-capacitor-bridge):
  *

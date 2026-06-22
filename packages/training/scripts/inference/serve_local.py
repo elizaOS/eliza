@@ -10,9 +10,9 @@ it should.
 
 Usage:
     uv run --extra train python scripts/inference/serve_local.py \\
-        --registry-key qwen3.5-2b \\
-        --polarquant checkpoints/qwen35-2b-apollo-v1/final-polarquant \\
-        --turboquant checkpoints/qwen35-2b-apollo-v1/final-turboquant/turboquant.json \\
+        --registry-key gemma4-e2b \\
+        --polarquant checkpoints/gemma4-e2b-apollo-v1/final-polarquant \\
+        --turboquant checkpoints/gemma4-e2b-apollo-v1/final-turboquant/turboquant.json \\
         --prompt-file /tmp/long_prompt.txt \\
         --max-new-tokens 16384
 
@@ -105,12 +105,13 @@ def main() -> int:
         log.info("applying PolarQuant weights from %s", args.polarquant)
         apply_sidecar_to_model(model, Path(args.polarquant))
 
-    # KV-cache backend selection. For active hybrid linear+full-attention
-    # Qwen3.5 models, we MUST build a layer-type-aware cache or HF's
-    # parent Cache.has_previous_state crashes when the linear-attention
-    # layers index into a cache that only knows about full-attention slots.
-    # ElizaHybridCache handles that and dispatches the full-attention
-    # slots to bf16 / fused_turboquant / qjl_full as requested.
+    # KV-cache backend selection.
+    # FLAGGED DEAD CODE (Gemma 4 cutover): the hybrid (linear+full) attention
+    # KV path below is dead under Gemma 4's dense attention — it was needed for
+    # the old hybrid-attention base whose linear-attention layers crashed HF's
+    # parent Cache.has_previous_state. ElizaHybridCache + has_hybrid_layer_types
+    # never fire on a dense Gemma 4 model. Owner: delete the is_hybrid branch and
+    # the inference.hybrid_cache dependency.
     from inference.hybrid_cache import has_hybrid_layer_types, make_hybrid_cache
 
     past_key_values = None
@@ -141,7 +142,7 @@ def main() -> int:
             )
         elif args.turboquant:
             log.warning(
-                "--turboquant (pure-PyTorch) on a hybrid Qwen3.5/3.6 model "
+                "--turboquant (pure-PyTorch) on a hybrid model "
                 "is not supported because TurboQuantCache is layer-flat. "
                 "Falling back to bf16 hybrid cache; pass --fused-turboquant "
                 "for the Triton-fused path."

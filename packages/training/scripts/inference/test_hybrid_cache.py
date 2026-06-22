@@ -1,4 +1,9 @@
-"""End-to-end test for ElizaHybridCache on Qwen3.5-0.8B.
+"""End-to-end test for ElizaHybridCache on a hybrid-attention model.
+
+FLAGGED DEAD CODE (Gemma 4 cutover): ElizaHybridCache is dead under the dense
+Gemma 4 base; this test exercises the legacy hybrid path only. Owner: remove
+alongside scripts/inference/hybrid_cache.py.
+
 
 Loads the text decoder of Qwen/Qwen3.5-0.8B (a hybrid Gated DeltaNet +
 full-attention model), then generates several completions through each

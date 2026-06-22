@@ -358,7 +358,7 @@ def _mark_harness_evidence_passed(bundle: Path, tier: str) -> None:
     release = json.loads(release_path.read_text())
     release["releaseState"] = "base-v1"
     release["finetuned"] = False
-    release["sourceModels"] = {"text": {"repo": "Qwen/Qwen3.5-0.8B-Base"}}
+    release["sourceModels"] = {"text": {"repo": "google/gemma-4-E2B-Base"}}
     release_path.write_text(json.dumps(release), encoding="utf-8")
 
 
