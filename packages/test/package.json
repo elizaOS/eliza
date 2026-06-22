@@ -20,6 +20,7 @@
     "@elizaos/plugin-sql": "workspace:*"
   },
   "devDependencies": {
+    "discord.js": "^14.26.4",
     "vitest": "*"
   }
 }

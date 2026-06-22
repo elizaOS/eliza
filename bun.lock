@@ -2756,6 +2756,7 @@
         "@elizaos/plugin-sql": "workspace:*",
       },
       "devDependencies": {
+        "discord.js": "^14.26.4",
         "vitest": "*",
       },
     },
@@ -4973,6 +4974,10 @@
         "vitest": "^4.0.0",
       },
     },
+    "plugins/plugin-remote-ledger": {
+      "name": "@elizaos/plugin-remote-ledger",
+      "version": "1.0.0",
+    },
     "plugins/plugin-rlm": {
       "name": "@elizaos/plugin-rlm",
       "version": "2.0.3-beta.2",
@@ -6826,6 +6831,8 @@
     "@elizaos/plugin-reminders": ["@elizaos/plugin-reminders@workspace:plugins/plugin-reminders"],
 
     "@elizaos/plugin-remote-desktop": ["@elizaos/plugin-remote-desktop@workspace:plugins/plugin-remote-desktop"],
+
+    "@elizaos/plugin-remote-ledger": ["@elizaos/plugin-remote-ledger@workspace:plugins/plugin-remote-ledger"],
 
     "@elizaos/plugin-remote-manifest": ["@elizaos/plugin-remote-manifest@workspace:packages/plugin-remote-manifest"],
 
