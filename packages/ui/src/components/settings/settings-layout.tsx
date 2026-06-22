@@ -1,4 +1,4 @@
-import { ChevronRight, type LucideIcon } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import type * as React from "react";
 import { cn } from "../../lib/utils";
 
@@ -53,7 +53,7 @@ export function SettingsGroup({
   return (
     <section className={cn("flex flex-col gap-1.5", className)} {...props}>
       {hasHeader ? (
-        <div className="flex min-h-[1.5rem] items-end justify-between gap-3">
+        <div className="flex min-h-[1.5rem] flex-wrap items-end justify-between gap-x-3 gap-y-2">
           <div className="min-w-0">
             {title ? (
               <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted/70">

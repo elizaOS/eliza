@@ -479,42 +479,40 @@ export function AppsManagementSection() {
     <SettingsStack>
       <SettingsGroup
         title={t("settings.sections.apps.groupTitle", { defaultValue: "Apps" })}
-        action={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              ref={createToggleRef}
-              type="button"
-              variant="default"
-              className="h-9 rounded-md px-3 text-xs"
-              onClick={() => {
-                setShowCreate((v) => !v);
-                setShowLoad(false);
-              }}
-              {...createToggleAgentProps}
-            >
-              {t("settings.sections.apps.createNew", {
-                defaultValue: "Create new app",
-              })}
-            </Button>
-            <Button
-              ref={loadToggleRef}
-              type="button"
-              variant="outline"
-              className="h-9 rounded-md px-3 text-xs"
-              onClick={() => {
-                setShowLoad((v) => !v);
-                setShowCreate(false);
-              }}
-              {...loadToggleAgentProps}
-            >
-              {t("settings.sections.apps.loadFromDirectory", {
-                defaultValue: "Load from directory",
-              })}
-            </Button>
-            <AdvancedToggle label="Advanced" />
-          </div>
-        }
+        action={<AdvancedToggle label="Advanced" />}
       >
+        <div className="flex flex-wrap items-center gap-2 pb-1">
+          <Button
+            ref={createToggleRef}
+            type="button"
+            variant="default"
+            className="h-9 rounded-md px-3 text-xs"
+            onClick={() => {
+              setShowCreate((v) => !v);
+              setShowLoad(false);
+            }}
+            {...createToggleAgentProps}
+          >
+            {t("settings.sections.apps.createNew", {
+              defaultValue: "Create new app",
+            })}
+          </Button>
+          <Button
+            ref={loadToggleRef}
+            type="button"
+            variant="outline"
+            className="h-9 rounded-md px-3 text-xs"
+            onClick={() => {
+              setShowLoad((v) => !v);
+              setShowCreate(false);
+            }}
+            {...loadToggleAgentProps}
+          >
+            {t("settings.sections.apps.loadFromDirectory", {
+              defaultValue: "Load from directory",
+            })}
+          </Button>
+        </div>
         {advancedEnabled ? (
           <SettingsRow
             label={t("settings.sections.apps.verifyOnRelaunch", {
