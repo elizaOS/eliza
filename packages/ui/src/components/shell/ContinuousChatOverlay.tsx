@@ -50,6 +50,8 @@ import {
   chatUploadKind,
   intakeAttachmentFiles,
   MAX_CHAT_IMAGES,
+  pastedTextToAttachment,
+  shouldConvertPasteToAttachment,
   summarizeDroppedAttachments,
 } from "../../utils/image-attachment";
 import { MessageAttachments } from "../chat/MessageAttachments";
@@ -3033,6 +3035,21 @@ export function ContinuousChatOverlay({
                   if (files.length > 0) {
                     e.preventDefault();
                     addImageFiles(files);
+                    return;
+                  }
+                  // A large plain-text paste becomes a collapsed text
+                  // attachment chip (Claude-Code style) instead of flooding the
+                  // textarea; small pastes fall through to the textarea as
+                  // normal.
+                  const text = e.clipboardData?.getData("text") ?? "";
+                  if (shouldConvertPasteToAttachment(text)) {
+                    e.preventDefault();
+                    setPendingImages((prev) =>
+                      [...prev, pastedTextToAttachment(text)].slice(
+                        0,
+                        MAX_CHAT_IMAGES,
+                      ),
+                    );
                   }
                 }}
                 onKeyDown={(e) => {

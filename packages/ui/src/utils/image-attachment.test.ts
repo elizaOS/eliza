@@ -6,12 +6,19 @@ import {
   chatUploadKind,
   createImageThumbnail,
   isSupportedChatUpload,
+  LARGE_PASTE_CHAR_THRESHOLD,
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENTS_TOTAL_BYTES,
   MAX_CHAT_IMAGES,
   partitionAttachmentFiles,
+  pastedTextToAttachment,
+  shouldConvertPasteToAttachment,
   summarizeDroppedAttachments,
 } from "./image-attachment";
+
+/** Decode an attachment's UTF-8-safe base64 `data` back to the original text. */
+const decodeAttachmentText = (data: string): string =>
+  new TextDecoder().decode(Uint8Array.from(atob(data), (c) => c.charCodeAt(0)));
 
 const file = (type: string): File => ({ type }) as File;
 const sizedFile = (type: string, size: number): File =>
@@ -201,6 +208,85 @@ describe("summarizeDroppedAttachments", () => {
       droppedOverCount: 1,
       maxMb: bytesToMb(MAX_ATTACHMENT_BYTES),
     });
+  });
+});
+
+describe("shouldConvertPasteToAttachment", () => {
+  it("returns false for text below the threshold", () => {
+    expect(shouldConvertPasteToAttachment("hello")).toBe(false);
+    expect(
+      shouldConvertPasteToAttachment(
+        "x".repeat(LARGE_PASTE_CHAR_THRESHOLD - 1),
+      ),
+    ).toBe(false);
+  });
+
+  it("returns true for text at or above the threshold", () => {
+    expect(
+      shouldConvertPasteToAttachment("x".repeat(LARGE_PASTE_CHAR_THRESHOLD)),
+    ).toBe(true);
+    expect(
+      shouldConvertPasteToAttachment(
+        "x".repeat(LARGE_PASTE_CHAR_THRESHOLD + 50),
+      ),
+    ).toBe(true);
+  });
+
+  it("uses the trimmed length so surrounding whitespace doesn't tip it over", () => {
+    const justUnder = "x".repeat(LARGE_PASTE_CHAR_THRESHOLD - 1);
+    const padded = `   \n${justUnder}\n   `;
+    // Raw length is over the threshold, but the trimmed content is not.
+    expect(padded.length).toBeGreaterThanOrEqual(LARGE_PASTE_CHAR_THRESHOLD);
+    expect(shouldConvertPasteToAttachment(padded)).toBe(false);
+  });
+
+  it("counts trimmed length so leading/trailing whitespace is ignored when large", () => {
+    const big = "x".repeat(LARGE_PASTE_CHAR_THRESHOLD);
+    expect(shouldConvertPasteToAttachment(`  ${big}  `)).toBe(true);
+  });
+
+  it("does not convert a single long URL (a link, not a document)", () => {
+    const longUrl = `https://example.com/${"a".repeat(LARGE_PASTE_CHAR_THRESHOLD)}`;
+    expect(longUrl.length).toBeGreaterThanOrEqual(LARGE_PASTE_CHAR_THRESHOLD);
+    expect(shouldConvertPasteToAttachment(longUrl)).toBe(false);
+  });
+
+  it("does convert a long block that merely contains a URL", () => {
+    const block = `See https://example.com here\n${"word ".repeat(
+      LARGE_PASTE_CHAR_THRESHOLD,
+    )}`;
+    expect(shouldConvertPasteToAttachment(block)).toBe(true);
+  });
+});
+
+describe("pastedTextToAttachment", () => {
+  it("round-trips ASCII text through base64", () => {
+    const text = "hello world\nline two".repeat(200);
+    const att = pastedTextToAttachment(text);
+    expect(decodeAttachmentText(att.data)).toBe(text);
+  });
+
+  it("round-trips non-ASCII / emoji text without corruption", () => {
+    const text = `日本語テキスト 🚀✨ — café naïve résumé\n${"漢字".repeat(2000)} 😀`;
+    const att = pastedTextToAttachment(text);
+    expect(decodeAttachmentText(att.data)).toBe(text);
+  });
+
+  it("sets mimeType to text/markdown and a default name", () => {
+    const att = pastedTextToAttachment("anything large enough");
+    expect(att.mimeType).toBe("text/markdown");
+    expect(att.name).toBe("pasted-text.md");
+    expect(att.thumbnail).toBeUndefined();
+  });
+
+  it("honors a provided name", () => {
+    const att = pastedTextToAttachment("body", { name: "snippet.md" });
+    expect(att.name).toBe("snippet.md");
+  });
+
+  it("does not include a data-URL prefix in data", () => {
+    const att = pastedTextToAttachment("plain content");
+    expect(att.data.startsWith("data:")).toBe(false);
   });
 });
 
