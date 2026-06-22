@@ -36,7 +36,7 @@ writeFileSync(
   fakeAudioWav,
   Buffer.from(KNOWN_PHRASE_WAV_DATA_URL.split(",")[1] ?? "", "base64"),
 );
-const VOICE_MIC_SPEC = /voice-realaudio\.spec\.ts/;
+const VOICE_MIC_SPEC = /(voice-realaudio|transcript-realaudio)\.spec\.ts/;
 // The all-views aesthetic audit (#8796) walks ~50 views × 2 viewports; it is a
 // dedicated tool run via `audit:app`, not part of the default e2e smoke.
 const AUDIT_APP_SPEC = /all-views-aesthetic-audit\.spec\.ts/;

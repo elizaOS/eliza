@@ -683,6 +683,8 @@ docs/*
 !docs/tee-architecture-implementation-plan.md
 !docs/security/
 !docs/security/**
+!docs/transcripts/
+!docs/transcripts/**
 yolov8n.pt
 *.pt
 
