@@ -139,6 +139,40 @@ if (
   }
 }
 
+// The ui-smoke LIVE stack starts a web server that runs `packages/app build:web`,
+// whose vite build BUNDLES @elizaos/core (resolved via its `browser` export
+// condition → dist/browser/index.browser.js). On a fresh CI checkout that dist
+// isn't built yet, so the build aborts with
+// `Failed to resolve entry for package "@elizaos/core"` and the whole live stack
+// fails to start. Build core first (turbo-cached → a fast no-op when already
+// up to date) so the dependency exists before the web build resolves it.
+if (
+  env.ELIZA_UI_SMOKE_LIVE_STACK === "1" &&
+  playwrightArgs.includes("--config") &&
+  playwrightArgs.some((value) =>
+    value.includes("playwright.ui-smoke.config.ts"),
+  ) &&
+  env.ELIZA_UI_SMOKE_SKIP_CORE_BUILD !== "1"
+) {
+  const coreBuild = spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "packages", "scripts", "run-turbo.mjs"),
+      "run",
+      "build",
+      "--filter=@elizaos/core",
+    ],
+    {
+      cwd: repoRoot,
+      env,
+      stdio: "inherit",
+    },
+  );
+  if ((coreBuild.status ?? 1) !== 0) {
+    process.exit(coreBuild.status ?? 1);
+  }
+}
+
 if (
   playwrightArgs.includes("--config") &&
   playwrightArgs.some((value) =>
