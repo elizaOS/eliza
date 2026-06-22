@@ -57,7 +57,7 @@ export const evalCodeAction: Action = {
     _message: Memory,
     _state?: State,
     options?: HandlerOptions,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<ActionResult> => {
     const params = (options?.parameters ?? {}) as EvalCodeParameters;
     const jsCode = (params.jsCode ?? params.code ?? '').trim();

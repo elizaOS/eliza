@@ -14,7 +14,10 @@ describe("buildDefaultAcceptanceCriteria (#8896)", () => {
   });
 
   it("appends view-create extras (registered view + screenshot)", () => {
-    const criteria = buildDefaultAcceptanceCriteria("add a view", "view-create");
+    const criteria = buildDefaultAcceptanceCriteria(
+      "add a view",
+      "view-create",
+    );
     expect(criteria.length).toBe(6);
     expect(criteria.some((c) => c.includes("GET /api/views"))).toBe(true);
     expect(criteria.some((c) => c.toLowerCase().includes("screenshot"))).toBe(

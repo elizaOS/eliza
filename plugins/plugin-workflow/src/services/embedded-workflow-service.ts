@@ -1148,14 +1148,9 @@ async function runQuickJsCode(jsCode: string, inputItems: INodeExecutionData[]):
  * The snippet body runs inside an IIFE, so `return <value>` yields the result.
  * Public entry point for the EVAL_CODE action (#8914).
  */
-export async function evalQuickJsCode(
-  jsCode: string,
-  inputJson?: unknown,
-): Promise<unknown> {
+export async function evalQuickJsCode(jsCode: string, inputJson?: unknown): Promise<unknown> {
   const items: INodeExecutionData[] =
-    inputJson === undefined
-      ? []
-      : [{ json: (inputJson ?? {}) as Record<string, unknown> }];
+    inputJson === undefined ? [] : [{ json: (inputJson ?? {}) as Record<string, unknown> }];
   return runQuickJsCode(jsCode, items);
 }
 

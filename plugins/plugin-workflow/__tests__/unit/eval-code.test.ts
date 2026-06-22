@@ -15,9 +15,7 @@ describe('evalQuickJsCode sandbox', () => {
   });
 
   test('has no host access (console is a no-op, returns the value)', async () => {
-    expect(await evalQuickJsCode('console.log("ignored"); return "ok";')).toBe(
-      'ok',
-    );
+    expect(await evalQuickJsCode('console.log("ignored"); return "ok";')).toBe('ok');
   });
 });
 
@@ -35,7 +33,7 @@ describe('EVAL_CODE action', () => {
       { parameters: { jsCode: 'return 6 * 7;' } } as never,
       (async (content: { text?: string }) => {
         delivered = content.text;
-      }) as never,
+      }) as never
     );
     expect(result?.success).toBe(true);
     expect(result?.text).toBe('42');
@@ -48,7 +46,7 @@ describe('EVAL_CODE action', () => {
       {} as never,
       undefined,
       { parameters: {} } as never,
-      undefined,
+      undefined
     );
     expect(result?.success).toBe(false);
     expect(result?.text).toContain('jsCode');
