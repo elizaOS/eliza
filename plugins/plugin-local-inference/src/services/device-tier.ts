@@ -27,6 +27,7 @@
  * 3–4 GB ceiling; Android foreground-service requirement).
  */
 
+import { isMobilePlatform } from "@elizaos/shared";
 import {
 	type Eliza1Fit,
 	selectBestEliza1Fit,
@@ -132,18 +133,48 @@ export function effectiveModelMemoryGb(probe: HardwareProbe): number {
 const MOBILE_FIT_CEILING_GB = 6;
 
 /**
+ * Largest context window we advertise on a phone. A full 128k QJL KV cache does
+ * not fit alongside the weights in a handset's real free RAM (the resident agent +
+ * WebView + OS leave well under `totalRam × 0.5`), so we clamp mobile windows here
+ * even when the coarse RAM math would allow more.
+ */
+const MOBILE_CONTEXT_CEILING = 65536; // 64k
+
+/**
+ * True when this host should be treated as a phone for fit purposes. The on-device
+ * bun agent's hardware probe often reports `platform: "linux"` with no `mobile`
+ * field (it sees the bionic/musl env as linux), so the probe alone under-detects
+ * Android/iOS — fall back to the runtime `ELIZA_PLATFORM` signal so the mobile cap
+ * still applies. Without this, a high-RAM phone would be handed a 9B+ tier.
+ */
+function isMobileHost(probe: HardwareProbe): boolean {
+	return isMobile(probe) || isMobilePlatform();
+}
+
+/**
  * The canonical "biggest eliza-1 that fits this device" decision: normalize the
  * hardware probe to usable model memory, then pick the largest tier at a 128k QJL
  * window (or a downscaled 2B window, or `null` → route to Cloud). This is the one
  * function callers should use to answer "what local model runs here" — it always
- * applies TurboQuant weights + the QJL KV cache and targets a 128k window.
+ * applies TurboQuant weights + the QJL KV cache and targets a 128k window. On
+ * mobile it caps the tier at 4B and the context at 64k (a phone cannot hold a 128k
+ * cache).
  */
 export function selectBestEliza1FitForDevice(
 	probe: HardwareProbe,
 ): Eliza1Fit | null {
+	const mobile = isMobileHost(probe);
 	let memGb = effectiveModelMemoryGb(probe);
-	if (isMobile(probe)) memGb = Math.min(memGb, MOBILE_FIT_CEILING_GB);
-	return selectBestEliza1Fit(memGb);
+	if (mobile) memGb = Math.min(memGb, MOBILE_FIT_CEILING_GB);
+	const fit = selectBestEliza1Fit(memGb);
+	if (fit && mobile && fit.contextLength > MOBILE_CONTEXT_CEILING) {
+		return {
+			...fit,
+			contextLength: MOBILE_CONTEXT_CEILING,
+			contextDownscaled: true,
+		};
+	}
+	return fit;
 }
 
 /**

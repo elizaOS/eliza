@@ -4,6 +4,7 @@ import {
 	DEVICE_TIER_ORDER,
 	DEVICE_TIER_THRESHOLDS,
 	effectiveModelMemoryGb,
+	selectBestEliza1FitForDevice,
 	TIER_WARNING_COPY,
 } from "./device-tier";
 import type { HardwareProbe } from "./types";
@@ -23,6 +24,62 @@ const baseProbe: HardwareProbe = {
 function probe(overrides: Partial<HardwareProbe>): HardwareProbe {
 	return { ...baseProbe, ...overrides };
 }
+
+describe("selectBestEliza1FitForDevice — mobile guard never hands a phone 9B", () => {
+	const prevPlatform = process.env.ELIZA_PLATFORM;
+	function withPlatform(value: string | undefined, fn: () => void) {
+		if (value === undefined) delete process.env.ELIZA_PLATFORM;
+		else process.env.ELIZA_PLATFORM = value;
+		try {
+			fn();
+		} finally {
+			if (prevPlatform === undefined) delete process.env.ELIZA_PLATFORM;
+			else process.env.ELIZA_PLATFORM = prevPlatform;
+		}
+	}
+
+	// The on-device bun probe: reports linux + arm64 + no gpu + no mobile field.
+	const devicePhoneProbe = probe({
+		totalRamGb: 7.4,
+		freeRamGb: 3.3,
+		gpu: null,
+		arch: "arm64",
+		platform: "linux",
+	});
+
+	it("this 8GB phone lands on 2B with a phone-sized window", () => {
+		withPlatform("android", () => {
+			const fit = selectBestEliza1FitForDevice(devicePhoneProbe);
+			expect(fit?.tierId).toBe("eliza-1-2b");
+			expect(fit?.contextLength).toBeLessThanOrEqual(65536);
+		});
+	});
+
+	it("caps a HIGH-RAM phone at 4B (never 9B+) even when the probe says linux", () => {
+		const bigPhone = probe({
+			totalRamGb: 24,
+			freeRamGb: 16,
+			gpu: null,
+			arch: "arm64",
+			platform: "linux",
+		});
+		withPlatform("android", () => {
+			const fit = selectBestEliza1FitForDevice(bigPhone);
+			expect(["eliza-1-2b", "eliza-1-4b"]).toContain(fit?.tierId);
+			expect(fit?.tierId).not.toBe("eliza-1-9b");
+			expect(fit?.contextLength).toBeLessThanOrEqual(65536);
+		});
+	});
+
+	it("the SAME 24GB box as a desktop (no android env) may use a larger tier", () => {
+		const bigBox = probe({ totalRamGb: 48, freeRamGb: 40, gpu: null });
+		withPlatform(undefined, () => {
+			const fit = selectBestEliza1FitForDevice(bigBox);
+			// effective = 48*0.5 = 24 → 9B fits on a desktop (not capped).
+			expect(fit?.tierId).toBe("eliza-1-9b");
+		});
+	});
+});
 
 describe("classifyDeviceTier", () => {
 	describe("MAX tier", () => {
