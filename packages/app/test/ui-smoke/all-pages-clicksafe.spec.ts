@@ -241,6 +241,12 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     timeoutMs: 60_000,
   },
   {
+    name: "background view deep link",
+    path: "/background",
+    readyChecks: [{ selector: "#root" }, { text: "Background" }],
+    timeoutMs: 60_000,
+  },
+  {
     name: "character documents deep link",
     path: "/character/documents",
     readyChecks: [{ selector: '[data-testid="character-editor-view"]' }],
