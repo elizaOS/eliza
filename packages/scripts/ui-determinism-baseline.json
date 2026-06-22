@@ -22,7 +22,9 @@
   "packages/ui/src/cloud-ui/components/voice/voice-status-badge.tsx": [
     "L35 new Date()"
   ],
-  "packages/ui/src/cloud-ui/runtime/render-telemetry.tsx": ["L47 Date.now()"],
+  "packages/ui/src/cloud-ui/runtime/render-telemetry.tsx": [
+    "L47 Date.now()"
+  ],
   "packages/ui/src/cloud/account-security/components/active-sessions-panel.tsx": [
     "L153 toLocaleString() [no locale]"
   ],
@@ -47,7 +49,9 @@
     "L189 toLocaleString() [no locale]",
     "L225 toLocaleString() [no locale]"
   ],
-  "packages/ui/src/cloud/analytics/_components/filters.tsx": ["L58 new Date()"],
+  "packages/ui/src/cloud/analytics/_components/filters.tsx": [
+    "L58 new Date()"
+  ],
   "packages/ui/src/cloud/analytics/_components/usage-chart.tsx": [
     "L109 toLocaleString() [no locale]",
     "L214 toLocaleString() [no locale]"
@@ -121,7 +125,9 @@
   "packages/ui/src/components/connectors/XRPairingPanel.tsx": [
     "L86 toLocaleTimeString() [no locale]"
   ],
-  "packages/ui/src/components/pages/chat-view-hooks.tsx": ["L812 Date.now()"],
+  "packages/ui/src/components/pages/chat-view-hooks.tsx": [
+    "L812 Date.now()"
+  ],
   "packages/ui/src/components/pages/database-utils.tsx": [
     "L266 toLocaleString() [no locale]"
   ],
@@ -137,7 +143,9 @@
   "packages/ui/src/components/pages/ElizaOsAppsView.tsx": [
     "L1742 toLocaleString() [no locale]"
   ],
-  "packages/ui/src/components/pages/HeartbeatForm.tsx": ["L1206 new Date()"],
+  "packages/ui/src/components/pages/HeartbeatForm.tsx": [
+    "L1206 new Date()"
+  ],
   "packages/ui/src/components/pages/ReleaseCenterView.tsx": [
     "L293 toLocaleString() [no locale]"
   ],
@@ -157,7 +165,9 @@
   "packages/ui/src/components/shell/ComputerUseApprovalOverlay.tsx": [
     "L297 toLocaleTimeString() [no locale]"
   ],
-  "packages/ui/src/components/shell/PairingView.tsx": ["L49 Date.now()"],
+  "packages/ui/src/components/shell/PairingView.tsx": [
+    "L49 Date.now()"
+  ],
   "packages/ui/src/components/shell/usePromptSuggestions.ts": [
     "L279 new Date()"
   ],
@@ -170,11 +180,5 @@
   ],
   "packages/ui/src/components/training/TrainingDashboard.tsx": [
     "L141 toLocaleString() [no locale]"
-  ],
-  "packages/ui/src/components/ui/calendar.tsx": [
-    "L200 toLocaleDateString() [no locale]"
-  ],
-  "packages/ui/src/components/ui/chart.tsx": [
-    "L275 toLocaleString() [no locale]"
   ]
 }
