@@ -281,7 +281,10 @@ function resolveCloudApiBase(input?: string): string {
   ).trim();
   try {
     const u = new URL(raw);
-    if (/(^|\.)elizacloud\.ai$/.test(u.hostname) && u.hostname !== "api.elizacloud.ai") {
+    if (
+      /(^|\.)elizacloud\.ai$/.test(u.hostname) &&
+      u.hostname !== "api.elizacloud.ai"
+    ) {
       u.hostname = "api.elizacloud.ai";
     }
     // Strip a trailing /api/v1 etc. — the SIWE endpoints live at the origin.
@@ -509,41 +512,43 @@ export function registerAuthCommand(program: Command) {
     )
     .option("--no-save", "Print the key only; do not persist it to the config")
     .option("--json", "Emit the result as JSON (for scripting)")
-    .action(async (opts: { cloud?: string; save?: boolean; json?: boolean }) => {
-      await runCommandWithRuntime(defaultRuntime, async () => {
-        const result = await runDevWalletLogin({
-          cloudApiBase: opts.cloud,
-          save: opts.save,
+    .action(
+      async (opts: { cloud?: string; save?: boolean; json?: boolean }) => {
+        await runCommandWithRuntime(defaultRuntime, async () => {
+          const result = await runDevWalletLogin({
+            cloudApiBase: opts.cloud,
+            save: opts.save,
+          });
+          if (opts.json) {
+            console.log(JSON.stringify(result));
+            if (!result.ok) process.exitCode = 1;
+            return;
+          }
+          if (!result.ok) {
+            console.error(theme.error(result.message ?? "dev-login failed"));
+            process.exitCode = 1;
+            return;
+          }
+          console.log(theme.heading("Eliza Cloud dev-login"));
+          console.log(
+            `${theme.success("✓")} wallet ${theme.command(result.address ?? "?")}${result.isNewAccount ? " (new account)" : ""}`,
+          );
+          console.log(
+            `${theme.success("✓")} API key ${theme.command(result.apiKey ?? "?")}`,
+          );
+          if (result.organizationId) {
+            console.log(`${theme.muted("→")} org ${result.organizationId}`);
+          }
+          if (result.savedTo) {
+            console.log(
+              `${theme.success("✓")} saved ELIZAOS_CLOUD_API_KEY to ${theme.command(result.savedTo)} — the agent will use Eliza Cloud`,
+            );
+          } else {
+            console.log(
+              `${theme.muted("→")} not saved (use without --no-save to persist, or export ELIZAOS_CLOUD_API_KEY=<key>)`,
+            );
+          }
         });
-        if (opts.json) {
-          console.log(JSON.stringify(result));
-          if (!result.ok) process.exitCode = 1;
-          return;
-        }
-        if (!result.ok) {
-          console.error(theme.error(result.message ?? "dev-login failed"));
-          process.exitCode = 1;
-          return;
-        }
-        console.log(theme.heading("Eliza Cloud dev-login"));
-        console.log(
-          `${theme.success("✓")} wallet ${theme.command(result.address ?? "?")}${result.isNewAccount ? " (new account)" : ""}`,
-        );
-        console.log(
-          `${theme.success("✓")} API key ${theme.command(result.apiKey ?? "?")}`,
-        );
-        if (result.organizationId) {
-          console.log(`${theme.muted("→")} org ${result.organizationId}`);
-        }
-        if (result.savedTo) {
-          console.log(
-            `${theme.success("✓")} saved ELIZAOS_CLOUD_API_KEY to ${theme.command(result.savedTo)} — the agent will use Eliza Cloud`,
-          );
-        } else {
-          console.log(
-            `${theme.muted("→")} not saved (use without --no-save to persist, or export ELIZAOS_CLOUD_API_KEY=<key>)`,
-          );
-        }
-      });
-    });
+      },
+    );
 }

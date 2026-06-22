@@ -30,7 +30,7 @@
     "start": "bun run smartglasses.ts",
     "test": "bun test smartglasses.test.ts smartglasses-protocol.test.ts",
     "test:protocol": "bun test smartglasses-protocol.test.ts",
-    "typecheck": "node ../../../packages/scripts/run-turbo.mjs run build --filter=@elizaos/plugin-facewear --concurrency=1 && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package typescript@6.0.3 tsc --ignoreConfig --noEmit --moduleResolution bundler --allowImportingTsExtensions --module ESNext --target ES2022 --lib ES2022,DOM --types node --skipLibCheck --strict false eliza-runtime-smoke.ts evenhub-smoke.ts hardware-evidence.ts hardware-local-bluetooth.ts hardware-report-status.ts hardware-smoke.ts noble-hardware-smoke.ts package-smoke.ts simulator-automation-smoke.ts validate-hardware-report.ts",
+    "typecheck": "bun run --cwd ../../../plugins/plugin-facewear build && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package typescript@6.0.3 tsc --noEmit -p tsconfig.json",
     "verify:software": "bun run lint && bun run test && bun run test:protocol && bun run hardware:test-bleak-parser && bun run hardware:test-doctor && bun run typecheck && bun run smoke:package && bun run smoke:runtime && bun run smoke:simulator",
     "clean": "rm -rf .turbo node_modules/.vite node_modules/.vite-temp"
   },

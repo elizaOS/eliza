@@ -1,12 +1,61 @@
 #!/usr/bin/env bun
 
-import { existsSync, mkdirSync, rmSync } from "node:fs";
-import { appendFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { appendFile, readFile, writeFile } from "node:fs/promises";
+import { dirname, extname, join, resolve } from "node:path";
 import { build } from "bun";
 
 const ROOT = resolve(dirname(import.meta.path));
 const DIST = join(ROOT, "dist");
+
+function listDeclarationFiles(dir: string): string[] {
+  const entries = readdirSync(dir, { withFileTypes: true });
+  return entries.flatMap((entry) => {
+    const entryPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      return listDeclarationFiles(entryPath);
+    }
+
+    return entry.name.endsWith(".d.ts") || entry.name.endsWith(".d.cts") ? [entryPath] : [];
+  });
+}
+
+function resolveDeclarationSpecifier(fileDir: string, specifier: string): string {
+  if (!(specifier.startsWith("./") || specifier.startsWith("../"))) {
+    return specifier;
+  }
+
+  if (extname(specifier)) {
+    return specifier;
+  }
+
+  const targetPath = join(fileDir, specifier);
+  if (existsSync(`${targetPath}.d.ts`) || existsSync(`${targetPath}.d.cts`)) {
+    return `${specifier}.js`;
+  }
+
+  if (existsSync(join(targetPath, "index.d.ts")) || existsSync(join(targetPath, "index.d.cts"))) {
+    return `${specifier}/index.js`;
+  }
+
+  return specifier;
+}
+
+async function normalizeDeclarationSpecifiers(filePath: string): Promise<void> {
+  const original = await readFile(filePath, "utf8");
+  const fileDir = dirname(filePath);
+  const next = original
+    .replace(/\bfrom\s+(["'])(\.{1,2}\/[^"']+)\1/g, (_match, quote, specifier) => {
+      return `from ${quote}${resolveDeclarationSpecifier(fileDir, specifier)}${quote}`;
+    })
+    .replace(/\bimport\s*\(\s*(["'])(\.{1,2}\/[^"']+)\1\s*\)/g, (_match, quote, specifier) => {
+      return `import(${quote}${resolveDeclarationSpecifier(fileDir, specifier)}${quote})`;
+    });
+
+  if (next !== original) {
+    await writeFile(filePath, next);
+  }
+}
 
 if (existsSync(DIST)) {
   rmSync(DIST, { recursive: true, force: true });
@@ -130,5 +179,9 @@ await appendFile(
   join(DIST, "index.node.d.ts"),
   `\nexport * from './schema/index.js';\nexport type { DrizzleDatabase } from './types.js';\n`
 );
+
+for (const filePath of listDeclarationFiles(DIST)) {
+  await normalizeDeclarationSpecifiers(filePath);
+}
 
 console.log("Build complete!");

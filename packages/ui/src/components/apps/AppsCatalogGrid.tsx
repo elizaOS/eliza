@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import type { RegistryAppInfo } from "../../api";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Skeleton } from "../ui/skeleton";
 import { AppHero } from "./app-identity";
 import { getAppShortName, groupAppsForCatalog } from "./helpers";
@@ -401,7 +401,7 @@ export function AppsCatalogGrid({
   onRetry,
   onToggleFavorite,
 }: AppsCatalogGridProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const catalogRef = useRef<HTMLDivElement | null>(null);
   const [catalogWidth, setCatalogWidth] = useState(0);
   const cardsPerRow = useMemo(

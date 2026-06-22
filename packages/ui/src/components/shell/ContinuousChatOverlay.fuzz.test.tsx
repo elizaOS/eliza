@@ -80,6 +80,7 @@ function makeController(
     ],
     canSend: true,
     responding: false,
+    turnStatus: null,
     recording: false,
     transcript: "",
     modelStatus: { kind: "ready" },

@@ -4,7 +4,7 @@ import type {
   GlassSide,
   SmartglassesAudioEncoding,
   SmartglassesStatus,
-} from "../../../plugins/plugin-facewear/src/index.js";
+} from "@elizaos/plugin-facewear";
 
 export type HardwareWriteSide = GlassSide | "both";
 

@@ -27,6 +27,7 @@ function makeController(
     messages: [{ id: "a", role: "assistant", content: "hi", createdAt: 1 }],
     canSend: true,
     responding: false,
+    turnStatus: null,
     recording: false,
     transcript: "",
     // Required ShellController surface the overlay reads unconditionally.

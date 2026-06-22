@@ -35,6 +35,9 @@
     "dist/",
     "scripts/"
   ],
+  "devDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
   "keywords": [
     "elizaos",
     "prompts",

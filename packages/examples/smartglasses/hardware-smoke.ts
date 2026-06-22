@@ -2,7 +2,7 @@ import {
   type G1ConnectionReadyMode,
   SmartglassesService,
   WebBluetoothG1Transport,
-} from "../../../plugins/plugin-facewear/src/index.js";
+} from "@elizaos/plugin-facewear";
 import {
   createHardwareEvidenceReport,
   headsetSetupHint,

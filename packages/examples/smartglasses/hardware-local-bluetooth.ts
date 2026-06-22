@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import type { GlassSide } from "../../../plugins/plugin-facewear/src/index.js";
+import type { GlassSide } from "@elizaos/plugin-facewear";
 
 export type LocalBluetoothPreflight = {
   bluetoothAdapter: {
