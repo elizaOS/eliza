@@ -87,6 +87,8 @@ Resolved in `src/feed-auth.ts` via `resolveSettingLike` (checks `runtime.getSett
 | `FEED_APP_URL` | No | falls back to `FEED_API_URL` | Alternate URL key (alias) |
 | `FEED_CLIENT_URL` | No | falls back to `FEED_API_URL` | Client-facing URL used in viewer embed and `launchUrl` |
 | `FEED_A2A_API_KEY` | No | — | Agent-to-agent API key sent as `X-Feed-Api-Key` header |
+| `STEWARD_AGENT_TOKEN` | No | — | The agent's Steward/Eliza-Cloud session JWT. When present, the plugin forwards it as `Authorization: Bearer` and skips the `FEED_AGENT_ID/SECRET` exchange (shared-secret SSO). Set by the app-core Steward sidecar. |
+| `FEED_STEWARD_TOKEN` | No | falls back to `STEWARD_AGENT_TOKEN` | Explicit per-app override for the Steward JWT used to auth to Feed. |
 
 In `NODE_ENV !== "production"`, the plugin will attempt to auto-provision credentials from the dev Feed server by probing known dev agent IDs and hostname-derived secrets. Provisioned credentials are persisted to `runtime.setSetting` and `process.env`.
 
@@ -120,7 +122,7 @@ Session tokens (`FEED_AGENT_SESSION_TOKEN`, `FEED_AGENT_SESSION_EXPIRES_AT`) are
 - The view bundle (`dist/views/bundle.js`) is built separately by Vite (`build:views`). Running only `build:js` leaves the views stale. Always run `build` or `build:views` before shipping a UI change.
 - `FeedOperatorSurface` and `FeedTuiView` are both exported from `dist/views/bundle.js` — the single Vite entry (`FeedOperatorSurface.tsx`) must re-export `FeedTuiView` for the TUI view to resolve at runtime.
 - The `elizaos.app` block in `package.json` controls how the elizaOS app manager discovers and launches Feed: `launchType: "url"`, viewer `postMessageAuth: true`, session mode `spectate-and-steer`.
-- Auth uses an in-process token cache (`cachedToken` in `feed-auth.ts`). On 401, the cache is cleared and one re-auth attempt is made automatically (`proxyFeedRequest`).
+- Auth is Steward-first: `proxyFeedRequest` prefers the agent's Steward JWT (`STEWARD_AGENT_TOKEN`/`FEED_STEWARD_TOKEN`) and forwards it as `Authorization: Bearer` with no `/api/agents/auth` exchange (Feed verifies the shared-secret HS256 `iss:"steward"` token inline). On 401 it falls back to the `FEED_AGENT_ID/SECRET` agent-session path, which uses an in-process token cache (`cachedToken`) cleared + re-authed once on its own 401.
 - `persistFeedCredential` writes to both `process.env` and `runtime.setSetting` and patches the character's `settings.secrets` in-memory. This means credentials set during auto-provisioning survive in the runtime object but are not written to disk automatically.
 - No actions, providers, evaluators, or services are registered. This plugin is purely presentation + proxy.
 - See the root `AGENTS.md` for repo-wide conventions (logger usage, ESM, architecture rules, naming).

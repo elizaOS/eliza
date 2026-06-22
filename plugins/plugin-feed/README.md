@@ -6,7 +6,7 @@ An elizaOS plugin that connects an Eliza agent to the [Feed](https://feed.market
 
 - Embeds the Feed operator dashboard as a first-class elizaOS view (accessible in the agent manager, desktop tab, and terminal TUI).
 - Proxies requests between the elizaOS API surface and the Feed backend: agent status, market data, prediction trades, perpetual positions, social posts, chat messages, team management, and admin controls.
-- Handles Feed agent authentication automatically, including token caching and auto-refresh on 401.
+- Handles Feed agent authentication automatically. Prefers the agent's existing Steward / Eliza Cloud session JWT (`STEWARD_AGENT_TOKEN`) — Feed verifies the shared-secret token inline, so the agent auto-logs in with no separate Feed credentials. Falls back to `FEED_AGENT_ID`/`FEED_AGENT_SECRET` session auth (token caching + auto-refresh on 401) when no Steward token is present.
 - In development, attempts to auto-provision credentials from a local Feed dev server.
 - Exposes a postMessage auth token so the embedded Feed web viewer can authenticate without a separate login.
 
@@ -65,7 +65,8 @@ The plugin registers routes under `/api/apps/feed/` that proxy to the Feed backe
 - **Agent:** `/agent/status`, `/agent/activity`, `/agent/logs`, `/agent/wallet`, `/agent/goals`, `/agent/stats`, `/agent/summary`, `/agent/recent-trades`, `/agent/chat`, `/agent/card`, `/agent/trading-balance`, `/agent/benchmark`, `/agent/autonomy`, `/agent/toggle`
 - **Markets:** `/markets/predictions`, `/markets/predictions/:id`, `/markets/predictions/:id/history`, `/markets/predictions/:id/trades`, `/markets/predictions/:id/buy`, `/markets/predictions/:id/sell`, `/markets/perps`, `/markets/perps/open`, `/markets/perps/preview`, `/markets/perps/position/:id/close`
 - **Social:** `/posts`, `/posts/:id`, `/posts/:id/comments`, `/posts/:id/like`
-- **Messaging:** `/chats`, `/chats/dm`, `/chats/:id/messages`, `/chats/:id/message`
+- **Follows:** `/users/:id/follow` (`POST` follow/befriend, `DELETE` unfollow, `GET` status)
+- **Messaging:** `/chats`, `/chats/dm` (`POST` create/fetch DM, `GET` lookup), `/chats/:id/messages`, `/chats/:id/message`
 - **Groups:** `/groups`, `/groups/:id`, `/groups/:id/members`
 - **Team:** `/team`, `/team/info`, `/team/chat`, `/team/dashboard`, `/team/conversations`
 - **Feed:** `/feed/for-you`, `/feed/hot`, `/trades`
