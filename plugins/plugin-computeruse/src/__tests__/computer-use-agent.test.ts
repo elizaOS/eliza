@@ -153,6 +153,34 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
     });
   });
 
+  it("keeps the loop result when per-step callback delivery fails", async () => {
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "done",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: { kind: "finish", rationale: "ok" },
+        }),
+    });
+
+    const report = await runComputerUseAgentLoop(
+      null,
+      { goal: "g", streamProgress: true },
+      fakeService(),
+      {
+        brain,
+        captureAll,
+        onStepProgress: () => {
+          throw new Error("send failed");
+        },
+      },
+    );
+
+    expect(report.reason).toBe("finish");
+    expect(report.steps[0]?.actionKind).toBe("finish");
+  });
+
   it("keeps per-step callbacks behind the streamProgress flag", async () => {
     const progress: Content[] = [];
     const brain = new Brain(null, {

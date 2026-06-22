@@ -11,7 +11,7 @@
     "progress"
   ],
   "status": "passed",
-  "durationMs": 256,
+  "durationMs": 194,
   "turns": [
     {
       "name": "browser emits streamProgress callback",
@@ -138,7 +138,7 @@
           }
         }
       ],
-      "durationMs": 227,
+      "durationMs": 164,
       "failedAssertions": []
     },
     {
@@ -187,7 +187,7 @@
           }
         }
       ],
-      "durationMs": 0,
+      "durationMs": 1,
       "failedAssertions": []
     }
   ],

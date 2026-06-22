@@ -83,7 +83,7 @@ const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
 const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
 const ACTION_PROGRESS_SOURCE = "action_progress";
 const COMPUTER_USE_APPROVAL_CALLBACK_RE =
-  /^cua:([^:]+):(approve|deny)(?::u=([^:]+))?$/;
+  /^cua:([^:]+):(approve|deny)(?::u([^:]+))?$/;
 
 type PdfTextService = {
   convertPdfToText(pdfBuffer: Buffer): Promise<string>;
@@ -157,11 +157,14 @@ export function parseComputerUseApprovalCallback(
 ): ComputerUseApprovalCallback | null {
   const match = value.match(COMPUTER_USE_APPROVAL_CALLBACK_RE);
   if (!match) return null;
-  return {
+  const parsed: ComputerUseApprovalCallback = {
     approvalId: match[1],
     approved: match[2] === "approve",
-    ownerId: match[3],
   };
+  if (match[3]) {
+    parsed.ownerId = match[3];
+  }
+  return parsed;
 }
 
 export function createTelegramCompactProgressCallback({
@@ -1670,7 +1673,8 @@ export class MessageManager {
         },
       },
       metadata: {
-        type: "computeruse_approval",
+        type: "custom",
+        eventType: "computeruse_approval",
         source: "telegram",
         accountId: this.accountId,
         provider: "telegram",
@@ -1735,9 +1739,12 @@ export class MessageManager {
       callback.ownerId !== actorTelegramUserId
     ) {
       try {
-        await ctx.answerCbQuery("Only the requester can resolve this approval.", {
-          show_alert: true,
-        });
+        await ctx.answerCbQuery(
+          "Only the requester can resolve this approval.",
+          {
+            show_alert: true,
+          },
+        );
       } catch {
         // best-effort: a stale callback may already have expired
       }

@@ -13,15 +13,39 @@ import {
  */
 function makeManager(runtimeOverrides: Record<string, unknown> = {}) {
   const editMessageText = vi.fn(async () => ({ message_id: 7 }));
+  const sendChatAction = vi.fn(async () => true);
+  const sendMessage = vi.fn(async (chatId: number | string, text: string) => ({
+    message_id: 88,
+    chat: { id: chatId },
+    text,
+    date: 1_700_000_001,
+  }));
   const setMessageReaction = vi.fn(async () => true);
-  const bot = { telegram: { editMessageText, setMessageReaction } };
+  const bot = {
+    telegram: {
+      editMessageText,
+      sendChatAction,
+      sendMessage,
+      setMessageReaction,
+    },
+  };
   const runtime = {
     agentId: "00000000-0000-0000-0000-0000000000aa",
+    createMemory: vi.fn(async () => undefined),
+    ensureConnection: vi.fn(async () => undefined),
+    getSetting: vi.fn(() => undefined),
     getService: vi.fn(() => null),
     ...runtimeOverrides,
   };
   const manager = new MessageManager(bot as never, runtime as never);
-  return { manager, editMessageText, setMessageReaction };
+  return {
+    manager,
+    editMessageText,
+    runtime,
+    sendChatAction,
+    sendMessage,
+    setMessageReaction,
+  };
 }
 
 describe("MessageManager.editMessage (#8903)", () => {
@@ -104,6 +128,13 @@ describe("Telegram computer-use approval callbacks (#8912)", () => {
       approvalId: "approval_123",
       approved: true,
     });
+    expect(
+      parseComputerUseApprovalCallback("cua:approval_123:approve:u42"),
+    ).toEqual({
+      approvalId: "approval_123",
+      approved: true,
+      ownerId: "42",
+    });
     expect(parseComputerUseApprovalCallback("cua:approval_123:deny")).toEqual({
       approvalId: "approval_123",
       approved: false,
@@ -120,7 +151,7 @@ describe("Telegram computer-use approval callbacks (#8912)", () => {
       name === "computeruse" ? { resolveApproval } : null,
     );
     const env = makeManager({ getService });
-    const data = encodeReplyCallback("cua:approval_123:approve");
+    const data = encodeReplyCallback("cua:approval_123:approve:u42");
     expect(data).not.toBeNull();
     const answerCbQuery = vi.fn(async () => undefined);
 
@@ -141,15 +172,17 @@ describe("Telegram computer-use approval callbacks (#8912)", () => {
         is_bot: false,
       },
       chat: { id: 123, type: "private" },
+      telegram: { sendMessage: env.sendMessage },
       answerCbQuery,
     } as never);
 
-    expect(answerCbQuery).toHaveBeenCalledTimes(1);
+    expect(answerCbQuery).toHaveBeenCalledWith("Approval accepted.");
     expect(resolveApproval).toHaveBeenCalledWith(
       "approval_123",
       true,
       "Resolved from Telegram inline button",
     );
+    expect(env.runtime.createMemory).toHaveBeenCalledTimes(1);
     expect(env.editMessageText).toHaveBeenCalledTimes(1);
     const [chatId, messageId, inlineId, text] =
       env.editMessageText.mock.calls[0];
@@ -158,6 +191,108 @@ describe("Telegram computer-use approval callbacks (#8912)", () => {
     expect(inlineId).toBeUndefined();
     expect(text).toContain("Computer\\-use approval approved");
     expect(text).toContain("approval\\_123");
+  });
+
+  it("rejects approval clicks from a different Telegram user", async () => {
+    const resolveApproval = vi.fn(() => ({
+      id: "approval_123",
+      command: "desktop_click",
+    }));
+    const getService = vi.fn((name: string) =>
+      name === "computeruse" ? { resolveApproval } : null,
+    );
+    const env = makeManager({ getService });
+    const data = encodeReplyCallback("cua:approval_123:approve:u42");
+    expect(data).not.toBeNull();
+    const answerCbQuery = vi.fn(async () => undefined);
+
+    await env.manager.handleCallbackQuery({
+      callbackQuery: {
+        id: "cbq-2",
+        data,
+        message: {
+          message_id: 77,
+          chat: { id: -123, type: "group" },
+          date: 1_700_000_000,
+        },
+      },
+      from: {
+        id: 99,
+        first_name: "Grace",
+        username: "grace",
+        is_bot: false,
+      },
+      chat: { id: -123, type: "group" },
+      answerCbQuery,
+    } as never);
+
+    expect(resolveApproval).not.toHaveBeenCalled();
+    expect(env.runtime.createMemory).not.toHaveBeenCalled();
+    expect(env.editMessageText).not.toHaveBeenCalled();
+    expect(answerCbQuery).toHaveBeenCalledWith(
+      "Only the requester can resolve this approval.",
+      { show_alert: true },
+    );
+  });
+
+  it("edits compact progress for callback-query turns after the first send", async () => {
+    const data = encodeReplyCallback("continue");
+    expect(data).not.toBeNull();
+    const answerCbQuery = vi.fn(async () => undefined);
+    const progress = (text: string): Content => ({
+      text,
+      source: "action_progress",
+      metadata: { compactProgress: true },
+    });
+    const messageService = {
+      handleMessage: vi.fn(
+        async (
+          _runtime: unknown,
+          _memory: unknown,
+          callback: (
+            content: Content,
+            actionName?: string,
+          ) => Promise<Memory[]>,
+        ) => {
+          await callback(
+            progress("Step 1: open — checking example"),
+            "BROWSER",
+          );
+          await callback(progress("Step 2: click — submit"), "BROWSER");
+        },
+      ),
+    };
+    const env = makeManager({ messageService });
+
+    await env.manager.handleCallbackQuery({
+      callbackQuery: {
+        id: "cbq-3",
+        data,
+        message: {
+          message_id: 77,
+          chat: { id: 123, type: "private" },
+          date: 1_700_000_000,
+        },
+      },
+      from: {
+        id: 42,
+        first_name: "Ada",
+        username: "ada",
+        is_bot: false,
+      },
+      chat: { id: 123, type: "private" },
+      telegram: { sendMessage: env.sendMessage },
+      answerCbQuery,
+    } as never);
+
+    expect(env.sendMessage).toHaveBeenCalledTimes(1);
+    expect(env.editMessageText).toHaveBeenCalledTimes(1);
+    const [chatId, messageId, inlineId, text] =
+      env.editMessageText.mock.calls[0];
+    expect(chatId).toBe(123);
+    expect(messageId).toBe(88);
+    expect(inlineId).toBeUndefined();
+    expect(text).toContain("Step 2: click");
   });
 });
 

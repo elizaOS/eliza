@@ -145,6 +145,23 @@ describe("BROWSER action", () => {
     );
   });
 
+  it("does not fail the browser action when compact progress delivery fails", async () => {
+    const callback = vi.fn(async () => {
+      throw new Error("telegram edit failed");
+    });
+
+    const { result } = await runBrowserAction({
+      callback,
+      parameters: {
+        action: "state",
+        streamProgress: true,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps compact progress behind the streamProgress flag", async () => {
     const callback = vi.fn(async () => []);
 

@@ -460,9 +460,8 @@ async function generateWithRetry(
       systemPrompt: params.system ?? "",
       userPrompt: params.prompt,
       temperature: params.temperature,
-      // Trajectory record only (RecordLlmCallDetails.maxTokens is a required
-      // number); 0 marks "unset" — the wire call omits the field below.
       maxTokens: params.maxTokens ?? 0,
+      maxTokensOmitted: params.omitMaxTokens ? true : undefined,
       purpose: "external_llm",
       actionType: "ai.generateText",
     };

@@ -1,7 +1,7 @@
 {
   "runId": "8912-browser-computeruse-progress",
-  "startedAtIso": "2026-06-22T18:00:12.620Z",
-  "completedAtIso": "2026-06-22T18:00:15.977Z",
+  "startedAtIso": "2026-06-22T18:08:44.633Z",
+  "completedAtIso": "2026-06-22T18:08:49.372Z",
   "providerName": "deterministic-llm-proxy",
   "scenarios": [
     {
@@ -17,7 +17,7 @@
         "progress"
       ],
       "status": "passed",
-      "durationMs": 256,
+      "durationMs": 194,
       "turns": [
         {
           "name": "browser emits streamProgress callback",
@@ -144,7 +144,7 @@
               }
             }
           ],
-          "durationMs": 227,
+          "durationMs": 164,
           "failedAssertions": []
         },
         {
@@ -193,7 +193,7 @@
               }
             }
           ],
-          "durationMs": 0,
+          "durationMs": 1,
           "failedAssertions": []
         }
       ],

@@ -4875,8 +4875,8 @@ function stage1HitCompletionLimit(
 	) {
 		return true;
 	}
-	// With no cap sent (direct channel), the token-count heuristic can't apply —
-	// truncation is detected solely via the finishReason above.
+	// With direct-channel provider/model-max output, the runtime has no reliable
+	// caller cap to compare against. Truncation is detected via finishReason.
 	const completionTokens = raw.usage?.completionTokens;
 	return (
 		typeof maxTokens === "number" &&
@@ -5950,7 +5950,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			// Direct/DM/API Stage 1 packs the whole answer into `replyText`. We don't
 			// cap it: a hardcoded ceiling 400s on any model whose real limit differs
 			// and truncates long single-turn replies. `omitMaxTokens` tells adapters
-			// to send no max-tokens field so the model's own max applies; group
+			// to use provider/model-max output instead of the runtime default; group
 			// channels keep DEFAULT_STAGE1_MAX_TOKENS so they stay bounded.
 			maxTokens: directMessageChannel ? undefined : DEFAULT_STAGE1_MAX_TOKENS,
 			omitMaxTokens: directMessageChannel,

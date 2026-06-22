@@ -71,7 +71,7 @@ function approvalCallbackValue(
   ownerId?: string,
 ): string {
   return ownerId
-    ? `cua:${approvalId}:${decision}:u=${ownerId}`
+    ? `cua:${approvalId}:${decision}:u${ownerId}`
     : `cua:${approvalId}:${decision}`;
 }
 
