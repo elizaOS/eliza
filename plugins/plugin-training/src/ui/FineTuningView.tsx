@@ -5,7 +5,6 @@ import {
   registerDetailExtension,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { useAppSelector } from "@elizaos/ui/state";
 import type {
   HuggingFaceDatasetIngestResponse,
   ListTrainingCollectionsResponse,
@@ -930,9 +929,8 @@ export function FineTuningView({
   const [actionBenchmarkRunsPerCase, setActionBenchmarkRunsPerCase] =
     useState("1");
   const [actionBenchmarkOutputDir, setActionBenchmarkOutputDir] = useState("");
-  const [actionBenchmarkModelId, setActionBenchmarkModelId] = useState(
-    "eliza-1-2b-trained",
-  );
+  const [actionBenchmarkModelId, setActionBenchmarkModelId] =
+    useState("eliza-1-2b-trained");
   const [actionBenchmarkRuntimeModel, setActionBenchmarkRuntimeModel] =
     useState("eliza-1-2b-trained");
   const [actionBenchmarkPairEnabled, setActionBenchmarkPairEnabled] =

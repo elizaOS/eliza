@@ -28,7 +28,7 @@ const MESSAGE: Record<CloudHandoffPhase, string> = {
  * view is a full-screen overlay with an orange ambient background, so a tinted
  * top banner would sit behind it and any orange-family tint (accent/warn) would
  * blend in. A dark pill below the status bar reads cleanly on any view. The
- * amber spinner / green check carry the state; it self-dismisses via
+ * `--warn` spinner / `--ok` check carry the state; it self-dismisses via
  * {@link useCloudHandoffPhase}. On a `timed-out`/`failed` handoff it offers a
  * retry that re-invokes the handoff supervisor.
  */
@@ -59,7 +59,7 @@ export function CloudHandoffBanner() {
     >
       <span className="flex min-w-0 items-center gap-2">
         {phase === "migrating" ? (
-          <Spinner size={15} className="shrink-0 text-[#ffb020]" />
+          <Spinner size={15} className="shrink-0 text-[color:var(--warn)]" />
         ) : isSuccess ? (
           <Check
             size={15}
