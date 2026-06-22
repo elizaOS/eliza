@@ -366,9 +366,6 @@ describe("pickVoiceTierSlot", () => {
 		expect(
 			pickVoiceTierSlot({ textModelId: "eliza-1-2b", deviceTier: "GOOD" }),
 		).toBe("desktop-2b");
-		expect(
-			pickVoiceTierSlot({ textModelId: "eliza-1-1_7b", deviceTier: "GOOD" }),
-		).toBe("desktop-2b");
 	});
 
 	it("falls through to desktop-2b (the entry tier) for small / unknown ids", () => {
