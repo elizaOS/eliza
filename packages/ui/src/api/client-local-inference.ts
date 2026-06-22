@@ -142,9 +142,7 @@ declare module "./client-base" {
     getLocalInferenceDeviceTier(): Promise<DeviceTierResult>;
     getLocalInferenceCatalog(): Promise<{ models: CatalogModel[] }>;
     getLocalInferenceInstalled(): Promise<{ models: InstalledModel[] }>;
-    startLocalInferenceDownload(
-      modelIdOrSpec: string | CatalogModel,
-    ): Promise<{ job: DownloadJob }>;
+    startLocalInferenceDownload(modelId: string): Promise<{ job: DownloadJob }>;
     searchHuggingFaceGguf(
       query: string,
       limit?: number,
@@ -252,15 +250,11 @@ ElizaClient.prototype.getLocalInferenceInstalled = async function (
 
 ElizaClient.prototype.startLocalInferenceDownload = async function (
   this: ElizaClient,
-  modelIdOrSpec: string | CatalogModel,
+  modelId: string,
 ) {
-  const body =
-    typeof modelIdOrSpec === "string"
-      ? { modelId: modelIdOrSpec }
-      : { spec: modelIdOrSpec };
   return this.fetch("/api/local-inference/downloads", {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify({ modelId }),
   });
 };
 

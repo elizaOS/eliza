@@ -10,7 +10,6 @@ import {
   ACTIVE_VIEW_ELEMENT_RENDER_CAP,
   applyActiveViewAwareness,
   clearActiveViewContext,
-  findViewsWithoutActionAffinity,
   getActiveViewContext,
   renderActiveViewContextBlock,
   setActiveViewContext,
@@ -114,16 +113,6 @@ describe("view-action-affinity", () => {
     // documents was the one CONTEXT_VIEWS surface previously missing from the
     // map; #8798 added OWNER_DOCUMENTS.
     expect(VIEW_ACTION_MAP.documents).toContain("OWNER_DOCUMENTS");
-  });
-
-  it("findViewsWithoutActionAffinity flags only unmapped registered views", () => {
-    const missing = findViewsWithoutActionAffinity([
-      "wallet", // mapped
-      "calendar", // mapped
-      "screenshare", // not mapped
-      "social-alpha", // not mapped
-    ]);
-    expect(missing).toEqual(["screenshare", "social-alpha"]);
   });
 
   it("validateViewCoverage warns for a registered view with no affinity and no capabilities", () => {

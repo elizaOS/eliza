@@ -87,6 +87,45 @@ describe("tryHandleTrajectoryFallback", () => {
     expect(b.trajectories[1]).toMatchObject({ id: "t2", status: "error" });
   });
 
+  it("forwards the search param to the SQL reader so only matches return", async () => {
+    const rows = [
+      { id: "match-1", status: "completed", llmCallCount: 1 },
+      { id: "other-1", status: "completed", llmCallCount: 1 },
+      { id: "match-2", status: "completed", llmCallCount: 1 },
+    ];
+    let receivedSearch: string | undefined;
+    const service = {
+      listTrajectories: async (options: { search?: string }) => {
+        receivedSearch = options.search;
+        // Emulate the SQL reader: filter + count by the search needle.
+        const matched = options.search
+          ? rows.filter((r) => r.id.includes(options.search as string))
+          : rows;
+        return { trajectories: matched, total: matched.length };
+      },
+    };
+    const { res, get } = mockRes();
+    const handled = await tryHandleTrajectoryFallback({
+      pathname: "/api/trajectories",
+      method: "GET",
+      url: url("/api/trajectories?search=match&limit=10"),
+      runtime: runtimeWith(service),
+      res,
+    });
+    expect(handled).toBe(true);
+    // search is threaded through to the service
+    expect(receivedSearch).toBe("match");
+    const { status, body } = get();
+    expect(status).toBe(200);
+    const b = body as {
+      trajectories: Array<{ id: string }>;
+      total: number;
+    };
+    // only matching rows return; total reflects the filtered count
+    expect(b.trajectories.map((t) => t.id)).toEqual(["match-1", "match-2"]);
+    expect(b.total).toBe(2);
+  });
+
   it("maps detail steps into phase-classified llmCalls / providerAccesses / toolEvents", async () => {
     const service = {
       getTrajectoryDetail: async (id: string) => ({

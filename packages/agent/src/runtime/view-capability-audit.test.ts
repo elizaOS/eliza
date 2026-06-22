@@ -17,7 +17,14 @@
  * so the regression is caught in `bun run test` rather than only by the live
  * crawler. Cosmetic views (zero interactive controls) trivially pass.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -130,6 +137,29 @@ const coverage: ViewCoverage[] = Object.entries(VIEW_SOURCE_DIRS).map(
 
 const isReachable = (c: ViewCoverage): boolean =>
   c.agentElements > 0 || c.hasCapabilities || c.mappedActions > 0;
+
+// Opt-in machine-readable export of the per-view coverage the audit computes.
+// Off by default (the suite's behavior is unchanged when VIEW_AUDIT_REPORT is
+// unset); set VIEW_AUDIT_REPORT=1 to also serialize the coverage array to JSON
+// under the package test-output dir for CI dashboards / drift tracking. (#8798)
+if (process.env.VIEW_AUDIT_REPORT) {
+  const outDir = path.join(here, "../../test-output");
+  mkdirSync(outDir, { recursive: true });
+  const outFile = path.join(outDir, "view-capability-audit.json");
+  writeFileSync(
+    outFile,
+    `${JSON.stringify(
+      {
+        issue: "#8798",
+        generatedAt: new Date().toISOString(),
+        viewCount: coverage.length,
+        coverage: coverage.map((c) => ({ ...c, reachable: isReachable(c) })),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
 
 describe("static view-capability audit (#8798)", () => {
   it("every audited view id is a real VIEW_ACTION_MAP entry", () => {

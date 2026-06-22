@@ -31,6 +31,8 @@ import {
   type ViewType,
 } from "@elizaos/core";
 import { type RouteHelpers, readJsonBody } from "@elizaos/shared";
+import { AGENT_SURFACE_CAPABILITY_IDS } from "@elizaos/ui/agent-surface/types";
+import { STANDARD_CAPABILITIES } from "@elizaos/ui/views/view-interact-protocol";
 import {
   type ActiveViewElement,
   clearActiveViewContext,
@@ -212,14 +214,17 @@ function parseHostExternalSpecifiers(url: URL): string[] {
     .filter(Boolean);
 }
 
-/** Standard capabilities every view supports even without an `interact` export. */
-const STANDARD_CAPABILITY_IDS = new Set([
-  "get-state",
-  "refresh",
-  "focus-element",
-  "get-text",
-  "click-element",
-  "fill-input",
+/**
+ * Capabilities accepted on any view without a matching declaration in
+ * `entry.capabilities` — the protocol's standard caps (get-state / refresh /
+ * focus-element / get-text / click-element / fill-input) plus the agent-surface
+ * caps the shell registry handles generically (list-elements / agent-click /
+ * agent-fill / …). Derived from the single canonical ui-side sources so the
+ * route never drifts from what the frontend actually dispatches. (#8798)
+ */
+const STANDARD_CAPABILITY_IDS: ReadonlySet<string> = new Set<string>([
+  ...Object.values(STANDARD_CAPABILITIES),
+  ...AGENT_SURFACE_CAPABILITY_IDS,
 ]);
 
 /** Module-level map of pending interact requests awaiting a frontend result. */

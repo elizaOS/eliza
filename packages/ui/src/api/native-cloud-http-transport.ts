@@ -118,6 +118,13 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
       headers: headersToRecord(init.headers),
       ...(methodAllowsBody(method) && data !== undefined ? { data } : {}),
       responseType: "text",
+      // Don't auto-follow 3xx: this path forwards the user's cloud bearer to
+      // the dedicated agent subdomain, and CapacitorHttp (unlike browser fetch)
+      // would replay the Authorization header across a redirect. A 3xx here is a
+      // misconfig/open-redirect signal — surface it instead of leaking the token
+      // off *.elizacloud.ai. (The agent-router/central API must never 30x a
+      // bearer-carrying request.)
+      disableRedirects: true,
       ...(context?.timeoutMs
         ? {
             connectTimeout: context.timeoutMs,

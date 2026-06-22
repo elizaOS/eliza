@@ -38,7 +38,6 @@ function validManifest(): Eliza1Manifest {
 			voice: { base: "eliza-1-voice-backbone", license: "apache-2.0" },
 			asr: { base: "eliza-1-asr", license: "apache-2.0" },
 			vad: { base: "eliza-1-vad", license: "apache-2.0" },
-			drafter: { base: "eliza-1-mtp-drafter", license: "apache-2.0" },
 			vision: { base: "eliza-1-vision", license: "apache-2.0" },
 		},
 		files: {
@@ -46,7 +45,7 @@ function validManifest(): Eliza1Manifest {
 			voice: [{ path: "tts/omnivoice-base-Q4_K_M.gguf", sha256: SHA }],
 			asr: [{ path: "asr/asr.gguf", sha256: SHA }],
 			vision: [{ path: "vision/mmproj-9b.gguf", sha256: SHA }],
-			mtp: [{ path: "mtp/drafter-9b.gguf", sha256: SHA }],
+			mtp: [],
 			cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
 			vad: [{ path: "vad/silero-vad-v5.gguf", sha256: SHA }],
 		},

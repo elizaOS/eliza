@@ -14,6 +14,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { findCatalogModel, isDefaultEligibleId } from "./catalog";
+import { isVerifiedCuratedEliza1Download } from "./catalog-policy";
 import { localInferenceRoot } from "./paths";
 import { listInstalledModels } from "./registry";
 import type { AgentModelSlot, InstalledModel, ModelAssignments } from "./types";
@@ -83,18 +84,14 @@ function pickLargestInstalledModel(
  * agent slots.
  *
  * Why: external blobs may use newer architectures or quant formats outside
- * the bundled `node-llama-cpp` binding's supported set. Auto-loading
- * an external blob the user never selected silently breaks PROACTIVE_AGENT
- * and other background tasks at boot. The user opted into the external
- * tool, not into Eliza loading those weights through llama.cpp.
+ * the bundled Eliza-1 FFI runtime's supported set. Auto-loading an external
+ * blob the user never selected silently breaks PROACTIVE_AGENT and other
+ * background tasks at boot.
  */
 export function buildRecommendedAssignments(
   installed: InstalledModel[],
 ): ModelAssignments {
-  const ownDownloads = installed.filter(
-    (model) =>
-      model.source === "eliza-download" && isDefaultEligibleId(model.id),
-  );
+  const ownDownloads = installed.filter(isVerifiedCuratedEliza1Download);
   const best = pickLargestInstalledModel(ownDownloads);
   if (!best) return {};
   return {
@@ -153,10 +150,9 @@ export async function setAssignment(
  * `chat | code | tools | tiny | reasoning` and `bucket` ∈
  * `small | mid | large | xl` — no explicit "embedding" tag, because the
  * default catalog ships only generative models. The defensive check below
- * still recognizes an "embedding" category/bucket for catalog additions and
- * for external-scan models whose ids contain a recognizable
- * embedding-family marker (`nomic-embed`, `bge`, `all-minilm`, `gte`,
- * `e5-`). External GGUFs without a catalog entry default to generative.
+ * still recognizes an "embedding" category/bucket for future curated catalog
+ * additions and legacy assignment files whose ids contain a recognizable
+ * embedding-family marker (`nomic-embed`, `bge`, `all-minilm`, `gte`, `e5-`).
  */
 function isEmbeddingModelId(modelId: string): boolean {
   const catalog = findCatalogModel(modelId);
@@ -233,10 +229,7 @@ export async function ensureDefaultAssignment(
 export async function autoAssignAtBoot(
   installed: InstalledModel[],
 ): Promise<ModelAssignments | null> {
-  const ownDownloads = installed.filter(
-    (model) =>
-      model.source === "eliza-download" && isDefaultEligibleId(model.id),
-  );
+  const ownDownloads = installed.filter(isVerifiedCuratedEliza1Download);
   if (ownDownloads.length !== 1) return null;
   const current = await readAssignments();
   if (Object.keys(current).length > 0) return null;
