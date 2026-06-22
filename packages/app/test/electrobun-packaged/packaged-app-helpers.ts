@@ -65,6 +65,12 @@ interface PackagedStartOptions {
   shellReadyTimeoutMs?: number;
 }
 
+const PACKAGED_TEST_DISABLED_FIRST_PARTY_REMOTES = ["eliza.local-model"];
+const PACKAGED_GRACEFUL_QUIT_TIMEOUT_MS = 15_000;
+const PACKAGED_LINUX_PROCESS_COOLDOWN_MS = 2_500;
+const PACKAGED_RELAUNCH_DELAY_MS =
+  process.platform === "linux" ? PACKAGED_LINUX_PROCESS_COOLDOWN_MS : 1_000;
+
 function appendLog(target: string[], chunk: Buffer | string): void {
   const text = chunk.toString();
   if (!text) return;
@@ -80,6 +86,28 @@ function collectProcessLogs(child: ChildProcess): PackagedProcessLogs {
   child.stdout?.on("data", (chunk: Buffer) => appendLog(stdout, chunk));
   child.stderr?.on("data", (chunk: Buffer) => appendLog(stderr, chunk));
   return { stdout, stderr };
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function resolveExecutableOnPath(binaryName: string): string | null {
+  const pathValue = process.env.PATH || "";
+  for (const dir of pathValue.split(path.delimiter)) {
+    if (!dir) continue;
+    const candidate = path.join(dir, binaryName);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+async function waitAfterPackagedProcessExit(): Promise<void> {
+  if (process.platform === "linux") {
+    await delay(PACKAGED_LINUX_PROCESS_COOLDOWN_MS);
+  }
 }
 
 async function findFiles(
@@ -307,6 +335,13 @@ function createPackagedDesktopEnv(args: {
     ELIZA_DESKTOP_TEST_BRIDGE_TOKEN: args.bridgeToken,
     ELIZA_STATE_DIR: args.stateDir,
     ELECTROBUN_CONSOLE: "1",
+    // These regressions assert the main packaged shell. The native pill is
+    // covered by its own unit/UI tests and adds a second WebKitGTK toplevel on
+    // Linux headless runs, which can trip native Bun/WebKit startup crashes
+    // before the test bridge is reachable. Allow an explicit opt-in for future
+    // pill-specific packaged coverage.
+    ELIZA_DESKTOP_PILL:
+      args.baseEnv.ELIZA_TEST_PACKAGED_ENABLE_PILL === "1" ? "1" : "0",
   };
 
   if (process.platform === "win32") {
@@ -359,11 +394,53 @@ function createPackagedDesktopEnv(args: {
   };
 }
 
+interface FetchJsonOptions extends RequestInit {
+  timeoutMs?: number;
+}
+
+const BRIDGE_REQUEST_TIMEOUT_MS = 5_000;
+
 async function fetchJson<T>(
   url: string,
-  options: RequestInit = {},
+  options: FetchJsonOptions = {},
 ): Promise<T> {
-  const response = await fetch(url, options);
+  const {
+    timeoutMs = BRIDGE_REQUEST_TIMEOUT_MS,
+    signal,
+    ...requestOptions
+  } = options;
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  const abortFromCaller = () => controller.abort(signal?.reason);
+
+  if (signal?.aborted) {
+    abortFromCaller();
+  } else {
+    signal?.addEventListener("abort", abortFromCaller, { once: true });
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...requestOptions,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(
+        `${options.method ?? "GET"} ${url} timed out after ${timeoutMs}ms`,
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", abortFromCaller);
+  }
+
   if (!response.ok) {
     const responseText = (await response.text().catch(() => "")).trim();
     throw new Error(
@@ -396,6 +473,49 @@ function normalizeEvalScript(script: string): string {
   // Electrobun evaluates this as Function(script)(), so expression scripts need
   // an explicit top-level return to preserve their resolved value.
   return `return (\n${trimmed}\n);`;
+}
+
+async function seedPackagedTestFirstPartyRemoteState(
+  stateDir: string,
+): Promise<void> {
+  if (process.env.ELIZA_TEST_ENABLE_LOCAL_MODEL_REMOTE === "1") {
+    return;
+  }
+
+  const statePath = path.join(
+    stateDir,
+    "remote-plugins",
+    "first-party-remotes.json",
+  );
+  let disabled: Record<string, boolean> = {};
+  try {
+    const parsed = JSON.parse(await fs.readFile(statePath, "utf8")) as unknown;
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      !Array.isArray(parsed) &&
+      typeof (parsed as { disabled?: unknown }).disabled === "object" &&
+      (parsed as { disabled?: unknown }).disabled !== null &&
+      !Array.isArray((parsed as { disabled?: unknown }).disabled)
+    ) {
+      disabled = {
+        ...((parsed as { disabled: Record<string, boolean> }).disabled ?? {}),
+      };
+    }
+  } catch {
+    // Fresh packaged test state has no first-party remote state file yet.
+  }
+
+  for (const id of PACKAGED_TEST_DISABLED_FIRST_PARTY_REMOTES) {
+    disabled[id] = true;
+  }
+
+  await fs.mkdir(path.dirname(statePath), { recursive: true });
+  await fs.writeFile(
+    statePath,
+    `${JSON.stringify({ version: 1, disabled }, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 async function findBridgeListenerPids(port: number): Promise<number[]> {
@@ -485,8 +605,18 @@ export class PackagedDesktopHarness {
     await fs.mkdir(this.stateDir, { recursive: true });
     await fs.mkdir(this.appDataDir, { recursive: true });
     await fs.mkdir(this.localAppDataDir, { recursive: true });
+    await seedPackagedTestFirstPartyRemoteState(this.stateDir);
 
-    const child = spawn(this.launcherPath, [], {
+    const useDedicatedXvfb =
+      process.platform === "linux" &&
+      process.env.ELIZA_ELECTROBUN_PACKAGED_USE_CURRENT_DISPLAY !== "1";
+    const xvfbRun = useDedicatedXvfb
+      ? resolveExecutableOnPath("xvfb-run")
+      : null;
+    const launchCommand = xvfbRun ?? this.launcherPath;
+    const launchArgs = xvfbRun ? ["-a", this.launcherPath] : [];
+
+    const child = spawn(launchCommand, launchArgs, {
       cwd: path.dirname(this.launcherPath),
       env: this.appEnv,
       stdio: ["ignore", "pipe", "pipe"],
@@ -503,12 +633,25 @@ export class PackagedDesktopHarness {
   }
 
   async stop(): Promise<void> {
+    await this.requestGracefulQuit().catch(() => undefined);
     const pidsToKill = new Set<number>();
-    for (const pid of await findBridgeListenerPids(this.bridgePort)) {
-      pidsToKill.add(pid);
-      const parentPid = await getParentPid(pid);
-      if (parentPid) {
-        pidsToKill.add(parentPid);
+    if (await this.waitForBridgeExit(PACKAGED_GRACEFUL_QUIT_TIMEOUT_MS)) {
+      if (await this.waitForChildExit(5_000)) {
+        await waitAfterPackagedProcessExit();
+        return;
+      }
+      // The bridge listener can disappear before the launcher/native child has
+      // fully unwound. Do not report a clean stop in that half-exited state.
+      // Fall through to the same SIGTERM/SIGKILL cleanup path used when the
+      // bridge itself stays alive.
+    } else {
+      const bridgePids = await findBridgeListenerPids(this.bridgePort);
+      for (const pid of bridgePids) {
+        pidsToKill.add(pid);
+        const parentPid = await getParentPid(pid);
+        if (parentPid) {
+          pidsToKill.add(parentPid);
+        }
       }
     }
 
@@ -517,16 +660,16 @@ export class PackagedDesktopHarness {
       pidsToKill.add(child.pid);
     }
 
+    if (pidsToKill.size === 0) {
+      return;
+    }
+
     for (const pid of pidsToKill) {
       try {
         process.kill(pid, "SIGTERM");
       } catch {
         // Process already exited.
       }
-    }
-
-    if (pidsToKill.size === 0) {
-      return;
     }
 
     await new Promise<void>((resolve) => {
@@ -549,6 +692,49 @@ export class PackagedDesktopHarness {
         setTimeout(checkExited, 250);
       };
       void checkExited();
+    });
+    await this.waitForChildExit(1_000);
+    await waitAfterPackagedProcessExit();
+  }
+
+  private async requestGracefulQuit(): Promise<void> {
+    await fetchJson<{ ok: boolean }>(`${this.bridgeUrl}/app/quit`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.bridgeToken}`,
+        "Content-Type": "application/json",
+      },
+      timeoutMs: 2_000,
+    });
+  }
+
+  private async waitForBridgeExit(timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if ((await findBridgeListenerPids(this.bridgePort)).length === 0) {
+        return true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    return false;
+  }
+
+  private async waitForChildExit(timeoutMs: number): Promise<boolean> {
+    const child = this.process;
+    if (!child || child.exitCode !== null || child.signalCode !== null) {
+      return true;
+    }
+
+    return await new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => {
+        child.off("exit", onExit);
+        resolve(false);
+      }, timeoutMs);
+      const onExit = () => {
+        clearTimeout(timeout);
+        resolve(true);
+      };
+      child.once("exit", onExit);
     });
   }
 
@@ -580,7 +766,7 @@ export class PackagedDesktopHarness {
 
     // Short delay to let the OS release the old process's resources (ports,
     // file handles, WebKit caches) before spawning the next instance.
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await delay(PACKAGED_RELAUNCH_DELAY_MS);
 
     await this.start(options);
   }
@@ -650,6 +836,26 @@ export class PackagedDesktopHarness {
     });
   }
 
+  async showMainWindow(): Promise<void> {
+    await fetchJson<{ ok: boolean }>(`${this.bridgeUrl}/main-window/show`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.bridgeToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async focusMainWindow(): Promise<void> {
+    await fetchJson<{ ok: boolean }>(`${this.bridgeUrl}/main-window/focus`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.bridgeToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
   async waitForState(
     predicate: (state: DesktopTestBridgeState) => boolean,
     message: string,
@@ -657,6 +863,7 @@ export class PackagedDesktopHarness {
   ): Promise<DesktopTestBridgeState> {
     const startedAt = Date.now();
     let lastState: DesktopTestBridgeState | null = null;
+    let lastError: Error | null = null;
 
     while (Date.now() - startedAt < timeoutMs) {
       if (
@@ -668,15 +875,22 @@ export class PackagedDesktopHarness {
           `${message}\nPackaged app exited early.\n${formatLogs(this.logs)}`,
         );
       }
-      lastState = await this.getState();
-      if (predicate(lastState)) {
-        return lastState;
+      try {
+        lastState = await this.getState();
+        lastError = null;
+        if (predicate(lastState)) {
+          return lastState;
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
 
     throw new Error(
-      `${message}\nLast state:\n${JSON.stringify(lastState, null, 2)}\n${formatLogs(this.logs)}`,
+      `${message}\nLast state:\n${JSON.stringify(lastState, null, 2)}${
+        lastError ? `\nLast bridge error: ${lastError.message}` : ""
+      }\n${formatLogs(this.logs)}`,
     );
   }
 
@@ -725,6 +939,7 @@ export class PackagedDesktopHarness {
         {
           headers: { Authorization: `Bearer ${this.bridgeToken}` },
           signal: controller.signal,
+          timeoutMs,
         },
       );
       return response.data;

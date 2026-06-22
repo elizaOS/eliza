@@ -155,6 +155,11 @@ declare module "@elizaos/plugin-personal-assistant" {
   export const WebsiteBlockerSettingsCard: ComponentType<WebsiteBlockerSettingsCardProps>;
 }
 
+declare module "@elizaos/plugin-blocker" {
+  export function registerNativeWebsiteBlockerBackend(backend: unknown): void;
+  export function registerNativeAppBlockerBackend(backend: unknown): void;
+}
+
 declare module "@elizaos/app-phone" {
   export const PhoneCompanionApp: EmptyComponent;
 }

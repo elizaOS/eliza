@@ -23,8 +23,11 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensurePlistUrlScheme } from "../../app-core/scripts/lib/ios-plist-url-scheme.mjs";
+import { readAppIdentity } from "../../app-core/scripts/lib/read-app-identity.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const APP_DIR = resolve(__dirname, "..");
 
 const MIC_PURPOSE = "Eliza listens when you talk to your agent.";
 const SPEECH_PURPOSE =
@@ -76,13 +79,18 @@ function escapeXml(value) {
     .replace(/'/g, "&apos;");
 }
 
-function patchPlist(xml) {
+function patchPlist(xml, urlScheme) {
   let changed = false;
   let next = xml;
   for (const entry of KEYS) {
     if (hasKey(next, entry.key)) continue;
     const insertAt = findInsertionPoint(next);
     next = next.slice(0, insertAt) + renderEntry(entry) + next.slice(insertAt);
+    changed = true;
+  }
+  const nextWithScheme = ensurePlistUrlScheme(next, urlScheme);
+  if (nextWithScheme !== next) {
+    next = nextWithScheme;
     changed = true;
   }
   return { next, changed };
@@ -100,14 +108,15 @@ function main() {
     return;
   }
   const original = readFileSync(TARGET_PATH, "utf8");
-  const { next, changed } = patchPlist(original);
+  const { urlScheme } = readAppIdentity(APP_DIR);
+  const { next, changed } = patchPlist(original, urlScheme);
   if (!changed) {
     console.log("[patch-ios-plist] all keys already present — no changes.");
     return;
   }
   writeFileSync(TARGET_PATH, next);
   console.log(
-    "[patch-ios-plist] patched UIBackgroundModes + microphone/speech usage descriptions.",
+    "[patch-ios-plist] patched UIBackgroundModes, microphone/speech usage descriptions, and URL scheme.",
   );
 }
 
@@ -119,13 +128,18 @@ if (checkOnly) {
     process.exit(0);
   }
   const xml = readFileSync(TARGET_PATH, "utf8");
+  const { urlScheme } = readAppIdentity(APP_DIR);
   const missing = KEYS.filter((k) => !hasKey(xml, k.key));
-  if (missing.length === 0) {
+  const missingUrlScheme = ensurePlistUrlScheme(xml, urlScheme) !== xml;
+  if (missing.length === 0 && !missingUrlScheme) {
     console.log("[patch-ios-plist] OK — all required keys present.");
     process.exit(0);
   }
   console.error(
-    `[patch-ios-plist] missing keys: ${missing.map((k) => k.key).join(", ")}`,
+    `[patch-ios-plist] missing keys: ${[
+      ...missing.map((k) => k.key),
+      ...(missingUrlScheme ? [`CFBundleURLTypes:${urlScheme}`] : []),
+    ].join(", ")}`,
   );
   process.exit(1);
 }
