@@ -201,13 +201,14 @@ jobs:
           name: ci-zero-key-e2e-report
           path: |
             reports/scenarios/pr-deterministic/
+            reports/scenarios/pr-deterministic-orchestrator/
             reports/scenarios/catalog-inventory/
           if-no-files-found: ignore
           retention-days: 3
 
       - name: Prune deterministic E2E scratch output
         if: always()
-        run: rm -rf reports/scenarios/pr-deterministic reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
+        run: rm -rf reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-orchestrator reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
 
   # Lint and format job
   lint-and-format:
