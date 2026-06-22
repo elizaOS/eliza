@@ -19,6 +19,14 @@ import {
 	postCreationTemplate,
 } from "../../prompts.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes";
+import {
+	bridgeActionCompletedToStreams,
+	bridgeActionStartedToStreams,
+	bridgeEvaluatorCompletedToStreams,
+	bridgeEvaluatorStartedToStreams,
+	bridgeRunEndedToStreams,
+	bridgeRunStartedToStreams,
+} from "../../services/agent-event-bridge.ts";
 import { ChannelTopicsService } from "../../services/channel-topics.ts";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";
@@ -35,6 +43,7 @@ import type {
 	Content,
 	ControlMessagePayload,
 	EntityPayload,
+	EvaluatorEventPayload,
 	IAgentRuntime,
 	IMessageBusService,
 	InvokePayload,
@@ -1050,6 +1059,11 @@ const events: PluginEvents = {
 
 	[EventType.ACTION_STARTED]: [
 		async (payload: ActionEventPayload) => {
+			// Bridge to the AgentEventService action/lifecycle streams so the WS
+			// `agent_event` channel carries real per-turn phase data (#8813 AC#3).
+			bridgeActionStartedToStreams(payload);
+		},
+		async (payload: ActionEventPayload) => {
 			// Only notify for client_chat messages
 			const payloadContent = payload.content;
 			if (payloadContent && payloadContent.source === "client_chat") {
@@ -1100,6 +1114,10 @@ const events: PluginEvents = {
 
 	[EventType.ACTION_COMPLETED]: [
 		async (payload: ActionEventPayload) => {
+			// Bridge to the AgentEventService action/lifecycle streams (#8813 AC#3).
+			bridgeActionCompletedToStreams(payload);
+		},
+		async (payload: ActionEventPayload) => {
 			// Only notify for client_chat messages
 			const payloadContent = payload.content;
 			if (payloadContent && payloadContent.source === "client_chat") {
@@ -1118,6 +1136,10 @@ const events: PluginEvents = {
 	],
 
 	[EventType.RUN_STARTED]: [
+		async (payload: RunEventPayload) => {
+			// Bridge to the AgentEventService lifecycle stream (#8813 AC#3).
+			bridgeRunStartedToStreams(payload);
+		},
 		async (payload: RunEventPayload) => {
 			await payload.runtime.createLogs([
 				{
@@ -1147,6 +1169,10 @@ const events: PluginEvents = {
 	],
 
 	[EventType.RUN_ENDED]: [
+		async (payload: RunEventPayload) => {
+			// Bridge to the AgentEventService lifecycle stream (#8813 AC#3).
+			bridgeRunEndedToStreams(payload);
+		},
 		async (payload: RunEventPayload) => {
 			await payload.runtime.createLogs([
 				{
@@ -1208,6 +1234,20 @@ const events: PluginEvents = {
 				},
 				"Logged RUN_TIMEOUT event",
 			);
+		},
+	],
+
+	[EventType.EVALUATOR_STARTED]: [
+		async (payload: EvaluatorEventPayload) => {
+			// Bridge to the AgentEventService evaluator stream (#8813 AC#3).
+			bridgeEvaluatorStartedToStreams(payload);
+		},
+	],
+
+	[EventType.EVALUATOR_COMPLETED]: [
+		async (payload: EvaluatorEventPayload) => {
+			// Bridge to the AgentEventService evaluator stream (#8813 AC#3).
+			bridgeEvaluatorCompletedToStreams(payload);
 		},
 	],
 
