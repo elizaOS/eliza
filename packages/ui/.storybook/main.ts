@@ -145,7 +145,11 @@ const config: StorybookConfig = {
         replacement: hostExternalStub,
       },
       {
-        find: /^@elizaos\/capacitor-(contacts|messages|mobile-signals|phone|system)$/,
+        // Native capacitor bridges → host-external stub. `camera` is included so
+        // the static catalog build never pulls plugin-native-camera's dist
+        // (gitignored / unbuilt on a clean CI checkout); the browser catalog
+        // never invokes the native bridge anyway.
+        find: /^@elizaos\/capacitor-(camera|contacts|messages|mobile-signals|phone|system)$/,
         replacement: hostExternalStub,
       },
       { find: /^llama-cpp-capacitor$/, replacement: hostExternalStub },

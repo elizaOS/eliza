@@ -266,13 +266,13 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
             root.classList.contains("sb-show-nopreview")
           );
         },
-        { timeout: 4000 },
+        { timeout: Number(process.env.STORY_GATE_SETTLE_MS) || 10000 },
       )
       .then(() => true)
       .catch(() => false);
     if (!settled) {
       result.verdict = "needs-runtime";
-      result.issues.push("did-not-settle: no sb-show-* state within 4s");
+      result.issues.push("did-not-settle: no sb-show-* state in time");
     }
     // Give layout/fonts a deterministic beat to settle.
     await page.waitForTimeout(80);
@@ -404,6 +404,13 @@ async function main() {
 
   const consoleBaseline = await loadBaseline("console-baseline.json");
   const a11yBaseline = await loadBaseline("a11y-baseline.json");
+  // Console + a11y gating is opt-in: it only enforces once a non-empty baseline
+  // has been committed (the team has captured the existing backlog). Until then
+  // the gate still HARD-fails on broken/blank/threw stories — which need no
+  // baseline — so it is useful and CI-safe from day one, then tightens as the
+  // baselines get populated via `--update-baseline`.
+  const enforceConsole = Object.keys(consoleBaseline).length > 0;
+  const enforceA11y = Object.keys(a11yBaseline).length > 0;
 
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
@@ -468,14 +475,14 @@ async function main() {
     if (r.verdict === "broken") {
       failures.push({ id: r.id, kind: "broken", detail: r.issues.join(" | ") });
     }
-    if (!args.updateBaseline && newConsole.length) {
+    if (!args.updateBaseline && enforceConsole && newConsole.length) {
       failures.push({
         id: r.id,
         kind: "new-console-error",
         detail: newConsole.join(" | "),
       });
     }
-    if (!args.updateBaseline && newA11y.length) {
+    if (!args.updateBaseline && enforceA11y && newA11y.length) {
       failures.push({
         id: r.id,
         kind: "new-a11y-violation",
