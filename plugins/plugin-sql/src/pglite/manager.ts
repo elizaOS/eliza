@@ -269,6 +269,14 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   private setupShutdownHandlers() {}
 
   private createClient(options: PGliteOptions): PGlite {
+    // PGlite's in-memory mode is the `memory://` URL. `:memory:` is SQLite
+    // syntax that PGlite does NOT recognize, so it treats it as a real path and
+    // its NodeFS mkdir()s `resolve(":memory:")` — which throws EINVAL on Windows
+    // (the `:` is reserved) and silently creates a junk `:memory:` dir on POSIX.
+    // Translate to the URL form so in-memory actually stays in memory.
+    if ((options as { dataDir?: unknown }).dataDir === ":memory:") {
+      options = { ...options, dataDir: "memory://" };
+    }
     if (process.env.ELIZA_PGLITE_DISABLE_EXTENSIONS === "1") {
       return new PGlite(options);
     }
