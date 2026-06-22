@@ -56,6 +56,7 @@ import {
 } from "../../utils/image-attachment";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
+import { SensitiveRequestBlock } from "../chat/MessageContent";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
@@ -887,6 +888,12 @@ const ThreadLine = React.memo(function ThreadLine({
         )}
         {message.attachments?.length ? (
           <MessageAttachments attachments={message.attachments} />
+        ) : null}
+        {isAssistant && message.secretRequest ? (
+          // Secret / OAuth requests are a structured field, not a text marker —
+          // render the same block the full chat surface uses so they're
+          // actionable in the overlay instead of invisible (#8997).
+          <SensitiveRequestBlock request={message.secretRequest} />
         ) : null}
         {isAssistant && message.reasoning?.trim() ? (
           <ThinkingBlock reasoning={message.reasoning} />
