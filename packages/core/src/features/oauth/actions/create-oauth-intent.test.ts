@@ -3,6 +3,8 @@ import {
 	OAUTH_INTENTS_CLIENT_SERVICE,
 	type OAuthIntentEnvelope,
 	type OAuthIntentsClient,
+	OAUTH_PROVIDERS,
+	type OAuthProvider,
 } from "../types";
 import { createOAuthIntentAction } from "./create-oauth-intent";
 
@@ -93,6 +95,44 @@ describe("CREATE_OAUTH_INTENT", () => {
 
 		expect(result.success).toBe(false);
 		expect(client.create).not.toHaveBeenCalled();
+	});
+
+	test("accepts github (and aligned providers) — #8909", async () => {
+		for (const provider of ["github", "notion", "slack"] as const) {
+			// Compile-time check: the literal is assignable to OAuthProvider.
+			const typed: OAuthProvider = provider;
+			expect(OAUTH_PROVIDERS).toContain(typed);
+
+			const create = vi
+				.fn()
+				.mockResolvedValue(envelope({ provider, oauthIntentId: `oauth_${provider}` }));
+			const client: OAuthIntentsClient = {
+				create,
+				get: vi.fn(),
+				cancel: vi.fn(),
+				bind: vi.fn(),
+				revoke: vi.fn(),
+			};
+
+			const result = await createOAuthIntentAction.handler(
+				createRuntime({ [OAUTH_INTENTS_CLIENT_SERVICE]: client }) as never,
+				message() as never,
+				undefined,
+				{
+					parameters: {
+						action: "create",
+						provider,
+						scopes: ["repo"],
+						stateTokenHash: "deadbeefdeadbeef0000000000000000",
+					},
+				} as never,
+				vi.fn(),
+			);
+
+			expect(result.success).toBe(true);
+			expect(create).toHaveBeenCalledTimes(1);
+			expect(result.data?.oauthIntentId).toBe(`oauth_${provider}`);
+		}
 	});
 
 	test("rejects when scopes are not strings", async () => {

@@ -27,6 +27,7 @@ export type {
 	OAuthRevokeResult,
 } from "./types.ts";
 export {
+	CONNECTOR_NATIVE_OAUTH_PROVIDERS,
 	eligibleOAuthDeliveryTargets,
 	OAUTH_CALLBACK_BUS_CLIENT_SERVICE,
 	OAUTH_INTENTS_CLIENT_SERVICE,

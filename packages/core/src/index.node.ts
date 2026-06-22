@@ -27,6 +27,13 @@ export * from "./connectors/account-manager";
 export * from "./connectors/connector-config";
 export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
+// OAuth provider contract (the canonical provider identifiers the atomic OAuth
+// actions accept). Exported so cloud-shared can enforce core ⊆ cloud-registry.
+export {
+	CONNECTOR_NATIVE_OAUTH_PROVIDERS,
+	OAUTH_PROVIDERS,
+	type OAuthProvider,
+} from "./features/oauth/types.ts";
 // Export additional constants not re-exported by character-utils
 export {
 	CANONICAL_SECRET_KEYS,

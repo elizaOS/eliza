@@ -13,9 +13,22 @@
 
 import type { DeliveryTarget } from "../../sensitive-requests/dispatch-registry.ts";
 
+/**
+ * Providers the OAuth atomic actions accept.
+ *
+ * Every entry except those in {@link CONNECTOR_NATIVE_OAUTH_PROVIDERS} must be
+ * present in the cloud OAuth provider registry (`@elizaos/cloud-shared`:
+ * `getAllProviderIds()` ∪ `VENDOR_REGISTRY` keys). That subset relationship is
+ * enforced — compile-time + runtime — by `provider-alignment.test.ts` in
+ * cloud-shared, the one place that can see both layers without core importing
+ * outward.
+ */
 export type OAuthProvider =
 	| "google"
 	| "discord"
+	| "github"
+	| "notion"
+	| "slack"
 	| "linkedin"
 	| "linear"
 	| "shopify"
@@ -24,10 +37,21 @@ export type OAuthProvider =
 export const OAUTH_PROVIDERS: readonly OAuthProvider[] = [
 	"google",
 	"discord",
+	"github",
+	"notion",
+	"slack",
 	"linkedin",
 	"linear",
 	"shopify",
 	"calendly",
+] as const;
+
+/**
+ * Providers whose OAuth is serviced by a connector (not the cloud provider
+ * registry); exempt from the core ⊆ cloud-registry alignment check.
+ */
+export const CONNECTOR_NATIVE_OAUTH_PROVIDERS: readonly OAuthProvider[] = [
+	"discord",
 ] as const;
 
 export type OAuthIntentStatus =
