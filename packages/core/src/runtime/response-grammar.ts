@@ -714,6 +714,7 @@ const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
 	"shouldRespond",
 	"facts",
 	"relationships",
+	"topics",
 	"addressedTo",
 	"emotion",
 ]);

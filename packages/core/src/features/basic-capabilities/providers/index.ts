@@ -7,6 +7,7 @@
 export { actionStateProvider } from "./actionState.ts";
 export { actionsProvider } from "./actions.ts";
 export { attachmentsProvider } from "./attachments.ts";
+export { channelTopicsProvider } from "./channelTopics.ts";
 export { characterProvider } from "./character.ts";
 export { choiceProvider } from "./choice.ts";
 export { contextBenchProvider } from "./contextBench.ts";
@@ -33,6 +34,7 @@ export { worldProvider } from "./world.ts";
 import { actionStateProvider as _bs_1_actionStateProvider } from "./actionState.ts";
 import { actionsProvider as _bs_2_actionsProvider } from "./actions.ts";
 import { attachmentsProvider as _bs_3_attachmentsProvider } from "./attachments.ts";
+import { channelTopicsProvider as _bs_19_channelTopicsProvider } from "./channelTopics.ts";
 import { characterProvider as _bs_4_characterProvider } from "./character.ts";
 import { choiceProvider as _bs_5_choiceProvider } from "./choice.ts";
 import { contextBenchProvider as _bs_6_contextBenchProvider } from "./contextBench.ts";
@@ -72,6 +74,7 @@ const __bundle_safety_FEATURES_BASIC_CAPABILITIES_PROVIDERS_INDEX__ = [
 	_bs_16_worldProvider,
 	_bs_17_userEmotionSignalProvider,
 	_bs_18_runtimeModelContextProvider,
+	_bs_19_channelTopicsProvider,
 ];
 (
 	globalThis as Record<string, unknown>
