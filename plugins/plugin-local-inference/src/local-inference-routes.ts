@@ -16,6 +16,7 @@ import {
 } from "@elizaos/core";
 import {
 	buildHuggingFaceResolveUrl,
+	resolveHubAuthHeaders,
 	MODEL_CATALOG as SHARED_MODEL_CATALOG,
 	type CatalogModel as SharedCatalogModel,
 } from "@elizaos/shared";
@@ -543,12 +544,14 @@ async function downloadModel(
 	record.updatedAt = new Date().toISOString();
 
 	try {
+		const downloadUrl = huggingFaceResolveUrl(model);
 		const headers: Record<string, string> = {
 			"user-agent": "Eliza-MobileLocalInference/1.0",
+			...resolveHubAuthHeaders(downloadUrl),
 		};
 		if (existingPartial > 0) headers.range = `bytes=${existingPartial}-`;
 		const response = await openDownloadResponse(
-			huggingFaceResolveUrl(model),
+			downloadUrl,
 			headers,
 			abortController.signal,
 		);

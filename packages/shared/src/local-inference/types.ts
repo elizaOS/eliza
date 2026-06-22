@@ -476,6 +476,14 @@ export interface CpuFeatureProbe {
 export interface HardwareProbe {
   totalRamGb: number;
   freeRamGb: number;
+  /**
+   * Free disk space (GB) on the volume holding the models directory. Used for
+   * the pre-download fit check so a large download is blocked before it starts
+   * rather than failing with ENOSPC near the end. Undefined when the probe
+   * could not stat the models volume (e.g. some mobile sandboxes — mobile fit
+   * uses `mobile.freeStorageGb` instead).
+   */
+  freeDiskGb?: number;
   /** Null when no supported GPU is available (CPU-only). */
   gpu: {
     backend: "cuda" | "metal" | "vulkan";

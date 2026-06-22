@@ -22,6 +22,10 @@ export {
 	eliza1TierPublishStatus,
 	FIRST_RUN_DEFAULT_MODEL_ID,
 	findCatalogModel,
+	hasHuggingFaceToken,
 	isDefaultEligibleId,
+	isHuggingFaceHost,
 	MODEL_CATALOG,
+	resolveHubAuthHeaders,
+	resolveHuggingFaceToken,
 } from "@elizaos/shared";

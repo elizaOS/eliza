@@ -40,6 +40,12 @@ export {
   reservedHeadroomGb,
 } from "./gpu-profiles.js";
 export {
+  hasHuggingFaceToken,
+  isHuggingFaceHost,
+  resolveHubAuthHeaders,
+  resolveHuggingFaceToken,
+} from "./hub-auth.js";
+export {
   type Ed25519PublicKey,
   ManifestSignatureError,
   type SignatureVerifyInput,

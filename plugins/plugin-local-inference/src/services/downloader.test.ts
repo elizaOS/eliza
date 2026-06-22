@@ -8,7 +8,28 @@ import { findCatalogModel } from "./catalog";
 import { Downloader } from "./downloader";
 import type { Eliza1DeviceCaps } from "./manifest";
 import { registryPath } from "./paths";
-import type { CatalogModel, DownloadJob, InstalledModel } from "./types";
+import type {
+	CatalogModel,
+	DownloadJob,
+	HardwareProbe,
+	InstalledModel,
+} from "./types";
+
+/** Minimal HardwareProbe with a controllable free-disk value for preflight tests. */
+function fakeProbe(freeDiskGb: number): HardwareProbe {
+	return {
+		totalRamGb: 32,
+		freeRamGb: 16,
+		freeDiskGb,
+		gpu: null,
+		cpuCores: 8,
+		platform: "darwin",
+		arch: "arm64",
+		appleSilicon: true,
+		recommendedBucket: "mid",
+		source: "os-fallback",
+	};
+}
 
 function eliza1Manifest(overrides: {
 	ramBudgetMin?: number;
@@ -712,5 +733,147 @@ describe("local inference downloader status", () => {
 			downloader.snapshot().filter((j) => j.modelId === model.id),
 		).toHaveLength(1);
 		downloader.cancel(model.id);
+	});
+
+	it("rejects a non-GGUF (HTML) body on the single-file path", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const base = findCatalogModel("eliza-1-2b");
+		if (!base) throw new Error("missing test catalog model");
+		// Decorate a default-eligible id as a single-file (non-bundle) download so
+		// it routes through runJob's single-file path.
+		const singleFileSpec: CatalogModel = {
+			...base,
+			hfRepo: "test/single-file",
+			ggufFile: "model.gguf",
+			sizeGb: 0.000001,
+			bundleManifestFile: undefined,
+			bundleManifestSha256: undefined,
+			companionModelIds: [],
+			runtimeRole: undefined,
+		};
+
+		// A gated repo can answer HTTP 200 with an HTML login page.
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response("<html><body>Sign in to HuggingFace</body></html>", {
+					status: 200,
+					headers: { "content-type": "text/html" },
+				}),
+		) as unknown as typeof fetch;
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
+		});
+		const failed = new Promise<DownloadJob>((resolve) => {
+			const unsub = downloader.subscribe((event) => {
+				if (event.job.modelId === base.id && event.type === "failed") {
+					unsub();
+					resolve(event.job);
+				}
+			});
+		});
+
+		await downloader.start(singleFileSpec);
+		const job = await failed;
+
+		expect(job.error).toContain("not a valid GGUF");
+		// The HTML body must never be registered or left on disk as a model.
+		const finalPath = path.join(
+			root,
+			"local-inference",
+			"models",
+			"eliza-1-2b.gguf",
+		);
+		// (registry path lives elsewhere; the rejected file is removed regardless)
+		expect(fs.existsSync(finalPath)).toBe(false);
+	});
+
+	it("forwards the HuggingFace bearer token on a single-file download", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const savedToken = process.env.HF_TOKEN;
+		process.env.HF_TOKEN = "secret-token";
+
+		const base = findCatalogModel("eliza-1-2b");
+		if (!base) throw new Error("missing test catalog model");
+		const singleFileSpec: CatalogModel = {
+			...base,
+			hfRepo: "test/single-file",
+			ggufFile: "model.gguf",
+			sizeGb: 0.000001,
+			bundleManifestFile: undefined,
+			bundleManifestSha256: undefined,
+			companionModelIds: [],
+			runtimeRole: undefined,
+		};
+
+		const ggufBody = Buffer.concat([Buffer.from("GGUF"), Buffer.alloc(60, 0)]);
+		let capturedAuth: string | undefined;
+		globalThis.fetch = vi.fn(
+			async (_url: string | URL | Request, init?: RequestInit) => {
+				const headers = (init?.headers ?? {}) as Record<string, string>;
+				capturedAuth = headers.authorization;
+				return new Response(ggufBody, {
+					status: 200,
+					headers: { "content-length": String(ggufBody.length) },
+				});
+			},
+		) as unknown as typeof fetch;
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
+		});
+		const completed = new Promise<DownloadJob>((resolve) => {
+			const unsub = downloader.subscribe((event) => {
+				if (event.job.modelId === base.id && event.type === "completed") {
+					unsub();
+					resolve(event.job);
+				}
+			});
+		});
+
+		try {
+			await downloader.start(singleFileSpec);
+			await completed;
+			expect(capturedAuth).toBe("Bearer secret-token");
+		} finally {
+			if (savedToken === undefined) delete process.env.HF_TOKEN;
+			else process.env.HF_TOKEN = savedToken;
+		}
+	});
+
+	it("blocks a download that does not fit on the models volume", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+
+		// Fetch must never be called: the preflight fails before any byte.
+		const fetchSpy = vi.fn(async () => {
+			throw new Error("network must not be touched when disk is full");
+		});
+		globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(0.05),
+		});
+		const failed = new Promise<DownloadJob>((resolve) => {
+			const unsub = downloader.subscribe((event) => {
+				if (event.job.modelId === model.id && event.type === "failed") {
+					unsub();
+					resolve(event.job);
+				}
+			});
+		});
+
+		await downloader.start(model.id);
+		const job = await failed;
+
+		expect(job.error).toContain("Not enough disk space");
+		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 });

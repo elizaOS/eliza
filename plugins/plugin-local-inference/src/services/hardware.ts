@@ -13,8 +13,10 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
 import { detectGpu } from "./gpu-detect";
 import type { Eliza1Backend, Eliza1DeviceCaps } from "./manifest";
+import { elizaModelsDir } from "./paths";
 import type {
 	CpuFeatureProbe,
 	HardwareProbe,
@@ -27,6 +29,30 @@ const BYTES_PER_GB = 1024 ** 3;
 
 function bytesToGb(bytes: number): number {
 	return Math.round((bytes / BYTES_PER_GB) * 10) / 10;
+}
+
+/**
+ * Free disk space (GB) on the volume that holds the models directory. Walks up
+ * to the nearest existing ancestor before `statfs` so a not-yet-created models
+ * dir still resolves to its parent volume. Returns `undefined` when the volume
+ * cannot be stat'd (the fit check then falls back to RAM-only / mobile
+ * storage), never throws.
+ */
+async function probeFreeDiskGb(): Promise<number | undefined> {
+	try {
+		let dir = elizaModelsDir();
+		for (let i = 0; i < 12 && !fs.existsSync(dir); i += 1) {
+			const parent = path.dirname(dir);
+			if (parent === dir) break;
+			dir = parent;
+		}
+		const stats = await fs.promises.statfs(dir);
+		const available = stats.bavail * stats.bsize;
+		if (!Number.isFinite(available) || available < 0) return undefined;
+		return bytesToGb(available);
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -331,9 +357,11 @@ export async function probeHardware(): Promise<HardwareProbe> {
 
 	const gpu = detectProbeGpu(appleSilicon, totalRamBytes, freeRamBytes);
 	const totalRamGb = bytesToGb(totalRamBytes);
+	const freeDiskGb = await probeFreeDiskGb();
 	return {
 		totalRamGb,
 		freeRamGb: bytesToGb(freeRamBytes),
+		...(freeDiskGb !== undefined ? { freeDiskGb } : {}),
 		gpu,
 		cpuCores,
 		cpuFeatures,

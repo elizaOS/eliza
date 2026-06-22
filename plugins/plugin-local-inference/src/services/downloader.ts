@@ -27,6 +27,7 @@ import {
 	buildHuggingFaceResolveUrlForPath,
 	findCatalogModel,
 	isDefaultEligibleId,
+	resolveHubAuthHeaders,
 } from "./catalog";
 import { deviceCapsFromProbe, probeHardware } from "./hardware";
 import {
@@ -48,6 +49,7 @@ import type {
 	DownloadEvent,
 	DownloadJob,
 	DownloadState,
+	HardwareProbe,
 	InstalledModel,
 } from "./types";
 import { hashFile } from "./verify";
@@ -97,6 +99,8 @@ export interface DownloaderOptions {
 	probeDeviceCaps?: () => Promise<Eliza1DeviceCaps>;
 	/** Verify-on-device smoke run; see {@link VerifyBundleOnDevice}. */
 	verifyOnDevice?: VerifyBundleOnDevice;
+	/** Override the hardware probe used by the disk-space preflight (tests). */
+	probeHardware?: () => Promise<HardwareProbe>;
 }
 
 async function defaultProbeDeviceCaps(): Promise<Eliza1DeviceCaps> {
@@ -147,6 +151,8 @@ interface DownloadedFile {
 const PROGRESS_THROTTLE_MS = 250;
 const TERMINAL_DOWNLOADS_FILENAME = "download-status.json";
 const TERMINAL_DOWNLOAD_LIMIT = 32;
+/** Headroom kept free above the download size for the disk-space preflight. */
+const DISK_HEADROOM_GB = 0.5;
 
 interface TerminalDownloadsFile {
 	version: 1;
@@ -181,19 +187,23 @@ function finalFilename(model: CatalogModel): string {
 }
 
 /**
- * HuggingFace bearer token for gated/metered repos, read from the same env
- * aliases the embedding manager uses (HF_TOKEN / HUGGINGFACE_TOKEN /
- * HF_HUB_TOKEN). Returns `{}` when unset so public repos are unaffected. The
- * resolve endpoints for gated bundles (e.g. the Eliza-1 mono-repo) 401 without
- * it, so weight + bundle downloads MUST forward it.
+ * GGUF files begin with the ASCII magic `GGUF`. A non-GGUF body (e.g. an HTML
+ * auth/redirect page returned with HTTP 200 by a gated repo) must never be
+ * registered as an installed model.
  */
-function huggingFaceAuthHeader(): Record<string, string> {
-	const token =
-		process.env.HF_TOKEN?.trim() ||
-		process.env.HUGGINGFACE_TOKEN?.trim() ||
-		process.env.HF_HUB_TOKEN?.trim() ||
-		"";
-	return token ? { authorization: `Bearer ${token}` } : {};
+async function hasGgufMagic(filePath: string): Promise<boolean> {
+	try {
+		const handle = await fsp.open(filePath, "r");
+		try {
+			const buffer = Buffer.alloc(4);
+			await handle.read(buffer, 0, 4, 0);
+			return buffer.toString("ascii") === "GGUF";
+		} finally {
+			await handle.close();
+		}
+	} catch {
+		return false;
+	}
 }
 
 function bundleDirname(modelId: string): string {
@@ -302,10 +312,12 @@ export class Downloader {
 	private readonly lastEmit = new Map<string, number>();
 	private readonly probeDeviceCaps: () => Promise<Eliza1DeviceCaps>;
 	private readonly verifyOnDevice?: VerifyBundleOnDevice;
+	private readonly probeHardware: () => Promise<HardwareProbe>;
 
 	constructor(options: DownloaderOptions = {}) {
 		this.probeDeviceCaps = options.probeDeviceCaps ?? defaultProbeDeviceCaps;
 		this.verifyOnDevice = options.verifyOnDevice;
+		this.probeHardware = options.probeHardware ?? probeHardware;
 		this.loadTerminalDownloads();
 	}
 
@@ -510,12 +522,41 @@ export class Downloader {
 		this.emit({ type: "progress", job: { ...record.job } });
 	}
 
+	/**
+	 * Disk-space preflight. The remaining download must fit on the models
+	 * volume with a small headroom margin, or we fail the job up front with an
+	 * actionable message instead of letting it stream gigabytes and die with
+	 * ENOSPC near the end. Best-effort: when free disk can't be probed we let
+	 * the download proceed (the post-hoc ENOSPC handling still catches it).
+	 */
+	private async assertDiskSpaceForJob(record: ActiveJob): Promise<void> {
+		const remainingBytes = Math.max(0, record.job.total - record.job.received);
+		if (remainingBytes <= 0) return;
+		let freeDiskGb: number | undefined;
+		try {
+			const probe = await this.probeHardware();
+			freeDiskGb = probe.freeDiskGb ?? probe.mobile?.freeStorageGb ?? undefined;
+		} catch {
+			return; // probe failure must never block a download
+		}
+		if (freeDiskGb === undefined) return;
+		const requiredGb = remainingBytes / 1024 ** 3 + DISK_HEADROOM_GB;
+		if (freeDiskGb < requiredGb) {
+			throw new Error(
+				`Not enough disk space: this download needs ~${requiredGb.toFixed(1)} GB ` +
+					`but only ${freeDiskGb.toFixed(1)} GB is free on the models volume. ` +
+					"Free up space and retry.",
+			);
+		}
+	}
+
 	private async runJob(
 		catalogEntry: CatalogModel,
 		record: ActiveJob,
 	): Promise<void> {
 		try {
 			this.updateState(record, "downloading");
+			await this.assertDiskSpaceForJob(record);
 			if (catalogEntry.bundleManifestFile) {
 				await this.runBundleJob(catalogEntry, record);
 				return;
@@ -528,7 +569,7 @@ export class Downloader {
 
 			const headers: Record<string, string> = {
 				"user-agent": "Eliza-LocalInference/1.0",
-				...huggingFaceAuthHeader(),
+				...resolveHubAuthHeaders(url),
 			};
 			if (startByte > 0) {
 				headers.range = `bytes=${startByte}-`;
@@ -590,6 +631,20 @@ export class Downloader {
 			await pipeline(bodyStream, writeStream);
 
 			await fsp.rename(record.stagingPath, record.finalPath);
+
+			// Integrity gate: a gated/private repo can answer HTTP 200 with an
+			// HTML login/error body, which would otherwise be renamed `<id>.gguf`
+			// and registered as an installed model. Reject anything that is not a
+			// real GGUF before it enters the registry, and point the user at the
+			// likely cause (a missing/expired HuggingFace token).
+			if (!(await hasGgufMagic(record.finalPath))) {
+				await fsp.rm(record.finalPath, { force: true }).catch(() => undefined);
+				throw new Error(
+					`Downloaded file for ${catalogEntry.hfRepo ?? catalogEntry.id} is not a valid GGUF ` +
+						"(it looks like an auth/redirect page, not a model). If the repo is gated, " +
+						"add a HuggingFace token (HF_TOKEN) and retry.",
+				);
+			}
 
 			const finalStat = await fsp.stat(record.finalPath);
 			// Compute SHA256 on commit so we have an integrity baseline. The
@@ -818,16 +873,16 @@ export class Downloader {
 		let startByte = expectedSha256 ? await partialSize(stagingPath) : 0;
 		record.job.received = baseBytes + startByte;
 
+		const url = buildHuggingFaceResolveUrlForPath(catalogEntry, remotePath);
 		const headers: Record<string, string> = {
 			"user-agent": "Eliza-LocalInference/1.0",
-			...huggingFaceAuthHeader(),
+			...resolveHubAuthHeaders(url),
 		};
 		if (startByte > 0) {
 			headers.range = `bytes=${startByte}-`;
 		}
 
 		const httpClient = await this.loadHttpClient();
-		const url = buildHuggingFaceResolveUrlForPath(catalogEntry, remotePath);
 		const response = await httpClient.request(url, {
 			method: "GET",
 			headers,

@@ -11,6 +11,7 @@
  * entry with the same hfRepo always takes precedence in the UI.
  */
 
+import { resolveHubAuthHeaders } from "@elizaos/shared";
 import type { CatalogModel, ModelBucket } from "./types";
 
 const HF_API = "https://huggingface.co/api";
@@ -209,7 +210,10 @@ export async function searchHuggingFaceGguf(
 	searchUrl.searchParams.set("direction", "-1");
 
 	const searchRes = await fetchWithTimeout(searchUrl.toString(), {
-		headers: { accept: "application/json" },
+		headers: {
+			accept: "application/json",
+			...resolveHubAuthHeaders(searchUrl.toString()),
+		},
 	});
 	if (!searchRes.ok) {
 		throw new Error(`HuggingFace search failed: HTTP ${searchRes.status}`);
@@ -225,10 +229,13 @@ export async function searchHuggingFaceGguf(
 	const details = await Promise.all(
 		candidates.map(async (id) => {
 			try {
-				const res = await fetchWithTimeout(
-					`${HF_API}/models/${encodeURIComponent(id)}`,
-					{ headers: { accept: "application/json" } },
-				);
+				const detailUrl = `${HF_API}/models/${encodeURIComponent(id)}`;
+				const res = await fetchWithTimeout(detailUrl, {
+					headers: {
+						accept: "application/json",
+						...resolveHubAuthHeaders(detailUrl),
+					},
+				});
 				if (!res.ok) return null;
 				return (await res.json()) as HfModelDetailRaw;
 			} catch {
