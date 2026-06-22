@@ -60,6 +60,8 @@
       "@elizaos/plugin-registry/*": ["./src/*"],
       "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
+      "@elizaos/plugin-health": ["../plugin-health/src/index.ts"],
+      "@elizaos/plugin-health/*": ["../plugin-health/src/*"],
       "@elizaos/plugin-training": [
         "../../packages/ui/src/types/host-external-modules.ts"
       ]

@@ -19,12 +19,12 @@ import {
   DashboardLoadingState,
 } from "../../cloud-ui/components/dashboard/route-placeholders";
 import { DashboardPageContainer } from "../../cloud-ui/components/layout";
+import { useRequireAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AppDetailsTabs } from "./components/app-details-tabs";
 import { AppPageWrapper } from "./components/single-app-page-wrapper";
 import { useApp } from "./lib/apps";
 import { consumeOneTimeAppApiKey } from "./lib/one-time-app-api-key";
-import { useRequireAuth } from "./lib/use-session-auth";
 import { isValidUUID } from "./lib/utils";
 
 /** /dashboard/apps/:id */

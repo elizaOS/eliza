@@ -1,25 +1,29 @@
 /**
- * Synchronous "is the user logged in" answer for the app-hosted cloud surfaces.
+ * Canonical "is the user logged in" hook for app-hosted cloud domains that only
+ * need the minimal `{ ready, authenticated, user }` contract.
  *
- * Ported from `@elizaos/cloud-frontend/src/hooks/use-session-auth.ts`, adapted
- * to read the Steward auth context exposed by the cloud shell
- * (`LocalStewardAuthContext` in `../../shell/StewardProvider`). The shell only
- * mounts the heavy `@stwd/*` runtime on demand, so this hook falls back to
- * reading the JWT directly from `localStorage` (decoded, expiry-checked) when
- * the provider isn't mounted — keeping authed cloud views able to gate on
+ * Ported from `@elizaos/cloud-frontend/src/hooks/use-session-auth.ts`, adapted to
+ * read the Steward auth context the cloud shell exposes
+ * (`LocalStewardAuthContext` in `../shell/StewardProvider`). The shell only
+ * mounts the heavy `@stwd/*` runtime on demand, so this hook also falls back to
+ * reading the JWT directly from `localStorage` (decoded, expiry-checked) when the
+ * provider isn't mounted — keeping authed cloud views able to gate on
  * `{ ready, authenticated, user }` without forcing the runtime to load.
  *
- * Scoped to the documents domain for now; the shell can promote this to shared
- * infra once a second domain needs it.
+ * Shared by the applications, approvals, and documents domains (previously three
+ * byte-identical copies). Domains that also need Steward-runtime accessors
+ * (`useStewardAuth`), the Playwright test-auth bypass, or the extended
+ * `authSource`/`stewardUser` fields keep their own divergent hook — those are
+ * genuinely different implementations, not subsets of this one.
  */
 
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { useContext, useEffect, useState } from "react";
-import { decodeJwtPayload } from "../../lib/jwt";
 import {
   LocalStewardAuthContext,
   type LocalStewardAuthValue,
-} from "../../shell/StewardProvider";
+} from "../shell/StewardProvider";
+import { decodeJwtPayload } from "./jwt";
 
 export type StewardSessionUser = {
   id: string;

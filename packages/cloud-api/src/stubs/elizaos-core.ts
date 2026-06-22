@@ -174,6 +174,10 @@ export function stringToUuid(target: string | number): string {
   return bytesToUuid(bytes);
 }
 
+export function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function asUUID(value: string): string {
   if (!value || !UUID_RE.test(value)) {
     throw new Error(`Invalid UUID format: ${value}`);

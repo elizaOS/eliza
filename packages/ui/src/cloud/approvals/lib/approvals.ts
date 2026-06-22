@@ -26,7 +26,10 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api-client";
-import { authenticatedQueryKey, useAuthenticatedQueryGate } from "./auth-query";
+import {
+  authenticatedQueryKey,
+  useAuthenticatedQueryGate,
+} from "../../lib/auth-query";
 
 // ── Approval requests ──────────────────────────────────────────────────────
 

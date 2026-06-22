@@ -31,6 +31,7 @@ import {
   type AgentRuntime,
   AutonomyService,
   ChannelType,
+  isTruthyEnvValue,
   logger,
   ModelType,
   type Plugin,
@@ -1057,16 +1058,6 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
 // then opens the now-missing file and throws ENOENT, which surfaces as an
 // uncaughtException and kills the agent.
 let warmupInFlight: Promise<void> | null = null;
-
-function isTruthyEnvValue(value: string | undefined): boolean {
-  const normalized = value?.trim().toLowerCase();
-  return (
-    normalized === "1" ||
-    normalized === "true" ||
-    normalized === "yes" ||
-    normalized === "on"
-  );
-}
 
 function isLocalEmbeddingWarmupDeferredByEnv(): boolean {
   return isTruthyEnvValue(process.env.ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP);
