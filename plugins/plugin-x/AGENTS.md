@@ -37,7 +37,7 @@ plugins/plugin-x/
     constants.ts                   Shared string constants
     templates.ts                   LLM prompt templates for post/interaction generation
     post.ts                        TwitterPostClient — autonomous tweet generation loop
-    interactions.ts                TwitterInteractionClient — mention/reply polling loop
+    interactions.ts                TwitterInteractionClient — mention/reply polling loop; search-discovered target-user/timeline engagement (like/retweet/quote/reply)
     timeline.ts                    TwitterTimelineClient — home/following feed action loop (like/retweet/quote/reply); interprets tweet media (image/gif/video) via IMAGE_DESCRIPTION before deciding/replying
     discovery.ts                   TwitterDiscoveryClient — autonomous follow/like/reply discovery loop
     lifeops-message-adapter.ts     LifeOps BaseMessageAdapter adapter — bridges XService DM send/list to the LifeOps message-adapter interface
