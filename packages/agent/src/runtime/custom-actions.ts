@@ -567,6 +567,13 @@ export interface GuardedHttpGetResult {
  * https scheme, rejects redirects, and caps both the timeout and the number of
  * body bytes read.
  */
+// Browser-like User-Agent for guarded GETs. Many public REST/JSON APIs (crypto
+// price, weather, news endpoints) reject undici's default `node` User-Agent —
+// or a missing one — with HTTP 403, which silently broke every WEB_FETCH
+// live-info lookup. A caller-supplied User-Agent still overrides this default.
+const GUARDED_GET_DEFAULT_USER_AGENT =
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
 export async function performGuardedHttpGet(
   url: string,
   opts: GuardedHttpGetOptions = {},
@@ -591,7 +598,7 @@ export async function performGuardedHttpGet(
 
   const fetchOpts: RequestInit = {
     method: "GET",
-    headers: opts.headers,
+    headers: { "User-Agent": GUARDED_GET_DEFAULT_USER_AGENT, ...opts.headers },
     redirect: "manual",
   };
 
