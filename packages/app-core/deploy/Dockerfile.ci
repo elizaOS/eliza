@@ -128,8 +128,8 @@ RUN find node_modules -name '*.map' -delete 2>/dev/null; \
 # `tsx` to be resolvable from /app. bun's workspace install on GHA can drop tsx from the build
 # context (it lives under `node_modules/.bun/tsx@<v>/` but isn't always
 # materialized at `node_modules/tsx/`, and dockerignore prunes per-package
-# trees). Mirror Dockerfile.cloud's pattern: install tsx in a dedicated stage
-# and COPY it into the final image's `/app/node_modules/tsx`. Idempotent and
+# trees). So install tsx in a dedicated stage and COPY it into the final image
+# at `/opt/tsx` (referenced absolutely by APP_CMD_START). Idempotent and
 # version-pinned.
 FROM node:${NODE_VERSION}-slim AS tsx
 RUN npm install --prefix /opt/tsx --ignore-scripts --no-save tsx@4.21.0 \
@@ -179,7 +179,7 @@ RUN set -eux; \
   install -m 0755 "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}/tailscaled" /usr/local/bin/tailscaled; \
   rm -rf /tmp/tailscale.tgz /tmp/tailscale.tgz.sha256 "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}"
 
-# Install yt-dlp from upstream GitHub release. See Dockerfile.cloud for rationale.
+# Install yt-dlp from the upstream GitHub release (latest), not the lagging distro package.
 RUN ARCH="$(dpkg --print-architecture)" \
   && case "$ARCH" in \
        amd64)  YTDLP_ASSET=yt-dlp_linux ;; \
@@ -196,8 +196,7 @@ WORKDIR /app
 COPY --from=pruner /app /app
 # tsx is required by APP_CMD_START. Bring it in
 # from its own stage so it's self-contained (with esbuild + get-tsconfig
-# deps) at /opt/tsx, independent of bun's workspace install. Mirrors
-# Dockerfile.cloud's pattern.
+# deps) at /opt/tsx, independent of bun's workspace install.
 COPY --from=tsx /opt/tsx /opt/tsx
 
 ENV NODE_ENV=production

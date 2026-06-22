@@ -83,4 +83,30 @@ describe("shouldRetryStage1Generation", () => {
 			),
 		).toBe(true);
 	});
+
+	it("retries one token under the cap (the boundary the whole guard turns on)", () => {
+		// completionTokens < maxTokens is NOT a truncation: the output stopped on
+		// its own, so a fresh attempt can still fix genuinely-garbled args.
+		expect(
+			shouldRetryStage1Generation(
+				"malformed HANDLE_RESPONSE tool call",
+				rawWith({ completionTokens: MAX - 1 }),
+				MAX,
+			),
+		).toBe(true);
+	});
+
+	it("treats non-'length' max-token finish reasons as truncation", () => {
+		// Providers report the cap differently (max_tokens / token-limit / …); the
+		// finish-reason match must catch those, not just the literal "length".
+		for (const finishReason of ["max_tokens", "token-limit", "output_limit"]) {
+			expect(
+				shouldRetryStage1Generation(
+					"malformed HANDLE_RESPONSE tool call",
+					rawWith({ finishReason }),
+					MAX,
+				),
+			).toBe(false);
+		}
+	});
 });
