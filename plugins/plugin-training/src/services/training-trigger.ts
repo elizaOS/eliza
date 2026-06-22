@@ -39,7 +39,10 @@ import {
   type TrainingRunRecord,
   triggerTraining,
 } from "../core/training-orchestrator.js";
-import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js";
+import {
+  buildTaskRecord,
+  type TrajectoryTrainingTask,
+} from "../core/trajectory-task-datasets.js";
 
 // Extend the core ServiceTypeRegistry so TRAINING_TRIGGER_SERVICE is a known
 // service name. This avoids `as never` casts at the registration site and lets
@@ -122,14 +125,7 @@ interface PersistedTriggerState {
 }
 
 function emptyCounters(): Record<TrajectoryTrainingTask, number> {
-  return {
-    should_respond: 0,
-    context_routing: 0,
-    action_planner: 0,
-    response: 0,
-    media_description: 0,
-    view_context: 0,
-  };
+  return buildTaskRecord<number>(() => 0);
 }
 
 function isStringRecord(v: unknown): v is Record<string, unknown> {
@@ -307,22 +303,8 @@ export class TrainingTriggerService extends Service {
 
   getStatus(): TriggerStatusSnapshot {
     const config = this.configLoader();
-    const perTaskThresholds: Record<TrajectoryTrainingTask, number> = {
-      should_respond: 0,
-      context_routing: 0,
-      action_planner: 0,
-      response: 0,
-      media_description: 0,
-      view_context: 0,
-    };
-    const perTaskCooldownMs: Record<TrajectoryTrainingTask, number> = {
-      should_respond: 0,
-      context_routing: 0,
-      action_planner: 0,
-      response: 0,
-      media_description: 0,
-      view_context: 0,
-    };
+    const perTaskThresholds = buildTaskRecord<number>(() => 0);
+    const perTaskCooldownMs = buildTaskRecord<number>(() => 0);
     for (const task of ALL_TRAINING_TASKS) {
       const policy = resolveTaskPolicy(config, task);
       perTaskThresholds[task] = policy.threshold;
