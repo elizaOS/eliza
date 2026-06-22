@@ -34,6 +34,7 @@ import {
   isLocalInferenceAsrReady,
   transcribeLocalInferenceWav,
 } from "../local-asr-transcribe";
+import { now, sleep } from "./timing";
 
 export type TurnStatus = "pass" | "fail" | "skipped";
 
@@ -122,12 +123,6 @@ export interface VoiceWorkbenchOptions {
   audioCtx: AudioContext;
   signal?: AbortSignal;
 }
-
-const now = (): number =>
-  typeof performance !== "undefined" ? performance.now() : 0;
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 /** The expected ASR reference for a turn (explicit override or its text). */
 function turnReference(turn: WorkbenchTurn): string {

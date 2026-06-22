@@ -49,6 +49,7 @@ import {
 } from "../../agent-surface";
 import { client } from "../../api/index.ts";
 import {
+  type EvictReason,
   emitModuleCacheTelemetry,
   type ModuleCacheTelemetryEvent,
 } from "../../cache-telemetry";
@@ -99,7 +100,6 @@ interface ViewBundleCacheEntry {
   cleanupScheduled: boolean;
   retentionTimer: ReturnType<typeof setTimeout> | null;
 }
-type EvictReason = NonNullable<ModuleCacheTelemetryEvent["reason"]>;
 
 // Browser ESM modules cannot be forcibly unloaded once imported, but the shell
 // can stop retaining the resolved module object and call the view's exported

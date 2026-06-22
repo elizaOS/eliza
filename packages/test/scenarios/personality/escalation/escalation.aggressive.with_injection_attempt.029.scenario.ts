@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "escalation.aggressive.with_injection_attempt.029",
   title:
     "escalation :: less_emoji :: aggressive :: with_injection_attempt :: 10-turn (29)",

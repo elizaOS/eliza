@@ -19,11 +19,11 @@ import {
   loadContentPackFromUrl,
   releaseLoadedContentPack,
 } from "../content-packs";
+import { useAppSelectorShallow } from "./app-store";
 import {
   loadPersistedActivePackUrl,
   savePersistedActivePackUrl,
 } from "./persistence";
-import { useApp } from "./useApp";
 
 function supportsDirectoryUpload(): boolean {
   if (typeof document === "undefined") return false;
@@ -67,7 +67,17 @@ export function useContentPack(): UseContentPackResult {
     customWorldUrl,
     firstRunName,
     firstRunStyle,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    setState: s.setState,
+    activePackId: s.activePackId,
+    selectedVrmIndex: s.selectedVrmIndex,
+    customVrmUrl: s.customVrmUrl,
+    customVrmPreviewUrl: s.customVrmPreviewUrl,
+    customBackgroundUrl: s.customBackgroundUrl,
+    customWorldUrl: s.customWorldUrl,
+    firstRunName: s.firstRunName,
+    firstRunStyle: s.firstRunStyle,
+  }));
 
   const [loadedPacks, setLoadedPacks] = useState<ResolvedContentPack[]>([]);
   const [error, setError] = useState<string | null>(null);

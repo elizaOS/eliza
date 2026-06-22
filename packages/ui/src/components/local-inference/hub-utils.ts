@@ -12,8 +12,12 @@ import type {
 } from "../../api/client-local-inference";
 import { MODEL_CATALOG } from "../../services/local-inference/catalog";
 import { assessCatalogModelFit } from "../../services/local-inference/recommendation";
+import { formatByteSize } from "../../utils/format";
 
 export type FitLevel = "fits" | "tight" | "wontfit";
+
+export const formatBytes = (bytes: number): string =>
+  formatByteSize(bytes, { unknownLabel: "—" });
 
 const ELIZA_1_DISPLAY_NAMES: Record<string, string> = {
   "eliza-1-2b": "eliza-1-2b",

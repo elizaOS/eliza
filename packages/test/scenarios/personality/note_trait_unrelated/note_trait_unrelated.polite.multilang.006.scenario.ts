@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "note_trait_unrelated.polite.multilang.006",
   title: "note_trait :: no_exclamation :: polite :: multilang :: 15-turn (6)",
   domain: "personality",

@@ -1,14 +1,13 @@
 import { useMemo } from "react";
+import type { TranslateFn } from "../../types";
 import {
   type DesktopWorkspaceSnapshot,
   formatDesktopWorkspaceSummary,
 } from "../../utils/desktop-workspace";
 
-type Translator = (key: string, options?: Record<string, unknown>) => string;
-
 function buildDiagnosticsText(
   snapshot: DesktopWorkspaceSnapshot | null,
-  t: Translator,
+  t: TranslateFn,
 ): string {
   if (!snapshot) {
     return t("desktopworkspacesection.DesktopDiagnosticsUnavailable");
@@ -40,7 +39,7 @@ function buildDiagnosticsText(
 
 export function useDesktopDiagnosticsText(
   snapshot: DesktopWorkspaceSnapshot | null,
-  t: Translator,
+  t: TranslateFn,
 ): string {
   return useMemo(() => buildDiagnosticsText(snapshot, t), [snapshot, t]);
 }

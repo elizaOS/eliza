@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { isElectrobunRuntime } from "../../bridge";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
 
@@ -11,7 +11,12 @@ const OVERLAY_CARD_CLASS =
 
 export function ConnectionLostOverlay() {
   const { backendConnection, relaunchDesktop, retryBackendConnection, t } =
-    useApp();
+    useAppSelectorShallow((s) => ({
+      backendConnection: s.backendConnection,
+      relaunchDesktop: s.relaunchDesktop,
+      retryBackendConnection: s.retryBackendConnection,
+      t: s.t,
+    }));
   const [busy, setBusy] = useState<"restart" | null>(null);
   const desktopRuntime = isElectrobunRuntime();
 

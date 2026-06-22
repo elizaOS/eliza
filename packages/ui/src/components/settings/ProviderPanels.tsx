@@ -5,13 +5,11 @@ import type {
 } from "@elizaos/shared";
 import { Cloud, Cpu, KeyRound, ShieldCheck } from "lucide-react";
 import type { ComponentType, Dispatch, ReactNode, SetStateAction } from "react";
-import type { PluginParamDef } from "../../api";
 import type {
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   SubscriptionProviderSelectionId,
 } from "../../providers";
 import { useAppSelector } from "../../state";
-import type { ConfigUiHint } from "../../types";
 import { AccountList } from "../accounts/AccountList";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { ApiKeyConfig } from "./ApiKeyConfig";
@@ -19,19 +17,10 @@ import type { CloudModelSchema } from "./cloud-model-schema";
 import { ProviderRoutingPanel } from "./ProviderRoutingPanel";
 import { SubscriptionStatus } from "./SubscriptionStatus";
 import { SettingsActionButton } from "./settings-agent-rows";
+import type { PluginInfo } from "./useProviderEntries";
 
 type SubscriptionProviderSelection =
   (typeof SUBSCRIPTION_PROVIDER_SELECTIONS)[number];
-
-interface PluginInfo {
-  id: string;
-  name: string;
-  category: string;
-  enabled: boolean;
-  configured: boolean;
-  parameters: PluginParamDef[];
-  configUiHints?: Record<string, ConfigUiHint>;
-}
 
 function ProviderPanelHeader({
   icon: Icon,

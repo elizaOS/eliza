@@ -19,7 +19,7 @@ import {
 import { COMMAND_PALETTE_EVENT } from "../events";
 import { useAvailableViews } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
-import { useApp } from "../state";
+import { useAppSelectorShallow } from "../state";
 import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
 import { loadSavedCustomCommands, normalizeSlashCommandName } from "./index";
 import { filterCommandsForSurface } from "./slash-menu";
@@ -151,7 +151,10 @@ export function useSlashCommandController(
   options: SlashCommandControllerOptions = {},
 ): SlashCommandController {
   const { isAuthorized = true, isElevated = true } = options;
-  const { setTab, handleChatClear } = useApp();
+  const { setTab, handleChatClear } = useAppSelectorShallow((s) => ({
+    setTab: s.setTab,
+    handleChatClear: s.handleChatClear,
+  }));
   const { views } = useAvailableViews();
   const [serverCommands, setServerCommands] = React.useState<
     SlashCommandCatalogItem[]

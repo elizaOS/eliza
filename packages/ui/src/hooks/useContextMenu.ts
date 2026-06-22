@@ -14,8 +14,8 @@ import {
   loadSavedCustomCommands,
   type SavedCustomCommand,
 } from "../chat";
+import { useAppSelectorShallow } from "../state/app-store";
 import { useChatInputRef } from "../state/ChatComposerContext.hooks";
-import { useApp } from "../state/useApp";
 
 export type CustomCommand = SavedCustomCommand;
 
@@ -50,7 +50,13 @@ function getSelectedText(target: EventTarget | null): string {
 }
 
 export function useContextMenu(): ContextMenuState {
-  const { setState, handleChatSend, setActionNotice } = useApp();
+  const { setState, handleChatSend, setActionNotice } = useAppSelectorShallow(
+    (s) => ({
+      setState: s.setState,
+      handleChatSend: s.handleChatSend,
+      setActionNotice: s.setActionNotice,
+    }),
+  );
   // useChatInputRef() returns a stable MutableRefObject — subscribing to it never
   // causes re-renders, so App.tsx (which calls this hook) stays quiet while typing.
   const chatInputRef = useChatInputRef();

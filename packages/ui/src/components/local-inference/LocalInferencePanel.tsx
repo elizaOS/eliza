@@ -11,7 +11,7 @@ import type {
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
 import { openEventSource } from "../../utils/event-source";
@@ -35,7 +35,10 @@ type HubTab = "curated" | "downloads";
 
 export function LocalInferencePanel() {
   useRenderGuard("LocalInferencePanel");
-  const { setActionNotice, t } = useApp();
+  const { setActionNotice, t } = useAppSelectorShallow((s) => ({
+    setActionNotice: s.setActionNotice,
+    t: s.t,
+  }));
   const [hub, setHub] = useState<ModelHubSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -430,7 +433,10 @@ function appendTokenParam(url: string): string {
  * cellular/metered toggles are OWNER-only.
  */
 function VoiceModelUpdatesSection() {
-  const { setActionNotice, t } = useApp();
+  const { setActionNotice, t } = useAppSelectorShallow((s) => ({
+    setActionNotice: s.setActionNotice,
+    t: s.t,
+  }));
   const [preferences, setPreferences] = useState<VoiceUpdatePreferencesView>({
     autoUpdateOnWifi: true,
     autoUpdateOnCellular: false,

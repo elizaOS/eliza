@@ -103,10 +103,13 @@ const iosDir = path.join(appDir, "ios", "App");
 // treating app-core/platforms/android as a read-only template copied in by
 // overlayAndroid/patchAndroidGradle/syncAndroidAppActionsResources. That keeps
 // the two brands' Android builds fully separate.
-const androidDir =
-  process.env.ELIZA_ANDROID_USE_APP_DIR === "1"
-    ? path.join(appDir, "android")
-    : path.join(appCoreRoot, "platforms", "android");
+const androidBuildAppId = readAppIdentity().appId;
+const androidUsesAppDir =
+  process.env.ELIZA_ANDROID_USE_APP_DIR === "1" ||
+  androidBuildAppId !== "ai.elizaos.app";
+const androidDir = androidUsesAppDir
+  ? path.join(appDir, "android")
+  : path.join(appCoreRoot, "platforms", "android");
 const localArtifactsDir = path.join(elizaRepoRoot, ".eliza-local", "artifacts");
 const androidSmsGatewayDebugApkArtifact = path.join(
   localArtifactsDir,
@@ -2540,7 +2543,20 @@ export function validateAndroidAppActionsXmlResource(
   return failures;
 }
 
+function assertSharedTreeOnlyForEliza(what) {
+  if (
+    APP.appId !== "ai.elizaos.app" &&
+    path.resolve(androidDir) === path.resolve(platformsDir, "android")
+  ) {
+    throw new Error(
+      `[mobile-build] Refusing to ${what} for brand '${APP.appId}' in the shared elizaOS android tree (${androidDir}). ` +
+        "Whitelabel builds must use apps/app/android (set ELIZA_ANDROID_USE_APP_DIR=1); the elizaOS build owns the shared tree.",
+    );
+  }
+}
+
 function syncAndroidAppActionsResources() {
+  assertSharedTreeOnlyForEliza("patch app-actions resources");
   const templateResDir = path.join(
     platformsDir,
     "android",
@@ -2690,6 +2706,7 @@ function restoreAndroidManifestFromPlatformTemplateIfMissing() {
 }
 
 function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
+  assertSharedTreeOnlyForEliza("overlay Java sources");
   const templateJavaRoot = path.join(
     platformsDir,
     "android",
@@ -4068,6 +4085,7 @@ function patchInstalledLlamaCapacitorBuildGradle() {
 }
 
 function patchAndroidGradle() {
+  assertSharedTreeOnlyForEliza("patch gradle identity");
   patchAndroidGradleWrapperForReleaseCompat();
   patchAndroidGradleProperties();
   patchInstalledLlamaCapacitorBuildGradle();
@@ -4536,6 +4554,7 @@ async function generateIosBrandAssets() {
 }
 
 async function generateAndroidBrandAssets() {
+  assertSharedTreeOnlyForEliza("write brand icons");
   const resDir = path.join(androidDir, "app", "src", "main", "res");
   if (!fs.existsSync(resDir)) return;
 
