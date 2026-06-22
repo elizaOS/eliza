@@ -270,11 +270,6 @@ describe("training CLI collection options", () => {
         trained: { variant: "trained" },
       },
       {
-        tier: "2b",
-        base: { variant: "base" },
-        trained: { variant: "trained" },
-      },
-      {
         tier: "4b",
         base: { variant: "base" },
         trained: { variant: "trained" },
@@ -291,7 +286,7 @@ describe("training CLI collection options", () => {
       },
     ]);
     expect(options.benchmarkVsCerebras).toMatchObject({
-      tiers: "2b,2b,4b,9b,27b",
+      tiers: "2b,4b,9b,27b",
       benchmark: "eliza_harness_action_selection",
       dryRun: false,
     });
@@ -313,7 +308,7 @@ describe("training CLI collection options", () => {
       useMocks: false,
     });
     expect(options.benchmarkVsCerebras).toMatchObject({
-      tiers: "2b,2b,4b,9b,27b",
+      tiers: "2b,4b,9b,27b",
       dryRun: false,
     });
   });

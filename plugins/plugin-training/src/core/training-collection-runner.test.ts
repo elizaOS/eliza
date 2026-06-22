@@ -650,7 +650,7 @@ describe("training collection runner", () => {
     const modelRegistryManifests = (
       modelRegistryStep?.result as { manifests?: unknown[] } | null
     )?.manifests;
-    expect(modelRegistryManifests).toHaveLength(10);
+    expect(modelRegistryManifests).toHaveLength(8);
     expect(modelRegistryStep?.result).toMatchObject({
       manifests: expect.arrayContaining([
         expect.objectContaining({
@@ -675,7 +675,7 @@ describe("training collection runner", () => {
     expect(result.analysis.manifest.counts.collectionRuns).toBe(1);
     expect(result.analysis.manifest.counts.evals).toBe(4);
     expect(result.analysis.manifest.counts.benchmarkMatrices).toBe(2);
-    expect(result.analysis.manifest.counts.models).toBe(11);
+    expect(result.analysis.manifest.counts.models).toBe(9);
     expect(result.analysis.manifest.counts.trajectoryBundles).toBe(1);
     expect(result.analysis.manifest.counts.trajectoryDatasets).toBe(5);
     expect(result.manifest.readiness).toMatchObject({
@@ -739,7 +739,7 @@ describe("training collection runner", () => {
       },
       training: {
         trainingRuns: 0,
-        models: 11,
+        models: 9,
         modelInventory: expect.arrayContaining([
           expect.objectContaining({
             model: "eliza-1-2b-base",
@@ -806,9 +806,9 @@ describe("training collection runner", () => {
           allEliza1TiersCovered: false,
         }),
         models: {
-          artifacts: 11,
+          artifacts: 9,
           stagedBundles: 1,
-          inventoryCount: 10,
+          inventoryCount: 8,
         },
       },
       benchmarkReadiness: {
@@ -831,7 +831,7 @@ describe("training collection runner", () => {
         ]),
         caseSamples: expect.arrayContaining([
           expect.objectContaining({
-            tier: "2b",
+            tier: "0b",
             variant: "base",
             modelId: "eliza-1-0b-base",
             benchmark: "eliza_harness_action_selection",
@@ -1142,7 +1142,7 @@ describe("training collection runner", () => {
     expect(collectionIndexHtml).toContain("viewer");
     expect(collectionIndexHtml).toContain("README.md");
     expect(collectionIndexHtml).toContain(
-      "established:2b next:2b remaining:2b,4b,9b,27b",
+      "established:2b next:4b remaining:4b,9b,27b",
     );
     const readme = await readFile(result.readmePath, "utf8");
     expect(readme).toContain("# Eliza Training Collection");
@@ -1521,7 +1521,7 @@ describe("training collection runner", () => {
           actionBenchmarkMatrixSources: 4,
           benchmarkRows: 4,
           benchmarkComparisons: 2,
-          tiers: ["2b", "2b"],
+          tiers: ["2b", "4b"],
           comparisonInventory: [],
           improvementComparisons: [
             {
@@ -1540,7 +1540,7 @@ describe("training collection runner", () => {
               modelBacked: true,
             },
             {
-              tier: "2b",
+              tier: "4b",
               benchmark: "eliza_harness_action_selection",
               baseModelId: null,
               trainedModelId: null,
@@ -1570,10 +1570,10 @@ describe("training collection runner", () => {
 
     const listed = await listTrainingCollections({ root });
     expect(listed.collections[0]?.benchmarks.baselineProgress).toEqual({
-      tierOrder: ["2b", "2b", "4b", "9b", "27b"],
-      establishedTiers: ["2b", "2b"],
-      remainingTiers: ["4b", "9b", "27b"],
-      nextTier: "4b",
+      tierOrder: ["2b", "4b", "9b", "27b"],
+      establishedTiers: ["2b", "4b"],
+      remainingTiers: ["9b", "27b"],
+      nextTier: "9b",
       smallestTierEstablished: true,
       allTiersEstablished: false,
     });

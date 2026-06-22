@@ -201,7 +201,6 @@ describe("training routes", () => {
           evals: {
             actionBenchmarkPairs: [
               expect.objectContaining({ tier: "2b" }),
-              expect.objectContaining({ tier: "2b" }),
               expect.objectContaining({ tier: "4b" }),
               expect.objectContaining({ tier: "9b" }),
               expect.objectContaining({ tier: "27b" }),
