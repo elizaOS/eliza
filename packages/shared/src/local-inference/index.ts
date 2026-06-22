@@ -86,6 +86,12 @@ export {
   isGenerationCounters,
 } from "./throughput.js";
 export {
+  classifyCatalogModelRuntimeClass,
+  classifyInstalledModelRuntimeClass,
+  type RuntimeClass,
+  withRuntimeClass,
+} from "./runtime-class.js";
+export {
   type ActiveModelState,
   AGENT_MODEL_SLOTS,
   type AgentModelSlot,

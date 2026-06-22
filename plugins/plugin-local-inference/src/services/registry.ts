@@ -16,7 +16,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { scanExternalModels } from "./external-scanner";
 import { isWithinElizaRoot, localInferenceRoot, registryPath } from "./paths";
-import type { InstalledModel } from "./types";
+import { type InstalledModel, withRuntimeClass } from "./types";
 
 interface RegistryFile {
 	version: 1;
@@ -70,7 +70,11 @@ export async function listInstalledModels(): Promise<InstalledModel[]> {
 		(m) => !ownedPaths.has(path.resolve(m.path)),
 	);
 
-	return [...owned, ...dedupedExternal];
+	// Backfill `runtimeClass` once, at the canonical read boundary: legacy
+	// registry rows and freshly scanned external models predate the field.
+	// Downstream (dispatcher, load-arg resolver, UI) reads the field rather
+	// than re-deriving the class from the id.
+	return [...owned, ...dedupedExternal].map(withRuntimeClass);
 }
 
 /** Add or update a Eliza-owned entry. External entries are rejected. */

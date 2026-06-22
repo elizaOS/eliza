@@ -278,6 +278,7 @@ export async function searchHuggingFaceGguf(
 			minRamGb,
 			category,
 			bucket,
+			runtimeClass: "generic-gguf",
 			blurb:
 				(detail.tags ?? []).slice(0, 4).join(" · ") ||
 				`${detail.downloads ?? 0} downloads · ${detail.likes ?? 0} likes`,
@@ -377,6 +378,7 @@ async function modelScopeResultForRepo(
 		minRamGb: Math.max(4, Math.round(sizeGb * 2)),
 		category: "chat",
 		bucket,
+		runtimeClass: "generic-gguf",
 		blurb: "ModelScope GGUF result · explicit opt-in only",
 	};
 }

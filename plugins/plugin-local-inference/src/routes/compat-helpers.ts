@@ -186,8 +186,9 @@ export function sendJsonError(
 	res: http.ServerResponse,
 	status: number,
 	message: string,
+	extra?: Record<string, unknown>,
 ): void {
-	sendJson(res, status, { error: message });
+	sendJson(res, status, { error: message, ...extra });
 }
 
 export function ensureCompatApiAuthorized(

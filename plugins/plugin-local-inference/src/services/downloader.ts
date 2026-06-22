@@ -44,13 +44,14 @@ import {
 	localInferenceRoot,
 } from "./paths";
 import { upsertElizaModel } from "./registry";
-import type {
-	CatalogModel,
-	DownloadEvent,
-	DownloadJob,
-	DownloadState,
-	HardwareProbe,
-	InstalledModel,
+import {
+	type CatalogModel,
+	classifyCatalogModelRuntimeClass,
+	type DownloadEvent,
+	type DownloadJob,
+	type DownloadState,
+	type HardwareProbe,
+	type InstalledModel,
 } from "./types";
 import { hashFile } from "./verify";
 
@@ -666,6 +667,7 @@ export class Downloader {
 				source: "eliza-download",
 				sha256,
 				lastVerifiedAt: new Date().toISOString(),
+				runtimeClass: classifyCatalogModelRuntimeClass(catalogEntry),
 				...(catalogEntry.runtimeRole
 					? { runtimeRole: catalogEntry.runtimeRole }
 					: {}),
@@ -817,6 +819,7 @@ export class Downloader {
 			source: "eliza-download",
 			sha256: textFile.sha256,
 			lastVerifiedAt: now,
+			runtimeClass: classifyCatalogModelRuntimeClass(catalogEntry),
 			...bundleMeta,
 		};
 		await upsertElizaModel(installed);

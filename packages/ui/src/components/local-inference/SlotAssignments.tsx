@@ -8,6 +8,11 @@ import type {
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import {
+  canServeRuntimeClassOnPlatform,
+  installedRuntimeClass,
+  runtimeClassDescription,
+} from "./runtime-class-ui";
 import { LOCAL_INFERENCE_SLOT_DESCRIPTORS } from "./slot-metadata";
 
 interface SlotAssignmentsProps {
@@ -34,6 +39,9 @@ export function SlotAssignments({
   const [busySlots, setBusySlots] = useState<Set<AgentModelSlot>>(
     () => new Set(),
   );
+  const [slotErrors, setSlotErrors] = useState<
+    Partial<Record<AgentModelSlot, string>>
+  >({});
 
   const setSlotBusy = useCallback((slot: AgentModelSlot, busy: boolean) => {
     setBusySlots((prev) => {
@@ -52,6 +60,7 @@ export function SlotAssignments({
       const requestId = (requestSeqRef.current.get(slot) ?? 0) + 1;
       requestSeqRef.current.set(slot, requestId);
       setSlotBusy(slot, true);
+      setSlotErrors((prev) => ({ ...prev, [slot]: undefined }));
       try {
         const response = await client.setLocalInferenceAssignment(
           slot,
@@ -59,6 +68,15 @@ export function SlotAssignments({
         );
         if (requestSeqRef.current.get(slot) === requestId) {
           onChange(response.assignments);
+        }
+      } catch (err) {
+        // The server rejects a pick the platform's engine can't serve with a
+        // typed reason (422). Surface it inline instead of a silent no-op.
+        if (requestSeqRef.current.get(slot) === requestId) {
+          setSlotErrors((prev) => ({
+            ...prev,
+            [slot]: err instanceof Error ? err.message : String(err),
+          }));
         }
       } finally {
         if (requestSeqRef.current.get(slot) === requestId) {
@@ -118,18 +136,49 @@ export function SlotAssignments({
                   <option value="">
                     {t("slotassignments.auto", { defaultValue: "Auto" })}
                   </option>
-                  {installed.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.displayName}
-                      {m.source === "external-scan"
-                        ? t("slotassignments.viaOrigin", {
-                            origin: m.externalOrigin,
-                            defaultValue: " · via {{origin}}",
-                          })
-                        : ""}
-                    </option>
-                  ))}
+                  {installed.map((m) => {
+                    const runtimeClass = installedRuntimeClass(m);
+                    const servable =
+                      canServeRuntimeClassOnPlatform(runtimeClass);
+                    const classSuffix = ` · ${runtimeClassDescription(
+                      runtimeClass,
+                    )}`;
+                    return (
+                      <option
+                        key={m.id}
+                        value={m.id}
+                        disabled={!servable}
+                        title={
+                          servable
+                            ? runtimeClassDescription(runtimeClass)
+                            : t("slotassignments.notServable", {
+                                defaultValue:
+                                  "Generic local models can't run on this platform yet.",
+                              })
+                        }
+                      >
+                        {m.displayName}
+                        {m.source === "external-scan"
+                          ? t("slotassignments.viaOrigin", {
+                              origin: m.externalOrigin,
+                              defaultValue: " · via {{origin}}",
+                            })
+                          : ""}
+                        {classSuffix}
+                        {servable
+                          ? ""
+                          : t("slotassignments.unavailableSuffix", {
+                              defaultValue: " · unavailable here",
+                            })}
+                      </option>
+                    );
+                  })}
                 </select>
+                {slotErrors[slot] ? (
+                  <span className="text-xs text-danger">
+                    {slotErrors[slot]}
+                  </span>
+                ) : null}
               </label>
             );
           },
