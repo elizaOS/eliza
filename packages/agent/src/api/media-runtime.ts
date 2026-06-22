@@ -9,6 +9,7 @@
  */
 
 import type { IAgentRuntime, Memory, Route } from "@elizaos/core";
+import { fetchRemoteMedia, logger } from "@elizaos/core";
 import {
   ensureThumbnailForStoredFile,
   gcUnreferencedMedia,
@@ -16,7 +17,44 @@ import {
   isStoredMediaUrl,
   mediaFileNameFromUrl,
   persistAttachmentUrlIfInline,
+  persistMediaBytes,
 } from "./media-store.ts";
+
+/** Cap on bytes pulled while rehosting a remote attachment into the store. */
+const REHOST_MAX_BYTES = 50 * 1024 * 1024;
+
+/** Media content types worth rehosting (skip `link` and unknown). */
+const REHOSTABLE_CONTENT_TYPES = new Set([
+  "image",
+  "video",
+  "audio",
+  "document",
+]);
+
+/**
+ * Rehost a remote (http/https) media URL into the content-addressed store via
+ * the SSRF-guarded fetcher (blocks private/loopback) with a hard size cap, so an
+ * agent-generated/provider URL that may expire becomes a durable, same-origin
+ * `/api/media/<hash>` URL. Returns the served URL, or null on any failure
+ * (blocked host, too large, unreachable) so the caller can keep the original.
+ */
+async function rehostRemoteMediaUrl(url: string): Promise<string | null> {
+  try {
+    const { buffer, contentType } = await fetchRemoteMedia({
+      url,
+      maxBytes: REHOST_MAX_BYTES,
+    });
+    return persistMediaBytes(buffer, contentType ?? "application/octet-stream")
+      .url;
+  } catch (err) {
+    logger.warn(
+      `[media-persist] failed to rehost ${url}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return null;
+  }
+}
 
 const MEDIA_URL_PREFIX = "/api/media/";
 
@@ -69,6 +107,22 @@ export function registerMediaPipelineHook(runtime: IAgentRuntime): void {
         if (!attachment || typeof attachment.url !== "string") continue;
         if (attachment.url.startsWith("data:")) {
           attachment.url = persistAttachmentUrlIfInline(attachment.url);
+        } else if (
+          /^https?:\/\//i.test(attachment.url) &&
+          !isStoredMediaUrl(attachment.url) &&
+          typeof attachment.contentType === "string" &&
+          REHOSTABLE_CONTENT_TYPES.has(attachment.contentType)
+        ) {
+          // Rehost remote agent-generated/outgoing media into the durable store
+          // so a provider URL that may expire doesn't leave a broken tile in
+          // history. SSRF-guarded + size-capped; on failure keep the original
+          // URL and mark it ephemeral so the UI can offer a retry.
+          const rehosted = await rehostRemoteMediaUrl(attachment.url);
+          if (rehosted) {
+            attachment.url = rehosted;
+          } else {
+            (attachment as { ephemeral?: boolean }).ephemeral = true;
+          }
         }
         // Pre-compute a thumbnail for stored images lacking one (generated
         // media). `ensureThumbnailForStoredFile` self-gates on image mime/size.
