@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -33,6 +35,9 @@ import { VIEW_CASES } from "./plugin-view-cases";
 
 // The canonical built-in route table (mirrors @elizaos/ui navigation TAB_PATHS;
 // inlined to avoid importing the UI bundle into the Playwright runner).
+// Full built-in coverage (#8796): mirrors @elizaos/ui navigation TAB_PATHS so the
+// audit walks EVERY built-in view, not a subset. The `builtin coverage matches
+// navigation TAB_PATHS` guard test below fails if this drifts from navigation.
 const BUILTIN_TAB_PATHS: Record<string, string> = {
   chat: "/chat",
   phone: "/phone",
@@ -40,20 +45,57 @@ const BUILTIN_TAB_PATHS: Record<string, string> = {
   contacts: "/contacts",
   camera: "/camera",
   tasks: "/apps/tasks",
-  automations: "/automations",
+  browser: "/browser",
+  companion: "/companion",
+  stream: "/stream",
+  apps: "/apps",
   views: "/views",
   character: "/character",
+  "character-select": "/character/select",
+  automations: "/automations",
   inventory: "/wallet",
   documents: "/character/documents",
   plugins: "/apps/plugins",
   skills: "/apps/skills",
   "fine-tuning": "/apps/fine-tuning",
+  trajectories: "/apps/trajectories",
+  transcripts: "/apps/transcripts",
+  relationships: "/apps/relationships",
+  memories: "/apps/memories",
+  rolodex: "/rolodex",
+  voice: "/settings/voice",
   runtime: "/apps/runtime",
   database: "/apps/database",
+  desktop: "/desktop",
   settings: "/settings",
+  tutorial: "/tutorial",
   help: "/help",
   logs: "/apps/logs",
 };
+
+// ── navigation TAB_PATHS coverage guard (#8796) ──────────────────────────────
+// Parse the canonical TAB_PATHS straight from the @elizaos/ui navigation source
+// (no UI-bundle import) so the guard reads the real table, not a stale copy.
+const NAV_INDEX_PATH = fileURLToPath(
+  new URL("../../../ui/src/navigation/index.ts", import.meta.url),
+);
+
+function parseNavigationTabPaths(source: string): Record<string, string> {
+  const block = source.match(
+    /export const TAB_PATHS\s*:\s*Record<BuiltinTab,\s*string>\s*=\s*\{([\s\S]*?)\};/,
+  );
+  if (!block) {
+    throw new Error(
+      `[all-views-aesthetic-audit] could not locate TAB_PATHS in ${NAV_INDEX_PATH}`,
+    );
+  }
+  const entries: Record<string, string> = {};
+  const entryRe = /"?([a-z][a-z-]*)"?\s*:\s*"([^"]+)"/g;
+  for (const m of block[1].matchAll(entryRe)) {
+    entries[m[1]] = m[2];
+  }
+  return entries;
+}
 
 interface AuditCase {
   slug: string;
@@ -328,6 +370,41 @@ test.describe("all-views aesthetic audit (#8796)", () => {
   const outputDir =
     process.env.ELIZA_AUDIT_APP_DIR ??
     path.join(process.cwd(), "aesthetic-audit-output");
+
+  // Coverage guard: the audit must walk EVERY built-in view. Fails on a phantom
+  // key, a path drift, or any distinct navigation route the audit doesn't cover —
+  // so a newly-added tab fails the suite until it is added to BUILTIN_TAB_PATHS.
+  test("builtin coverage matches navigation TAB_PATHS", () => {
+    const navPaths = parseNavigationTabPaths(
+      readFileSync(NAV_INDEX_PATH, "utf8"),
+    );
+    const navKeys = new Set(Object.keys(navPaths));
+    const navDistinctPaths = new Set(Object.values(navPaths));
+    const inlinedKeys = Object.keys(BUILTIN_TAB_PATHS);
+    const inlinedPaths = new Set(Object.values(BUILTIN_TAB_PATHS));
+
+    const phantomKeys = inlinedKeys.filter((k) => !navKeys.has(k));
+    expect(
+      phantomKeys,
+      `audit BUILTIN_TAB_PATHS has keys not in navigation TAB_PATHS: ${phantomKeys.join(", ")}`,
+    ).toEqual([]);
+
+    const mismatched = inlinedKeys.filter(
+      (k) => BUILTIN_TAB_PATHS[k] !== navPaths[k],
+    );
+    expect(
+      mismatched,
+      `audit BUILTIN_TAB_PATHS path drift vs navigation: ${mismatched.join(", ")}`,
+    ).toEqual([]);
+
+    const uncovered = [...navDistinctPaths].filter(
+      (p) => !inlinedPaths.has(p),
+    );
+    expect(
+      uncovered,
+      `navigation TAB_PATHS adds routes the audit does not cover: ${uncovered.join(", ")}`,
+    ).toEqual([]);
+  });
 
   for (const view of buildAuditCases()) {
     for (const vp of VIEWPORTS) {
