@@ -121,5 +121,8 @@ false-accept at training. Local-mode only; inert in cloud mode.
 - [x] Headful A/V — desktop + web  *(13/13 specs passed + recorded + adversarially verified; `.github/issue-evidence/8785-voice-headful/`)*
 - [~] iOS **simulator** — app boots + UI renders, recorded (`.github/issue-evidence/8785-voice-ios-sim/`); voice *inference* on the sim is Metal-gated (no GPU on the sim) — fundamentally needs a physical device for local, or cloud credits.
 - [ ] iOS **physical device** — needs Apple ID provisioning  *(needs §2)*
-- [ ] Live cloud STT/TTS E2E  *(needs §3 credits)*
-- [ ] Real WER/DER/EOT-latency on degraded corpus  *(needs §4 artifacts)*
+- [x] **Live cloud STT/TTS E2E** — ElevenLabs `eleven_turbo_v2_5` + `scribe_v1` round-trip, WER 0 (`.github/issue-evidence/8785-voice-real-cloud/`).
+- [x] **Real on-device ASR + WER on the degraded corpus** — eliza-1-asr via the fused dylib + Metal; WER 0 across every realistic degradation (noise to 0 dB, reverb to 0.98, far-field, telephone, harsh), graceful past the edge.
+- [x] **Mixed local STT + cloud LLM + cloud TTS** — `roundtrip:real`: ~770–870 ms hybrid (local STT ~200 ms + Cerebras ~270 ms + cloud TTS ~270 ms).
+- [ ] Real on-device TTS/diarizer/speaker-encoder benchmarks  *(GGUFs present; the .mjs harnesses need the `-fp32` model variants + a separate classifier lib)*
+- [ ] iOS **physical device** — needs Apple ID provisioning
