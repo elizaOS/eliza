@@ -73,6 +73,64 @@ describe("registerMediaPipelineHook", () => {
     );
   });
 
+  it("rehosts a remote media URL, marking it ephemeral when the host is blocked", async () => {
+    const { runtime, getHook } = captureHookRuntime();
+    registerMediaPipelineHook(runtime);
+    const hook = getHook();
+
+    const ctx = {
+      phase: "outgoing_before_deliver" as const,
+      content: {
+        attachments: [
+          {
+            id: "gen",
+            // Link-local host → SSRF guard blocks before any network I/O.
+            url: "http://169.254.169.254/secret.png",
+            contentType: "image",
+          },
+        ],
+      },
+    };
+    await hook.handler(runtime, ctx);
+
+    // Blocked rehost → keep the original URL and flag it for a UI retry.
+    expect(ctx.content.attachments[0].url).toBe(
+      "http://169.254.169.254/secret.png",
+    );
+    expect(
+      (ctx.content.attachments[0] as { ephemeral?: boolean }).ephemeral,
+    ).toBe(true);
+  });
+
+  it("does not rehost remote link attachments or already-stored media", async () => {
+    const { runtime, getHook } = captureHookRuntime();
+    registerMediaPipelineHook(runtime);
+    const hook = getHook();
+
+    const storedUrl = `/api/media/${"a".repeat(64)}.png`;
+    const ctx = {
+      phase: "outgoing_before_deliver" as const,
+      content: {
+        attachments: [
+          {
+            id: "link",
+            url: "https://example.com/article",
+            contentType: "link",
+          },
+          { id: "stored", url: storedUrl, contentType: "image" },
+        ],
+      },
+    };
+    await hook.handler(runtime, ctx);
+
+    // Links are not media; stored URLs are already durable — both untouched.
+    expect(ctx.content.attachments[0].url).toBe("https://example.com/article");
+    expect(
+      (ctx.content.attachments[0] as { ephemeral?: boolean }).ephemeral,
+    ).toBeUndefined();
+    expect(ctx.content.attachments[1].url).toBe(storedUrl);
+  });
+
   it("ignores non-outgoing phases and empty attachments", async () => {
     const { runtime, getHook } = captureHookRuntime();
     registerMediaPipelineHook(runtime);
