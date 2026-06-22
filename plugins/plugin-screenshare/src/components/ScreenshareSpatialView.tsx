@@ -83,7 +83,11 @@ function capabilityMark(available: boolean): string {
 
 export interface ScreenshareSpatialViewProps {
   snapshot: ScreenshareSnapshot;
-  /** Dispatch by agent id: `start`, `stop`, `rotate`, `copy`, `open-viewer`, `connect`, `refresh`. */
+  /**
+   * Dispatch by action id: `start`, `stop`, `rotate`, `copy`, `open-viewer`,
+   * `connect`, `refresh`, plus the editable remote-connection fields
+   * `remote-base:<value>`, `remote-session:<value>`, `remote-token:<value>`.
+   */
   onAction?: (action: string) => void;
 }
 
@@ -95,6 +99,11 @@ export function ScreenshareSpatialView({
   const session = snapshot.session;
   const isActive = session?.status === "active";
   const liveCaps = snapshot.capabilities.filter((cap) => cap.available).length;
+  // Connect is reachable once the draft has both a session id and a token; the
+  // base URL is optional (defaults to this host).
+  const remoteReady = Boolean(
+    snapshot.remote?.sessionId.trim() && snapshot.remote?.token.trim(),
+  );
 
   return (
     <Card title="Screen Share" gap={1} padding={1}>
@@ -230,12 +239,14 @@ export function ScreenshareSpatialView({
         value={snapshot.remote?.baseUrl ?? ""}
         placeholder="Server URL"
         agent="input-remote-base"
+        onChange={(value) => onAction?.(`remote-base:${value}`)}
       />
       <Field
         label="Remote session id"
         value={snapshot.remote?.sessionId ?? ""}
         placeholder="Session"
         agent="input-remote-session"
+        onChange={(value) => onAction?.(`remote-session:${value}`)}
       />
       <Field
         label="Remote session token"
@@ -243,14 +254,15 @@ export function ScreenshareSpatialView({
         placeholder="Token"
         kind="password"
         agent="input-remote-token"
+        onChange={(value) => onAction?.(`remote-token:${value}`)}
       />
       <HStack gap={1}>
         <Button
           grow={1}
-          variant={snapshot.remote ? "solid" : "outline"}
-          tone={snapshot.remote ? "primary" : "default"}
+          variant={remoteReady ? "solid" : "outline"}
+          tone={remoteReady ? "primary" : "default"}
           agent="connect"
-          disabled={!snapshot.remote}
+          disabled={!remoteReady}
           onPress={dispatch("connect")}
         >
           Connect

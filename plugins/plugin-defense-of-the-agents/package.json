@@ -25,6 +25,7 @@
   },
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",

@@ -25,6 +25,7 @@ import {
   Button,
   Card,
   Divider,
+  Field,
   HStack,
   List,
   type SpatialTone,
@@ -55,6 +56,10 @@ export interface ClawvilleSnapshot {
   actions: GameOperatorAction[];
   /** Recent run events, newest last. */
   events: GameOperatorEvent[];
+  /** Current free-text command draft in the composer. */
+  draft: string;
+  /** Whether a command is mid-flight (disables the composer + actions). */
+  sending: boolean;
 }
 
 const EVENT_TONE: Record<
@@ -132,13 +137,20 @@ export function toClawvilleSnapshot(
     },
     actions,
     events,
+    draft: "",
+    sending: false,
   };
 }
 
 export interface ClawvilleSpatialViewProps {
   snapshot: ClawvilleSnapshot;
-  /** Dispatched with the action's `command` string when an action is pressed. */
-  onAction?: (command: string) => void;
+  /**
+   * Dispatched action ids:
+   *   - a quick-action's `command` string when an action button is pressed,
+   *   - `command-draft:<value>` as the free-text composer changes,
+   *   - `send-command` to submit the current draft.
+   */
+  onAction?: (action: string) => void;
 }
 
 export function ClawvilleSpatialView({
@@ -147,7 +159,8 @@ export function ClawvilleSpatialView({
 }: ClawvilleSpatialViewProps) {
   const { telemetry } = snapshot;
   const learned = telemetry.knowledgeCount ?? 0;
-  const dispatch = (command: string) => () => onAction?.(command);
+  const dispatch = (action: string) => () => onAction?.(action);
+  const composerDisabled = !snapshot.canSend || snapshot.sending;
   return (
     <Card title="ClawVille" gap={1} padding={1}>
       <HStack gap={1} align="center">
@@ -197,7 +210,7 @@ export function ClawvilleSpatialView({
               variant="outline"
               tone="default"
               width="100%"
-              disabled={!snapshot.canSend}
+              disabled={composerDisabled}
               agent={`command-${action.id}`}
               onPress={dispatch(action.command)}
             >
@@ -206,6 +219,25 @@ export function ClawvilleSpatialView({
           ))}
         </VStack>
       )}
+
+      <Divider label="compose" />
+      <Field
+        kind="text"
+        label="ClawVille command"
+        placeholder="Tell ClawVille what to do..."
+        value={snapshot.draft}
+        disabled={composerDisabled}
+        agent="command-input"
+        onChange={(value) => onAction?.(`command-draft:${value}`)}
+      />
+      <Button
+        width="100%"
+        disabled={composerDisabled || snapshot.draft.trim().length === 0}
+        agent="send-command"
+        onPress={dispatch("send-command")}
+      >
+        {snapshot.sending ? "Sending..." : "Send command"}
+      </Button>
 
       <Divider label="events" />
       {snapshot.events.length === 0 ? (

@@ -11,15 +11,16 @@
  * in the Node agent process where the terminal lives (no app-core/ui-compat
  * runtime import, no DOM-only operator shell).
  *
- * This is ADDITIVE: the existing `DefenseAgentsOperatorSurface` (DOM) and
- * `DefenseAgentsTuiView` are untouched. This view is the single unified source
- * the spatial framework renders to all three modalities.
+ * It is the single source the spatial framework renders to all three
+ * modalities: the GUI/XR bundle mounts it via {@link DefenseAgentsView}, and the
+ * agent terminal mounts it via `register-terminal-view.tsx`.
  */
 
 import {
   Button,
   Card,
   Divider,
+  Field,
   HStack,
   List,
   type SpatialTone,
@@ -62,6 +63,10 @@ export interface DefenseSnapshot {
   suggestedPrompts: string[];
   /** Most-recent event-log entries, newest first. */
   events: DefenseEventRow[];
+  /** Current free-text command draft in the composer. */
+  draft: string;
+  /** Whether a command is mid-flight (disables the composer + command buttons). */
+  sending: boolean;
 }
 
 const LANES: DefenseLane[] = ["top", "mid", "bot"];
@@ -117,7 +122,8 @@ export interface DefenseAgentsSpatialViewProps {
   snapshot: DefenseSnapshot;
   /**
    * Dispatch by agent id: `autoplay`, `recall`, `lane:<top|mid|bot>`,
-   * `prompt:<text>`.
+   * `prompt:<text>`, `command-draft:<value>` as the composer changes, and
+   * `send-command` to submit the current draft.
    */
   onAction?: (action: string) => void;
 }
@@ -128,6 +134,7 @@ export function DefenseAgentsSpatialView({
 }: DefenseAgentsSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
   const canSend = snapshot.canSendCommands && snapshot.runId !== null;
+  const composerDisabled = !canSend || snapshot.sending;
   const prompts = snapshot.suggestedPrompts.slice(0, 4);
   const events = snapshot.events.slice(0, 5);
 
@@ -176,7 +183,7 @@ export function DefenseAgentsSpatialView({
           grow={1}
           variant={snapshot.autoPlay ? "solid" : "outline"}
           tone={snapshot.autoPlay ? "primary" : "default"}
-          disabled={!canSend}
+          disabled={composerDisabled}
           agent="command-autoplay"
           onPress={dispatch("autoplay")}
         >
@@ -185,7 +192,7 @@ export function DefenseAgentsSpatialView({
         <Button
           variant="outline"
           tone="danger"
-          disabled={!canSend}
+          disabled={composerDisabled}
           agent="command-recall"
           onPress={dispatch("recall")}
         >
@@ -199,7 +206,7 @@ export function DefenseAgentsSpatialView({
             grow={1}
             variant={snapshot.heroLane === lane ? "solid" : "outline"}
             tone={snapshot.heroLane === lane ? "primary" : "default"}
-            disabled={!canSend}
+            disabled={composerDisabled}
             agent={`command-lane-${lane}`}
             onPress={dispatch(`lane:${lane}`)}
           >
@@ -218,7 +225,7 @@ export function DefenseAgentsSpatialView({
                 width="100%"
                 variant="ghost"
                 tone="default"
-                disabled={!canSend}
+                disabled={composerDisabled}
                 agent={`prompt-${prompt}`}
                 onPress={dispatch(`prompt:${prompt}`)}
               >
@@ -228,6 +235,25 @@ export function DefenseAgentsSpatialView({
           </List>
         </>
       ) : null}
+
+      <Divider label="compose" />
+      <Field
+        kind="text"
+        label="Defense command"
+        placeholder="Command the hero..."
+        value={snapshot.draft}
+        disabled={composerDisabled}
+        agent="command-input"
+        onChange={(value) => onAction?.(`command-draft:${value}`)}
+      />
+      <Button
+        width="100%"
+        disabled={composerDisabled || snapshot.draft.trim().length === 0}
+        agent="send-command"
+        onPress={dispatch("send-command")}
+      >
+        {snapshot.sending ? "Sending..." : "Send command"}
+      </Button>
 
       <Divider label="events" />
       {events.length === 0 ? (

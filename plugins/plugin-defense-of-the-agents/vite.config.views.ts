@@ -5,6 +5,6 @@ export default createViewBundleConfig({
   viewId: "defense-of-the-agents",
   entry: "./src/ui/defense-of-the-agents-view-bundle.ts",
   outDir: "dist/views",
-  componentExport: "DefenseAgentsOperatorSurface",
+  componentExport: "DefenseAgentsView",
   additionalExternals: ["@elizaos/app-core"],
 });

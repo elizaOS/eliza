@@ -245,7 +245,7 @@ describe("ScreenshareTuiView", () => {
     await screen.findByText("session-1 / active");
 
     const callsForCapabilities = () =>
-      (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+      vi.mocked(fetch).mock.calls.filter(
         ([url]) => url === "/api/apps/screenshare/capabilities",
       ).length;
     // Initial mount fetched /capabilities + /sessions once.
@@ -256,7 +256,7 @@ describe("ScreenshareTuiView", () => {
     // Refresh re-fires the Promise.all (GET /capabilities + GET /sessions).
     await vi.waitFor(() => expect(callsForCapabilities()).toBe(2));
     expect(
-      (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+      vi.mocked(fetch).mock.calls.filter(
         ([url]) => url === "/api/apps/screenshare/sessions",
       ).length,
     ).toBe(2);

@@ -36,7 +36,9 @@ function asCapabilitiesResponse(
   caps: DesktopControlCapabilities,
   platform: string,
 ): CapabilitiesResponse {
-  return { platform, capabilities: caps };
+  // DesktopControlCapabilities has fixed keys (each a { available, tool }
+  // Capability); spread to the open Record<string, Capability> the views read.
+  return { platform, capabilities: { ...caps } };
 }
 
 describe("screenshare capabilities contract", () => {

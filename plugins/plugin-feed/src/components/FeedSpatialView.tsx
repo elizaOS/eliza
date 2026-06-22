@@ -65,6 +65,12 @@ export interface FeedConversationSnapshot {
 
 /** Single source of truth for the Feed operator surface across all modalities. */
 export interface FeedSnapshot {
+  /**
+   * Whether a live Feed session/run is attached. When false the surface renders
+   * the waiting state (no dashboard data, autonomy controls disabled) instead of
+   * the operator dashboard.
+   */
+  hasSession: boolean;
   agentStatus: FeedAgentStatus | null;
   portfolio: FeedPortfolioSnapshot | null;
   goal: FeedAgentGoal | null;
@@ -120,6 +126,7 @@ export interface FeedSpatialViewProps {
 export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
   const {
+    hasSession,
     agentStatus,
     portfolio,
     goal,
@@ -136,6 +143,28 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
     loading,
     sending,
   } = snapshot;
+
+  if (!hasSession) {
+    return (
+      <Card title="Feed" gap={1} padding={1}>
+        <Text style="caption" tone="warning">
+          No session yet
+        </Text>
+        <Text tone="muted" style="caption">
+          Waiting for a Feed session. Spawn the trading agent to stream live
+          markets, portfolio PnL, and team coordination here.
+        </Text>
+        <Button grow={1} disabled agent="spawn-agent" onPress={dispatch("spawn")}>
+          Spawn agent
+        </Button>
+        {statusMessage ? (
+          <Text style="caption" tone="muted" wrap={false}>
+            {statusMessage}
+          </Text>
+        ) : null}
+      </Card>
+    );
+  }
 
   const autonomyActive = controlAction === "pause";
   const displayName =

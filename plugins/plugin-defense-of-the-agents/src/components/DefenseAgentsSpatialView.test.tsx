@@ -44,6 +44,8 @@ const snapshot: DefenseSnapshot = {
       tone: "error",
     },
   ],
+  draft: "",
+  sending: false,
 };
 
 const view = <DefenseAgentsSpatialView snapshot={snapshot} />;

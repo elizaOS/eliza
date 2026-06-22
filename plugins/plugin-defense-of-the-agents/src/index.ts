@@ -22,6 +22,10 @@ export function createAppDefenseOfTheAgentsPlugin(): Plugin {
       },
     },
     views: [
+      // ONE declaration → GUI + XR + TUI, all drawn from the single
+      // DefenseAgentsView spatial source. `modalities` is a plain literal here
+      // (index.ts is not in the view bundle), so no brand-new `@elizaos/core`
+      // runtime export reaches the bundle build.
       {
         id: "defense-of-the-agents",
         label: "Defense of the Agents",
@@ -29,36 +33,10 @@ export function createAppDefenseOfTheAgentsPlugin(): Plugin {
           "Defense of the Agents spectator and operator surface — strategy and telemetry",
         icon: "Gamepad2",
         path: "/defense-of-the-agents",
+        modalities: ["gui", "xr", "tui"],
         bundlePath: "dist/views/bundle.js",
-        componentExport: "DefenseAgentsOperatorSurface",
+        componentExport: "DefenseAgentsView",
         tags: ["game", "strategy", "defense-of-the-agents"],
-        visibleInManager: true,
-        desktopTabEnabled: true,
-      },
-      {
-        id: "defense-of-the-agents",
-        label: "Defense of the Agents XR",
-        description:
-          "Defense of the Agents spectator and operator surface — strategy and telemetry",
-        icon: "Gamepad2",
-        path: "/defense-of-the-agents",
-        viewType: "xr",
-        bundlePath: "dist/views/bundle.js",
-        componentExport: "DefenseAgentsOperatorSurface",
-        tags: ["game", "strategy", "defense-of-the-agents"],
-        visibleInManager: true,
-        desktopTabEnabled: true,
-      },
-      {
-        id: "defense-of-the-agents",
-        label: "Defense of the Agents TUI",
-        description: "Terminal Defense of the Agents strategy and telemetry",
-        icon: "Gamepad2",
-        path: "/defense-of-the-agents/tui",
-        viewType: "tui",
-        bundlePath: "dist/views/bundle.js",
-        componentExport: "DefenseAgentsTuiView",
-        tags: ["game", "strategy", "defense-of-the-agents", "terminal"],
         visibleInManager: true,
         desktopTabEnabled: true,
       },

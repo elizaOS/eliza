@@ -86,7 +86,8 @@ export interface ContactsSpatialViewProps {
   snapshot: ContactsSnapshot;
   /**
    * Dispatch by agent id: `refresh`, `new`, `back`, `cancel`, `save`,
-   * `select:<id>`, `call:<value>`, `text:<value>`.
+   * `select:<id>`, `call:<value>`, `text:<value>`, and the field-edit signals
+   * `search:<value>`, `name:<value>`, `phone:<value>`, `email:<value>`.
    */
   onAction?: (action: string) => void;
 }
@@ -149,11 +150,19 @@ export function ContactsSpatialView({
       ) : null}
 
       {mode === "list" ? (
-        <ContactsListBody snapshot={snapshot} dispatch={dispatch} />
+        <ContactsListBody
+          snapshot={snapshot}
+          dispatch={dispatch}
+          onAction={onAction}
+        />
       ) : mode === "detail" && selected ? (
         <ContactsDetailBody contact={selected} dispatch={dispatch} />
       ) : (
-        <ContactsFormBody snapshot={snapshot} dispatch={dispatch} />
+        <ContactsFormBody
+          snapshot={snapshot}
+          dispatch={dispatch}
+          onAction={onAction}
+        />
       )}
     </Card>
   );
@@ -162,9 +171,11 @@ export function ContactsSpatialView({
 function ContactsListBody({
   snapshot,
   dispatch,
+  onAction,
 }: {
   snapshot: ContactsSnapshot;
   dispatch: (action: string) => () => void;
+  onAction?: (action: string) => void;
 }) {
   return (
     <>
@@ -174,6 +185,7 @@ function ContactsListBody({
         value={snapshot.query}
         placeholder="name, phone, or email"
         agent="search"
+        onChange={(value) => onAction?.(`search:${value}`)}
       />
       <Divider label="address book" />
       {snapshot.contacts.length === 0 ? (
@@ -299,9 +311,11 @@ function ContactsDetailBody({
 function ContactsFormBody({
   snapshot,
   dispatch,
+  onAction,
 }: {
   snapshot: ContactsSnapshot;
   dispatch: (action: string) => () => void;
+  onAction?: (action: string) => void;
 }) {
   const form = snapshot.form ?? EMPTY_FORM;
   const canSubmit = form.displayName.trim().length > 0 && !snapshot.submitting;
@@ -313,6 +327,7 @@ function ContactsFormBody({
         value={form.displayName}
         placeholder="Full name"
         agent="name"
+        onChange={(value) => onAction?.(`name:${value}`)}
       />
       <Field
         kind="text"
@@ -320,6 +335,7 @@ function ContactsFormBody({
         value={form.phoneNumber}
         placeholder="+1 555 123 4567"
         agent="phone"
+        onChange={(value) => onAction?.(`phone:${value}`)}
       />
       <Field
         kind="text"
@@ -327,6 +343,7 @@ function ContactsFormBody({
         value={form.emailAddress}
         placeholder="name@example.com"
         agent="email"
+        onChange={(value) => onAction?.(`email:${value}`)}
       />
       <HStack gap={1}>
         <Button

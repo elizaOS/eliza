@@ -72,6 +72,7 @@
   "scripts": {
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "rm -rf dist",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",

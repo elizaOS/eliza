@@ -1,7 +1,7 @@
-// Vite view-bundle entry. Re-exports the view components plus the `interact`
-// capability handler so the built bundle (dist/views/bundle.js) exposes the
-// same named exports the view loader reads (`FeedOperatorSurface`, `FeedTuiView`,
-// `interact`). Kept separate from FeedOperatorSurface.tsx so that file exports
-// only React components and stays Fast-Refresh-compatible in dev.
-export { FeedOperatorSurface, FeedTuiView } from "./FeedOperatorSurface";
+// Vite view-bundle entry. Re-exports the unified spatial view component plus the
+// `interact` capability handler so the built bundle (dist/views/bundle.js)
+// exposes the named exports the view loader reads (`FeedView`, `interact`). Kept
+// separate from FeedView.tsx so that file exports only React components and stays
+// Fast-Refresh-compatible in dev.
+export { FeedView } from "../components/FeedView.tsx";
 export { interact } from "./FeedOperatorSurface.interact";

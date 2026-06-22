@@ -9,8 +9,8 @@
  * It is purely presentational (a snapshot + an action callback in, primitives
  * out) and imports only the cross-modality primitives, so it is safe to render
  * in the Node agent process where the terminal lives (no wallet RPC client or
- * `@elizaos/ui` runtime hook import). The big DOM `InventoryView` is unchanged;
- * this is an additive, render-anywhere mirror of the same data.
+ * `@elizaos/ui` runtime hook import). The unified `InventoryView` wraps this in a
+ * `SpatialSurface` and owns the live data + the `onAction` dispatch.
  */
 
 import {
@@ -87,6 +87,8 @@ export interface WalletSnapshot {
   tradingProfile: WalletTradingProfile;
   addresses: WalletAddresses;
   config: WalletConfig;
+  /** `false` when the wallet is turned off; surfaces the Enable control. */
+  walletEnabled?: boolean | null;
   loading?: boolean;
   error?: string | null;
 }
@@ -128,7 +130,11 @@ function pnlTone(value: number): SpatialTone {
 
 export interface InventorySpatialViewProps {
   snapshot: WalletSnapshot;
-  /** Dispatch by agent id: `tab:<id>`, `refresh`, `token:<id>`, `nft:<id>`. */
+  /**
+   * Dispatched action ids: `tab:<id>`, `refresh`, `enable-wallet`,
+   * `rpc-settings`, `open-token:<id>`, `hide-token:<id>`, `copy-evm`,
+   * `copy-solana`.
+   */
   onAction?: (action: string) => void;
 }
 
@@ -145,6 +151,7 @@ export function InventorySpatialView({
     tradingProfile,
     addresses,
     config,
+    walletEnabled,
   } = snapshot;
   const rpc =
     config.selectedRpcProviders.length > 0
@@ -176,15 +183,26 @@ export function InventorySpatialView({
         >
           {config.solanaBalanceReady ? "sol-ready" : "sol-off"}
         </Text>
-        <Text style="caption" tone="muted" wrap={false}>
+        <Button
+          variant="outline"
+          tone="default"
+          agent="rpc-settings"
+          onPress={dispatch("rpc-settings")}
+        >
           {rpc}
-        </Text>
+        </Button>
       </HStack>
 
       {snapshot.error ? (
         <Text tone="danger" style="caption">
           {snapshot.error}
         </Text>
+      ) : null}
+
+      {walletEnabled === false ? (
+        <Button grow={1} agent="enable-wallet" onPress={dispatch("enable-wallet")}>
+          Enable wallet
+        </Button>
       ) : null}
 
       <HStack gap={1} wrap>
@@ -213,22 +231,32 @@ export function InventorySpatialView({
       ) : (
         <List gap={0}>
           {tokenRows.slice(0, 8).map((token) => (
-            <HStack
-              key={token.id}
-              gap={1}
-              align="center"
-              agent={`token-${token.id}`}
-            >
-              <Text bold wrap={false}>
-                {token.symbol}
-              </Text>
-              <Text style="caption" tone="muted" grow={1} wrap={false}>
-                {token.chain}
-              </Text>
-              <Text style="caption" tone="muted" wrap={false}>
-                {token.balance}
-              </Text>
+            <HStack key={token.id} gap={1} align="center">
+              <VStack gap={0} grow={1}>
+                <Text bold wrap={false}>
+                  {token.symbol}
+                </Text>
+                <Text style="caption" tone="muted" wrap={false}>
+                  {token.chain} {token.balance}
+                </Text>
+              </VStack>
               <Text wrap={false}>{formatUsd(token.valueUsd)}</Text>
+              <Button
+                variant="ghost"
+                tone="default"
+                agent={`open-${token.id}`}
+                onPress={dispatch(`open-token:${token.id}`)}
+              >
+                Open
+              </Button>
+              <Button
+                variant="ghost"
+                tone="danger"
+                agent={`hide-${token.id}`}
+                onPress={dispatch(`hide-token:${token.id}`)}
+              >
+                Hide
+              </Button>
             </HStack>
           ))}
         </List>
@@ -314,9 +342,29 @@ export function InventorySpatialView({
         <Text style="caption" tone="muted" grow={1} wrap={false}>
           EVM {shortAddress(addresses.evmAddress)}
         </Text>
-        <Text style="caption" tone="muted" wrap={false}>
+        <Button
+          variant="ghost"
+          tone="default"
+          disabled={!addresses.evmAddress}
+          agent="copy-evm"
+          onPress={dispatch("copy-evm")}
+        >
+          Copy
+        </Button>
+      </HStack>
+      <HStack gap={1} align="center">
+        <Text style="caption" tone="muted" grow={1} wrap={false}>
           SOL {shortAddress(addresses.solanaAddress)}
         </Text>
+        <Button
+          variant="ghost"
+          tone="default"
+          disabled={!addresses.solanaAddress}
+          agent="copy-solana"
+          onPress={dispatch("copy-solana")}
+        >
+          Copy
+        </Button>
       </HStack>
     </Card>
   );

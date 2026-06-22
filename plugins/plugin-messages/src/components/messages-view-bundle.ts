@@ -1,12 +1,8 @@
-// Vite view-bundle entry. Re-exports the view components plus the `interact`
-// capability handler so the built bundle (dist/views/bundle.js) exposes the
-// same named exports the view loader reads (`MessagesPluginView`,
-// `MessagesTuiView`, `interact`). Kept separate from MessagesAppView.tsx so that
-// file exports only React components and stays Fast-Refresh-compatible in dev.
+// Vite view-bundle entry. Re-exports the unified spatial view component plus
+// the `interact` capability handler so the built bundle (dist/views/bundle.js)
+// exposes the named exports the view loader reads (`MessagesView`, `interact`).
+// Kept separate from MessagesView.tsx so that file exports only React components
+// and stays Fast-Refresh-compatible in dev.
 
 export { interact } from "./MessagesAppView.interact.ts";
-export {
-  MessagesAppView,
-  MessagesPluginView,
-  MessagesTuiView,
-} from "./MessagesAppView.tsx";
+export { MessagesView } from "./MessagesView.tsx";

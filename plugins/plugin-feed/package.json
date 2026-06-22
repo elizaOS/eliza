@@ -91,6 +91,8 @@
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check src",
     "test": "vitest run --config vitest.config.ts"
   },
   "files": [
@@ -100,6 +102,7 @@
     "react": "^19.0.0"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vite": "^8.0.0"

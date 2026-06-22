@@ -4,3 +4,4 @@ export {
   contactsApp,
   registerContactsApp,
 } from "./components/contacts-app.ts";
+export { ContactsView } from "./components/ContactsView.tsx";

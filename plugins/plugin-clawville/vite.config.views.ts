@@ -5,5 +5,5 @@ export default createViewBundleConfig({
   viewId: "clawville",
   entry: "./src/ui/clawville-view-bundle.ts",
   outDir: "dist/views",
-  componentExport: "ClawvilleOperatorSurface",
+  componentExport: "ClawvilleView",
 });

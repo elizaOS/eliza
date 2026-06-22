@@ -76,8 +76,9 @@ function roleTone(snapshot: MessagesSnapshot): SpatialTone {
 export interface MessagesSpatialViewProps {
   snapshot: MessagesSnapshot;
   /**
-   * Dispatch by agent id: `open-thread:<id>`, `send`, `request-sms-role`,
-   * `refresh`, `compose-address:<value>`, `compose-body:<value>`.
+   * Dispatched action ids: `open-thread:<id>` (open a conversation), `send`,
+   * `request-sms-role`, `refresh`, `compose-address:<value>`,
+   * `compose-body:<value>`.
    */
   onAction?: (action: string) => void;
 }
@@ -128,31 +129,37 @@ export function MessagesSpatialView({
         </Text>
       ) : (
         <List gap={0}>
-          {snapshot.threads.slice(0, 8).map((thread) => (
-            <HStack
-              key={thread.id}
-              gap={1}
-              align="center"
-              agent={`open-thread-${thread.id}`}
-            >
-              <Text tone={directionTone(thread.lastMessage.type)}>
-                {directionMark(thread.lastMessage.type)}
-              </Text>
-              <VStack gap={0} grow={1}>
-                <Text bold wrap={false}>
-                  {thread.address || "Unknown"}
+          {snapshot.threads.slice(0, 8).map((thread) => {
+            const selected = thread.id === snapshot.selectedThreadId;
+            return (
+              <HStack key={thread.id} gap={1} align="center">
+                <Text tone={directionTone(thread.lastMessage.type)}>
+                  {directionMark(thread.lastMessage.type)}
                 </Text>
-                <Text style="caption" tone="muted" wrap={false}>
-                  {thread.lastMessage.body}
-                </Text>
-              </VStack>
-              {thread.unreadCount > 0 ? (
-                <Text style="caption" tone="primary">
-                  {String(thread.unreadCount)}
-                </Text>
-              ) : null}
-            </HStack>
-          ))}
+                <VStack gap={0} grow={1}>
+                  <Text bold wrap={false}>
+                    {thread.address || "Unknown"}
+                  </Text>
+                  <Text style="caption" tone="muted" wrap={false}>
+                    {thread.lastMessage.body}
+                  </Text>
+                </VStack>
+                {thread.unreadCount > 0 ? (
+                  <Text style="caption" tone="primary">
+                    {String(thread.unreadCount)}
+                  </Text>
+                ) : null}
+                <Button
+                  variant={selected ? "solid" : "ghost"}
+                  tone="primary"
+                  agent={`open-thread-${thread.id}`}
+                  onPress={dispatch(`open-thread:${thread.id}`)}
+                >
+                  Open
+                </Button>
+              </HStack>
+            );
+          })}
         </List>
       )}
 

@@ -4,40 +4,20 @@ const feedPlugin: Plugin = {
   name: "@elizaos/plugin-feed",
   description: "Feed prediction market game operator surface.",
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single FeedView
+    // spatial source. `modalities` is a plain literal here (index.ts is not in
+    // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
+    // the bundle build. The terminal surface mounts the same FeedSpatialView via
+    // register-terminal-view.tsx.
     {
       id: "feed",
       label: "Feed",
       description: "Feed prediction market operator dashboard",
       icon: "Gamepad2",
       path: "/feed",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "FeedOperatorSurface",
-      tags: ["game", "prediction-market", "feed"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "feed",
-      label: "Feed XR",
-      description: "Feed prediction market operator dashboard",
-      icon: "Gamepad2",
-      path: "/feed",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "FeedOperatorSurface",
-      tags: ["game", "prediction-market", "feed"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "feed",
-      label: "Feed TUI",
-      description: "Terminal Feed prediction market operator dashboard",
-      icon: "Gamepad2",
-      path: "/feed/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "FeedTuiView",
+      componentExport: "FeedView",
       capabilities: [
         { id: "get-state", description: "Return Feed terminal state" },
         {
@@ -59,7 +39,7 @@ const feedPlugin: Plugin = {
           },
         },
       ],
-      tags: ["game", "prediction-market", "feed", "terminal"],
+      tags: ["game", "prediction-market", "feed"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

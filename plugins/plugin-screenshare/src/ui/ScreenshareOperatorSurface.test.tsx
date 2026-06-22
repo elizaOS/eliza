@@ -165,7 +165,7 @@ function installFetch(
 }
 
 const openSpy = vi.fn();
-const writeText = vi.fn(() => Promise.resolve());
+const writeText = vi.fn((_text: string) => Promise.resolve());
 
 beforeEach(() => {
   selectLatestRunResult.run = null;
@@ -192,7 +192,12 @@ function capabilitiesUrls(): string[] {
 describe("ScreenshareOperatorSurface — populated data", () => {
   it("renders the three host metric tiles and a capability tile per real key", async () => {
     installFetch();
-    render(React.createElement(ScreenshareOperatorSurface, { focus: "all" }));
+    render(
+      React.createElement(ScreenshareOperatorSurface, {
+        appName: "@elizaos/plugin-screenshare",
+        focus: "all",
+      }),
+    );
 
     // Capabilities load on mount; wait for the Capabilities section to appear.
     await screen.findByRole("region", { name: "Capabilities" });
@@ -230,7 +235,12 @@ describe("ScreenshareOperatorSurface — populated data", () => {
 
   it("renders the chat-focus empty state instead of the host surface", () => {
     installFetch();
-    render(React.createElement(ScreenshareOperatorSurface, { focus: "chat" }));
+    render(
+      React.createElement(ScreenshareOperatorSurface, {
+        appName: "@elizaos/plugin-screenshare",
+        focus: "chat",
+      }),
+    );
 
     expect(
       screen.getByText(
@@ -245,7 +255,12 @@ describe("ScreenshareOperatorSurface — populated data", () => {
 describe("ScreenshareOperatorSurface — host lifecycle controls", () => {
   it("starts a session (POST body label), shows the telemetry grid, and flips the button to Rotate", async () => {
     installFetch();
-    render(React.createElement(ScreenshareOperatorSurface, { focus: "all" }));
+    render(
+      React.createElement(ScreenshareOperatorSurface, {
+        appName: "@elizaos/plugin-screenshare",
+        focus: "all",
+      }),
+    );
     await screen.findByRole("region", { name: "Capabilities" });
 
     // Initially idle; telemetry grid (Frames/Inputs) not rendered.
@@ -283,7 +298,12 @@ describe("ScreenshareOperatorSurface — host lifecycle controls", () => {
 
   it("stops the active session via POST /stop with the X-Screenshare-Token header and body token", async () => {
     installFetch();
-    render(React.createElement(ScreenshareOperatorSurface, { focus: "all" }));
+    render(
+      React.createElement(ScreenshareOperatorSurface, {
+        appName: "@elizaos/plugin-screenshare",
+        focus: "all",
+      }),
+    );
     await screen.findByRole("region", { name: "Capabilities" });
 
     fireEvent.click(screen.getByText("Start session"));
@@ -313,7 +333,12 @@ describe("ScreenshareOperatorSurface — host lifecycle controls", () => {
 
   it("Open host viewer is disabled until a session exists, then opens the host viewer URL", async () => {
     installFetch();
-    render(React.createElement(ScreenshareOperatorSurface, { focus: "all" }));
+    render(
+      React.createElement(ScreenshareOperatorSurface, {
+        appName: "@elizaos/plugin-screenshare",
+        focus: "all",
+      }),
+    );
     await screen.findByRole("region", { name: "Capabilities" });
 
     const openButton = screen.getByText("Open").closest("button");
@@ -333,7 +358,12 @@ describe("ScreenshareOperatorSurface — host lifecycle controls", () => {
 
   it("Copy host details writes the connection JSON to the clipboard", async () => {
     installFetch();
-    render(React.createElement(ScreenshareOperatorSurface, { focus: "all" }));
+    render(
+      React.createElement(ScreenshareOperatorSurface, {
+        appName: "@elizaos/plugin-screenshare",
+        focus: "all",
+      }),
+    );
     await screen.findByRole("region", { name: "Capabilities" });
 
     expect(screen.getByText("Copy").closest("button")?.disabled).toBe(true);
@@ -362,13 +392,20 @@ describe("ScreenshareOperatorSurface — host lifecycle controls", () => {
 describe("ScreenshareOperatorSurface — connect form", () => {
   it("enables Connect only after id+token are filled and opens the built viewer URL with remoteBase", async () => {
     installFetch();
-    render(React.createElement(ScreenshareOperatorSurface, { focus: "all" }));
+    render(
+      React.createElement(ScreenshareOperatorSurface, {
+        appName: "@elizaos/plugin-screenshare",
+        focus: "all",
+      }),
+    );
     await screen.findByRole("region", { name: "Capabilities" });
 
     // The Connect button carries aria-label "Connect to remote"; getByText
     // "Connect" alone collides with the section title, so target by role+name.
     const connectButton = () =>
-      screen.getByRole("button", { name: "Connect to remote" });
+      screen.getByRole("button", {
+        name: "Connect to remote",
+      }) as HTMLButtonElement;
     expect(connectButton().disabled).toBe(true);
 
     fireEvent.change(screen.getByPlaceholderText("Server URL"), {
@@ -396,7 +433,12 @@ describe("ScreenshareOperatorSurface — connect form", () => {
 
   it("Refresh capabilities re-fetches GET /capabilities", async () => {
     installFetch();
-    render(React.createElement(ScreenshareOperatorSurface, { focus: "all" }));
+    render(
+      React.createElement(ScreenshareOperatorSurface, {
+        appName: "@elizaos/plugin-screenshare",
+        focus: "all",
+      }),
+    );
     await screen.findByRole("region", { name: "Capabilities" });
 
     expect(capabilitiesUrls().length).toBe(1);
@@ -414,7 +456,12 @@ describe("ScreenshareOperatorSurface — launched session", () => {
       },
     };
     installFetch();
-    render(React.createElement(ScreenshareOperatorSurface, { focus: "all" }));
+    render(
+      React.createElement(ScreenshareOperatorSurface, {
+        appName: "@elizaos/plugin-screenshare",
+        focus: "all",
+      }),
+    );
 
     // The launched-session effect fires GET /session/host-1?token=host-token.
     await vi.waitFor(() => {

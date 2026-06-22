@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { type FeedSnapshot, FeedSpatialView } from "./FeedSpatialView.tsx";
 
 const snapshot: FeedSnapshot = {
+  hasSession: true,
   agentStatus: {
     id: "a1",
     name: "Quantum",

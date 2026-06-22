@@ -23,6 +23,8 @@ const EMPTY: ClawvilleSnapshot = {
   telemetry: { nearestBuildingLabel: "the reef", knowledgeCount: null },
   actions: [],
   events: [],
+  draft: "",
+  sending: false,
 };
 let current: ClawvilleSnapshot = EMPTY;
 

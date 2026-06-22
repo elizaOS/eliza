@@ -3,8 +3,14 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+// The RPC-provider status copy + the empty-wallet market-pulse hero live in the
+// rich dashboard (`InventoryAppView`), which the `/inventory` nav tab mounts; the
+// cross-modality `InventoryView` is the spatial holdings source.
 const source = readFileSync(
-  resolve(dirname(fileURLToPath(import.meta.url)), "InventoryView.tsx"),
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "components/InventoryAppView.tsx",
+  ),
   "utf8",
 );
 

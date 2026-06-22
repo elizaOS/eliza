@@ -34,7 +34,7 @@ vi.mock("@elizaos/capacitor-system", () => ({
   },
 }));
 
-import { MessagesAppView, MessagesPluginView } from "./MessagesAppView";
+import { MessagesAppView } from "./MessagesAppView";
 
 const t = (key: string, opts?: { defaultValue?: string }) =>
   opts?.defaultValue ?? key;
@@ -130,15 +130,6 @@ describe("MessagesAppView — populated thread list", () => {
 
     // Header subtitle: role not held -> "Android SMS bridge".
     expect(screen.getByText("Android SMS bridge")).toBeTruthy();
-  });
-
-  it("MessagesPluginView wrapper renders the same populated data", async () => {
-    mockBridge();
-    render(React.createElement(MessagesPluginView));
-
-    expect(await screen.findByTestId("messages-thread-thread-a")).toBeTruthy();
-    expect(screen.getByText("2 threads")).toBeTruthy();
-    expect(screen.getByText("newer message")).toBeTruthy();
   });
 });
 

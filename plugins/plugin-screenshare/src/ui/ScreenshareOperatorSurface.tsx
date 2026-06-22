@@ -728,7 +728,7 @@ export function ScreenshareTuiView() {
                 (capability) => capability.available,
               ).length
             }{" "}
-            live / {state?.sessions.length ?? 0} sessions
+            live / {state?.sessions.sessions.length ?? 0} sessions
           </div>
           <div>
             <span style={{ color: "#64748b" }}>platform</span>{" "}
@@ -753,3 +753,9 @@ export function ScreenshareTuiView() {
     </div>
   );
 }
+
+// The bundled view (GUI + XR + TUI) is the unified ScreenshareView spatial
+// source. This operator surface remains the in-process dashboard mounted via
+// the operator-surface registry; re-surface ScreenshareView here so callers of
+// the ui barrel reach the one bundled view component.
+export { ScreenshareView } from "../components/ScreenshareView";

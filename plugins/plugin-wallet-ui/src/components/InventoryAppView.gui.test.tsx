@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Behavioral e2e for the standard (and XR — same component) InventoryView GUI
+// Behavioral e2e for the InventoryAppView dashboard GUI
 // surface. Renders the full page with a fully-populated useApp() mock and seeds
 // the local client.getWalletTradingProfile / getWalletMarketOverview fetches via
 // the same vi.hoisted walletClient pattern as InventoryTuiView.test.ts. Every
@@ -55,7 +55,7 @@ vi.mock("@elizaos/ui", () => ({
     selector(appHooks.useApp()),
 }));
 
-import { InventoryView } from "./InventoryView";
+import { InventoryAppView } from "./InventoryAppView";
 
 /**
  * Matches text that React splits across sibling nodes (e.g. JSX
@@ -95,7 +95,8 @@ const balances: WalletBalancesResponse = {
             name: "USD Coin",
             balance: "100",
             valueUsd: "100",
-            logoUrl: null,
+            decimals: 18,
+            logoUrl: "",
             contractAddress: "0xUSDC00000000000000000000000000000000000000",
           },
           {
@@ -103,7 +104,8 @@ const balances: WalletBalancesResponse = {
             name: "PancakeSwap Token",
             balance: "40",
             valueUsd: "80",
-            logoUrl: null,
+            decimals: 18,
+            logoUrl: "",
             contractAddress: CAKE_ADDRESS,
           },
         ],
@@ -126,6 +128,7 @@ const nfts: WalletNftsResponse = {
       nfts: [
         {
           name: "Agent NFT",
+          description: "",
           imageUrl: "https://example.com/nft.png",
           collectionName: "Agents",
           contractAddress: "0xNFT0000000000000000000000000000000000000000",
@@ -346,7 +349,7 @@ afterEach(() => {
 describe("InventoryView GUI — populated holdings", () => {
   it("renders portfolio total, token rows, connection chips, and addresses", async () => {
     appHooks.useApp.mockReturnValue(makeAppState());
-    render(React.createElement(InventoryView));
+    render(React.createElement(InventoryAppView));
 
     const sidebar = await screen.findByTestId("wallets-sidebar");
 
@@ -382,7 +385,7 @@ describe("InventoryView GUI — populated holdings", () => {
         },
       }),
     );
-    render(React.createElement(InventoryView));
+    render(React.createElement(InventoryAppView));
     const sidebar = await screen.findByTestId("wallets-sidebar");
     expect(within(sidebar).getByTitle("EVM ready")).toBeTruthy();
     expect(within(sidebar).getByTitle("SOL needs RPC")).toBeTruthy();
@@ -392,7 +395,7 @@ describe("InventoryView GUI — populated holdings", () => {
 describe("InventoryView GUI — rail tab switching", () => {
   it("switches Tokens -> DeFi -> NFTs lists and shows counts", async () => {
     appHooks.useApp.mockReturnValue(makeAppState());
-    render(React.createElement(InventoryView));
+    render(React.createElement(InventoryAppView));
     const sidebar = await screen.findByTestId("wallets-sidebar");
 
     // Tokens tab is active by default: token rows visible, no NFT row yet.
@@ -426,7 +429,7 @@ describe("InventoryView GUI — hide token", () => {
   it("hides the row, notifies, persists the id, and keeps it filtered on reload", async () => {
     const state = makeAppState();
     appHooks.useApp.mockReturnValue(state);
-    const { unmount } = render(React.createElement(InventoryView));
+    const { unmount } = render(React.createElement(InventoryAppView));
     const sidebar = await screen.findByTestId("wallets-sidebar");
 
     expect(
@@ -460,7 +463,7 @@ describe("InventoryView GUI — hide token", () => {
     // Re-mount: readHiddenTokenIds() keeps USDC filtered out, others remain.
     unmount();
     appHooks.useApp.mockReturnValue(makeAppState());
-    render(React.createElement(InventoryView));
+    render(React.createElement(InventoryAppView));
     const reloaded = await screen.findByTestId("wallets-sidebar");
     expect(
       within(reloaded).queryByText(hasFlatText("100.0000 USDC")),
@@ -472,7 +475,7 @@ describe("InventoryView GUI — hide token", () => {
 describe("InventoryView GUI — address copy buttons", () => {
   it("copies the full EVM and SOL addresses and shows copied feedback", async () => {
     appHooks.useApp.mockReturnValue(makeAppState());
-    render(React.createElement(InventoryView));
+    render(React.createElement(InventoryAppView));
     const sidebar = await screen.findByTestId("wallets-sidebar");
 
     const evmCopy = within(sidebar).getByRole("button", {
@@ -498,7 +501,7 @@ describe("InventoryView GUI — background poll + RPC settings", () => {
     const state = makeAppState();
     appHooks.useApp.mockReturnValue(state);
     const setIntervalSpy = vi.spyOn(window, "setInterval");
-    render(React.createElement(InventoryView));
+    render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
     // No user-facing refresh affordance — freshness comes from the poll.
@@ -537,7 +540,7 @@ describe("InventoryView GUI — background poll + RPC settings", () => {
   it("RPC button title shows provider labels and opens settings", async () => {
     const state = makeAppState();
     appHooks.useApp.mockReturnValue(state);
-    render(React.createElement(InventoryView));
+    render(React.createElement(InventoryAppView));
     const sidebar = await screen.findByTestId("wallets-sidebar");
 
     const rpcButton = within(sidebar).getByLabelText("Open RPC settings");
@@ -555,7 +558,7 @@ describe("InventoryView GUI — background poll + RPC settings", () => {
 describe("InventoryView GUI — P&L window selector + chart", () => {
   it("renders a populated chart + realized P&L chip and switches windows", async () => {
     appHooks.useApp.mockReturnValue(makeAppState());
-    const { container } = render(React.createElement(InventoryView));
+    const { container } = render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
     // PnlChart renders a polyline (pnlSeries has >=2 finite points), not the
@@ -596,7 +599,7 @@ describe("InventoryView GUI — P&L window selector + chart", () => {
       pnlSeries: [tradingProfile.pnlSeries[0]],
     });
     appHooks.useApp.mockReturnValue(makeAppState());
-    render(React.createElement(InventoryView));
+    render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
     expect(await screen.findByText("No realized P&L yet")).toBeTruthy();
   });
@@ -615,7 +618,7 @@ describe("InventoryView GUI — dashboard panels", () => {
       ],
     };
     appHooks.useApp.mockReturnValue(makeAppState());
-    render(React.createElement(InventoryView));
+    render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
     // ActivityLog: recent swap entry + agent activity event.
@@ -648,7 +651,7 @@ describe("InventoryView GUI — dashboard panels", () => {
         walletNfts: { evm: [], solana: null },
       }),
     );
-    render(React.createElement(InventoryView));
+    render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
     // Danger banner.
@@ -673,7 +676,7 @@ describe("InventoryView GUI — empty wallet / market pulse hero", () => {
       walletConfig: { ...walletConfig, evmAddress: null, solanaAddress: null },
     });
     appHooks.useApp.mockReturnValue(state);
-    render(React.createElement(InventoryView));
+    render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
     // WalletEmptyHero "not configured" variant + Configure keys CTA.
@@ -728,7 +731,7 @@ describe("InventoryView GUI — empty wallet / market pulse hero", () => {
         },
       }),
     );
-    render(React.createElement(InventoryView));
+    render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
     expect(await screen.findByText("Top movers unavailable")).toBeTruthy();

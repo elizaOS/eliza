@@ -29,6 +29,8 @@ const EMPTY: DefenseSnapshot = {
   goalLabel: null,
   suggestedPrompts: [],
   events: [],
+  draft: "",
+  sending: false,
 };
 
 let current: DefenseSnapshot = EMPTY;

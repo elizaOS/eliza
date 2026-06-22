@@ -172,6 +172,12 @@ vi.mock("@elizaos/ui", () => ({
   useAppSelectorShallow: <T,>(selector: (value: typeof appState) => T) =>
     selector(appState),
 }));
+vi.mock("@elizaos/ui/state", () => ({
+  useAppSelector: <T,>(selector: (value: typeof appState) => T) =>
+    selector(appState),
+  useAppSelectorShallow: <T,>(selector: (value: typeof appState) => T) =>
+    selector(appState),
+}));
 
 const { FeedOperatorSurface } = await import("./FeedOperatorSurface");
 

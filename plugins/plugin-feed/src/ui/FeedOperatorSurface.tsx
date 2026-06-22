@@ -12,8 +12,9 @@ import {
   SurfaceSection,
   selectLatestRunForApp,
 } from "@elizaos/app-core/ui-compat";
-import { Button, TerminalPluginView, useAppSelector } from "@elizaos/ui";
+import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { useAppSelector } from "@elizaos/ui/state";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   GameSurfaceHero,
@@ -624,26 +625,5 @@ export function FeedOperatorSurface({
         </GameSurfaceZone>
       </GameSurfaceShell>
     </div>
-  );
-}
-
-export function FeedTuiView() {
-  return (
-    <TerminalPluginView
-      id="feed"
-      label="Feed TUI"
-      description="Terminal Feed prediction market operator dashboard"
-      commands={[
-        "get-state",
-        "refresh-agent-status",
-        "open-live-dashboard",
-        "send-team-message",
-      ]}
-      endpoints={[
-        "/api/apps/feed/agent/status",
-        "/api/apps/feed/team/dashboard",
-        "/api/apps/feed/markets",
-      ]}
-    />
   );
 }

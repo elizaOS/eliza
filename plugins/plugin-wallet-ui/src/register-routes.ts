@@ -27,8 +27,8 @@ registerAppShellPage({
   path: "/inventory",
   order: 50,
   loader: () =>
-    import("./InventoryView.tsx").then((module) => ({
-      default: module.InventoryView,
+    import("./components/InventoryAppView.tsx").then((module) => ({
+      default: module.InventoryAppView,
     })),
 });
 

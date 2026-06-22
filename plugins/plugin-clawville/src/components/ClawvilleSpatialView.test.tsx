@@ -46,6 +46,8 @@ const snapshot: ClawvilleSnapshot = {
       tone: "user",
     },
   ],
+  draft: "",
+  sending: false,
 };
 
 const view = <ClawvilleSpatialView snapshot={snapshot} />;
