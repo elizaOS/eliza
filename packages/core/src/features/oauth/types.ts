@@ -74,7 +74,11 @@ export interface OAuthIntentEnvelope {
 
 export interface OAuthCallbackResult {
 	oauthIntentId: string;
-	provider: OAuthProvider;
+	/**
+	 * The provider, when known. Absent for `status: "expired"` results produced
+	 * before any provider callback was received (timeout / superseded / stopped).
+	 */
+	provider?: OAuthProvider;
 	status: "bound" | "denied" | "expired";
 	connectorIdentityId?: string;
 	scopesGranted?: string[];

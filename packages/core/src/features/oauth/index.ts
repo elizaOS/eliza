@@ -14,7 +14,12 @@ export {
 	revokeOAuthCredentialAction,
 } from "./actions/index.ts";
 
-export { oauthPlugin, oauthPlugin as default } from "./plugin.ts";
+export { LocalOAuthCallbackBus } from "./local-callback-bus.ts";
+export {
+	oauthLocalCallbackRoute,
+	oauthPlugin,
+	oauthPlugin as default,
+} from "./plugin.ts";
 export type {
 	CreateOAuthIntentInput,
 	OAuthBindResult,
