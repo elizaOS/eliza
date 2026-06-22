@@ -30,6 +30,7 @@
  * @module services/spend-allowance
  */
 
+import { logger } from "@elizaos/core";
 import { readConfigEnvKey } from "./config-env.js";
 
 /** Mirror of the broker's `CloudCommandRisk` union (kept local to avoid a
@@ -208,17 +209,60 @@ export function decideSpendAuthorization(
 }
 
 // ---------------------------------------------------------------------------
-// Per-session spend ledger (in-memory; resets on restart — see module note).
+// Per-session spend ledger.
+//
+// The in-memory Map is the fast read path the sync cap check uses. When a
+// durable backend is installed (`configureSpendLedger`) every debit is also
+// persisted write-through, and a session's persisted total is rehydrated into
+// the cache on (re)attach (`hydrateSessionSpendUsd`), so a configured spend cap
+// survives a process restart instead of silently resetting to zero (#8924).
+// Without a backend the behavior is exactly the original throttle-only Map.
 // ---------------------------------------------------------------------------
 
 const sessionSpendUsd = new Map<string, number>();
+
+/**
+ * Durable store for per-session spend, implemented over the
+ * OrchestratorTaskStore (a `spendUsd` field on the session record) — see
+ * `createTaskStoreSpendLedger`.
+ */
+export interface SpendLedgerBackend {
+  /** Persisted USD total for a session (0 when none recorded). */
+  load(sessionId: string): Promise<number>;
+  /** Persist the new running total for a session. */
+  save(sessionId: string, totalUsd: number): Promise<void>;
+}
+
+let ledgerBackend: SpendLedgerBackend | null = null;
+
+/** Install (or clear, with `null`) the durable spend backend. Called once at
+ * orchestrator boot; tests pass a fake backend. */
+export function configureSpendLedger(backend: SpendLedgerBackend | null): void {
+  ledgerBackend = backend;
+}
 
 export function getSessionSpendUsd(sessionId: string): number {
   return sessionSpendUsd.get(sessionId) ?? 0;
 }
 
+/**
+ * Rehydrate the in-memory total for a session from the durable backend so the
+ * sync cap check sees money spent before a restart. No-op (returns the cached
+ * value) when no backend is installed. Call when a session is (re)attached.
+ */
+export async function hydrateSessionSpendUsd(
+  sessionId: string,
+): Promise<number> {
+  if (!ledgerBackend) return getSessionSpendUsd(sessionId);
+  const persisted = await ledgerBackend.load(sessionId);
+  sessionSpendUsd.set(sessionId, persisted);
+  return persisted;
+}
+
 /** Add to a session's running total; returns the new total. Negative/NaN
- * amounts are ignored. */
+ * amounts are ignored. With a durable backend the new total is persisted
+ * write-through; persistence failures are logged, never thrown (the cap stays
+ * enforced from the in-memory total). */
 export function addSessionSpendUsd(
   sessionId: string,
   amountUsd: number,
@@ -226,16 +270,69 @@ export function addSessionSpendUsd(
   const safe = Number.isFinite(amountUsd) && amountUsd > 0 ? amountUsd : 0;
   const next = getSessionSpendUsd(sessionId) + safe;
   sessionSpendUsd.set(sessionId, next);
+  if (safe > 0 && ledgerBackend) {
+    void ledgerBackend.save(sessionId, next).catch((err) => {
+      logger.warn(
+        { src: "spend-allowance", sessionId, err: errorMessage(err) },
+        "[spend-allowance] failed to persist session spend",
+      );
+    });
+  }
   return next;
 }
 
-/** Clear the ledger for one session, or all sessions when omitted (test/cleanup). */
+/** Clear the in-memory ledger for one session, or all when omitted. Does NOT
+ * delete the durable record — that survives by design (cache reset for
+ * test/cleanup, and the path a restart simulates). */
 export function resetSessionSpendUsd(sessionId?: string): void {
   if (sessionId === undefined) {
     sessionSpendUsd.clear();
     return;
   }
   sessionSpendUsd.delete(sessionId);
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** Minimal structural view of the OrchestratorTaskStore the ledger needs —
+ * structurally typed to avoid a hard import / circular dependency. */
+export interface SpendLedgerStore {
+  findSession(
+    sessionId: string,
+  ): Promise<{ session: { metadata: Record<string, unknown> } } | null>;
+  updateSession(
+    sessionId: string,
+    patch: { metadata: Record<string, unknown> },
+  ): Promise<void>;
+}
+
+const SPEND_METADATA_KEY = "spendUsd";
+
+/**
+ * Durable backend that persists per-session spend in the session record's
+ * `metadata.spendUsd` (#8924). Read-modify-write preserves any other metadata.
+ */
+export function createTaskStoreSpendLedger(
+  store: SpendLedgerStore,
+): SpendLedgerBackend {
+  return {
+    async load(sessionId) {
+      const found = await store.findSession(sessionId);
+      return (
+        toNonNegativeNumber(found?.session.metadata?.[SPEND_METADATA_KEY]) ?? 0
+      );
+    },
+    async save(sessionId, totalUsd) {
+      const found = await store.findSession(sessionId);
+      const metadata = {
+        ...(found?.session.metadata ?? {}),
+        [SPEND_METADATA_KEY]: totalUsd,
+      };
+      await store.updateSession(sessionId, { metadata });
+    },
+  };
 }
 
 /** Return a shallow copy of `params` with the reserved spend-hint key removed,
