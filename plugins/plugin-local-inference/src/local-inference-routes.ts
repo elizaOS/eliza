@@ -327,6 +327,25 @@ const mobileLookup: http.RequestOptions["lookup"] = (
 	});
 };
 
+/**
+ * Recompute request headers when following a redirect. The HuggingFace bearer
+ * token must never leak past a cross-host redirect: HF `/resolve/` URLs 302 to
+ * cdn-lfs*.hf.co / *.amazonaws.com / *.cloudfront.net, none of which are HF
+ * hosts. Strip Authorization, then re-add it only if the redirect target is
+ * itself a HuggingFace host — mirroring the cross-origin auth stripping WHATWG
+ * fetch performs for the sibling `Downloader` path.
+ */
+export function reauthorizeRedirectHeaders(
+	headers: Record<string, string>,
+	nextUrl: string,
+): Record<string, string> {
+	const next: Record<string, string> = { ...headers };
+	delete next.authorization;
+	delete next.Authorization;
+	Object.assign(next, resolveHubAuthHeaders(nextUrl));
+	return next;
+}
+
 async function openDownloadResponse(
 	url: string,
 	headers: Record<string, string>,
@@ -352,10 +371,11 @@ async function openDownloadResponse(
 				const location = response.headers.location;
 				if (location && [301, 302, 303, 307, 308].includes(statusCode)) {
 					response.resume();
+					const nextUrl = new URL(location, parsed).toString();
 					resolve(
 						openDownloadResponse(
-							new URL(location, parsed).toString(),
-							headers,
+							nextUrl,
+							reauthorizeRedirectHeaders(headers, nextUrl),
 							signal,
 							redirectCount + 1,
 						),
