@@ -7435,5 +7435,11 @@
   "mediagalleryview.Share": "Share",
   "documentsview.Download": "Download",
   "documentsview.Share": "Share",
-  "documentsview.FailedToDownload": "Failed to download file"
+  "documentsview.FailedToDownload": "Failed to download file",
+  "messageattachments.openPdf": "Open PDF in new tab",
+  "messageattachments.download": "Download",
+  "messageattachments.pdfPreviewTitle": "PDF preview: {{name}}",
+  "messageattachments.codePreviewTitle": "Text preview: {{name}}",
+  "messageattachments.pdfLabel": "PDF",
+  "messageattachments.textLabel": "Text"
 }

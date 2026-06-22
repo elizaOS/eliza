@@ -1,5 +1,7 @@
 import {
+  Code2,
   Download,
+  ExternalLink,
   FileText,
   LinkIcon,
   Maximize2,
@@ -14,8 +16,10 @@ import type {
 } from "../../api";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { isSafeAttachmentUrl } from "../../utils/attachment-url";
+import { CodeBlock } from "../ui/code-block";
 import { TranscriptViewerOverlay } from "./TranscriptViewerOverlay";
 
 const ABSOLUTE_URL = /^(?:https?:|data:|blob:|[a-z][a-z0-9+.-]*:\/\/)/i;
@@ -59,6 +63,141 @@ function resolveKind(att: MessageAttachment): MessageAttachmentContentType {
   return "link";
 }
 
+/** A `.pdf` URL (ignoring any `?query` / `#hash`). */
+const PDF_EXT = /\.pdf(?:[?#]|$)/i;
+
+/**
+ * Text/code extensions we can preview inline with {@link CodeBlock}, mapped to a
+ * coarse language hint. Keep this list aligned with the regex used for kind
+ * derivation; the hint is best-effort and only used for display.
+ */
+const CODE_EXT_LANGUAGE: Record<string, string> = {
+  txt: "text",
+  log: "text",
+  text: "text",
+  md: "markdown",
+  markdown: "markdown",
+  mdx: "markdown",
+  json: "json",
+  jsonc: "json",
+  json5: "json",
+  csv: "csv",
+  tsv: "csv",
+  yaml: "yaml",
+  yml: "yaml",
+  toml: "toml",
+  ini: "ini",
+  env: "ini",
+  xml: "xml",
+  html: "html",
+  htm: "html",
+  css: "css",
+  scss: "scss",
+  ts: "typescript",
+  tsx: "typescript",
+  mts: "typescript",
+  cts: "typescript",
+  js: "javascript",
+  jsx: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  py: "python",
+  rb: "ruby",
+  go: "go",
+  rs: "rust",
+  java: "java",
+  kt: "kotlin",
+  c: "c",
+  h: "c",
+  cpp: "cpp",
+  cc: "cpp",
+  cxx: "cpp",
+  hpp: "cpp",
+  cs: "csharp",
+  php: "php",
+  swift: "swift",
+  sh: "shell",
+  bash: "shell",
+  zsh: "shell",
+  sql: "sql",
+};
+
+const CODE_EXT = new RegExp(
+  `\\.(?:${Object.keys(CODE_EXT_LANGUAGE).join("|")})(?:[?#]|$)`,
+  "i",
+);
+
+/**
+ * Fine-grained preview kind, derived at read time from the attachment's
+ * `contentType` + MIME + URL extension (and whether it carries extracted
+ * `text`). `ContentType` is frozen, so this richer kind is computed here rather
+ * than stored. Drives which tile renders:
+ *   - `"pdf"`  → inline native PDF viewer (or a download card when not inlinable)
+ *   - `"code"` → inline {@link CodeBlock} when `att.text` exists, else a card
+ *   - `"file"` → generic download/open card (the previous default)
+ */
+export type AttachmentPreviewKind = "pdf" | "code" | "file";
+
+/** The lower-cased path of an attachment URL (no query/hash), or "" for data: URLs. */
+function attachmentPath(url: string): string {
+  const u = url.trim().toLowerCase();
+  if (!u || u.startsWith("data:")) return "";
+  try {
+    return new URL(u, "http://x").pathname;
+  } catch {
+    // Strip query/hash manually for malformed-but-extension-bearing strings.
+    return u.split(/[?#]/)[0] ?? u;
+  }
+}
+
+/**
+ * Derive the inline-preview kind for a document/link attachment. Only called
+ * once an attachment has resolved to a non-media kind (not image/audio/video);
+ * media keeps its dedicated players. Pure + render-safe — inspects metadata
+ * only, never fetches.
+ */
+export function attachmentPreviewKind(
+  att: MessageAttachment,
+): AttachmentPreviewKind {
+  const mime = (att.mimeType ?? "").toLowerCase();
+  const url = att.url ?? "";
+  const path = attachmentPath(url);
+
+  // PDF: explicit MIME, a .pdf URL, or a data:application/pdf payload.
+  if (
+    mime === "application/pdf" ||
+    PDF_EXT.test(path) ||
+    url.trim().toLowerCase().startsWith("data:application/pdf")
+  ) {
+    return "pdf";
+  }
+
+  // Text/code: a text-* MIME, a known code/text extension, an inline
+  // text data: URL, or an attachment that already carries extracted text.
+  if (
+    mime.startsWith("text/") ||
+    CODE_EXT.test(path) ||
+    url.trim().toLowerCase().startsWith("data:text/") ||
+    (typeof att.text === "string" && att.text.trim().length > 0)
+  ) {
+    return "code";
+  }
+
+  return "file";
+}
+
+/** Best-effort language hint for {@link CodeBlock}, from MIME then extension. */
+function codeLanguageHint(att: MessageAttachment): string {
+  const mime = (att.mimeType ?? "").toLowerCase();
+  if (mime === "application/json" || mime === "text/json") return "json";
+  if (mime === "text/markdown") return "markdown";
+  if (mime === "text/csv") return "csv";
+  if (mime === "text/html") return "html";
+  const path = attachmentPath(att.url ?? "");
+  const ext = path.split(".").at(-1) ?? "";
+  return CODE_EXT_LANGUAGE[ext] ?? "text";
+}
+
 /**
  * A transcript attachment: a saved transcript record (carries `transcriptId`)
  * or, for older attachments produced before the link existed, a markdown
@@ -96,7 +235,11 @@ function downloadName(att: MessageAttachment, kind: string): string {
         ? "mp3"
         : kind === "video"
           ? "mp4"
-          : "bin";
+          : kind === "pdf"
+            ? "pdf"
+            : kind === "code"
+              ? "txt"
+              : "bin";
   return `${att.id || "attachment"}.${ext}`;
 }
 
@@ -246,6 +389,183 @@ function FileTile({
 }
 
 /**
+ * Whether a (scheme-safe) URL can be inlined in an `<iframe>`. We only inline a
+ * served same-origin / app URL (`/api/...`, http(s), blob:); a `data:` URL is
+ * NOT inlined (browsers sandbox/refuse `data:` PDFs inconsistently and it can be
+ * huge), so it falls back to a download-only card.
+ */
+function isInlineablePdfUrl(rawUrl: string): boolean {
+  const u = rawUrl.trim().toLowerCase();
+  if (!u) return false;
+  if (u.startsWith("data:")) return false;
+  return true;
+}
+
+/**
+ * Inline PDF preview. When the served URL is inlinable, render the browser's
+ * native PDF viewer inside a sandboxed `<iframe>` under a header with the
+ * filename and an open/download affordance. For a `data:` URL (or otherwise
+ * non-inlinable safe URL) it degrades to a download-only card — no iframe.
+ */
+function PdfTile({
+  att,
+  src,
+  t,
+}: {
+  att: MessageAttachment;
+  src: string;
+  t: (key: string, values?: Record<string, unknown>) => string;
+}): React.JSX.Element {
+  const label = attachmentLabel(att);
+  const inlineable = isInlineablePdfUrl(att.url);
+  const openLabel = t("messageattachments.openPdf");
+  const downloadLabel = t("messageattachments.download");
+  const frameTitle = t("messageattachments.pdfPreviewTitle", { name: label });
+
+  if (!inlineable) {
+    // data: / non-inlinable safe URL → download card, no iframe.
+    return (
+      <a
+        href={src}
+        target="_blank"
+        rel="noreferrer"
+        download={downloadName(att, "pdf")}
+        data-testid="pdf-attachment-fallback"
+        className={cn(
+          "flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
+          "text-white/90 transition-colors hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+        )}
+      >
+        <FileText className="h-5 w-5 shrink-0 text-white/70" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium">
+            {label}
+          </span>
+          <span className="block text-[11px] uppercase tracking-wide text-white/45">
+            {t("messageattachments.pdfLabel")}
+          </span>
+        </span>
+        <Download className="h-4 w-4 shrink-0 text-white/55" />
+      </a>
+    );
+  }
+
+  return (
+    <figure
+      data-testid="pdf-attachment"
+      aria-label={frameTitle}
+      className="m-0 w-full max-w-[min(36rem,100%)] overflow-hidden rounded-xl border border-white/12 bg-white/[0.04]"
+    >
+      <figcaption className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
+        <FileText className="h-4 w-4 shrink-0 text-white/70" />
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-white/90">
+          {label}
+        </span>
+        <span className="flex shrink-0 gap-1.5">
+          <TileButton label={openLabel} href={src}>
+            <ExternalLink className="h-3.5 w-3.5" />
+          </TileButton>
+          <TileButton
+            label={downloadLabel}
+            href={src}
+            download={downloadName(att, "pdf")}
+          >
+            <Download className="h-3.5 w-3.5" />
+          </TileButton>
+        </span>
+      </figcaption>
+      <iframe
+        src={src}
+        title={frameTitle}
+        // Sandbox the embedded document: allow it to be treated as same-origin
+        // so the native viewer's resources load, but grant no script/forms/etc.
+        sandbox="allow-same-origin"
+        className="block h-[28rem] w-full border-0 bg-white"
+      />
+    </figure>
+  );
+}
+
+/**
+ * Inline text/code preview using the {@link CodeBlock} primitive. Renders the
+ * attachment's extracted `att.text` (scrollable, capped height, with a copy
+ * button) when present; otherwise degrades to a download/open card — v1 does
+ * NOT fetch the URL.
+ */
+function CodeTile({
+  att,
+  src,
+  t,
+}: {
+  att: MessageAttachment;
+  src: string;
+  t: (key: string, values?: Record<string, unknown>) => string;
+}): React.JSX.Element {
+  const label = attachmentLabel(att);
+  const text = typeof att.text === "string" ? att.text : "";
+
+  if (!text.trim()) {
+    // No inline content available → download/open card (no fetch in v1).
+    return (
+      <a
+        href={src}
+        target="_blank"
+        rel="noreferrer"
+        download={downloadName(att, "code")}
+        data-testid="code-attachment-fallback"
+        className={cn(
+          "flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
+          "text-white/90 transition-colors hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+        )}
+      >
+        <Code2 className="h-5 w-5 shrink-0 text-white/70" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium">
+            {label}
+          </span>
+          <span className="block text-[11px] uppercase tracking-wide text-white/45">
+            {t("messageattachments.textLabel")}
+          </span>
+        </span>
+        <Download className="h-4 w-4 shrink-0 text-white/55" />
+      </a>
+    );
+  }
+
+  const language = codeLanguageHint(att);
+  return (
+    <figure
+      data-testid="code-attachment"
+      aria-label={t("messageattachments.codePreviewTitle", { name: label })}
+      className="m-0 w-full max-w-[min(36rem,100%)] overflow-hidden rounded-xl border border-white/12 bg-white/[0.04]"
+    >
+      <figcaption className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
+        <Code2 className="h-4 w-4 shrink-0 text-white/70" />
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-white/90">
+          {label}
+        </span>
+        <span className="shrink-0 text-[11px] uppercase tracking-wide text-white/45">
+          {language}
+        </span>
+        <TileButton
+          label={t("messageattachments.download")}
+          href={src}
+          download={downloadName(att, "code")}
+        >
+          <Download className="h-3.5 w-3.5" />
+        </TileButton>
+      </figcaption>
+      <CodeBlock
+        value={text}
+        copyable
+        data-language={language}
+        className="max-h-[24rem] overflow-auto rounded-none border-0 bg-transparent"
+      />
+    </figure>
+  );
+}
+
+/**
  * A non-clickable fallback card for an attachment whose URL fails the scheme
  * allowlist ({@link isSafeAttachmentUrl}) — e.g. a `javascript:` / `file:` /
  * `data:text/html` URL injected by an untrusted agent. It shows the same chrome
@@ -374,13 +694,16 @@ export interface MessageAttachmentsProps {
 /**
  * Renders the media attached to a chat message — both user uploads and
  * agent-generated media. Images open a full-screen lightbox; audio and video
- * get native players; documents/links render as a card with a download/open
- * affordance. Used by the chat overlay bubble and `MessageContent`.
+ * get native players; PDFs render the browser's native viewer inline; text/code
+ * render inline via {@link CodeBlock} when their content is available; other
+ * documents/links render as a card with a download/open affordance. Used by the
+ * chat overlay bubble and `MessageContent`.
  */
 export function MessageAttachments({
   attachments,
   className,
 }: MessageAttachmentsProps): React.JSX.Element | null {
+  const { t } = useTranslation();
   const [lightbox, setLightbox] = React.useState<{
     src: string;
     alt: string;
@@ -473,8 +796,22 @@ export function MessageAttachments({
                 <track kind="captions" />
               </video>
             );
-          default:
+          default: {
+            // `document` attachments get a richer inline preview when we can
+            // derive one: PDFs render the native viewer; text/code renders via
+            // CodeBlock. Genuine `link` attachments and anything we cannot
+            // preview keep the generic download/open card.
+            if (kind === "document") {
+              const previewKind = attachmentPreviewKind(att);
+              if (previewKind === "pdf") {
+                return <PdfTile key={att.id} att={att} src={src} t={t} />;
+              }
+              if (previewKind === "code") {
+                return <CodeTile key={att.id} att={att} src={src} t={t} />;
+              }
+            }
             return <FileTile key={att.id} att={att} src={src} kind={kind} />;
+          }
         }
       })}
       {lightbox ? (
