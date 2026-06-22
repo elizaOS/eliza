@@ -623,6 +623,16 @@ export class SubAgentRouter extends Service {
       this.stateLostCapNotified.delete(lk);
     }
 
+    // The ACP session/prompt stopReason for a task_complete tells us whether the
+    // sub-agent's model finished cleanly or DEGENERATELY (truncated / blocked).
+    // Threaded into the completion metadata below so the response evaluator can
+    // relay the best partial once rather than letting the planner re-spawn the
+    // same request — the ~70x weak-model loop (issue elizaOS/eliza#8875).
+    const finishReason =
+      event === "task_complete"
+        ? normalizeFinishReason(pickPayloadString(data, "stopReason"))
+        : undefined;
+
     // Deterministic recovery for the cross-session state_lost cascade. A lost
     // session used to be re-injected into the planner so the planner would
     // spawn a fresh sub-agent — which leaked a "the sub-agent crashed, let me
@@ -1053,6 +1063,7 @@ export class SubAgentRouter extends Service {
               ? { subAgentVerifiedUrls: verifiedUrls }
               : {}),
             ...(deliverable ? { subAgentDeliverable: deliverable } : {}),
+            ...(finishReason ? { subAgentFinishReason: finishReason } : {}),
             ...(origin.userId ? { originUserId: origin.userId } : {}),
             ...(origin.parentMessageId
               ? { originMessageId: origin.parentMessageId }
@@ -2028,6 +2039,31 @@ function pickPayloadString(data: unknown, key: string): string | undefined {
   const v = (data as Record<string, unknown>)[key];
   if (typeof v !== "string" || !v.trim()) return undefined;
   return v;
+}
+
+// Map the ACP `session/prompt` stopReason to a normalized LLM finish reason for
+// the completion evaluator. `max_tokens` / `max_turn_requests` mean the model
+// ran out of token / turn budget mid-answer (truncated); `refusal` is a
+// content-filter block. Both are DEGENERATE: the completion is partial, and the
+// planner re-issuing the SAME root request just truncates / blocks again — the
+// ~70x weak-model re-spawn loop (issue elizaOS/eliza#8875). Every other
+// stopReason (`end_turn`, `cancelled`, `exit`, `stopped`, `error`, …) is a clean
+// stop and keeps the existing routing (returns undefined → no signal).
+function normalizeFinishReason(
+  stopReason: string | undefined,
+): "length" | "content_filter" | undefined {
+  if (!stopReason) return undefined;
+  switch (stopReason.toLowerCase()) {
+    case "max_tokens":
+    case "max_turn_requests":
+    case "length":
+      return "length";
+    case "refusal":
+    case "content_filter":
+      return "content_filter";
+    default:
+      return undefined;
+  }
 }
 
 function stripToolTranscript(text: string): string {
