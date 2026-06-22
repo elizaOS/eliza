@@ -572,6 +572,19 @@ export const close_window = closeWindow;
 
 // ── Screen Size ─────────────────────────────────────────────────────────────
 
+/**
+ * PowerShell command that reads the primary screen bounds on Windows.
+ *
+ * `Add-Type -AssemblyName System.Windows.Forms` MUST run before
+ * `[System.Windows.Forms.Screen]` is referenced — on a clean PowerShell session
+ * the type is otherwise unresolved (`TypeNotFound`) and the screen size silently
+ * falls back to a hard-coded default. Exported so a cross-platform unit test can
+ * guard against the assembly-load regression without spawning PowerShell.
+ */
+export const WINDOWS_PRIMARY_SCREEN_SIZE_COMMAND =
+  'powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; ' +
+  '[System.Windows.Forms.Screen]::PrimaryScreen.Bounds | ConvertTo-Json -Compress"';
+
 export function getScreenSize(): ScreenSize {
   const os = currentPlatform();
 
@@ -679,12 +692,19 @@ export function getScreenSize(): ScreenSize {
 
   if (os === "win32") {
     try {
-      const output = execSync(
-        `powershell -Command "[System.Windows.Forms.Screen]::PrimaryScreen.Bounds | ConvertTo-Json"`,
-        { encoding: "utf-8", timeout: 5000 },
-      );
+      const output = execSync(WINDOWS_PRIMARY_SCREEN_SIZE_COMMAND, {
+        encoding: "utf-8",
+        timeout: 5000,
+      });
       const bounds = JSON.parse(output);
-      return { width: bounds.Width, height: bounds.Height };
+      if (
+        typeof bounds?.Width === "number" &&
+        typeof bounds?.Height === "number" &&
+        bounds.Width > 0 &&
+        bounds.Height > 0
+      ) {
+        return { width: bounds.Width, height: bounds.Height };
+      }
     } catch {
       /* fallback */
     }
