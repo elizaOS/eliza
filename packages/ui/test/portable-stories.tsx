@@ -15,7 +15,7 @@
  */
 import { composeStories } from "@storybook/react";
 import { cleanup, render } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactElement, ReactNode } from "react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { TooltipProvider } from "../src/components/ui/tooltip";
 
@@ -90,7 +90,7 @@ export function smokeStoryModules(
 
   for (const [path, mod] of entries) {
     const name = path.split("/").pop()?.replace(".stories.tsx", "") ?? path;
-    let composed: Record<string, React.ComponentType>;
+    let composed: Record<string, ComponentType>;
     try {
       composed = composeStories(mod as Parameters<typeof composeStories>[0]);
     } catch (err) {
@@ -107,7 +107,7 @@ export function smokeStoryModules(
       for (const [storyName, Story] of stories) {
         const testFn = skip.has(`${name}/${storyName}`) ? it.skip : it;
         testFn(`${storyName} renders without throwing`, () => {
-          const { container } = render(wrap(<Story />) as React.ReactElement);
+          const { container } = render(wrap(<Story />) as ReactElement);
           expect(container.firstChild ?? container).toBeTruthy();
         });
       }
