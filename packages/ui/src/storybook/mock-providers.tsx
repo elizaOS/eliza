@@ -19,6 +19,12 @@ const noopAsync = async () => {};
 
 const baseMockApp: Partial<AppContextValue> = {
   activeGameViewerUrl: "",
+  // Branch discriminators must be explicit null, NOT left to the Proxy's
+  // `noop` fallback (a truthy function) — otherwise ChatView takes its
+  // terminal/inbox early-return branch ("Starting terminal…") instead of
+  // rendering the composer + transcript.
+  activeInboxChat: null,
+  activeTerminalSessionId: null,
   agentStatus: {
     state: "stopped",
     agentName: "elizaOS Storybook",
