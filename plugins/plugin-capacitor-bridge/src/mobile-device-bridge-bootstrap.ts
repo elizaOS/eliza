@@ -1252,21 +1252,21 @@ function bionicHostGenerate(
 
 function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 	return async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
-		const loadArgs = await resolveLoadArgsWithAutoDownload(slot);
-		if (!loadArgs) {
-			throw new Error(
-				`[mobile-device-bridge] No local GGUF model installed under ${modelsDir()} and auto-download is disabled (ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1). Install a model or unset the disable flag.`,
-			);
-		}
-
 		// GPU delegation: run the whole decode in the bionic app process over the
-		// abstract UDS (the device-bridge renderer path can't reach Vulkan). Skip
-		// the device-bridge load/formatChat/generate entirely.
+		// abstract UDS (the device-bridge renderer path can't reach Vulkan). The
+		// in-process host OWNS its default bundle (filesDir/eliza-1/bundle), so a
+		// JS-side model file is NOT required here — it is the source of truth for
+		// what is loadable on the GPU. If an installed model IS registered
+		// (multi-tier / sideloaded) forward its bundle dir; otherwise send empty
+		// and let the host load its default bundle. This decouples on-device
+		// generation from the JS download registry (a wiped/empty registry must
+		// not block a host that already has a model staged).
 		const bionicSock = bionicSocketName();
 		if (bionicSock) {
+			const installed = resolveLocalLoadArgs(slot);
 			const res = await bionicHostGenerate(bionicSock, {
 				op: "generate",
-				bundleDir: deriveBionicBundleDir(loadArgs.modelPath),
+				bundleDir: installed ? deriveBionicBundleDir(installed.modelPath) : "",
 				prompt: buildChatMlPrompt(params),
 				maxTokens: params.maxTokens ?? 256,
 			});
@@ -1281,6 +1281,15 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 				);
 			}
 			return res.text ?? "";
+		}
+
+		// Device-bridge (renderer WebSocket) path: needs a real on-device model
+		// file to load + format-chat against, so resolve (with auto-download) here.
+		const loadArgs = await resolveLoadArgsWithAutoDownload(slot);
+		if (!loadArgs) {
+			throw new Error(
+				`[mobile-device-bridge] No local GGUF model installed under ${modelsDir()} and auto-download is disabled (ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1). Install a model or unset the disable flag.`,
+			);
 		}
 
 		await mobileDeviceBridge.loadModel(loadArgs);

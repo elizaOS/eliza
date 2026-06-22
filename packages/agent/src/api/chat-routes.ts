@@ -118,10 +118,52 @@ type LocalInferenceChatApi = {
 
 let localInferenceChatApiPromise: Promise<LocalInferenceChatApi> | null = null;
 
+/**
+ * Resolve the plugin-local-inference chat API used to turn a local-inference
+ * failure into a user-facing status (download prompts, switch-model hints, …).
+ *
+ * An error-reporting path must NEVER throw. The mobile bundle can resolve the
+ * dynamic `import("@elizaos/plugin-local-inference")` to a namespace whose named
+ * export is `undefined` (tree-shake / circular-init artifact) — which previously
+ * made the catch blocks throw `getLocalInferenceChatStatus is not a function`
+ * and MASK the real error. So validate the import and fall back to a status
+ * derived from the raw error, guaranteeing the actual failure surfaces.
+ */
 function getLocalInferenceChatApi(): Promise<LocalInferenceChatApi> {
-  localInferenceChatApiPromise ??= import(
-    "@elizaos/plugin-local-inference"
-  ) as unknown as Promise<LocalInferenceChatApi>;
+  localInferenceChatApiPromise ??= (async (): Promise<LocalInferenceChatApi> => {
+    const fallback: LocalInferenceChatApi = {
+      getLocalInferenceChatStatus: async (_intent, error) => ({
+        text:
+          error instanceof Error
+            ? error.message
+            : typeof error === "string" && error
+              ? error
+              : "Local inference is unavailable.",
+        localInference: {},
+      }),
+      handleLocalInferenceChatCommand: async (_intent, prompt) => ({
+        text: prompt,
+        localInference: {},
+      }),
+    };
+    try {
+      const mod = (await import(
+        "@elizaos/plugin-local-inference"
+      )) as Partial<LocalInferenceChatApi>;
+      return {
+        getLocalInferenceChatStatus:
+          typeof mod.getLocalInferenceChatStatus === "function"
+            ? mod.getLocalInferenceChatStatus
+            : fallback.getLocalInferenceChatStatus,
+        handleLocalInferenceChatCommand:
+          typeof mod.handleLocalInferenceChatCommand === "function"
+            ? mod.handleLocalInferenceChatCommand
+            : fallback.handleLocalInferenceChatCommand,
+      };
+    } catch {
+      return fallback;
+    }
+  })();
   return localInferenceChatApiPromise;
 }
 
