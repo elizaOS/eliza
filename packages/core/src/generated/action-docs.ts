@@ -3376,7 +3376,7 @@ export const allActionsSpec = {
 		{
 			name: "BROWSER",
 			description:
-				"BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab.",
+				"BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
 			parameters: [
 				{
 					name: "target",
@@ -3451,10 +3451,33 @@ export const allActionsSpec = {
 							"cursor_move",
 							"cursor_hide",
 							"autofill_login",
+							"wait_for_url",
 						],
 					},
 					descriptionCompressed:
 						"Browser action. Snake_case canonical. legacy kebab-case and subaction accepted.",
+				},
+				{
+					name: "pattern",
+					description:
+						"For action=wait_for_url: substring or /regex/ to match the tab URL (e.g. callback?code=, or /\\/done$/).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"For action=wait_for_url: substring or /regex/ to match the tab URL (e. g. callback?code=, or /\\/done$/).",
+				},
+				{
+					name: "pollIntervalMs",
+					description:
+						"For action=wait_for_url: poll cadence in ms. Default 2000.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For action=wait_for_url: poll cadence in ms. Default 2000.",
 				},
 				{
 					name: "tabAction",
@@ -3635,7 +3658,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Browser open|navigate|click|type|screenshot|state|autofill_login; bridge status elsewhere",
+				"Browser open|navigate|click|type|screenshot|state|autofill_login|wait_for_url; bridge status elsewhere",
 			similes: [
 				"BROWSE_SITE",
 				"BROWSER_SESSION",
@@ -3664,6 +3687,8 @@ export const allActionsSpec = {
 							streamProgress: false,
 							rationale: "example",
 							action: "back",
+							pattern: "example",
+							pollIntervalMs: 1,
 							tabAction: "close",
 							domain: "example",
 							username: "example",
@@ -9525,7 +9550,7 @@ export const allActionsSpec = {
 				{
 					name: "action",
 					description:
-						"Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.",
+						"Operation: list, get, search, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.",
 					required: true,
 					schema: {
 						type: "string",
@@ -9548,7 +9573,18 @@ export const allActionsSpec = {
 						],
 					},
 					descriptionCompressed:
-						"Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.",
+						"Operation: list, get, search, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.",
+				},
+				{
+					name: "query",
+					description:
+						"Free text to match a workflow by name / node type for action=search.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Free text to match a workflow by name/node type for action=search.",
 				},
 				{
 					name: "workflowId",
@@ -9681,6 +9717,7 @@ export const allActionsSpec = {
 					params: {
 						WORKFLOW: {
 							action: "list",
+							query: "example",
 							workflowId: "example",
 							executionId: "example",
 							workflowName: "example",

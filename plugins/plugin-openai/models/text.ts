@@ -900,18 +900,16 @@ function createLlmCallDetails(
     responseSchema: originalParams.responseSchema,
     providerOptions:
       providerOptions ?? nativeParams?.providerOptions ?? originalParams.providerOptions,
-	    temperature: params.temperature ?? 0,
-	    maxTokens:
-	      typeof nativeParams?.maxOutputTokens === "number"
-	        ? nativeParams.maxOutputTokens
-	        : params.omitMaxTokens
-	          ? 0
-	          : (params.maxTokens ?? 8192),
-	    maxTokensOmitted:
-	      params.omitMaxTokens && typeof nativeParams?.maxOutputTokens !== "number"
-	        ? true
-	        : undefined,
-	    purpose: "external_llm",
+    temperature: params.temperature ?? 0,
+    maxTokens:
+      typeof nativeParams?.maxOutputTokens === "number"
+        ? nativeParams.maxOutputTokens
+        : params.omitMaxTokens
+          ? 0
+          : (params.maxTokens ?? 8192),
+    maxTokensOmitted:
+      params.omitMaxTokens && typeof nativeParams?.maxOutputTokens !== "number" ? true : undefined,
+    purpose: "external_llm",
     actionType,
   };
 }

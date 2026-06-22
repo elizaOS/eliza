@@ -201,14 +201,8 @@ describe("OpenAI native text plumbing", () => {
       prompt: "use default cap",
     } as never);
 
-    const omittedCall = aiMocks.generateText.mock.calls[0][0] as Record<
-      string,
-      unknown
-    >;
-    const defaultCall = aiMocks.generateText.mock.calls[1][0] as Record<
-      string,
-      unknown
-    >;
+    const omittedCall = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+    const defaultCall = aiMocks.generateText.mock.calls[1][0] as Record<string, unknown>;
     expect(omittedCall).not.toHaveProperty("maxOutputTokens");
     expect(defaultCall.maxOutputTokens).toBe(8192);
   });

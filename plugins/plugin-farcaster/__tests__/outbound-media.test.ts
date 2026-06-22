@@ -1,6 +1,8 @@
 import type { Content, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { FarcasterCastService } from "../services/CastService";
+import { extractCastEmbedUrls } from "../utils";
+import { standardCastHandlerCallback } from "../utils/callbacks";
 
 // Outbound media coverage for the Farcaster connector (#8876). Agent-generated
 // `Media` attachments must ride along as Farcaster cast EMBEDS (url-based), which
@@ -106,5 +108,70 @@ describe("Farcaster outbound media (embeds)", () => {
       service.handleSendPost(rt, { text: "   ", accountId: ACCOUNT } as Content)
     ).rejects.toThrow("requires non-empty text");
     expect(testClient.sendCast).not.toHaveBeenCalled();
+  });
+});
+
+describe("extractCastEmbedUrls (#8990)", () => {
+  it("collects non-empty attachment urls and skips blank/missing", () => {
+    const urls = extractCastEmbedUrls({
+      text: "hi",
+      attachments: [
+        { id: "1", url: "https://cdn.example.com/a.png" },
+        { id: "2", url: "" },
+        { id: "3" },
+        { id: "4", url: "https://cdn.example.com/b.mp4" },
+      ],
+    } as unknown as Content);
+    expect(urls).toEqual([
+      "https://cdn.example.com/a.png",
+      "https://cdn.example.com/b.mp4",
+    ]);
+  });
+
+  it("returns [] when there are no attachments", () => {
+    expect(extractCastEmbedUrls({ text: "hi" } as Content)).toEqual([]);
+  });
+});
+
+describe("Farcaster mention-reply attaches media (#8990)", () => {
+  const roomId = "00000000-0000-0000-0000-0000000000bb" as const;
+
+  it("passes attachment urls as embeds when replying to a mention", async () => {
+    const testClient = client();
+    const rt = runtime({ FARCASTER_FID: "1" });
+    const callback = standardCastHandlerCallback({
+      client: testClient as never,
+      runtime: rt,
+      config: { FARCASTER_DRY_RUN: false, accountId: ACCOUNT } as never,
+      roomId: roomId as never,
+      inReplyTo: { hash: "0xparent", fid: 2 } as never,
+    });
+
+    await callback({
+      text: "here you go",
+      attachments: [
+        { id: "img", url: "https://cdn.example.com/cat.png", contentType: "image" },
+      ],
+    } as Content);
+
+    expect(testClient.sendCast).toHaveBeenCalledWith(
+      expect.objectContaining({ embeds: ["https://cdn.example.com/cat.png"] })
+    );
+  });
+
+  it("replies text-only with empty embeds when there are no attachments (no regression)", async () => {
+    const testClient = client();
+    const rt = runtime({ FARCASTER_FID: "1" });
+    const callback = standardCastHandlerCallback({
+      client: testClient as never,
+      runtime: rt,
+      config: { FARCASTER_DRY_RUN: false } as never,
+      roomId: roomId as never,
+    });
+
+    await callback({ text: "just text" } as Content);
+
+    const arg = testClient.sendCast.mock.calls[0][0] as { embeds?: string[] };
+    expect(arg.embeds).toEqual([]);
   });
 });

@@ -3,7 +3,7 @@ import type { Cast as NeynarCast } from "@neynar/nodejs-sdk/build/api";
 import type { FarcasterClient } from "../client";
 import type { CastId, FarcasterConfig } from "../types";
 import { DEFAULT_FARCASTER_ACCOUNT_ID, normalizeFarcasterAccountId } from "./config";
-import { createCastMemory, neynarCastToCast } from "./index";
+import { createCastMemory, extractCastEmbedUrls, neynarCastToCast } from "./index";
 
 export function standardCastHandlerCallback({
   client,
@@ -33,7 +33,13 @@ export function standardCastHandlerCallback({
         return [];
       }
 
-      const casts = await client.sendCast({ content, inReplyTo });
+      // Attach agent-generated media as cast embeds so mention replies don't
+      // silently drop attachments (the POST connector already does this) — #8990.
+      const casts = await client.sendCast({
+        content,
+        inReplyTo,
+        embeds: extractCastEmbedUrls(content),
+      });
 
       if (casts.length === 0) {
         runtime.logger.warn("[Farcaster] No casts posted");
