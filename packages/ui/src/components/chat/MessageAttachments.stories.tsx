@@ -125,6 +125,24 @@ export const Document: Story = {
   },
 };
 
+/**
+ * 3D model — currently surfaces as a downloadable file card (inline
+ * model-viewer rendering is deferred; the bytes remain viewable/accessible via
+ * download), so a generated/uploaded .glb is never walled off.
+ */
+export const Model3D: Story = {
+  args: {
+    attachments: [
+      att({
+        id: "model",
+        url: "https://example.com/scene.glb",
+        contentType: "document",
+        title: "scene.glb",
+      }),
+    ],
+  },
+};
+
 /** Several attachments of mixed kinds in one message. */
 export const Multiple: Story = {
   args: {
