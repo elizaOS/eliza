@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
 	commandActions,
 	commandShortcuts,
+	explicitCommandShortcuts,
 	dispatchCommandMessage,
 	getCommandSettings,
+	naturalShortcuts,
 	resolveCommand,
 } from "../src/actions";
 import {
@@ -208,11 +210,15 @@ describe("command actions — slash-only validate (#8790)", () => {
 });
 
 describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
-	it("every slash shortcut targets a registered command action", () => {
+	it("every shortcut targets a registered command action", () => {
 		const actionNames = new Set(commandActions.map((a) => a.name));
 		expect(commandShortcuts.length).toBeGreaterThan(0);
+		// commandShortcuts = explicit slash shortcuts + flag-gated natural ones.
+		expect(commandShortcuts).toEqual([
+			...explicitCommandShortcuts,
+			...naturalShortcuts,
+		]);
 		for (const shortcut of commandShortcuts) {
-			expect(shortcut.kind).toBe("explicit");
 			expect(shortcut.target.kind).toBe("action");
 			if (shortcut.target.kind === "action") {
 				expect(actionNames.has(shortcut.target.name)).toBe(true);
@@ -220,12 +226,22 @@ describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
 		}
 	});
 
-	it("shortcut aliases match the command's text aliases (slash-only)", () => {
-		for (const shortcut of commandShortcuts) {
+	it("explicit slash shortcuts are explicit-only with slash aliases", () => {
+		expect(explicitCommandShortcuts.length).toBeGreaterThan(0);
+		for (const shortcut of explicitCommandShortcuts) {
+			expect(shortcut.kind).toBe("explicit");
 			expect(shortcut.aliases && shortcut.aliases.length > 0).toBe(true);
 			for (const alias of shortcut.aliases ?? []) {
 				expect(alias.startsWith("/")).toBe(true);
 			}
+		}
+	});
+
+	it("natural shortcuts carry no slash aliases (flag-gated, anchored patterns)", () => {
+		for (const shortcut of naturalShortcuts) {
+			expect(shortcut.kind).toBe("natural");
+			expect(shortcut.aliases ?? []).toHaveLength(0);
+			expect(shortcut.patterns && shortcut.patterns.length > 0).toBe(true);
 		}
 	});
 
