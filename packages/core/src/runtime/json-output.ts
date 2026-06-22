@@ -208,3 +208,24 @@ function escapeRawJsonStringChar(char: string): string {
 export function stringifyForModel(value: unknown): string {
 	return JSON.stringify(value, null, 2);
 }
+
+/**
+ * Clean a model-produced reply field before it reaches the user. Removes
+ * structural junk that weak models emit as plain text but which is never
+ * user-facing content:
+ *   1. the model's NATIVE tool-call serialization emitted as text instead of a
+ *      structured call, e.g.
+ *      `<tool_call>WEB_FETCH<arg_key>url</arg_key><arg_value>…</arg_value></tool_call>`
+ *      (observed on cerebras gpt-oss / zai; eliza routes real tool calls
+ *      structurally, and `<arg_key>` never appears in eliza's own format), and
+ *   2. a reply that is ONLY JSON punctuation (braces/brackets/quotes/commas).
+ * Structural artifact removal — the sibling of the existing `[tool output:]`
+ * markup stripping — not semantic-content matching.
+ */
+export function stripJsonStructuralJunkReply(value: string): string {
+	const cleaned = value
+		.replace(/<tool_call\b[\s\S]*?(?:<\/tool_call>|$)/gi, "")
+		.trim();
+	if (!cleaned) return "";
+	return /^[\s{}[\]":,]+$/.test(cleaned) ? "" : cleaned;
+}
