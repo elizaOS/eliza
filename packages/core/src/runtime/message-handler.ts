@@ -5,7 +5,7 @@ import type {
 	MessageHandlerResult,
 } from "../types/components";
 import type { AgentContext } from "../types/contexts";
-import { parseJsonObject } from "./json-output";
+import { parseJsonObject, stripJsonStructuralJunkReply } from "./json-output";
 import {
 	looksLikeNonRefusalStage1HonestyViolation,
 	looksLikeStage1HonestyViolation,
@@ -111,12 +111,6 @@ export function parseMessageHandlerOutput(
 		thought: "",
 		...(extract ? { extract } : {}),
 	};
-}
-
-function stripJsonStructuralJunkReply(value: string): string {
-	const trimmed = value.trim();
-	if (!trimmed) return "";
-	return /^[\s{}[\]":,]+$/.test(trimmed) ? "" : trimmed;
 }
 
 function normalizeStringHints(raw: unknown, maxItems: number): string[] {

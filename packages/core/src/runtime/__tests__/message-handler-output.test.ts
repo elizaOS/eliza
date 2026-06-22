@@ -14,6 +14,31 @@ describe("message handler retrieval hint output", () => {
 		expect(replyTextFieldEvaluator.parse("Hello there.")).toBe("Hello there.");
 	});
 
+	it("strips leaked model tool-call markup out of replyText", () => {
+		// Weak models emit their native tool-call serialization as plain text;
+		// it must never reach the user. Cover closed, truncated-open, and
+		// markup-only forms.
+		expect(
+			replyTextFieldEvaluator.parse(
+				"Bitcoin is at <tool_call>WEB_FETCH<arg_key>url</arg_key><arg_value>x</arg_value></tool_call>",
+			),
+		).toBe("Bitcoin is at");
+		expect(
+			replyTextFieldEvaluator.parse("answer: 4 <tool_call>TASKS_SPAWN_AGENT"),
+		).toBe("answer: 4");
+		expect(replyTextFieldEvaluator.parse("<tool_call>X</tool_call>")).toBe("");
+	});
+
+	it("preserves prose that merely mentions tool-call markup", () => {
+		// The truncated-open branch must not eat a documentation/explanation reply
+		// to end-of-string just because it contains the literal `<tool_call>`.
+		expect(
+			replyTextFieldEvaluator.parse(
+				"To call a tool, the model emits <tool_call> followed by the name.",
+			),
+		).toBe("To call a tool, the model emits <tool_call> followed by the name.");
+	});
+
 	it("parses, trims, dedupes, and caps canonical action hint arrays", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({

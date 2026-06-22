@@ -208,3 +208,39 @@ function escapeRawJsonStringChar(char: string): string {
 export function stringifyForModel(value: unknown): string {
 	return JSON.stringify(value, null, 2);
 }
+
+/**
+ * Clean a model-produced reply field before it reaches the user. Removes
+ * structural junk that weak models emit as plain text but which is never
+ * user-facing content:
+ *   1. the model's NATIVE tool-call serialization emitted as text instead of a
+ *      structured call, e.g.
+ *      `<tool_call>WEB_FETCH<arg_key>url</arg_key><arg_value>...</arg_value></tool_call>`
+ *      (observed on cerebras gpt-oss / zai; eliza routes real tool calls
+ *      structurally, and this markup never appears in eliza's own format), and
+ *   2. a reply that is ONLY JSON punctuation (braces/brackets/quotes/commas).
+ *
+ * Structural artifact removal - the sibling of the existing `[tool output:]`
+ * markup stripping - not semantic-content matching. The truncated-open branch is
+ * deliberately conservative: it only swallows to end-of-string when the markup is
+ * unmistakably a serialized call (an uppercase ACTION token or the native
+ * `<arg_key>`/`<arg_value>` markup follows), so a reply that merely *mentions*
+ * `<tool_call>` in prose is preserved.
+ */
+export function stripJsonStructuralJunkReply(value: string): string {
+	const cleaned = value
+		// Fully-serialized (paired) tool-call markup leaked as text.
+		.replace(/<tool_call\b[\s\S]*?<\/tool_call>/gi, "")
+		// Truncated-open markup (no closing tag): only strip to end when it is
+		// clearly a leaked serialization - an uppercase ACTION token or the native
+		// `<arg_key>`/`<arg_value>` markup follows. Case-SENSITIVE on purpose: the
+		// uppercase action token is what distinguishes a real leaked call from a
+		// bare prose mention of `<tool_call>` (which must be preserved).
+		.replace(
+			/<tool_call\b[^>]*>\s*(?=[A-Z][A-Z0-9_]{2,}|[\s\S]*?<arg_(?:key|value)\b)[\s\S]*$/g,
+			"",
+		)
+		.trim();
+	if (!cleaned) return "";
+	return /^[\s{}[\]":,]+$/.test(cleaned) ? "" : cleaned;
+}

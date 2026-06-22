@@ -76,7 +76,10 @@ import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
-import { parseJsonObject } from "../runtime/json-output";
+import {
+	parseJsonObject,
+	stripJsonStructuralJunkReply,
+} from "../runtime/json-output";
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
 	getMessageHandlerReply,
@@ -3649,8 +3652,9 @@ export function messageHandlerFromFieldResult(
 		!rawContexts.some((context) => context.toLowerCase() === "code")
 			? ["code", ...rawContexts]
 			: rawContexts;
-	const replyTextRaw =
-		typeof result.replyText === "string" ? result.replyText : "";
+	const replyTextRaw = stripJsonStructuralJunkReply(
+		typeof result.replyText === "string" ? result.replyText : "",
+	);
 	const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
 		candidateActions,
 		runtimeContext,
