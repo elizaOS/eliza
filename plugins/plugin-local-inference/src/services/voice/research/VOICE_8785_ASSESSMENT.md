@@ -117,7 +117,7 @@ AGENT_SELF_VOICE_THRESHOLD` vs the agent's TTS imprint → hard-suppress). What
 remains is the audio-frame plumbing + the cheap half-duplex layer (research §3):
 1. **`agentSpeaking` flag + ~1.5 s post-TTS cooldown with a raised RMS gate** — cheap, robust, no new model. *(Effective half-duplex; ship first.)*
 2. **WebRTC AEC3 with a time-aligned playback reference**, interrupt detection off the linear-filter output — true barge-in.
-3. **Wire `selfVoiceSimilarity`** — imprint the agent's TTS voice (we already have the WeSpeaker encoder) and feed the live cosine into the gate's already-built self-voice branch.
+3. **Wire `selfVoiceSimilarity`** — imprint the agent's TTS voice (we already have the WeSpeaker encoder) and feed the live cosine into the gate's already-built self-voice branch. **Measured (real, `agentvoice:real`):** the agent's on-device TTS voice embeds **more self-similar (~0.37) than human (~0.15 / −0.13)** — a clear, rejectable margin (~0.22) — but the within-agent consistency is modest (real-human voices cluster ~0.72). So imprint the agent from a **centroid over many utterances** (not a single clip) and use a **lower, agent-specific threshold** combined with the `agentSpeaking` timing gate, rather than the 0.78 human-enrollment bar.
 
 Track as a follow-up issue; the workbench `echo-rejection` scorer (incl. the
 mis-transcribed case) is ready to gate it.
