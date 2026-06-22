@@ -68,6 +68,7 @@ function analysis(
           },
           models: {
             artifacts: 0,
+            stagedBundles: 0,
             inventory: [],
           },
         },
@@ -566,6 +567,7 @@ describe("training readiness report", () => {
       },
       models: {
         artifacts: 10,
+        stagedBundles: 0,
         inventory: ["2b", "4b", "9b", "27b"].flatMap((tier) =>
           (["base", "trained"] as const).map((variant) => ({
             model: `eliza-1-${tier}-${variant}`,
@@ -955,6 +957,7 @@ describe("training readiness report", () => {
         },
         models: {
           artifacts: 0,
+          stagedBundles: 0,
           inventory: [],
         },
       }),

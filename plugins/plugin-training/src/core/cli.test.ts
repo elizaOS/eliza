@@ -559,7 +559,7 @@ describe("training CLI collection options", () => {
           ],
         },
       },
-    } as TrainingCollectionRunResult);
+    } as unknown as TrainingCollectionRunResult);
 
     expect(lines).toContain("[run-collection] readme=/tmp/collection/README.md");
     expect(lines).toContain(
@@ -682,7 +682,7 @@ describe("training CLI collection options", () => {
           readinessGaps: [],
         },
       },
-    } as TrainingCollectionRunResult);
+    } as unknown as TrainingCollectionRunResult);
 
     expect(lines).toContain(
       "[run-collection] failed-steps feed:Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
@@ -782,7 +782,7 @@ describe("training CLI collection options", () => {
           ],
         },
       },
-    } as TrainingCollectionRunResult;
+    } as unknown as TrainingCollectionRunResult;
 
     const lines = formatRunCollectionSummary(baseResult);
 
@@ -823,6 +823,36 @@ describe("training CLI collection options", () => {
               recommendedParams: { actionBenchmarkPairs: "all" },
             },
           ],
+          coverage: {
+            dataSources: {
+              huggingFace: 0,
+              feed: 0,
+              natural: 0,
+              scenarios: 0,
+              tests: 0,
+              trainingJsonl: 0,
+            },
+            readableSamples: {
+              huggingFace: 0,
+              feed: 0,
+              natural: 0,
+              scenarios: 0,
+              tests: 0,
+              trainingJsonl: 0,
+              total: 0,
+            },
+            evals: { artifacts: 0, comparisons: 0, scoredComparisons: 0 },
+            benchmarks: {
+              matrices: 0,
+              comparisons: 0,
+              scoredComparisons: 0,
+              caseSamples: 0,
+              tiers: [],
+              allEliza1TiersCovered: false,
+              tierCoverage: [],
+            },
+            models: { artifacts: 0, stagedBundles: 0, inventoryCount: 0 },
+          },
           artifactCount: 24,
           stepCounts: { skipped: 1, succeeded: 10, failed: 0 },
           dataSources: {
@@ -947,6 +977,7 @@ describe("training CLI collection options", () => {
             benchmarkComparisons: 5,
             caseSamples: 8,
             tiers: ["2b", "2b", "4b", "9b", "27b"],
+            comparisonInventory: [],
             baselineProgress: {
               tierOrder: ["2b", "2b", "4b", "9b", "27b"],
               establishedTiers: ["2b", "2b"],

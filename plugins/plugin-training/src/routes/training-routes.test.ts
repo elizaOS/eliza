@@ -3,11 +3,41 @@ import type http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { TrajectoryListResult } from "@elizaos/agent";
 import type { TrainingServiceLike } from "../services/training-service-like.js";
 import {
   handleTrainingRoutes,
   type TrainingRouteContext,
 } from "./training-routes.js";
+
+type TrajRecord = TrajectoryListResult["trajectories"][number];
+
+/** Build a full TrajectorySummaryRecord from an id (test fixture). */
+function trajRecord(id: string, extra: Partial<TrajRecord> = {}): TrajRecord {
+  return {
+    id,
+    agentId: "agent-1",
+    source: "test",
+    status: "completed",
+    startTime: 0,
+    endTime: 1,
+    durationMs: 1,
+    llmCallCount: 0,
+    providerAccessCount: 0,
+    totalPromptTokens: 0,
+    totalCompletionTokens: 0,
+    createdAt: "1970-01-01T00:00:00.000Z",
+    ...extra,
+  };
+}
+
+/** Wrap records in a full TrajectoryListResult (offset/limit are required). */
+function listResult(
+  trajectories: TrajRecord[],
+  total = trajectories.length,
+): TrajectoryListResult {
+  return { trajectories, total, offset: 0, limit: 50 };
+}
 
 const tempDirs: string[] = [];
 
@@ -20,7 +50,7 @@ async function makeTempDir(): Promise<string> {
 function trainingService(): TrainingServiceLike {
   return {
     getStatus: () => ({}),
-    listTrajectories: async () => ({ trajectories: [], total: 0 }),
+    listTrajectories: async () => listResult([], 0),
     getTrajectoryById: async () => null,
     listDatasets: () => [],
     buildDataset: async () => ({}),
@@ -219,10 +249,7 @@ describe("training routes", () => {
       ...trainingService(),
       listTrajectories: async (options: Record<string, unknown>) => {
         calls.push(options);
-        return {
-          trajectories: [{ id: "traj-keep" }, { id: "traj-drop" }],
-          total: 2,
-        };
+        return listResult([trajRecord("traj-keep"), trajRecord("traj-drop")], 2);
       },
       getTrajectoryById: async (id: string) => {
         const runId = id === "traj-keep" ? "app-run-1" : "app-run-2";
