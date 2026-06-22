@@ -213,7 +213,11 @@ export function VoiceSection({
     <section data-testid="voice-section" className={cn(className)}>
       <SettingsStack>
         <SettingsGroup bare>
-          <VoiceTierBanner tier={tier ?? "GOOD"} summary={tierSummary} />
+          <VoiceTierBanner
+            tier={tier ?? "GOOD"}
+            summary={tierSummary}
+            compact
+          />
         </SettingsGroup>
 
         <SettingsGroup

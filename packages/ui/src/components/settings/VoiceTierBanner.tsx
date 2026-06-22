@@ -110,12 +110,14 @@ export function VoiceTierBanner({
             {tier}
           </span>
         </div>
-        <p
-          className="mt-0.5 text-xs leading-snug text-muted"
-          data-testid="voice-tier-description"
-        >
-          {copy.description}
-        </p>
+        {!compact ? (
+          <p
+            className="mt-0.5 text-xs leading-snug text-muted"
+            data-testid="voice-tier-description"
+          >
+            {copy.description}
+          </p>
+        ) : null}
         {summary ? (
           <p
             className="mt-0.5 text-xs text-muted/80"

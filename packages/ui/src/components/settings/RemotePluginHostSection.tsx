@@ -493,21 +493,23 @@ export function RemotePluginHostSection() {
           ...appNameInterpolationVars(branding),
         })}
         footer={
-          <>
-            {storeRoot ? (
-              <button
-                ref={revealStoreRef}
-                type="button"
-                className="flex items-center gap-1.5 text-muted/80 hover:text-txt"
-                onClick={() => void desktopOpenPath(storeRoot)}
-                {...revealStoreAgentProps}
-              >
-                <code className="truncate">{storeRoot}</code>
-                <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              </button>
-            ) : null}
-            {error ? <span className="text-warn">{error}</span> : null}
-          </>
+          storeRoot || error ? (
+            <>
+              {storeRoot ? (
+                <button
+                  ref={revealStoreRef}
+                  type="button"
+                  className="flex items-center gap-1.5 text-muted/80 hover:text-txt"
+                  onClick={() => void desktopOpenPath(storeRoot)}
+                  {...revealStoreAgentProps}
+                >
+                  <code className="truncate">{storeRoot}</code>
+                  <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                </button>
+              ) : null}
+              {error ? <span className="text-warn">{error}</span> : null}
+            </>
+          ) : undefined
         }
       >
         <div className="flex flex-col gap-2 py-2.5 sm:flex-row">
