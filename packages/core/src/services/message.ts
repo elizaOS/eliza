@@ -150,6 +150,7 @@ import type {
 	ActionResult,
 	AgentContext,
 	HandlerCallback,
+	MessageHandlerDeterministicToolCall,
 	MessageHandlerResult,
 	Provider,
 	StreamChunkCallback,
@@ -2364,6 +2365,25 @@ function getMessageHandlerParentActionHints(
 	);
 }
 
+function getMessageHandlerDeterministicToolCall(
+	messageHandler: MessageHandlerResult,
+): PlannerToolCall | null {
+	const toolCall = (
+		messageHandler.plan as {
+			deterministicToolCall?: MessageHandlerDeterministicToolCall;
+		}
+	).deterministicToolCall;
+	const name = String(toolCall?.name ?? "").trim();
+	if (!name) {
+		return null;
+	}
+	return {
+		id: `deterministic-${normalizeActionIdentifier(name).toLowerCase() || "tool"}`,
+		name,
+		params: isRecord(toolCall?.params) ? { ...toolCall.params } : undefined,
+	};
+}
+
 function buildFullV5PlannerActionSurface(params: {
 	actions: readonly Action[];
 	candidateActions?: readonly string[];
@@ -4205,6 +4225,64 @@ function shouldUseDirectReplyFastPath(args: {
 	return true;
 }
 
+async function responseHandlerEvaluatorClaimsDirectFastPathTurn(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	availableContexts: readonly ContextDefinition[];
+}): Promise<boolean> {
+	const registered = Array.isArray(args.runtime.responseHandlerEvaluators)
+		? (args.runtime.responseHandlerEvaluators as readonly ResponseHandlerEvaluator[])
+		: [];
+	const evaluators = [...BUILTIN_RESPONSE_HANDLER_EVALUATORS, ...registered]
+		.filter((evaluator) => evaluator.name !== "core.simple_registered_action_request")
+		.sort(
+			(a, b) =>
+				(a.priority ?? 100) - (b.priority ?? 100) ||
+				a.name.localeCompare(b.name),
+		);
+	if (evaluators.length === 0) return false;
+
+	const probeHandler: MessageHandlerResult = {
+		processMessage: "RESPOND",
+		thought: "Direct private chat fast path probe.",
+		plan: {
+			contexts: [SIMPLE_CONTEXT_ID],
+			reply: "",
+			simple: true,
+			requiresTool: false,
+		},
+	};
+
+	for (const evaluator of evaluators) {
+		try {
+			if (
+				await evaluator.shouldRun({
+					runtime: args.runtime,
+					message: args.message,
+					state: args.state,
+					messageHandler: probeHandler,
+					availableContexts: args.availableContexts,
+				})
+			) {
+				return true;
+			}
+		} catch (error) {
+			args.runtime.logger.warn(
+				{
+					src: "service:message",
+					evaluator: evaluator.name,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Skipping direct reply fast path after response-handler evaluator probe failed",
+			);
+			return true;
+		}
+	}
+
+	return false;
+}
+
 function looksLikeContextDependentMutationRequest(text: string): boolean {
 	const tokens = new Set(
 		tokenizeActionMetadata(text).map(normalizeSingularToken),
@@ -5523,23 +5601,32 @@ function collectPreviousActionResults(
 		if (!step.result || !step.toolCall) {
 			continue;
 		}
-		results.push({
-			success: step.result.success,
-			text: step.result.text,
-			data: {
-				actionName: step.toolCall.name,
-				...(step.result.data ?? {}),
-			},
-			error:
-				typeof step.result.error === "string"
-					? step.result.error
-					: step.result.error instanceof Error
-						? step.result.error.message
-						: undefined,
-			continueChain: step.result.continueChain,
-		});
+		results.push(
+			actionResultFromPlannerToolResult(step.toolCall, step.result),
+		);
 	}
 	return results;
+}
+
+function actionResultFromPlannerToolResult(
+	toolCall: PlannerToolCall,
+	result: PlannerToolResult,
+): ActionResult {
+	return {
+		success: result.success,
+		text: result.text,
+		data: {
+			actionName: toolCall.name,
+			...(result.data ?? {}),
+		},
+		error:
+			typeof result.error === "string"
+				? result.error
+				: result.error instanceof Error
+					? result.error.message
+					: undefined,
+		continueChain: result.continueChain,
+	};
 }
 
 /**
@@ -5752,7 +5839,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			shouldUseDirectReplyFastPath({
 				message: args.message,
 				actions: args.runtime.actions,
-			})
+			}) &&
+			!(await responseHandlerEvaluatorClaimsDirectFastPathTurn({
+				runtime: args.runtime,
+				message: args.message,
+				state: args.state,
+				availableContexts,
+			}))
 		) {
 			const fastStartedAt = Date.now();
 			const fastMessageHandler: MessageHandlerResult = {
@@ -6459,6 +6552,8 @@ export async function runV5MessageRuntimeStage1(args: {
 		const responseHandlerContextSlices = stringArrayProperty(
 			(messageHandler.plan as { contextSlices?: unknown }).contextSlices,
 		);
+		const deterministicToolCall =
+			getMessageHandlerDeterministicToolCall(messageHandler);
 		const plannerContextWithDecision = appendContextEvent(plannerContext, {
 			id: `message-handler:${messageHandlerEndedAt}`,
 			type: "message_handler",
@@ -6476,6 +6571,14 @@ export async function runV5MessageRuntimeStage1(args: {
 						: {}),
 					candidateActions: getMessageHandlerCandidateActions(messageHandler),
 					parentActionHints: getMessageHandlerParentActionHints(messageHandler),
+					...(deterministicToolCall
+						? {
+								deterministicToolCall: {
+									name: deterministicToolCall.name,
+									params: (deterministicToolCall.params ?? {}) as JsonValue,
+								},
+							}
+						: {}),
 					...(responseHandlerContextSlices.length > 0
 						? { contextSlices: responseHandlerContextSlices }
 						: {}),
@@ -6563,6 +6666,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			copyToClipboard: () => undefined,
 			messageToUser: () => undefined,
 		};
+		const deterministicActionResults: ActionResult[] = [];
 
 		// CONTEXT_BEFORE (blocking): hooks tagged with one of the selected
 		// contexts run after Stage 1 routes, before the planner loop begins.
@@ -6578,6 +6682,83 @@ export async function runV5MessageRuntimeStage1(args: {
 				selectedContexts,
 			})
 			.catch(() => {});
+
+		if (deterministicToolCall) {
+			const deterministicToolResult = await executeV5PlannedToolCall({
+				runtime: args.runtime,
+				toolCall: deterministicToolCall,
+				plannerContext: plannerContextAfterEarlyReply,
+				executorCtx: {
+					message: args.message,
+					state: plannerState,
+					activeContexts: selectedContexts,
+					userRoles: [senderRole],
+					previousResults: [],
+				},
+				plannerRuntime,
+				executorOptions: { actions: plannerCandidateActions },
+				evaluatorEffects,
+				recorder,
+				trajectoryId,
+				plannerLoopConfig: args.plannerLoopConfig,
+			});
+			const deterministicActionResult = actionResultFromPlannerToolResult(
+				deterministicToolCall,
+				deterministicToolResult,
+			);
+			deterministicActionResults.push(deterministicActionResult);
+			if (deterministicToolResult.success) {
+				await args.runtime.runActionsByMode(
+					"CONTEXT_AFTER",
+					args.message,
+					plannerState,
+					{ selectedContexts },
+				);
+				const finalPlannerState = withActionResultsForPrompt(
+					plannerState,
+					deterministicActionResults,
+				);
+				const plannedText = String(
+					deterministicToolResult.userFacingText ??
+						deterministicToolResult.text ??
+						"",
+				).trim();
+				const plannedTextRepeatsEarlyReply =
+					earlyReplySent &&
+					normalizeVisibleTextForDuplicateCheck(plannedText) ===
+						normalizeVisibleTextForDuplicateCheck(earlyReplyText);
+
+				return {
+					kind: "planned_reply",
+					messageHandler,
+					result:
+						plannedText && !plannedTextRepeatsEarlyReply
+							? createV5ReplyStrategyResult({
+									...args,
+									state: finalPlannerState,
+									text: plannedText,
+									thought: `Executed deterministic tool call ${deterministicToolCall.name}.`,
+								})
+							: {
+									responseContent: null,
+									responseMessages: [],
+									state: finalPlannerState,
+									mode: "none",
+								},
+				};
+			}
+			args.runtime.logger.warn?.(
+				{
+					src: "service:message",
+					action: deterministicToolCall.name,
+					error:
+						deterministicToolResult.error instanceof Error
+							? deterministicToolResult.error.message
+							: deterministicToolResult.error,
+				},
+				"Deterministic response-handler tool call failed; falling back to planner",
+			);
+		}
 
 		let plannerResult: PlannerLoopResult;
 		try {
@@ -6600,7 +6781,10 @@ export async function runV5MessageRuntimeStage1(args: {
 							state: plannerState,
 							activeContexts: selectedContexts,
 							userRoles: [senderRole],
-							previousResults: collectPreviousActionResults(ctx.trajectory),
+							previousResults: [
+								...deterministicActionResults,
+								...collectPreviousActionResults(ctx.trajectory),
+							],
 						},
 						plannerRuntime,
 						executorOptions: { actions: exposedPlannerActions },
@@ -6654,9 +6838,13 @@ export async function runV5MessageRuntimeStage1(args: {
 		const actionResults = collectPreviousActionResults(
 			plannerResult.trajectory,
 		);
+		const allActionResults =
+			deterministicActionResults.length > 0
+				? [...deterministicActionResults, ...actionResults]
+				: actionResults;
 		const finalPlannerState =
-			actionResults.length > 0
-				? withActionResultsForPrompt(plannerState, actionResults)
+			allActionResults.length > 0
+				? withActionResultsForPrompt(plannerState, allActionResults)
 				: plannerState;
 		const plannedText = String(plannerResult.finalMessage ?? "").trim();
 		const plannedTextRepeatsEarlyReply =

@@ -1,5 +1,6 @@
 import type {
 	MessageHandlerAction,
+	MessageHandlerDeterministicToolCall,
 	MessageHandlerResult,
 } from "../types/components";
 import type { AgentContext, ContextDefinition } from "../types/contexts";
@@ -17,6 +18,7 @@ export interface ResponseHandlerPatch {
 	addContextSlices?: readonly string[];
 	clearCandidateActions?: boolean;
 	clearParentActionHints?: boolean;
+	deterministicToolCall?: MessageHandlerDeterministicToolCall;
 	clearReply?: boolean;
 	reply?: string;
 	debug?: readonly string[];
@@ -80,6 +82,22 @@ function mergeUniqueStrings(
 	return uniqueStrings([...(current ?? []), ...(additions ?? [])]);
 }
 
+function normalizeDeterministicToolCall(
+	toolCall: MessageHandlerDeterministicToolCall | undefined,
+): MessageHandlerDeterministicToolCall | null {
+	const name = String(toolCall?.name ?? "").trim();
+	if (!name) {
+		return null;
+	}
+	const params =
+		toolCall?.params &&
+		typeof toolCall.params === "object" &&
+		!Array.isArray(toolCall.params)
+			? { ...toolCall.params }
+			: undefined;
+	return params ? { name, params } : { name };
+}
+
 function availableContextSet(
 	availableContexts: readonly ContextDefinition[],
 ): Set<string> | null {
@@ -139,6 +157,10 @@ function applyResponseHandlerPatch(
 		);
 		changed.push("contexts:add");
 	}
+	if (patch.clearCandidateActions) {
+		delete messageHandler.plan.candidateActions;
+		changed.push("candidateActions:clear");
+	}
 	if (patch.addCandidateActions) {
 		messageHandler.plan.candidateActions = mergeUniqueStrings(
 			messageHandler.plan.candidateActions,
@@ -146,9 +168,9 @@ function applyResponseHandlerPatch(
 		);
 		changed.push("candidateActions:add");
 	}
-	if (patch.clearCandidateActions) {
-		delete messageHandler.plan.candidateActions;
-		changed.push("candidateActions:clear");
+	if (patch.clearParentActionHints) {
+		delete messageHandler.plan.parentActionHints;
+		changed.push("parentActionHints:clear");
 	}
 	if (patch.addParentActionHints) {
 		messageHandler.plan.parentActionHints = mergeUniqueStrings(
@@ -157,16 +179,19 @@ function applyResponseHandlerPatch(
 		);
 		changed.push("parentActionHints:add");
 	}
-	if (patch.clearParentActionHints) {
-		delete messageHandler.plan.parentActionHints;
-		changed.push("parentActionHints:clear");
-	}
 	if (patch.addContextSlices) {
 		messageHandler.plan.contextSlices = mergeUniqueStrings(
 			messageHandler.plan.contextSlices,
 			patch.addContextSlices,
 		);
 		changed.push("contextSlices:add");
+	}
+	const deterministicToolCall = normalizeDeterministicToolCall(
+		patch.deterministicToolCall,
+	);
+	if (deterministicToolCall) {
+		messageHandler.plan.deterministicToolCall = deterministicToolCall;
+		changed.push("deterministicToolCall:set");
 	}
 	if (patch.clearReply) {
 		delete messageHandler.plan.reply;

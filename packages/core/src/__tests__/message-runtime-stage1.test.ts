@@ -707,6 +707,78 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(params.responseSkeleton).toBeUndefined();
 	});
 
+	it("skips the fast direct reply path when a response-handler evaluator claims the turn", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Route the command through the evaluator.",
+				contexts: ["simple"],
+				replyText: "Inline answer.",
+			}),
+		]);
+		const handler = vi.fn(async (_runtime, _message, _state, options) => {
+			const parameters = (options as { parameters?: { action?: string } })
+				?.parameters;
+			return {
+				success: true,
+				text: `checked ${parameters?.action ?? "unknown"}`,
+				userFacingText: `Checked ${parameters?.action ?? "unknown"}.`,
+				verifiedUserFacing: true,
+			};
+		});
+		runtime.actions = [
+			{
+				name: "CHECK_RUNTIME",
+				description: "Check current runtime state.",
+				contexts: ["general"],
+				parameters: [
+					{
+						name: "action",
+						description: "Operation to run.",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				validate: vi.fn(async () => true),
+				handler,
+			},
+		] as IAgentRuntime["actions"];
+		runtime.responseHandlerEvaluators = [
+			{
+				name: "test.dm_deterministic_tool",
+				priority: 5,
+				shouldRun: ({ messageHandler }) =>
+					messageHandler.processMessage === "RESPOND",
+				evaluate: () => ({
+					requiresTool: true,
+					clearReply: true,
+					addContexts: ["general"],
+					addCandidateActions: ["CHECK_RUNTIME"],
+					deterministicToolCall: {
+						name: "CHECK_RUNTIME",
+						params: { action: "show" },
+					},
+				}),
+			} satisfies ResponseHandlerEvaluator,
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "check my messages",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(useModelCalls(runtime)[0]?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		expect(handler).toHaveBeenCalledTimes(1);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe("Checked show.");
+		}
+	});
+
 	it("honors exact-word direct replies even when the small model emits thinking", async () => {
 		const runtime = makeRuntime([
 			`routing_thought: Direct private chat fast path.
@@ -3120,6 +3192,249 @@ android smoke model works`,
 			expect(result.result.responseContent?.text).toBe(
 				"Checked through the planner.",
 			);
+		}
+	});
+
+	it("executes deterministic response-handler tool calls without invoking the action planner", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The evaluator can make this deterministic.",
+				contexts: ["simple"],
+				replyText: "Inline answer.",
+			}),
+		]);
+		const handler = vi.fn(async (_runtime, _message, _state, options) => {
+			const parameters = (options as { parameters?: { action?: string } })
+				?.parameters;
+			return {
+				success: true,
+				text: `checked ${parameters?.action ?? "unknown"}`,
+				userFacingText: `Checked ${parameters?.action ?? "unknown"}.`,
+				verifiedUserFacing: true,
+			};
+		});
+		runtime.actions = [
+			{
+				name: "CHECK_RUNTIME",
+				description: "Check current runtime state.",
+				contexts: ["general"],
+				parameters: [
+					{
+						name: "action",
+						description: "Operation to run.",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				validate: vi.fn(async () => true),
+				handler,
+			},
+		] as IAgentRuntime["actions"];
+		runtime.responseHandlerEvaluators = [
+			{
+				name: "test.deterministic_tool",
+				priority: 5,
+				shouldRun: () => true,
+				evaluate: () => ({
+					requiresTool: true,
+					clearReply: true,
+					clearCandidateActions: true,
+					addContexts: ["general"],
+					addCandidateActions: ["CHECK_RUNTIME"],
+					clearParentActionHints: true,
+					addParentActionHints: ["CHECK_RUNTIME"],
+					deterministicToolCall: {
+						name: "CHECK_RUNTIME",
+						params: { action: "show" },
+					},
+				}),
+			} satisfies ResponseHandlerEvaluator,
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(useModelCalls(runtime)[0]?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(handler.mock.calls[0]?.[3]).toMatchObject({
+			parameters: { action: "show" },
+		});
+		expect(runtime.runActionsByMode).toHaveBeenCalledWith(
+			"CONTEXT_BEFORE",
+			expect.anything(),
+			expect.anything(),
+			{ selectedContexts: ["general"] },
+		);
+		expect(runtime.runActionsByMode).toHaveBeenCalledWith(
+			"CONTEXT_DURING",
+			expect.anything(),
+			expect.anything(),
+			{ selectedContexts: ["general"] },
+		);
+		expect(runtime.runActionsByMode).toHaveBeenCalledWith(
+			"CONTEXT_AFTER",
+			expect.anything(),
+			expect.anything(),
+			{ selectedContexts: ["general"] },
+		);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe("Checked show.");
+			expect(result.messageHandler.plan.candidateActions).toEqual([
+				"CHECK_RUNTIME",
+			]);
+			expect(result.messageHandler.plan.deterministicToolCall).toEqual({
+				name: "CHECK_RUNTIME",
+				params: { action: "show" },
+			});
+		}
+	});
+
+	it("does not require deterministic response-handler tool calls to be model-exposed", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "A code-owned evaluator will choose the tool.",
+				contexts: ["general"],
+			}),
+		]);
+		const handler = vi.fn(async (_runtime, _message, _state, options) => {
+			const parameters = (options as { parameters?: { action?: string } })
+				?.parameters;
+			return {
+				success: true,
+				text: `routed ${parameters?.action ?? "unknown"}`,
+				userFacingText: `Routed ${parameters?.action ?? "unknown"}.`,
+				verifiedUserFacing: true,
+			};
+		});
+		runtime.actions = [
+			{
+				name: "HIDDEN_DETERMINISTIC_TOOL",
+				description: "Internal route selected only by trusted code.",
+				contexts: ["general"],
+				parameters: [
+					{
+						name: "action",
+						description: "Operation to run.",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				validate: vi.fn(async () => true),
+				handler,
+			},
+		] as IAgentRuntime["actions"];
+		runtime.responseHandlerEvaluators = [
+			{
+				name: "test.hidden_deterministic_tool",
+				priority: 5,
+				shouldRun: () => true,
+				evaluate: () => ({
+					requiresTool: true,
+					deterministicToolCall: {
+						name: "HIDDEN_DETERMINISTIC_TOOL",
+						params: { action: "show" },
+					},
+				}),
+			} satisfies ResponseHandlerEvaluator,
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "plain unrelated request" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(handler.mock.calls[0]?.[3]).toMatchObject({
+			parameters: { action: "show" },
+		});
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe("Routed show.");
+			expect(result.messageHandler.plan.candidateActions).toBeUndefined();
+			expect(result.messageHandler.plan.deterministicToolCall).toEqual({
+				name: "HIDDEN_DETERMINISTIC_TOOL",
+				params: { action: "show" },
+			});
+		}
+	});
+
+	it("suppresses duplicate deterministic action text after an early response-handler reply", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Acknowledge first, then execute deterministically.",
+				contexts: ["simple"],
+				replyText: "Opening that now.",
+			}),
+		]);
+		const handler = vi.fn(async () => ({
+			success: true,
+			text: "Opening that now.",
+			userFacingText: "Opening that now.",
+			verifiedUserFacing: true,
+		}));
+		runtime.actions = [
+			{
+				name: "CHECK_RUNTIME",
+				description: "Check current runtime state.",
+				contexts: ["general"],
+				parameters: [
+					{
+						name: "action",
+						description: "Operation to run.",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				validate: vi.fn(async () => true),
+				handler,
+			},
+		] as IAgentRuntime["actions"];
+		runtime.responseHandlerEvaluators = [
+			{
+				name: "test.deterministic_tool",
+				priority: 5,
+				shouldRun: () => true,
+				evaluate: () => ({
+					requiresTool: true,
+					addContexts: ["general"],
+					clearCandidateActions: true,
+					addCandidateActions: ["CHECK_RUNTIME"],
+					deterministicToolCall: {
+						name: "CHECK_RUNTIME",
+						params: { action: "show" },
+					},
+				}),
+			} satisfies ResponseHandlerEvaluator,
+		];
+
+		const earlyReply = vi.fn(async () => undefined);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(earlyReply).toHaveBeenCalledWith(
+			expect.objectContaining({ text: "Opening that now." }),
+		);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(handler).toHaveBeenCalledTimes(1);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+			expect(result.result.responseMessages).toEqual([]);
+			expect(result.result.mode).toBe("none");
 		}
 	});
 
