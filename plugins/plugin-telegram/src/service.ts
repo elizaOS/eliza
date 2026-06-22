@@ -45,6 +45,7 @@ import {
 } from "./command-registration";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { MessageManager } from "./messageManager";
+import { registerTelegramTaskBoardCommand } from "./task-board";
 import {
   type TelegramEntityPayload,
   TelegramEventTypes,
@@ -745,6 +746,12 @@ export class TelegramService extends Service {
           commandCount: registered.length,
         },
         "Registered universal slash-command handlers",
+      );
+      // #8902: the live, edited-in-place orchestrator task board (`/tasks`).
+      registerTelegramTaskBoardCommand(
+        bot,
+        this.runtime,
+        commandMessageManager,
       );
     }
 
