@@ -22,9 +22,7 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "@elizaos/capacitor-contacts": [
-        "../plugin-native-contacts/src/index.ts"
-      ],
+      "@elizaos/capacitor-contacts": ["../plugin-native-contacts/src/index.ts"],
       "@elizaos/capacitor-contacts/*": ["../plugin-native-contacts/src/*"],
       "@elizaos/capacitor-contacts/web": [
         "../plugin-native-contacts/src/web.ts"

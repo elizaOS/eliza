@@ -52,10 +52,6 @@
       "lucide-react": ["../plugin-companion/node_modules/lucide-react"]
     }
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "src/**/*.d.ts"
-  ],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
   "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
 }

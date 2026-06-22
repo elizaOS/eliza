@@ -24,9 +24,7 @@
       "@elizaos/ui": ["../packages/ui/dist/index.d.ts"],
       "@elizaos/ui/api": ["../packages/ui/dist/api/index.d.ts"],
       "@elizaos/ui/api/*": ["../packages/ui/dist/api/*"],
-      "@elizaos/ui/components": [
-        "../packages/ui/dist/components/index.d.ts"
-      ],
+      "@elizaos/ui/components": ["../packages/ui/dist/components/index.d.ts"],
       "@elizaos/ui/components/*": ["../packages/ui/dist/components/*"],
       "@elizaos/ui/utils": ["../packages/ui/dist/utils/index.d.ts"],
       "@elizaos/ui/*": ["../packages/ui/dist/*"],

@@ -11,9 +11,5 @@
     "allowImportingTsExtensions": true,
     "types": ["node", "bun"]
   },
-  "include": [
-    "memperf-kpi.ts",
-    "co-residency.test.ts",
-    "metric-schema.test.ts"
-  ]
+  "include": ["memperf-kpi.ts", "co-residency.test.ts", "metric-schema.test.ts"]
 }
