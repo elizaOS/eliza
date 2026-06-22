@@ -69,7 +69,7 @@ describe("pollAnthropicUsage", () => {
 
     // Probe hit the right endpoint with the OAuth bearer + beta header.
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, opts] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://api.anthropic.com/api/oauth/usage");
     const headers = opts.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer flat-token");
@@ -204,7 +204,7 @@ describe("pollCodexUsage", () => {
     expect(typeof snap.refreshedAt).toBe("number");
 
     // Probe hit the right endpoint with the account id + UA headers.
-    const [url, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, opts] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://chatgpt.com/backend-api/wham/usage");
     const headers = opts.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer codex-token");
