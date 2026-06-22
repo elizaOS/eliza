@@ -4,7 +4,7 @@ VRM companion overlay: 3D avatar runtime, emote system, and companion app views 
 
 ## Purpose / role
 
-Adds a 3D VRM avatar companion surface to an Eliza agent. It registers the `PLAY_EMOTE` action so agents can trigger one-shot avatar animations, and exposes three registered views (standard, XR, and TUI) that host the Three.js VRM scene. The plugin is **opt-in** — it only activates when the agent session is for the companion hosted app (gated via `gatePluginSessionForHostedApp`). Load it by including the package in the agent's plugin list.
+Adds a 3D VRM avatar companion surface to an Eliza agent. It registers the `PLAY_EMOTE` action so agents can trigger one-shot avatar animations, and exposes a single registered view spanning GUI, XR, and TUI modalities (the GUI/XR surface hosts the Three.js VRM scene; the TUI modality renders the spatial operator panel via the terminal registry). The plugin is **opt-in** — it only activates when the agent session is for the companion hosted app (gated via `gatePluginSessionForHostedApp`). Load it by including the package in the agent's plugin list.
 
 ## Plugin surface
 
@@ -12,9 +12,7 @@ Adds a 3D VRM avatar companion surface to an Eliza agent. It registers the `PLAY
 - **`PLAY_EMOTE`** (`src/actions/emote.ts`) — Posts to `/api/emote` to play a one-shot named animation on the active VRM avatar. Validates via `runtime.character.settings?.DISABLE_EMOTES` and requires `message.content.source === "client_chat"`. Enum of valid emote IDs is derived from `AGENT_EMOTE_CATALOG`.
 
 ### Views (registered in `src/plugin.ts`)
-- **`companion`** (standard) — `CompanionView` component; path `/companion`.
-- **`companion`** (xr) — `CompanionView` component; `viewType: "xr"`.
-- **`companion`** (tui) — `CompanionTuiView` component; path `/companion/tui`, `viewType: "tui"`.
+- **`companion`** — one declaration, `modalities: ["gui", "xr", "tui"]`, `componentExport: "CompanionView"`, path `/companion`. The GUI/XR surface renders the Three.js VRM scene via `CompanionView`; the TUI modality renders the spatial operator panel (`CompanionSpatialView`) through the terminal registry (`register-terminal-view.tsx`), not a separate componentExport.
 
 ### Overlay app
 - `registerCompanionApp()` (`src/register.ts` / `src/components/companion/companion-app.ts`) — registers the companion as a named overlay app in `@elizaos/ui`'s `OverlayApp` registry. Called automatically on module import of `src/register.ts`.
@@ -23,7 +21,7 @@ Adds a 3D VRM avatar companion surface to an Eliza agent. It registers the `PLAY
 
 ```
 src/
-  plugin.ts                  Plugin definition (PLAY_EMOTE action + 3 views); export: appCompanionPlugin
+  plugin.ts                  Plugin definition (PLAY_EMOTE action + 1 tri-modal view); export: appCompanionPlugin
   register.ts                Side-effect entry: calls registerCompanionApp() on import
   register-terminal-view.tsx Side-effect entry: registers the terminal/TUI view
   ui.ts                      Re-exports all UI/component public surface
