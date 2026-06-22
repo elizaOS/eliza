@@ -124,19 +124,19 @@ export class NPCPersonaGenerator {
     this.competitorMap = new Map<string, Set<string>>();
 
     for (const c of correlations) {
-      if (c.relationship !== "competitor") continue;
+      if (c.type !== "competitor") continue;
 
-      // Add primary -> related
-      if (!this.competitorMap.has(c.primary)) {
-        this.competitorMap.set(c.primary, new Set());
+      // Add orgId -> relatedOrgId
+      if (!this.competitorMap.has(c.orgId)) {
+        this.competitorMap.set(c.orgId, new Set());
       }
-      this.competitorMap.get(c.primary)?.add(c.related);
+      this.competitorMap.get(c.orgId)?.add(c.relatedOrgId);
 
-      // Add related -> primary (bidirectional)
-      if (!this.competitorMap.has(c.related)) {
-        this.competitorMap.set(c.related, new Set());
+      // Add relatedOrgId -> orgId (bidirectional)
+      if (!this.competitorMap.has(c.relatedOrgId)) {
+        this.competitorMap.set(c.relatedOrgId, new Set());
       }
-      this.competitorMap.get(c.related)?.add(c.primary);
+      this.competitorMap.get(c.relatedOrgId)?.add(c.orgId);
     }
 
     return this.competitorMap;

@@ -1,7 +1,7 @@
 /**
  * Reality Grounding Content
  *
- * Context about the Babylon game world for LLM generation.
+ * Context about the Feed game world for LLM generation.
  * Used to ground question generation in the game's reality.
  *
  * NOTE: Prices are approximate and used for grounding, not trading.
