@@ -2,9 +2,9 @@
  * Fused FFI end-of-turn scorer (ABI v11).
  *
  * The fused replacement for the retired node-llama-cpp `controlledEvaluate()`
- * path the EOT classifiers depended on. Computes P(`<|im_end|>` next | partial
+ * path the EOT classifiers depended on. Computes P(`<end_of_turn>` next | partial
  * transcript) through the single `libelizainference` handle: tokenize the
- * Qwen-formatted partial transcript, then one causal forward pass
+ * Gemma-formatted partial transcript, then one causal forward pass
  * (`eliza_inference_llm_eot_score`) reads the next-token probability of the
  * end-of-turn marker. No separate model weights, no sampling loop, and no KV
  * growth on the chat session — the dedicated native scoring context clears its
@@ -17,7 +17,7 @@ import type {
 	ElizaInferenceFfi,
 } from "./ffi-bindings";
 
-const IM_END_TOKEN = "<|im_end|>";
+const END_OF_TURN_TOKEN = "<end_of_turn>";
 
 export interface FfiEotScorerOptions {
 	/** The loaded fused inference binding (must expose the v11 EOT symbols). */
@@ -31,7 +31,7 @@ export interface FfiEotScorerOptions {
 }
 
 export interface FfiEotScoreResult {
-	/** Probability of `<|im_end|>` as the next token, ∈ [0, 1]. */
+	/** Probability of `<end_of_turn>` as the next token, ∈ [0, 1]. */
 	probability: number;
 	/** Wall-clock model latency for this scoring call. */
 	latencyMs: number;
@@ -40,7 +40,7 @@ export interface FfiEotScoreResult {
 }
 
 /**
- * Stateful EOT scorer bound to a loaded fused text model. The `<|im_end|>`
+ * Stateful EOT scorer bound to a loaded fused text model. The `<end_of_turn>`
  * token id is resolved once and cached. Safe to keep across many voice turns.
  */
 export class FfiEotScorer {
@@ -48,7 +48,7 @@ export class FfiEotScorer {
 	private readonly getContext: () => ElizaInferenceContextHandle;
 	private readonly maxHistoryTokens: number;
 	readonly modelLabel: string;
-	private imEndTokenId: number | null = null;
+	private endOfTurnTokenId: number | null = null;
 
 	constructor(options: FfiEotScorerOptions) {
 		this.ffi = options.ffi;
@@ -71,25 +71,25 @@ export class FfiEotScorer {
 		);
 	}
 
-	private resolveImEnd(ctx: ElizaInferenceContextHandle): number {
-		if (this.imEndTokenId !== null) return this.imEndTokenId;
+	private resolveEndOfTurn(ctx: ElizaInferenceContextHandle): number {
+		if (this.endOfTurnTokenId !== null) return this.endOfTurnTokenId;
 		const tokenize = this.ffi.tokenize;
 		if (!tokenize) {
 			throw new Error("[voice] FfiEotScorer: fused tokenizer is unavailable.");
 		}
 		const ids = tokenize({
 			ctx,
-			text: IM_END_TOKEN,
+			text: END_OF_TURN_TOKEN,
 			addSpecial: false,
 			parseSpecial: true,
 		});
 		const first = ids[0];
 		if (ids.length !== 1 || first === undefined || !Number.isInteger(first)) {
 			throw new Error(
-				`[voice] FfiEotScorer: tokenizer did not resolve <|im_end|> to a single special token (got ${JSON.stringify([...ids])}). The text bundle must be Qwen-template compatible.`,
+				`[voice] FfiEotScorer: tokenizer did not resolve <end_of_turn> to a single special token (got ${JSON.stringify([...ids])}). The text bundle must be Gemma-template compatible.`,
 			);
 		}
-		this.imEndTokenId = first;
+		this.endOfTurnTokenId = first;
 		return first;
 	}
 
@@ -103,7 +103,7 @@ export class FfiEotScorer {
 				"[voice] FfiEotScorer: fused EOT symbols are unavailable.",
 			);
 		}
-		const imEndId = this.resolveImEnd(ctx);
+		const endOfTurnId = this.resolveEndOfTurn(ctx);
 		const formatted = formatEotPrompt(partialTranscript);
 		const all = tokenize({
 			ctx,
@@ -122,7 +122,7 @@ export class FfiEotScorer {
 				promptTokens: 0,
 			};
 		}
-		const { targetProb } = eotScore({ ctx, tokens, targetTokenId: imEndId });
+		const { targetProb } = eotScore({ ctx, tokens, targetTokenId: endOfTurnId });
 		const probability = Number.isFinite(targetProb)
 			? Math.max(0, Math.min(1, targetProb))
 			: 0.5;

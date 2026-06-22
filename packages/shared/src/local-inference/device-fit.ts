@@ -8,12 +8,14 @@
  *
  *  - **TurboQuant weights** — the catalog `sizeGb` per tier already reflects the
  *    TurboQuant-compressed GGUF (e.g. a 2B model is 1.4 GB, not ~4 GB bf16).
- *  - **QJL KV-cache** — `qjl1_256` (the head_dim=256 QJL variant eliza-1 uses):
- *    ~1 bit/coordinate + a bf16 norm, which is what makes a 128k window fit in a
- *    fraction of a GB on the small tiers. It is the *forced* KV quant, never an
- *    option the user picks.
+ *  - **Stock q8_0 KV-cache** — Gemma 4's KV is already minimal by construction
+ *    (MQA = 1 KV head, windowed sliding-window attention on most layers, and
+ *    shared-KV layers reusing earlier KV), so a 128k window fits in a fraction
+ *    of a GB at stock q8_0 without the legacy QJL/Polar kernels. The head_dim=128
+ *    QJL kernel does not apply to Gemma's dual head dims (512 global / 256 swa)
+ *    and is not used. KV quant is forced, never a user option.
  *
- * `minRamGb` per tier is therefore "TurboQuant weights + a 128k QJL KV cache +
+ * `minRamGb` per tier is therefore "TurboQuant weights + a 128k q8_0 KV cache +
  * runtime/OS overhead". Picking the largest tier whose `minRamGb` fits free RAM
  * is exactly "biggest model that still gets a 128k window".
  *
@@ -27,8 +29,11 @@
 import type { Eliza1TierId } from "./catalog";
 import { MODEL_CATALOG } from "./catalog";
 
-/** The KV-cache quantization eliza-1 always uses on-device (head_dim=256 QJL). */
-export const ELIZA_1_KV_QUANT = "qjl1_256" as const;
+/** The KV-cache quantization eliza-1 always uses on-device. Gemma 4's KV is
+ * already minimal (MQA + windowed-SWA + shared-KV), so stock q8_0 is sufficient;
+ * the legacy head_dim=128 QJL kernel is incompatible with Gemma's dual head dims
+ * (512 global / 256 swa) and is not used. */
+export const ELIZA_1_KV_QUANT = "q8_0" as const;
 
 /** The consumer context target. We never advertise less than this if it fits. */
 export const ELIZA_1_CONTEXT_TARGET = 131072; // 128k
@@ -53,7 +58,7 @@ export interface Eliza1Fit {
   tierId: Eliza1TierId;
   /** The context window to load — native target when it fits, else downscaled. */
   contextLength: number;
-  /** The KV quant to load with (always QJL on-device). */
+  /** The KV quant to load with (stock q8_0 on-device — Gemma KV is already minimal). */
   kvQuant: typeof ELIZA_1_KV_QUANT;
   /** True when context was reduced below the tier's native window to fit RAM. */
   contextDownscaled: boolean;

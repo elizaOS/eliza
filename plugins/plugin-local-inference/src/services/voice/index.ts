@@ -104,13 +104,13 @@ export {
 	type VoiceTurnSignal,
 } from "./eot-classifier";
 export {
-	applyQwenUserTemplate,
+	applyGemmaUserTemplate,
 	createBundledLiveKitGgmlTurnDetector,
 	DEFAULT_LIVEKIT_TURN_DETECTOR_GGML_DIR,
 	DEFAULT_LIVEKIT_TURN_DETECTOR_GGUF_EN,
 	DEFAULT_LIVEKIT_TURN_DETECTOR_GGUF_INTL,
 	EotGgmlUnavailableError,
-	LIVEKIT_IM_END_TOKEN,
+	LIVEKIT_END_OF_TURN_TOKEN,
 	LiveKitGgmlTurnDetector,
 	type LiveKitGgmlTurnDetectorOptions,
 	turnDetectorGgufForTier,

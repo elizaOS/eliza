@@ -51,12 +51,16 @@ or "pick the TTS" — that is a runtime concern, not a user concern.
 
 Backbones (do not change without explicit human approval):
 
-- **Text/vision:** Qwen3.5 family for the current 2B/4B/9B
-  release tiers, with Qwen3.6 for the active 27B family. Every active
-  Eliza-1 tier is vision-capable when its tier-matched `vision/mmproj-<tier>.gguf`
-  is present and validated. We do not name these as "Qwen" in any
-  user-facing string. Internally, manifests record the upstream lineage and
-  license; the UI shows "Eliza-1 <tier>".
+- **Text/vision:** Gemma 4 family (E2B/E4B/12B/31B) for the
+  2B/4B/9B/27B release tiers. Gemma is a dense SWA + shared-KV + PLE + MQA
+  architecture with dual head dims (512 global / 256 swa); the legacy
+  QJL/PolarQuant/TurboQuant KV kernels are head_dim=128 and are NOT
+  required for Gemma (its KV is already minimal) — TurboQuant weight-quant
+  still applies. Every active Eliza-1 tier is vision-capable when its
+  tier-matched `vision/mmproj-<tier>.gguf` is present and validated. We do
+  not name these as "Gemma" in any user-facing string. Internally,
+  manifests record the upstream lineage and license; the UI shows
+  "Eliza-1 <tier>".
 - **Voice (TTS):** Tier-aware. The active backend per tier is declared
   in `ELIZA_1_VOICE_BACKENDS`
   (`packages/shared/src/local-inference/catalog.ts`) and is read by the
@@ -322,6 +326,14 @@ artifact for its tier. There is no "fast path that skips X" and no
 "fallback to unoptimized". A bundle that cannot satisfy the contract
 must be marked broken in `eliza-1.manifest.json` and not served from
 the recommended-models endpoint.
+
+**Gemma 4 exception.** For Gemma 4 tiers the mandatory set is TurboQuant
+(weight-quant) + MTP + the Gemma-native SWA/shared-KV/PLE memory settings
+(`swa_full=false`, bounded ctx-checkpoints, mmap-on, Per-Layer-Embeddings
+pinned to CPU on GPU backends). Because Gemma's KV is already minimal
+(MQA + windowed-SWA + shared-KV), the head_dim=128 QJL/PolarQuant KV
+kernels are **optional** on Gemma rather than required — "must run every
+kernel" below applies to the legacy Qwen-shaped tiers, not Gemma's KV.
 
 ### Required for ALL tiers
 
@@ -669,13 +681,23 @@ backend nightly.
 
 ## 11. ONNX deprecation status (updated K7, 2026-05-15)
 
-**Single on-device runtime: elizaOS llama.cpp fork. No ONNX in resolved code path
-as of K7 for: VAD, wake-word, turn-detector (preferred), Kokoro (default=fork),
-OmniVoice, ASR. Three voice classifier models remain ONNX-active, blocked on K1/K2/K3
+**Single on-device runtime: ONE managed library (`libelizainference`), ONE
+pipe, no sidecar/subprocess/TCP. No ONNX in resolved code path as of K7 for:
+VAD, wake-word, turn-detector (preferred), Kokoro (default=fork), OmniVoice,
+ASR. Three voice classifier models remain ONNX-active, blocked on K1/K2/K3
 native ports.**
 
 **Single runtime policy:** every local-inference model path must flow through
-the elizaOS llama.cpp fork. ONNX (`onnxruntime-node` / `onnxruntime-web`) is
+ONE managed library (`libelizainference`) over ONE FFI pipe — no sidecar,
+subprocess, or TCP server. The elizaOS llama.cpp fork is the primary backend
+compiled into that library, but the contract is "one managed library, one
+pipe", not "llama.cpp only". In-process compiled-in backends that link into
+`libelizainference` behind the same FFI symbols are **compliant** — e.g.
+LiteRT-LM for the Android NPU path, or MLX / CoreML for Apple — because they
+are the owned backend, not a separate process. Out-of-process OS model
+services (AICore / Gemini Nano, Apple Foundation Models) remain
+**opportunistic adapters only**, never the owned backend, and never satisfy
+this contract on their own. ONNX (`onnxruntime-node` / `onnxruntime-web`) is
 deprecated and will be removed from the runtime path once all native ports land.
 
 ### Completed (fork path active — no ONNX in resolved runtime)

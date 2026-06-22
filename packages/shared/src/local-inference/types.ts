@@ -270,10 +270,10 @@ export interface LocalRuntimeAcceleration {
     /** Native llama.cpp MTP speculative mode. */
     specType: "draft-mtp";
     /**
-     * Bundle-relative path to a separate MTP drafter GGUF. Omitted for
-     * same-file MTP, where the NextN head is embedded in the main text
-     * GGUF (`qwen35.nextn_predict_layers > 0` + `blk.N.nextn.*` tensors)
-     * and no separate drafter download exists.
+     * Bundle-relative path to a separate MTP drafter GGUF. Gemma 4 ships an
+     * official standalone drafter, loaded via `-md <drafterFile>
+     * --spec-type draft-mtp`. (Omitting it selects same-file MTP, where a
+     * NextN head is embedded in the text GGUF — the retired Qwen3.5 path.)
      */
     drafterFile?: string;
     /** Default draft range passed to the native MTP runner. */
@@ -298,9 +298,10 @@ export interface LocalRuntimeAcceleration {
  * families here as the catalog grows.
  */
 export type TokenizerFamily =
-  | "qwen35"
+  | "gemma4"
   | "eliza1"
   | "sentencepiece"
+  | "qwen35"
   | (string & {});
 
 export type CatalogHub = "huggingface" | "modelscope";

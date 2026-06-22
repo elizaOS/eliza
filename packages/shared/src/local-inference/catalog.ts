@@ -4,11 +4,15 @@
  * Default local inference is restricted to the active Eliza-1 line:
  * eliza-1-2b, eliza-1-4b, eliza-1-9b, eliza-1-27b,
  * and eliza-1-27b-256k.
- * These ship Qwen3.5 bases for 2B/4B/9B and Qwen3.6 for 27B. The
- * 2026-05-12 mandate retired the legacy Qwen3 bases; see
+ * These ship Gemma 4 bases: E2B/E4B/12B/31B mapped onto the
+ * 2B/4B/9B/27B release tiers (the 2026-06-22 cutover from the legacy
+ * Qwen3.5/3.6 line — see #9033 and
  * packages/training/scripts/training/model_registry.py for the active
- * registry. External Hub search remains custom/opt-in and never enters
- * first-run or default eligibility.
+ * registry). Gemma 4 is a dense SWA + shared-KV + per-layer-embedding
+ * (PLE) + MQA architecture; KV is already minimal so the legacy
+ * QJL/PolarQuant KV kernels are not used (stock KV), while TurboQuant
+ * weight-quant + separate-drafter MTP still apply. External Hub search
+ * remains custom/opt-in and never enters first-run or default eligibility.
  */
 
 import type {
@@ -61,10 +65,10 @@ function mtpSupportedForTier(id: Eliza1TierId): boolean {
   return _ELIZA_1_MTP_TIER_ID_SET.has(id);
 }
 
-// The quantized 2B (Qwen3.5) is the shipped first-run default chat model: it is
-// the smallest/entry tier, fits 8 GB-class phones comfortably, downloads fast,
-// and is the model bundled into the AOSP image. Larger tiers (4B/9B/27B) remain
-// available for manual selection on higher-memory hosts.
+// The quantized 2B (Gemma 4 E2B) is the shipped first-run default chat model:
+// it is the smallest/entry tier, fits 8 GB-class phones comfortably, downloads
+// fast, and is the model bundled into the AOSP image. Larger tiers (4B/9B/27B)
+// remain available for manual selection on higher-memory hosts.
 export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-2b";
 
 export const DEFAULT_ELIGIBLE_MODEL_IDS: ReadonlySet<string> = new Set(
@@ -224,11 +228,11 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     params: "4B",
     sizeGb: 2.6,
     // 4B is the shipped mid/mobile tier. The 2.6 GB Q4_K_M weights are sized
-    // for a 128k Eliza-1 bundle, with the runtime choosing the safest cache
-    // profile per FFI path: QJL/TBQ where supported, F16 KV on Android bionic
-    // while qwen35 head_dim=256 remains incompatible with the shipped QJL
-    // kernel. The floor stays above the model size to leave headroom for the
-    // OS, app, and KV cache.
+    // for a 128k Eliza-1 bundle on the Gemma 4 E4B base. Gemma KV is already
+    // minimal (MQA + windowed-SWA + shared-KV) so the runtime ships stock KV
+    // (f16/q8_0) — the legacy head_dim=128 QJL/Polar kernels do not apply to
+    // Gemma's dual head dims (512 global / 256 swa). The floor stays above the
+    // model size to leave headroom for the OS, app, and KV cache.
     minRamGb: 6,
     q4MinRamGb: 6,
     bucket: "mid",
@@ -435,8 +439,13 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       `vision/mmproj-${tierSlug(id)}.gguf`,
     );
   }
-  // Same-file MTP on active 2B+ tiers: the NextN head is embedded in the text
-  // GGUF, so there is no separate `mtp` drafter component to download.
+  // Separate-drafter MTP: Gemma 4 ships an official standalone drafter
+  // (speculative decoding), so each MTP tier downloads a `mtp/drafter-<tier>.gguf`
+  // companion alongside the text GGUF — unlike the retired Qwen3.5 same-file
+  // NextN head.
+  if (mtpSupportedForTier(id)) {
+    components.mtp = bundleComponent(id, `mtp/drafter-${tierSlug(id)}.gguf`);
+  }
 
   return { finetuned: false, components };
 }
@@ -465,16 +474,16 @@ function runtimeForTier(
   };
 
   if (mtpSupportedForTier(id)) {
-    // Same-file MTP: no separate `drafterFile`. The NextN head lives in
-    // the text GGUF and is activated by `--spec-type draft-mtp` with no
-    // `-md`. These tiers carry a single NextN head
-    // (`nextn_predict_layers = 1`); benchmarks show `draft-n-max 2` is the
-    // throughput peak (a single head autoregressed past 2 collapses
-    // acceptance), so we do not scale the draft window with context length.
+    // Separate-drafter MTP: Gemma 4 ships an official standalone drafter
+    // GGUF, loaded via `-md mtp/drafter-<tier>.gguf --spec-type draft-mtp`.
+    // Google reports up to ~3x decode with no quality loss; we keep a
+    // conservative default draft window and let the runtime widen it under
+    // a `heuristic` acceptance schedule.
     runtime.mtp = {
       specType: "draft-mtp",
+      drafterFile: `mtp/drafter-${tierSlug(id)}.gguf`,
       draftMin: 1,
-      draftMax: 2,
+      draftMax: 4,
       gpuLayers: "auto",
     };
   }
@@ -562,7 +571,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
     category: "chat",
     bucket: spec.bucket,
     contextLength: spec.contextLength,
-    tokenizerFamily: "qwen35",
+    tokenizerFamily: "gemma4",
     runtimeClass: "fused-eliza1",
     sourceModel: sourceModelForTier(id),
     voiceBackends: ELIZA_1_VOICE_BACKENDS[id],

@@ -2,8 +2,8 @@
  * LiveKit turn-detector — GGUF-backed binding (J1.d).
  *
  * The text-side turn-completion classifier formats the latest partial
- * user transcript with the Qwen chat template, strips the trailing
- * `<|im_end|>`, and reads `P(<|im_end|>)` from the next-token
+ * user transcript with the Gemma chat template, strips the trailing
+ * `<end_of_turn>`, and reads `P(<end_of_turn>)` from the next-token
  * distribution. The upstream `livekit/turn-detector` ships an ONNX
  * graph; this binding consumes the **GGUF** export published at
  * `elizaos/eliza-1` under `voice/turn-detector/onnx/turn-detector-en-q8.gguf`
@@ -19,7 +19,7 @@
  * cheapest of the four remaining ONNX surfaces to retire — the GGUF
  * artifact was already published by H4 (see commit history), and the
  * detector's architecture (Qwen2-style small decoder + classification
- * head on the `<|im_end|>` logit) is exactly what `LLM_ARCH_QWEN2`
+ * head on the `<end_of_turn>` logit) is exactly what `LLM_ARCH_QWEN2`
  * already implements in the fork. The work is wiring, not porting.
  *
  * No silent fallback (AGENTS.md §3): when `capacitor-llama` is
@@ -29,11 +29,11 @@
  * legacy ONNX path; the binding itself never fabricates a probability.
  *
  * Tokenizer ownership: the GGUF carries its own tokenizer (BPE +
- * special tokens, including `<|im_end|>`); this binding does NOT
+ * special tokens, including `<end_of_turn>`); this binding does NOT
  * import `@huggingface/transformers`. The `apply_chat_template`
  * formatting is re-implemented here using the same template upstream
- * uses (single-turn user message wrapped in `<|im_start|>user\n... \n`)
- * — see `applyQwenUserTemplate` below.
+ * uses (single-turn user message wrapped in `<start_of_turn>user\n... \n`)
+ * — see `applyGemmaUserTemplate` below.
  *
  * --- Planned LoRA hot-swap path ---
  *
@@ -41,7 +41,7 @@
  * model. The chat target model (eliza-1-{2b,4b}) is already
  * loaded for conversation — its next-token distribution after the
  * chat-template-formatted partial transcript provides exactly the
- * same `P(<|im_end|>)` signal. A LoRA adapter (rank 8, ~5-10 MB)
+ * same `P(<end_of_turn>)` signal. A LoRA adapter (rank 8, ~5-10 MB)
  * trained on `(transcript, eot_label)` pairs can shape that signal
  * to match or beat the LiveKit baseline.
  *
@@ -60,7 +60,7 @@
  *      LoRA hot-swap over standing up the LiveKit GGUF process.
  *   3. The hot-swap path uses llama.cpp's `--lora` flag on the chat
  *      target. A single forward pass against the chat-template-formatted
- *      transcript yields the next-token logits; read `<|im_end|>`'s
+ *      transcript yields the next-token logits; read `<end_of_turn>`'s
  *      probability and return it.
  *   4. Fail-closed: if adapter load fails or the SHA binding mismatches,
  *      throw `EotGgmlUnavailableError("model-load-failed", ...)`. No
@@ -87,7 +87,7 @@ export class EotGgmlUnavailableError extends Error {
 		| "native-missing"
 		| "model-missing"
 		| "model-load-failed"
-		| "tokenizer-missing-im-end"
+		| "tokenizer-missing-end-of-turn"
 		| "evaluate-failed"
 		| "invalid-input";
 	constructor(code: EotGgmlUnavailableError["code"], message: string) {
@@ -113,7 +113,7 @@ export const DEFAULT_LIVEKIT_TURN_DETECTOR_GGUF_INTL =
 	"voice/turn/intl/turn-detector-intl-q8.gguf";
 
 /** Special-token literal the detector reads the probability of. */
-export const LIVEKIT_IM_END_TOKEN = "<|im_end|>";
+export const LIVEKIT_END_OF_TURN_TOKEN = "<end_of_turn>";
 
 /**
  * Default on-disk location for the staged GGUF. The bundle downloader
@@ -263,7 +263,7 @@ export interface LiveKitGgmlTurnDetectorOptions {
 	 * `"v0.4.1-intl"`). Does not affect inference.
 	 */
 	revision?: string;
-	/** Max history tokens after Qwen-template wrapping. Default: 128. */
+	/** Max history tokens after Gemma-template wrapping. Default: 128. */
 	maxHistoryTokens?: number;
 	/** Optional model label for telemetry. */
 	model?: string;
@@ -277,7 +277,7 @@ export interface LiveKitGgmlTurnDetectorOptions {
 
 /**
  * Local GGUF-backed LiveKit turn-detector. Uses a `capacitor-llama`
- * evaluation of the Qwen2-style decoder, reading `P(<|im_end|>)` from the
+ * evaluation of the Qwen2-style decoder, reading `P(<end_of_turn>)` from the
  * next-token distribution after the truncated user-template prefix.
  *
  * One detector instance owns one `LlamaModel` + one `LlamaContext` +
@@ -295,7 +295,7 @@ export class LiveKitGgmlTurnDetector implements EotClassifier {
 		llamaModel: NlcLlamaModel;
 		context: NlcLlamaContext;
 		sequence: NlcLlamaSequence;
-		imEndTokenId: number;
+		endOfTurnTokenId: number;
 	}> | null = null;
 
 	constructor(opts: LiveKitGgmlTurnDetectorOptions) {
@@ -325,14 +325,14 @@ export class LiveKitGgmlTurnDetector implements EotClassifier {
 		const loaded = await this.load();
 		const transcript = normalizeTurnDetectorText(partialTranscript);
 		// Tokenize the user-templated transcript WITHOUT the trailing
-		// `<|im_end|>` (the head must score that token as the next one).
+		// `<end_of_turn>` (the head must score that token as the next one).
 		// We do not pass `specialTokens=true` for the user text itself —
 		// only the template wrappers themselves are special tokens.
-		const promptText = applyQwenUserTemplate(transcript);
+		const promptText = applyGemmaUserTemplate(transcript);
 
 		// Tokenize: the template wrappers are special tokens; the GGUF's
 		// BPE handles the inner text. Passing `true` tells the tokenizer
-		// to recognize the `<|im_start|>` / `\n` literals as the real
+		// to recognize the `<start_of_turn>` / `\n` literals as the real
 		// special-token ids. Truncate from the LEFT so the recent text
 		// is preserved.
 		let tokens = loaded.llamaModel.tokenize(promptText, true);
@@ -351,7 +351,7 @@ export class LiveKitGgmlTurnDetector implements EotClassifier {
 		await loaded.sequence.clearHistory();
 
 		// Feed every token, asking for the probability distribution only
-		// on the LAST one. That gives us P(token=<|im_end|>) after the
+		// on the LAST one. That gives us P(token=<end_of_turn>) after the
 		// truncated template prefix.
 		const lastIdx = tokens.length - 1;
 		const input = tokens.map((tok, i) =>
@@ -371,10 +371,10 @@ export class LiveKitGgmlTurnDetector implements EotClassifier {
 				"[eot-ggml] controlledEvaluate did not return probabilities for the last token",
 			);
 		}
-		const imEndProb = probs.get(loaded.imEndTokenId) ?? 0;
+		const endOfTurnProb = probs.get(loaded.endOfTurnTokenId) ?? 0;
 
 		return turnSignalFromProbability({
-			probability: imEndProb,
+			probability: endOfTurnProb,
 			transcript,
 			source: "livekit-turn-detector",
 			model: this.model,
@@ -398,7 +398,7 @@ export class LiveKitGgmlTurnDetector implements EotClassifier {
 		llamaModel: NlcLlamaModel;
 		context: NlcLlamaContext;
 		sequence: NlcLlamaSequence;
-		imEndTokenId: number;
+		endOfTurnTokenId: number;
 	}> {
 		this.ready ??= this.loadInner();
 		return this.ready;
@@ -408,7 +408,7 @@ export class LiveKitGgmlTurnDetector implements EotClassifier {
 		llamaModel: NlcLlamaModel;
 		context: NlcLlamaContext;
 		sequence: NlcLlamaSequence;
-		imEndTokenId: number;
+		endOfTurnTokenId: number;
 	}> {
 		try {
 			await access(this.ggufPath);
@@ -433,18 +433,18 @@ export class LiveKitGgmlTurnDetector implements EotClassifier {
 			);
 		}
 
-		// Resolve the <|im_end|> token id from the GGUF's BPE tokenizer.
+		// Resolve the <end_of_turn> token id from the GGUF's BPE tokenizer.
 		// Passing `specialTokens=true` tells the tokenizer to recognize
 		// the literal as the corresponding special token.
-		const imEndTokens = llamaModel.tokenize(LIVEKIT_IM_END_TOKEN, true);
-		if (imEndTokens.length !== 1) {
+		const endOfTurnTokens = llamaModel.tokenize(LIVEKIT_END_OF_TURN_TOKEN, true);
+		if (endOfTurnTokens.length !== 1) {
 			await llamaModel.dispose().catch(() => undefined);
 			throw new EotGgmlUnavailableError(
-				"tokenizer-missing-im-end",
-				`[eot-ggml] tokenizer produced ${imEndTokens.length} tokens for <|im_end|>; expected exactly 1. The GGUF's special-token table is missing the expected entry.`,
+				"tokenizer-missing-end-of-turn",
+				`[eot-ggml] tokenizer produced ${endOfTurnTokens.length} tokens for <end_of_turn>; expected exactly 1. The GGUF's special-token table is missing the expected entry.`,
 			);
 		}
-		const imEndTokenId = imEndTokens[0];
+		const endOfTurnTokenId = endOfTurnTokens[0];
 
 		let context: NlcLlamaContext;
 		try {
@@ -461,7 +461,7 @@ export class LiveKitGgmlTurnDetector implements EotClassifier {
 		}
 
 		const sequence = context.getSequence();
-		return { llamaModel, context, sequence, imEndTokenId };
+		return { llamaModel, context, sequence, endOfTurnTokenId };
 	}
 }
 
@@ -550,17 +550,17 @@ function normalizeTurnDetectorText(text: string): string {
 }
 
 /**
- * Apply the single-turn user Qwen chat template, omitting the trailing
- * `<|im_end|>` so the detector head scores it as the next token.
+ * Apply the single-turn user Gemma chat template, omitting the trailing
+ * `<end_of_turn>` so the detector head scores it as the next token.
  *
  * Upstream `livekit/turn-detector` formats:
  *
- *   <|im_start|>user\n{transcript}<|im_end|>\n
+ *   <start_of_turn>user\n{transcript}<end_of_turn>\n
  *
- * The detector strips the trailing `<|im_end|>\n` and reads
- * `P(<|im_end|>)` after the user content. We emit the prefix exactly,
- * stopping where the `<|im_end|>` would go.
+ * The detector strips the trailing `<end_of_turn>\n` and reads
+ * `P(<end_of_turn>)` after the user content. We emit the prefix exactly,
+ * stopping where the `<end_of_turn>` would go.
  */
-export function applyQwenUserTemplate(transcript: string): string {
-	return `<|im_start|>user\n${transcript}`;
+export function applyGemmaUserTemplate(transcript: string): string {
+	return `<start_of_turn>user\n${transcript}`;
 }

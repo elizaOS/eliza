@@ -1,14 +1,14 @@
 /**
  * Eliza-1 EOT scorer — reuses the already-loaded text model to compute
- * P(`<|im_end|>` next | conversation_so_far) without shipping a separate
+ * P(`<end_of_turn>` next | conversation_so_far) without shipping a separate
  * detector ONNX.
  *
  * The runtime keeps a `LlamaModel` resident for chat generation. Voice
- * EOT scoring is a single forward pass over the formatted Qwen chat
- * prompt with the trailing `<|im_end|>` removed. `capacitor-llama`'s
+ * EOT scoring is a single forward pass over the formatted Gemma chat
+ * prompt with the trailing `<end_of_turn>` removed. `capacitor-llama`'s
  * `LlamaContextSequence.controlledEvaluate()` returns the next-token
  * probability distribution, so we simply read the entry for the
- * `<|im_end|>` token id — no sampling loop, no KV-cache growth on the
+ * `<end_of_turn>` token id — no sampling loop, no KV-cache growth on the
  * chat session.
  *
  * A dedicated `LlamaContext` is held just for this scorer so we do not
@@ -70,8 +70,8 @@ export interface ControlledEvaluateOutputLike {
 	};
 }
 
-const IM_END_TOKEN = "<|im_end|>";
-const IM_START_USER_PREFIX = "<|im_start|>user\n";
+const END_OF_TURN_TOKEN = "<end_of_turn>";
+const START_OF_TURN_USER_PREFIX = "<start_of_turn>user\n";
 
 export interface Eliza1EotScorerOptions {
 	/** The already-loaded text model (eliza-1 drafter). */
@@ -89,7 +89,7 @@ export interface Eliza1EotScorerOptions {
 }
 
 export interface Eliza1EotScoreResult {
-	/** Probability of `<|im_end|>` as the next token, ∈ [0, 1]. */
+	/** Probability of `<end_of_turn>` as the next token, ∈ [0, 1]. */
 	probability: number;
 	/** Wall-clock model latency for this scoring call. */
 	latencyMs: number;
@@ -112,7 +112,7 @@ export class Eliza1EotScorer {
 
 	private context: LlamaContextLike | null = null;
 	private sequence: LlamaContextSequenceLike | null = null;
-	private imEndTokenId: number | null = null;
+	private endOfTurnTokenId: number | null = null;
 	private initPromise: Promise<void> | null = null;
 	/** Serializes concurrent calls — controlledEvaluate is not thread-safe per-sequence. */
 	private inflight: Promise<unknown> = Promise.resolve();
@@ -133,15 +133,15 @@ export class Eliza1EotScorer {
 	async score(partialTranscript: string): Promise<Eliza1EotScoreResult> {
 		await this.ensureReady();
 		const sequence = this.sequence;
-		const imEndId = this.imEndTokenId;
-		if (!sequence || imEndId === null) {
+		const endOfTurnId = this.endOfTurnTokenId;
+		if (!sequence || endOfTurnId === null) {
 			throw new Error("[voice] Eliza1EotScorer not initialized.");
 		}
 
 		const tokens = this.tokenizePrompt(partialTranscript);
 		const start = performance.now();
 		const next = this.inflight.then(() =>
-			this.runOnce(sequence, tokens, imEndId),
+			this.runOnce(sequence, tokens, endOfTurnId),
 		);
 		this.inflight = next.catch(() => undefined);
 		const probability = await next;
@@ -156,25 +156,25 @@ export class Eliza1EotScorer {
 		const ctx = this.context;
 		this.context = null;
 		this.sequence = null;
-		this.imEndTokenId = null;
+		this.endOfTurnTokenId = null;
 		this.initPromise = null;
 		if (ctx) await ctx.dispose();
 	}
 
 	private async ensureReady(): Promise<void> {
-		if (this.context && this.sequence && this.imEndTokenId !== null) return;
+		if (this.context && this.sequence && this.endOfTurnTokenId !== null) return;
 		if (!this.initPromise) this.initPromise = this.initialize();
 		await this.initPromise;
 	}
 
 	private async initialize(): Promise<void> {
-		const imEndIds = this.model.tokenize(IM_END_TOKEN, true);
-		if (imEndIds.length !== 1 || !Number.isInteger(imEndIds[0])) {
+		const endOfTurnIds = this.model.tokenize(END_OF_TURN_TOKEN, true);
+		if (endOfTurnIds.length !== 1 || !Number.isInteger(endOfTurnIds[0])) {
 			throw new Error(
-				`[voice] Eliza1EotScorer: model tokenizer did not resolve <|im_end|> to a single special token (got ${JSON.stringify(imEndIds)}). The base model must be Qwen-template compatible.`,
+				`[voice] Eliza1EotScorer: model tokenizer did not resolve <end_of_turn> to a single special token (got ${JSON.stringify(endOfTurnIds)}). The base model must be Gemma-template compatible.`,
 			);
 		}
-		this.imEndTokenId = imEndIds[0];
+		this.endOfTurnTokenId = endOfTurnIds[0];
 
 		const contextOptions: Parameters<LlamaModelLike["createContext"]>[0] = {
 			contextSize: this.contextSize,
@@ -206,7 +206,7 @@ export class Eliza1EotScorer {
 	private async runOnce(
 		sequence: LlamaContextSequenceLike,
 		tokens: number[],
-		imEndId: number,
+		endOfTurnId: number,
 	): Promise<number> {
 		if (tokens.length === 0) return 0.5;
 		await sequence.clearHistory();
@@ -219,15 +219,15 @@ export class Eliza1EotScorer {
 		const last = out[tokens.length - 1];
 		const probs = last?.next.probabilities;
 		if (!probs) return 0.5;
-		const p = probs.get(imEndId);
+		const p = probs.get(endOfTurnId);
 		if (typeof p !== "number" || !Number.isFinite(p)) return 0.5;
 		return Math.max(0, Math.min(1, p));
 	}
 }
 
 /**
- * Format the partial transcript using the Qwen chat template, with the
- * trailing `<|im_end|>` removed so the next predicted token *is* the
+ * Format the partial transcript using the Gemma chat template, with the
+ * trailing `<end_of_turn>` removed so the next predicted token *is* the
  * EOT signal we want to measure.
  *
  * Matches the formatting LiveKit's turn-detector uses (single user turn,
@@ -238,5 +238,5 @@ export class Eliza1EotScorer {
  */
 export function formatEotPrompt(transcript: string): string {
 	const cleaned = transcript.trim();
-	return `${IM_START_USER_PREFIX}${cleaned}`;
+	return `${START_OF_TURN_USER_PREFIX}${cleaned}`;
 }
