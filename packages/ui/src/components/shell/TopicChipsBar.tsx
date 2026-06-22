@@ -1,4 +1,4 @@
-import * as React from "react";
+import type * as React from "react";
 import { cn } from "../../lib/utils";
 
 /**
@@ -8,46 +8,46 @@ import { cn } from "../../lib/utils";
  * neutral resting → neutral-with-opacity hover (no orange, no blue).
  */
 export function TopicChipsBar({
-	topics,
-	activeTopic,
-	onSelectTopic,
-	className,
+  topics,
+  activeTopic,
+  onSelectTopic,
+  className,
 }: {
-	topics: readonly string[];
-	activeTopic?: string | null;
-	onSelectTopic?: (topic: string) => void;
-	className?: string;
+  topics: readonly string[];
+  activeTopic?: string | null;
+  onSelectTopic?: (topic: string) => void;
+  className?: string;
 }): React.JSX.Element | null {
-	if (topics.length === 0) return null;
-	return (
-		<div
-			data-testid="topic-chips-bar"
-			className={cn(
-				"flex shrink-0 items-center gap-1.5 overflow-x-auto pb-2 pt-1",
-				"[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-				className,
-			)}
-		>
-			{topics.map((topic) => {
-				const active = activeTopic != null && activeTopic === topic;
-				return (
-					<button
-						key={topic}
-						type="button"
-						data-testid={`topic-chip-${topic}`}
-						onClick={() => onSelectTopic?.(topic)}
-						className={cn(
-							"shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
-							"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
-							active
-								? "border-white/40 bg-white/85 text-black"
-								: "border-white/15 bg-white/10 text-white/70 hover:bg-white/20 hover:text-white",
-						)}
-					>
-						{topic}
-					</button>
-				);
-			})}
-		</div>
-	);
+  if (topics.length === 0) return null;
+  return (
+    <div
+      data-testid="topic-chips-bar"
+      className={cn(
+        "flex shrink-0 items-center gap-1.5 overflow-x-auto pb-2 pt-1",
+        "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        className,
+      )}
+    >
+      {topics.map((topic) => {
+        const active = activeTopic != null && activeTopic === topic;
+        return (
+          <button
+            key={topic}
+            type="button"
+            data-testid={`topic-chip-${topic}`}
+            onClick={() => onSelectTopic?.(topic)}
+            className={cn(
+              "shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+              active
+                ? "border-white/40 bg-white/85 text-black"
+                : "border-white/15 bg-white/10 text-white/70 hover:bg-white/20 hover:text-white",
+            )}
+          >
+            {topic}
+          </button>
+        );
+      })}
+    </div>
+  );
 }

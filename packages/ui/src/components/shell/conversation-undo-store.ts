@@ -10,14 +10,14 @@
  */
 
 export interface ConversationUndoRequest {
-	/** Monotonic id so the toast re-arms its auto-dismiss timer per request. */
-	id: number;
-	/** Message shown in the toast (e.g. "Conversation cleared"). */
-	label: string;
-	/** Action button text (e.g. "Undo"). */
-	actionLabel: string;
-	/** Invoked when the user taps Undo or swipes the toast to restore. */
-	onUndo: () => void;
+  /** Monotonic id so the toast re-arms its auto-dismiss timer per request. */
+  id: number;
+  /** Message shown in the toast (e.g. "Conversation cleared"). */
+  label: string;
+  /** Action button text (e.g. "Undo"). */
+  actionLabel: string;
+  /** Invoked when the user taps Undo or swipes the toast to restore. */
+  onUndo: () => void;
 }
 
 let current: ConversationUndoRequest | null = null;
@@ -25,28 +25,28 @@ let counter = 0;
 const listeners = new Set<() => void>();
 
 function emit(): void {
-	for (const listener of listeners) listener();
+  for (const listener of listeners) listener();
 }
 
 export function subscribeConversationUndo(listener: () => void): () => void {
-	listeners.add(listener);
-	return () => {
-		listeners.delete(listener);
-	};
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export function getConversationUndoSnapshot(): ConversationUndoRequest | null {
-	return current;
+  return current;
 }
 
 /** Show (or replace) the undo toast. Returns the request id. */
 export function showConversationUndo(
-	request: Omit<ConversationUndoRequest, "id">,
+  request: Omit<ConversationUndoRequest, "id">,
 ): number {
-	counter += 1;
-	current = { ...request, id: counter };
-	emit();
-	return current.id;
+  counter += 1;
+  current = { ...request, id: counter };
+  emit();
+  return current.id;
 }
 
 /**
@@ -54,10 +54,10 @@ export function showConversationUndo(
  * request (avoids a stale auto-dismiss timer closing a newer toast).
  */
 export function dismissConversationUndo(id?: number): void {
-	if (id !== undefined && current?.id !== id) return;
-	if (current === null) return;
-	current = null;
-	emit();
+  if (id !== undefined && current?.id !== id) return;
+  if (current === null) return;
+  current = null;
+  emit();
 }
 
 /**
@@ -67,21 +67,21 @@ export function dismissConversationUndo(id?: number): void {
  * conversation to restore.
  */
 export function requestConversationResetUndo(opts: {
-	previousConversationId: string | null;
-	restore: (id: string) => void;
-	translate?: (key: string) => string;
+  previousConversationId: string | null;
+  restore: (id: string) => void;
+  translate?: (key: string) => string;
 }): void {
-	const { previousConversationId, restore, translate } = opts;
-	if (!previousConversationId) return;
-	const tr = (key: string, fallback: string): string => {
-		const value = translate?.(key);
-		return typeof value === "string" && value && value !== key
-			? value
-			: fallback;
-	};
-	showConversationUndo({
-		label: tr("chat.conversationCleared", "Conversation cleared"),
-		actionLabel: tr("common.undo", "Undo"),
-		onUndo: () => restore(previousConversationId),
-	});
+  const { previousConversationId, restore, translate } = opts;
+  if (!previousConversationId) return;
+  const tr = (key: string, fallback: string): string => {
+    const value = translate?.(key);
+    return typeof value === "string" && value && value !== key
+      ? value
+      : fallback;
+  };
+  showConversationUndo({
+    label: tr("chat.conversationCleared", "Conversation cleared"),
+    actionLabel: tr("common.undo", "Undo"),
+    onUndo: () => restore(previousConversationId),
+  });
 }

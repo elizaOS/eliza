@@ -16,22 +16,27 @@ import { requestConversationResetUndo } from "./conversation-undo-store";
  * `requestConversationResetUndo` so the affordance is identical everywhere.
  */
 export function useConversationReset(): () => void {
-	const {
-		handleNewConversation,
-		handleSelectConversation,
-		activeConversationId,
-		t,
-	} = useApp();
+  const {
+    handleNewConversation,
+    handleSelectConversation,
+    activeConversationId,
+    t,
+  } = useApp();
 
-	return React.useCallback(() => {
-		const previousConversationId = activeConversationId;
-		void handleNewConversation();
-		requestConversationResetUndo({
-			previousConversationId,
-			restore: (id) => {
-				void handleSelectConversation(id);
-			},
-			translate: typeof t === "function" ? (key) => t(key) : undefined,
-		});
-	}, [activeConversationId, handleNewConversation, handleSelectConversation, t]);
+  return React.useCallback(() => {
+    const previousConversationId = activeConversationId;
+    void handleNewConversation();
+    requestConversationResetUndo({
+      previousConversationId,
+      restore: (id) => {
+        void handleSelectConversation(id);
+      },
+      translate: typeof t === "function" ? (key) => t(key) : undefined,
+    });
+  }, [
+    activeConversationId,
+    handleNewConversation,
+    handleSelectConversation,
+    t,
+  ]);
 }

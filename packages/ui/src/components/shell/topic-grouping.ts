@@ -13,29 +13,29 @@
 
 /** Minimal shape the grouping needs from a message. */
 export interface TopicTaggedMessage {
-	id: string;
-	topics?: string[];
+  id: string;
+  topics?: string[];
 }
 
 /** A contiguous run of messages sharing a dominant topic. */
 export interface TopicSegment<T extends TopicTaggedMessage> {
-	/** Stable key for collapse state — the topic, or the first message id. */
-	key: string;
-	/** Dominant topic label, or null for an untitled leading run. */
-	topic: string | null;
-	messages: T[];
+  /** Stable key for collapse state — the topic, or the first message id. */
+  key: string;
+  /** Dominant topic label, or null for an untitled leading run. */
+  topic: string | null;
+  messages: T[];
 }
 
 /** Maximum chips rendered in the topic bar before the rest are summarized. */
 export const MAX_TOPIC_CHIPS = 12;
 
 function dominantTopic(message: TopicTaggedMessage): string | null {
-	const topics = message.topics;
-	if (!Array.isArray(topics)) return null;
-	for (const topic of topics) {
-		if (typeof topic === "string" && topic.trim()) return topic.trim();
-	}
-	return null;
+  const topics = message.topics;
+  if (!Array.isArray(topics)) return null;
+  for (const topic of topics) {
+    if (typeof topic === "string" && topic.trim()) return topic.trim();
+  }
+  return null;
 }
 
 /**
@@ -44,31 +44,34 @@ function dominantTopic(message: TopicTaggedMessage): string | null {
  * messages extend the current segment.
  */
 export function groupMessagesByTopic<T extends TopicTaggedMessage>(
-	messages: readonly T[],
+  messages: readonly T[],
 ): TopicSegment<T>[] {
-	const segments: TopicSegment<T>[] = [];
-	for (const message of messages) {
-		const topic = dominantTopic(message);
-		const last = segments[segments.length - 1];
-		// Start a new segment on the first message, or when a tagged message
-		// introduces a different dominant topic than the current TITLED segment.
-		// A leading untitled run (last.topic === null) instead adopts the topic.
-		if (!last || (topic !== null && last.topic !== null && topic !== last.topic)) {
-			segments.push({
-				key: topic ?? `untitled-${message.id}`,
-				topic,
-				messages: [message],
-			});
-			continue;
-		}
-		last.messages.push(message);
-		// An untitled leading segment adopts the first topic it encounters.
-		if (last.topic === null && topic !== null) {
-			last.topic = topic;
-			last.key = topic;
-		}
-	}
-	return segments;
+  const segments: TopicSegment<T>[] = [];
+  for (const message of messages) {
+    const topic = dominantTopic(message);
+    const last = segments[segments.length - 1];
+    // Start a new segment on the first message, or when a tagged message
+    // introduces a different dominant topic than the current TITLED segment.
+    // A leading untitled run (last.topic === null) instead adopts the topic.
+    if (
+      !last ||
+      (topic !== null && last.topic !== null && topic !== last.topic)
+    ) {
+      segments.push({
+        key: topic ?? `untitled-${message.id}`,
+        topic,
+        messages: [message],
+      });
+      continue;
+    }
+    last.messages.push(message);
+    // An untitled leading segment adopts the first topic it encounters.
+    if (last.topic === null && topic !== null) {
+      last.topic = topic;
+      last.key = topic;
+    }
+  }
+  return segments;
 }
 
 /**
@@ -76,22 +79,22 @@ export function groupMessagesByTopic<T extends TopicTaggedMessage>(
  * most-recent first, capped at {@link MAX_TOPIC_CHIPS}.
  */
 export function deriveChannelTopics(
-	messages: readonly TopicTaggedMessage[],
+  messages: readonly TopicTaggedMessage[],
 ): string[] {
-	const seen = new Set<string>();
-	const ordered: string[] = [];
-	// Walk newest → oldest so the most recent topics lead.
-	for (let i = messages.length - 1; i >= 0; i -= 1) {
-		const topics = messages[i]?.topics;
-		if (!Array.isArray(topics)) continue;
-		for (const raw of topics) {
-			if (typeof raw !== "string") continue;
-			const topic = raw.trim();
-			if (!topic || seen.has(topic)) continue;
-			seen.add(topic);
-			ordered.push(topic);
-			if (ordered.length >= MAX_TOPIC_CHIPS) return ordered;
-		}
-	}
-	return ordered;
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  // Walk newest → oldest so the most recent topics lead.
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const topics = messages[i]?.topics;
+    if (!Array.isArray(topics)) continue;
+    for (const raw of topics) {
+      if (typeof raw !== "string") continue;
+      const topic = raw.trim();
+      if (!topic || seen.has(topic)) continue;
+      seen.add(topic);
+      ordered.push(topic);
+      if (ordered.length >= MAX_TOPIC_CHIPS) return ordered;
+    }
+  }
+  return ordered;
 }

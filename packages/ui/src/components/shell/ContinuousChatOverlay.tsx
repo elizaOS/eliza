@@ -63,10 +63,7 @@ import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import type { ShellMessage } from "./shell-state";
 import { TopicChipsBar } from "./TopicChipsBar";
 import { TopicGroup } from "./TopicGroup";
-import {
-  deriveChannelTopics,
-  groupMessagesByTopic,
-} from "./topic-grouping";
+import { deriveChannelTopics, groupMessagesByTopic } from "./topic-grouping";
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import { usePromptSuggestions } from "./usePromptSuggestions";
 import type { ConversationNav, ShellController } from "./useShellController";
@@ -1235,7 +1232,13 @@ export function ContinuousChatOverlay({
         />
       );
     },
-    [visibleMessages.length, reduce, handleCopyMessage, openSettings, turnStatus],
+    [
+      visibleMessages.length,
+      reduce,
+      handleCopyMessage,
+      openSettings,
+      turnStatus,
+    ],
   );
 
   const booting = phase === "booting";
@@ -3028,8 +3031,13 @@ export function ContinuousChatOverlay({
                               renderThreadLine(m, lineIndex++),
                             );
                             return (
+                              // The React key is the segment's first message id
+                              // (stable + unique) because a topic can recur in a
+                              // non-adjacent run (A → B → A). Collapse state stays
+                              // keyed by topic (`segment.key`) so a chip tap
+                              // expands every run of that topic.
                               <TopicGroup
-                                key={segment.key}
+                                key={segment.messages[0]?.id ?? segment.key}
                                 topic={segment.topic}
                                 count={segment.messages.length}
                                 collapsed={collapsedTopics.has(segment.key)}

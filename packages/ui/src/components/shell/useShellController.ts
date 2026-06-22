@@ -242,7 +242,12 @@ export function useShellController(): ShellController {
       },
       translate: typeof t === "function" ? (key) => t(key) : undefined,
     });
-  }, [activeConversationId, handleNewConversation, handleSelectConversation, t]);
+  }, [
+    activeConversationId,
+    handleNewConversation,
+    handleSelectConversation,
+    t,
+  ]);
 
   // Horizontal-swipe navigation between conversations (#8929). `conversations`
   // is most-recent-first, so "prev" moves toward newer (lower index) and "next"

@@ -53,7 +53,6 @@ import {
 import { MessageContent } from "../chat/MessageContent";
 import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
-import { useConversationReset } from "../shell/use-conversation-reset";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
 import { ChatComposer } from "../composites/chat/chat-composer";
 import { ChatComposerShell } from "../composites/chat/chat-composer-shell";
@@ -63,6 +62,7 @@ import { ChatThreadLayout } from "../composites/chat/chat-thread-layout";
 import { ChatTranscript } from "../composites/chat/chat-transcript";
 import type { ChatMessageData } from "../composites/chat/chat-types";
 import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
+import { useConversationReset } from "../shell/use-conversation-reset";
 import {
   useChatVoiceController,
   useGameModalMessages,

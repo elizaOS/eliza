@@ -6,14 +6,24 @@ import { ChatView } from "./ChatView";
 
 const NOW = 1_700_000_000_000;
 const SAMPLE_MESSAGES: ConversationMessage[] = [
-  { id: "u1", role: "user", text: "can you deploy the worker?", timestamp: NOW - 40000 },
+  {
+    id: "u1",
+    role: "user",
+    text: "can you deploy the worker?",
+    timestamp: NOW - 40000,
+  },
   {
     id: "a1",
     role: "assistant",
     text: "Deploying the provisioning worker now — building the image…",
     timestamp: NOW - 30000,
   },
-  { id: "u2", role: "user", text: "thanks! and what's my October invoice?", timestamp: NOW - 20000 },
+  {
+    id: "u2",
+    role: "user",
+    text: "thanks! and what's my October invoice?",
+    timestamp: NOW - 20000,
+  },
   {
     id: "a2",
     role: "assistant",
@@ -25,7 +35,9 @@ const SAMPLE_MESSAGES: ConversationMessage[] = [
 /** Seed the (otherwise backendless) transcript so the reset button shows. */
 function withMessages(messages: ConversationMessage[]): Decorator {
   return (Story) => (
-    <ConversationMessagesCtx.Provider value={{ conversationMessages: messages }}>
+    <ConversationMessagesCtx.Provider
+      value={{ conversationMessages: messages }}
+    >
       <Story />
     </ConversationMessagesCtx.Provider>
   );

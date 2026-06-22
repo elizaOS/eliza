@@ -126,7 +126,11 @@ export function usePullGesture(
 
   const onPointerDown = React.useCallback(
     (event: React.PointerEvent) => {
-      start.current = { x: event.clientX, y: event.clientY, t: performance.now() };
+      start.current = {
+        x: event.clientX,
+        y: event.clientY,
+        t: performance.now(),
+      };
       axis.current = null;
       // When horizontal swipes are possible we DEFER capture until the gesture
       // commits to an axis, so a vertical scroll inside the panel still scrolls
