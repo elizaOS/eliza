@@ -59,5 +59,9 @@
     "../../packages/agent/src/external-modules.d.ts",
     "../../packages/app-core/src/ambient-modules.d.ts"
   ],
-  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
+  "exclude": [
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx",
+    "src/**/*.harness.test.ts"
+  ]
 }
