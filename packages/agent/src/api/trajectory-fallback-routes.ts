@@ -180,8 +180,24 @@ function detailToUi(traj: ServiceTrajectory): Record<string, unknown> {
         ? "completed"
         : "active";
 
+  const startTime = typeof traj.startTime === "number" ? traj.startTime : 0;
+  const endTime =
+    typeof traj.endTime === "number" && traj.endTime > 0 ? traj.endTime : null;
+  const durationMs =
+    endTime !== null && startTime > 0 ? Math.max(0, endTime - startTime) : null;
   return {
-    trajectory: { id, status, llmCallCount: llmCalls.length },
+    trajectory: {
+      id,
+      agentId: traj.agentId ?? "",
+      source: "chat",
+      status,
+      startTime,
+      endTime,
+      durationMs,
+      llmCallCount: llmCalls.length,
+      providerAccessCount: providerAccesses.length,
+      createdAt: new Date(startTime > 0 ? startTime : 0).toISOString(),
+    },
     llmCalls,
     providerAccesses,
     toolEvents,
