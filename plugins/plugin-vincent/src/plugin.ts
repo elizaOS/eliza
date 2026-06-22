@@ -107,6 +107,10 @@ export const vincentPlugin: Plugin = {
     "Vincent OAuth and Hyperliquid/Polymarket trading dashboard routes",
   routes: vincentRoutes,
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single VincentView
+    // spatial source. `modalities` is a plain literal here (plugin.ts is not in
+    // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
+    // the bundle build.
     {
       id: "vincent",
       label: "Vincent",
@@ -114,37 +118,10 @@ export const vincentPlugin: Plugin = {
         "Vincent trading dashboard — Hyperliquid/Polymarket strategy and wallet overview",
       icon: "Zap",
       path: "/vincent",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "VincentAppView",
+      componentExport: "VincentView",
       tags: ["trading", "vincent", "strategy"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "vincent",
-      label: "Vincent XR",
-      description:
-        "Vincent trading dashboard — Hyperliquid/Polymarket strategy and wallet overview",
-      icon: "Zap",
-      path: "/vincent",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "VincentAppView",
-      tags: ["trading", "vincent", "strategy"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "vincent",
-      label: "Vincent TUI",
-      description:
-        "Terminal Vincent trading dashboard, strategy, and wallet overview",
-      icon: "Zap",
-      path: "/vincent/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "VincentTuiView",
-      tags: ["trading", "vincent", "strategy", "terminal"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

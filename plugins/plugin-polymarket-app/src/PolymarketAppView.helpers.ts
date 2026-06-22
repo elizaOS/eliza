@@ -1,7 +1,7 @@
-// Shared data helpers for the Polymarket view, used by both PolymarketTuiView
-// (in PolymarketAppView.tsx) and the `interact` capability handler
-// (in PolymarketAppView.interact.ts). Kept out of the .tsx so that file exports
-// only React components and stays Fast-Refresh-compatible in dev.
+// Shared data helpers for the Polymarket `interact` capability handler
+// (in PolymarketAppView.interact.ts), which loads terminal-snapshot state for
+// the agent terminal. Kept out of the .tsx so component files export only React
+// components and stay Fast-Refresh-compatible in dev.
 import { client } from "@elizaos/app-core";
 import "./client";
 import type { PolymarketClient } from "./client";

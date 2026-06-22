@@ -24,6 +24,8 @@ import {
 } from "@elizaos/ui/spatial";
 import type {
   PolymarketMarket,
+  PolymarketPosition,
+  PolymarketPositionsSummary,
   PolymarketStatusResponse,
 } from "../polymarket-contracts";
 
@@ -32,6 +34,10 @@ export interface PolymarketSnapshot {
   markets: readonly PolymarketMarket[];
   /** Detail overlay target; null shows the list. */
   selectedMarket: PolymarketMarket | null;
+  /** The agent's own open positions; empty when none/unreadable. */
+  positions?: readonly PolymarketPosition[];
+  /** Aggregate value/PnL across `positions`; null when none. */
+  positionsSummary?: PolymarketPositionsSummary | null;
   loading?: boolean;
   error?: string | null;
   lastAction?: string;
@@ -58,6 +64,26 @@ function shortNumber(value: string | null): string | null {
 
 function marketLabel(market: PolymarketMarket): string {
   return market.question ?? market.slug ?? market.id;
+}
+
+function parseNumber(value: string | null | undefined): number | null {
+  if (value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function usd(value: number | null, withSign = false): string {
+  if (value == null) return "-";
+  const sign = withSign && value > 0 ? "+" : value < 0 ? "-" : "";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}$${abs.toFixed(2)}`;
+}
+
+function pnlTone(value: number | null): SpatialTone {
+  if (value == null || value === 0) return "muted";
+  return value > 0 ? "success" : "danger";
 }
 
 function readyTone(ready: boolean): SpatialTone {
@@ -114,10 +140,12 @@ function MarketRow({
   market,
   index,
   active,
+  onAction,
 }: {
   market: PolymarketMarket;
   index: number;
   active: boolean;
+  onAction?: (action: string) => void;
 }) {
   const label = marketLabel(market);
   const volume = shortNumber(market.volume24hr ?? market.volume);
@@ -140,6 +168,14 @@ function MarketRow({
         <Text style="caption" tone={market.active ? "success" : "muted"}>
           {market.active ? "active" : "closed"}
         </Text>
+        <Button
+          variant="ghost"
+          tone="primary"
+          agent={`market:${market.id}`}
+          onPress={() => onAction?.(`market:${market.id}`)}
+        >
+          Open
+        </Button>
       </HStack>
       {top.length > 0 ? (
         <HStack gap={2} wrap>
@@ -236,9 +272,75 @@ function MarketDetail({
   );
 }
 
+function PositionRow({ position }: { position: PolymarketPosition }) {
+  const label =
+    position.question ?? position.slug ?? position.marketId ?? position.outcome;
+  const value = parseNumber(position.currentValue);
+  const cashPnl = parseNumber(position.cashPnl);
+  return (
+    <HStack gap={1} align="center">
+      <Text grow={1} wrap={false}>
+        {label ?? "-"}
+      </Text>
+      {position.outcome ? (
+        <Text style="caption" tone="muted" wrap={false}>
+          {position.outcome}
+        </Text>
+      ) : null}
+      <Text style="caption" tone="muted" align="end" width={8}>
+        {usd(value)}
+      </Text>
+      <Text style="caption" tone={pnlTone(cashPnl)} align="end" width={8}>
+        {usd(cashPnl, true)}
+      </Text>
+    </HStack>
+  );
+}
+
+function PositionsSection({
+  positions,
+  summary,
+}: {
+  positions: readonly PolymarketPosition[];
+  summary: PolymarketPositionsSummary | null;
+}) {
+  const open = positions.filter((position) => {
+    const size = parseNumber(position.size);
+    return size != null && Math.abs(size) > 1e-9;
+  });
+  const totalValue = parseNumber(summary?.totalValue ?? null);
+  const totalPnl = parseNumber(summary?.totalCashPnl ?? null);
+  return (
+    <>
+      <Divider label="positions" />
+      <HStack gap={2} wrap>
+        <Text style="caption" tone="muted">{`value ${usd(totalValue)}`}</Text>
+        <Text style="caption" tone={pnlTone(totalPnl)}>
+          {`pnl ${usd(totalPnl, true)}`}
+        </Text>
+        <Text style="caption" tone="muted">{`open ${open.length}`}</Text>
+      </HStack>
+      {open.length === 0 ? (
+        <Text style="caption" tone="muted" align="center">
+          no open positions
+        </Text>
+      ) : (
+        <List gap={0}>
+          {open.map((position) => (
+            <PositionRow
+              key={`${position.conditionId ?? position.marketId ?? position.slug}-${position.outcome}`}
+              position={position}
+            />
+          ))}
+        </List>
+      )}
+    </>
+  );
+}
+
 export interface PolymarketSpatialViewProps {
   snapshot: PolymarketSnapshot;
-  /** Dispatch by agent id: `market:<id>`, `detail-back`, `refresh`. */
+  /** Dispatch by action id: `market:<id>` (open a market), `detail-back`, `refresh`. */
   onAction?: (action: string) => void;
 }
 
@@ -247,6 +349,8 @@ export function PolymarketSpatialView({
   onAction,
 }: PolymarketSpatialViewProps) {
   const { status, markets, selectedMarket, loading, error } = snapshot;
+  const positions = snapshot.positions ?? [];
+  const accountReady = status?.account?.ready ?? false;
   const selectedId = selectedMarket?.id ?? null;
   return (
     <Card title="Polymarket" gap={1} padding={1}>
@@ -276,6 +380,12 @@ export function PolymarketSpatialView({
         <MarketDetail market={selectedMarket} onAction={onAction} />
       ) : (
         <>
+          {accountReady ? (
+            <PositionsSection
+              positions={positions}
+              summary={snapshot.positionsSummary ?? null}
+            />
+          ) : null}
           <Divider label="markets" />
           {markets.length === 0 ? (
             <Text tone="muted" align="center" style="caption">
@@ -289,6 +399,7 @@ export function PolymarketSpatialView({
                   market={market}
                   index={index}
                   active={selectedId === market.id}
+                  onAction={onAction}
                 />
               ))}
             </List>

@@ -1,6 +1,5 @@
 /** VincentAppView — full-screen overlay app for Vincent trading access. */
 
-import type { WalletAddresses } from "@elizaos/shared";
 import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, PagePanel, Spinner, useAppSelector } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
@@ -11,11 +10,9 @@ import {
   ShieldCheck,
   Wallet,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
 import { TradingProfileCard } from "./TradingProfileCard";
 import { TradingStrategyPanel } from "./TradingStrategyPanel";
 import { useVincentDashboard } from "./useVincentDashboard";
-import { loadVincentTuiState } from "./VincentAppView.helpers";
 import { VincentConnectionCard } from "./VincentConnectionCard";
 import { WalletStatusCard } from "./WalletStatusCard";
 
@@ -165,208 +162,6 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
             </div>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-export function VincentTuiView() {
-  const [state, setState] = useState<Awaited<
-    ReturnType<typeof loadVincentTuiState>
-  > | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [lastAction, setLastAction] = useState("boot");
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const next = await loadVincentTuiState();
-      setState(next);
-      setLastAction("refresh");
-    } catch (caught) {
-      setState(null);
-      setError(
-        caught instanceof Error ? caught.message : "Vincent refresh failed",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const tuiRefresh = useAgentElement<HTMLButtonElement>({
-    id: "tui-action-refresh",
-    role: "button",
-    label: "Refresh",
-    group: "vincent-tui-access",
-    description: "Reload Vincent connection, wallet, strategy and P&L state",
-  });
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const strategy = state?.strategy.strategy ?? null;
-  const profile = state?.tradingProfile.profile ?? null;
-  const walletAddresses: WalletAddresses | null | undefined =
-    state?.walletAddresses;
-  const viewState = {
-    viewType: "tui",
-    viewId: "vincent",
-    connected: state?.status.connected ?? false,
-    connectedAt: state?.status.connectedAt ?? null,
-    venues: state?.status.tradingVenues ?? [],
-    evmAddress: walletAddresses?.evmAddress ?? null,
-    solanaAddress: walletAddresses?.solanaAddress ?? null,
-    strategyName: strategy?.name ?? null,
-    strategyRunning: strategy?.running ?? false,
-    dryRun: strategy?.dryRun ?? null,
-    totalPnl: profile?.totalPnl ?? null,
-    loading,
-    lastAction,
-    error,
-  };
-
-  return (
-    <div
-      data-view-state={JSON.stringify(viewState)}
-      style={{
-        minHeight: "100vh",
-        background: "#020617",
-        color: "#cbd5e1",
-        fontFamily:
-          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
-        padding: 20,
-      }}
-    >
-      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
-        elizaos://vincent --type=tui
-      </div>
-      <div style={{ color: "#475569", marginBottom: 16 }}>
-        {loading
-          ? "loading"
-          : state?.status.connected
-            ? "connected"
-            : "disconnected"}{" "}
-        | {(state?.status.tradingVenues ?? []).join(",") || "no venues"} |{" "}
-        {lastAction}
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr",
-          gap: 16,
-        }}
-      >
-        <section
-          aria-label="Vincent access"
-          style={{
-            border: "1px solid rgba(125,211,252,0.3)",
-            borderRadius: 6,
-            padding: 16,
-            minHeight: 420,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 10,
-            }}
-          >
-            <strong style={{ color: "#e2e8f0" }}>access</strong>
-            <button
-              ref={tuiRefresh.ref}
-              {...tuiRefresh.agentProps}
-              type="button"
-              onClick={() => void refresh()}
-              disabled={loading}
-              style={{
-                background: "transparent",
-                color: "#a7f3d0",
-                border: "1px solid rgba(167,243,208,0.45)",
-                borderRadius: 4,
-                padding: "4px 8px",
-                cursor: loading ? "not-allowed" : "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              refresh
-            </button>
-          </div>
-          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
-          <div>
-            <span style={{ color: "#64748b" }}>connected</span>{" "}
-            {state?.status.connected ? "yes" : "no"}
-          </div>
-          <div>
-            <span style={{ color: "#64748b" }}>connectedAt</span>{" "}
-            {state?.status.connectedAt ?? "n/a"}
-          </div>
-          <div>
-            <span style={{ color: "#64748b" }}>venues</span>{" "}
-            {(state?.status.tradingVenues ?? []).join(", ") || "n/a"}
-          </div>
-          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>wallet</div>
-          <div>evm {viewState.evmAddress ?? "n/a"}</div>
-          <div>solana {viewState.solanaAddress ?? "n/a"}</div>
-          {!state?.status.connected && !loading ? (
-            <div style={{ color: "#94a3b8", marginTop: 18 }}>
-              Use terminal-vincent-start-login to begin OAuth.
-            </div>
-          ) : null}
-        </section>
-
-        <section
-          aria-label="Vincent trading"
-          style={{
-            border: "1px solid rgba(125,211,252,0.3)",
-            borderRadius: 6,
-            padding: 16,
-            minHeight: 420,
-          }}
-        >
-          <strong style={{ color: "#e2e8f0" }}>strategy</strong>
-          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            {strategy?.running ? "running" : "idle"} /{" "}
-            {strategy?.dryRun ? "dry-run" : "live"}
-          </div>
-          <div>
-            <span style={{ color: "#64748b" }}>name</span>{" "}
-            {strategy?.name ?? "not configured"}
-          </div>
-          <div>
-            <span style={{ color: "#64748b" }}>interval</span>{" "}
-            {strategy?.intervalSeconds ?? "n/a"}
-          </div>
-          <div>
-            <span style={{ color: "#64748b" }}>dryRun</span>{" "}
-            {typeof strategy?.dryRun === "boolean"
-              ? String(strategy.dryRun)
-              : "n/a"}
-          </div>
-          <div>
-            <span style={{ color: "#64748b" }}>running</span>{" "}
-            {typeof strategy?.running === "boolean"
-              ? String(strategy.running)
-              : "n/a"}
-          </div>
-          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>profile</div>
-          <div>pnl {profile?.totalPnl ?? "n/a"}</div>
-          <div>winRate {profile?.winRate ?? "n/a"}</div>
-          <div>swaps {profile?.totalSwaps ?? "n/a"}</div>
-          {(profile?.tokenBreakdown ?? []).map((token) => (
-            <div
-              key={token.symbol}
-              style={{ color: "#94a3b8", padding: "4px 0" }}
-            >
-              {token.symbol} pnl {token.pnl} swaps {token.swaps}
-            </div>
-          ))}
-        </section>
       </div>
     </div>
   );

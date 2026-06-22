@@ -1,7 +1,9 @@
-// @vitest-environment jsdom
+// Coverage for the Vincent terminal `interact` capability handler — the
+// dispatch surface the agent terminal drives (terminal-vincent-state /
+// start-login / disconnect / update-strategy). Mocks the client seam (the same
+// seam VincentView.test.tsx uses) and asserts each capability calls through and
+// returns the TUI-tagged payload. Ported from the retired VincentTuiView test.
 
-import { cleanup, render, screen } from "@testing-library/react";
-import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const vincentClientMock = vi.hoisted(() => ({
@@ -15,27 +17,8 @@ const vincentClientMock = vi.hoisted(() => ({
   vincentUpdateStrategy: vi.fn(),
 }));
 
-vi.mock("@elizaos/ui", () => ({
-  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
-  Button: ({
-    children,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", { type: "button", ...props }, children),
-  PagePanel: {
-    Notice: ({ children }: { children: React.ReactNode }) =>
-      React.createElement("div", {}, children),
-  },
-  Spinner: (props: React.HTMLAttributes<HTMLSpanElement>) =>
-    React.createElement("span", props),
-  useApp: () => ({ setActionNotice: vi.fn() }),
-}));
+vi.mock("./client", () => ({ vincentClient: vincentClientMock }));
 
-vi.mock("./client", () => ({
-  vincentClient: vincentClientMock,
-}));
-
-import { VincentTuiView } from "./VincentAppView";
 import { interact } from "./VincentAppView.interact";
 
 const sampleStatus = {
@@ -44,18 +27,12 @@ const sampleStatus = {
   tradingVenues: ["hyperliquid", "polymarket"],
 };
 
-// Canonical WalletAddresses contract shape: evmAddress / solanaAddress
-// (packages/contracts/src/wallet.ts), NOT {evm, solana}. Feeding the real
-// shape proves the TUI reads .evmAddress/.solanaAddress.
 const sampleAddresses = {
   evmAddress: "0x1234567890abcdef",
   solanaAddress: "So11111111111111111111111111111111111111112",
 };
 
-const sampleBalances = {
-  evm: [],
-  solana: [],
-};
+const sampleBalances = { evm: [], solana: [] };
 
 const sampleStrategy = {
   connected: true,
@@ -99,45 +76,10 @@ function mockState() {
 }
 
 afterEach(() => {
-  cleanup();
   vi.clearAllMocks();
 });
 
-describe("VincentTuiView", () => {
-  it("mounts auth, wallet, strategy, profile, and TUI metadata", async () => {
-    mockState();
-
-    const { container } = render(React.createElement(VincentTuiView));
-
-    await screen.findByText(/0x1234567890abcdef/);
-    // Wallet rows render the real contract-shaped addresses (.evmAddress /
-    // .solanaAddress), not "n/a". Regression guard for the {evm,solana} bug.
-    expect(screen.getByText("evm 0x1234567890abcdef")).toBeTruthy();
-    expect(
-      screen.getByText("solana So11111111111111111111111111111111111111112"),
-    ).toBeTruthy();
-    expect(screen.getByText("BTC pnl 10.00 swaps 2")).toBeTruthy();
-    expect(vincentClientMock.vincentStatus).toHaveBeenCalled();
-    expect(vincentClientMock.vincentStrategy).toHaveBeenCalled();
-
-    const stateElement = container.querySelector("[data-view-state]");
-    expect(
-      JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
-    ).toMatchObject({
-      viewType: "tui",
-      viewId: "vincent",
-      connected: true,
-      connectedAt: 1_700_000_000_000,
-      venues: ["hyperliquid", "polymarket"],
-      evmAddress: "0x1234567890abcdef",
-      solanaAddress: "So11111111111111111111111111111111111111112",
-      strategyName: "threshold",
-      strategyRunning: false,
-      dryRun: true,
-      totalPnl: "12.50",
-    });
-  });
-
+describe("Vincent interact capabilities", () => {
   it("supports terminal capabilities for state, login, disconnect, and strategy updates", async () => {
     mockState();
 
@@ -182,5 +124,11 @@ describe("VincentTuiView", () => {
       intervalSeconds: 60,
       dryRun: true,
     });
+  });
+
+  it("rejects an unsupported capability", async () => {
+    await expect(interact("terminal-vincent-unknown")).rejects.toThrow(
+      /Unsupported capability/,
+    );
   });
 });

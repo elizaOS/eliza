@@ -5,6 +5,6 @@ export default createViewBundleConfig({
   viewId: "shopify",
   entry: "./src/shopify-view-bundle.ts",
   outDir: "dist/views",
-  componentExport: "ShopifyAppView",
+  componentExport: "ShopifyView",
   additionalExternals: ["@elizaos/app-core"],
 });

@@ -5,5 +5,6 @@ export * from "./useVincentState.ts";
 export * from "./VincentAppView.helpers.ts";
 export * from "./VincentAppView.tsx";
 export * from "./VincentConnectionCard.tsx";
+export { VincentView } from "./VincentView.tsx";
 export { VINCENT_APP_NAME, vincentApp } from "./vincent-app.ts";
 export * from "./WalletStatusCard.tsx";

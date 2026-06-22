@@ -112,6 +112,10 @@ export const shopifyPlugin: Plugin = {
     "Shopify store management dashboard routes (extracted from app-core server.ts)",
   routes: shopifyRoutes,
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single ShopifyView
+    // spatial source. `modalities` is a plain literal here (plugin.ts is not in
+    // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
+    // the bundle build.
     {
       id: "shopify",
       label: "Shopify",
@@ -119,37 +123,10 @@ export const shopifyPlugin: Plugin = {
         "Shopify store management — orders, products, customers, and inventory",
       icon: "ShoppingBag",
       path: "/shopify",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "ShopifyAppView",
+      componentExport: "ShopifyView",
       tags: ["shopify", "ecommerce", "store"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "shopify",
-      label: "Shopify XR",
-      description:
-        "Shopify store management — orders, products, customers, and inventory",
-      icon: "ShoppingBag",
-      path: "/shopify",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "ShopifyAppView",
-      tags: ["shopify", "ecommerce", "store"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "shopify",
-      label: "Shopify TUI",
-      description:
-        "Terminal Shopify orders, products, customers, and inventory",
-      icon: "ShoppingBag",
-      path: "/shopify/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "ShopifyTuiView",
-      tags: ["shopify", "ecommerce", "store", "terminal"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

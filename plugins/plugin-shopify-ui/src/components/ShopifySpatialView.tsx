@@ -22,6 +22,7 @@ import {
   Button,
   Card,
   Divider,
+  Field,
   HStack,
   List,
   type SpatialTone,
@@ -106,29 +107,42 @@ function CountTile({
   label,
   value,
   tone,
+  agent,
+  onPress,
 }: {
   label: string;
   value: number;
   tone: SpatialTone;
+  agent: string;
+  onPress: () => void;
 }) {
-  // Borderless stat block — sections use the outer frame + dividers, not nested boxes.
+  // Borderless stat block — sections use the outer frame + dividers, not nested
+  // boxes. The trailing Button is the cross-modal hit target that navigates to
+  // the matching tab (GUI parity with the clickable overview tiles).
   return (
     <VStack gap={0} grow={1}>
       <Text style="subheading" tone={tone} bold>
         {value.toLocaleString()}
       </Text>
-      <Text style="caption" tone="muted">
+      <Button variant="ghost" tone="default" agent={agent} onPress={onPress}>
         {label}
-      </Text>
+      </Button>
     </VStack>
   );
 }
 
-function OverviewSection({ snapshot }: { snapshot: ShopifySnapshot }) {
+function OverviewSection({
+  snapshot,
+  onAction,
+}: {
+  snapshot: ShopifySnapshot;
+  onAction?: (action: string) => void;
+}) {
   const lowInventory = snapshot.inventoryItems.filter(
     (item) => item.available <= 5,
   );
   const urgent = lowInventory.filter((item) => item.available === 0).length;
+  const go = (tab: ShopifyTab) => () => onAction?.(`tab:${tab}`);
   return (
     <VStack gap={1} width="100%">
       <HStack gap={1} wrap width="100%">
@@ -136,21 +150,29 @@ function OverviewSection({ snapshot }: { snapshot: ShopifySnapshot }) {
           label="Products"
           value={snapshot.counts.productCount}
           tone="primary"
+          agent="overview-products"
+          onPress={go("products")}
         />
         <CountTile
           label="Orders"
           value={snapshot.counts.orderCount}
           tone="success"
+          agent="overview-orders"
+          onPress={go("orders")}
         />
         <CountTile
           label="Low stock"
           value={lowInventory.length}
           tone={urgent > 0 ? "danger" : "warning"}
+          agent="overview-inventory"
+          onPress={go("inventory")}
         />
         <CountTile
           label="Customers"
           value={snapshot.counts.customerCount}
           tone="muted"
+          agent="overview-customers"
+          onPress={go("customers")}
         />
       </HStack>
 
@@ -206,14 +228,51 @@ function OverviewSection({ snapshot }: { snapshot: ShopifySnapshot }) {
   );
 }
 
-function ProductsSection({ snapshot }: { snapshot: ShopifySnapshot }) {
+const PRODUCTS_PAGE_SIZE = 20;
+
+function ProductsSection({
+  snapshot,
+  onAction,
+}: {
+  snapshot: ShopifySnapshot;
+  onAction?: (action: string) => void;
+}) {
+  const totalPages = Math.max(
+    1,
+    Math.ceil(snapshot.productsTotal / PRODUCTS_PAGE_SIZE),
+  );
   return (
     <VStack gap={1} width="100%">
+      <Field
+        label="Search products"
+        placeholder="filter by title"
+        value={snapshot.productSearch}
+        agent="products-search"
+        onChange={(value) => onAction?.(`products:search:${value}`)}
+      />
+      <HStack gap={1} align="center" width="100%">
+        <Field
+          label="New product"
+          placeholder="product title"
+          agent="products-create-title"
+          grow={1}
+          onChange={(value) => onAction?.(`products:create-title:${value}`)}
+        />
+        <Button
+          variant="solid"
+          tone="primary"
+          agent="products-create"
+          onPress={() => onAction?.("products:create")}
+        >
+          Create
+        </Button>
+      </HStack>
       <Text style="caption" tone="muted">
         {snapshot.productSearch
           ? `search "${snapshot.productSearch}"`
           : "all products"}{" "}
-        | page {snapshot.productsPage} | {snapshot.productsTotal} total
+        | page {snapshot.productsPage} of {totalPages} | {snapshot.productsTotal}{" "}
+        total
       </Text>
       {snapshot.products.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
@@ -247,13 +306,60 @@ function ProductsSection({ snapshot }: { snapshot: ShopifySnapshot }) {
           ))}
         </List>
       )}
+      {snapshot.productsTotal > PRODUCTS_PAGE_SIZE ? (
+        <HStack gap={1} align="center" width="100%">
+          <Button
+            variant="outline"
+            tone="default"
+            agent="products-prev-page"
+            disabled={snapshot.productsPage <= 1}
+            onPress={() => onAction?.("products:prev-page")}
+          >
+            Prev
+          </Button>
+          <Button
+            variant="outline"
+            tone="default"
+            agent="products-next-page"
+            disabled={snapshot.productsPage >= totalPages}
+            onPress={() => onAction?.("products:next-page")}
+          >
+            Next
+          </Button>
+        </HStack>
+      ) : null}
     </VStack>
   );
 }
 
-function OrdersSection({ snapshot }: { snapshot: ShopifySnapshot }) {
+const ORDER_FILTERS: { id: string; label: string }[] = [
+  { id: "any", label: "All" },
+  { id: "unfulfilled", label: "Unfulfilled" },
+  { id: "fulfilled", label: "Fulfilled" },
+];
+
+function OrdersSection({
+  snapshot,
+  onAction,
+}: {
+  snapshot: ShopifySnapshot;
+  onAction?: (action: string) => void;
+}) {
   return (
     <VStack gap={1} width="100%">
+      <HStack gap={1} wrap width="100%">
+        {ORDER_FILTERS.map((filter) => (
+          <Button
+            key={filter.id}
+            variant={snapshot.orderStatusFilter === filter.id ? "solid" : "outline"}
+            tone={snapshot.orderStatusFilter === filter.id ? "primary" : "default"}
+            agent={`orders-filter-${filter.id}`}
+            onPress={() => onAction?.(`orders:filter:${filter.id}`)}
+          >
+            {filter.label}
+          </Button>
+        ))}
+      </HStack>
       <Text style="caption" tone="muted">
         filter {snapshot.orderStatusFilter} | {snapshot.ordersTotal} total
       </Text>
@@ -330,9 +436,22 @@ function InventorySection({ snapshot }: { snapshot: ShopifySnapshot }) {
   );
 }
 
-function CustomersSection({ snapshot }: { snapshot: ShopifySnapshot }) {
+function CustomersSection({
+  snapshot,
+  onAction,
+}: {
+  snapshot: ShopifySnapshot;
+  onAction?: (action: string) => void;
+}) {
   return (
     <VStack gap={1} width="100%">
+      <Field
+        label="Search customers"
+        placeholder="filter by name or email"
+        value={snapshot.customerSearch}
+        agent="customers-search"
+        onChange={(value) => onAction?.(`customers:search:${value}`)}
+      />
       <Text style="caption" tone="muted">
         {snapshot.customerSearch
           ? `search "${snapshot.customerSearch}"`
@@ -371,24 +490,36 @@ function CustomersSection({ snapshot }: { snapshot: ShopifySnapshot }) {
   );
 }
 
-function Section({ snapshot }: { snapshot: ShopifySnapshot }) {
+function Section({
+  snapshot,
+  onAction,
+}: {
+  snapshot: ShopifySnapshot;
+  onAction?: (action: string) => void;
+}) {
   switch (snapshot.tab) {
     case "products":
-      return <ProductsSection snapshot={snapshot} />;
+      return <ProductsSection snapshot={snapshot} onAction={onAction} />;
     case "orders":
-      return <OrdersSection snapshot={snapshot} />;
+      return <OrdersSection snapshot={snapshot} onAction={onAction} />;
     case "inventory":
       return <InventorySection snapshot={snapshot} />;
     case "customers":
-      return <CustomersSection snapshot={snapshot} />;
+      return <CustomersSection snapshot={snapshot} onAction={onAction} />;
     default:
-      return <OverviewSection snapshot={snapshot} />;
+      return <OverviewSection snapshot={snapshot} onAction={onAction} />;
   }
 }
 
 export interface ShopifySpatialViewProps {
   snapshot: ShopifySnapshot;
-  /** Dispatch by agent id: `tab:<id>`, `refresh`. */
+  /**
+   * Dispatch by agent id. Supported actions:
+   * `tab:<id>`, `refresh`,
+   * `products:search:<q>`, `products:create-title:<q>`, `products:create`,
+   * `products:prev-page`, `products:next-page`,
+   * `orders:filter:<status>`, `customers:search:<q>`.
+   */
   onAction?: (action: string) => void;
 }
 
@@ -453,7 +584,7 @@ export function ShopifySpatialView({
       </HStack>
 
       <Divider label={snapshot.tab} />
-      <Section snapshot={snapshot} />
+      <Section snapshot={snapshot} onAction={onAction} />
     </Card>
   );
 }

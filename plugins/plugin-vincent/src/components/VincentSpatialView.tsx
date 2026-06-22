@@ -120,6 +120,16 @@ export function VincentSpatialView({
             <Text grow={1} wrap={false}>
               {shortAddress(walletAddresses?.evmAddress ?? null)}
             </Text>
+            {walletAddresses?.evmAddress ? (
+              <Button
+                variant="ghost"
+                tone="default"
+                agent="copy-evm"
+                onPress={dispatch("copy-evm")}
+              >
+                Copy
+              </Button>
+            ) : null}
           </HStack>
           <HStack gap={1} align="center" agent="wallet-solana">
             <Text style="caption" tone="muted" width={8}>
@@ -128,6 +138,16 @@ export function VincentSpatialView({
             <Text grow={1} wrap={false}>
               {shortAddress(walletAddresses?.solanaAddress ?? null)}
             </Text>
+            {walletAddresses?.solanaAddress ? (
+              <Button
+                variant="ghost"
+                tone="default"
+                agent="copy-solana"
+                onPress={dispatch("copy-solana")}
+              >
+                Copy
+              </Button>
+            ) : null}
           </HStack>
         </List>
       ) : (
@@ -241,6 +261,16 @@ export function VincentSpatialView({
               No P&amp;L data yet.
             </Text>
           )}
+          <HStack gap={1} wrap>
+            <Button
+              variant="outline"
+              tone="default"
+              agent="open-vincent"
+              onPress={dispatch("open-vincent")}
+            >
+              Open Vincent
+            </Button>
+          </HStack>
         </VStack>
       ) : (
         <Text tone="muted" align="center" style="caption">

@@ -24,6 +24,6 @@ registerAppShellPage({
   path: "/polymarket",
   loader: () =>
     import("./polymarket-view-bundle.ts").then((m) => ({
-      default: m.PolymarketAppView,
+      default: m.PolymarketView,
     })),
 });

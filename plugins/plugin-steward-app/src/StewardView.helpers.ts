@@ -1,7 +1,7 @@
-// Shared data helpers for the Steward view, used by both StewardTuiView
-// (in StewardView.tsx) and the `interact` capability handler
-// (in StewardView.interact.ts). Kept out of the .tsx so that file exports only
-// React components and stays Fast-Refresh-compatible in dev.
+// Shared data helpers for the Steward view, used by the `interact` capability
+// handler (in StewardView.interact.ts) that serves the terminal surface. Kept
+// out of the .tsx so that file exports only React components and stays
+// Fast-Refresh-compatible in dev.
 import type {
   StewardPendingApproval,
   StewardStatusResponse,

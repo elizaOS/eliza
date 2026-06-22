@@ -23,7 +23,7 @@ registerAppShellPage({
   icon: "TrendingUp",
   path: "/hyperliquid",
   loader: () =>
-    import("./HyperliquidAppView.tsx").then((m) => ({
-      default: m.HyperliquidAppView,
+    import("./hyperliquid-app-view-bundle.ts").then((m) => ({
+      default: m.HyperliquidView,
     })),
 });

@@ -103,6 +103,10 @@ export const polymarketPlugin: Plugin = {
   providers: [polymarketStatusProvider],
   routes: polymarketRoutes,
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single
+    // PolymarketView spatial source. `modalities` is a plain literal here
+    // (plugin.ts is not in the view bundle), so no brand-new `@elizaos/core`
+    // runtime export reaches the bundle build.
     {
       id: "polymarket",
       label: "Polymarket",
@@ -110,36 +114,10 @@ export const polymarketPlugin: Plugin = {
         "Polymarket prediction markets — market discovery, orderbook, and positions",
       icon: "BarChart2",
       path: "/polymarket",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "PolymarketAppView",
+      componentExport: "PolymarketView",
       tags: ["prediction-markets", "polymarket", "trading"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "polymarket",
-      label: "Polymarket XR",
-      description:
-        "Polymarket prediction markets — market discovery, orderbook, and positions",
-      icon: "BarChart2",
-      path: "/polymarket",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "PolymarketAppView",
-      tags: ["prediction-markets", "polymarket", "trading"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "polymarket",
-      label: "Polymarket TUI",
-      description: "Terminal Polymarket markets, orderbook, and positions",
-      icon: "BarChart2",
-      path: "/polymarket/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "PolymarketTuiView",
-      tags: ["prediction-markets", "polymarket", "trading", "terminal"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

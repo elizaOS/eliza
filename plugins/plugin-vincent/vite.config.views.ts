@@ -5,6 +5,6 @@ export default createViewBundleConfig({
   viewId: "vincent",
   entry: "./src/vincent-view-bundle.ts",
   outDir: "dist/views",
-  componentExport: "VincentAppView",
+  componentExport: "VincentView",
   additionalExternals: ["@elizaos/app-core"],
 });

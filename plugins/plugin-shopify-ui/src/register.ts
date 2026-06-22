@@ -25,6 +25,6 @@ registerAppShellPage({
   path: "/shopify",
   loader: () =>
     import("./shopify-view-bundle.ts").then((m) => ({
-      default: m.ShopifyAppView,
+      default: m.ShopifyView,
     })),
 });

@@ -125,6 +125,10 @@ export const hyperliquidPlugin: Plugin = {
   services: [PerpetualMarketService],
   routes: hyperliquidRoutes,
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single
+    // HyperliquidView spatial source. `modalities` is a plain literal here
+    // (plugin.ts is not in the view bundle), so no brand-new `@elizaos/core`
+    // runtime export reaches the bundle build.
     {
       id: "hyperliquid",
       label: "Hyperliquid",
@@ -132,37 +136,10 @@ export const hyperliquidPlugin: Plugin = {
         "Hyperliquid perpetual markets — positions, trading status, and market data",
       icon: "TrendingUp",
       path: "/hyperliquid",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "HyperliquidAppView",
+      componentExport: "HyperliquidView",
       tags: ["trading", "perps", "hyperliquid", "crypto"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "hyperliquid",
-      label: "Hyperliquid XR",
-      description:
-        "Hyperliquid perpetual markets — positions, trading status, and market data",
-      icon: "TrendingUp",
-      path: "/hyperliquid",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "HyperliquidAppView",
-      tags: ["trading", "perps", "hyperliquid", "crypto"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "hyperliquid",
-      label: "Hyperliquid TUI",
-      description:
-        "Terminal Hyperliquid markets, positions, orders, and status",
-      icon: "TrendingUp",
-      path: "/hyperliquid/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "HyperliquidTuiView",
-      tags: ["trading", "perps", "hyperliquid", "crypto", "terminal"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

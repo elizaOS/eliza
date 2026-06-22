@@ -1,7 +1,6 @@
-// Shared fetch helpers for the Shopify view, used by both ShopifyTuiView
-// (in ShopifyAppView.tsx) and the `interact` capability handler
-// (in ShopifyAppView.interact.ts). Kept out of the .tsx so that file exports
-// only React components and stays Fast-Refresh-compatible in dev.
+// Shared fetch helpers for the Shopify view, used by the `interact` capability
+// handler (in ShopifyAppView.interact.ts). Kept out of the .tsx so that file
+// exports only React components and stays Fast-Refresh-compatible in dev.
 import type {
   ShopifyCustomersResponse,
   ShopifyInventoryResponse,

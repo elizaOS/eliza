@@ -5,6 +5,6 @@ export default createViewBundleConfig({
   viewId: "polymarket",
   entry: "./src/polymarket-view-bundle.ts",
   outDir: "dist/views",
-  componentExport: "PolymarketAppView",
+  componentExport: "PolymarketView",
   additionalExternals: ["@elizaos/app-core"],
 });

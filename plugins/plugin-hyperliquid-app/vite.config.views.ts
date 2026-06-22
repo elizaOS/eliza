@@ -5,6 +5,6 @@ export default createViewBundleConfig({
   viewId: "hyperliquid",
   entry: "./src/hyperliquid-app-view-bundle.ts",
   outDir: "dist/views",
-  componentExport: "HyperliquidAppView",
+  componentExport: "HyperliquidView",
   additionalExternals: ["@elizaos/app-core"],
 });

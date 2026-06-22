@@ -9,5 +9,6 @@ export * from "./useVincentState";
 export * from "./VincentAppView";
 export * from "./VincentAppView.helpers";
 export * from "./VincentConnectionCard";
+export { VincentView } from "./VincentView";
 export { VINCENT_APP_NAME, vincentApp } from "./vincent-app";
 export * from "./WalletStatusCard";

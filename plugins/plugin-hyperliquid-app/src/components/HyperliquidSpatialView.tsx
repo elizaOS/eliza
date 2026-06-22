@@ -37,6 +37,8 @@ export interface HyperliquidStatusSnapshot {
   accountAddress: string | null;
   vaultReady: boolean;
   executionBlockedReason: string | null;
+  /** Vault-connection guidance, shown when the vault is not ready and no local key is set. */
+  vaultGuidance?: string | null;
 }
 
 export interface HyperliquidSnapshot {
@@ -44,6 +46,12 @@ export interface HyperliquidSnapshot {
   markets: HyperliquidMarket[];
   positions: HyperliquidPosition[];
   orders: HyperliquidOrder[];
+  /** Reason positions are unreadable (e.g. no connected account); null when readable. */
+  positionsBlockedReason?: string | null;
+  /** Reason orders are unreadable (e.g. no connected account); null when readable. */
+  ordersBlockedReason?: string | null;
+  /** True when the routes are not mounted on this surface (mobile bundle); shows an unavailable state. */
+  unavailable?: boolean;
   loading?: boolean;
   error?: string | null;
 }
@@ -100,6 +108,33 @@ export function HyperliquidSpatialView({
   const { status } = snapshot;
   const accountReady = Boolean(status.accountAddress);
 
+  if (snapshot.unavailable) {
+    return (
+      <Card title="Hyperliquid" gap={1} padding={1}>
+        <Text tone="muted" align="center">
+          Unavailable on this device
+        </Text>
+        <Text style="caption" tone="muted" align="center">
+          Markets and account reads run on a desktop or cloud agent.
+        </Text>
+        <Divider />
+        <HStack gap={1} wrap>
+          <Button grow={1} agent="refresh" onPress={dispatch("refresh")}>
+            Refresh
+          </Button>
+          <Button
+            variant="outline"
+            tone="default"
+            agent="back"
+            onPress={dispatch("back")}
+          >
+            Back
+          </Button>
+        </HStack>
+      </Card>
+    );
+  }
+
   return (
     <Card title="Hyperliquid" gap={1} padding={1}>
       <HStack gap={1} align="center">
@@ -142,6 +177,14 @@ export function HyperliquidSpatialView({
       {status.executionBlockedReason ? (
         <Text style="caption" tone="warning">
           {status.executionBlockedReason}
+        </Text>
+      ) : null}
+
+      {!status.vaultReady &&
+      status.credentialMode !== "local_key" &&
+      status.vaultGuidance ? (
+        <Text style="caption" tone="muted">
+          {status.vaultGuidance}
         </Text>
       ) : null}
 
@@ -196,7 +239,11 @@ export function HyperliquidSpatialView({
       <Text style="caption" tone="primary">
         positions
       </Text>
-      {snapshot.positions.length === 0 ? (
+      {snapshot.positionsBlockedReason ? (
+        <Text style="caption" tone="warning" agent="positions-blocked">
+          {snapshot.positionsBlockedReason}
+        </Text>
+      ) : snapshot.positions.length === 0 ? (
         <Text tone="muted" style="caption">
           none
         </Text>
@@ -236,7 +283,11 @@ export function HyperliquidSpatialView({
       <Text style="caption" tone="primary">
         orders
       </Text>
-      {snapshot.orders.length === 0 ? (
+      {snapshot.ordersBlockedReason ? (
+        <Text style="caption" tone="warning" agent="orders-blocked">
+          {snapshot.ordersBlockedReason}
+        </Text>
+      ) : snapshot.orders.length === 0 ? (
         <Text tone="muted" style="caption">
           none
         </Text>

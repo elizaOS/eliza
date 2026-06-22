@@ -24,12 +24,11 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { CustomersPanel } from "./CustomersPanel";
 import { InventoryLevelsPanel } from "./InventoryLevelsPanel";
 import { OrdersPanel } from "./OrdersPanel";
 import { ProductsPanel } from "./ProductsPanel";
-import { loadShopifyTuiState } from "./ShopifyAppView.helpers";
 import { StoreOverviewCard } from "./StoreOverviewCard";
 import { useShopifyDashboard } from "./useShopifyDashboard";
 
@@ -38,8 +37,6 @@ const SH_TXT = "var(--txt, #111)";
 const SH_MUTED = "var(--muted, rgba(0,0,0,0.58))";
 const SH_BORDER = "var(--border, rgba(0,0,0,0.12))";
 const SH_SURFACE = "var(--surface, rgba(0,0,0,0.04))";
-const SH_BG = "var(--background, #fff)";
-const SH_DANGER = "var(--danger, #ef4444)";
 
 function SetupField({
   icon: Icon,
@@ -716,200 +713,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
             </Tabs>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-export function ShopifyTuiView() {
-  const [state, setState] = useState<Awaited<
-    ReturnType<typeof loadShopifyTuiState>
-  > | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [lastAction, setLastAction] = useState("boot");
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const next = await loadShopifyTuiState();
-      setState(next);
-      setLastAction("refresh");
-    } catch (caught) {
-      setState(null);
-      setError(
-        caught instanceof Error ? caught.message : "Shopify refresh failed",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const lowInventory =
-    state?.inventory?.items.filter((item) => item.available <= 5) ?? [];
-  const viewState = {
-    viewType: "tui",
-    viewId: "shopify",
-    connected: state?.status.connected ?? false,
-    domain: state?.status.shop?.domain ?? null,
-    productCount: state?.products?.total ?? 0,
-    orderCount: state?.orders?.total ?? 0,
-    inventoryCount: state?.inventory?.items.length ?? 0,
-    lowInventoryCount: lowInventory.length,
-    customerCount: state?.customers?.total ?? 0,
-    loading,
-    lastAction,
-    error,
-  };
-
-  return (
-    <div
-      data-view-state={JSON.stringify(viewState)}
-      style={{
-        minHeight: "100vh",
-        background: SH_BG,
-        color: SH_TXT,
-        fontFamily:
-          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
-        padding: 20,
-      }}
-    >
-      <div style={{ color: SH_ACCENT, marginBottom: 4 }}>
-        elizaos://shopify --type=tui
-      </div>
-      <div style={{ color: SH_MUTED, marginBottom: 16 }}>
-        {loading
-          ? "loading"
-          : state?.status.connected
-            ? "connected"
-            : "not-connected"}{" "}
-        | {state?.status.shop?.domain ?? "no shop"} | {lastAction}
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr",
-          gap: 16,
-        }}
-      >
-        <section
-          aria-label="Shopify status"
-          style={{
-            border: `1px solid ${SH_BORDER}`,
-            borderRadius: 6,
-            padding: 16,
-            minHeight: 420,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 10,
-            }}
-          >
-            <strong style={{ color: SH_TXT }}>store</strong>
-            <button
-              type="button"
-              onClick={() => void refresh()}
-              disabled={loading}
-              style={{
-                background: "transparent",
-                color: SH_ACCENT,
-                border: `1px solid ${SH_BORDER}`,
-                borderRadius: 4,
-                padding: "4px 8px",
-                cursor: loading ? "not-allowed" : "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              refresh
-            </button>
-          </div>
-          {error && <div style={{ color: SH_DANGER }}>{error}</div>}
-          <div style={{ marginBottom: 12 }}>
-            <div>
-              <span style={{ color: SH_MUTED }}>connected</span>{" "}
-              {state?.status.connected ? "yes" : "no"}
-            </div>
-            <div>
-              <span style={{ color: SH_MUTED }}>shop</span>{" "}
-              {state?.status.shop?.name ?? "not configured"}
-            </div>
-            <div>
-              <span style={{ color: SH_MUTED }}>domain</span>{" "}
-              {state?.status.shop?.domain ?? "SHOPIFY_STORE_DOMAIN required"}
-            </div>
-          </div>
-          <div style={{ color: SH_ACCENT, margin: "18px 0 8px" }}>counts</div>
-          <div>products {state?.products?.total ?? 0}</div>
-          <div>orders {state?.orders?.total ?? 0}</div>
-          <div>customers {state?.customers?.total ?? 0}</div>
-          <div>inventory rows {state?.inventory?.items.length ?? 0}</div>
-          <div style={{ color: SH_DANGER }}>
-            low inventory {lowInventory.length}
-          </div>
-          {!state?.status.connected && !loading ? (
-            <div style={{ color: SH_MUTED, marginTop: 18 }}>
-              Configure SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN for live
-              data.
-            </div>
-          ) : null}
-        </section>
-
-        <section
-          aria-label="Shopify commerce"
-          style={{
-            border: `1px solid ${SH_BORDER}`,
-            borderRadius: 6,
-            padding: 16,
-            minHeight: 420,
-          }}
-        >
-          <strong style={{ color: SH_TXT }}>commerce</strong>
-          <div style={{ color: SH_MUTED, margin: "6px 0 14px" }}>
-            {state?.orders?.total ?? 0} orders / {lowInventory.length} low stock
-          </div>
-          <div style={{ color: SH_ACCENT, marginBottom: 8 }}>recent orders</div>
-          {(state?.orders?.orders ?? []).slice(0, 4).map((order) => (
-            <div
-              key={order.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "9ch minmax(0,1fr) 10ch",
-                gap: 10,
-                borderTop: `1px solid ${SH_BORDER}`,
-                padding: "7px 0",
-              }}
-            >
-              <span>{order.name}</span>
-              <span style={{ color: SH_MUTED }}>{order.email}</span>
-              <span style={{ color: SH_TXT }}>
-                {order.totalPrice} {order.currencyCode}
-              </span>
-            </div>
-          ))}
-          <div style={{ color: SH_ACCENT, margin: "18px 0 8px" }}>
-            low inventory
-          </div>
-          {lowInventory.slice(0, 4).map((item) => (
-            <div
-              key={`${item.id}:${item.locationName}`}
-              style={{ padding: "5px 0" }}
-            >
-              {item.productTitle}
-              {item.variantTitle ? ` / ${item.variantTitle}` : ""} @{" "}
-              {item.locationName}: {item.available}
-            </div>
-          ))}
-        </section>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
-// Vite view-bundle entry. Re-exports the view components plus the `interact`
-// capability handler so the built bundle (dist/views/bundle.js) exposes the
-// same named exports the view loader reads (`VincentAppView`, `VincentTuiView`,
-// `interact`). Kept separate from VincentAppView.tsx so that file exports only
-// React components and stays Fast-Refresh-compatible.
-export { VincentAppView, VincentTuiView } from "./VincentAppView";
+// Vite view-bundle entry. Re-exports the unified spatial view component plus
+// the `interact` capability handler so the built bundle (dist/views/bundle.js)
+// exposes the named exports the view loader reads (`VincentView`, `interact`).
+// Kept separate from VincentView.tsx so that file exports only React components
+// and stays Fast-Refresh-compatible.
 export { interact } from "./VincentAppView.interact";
+export { VincentView } from "./VincentView";

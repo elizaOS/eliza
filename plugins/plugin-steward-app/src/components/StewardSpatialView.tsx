@@ -134,8 +134,11 @@ export interface StewardSpatialViewProps {
   snapshot: StewardSnapshot;
   /**
    * Dispatch by agent id: `tab:approvals`, `tab:history`, `refresh`,
-   * `approve:<queueId>`, `reject:<queueId>`, `copy:<txId>`,
+   * `approve:<queueId>`, `reject:<queueId>`, `copy:<value>`,
    * `filter-status`, `filter-chain`, `page-prev`, `page-next`.
+   *
+   * `copy:<value>` carries the literal string to copy to the clipboard (the
+   * recipient address for both approval and history rows).
    */
   onAction?: (action: string) => void;
 }
@@ -197,9 +200,19 @@ function ApprovalsBody({
                   {item.status}
                 </Text>
               </HStack>
-              <Text style="caption" tone="muted" wrap={false}>
-                chain {item.chainId} to {item.to}
-              </Text>
+              <HStack gap={1} align="center" width="100%">
+                <Text style="caption" tone="muted" grow={1} wrap={false}>
+                  chain {item.chainId} to {item.to}
+                </Text>
+                <Button
+                  variant="ghost"
+                  tone="default"
+                  agent={`copy-${item.queueId}`}
+                  onPress={dispatch(`copy:${item.to}`)}
+                >
+                  Copy
+                </Button>
+              </HStack>
               <Text style="caption" tone="muted" wrap={false}>
                 value {item.value} | {item.policyCount} policy
               </Text>
@@ -284,7 +297,7 @@ function HistoryBody({
                   variant="ghost"
                   tone="default"
                   agent={`copy-${tx.id}`}
-                  onPress={dispatch(`copy:${tx.id}`)}
+                  onPress={dispatch(`copy:${tx.to}`)}
                 >
                   Copy
                 </Button>

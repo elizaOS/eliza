@@ -376,6 +376,10 @@ export const stewardPlugin: Plugin = {
     stewardReceiveAddressProvider,
   ],
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single StewardView
+    // spatial source. `modalities` is a plain literal here (plugin.ts is not in
+    // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
+    // the bundle build.
     {
       id: "steward",
       label: "Steward",
@@ -383,37 +387,10 @@ export const stewardPlugin: Plugin = {
         "Transaction history and approval queue for Steward wallet management",
       icon: "Shield",
       path: "/steward",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "StewardView",
       tags: ["finance", "wallet", "approvals", "transactions"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "steward",
-      label: "Steward XR",
-      description:
-        "Transaction history and approval queue for Steward wallet management",
-      icon: "Shield",
-      path: "/steward",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "StewardView",
-      tags: ["finance", "wallet", "approvals", "transactions"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "steward",
-      label: "Steward TUI",
-      description:
-        "Terminal transaction history and approval queue for Steward wallet management",
-      icon: "Shield",
-      path: "/steward/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "StewardTuiView",
-      tags: ["finance", "wallet", "approvals", "transactions", "terminal"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },
