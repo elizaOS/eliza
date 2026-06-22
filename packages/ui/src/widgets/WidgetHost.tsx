@@ -11,10 +11,11 @@
  */
 
 import { Component, type ErrorInfo, type ReactNode, useMemo } from "react";
+import { isViewVisible } from "@elizaos/core";
 import { UiRenderer } from "../components/config-ui/ui-renderer";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 import { useAppSelectorShallow } from "../state";
-import { useIsDeveloperMode } from "../state/useDeveloperMode";
+import { useEnabledViewKinds } from "../state/useViewKinds";
 import { resolveWidgetsForSlot } from "./registry";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
@@ -112,15 +113,15 @@ export function WidgetHost({
   filter,
 }: WidgetHostProps) {
   const plugins = useAppSelectorShallow((s) => s.plugins);
-  const developerModeEnabled = useIsDeveloperMode();
+  const enabledKinds = useEnabledViewKinds();
 
   const resolved = useMemo(() => {
     const all = resolveWidgetsForSlot(slot, plugins ?? []);
-    const gated = developerModeEnabled
-      ? all
-      : all.filter((entry) => entry.declaration.developerOnly !== true);
+    const gated = all.filter((entry) =>
+      isViewVisible(entry.declaration, enabledKinds),
+    );
     return filter ? gated.filter((entry) => filter(entry.declaration)) : gated;
-  }, [slot, plugins, filter, developerModeEnabled]);
+  }, [slot, plugins, filter, enabledKinds]);
 
   const pluginById = useMemo(() => {
     const map = new Map<string, (typeof plugins)[number]>();
