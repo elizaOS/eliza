@@ -24,9 +24,9 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType, spawnWithTrajectoryLink } from "@elizaos/core";
 import { readStringOption } from "../params.js";
+import { isRestrictedPlatform } from "./views.js";
 import type { ViewSummary } from "./views-client.js";
 import { writeViewHeroAsset } from "./views-hero.js";
-import { isRestrictedPlatform } from "./views-platform.js";
 import { locatePluginSourceDir } from "./views-plugin-source.js";
 
 export const VIEWS_CREATE_INTENT_TAG = "views-create-intent";
@@ -439,7 +439,7 @@ async function dispatchCodingAgent({
 	return { dispatched: true, agents };
 }
 
-function buildCreatePrompt(
+export function buildCreatePrompt(
 	intent: string,
 	pluginName: string,
 	displayName: string,
@@ -454,6 +454,7 @@ function buildCreatePrompt(
 		"workspaceRule: work in sourceDir, not the task agent scratch directory",
 		"referenceDocs: read SCAFFOLD.md for layout and conventions",
 		"viewRequirement: add a Plugin.views entry with a compiled view bundle so the view appears in the Eliza view registry",
+		'viewKindRule: set the views entry viewKind to "release" for a finished user-facing view (the default), or "preview" for an early/experimental one; never "system" (reserved for built-ins)',
 		"iconAsset: a branded assets/hero.svg is already seeded and is served as the view hero — keep it (or replace it with a real image at assets/hero.<ext>); do not delete it",
 		"implementation: edit and add files needed for the intent",
 		"verificationCommands[3]:",
