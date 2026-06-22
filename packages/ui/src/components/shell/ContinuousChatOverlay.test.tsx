@@ -64,7 +64,6 @@ function makeController(
     toggleRecording: vi.fn(),
     handsFree: false,
     toggleHandsFree: vi.fn(),
-    stopTranscriptionAndMic: vi.fn(),
     setDictationSink: vi.fn(),
     setTranscriptSessionSink: vi.fn(),
     setComposerHasDraft: vi.fn(),

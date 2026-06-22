@@ -13,8 +13,9 @@
  *   d. domains.check + domains.buy  → exact $14.95 debit + verified (CF stub)
  *   e. apps.monetization.update     → monetization enabled (read-back)
  *   f. charge                       → org credit debit + creator earnings ledger
- *   g. AUTOSCALE                    → node-autoscale cron tick + Hetzner-mock
- *                                     pool replenished (a second node stood up)
+ *   g. AUTOSCALE                    → node-autoscale cron tick is observable +
+ *                                     the agent-hot-pool daemon cron tick alone
+ *                                     replenishes the warm pool to target
  *   h. PAYOUT                       → redeemable balance is the payout-readiness
  *                                     proxy; the fiat transfer is skipped (#8922)
  *
@@ -24,9 +25,9 @@
  * it cannot prove a real server `initializing → running`. The in-memory
  * `tick()` path (`processProvisionJob`) is the one that actually POSTs to the
  * Hetzner mock and polls the create action to success — so it is the only seam
- * in this stack that produces an observable Hetzner node transition + a
- * replenished pool. The real provisioning-worker `--with-daemon` autoscale path
- * is deferred to #8920 / #8921 (see docs/monetized-loop-coverage.md); the
+ * in this stack that produces an observable Hetzner node transition. Autoscale
+ * (step g) uses the now-landed daemon path (#8920/#8921): the `agent-hot-pool`
+ * cron the `--with-daemon` loop ticks replenishes the warm pool on its own. The
  * REAL-Hetzner variant of this loop runs nightly via
  * `.github/workflows/monetized-loop-nightly.yml`.
  *
@@ -38,8 +39,8 @@
  *   - charge: a $0.50 org debit lands AND a matching $0.50 creator earnings
  *     ledger entry is recorded (creator redeemable balance rises by exactly
  *     0.50).
- *   - autoscale: node-autoscale cron tick counter increments AND a fresh
- *     provision replenishes the Hetzner pool by one more `running` node.
+ *   - autoscale: node-autoscale cron tick counter increments AND the
+ *     agent-hot-pool cron tick alone grows the warm pool to its target.
  *
  * Uses the `stack` + `seededUser` fixtures (same as the baseline) so we hit
  * `stack.urls.api` and the seed fixture guarantees DATABASE_URL points at the
@@ -152,10 +153,7 @@ test.describe("monetized full loop", () => {
       deployTick.failed,
       "provision tick must not fail the deploy job",
     ).toBe(0);
-    expect(
-      deployTick.processed,
-      "exactly one provision job processed",
-    ).toBe(1);
+    expect(deployTick.processed, "exactly one provision job processed").toBe(1);
 
     // The sandbox is running and a fresh Hetzner node reached `running`.
     expect(controlPlane.store.getSandbox(deploySandbox.id)?.status).toBe(
@@ -180,7 +178,9 @@ test.describe("monetized full loop", () => {
     );
     expect([200, 201]).toContain(buy.status);
     expect(buy.json.success, "domain buy must succeed").toBe(true);
-    expect(buy.json.verified, "domain must be registered + attached").toBe(true);
+    expect(buy.json.verified, "domain must be registered + attached").toBe(
+      true,
+    );
 
     // Exact domain-markup math: $10.99 wholesale + $3.96 margin = $14.95 off
     // the 1000-credit balance → 985.05 (< $0.01 tolerance). Mirrors the
@@ -251,7 +251,10 @@ test.describe("monetized full loop", () => {
     expect(earn.success, "creator earnings ledger entry must be recorded").toBe(
       true,
     );
-    expect(earn.ledgerEntryId, "earnings ledger entry id returned").toBeTruthy();
+    expect(
+      earn.ledgerEntryId,
+      "earnings ledger entry id returned",
+    ).toBeTruthy();
 
     const earnAfterCharge =
       (await redeemableEarningsService.getBalance(seededUser.userId))
@@ -287,9 +290,10 @@ test.describe("monetized full loop", () => {
       `${controlPlane.url}/api/v1/cron/node-autoscale`,
       { method: "POST", headers: cronAuth },
     );
-    expect(autoscaleRes.status, "node-autoscale cron must accept the tick").toBe(
-      200,
-    );
+    expect(
+      autoscaleRes.status,
+      "node-autoscale cron must accept the tick",
+    ).toBe(200);
     expect(
       controlPlane.store.getCronCount("node-autoscale-tick"),
       "node-autoscale cron tick is observable",
