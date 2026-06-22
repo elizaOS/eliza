@@ -7,9 +7,9 @@ import type { AgentRuntime } from "@elizaos/core";
 import { createTestRuntime } from "../helpers/pglite-runtime.ts";
 
 const {
+	AcpService,
 	cleanForChat,
 	listAgentsAction,
-	PTYService,
 	sendToAgentAction,
 	spawnAgentAction,
 } = await import("@elizaos/plugin-agent-orchestrator");
@@ -176,8 +176,12 @@ async function waitForTrackedSession(
 async function runSequentialSmoke(agentType: Framework): Promise<void> {
 	const workdir = createWorkdir(agentType, "reuse");
 	const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
-	const service = await PTYService.start(runtime);
-	runtime.services.set("PTY_SERVICE", [service]);
+	// Start the ACP service and register it under its real serviceType so the
+	// TASKS actions (which resolve it via getAcpService -> runtime.getService
+	// ("ACP_SUBPROCESS_SERVICE")) spawn into the SAME instance this script reads
+	// output from. (Replaces the removed PTYService; same start+register pattern.)
+	const service = await AcpService.start(runtime);
+	runtime.services.set(AcpService.serviceType, [service]);
 
 	const events: Array<{ event: string; data: unknown }> = [];
 	const unsubscribe = service.onSessionEvent((_sessionId, event, data) => {
@@ -217,7 +221,7 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 
 		await waitFor(
 			async () => {
-				const sessionInfo = service.getSession(sessionId);
+				const sessionInfo = await service.getSession(sessionId);
 				if (!sessionInfo) {
 					throw new Error(
 						"session disappeared before completing the first task",
@@ -303,8 +307,8 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 async function runWebSmoke(agentType: Framework): Promise<void> {
 	const workdir = createWorkdir(agentType, "web");
 	const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
-	const service = await PTYService.start(runtime);
-	runtime.services.set("PTY_SERVICE", [service]);
+	const service = await AcpService.start(runtime);
+	runtime.services.set(AcpService.serviceType, [service]);
 
 	const events: Array<{ event: string; data: unknown }> = [];
 	const unsubscribe = service.onSessionEvent((_sessionId, event, data) => {
@@ -352,7 +356,7 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
 
 		await waitFor(
 			async () => {
-				const sessionInfo = service.getSession(sessionId);
+				const sessionInfo = await service.getSession(sessionId);
 				if (!sessionInfo) {
 					throw new Error("session disappeared before completing the web task");
 				}
