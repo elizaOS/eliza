@@ -13,7 +13,7 @@ This plugin registers three actions, two evaluators, one provider, and four serv
 | Name | File | Description |
 |---|---|---|
 | `APP` | `src/actions/app.ts` | Unified app control. Sub-modes: `launch`, `relaunch`, `load_from_directory`, `list`, `create`. `create` runs a multi-turn scaffold+coding-agent flow. Owner-gated. |
-| `VIEWS` | `src/actions/views.ts` | Manage UI views contributed by plugins. Sub-modes: `list`, `current`, `show`/`open`, `search`, `manager`, `broadcast`, `interact`, `pin`, `window`, `create`, `edit`, `delete`/`remove`. Create/edit/delete are owner-gated; read modes are open. |
+| `VIEWS` | `src/actions/views.ts` | Manage UI views contributed by plugins. Sub-modes: `list`, `current`, `show`/`open`, `search`, `manager`, `broadcast`, `interact`, `pin`, `window`, `create`, `edit`, `icon`, `rollback`, `delete`/`remove`. Create/edit/icon/rollback/delete are owner-gated; read modes are open. `rollback` resets a created/edited view-or-plugin workdir to the pre-edit git snapshot taken before the coding agent ran (#8915) and re-registers it via `load-from-directory`. |
 | `HOMESCREEN` | `src/actions/homescreen.ts` | Customize the live homescreen canvas. Sub-modes: `edit`, `create` (model-generated scene document), `undo`, `redo`, `reset`, `duplicate`, `delete`, `save`. Broadcasts via `POST /api/views/events/broadcast`. |
 
 ### Evaluators
@@ -75,7 +75,11 @@ src/
     views-show.ts                 show/open sub-handler
     views-search.ts               search sub-handler
     views-create.ts               create sub-handler (multi-turn)
-    views-edit.ts                 edit sub-handler
+    views-edit.ts                 edit sub-handler (takes a pre-edit git snapshot)
+    views-icon.ts                 icon sub-handler (direct hero-asset regeneration)
+    views-rollback.ts             rollback sub-handler: git reset --hard <snapshot> + re-register (#8915)
+    views-snapshot.ts             pre-edit git snapshot + rollback helpers; snapshot-record persistence
+    views-plugin-source.ts        resolve a view's on-disk plugin source dir
     views-delete.ts               delete sub-handler + confirmation flow
   components/
     ViewManagerSpatialView.tsx    Spatial/XR variant of the view manager component
@@ -168,3 +172,4 @@ Follow the same pattern in `src/actions/views.ts` and create a `src/actions/view
 - **`puppeteer-core` is an optional peer dep.** `AppVerificationService` only loads it when a browser step is requested and the dep is present. Set `ELIZA_BROWSER_VERIFY_OPTIONAL=1` if you want failures there to be non-blocking.
 - **`AppWorkerHostService` auto-starts persisted worker apps best-effort.** On service start it asks `AppRegistryService` for persisted entries and spawns apps whose resolved isolation is `"worker"`. Spawn failures are reported without preventing the registry entry from remaining inspectable.
 - **Restricted platforms.** `isRestrictedPlatform()` in `src/actions/views.ts` returns `true` on iOS/Android store builds. Use it to gate dynamic-plugin creation flows.
+- **Pre-edit snapshots are best-effort (#8915).** `VIEWS create`/`edit` and `APP create`/edit take a `git commit --no-verify --allow-empty` snapshot of the target workdir before dispatching the coding agent and record the SHA on a `views-snapshot`-tagged Task keyed by room/plugin. A failed snapshot (workdir not in a git work tree, no committer identity, …) only disables rollback for that edit — it must never abort the dispatch. `VIEWS rollback` resolves the most-recent snapshot for the room (or an explicit `sha`/`view`), runs `git reset --hard`, then re-registers via `load-from-directory`. On verification failure after max retries, `VerificationRoomBridgeService` surfaces a chat offer naming `VIEWS action=rollback` for plugins so the user is never left with a broken create/edit. Shell out via the injectable `GitRunner` in `views-snapshot.ts` (so tests stay deterministic); do not reach into `CodingWorkspaceService`, which is keyed by managed-workspace IDs, not local repo workdirs.

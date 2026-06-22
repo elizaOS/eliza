@@ -28,6 +28,10 @@ import type { ViewSummary } from "./views-client.js";
 import { writeViewHeroAsset } from "./views-hero.js";
 import { isRestrictedPlatform } from "./views-platform.js";
 import { locatePluginSourceDir } from "./views-plugin-source.js";
+import {
+	createPreEditSnapshot,
+	persistSnapshotRecord,
+} from "./views-snapshot.js";
 
 export const VIEWS_CREATE_INTENT_TAG = "views-create-intent";
 
@@ -611,6 +615,51 @@ export function isChoiceReply(text: string): boolean {
 	return CHOICE_RE.test(text.trim());
 }
 
+/**
+ * Take a pre-edit git snapshot of `workdir` and persist its SHA so the VIEWS
+ * `rollback` sub-mode can later restore the source if the edit goes wrong
+ * (#8915). Best-effort: a failed snapshot (e.g. workdir not in a git work tree)
+ * only disables rollback for this edit — it must never abort the create/edit
+ * dispatch itself.
+ */
+async function snapshotBeforeDispatch({
+	runtime,
+	workdir,
+	pluginName,
+	created,
+	roomId,
+}: {
+	runtime: IAgentRuntime;
+	workdir: string;
+	pluginName: string;
+	created: boolean;
+	roomId: string;
+}): Promise<string | undefined> {
+	const snapshot = await createPreEditSnapshot(workdir).catch((err) => ({
+		ok: false as const,
+		reason: err instanceof Error ? err.message : String(err),
+	}));
+	if (!snapshot.ok) {
+		logger.warn(
+			`[plugin-app-control] VIEWS/create pre-edit snapshot skipped for ${pluginName}: ${snapshot.reason}`,
+		);
+		return undefined;
+	}
+	await persistSnapshotRecord(runtime, {
+		sha: snapshot.sha,
+		workdir,
+		pluginName,
+		created,
+		roomId,
+		snapshotCreatedAt: new Date().toISOString(),
+	}).catch((err) => {
+		logger.warn(
+			`[plugin-app-control] VIEWS/create failed to persist snapshot record for ${pluginName}: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	});
+	return snapshot.sha;
+}
+
 // ---------------------------------------------------------------------------
 // Create / edit helpers
 // ---------------------------------------------------------------------------
@@ -665,6 +714,16 @@ async function createNewViewPlugin({
 		);
 	}
 
+	// Take a pre-edit snapshot of the freshly-scaffolded workdir before the coding
+	// agent runs so the user can roll the whole creation back (#8915).
+	const snapshotSha = await snapshotBeforeDispatch({
+		runtime,
+		workdir,
+		pluginName: name,
+		created: true,
+		roomId: originRoomId,
+	});
+
 	const prompt = buildCreatePrompt(intent, name, displayName, workdir);
 	const dispatch = await dispatchCodingAgent({
 		runtime,
@@ -705,6 +764,7 @@ async function createNewViewPlugin({
 			workdir,
 			taskStatus: task.status,
 			taskSessionId: task.sessionId,
+			...(snapshotSha ? { snapshotSha } : {}),
 		},
 		data: {
 			name,
@@ -712,6 +772,7 @@ async function createNewViewPlugin({
 			workdir,
 			task,
 			agents: dispatch.agents,
+			...(snapshotSha ? { snapshotSha } : {}),
 			suppressActionResultClipboard: true,
 		},
 	};
@@ -738,6 +799,16 @@ async function editExistingViewPlugin({
 		await callback?.({ text });
 		return { success: false, text };
 	}
+
+	// Take a pre-edit snapshot of the existing plugin source before the coding
+	// agent mutates it so the user can undo the edit (#8915).
+	const snapshotSha = await snapshotBeforeDispatch({
+		runtime,
+		workdir,
+		pluginName: view.pluginName,
+		created: false,
+		roomId: originRoomId,
+	});
 
 	const prompt = buildEditPrompt(intent, view, workdir);
 	const dispatch = await dispatchCodingAgent({
@@ -777,12 +848,14 @@ async function editExistingViewPlugin({
 			workdir,
 			taskStatus: task.status,
 			taskSessionId: task.sessionId,
+			...(snapshotSha ? { snapshotSha } : {}),
 		},
 		data: {
 			view,
 			workdir,
 			task,
 			agents: dispatch.agents,
+			...(snapshotSha ? { snapshotSha } : {}),
 			suppressActionResultClipboard: true,
 		},
 	};
