@@ -237,7 +237,15 @@ import {
 const PLANNER_CONTROL_ACTIONS = new Set(
 	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
 );
-const DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 384;
+// Direct/DM/API Stage 1 packs the whole user-facing answer into `replyText`
+// (the "simple" fast path emits it without a planner turn). A 384-token cap
+// could not fit a full reply, so any non-trivial answer truncated the
+// HANDLE_RESPONSE tool-call JSON mid-`replyText` → unparseable args →
+// "malformed HANDLE_RESPONSE tool call" → up to 2 futile Stage-1 regenerations
+// (a +12-16s tail-latency spike). Measured against cerebras gpt-oss-120b: ~30%
+// of long-answer turns truncated at 384 vs 0/120 at 1024. The cap is a ceiling,
+// not a target — short replies finish exactly as fast.
+const DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 1024;
 const DIRECT_REPLY_FAST_PATH_MAX_TOKENS = 96;
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
 const STAGE1_TRUNCATION_REPLY =
@@ -4990,6 +4998,22 @@ function stage1HitCompletionLimit(
 	);
 }
 
+/**
+ * Whether a Stage-1 result should be regenerated. Empty or garbled output can be
+ * fixed by retrying, but a completion-limit truncation cannot: regenerating at
+ * the same token cap just truncates again, burning a full Stage-1 turn for the
+ * same result. A truncated envelope is routed to the dedicated truncation
+ * recovery below instead. Exported for unit coverage of the retry policy.
+ */
+export function shouldRetryStage1Generation(
+	reason: ReturnType<typeof getStage1RetryReason>,
+	raw: string | GenerateTextResult,
+	maxTokens: number,
+): boolean {
+	if (!reason) return false;
+	return !stage1HitCompletionLimit(raw, maxTokens);
+}
+
 function extractJsonStringField(
 	text: string,
 	fieldName: string,
@@ -6067,7 +6091,14 @@ export async function runV5MessageRuntimeStage1(args: {
 			stage1ModelParams,
 		)) as string | GenerateTextResult;
 		let stage1RetryReason = getStage1RetryReason(rawMessageHandler);
-		while (stage1RetryReason && stage1RetryCount < stage1RetryLimit) {
+		while (
+			stage1RetryCount < stage1RetryLimit &&
+			shouldRetryStage1Generation(
+				stage1RetryReason,
+				rawMessageHandler,
+				stage1ModelParams.maxTokens,
+			)
+		) {
 			stage1RetryCount += 1;
 			args.runtime.logger?.warn?.(
 				{

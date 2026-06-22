@@ -4,7 +4,7 @@ import type { SecretInfo } from "../../api";
 import { client } from "../../api";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import type { TranslateFn } from "../../types";
 import { Button } from "../ui/button";
 import {
@@ -96,8 +96,8 @@ export function SecretsView({
   contentHeader?: React.ReactNode;
   inModal?: boolean;
 } = {}) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
+  const appT = useAppSelector((s) => s.t);
+  const t = appT ?? fallbackTranslate;
   // Seed from the shared cache so a revisit paints the last-known secrets
   // instantly and revalidates silently, instead of flashing a spinner.
   const cachedSecrets = getCached<SecretInfo[]>("secrets:list");
@@ -393,8 +393,8 @@ function SecretPicker({
   onAdd: (key: string) => void;
   onClose: () => void;
 }) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
+  const appT = useAppSelector((s) => s.t);
+  const t = appT ?? fallbackTranslate;
   // Group available by category
   const grouped = useMemo(() => {
     return groupSecretsByCategory(available);
@@ -520,8 +520,8 @@ const SecretCard = memo(function SecretCard({
   onDraftChange: (key: string, val: string) => void;
   onRemove: (key: string) => void;
 }) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
+  const appT = useAppSelector((s) => s.t);
+  const t = appT ?? fallbackTranslate;
   const enabledPlugins = secret.usedBy.filter((u) => u.enabled);
   const pluginList = secret.usedBy
     .map((u) => u.pluginName || u.pluginId)

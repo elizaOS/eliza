@@ -5,7 +5,7 @@ import {
   type GameOperatorAction,
   type GameOperatorEvent,
   GameOperatorShell,
-  useApp,
+  useAppSelectorShallow,
 } from "@elizaos/app-core/ui-compat";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
@@ -451,7 +451,10 @@ export function DefenseAgentsOperatorSurface({
   appName,
   variant = "detail",
 }: AppOperatorSurfaceProps) {
-  const { appRuns, setState } = useApp();
+  const { appRuns, setState } = useAppSelectorShallow((s) => ({
+    appRuns: s.appRuns,
+    setState: s.setState,
+  }));
   const run = useMemo(
     () =>
       [...(Array.isArray(appRuns) ? appRuns : [])]
@@ -874,7 +877,11 @@ function DefenseSendCommandButton({
 }
 
 export function DefenseAgentsTuiView() {
-  const { appRuns, setActionNotice, setState } = useApp();
+  const { appRuns, setActionNotice, setState } = useAppSelectorShallow((s) => ({
+    appRuns: s.appRuns,
+    setActionNotice: s.setActionNotice,
+    setState: s.setState,
+  }));
   const run = useMemo(
     () =>
       [...(Array.isArray(appRuns) ? appRuns : [])]

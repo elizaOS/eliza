@@ -116,6 +116,8 @@ const GameOperatorShell = vi.hoisted(
 const uiCompatMock = vi.hoisted(() => ({
   client: { sendAppRunMessage },
   useApp: () => appState,
+  useAppSelectorShallow: <T,>(selector: (s: typeof appState) => T): T =>
+    selector(appState),
   GameOperatorShell,
 }));
 

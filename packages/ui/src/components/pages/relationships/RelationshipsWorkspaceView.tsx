@@ -317,9 +317,7 @@ export function RelationshipsWorkspaceView({
       ) : (
         <>
           {graphError ? (
-            <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-              {graphError}
-            </div>
+            <PagePanel.Notice tone="danger">{graphError}</PagePanel.Notice>
           ) : null}
           <div
             className={

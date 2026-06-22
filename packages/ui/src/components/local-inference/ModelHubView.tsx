@@ -10,7 +10,6 @@ import type {
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";
-import { formatByteSize } from "../../utils/format";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import {
@@ -21,11 +20,9 @@ import {
   findDownload,
   findInstalled,
   fitLabel,
+  formatBytes,
   groupByBucket,
 } from "./hub-utils";
-
-const formatBytes = (bytes: number): string =>
-  formatByteSize(bytes, { unknownLabel: "—" });
 
 interface ModelHubViewProps {
   catalog: CatalogModel[];

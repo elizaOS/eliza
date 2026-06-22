@@ -12,7 +12,7 @@ import {
 } from "../../chat";
 import { COMMAND_PALETTE_EVENT } from "../../events";
 import { useBugReport } from "../../hooks";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import {
   openDesktopSettingsWindow,
   openDesktopSurfaceWindow,
@@ -46,7 +46,24 @@ export function CommandPalette() {
     activeGameViewerUrl,
     setState,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    commandPaletteOpen: s.commandPaletteOpen,
+    commandQuery: s.commandQuery,
+    commandActiveIndex: s.commandActiveIndex,
+    agentStatus: s.agentStatus,
+    handleStart: s.handleStart,
+    handleStop: s.handleStop,
+    handleRestart: s.handleRestart,
+    setTab: s.setTab,
+    loadPlugins: s.loadPlugins,
+    loadSkills: s.loadSkills,
+    loadLogs: s.loadLogs,
+    loadWorkbench: s.loadWorkbench,
+    handleChatClear: s.handleChatClear,
+    activeGameViewerUrl: s.activeGameViewerUrl,
+    setState: s.setState,
+    t: s.t,
+  }));
   const { open: openBugReport } = useBugReport();
   const closeCommandPalette = useCallback(
     () => setState("commandPaletteOpen", false),

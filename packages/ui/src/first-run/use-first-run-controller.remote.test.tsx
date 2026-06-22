@@ -79,12 +79,8 @@ vi.mock("../platform/init", () => ({
   isIOS: false,
 }));
 
-vi.mock("../state", () => ({
-  addAgentProfile: mocks.addAgentProfile,
-  createPersistedActiveServer: mocks.createPersistedActiveServer,
-  loadPersistedActiveServer: () => null,
-  savePersistedActiveServer: mocks.savePersistedActiveServer,
-  useApp: () => ({
+vi.mock("../state", () => {
+  const getAppValue = () => ({
     completeFirstRun: mocks.completeFirstRun,
     elizaCloudConnected: mocks.cloudConnected,
     elizaCloudLoginBusy: false,
@@ -96,8 +92,21 @@ vi.mock("../state", () => ({
     setState: mocks.setState,
     switchAgentProfile: mocks.switchAgentProfile,
     uiLanguage: "en",
-  }),
-}));
+  });
+  return {
+    addAgentProfile: mocks.addAgentProfile,
+    createPersistedActiveServer: mocks.createPersistedActiveServer,
+    loadPersistedActiveServer: () => null,
+    savePersistedActiveServer: mocks.savePersistedActiveServer,
+    useApp: () => getAppValue(),
+    useAppSelector: <T,>(
+      selector: (s: ReturnType<typeof getAppValue>) => T,
+    ): T => selector(getAppValue()),
+    useAppSelectorShallow: <T,>(
+      selector: (s: ReturnType<typeof getAppValue>) => T,
+    ): T => selector(getAppValue()),
+  };
+});
 
 vi.mock("../utils", () => ({
   isCloudStatusAuthenticated: (connected: boolean) => connected,

@@ -1,10 +1,13 @@
 /**
  * VoiceSection — top-level Settings → Voice tree. Mounts the device-tier
- * banner, continuous-chat mode, wake word, local-vs-cloud strategy,
- * end-of-turn tuning, the models slot, voice profiles, and privacy toggles.
+ * banner, continuous-chat mode, wake word, end-of-turn tuning, the models
+ * slot, voice profiles, and privacy toggles.
+ *
+ * Per-modality local-vs-cloud routing is owned by the RoutingMatrix control
+ * (per-slot policy rows), not by this section.
  */
 
-import { Cloud, Database, Mic, Shield, Sliders, Timer } from "lucide-react";
+import { Database, Mic, Shield, Sliders, Timer } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { VoiceProfilesClient } from "../../api/client-voice-profiles";
@@ -13,13 +16,10 @@ import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
-import { SettingsSegmentedRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { VoiceProfileSection } from "./VoiceProfileSection";
 import { DEFAULT_VAD_AUTO_STOP_PREFS } from "./VoiceSection.helpers";
 import { type VoiceDeviceTier, VoiceTierBanner } from "./VoiceTierBanner";
-
-export type VoiceLocalCloudStrategy = "auto" | "force-local" | "force-cloud";
 
 /**
  * User-facing slice of the auto-stop options: how long silence ends a turn
@@ -110,7 +110,6 @@ function VadSlider({
 
 export interface VoiceSectionPrefs {
   continuous: VoiceContinuousMode;
-  strategy: VoiceLocalCloudStrategy;
   cloudFirstLineCache: boolean;
   autoLearnVoices: boolean;
   /**
@@ -276,46 +275,6 @@ export function VoiceSection({
                 </span>
               </label>
             }
-          />
-
-          <SettingsSegmentedRow
-            agentId="voice-section-strategy-select"
-            testId="voice-section-strategy-select"
-            icon={Cloud}
-            label={t("voicesection.localVsCloud", {
-              defaultValue: "Local vs Cloud",
-            })}
-            agentLabel={t("voicesection.localVsCloudStrategy", {
-              defaultValue: "Local vs Cloud strategy",
-            })}
-            description={t("voicesection.localVsCloudDesc", {
-              defaultValue: "Where speech recognition and synthesis run.",
-            })}
-            group="voice-section"
-            value={prefs.strategy}
-            onValueChange={(value) =>
-              updatePrefs({ strategy: value as VoiceLocalCloudStrategy })
-            }
-            options={[
-              {
-                value: "auto",
-                label: t("voicesection.strategyAuto", {
-                  defaultValue: "Auto",
-                }),
-              },
-              {
-                value: "force-local",
-                label: t("voicesection.strategyForceLocal", {
-                  defaultValue: "Local",
-                }),
-              },
-              {
-                value: "force-cloud",
-                label: t("voicesection.strategyForceCloud", {
-                  defaultValue: "Cloud",
-                }),
-              },
-            ]}
           />
         </SettingsGroup>
 

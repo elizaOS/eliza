@@ -1,4 +1,4 @@
-import { useApp, useAppSelector } from "../../state";
+import { useAppSelector, useAppSelectorShallow } from "../../state";
 import type { AppState, FlaminaGuideTopic } from "../../state/types";
 import { Button } from "../ui/button";
 
@@ -143,7 +143,12 @@ export function DeferredSetupChecklist({
   onOpenTask?: (task: FlaminaGuideTopic) => void;
 }) {
   const { firstRunDeferredTasks, postFirstRunChecklistDismissed, setState, t } =
-    useApp();
+    useAppSelectorShallow((s) => ({
+      firstRunDeferredTasks: s.firstRunDeferredTasks,
+      postFirstRunChecklistDismissed: s.postFirstRunChecklistDismissed,
+      setState: s.setState,
+      t: s.t,
+    }));
 
   if (
     postFirstRunChecklistDismissed ||

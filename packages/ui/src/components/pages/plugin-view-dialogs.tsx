@@ -11,14 +11,7 @@ import {
   resolveIcon,
   type TranslateFn,
 } from "./plugin-list-utils";
-
-type PluginConnectionTestResult = {
-  durationMs: number;
-  error?: string;
-  loading: boolean;
-  message?: string;
-  success: boolean;
-};
+import type { PluginConnectionTestResult } from "./plugin-view-connectors";
 
 interface PluginSettingsDialogProps {
   installPluginLabel: string;

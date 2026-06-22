@@ -1,6 +1,6 @@
 // Real interaction coverage for the Settings sections + character editor.
 // all-pages-clicksafe only render-smokes settings; this drives the actual
-// controls (voice strategy select, appearance theme, capability switch, app-
+// controls (voice auto-learn toggle, appearance theme, capability switch, app-
 // permission refresh, backup/export modal, character bio save) and asserts they
 // DO something. Keyless against the stub.
 
@@ -30,23 +30,18 @@ function countRequests(
   return () => n;
 }
 
-test("voice settings: the strategy select changes value", async ({ page }) => {
+test("voice settings: the auto-learn toggle flips state", async ({ page }) => {
   await openAppPath(page, "/settings");
   await openSettingsSection(page, /^Voice$/);
   await expect(page.getByTestId("voice-section")).toBeVisible({
     timeout: 30_000,
   });
 
-  const strategy = page.getByTestId("voice-section-strategy-select");
-  await expect(strategy).toBeVisible({ timeout: 15_000 });
-  const before = await strategy.inputValue();
-  const options = await strategy
-    .locator("option")
-    .evaluateAll((els) => (els as HTMLOptionElement[]).map((o) => o.value));
-  const next = options.find((v) => v && v !== before);
-  expect(next, "voice strategy select must offer a second option").toBeTruthy();
-  await strategy.selectOption(next as string);
-  await expect.poll(() => strategy.inputValue()).toBe(next);
+  const autoLearn = page.getByTestId("voice-section-auto-learn-toggle");
+  await expect(autoLearn).toBeVisible({ timeout: 15_000 });
+  const before = await autoLearn.isChecked();
+  await autoLearn.click();
+  await expect.poll(() => autoLearn.isChecked()).toBe(!before);
 });
 
 test("appearance settings: selecting a language tile marks it active", async ({

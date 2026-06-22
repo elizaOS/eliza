@@ -82,11 +82,28 @@ import type { ScenarioDefinition, ScenarioTurn, CapturedAction }
 ```
 eliza-scenarios run  <dir> [--run-dir <dir>] [--export-native <jsonlPath>]
                             [--report <jsonPath>] [--report-dir <dir>]
-                            [--runId <id>] [--scenario id1,id2] [fileGlob ...]
-eliza-scenarios list <dir> [fileGlob ...]
+                            [--runId <id>] [--scenario id1,id2]
+                            [--lane pr-deterministic|live-only] [fileGlob ...]
+eliza-scenarios list <dir> [--lane pr-deterministic|live-only] [fileGlob ...]
 ```
 
 Exit codes: `0` = all passed (or skipped with `SKIP_REASON` set), `1` = at least one failed, `2` = config/usage error or a scenario skipped without `SKIP_REASON`.
+
+### Lanes
+
+A scenario declares its CI lane via the optional `lane` field
+(`@elizaos/scenario-runner/schema`):
+
+- `pr-deterministic` — runs on every PR under the deterministic LLM proxy with
+  zero credentials. Claim this lane **only** if the scenario passes keyless: no
+  live external service, no secret, every LLM call either backed by a registered
+  proxy fixture or satisfied by the proxy's default reply.
+- `live-only` — needs live model credentials and/or connector services. This is
+  the default for any scenario that does not declare a lane.
+
+`--lane <lane>` filters `run`/`list` to one lane. The big `packages/test/scenarios`
+corpus is `live-only` by default; the keyless subset is run on PRs via
+`test:corpus:pr:e2e` (`run ../test/scenarios --lane pr-deterministic`).
 
 ## Commands
 

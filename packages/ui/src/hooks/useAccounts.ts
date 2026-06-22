@@ -21,17 +21,8 @@ import type {
   AccountsListResponse,
   AccountTestResult,
 } from "../api/client-agent";
+import type { ActionNoticeFn } from "../state/action-notice";
 import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";
-
-type ActionTone = "info" | "success" | "error";
-
-type ActionNoticeFn = (
-  text: string,
-  tone?: ActionTone,
-  ttlMs?: number,
-  once?: boolean,
-  busy?: boolean,
-) => void;
 
 export interface UseAccountsOptions {
   setActionNotice?: ActionNoticeFn;

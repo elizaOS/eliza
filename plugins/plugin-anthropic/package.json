@@ -59,6 +59,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@elizaos/core": "workspace:*",
+    "@elizaos/test-harness": "workspace:*",
     "@types/node": "^25.0.3",
     "bun-types": "^1.3.14",
     "typescript": "^6.0.3",
@@ -73,6 +74,7 @@
     "lint:check": "bunx @biomejs/biome check . --no-errors-on-unmatched",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "bunx vitest run --config vitest.config.ts",
+    "test:harness": "bunx vitest run --config vitest.harness.config.ts",
     "test:unit": "bunx vitest run --config vitest.config.ts",
     "test:integration": "bunx vitest run --config vitest.config.ts --dir __tests__/integration",
     "test:watch": "bunx vitest --config vitest.config.ts",

@@ -1,10 +1,6 @@
 import type { DownloadJob } from "../../api/client-local-inference";
 import { useTranslation } from "../../state/TranslationContext.hooks";
-import { formatByteSize } from "../../utils/format";
-import { formatEta, progressPercent } from "./hub-utils";
-
-const formatBytes = (bytes: number): string =>
-  formatByteSize(bytes, { unknownLabel: "—" });
+import { formatBytes, formatEta, progressPercent } from "./hub-utils";
 
 interface DownloadProgressProps {
   job: DownloadJob;
