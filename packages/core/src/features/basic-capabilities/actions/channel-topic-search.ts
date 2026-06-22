@@ -63,6 +63,7 @@ export const channelTopicSearchAction: Action = {
 		const svc = getTopicsService(runtime);
 		if (!svc) {
 			return {
+				success: false,
 				text: "Channel topic search is unavailable.",
 				values: { success: false },
 				data: { actionName: "SEARCH_CHANNEL_TOPICS" },
@@ -71,6 +72,7 @@ export const channelTopicSearchAction: Action = {
 		const query = resolveQuery(message, options);
 		if (!query) {
 			return {
+				success: false,
 				text: "Provide a topic to search for.",
 				values: { success: false },
 				data: { actionName: "SEARCH_CHANNEL_TOPICS" },
@@ -84,6 +86,7 @@ export const channelTopicSearchAction: Action = {
 						.map((h) => `- ${h.roomId}: ${h.matchedTopics.join(", ")}`)
 						.join("\n")}`;
 		return {
+			success: true,
 			text,
 			values: { success: true, matchCount: hits.length },
 			data: { actionName: "SEARCH_CHANNEL_TOPICS", query, hits },
