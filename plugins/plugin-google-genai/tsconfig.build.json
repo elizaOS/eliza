@@ -5,7 +5,10 @@
     "declaration": true,
     "declarationMap": true,
     "allowImportingTsExtensions": false,
-    "types": ["bun-types", "node"],
+    "types": [
+      "bun-types",
+      "node"
+    ],
     "outDir": "../dist",
     "skipLibCheck": true,
     "ignoreDeprecations": "6.0",
@@ -13,15 +16,20 @@
     "resolvePackageJsonExports": true,
     "resolvePackageJsonImports": true,
     "paths": {
-      "@elizaos/core": ["../../../packages/core/dist"]
+      "@elizaos/core": [
+        "../../../packages/core/dist"
+      ]
     }
   },
-  "include": ["**/*.ts"],
+  "include": [
+    "**/*.ts"
+  ],
   "exclude": [
     "build.ts",
     "node_modules",
     "__tests__",
     "**/*.test.ts",
-    "**/*.spec.ts"
+    "**/*.spec.ts",
+    "vitest.harness.config.ts"
   ]
 }
