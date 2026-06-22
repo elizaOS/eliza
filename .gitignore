@@ -420,6 +420,7 @@ packages/ui/src/**/*.d.ts.map
 # (those with a matching .ts/.tsx source) remain ignored.
 !packages/ui/src/cloud-ui/types/nprogress.d.ts
 !packages/ui/src/cloud-ui/types/react-syntax-highlighter.d.ts
+!packages/ui/src/import-meta-glob.d.ts
 # Generated CSS-string modules (see packages/scripts/generate-css-strings.mjs).
 # A component opts in by creating an empty `.css.ts` sibling next to its `.css`;
 # regenerated on every `bun run build` in packages/ui.

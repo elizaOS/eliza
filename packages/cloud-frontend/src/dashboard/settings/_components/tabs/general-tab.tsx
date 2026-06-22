@@ -21,6 +21,7 @@ import {
   Switch,
   Textarea,
 } from "@elizaos/ui";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useCanvasStore } from "@/lib/stores/canvas-store";
@@ -43,7 +44,9 @@ interface FormState {
 
 export function GeneralTab({ user }: GeneralTabProps) {
   const t = useT();
-  const { defaultUiMode, setDefaultUiMode } = useCanvasStore();
+  const queryClient = useQueryClient();
+  const defaultUiMode = useCanvasStore((s) => s.defaultUiMode);
+  const setDefaultUiMode = useCanvasStore((s) => s.setDefaultUiMode);
   const [formState, setFormState] = useState<FormState>({
     fullName: user.name || "",
     nickname: user.nickname || "",
@@ -91,7 +94,9 @@ export function GeneralTab({ user }: GeneralTabProps) {
         defaultValue: "Settings saved successfully",
       }),
     );
-    window.location.reload();
+    // Refresh the user profile so the saved fields propagate without a full
+    // document reload. `user` is sourced from the `["user-profile"]` query.
+    await queryClient.invalidateQueries({ queryKey: ["user-profile"] });
     updateForm({ saving: false });
   };
 

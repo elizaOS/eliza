@@ -70,14 +70,12 @@ function pathToNodeType(
 }
 
 export function CanvasLayout() {
-  const {
-    canvasOpen,
-    setCanvasOpen,
-    views,
-    activeViewId,
-    openView,
-    maximizeNode,
-  } = useCanvasStore();
+  const canvasOpen = useCanvasStore((s) => s.canvasOpen);
+  const setCanvasOpen = useCanvasStore((s) => s.setCanvasOpen);
+  const views = useCanvasStore((s) => s.views);
+  const activeViewId = useCanvasStore((s) => s.activeViewId);
+  const openView = useCanvasStore((s) => s.openView);
+  const maximizeNode = useCanvasStore((s) => s.maximizeNode);
   const location = useLocation();
 
   useEffect(() => {

@@ -10,7 +10,7 @@ let KEY = "";
 const results = [];
 const check = (name, ok, detail) => {
   results.push({ name, ok, detail });
-  log(`${ok ? "✅" : "❌"} ${name}${detail ? " — " + detail : ""}`);
+  log(`${ok ? "✅" : "❌"} ${name}${detail ? ` — ${detail}` : ""}`);
   return ok;
 };
 
@@ -55,7 +55,7 @@ async function mintKey() {
     noAuth: true,
     body: { message: msg, signature: sig },
   });
-  if (!v.d?.apiKey) throw new Error("verify failed " + v.s);
+  if (!v.d?.apiKey) throw new Error(`verify failed ${v.s}`);
   return v.d.apiKey;
 }
 

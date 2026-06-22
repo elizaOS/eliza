@@ -132,16 +132,14 @@ const AUTOCOMPLETE_PHRASES = [
 ];
 
 export function CloudAssistantPill() {
-  const {
-    canvasOpen,
-    isProcessing,
-    setCanvasOpen,
-    inputGlowActive,
-    genui,
-    setGenuiSpec,
-    addMessage,
-    setProcessing,
-  } = useCanvasStore();
+  const canvasOpen = useCanvasStore((s) => s.canvasOpen);
+  const isProcessing = useCanvasStore((s) => s.isProcessing);
+  const setCanvasOpen = useCanvasStore((s) => s.setCanvasOpen);
+  const inputGlowActive = useCanvasStore((s) => s.inputGlowActive);
+  const genui = useCanvasStore((s) => s.genui);
+  const setGenuiSpec = useCanvasStore((s) => s.setGenuiSpec);
+  const addMessage = useCanvasStore((s) => s.addMessage);
+  const setProcessing = useCanvasStore((s) => s.setProcessing);
   const inputRef = useRef<HTMLInputElement>(null);
   const [inputValue, setInputValue] = useState("");
   const [selectedIdx, setSelectedIdx] = useState(0);

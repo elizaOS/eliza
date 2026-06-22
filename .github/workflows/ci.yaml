@@ -247,6 +247,17 @@ jobs:
       - name: Run lint
         run: bun run lint
 
+      # UI render-time determinism gate. Fails on NEW Date.now()/Math.random()/
+      # crypto.randomUUID()/locale-defaulted toLocale* in a component/hook render
+      # path (the source of flaky screenshots + meaningless snapshots). The
+      # existing backlog is tracked in packages/scripts/ui-determinism-baseline.json;
+      # only regressions beyond it fail. Self-test asserts the AST classifier.
+      - name: UI determinism self-test
+        run: bun run audit:ui-determinism:self-test
+
+      - name: UI determinism gate
+        run: bun run audit:ui-determinism
+
       # Per-plugin mock-LLM e2e coverage. Warn-first (--dry-run exits 0) while
       # the backlog is burned down; flip to enforcing (drop --dry-run, allowlist
       # justified N/A) once plugins carry a withMockLlmRuntime e2e. (#8801)

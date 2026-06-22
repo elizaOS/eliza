@@ -11,13 +11,8 @@
 
 import { BrandCard, CornerBrackets } from "@elizaos/ui";
 import { DollarSign, Info, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
-import type {
-  QuotaUsageDto,
-  SessionStatsDto,
-  UserWithOrganizationDto,
-} from "@/types/cloud-api";
+import { useDailyBurn, useQuotaUsage, useSessionStats } from "@/lib/data/usage";
+import type { UserWithOrganizationDto } from "@/types/cloud-api";
 import type { SettingsTab } from "../types";
 
 interface UsageTabProps {
@@ -26,108 +21,11 @@ interface UsageTabProps {
 }
 
 export function UsageTab({ user, onTabChange }: UsageTabProps) {
-  const [loading, setLoading] = useState(false);
-  const [dailyBurn, setDailyBurn] = useState(0);
-  const [sessionStats, setSessionStats] = useState<SessionStatsDto | null>(
-    null,
-  );
-  const [sessionLoading, setSessionLoading] = useState(false);
-  const [quotaUsage, setQuotaUsage] = useState<QuotaUsageDto | null>(null);
-  const [quotaLoading, setQuotaLoading] = useState(false);
+  const { data: dailyBurn = 0, isLoading: burnLoading } = useDailyBurn();
+  const { data: sessionStats, isLoading: sessionLoading } = useSessionStats();
+  const { data: quotaUsage, isLoading: quotaLoading } = useQuotaUsage();
 
   const creditsRemaining = Number(user.organization?.credit_balance || 0);
-
-  useEffect(() => {
-    const fetchDailyBurn = async () => {
-      setLoading(true);
-
-      try {
-        const response = await fetch("/api/credits/transactions?hours=24");
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch transactions");
-        }
-
-        const data = await response.json();
-
-        interface Transaction {
-          amount: string | number;
-        }
-        const transactions: Transaction[] = Array.isArray(data.transactions)
-          ? data.transactions.filter((t: unknown): t is Transaction => {
-              if (typeof t !== "object" || t === null || !("amount" in t))
-                return false;
-              const { amount } = t as Record<string, unknown>;
-              return typeof amount === "string" || typeof amount === "number";
-            })
-          : [];
-        const burn = transactions
-          .filter((t) => Number(t.amount) < 0)
-          .reduce(
-            (sum: number, t: Transaction) => sum + Math.abs(Number(t.amount)),
-            0,
-          );
-
-        setDailyBurn(burn);
-      } catch (_error) {
-        toast.error("Failed to load daily burn rate");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchDailyBurn();
-  }, []);
-
-  useEffect(() => {
-    const fetchSessionStats = async () => {
-      setSessionLoading(true);
-
-      const response = await fetch("/api/sessions/current");
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch session stats");
-      }
-
-      const data = await response.json();
-
-      if (data.success && data.data) {
-        setSessionStats(data.data);
-      }
-      setSessionLoading(false);
-    };
-
-    fetchSessionStats();
-
-    const interval = setInterval(fetchSessionStats, 30000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const fetchQuotaUsage = async () => {
-      setQuotaLoading(true);
-
-      const response = await fetch("/api/quotas/usage");
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch quota usage");
-      }
-
-      const data = await response.json();
-
-      if (data.success && data.data) {
-        setQuotaUsage(data.data);
-      }
-      setQuotaLoading(false);
-    };
-
-    fetchQuotaUsage();
-
-    const interval = setInterval(fetchQuotaUsage, 60000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   return (
     <div className="flex flex-col gap-4 md:gap-6 pb-6 md:pb-8">
@@ -167,7 +65,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                 <p className="text-sm md:text-base font-mono text-white">
                   Credits Remaining
                 </p>
-                {loading ? (
+                {burnLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin text-[var(--brand-orange)]" />
                 ) : (
                   <p className="text-xs text-[var(--brand-orange)]">
@@ -197,7 +95,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                 <p className="text-sm md:text-base font-mono text-white">
                   Current Session
                 </p>
-                {sessionLoading && !sessionStats ? (
+                {sessionLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin text-[var(--brand-orange)]" />
                 ) : (
                   <p className="text-xs text-[#848484]">
@@ -260,7 +158,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
             </div>
 
             <div className="flex items-center gap-2">
-              {quotaLoading && !quotaUsage ? (
+              {quotaLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin text-[var(--brand-orange)]" />
               ) : (
                 <>

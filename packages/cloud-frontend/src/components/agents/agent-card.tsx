@@ -270,8 +270,8 @@ export function AgentCard({
         t("cloud.agentCard.deleted", { defaultValue: "Agent deleted" }),
       );
       setShowDeleteConfirm(false);
+      // The owning list (my-agents) refetches on this event; no reload needed.
       window.dispatchEvent(new Event("characters-updated"));
-      window.location.reload();
     } else {
       toast.error(
         t("cloud.agentCard.deleteFailed", {
@@ -306,8 +306,8 @@ export function AgentCard({
             }),
           );
           onRemoveSaved?.(agent.id);
+          // The owning list (my-agents) refetches on this event; no reload.
           window.dispatchEvent(new Event("characters-updated"));
-          window.location.reload();
         } else {
           const error = await response.json();
           toast.error(

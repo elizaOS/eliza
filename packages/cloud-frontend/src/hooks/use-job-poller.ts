@@ -1,6 +1,8 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { logger } from "@/lib/utils/logger";
 
 export type JobStatus = "pending" | "in_progress" | "completed" | "failed";
 
@@ -17,6 +19,11 @@ interface UseJobPollerOptions {
   maxDurationMs?: number;
   onComplete?: (job: TrackedJob) => void;
   onFailed?: (job: TrackedJob) => void;
+  /**
+   * When a tracked job reaches a terminal state, invalidate the Eliza agent
+   * queries so the dashboard refreshes the affected data in place. Defaults to
+   * `true`. (Replaces the legacy full-document `window.location.reload()`.)
+   */
   autoRefresh?: boolean;
 }
 
@@ -35,6 +42,7 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
     autoRefresh = true,
   } = options;
 
+  const queryClient = useQueryClient();
   const [jobMap, setJobMap] = useState<Map<string, TrackedJob>>(new Map());
   const jobMapRef = useRef(jobMap);
   const callbacksRef = useRef({ onComplete, onFailed });
@@ -159,12 +167,16 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
               needsRefresh = true;
             }
           } catch (err) {
-            console.warn("[JobPoller] Failed to update job", job.jobId, err);
+            logger.warn("[JobPoller] Failed to update job", job.jobId, err);
           }
         }
 
         if (needsRefresh && autoRefresh && !cancelled) {
-          window.location.reload();
+          // A tracked job reached a terminal state — refresh the Eliza agent
+          // queries in place instead of a full-document reload. Consumers also
+          // get `onComplete`/`onFailed` for navigation/toasts.
+          void queryClient.invalidateQueries({ queryKey: ["agent", "agents"] });
+          void queryClient.invalidateQueries({ queryKey: ["agent", "agent"] });
         }
       } finally {
         pollInFlightRef.current = false;
@@ -181,7 +193,7 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [hasActiveJobs, autoRefresh, intervalMs, maxDurationMs]);
+  }, [hasActiveJobs, autoRefresh, intervalMs, maxDurationMs, queryClient]);
 
   return {
     track,

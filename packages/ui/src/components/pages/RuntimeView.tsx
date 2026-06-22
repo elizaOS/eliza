@@ -15,6 +15,7 @@ import {
   type RuntimeServiceOrderItem,
 } from "../../api";
 import { getCached, setCached } from "../../hooks/resource-cache";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useAppSelector } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
@@ -469,13 +470,14 @@ export function RuntimeView({
     void loadSnapshot({
       silent: getCached<RuntimeDebugSnapshot>(snapshotCacheKey) != null,
     });
-    // Keep the snapshot live without a manual refresh button: poll silently
-    // while the view is mounted so registration order/state stays current.
-    const interval = window.setInterval(() => {
-      void loadSnapshot({ silent: true });
-    }, 5000);
-    return () => window.clearInterval(interval);
   }, [loadSnapshot, snapshotCacheKey]);
+
+  // Keep the snapshot live without a manual refresh button: poll silently while
+  // the view is mounted and the window is visible so a backgrounded window goes
+  // quiet, then resumes on return.
+  useIntervalWhenDocumentVisible(() => {
+    void loadSnapshot({ silent: true });
+  }, 5000);
 
   useEffect(() => {
     setExpandedPaths(buildInitialExpanded(rootPath, sectionData));

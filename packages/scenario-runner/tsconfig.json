@@ -32,8 +32,9 @@
       "@elizaos/skills": ["../skills/src/index.ts"],
       "@elizaos/skills/*": ["../skills/src/*"],
       "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/dist/index.d.ts"
+        "../../plugins/plugin-browser/src/index.ts"
       ],
+      "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],

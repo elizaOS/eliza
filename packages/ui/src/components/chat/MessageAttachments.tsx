@@ -175,7 +175,10 @@ function ImageTile({
           src={thumbSrc}
           alt={att.description?.trim() || label}
           loading="lazy"
-          className="block h-auto max-h-80 w-full object-cover"
+          // Reserve a stable box via aspect-ratio so the row height is fixed
+          // before the image loads — avoids layout shift / scroll-anchor yank.
+          // The type carries no intrinsic dimensions, so a 4:3 default is used.
+          className="block aspect-[4/3] max-h-80 w-full object-cover"
         />
       </button>
       <div className="pointer-events-none absolute right-1.5 top-1.5 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
@@ -463,7 +466,9 @@ export function MessageAttachments({
                 src={src}
                 controls
                 preload="metadata"
-                className="max-h-80 max-w-[min(22rem,100%)] rounded-xl border border-white/12"
+                // Reserve a stable 16:9 box so the row height is fixed before
+                // the video metadata loads — avoids layout shift on load.
+                className="aspect-video max-h-80 w-full max-w-[min(22rem,100%)] rounded-xl border border-white/12 object-contain"
               >
                 <track kind="captions" />
               </video>

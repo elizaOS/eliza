@@ -6162,26 +6162,26 @@ const COMMUNITY_TEMPLATES: PredefinedTemplate[] = [
 
 // ── Main Cloud Node Canvas Component ──
 export function CloudCanvas() {
-  const {
-    views,
-    activeViewId,
-    snapshots,
-    openView,
-    closeView,
-    addTab,
-    renameTab,
-    moveNode,
-    closeNode,
-    minimizeNode,
-    maximizeNode,
-    resizeNode,
-    setTabPan,
-    saveWorkspaceSnapshot,
-    loadWorkspaceSnapshot,
-    deleteWorkspaceSnapshot,
-    addMessage,
-    setProcessing,
-  } = useCanvasStore();
+  const views = useCanvasStore((s) => s.views);
+  const activeViewId = useCanvasStore((s) => s.activeViewId);
+  const snapshots = useCanvasStore((s) => s.snapshots);
+  const openView = useCanvasStore((s) => s.openView);
+  const closeView = useCanvasStore((s) => s.closeView);
+  const addTab = useCanvasStore((s) => s.addTab);
+  const renameTab = useCanvasStore((s) => s.renameTab);
+  const moveNode = useCanvasStore((s) => s.moveNode);
+  const closeNode = useCanvasStore((s) => s.closeNode);
+  const minimizeNode = useCanvasStore((s) => s.minimizeNode);
+  const maximizeNode = useCanvasStore((s) => s.maximizeNode);
+  const resizeNode = useCanvasStore((s) => s.resizeNode);
+  const setTabPan = useCanvasStore((s) => s.setTabPan);
+  const saveWorkspaceSnapshot = useCanvasStore((s) => s.saveWorkspaceSnapshot);
+  const loadWorkspaceSnapshot = useCanvasStore((s) => s.loadWorkspaceSnapshot);
+  const deleteWorkspaceSnapshot = useCanvasStore(
+    (s) => s.deleteWorkspaceSnapshot,
+  );
+  const addMessage = useCanvasStore((s) => s.addMessage);
+  const setProcessing = useCanvasStore((s) => s.setProcessing);
 
   const { user, stewardAuthenticated } = useSessionAuth();
   const { signOut: stewardSignOut } = useStewardAuth();

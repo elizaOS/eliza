@@ -59,6 +59,10 @@ class ChunkLoadErrorBoundary extends Component<
         const alreadyTried =
           window.sessionStorage.getItem(CHUNK_RELOAD_FLAG) === "1";
         if (!alreadyTried) {
+          // A ChunkLoadError means the deployed bundle changed and the cached
+          // chunk URL is gone. The only recovery is a hard reload to fetch the
+          // new index.html + chunk manifest — query invalidation can't restore
+          // a missing JS module. Guarded by a one-shot session flag.
           window.sessionStorage.setItem(CHUNK_RELOAD_FLAG, "1");
           window.location.reload();
           return { failed: true };

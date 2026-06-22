@@ -13,7 +13,7 @@ import {
   TrendingUp,
   Video,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useT } from "@/providers/I18nProvider";
 import type { App } from "../../../lib/data/apps";
@@ -45,27 +45,27 @@ export function AppPromote({ app }: AppPromoteProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isGeneratingAssets, setIsGeneratingAssets] = useState(false);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
 
-      const suggestionsRes = await fetch(`/api/v1/apps/${app.id}/promote`);
-      if (suggestionsRes.ok) {
-        const data = await suggestionsRes.json();
-        setSuggestions(data);
-      }
+    const suggestionsRes = await fetch(`/api/v1/apps/${app.id}/promote`);
+    if (suggestionsRes.ok) {
+      const data = await suggestionsRes.json();
+      setSuggestions(data);
+    }
 
-      const accountsRes = await fetch("/api/v1/advertising/accounts");
-      if (accountsRes.ok) {
-        const data = await accountsRes.json();
-        setAdAccounts(data.accounts || []);
-      }
+    const accountsRes = await fetch("/api/v1/advertising/accounts");
+    if (accountsRes.ok) {
+      const data = await accountsRes.json();
+      setAdAccounts(data.accounts || []);
+    }
 
-      setIsLoading(false);
-    };
-
-    fetchData();
+    setIsLoading(false);
   }, [app.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleGenerateAssets = async () => {
     setIsGeneratingAssets(true);
@@ -80,7 +80,8 @@ export function AppPromote({ app }: AppPromoteProps) {
     });
 
     if (response.ok) {
-      window.location.reload();
+      // Re-fetch the promotion data in place instead of reloading the page.
+      await fetchData();
     }
 
     setIsGeneratingAssets(false);

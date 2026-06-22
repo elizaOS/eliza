@@ -48,15 +48,13 @@ const QUICK_ACTIONS = [
 type Tab = "actions" | "views" | "history";
 
 export function WorkspacePanel() {
-  const {
-    savedViews,
-    activeViewId,
-    loadView,
-    deleteView,
-    messages,
-    addMessage,
-    setProcessing,
-  } = useCanvasStore();
+  const savedViews = useCanvasStore((s) => s.savedViews);
+  const activeViewId = useCanvasStore((s) => s.activeViewId);
+  const loadView = useCanvasStore((s) => s.loadView);
+  const deleteView = useCanvasStore((s) => s.deleteView);
+  const messages = useCanvasStore((s) => s.messages);
+  const addMessage = useCanvasStore((s) => s.addMessage);
+  const setProcessing = useCanvasStore((s) => s.setProcessing);
 
   const [tab, setTab] = useState<Tab>("actions");
 

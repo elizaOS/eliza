@@ -952,18 +952,6 @@ button:not(:disabled),
   text-rendering: optimizeLegibility;
 }
 
-/* Smooth text appearance for new content */
-@keyframes streamTextReveal {
-  0% {
-    opacity: 0.5;
-    filter: blur(0.5px);
-  }
-  100% {
-    opacity: 1;
-    filter: blur(0);
-  }
-}
-
 /* Elegant cursor animation */
 @keyframes cursorBreathe {
   0%,
@@ -994,17 +982,6 @@ button:not(:disabled),
   }
 }
 
-/* Subtle glow effect for thinking state */
-@keyframes thinkingGlow {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0);
-  }
-  50% {
-    box-shadow: 0 0 12px 2px rgba(var(--accent-rgb), 0.1);
-  }
-}
-
 /* Smooth message entrance */
 @keyframes messageSlideIn {
   from {
@@ -1022,48 +999,6 @@ button:not(:disabled),
   animation: messageSlideIn 300ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
-/* ========================================
-   CHAT BUBBLE SMOOTH ANIMATIONS
-   For smooth height growth & content reveal
-   ======================================== */
-
-/* Smooth bubble container - grows with content */
-.chat-bubble-smooth {
-  display: grid;
-  grid-template-rows: 1fr;
-  transition: grid-template-rows 400ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.chat-bubble-smooth > * {
-  overflow: hidden;
-}
-
-/* Smooth height transition for content areas */
-.content-grow {
-  transition:
-    max-height 400ms cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 300ms ease-out;
-  will-change: max-height, opacity;
-}
-
-/* Operation item entrance animation */
-@keyframes operationSlideIn {
-  0% {
-    opacity: 0;
-    transform: translateX(-12px);
-    filter: blur(2px);
-  }
-  50% {
-    opacity: 0.7;
-    filter: blur(0);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0);
-    filter: blur(0);
-  }
-}
-
 /* Operation checkmark pop animation */
 @keyframes checkmarkPop {
   0% {
@@ -1079,37 +1014,6 @@ button:not(:disabled),
   }
 }
 
-/* Reasoning text wave reveal */
-@keyframes reasoningWaveIn {
-  0% {
-    opacity: 0;
-    transform: translateY(6px);
-    filter: blur(3px);
-  }
-  60% {
-    opacity: 0.8;
-    filter: blur(0);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
-  }
-}
-
-/* Thinking bubble pulse */
-@keyframes thinkingPulse {
-  0%,
-  100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.1);
-  }
-  50% {
-    transform: scale(1.005);
-    box-shadow: 0 0 20px 4px rgba(var(--accent-rgb), 0.08);
-  }
-}
-
 /* Smooth text content reveal */
 @keyframes textContentReveal {
   from {
@@ -1120,99 +1024,6 @@ button:not(:disabled),
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-/* Animated operation classes */
-.operation-item {
-  animation: operationSlideIn 400ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-  animation-fill-mode: both;
-}
-
-.operation-item:nth-child(1) {
-  animation-delay: 0ms;
-}
-.operation-item:nth-child(2) {
-  animation-delay: 80ms;
-}
-.operation-item:nth-child(3) {
-  animation-delay: 160ms;
-}
-.operation-item:nth-child(4) {
-  animation-delay: 240ms;
-}
-.operation-item:nth-child(5) {
-  animation-delay: 320ms;
-}
-.operation-item:nth-child(6) {
-  animation-delay: 400ms;
-}
-.operation-item:nth-child(7) {
-  animation-delay: 480ms;
-}
-.operation-item:nth-child(8) {
-  animation-delay: 560ms;
-}
-.operation-item:nth-child(9) {
-  animation-delay: 640ms;
-}
-.operation-item:nth-child(10) {
-  animation-delay: 720ms;
-}
-
-.operation-checkmark {
-  animation: checkmarkPop 500ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-  animation-delay: 100ms;
-}
-
-.reasoning-reveal {
-  animation: reasoningWaveIn 350ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
-}
-
-.thinking-bubble {
-  animation: thinkingPulse 2.5s ease-in-out infinite;
-}
-
-.text-reveal {
-  animation: textContentReveal 250ms ease-out forwards;
-}
-
-/* Smooth bubble height transition using CSS grid trick */
-.bubble-expand {
-  display: grid;
-  transition: grid-template-rows 500ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.bubble-expand[data-expanded="false"] {
-  grid-template-rows: 0fr;
-}
-
-.bubble-expand[data-expanded="true"] {
-  grid-template-rows: 1fr;
-}
-
-.bubble-expand > .bubble-content {
-  overflow: hidden;
-  min-height: 0;
-}
-
-/* Smooth accordion-style expansion for operations section */
-.operations-section {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition:
-    grid-template-rows 400ms cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 300ms ease-out;
-  opacity: 0;
-}
-
-.operations-section.expanded {
-  grid-template-rows: 1fr;
-  opacity: 1;
-}
-
-.operations-section > .operations-content {
-  overflow: hidden;
-  min-height: 0;
 }
 
 /* Enhanced typing indicator */
@@ -1291,23 +1102,6 @@ button:not(:disabled),
   }
 }
 
-/* Smooth line appearance for streaming text */
-@keyframes lineReveal {
-  0% {
-    opacity: 0;
-    transform: translateX(-8px);
-    filter: blur(2px);
-  }
-  60% {
-    filter: blur(0);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0);
-    filter: blur(0);
-  }
-}
-
 /* Status icon animations */
 @keyframes statusIconPop {
   0% {
@@ -1330,11 +1124,6 @@ button:not(:disabled),
   to {
     transform: rotate(360deg);
   }
-}
-
-/* Apply to streaming operation lines */
-.streaming-line {
-  animation: lineReveal 350ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 .status-icon-pop {
@@ -1556,56 +1345,6 @@ button:not(:disabled),
 /* ========================================
    Monetization Animations
    ======================================== */
-
-/* Milestone pulse when reached */
-@keyframes milestoneReached {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
-  }
-  50% {
-    box-shadow: 0 0 20px 10px rgba(34, 197, 94, 0.2);
-  }
-}
-
-.animate-milestone-reached {
-  animation: milestoneReached 2s ease-in-out infinite;
-}
-
-/* Withdrawal ready glow */
-@keyframes withdrawReady {
-  0%,
-  100% {
-    box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.3);
-    border-color: rgba(var(--accent-rgb), 0.5);
-  }
-  50% {
-    box-shadow: 0 0 40px rgba(var(--accent-rgb), 0.5);
-    border-color: rgba(var(--accent-rgb), 0.8);
-  }
-}
-
-.animate-withdraw-ready {
-  animation: withdrawReady 2s ease-in-out infinite;
-}
-
-/* Earnings counter reveal */
-@keyframes countReveal {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(0.95);
-    filter: blur(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-    filter: blur(0);
-  }
-}
-
-.animate-count-reveal {
-  animation: countReveal 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-}
 
 /* Success checkmark animation */
 @keyframes checkmarkDraw {
@@ -1902,3 +1641,15 @@ button:not(:disabled),
   box-shadow: none !important;
 }
 /* biome-ignore-end lint/complexity/noImportantStyles: end focus-ring ban override */
+
+/* Reduced motion - universal override is intentional for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    scroll-behavior: auto;
+  }
+}

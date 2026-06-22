@@ -1,4 +1,5 @@
-import React, {
+import type React from "react";
+import {
   createContext,
   useCallback,
   useContext,
@@ -1469,6 +1470,39 @@ const COMPONENTS: Record<SupportedUiComponentType, ComponentFn> = {
 // ELEMENT RENDERER
 // ══════════════════════════════════════════════════════════════════════
 
+// Renders a single item of a `repeat` element. The per-item context is
+// memoized on the item identity so that re-rendering the parent (e.g. on an
+// unrelated state change) does not produce a fresh context value and force every
+// repeated child subtree to re-render.
+function RepeatItemRenderer({
+  ctx,
+  item,
+  el,
+  component,
+  resolvedProps,
+}: {
+  ctx: UiRenderContext;
+  item: Record<string, unknown>;
+  el: UiElement;
+  component: ComponentFn;
+  resolvedProps: Record<string, unknown>;
+}) {
+  const itemCtx = useMemo<UiRenderContext>(
+    () => ({ ...ctx, repeatItem: item }),
+    [ctx, item],
+  );
+  const childNodes = useMemo(
+    () =>
+      el.children.map((childId) => (
+        <UiContext.Provider key={childId} value={itemCtx}>
+          <ElementRenderer elementId={childId} />
+        </UiContext.Provider>
+      )),
+    [el.children, itemCtx],
+  );
+  return <>{component(resolvedProps, childNodes, itemCtx, el)}</>;
+}
+
 function ElementRenderer({ elementId }: { elementId: string }) {
   const t = useAppSelector((s) => s.t);
   const ctx = useUiCtx();
@@ -1498,21 +1532,20 @@ function ElementRenderer({ elementId }: { elementId: string }) {
       | undefined;
     if (!Array.isArray(listData)) return null;
 
+    const repeatKey = el.repeat.key;
     return (
       <>
         {listData.map((item, index) => {
-          const itemCtx: UiRenderContext = { ...ctx, repeatItem: item };
-          const childNodes = el.children.map((childId) => (
-            <UiContext.Provider key={childId} value={itemCtx}>
-              <ElementRenderer elementId={childId} />
-            </UiContext.Provider>
-          ));
-          const repeatKey = el.repeat?.key;
           const itemKey = String(repeatKey != null ? item[repeatKey] : index);
           return (
-            <React.Fragment key={itemKey}>
-              {component(resolvedProps, childNodes, itemCtx, el)}
-            </React.Fragment>
+            <RepeatItemRenderer
+              key={itemKey}
+              ctx={ctx}
+              item={item}
+              el={el}
+              component={component}
+              resolvedProps={resolvedProps}
+            />
           );
         })}
       </>

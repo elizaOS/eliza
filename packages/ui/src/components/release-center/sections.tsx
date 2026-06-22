@@ -144,7 +144,7 @@ export function ReleaseStatusSection({
             label={tr(t, "releasecenter.LastChecked", "Last checked")}
             value={
               updateStatus?.lastCheckAt
-                ? new Date(updateStatus.lastCheckAt).toLocaleString()
+                ? new Date(updateStatus.lastCheckAt).toLocaleString("en-US")
                 : tr(t, "releasecenter.NotYet", "Not yet")
             }
           />

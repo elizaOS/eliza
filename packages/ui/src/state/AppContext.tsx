@@ -305,9 +305,6 @@ function AppProviderInner({
       activeConversationId,
       companionMessageCutoffTs,
       conversationMessages,
-      autonomousEvents,
-      autonomousLatestEventId,
-      autonomousRunHealthByRunId,
       ptySessions,
       unreadConversations,
       chatPendingImages,
@@ -1880,15 +1877,33 @@ function AppProviderInner({
     [serverTurnStatus],
   );
 
-  // The AppContext value is memoized and does NOT include chatInput/chatSending/
-  // chatPendingImages (in ChatComposerCtx) or ptySessions (in PtySessionsCtx).
-  // autonomousEvents/autonomousLatestEventId/autonomousRunHealthByRunId are also
-  // excluded — they update on every heartbeat WS event but no component reads them
-  // directly from useApp(). Excluding them prevents heartbeat events from re-rendering
-  // all AppContext subscribers (CompanionViewOverlay, App, etc.).
-  // NOTE: this dep array must stay in sync with the fields in the value object.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  // biome-ignore lint/correctness/useExhaustiveDependencies: conversationMessages, autonomous events, and ptySessions are intentionally provided through narrower contexts/refs to avoid global AppContext re-renders.
+  // High-write-frequency state is exposed through narrow fresh contexts below.
+  // AppContext keeps stale compatibility copies for older consumers, but they
+  // intentionally stay out of the dependency list so per-keystroke/per-token/
+  // per-poll updates do not fan out to every AppContext subscriber.
+  const appContextHotCompatibility = useRef<
+    Pick<
+      AppState,
+      | "autonomousEvents"
+      | "autonomousLatestEventId"
+      | "autonomousRunHealthByRunId"
+      | "chatInput"
+      | "chatPendingImages"
+      | "chatSending"
+      | "conversationMessages"
+      | "ptySessions"
+    >
+  >({
+    autonomousEvents: [],
+    autonomousLatestEventId: null,
+    autonomousRunHealthByRunId: {},
+    chatInput: "",
+    chatPendingImages: [],
+    chatSending: false,
+    conversationMessages: [],
+    ptySessions: [],
+  }).current;
+
   const value: AppContextValue = useMemo(
     () => ({
       // Translations
@@ -1927,9 +1942,6 @@ function AppProviderInner({
       pairingCodeInput,
       pairingError,
       pairingBusy,
-      // chatInput/chatSending/chatPendingImages are stale here — read via useChatComposer()
-      chatInput,
-      chatSending,
       chatFirstTokenReceived,
       chatLastUsage,
       chatAvatarVisible,
@@ -1938,11 +1950,7 @@ function AppProviderInner({
       conversations,
       activeConversationId,
       companionMessageCutoffTs,
-      conversationMessages,
-      autonomousEvents,
-      autonomousLatestEventId,
-      autonomousRunHealthByRunId,
-      ptySessions,
+      ...appContextHotCompatibility,
       unreadConversations,
       triggers,
       triggersLoaded,
@@ -2160,7 +2168,6 @@ function AppProviderInner({
       mcpHeaderInputs,
       droppedFiles,
       shareIngestNotice,
-      chatPendingImages,
       analysisMode,
       setAnalysisMode,
       appRuns,
@@ -2359,6 +2366,7 @@ function AppProviderInner({
       conversations,
       activeConversationId,
       companionMessageCutoffTs,
+      appContextHotCompatibility,
       // NOTE: conversationMessages intentionally EXCLUDED — it gets a new array
       // reference on every streamed token. Provided fresh via
       // ConversationMessagesCtx (useConversationMessages()); the copy left in the
@@ -2734,11 +2742,7 @@ function AppProviderInner({
       setActionNotice,
       setState,
       copyToClipboard,
-      chatPendingImages,
       setChatPendingImages,
-      chatSending,
-      ptySessions, // chatInput/chatSending/chatPendingImages are stale here — read via useChatComposer()
-      chatInput,
       analysisMode,
       setAnalysisMode,
     ],

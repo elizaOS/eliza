@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import {
   type ChangeEvent,
+  memo,
   type ReactNode,
   useCallback,
   useEffect,
@@ -409,36 +410,37 @@ function DialpadButton({
   );
 }
 
-function RecentCallButton({
+const RecentCallButton = memo(function RecentCallButton({
   call,
   onSelect,
   children,
 }: {
   call: CallLogEntry;
-  onSelect: () => void;
+  onSelect: (call: CallLogEntry) => void;
   children: ReactNode;
 }) {
+  const handleSelect = useCallback(() => onSelect(call), [onSelect, call]);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `recent-call-${call.id}`,
     role: "list-item",
     label: callDisplayName(call),
     group: "recent-calls",
-    onActivate: onSelect,
+    onActivate: handleSelect,
   });
   return (
     <button
       ref={ref}
       type="button"
-      onClick={onSelect}
+      onClick={handleSelect}
       className="rounded-sm border border-border bg-bg p-3 text-left text-sm hover:border-primary"
       {...agentProps}
     >
       {children}
     </button>
   );
-}
+});
 
-function PhoneContactRow({
+const PhoneContactRow = memo(function PhoneContactRow({
   contact,
   dialLabel,
   smsLabel,
@@ -456,6 +458,14 @@ function PhoneContactRow({
   onSms: (contactNumber: string) => void;
 }) {
   const contactNumber = primaryPhoneNumber(contact);
+  const handleDial = useCallback(
+    () => onDial(contactNumber),
+    [onDial, contactNumber],
+  );
+  const handleSms = useCallback(
+    () => onSms(contactNumber),
+    [onSms, contactNumber],
+  );
   return (
     <div className="rounded-sm border border-border bg-bg p-3 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -481,7 +491,7 @@ function PhoneContactRow({
             agentGroup="phone-contacts"
             disabled={!contactNumber}
             icon={<PhoneCall className="h-4 w-4" />}
-            onClick={() => onDial(contactNumber)}
+            onClick={handleDial}
           >
             {dialLabel}
           </SecondaryButton>
@@ -491,7 +501,7 @@ function PhoneContactRow({
             agentGroup="phone-contacts"
             disabled={!contactNumber}
             icon={<MessageSquare className="h-4 w-4" />}
-            onClick={() => onSms(contactNumber)}
+            onClick={handleSms}
           >
             {smsLabel}
           </SecondaryButton>
@@ -499,7 +509,7 @@ function PhoneContactRow({
       </div>
     </div>
   );
-}
+});
 
 function PhoneRoleRow({
   role,
@@ -635,6 +645,18 @@ export function PhonePageView() {
     () => ({ limit: 200, query: contactQuery.trim() || undefined }),
     [contactQuery],
   );
+
+  // Stable per-row handlers so the memoized RecentCallButton / PhoneContactRow
+  // hold across re-renders of this page.
+  const handleSelectCall = useCallback((call: CallLogEntry) => {
+    setSelectedCallId(call.id);
+    setActivePanel("transcripts");
+  }, []);
+
+  const handleDialContact = useCallback((contactNumber: string) => {
+    setNumber(contactNumber);
+    setActivePanel("dialer");
+  }, []);
 
   useEffect(() => {
     const launchNumber =
@@ -908,10 +930,7 @@ export function PhonePageView() {
                 <RecentCallButton
                   key={call.id}
                   call={call}
-                  onSelect={() => {
-                    setSelectedCallId(call.id);
-                    setActivePanel("transcripts");
-                  }}
+                  onSelect={handleSelectCall}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-medium text-txt">
@@ -1006,10 +1025,7 @@ export function PhonePageView() {
                   noNumbersLabel={t("elizaosapps.phone.contacts.noNumbers", {
                     defaultValue: "No phone numbers",
                   })}
-                  onDial={(contactNumber) => {
-                    setNumber(contactNumber);
-                    setActivePanel("dialer");
-                  }}
+                  onDial={handleDialContact}
                   onSms={openMessagesForNumber}
                 />
               ))

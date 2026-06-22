@@ -184,7 +184,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
                 {streamLive
                   ? t("streamview.StreamLiveStatus", {
                       uptime: formatUptime(uptime),
-                      frameCount: frameCount.toLocaleString(),
+                      frameCount: frameCount.toLocaleString("en-US"),
                       defaultValue:
                         "Uptime: {{uptime}} · {{frameCount}} frames",
                     })
