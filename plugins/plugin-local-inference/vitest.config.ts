@@ -50,6 +50,12 @@ export default defineConfig({
 					import.meta.url,
 				),
 			),
+			"@elizaos/shared/voice/owner-inference": fileURLToPath(
+				new URL(
+					"../../packages/shared/src/voice/owner-inference.ts",
+					import.meta.url,
+				),
+			),
 			"@elizaos/shared/voice-wer": fileURLToPath(
 				new URL("../../packages/shared/src/voice-wer.ts", import.meta.url),
 			),

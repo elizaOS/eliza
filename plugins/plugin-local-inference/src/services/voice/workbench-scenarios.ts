@@ -214,6 +214,45 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 		assertions: { minEchoRejectionRate: 1, minRespondAccuracy: 0.9 },
 	},
 	{
+		id: "owner-enrollment-inference",
+		description:
+			"No owner is enrolled; the agent infers the owner from who speaks to it most.",
+		classes: ["owner-security", "voice-recognition"],
+		knownSpeakerEntityIds: ["entity-owner", "entity-guest"],
+		participants: [
+			{ label: "owner", entityId: "entity-owner", isOwner: true },
+			{ label: "guest", entityId: "entity-guest" },
+		],
+		turns: [
+			{
+				speaker: "owner",
+				text: "Eliza what is on my agenda today",
+				expectRespond: true,
+			},
+			{
+				speaker: "owner",
+				text: "Eliza remind me to call the dentist",
+				expectRespond: true,
+			},
+			{
+				speaker: "owner",
+				text: "Eliza play my morning playlist",
+				expectRespond: true,
+			},
+			{
+				speaker: "guest",
+				text: "Eliza what is the wifi password",
+				expectRespond: true,
+			},
+			{
+				speaker: "owner",
+				text: "Eliza turn the music down a little",
+				expectRespond: true,
+			},
+		],
+		assertions: { minOwnerAccuracy: 0.9, minRespondAccuracy: 0.9 },
+	},
+	{
 		id: "owner-vs-intruder",
 		description:
 			"The owner is answered; a stranger trying the same command is gated out.",

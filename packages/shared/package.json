@@ -198,6 +198,16 @@
       "import": "./dist/voice/respond-gate.js",
       "default": "./dist/voice/respond-gate.js"
     },
+    "./voice/owner-inference": {
+      "types": "./dist/voice/owner-inference.d.ts",
+      "eliza-source": {
+        "types": "./src/voice/owner-inference.ts",
+        "import": "./src/voice/owner-inference.ts",
+        "default": "./src/voice/owner-inference.ts"
+      },
+      "import": "./dist/voice/owner-inference.js",
+      "default": "./dist/voice/owner-inference.js"
+    },
     "./transcripts": {
       "types": "./dist/transcripts.d.ts",
       "eliza-source": {

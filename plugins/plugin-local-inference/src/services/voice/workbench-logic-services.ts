@@ -20,6 +20,10 @@
  * decision, and name extraction.
  */
 
+import {
+	type OwnerObservation,
+	resolveOwnerCandidate,
+} from "@elizaos/shared/voice/owner-inference";
 import { buildVoiceTurnSignal } from "@elizaos/shared/voice/respond-gate";
 import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
 import type { CorpusGroundTruth } from "./corpus-generator";
@@ -70,6 +74,7 @@ function knownSpeakerIds(groundTruth: CorpusGroundTruth): string[] {
 export function realDecisionLogicServices(): VoiceWorkbenchServices {
 	let scenarioId: string | null = null;
 	let lastAgentReply: string | undefined;
+	let ownerObservations: OwnerObservation[] = [];
 
 	return {
 		async observeTurn({ label, groundTruth }): Promise<VoiceTurnObservation> {
@@ -78,6 +83,7 @@ export function realDecisionLogicServices(): VoiceWorkbenchServices {
 			if (groundTruth.scenarioId !== scenarioId || label.index === 0) {
 				scenarioId = groundTruth.scenarioId;
 				lastAgentReply = undefined;
+				ownerObservations = [];
 			}
 
 			// Perfect-ASR / perfect-diarization assumption: the transcript and the
@@ -124,6 +130,19 @@ export function realDecisionLogicServices(): VoiceWorkbenchServices {
 			if (responded && label.agentReplyText)
 				lastAgentReply = label.agentReplyText;
 
+			// Owner inference: accumulate recognized turns and run the REAL resolver
+			// (`resolveOwnerCandidate`). Once it commits a candidate, the owner is
+			// whoever it named — genuine inference, not ground truth. Until then it
+			// is undecided, so fall back to the perfect-attribution `isOwner` flag.
+			if (label.entityId && !label.isAgentEcho) {
+				ownerObservations.push({ entityId: label.entityId, confidence: 0.9 });
+			}
+			const ownerCandidate = resolveOwnerCandidate(ownerObservations);
+			const predictedOwner =
+				ownerCandidate.ownerEntityId !== null
+					? label.entityId === ownerCandidate.ownerEntityId
+					: label.isOwner === true;
+
 			return {
 				hypothesisTranscript: transcript,
 				predictedSpeakerLabel: label.speaker,
@@ -131,7 +150,7 @@ export function realDecisionLogicServices(): VoiceWorkbenchServices {
 				responded,
 				inferredEntities,
 				matchedEntityId: label.entityId ?? null,
-				predictedOwner: label.isOwner === true,
+				predictedOwner,
 				...(responded ? { firstAudioMs: 250 } : {}),
 			};
 		},
