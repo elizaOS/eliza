@@ -29,6 +29,12 @@ export interface AgentPickerProps {
   onCreateNew: () => void;
   onRetry: () => void;
   onBack: () => void;
+  /**
+   * Show the Back affordance. Defaults true. Pass false for cloud-only builds
+   * where the upstream step is terminal — Back would just loop the picker back
+   * to itself (a dead-end on the phone's actual flow).
+   */
+  showBack?: boolean;
 }
 
 /** Statuses that mean the agent is being torn down — not selectable. */
@@ -67,6 +73,7 @@ export function AgentPicker({
   onCreateNew,
   onRetry,
   onBack,
+  showBack = true,
 }: AgentPickerProps): React.ReactElement {
   const binding = phase === "binding";
 
@@ -98,15 +105,17 @@ export function AgentPicker({
             {errorMessage ?? "Could not load your agents. Try again."}
           </p>
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              data-testid="onboarding-agent-back"
-              onClick={onBack}
-              className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/10"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Back
-            </button>
+            {showBack && (
+              <button
+                type="button"
+                data-testid="onboarding-agent-back"
+                onClick={onBack}
+                className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/10"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Back
+              </button>
+            )}
             <button
               type="button"
               data-testid="onboarding-agent-retry"
@@ -180,17 +189,21 @@ export function AgentPicker({
             })}
           </div>
 
-          <div className="mt-1 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              data-testid="onboarding-agent-back"
-              disabled={binding}
-              onClick={onBack}
-              className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 disabled:opacity-50"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Back
-            </button>
+          <div
+            className={`mt-1 flex items-center gap-3 ${showBack ? "justify-between" : "justify-end"}`}
+          >
+            {showBack && (
+              <button
+                type="button"
+                data-testid="onboarding-agent-back"
+                disabled={binding}
+                onClick={onBack}
+                className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 disabled:opacity-50"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Back
+              </button>
+            )}
             <button
               type="button"
               data-testid="onboarding-agent-create"

@@ -261,6 +261,7 @@ export function CompactOnboarding(): React.ReactElement {
                 onCreateNew={c.onCreateNewAgent}
                 onRetry={c.onRetryPicker}
                 onBack={c.onBackFromPicker}
+                showBack={!cloudOnly}
               />
             ) : onInference ? (
               // INFERENCE — after picking the on-device agent, choose where it
