@@ -39,6 +39,20 @@ const POLICIES: Array<{
     hint: "Run local when this device can handle it, else cloud.",
   },
   {
+    value: "local-only",
+    labelKey: "routingmatrix.policy.localOnly.label",
+    label: "On-device only",
+    hintKey: "routingmatrix.policy.localOnly.hint",
+    hint: "Always run on this device; never use cloud.",
+  },
+  {
+    value: "cloud-only",
+    labelKey: "routingmatrix.policy.cloudOnly.label",
+    label: "Cloud only",
+    hintKey: "routingmatrix.policy.cloudOnly.hint",
+    hint: "Always use cloud; never run on-device.",
+  },
+  {
     value: "cheapest",
     labelKey: "routingmatrix.policy.cheapest.label",
     label: "Cheapest",

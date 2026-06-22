@@ -203,6 +203,27 @@ class PolicyEngine {
         if (bridge) return bridge;
         return eligible[0] ?? null;
       }
+      case "local-only": {
+        // Hard local pin: only ever return an on-device handler, else null
+        // (the router fails closed and never falls through to cloud).
+        const local = eligible.find(
+          (c) =>
+            c.provider === "eliza-local-inference" ||
+            c.provider === "capacitor-llama" ||
+            c.provider === "eliza-device-bridge",
+        );
+        return local ?? null;
+      }
+      case "cloud-only": {
+        // Force cloud: never dispatch on-device, else null.
+        const cloud = eligible.find(
+          (c) =>
+            c.provider !== "eliza-local-inference" &&
+            c.provider !== "capacitor-llama" &&
+            c.provider !== "eliza-device-bridge",
+        );
+        return cloud ?? null;
+      }
       case "round-robin": {
         // Pick the one least-recently-picked. Ties broken by priority.
         const ranked = [...eligible].sort((a, b) => {
