@@ -201,6 +201,8 @@ Actions define specific tasks or capabilities the agent can perform. Each action
 
 Actions enable the agent to respond intelligently and perform operations based on user input or internal triggers.
 
+**Private actions.** Set `private: true` on an action to reserve it for the agent's own autonomous loop. A private action is never exposed to the planner — and is rejected by the executor as a defense-in-depth backstop — on user-driven turns; it can only be selected and run when the triggering message is an autonomous self-prompt (`content.metadata.isAutonomous === true`, the marker the autonomy service stamps). Use this for self-initiated capabilities the agent should decide to invoke on its own — e.g. minting a coin or opening a position — rather than ones a user can trigger on demand. The gate lives in `src/runtime/private-action-gate.ts`.
+
 ### Providers
 
 Providers are responsible for supplying data and context to the `AgentRuntime` and its components. They can:

@@ -296,6 +296,25 @@ export interface Action {
 	tags?: string[];
 
 	/**
+	 * When true, this action is "private": it may only be selected and executed
+	 * by the agent inside its own autonomous loop, never in direct response to a
+	 * user request. The planner does not expose private actions on user-driven
+	 * turns, and the executor rejects them on user-driven turns as a
+	 * defense-in-depth backstop (so a hallucinated tool call cannot bypass the
+	 * exposure gate).
+	 *
+	 * A turn is considered autonomous when the triggering message carries
+	 * `content.metadata.isAutonomous === true` (the marker the autonomy service
+	 * stamps on its self-prompts). This lets an agent reserve self-initiated
+	 * capabilities — e.g. minting a coin, opening a position, or kicking off a
+	 * long-running plan — for its own decision loop, so they cannot be triggered
+	 * on demand by a user.
+	 *
+	 * Default: false (the action is available on both user and autonomous turns).
+	 */
+	private?: boolean;
+
+	/**
 	 * One-line routing hint surfaced to the planner. Replaces hand-written
 	 * domain-routing prose in the v5 planner template. Format:
 	 *   "<TRIGGER> -> <action> [+ secondary contexts]; <do/don't note>"

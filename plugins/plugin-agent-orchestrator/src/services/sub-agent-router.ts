@@ -382,6 +382,67 @@ export class SubAgentRouter extends Service {
     }
     return true;
   }
+
+  // Per-root-origin spawn cap. completionFirstPostedSession above only
+  // suppresses duplicate POSTS; it does not stop the PLANNER from re-spawning a
+  // fresh sub-agent each time a (weak-model) completion comes back truncated or
+  // blocked. Observed live: ONE user request fanned out to 70 TASKS_SPAWN_AGENT
+  // calls (each emitting a "working on it" ack + a partial answer = Discord
+  // spam). roundTripCounts is per-session (a fresh spawn resets it),
+  // stateLostRespawnCounts only counts session_state_lost and is cleared on
+  // every task_complete, and waitForSpawnSlot caps only SIMULTANEOUS sessions —
+  // so nothing bounds SERIAL re-spawns of one user message. These count spawns
+  // against the STABLE root origin (connector/parent message id + agent type,
+  // NOT the per-spawn instruction text — so re-spawns collapse to one key while
+  // distinct parallel TASKS:create subtasks are unaffected). FIFO bounded 1024.
+  private readonly spawnCountsForOrigin = new Map<string, number>();
+  private readonly bestResultForOrigin = new Map<
+    string,
+    { text: string; deliverable?: string }
+  >();
+
+  /** Spawns already issued for this root origin (for the per-origin cap). */
+  spawnCountForOrigin(originKey: string): number {
+    return this.spawnCountsForOrigin.get(originKey) ?? 0;
+  }
+
+  /** Record a spawn against a root origin (FIFO-bounded). */
+  noteSpawnForOrigin(originKey: string): void {
+    this.spawnCountsForOrigin.set(
+      originKey,
+      (this.spawnCountsForOrigin.get(originKey) ?? 0) + 1,
+    );
+    while (this.spawnCountsForOrigin.size > 1024) {
+      const oldest = this.spawnCountsForOrigin.keys().next().value;
+      if (!oldest) break;
+      this.spawnCountsForOrigin.delete(oldest);
+    }
+  }
+
+  /** Best already-completed result for an origin, relayed instead of re-spawning. */
+  bestResultFor(
+    originKey: string,
+  ): { text: string; deliverable?: string } | undefined {
+    return this.bestResultForOrigin.get(originKey);
+  }
+
+  /** Keep the LONGEST non-empty result for an origin (full 479001600 wins over truncated 479). */
+  recordOriginResult(
+    originKey: string,
+    result: { text: string; deliverable?: string },
+  ): void {
+    const candidate = (result.deliverable ?? result.text ?? "").trim();
+    if (!candidate) return;
+    const prev = this.bestResultForOrigin.get(originKey);
+    const prevLen = (prev?.deliverable ?? prev?.text ?? "").trim().length;
+    if (prev && candidate.length <= prevLen) return;
+    this.bestResultForOrigin.set(originKey, result);
+    while (this.bestResultForOrigin.size > 1024) {
+      const oldest = this.bestResultForOrigin.keys().next().value;
+      if (!oldest) break;
+      this.bestResultForOrigin.delete(oldest);
+    }
+  }
   private started = false;
   private roundTripCap = DEFAULT_ROUND_TRIP_CAP;
   private stateLostRespawnCap = DEFAULT_STATE_LOST_RESPAWN_CAP;
@@ -770,7 +831,10 @@ export class SubAgentRouter extends Service {
     // with an empty completion. Gated to a single short block so multi-KB
     // transcripts stay on the model-rendered (summarized) path.
     let deliverable: string | undefined;
-    if (event === "task_complete" && !changeSet && verifiedUrls.length === 0) {
+    // Capture the deliverable even when files changed: a "do X and report the
+    // output" task that also writes a file must still surface the output, not
+    // only the diff summary. The verifiedUrls path keeps its dedicated handling.
+    if (event === "task_complete" && verifiedUrls.length === 0) {
       deliverable = extractShortToolDeliverable(data);
     }
     // Verify-retry: the sub-agent reported done but referenced URLs that
@@ -827,8 +891,36 @@ export class SubAgentRouter extends Service {
     }
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
+    } else if (
+      event === "task_complete" &&
+      deliverable &&
+      !text.includes(deliverable)
+    ) {
+      // The captured tool output IS the answer for a "run it and report the
+      // output" task. The weak model's prose paraphrase of the same run is
+      // routinely truncated (relays "479" for a captured "479001600"), and that
+      // prose — not the metadata deliverable — is what every downstream reader
+      // consumes: the planner re-derives its reply from this narration, and
+      // Stage-1 regenerates any bare-numeric reply from it. So surface the
+      // verbatim deliverable as the narration body (the header's relay /
+      // do-not-respawn directive is preserved on the first line).
+      const firstNewline = text.indexOf("\n");
+      const header = firstNewline === -1 ? text : text.slice(0, firstNewline);
+      text = `${header}\n${deliverable}`;
     }
     if (event === "task_complete") {
+      // Remember the best (longest) result for this root origin so the spawn
+      // cap (tasks.ts) can relay it instead of re-spawning when a weak model's
+      // later completion for the SAME user request comes back truncated/blocked.
+      // Key on the connector message id only — the stable root id the router
+      // stamps onto each synthetic re-spawn inbound and that tasks.ts reads back
+      // (so record + enforce agree); a request without one simply isn't capped.
+      if (origin.parentConnectorMessageId) {
+        this.recordOriginResult(
+          `${origin.parentConnectorMessageId}\0${session.agentType}`,
+          { text, deliverable },
+        );
+      }
       const preview = (deliverable ?? text).trim().slice(0, 200);
       void getNotifier(this.runtime)
         ?.notify({
@@ -1945,16 +2037,25 @@ export function extractShortToolDeliverable(data: unknown): string | undefined {
   const blocks = response.match(
     /\[tool output:[^\]]*\]([\s\S]*?)\[\/tool output\]/g,
   );
-  if (blocks?.length !== 1) return undefined;
-  const inner = blocks[0]
-    .replace(/^\[tool output:[^\]]*\]/, "")
-    .replace(/\[\/tool output\]$/, "")
-    .trim();
-  if (!inner) return undefined;
-  if (Buffer.byteLength(inner, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES) {
-    return undefined;
+  if (!blocks?.length) return undefined;
+  // Multi-step tool use is normal — a failed attempt then a retry (`python`
+  // not found, then `python3`), or write-a-file then run-it. The LAST
+  // non-empty block is the sub-agent's final result, so surface it verbatim:
+  // a weak coding model routinely truncates that result in its own prose
+  // (relays "479" for a captured "479001600"), and the ground-truth tool
+  // output must win over the paraphrase. A block over the size cap is a
+  // transcript dump, not a deliverable — fall back to the summarized path.
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const inner = blocks[i]
+      .replace(/^\[tool output:[^\]]*\]/, "")
+      .replace(/\[\/tool output\]$/, "")
+      .trim();
+    if (!inner) continue;
+    return Buffer.byteLength(inner, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES
+      ? undefined
+      : inner;
   }
-  return inner;
+  return undefined;
 }
 
 function composeNarration(
@@ -2014,7 +2115,15 @@ function composeNarration(
     // Preserve any deployed URL the sub-agent claimed so the downstream
     // reachability verification still runs.
     const urls = collectVerifiableUrlCandidates(response ?? "");
+    // A file write must not swallow the answer the user asked for: when the
+    // sub-agent captured a concrete deliverable (e.g. a script's stdout for a
+    // "run it and report the output" task), surface it ABOVE the change
+    // summary. This is the typed `[tool output: …]` envelope, not the raw
+    // transcript, so the leak/respawn problems the diff-summary path solved
+    // stay solved.
+    const capturedDeliverable = extractShortToolDeliverable(data);
     const lines = [
+      ...(capturedDeliverable ? [capturedDeliverable] : []),
       summarizeChangeSet(changeSet),
       changeSet.diffStat,
       ...urls,

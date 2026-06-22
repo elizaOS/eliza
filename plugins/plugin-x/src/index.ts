@@ -11,16 +11,19 @@ import {
 
 export { XDmAdapter } from "./lifeops-message-adapter.js";
 
+import { xIdentityProvider } from "./identity-provider.js";
 import { XService } from "./services/x.service.js";
 import { getSetting } from "./utils/settings";
 import { XWorkflowCredentialProvider } from "./workflow-credential-provider.js";
+
+export { xIdentityProvider } from "./identity-provider.js";
 
 export const XPlugin: Plugin = {
   name: "x",
   description:
     "X (formerly Twitter) connector with posting, interactions, and timeline actions",
   actions: [],
-  providers: [],
+  providers: [xIdentityProvider],
   services: [XService, XWorkflowCredentialProvider],
   // Self-declared auto-enable: activate when the "x" connector (or the legacy
   // "twitter" alias) is configured under config.connectors. The hardcoded

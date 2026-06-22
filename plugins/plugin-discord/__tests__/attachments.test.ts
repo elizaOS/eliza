@@ -1,5 +1,5 @@
 import { ContentType, type IAgentRuntime, ModelType } from "@elizaos/core";
-import type { Attachment } from "discord.js";
+import { type Attachment, Collection } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AttachmentManager } from "../attachments";
 
@@ -119,6 +119,37 @@ describe("AttachmentManager", () => {
 			id: "image-1",
 			contentType: ContentType.IMAGE,
 			title: "image title",
+			text: "image description",
+		});
+	});
+
+	it("describes image media for a Discord attachment collection", async () => {
+		// End-to-end entry point: Discord delivers attachments as a Collection,
+		// so processAttachments must surface described image media for the agent.
+		const runtime = makeRuntime();
+		const manager = new AttachmentManager(runtime);
+
+		const image = attachment({
+			id: "image-3",
+			url: "https://cdn.discordapp.com/image.png",
+			name: "image.png",
+			contentType: "image/png",
+		});
+		const collection = new Collection<string, Attachment>([[image.id, image]]);
+
+		const media = await manager.processAttachments(collection);
+
+		expect(runtime.useModel).toHaveBeenCalledWith(
+			ModelType.IMAGE_DESCRIPTION,
+			"https://cdn.discordapp.com/image.png",
+		);
+		expect(media).toHaveLength(1);
+		expect(media[0]).toMatchObject({
+			id: "image-3",
+			contentType: ContentType.IMAGE,
+			source: "Image",
+			title: "image title",
+			description: "image description",
 			text: "image description",
 		});
 	});
