@@ -305,9 +305,6 @@ function AppProviderInner({
       activeConversationId,
       companionMessageCutoffTs,
       conversationMessages,
-      autonomousEvents,
-      autonomousLatestEventId,
-      autonomousRunHealthByRunId,
       ptySessions,
       unreadConversations,
       chatPendingImages,
@@ -1880,15 +1877,13 @@ function AppProviderInner({
     [serverTurnStatus],
   );
 
-  // The AppContext value is memoized and does NOT include chatInput/chatSending/
-  // chatPendingImages (in ChatComposerCtx) or ptySessions (in PtySessionsCtx).
-  // autonomousEvents/autonomousLatestEventId/autonomousRunHealthByRunId are also
-  // excluded — they update on every heartbeat WS event but no component reads them
-  // directly from useApp(). Excluding them prevents heartbeat events from re-rendering
-  // all AppContext subscribers (CompanionViewOverlay, App, etc.).
-  // NOTE: this dep array must stay in sync with the fields in the value object.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  // biome-ignore lint/correctness/useExhaustiveDependencies: conversationMessages, autonomous events, and ptySessions are intentionally provided through narrower contexts/refs to avoid global AppContext re-renders.
+  // High-write-frequency state is deliberately NOT in this value: the composer
+  // fields (ChatComposerCtx), ptySessions (PtySessionsCtx), conversationMessages
+  // (ConversationMessagesCtx), and the autonomous heartbeat fields (held in refs)
+  // are routed through narrower contexts so their updates re-render only the chat
+  // surfaces instead of fanning out to every AppContext subscriber. Because none
+  // of them appear in the value body, the dep array below is exhaustive — keep it
+  // that way: never add a per-keystroke/per-token/per-poll field here.
   const value: AppContextValue = useMemo(
     () => ({
       // Translations
@@ -1927,9 +1922,6 @@ function AppProviderInner({
       pairingCodeInput,
       pairingError,
       pairingBusy,
-      // chatInput/chatSending/chatPendingImages are stale here — read via useChatComposer()
-      chatInput,
-      chatSending,
       chatFirstTokenReceived,
       chatLastUsage,
       chatAvatarVisible,
@@ -1938,11 +1930,6 @@ function AppProviderInner({
       conversations,
       activeConversationId,
       companionMessageCutoffTs,
-      conversationMessages,
-      autonomousEvents,
-      autonomousLatestEventId,
-      autonomousRunHealthByRunId,
-      ptySessions,
       unreadConversations,
       triggers,
       triggersLoaded,
@@ -2160,7 +2147,6 @@ function AppProviderInner({
       mcpHeaderInputs,
       droppedFiles,
       shareIngestNotice,
-      chatPendingImages,
       analysisMode,
       setAnalysisMode,
       appRuns,
@@ -2734,11 +2720,7 @@ function AppProviderInner({
       setActionNotice,
       setState,
       copyToClipboard,
-      chatPendingImages,
       setChatPendingImages,
-      chatSending,
-      ptySessions, // chatInput/chatSending/chatPendingImages are stale here — read via useChatComposer()
-      chatInput,
       analysisMode,
       setAnalysisMode,
     ],

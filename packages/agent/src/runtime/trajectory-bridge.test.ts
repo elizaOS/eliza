@@ -11,8 +11,8 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { flushTrajectoryWrites } from "./trajectory-storage.ts";
 import { installDatabaseTrajectoryLogger } from "./trajectory-persistence.ts";
+import { flushTrajectoryWrites } from "./trajectory-storage.ts";
 
 interface MockLogger {
   logLlmCall: (...args: unknown[]) => void;
