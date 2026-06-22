@@ -1,10 +1,22 @@
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
-import { Check, Copy, Download, Pencil, Share2, Undo2, X } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Download,
+  FileAudio,
+  Headphones,
+  Pencil,
+  Share2,
+  Trash2,
+  Undo2,
+  X,
+} from "lucide-react";
 import * as React from "react";
 import { createPortal } from "react-dom";
 import type { MessageAttachment } from "../../api";
 import { client } from "../../api";
+import { navigateBrowserPath } from "../../app-navigate-view";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { resolveApiUrl } from "../../utils/asset-url";
@@ -70,6 +82,8 @@ type LoadState =
       segments: TranscriptSegment[] | null;
       /** The stored record id this transcript can persist edits to, if any. */
       transcriptId: string | null;
+      /** Served URL of the recorded audio (`/api/media/<hash>.wav`), if any. */
+      audioUrl: string | null;
     };
 
 /**
@@ -169,7 +183,11 @@ export function TranscriptViewerOverlay({
   const [editing, setEditing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
+
+  const audioUrl =
+    load.status === "ready" && load.audioUrl ? resolveUrl(load.audioUrl) : null;
 
   const dirty = value !== pristine;
   const title =
@@ -193,6 +211,7 @@ export function TranscriptViewerOverlay({
             title: transcript.title,
             segments: transcript.segments,
             transcriptId: id,
+            audioUrl: transcript.audioUrl ?? null,
           });
           setPristine(text);
           setValue(text);
@@ -207,6 +226,7 @@ export function TranscriptViewerOverlay({
         title: attachment.title?.trim() || "Transcript",
         segments: null,
         transcriptId: id ?? null,
+        audioUrl: null,
       });
       setPristine(inline.text);
       setValue(inline.text);
@@ -264,7 +284,84 @@ export function TranscriptViewerOverlay({
     URL.revokeObjectURL(url);
   }, [title, value]);
 
+  const audioFileName = `${
+    title.replace(/[^\w.-]+/g, "_").slice(0, 80) || "transcript"
+  }.wav`;
+
+  const handleDownloadAudio = React.useCallback(() => {
+    if (!audioUrl) return;
+    const a = document.createElement("a");
+    a.href = audioUrl;
+    a.download = audioFileName;
+    a.rel = "noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }, [audioUrl, audioFileName]);
+
+  const handleShareAudio = React.useCallback(async () => {
+    if (!audioUrl) return;
+    const nav = navigator as Navigator & {
+      share?: (data: {
+        title?: string;
+        files?: File[];
+        url?: string;
+      }) => Promise<void>;
+      canShare?: (data: { files?: File[] }) => boolean;
+    };
+    // Prefer sharing the actual audio file where the platform supports it.
+    try {
+      if (nav.share && nav.canShare) {
+        const res = await fetch(audioUrl);
+        if (res.ok) {
+          const file = new File([await res.blob()], audioFileName, {
+            type: "audio/wav",
+          });
+          if (nav.canShare({ files: [file] })) {
+            await nav.share({ title, files: [file] });
+            return;
+          }
+        }
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+    }
+    // Fall back to sharing the URL, then to downloading it.
+    try {
+      if (nav.share) {
+        await nav.share({ title, url: audioUrl });
+        return;
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+    }
+    handleDownloadAudio();
+  }, [audioUrl, audioFileName, title, handleDownloadAudio]);
+
+  const handleOpenInTranscripts = React.useCallback(() => {
+    // The Transcripts view plays the audio (word-synced) — land there to listen.
+    navigateBrowserPath("/apps/transcripts");
+    onClose();
+  }, [onClose]);
+
   const resolvedId = load.status === "ready" ? load.transcriptId : null;
+
+  const handleDelete = React.useCallback(async () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      window.setTimeout(() => setConfirmDelete(false), 4000);
+      return;
+    }
+    if (resolvedId) {
+      try {
+        await client.deleteTranscript(resolvedId);
+      } catch (err) {
+        setSaveError(err instanceof Error ? err.message : "Couldn't delete");
+        return;
+      }
+    }
+    onClose();
+  }, [confirmDelete, resolvedId, onClose]);
 
   const handleSaveAndExit = React.useCallback(async () => {
     if (!dirty) {
@@ -335,6 +432,19 @@ export function TranscriptViewerOverlay({
 
         {/* Body */}
         <div className="min-h-0 flex-1 overflow-auto p-4">
+          {audioUrl ? (
+            // Listen to the real recorded audio inline (the Transcripts view
+            // adds word-synced playback — "Open in Transcripts" below).
+            <audio
+              src={audioUrl}
+              controls
+              preload="metadata"
+              data-testid="transcript-audio"
+              className="mb-3 w-full"
+            >
+              <track kind="captions" />
+            </audio>
+          ) : null}
           {load.status === "loading" ? (
             <div className="flex items-center gap-2 py-8 text-sm text-white/60">
               <Spinner size={16} /> Loading transcript…
@@ -420,8 +530,58 @@ export function TranscriptViewerOverlay({
             data-testid="transcript-save-to-files"
             className="text-white/85 hover:bg-white/10"
           >
-            <Download className="mr-1.5 h-4 w-4" /> Save to files
+            <Download className="mr-1.5 h-4 w-4" /> Save text
           </Button>
+          {audioUrl ? (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleDownloadAudio}
+                data-testid="transcript-save-audio"
+                className="text-white/85 hover:bg-white/10"
+              >
+                <FileAudio className="mr-1.5 h-4 w-4" /> Save audio
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void handleShareAudio()}
+                data-testid="transcript-share-audio"
+                className="text-white/85 hover:bg-white/10"
+              >
+                <Share2 className="mr-1.5 h-4 w-4" /> Share audio
+              </Button>
+            </>
+          ) : null}
+          {resolvedId || audioUrl ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleOpenInTranscripts}
+              data-testid="transcript-open-in-transcripts"
+              className="text-white/85 hover:bg-white/10"
+            >
+              <Headphones className="mr-1.5 h-4 w-4" /> Open in Transcripts
+            </Button>
+          ) : null}
+          {resolvedId ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void handleDelete()}
+              data-testid="transcript-delete"
+              className={cn(
+                "hover:bg-[color:var(--danger,#f87171)]/15",
+                confirmDelete
+                  ? "text-[color:var(--danger,#f87171)]"
+                  : "text-white/70",
+              )}
+            >
+              <Trash2 className="mr-1.5 h-4 w-4" />
+              {confirmDelete ? "Confirm delete" : "Delete"}
+            </Button>
+          ) : null}
           <div className="ml-auto flex items-center gap-2">
             <Button
               variant="ghost"
