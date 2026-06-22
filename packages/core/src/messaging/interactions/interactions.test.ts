@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import type {
 	ChoiceInteraction,
 	Content,
+	FollowupsInteraction,
 	FormInteraction,
 	SecretInteraction,
+	TaskInteraction,
 } from "../../types";
 import {
 	decodeCallback,
@@ -11,7 +13,7 @@ import {
 	isInteractionCallback,
 	MAX_CALLBACK_BYTES,
 } from "./callback";
-import { toNeutralLayout } from "./layout";
+import { buildInteractionUrlResolver, toNeutralLayout } from "./layout";
 import {
 	normalizeContentInteractions,
 	stripInteractionMarkers,
@@ -253,6 +255,95 @@ describe("layout", () => {
 			fields: [{ name: "k", type: "text" }],
 		};
 		expect(toNeutralLayout(block).needsFallback).toBe(true);
+	});
+
+	// #8908 — navigate followups render as link-out buttons when a URL resolver
+	// is supplied; reply/prompt chips keep their reply-callback behavior.
+	it("renders a navigate followup as a url button via resolveNavigateUrl", () => {
+		const block: FollowupsInteraction = {
+			kind: "followups",
+			id: "f1",
+			options: [
+				{ kind: "navigate", payload: "/tasks", label: "Open tasks" },
+				{ kind: "reply", payload: "yes", label: "Yes" },
+			],
+		};
+		const layout = toNeutralLayout(block, {
+			resolveNavigateUrl: (p) => `https://app.test${p}`,
+		});
+		const buttons = layout.rows.flatMap((r) => r.buttons ?? []);
+		const nav = buttons.find((b) => b.label === "Open tasks");
+		const reply = buttons.find((b) => b.label === "Yes");
+		expect(nav?.url).toBe("https://app.test/tasks");
+		expect(nav?.callbackData).toBeUndefined();
+		expect(reply?.url).toBeUndefined();
+		expect(decodeCallback(reply?.callbackData)).toEqual({
+			kind: "reply",
+			value: "yes",
+		});
+	});
+
+	it("keeps navigate followups as reply callbacks when no resolver is given", () => {
+		const block: FollowupsInteraction = {
+			kind: "followups",
+			id: "f1",
+			options: [{ kind: "navigate", payload: "/tasks", label: "Open tasks" }],
+		};
+		const button = toNeutralLayout(block).rows[0]?.buttons?.[0];
+		expect(button?.url).toBeUndefined();
+		expect(button?.callbackData).toBeTruthy();
+	});
+});
+
+describe("buildInteractionUrlResolver (#8908)", () => {
+	const resolver = buildInteractionUrlResolver("https://app.test/");
+
+	it("returns no resolvers when no base url is configured", () => {
+		expect(buildInteractionUrlResolver(undefined)).toEqual({});
+		expect(buildInteractionUrlResolver("")).toEqual({});
+	});
+
+	it("resolves a task block to the orchestrator deep link", () => {
+		const block: TaskInteraction = {
+			kind: "task",
+			threadId: "abc-123",
+			title: "Build it",
+		};
+		expect(resolver.resolveUrl?.(block)).toBe(
+			"https://app.test/orchestrator?taskId=abc-123",
+		);
+	});
+
+	it("resolves a form block to the hosted form route", () => {
+		const block: FormInteraction = {
+			kind: "form",
+			id: "form_7",
+			fields: [{ name: "k", type: "text" }],
+		};
+		expect(resolver.resolveUrl?.(block)).toBe("https://app.test/forms/form_7");
+	});
+
+	it("resolves navigate payloads (path + viewId) against the base url", () => {
+		expect(resolver.resolveNavigateUrl?.("/tasks")).toBe(
+			"https://app.test/tasks",
+		);
+		expect(resolver.resolveNavigateUrl?.("inbox")).toBe(
+			"https://app.test/?view=inbox",
+		);
+	});
+
+	it("defers secret/oauth blocks to their own out-of-band url", () => {
+		const block: SecretInteraction = {
+			kind: "secret",
+			id: "s1",
+			secretKind: "oauth",
+			provider: "GitHub",
+			url: "https://oauth.test/consent",
+		};
+		// resolver returns undefined → layout falls back to block.url
+		expect(resolver.resolveUrl?.(block)).toBeUndefined();
+		const layout = toNeutralLayout(block, resolver);
+		expect(layout.rows[0]?.buttons?.[0]?.url).toBe("https://oauth.test/consent");
 	});
 });
 
