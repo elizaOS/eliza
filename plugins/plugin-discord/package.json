@@ -37,6 +37,7 @@
 		"dev": "bun --hot build.ts",
 		"clean": "rm -rf dist .turbo && node ../../packages/scripts/clean-stray-dts.mjs",
 		"test": "vitest run",
+		"test:harness": "vitest run --config ./vitest.harness.config.ts",
 		"typecheck": "tsc --noEmit",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
@@ -75,6 +76,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.14",
+		"@elizaos/test-harness": "workspace:*",
 		"@types/node": "^25.0.3",
 		"typescript": "^6.0.3",
 		"vitest": "^4.1.4"
