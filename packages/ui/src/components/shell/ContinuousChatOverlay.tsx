@@ -61,6 +61,12 @@ import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import type { ShellMessage } from "./shell-state";
+import { TopicChipsBar } from "./TopicChipsBar";
+import { TopicGroup } from "./TopicGroup";
+import {
+  deriveChannelTopics,
+  groupMessagesByTopic,
+} from "./topic-grouping";
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import { usePromptSuggestions } from "./usePromptSuggestions";
 import type { ConversationNav, ShellController } from "./useShellController";
@@ -1163,6 +1169,74 @@ export function ContinuousChatOverlay({
   // (always pin to bottom) from streaming growth of the current line (follow
   // only when the reader is already at the bottom).
   const scrollPinnedIdRef = React.useRef(lastId);
+
+  // Topic grouping + chips bar (#8928). Derived from the per-message Stage-1
+  // topic tags; when no message is tagged the transcript renders flat (the
+  // chips bar and groups simply don't appear), preserving the prior behavior.
+  const channelTopics = React.useMemo(
+    () => deriveChannelTopics(visibleMessages),
+    [visibleMessages],
+  );
+  const topicSegments = React.useMemo(
+    () => groupMessagesByTopic(visibleMessages),
+    [visibleMessages],
+  );
+  const hasTopics = channelTopics.length > 0;
+  const [collapsedTopics, setCollapsedTopics] = React.useState<
+    ReadonlySet<string>
+  >(() => new Set<string>());
+  const setTopicCollapsed = React.useCallback(
+    (key: string, collapsed: boolean) => {
+      setCollapsedTopics((prev) => {
+        if (collapsed === prev.has(key)) return prev;
+        const next = new Set(prev);
+        if (collapsed) next.add(key);
+        else next.delete(key);
+        return next;
+      });
+    },
+    [],
+  );
+  // Tapping a chip expands its group and scrolls its header into view.
+  const scrollToTopic = React.useCallback((topic: string) => {
+    setCollapsedTopics((prev) => {
+      if (!prev.has(topic)) return prev;
+      const next = new Set(prev);
+      next.delete(topic);
+      return next;
+    });
+    if (typeof requestAnimationFrame === "undefined") return;
+    requestAnimationFrame(() => {
+      const escaped =
+        typeof CSS !== "undefined" && typeof CSS.escape === "function"
+          ? CSS.escape(topic)
+          : topic.replace(/"/g, '\\"');
+      const el = threadRef.current?.querySelector(`[data-topic="${escaped}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, []);
+  // Render one transcript line; shared by the flat and topic-grouped paths so
+  // the in-flight-turn detection stays identical.
+  const renderThreadLine = React.useCallback(
+    (m: ShellMessage, index: number) => {
+      const isInFlight =
+        index === visibleMessages.length - 1 &&
+        m.role === "assistant" &&
+        !m.content.trim();
+      return (
+        <ThreadLine
+          key={m.id}
+          message={m}
+          floating
+          reduce={reduce}
+          onCopy={handleCopyMessage}
+          onOpenSettings={openSettings}
+          turnStatus={isInFlight ? turnStatus : undefined}
+        />
+      );
+    },
+    [visibleMessages.length, reduce, handleCopyMessage, openSettings, turnStatus],
+  );
 
   const booting = phase === "booting";
   const listening = phase === "listening";
@@ -2931,32 +3005,55 @@ export function ContinuousChatOverlay({
                   {...(sheetOpen ? conversationSwipe : {})}
                   className="relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none] focus-visible:outline-none [&::-webkit-scrollbar]:hidden"
                 >
+                  {/* Topic chips bar (#8928): the channel's current topics,
+                      sticky above the scrolling transcript. Tap a chip to jump
+                      to (and expand) its group. Hidden when nothing is tagged. */}
+                  {hasTopics ? (
+                    <TopicChipsBar
+                      topics={channelTopics}
+                      onSelectTopic={scrollToTopic}
+                      className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-black/40 to-transparent px-5 backdrop-blur-sm"
+                    />
+                  ) : null}
                   {/* `mt-auto` keeps the latest line at the bottom (nearest the input)
                   until the thread overflows, then it scrolls. */}
                   <div className="mt-auto flex flex-col pb-3 pt-1">
-                    <AnimatePresence initial={false}>
-                      {visibleMessages.map((m, i) => {
+                    {hasTopics
+                      ? // Topic-grouped transcript: each cluster collapses via a
+                        // gesture on its header (no visible buttons).
+                        (() => {
+                          let lineIndex = 0;
+                          return topicSegments.map((segment) => {
+                            const lines = segment.messages.map((m) =>
+                              renderThreadLine(m, lineIndex++),
+                            );
+                            return (
+                              <TopicGroup
+                                key={segment.key}
+                                topic={segment.topic}
+                                count={segment.messages.length}
+                                collapsed={collapsedTopics.has(segment.key)}
+                                onCollapsedChange={(collapsed) =>
+                                  setTopicCollapsed(segment.key, collapsed)
+                                }
+                              >
+                                <AnimatePresence initial={false}>
+                                  {lines}
+                                </AnimatePresence>
+                              </TopicGroup>
+                            );
+                          });
+                        })()
+                      : // Flat transcript (no topic tags) — unchanged behavior.
                         // Only the LAST, content-less assistant turn (the
                         // in-flight one) reads turnStatus — every settled bubble
-                        // gets undefined so its memo identity is unchanged and a
-                        // status tick doesn't re-render the whole thread.
-                        const isInFlight =
-                          i === visibleMessages.length - 1 &&
-                          m.role === "assistant" &&
-                          !m.content.trim();
-                        return (
-                          <ThreadLine
-                            key={m.id}
-                            message={m}
-                            floating
-                            reduce={reduce}
-                            onCopy={handleCopyMessage}
-                            onOpenSettings={openSettings}
-                            turnStatus={isInFlight ? turnStatus : undefined}
-                          />
-                        );
-                      })}
-                    </AnimatePresence>
+                        // gets undefined so its memo identity is unchanged.
+                        null}
+                    {hasTopics ? null : (
+                      <AnimatePresence initial={false}>
+                        {visibleMessages.map((m, i) => renderThreadLine(m, i))}
+                      </AnimatePresence>
+                    )}
                     <AnimatePresence>
                       {/* Rich status row (#8813): what the agent is doing —
                           thinking / running an action / waking / speaking — for

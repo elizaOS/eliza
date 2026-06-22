@@ -181,6 +181,17 @@ export interface ConversationNav {
  * standalone-surface path). A final transcript is submitted through the same
  * `send` handler. The phase drives the pill glow and waveform mode.
  */
+/** Shallow equality for two optional string lists (topic-change detection). */
+function sameStringList(a?: string[], b?: string[]): boolean {
+  if (a === b) return true;
+  if (!a || !b) return (a?.length ?? 0) === (b?.length ?? 0);
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 export function useShellController(): ShellController {
   const app = useApp();
   const {
@@ -406,7 +417,8 @@ export function useShellController(): ShellController {
         cached.content === message.text &&
         cached.failureKind === message.failureKind &&
         (cached.reasoning || undefined) === (message.reasoning || undefined) &&
-        cached.secretRequest === message.secretRequest
+        cached.secretRequest === message.secretRequest &&
+        sameStringList(cached.topics, message.topics)
       ) {
         next.set(message.id, cached);
         return cached;
@@ -424,6 +436,7 @@ export function useShellController(): ShellController {
         ...(message.secretRequest
           ? { secretRequest: message.secretRequest }
           : {}),
+        ...(message.topics?.length ? { topics: message.topics } : {}),
       };
       next.set(message.id, mapped);
       return mapped;

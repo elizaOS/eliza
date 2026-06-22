@@ -1,0 +1,83 @@
+import * as React from "react";
+import { cn } from "../../lib/utils";
+import { usePullGesture } from "./use-pull-gesture";
+
+/**
+ * A collapsible topic cluster in the transcript (#8928).
+ *
+ * The group header is gesture-driven — NO visible buttons: tap toggles, a flick
+ * UP collapses, a flick DOWN expands. Collapsed, it shows a single pill
+ * ("● deployment — 12 messages"); expanded, a quiet topic divider above its
+ * messages. An untitled segment (no topic) renders its children bare.
+ */
+export function TopicGroup({
+	topic,
+	count,
+	collapsed,
+	onCollapsedChange,
+	children,
+}: {
+	topic: string | null;
+	count: number;
+	collapsed: boolean;
+	onCollapsedChange: (collapsed: boolean) => void;
+	children: React.ReactNode;
+}): React.JSX.Element {
+	// Untitled run (no dominant topic) — render messages with no header/collapse.
+	if (!topic) {
+		return <div data-testid="topic-group-untitled">{children}</div>;
+	}
+
+	const gesture = usePullGesture({
+		onTap: () => onCollapsedChange(!collapsed),
+		onPullUp: () => onCollapsedChange(true),
+		onPullDown: () => onCollapsedChange(false),
+	});
+
+	return (
+		<div data-testid="topic-group" data-topic={topic} data-collapsed={collapsed}>
+			{collapsed ? (
+				<button
+					type="button"
+					data-testid="topic-group-pill"
+					aria-expanded={false}
+					aria-label={`Expand topic ${topic} (${count} messages)`}
+					onClick={() => onCollapsedChange(false)}
+					{...gesture}
+					className={cn(
+						"my-2 flex w-full touch-pan-y items-center gap-2 rounded-full px-3 py-1.5 text-left transition-colors",
+						"border border-white/15 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white",
+						"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+					)}
+				>
+					<span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/60" aria-hidden />
+					<span className="truncate text-[13px] font-medium">{topic}</span>
+					<span className="ml-auto shrink-0 text-[11px] text-white/45">
+						{count} {count === 1 ? "message" : "messages"}
+					</span>
+				</button>
+			) : (
+				<button
+					type="button"
+					data-testid="topic-group-header"
+					aria-expanded
+					aria-label={`Collapse topic ${topic}`}
+					onClick={() => onCollapsedChange(true)}
+					{...gesture}
+					className={cn(
+						"sticky top-0 z-[1] mb-1 mt-3 flex w-full touch-pan-y items-center gap-2 py-1 text-left",
+						"text-white/45 transition-colors hover:text-white/70",
+						"focus-visible:outline-none",
+					)}
+				>
+					<span className="h-px flex-1 bg-white/10" aria-hidden />
+					<span className="shrink-0 text-[10px] font-medium uppercase tracking-wide">
+						{topic}
+					</span>
+					<span className="h-px flex-1 bg-white/10" aria-hidden />
+				</button>
+			)}
+			{collapsed ? null : children}
+		</div>
+	);
+}

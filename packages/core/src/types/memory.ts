@@ -378,6 +378,14 @@ export interface MessageMetadata {
 	fromId?: string | number;
 	sourceId?: string;
 
+	/**
+	 * Short topic labels extracted for this turn at Stage-1 (the `topics`
+	 * field-evaluator). Stamped onto the inbound message so the dashboard can
+	 * group the transcript by topic and surface a topic chips bar (#8928).
+	 * Mirrors the per-room LRU in `ChannelTopicsService`.
+	 */
+	topics?: string[];
+
 	[key: string]: unknown;
 }
 

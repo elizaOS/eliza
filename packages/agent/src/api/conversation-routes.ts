@@ -1420,12 +1420,19 @@ export async function handleConversationRoutes(
               ? normalizeChatResponseText(rawText, state.logBuffer, runtime)
               : rawText;
           const attachments = serializeMessageAttachments(content);
+          const topics =
+            Array.isArray(meta?.topics) && meta.topics.length > 0
+              ? (meta.topics as unknown[]).filter(
+                  (topic): topic is string => typeof topic === "string",
+                )
+              : undefined;
           return {
             id: m.id ?? "",
             role,
             text,
             timestamp: m.createdAt ?? 0,
             ...(attachments ? { attachments } : {}),
+            ...(topics && topics.length > 0 ? { topics } : {}),
             source: normalizedSource,
             actionName,
             actionCallbackHistory:
