@@ -67,7 +67,6 @@ function RuntimeModeRow({
 type RuntimeAction = {
   target: FirstRunReloadTarget;
   label: string;
-  description: string;
   icon: LucideIcon;
   disabled?: boolean;
   disabledReason?: string;
@@ -114,9 +113,6 @@ export function RuntimeSettingsSection() {
         label: t("settings.runtime.cloudLabel", {
           defaultValue: "Cloud agent",
         }),
-        description: t("settings.runtime.cloudDescription", {
-          defaultValue: "Use an Eliza Cloud hosted agent.",
-        }),
         icon: Cloud,
       },
     ];
@@ -125,9 +121,6 @@ export function RuntimeSettingsSection() {
         target: "local",
         label: t("settings.runtime.localLabel", {
           defaultValue: "Local",
-        }),
-        description: t("settings.runtime.localDescription", {
-          defaultValue: "Use the agent running on this device.",
         }),
         icon: Laptop,
         disabled: storeBuild,
@@ -138,9 +131,6 @@ export function RuntimeSettingsSection() {
       target: "remote",
       label: t("settings.runtime.remoteLabel", {
         defaultValue: "Remote",
-      }),
-      description: t("settings.runtime.remoteDescription", {
-        defaultValue: "Connect to an agent on another machine.",
       }),
       icon: RadioTower,
     });
@@ -233,9 +223,7 @@ export function RuntimeSettingsSection() {
               target={action.target}
               icon={action.icon}
               label={action.label}
-              description={
-                disabled ? action.disabledReason : action.description
-              }
+              description={disabled ? action.disabledReason : undefined}
               active={active}
               disabled={disabled}
               onSelect={() => handleSwitch(action.target)}
@@ -250,21 +238,16 @@ export function RuntimeSettingsSection() {
             defaultValue: "Sandbox build",
           })}
           footer={
-            <>
-              {t("settings.runtime.localDisabledStoreNote", {
-                defaultValue: "This store build runs in a sandbox. ",
+            <a
+              href={STORE_LOCAL_DISABLED_DOCS_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="text-accent underline"
+            >
+              {t("settings.runtime.localDisabledStoreLink", {
+                defaultValue: "Why is local disabled?",
               })}
-              <a
-                href={STORE_LOCAL_DISABLED_DOCS_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="text-accent underline"
-              >
-                {t("settings.runtime.localDisabledStoreLink", {
-                  defaultValue: "Why?",
-                })}
-              </a>
-            </>
+            </a>
           }
         >
           {isElectrobunRuntime() ? (

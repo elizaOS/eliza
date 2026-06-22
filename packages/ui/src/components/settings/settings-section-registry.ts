@@ -51,6 +51,8 @@ export interface SettingsSectionDef {
   order?: number;
   /** Padding override for the section body panel. */
   bodyClassName?: string;
+  /** Hide unless Developer Mode is on (dev builds default on; prod off). */
+  developerOnly?: boolean;
   Component: ComponentType;
 }
 

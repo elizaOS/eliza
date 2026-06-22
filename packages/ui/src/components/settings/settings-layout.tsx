@@ -243,7 +243,10 @@ export function SettingsRow({
 
   return (
     <div
-      className={cn("flex min-h-[3rem] flex-col justify-center py-2.5", className)}
+      className={cn(
+        "flex min-h-[3rem] flex-col justify-center py-2.5",
+        className,
+      )}
     >
       <SettingsRowBody
         icon={icon}

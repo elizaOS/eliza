@@ -264,7 +264,7 @@ export function PolicyControlsView() {
   return (
     <SettingsStack>
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2">
+        <div className="flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-danger shrink-0" />
           <span className="text-xs text-danger">{error}</span>
         </div>

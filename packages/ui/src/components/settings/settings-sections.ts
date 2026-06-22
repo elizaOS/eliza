@@ -92,6 +92,8 @@ interface SectionVisual {
   /** i18n key for the section header, when it differs from the label. */
   titleKey?: string;
   bodyClassName?: string;
+  /** Hide unless Developer Mode is on. */
+  developerOnly?: boolean;
   Component: ComponentType;
 }
 
@@ -158,6 +160,7 @@ const SECTION_VISUALS: Record<string, SectionVisual> = {
     tone: "accent",
     hue: "rose",
     labelKey: "settings.sections.remote-plugins.label",
+    developerOnly: true,
     Component: RemotePluginHostSection,
   },
   "wallet-rpc": {
@@ -231,6 +234,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] =
       titleKey: visual.titleKey ?? visual.labelKey,
       defaultTitle: meta.defaultLabel,
       bodyClassName: visual.bodyClassName,
+      developerOnly: visual.developerOnly,
       order: index,
       Component: visual.Component,
     };

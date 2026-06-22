@@ -16,6 +16,8 @@ import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { SettingsInput, SettingsTextarea } from "../ui/settings-controls";
+import { AdvancedToggle } from "./AdvancedToggle";
+import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import { SettingsSelectRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
@@ -100,6 +102,7 @@ const BODY_CELL_CLASS = "px-3 py-2.5 align-middle text-sm";
 export function AppsManagementSection() {
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const t = useAppSelector((s) => s.t);
+  const advancedEnabled = useAdvancedSettingsEnabled();
 
   const [installed, setInstalled] = useState<InstalledAppInfo[]>([]);
   const [runs, setRuns] = useState<AppRunSummary[]>([]);
@@ -508,28 +511,31 @@ export function AppsManagementSection() {
                 defaultValue: "Load from directory",
               })}
             </Button>
+            <AdvancedToggle label="Advanced" />
           </div>
         }
       >
-        <SettingsRow
-          label={t("settings.sections.apps.verifyOnRelaunch", {
-            defaultValue: "Verify on relaunch",
-          })}
-          control={
-            <Checkbox
-              ref={verifyRef}
-              checked={verifyOnRelaunch}
-              onCheckedChange={(checked: boolean | "indeterminate") =>
-                setVerifyOnRelaunch(!!checked)
-              }
-              aria-current={verifyOnRelaunch ? "true" : undefined}
-              aria-label={t("settings.sections.apps.verifyOnRelaunchLabel", {
-                defaultValue: "Verify on relaunch",
-              })}
-              {...verifyAgentProps}
-            />
-          }
-        />
+        {advancedEnabled ? (
+          <SettingsRow
+            label={t("settings.sections.apps.verifyOnRelaunch", {
+              defaultValue: "Verify on relaunch",
+            })}
+            control={
+              <Checkbox
+                ref={verifyRef}
+                checked={verifyOnRelaunch}
+                onCheckedChange={(checked: boolean | "indeterminate") =>
+                  setVerifyOnRelaunch(!!checked)
+                }
+                aria-current={verifyOnRelaunch ? "true" : undefined}
+                aria-label={t("settings.sections.apps.verifyOnRelaunchLabel", {
+                  defaultValue: "Verify on relaunch",
+                })}
+                {...verifyAgentProps}
+              />
+            }
+          />
+        ) : null}
       </SettingsGroup>
 
       {showCreate ? (
@@ -565,32 +571,34 @@ export function AppsManagementSection() {
                 {...createIntentAgentProps}
               />
             </SettingsRow>
-            <SettingsSelectRow
-              agentId="apps-create-edit-target"
-              group="apps-create"
-              label={t("settings.sections.apps.basedOnLabel", {
-                defaultValue: "Based on existing app (optional)",
-              })}
-              value={createEditTarget || CREATE_FROM_SCRATCH_VALUE}
-              onValueChange={(value) =>
-                setCreateEditTarget(
-                  value === CREATE_FROM_SCRATCH_VALUE ? "" : value,
-                )
-              }
-              disabled={isCreating}
-              options={[
-                {
-                  value: CREATE_FROM_SCRATCH_VALUE,
-                  label: t("settings.sections.apps.basedOnNone", {
-                    defaultValue: "Start from scratch",
-                  }),
-                },
-                ...installed.map((app) => ({
-                  value: app.name,
-                  label: `${app.displayName} (${app.name})`,
-                })),
-              ]}
-            />
+            {advancedEnabled ? (
+              <SettingsSelectRow
+                agentId="apps-create-edit-target"
+                group="apps-create"
+                label={t("settings.sections.apps.basedOnLabel", {
+                  defaultValue: "Based on existing app (optional)",
+                })}
+                value={createEditTarget || CREATE_FROM_SCRATCH_VALUE}
+                onValueChange={(value) =>
+                  setCreateEditTarget(
+                    value === CREATE_FROM_SCRATCH_VALUE ? "" : value,
+                  )
+                }
+                disabled={isCreating}
+                options={[
+                  {
+                    value: CREATE_FROM_SCRATCH_VALUE,
+                    label: t("settings.sections.apps.basedOnNone", {
+                      defaultValue: "Start from scratch",
+                    }),
+                  },
+                  ...installed.map((app) => ({
+                    value: app.name,
+                    label: `${app.displayName} (${app.name})`,
+                  })),
+                ]}
+              />
+            ) : null}
             <SettingsRow label="" stacked>
               <div className="flex items-center gap-2">
                 <Button
@@ -733,17 +741,15 @@ export function AppsManagementSection() {
         </SettingsGroup>
       ) : listStatus.state === "error" ? (
         <SettingsGroup bare>
-          <div className="rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
-            {listStatus.message}
-          </div>
+          <p className="py-2 text-sm text-warn">{listStatus.message}</p>
         </SettingsGroup>
       ) : installed.length === 0 ? (
         <SettingsGroup bare>
-          <div className="rounded-lg border border-border bg-card px-3 py-4 text-center text-sm text-muted">
+          <p className="py-4 text-center text-sm text-muted">
             {t("settings.sections.apps.empty", {
               defaultValue: "No apps installed yet.",
             })}
-          </div>
+          </p>
         </SettingsGroup>
       ) : (
         <SettingsGroup
@@ -752,10 +758,10 @@ export function AppsManagementSection() {
             defaultValue: "Installed apps",
           })}
         >
-          <div className="overflow-x-auto rounded-lg border border-border">
+          <div className="overflow-x-auto">
             <table className="w-full min-w-[34rem] text-left text-sm">
-              <thead className="bg-bg-hover">
-                <tr>
+              <thead>
+                <tr className="border-b border-border/50">
                   <th className={HEAD_CELL_CLASS}>
                     {t("settings.sections.apps.col.name", {
                       defaultValue: "App",

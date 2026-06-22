@@ -169,10 +169,7 @@ function ConnectorRow({
   const icon = useMemo(() => connectorIcon(plugin), [plugin]);
 
   return (
-    <details
-      className="group overflow-hidden rounded-lg border border-border bg-card transition-colors hover:bg-surface open:bg-card open:hover:bg-card"
-      data-connector={plugin.id}
-    >
+    <details className="group" data-connector={plugin.id}>
       <summary className="cursor-pointer select-none list-none">
         <SettingsRow
           icon={icon}
@@ -194,7 +191,7 @@ function ConnectorRow({
           }
         />
       </summary>
-      <div className="border-t border-border/60 px-4 py-3">
+      <div className="pb-3 pl-[30px]">
         <ConnectorBody plugin={plugin} />
       </div>
     </details>
@@ -286,7 +283,7 @@ export function ConnectorsSection() {
           defaultValue: "Connectors",
         })}
       >
-        <div ref={containerRef} className="flex flex-col gap-2">
+        <div ref={containerRef} className="flex flex-col">
           {connectorPlugins.map((plugin) => {
             const isBusy = togglingPlugins.has(plugin.id);
             return (

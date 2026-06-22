@@ -295,7 +295,7 @@ function getBadgeLabel(state: MediaPermissionState): string {
 }
 
 interface StreamingPermissionsSettingsViewProps {
-  description: string;
+  description?: string;
   mode: StreamingPermissionMode;
   testId: string;
   title: string;
@@ -335,7 +335,9 @@ export function StreamingPermissionsSettingsView({
           <Cloud className="w-4 h-4 text-accent" />
           <div className="font-bold text-sm">{title}</div>
         </div>
-        <div className="text-xs-tight text-muted mb-3">{description}</div>
+        {description ? (
+          <div className="text-xs-tight text-muted mb-3">{description}</div>
+        ) : null}
         <div className="border border-border bg-card">
           {MEDIA_PERMISSIONS.filter((def) =>
             isStreamingPermissionVisibleForMode(def, mode),

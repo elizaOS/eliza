@@ -248,10 +248,6 @@ export function WalletKeysSection() {
       <SettingsGroup
         bare
         title={t("walletkeys.title", { defaultValue: "Wallet keys" })}
-        description={t("walletkeys.description", {
-          defaultValue:
-            'Private keys stored in the local vault. Same data the Vault tab shows under "Wallet" — edit either place.',
-        })}
         action={
           <Button
             ref={addToggleRef}
@@ -281,19 +277,9 @@ export function WalletKeysSection() {
       {showAdd && (
         <form
           onSubmit={onAdd}
-          className="space-y-2 rounded-sm border border-border/50 bg-card/30 p-2"
+          className="space-y-2 pt-1"
           data-testid="wallet-keys-add-form"
         >
-          <p className="text-xs text-muted">
-            {t("walletkeys.addFormLeadIn", {
-              defaultValue: "Use the env-var name (e.g.",
-            })}{" "}
-            <code>EVM_PRIVATE_KEY</code>, <code>SOLANA_PRIVATE_KEY</code>
-            {") "}
-            {t("walletkeys.addFormTrailing", {
-              defaultValue: "so other surfaces pick it up automatically.",
-            })}
-          </p>
           <div>
             <Label className="text-xs text-muted">
               {t("walletkeys.keyName", { defaultValue: "Key name" })}
@@ -365,17 +351,14 @@ export function WalletKeysSection() {
           {t("walletkeys.loading", { defaultValue: "Loading…" })}
         </div>
       ) : entries.length === 0 ? (
-        <SettingsGroup bare>
-          <div
-            data-testid="wallet-keys-empty"
-            className="rounded-lg border border-dashed border-border bg-surface px-3 py-4 text-center text-xs text-muted"
-          >
-            {t("walletkeys.empty", {
-              defaultValue:
-                "No wallet keys yet. Add one with the button above, or generate one per agent from the Agents page.",
-            })}
-          </div>
-        </SettingsGroup>
+        <p
+          data-testid="wallet-keys-empty"
+          className="px-1 py-3 text-xs text-muted"
+        >
+          {t("walletkeys.empty", {
+            defaultValue: "No wallet keys yet.",
+          })}
+        </p>
       ) : (
         <SettingsGroup data-testid="wallet-keys-list">
           {entries.map((entry) => {

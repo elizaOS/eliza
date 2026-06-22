@@ -216,18 +216,11 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
   return (
     <section data-testid="vault-inventory-panel" className="space-y-2 pt-1">
       <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-txt">
-            {t("vaultinventory.storedSecrets", {
-              defaultValue: "Stored secrets",
-            })}
-          </p>
-          <p className="text-2xs text-muted">
-            {t("vaultinventory.storedSecrets.description", {
-              defaultValue: "Stored locally, grouped by category.",
-            })}
-          </p>
-        </div>
+        <p className="min-w-0 text-sm font-medium text-txt">
+          {t("vaultinventory.storedSecrets", {
+            defaultValue: "Stored secrets",
+          })}
+        </p>
         <Button
           ref={addSecretRef}
           {...addSecretAgentProps}
@@ -269,12 +262,12 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
           <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Loading…
         </div>
       ) : entries.length === 0 ? (
-        <div
+        <p
           data-testid="vault-inventory-empty"
-          className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+          className="px-3 py-3 text-center text-xs text-muted"
         >
           No secrets yet. Add an API key.
-        </div>
+        </p>
       ) : (
         <div className="space-y-3">
           {CATEGORY_ORDER.map((cat) => {
@@ -320,10 +313,10 @@ const CategoryGroup = memo(function CategoryGroup({
 }) {
   return (
     <div data-testid={`vault-category-${category}`} className="space-y-1">
-      <p className="text-2xs font-semibold text-muted">
+      <p className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted/70">
         {CATEGORY_LABEL[category]}
       </p>
-      <ul className="space-y-1 rounded-sm border border-border/40 bg-card/30 p-1">
+      <ul className="space-y-1">
         {entries.map((entry) => (
           <li key={entry.key}>
             <EntryRow
@@ -739,7 +732,7 @@ function ProfilesPanel({
   return (
     <div
       data-testid={`profiles-panel-${entry.key}`}
-      className="mt-2 space-y-2 rounded-sm border border-border/40 bg-bg/30 p-2"
+      className="mt-2 space-y-2 border-l-2 border-border/40 pl-3"
     >
       <div className="flex items-center justify-between gap-2">
         <p className="text-2xs font-semibold text-muted">
@@ -835,7 +828,7 @@ function ProfilesPanel({
         <form
           onSubmit={onAdd}
           data-testid={`add-profile-form-${entry.key}`}
-          className="space-y-1.5 rounded-sm border border-border/40 bg-card/40 p-2"
+          className="space-y-1.5 border-l-2 border-border/40 pl-3"
         >
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
             <div>
@@ -1144,13 +1137,8 @@ function AddSecretForm({
     <form
       onSubmit={onSubmit}
       data-testid="vault-add-secret-form"
-      className="space-y-2 rounded-sm border border-border/50 bg-card/30 p-2"
+      className="space-y-2 border-l-2 border-border/50 pl-3"
     >
-      <p className="text-2xs text-muted">
-        {t("vaultinventory.addForm.help", {
-          defaultValue: "Stored locally and encrypted at rest.",
-        })}
-      </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
           <Label className="text-2xs text-muted">

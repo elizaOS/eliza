@@ -33,17 +33,11 @@ type WebsiteBlockerSettingsCardComponent = NonNullable<
 type DesktopPlatform = "darwin" | "win32" | "linux";
 
 interface PlatformCopy {
-  systemDescription: { key: string; defaultValue: string };
   grantNote: { key: string; defaultValue: string };
 }
 
 const PLATFORM_COPY: Record<DesktopPlatform, PlatformCopy> = {
   darwin: {
-    systemDescription: {
-      key: "permissionssection.MacSystemPermissionsDescription",
-      defaultValue:
-        "Native permissions for desktop control, voice, and vision.",
-    },
     grantNote: {
       key: "permissionssection.MacGrantAccessNote",
       defaultValue:
@@ -51,11 +45,6 @@ const PLATFORM_COPY: Record<DesktopPlatform, PlatformCopy> = {
     },
   },
   win32: {
-    systemDescription: {
-      key: "permissionssection.WindowsSystemPermissionsDescription",
-      defaultValue:
-        "Open Windows privacy settings for microphone and camera, then verify access by using those features in the app.",
-    },
     grantNote: {
       key: "permissionssection.WindowsGrantPermissionsNote",
       defaultValue:
@@ -63,11 +52,6 @@ const PLATFORM_COPY: Record<DesktopPlatform, PlatformCopy> = {
     },
   },
   linux: {
-    systemDescription: {
-      key: "permissionssection.SystemPermissionsDescription",
-      defaultValue:
-        "Grant the runtime access it needs for voice input, camera capture, shell tasks, and desktop automation features.",
-    },
     grantNote: {
       key: "permissionssection.GrantPermissionsNote",
       defaultValue:
@@ -97,10 +81,6 @@ function MobilePermissionsView() {
         testId="mobile-permissions"
         title={t("permissionssection.StreamingPermissions", {
           defaultValue: "Streaming Permissions",
-        })}
-        description={t("permissionssection.MobileStreamingDesc", {
-          defaultValue:
-            "Streams camera, mic, and screen to your Eliza Cloud agent.",
         })}
       />
       <MobileSystemPermissionsPanel />
@@ -229,10 +209,6 @@ function MobileSystemPermissionsPanel() {
     <SettingsGroup
       title={t("permissionssection.SystemPermissions", {
         defaultValue: "System Permissions",
-      })}
-      description={t("permissionssection.MobileSystemPermissionsDescription", {
-        defaultValue:
-          "Review device permissions used by mobile features, then grant or manage each one in the right OS flow.",
       })}
       action={
         <SettingsActionButton
@@ -396,10 +372,6 @@ function MobileSignalsPermissionsPanel() {
       title={t("permissionssection.LifeOpsSignals", {
         defaultValue: "LifeOps Signals",
       })}
-      description={t("permissionssection.MobileSignalsDesc", {
-        defaultValue:
-          "Review Health, sleep, Screen Time, notification, and device signal access used by LifeOps.",
-      })}
       action={
         <SettingsActionButton
           agentId="perm-mobile-signals-refresh"
@@ -488,10 +460,6 @@ function WebPermissionsView() {
         testId="web-permissions-info"
         title={t("permissionssection.BrowserPermissions", {
           defaultValue: "Browser Permissions",
-        })}
-        description={t("permissionssection.WebStreamingDesc", {
-          defaultValue:
-            "Grant browser access to your camera, microphone, and screen to stream to your agent.",
         })}
       />
       {WebsiteBlockerSettingsCard ? (
@@ -615,9 +583,6 @@ function DesktopPermissionsView() {
         title={t("permissionssection.SystemPermissions", {
           defaultValue: "System Permissions",
         })}
-        description={t(copy.systemDescription.key, {
-          defaultValue: copy.systemDescription.defaultValue,
-        })}
         footer={t(copy.grantNote.key, {
           defaultValue: copy.grantNote.defaultValue,
         })}
@@ -654,13 +619,7 @@ function DesktopPermissionsView() {
         />
       ) : null}
 
-      <SettingsGroup
-        title={t("common.capabilities")}
-        description={t("permissionssection.CapabilitiesDescription", {
-          defaultValue:
-            "Turn higher-level capabilities on only after the required runtime permissions are available.",
-        })}
-      >
+      <SettingsGroup title={t("common.capabilities")}>
         {CAPABILITIES.map((cap) => {
           const plugin = plugins.find((p) => p.id === cap.id) ?? null;
           const permissionsGranted = arePermissionsGranted(

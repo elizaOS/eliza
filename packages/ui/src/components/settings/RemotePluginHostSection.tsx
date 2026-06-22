@@ -31,7 +31,7 @@ import {
 } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { SettingsInput } from "../ui/settings-controls";
-import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
+import { SettingsGroup, SettingsStack } from "./settings-layout";
 
 type TranslateFn = TranslationContextValue["t"];
 
@@ -188,7 +188,7 @@ function RemotePluginRow({
     });
 
   return (
-    <div className="rounded-lg border border-border bg-card p-3">
+    <div className="py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
@@ -484,116 +484,70 @@ export function RemotePluginHostSection() {
   return (
     <SettingsStack>
       <SettingsGroup
-        title={t("remotepluginhost.aboutTitle", {
-          defaultValue: "About remote plugins",
-        })}
-      >
-        <SettingsRow
-          label={t("remotepluginhost.aboutTitle", {
-            defaultValue: "About remote plugins",
-          })}
-          stacked
-        >
-          <div className="space-y-2">
-            <p className="text-xs text-muted">
-              {t("remotepluginhost.aboutIntro", {
-                defaultValue:
-                  "Each remote plugin runs in its own Bun Worker with a scoped state path, log file, and auth token.",
-              })}{" "}
-              <span className="text-warn">
-                {t("remotepluginhost.aboutWarnLeadIn", {
-                  defaultValue:
-                    "Permissions are declared in the manifest and shown here at install.",
-                })}
-              </span>
-            </p>
-            <p className="text-xs text-muted">
-              <span className="text-warn">
-                {t("remotepluginhost.authTokenLabel", {
-                  defaultValue: "Auth token:",
-                })}
-              </span>{" "}
-              {t("remotepluginhost.authTokenDesc", {
-                defaultValue:
-                  "a remote plugin can request your API token and call {{appName}}'s HTTP API as you. Only install remote plugins from sources you trust.",
-                ...appNameInterpolationVars(branding),
-              })}
-            </p>
-            {storeRoot ? (
-              <p className="flex items-center gap-1 text-xs text-muted/80">
-                <span>
-                  {t("remotepluginhost.storeLabel", { defaultValue: "Store:" })}{" "}
-                  <code>{storeRoot}</code>
-                </span>
-                <button
-                  ref={revealStoreRef}
-                  type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-surface"
-                  title={t("remotepluginhost.revealInFileManager", {
-                    defaultValue: "Reveal in file manager",
-                  })}
-                  onClick={() => void desktopOpenPath(storeRoot)}
-                  {...revealStoreAgentProps}
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </button>
-              </p>
-            ) : null}
-          </div>
-        </SettingsRow>
-      </SettingsGroup>
-
-      <SettingsGroup
         title={t("remotepluginhost.installFromDirectory", {
           defaultValue: "Install from directory",
         })}
-        footer={error ? <span className="text-warn">{error}</span> : undefined}
+        description={t("remotepluginhost.authTokenDesc", {
+          defaultValue:
+            "A remote plugin can call {{appName}}'s API as you. Only install from sources you trust.",
+          ...appNameInterpolationVars(branding),
+        })}
+        footer={
+          <>
+            {storeRoot ? (
+              <button
+                ref={revealStoreRef}
+                type="button"
+                className="flex items-center gap-1.5 text-muted/80 hover:text-txt"
+                onClick={() => void desktopOpenPath(storeRoot)}
+                {...revealStoreAgentProps}
+              >
+                <code className="truncate">{storeRoot}</code>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              </button>
+            ) : null}
+            {error ? <span className="text-warn">{error}</span> : null}
+          </>
+        }
       >
-        <SettingsRow
-          label={t("remotepluginhost.installFromDirectory", {
-            defaultValue: "Install from directory",
-          })}
-          stacked
-        >
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <SettingsInput
-              ref={sourceDirRef}
-              variant="touch"
-              value={sourceDir}
-              onChange={(e) => setSourceDir(e.target.value)}
-              placeholder="/absolute/path/to/remote-plugin/source"
+        <div className="flex flex-col gap-2 py-2.5 sm:flex-row">
+          <SettingsInput
+            ref={sourceDirRef}
+            variant="touch"
+            value={sourceDir}
+            onChange={(e) => setSourceDir(e.target.value)}
+            placeholder="/absolute/path/to/remote-plugin/source"
+            disabled={busy}
+            className="w-full sm:flex-1"
+            {...sourceDirAgentProps}
+          />
+          <div className="flex gap-2">
+            <Button
+              ref={pickFolderRef}
+              type="button"
+              variant="outline"
+              onClick={() => void handlePickFolder()}
               disabled={busy}
-              className="w-full sm:flex-1"
-              {...sourceDirAgentProps}
-            />
-            <div className="flex gap-2">
-              <Button
-                ref={pickFolderRef}
-                type="button"
-                variant="outline"
-                onClick={() => void handlePickFolder()}
-                disabled={busy}
-                className="h-11 w-11 shrink-0 rounded-md p-0"
-                title={t("remotepluginhost.pickFolder", {
-                  defaultValue: "Pick a folder…",
-                })}
-                {...pickFolderAgentProps}
-              >
-                <FolderOpen className="h-4 w-4" />
-              </Button>
-              <Button
-                ref={installRef}
-                type="button"
-                onClick={() => void handleInstall()}
-                disabled={busy || sourceDir.trim().length === 0}
-                className="h-11 flex-1 rounded-md px-4 text-sm sm:flex-none"
-                {...installAgentProps}
-              >
-                {t("remotepluginhost.install", { defaultValue: "Install" })}
-              </Button>
-            </div>
+              className="h-11 w-11 shrink-0 rounded-md p-0"
+              title={t("remotepluginhost.pickFolder", {
+                defaultValue: "Pick a folder…",
+              })}
+              {...pickFolderAgentProps}
+            >
+              <FolderOpen className="h-4 w-4" />
+            </Button>
+            <Button
+              ref={installRef}
+              type="button"
+              onClick={() => void handleInstall()}
+              disabled={busy || sourceDir.trim().length === 0}
+              className="h-11 flex-1 rounded-md px-4 text-sm sm:flex-none"
+              {...installAgentProps}
+            >
+              {t("remotepluginhost.install", { defaultValue: "Install" })}
+            </Button>
           </div>
-        </SettingsRow>
+        </div>
       </SettingsGroup>
 
       <SettingsGroup
@@ -604,14 +558,13 @@ export function RemotePluginHostSection() {
         })}
       >
         {remotePlugins.length === 0 ? (
-          <p className="rounded-lg border border-border bg-card px-4 py-3 text-xs text-muted">
+          <p className="px-1 py-3 text-xs text-muted">
             {t("remotepluginhost.emptyLeadIn", {
-              defaultValue:
-                "No remote plugins installed. Install one from a local directory above.",
+              defaultValue: "No remote plugins installed.",
             })}
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="flex flex-col">
             {remotePlugins.map((remotePlugin) => (
               <RemotePluginRow
                 key={remotePlugin.id}

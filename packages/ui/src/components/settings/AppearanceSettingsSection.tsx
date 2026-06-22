@@ -2,10 +2,12 @@ import { Check } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
 import { useAppSelector, useContentPack } from "../../state";
 import { LANGUAGES } from "../shared/LanguageDropdown.helpers";
+import { AdvancedToggle } from "./AdvancedToggle";
+import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import { selectableTileClass } from "./appearance-primitives.helpers";
 import { LoadContentPackForm } from "./LoadContentPackForm";
 import { LoadedPacksList } from "./LoadedPacksList";
-import { SettingsGroup, SettingsStack } from "./settings-layout";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 function LanguageTileButton({
   languageId,
@@ -53,6 +55,7 @@ export function AppearanceSettingsSection() {
   const uiLanguage = useAppSelector((s) => s.uiLanguage);
   const t = useAppSelector((s) => s.t);
   const { activePack, loadedPacks, toggle } = useContentPack();
+  const advancedEnabled = useAdvancedSettingsEnabled();
 
   return (
     <SettingsStack>
@@ -80,7 +83,14 @@ export function AppearanceSettingsSection() {
         onToggle={toggle}
       />
 
-      <LoadContentPackForm />
+      <SettingsGroup>
+        <SettingsRow
+          label={t("settings.advanced", { defaultValue: "Advanced" })}
+          control={<AdvancedToggle label="Advanced" />}
+        />
+      </SettingsGroup>
+
+      {advancedEnabled && <LoadContentPackForm />}
     </SettingsStack>
   );
 }

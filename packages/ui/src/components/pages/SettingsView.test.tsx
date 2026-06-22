@@ -85,7 +85,13 @@ vi.mock("../settings/settings-sections", () => {
           ),
   }));
   return {
-    SECTION_HUE_MEDALLION_CLASS: { accent: "", amber: "", rose: "", slate: "" },
+    SECTION_TONE_ICON_CLASS: {
+      ok: "",
+      warn: "",
+      muted: "",
+      accent: "",
+      neutral: "",
+    },
     SETTINGS_GROUP_LABEL: {
       agent: "Agent",
       system: "System",

@@ -34,6 +34,8 @@ import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { AdvancedToggle } from "./AdvancedToggle";
+import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import { SettingsGroup, SettingsStack } from "./settings-layout";
 
 function formatRelativeTime(ms: number | null): string {
@@ -77,9 +79,7 @@ function SectionShell({
         </span>
       }
     >
-      <div className="space-y-4 rounded-lg border border-border bg-card p-4 sm:p-5">
-        {children}
-      </div>
+      <div className="space-y-4">{children}</div>
     </SettingsGroup>
   );
 }
@@ -215,7 +215,7 @@ function AccessInfoRow({
   detail: string;
 }) {
   return (
-    <div className="grid gap-1 border-t border-border/30 py-2.5 first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-3">
+    <div className="grid gap-1 py-2 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-3">
       <div className="text-xs font-medium text-muted">{label}</div>
       <div className="min-w-0 space-y-0.5">
         <div className="break-words text-sm font-medium text-txt-strong">
@@ -258,6 +258,7 @@ function AccessModeSection({
 }) {
   const bootConfig = useBootConfig();
   const { t } = useTranslation();
+  const advancedEnabled = useAdvancedSettingsEnabled();
   const { ref: accessRefreshRef, agentProps: accessRefreshAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "security-access-refresh",
@@ -456,24 +457,7 @@ function AccessModeSection({
           )}
         </StatusBadge>
       </div>
-      <div className="rounded-sm border border-border/40 bg-bg/35 px-3">
-        <AccessInfoRow
-          label={t("security.access.row.currentBrowser", {
-            defaultValue: "Current browser",
-          })}
-          value={currentBrowserValue}
-          detail={currentBrowserDetail}
-        />
-        <AccessInfoRow
-          label={t("security.access.row.localAccess", {
-            defaultValue: "Local access",
-          })}
-          value={t("security.access.row.enabled", { defaultValue: "Enabled" })}
-          detail={t("security.access.row.localAccessDetail", {
-            defaultValue:
-              "Host-machine localhost and desktop renderer sessions do not require the remote password.",
-          })}
-        />
+      <div className="flex flex-col">
         <AccessInfoRow
           label={t("security.access.row.remotePassword", {
             defaultValue: "Remote password",
@@ -485,22 +469,6 @@ function AccessModeSection({
           }
           detail={remotePasswordDetail}
         />
-        {pageUrl && pageEndpointDescription && (
-          <AccessInfoRow
-            label={pageUrlLabel}
-            value={pageUrl}
-            detail={pageEndpointDescription.detail}
-          />
-        )}
-        {apiBase && apiEndpointDescription && (
-          <AccessInfoRow
-            label={t("security.access.row.apiBase", {
-              defaultValue: "API base",
-            })}
-            value={trimTrailingSlash(apiBase)}
-            detail={`${apiEndpointDescription.value}: ${apiEndpointDescription.detail}`}
-          />
-        )}
         {state.phase === "loaded" && (
           <AccessInfoRow
             label={t("security.access.row.identity", {
@@ -513,17 +481,47 @@ function AccessModeSection({
             })}
           />
         )}
+        {advancedEnabled && (
+          <>
+            <AccessInfoRow
+              label={t("security.access.row.currentBrowser", {
+                defaultValue: "Current browser",
+              })}
+              value={currentBrowserValue}
+              detail={currentBrowserDetail}
+            />
+            {pageUrl && pageEndpointDescription && (
+              <AccessInfoRow
+                label={pageUrlLabel}
+                value={pageUrl}
+                detail={pageEndpointDescription.detail}
+              />
+            )}
+            {apiBase && apiEndpointDescription && (
+              <AccessInfoRow
+                label={t("security.access.row.apiBase", {
+                  defaultValue: "API base",
+                })}
+                value={trimTrailingSlash(apiBase)}
+                detail={`${apiEndpointDescription.value}: ${apiEndpointDescription.detail}`}
+              />
+            )}
+          </>
+        )}
       </div>
-      <button
-        ref={accessRefreshRef}
-        {...accessRefreshAgentProps}
-        type="button"
-        onClick={() => void onRefresh()}
-        className="inline-flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-txt-strong"
-      >
-        <RefreshCw className="h-3 w-3" />
-        {t("security.refresh", { defaultValue: "Refresh" })}
-      </button>
+      <div className="flex items-center justify-between gap-3">
+        <button
+          ref={accessRefreshRef}
+          {...accessRefreshAgentProps}
+          type="button"
+          onClick={() => void onRefresh()}
+          className="inline-flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-txt-strong"
+        >
+          <RefreshCw className="h-3 w-3" />
+          {t("security.refresh", { defaultValue: "Refresh" })}
+        </button>
+        <AdvancedToggle label="Advanced" />
+      </div>
     </SectionShell>
   );
 }
@@ -629,7 +627,7 @@ function SessionsSection() {
               })}
             </p>
           ) : (
-            <div className="divide-y divide-border/30">
+            <div className="flex flex-col">
               {state.sessions.map((session) => (
                 <SessionRow
                   key={session.id}

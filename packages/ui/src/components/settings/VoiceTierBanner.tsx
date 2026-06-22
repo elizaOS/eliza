@@ -31,46 +31,37 @@ const TIER_COPY: Record<
   }
 > = {
   MAX: {
-    title: "Your device can run everything at once.",
-    description:
-      "Recognition, the language model, and speech all stay loaded together.",
+    title: "Local voice runs at full speed.",
+    description: "Recognition, the model, and speech all stay loaded together.",
     tone: "accent",
     icon: Sparkles,
   },
   GOOD: {
-    title: "Your device can run the full voice stack.",
+    title: "Local voice runs well here.",
     description: "Models load on demand — about half a second to respond.",
     tone: "ok",
     icon: BadgeCheck,
   },
   OKAY: {
-    title: "Your device can run voice, but it will be slow.",
-    description:
-      "Models swap in and out between turns — expect 2-5 seconds before the agent responds.",
+    title: "Local voice runs, but slowly.",
+    description: "Expect 2-5 seconds before the agent responds.",
     tone: "warn",
     icon: Gauge,
   },
   POOR: {
-    title: "Your device is below the recommended specs for local voice.",
+    title: "Voice routes through Eliza Cloud.",
     description:
-      "Voice routes through Eliza Cloud instead. You can still capture a voice profile for speaker recognition.",
+      "This device is below the specs for local voice, so it uses the cloud.",
     tone: "danger",
     icon: AlertTriangle,
   },
 };
 
-const TONE_CLASS = {
-  ok: "border-ok/40 bg-ok/10 text-ok",
-  accent: "border-accent/40 bg-accent/10 text-accent",
-  warn: "border-warn/40 bg-warn/10 text-warn",
-  danger: "border-danger/40 bg-danger/10 text-danger",
-} as const;
-
-const TONE_BADGE_CLASS = {
-  ok: "bg-ok/20 text-ok",
-  accent: "bg-accent/20 text-accent",
-  warn: "bg-warn/20 text-warn",
-  danger: "bg-danger/20 text-danger",
+const TONE_TEXT_CLASS = {
+  ok: "text-ok",
+  accent: "text-accent",
+  warn: "text-warn",
+  danger: "text-danger",
 } as const;
 
 export function VoiceTierBanner({
@@ -89,48 +80,45 @@ export function VoiceTierBanner({
       data-tier={tier}
       data-tone={copy.tone}
       className={cn(
-        "flex items-start gap-3 rounded-sm border px-3 py-3",
-        TONE_CLASS[copy.tone],
-        compact && "py-2 text-xs",
+        "flex items-start gap-3 py-1",
+        compact && "text-xs",
         className,
       )}
     >
-      <span
+      <Icon
         className={cn(
-          "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm",
-          TONE_BADGE_CLASS[copy.tone],
+          "mt-0.5 h-[18px] w-[18px] shrink-0",
+          TONE_TEXT_CLASS[copy.tone],
         )}
         aria-hidden="true"
-      >
-        <Icon className="h-4 w-4" />
-      </span>
+      />
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-baseline gap-2">
+          <span
+            className="text-sm font-medium text-txt-strong"
+            data-testid="voice-tier-title"
+          >
+            {copy.title}
+          </span>
           <span
             className={cn(
-              "rounded-full px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide",
-              TONE_BADGE_CLASS[copy.tone],
+              "text-[11px] font-medium uppercase tracking-wide",
+              TONE_TEXT_CLASS[copy.tone],
             )}
             data-testid="voice-tier-badge"
           >
             {tier}
           </span>
-          <span
-            className="text-sm font-semibold text-txt"
-            data-testid="voice-tier-title"
-          >
-            {copy.title}
-          </span>
         </div>
         <p
-          className="mt-1 text-xs leading-snug text-txt/85"
+          className="mt-0.5 text-xs leading-snug text-muted"
           data-testid="voice-tier-description"
         >
           {copy.description}
         </p>
         {summary ? (
           <p
-            className="mt-1 text-xs text-muted"
+            className="mt-0.5 text-xs text-muted/80"
             data-testid="voice-tier-summary"
           >
             {summary}
