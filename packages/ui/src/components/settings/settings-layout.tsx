@@ -81,8 +81,12 @@ export function SettingsGroup({
 type SettingsRowTone = "default" | "danger";
 
 export interface SettingsRowProps {
-  /** Leading icon rendered in a neutral medallion. */
-  icon?: LucideIcon;
+  /**
+   * Leading icon rendered in a neutral medallion. Accepts any component that
+   * takes `className`/`aria-hidden` (lucide icons and the generic provider icons
+   * both satisfy this) — the row only passes those two props.
+   */
+  icon?: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
   iconClassName?: string;
   /** Primary label. */
   label: React.ReactNode;
