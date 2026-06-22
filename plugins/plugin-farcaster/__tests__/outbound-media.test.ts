@@ -1,0 +1,110 @@
+import type { Content, IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
+import { FarcasterCastService } from "../services/CastService";
+
+// Outbound media coverage for the Farcaster connector (#8876). Agent-generated
+// `Media` attachments must ride along as Farcaster cast EMBEDS (url-based), which
+// the send path previously dropped (handleSendPost ignored content.attachments
+// and createCast's `media` param was dead). Mocked Neynar client → runs offline.
+
+const agentId = "00000000-0000-0000-0000-000000000001" as const;
+
+function runtime(settings: Record<string, string> = {}): IAgentRuntime {
+  return {
+    agentId,
+    character: { settings: {} },
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    getSetting: vi.fn((key: string) => settings[key] ?? null),
+    createMemory: vi.fn(),
+    useModel: vi.fn(),
+  } as unknown as IAgentRuntime;
+}
+
+function neynarCast(text: string) {
+  return {
+    hash: "0xabc123",
+    thread_hash: "0xabc123",
+    text,
+    timestamp: new Date(1_700_000_000_000).toISOString(),
+    author: { fid: 1, display_name: "Eliza", username: "eliza" },
+  };
+}
+
+function client() {
+  return {
+    getTimeline: vi.fn(async () => ({ timeline: [] })),
+    sendCast: vi.fn(async ({ content }: { content: Content }) => [
+      neynarCast(typeof content.text === "string" ? content.text : ""),
+    ]),
+  };
+}
+
+const ACCOUNT = "brand";
+
+describe("Farcaster outbound media (embeds)", () => {
+  it("sends agent attachments as cast embeds", async () => {
+    const testClient = client();
+    const rt = runtime({ FARCASTER_FID: "1" });
+    const service = new FarcasterCastService(testClient as never, rt, ACCOUNT);
+
+    await service.handleSendPost(rt, {
+      text: "here's the image",
+      accountId: ACCOUNT,
+      attachments: [
+        { id: "img", url: "https://cdn.example.com/cat.png", contentType: "image" },
+        { id: "vid", url: "https://cdn.example.com/clip.mp4", contentType: "video" },
+      ],
+    } as Content);
+
+    expect(testClient.sendCast).toHaveBeenCalledTimes(1);
+    expect(testClient.sendCast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeds: ["https://cdn.example.com/cat.png", "https://cdn.example.com/clip.mp4"],
+      })
+    );
+  });
+
+  it("sends a text-only post without embeds (no regression)", async () => {
+    const testClient = client();
+    const rt = runtime({ FARCASTER_FID: "1" });
+    const service = new FarcasterCastService(testClient as never, rt, ACCOUNT);
+
+    await service.handleSendPost(rt, {
+      text: "just text",
+      accountId: ACCOUNT,
+    } as Content);
+
+    expect(testClient.sendCast).toHaveBeenCalledTimes(1);
+    const arg = testClient.sendCast.mock.calls[0][0] as { embeds?: string[] };
+    expect(arg.embeds).toBeUndefined();
+  });
+
+  it("allows an attachment-only post (no text) instead of rejecting", async () => {
+    const testClient = client();
+    const rt = runtime({ FARCASTER_FID: "1" });
+    const service = new FarcasterCastService(testClient as never, rt, ACCOUNT);
+
+    await service.handleSendPost(rt, {
+      text: "",
+      accountId: ACCOUNT,
+      attachments: [{ id: "img", url: "https://cdn.example.com/cat.png", contentType: "image" }],
+    } as Content);
+
+    expect(testClient.sendCast).toHaveBeenCalledWith(
+      expect.objectContaining({ embeds: ["https://cdn.example.com/cat.png"] })
+    );
+    // Media-only post must NOT auto-generate prose.
+    expect(rt.useModel).not.toHaveBeenCalled();
+  });
+
+  it("still rejects a blank post with neither text nor attachments", async () => {
+    const testClient = client();
+    const rt = runtime({ FARCASTER_FID: "1" });
+    const service = new FarcasterCastService(testClient as never, rt, ACCOUNT);
+
+    await expect(
+      service.handleSendPost(rt, { text: "   ", accountId: ACCOUNT } as Content)
+    ).rejects.toThrow("requires non-empty text");
+    expect(testClient.sendCast).not.toHaveBeenCalled();
+  });
+});
