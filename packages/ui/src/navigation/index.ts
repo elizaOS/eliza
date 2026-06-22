@@ -60,6 +60,7 @@ export type BuiltinTab =
   | "character-select"
   | "inventory"
   | "documents"
+  | "files"
   | "triggers"
   | "plugins"
   | "skills"
@@ -93,6 +94,7 @@ export const APPS_TOOL_TABS = [
   "transcripts",
   "relationships",
   "memories",
+  "files",
   "runtime",
   "database",
   "logs",
@@ -294,6 +296,7 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   triggers: "/automations",
   inventory: "/wallet",
   documents: "/character/documents",
+  files: "/apps/files",
   plugins: "/apps/plugins",
   skills: "/apps/skills",
   advanced: "/apps/fine-tuning",
@@ -373,6 +376,7 @@ const APPS_SUB_TABS: Record<string, Tab> = {
   transcripts: "transcripts",
   relationships: "relationships",
   memories: "memories",
+  files: "files",
   runtime: "runtime",
   database: "database",
   logs: "logs",
@@ -554,6 +558,8 @@ export function titleForTab(tab: Tab): string {
       return "Relationships";
     case "memories":
       return "Memories";
+    case "files":
+      return "Files";
     case "rolodex":
       return "Rolodex";
     case "voice":

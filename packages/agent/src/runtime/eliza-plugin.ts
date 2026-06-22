@@ -26,6 +26,7 @@ import { runtimeAction } from "../actions/runtime.ts";
 import { settingsAction } from "../actions/settings-actions.ts";
 import { terminalAction } from "../actions/terminal.ts";
 import { triggerAction } from "../actions/trigger.ts";
+import { filesRoutes } from "../api/files-routes.ts";
 import {
   mediaFileRoute,
   registerMediaGcTask,
@@ -52,6 +53,7 @@ import { uiCatalogProvider } from "../providers/ui-catalog.ts";
 import { createUserNameProvider } from "../providers/user-name.ts";
 import { createWorkspaceProvider } from "../providers/workspace-provider.ts";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.ts";
+import { LocalFileStorageService } from "../services/file-storage.ts";
 import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
@@ -128,6 +130,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       NotificationPushService as ServiceClass,
       ElizaCharacterPersistenceService as ServiceClass,
       AgentMediaGenerationService as ServiceClass,
+      LocalFileStorageService as ServiceClass,
       PermissionRegistry as ServiceClass,
       KnowledgeGraphService as ServiceClass,
     ],
@@ -220,7 +223,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     // Public media route — only reached on iOS (in-process dispatch, no HTTP
     // server). HTTP platforms serve media via the pre-auth handler in server.ts.
-    routes: [mediaFileRoute],
+    routes: [mediaFileRoute, ...filesRoutes],
 
     actions: [
       terminalAction,

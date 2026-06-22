@@ -159,6 +159,12 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
+    name: "files app window",
+    path: "/apps/files",
+    selector: '[data-testid="files-view"]',
+    timeoutMs: 90_000,
+  },
+  {
     name: "elizamaker app window",
     path: "/apps/elizamaker",
     selector: "#root",
