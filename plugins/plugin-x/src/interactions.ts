@@ -1,7 +1,7 @@
 import {
   ChannelType,
-  composePromptFromState,
   type Content,
+  composePromptFromState,
   createUniqueUuid,
   EventType,
   type HandlerCallback,
@@ -673,10 +673,7 @@ ${tweet.text}`;
       );
       logger.info(`Quoted tweet ${tweet.id}`);
     } catch (error) {
-      logger.error(
-        `Error quoting tweet ${tweet.id}:`,
-        errorMessage(error),
-      );
+      logger.error(`Error quoting tweet ${tweet.id}:`, errorMessage(error));
     }
   }
 

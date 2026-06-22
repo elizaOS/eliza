@@ -24,8 +24,8 @@
  * "this modality should route to Cloud" (the AUTO policy).
  */
 
-import { MODEL_CATALOG } from "./catalog";
 import type { Eliza1TierId } from "./catalog";
+import { MODEL_CATALOG } from "./catalog";
 
 /** The KV-cache quantization eliza-1 always uses on-device (head_dim=256 QJL). */
 export const ELIZA_1_KV_QUANT = "qjl1_256" as const;
@@ -76,7 +76,9 @@ export function selectBestEliza1Fit(freeRamGb: number): Eliza1Fit | null {
   // (≥128k) QJL window, so the first one that fits is the biggest model that
   // still gets its full window.
   const tiers = [...MODEL_CATALOG]
-    .filter((m) => typeof m.minRamGb === "number" && typeof m.sizeGb === "number")
+    .filter(
+      (m) => typeof m.minRamGb === "number" && typeof m.sizeGb === "number",
+    )
     .sort((a, b) => b.minRamGb - a.minRamGb);
 
   for (const tier of tiers) {

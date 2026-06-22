@@ -9,8 +9,12 @@ import {
 
 const sizeOf = (id: string) =>
   MODEL_CATALOG.find((m) => m.id === id)?.minRamGb ?? Number.POSITIVE_INFINITY;
-const biggestTier = [...MODEL_CATALOG].sort((a, b) => b.minRamGb - a.minRamGb)[0];
-const smallestTier = [...MODEL_CATALOG].sort((a, b) => a.minRamGb - b.minRamGb)[0];
+const biggestTier = [...MODEL_CATALOG].sort(
+  (a, b) => b.minRamGb - a.minRamGb,
+)[0];
+const smallestTier = [...MODEL_CATALOG].sort(
+  (a, b) => a.minRamGb - b.minRamGb,
+)[0];
 
 describe("selectBestEliza1Fit — biggest tier that fits, 128k target, QJL always", () => {
   it("picks the biggest tier on a huge device, at its native window", () => {
@@ -55,7 +59,9 @@ describe("selectBestEliza1Fit — biggest tier that fits, 128k target, QJL alway
       expect(fit.reason).toBe("context-downscaled");
       expect(fit.contextDownscaled).toBe(true);
       expect(fit.contextLength).toBeLessThan(ELIZA_1_CONTEXT_TARGET);
-      expect(fit.contextLength).toBeGreaterThanOrEqual(ELIZA_1_MIN_LOCAL_CONTEXT);
+      expect(fit.contextLength).toBeGreaterThanOrEqual(
+        ELIZA_1_MIN_LOCAL_CONTEXT,
+      );
     }
   });
 

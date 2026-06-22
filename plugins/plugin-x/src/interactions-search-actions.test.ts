@@ -1,8 +1,4 @@
-import {
-  type IAgentRuntime,
-  logger,
-  type UUID,
-} from "@elizaos/core";
+import { type IAgentRuntime, logger, type UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client";
