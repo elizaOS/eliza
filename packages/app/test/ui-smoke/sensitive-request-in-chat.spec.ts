@@ -239,6 +239,15 @@ test.describe("chat sensitive request — secret form", () => {
     const status = page.getByTestId("sensitive-request-status").first();
     await expect(status).toContainText("Pending");
 
+    // Open the chat sheet so the form clears the bottom composer (the slim peek
+    // can't fit a full secret-request form — the realistic flow opens the sheet).
+    const grabber = page.getByTestId("chat-sheet-grabber");
+    if ((await grabber.count()) > 0) {
+      await grabber.focus();
+      await page.keyboard.press("ArrowUp");
+      await page.waitForTimeout(400);
+    }
+
     const input = page.getByLabel(SECRET_KEY).first();
     await expect(input).toHaveAttribute("type", "password");
     await input.fill(RAW_SECRET_VALUE);
@@ -283,6 +292,7 @@ test.describe("chat sensitive request — OAuth", () => {
           target: string;
           features: string;
         }>;
+        __sensitiveOauthOpenerNulled?: () => boolean;
         open: typeof window.open;
       };
       win.__sensitiveOauthOpenCalls = [];
@@ -292,7 +302,15 @@ test.describe("chat sensitive request — OAuth", () => {
           target: typeof target === "string" ? target : "",
           features: typeof features === "string" ? features : "",
         });
-        return { closed: false, focus: () => {} } as unknown as Window;
+        // Start with a truthy opener so we can observe the app nulling it (the
+        // noopener-equivalent it applies after open, by design).
+        const popup = {
+          closed: false,
+          focus: () => {},
+          opener: {} as unknown,
+        };
+        win.__sensitiveOauthOpenerNulled = () => popup.opener === null;
+        return popup as unknown as Window;
       }) as typeof window.open;
     });
 
@@ -334,6 +352,14 @@ test.describe("chat sensitive request — OAuth", () => {
       (await page.locator("body").textContent()) ?? "";
     expect(chatTextBeforeClick.includes(OAUTH_URL_SUBSTRING)).toBe(false);
 
+    // Open the chat sheet so the OAuth button clears the bottom composer.
+    const grabber = page.getByTestId("chat-sheet-grabber");
+    if ((await grabber.count()) > 0) {
+      await grabber.focus();
+      await page.keyboard.press("ArrowUp");
+      await page.waitForTimeout(400);
+    }
+
     const button = page.getByTestId("sensitive-request-oauth-start").first();
     await expect(button).toContainText("Connect GitHub");
     await button.click();
@@ -353,8 +379,18 @@ test.describe("chat sensitive request — OAuth", () => {
     );
     expect(openCalls).toHaveLength(1);
     expect(openCalls[0]?.url).toBe(OAUTH_AUTHORIZATION_URL);
-    expect(openCalls[0]?.features).toContain("noopener");
+    // The popup is hardened with `noreferrer` in the features string AND the app
+    // nulls `popup.opener` immediately after open (the deliberate noopener
+    // equivalent — passing `noopener` in features would make window.open return
+    // null and hide a blocked-popup, see SensitiveRequestBlock).
     expect(openCalls[0]?.features).toContain("noreferrer");
+    const openerNulled = await page.evaluate(
+      () =>
+        (
+          window as unknown as { __sensitiveOauthOpenerNulled?: () => boolean }
+        ).__sensitiveOauthOpenerNulled?.() ?? false,
+    );
+    expect(openerNulled).toBe(true);
 
     // After a successful popup open, the button flips to "Authorizing…".
     await expect(button).toContainText(/Authorizing/i, { timeout: 5_000 });
