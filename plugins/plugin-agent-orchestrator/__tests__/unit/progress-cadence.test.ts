@@ -46,11 +46,7 @@ import {
 import { createAgentOrchestratorPlugin } from "../../src/index.js";
 import { AcpService } from "../../src/services/acp-service.js";
 
-type SessionHandler = (
-  sessionId: string,
-  event: string,
-  data: unknown,
-) => void;
+type SessionHandler = (sessionId: string, event: string, data: unknown) => void;
 
 const ROOM = "11111111-2222-3333-4444-555555555555" as const;
 const SOURCE = "discord";
@@ -116,7 +112,9 @@ async function buildHookedRuntime(
     // Return a Memory-like object carrying a platformMessageId so the hook
     // records ProgressState (canEdit / thread caching paths depend on it).
     return {
-      metadata: { platformMessageId: `msg-${sendMessageToTarget.mock.calls.length}` },
+      metadata: {
+        platformMessageId: `msg-${sendMessageToTarget.mock.calls.length}`,
+      },
     };
   });
   const editMessageOnTarget = vi.fn(async () => ({ metadata: {} }));
@@ -192,7 +190,9 @@ async function buildHookedRuntime(
     createThreadOnTarget,
     postToThreadOnTarget,
     addReactionOnTarget,
-  } as unknown as Parameters<NonNullable<ReturnType<typeof createAgentOrchestratorPlugin>["init"]>>[1];
+  } as unknown as Parameters<
+    NonNullable<ReturnType<typeof createAgentOrchestratorPlugin>["init"]>
+  >[1];
 
   const plugin = createAgentOrchestratorPlugin();
   // Guard: the whole test premise is that this build registers the code-exec
@@ -318,7 +318,10 @@ describe("emitProgress routing ladder + cadence", () => {
   it("silent mode posts nothing for any event", async () => {
     process.env.ACPX_PROGRESS_MODE = "silent";
     const rt = await buildHookedRuntime([
-      { source: SOURCE, capabilities: ["edit_message", "create_thread", "post_to_thread"] },
+      {
+        source: SOURCE,
+        capabilities: ["edit_message", "create_thread", "post_to_thread"],
+      },
     ]);
     seedSession(rt, "s-silent", "quiet-task");
 
@@ -400,12 +403,15 @@ describe("emitProgress routing ladder + cadence", () => {
     // First narration: buffer, then flush after the silence window. That first
     // flush posts exactly one main-channel 🚀 message and creates exactly one
     // thread, and immediately posts the narration into that thread.
-    await fire(rt, "s-thread", "message", { text: "Implementing the feature." });
+    await fire(rt, "s-thread", "message", {
+      text: "Implementing the feature.",
+    });
     await vi.advanceTimersByTimeAsync(1_600); // silence-flush window
     for (let i = 0; i < 8; i++) await Promise.resolve();
     expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
-    const spawnText = (rt.sendMessageToTarget.mock.calls[0][1] as { text: string })
-      .text;
+    const spawnText = (
+      rt.sendMessageToTarget.mock.calls[0][1] as { text: string }
+    ).text;
     expect(spawnText).toBe("🚀 [feature-x] running");
     expect(rt.createThreadOnTarget).toHaveBeenCalledTimes(1);
     expect(rt.postToThreadOnTarget).toHaveBeenCalled();

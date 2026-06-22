@@ -1415,7 +1415,10 @@ describe("AcpService", () => {
     // A direct spawnSession with no opts.workdir lands on the configured
     // workspace ROOT, which is now isolated per-session (<root>/task-<id>) so
     // concurrent tasks can't collide — see computeSessionWorkdir.
-    const isolatedCwd = path.resolve(resolvedWorkspaceRoot, `task-${sessionId}`);
+    const isolatedCwd = path.resolve(
+      resolvedWorkspaceRoot,
+      `task-${sessionId}`,
+    );
 
     expect(spawnMock).toHaveBeenCalledWith(
       "acpx",

@@ -25,7 +25,14 @@
 // releases the lock explicitly and asserts ordering rather than sleeping on a
 // wall-clock window.
 
-import { mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";

@@ -22,7 +22,10 @@ type LifecycleRuntime = AgentRuntime & {
 
 const EMPTY_CONFIG = {} as unknown as ElizaConfig;
 
-function resolved(packageName: string, plugin: { name: string; adapter?: unknown }): ResolvedPlugin {
+function resolved(
+  packageName: string,
+  plugin: { name: string; adapter?: unknown },
+): ResolvedPlugin {
   return { name: packageName, plugin: plugin as ResolvedPlugin["plugin"] };
 }
 
@@ -144,7 +147,9 @@ describe("applyPluginRuntimeMutation", () => {
       nextConfig: EMPTY_CONFIG,
       previousResolvedPlugins: [],
       // an adapter plugin is being added → cannot hot-reload, must restart
-      nextResolvedPlugins: [resolved("@elizaos/plugin-sql", { name: "sql", adapter: {} })],
+      nextResolvedPlugins: [
+        resolved("@elizaos/plugin-sql", { name: "sql", adapter: {} }),
+      ],
       reason: "add db adapter",
       restartRuntime,
     });

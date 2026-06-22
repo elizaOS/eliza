@@ -146,9 +146,10 @@ export function resolveSpawnWorkdir(
  * checkout. Falls back to `process.cwd()` only when neither is configured,
  * preserving the run-in-place default for self-checkout workflows.
  */
-function resolveDefaultSpawnWorkdir(
-  runtime: IAgentRuntime | undefined,
-): { workdir: string; isolate: boolean } {
+function resolveDefaultSpawnWorkdir(runtime: IAgentRuntime | undefined): {
+  workdir: string;
+  isolate: boolean;
+} {
   const configured =
     (typeof runtime?.getSetting === "function"
       ? ((runtime.getSetting("ELIZA_ACP_WORKSPACE_ROOT") as

@@ -83,7 +83,9 @@ const nativeClientMock = getNativeMockState();
 
 vi.mock("../../src/services/acp-native-transport.js", () => {
   const state = getNativeMockState();
-  state.NativeAcpClient = class MockNativeAcpClient implements MockNativeClient {
+  state.NativeAcpClient = class MockNativeAcpClient
+    implements MockNativeClient
+  {
     opts: NativeOptions;
     eventHandler?: NativeEventHandler;
     start = vi.fn(async () => undefined);
@@ -571,7 +573,11 @@ describe("model-chooser contract: resolved-tuple snapshot matrix", () => {
   it("matches the frozen (agentType × authMode) → resolved-auth map", async () => {
     const matrix: Record<
       string,
-      { injectedKeys: string[]; injected: Record<string, string>; dropped: string[] }
+      {
+        injectedKeys: string[];
+        injected: Record<string, string>;
+        dropped: string[];
+      }
     > = {};
 
     const record = async (

@@ -22,11 +22,8 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import type { AcpActionService } from "../../src/actions/common.ts";
 import { waitForSpawnSlot } from "../../src/actions/common.ts";
-import type {
-  AcpActionService,
-} from "../../src/actions/common.ts";
 import type { SessionInfo, SessionStatus } from "../../src/services/types.ts";
 
 // ---------------------------------------------------------------------------
@@ -121,7 +118,10 @@ describe("waitForSpawnSlot", () => {
       ]);
 
       // No timers should be needed; resolve without advancing the clock.
-      await waitForSpawnSlot(runtime, service, { pollMs: 1000, maxWaitMs: 5000 });
+      await waitForSpawnSlot(runtime, service, {
+        pollMs: 1000,
+        maxWaitMs: 5000,
+      });
 
       // The gate is disabled, so it must not have polled session state.
       expect(listSpy).not.toHaveBeenCalled();
@@ -188,10 +188,7 @@ describe("waitForSpawnSlot", () => {
       expect(resolved).toBe(false);
 
       // One session terminates: active drops to 1 < limit 2.
-      setSessions([
-        makeSession("completed", "a"),
-        makeSession("busy", "b"),
-      ]);
+      setSessions([makeSession("completed", "a"), makeSession("busy", "b")]);
 
       // Next poll observes the free slot and the promise resolves.
       await vi.advanceTimersByTimeAsync(3000);

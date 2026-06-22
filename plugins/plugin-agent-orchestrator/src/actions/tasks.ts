@@ -556,13 +556,9 @@ async function runCreate(
         workdir: sessionWorkdir,
         route,
         isolate: isolateWorkdir,
-      } = resolveSpawnWorkdir(
-        runtime,
-        task,
-        routingRequest,
-        explicitWorkdir,
-        { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
-      );
+      } = resolveSpawnWorkdir(runtime, task, routingRequest, explicitWorkdir, {
+        lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true,
+      });
       // This path spawns WITHOUT `initialTask` and delivers the task via
       // sendPrompt (smithers or direct), so the AcpService initialTask deploy
       // injection never fires here. Re-attach the contract on the task text

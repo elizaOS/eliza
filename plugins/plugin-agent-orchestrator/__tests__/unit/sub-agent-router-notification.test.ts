@@ -201,7 +201,9 @@ describe("SubAgentRouter notification emission", () => {
 
     // No URLs in the completion text → the reachability verifier never fetches,
     // so this stays a pure, network-free unit test.
-    acp.emit(SESSION_ID, "task_complete", { response: "PR opened and merged." });
+    acp.emit(SESSION_ID, "task_complete", {
+      response: "PR opened and merged.",
+    });
     await flush();
 
     expect(notify).toHaveBeenCalledTimes(1);
@@ -336,7 +338,10 @@ describe("SubAgentRouter notification emission", () => {
     const notify = vi.fn(async () => {
       throw new Error("notification backend offline");
     });
-    const { runtime, handleMessage } = makeRuntime({ acp: acp.service, notify });
+    const { runtime, handleMessage } = makeRuntime({
+      acp: acp.service,
+      notify,
+    });
     const router = await SubAgentRouter.start(runtime);
 
     acp.emit(SESSION_ID, "task_complete", { response: "done despite outage." });
