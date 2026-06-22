@@ -3,7 +3,7 @@ import { transferToConnectAccount } from "@elizaos/cloud-shared/lib/services/str
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
