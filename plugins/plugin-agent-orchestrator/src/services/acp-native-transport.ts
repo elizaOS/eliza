@@ -562,6 +562,16 @@ export class NativeAcpClient {
     return false;
   }
 
+  /** Whether a `session/request_permission` will be auto-approved without user
+   *  interaction — mirrors `resolvePermission`'s decision. AcpService uses this
+   *  to avoid surfacing a phantom "blocked" for a request the transport
+   *  immediately approves under the session's preset. */
+  approvesPermissionRequest(
+    params: Record<string, unknown> | undefined,
+  ): boolean {
+    return this.isOperationApproved(inferToolKind(asRecord(params?.toolCall)));
+  }
+
   private async resolveReadablePath(
     requested: string | undefined,
   ): Promise<string> {
