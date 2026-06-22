@@ -19,6 +19,7 @@ import {
   type IAgentRuntime,
   type Plugin,
   type PluginCallAppBridgeResult,
+  type PluginOwnership,
   type RemotePluginModuleManifest,
   type Service,
   type UUID,
@@ -2214,7 +2215,7 @@ describe("remote plugin adapter", () => {
   it("unloads remote plugins missing from the next manifest", async () => {
     const unloaded: string[] = [];
     const remotePlugin = createRemoteCapabilityPlugin(remoteModule);
-    const remoteOwnership = {
+    const remoteOwnership: PluginOwnership = {
       pluginName: "@remote/demo",
       plugin: remotePlugin,
       registeredPlugin: remotePlugin,
@@ -2225,6 +2226,7 @@ describe("remote plugin adapter", () => {
       events: [],
       models: [],
       services: [],
+      shortcuts: [],
       sendHandlerSources: [],
       hasAdapter: false,
       registeredAt: Date.now(),
