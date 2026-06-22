@@ -103,28 +103,122 @@ function proofDemandFor(criterion: string): string {
 }
 
 /**
+ * Render the explicit evidence checklist appended to every correction. Each
+ * unmet criterion becomes a markdown checkbox the worker MUST return ticked
+ * WITH the artifact pasted next to it, and carries its per-item proof demand
+ * (reusing {@link proofDemandFor}). A ticked box with no pasted artifact is
+ * treated as not done — verification will fail again.
+ */
+function buildEvidenceChecklist(missing: readonly string[]): string {
+  return [
+    "Evidence checklist — return EVERY box ticked WITH the artifact pasted inline (a ticked box and no artifact = not done):",
+    ...missing.map(
+      (criterion) => `- [ ] ${criterion} — proof: ${proofDemandFor(criterion)}`,
+    ),
+  ].join("\n");
+}
+
+/**
  * Compose the corrective message body sent back to a sub-agent when automatic
  * verification did not confirm every acceptance criterion. The
  * goal/acceptance-criteria envelope is re-applied by `buildGoalFollowUp`
  * (reason `validation_failed`); this is just the human-readable gap report.
  *
- * Behaves like a demanding manager: for EACH unmet criterion it names the
- * specific proof the worker must produce and re-report WITH (a passing
- * build/test line, a screenshot for UI, a scenario trajectory for agent
- * behavior, a reachable URL for a deploy), so the next completion arrives with
- * verifiable evidence instead of another plausible-but-unproven claim.
+ * Behaves like a demanding manager whose tone ESCALATES per attempt — a
+ * manager who has been fobbed off twice does not keep asking nicely:
+ *
+ * - **Attempt 1** — collegial: "verification didn't confirm X; here's the
+ *   proof to produce" (the per-criterion proof demands).
+ * - **Attempt 2** — pointed/socratic: direct questions per unmet criterion
+ *   ("which command did you run, and what was its output? Paste it."), and a
+ *   note that a prior attempt already failed.
+ * - **Attempt 3+ (final)** — firm last-chance: this is the final automated
+ *   attempt before the task is parked for a human; every checklist item must be
+ *   proven inline or the task is escalated.
+ *
+ * For EACH unmet criterion it names the specific proof the worker must produce
+ * and re-report WITH (a passing build/test line, a screenshot for UI, a
+ * scenario trajectory for agent behavior, a reachable URL for a deploy), and
+ * appends an explicit {@link buildEvidenceChecklist} the worker must tick with
+ * the artifact, so the next completion arrives with verifiable evidence instead
+ * of another plausible-but-unproven claim.
+ *
+ * @param missing unmet acceptance criteria the verifier could not confirm.
+ * @param attempt 1-based correction attempt (defaults to 1 so callers that
+ *        don't track attempts keep the collegial behavior). Clamped to
+ *        `[1, MAX_AUTO_VERIFY_ATTEMPTS]`; attempt `MAX_AUTO_VERIFY_ATTEMPTS`
+ *        is the final-chance phrasing before escalation to a human.
  */
-export function buildAutoVerifyCorrection(missing: readonly string[]): string {
+export function buildAutoVerifyCorrection(
+  missing: readonly string[],
+  attempt = 1,
+): string {
+  const stage = Math.min(
+    Math.max(Math.trunc(attempt) || 1, 1),
+    MAX_AUTO_VERIFY_ATTEMPTS,
+  );
+  const isFinal = stage >= MAX_AUTO_VERIFY_ATTEMPTS;
+
+  const header: string[] = [];
+  const proofSection: string[] = [];
+  const closing: string[] = [];
+
+  if (stage <= 1) {
+    // Attempt 1 — collegial gap report.
+    header.push(
+      "Automatic verification did not confirm the task is complete. A plausible description is NOT proof — each criterion below is still unproven and must be backed by a concrete artifact.",
+      "",
+      "For EACH unmet acceptance criterion, do the work and then paste the exact proof named:",
+    );
+    proofSection.push(
+      ...missing.map(
+        (criterion) =>
+          `- ${criterion}\n    → proof to produce: ${proofDemandFor(criterion)}`,
+      ),
+    );
+    closing.push(
+      "Then report complete AGAIN, and this time INCLUDE that proof inline in your final message: the actual command output (build/typecheck/test summary lines), screenshot path(s) for any UI, scenario trajectory report path for any agent behavior, and reachable non-loopback URL(s) for anything deployed. Claims without pasted evidence will fail verification again.",
+    );
+  } else if (!isFinal) {
+    // Attempt 2 — pointed, socratic interrogation; call out the prior failure.
+    header.push(
+      `This is attempt ${stage}: your previous "complete" report ALREADY FAILED automatic verification — the same criteria are still unproven. I am not going to take "it works" on faith. Answer these directly, per criterion, with pasted evidence:`,
+      "",
+    );
+    proofSection.push(
+      ...missing.map(
+        (criterion) =>
+          `- ${criterion}\n    → Exactly which command did you run for this, and what was its EXACT output? Paste it. Did you actually open/observe/run it, or did you assume it works? Show: ${proofDemandFor(criterion)}`,
+      ),
+    );
+    closing.push(
+      "Do not re-report complete until you can answer every question above with a pasted artifact. A restatement of what you intended to do is not an answer — I need the actual output, path, or URL.",
+    );
+  } else {
+    // Attempt 3+ — final automated attempt before human escalation.
+    header.push(
+      `FINAL ATTEMPT (attempt ${stage} of ${MAX_AUTO_VERIFY_ATTEMPTS}). Your work has already failed automatic verification twice. This is the LAST automated correction — if the next report is not fully proven, the task is PARKED and ESCALATED to a human, and you do not get another pass.`,
+      "",
+      "Every unmet criterion below MUST be proven INLINE in your next message — no exceptions, no promises of future work:",
+    );
+    proofSection.push(
+      ...missing.map(
+        (criterion) =>
+          `- ${criterion}\n    → REQUIRED proof (paste it or the task is escalated): ${proofDemandFor(criterion)}`,
+      ),
+    );
+    closing.push(
+      'If you cannot produce the proof for a criterion, say so explicitly and explain the blocker — do NOT report complete with the gap unproven. An unproven "complete" report at this stage parks the task for a human.',
+    );
+  }
+
   const lines = [
-    "Automatic verification did not confirm the task is complete. A plausible description is NOT proof — each criterion below is still unproven and must be backed by a concrete artifact.",
+    ...header,
+    ...proofSection,
     "",
-    "For EACH unmet acceptance criterion, do the work and then paste the exact proof named:",
-    ...missing.map(
-      (criterion) =>
-        `- ${criterion}\n    → proof to produce: ${proofDemandFor(criterion)}`,
-    ),
+    ...closing,
     "",
-    "Then report complete AGAIN, and this time INCLUDE that proof inline in your final message: the actual command output (build/typecheck/test summary lines), screenshot path(s) for any UI, scenario trajectory report path for any agent behavior, and reachable non-loopback URL(s) for anything deployed. Claims without pasted evidence will fail verification again.",
+    buildEvidenceChecklist(missing),
   ];
   return lines.join("\n");
 }

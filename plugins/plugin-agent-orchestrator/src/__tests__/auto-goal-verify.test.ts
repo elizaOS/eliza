@@ -190,10 +190,47 @@ describe("auto goal verification on task_complete", () => {
     });
     const lastSent = fake.sent.at(-1);
     expect(lastSent?.text).toContain("tests pass");
+    // First failure → attempt 1 → collegial phrasing + evidence checklist.
+    expect(lastSent?.text).toMatch(/did not confirm the task is complete/);
+    expect(lastSent?.text).toMatch(/Evidence checklist/i);
+    expect(lastSent?.text).not.toMatch(/FINAL ATTEMPT/);
     const doc = await store.getTask(taskId);
     expect(doc?.task.status).toBe("active");
     expect(doc?.task.metadata.autoVerifyAttempts).toBe(1);
     expect(doc?.task.status).not.toBe("done");
+  });
+
+  it("escalates the corrective tone on the second failure (attempt 2)", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    // One prior failed attempt already recorded, so the next correction is
+    // attempt 2 — the call site must pass attempts + 1 to the grill builder.
+    await store.updateTask(taskId, { metadata: { autoVerifyAttempts: 1 } });
+    const runtime = makeRuntime(fake.service, () =>
+      JSON.stringify({
+        passed: false,
+        summary: "still no proof",
+        missing: ["tests pass"],
+      }),
+    );
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: "trust me it works" });
+    await vi.waitFor(() => {
+      expect(fake.service.sendToSession).toHaveBeenCalled();
+    });
+    const lastSent = fake.sent.at(-1);
+    // Pointed/socratic attempt-2 wording, not the attempt-1 collegial message.
+    expect(lastSent?.text).toMatch(/attempt 2/);
+    expect(lastSent?.text).toMatch(/ALREADY FAILED/);
+    expect(lastSent?.text).toMatch(/Exactly which command did you run/);
+    expect(lastSent?.text).toMatch(/Evidence checklist/i);
+    const doc = await store.getTask(taskId);
+    expect(doc?.task.metadata.autoVerifyAttempts).toBe(2);
   });
 
   it("escalates to waiting_on_user after the attempt cap", async () => {

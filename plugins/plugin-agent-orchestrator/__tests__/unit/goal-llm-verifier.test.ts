@@ -12,6 +12,7 @@ import {
   buildAutoVerifyCorrection,
   buildVerificationPrompt,
   LLM_GOAL_VERIFIER_NAME,
+  MAX_AUTO_VERIFY_ATTEMPTS,
   parseJudgeResponse,
   verifyGoalCompletion,
 } from "../../src/services/goal-llm-verifier.js";
@@ -184,6 +185,102 @@ describe("buildAutoVerifyCorrection", () => {
     // Each unmet criterion is listed with its own proof demand.
     expect(text).toContain("- c1");
     expect(text).toContain("- c2");
+  });
+
+  it("defaults to the collegial attempt-1 phrasing when no attempt is passed", () => {
+    const text = buildAutoVerifyCorrection(["tests pass"]);
+    // Attempt-1 wording, identical to the explicit attempt=1 call.
+    expect(text).toBe(buildAutoVerifyCorrection(["tests pass"], 1));
+    // No escalation language at attempt 1.
+    expect(text).not.toMatch(/FINAL ATTEMPT/);
+    expect(text).not.toMatch(/ALREADY FAILED/);
+  });
+
+  describe("escalating grill across attempts", () => {
+    const missing = ["the unit test suite is green", "the docs are updated"];
+
+    it("attempt 1 is collegial — no prior-failure or final-attempt warning", () => {
+      const text = buildAutoVerifyCorrection(missing, 1);
+      expect(text).toMatch(/did not confirm the task is complete/);
+      expect(text).toMatch(/proof to produce:/);
+      expect(text).not.toMatch(/ALREADY FAILED/);
+      expect(text).not.toMatch(/FINAL ATTEMPT/);
+    });
+
+    it("attempt 2 is pointed/socratic — direct questions and a prior-failure callout", () => {
+      const text = buildAutoVerifyCorrection(missing, 2);
+      // Calls out that a prior attempt already failed.
+      expect(text).toMatch(/attempt 2/);
+      expect(text).toMatch(/ALREADY FAILED/);
+      // Direct, socratic questions per criterion.
+      expect(text).toMatch(/Exactly which command did you run/);
+      expect(text).toMatch(/what was its EXACT output\?/);
+      expect(text).toMatch(/did you assume it works\?/i);
+      // Still not the final-attempt phrasing.
+      expect(text).not.toMatch(/FINAL ATTEMPT/);
+    });
+
+    it("attempt 3 (final) warns about escalation to a human before parking", () => {
+      const text = buildAutoVerifyCorrection(missing, 3);
+      expect(text).toMatch(/FINAL ATTEMPT/);
+      expect(text).toMatch(/ESCALATED to a human/);
+      expect(text).toMatch(/PARKED/);
+      expect(text).toMatch(/failed automatic verification twice/);
+    });
+
+    it("attempts 1, 2 and 3 produce DIFFERENT, escalating bodies", () => {
+      const a1 = buildAutoVerifyCorrection(missing, 1);
+      const a2 = buildAutoVerifyCorrection(missing, 2);
+      const a3 = buildAutoVerifyCorrection(missing, 3);
+      expect(a1).not.toBe(a2);
+      expect(a2).not.toBe(a3);
+      expect(a1).not.toBe(a3);
+    });
+
+    it("clamps attempts above the cap to the final-attempt phrasing", () => {
+      const high = buildAutoVerifyCorrection(
+        missing,
+        MAX_AUTO_VERIFY_ATTEMPTS + 5,
+      );
+      const final = buildAutoVerifyCorrection(
+        missing,
+        MAX_AUTO_VERIFY_ATTEMPTS,
+      );
+      expect(high).toBe(final);
+    });
+
+    it("clamps non-positive / non-finite attempts to attempt 1", () => {
+      const a1 = buildAutoVerifyCorrection(missing, 1);
+      expect(buildAutoVerifyCorrection(missing, 0)).toBe(a1);
+      expect(buildAutoVerifyCorrection(missing, -3)).toBe(a1);
+      expect(buildAutoVerifyCorrection(missing, Number.NaN)).toBe(a1);
+    });
+  });
+
+  describe("evidence checklist (every attempt)", () => {
+    const missing = ["tests pass", "the settings page renders the new toggle"];
+
+    for (const attempt of [1, 2, 3]) {
+      it(`attempt ${attempt} appends a checkbox list with one item + proof per unmet criterion`, () => {
+        const text = buildAutoVerifyCorrection(missing, attempt);
+        expect(text).toMatch(/Evidence checklist/i);
+        // One checkbox per unmet criterion, each carrying its proof demand.
+        expect(text).toContain("- [ ] tests pass — proof: ");
+        expect(text).toContain(
+          "- [ ] the settings page renders the new toggle — proof: ",
+        );
+        // The proof demand is the same one proofDemandFor produces (UI → screenshot).
+        const checklistLine = text
+          .split("\n")
+          .find((l) =>
+            l.includes("the settings page renders the new toggle — proof:"),
+          );
+        expect(checklistLine).toMatch(/screenshot/i);
+        // Exactly one checkbox per criterion (no duplicates / extras).
+        const boxes = text.split("\n").filter((l) => l.startsWith("- [ ] "));
+        expect(boxes).toHaveLength(missing.length);
+      });
+    }
   });
 });
 

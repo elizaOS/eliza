@@ -1512,7 +1512,10 @@ export class OrchestratorTaskService extends Service {
         await this.sendToTaskAgent(
           taskId,
           sessionId,
-          buildAutoVerifyCorrection(verdict.missing),
+          // Escalate the grill per attempt: `attempts` is the count of prior
+          // failures, so `attempts + 1` is this correction's 1-based stage
+          // (matches the persisted autoVerifyAttempts bump above).
+          buildAutoVerifyCorrection(verdict.missing, attempts + 1),
           "validation_failed",
         );
         await this.store.updateTask(taskId, { status: "active" });
