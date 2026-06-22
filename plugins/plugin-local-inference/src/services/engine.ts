@@ -40,16 +40,11 @@ import {
 } from "./conversation-registry";
 import { desktopFusedFfiBackendRuntime } from "./desktop-fused-ffi-backend-runtime";
 import { FfiStreamingBackend } from "./ffi-streaming-backend";
-import { GenericGgufBackend } from "./generic-gguf-backend";
 import { estimateDecodeTokens, recordDecodeThroughput } from "./live-signals";
 import { MemoryMonitor } from "./memory-monitor";
 import { listInstalledModels } from "./registry";
 import { resolveDefaultPoolSize } from "./session-pool";
-import {
-	classifyCatalogModelRuntimeClass,
-	classifyInstalledModelRuntimeClass,
-	type InstalledModel,
-} from "./types";
+import type { InstalledModel } from "./types";
 import type { CoordinatorRuntime } from "./voice/cancellation-coordinator";
 import {
 	createKokoroSpeakerPreset,
@@ -290,19 +285,10 @@ export class LocalInferenceEngine {
 	private readonly ffiBackend = new FfiStreamingBackend(
 		desktopFusedFfiBackendRuntime,
 	);
-	/**
-	 * Generic single-file GGUF runtime — the explicit-`modelPath` path for a
-	 * non-Eliza-1 model the user downloaded/scanned. Serves text on platforms
-	 * with the explicit-path binding (mobile capacitor); on desktop it reports
-	 * unavailable and the dispatcher raises a typed error rather than
-	 * mis-loading an arbitrary GGUF through the bundle-locked fused path.
-	 */
-	private readonly genericBackend = new GenericGgufBackend();
 	private readonly dispatcher = new BackendDispatcher(
 		this.ffiBackend,
 		() => desktopFusedFfiBackendRuntime.supported(),
 		() => null,
-		this.genericBackend,
 	);
 	/**
 	 * Active voice-streaming bridge (`EngineVoiceBridge`). Only set when an
@@ -517,7 +503,7 @@ export class LocalInferenceEngine {
 		return this.dispatcher.hasLoadedModel();
 	}
 
-	activeBackendId(): "capacitor-llama" | "llama-cpp" | "generic-gguf" | null {
+	activeBackendId(): "llama-cpp" | null {
 		return this.dispatcher.activeBackendId();
 	}
 
@@ -575,29 +561,15 @@ export class LocalInferenceEngine {
 		// behaviour of trusting catalog defaults inside the backend.
 		const overrides = resolved ? toBackendLoadOverrides(resolved) : undefined;
 
-		// Resolve the model class so the dispatcher routes to the fused Eliza-1
-		// runtime or the generic single-file GGUF runtime. The installed-model
-		// `runtimeClass` field is authoritative (an external GGUF has no catalog
-		// entry); fall back to classifying the catalog entry for direct bundle
-		// loads not present in the registry.
-		const runtimeClass = target
-			? classifyInstalledModelRuntimeClass(target)
-			: catalog
-				? classifyCatalogModelRuntimeClass(catalog)
-				: undefined;
-
 		const plan: BackendPlan = {
 			modelPath,
 			modelId,
 			catalog,
-			...(runtimeClass ? { runtimeClass } : {}),
 			overrides,
 		};
 
-		// The dispatcher routes by `runtimeClass`: fused libelizainference for an
-		// Eliza-1 bundle, the explicit-`modelPath` generic runtime for a single
-		// downloaded/scanned GGUF. A load failure surfaces directly — there is no
-		// silent fall-through between the two classes.
+		// The local stack is Eliza-1 only: the dispatcher routes every load to the
+		// fused libelizainference runtime. A load failure surfaces directly.
 		await this.dispatcher.load(plan);
 		this.startBackgroundManagement();
 	}

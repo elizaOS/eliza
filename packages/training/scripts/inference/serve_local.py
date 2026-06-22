@@ -105,80 +105,34 @@ def main() -> int:
         log.info("applying PolarQuant weights from %s", args.polarquant)
         apply_sidecar_to_model(model, Path(args.polarquant))
 
-    # KV-cache backend selection.
-    # FLAGGED DEAD CODE (Gemma 4 cutover): the hybrid (linear+full) attention
-    # KV path below is dead under Gemma 4's dense attention — it was needed for
-    # the old hybrid-attention base whose linear-attention layers crashed HF's
-    # parent Cache.has_previous_state. ElizaHybridCache + has_hybrid_layer_types
-    # never fire on a dense Gemma 4 model. Owner: delete the is_hybrid branch and
-    # the inference.hybrid_cache dependency.
-    from inference.hybrid_cache import has_hybrid_layer_types, make_hybrid_cache
-
+    # KV-cache backend selection. Gemma 4 is dense (MQA + windowed-SWA +
+    # shared-KV), so the cache is always flat: a TurboQuant/fused-TurboQuant
+    # KV cache when a legacy KV recipe is passed, otherwise stock attention.
     past_key_values = None
-    is_hybrid = has_hybrid_layer_types(model)
 
-    if is_hybrid:
-        # Decide the full-attention backend from the CLI flags. fused_turboquant
-        # wins over plain turboquant (Triton-fused vs pure-PyTorch). QJL
-        # without fused_turboquant means QJL on K + bf16 V — we don't expose
-        # that variant here; --qjl always implies qjl_full (K+V quantized).
-        if args.qjl:
-            backend = "qjl_full"
-            ft_cfg = json.loads(Path(args.fused_turboquant).read_text()) \
-                if args.fused_turboquant else {}
-            qjl_cfg = json.loads(Path(args.qjl).read_text())
-            past_key_values = make_hybrid_cache(
-                model, full_attn_backend=backend,
-                bits=ft_cfg.get("bits", args.bits),
-                compress_v=ft_cfg.get("compress_v", True),
-                qjl_value_bits=qjl_cfg.get("value_bits", 4),
-            )
-        elif args.fused_turboquant:
-            ft_cfg = json.loads(Path(args.fused_turboquant).read_text())
-            past_key_values = make_hybrid_cache(
-                model, full_attn_backend="fused_turboquant",
-                bits=ft_cfg.get("bits", args.bits),
-                compress_v=ft_cfg.get("compress_v", True),
-            )
-        elif args.turboquant:
-            log.warning(
-                "--turboquant (pure-PyTorch) on a hybrid model "
-                "is not supported because TurboQuantCache is layer-flat. "
-                "Falling back to bf16 hybrid cache; pass --fused-turboquant "
-                "for the Triton-fused path."
-            )
-            past_key_values = make_hybrid_cache(model, full_attn_backend="bf16")
-        else:
-            past_key_values = make_hybrid_cache(model, full_attn_backend="bf16")
-        log.info("hybrid cache: backend=%s, %d total layers (%d full-attn)",
-                 past_key_values.full_attn_backend,
-                 len(past_key_values.layer_types),
-                 sum(1 for t in past_key_values.layer_types if t == "full_attention"))
-    else:
-        # Legacy non-hybrid path: keep the existing flat-cache behavior.
-        if args.fused_turboquant:
-            from quantization.fused_turboquant_vendored.hf import (
-                patch_model as _ft_patch,
-            )
-            log.info("loading fused-turboquant config from %s", args.fused_turboquant)
-            cfg = json.loads(Path(args.fused_turboquant).read_text())
-            past_key_values = _ft_patch(
-                model, bits=cfg.get("bits", args.bits),
-                head_dim=cfg.get("head_dim"),
-                compress_v=cfg.get("compress_v", True),
-            )
-        elif args.turboquant:
-            from turboquant import TurboQuantCache
-            log.info("loading TurboQuant cache config from %s", args.turboquant)
-            cfg = json.loads(Path(args.turboquant).read_text())
-            past_key_values = TurboQuantCache(
-                config=model.config.get_text_config(decoder=True),
-                nbits=cfg.get("nbits", 4),
-                base_seed=cfg.get("base_seed", 0),
-                skip_layers=set(cfg.get("skip_layers", [])),
-                residual_length=cfg.get("residual_length", 0),
-            )
-        if args.qjl and past_key_values is not None:
+    if args.fused_turboquant:
+        from quantization.fused_turboquant_vendored.hf import (
+            patch_model as _ft_patch,
+        )
+        log.info("loading fused-turboquant config from %s", args.fused_turboquant)
+        cfg = json.loads(Path(args.fused_turboquant).read_text())
+        past_key_values = _ft_patch(
+            model, bits=cfg.get("bits", args.bits),
+            head_dim=cfg.get("head_dim"),
+            compress_v=cfg.get("compress_v", True),
+        )
+    elif args.turboquant:
+        from turboquant import TurboQuantCache
+        log.info("loading TurboQuant cache config from %s", args.turboquant)
+        cfg = json.loads(Path(args.turboquant).read_text())
+        past_key_values = TurboQuantCache(
+            config=model.config.get_text_config(decoder=True),
+            nbits=cfg.get("nbits", 4),
+            base_seed=cfg.get("base_seed", 0),
+            skip_layers=set(cfg.get("skip_layers", [])),
+            residual_length=cfg.get("residual_length", 0),
+        )
+    if args.qjl and past_key_values is not None:
             log.info("applying QJL 1-bit key compression from %s", args.qjl)
             try:
                 from quantization.qjl_apply import attach_qjl_to_cache

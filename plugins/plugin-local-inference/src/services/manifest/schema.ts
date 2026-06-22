@@ -116,28 +116,41 @@ export const ELIZA_1_BACKENDS = [
 ] as const;
 export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
-// Required-kernel set per tier. Mirrors the active Eliza-1 release policy:
-// - All tiers require the TurboQuant text-weight kernels.
-// - All current text GGUFs ship at the 128k half-context floor or the 262k
-//   native tier, so every tier requires `turbo3_tcq`. The validator also
-//   enforces the same requirement dynamically for any bundle that declares
-//   a >64k text file, so additional tiers cannot publish long-context text
-//   without TCQ.
-// - QJL/Polar KV-cache kernels are intentionally not required for the shipped
-//   Gemma 4 tiers: those head_dim=128 kernels do not apply to Gemma's MQA
-//   geometry (n_head_kv=1) with dual head dims (512 global / 256 SWA). Gemma 4
-//   uses stock q8_0 KV.
-//
-// Q4 is the release text quant baseline. TCQ is part of the release contract
-// for the full text ladder, including the smallest 2B bundle.
+// Required-kernel set per tier. Mirrors the active Gemma 4 Eliza-1 release
+// policy:
+// - Every tier requires only the geometry-agnostic GGUF weight-quant
+//   (`turboquant_q4`). Weight quant operates on (out_features, in_features)
+//   matmul tensors and is independent of attention head geometry, so it
+//   applies to Gemma's dense MQA backbone unchanged.
+// - The KV-cache kernels (`qjl`, `polarquant`, `turbo3_tcq`, and the
+//   `turbo3`/`turbo4` runtime handles) are 128-element FWHT-group kernels
+//   that are head_dim-coupled. They do NOT match Gemma's MQA geometry
+//   (n_head_kv=1) with dual head dims (512 global / 256 SWA), so Gemma 4
+//   ships stock q8_0 KV and these kernels are OPTIONAL, never required.
+//   They stay compiled into the shared lib for the legacy Qwen tiers and the
+//   shared OmniVoice/ASR FFI symbols, but no Gemma tier declares them
+//   required.
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-	"2b": ["turboquant_q4", "turbo3_tcq"],
-	"4b": ["turboquant_q4", "turbo3_tcq"],
-	"9b": ["turboquant_q4", "turbo3_tcq"],
-	"27b": ["turboquant_q4", "turbo3_tcq"],
-	"27b-256k": ["turboquant_q4", "turbo3_tcq"],
+	"2b": ["turboquant_q4"],
+	"4b": ["turboquant_q4"],
+	"9b": ["turboquant_q4"],
+	"27b": ["turboquant_q4"],
+	"27b-256k": ["turboquant_q4"],
+};
+
+// KV-cache kernels that remain available but are NOT required for any Gemma 4
+// tier (head_dim=128/FWHT-group coupled; Gemma uses stock q8_0 KV). Surfaced
+// as the optional kernel set for every tier.
+export const OPTIONAL_KERNELS_BY_TIER: Readonly<
+	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
+> = {
+	"2b": ["qjl", "polarquant", "turbo3_tcq"],
+	"4b": ["qjl", "polarquant", "turbo3_tcq"],
+	"9b": ["qjl", "polarquant", "turbo3_tcq"],
+	"27b": ["qjl", "polarquant", "turbo3_tcq"],
+	"27b-256k": ["qjl", "polarquant", "turbo3_tcq"],
 };
 
 // Backends each tier is expected to support on shipped hardware.

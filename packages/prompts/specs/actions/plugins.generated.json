@@ -402,7 +402,7 @@
     },
     {
       "name": "BROWSER",
-      "description": "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab.",
+      "description": "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
       "parameters": [
         {
           "name": "target",
@@ -449,8 +449,25 @@
               "realistic_press",
               "cursor_move",
               "cursor_hide",
-              "autofill_login"
+              "autofill_login",
+              "wait_for_url"
             ]
+          }
+        },
+        {
+          "name": "pattern",
+          "description": "For action=wait_for_url: substring or /regex/ to match the tab URL (e.g. callback?code=, or /\\/done$/).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "pollIntervalMs",
+          "description": "For action=wait_for_url: poll cadence in ms. Default 2000.",
+          "required": false,
+          "schema": {
+            "type": "number"
           }
         },
         {
@@ -599,7 +616,7 @@
           }
         }
       ],
-      "descriptionCompressed": "Browser open|navigate|click|type|screenshot|state|autofill_login; bridge status elsewhere",
+      "descriptionCompressed": "Browser open|navigate|click|type|screenshot|state|autofill_login|wait_for_url; bridge status elsewhere",
       "similes": [
         "BROWSE_SITE",
         "BROWSER_SESSION",
@@ -626,6 +643,8 @@
             "BROWSER": {
               "target": "example",
               "action": "back",
+              "pattern": "example",
+              "pollIntervalMs": 1,
               "tabAction": "close",
               "domain": "example",
               "username": "example",
@@ -1143,6 +1162,15 @@
             "minimum": 1,
             "maximum": 20
           }
+        },
+        {
+          "name": "streamProgress",
+          "description": "Post a chat message after each step so long goals aren't silent.",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
         }
       ],
       "descriptionCompressed": "Autonomous desktop loop: scene → Brain → cascade → click. Pass {goal, maxSteps?}.",
@@ -1154,7 +1182,8 @@
           "params": {
             "COMPUTER_USE_AGENT": {
               "goal": "example",
-              "maxSteps": 5
+              "maxSteps": 5,
+              "streamProgress": false
             }
           }
         }
@@ -5640,7 +5669,7 @@
       "parameters": [
         {
           "name": "action",
-          "description": "Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.",
+          "description": "Operation: list, get, search, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.",
           "required": true,
           "schema": {
             "type": "string",
@@ -5661,6 +5690,14 @@
               "diagnose",
               "eval_samples"
             ]
+          }
+        },
+        {
+          "name": "query",
+          "description": "Free text to match a workflow by name / node type for action=search.",
+          "required": false,
+          "schema": {
+            "type": "string"
           }
         },
         {
@@ -5780,6 +5817,7 @@
           "params": {
             "WORKFLOW": {
               "action": "list",
+              "query": "example",
               "workflowId": "example",
               "executionId": "example",
               "workflowName": "example",

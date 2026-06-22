@@ -47,6 +47,10 @@ export {
   reservedHeadroomGb,
 } from "./gpu-profiles.js";
 export {
+  type HfDownloadBase,
+  resolveHfDownloadBase,
+} from "./hf-proxy.js";
+export {
   hasHuggingFaceToken,
   isHuggingFaceHost,
   resolveHubAuthHeaders,

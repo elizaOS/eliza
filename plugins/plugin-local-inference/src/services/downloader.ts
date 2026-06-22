@@ -27,7 +27,7 @@ import {
 	buildHuggingFaceResolveUrlForPath,
 	findCatalogModel,
 	isDefaultEligibleId,
-	resolveHubAuthHeaders,
+	resolveHfDownloadBase,
 } from "./catalog";
 import { deviceCapsFromProbe, probeHardware } from "./hardware";
 import {
@@ -570,7 +570,7 @@ export class Downloader {
 
 			const headers: Record<string, string> = {
 				"user-agent": "Eliza-LocalInference/1.0",
-				...resolveHubAuthHeaders(url),
+				...resolveHfDownloadBase().authHeader,
 			};
 			if (startByte > 0) {
 				headers.range = `bytes=${startByte}-`;
@@ -637,13 +637,15 @@ export class Downloader {
 			// HTML login/error body, which would otherwise be renamed `<id>.gguf`
 			// and registered as an installed model. Reject anything that is not a
 			// real GGUF before it enters the registry, and point the user at the
-			// likely cause (a missing/expired HuggingFace token).
+			// likely cause (gated bundles resolve through the Eliza Cloud HF
+			// proxy, so the device must be linked to Eliza Cloud).
 			if (!(await hasGgufMagic(record.finalPath))) {
 				await fsp.rm(record.finalPath, { force: true }).catch(() => undefined);
 				throw new Error(
 					`Downloaded file for ${catalogEntry.hfRepo ?? catalogEntry.id} is not a valid GGUF ` +
-						"(it looks like an auth/redirect page, not a model). If the repo is gated, " +
-						"add a HuggingFace token (HF_TOKEN) and retry.",
+						"(it looks like an auth/redirect page, not a model). If the bundle is gated, " +
+						"link this device to Eliza Cloud and retry — gated downloads route through " +
+						"the cloud HuggingFace proxy.",
 				);
 			}
 
@@ -879,7 +881,7 @@ export class Downloader {
 		const url = buildHuggingFaceResolveUrlForPath(catalogEntry, remotePath);
 		const headers: Record<string, string> = {
 			"user-agent": "Eliza-LocalInference/1.0",
-			...resolveHubAuthHeaders(url),
+			...resolveHfDownloadBase().authHeader,
 		};
 		if (startByte > 0) {
 			headers.range = `bytes=${startByte}-`;

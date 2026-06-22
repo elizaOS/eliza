@@ -7,7 +7,6 @@ tuple. Stack composition assembled from:
     - vLLM optimization guide     (docs.vllm.ai/en/stable/configuration/optimization/)
     - vLLM Speculative Decoding   (docs.vllm.ai/en/v0.10.1/features/spec_decode.html)
     - vLLM PR #38479              (turboquant_*_nc kv-cache-dtype family)
-    - vLLM Expert Parallel        (docs.vllm.ai/.../expert_parallel_deployment/)
     - z-lab MTP                (arXiv:2602.06036) — opt-in drafter, AEON-7 fork
     - Speculators v0.3.0          (blog.vllm.ai/2025/12/13/speculators-v030.html)
 
@@ -22,24 +21,17 @@ What this DOES NOT do:
       that path entirely with PagedAttention + continuous batching +
       CUDA graphs and recovers more than that win for free.
     - Touch QJL. vLLM's KV manager rejects QJL because the JL sketch
-      amplifies variance through softmax (vLLM #38171 thread). QJL stays
-      on the HF ElizaHybridCache path; vLLM gets TurboQuant for both K
-      and V via the merged turboquant_4bit_nc dtype. (3bit_nc is also
-      available but costs ~20pp on GSM8K vs ~3% PPL for 4bit_nc; we
-      default to 4-bit. See /tmp/turboquant_v_reconcile.md.)
+      amplifies variance through softmax (vLLM #38171 thread). vLLM gets
+      TurboQuant for both K and V via the merged turboquant_4bit_nc dtype.
+      (3bit_nc is also available but costs ~20pp on GSM8K vs ~3% PPL for
+      4bit_nc; we default to 4-bit. See /tmp/turboquant_v_reconcile.md.)
 
 Usage:
     # eliza-1-2b on a single GPU (workstation tier, debugging / local serving)
     uv run --extra serve python scripts/inference/serve_vllm.py \\
         --registry-key gemma4-e2b --port 8000
 
-    # eliza-1-4b on a 24 GB workstation GPU, EAGLE-3 drafter
-    uv run --extra serve python scripts/inference/serve_vllm.py \\
-        --registry-key gemma4-e4b \\
-        --eagle3 RedHatAI/Qwen3.5-4B-EAGLE3-head \\
-        --port 8000
-
-    # eliza-1-4b with MTP drafter (AEON-7 fork required)
+    # eliza-1-4b with the official Gemma 4 separate MTP drafter (AEON-7 fork)
     ELIZA_VLLM_MTP=1 \\
     uv run --extra serve python scripts/inference/serve_vllm.py \\
         --registry-key gemma4-e4b \\
@@ -50,10 +42,9 @@ Usage:
     uv run --extra serve python scripts/inference/serve_vllm.py \\
         --registry-key gemma4-e4b --dry-run
 
-The MoE expert-parallel + qwen3_next_mtp + --language-model-only branches
-are kept intact for forward compatibility with future MoE entries (gated on
-``extra['moe_active_b']`` in the registry); they're inert for the current
-dense-only eliza-1 lineup.
+Gemma 4 is dense, so MTP speculative decoding uses an official SEPARATE
+drafter GGUF (`--mtp`); there is no MoE expert-parallel or implicit
+qwen3_next_mtp path.
 """
 
 from __future__ import annotations
@@ -90,7 +81,6 @@ log = logging.getLogger("serve_vllm")
 GPU_TARGETS: dict[str, dict] = {
     "h200-2x": {
         "tp": 2,
-        "ep": 2,  # MoE-only; ignored for dense
         "gpu_memory_utilization": 0.92,
         "default_weight_quant": "fp8",  # block-wise FP8 W8A8 on Hopper
         # turboquant_4bit_nc, not 3bit. Per PR #38479 numbers (Qwen3-4B):
@@ -103,7 +93,6 @@ GPU_TARGETS: dict[str, dict] = {
     },
     "h100-2x": {
         "tp": 2,
-        "ep": 2,
         "gpu_memory_utilization": 0.92,
         "default_weight_quant": "fp8",
         "default_kv_cache_dtype": "turboquant_4bit_nc",
@@ -111,7 +100,6 @@ GPU_TARGETS: dict[str, dict] = {
     },
     "h200-4x": {
         "tp": 4,
-        "ep": 4,
         "gpu_memory_utilization": 0.92,
         "default_weight_quant": "fp8",
         "default_kv_cache_dtype": "turboquant_4bit_nc",
@@ -119,7 +107,6 @@ GPU_TARGETS: dict[str, dict] = {
     },
     "blkw6000-2x": {
         "tp": 2,
-        "ep": 2,
         "gpu_memory_utilization": 0.90,
         # FP8 wheels for sm_120 are spotty; AWQ-Marlin works everywhere.
         "default_weight_quant": "awq_marlin",
@@ -131,7 +118,6 @@ GPU_TARGETS: dict[str, dict] = {
     },
     "blkw6000-4x": {
         "tp": 4,
-        "ep": 4,
         "gpu_memory_utilization": 0.90,
         "default_weight_quant": "awq_marlin",
         "default_kv_cache_dtype": "fp8_e4m3",
@@ -139,7 +125,6 @@ GPU_TARGETS: dict[str, dict] = {
     },
     "b200-2x": {
         "tp": 2,
-        "ep": 2,
         "gpu_memory_utilization": 0.93,
         "default_weight_quant": "fp8",
         "default_kv_cache_dtype": "turboquant_4bit_nc",
@@ -147,7 +132,6 @@ GPU_TARGETS: dict[str, dict] = {
     },
     "single": {  # local debug, anything 1-GPU
         "tp": 1,
-        "ep": 1,
         "gpu_memory_utilization": 0.85,
         "default_weight_quant": None,
         "default_kv_cache_dtype": None,
@@ -183,24 +167,19 @@ def _detect_default_target() -> str:
     return "single"
 
 
-def _is_moe(entry) -> bool:
-    """Registry entries set extra['moe_active_b'] for MoE models."""
-    return "moe_active_b" in entry.extra
-
-
 def _build_speculative_config(
     *,
     eagle3_path: str | None,
     mtp_path: str | None,
-    mtp_native: bool,
     num_speculative_tokens: int,
 ) -> dict | None:
     """Pick exactly one drafter. They are mutually exclusive at runtime.
 
+    Gemma 4 ships an official SEPARATE drafter for MTP speculative decoding.
+
     Priority (highest first):
       1. Explicit --mtp (requires ELIZA_VLLM_MTP=1 + vllm-mtp fork)
       2. Explicit --eagle3 (works on stock vLLM; needs a per-model EAGLE3 head)
-      3. Implicit qwen3_next_mtp on MoE models that ship an MTP head
     """
     if mtp_path:
         if os.environ.get("ELIZA_VLLM_MTP") not in ("1", "true", "yes"):
@@ -222,59 +201,17 @@ def _build_speculative_config(
             "num_speculative_tokens": num_speculative_tokens or 3,
             "draft_tensor_parallel_size": 1,  # EAGLE-3 cannot TP
         }
-    if mtp_native:
-        return {
-            "method": "qwen3_next_mtp",
-            "num_speculative_tokens": num_speculative_tokens or 2,
-        }
     return None
-
-
-# FLAGGED DEAD CODE (Gemma 4 cutover): Gemma 4 is dense, not hybrid, so the
-# eliza-1 series no longer matches a hybrid arch. The eliza-1 prefix is removed
-# from this list so the Gemma 4 base is not mis-flagged. Owner: delete
-# _is_hybrid_qwen and its single call site once the hybrid vLLM workaround is
-# fully retired.
-_HYBRID_QWEN_PREFIXES: tuple[str, ...] = ()
-
-
-def _is_hybrid_qwen(model_id: str) -> bool:
-    """Legacy hybrid-attention detector. Always False under the dense Gemma 4
-    base; retained only until the hybrid vLLM workaround is removed."""
-    return any(model_id.startswith(p) for p in _HYBRID_QWEN_PREFIXES)
 
 
 def build_command(args, *, entry) -> list[str]:
     """Assemble the canonical `vllm serve` argv list for the given args."""
     target = GPU_TARGETS[args.gpu_target]
-    is_moe = _is_moe(entry)
 
     model_id = args.model or entry.hf_id
     weight_quant = args.quantization or target["default_weight_quant"]
     kv_dtype = args.kv_cache_dtype or target["default_kv_cache_dtype"]
     max_model_len = args.max_model_len or (entry.infer_max_in + entry.infer_max_out)
-
-    # Safety gate against omlx#825: MTP drafter + APC + Qwen3.5/Qwen3.6 hybrid
-    # attention is a known failure surface (linear-attn conv_state/ssm_state
-    # don't replay correctly on prefix-cache hits, breaks tool calling). If
-    # all three are set without an explicit acknowledgement that A/B parity
-    # has been verified for this serve, default APC OFF.
-    drafter_active = (
-        bool(args.mtp) or bool(args.eagle3) or (is_moe and args.use_mtp_native)
-    )
-    if (
-        args.enable_prefix_caching
-        and drafter_active
-        and _is_hybrid_qwen(model_id)
-        and os.environ.get("ELIZA_APC_DRAFTER_VERIFIED") not in ("1", "true", "yes")
-    ):
-        log.warning(
-            "APC + drafter on a Qwen3.5/Qwen3.6 hybrid model is gated by "
-            "omlx#825 — disabling --enable-prefix-caching for this serve. "
-            "Run scripts/inference/test_apc_mtp_tool_calls.py against "
-            "this build, then set ELIZA_APC_DRAFTER_VERIFIED=1 to re-enable."
-        )
-        args.enable_prefix_caching = False
 
     cmd: list[str] = [
         "vllm",
@@ -297,16 +234,8 @@ def build_command(args, *, entry) -> list[str]:
         # --calculate-kv-scales rules:
         #   * turboquant_*  - NEVER add. Scales are deterministic per-block
         #                     (amax/1.51), no calibration needed.
-        #   * fp8_*         - add ONLY for non-hybrid attention models.
-        #                     vllm#37554: --calculate-kv-scales on hybrid
-        #                     attention + recurrent (Qwen3.5 GDN) breaks
-        #                     under prefix caching because the recurrent
-        #                     state isn't profiled the same way.
-        if (
-            "fp8" in kv_dtype
-            and "turboquant" not in kv_dtype
-            and not _is_hybrid_qwen(model_id)
-        ):
+        #   * fp8_*         - add for the dense Gemma 4 attention path.
+        if "fp8" in kv_dtype and "turboquant" not in kv_dtype:
             cmd += ["--calculate-kv-scales"]
 
     # Prefix caching + chunked prefill — V1 defaults plus tunings from the
@@ -326,9 +255,7 @@ def build_command(args, *, entry) -> list[str]:
     #      cache reuse across requests is byte-correct.
     # If we ever switch to a kv-cache-dtype that uses runtime / per-batch
     # calibration scales, REVISIT — APC will silently merge cache lines that
-    # have different decode-time scales. Specifically, do NOT combine
-    # --enable-prefix-caching with --calculate-kv-scales on hybrid attention
-    # + recurrent models (vllm#37554) on FP8.
+    # have different decode-time scales.
     if args.enable_prefix_caching:
         cmd += [
             "--enable-prefix-caching",
@@ -356,25 +283,10 @@ def build_command(args, *, entry) -> list[str]:
         ),
     ]
 
-    # Expert parallel + EPLB for MoE. EPLB redistributes tokens across hot
-    # experts; --num-redundant-experts replicates them to flatten imbalance.
-    if is_moe:
-        cmd += [
-            "--enable-expert-parallel",
-            "--enable-eplb",
-            "--num-redundant-experts",
-            str(args.num_redundant_experts),
-        ]
-        if args.language_model_only:
-            # A3B HF class is multimodal; this skips the vision encoder for
-            # text-only deploys and reclaims its KV budget.
-            cmd += ["--language-model-only"]
-
     # Speculative decoder. Mutually exclusive — pick one.
     spec_cfg = _build_speculative_config(
         eagle3_path=args.eagle3,
         mtp_path=args.mtp,
-        mtp_native=is_moe and args.use_mtp_native,
         num_speculative_tokens=args.num_speculative_tokens,
     )
     if spec_cfg is not None:
@@ -470,10 +382,7 @@ def main() -> int:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Hash 16-token blocks of the prefix; reuse across "
-        "requests. Caveat: known omlx#825 bug — prefix-cache + "
-        "Qwen3.5 hybrid attention + drafter can break tool "
-        "calling on cache hits. A/B test before enabling on "
-        "production agent traffic.",
+        "requests.",
     )
     ap.add_argument(
         "--prefix-block-size",
@@ -515,32 +424,22 @@ def main() -> int:
     ap.add_argument(
         "--eagle3",
         default=None,
-        help="HF id or local path to a Qwen3.5-EAGLE3 head. "
-        "Stock vLLM, ~2x decode speedup. Mutually exclusive "
-        "with --mtp and --use-mtp-native.",
+        help="HF id or local path to an EAGLE3 head. "
+        "Stock vLLM, ~2x decode speedup. Mutually exclusive with --mtp.",
     )
     ap.add_argument(
         "--mtp",
         default=None,
-        help="HF id or local path to a z-lab/...-MTP drafter. "
-        "Requires the AEON-7 vllm-mtp fork "
+        help="HF id or local path to the official Gemma 4 separate MTP "
+        "drafter. Requires the AEON-7 vllm-mtp fork "
         "(set ELIZA_VLLM_MTP=1 to acknowledge). 2.5-6x "
         "decode on greedy code/math; ~2.75x on prose.",
-    )
-    ap.add_argument(
-        "--use-mtp-native",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="On MoE models that ship an MTP head, use "
-        "method=qwen3_next_mtp by default. Disable to opt "
-        "out (e.g. when the MTP head is broken on your "
-        "vLLM build).",
     )
     ap.add_argument(
         "--num-speculative-tokens",
         type=int,
         default=0,
-        help="0 = method-specific default (15 mtp, 3 eagle3, 2 mtp).",
+        help="0 = method-specific default (15 mtp, 3 eagle3).",
     )
     ap.add_argument(
         "--entropix",
@@ -548,21 +447,6 @@ def main() -> int:
         help="Enable entropix logits-processor plugin. NOT compatible with "
         "EAGLE-3/MTP drafter (drafter cannot predict the forced-clarifier "
         "branch; spec-decode acceptance collapses). Hard error if combined.",
-    )
-
-    # MoE-specific.
-    ap.add_argument(
-        "--num-redundant-experts",
-        type=int,
-        default=8,
-        help="EPLB redundancy. Drop to 0 if VRAM-bound.",
-    )
-    ap.add_argument(
-        "--language-model-only",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Skip the multimodal vision encoder branch on A3B-class "
-        "models for text-only serving (frees its KV budget).",
     )
 
     # Tool / reasoning parsers — Qwen3-canonical.
@@ -602,11 +486,9 @@ def main() -> int:
         ap.error("--eagle3 and --mtp are mutually exclusive — pick one.")
 
     entry = registry_get(args.registry_key)
-    if args.entropix and (
-        args.eagle3 or args.mtp or (_is_moe(entry) and args.use_mtp_native)
-    ):
+    if args.entropix and (args.eagle3 or args.mtp):
         ap.error(
-            "--entropix is incompatible with --eagle3/--mtp/--use-mtp-native: "
+            "--entropix is incompatible with --eagle3/--mtp: "
             "entropix's HELV branch flips the argmax, and EAGLE-3/MTP drafters "
             "cannot predict that, so spec-decode acceptance collapses to ~1/K. "
             "Drop the drafter or drop --entropix."

@@ -15,6 +15,7 @@
  * remains custom/opt-in and never enters first-run or default eligibility.
  */
 
+import { resolveHfDownloadBase } from "./hf-proxy.js";
 import type {
   CatalogModel,
   CatalogQuantizationId,
@@ -617,9 +618,7 @@ export function buildHuggingFaceResolveUrlForPath(
       .join("/");
     return `${base}/models/${model.hfRepo}/resolve/master/${encodedPath}`;
   }
-  const base =
-    process.env.ELIZA_HF_BASE_URL?.trim().replace(/\/+$/, "") ||
-    "https://huggingface.co";
+  const { base } = resolveHfDownloadBase();
   const encodedPath = pathWithPrefix
     .split("/")
     .map((segment) => encodeURIComponent(segment))

@@ -26,6 +26,7 @@ export {
 	isDefaultEligibleId,
 	isHuggingFaceHost,
 	MODEL_CATALOG,
+	resolveHfDownloadBase,
 	resolveHubAuthHeaders,
 	resolveHuggingFaceToken,
 } from "@elizaos/shared";

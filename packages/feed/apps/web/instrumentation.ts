@@ -30,6 +30,7 @@ export async function register() {
       ReputationService,
       createNotification,
       logDevCredentials,
+      configureAgentSessionStore,
     } = await import("@feed/api");
     const { createSentryApiRouteCapture } = await import(
       "./src/lib/sentry/api-route-capture"
@@ -43,6 +44,11 @@ export async function register() {
     // Log development credentials at startup (only in dev mode)
     // This makes it easy for developers to authenticate with admin APIs
     logDevCredentials();
+
+    // Back agent sessions with Redis when available so they are shared across
+    // web replicas (an agent authenticated on one instance is recognized on any
+    // other). Non-blocking; falls back to the in-memory store if Redis is down.
+    void configureAgentSessionStore();
 
     // Initialize agent service container with required services
     // Uses globalThis to persist across module instances

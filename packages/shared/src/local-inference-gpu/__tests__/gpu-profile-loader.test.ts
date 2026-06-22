@@ -109,7 +109,7 @@ describe("gpu-profile YAML files", () => {
     );
   });
 
-  it("profiles include only the active Qwen3.5 release bundles", () => {
+  it("profiles include only the active Gemma 4 release bundles", () => {
     for (const id of ALL_IDS) {
       const profile = loadProfile(id);
       expect(Object.keys(profile.bundle_recommendations).sort()).toEqual(
