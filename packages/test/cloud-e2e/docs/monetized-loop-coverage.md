@@ -34,7 +34,7 @@ honest scaffold (green-but-skipped), never mock assertions masquerading as real.
 | e | `apps.monetization.update` | **covered** | scaffold (skipped) | `PUT …/monetization` enables markup + purchase share; `GET …/monetization` reads back `monetizationEnabled: true`. |
 | f | Charge (paid inference billing) | **covered** | scaffold (skipped) | deterministic ledger effects: org debit (`creditsService.deductCredits`) + matching creator earnings ledger entry (`redeemableEarningsService.addEarnings`). A REAL-LLM charge (end-user org debit + creator markup via Cerebras) is covered by [`creator-monetization-journey.spec.ts`](../tests/creator-monetization-journey.spec.ts) behind `CEREBRAS_API_KEY`. |
 | g | Autoscale (daemon-driven) | **covered** | scaffold (skipped) | `node-autoscale` cron tick is observable, and the `agent-hot-pool` daemon cron tick **alone** replenishes the warm pool to its target (`replenishWarmPool`) — no test-enqueued provision job. The real Hetzner node `initializing → running` transition is asserted in step (c). |
-| h | Payout (fiat) | **deferred** | deferred | redeemable balance asserted as the payout-readiness proxy; the actual fiat transfer is **skipped** (`test.skip`) — see #8922 below. No fiat payout mechanism exists today (only Solana/EVM on-chain redemption). |
+| h | Payout (fiat) | **covered** | scaffold (skipped) | the redeemable balance is the payout-readiness proxy, and a dedicated test exercises the full Stripe Connect fiat withdrawal: onboarding → account.updated webhook → ledger debit → transfer → **balance draws down by exactly the payout**, plus the compensating refund on a simulated Stripe failure and the `payout.paid` webhook. Runs against the live PGlite DB + real ledger/repo/service; only the Stripe SDK boundary is mocked (the injectable client). See #8922 below. |
 
 ## Dependencies
 
@@ -57,14 +57,20 @@ a `DAEMON_TICK_MS` cadence (default 15s, fires once immediately). The pool is
 then maintained by the daemon, not by test-enqueued ticks, so the loop can
 assert daemon-driven pool maintenance over time. Timers are cleared on shutdown.
 
-### #8922 — Stripe Connect fiat payout
+### #8922 — Stripe Connect fiat payout ✅ implemented + e2e-covered
 
-There is **no fiat transfer mechanism** in this codebase — earnings redeem only
-via Solana/EVM on-chain transfer. #8922 would add the Stripe Connect path
-(connect-account onboarding → payout request → balance locked → fiat transfer
-settled → balance drawn down). Until it lands, step (h) asserts the redeemable
-balance as the payout-readiness proxy and the actual transfer is a clearly
-annotated `test.skip` — **no Stripe transfer is faked**.
+The Stripe Connect rail is implemented: the onboarding / transfer / webhook
+routes (`packages/cloud-api/v1/earnings/payout/stripe-connect/*`), the
+SDK-agnostic payout service (`stripe-connect-payout.ts`), the accounts repo +
+schema + migration `0150`. The transfer route is admin-gated and runs a
+compensating saga (validate → debit ledger → transfer → re-credit on failure)
+with a Stripe idempotency key. Step (h)'s dedicated test exercises that flow
+end-to-end against the live DB — onboarding, the `account.updated`/`payout.paid`
+webhook mappings, the ledger draw-down, and the failure-path refund — with only
+the Stripe SDK boundary mocked via the injectable `StripeConnectClient` (the same
+seam the route's `requireStripe()` fills). No real money moves; nothing is faked
+beyond the SDK call. Follow-up (tracked on #8922): a dedicated `payout` ledger
+entry type — the balance math is already correct, only the entry label differs.
 
 ### Nightly live-infra driver (#8935 follow-up)
 
