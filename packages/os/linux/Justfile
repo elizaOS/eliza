@@ -235,6 +235,13 @@ nspawn:
 boot:
     scripts/boot-qemu.sh
 
+# Boot the latest built ISO headlessly and prove the bundled agent comes up
+# and can run a minimal offline coding task inside the VM. Self-skips (exit 0)
+# when there is no ISO / no qemu / no reachable in-VM ssh channel, so it is
+# safe to call unconditionally; a real in-VM failure on a present ISO exits 1.
+coding-smoke iso="":
+    scripts/coding-smoke.sh "{{iso}}"
+
 # Write the latest built USB image to a removable USB device with guard rails.
 usb-write device:
     scripts/usb-write.sh "{{device}}"
