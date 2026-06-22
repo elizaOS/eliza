@@ -44,7 +44,9 @@ describe("memory benchmark report", () => {
 		const twoB = plan.find((model) => model.modelId === "eliza-1-2b");
 		expect(twoB?.installed).toBe(true);
 		expect(twoB?.selectedByDeviceFit).toBe(true);
-		expect(twoB?.plannedKvQuant).toBe("qjl1_256");
+		// Gemma 4 cutover: KV is stock q8_0 (Gemma's MQA + windowed-SWA +
+		// shared-KV is already minimal; the head_dim=128 QJL kernel is retired).
+		expect(twoB?.plannedKvQuant).toBe("q8_0");
 		expect(twoB?.estimatedResidentMb).toBeGreaterThan(0);
 
 		const larger = plan.find((model) => model.modelId === "eliza-1-9b");
