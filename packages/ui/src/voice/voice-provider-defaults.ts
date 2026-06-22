@@ -11,9 +11,12 @@
  *     phones — see `selectVoiceBackend({ mobile: true })`). ASR still routes
  *     to Eliza Cloud (`eliza-cloud`) because on-device speech recognition is
  *     heavier than TTS.
- *   - Cloud agents (any device) → always Eliza Cloud.
- *   - Remote-controller surfaces (UI hitting a remote API base) → Eliza
- *     Cloud, same rationale as cloud agents.
+ *   - Cloud agents (any device) → fast free Microsoft Edge neural TTS
+ *     (`edge`) for speech, Eliza Cloud (`eliza-cloud`) for ASR. ElevenLabs is
+ *     no longer a default — it is slow and key-gated; users can still opt into
+ *     it from the advanced voice picker.
+ *   - Remote-controller surfaces (UI hitting a remote API base) → same as
+ *     cloud agents (`edge` TTS, Eliza Cloud ASR).
  *
  * The picker is intentionally a pure function so it can be unit-tested
  * exhaustively. The React hook wrapper lives in
@@ -47,11 +50,13 @@ export function pickDefaultVoiceProvider(
 ): DefaultVoiceProviderResult {
   const { platform, runtimeMode } = input;
 
-  // Cloud / remote: cloud everything, regardless of which device drives
-  // the UI. The agent isn't on this machine; we always route audio to the
-  // server's cloud-backed pipelines.
+  // Cloud / remote: the agent isn't on this machine, so speech can't run
+  // on-device. Default to the fast, free Microsoft Edge neural voices
+  // (`edge`) rather than the slow, key-gated ElevenLabs path, and route ASR
+  // to Eliza Cloud. The user can still opt back into ElevenLabs in advanced
+  // settings.
   if (runtimeMode === "cloud" || runtimeMode === "remote") {
-    return { tts: "elevenlabs", asr: "eliza-cloud" };
+    return { tts: "edge", asr: "eliza-cloud" };
   }
 
   // Local / local-only: split by platform. Desktop has the CPU/GPU budget
@@ -66,5 +71,7 @@ export function pickDefaultVoiceProvider(
     return { tts: "local-inference", asr: "eliza-cloud" };
   }
 
-  return { tts: "elevenlabs", asr: "eliza-cloud" };
+  // Web shell hosting a local agent: no on-device audio runtime, so use the
+  // fast free Edge neural voices for TTS and Eliza Cloud for ASR.
+  return { tts: "edge", asr: "eliza-cloud" };
 }

@@ -102,6 +102,7 @@ import {
 	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../runtime/planner-loop";
+import { privateActionAllowedOnTurn } from "../runtime/private-action-gate";
 import {
 	buildResponseGrammar,
 	buildSpanSamplerPlan,
@@ -2339,6 +2340,11 @@ async function collectV5PlannerCandidateActions(args: {
 	): Promise<boolean> => {
 		const normalizedName = normalizeActionIdentifier(action.name);
 		if (!normalizedName || seen.has(normalizedName)) {
+			return false;
+		}
+		// Private actions are reserved for the agent's own autonomous loop and
+		// must never be exposed to the planner on a user-driven turn.
+		if (!privateActionAllowedOnTurn(action, args.message)) {
 			return false;
 		}
 		if (

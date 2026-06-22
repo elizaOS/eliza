@@ -48,6 +48,11 @@ function getMessageText(message: Memory): string {
 	return typeof text === "string" ? text : "";
 }
 
+function getMessageSource(message: Memory): string {
+	const source = message.content?.source;
+	return typeof source === "string" && source.length > 0 ? source : "unknown";
+}
+
 function extractUrls(text: string): string[] {
 	const matches = text.match(URL_REGEX);
 	if (!matches) {
@@ -222,6 +227,7 @@ async function persistLink(
 	link: LinkRecord,
 ): Promise<void> {
 	const text = link.summary || link.title || link.url;
+	const platform = getMessageSource(message);
 	const memory: Memory = {
 		id: asUUID(v4()),
 		entityId: runtime.agentId,
@@ -231,13 +237,15 @@ async function persistLink(
 			text,
 			type: "link",
 			source: EVALUATOR_SOURCE,
+			platform,
 			url: link.url,
 		},
 		metadata: {
 			type: MemoryType.CUSTOM,
 			source: EVALUATOR_SOURCE,
+			platform,
 			sourceId: message.id,
-			tags: ["link", "auto_capture"],
+			tags: ["link", "auto_capture", `platform:${platform}`],
 			url: link.url,
 			title: link.title,
 			summary: link.summary,

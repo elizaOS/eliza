@@ -15,7 +15,11 @@ Auto-enabled when `config.connectors.x` (or legacy `config.connectors.twitter`) 
 - `XService` (`serviceType = "x"`) — Core service. Starts `TwitterClientInstance` per account; registers the X message connector (DMs) and post connector (public feed) with the runtime; manages per-account client lifecycle.
 - `XWorkflowCredentialProvider` (`serviceType = "workflow_credential_provider"`) — Supplies OAuth 1.0a credentials (`twitterApi` credential type) to the workflow plugin. Only supports `twitterApi`; does not support `twitterOAuth2Api`.
 
-**No actions, providers, or evaluators** are registered.
+**Providers** (registered in `XPlugin.providers`):
+
+- `xIdentityProvider` (`name = "TWITTER_IDENTITY"`) — Makes the agent aware of its own X account: `@username`, screen name (display name), bio, and any configured nicknames. Reads the already-loaded `client.profile` via `XService.getActiveProfile()`; never issues a network call and returns empty context until the X client has authenticated. Nicknames are sourced from the `TWITTER_NICKNAMES` setting plus the character `name`.
+
+**No actions or evaluators** are registered.
 
 **Connectors registered at runtime startup** (inside `XService.start`):
 
@@ -37,10 +41,11 @@ plugins/plugin-x/
     constants.ts                   Shared string constants
     templates.ts                   LLM prompt templates for post/interaction generation
     post.ts                        TwitterPostClient — autonomous tweet generation loop
-    interactions.ts                TwitterInteractionClient — mention/reply polling loop
-    timeline.ts                    TwitterTimelineClient — home timeline action loop (like/retweet/quote)
+    interactions.ts                TwitterInteractionClient — mention/reply polling loop; search-discovered target-user/timeline engagement (like/retweet/quote/reply)
+    timeline.ts                    TwitterTimelineClient — home/following feed action loop (like/retweet/quote/reply); interprets tweet media (image/gif/video) via IMAGE_DESCRIPTION before deciding/replying
     discovery.ts                   TwitterDiscoveryClient — autonomous follow/like/reply discovery loop
     lifeops-message-adapter.ts     LifeOps BaseMessageAdapter adapter — bridges XService DM send/list to the LifeOps message-adapter interface
+    identity-provider.ts           xIdentityProvider (TWITTER_IDENTITY) — surfaces the agent's own username/screen name/bio/nicknames into prompt context
     connector-account-provider.ts  ConnectorAccountProvider impl; bridges env-mode + OAuth PKCE to ConnectorAccountManager
     connector-credential-refs.ts   Persists connector credential references into runtime cache
     workflow-credential-provider.ts XWorkflowCredentialProvider service
@@ -114,6 +119,7 @@ All vars are read via `getSetting(runtime, key)` which checks `runtime.getSettin
 | `TWITTER_ENABLE_ACTIONS` | No | `false` | Enable timeline action loop (like/retweet/quote) |
 | `TWITTER_ENABLE_DISCOVERY` | No | `false` | Enable discovery loop (follows + engagement) |
 | `TWITTER_TARGET_USERS` | No | `""` | Comma-separated usernames to target; empty = all; `*` = all |
+| `TWITTER_NICKNAMES` | No | `""` | Comma-separated nicknames/aliases the agent answers to; surfaced via the `TWITTER_IDENTITY` provider |
 | `TWITTER_RETRY_LIMIT` | No | `5` | Max retries on failed operations |
 | `TWITTER_POST_INTERVAL` | No | `120` | Fixed minutes between posts when MIN/MAX not set |
 | `TWITTER_POST_INTERVAL_MIN` | No | `90` | Minimum minutes between posts |
@@ -164,4 +170,4 @@ All vars are read via `getSetting(runtime, key)` which checks `runtime.getSettin
 - **Multi-account**: use `TWITTER_ACCOUNTS` (JSON) or add accounts via the ConnectorAccountManager HTTP surface. All methods on `XService` accept an `accountId` parameter. The default account is `TWITTER_DEFAULT_ACCOUNT_ID` (default: `"default"`).
 - **`XWorkflowCredentialProvider`** only resolves `twitterApi` (OAuth 1.0a). Attempting to use `twitterOAuth2Api` with env-mode credentials will silently fail at workflow execution time.
 - **twitter-api-v2** is the sole external Twitter API dep. Check its types and docs when adding new API calls.
-- **No actions or providers** are registered by this plugin; all agent-facing behavior goes through message/post connector handlers.
+- **One provider** (`TWITTER_IDENTITY`) is registered to make the agent aware of its own X identity; no actions or evaluators are registered. All other agent-facing behavior goes through message/post connector handlers.
