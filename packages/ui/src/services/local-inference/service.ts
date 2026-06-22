@@ -171,10 +171,8 @@ export class LocalInferenceService {
     return null;
   }
 
-  async startDownload(
-    modelIdOrSpec: string | CatalogModel,
-  ): Promise<DownloadJob> {
-    return this.downloader.start(modelIdOrSpec);
+  async startDownload(modelId: string): Promise<DownloadJob> {
+    return this.downloader.start(modelId);
   }
 
   async startSmallerFallbackDownload(
