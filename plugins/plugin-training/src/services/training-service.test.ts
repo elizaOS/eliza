@@ -16,7 +16,8 @@ const buildBundleMock = vi.fn(
 );
 
 vi.mock("../core/trajectory-export-bundle.js", () => ({
-  buildTrajectoryExportBundle: (args: unknown) => buildBundleMock(args as never),
+  buildTrajectoryExportBundle: (args: unknown) =>
+    buildBundleMock(args as never),
 }));
 
 vi.mock("../core/privacy-filter.js", () => ({

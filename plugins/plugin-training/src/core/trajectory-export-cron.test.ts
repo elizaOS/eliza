@@ -69,15 +69,13 @@ describe("runNightlyTrajectoryExport paging", () => {
     const TOTAL = 1_250; // spans 3 pages (500 + 500 + 250)
     const service = makePagingService(TOTAL);
     const runtime = {
-      getService: (name: string) =>
-        name === "trajectories" ? service : null,
+      getService: (name: string) => (name === "trajectories" ? service : null),
     };
 
     const outputRoot = await makeTempDir();
-    const report = await runNightlyTrajectoryExport(
-      runtime as never,
-      { outputRoot },
-    );
+    const report = await runNightlyTrajectoryExport(runtime as never, {
+      outputRoot,
+    });
 
     expect(report).not.toBeNull();
     // every eligible trajectory was pulled — not capped at the first 500
@@ -97,8 +95,7 @@ describe("runNightlyTrajectoryExport paging", () => {
     const service = makePagingService(TOTAL);
     const warn = vi.fn();
     const runtime = {
-      getService: (name: string) =>
-        name === "trajectories" ? service : null,
+      getService: (name: string) => (name === "trajectories" ? service : null),
       logger: { info: vi.fn(), warn, error: vi.fn(), debug: vi.fn() },
     };
 

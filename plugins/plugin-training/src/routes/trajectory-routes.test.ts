@@ -293,15 +293,12 @@ describe("trajectory routes", () => {
       createdAt: new Date(1_700_000_000_000 + index).toISOString(),
       // The needle lives in the persisted step content (steps_json) of one
       // row at index 550 — well past the legacy 500-row in-memory window.
-      searchHaystack: index === 550 ? `user asked about ${NEEDLE}` : "unrelated",
+      searchHaystack:
+        index === 550 ? `user asked about ${NEEDLE}` : "unrelated",
     }));
 
     const listTrajectories = vi.fn(
-      async (options: {
-        limit?: number;
-        offset?: number;
-        search?: string;
-      }) => {
+      async (options: { limit?: number; offset?: number; search?: string }) => {
         const limit = options.limit ?? 50;
         const offset = options.offset ?? 0;
         const needle = options.search?.toLowerCase();

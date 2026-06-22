@@ -126,7 +126,10 @@ export class TrainingService implements TrainingServiceWithRuntime {
       const page = await service.listTrajectories({ limit: pageLimit, offset });
       items.push(...page.trajectories);
       offset += page.trajectories.length;
-      if (page.trajectories.length < pageLimit || page.trajectories.length === 0)
+      if (
+        page.trajectories.length < pageLimit ||
+        page.trajectories.length === 0
+      )
         break;
     }
 

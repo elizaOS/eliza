@@ -23,15 +23,29 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { matchViewCommand } from "../../plugin-app-control/src/actions/view-command-matcher.ts";
 import { resolveIntentView } from "../../plugin-app-control/src/actions/views-show.ts";
 import { extractPlannerView } from "../src/optimizers/scoring.ts";
 
 // Navigable view ids exposed to the planner (domain surfaces + common builtins).
 const VIEW_IDS = [
-  "chat", "settings", "calendar", "inbox", "wallet", "finances", "focus",
-  "goals", "health", "todos", "documents", "relationships", "companion",
-  "task-coordinator", "help", "character", "automations", "none",
+  "chat",
+  "settings",
+  "calendar",
+  "inbox",
+  "wallet",
+  "finances",
+  "focus",
+  "goals",
+  "health",
+  "todos",
+  "documents",
+  "relationships",
+  "companion",
+  "task-coordinator",
+  "help",
+  "character",
+  "automations",
+  "none",
 ] as const;
 
 // The set the deterministic resolveIntentView override knows about — landing on
@@ -67,25 +81,72 @@ const CASES: Case[] = [
   { prompt: "open my goals", expected: "goals", kind: "direct" },
   { prompt: "show my companion", expected: "companion", kind: "direct" },
   // passive intent (no show-verb)
-  { prompt: "what's on my schedule today", expected: "calendar", kind: "passive" },
+  {
+    prompt: "what's on my schedule today",
+    expected: "calendar",
+    kind: "passive",
+  },
   { prompt: "check my messages", expected: "inbox", kind: "passive" },
   { prompt: "my crypto balance", expected: "wallet", kind: "passive" },
-  { prompt: "how much did i spend on subscriptions", expected: "finances", kind: "passive" },
-  { prompt: "i need to focus and block distractions", expected: "focus", kind: "passive" },
+  {
+    prompt: "how much did i spend on subscriptions",
+    expected: "finances",
+    kind: "passive",
+  },
+  {
+    prompt: "i need to focus and block distractions",
+    expected: "focus",
+    kind: "passive",
+  },
   { prompt: "how did i sleep last night", expected: "health", kind: "passive" },
-  { prompt: "who do i know at acme corp", expected: "relationships", kind: "passive" },
+  {
+    prompt: "who do i know at acme corp",
+    expected: "relationships",
+    kind: "passive",
+  },
   { prompt: "change my preferences", expected: "settings", kind: "passive" },
   // contextual (situation implies a view)
-  { prompt: "i need to fix the login bug in my app", expected: "task-coordinator", kind: "contextual" },
-  { prompt: "let's build a new feature for my app", expected: "task-coordinator", kind: "contextual" },
+  {
+    prompt: "i need to fix the login bug in my app",
+    expected: "task-coordinator",
+    kind: "contextual",
+  },
+  {
+    prompt: "let's build a new feature for my app",
+    expected: "task-coordinator",
+    kind: "contextual",
+  },
   // multilingual
-  { prompt: "muéstrame mi calendario", expected: "calendar", kind: "multilingual", language: "es" },
-  { prompt: "abre mi correo", expected: "inbox", kind: "multilingual", language: "es" },
-  { prompt: "我的钱包", expected: "wallet", kind: "multilingual", language: "zh" },
+  {
+    prompt: "muéstrame mi calendario",
+    expected: "calendar",
+    kind: "multilingual",
+    language: "es",
+  },
+  {
+    prompt: "abre mi correo",
+    expected: "inbox",
+    kind: "multilingual",
+    language: "es",
+  },
+  {
+    prompt: "我的钱包",
+    expected: "wallet",
+    kind: "multilingual",
+    language: "zh",
+  },
   // negatives (must NOT navigate)
-  { prompt: "what's the weather like today", expected: "none", kind: "negative" },
+  {
+    prompt: "what's the weather like today",
+    expected: "none",
+    kind: "negative",
+  },
   { prompt: "tell me a joke", expected: "none", kind: "negative" },
-  { prompt: "what is the capital of France", expected: "none", kind: "negative" },
+  {
+    prompt: "what is the capital of France",
+    expected: "none",
+    kind: "negative",
+  },
 ];
 
 // Resolve the grid axes for a case, applying the documented defaults.
@@ -103,7 +164,7 @@ const SYSTEM_PROMPT = [
   "You route a user's chat message to an app view, or reply normally.",
   `Available views: ${VIEW_IDS.filter((v) => v !== "none").join(", ")}.`,
   "If the message asks to open/show/go to a view, or the situation clearly calls for one, respond with action VIEWS and the best matching view id.",
-  "If it's small talk, a general question, or no view clearly helps, respond with action REPLY and view \"none\".",
+  'If it\'s small talk, a general question, or no view clearly helps, respond with action REPLY and view "none".',
   'Respond ONLY as compact JSON: {"action": "VIEWS" or "REPLY", "view": "<one listed view id or none>"}.',
 ].join("\n");
 
@@ -122,7 +183,10 @@ const MODEL_LABEL = process.env.MODEL_LABEL ?? "local";
 const MODEL_NAME = process.env.MODEL_NAME ?? "eliza-1";
 const MODEL_KEY = process.env.MODEL_KEY ?? "sk-no-key";
 
-async function postChat(prompt: string, structured: boolean): Promise<Response> {
+async function postChat(
+  prompt: string,
+  structured: boolean,
+): Promise<Response> {
   const body: Record<string, unknown> = {
     model: MODEL_NAME,
     messages: [
@@ -141,12 +205,17 @@ async function postChat(prompt: string, structured: boolean): Promise<Response> 
   }
   return fetch(`${MODEL_URL}/chat/completions`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${MODEL_KEY}` },
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${MODEL_KEY}`,
+    },
     body: JSON.stringify(body),
   });
 }
 
-async function callModel(prompt: string): Promise<{ action: string; view: string; raw: string }> {
+async function callModel(
+  prompt: string,
+): Promise<{ action: string; view: string; raw: string }> {
   let res = await postChat(prompt, true);
   // Some providers reject json_schema response_format — retry unconstrained and
   // rely on the system-prompt JSON instruction + loose extraction.
@@ -164,7 +233,10 @@ async function callModel(prompt: string): Promise<{ action: string; view: string
     view = String(parsed.view ?? "none").toLowerCase();
   } catch {
     const ev = extractPlannerView(content);
-    if (ev) { view = ev; action = "VIEWS"; }
+    if (ev) {
+      view = ev;
+      action = "VIEWS";
+    }
   }
   return { action, view, raw: content };
 }
@@ -331,10 +403,18 @@ function anyFloorConfigured(floors: AccuracyFloors): boolean {
 }
 
 async function main() {
-  console.log(`[verify] model=${MODEL_LABEL} url=${MODEL_URL} name=${MODEL_NAME}`);
+  console.log(
+    `[verify] model=${MODEL_LABEL} url=${MODEL_URL} name=${MODEL_NAME}`,
+  );
   const rows: Array<{
-    c: Case; action: string; modelView: string; landed: string;
-    actionOk: boolean; rawViewOk: boolean; landedOk: boolean; err?: string;
+    c: Case;
+    action: string;
+    modelView: string;
+    landed: string;
+    actionOk: boolean;
+    rawViewOk: boolean;
+    landedOk: boolean;
+    err?: string;
   }> = [];
   for (const c of CASES) {
     try {
@@ -342,17 +422,39 @@ async function main() {
       const landed = landedView(c.prompt, action, view);
       const expectNav = c.expected !== "none";
       const actionOk = expectNav ? action === "VIEWS" : action === "REPLY";
-      const rawViewOk = expectNav ? view === c.expected : (action === "REPLY" || view === "none");
+      const rawViewOk = expectNav
+        ? view === c.expected
+        : action === "REPLY" || view === "none";
       const landedOk = landed === c.expected;
-      rows.push({ c, action, modelView: view, landed, actionOk, rawViewOk, landedOk });
-      console.log(`  [${landedOk ? "PASS" : "FAIL"}] ${c.kind.padEnd(12)} "${c.prompt}" → action=${action} view=${view} landed=${landed} (want ${c.expected})`);
+      rows.push({
+        c,
+        action,
+        modelView: view,
+        landed,
+        actionOk,
+        rawViewOk,
+        landedOk,
+      });
+      console.log(
+        `  [${landedOk ? "PASS" : "FAIL"}] ${c.kind.padEnd(12)} "${c.prompt}" → action=${action} view=${view} landed=${landed} (want ${c.expected})`,
+      );
     } catch (e) {
-      rows.push({ c, action: "ERR", modelView: "", landed: "", actionOk: false, rawViewOk: false, landedOk: false, err: String(e) });
+      rows.push({
+        c,
+        action: "ERR",
+        modelView: "",
+        landed: "",
+        actionOk: false,
+        rawViewOk: false,
+        landedOk: false,
+        err: String(e),
+      });
       console.log(`  [ERR ] ${c.prompt}: ${e}`);
     }
   }
   const n = rows.length;
-  const sum = (k: "actionOk" | "rawViewOk" | "landedOk") => rows.filter((r) => r[k]).length;
+  const sum = (k: "actionOk" | "rawViewOk" | "landedOk") =>
+    rows.filter((r) => r[k]).length;
   // Per-kind accuracy on the two most regression-prone axes: direct "open X"
   // commands (must land) and negatives (must NOT navigate).
   const accuracyOver = (predicate: (r: (typeof rows)[number]) => boolean) => {
@@ -364,14 +466,19 @@ async function main() {
   const directAccuracy = accuracyOver((r) => r.c.kind === "direct");
   const negativeControlPrecision = accuracyOver((r) => r.c.kind === "negative");
   const summary = {
-    model: MODEL_LABEL, modelName: MODEL_NAME, url: MODEL_URL, total: n,
+    model: MODEL_LABEL,
+    modelName: MODEL_NAME,
+    url: MODEL_URL,
+    total: n,
     actionAccuracy: sum("actionOk") / n,
     rawViewAccuracy: sum("rawViewOk") / n,
     landedAccuracy: sum("landedOk") / n,
     directAccuracy,
     negativeControlPrecision,
   };
-  console.log(`\n[verify] ${MODEL_LABEL}: action ${sum("actionOk")}/${n} | rawView ${sum("rawViewOk")}/${n} | LANDED ${sum("landedOk")}/${n}`);
+  console.log(
+    `\n[verify] ${MODEL_LABEL}: action ${sum("actionOk")}/${n} | rawView ${sum("rawViewOk")}/${n} | LANDED ${sum("landedOk")}/${n}`,
+  );
 
   const grid = buildResultGrid(
     rows.map((r) => ({
@@ -385,14 +492,48 @@ async function main() {
   const outDir = path.join(process.cwd(), "output", "view-switching-verify");
   mkdirSync(outDir, { recursive: true });
   const stamp = MODEL_LABEL.replace(/[^a-z0-9_-]/gi, "_");
-  writeFileSync(path.join(outDir, `report-${stamp}.json`), JSON.stringify({ summary, rows: rows.map((r) => ({ ...r.c, action: r.action, modelView: r.modelView, landed: r.landed, actionOk: r.actionOk, rawViewOk: r.rawViewOk, landedOk: r.landedOk, err: r.err })), grid }, null, 2));
+  writeFileSync(
+    path.join(outDir, `report-${stamp}.json`),
+    JSON.stringify(
+      {
+        summary,
+        rows: rows.map((r) => ({
+          ...r.c,
+          action: r.action,
+          modelView: r.modelView,
+          landed: r.landed,
+          actionOk: r.actionOk,
+          rawViewOk: r.rawViewOk,
+          landedOk: r.landedOk,
+          err: r.err,
+        })),
+        grid,
+      },
+      null,
+      2,
+    ),
+  );
   const gridCols = grid.languages.flatMap((language) =>
     grid.modalities.map((modality) => ({ language, modality })),
   );
-  const gridSym: Record<GridStatus, string> = { pass: "✓", fail: "✗", absent: "·" };
+  const gridSym: Record<GridStatus, string> = {
+    pass: "✓",
+    fail: "✗",
+    absent: "·",
+  };
   const gridTable = `<h2>Grid — view × language × modality</h2>
 <table class=grid><tr><th>view</th>${gridCols.map((col) => `<th>${col.language}·${col.modality}</th>`).join("")}</tr>
-${grid.views.map((view) => `<tr><td>${view}</td>${gridCols.map((col) => { const s = grid.grid[view][col.language][col.modality]; return `<td class=${s} title="${view} / ${col.language} / ${col.modality}: ${s}">${gridSym[s]}</td>`; }).join("")}</tr>`).join("\n")}
+${grid.views
+  .map(
+    (view) =>
+      `<tr><td>${view}</td>${gridCols
+        .map((col) => {
+          const s = grid.grid[view][col.language][col.modality];
+          return `<td class=${s} title="${view} / ${col.language} / ${col.modality}: ${s}">${gridSym[s]}</td>`;
+        })
+        .join("")}</tr>`,
+  )
+  .join("\n")}
 </table>`;
   const html = `<!doctype html><meta charset=utf8><title>view-switching ${MODEL_LABEL}</title>
 <style>body{font:14px system-ui;margin:24px;background:#111;color:#eee}table{border-collapse:collapse;width:100%;margin-bottom:24px}td,th{border:1px solid #333;padding:6px 8px;text-align:left}.pass{color:#3c3}.fail{color:#f55}.absent{color:#777}table.grid td{text-align:center}h1{font-size:18px}h2{font-size:15px}code{background:#222;padding:1px 4px;border-radius:3px}</style>
@@ -400,10 +541,12 @@ ${grid.views.map((view) => `<tr><td>${view}</td>${gridCols.map((col) => { const 
 <p>Landed: <b>${sum("landedOk")}/${n}</b> (${(summary.landedAccuracy * 100).toFixed(0)}%) · Action: ${sum("actionOk")}/${n} · Raw view: ${sum("rawViewOk")}/${n}</p>
 ${gridTable}
 <table><tr><th>kind</th><th>prompt</th><th>expected</th><th>action</th><th>model view</th><th>landed</th><th>result</th></tr>
-${rows.map((r) => `<tr><td>${r.c.kind}</td><td><code>${r.c.prompt}</code></td><td>${r.c.expected}</td><td>${r.action}</td><td>${r.modelView}</td><td>${r.landed}</td><td class=${r.landedOk ? "pass" : "fail"}>${r.landedOk ? "PASS" : "FAIL"}${r.err ? " " + r.err : ""}</td></tr>`).join("\n")}
+${rows.map((r) => `<tr><td>${r.c.kind}</td><td><code>${r.c.prompt}</code></td><td>${r.c.expected}</td><td>${r.action}</td><td>${r.modelView}</td><td>${r.landed}</td><td class=${r.landedOk ? "pass" : "fail"}>${r.landedOk ? "PASS" : "FAIL"}${r.err ? ` ${r.err}` : ""}</td></tr>`).join("\n")}
 </table>`;
   writeFileSync(path.join(outDir, `report-${stamp}.html`), html);
-  console.log(`[verify] wrote output/view-switching-verify/report-${stamp}.{json,html}`);
+  console.log(
+    `[verify] wrote output/view-switching-verify/report-${stamp}.{json,html}`,
+  );
 
   // Opt-in accuracy gate. A model regression must fail the script — but only
   // when a floor is configured AND a model endpoint was actually reached (the

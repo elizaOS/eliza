@@ -127,9 +127,14 @@ export async function runNightlyTrajectoryExport(
   let dbTotal: number | undefined;
   while (true) {
     const remaining =
-      explicitCap !== undefined ? explicitCap - items.length : DEFAULT_TRAJECTORY_LIMIT;
+      explicitCap !== undefined
+        ? explicitCap - items.length
+        : DEFAULT_TRAJECTORY_LIMIT;
     if (explicitCap !== undefined && remaining <= 0) break;
-    const pageLimit = Math.min(DEFAULT_TRAJECTORY_LIMIT, Math.max(1, remaining));
+    const pageLimit = Math.min(
+      DEFAULT_TRAJECTORY_LIMIT,
+      Math.max(1, remaining),
+    );
     const page = await trajectoryService.listTrajectories({
       limit: pageLimit,
       offset,

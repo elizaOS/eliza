@@ -83,7 +83,9 @@ describe("evaluateAccuracyGate", () => {
     const gate = evaluateAccuracyGate(summary, { minLandedAccuracy: 0.8 });
     expect(gate.pass).toBe(false);
     expect(gate.failures).toHaveLength(1);
-    expect(gate.failures[0]).toMatch(/landedAccuracy 40\.0% below floor 80\.0%/);
+    expect(gate.failures[0]).toMatch(
+      /landedAccuracy 40\.0% below floor 80\.0%/,
+    );
   });
 
   it("passes when landedAccuracy is exactly at the floor", () => {
@@ -118,7 +120,9 @@ describe("evaluateAccuracyGate", () => {
     // direct 0.5 < 0.9 fails; negative-control 1.0 >= 0.9 passes.
     expect(gate.pass).toBe(false);
     expect(gate.failures).toHaveLength(1);
-    expect(gate.failures[0]).toMatch(/directAccuracy 50\.0% below floor 90\.0%/);
+    expect(gate.failures[0]).toMatch(
+      /directAccuracy 50\.0% below floor 90\.0%/,
+    );
   });
 
   it("collects every failing floor", () => {
