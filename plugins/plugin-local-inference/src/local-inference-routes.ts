@@ -29,6 +29,7 @@ import {
 	assertManifestEvalsPassed,
 	CandidateModelActivationError,
 } from "./services/active-model.js";
+import { classifyDeviceTier } from "./services/device-tier.js";
 import { localInferenceService } from "./services/service.js";
 import { prewarmLocalVoiceStackForModel } from "./services/voice-prewarm.js";
 
@@ -1268,6 +1269,14 @@ export async function handleLocalInferenceRoutes(
 	}
 	if (method === "GET" && pathname === "/api/local-inference/hardware") {
 		sendJson(res, (await hubSnapshot()).hardware);
+		return true;
+	}
+	// The authoritative device-tier assessment (tier + recommendedMode +
+	// recommendedFit) — the same one the router's AUTO policy consumes. Mirrors
+	// the app-core compat route so mobile (which mounts this upstream variant)
+	// also gets the authoritative assessment instead of the coarse client estimate.
+	if (method === "GET" && pathname === "/api/local-inference/device-tier") {
+		sendJson(res, { tier: classifyDeviceTier((await hubSnapshot()).hardware) });
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/catalog") {
