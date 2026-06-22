@@ -466,6 +466,70 @@ export type ViewPlatform =
 export type ViewType = "gui" | "tui" | "xr";
 
 /**
+ * A surface a view renders on. Same set as {@link ViewType}; named separately
+ * because a single view declaration can render on several modalities at once
+ * (one component, drawn to GUI/XR DOM and TUI lines by `@elizaos/ui/spatial`).
+ */
+export type ViewModality = ViewType;
+
+const MODALITY_ORDER: readonly ViewModality[] = ["gui", "xr", "tui"];
+
+/** Order + de-duplicate a modality list as gui, xr, tui. */
+export function dedupeModalities(mods: readonly ViewModality[]): ViewModality[] {
+	const seen = new Set(mods);
+	return MODALITY_ORDER.filter((m) => seen.has(m));
+}
+
+/**
+ * The surfaces a view declaration renders on: the explicit `modalities` list
+ * when set, otherwise the single `viewType` (default "gui").
+ */
+export function getViewModalities(
+	view: Pick<ViewDeclaration, "modalities" | "viewType">,
+): ViewModality[] {
+	if (view.modalities && view.modalities.length > 0) {
+		return dedupeModalities(view.modalities);
+	}
+	return [view.viewType ?? "gui"];
+}
+
+/** A logical view: one entry per `id`, with every surface it renders on. */
+export interface CollapsedView extends ViewDeclaration {
+	/** Union of the surfaces this view renders on (across same-id declarations). */
+	modalities: ViewModality[];
+}
+
+/**
+ * Collapse view declarations to one entry per `id`, unioning the surfaces each
+ * declaration supports. The "gui" declaration (clean label, no surface suffix)
+ * is preferred as the canonical base. This is the single source the view
+ * catalog and the modality hosts use so a view appears ONCE with modality
+ * badges instead of one duplicate row per surface ("Phone" / "Phone XR" /
+ * "Phone TUI").
+ */
+export function collapseViewDeclarations(
+	views: readonly ViewDeclaration[],
+): CollapsedView[] {
+	const order: string[] = [];
+	const byId = new Map<string, CollapsedView>();
+	for (const view of views) {
+		const mods = getViewModalities(view);
+		const existing = byId.get(view.id);
+		if (!existing) {
+			order.push(view.id);
+			byId.set(view.id, { ...view, modalities: mods });
+			continue;
+		}
+		const merged = dedupeModalities([...existing.modalities, ...mods]);
+		const isGui = (view.viewType ?? "gui") === "gui";
+		const baseWasGui = (existing.viewType ?? "gui") === "gui";
+		const base = isGui && !baseWasGui ? view : existing;
+		byId.set(view.id, { ...base, modalities: merged });
+	}
+	return order.map((id) => byId.get(id) as CollapsedView);
+}
+
+/**
  * XR-specific panel options for a view rendered in a WebXR overlay.
  * All fields are optional and have sensible defaults for headset use.
  */
@@ -552,6 +616,14 @@ export interface ViewDeclaration {
 	 * mode.
 	 */
 	viewType?: ViewType;
+	/**
+	 * Surfaces this single declaration renders on. Prefer one declaration with
+	 * `modalities: ["gui", "xr", "tui"]` over duplicate per-`viewType`
+	 * declarations sharing an `id`: the spatial renderer draws the one component
+	 * to each surface (GUI/XR DOM, TUI lines) and the catalog lists the view
+	 * once. When omitted, falls back to `[viewType ?? "gui"]`.
+	 */
+	modalities?: ViewModality[];
 	/** One-line description used for semantic view search. */
 	description?: string;
 	/** Lucide icon name (e.g. "Wallet", "MessageSquare"). */
