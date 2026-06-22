@@ -898,12 +898,28 @@ export function useFirstRunController(): FirstRunController {
         setPickerError(list.error ?? "Could not load your agents. Try again.");
         return;
       }
+      // Auto-connect without the picker (0-agent create, 1-agent reuse), routing
+      // any failure (402/5xx/network) to the picker's error phase — which has
+      // Back + Try again — instead of stranding it on a permanent "Finding your
+      // agents…" spinner. Mirrors the onPickAgent failure handling.
+      const autoConnect = async (
+        opts: Parameters<typeof finishCloudWithSelection>[2],
+      ) => {
+        try {
+          await finishCloudWithSelection(sourceDraft, authToken, opts);
+        } catch (err) {
+          setBusyText(null);
+          setPickerPhase("error");
+          setPickerError(
+            err instanceof Error
+              ? err.message
+              : "Couldn't set up your agent. Try again.",
+          );
+        }
+      };
       if (list.data.length === 0) {
-        // Brand-new user: skip the picker and auto-create (current behavior, no
-        // extra click, no dead one-item-less UI).
-        await finishCloudWithSelection(sourceDraft, authToken, {
-          forceCreate: false,
-        });
+        // Brand-new user: skip the picker and auto-create (no extra click).
+        await autoConnect({ forceCreate: false });
         return;
       }
       // >=1 agents: render the picker (newest-first, running-prioritized to
