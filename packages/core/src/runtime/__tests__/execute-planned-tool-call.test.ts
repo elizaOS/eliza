@@ -753,4 +753,69 @@ describe("executePlannedToolCall", () => {
 		);
 		expect(handler).not.toHaveBeenCalled();
 	});
+
+	describe("private actions", () => {
+		function makeAutonomousMessage(): Memory {
+			return {
+				...makeMessage(),
+				content: {
+					text: "autonomous tick",
+					metadata: { isAutonomous: true },
+				},
+			} as Memory;
+		}
+
+		it("rejects a private action on a user-driven turn", async () => {
+			const handler = vi.fn(async () => ({ success: true }));
+			const action = makeAction({
+				name: "MINT_COIN",
+				private: true,
+				handler,
+			});
+
+			const result = await executePlannedToolCall(
+				makeRuntime([action]),
+				{ message: makeMessage() },
+				{ name: "MINT_COIN", params: {} },
+			);
+
+			expect(result.success).toBe(false);
+			expect(String(result.error)).toContain(
+				"is private and can only run in the agent's autonomous loop",
+			);
+			expect(handler).not.toHaveBeenCalled();
+		});
+
+		it("allows a private action on an autonomous turn", async () => {
+			const handler = vi.fn(async () => ({ success: true }));
+			const action = makeAction({
+				name: "MINT_COIN",
+				private: true,
+				handler,
+			});
+
+			const result = await executePlannedToolCall(
+				makeRuntime([action]),
+				{ message: makeAutonomousMessage() },
+				{ name: "MINT_COIN", params: {} },
+			);
+
+			expect(result.success).toBe(true);
+			expect(handler).toHaveBeenCalledOnce();
+		});
+
+		it("leaves non-private actions runnable on user turns", async () => {
+			const handler = vi.fn(async () => ({ success: true }));
+			const action = makeAction({ name: "REPLY", handler });
+
+			const result = await executePlannedToolCall(
+				makeRuntime([action]),
+				{ message: makeMessage() },
+				{ name: "REPLY", params: {} },
+			);
+
+			expect(result.success).toBe(true);
+			expect(handler).toHaveBeenCalledOnce();
+		});
+	});
 });

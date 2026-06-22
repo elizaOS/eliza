@@ -25,6 +25,7 @@ import { runWithActionRoutingContext } from "./action-routing-context";
 import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates";
 import { parseJsonObject } from "./json-output";
 import type { PlannerToolCall } from "./planner-loop";
+import { privateActionAllowedOnTurn } from "./private-action-gate";
 
 export interface PlannedToolCall {
 	id?: string;
@@ -380,6 +381,13 @@ function getGateFailure(
 	action: Action,
 	ctx: ExecutePlannedToolCallContext,
 ): string | undefined {
+	// Private actions may only run inside the agent's own autonomous loop.
+	// The planner exposure gate already withholds them on user turns; this is a
+	// defense-in-depth backstop so a hallucinated tool call cannot run one.
+	if (!privateActionAllowedOnTurn(action, ctx.message)) {
+		return `Action ${action.name} is private and can only run in the agent's autonomous loop`;
+	}
+
 	const policyRole = resolveActionRolePolicyRole(action);
 	if (policyRole) {
 		return satisfiesRoleGate(ctx.userRoles, { minRole: policyRole })
