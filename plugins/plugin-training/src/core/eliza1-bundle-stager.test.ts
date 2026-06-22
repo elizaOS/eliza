@@ -12,7 +12,7 @@ describe("Eliza-1 bundle stager", () => {
     const trainingRoot = "/repo/packages/training";
     const args = buildStageEliza1BundleArgs(
       {
-        tier: "0_8b",
+        tier: "2b",
         repoId: "elizaos/eliza-1",
         localDir: "/tmp/eliza-1-bundles",
         maxBytes: 2_000_000_000,
@@ -23,7 +23,7 @@ describe("Eliza-1 bundle stager", () => {
     expect(args).toEqual([
       join(trainingRoot, "scripts", "manifest", "stage_hf_eliza1_bundle.py"),
       "--tier",
-      "0_8b",
+      "2b",
       "--repo-id",
       "elizaos/eliza-1",
       "--local-dir",
@@ -47,15 +47,15 @@ describe("Eliza-1 bundle stager", () => {
       parseStageEliza1BundlePlan(
         JSON.stringify({
           repoId: "elizaos/eliza-1",
-          tier: "0_8b",
-          bundleDir: "/tmp/eliza-1-bundles/eliza-1-0_8b.bundle",
+          tier: "2b",
+          bundleDir: "/tmp/eliza-1-bundles/eliza-1-2b.bundle",
           plannedBytes: 123,
           apply: false,
         }),
       ),
     ).toMatchObject({
       repoId: "elizaos/eliza-1",
-      tier: "0_8b",
+      tier: "2b",
       plannedBytes: 123,
       apply: false,
     });
@@ -72,8 +72,8 @@ describe("Eliza-1 bundle stager", () => {
       exitCode: 0,
       plan: {
         repoId: "elizaos/eliza-1",
-        tier: "0_8b",
-        bundleDir: "/tmp/eliza-1-bundles/eliza-1-0_8b.bundle",
+        tier: "2b",
+        bundleDir: "/tmp/eliza-1-bundles/eliza-1-2b.bundle",
         fileCount: 87,
         plannedBytes: 5_939_381_241,
         maxBytes: 8_589_934_592,
@@ -85,7 +85,7 @@ describe("Eliza-1 bundle stager", () => {
     expect(manifest).toMatchObject({
       schema: ELIZA1_BUNDLE_STAGE_SCHEMA,
       repoId: "elizaos/eliza-1",
-      tier: "0_8b",
+      tier: "2b",
       fileCount: 87,
       plannedBytes: 5_939_381_241,
       stagedCount: 0,

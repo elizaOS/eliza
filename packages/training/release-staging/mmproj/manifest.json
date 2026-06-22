@@ -2,24 +2,6 @@
   "canonicalChain": "unsloth/Qwen3.5-<size>-GGUF/mmproj-F16.gguf -> llama-quantize -> mmproj-<tier>-<quant>.gguf",
   "entries": [
     {
-      "f16SizeBytes": 204987232,
-      "f16StagedPath": "mmproj-0_8b-F16.gguf",
-      "license": "apache-2.0",
-      "outputPath": "mmproj-0_8b-Q4_K_M.gguf",
-      "outputSha256": "9e09874ff413043a6f013afe09cdb1916d0d16bf5c1db91cc45165922722b4ff",
-      "outputSizeBytes": 74759008,
-      "quant": "Q4_K_M",
-      "quantOverrides": {
-        "v.patch_embd.weight": "f16"
-      },
-      "releaseState": "weights-staged",
-      "sharedSourceWith27b": false,
-      "sourceFile": "mmproj-F16.gguf",
-      "sourceRepo": "unsloth/Qwen3.5-0.8B-GGUF",
-      "tier": "eliza-1-0_8b",
-      "tierSlug": "0_8b"
-    },
-    {
       "f16SizeBytes": 668227264,
       "f16StagedPath": "mmproj-2b-F16.gguf",
       "license": "apache-2.0",
@@ -117,16 +99,15 @@
   "generator": "MMPROJ-PHASE-2 swarm; chain F16 -> llama-quantize",
   "projectorGroupings": {
     "large": ["9b", "27b", "27b-256k"],
-    "mid": ["2b", "4b"],
-    "small": ["0_8b"]
+    "mid": ["2b", "4b"]
   },
   "quantizer": "plugins/plugin-local-inference/native/llama.cpp llama-quantize (fork)",
   "quantizerBinary": "/tmp/w4d-builds/linux-x64-cpu/bin/llama-quantize",
   "rationale": [
     "TurboQuant / PolarQuant / QJL are NOT applicable to mmproj: they target text-backbone body weights + KV cache only; the projector has no KV cache. See plan memo at plugins/plugin-local-inference/native/reports/porting/2026-05-14/mmproj-qwen35vl-plan.md and packages/training/AGENTS.md s3.",
     "mmproj stays frozen unless the text backbone moves (AGENTS.md s2). No train_mmproj.py in this phase.",
-    "Q4_K_M for the 0_8b tier matches the catalog/EXTRAS contract; all other tiers ship Q8_0.",
-    "v.patch_embd.weight (16x16x3xN) is kept as F16 because Q8_0 requires cols divisible by 32. Q4_K_M has its own fallback for this tensor on the 0_8b tier.",
+    "All tiers ship Q8_0.",
+    "v.patch_embd.weight (16x16x3xN) is kept as F16 because Q8_0 requires cols divisible by 32.",
     "For the 9b/27b projector arch, v.blk.*.ffn_down.weight uses hidden_dim=4304 which is not divisible by 32; these tensors are kept as F16 in the Q8_0 output."
   ],
   "schemaVersion": 1

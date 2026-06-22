@@ -152,7 +152,7 @@ export interface ActionBenchmarkPairRunResult {
   matrixSources: BenchmarkMatrixArtifactSource[];
 }
 
-const DEFAULT_ACTION_BENCHMARK_PAIR_TIER = "0_8b";
+const DEFAULT_ACTION_BENCHMARK_PAIR_TIER = "2b";
 
 export interface TrainingCollectionStep<T = unknown> {
   id:
@@ -1355,7 +1355,6 @@ function benchmarkRecordUsesMocks(record: Record<string, unknown>): boolean {
 function normalizeBenchmarkTier(value: unknown): string | null {
   const tier = stringOrNull(value);
   if (!tier) return null;
-  if (tier === "0b" || tier.includes("0.8b")) return "0_8b";
   return tier;
 }
 
@@ -1707,7 +1706,7 @@ function summarizeBenchmarkEvidence(input: {
       establishedTiers,
       remainingTiers,
       nextTier: remainingTiers[0] ?? null,
-      smallestTierEstablished: establishedTiers.includes("0_8b"),
+      smallestTierEstablished: establishedTiers.includes("2b"),
       allTiersEstablished: remainingTiers.length === 0,
     },
     caseSamples: rows
@@ -2307,7 +2306,7 @@ function collectionBaselineProgress(
     establishedTiers,
     remainingTiers,
     nextTier: remainingTiers[0] ?? null,
-    smallestTierEstablished: establishedTiers.includes("0_8b"),
+    smallestTierEstablished: establishedTiers.includes("2b"),
     allTiersEstablished: remainingTiers.length === 0,
   };
 }
