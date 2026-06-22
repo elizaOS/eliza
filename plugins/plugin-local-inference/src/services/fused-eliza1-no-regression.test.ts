@@ -1,12 +1,10 @@
 /**
  * #8808 acceptance criterion 4 — fused eliza-1 no-regression.
  *
- * Adding the generic single-file GGUF runtime must NOT change how a fused
- * Eliza-1 tier is served. This test pins the invariants:
+ * The local stack is Eliza-1 only (#8808 cutover), so serving is deterministic.
+ * This test pins the invariants:
  *   - `decideBackend` / `BackendDispatcher` route a `runtimeClass:"fused-eliza1"`
- *     model to the fused `llama-cpp` runtime (never to the generic backend),
- *   - a `runtimeClass:"generic-gguf"` model routes to the explicit-`modelPath`
- *     generic backend,
+ *     model to the fused `llama-cpp` runtime,
  *   - the fused path retains its full-pipeline binding: the `BackendPlan` that
  *     reaches the fused backend still carries the catalog entry (with its
  *     `runtime.mtp` speculative-decode block) and the bundle-root override that
@@ -81,12 +79,10 @@ describe("fused eliza-1 no-regression (C4)", () => {
 
 	it("dispatcher forwards the fused full-pipeline binding (catalog + mtp + bundleRoot) to the fused backend", async () => {
 		const ffi = makeBackend("llama-cpp");
-		const generic = makeBackend("generic-gguf");
 		const dispatcher = new BackendDispatcher(
 			ffi,
 			() => true,
 			() => null,
-			generic,
 		);
 
 		const bundleRoot = "/models/eliza-1-4b";
@@ -106,8 +102,7 @@ describe("fused eliza-1 no-regression (C4)", () => {
 
 		await dispatcher.load(plan);
 
-		// Routed to the fused runtime, never the generic one.
-		expect(generic.loaded).toHaveLength(0);
+		// Routed to the fused runtime.
 		expect(ffi.loaded).toHaveLength(1);
 		expect(dispatcher.activeBackendId()).toBe("llama-cpp");
 
@@ -127,17 +122,15 @@ describe("fused eliza-1 no-regression (C4)", () => {
 		expect(forwarded.overrides?.cacheTypeV).toBe("tbq3_0");
 	});
 
-	it("env-override=llama-cpp keeps a fused tier on the fused path (no generic detour)", async () => {
+	it("env-override=llama-cpp keeps a fused tier on the fused path", async () => {
 		const prev = process.env.ELIZA_INFERENCE_BACKEND;
 		process.env.ELIZA_INFERENCE_BACKEND = "llama-cpp";
 		try {
 			const ffi = makeBackend("llama-cpp");
-			const generic = makeBackend("generic-gguf");
 			const dispatcher = new BackendDispatcher(
 				ffi,
 				() => true,
 				() => null,
-				generic,
 			);
 			const decision = dispatcher.decide({
 				modelPath: "/models/eliza-1-4b/text/eliza-1-4b-128k.gguf",
