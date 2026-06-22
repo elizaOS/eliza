@@ -224,26 +224,6 @@ export function validateViewActionMap(
 }
 
 /**
- * Registered view ids that have NO domain-action affinity entry in
- * VIEW_ACTION_MAP. These views are still fully agent-controllable through the
- * universal agent-surface (`useAgentElement` click/fill/etc.), but their domain
- * actions are not upweighted in the planner prompt when the view is foreground —
- * so a `documents`/`messages`/`phone` view's domain action competes with every
- * other action instead of being kept at full param detail. Pure; the caller
- * supplies the live registry view ids. (#8798)
- */
-export function findViewsWithoutActionAffinity(
-  registeredViewIds: Iterable<string>,
-): string[] {
-  const mapped = new Set(Object.keys(VIEW_ACTION_MAP));
-  const missing: string[] = [];
-  for (const viewId of registeredViewIds) {
-    if (!mapped.has(viewId)) missing.push(viewId);
-  }
-  return missing;
-}
-
-/**
  * Completeness sibling of {@link validateViewActionMap}: where that flags a
  * mapped action name that no longer exists, this flags a *registered view* that
  * has neither a VIEW_ACTION_MAP entry nor any declared `ViewCapability`. It only
