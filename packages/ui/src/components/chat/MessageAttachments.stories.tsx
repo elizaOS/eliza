@@ -126,16 +126,19 @@ export const Document: Story = {
 };
 
 /**
- * 3D model — currently surfaces as a downloadable file card (inline
- * model-viewer rendering is deferred; the bytes remain viewable/accessible via
- * download), so a generated/uploaded .glb is never walled off.
+ * 3D model (.glb/.gltf) → inline WebGL viewer (three.js, lazily loaded,
+ * auto-framed + auto-rotating) with a download affordance in the header. When
+ * WebGL is unavailable or the model can't load, it degrades to a download card
+ * so the bytes are never walled off. This story uses a served-relative URL that
+ * resolves to a fast 404 in headless/Storybook, so it deterministically renders
+ * the download fallback (the live 3D render needs a real model + GPU).
  */
 export const Model3D: Story = {
   args: {
     attachments: [
       att({
         id: "model",
-        url: "https://example.com/scene.glb",
+        url: `/api/media/${HASH}.glb`,
         contentType: "document",
         title: "scene.glb",
       }),
