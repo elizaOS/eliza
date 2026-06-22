@@ -228,4 +228,52 @@ export class ChannelTopicsService extends Service {
 		}
 		return out;
 	}
+
+	/**
+	 * Cross-channel topic search (#8927): rank rooms whose recent topics match
+	 * the query, most-matching first. Scans the in-memory per-channel LRUs.
+	 */
+	searchTopics(query: string, limit = 20): TopicSearchHit[] {
+		return matchTopicRooms(this.getTopicsForAllRooms(), query, limit);
+	}
+}
+
+/** A cross-channel topic search hit: a room whose topics matched the query. */
+export interface TopicSearchHit {
+	roomId: string;
+	/** The room's topics that matched a query token. */
+	matchedTopics: string[];
+	/** The room's full current topic LRU (most-recent last). */
+	topics: string[];
+}
+
+/**
+ * Pure matcher for {@link ChannelTopicsService.searchTopics}: rank rooms whose
+ * topics contain any whitespace-delimited query token (case-insensitive),
+ * scored by match count, capped at `limit`. Deterministic; no I/O.
+ */
+export function matchTopicRooms(
+	topicsByRoom: Record<string, string[]>,
+	query: string,
+	limit = 20,
+): TopicSearchHit[] {
+	const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+	if (tokens.length === 0) return [];
+	const scored: Array<TopicSearchHit & { score: number }> = [];
+	for (const [roomId, topics] of Object.entries(topicsByRoom)) {
+		const matched = topics.filter((t) => {
+			const lower = t.toLowerCase();
+			return tokens.some((tok) => lower.includes(tok));
+		});
+		if (matched.length > 0) {
+			scored.push({
+				roomId,
+				matchedTopics: matched,
+				topics,
+				score: matched.length,
+			});
+		}
+	}
+	scored.sort((a, b) => b.score - a.score || a.roomId.localeCompare(b.roomId));
+	return scored.slice(0, Math.max(0, limit)).map(({ score, ...hit }) => hit);
 }

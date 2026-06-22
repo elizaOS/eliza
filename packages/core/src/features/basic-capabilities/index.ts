@@ -110,10 +110,12 @@ import { readAttachmentAction } from "../working-memory/readAttachmentAction.ts"
 // Direct leaf imports — see comment in
 // ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
 // requires bypassing barrels here too.
+import { channelTopicSearchAction } from "./actions/channel-topic-search.ts";
 import { choiceAction } from "./actions/choice.ts";
 import { ignoreAction } from "./actions/ignore.ts";
 import { noneAction } from "./actions/none.ts";
 import { replyAction } from "./actions/reply.ts";
+import { CHANNEL_TOPICS_ROUTES } from "./channel-topics-routes.ts";
 import { linkExtractionEvaluator } from "./evaluators/link-extraction.ts";
 import { actionStateProvider } from "./providers/actionState.ts";
 import { actionsProvider } from "./providers/actions.ts";
@@ -1260,6 +1262,7 @@ export const basicActions = [
 	withCanonicalActionDocs(replyAction),
 	withCanonicalActionDocs(ignoreAction),
 	withCanonicalActionDocs(noneAction),
+	withCanonicalActionDocs(channelTopicSearchAction),
 ];
 
 /**
@@ -1406,6 +1409,7 @@ export function createBasicCapabilitiesPlugin(
 		],
 		routes: [
 			...TURN_CONTROL_ROUTES,
+			...CHANNEL_TOPICS_ROUTES,
 			...(config.enableAutonomy ? autonomyCapabilities.routes : []),
 		],
 		events,
