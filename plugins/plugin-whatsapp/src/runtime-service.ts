@@ -4,6 +4,7 @@ import {
   createUniqueUuid,
   type IAgentRuntime,
   lifeOpsPassiveConnectorsEnabled,
+  type Media,
   type Memory,
   type Room,
   Service,
@@ -35,6 +36,7 @@ import type {
   ConnectionStatus,
   NormalizedMessage,
   WhatsAppIncomingMessage,
+  WhatsAppMediaMessage,
   WhatsAppMessageResponse,
   WhatsAppWebhookEvent,
 } from "./types";
@@ -707,7 +709,12 @@ export class WhatsAppConnectorService extends Service {
           content: ConnectorContent
         ) => {
           const text = typeof content.text === "string" ? content.text.trim() : "";
-          if (!text) {
+          const attachments = Array.isArray(content.attachments)
+            ? content.attachments.filter(
+                (media) => typeof media?.url === "string" && media.url.trim().length > 0
+              )
+            : [];
+          if (!text && attachments.length === 0) {
             return;
           }
 
@@ -732,14 +739,36 @@ export class WhatsAppConnectorService extends Service {
             }
           }
 
-          for (const chunk of chunkWhatsAppText(text)) {
-            await service.sendMessage({
-              accountId: resolved.accountId,
-              type: "text",
-              to: resolved.chatId,
-              content: chunk,
-              replyToMessageId,
-            });
+          if (text) {
+            for (const chunk of chunkWhatsAppText(text)) {
+              await service.sendMessage({
+                accountId: resolved.accountId,
+                type: "text",
+                to: resolved.chatId,
+                content: chunk,
+                replyToMessageId,
+              });
+            }
+          }
+
+          // Agent-generated attachments ride as native WhatsApp media messages
+          // (#8876). Both transports (Cloud API by-link + Baileys) build their
+          // payload from the same WhatsAppMessage media type, so one call works
+          // for either. Each is isolated so one failure never drops the rest.
+          for (const media of attachments) {
+            try {
+              await service.sendMediaMessage(resolved.accountId, resolved.chatId, media);
+            } catch (error) {
+              runtime.logger.warn(
+                {
+                  src: "plugin:whatsapp",
+                  agentId: runtime.agentId,
+                  url: media.url,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+                "Failed to send WhatsApp outbound attachment; skipping"
+              );
+            }
           }
         },
         resolveTargets: async (query: string) => {
@@ -1330,6 +1359,42 @@ export class WhatsAppConnectorService extends Service {
       message.replyToMessageId,
       message.accountId
     );
+  }
+
+  /** Coarse content type → WhatsApp media message kind. */
+  private whatsappMediaType(media: Media): "image" | "video" | "audio" | "document" {
+    const ct = (media.contentType ?? "").toLowerCase();
+    const mime = (media.mimeType ?? "").toLowerCase();
+    if (ct === "image" || mime.startsWith("image/")) return "image";
+    if (ct === "video" || mime.startsWith("video/")) return "video";
+    if (ct === "audio" || mime.startsWith("audio/")) return "audio";
+    return "document";
+  }
+
+  /**
+   * Send an agent attachment as a native WhatsApp media message (#8876). Works
+   * across both transports: the Cloud-API client and the Baileys client each
+   * build their own payload from the shared `WhatsAppMessage` media type, both
+   * keyed on a media URL (`link`).
+   */
+  async sendMediaMessage(
+    accountId: string | null | undefined,
+    to: string,
+    media: Media
+  ): Promise<void> {
+    if (!media.url) return;
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
+      throw new Error("WhatsApp client not initialized");
+    }
+    const type = this.whatsappMediaType(media);
+    const filename = media.filename ?? media.title ?? undefined;
+    const mediaContent: WhatsAppMediaMessage = {
+      link: media.url,
+      ...(media.description ? { caption: media.description } : {}),
+      ...(type === "document" && filename ? { filename } : {}),
+    };
+    await client.sendMessage({ type, to, content: mediaContent });
   }
 
   async fetchConnectorMessages(
