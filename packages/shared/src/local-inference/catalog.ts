@@ -223,10 +223,12 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     id: "eliza-1-4b",
     params: "4B",
     sizeGb: 2.6,
-    // 4B is the shipped mobile minimum/default. The Q4_K_M weights are 2.6 GB
-    // and the mobile bundle runs a 64k context with F16 KV until the
-    // head_dim=256 QJL path exists. The floor stays above the model size to
-    // leave headroom for the OS, app, and KV cache.
+    // 4B is the shipped mid/mobile tier. The 2.6 GB Q4_K_M weights are sized
+    // for a 128k Eliza-1 bundle, with the runtime choosing the safest cache
+    // profile per FFI path: QJL/TBQ where supported, F16 KV on Android bionic
+    // while qwen35 head_dim=256 remains incompatible with the shipped QJL
+    // kernel. The floor stays above the model size to leave headroom for the
+    // OS, app, and KV cache.
     minRamGb: 6,
     q4MinRamGb: 6,
     bucket: "mid",

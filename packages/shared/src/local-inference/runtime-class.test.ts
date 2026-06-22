@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findCatalogModel, MODEL_CATALOG } from "./catalog.js";
+import { MODEL_CATALOG } from "./catalog.js";
 import {
   classifyCatalogModelRuntimeClass,
   classifyInstalledModelRuntimeClass,

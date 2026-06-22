@@ -34,11 +34,16 @@ Live in this checkout:
 - The active text target registers a catalog/file-size-derived resident
   estimate with the shared registry, so pressure telemetry no longer
   reports the dominant text role as `0 MB`.
+- `bun run --cwd plugins/plugin-local-inference memory:benchmark` emits a
+  desktop/server memory report with host RAM, the device-fit Eliza-1 pick,
+  per-tier resident estimates, installed bundle footprints, and arbiter
+  load/eviction/pressure telemetry. Add `--load` to exercise every
+  installed Eliza-owned bundle with a short decode and RSS delta sample.
 
 Still deferred:
 
-- The desktop/server memory benchmark harness and CI `budgets.json`
-  regression gate.
+- A CI `budgets.json` regression gate fed by the desktop/server memory
+  benchmark output.
 - Voice next-stage predictors that call `preload()` during ASR / LM /
   TTS transitions.
 - Dedicated embedding-sidecar residency registration for the larger
