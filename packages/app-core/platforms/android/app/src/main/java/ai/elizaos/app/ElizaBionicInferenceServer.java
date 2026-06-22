@@ -101,16 +101,18 @@ final class ElizaBionicInferenceServer {
         // only ~0.4 GB at 8k ctx for the 2B. Re-enable per device once a
         // head_dim=256 QJL/TBQ path is verified.
         setEnvIfAbsent("ELIZA_BIONIC_KV_QUANT", "0");
-        // The resident stream runs WITHOUT same-file MTP on purpose. On Mali's
-        // scalar-matmul prefill the per-turn cost is dominated by re-prefilling
-        // the (identical) system + tool-schema prefix, not by decode — so the
-        // resident path keeps that prefix KV resident and prefills only the
-        // per-turn delta (prefix-reuse, see generateResident/generateStream).
-        // MTP only accelerates DECODE (~1.5x) but its speculative draft head is
-        // seeded from every prompt position, which is incompatible with skipping
-        // the prefix prefill; the prefill reuse is the far larger win, so we take
-        // it. (A non-default ELIZA_BIONIC_MTP=1 still arms MTP for callers that
-        // want it, but then the resident stream falls back to a full reset.)
+        // Arm same-file MTP (NextN speculative head embedded in the 2B/4B text
+        // GGUF — no separate drafter). MTP accelerates DECODE ~1.5x and is the
+        // best per-turn win available on the shipped qwen3.5 tiers: prefix-KV
+        // reuse (resetAndPrefillResident → nativeLlmStreamResetKeep) needs the KV
+        // cache to support partial sequence removal, but the qwen3.5 non-MTP F16
+        // cache returns false from llama_memory_seq_rm (only the MTP/RS context
+        // supports bounded partial removal), so prefix-reuse is a no-op fallback
+        // on this model and disabling MTP for it would be strictly worse. The
+        // resident path therefore stays MTP + full reset; reset_keep remains
+        // wired for models/caches that DO support partial removal. (Tracked:
+        // MTP-side prefix reuse via reset_engine_keep on the RS context.)
+        setEnvIfAbsent("ELIZA_BIONIC_MTP", "1");
     }
 
     private static void setEnvIfAbsent(String key, String value) {

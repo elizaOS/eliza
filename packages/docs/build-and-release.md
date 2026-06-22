@@ -86,7 +86,14 @@ The official Electrobun docs expect the CLI to come from the project dependency 
 
 - `apps/app/electrobun/package.json` declares `electrobun` as a dependency.
 - `scripts/desktop-build.mjs stage` installs the Electrobun workspace package before packaging.
-- `scripts/desktop-build.mjs package` drives `bun run build -- --env=...` inside `apps/app/electrobun`, and that script invokes `bunx electrobun build` against the package-local dependency.
+- `scripts/desktop-build.mjs package` resolves `electrobun` from
+  `apps/app/electrobun/node_modules/.bin` first, then falls back to a
+  PATH/global binary and only uses `bunx` as a last resort.
+
+Why: package-local resolution keeps desktop packaging reproducible and makes CI
+logs clearer. If `bunx` is the normal path, Bun/Electrobun can silently fetch
+or materialize CLI assets during the packaging step, which looks like a hung
+build when the network is slow.
 
 We still keep two Windows-specific guards around that documented flow:
 

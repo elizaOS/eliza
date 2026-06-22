@@ -488,6 +488,26 @@ function runPackageBinary(binary, binaryArgs, options = {}) {
   fail(`Could not find bunx or npx to run ${binary}.`);
 }
 
+function resolveLocalPackageBinary(binary, cwdCandidates = []) {
+  const executableNames =
+    process.platform === "win32"
+      ? [`${binary}.cmd`, `${binary}.exe`, binary]
+      : [binary];
+  const candidates = [];
+
+  for (const cwd of cwdCandidates) {
+    for (const executableName of executableNames) {
+      candidates.push(path.join(cwd, "node_modules", ".bin", executableName));
+    }
+  }
+
+  for (const executableName of executableNames) {
+    candidates.push(path.join(ROOT, "node_modules", ".bin", executableName));
+  }
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+}
+
 function runBunPackageBinary(binary, binaryArgs, options = {}) {
   const bunx = which("bunx");
   if (bunx) {
@@ -499,6 +519,15 @@ function runBunPackageBinary(binary, binaryArgs, options = {}) {
 }
 
 function runElectrobun(commandArgs, options = {}) {
+  const local = resolveLocalPackageBinary(
+    "electrobun",
+    [options.cwd, ELECTROBUN_DIR].filter(Boolean),
+  );
+  if (local) {
+    run(local, commandArgs, options);
+    return;
+  }
+
   const direct = which("electrobun");
   if (direct) {
     run(direct, commandArgs, options);
