@@ -89,12 +89,12 @@ describe("useAppSelector", () => {
   it("recomputes when the selector changes while the store value identity is unchanged", () => {
     __setAppValueForTests(makeValue({ a: "first", b: "second" }));
 
-    const { result, rerender } = renderHook(
-      ({ keyName }: { keyName: "a" | "b" }) =>
+    const { result, rerender } = renderHook<string, { keyName: "a" | "b" }>(
+      ({ keyName }) =>
         useAppSelector(
           (s) => (s as unknown as Record<"a" | "b", string>)[keyName],
         ),
-      { initialProps: { keyName: "a" } as { keyName: "a" | "b" } },
+      { initialProps: { keyName: "a" } },
     );
 
     expect(result.current).toBe("first");
