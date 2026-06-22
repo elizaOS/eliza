@@ -369,6 +369,17 @@ test.describe("chat task widget", () => {
       });
     });
 
+    // Open the chat sheet before interacting: the slim peek can't fit a full
+    // task card, so the realistic flow is to open the history sheet (which
+    // applies the composer clearance) and then tap the widget. Without this the
+    // last message can sit under the bottom composer's button row.
+    const grabber = page.getByTestId("chat-sheet-grabber");
+    if ((await grabber.count()) > 0) {
+      await grabber.focus();
+      await page.keyboard.press("ArrowUp");
+      await page.waitForTimeout(400);
+    }
+
     // The entire `task-widget` element is the clickable button — there is
     // no decorative trailing icon (the slop pass removed it).
     await widget.click();
