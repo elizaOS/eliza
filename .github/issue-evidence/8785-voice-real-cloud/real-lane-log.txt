@@ -1,0 +1,20 @@
+### Real on-device ASR (fused libelizainference + Metal)
+[asr-real-smoke] lib=/Users/shawwalters/.local/state/eliza/local-inference/lib/libelizainference.dylib
+[asr-real-smoke] bundle=/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle
+[asr-real-smoke] audio=/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-local-inference/native/omnivoice.cpp/examples/freeman.wav
+[asr-real-smoke] (975ms) "If you go into different cultures, they have different concepts of creation. They have their own creation story and of what an afterlife is, where you go, what you do, who you're gonna be with. People who say, "Well.""
+[asr-real-smoke] words=39 sentences≈3
+[asr-real-smoke] PASS
+
+### Mixed real round-trip (cloud TTS -> LOCAL ASR -> Cerebras LLM -> cloud TTS)
+[mixed-roundtrip] question: "What time is it right now in San Francisco"
+[mixed-roundtrip] (cloud TTS question) 529ms, 78762 bytes pcm
+[mixed-roundtrip] (LOCAL STT, eliza-1-asr) 345ms → "What time is it right now in San Francisco?"
+[mixed-roundtrip] (cloud LLM, Cerebras gpt-oss-120b) 289ms → "I’m unable to provide the current time."
+[mixed-roundtrip] (cloud TTS reply) 235ms, 37660 bytes mp3
+[mixed-roundtrip] ── latency breakdown (real services) ──
+  local STT (eliza-1-asr + Metal):   345 ms
+  cloud LLM (Cerebras):              289 ms
+  cloud TTS (ElevenLabs first audio):235 ms
+  ── hybrid round-trip (STT+LLM+TTS): 869 ms
+[mixed-roundtrip] PASS

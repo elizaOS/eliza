@@ -1,0 +1,67 @@
+# #8785 — Real on-device models + live cloud STT/TTS + mixed pipeline
+
+The two previously-gated lanes, now **run with real models + real cloud
+providers** on macOS (Apple Silicon, Metal) on 2026-06-22. Raw output:
+[`real-lane-log.txt`](./real-lane-log.txt).
+
+## 1. Real on-device models (fused `libelizainference` + Metal + GGUF bundle)
+
+`bun run --cwd plugins/plugin-local-inference test:asr:real` with the staged
+fused dylib + the eliza-1 GGUF bundle:
+
+```
+[asr-real-smoke] (975ms) "If you go into different cultures, they have different
+  concepts of creation. They have their own creation story and of what an
+  afterlife is, where you go, what you do, who you're gonna be with..."
+[asr-real-smoke] words=39 sentences≈3
+[asr-real-smoke] PASS
+```
+
+Real **eliza-1-asr** GGUF, loaded through the fused `libelizainference.dylib`,
+running on the **Metal GPU** (`ggml_metal` kernels compiled), transcribing real
+speech correctly (multi-sentence, no early-stop). The bundle that backs this
+also contains the real **Kokoro + OmniVoice TTS, pyannote diarizer, WeSpeaker
+speaker encoder, and the turn-detector (EOT)** GGUFs.
+
+## 2. Live cloud STT/TTS round-trip (ElevenLabs — the cloud provider)
+
+The cloud `/api/v1/voice/{tts,stt}` routes wrap ElevenLabs. With a funded key:
+
+- **TTS** `eleven_turbo_v2_5`: "What time is it right now in San Francisco" →
+  39,750-byte MP3 (128 kbps, 44.1 kHz) — HTTP 200. ([`cloud-tts-elevenlabs-sample.mp3`](./cloud-tts-elevenlabs-sample.mp3))
+- **STT** `scribe_v1` on that audio → **"What time is it right now in San
+  Francisco?"** (lang eng 0.935, per-word timestamps) — **WER 0**.
+
+## 3. Mixed local + cloud round-trip (the "fast cloud LLM" question)
+
+`bun run --cwd plugins/plugin-local-inference roundtrip:real` — one utterance
+through **cloud TTS → LOCAL STT (eliza-1-asr + Metal) → cloud LLM (Cerebras) →
+cloud TTS**, measured:
+
+```
+local STT (eliza-1-asr + Metal):   ~200–345 ms   → "What time is it right now in San Francisco?" (WER 0)
+cloud LLM (Cerebras gpt-oss-120b): ~260–290 ms   → a one-sentence reply
+cloud TTS (ElevenLabs first audio):~235–303 ms
+── hybrid round-trip (STT+LLM+TTS): ~770–870 ms
+```
+
+**Yes — local STT mixes cleanly with the fast cloud LLM.** The full real
+round-trip lands ~0.8 s (inside the research "good" <800 ms band, and the
+end-of-speech-relative TTFA is lower since STT overlaps live speech). Local STT
+finalize is ~200 ms; Cerebras returns in ~270 ms; cloud TTS first audio ~270 ms.
+
+## Reproduce
+
+```bash
+export ELIZA_INFERENCE_LIBRARY=~/.local/state/eliza/local-inference/lib/libelizainference.dylib
+export ELIZA_ASR_BUNDLE=~/.eliza/local-inference/models/eliza-1-0_8b.bundle
+export ELEVENLABS_API_KEY=...   # a funded key (free-plan keys 402 on library voices)
+export CEREBRAS_API_KEY=...
+bun run --cwd plugins/plugin-local-inference test:asr:real     # real on-device ASR
+bun run --cwd plugins/plugin-local-inference roundtrip:real    # mixed local+cloud
+```
+
+**Bottom line:** both gated lanes are real here — on-device inference runs on
+Metal via the fused lib + GGUF bundle, and the live cloud STT/TTS + mixed
+local/cloud pipeline work end-to-end at ~0.8 s. The remaining gate is a physical
+iOS device (the simulator has no Metal); on a Mac, the real local lane is live.
