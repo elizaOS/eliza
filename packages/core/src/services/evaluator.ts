@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../logger.ts";
+import { isMobilePlatform } from "../runtime-env.ts";
 import { setTrajectoryPurpose } from "../trajectory-context.ts";
 import type {
 	ActionResult,
@@ -728,6 +729,14 @@ export async function runPostTurnEvaluators(
 	state?: State,
 	options: EvaluatorRunOptions = {},
 ): Promise<EvaluatorRunResult | null> {
+	// On mobile (single on-device GPU context, single-threaded agent) the
+	// post-turn reflection pass is a 256-512 token generation that serializes on
+	// the SAME engine as the user reply and blocks the next inbound turn for
+	// ~30-64s. Skip it on android/ios — reflection's value at the 2B local tier
+	// is marginal and not worth the per-turn latency. Desktop/server keep it.
+	if (isMobilePlatform()) {
+		return null;
+	}
 	try {
 		const service = (await runtime.getServiceLoadPromise(
 			EvaluatorService.serviceType,

@@ -84,6 +84,10 @@ class TalkModePlugin : Plugin() {
     private var isListening = false
     private var listeningMode = false
     private var stopRequested = false
+    // Consecutive ERROR_NO_MATCH/SPEECH_TIMEOUT count, for exponential restart
+    // backoff so an idle always-on session settles instead of re-arming (and,
+    // with the system recognizer, beeping) every ~600ms when nobody is talking.
+    private var consecutiveNoMatch = 0
     private var restartJob: Job? = null
     private var lastTranscript = ""
     private var lastHeardAtMs: Long? = null
@@ -161,6 +165,7 @@ class TalkModePlugin : Plugin() {
 
         override fun onBeginningOfSpeech() {
             Log.d(TAG, "Beginning of speech")
+            consecutiveNoMatch = 0
         }
 
         override fun onRmsChanged(rmsdB: Float) {}
@@ -197,24 +202,34 @@ class TalkModePlugin : Plugin() {
                 return
             }
 
-            // Don't notify error for no-match / speech-timeout, just restart
-            if (error != SpeechRecognizer.ERROR_NO_MATCH &&
-                error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+            // Don't notify error for no-match / speech-timeout, just restart.
+            // These fire continuously when the always-on session hears only
+            // silence, so back off exponentially (600ms → 8s cap) instead of
+            // re-arming the recognizer every 600ms. onBeginningOfSpeech /
+            // onResults reset the counter the moment real speech arrives.
+            if (error == SpeechRecognizer.ERROR_NO_MATCH ||
+                error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
             ) {
+                consecutiveNoMatch++
+                scheduleRestart(
+                    delayMs = minOf(600L * (1L shl minOf(consecutiveNoMatch, 4)), 8000L),
+                )
+            } else {
+                consecutiveNoMatch = 0
                 notifyListeners("error", JSObject().apply {
                     put("code", "recognition_error")
                     put("message", errorMsg)
                     put("recoverable", true)
                 })
+                scheduleRestart(delayMs = 600)
             }
-
-            scheduleRestart(delayMs = 600)
         }
 
         override fun onResults(results: Bundle?) {
             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             val transcript = matches?.firstOrNull()?.trim() ?: ""
             if (transcript.isNotEmpty()) {
+                consecutiveNoMatch = 0
                 handleTranscript(transcript, isFinal = true)
             }
             scheduleRestart()
@@ -332,9 +347,7 @@ class TalkModePlugin : Plugin() {
         mainHandler.post {
             try {
                 recognizer?.destroy()
-                recognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-                    setRecognitionListener(recognitionListener)
-                }
+                recognizer = createRecognizer()
                 startListeningInternal(markListening = true)
                 startSilenceMonitor()
 
@@ -741,9 +754,7 @@ class TalkModePlugin : Plugin() {
             try {
                 if (!SpeechRecognizer.isRecognitionAvailable(context)) return@post
                 recognizer?.destroy()
-                recognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-                    setRecognitionListener(recognitionListener)
-                }
+                recognizer = createRecognizer()
                 startListeningInternal(markListening = true)
                 startSilenceMonitor()
             } catch (e: Exception) {
@@ -826,6 +837,28 @@ class TalkModePlugin : Plugin() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start listening", e)
         }
+    }
+
+    /**
+     * Create the speech recognizer. Prefer the API-31+ ON-DEVICE recognizer
+     * (in-process SODA): it plays NO start/error earcons, eliminating the
+     * audible "open"/"failure" beeps that came from the system
+     * com.google.android.tts recognizer service (which also can't be muted
+     * without ACCESS_NOTIFICATION_POLICY / STREAM_SYSTEM_ENFORCED control we
+     * don't hold). Falls back to the system recognizer when on-device SODA is
+     * unavailable.
+     */
+    private fun createRecognizer(): SpeechRecognizer {
+        val rec = if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+        ) {
+            SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+        } else {
+            SpeechRecognizer.createSpeechRecognizer(context)
+        }
+        rec.setRecognitionListener(recognitionListener)
+        return rec
     }
 
     private fun scheduleRestart(delayMs: Long = 350) {
@@ -962,9 +995,7 @@ class TalkModePlugin : Plugin() {
             if (!SpeechRecognizer.isRecognitionAvailable(context)) return@post
             try {
                 if (recognizer == null) {
-                    recognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-                        setRecognitionListener(recognitionListener)
-                    }
+                    recognizer = createRecognizer()
                 }
                 recognizer?.cancel()
                 startListeningInternal(markListening = false)
