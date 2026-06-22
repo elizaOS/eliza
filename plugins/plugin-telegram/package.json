@@ -45,6 +45,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@elizaos/config": "latest",
+    "@elizaos/test-harness": "workspace:*",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
@@ -53,6 +54,7 @@
     "build": "tsup && tsc --project tsconfig.build.json",
     "dev": "tsup --watch",
     "test": "vitest run",
+    "test:harness": "bunx vitest run --config vitest.harness.config.ts",
     "test:watch": "vitest",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
