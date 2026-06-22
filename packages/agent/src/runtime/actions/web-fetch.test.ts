@@ -6,7 +6,10 @@ import type {
   State,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { __setPinnedFetchImplForTests } from "../custom-actions.ts";
+import {
+  __setDnsLookupImplForTests,
+  __setPinnedFetchImplForTests,
+} from "../custom-actions.ts";
 import { webFetch } from "./web-fetch.ts";
 
 // Use a public IP literal so resolveUrlSafety skips DNS and goes straight to
@@ -36,6 +39,7 @@ describe("WEB_FETCH action", () => {
 
   afterEach(() => {
     __setPinnedFetchImplForTests(null);
+    __setDnsLookupImplForTests(null);
     if (originalWebFetchEnv === undefined) {
       delete process.env.ELIZA_WEB_FETCH;
     } else {
@@ -104,6 +108,39 @@ describe("WEB_FETCH action", () => {
 
     expect(result.success).toBe(true);
     expect(result.text).toBe("42");
+  });
+
+  it("blocks malformed DNS records before they reach the pinned request", async () => {
+    __setDnsLookupImplForTests(async () => [
+      { address: undefined },
+      { address: "" },
+    ]);
+    __setPinnedFetchImplForTests(async () => {
+      throw new Error("pinned fetch should not run");
+    });
+
+    const { result } = await runHandler({
+      url: "https://api.example.test/data",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("blocked host");
+    expect(result.text).not.toContain("Invalid IP address");
+  });
+
+  it("normalizes string DNS records before pinning the request", async () => {
+    __setDnsLookupImplForTests(async () => ["93.184.216.34"]);
+    __setPinnedFetchImplForTests(async ({ target }) => {
+      expect(target.pinnedAddress).toBe("93.184.216.34");
+      return new Response("ok", { status: 200 });
+    });
+
+    const { result } = await runHandler({
+      url: "https://api.example.test/data",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toBe("ok");
   });
 
   it("fails honestly on a non-2xx status", async () => {

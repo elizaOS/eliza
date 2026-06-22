@@ -101,6 +101,13 @@ type PinnedFetchInput = {
 };
 
 type PinnedFetchImpl = (input: PinnedFetchInput) => Promise<Response>;
+type DnsLookupRecord = { address?: unknown } | string;
+type DnsLookupAllFn = (
+  hostname: string,
+  options: { all: true },
+) => Promise<DnsLookupRecord[] | DnsLookupRecord>;
+
+let dnsLookupImpl: DnsLookupAllFn = dnsLookup as unknown as DnsLookupAllFn;
 
 function getApiPort(): string {
   return String(resolveServerOnlyPort(process.env));
@@ -231,6 +238,18 @@ function shellEscape(value: string): string {
 
 function isBlockedIp(ip: string): boolean {
   return isBlockedPrivateOrLinkLocalIp(ip);
+}
+
+function normalizeDnsAddress(record: unknown): string | null {
+  const raw =
+    typeof record === "string"
+      ? record
+      : record && typeof record === "object"
+        ? (record as { address?: unknown }).address
+        : undefined;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function toRequestHeaders(headers: Headers): Record<string, string> {
@@ -382,6 +401,10 @@ export function __setPinnedFetchImplForTests(
   pinnedFetchImpl = impl ?? requestWithPinnedAddress;
 }
 
+export function __setDnsLookupImplForTests(impl: DnsLookupAllFn | null): void {
+  dnsLookupImpl = impl ?? (dnsLookup as unknown as DnsLookupAllFn);
+}
+
 async function resolveUrlSafety(url: string): Promise<{
   blocked: boolean;
   target: ResolvedUrlTarget | null;
@@ -425,10 +448,15 @@ async function resolveUrlSafety(url: string): Promise<{
       };
     }
 
-    const records = await dnsLookup(hostname, { all: true });
-    const addresses = Array.isArray(records) ? records : [records];
-    for (const entry of addresses) {
-      if (isBlockedIp(entry.address)) {
+    const records = await dnsLookupImpl(hostname, { all: true });
+    const addresses = (Array.isArray(records) ? records : [records])
+      .map(normalizeDnsAddress)
+      .filter((address): address is string => Boolean(address));
+    if (addresses.length === 0) {
+      return { blocked: true, target: null };
+    }
+    for (const address of addresses) {
+      if (isBlockedIp(address)) {
         return { blocked: true, target: null };
       }
     }
@@ -438,7 +466,7 @@ async function resolveUrlSafety(url: string): Promise<{
       target: {
         parsed,
         hostname,
-        pinnedAddress: addresses[0]?.address ?? "",
+        pinnedAddress: addresses[0] ?? "",
       },
     };
   } catch {
@@ -489,7 +517,7 @@ async function fetchWithPinnedTarget(
   init: RequestInit,
   timeoutMs: number,
 ): Promise<Response> {
-  if (!target.pinnedAddress) {
+  if (!target.pinnedAddress || net.isIP(target.pinnedAddress) === 0) {
     throw new Error(
       "Blocked: cannot make requests to internal network addresses",
     );
