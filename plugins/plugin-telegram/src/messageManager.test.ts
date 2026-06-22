@@ -240,14 +240,20 @@ describe("MessageManager malformed payload handling", () => {
     );
   });
 
-  it("awaits attachment send failures instead of dropping rejected promises", async () => {
+  it("degrades an unknown attachment content type to a document send (and still awaits failures)", async () => {
     const { manager } = createManager();
+    const sendDocument = vi.fn(async () => {
+      throw new Error("telegram unavailable");
+    });
 
+    // Unknown/absent content types no longer throw synchronously (which, inside
+    // Promise.all, aborted the whole reply). They degrade to a document upload;
+    // the underlying send failure is still awaited and propagated.
     await expect(
       manager.sendMessageInChunks(
         {
           chat: { id: 123 },
-          telegram: {},
+          telegram: { sendDocument },
         } as never,
         {
           text: "",
@@ -260,7 +266,102 @@ describe("MessageManager malformed payload handling", () => {
           ],
         } as never,
       ),
-    ).rejects.toThrow("Unsupported Telegram attachment content type");
+    ).rejects.toThrow("telegram unavailable");
+    expect(sendDocument).toHaveBeenCalled();
+  });
+
+  it("never drops the agent's text when sending an attachment", async () => {
+    const { manager } = createManager();
+    const sendPhoto = vi.fn(async () => undefined);
+    const sendChatAction = vi.fn(async () => undefined);
+    const sendMessage = vi.fn(async (chatId: number, text: string) => ({
+      message_id: 1,
+      date: 1,
+      text,
+      chat: { id: chatId, type: "private" },
+    }));
+
+    const sent = await manager.sendMessageInChunks(
+      {
+        chat: { id: 123 },
+        telegram: { sendPhoto, sendMessage, sendChatAction },
+      } as never,
+      {
+        text: "here is your image",
+        attachments: [
+          {
+            id: "p1",
+            url: "https://files.test/p.png",
+            contentType: "image/png",
+          },
+        ],
+      } as never,
+    );
+
+    expect(sendPhoto).toHaveBeenCalledTimes(1); // media sent
+    expect(sendMessage).toHaveBeenCalledTimes(1); // prose NOT dropped
+    expect(sent).toHaveLength(1);
+    expect(String(sendMessage.mock.calls[0][1])).toContain(
+      "here is your image",
+    );
+  });
+
+  it("does not post an empty trailing message for an attachment-only reply", async () => {
+    const { manager } = createManager();
+    const sendPhoto = vi.fn(async () => undefined);
+    const sendMessage = vi.fn();
+    const sendChatAction = vi.fn(async () => undefined);
+
+    const sent = await manager.sendMessageInChunks(
+      {
+        chat: { id: 123 },
+        telegram: { sendPhoto, sendMessage, sendChatAction },
+      } as never,
+      {
+        text: "",
+        attachments: [
+          {
+            id: "p1",
+            url: "https://files.test/p.png",
+            contentType: "image/png",
+          },
+        ],
+      } as never,
+    );
+
+    expect(sendPhoto).toHaveBeenCalledTimes(1);
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(sent).toEqual([]);
+  });
+
+  it("ingests an inbound voice message as an AUDIO attachment", async () => {
+    const getFileLink = vi.fn(
+      async () => new URL("https://files.test/voice.ogg"),
+    );
+    const manager = new MessageManager(
+      { telegram: { getFileLink } } as never,
+      { agentId: "agent-1" } as never,
+    );
+
+    const result = await manager.processMessage({
+      message_id: 1,
+      date: 1,
+      chat: { id: 123, type: "private" },
+      voice: {
+        file_id: "v1",
+        file_unique_id: "u1",
+        duration: 3,
+        mime_type: "audio/ogg",
+      },
+    } as never);
+
+    expect(result.attachments).toEqual([
+      expect.objectContaining({
+        id: "v1",
+        url: "https://files.test/voice.ogg",
+        contentType: "audio",
+      }),
+    ]);
   });
 
   it("ignores reaction updates with empty reaction arrays", async () => {
