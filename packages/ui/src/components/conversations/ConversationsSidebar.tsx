@@ -8,7 +8,7 @@ import {
   STATUS_DOT,
 } from "../../chat/coding-agent-session-state";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import { errorMessage } from "../../utils/errors";
 import { ChatConversationItem } from "../composites/chat/chat-conversation-item";
@@ -130,7 +130,22 @@ export function ConversationsSidebar({
     setState,
     tab,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    conversations: s.conversations,
+    activeConversationId: s.activeConversationId,
+    activeInboxChat: s.activeInboxChat,
+    activeTerminalSessionId: s.activeTerminalSessionId,
+    unreadConversations: s.unreadConversations,
+    handleNewConversation: s.handleNewConversation,
+    handleSelectConversation: s.handleSelectConversation,
+    handleDeleteConversation: s.handleDeleteConversation,
+    ensurePluginsLoaded: s.ensurePluginsLoaded,
+    setActionNotice: s.setActionNotice,
+    setTab: s.setTab,
+    setState: s.setState,
+    tab: s.tab,
+    t: s.t,
+  }));
   const { ptySessions } = usePtySessions();
 
   const [inboxChats, setInboxChats] = useState<InboxChatRow[]>([]);

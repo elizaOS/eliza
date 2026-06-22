@@ -21,7 +21,7 @@ import type {
   WorkflowDefinition,
   WorkflowDefinitionNode,
 } from "../../api/client-types-chat";
-import { useApp, useAppSelector } from "../../state";
+import { useAppSelector } from "../../state";
 import type { TranslationContextValue } from "../../state/TranslationContext.hooks";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Spinner } from "../ui/spinner";
@@ -304,7 +304,7 @@ function WorkflowGenerationProgress({
 const PARAM_TRUNCATE_LENGTH = 200;
 
 function ParamValue({ value }: { value: unknown }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [expanded, setExpanded] = useState(false);
 
   if (typeof value === "string") {

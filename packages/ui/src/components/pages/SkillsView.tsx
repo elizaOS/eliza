@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo } from "../../api";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
@@ -159,7 +159,39 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
     copyMarketplaceSkillSource,
     setState,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    skills: s.skills,
+    skillCreateFormOpen: s.skillCreateFormOpen,
+    skillCreateName: s.skillCreateName,
+    skillCreateDescription: s.skillCreateDescription,
+    skillCreating: s.skillCreating,
+    skillReviewReport: s.skillReviewReport,
+    skillReviewId: s.skillReviewId,
+    skillReviewLoading: s.skillReviewLoading,
+    skillToggleAction: s.skillToggleAction,
+    skillsMarketplaceQuery: s.skillsMarketplaceQuery,
+    skillsMarketplaceResults: s.skillsMarketplaceResults,
+    skillsMarketplaceError: s.skillsMarketplaceError,
+    skillsMarketplaceLoading: s.skillsMarketplaceLoading,
+    skillsMarketplaceAction: s.skillsMarketplaceAction,
+    skillsMarketplaceManualGithubUrl: s.skillsMarketplaceManualGithubUrl,
+    loadSkills: s.loadSkills,
+    refreshSkills: s.refreshSkills,
+    handleSkillToggle: s.handleSkillToggle,
+    handleCreateSkill: s.handleCreateSkill,
+    handleDeleteSkill: s.handleDeleteSkill,
+    handleReviewSkill: s.handleReviewSkill,
+    handleAcknowledgeSkill: s.handleAcknowledgeSkill,
+    searchSkillsMarketplace: s.searchSkillsMarketplace,
+    installSkillFromMarketplace: s.installSkillFromMarketplace,
+    uninstallMarketplaceSkill: s.uninstallMarketplaceSkill,
+    installSkillFromGithubUrl: s.installSkillFromGithubUrl,
+    enableMarketplaceSkill: s.enableMarketplaceSkill,
+    disableMarketplaceSkill: s.disableMarketplaceSkill,
+    copyMarketplaceSkillSource: s.copyMarketplaceSkillSource,
+    setState: s.setState,
+    t: s.t,
+  }));
 
   const [installModalOpen, setInstallModalOpen] = useState(false);
   const [filterText, setFilterText] = useState("");

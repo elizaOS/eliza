@@ -18,7 +18,7 @@ import { useAgentElement } from "../../agent-surface";
 import { client, type RegistryAppInfo } from "../../api";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import type { TranslationContextValue } from "../../state/TranslationContext.hooks";
-import { useApp } from "../../state/useApp";
+import { useAppSelectorShallow } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { getWidgetComponent } from "../../widgets/registry";
 import type { PluginWidgetDeclaration } from "../../widgets/types";
@@ -373,7 +373,15 @@ export function AppDetailsView({
   slug,
   onLaunched,
 }: AppDetailsViewProps): React.JSX.Element {
-  const { plugins, appRuns, t, setTab, setState, setActionNotice } = useApp();
+  const { plugins, appRuns, t, setTab, setState, setActionNotice } =
+    useAppSelectorShallow((s) => ({
+      plugins: s.plugins,
+      appRuns: s.appRuns,
+      t: s.t,
+      setTab: s.setTab,
+      setState: s.setState,
+      setActionNotice: s.setActionNotice,
+    }));
 
   // Catalog of registry apps for slug → app resolution.
   const {

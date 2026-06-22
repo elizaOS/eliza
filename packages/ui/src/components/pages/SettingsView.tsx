@@ -9,7 +9,7 @@ import { listExtraSettingsGroups } from "../../cloud/settings";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import {
   SettingsGroup,
@@ -389,7 +389,11 @@ export function SettingsView({
   onClose?: () => void;
   initialSection?: string;
 } = {}) {
-  const { t, loadPlugins, walletEnabled } = useApp();
+  const { t, loadPlugins, walletEnabled } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    loadPlugins: s.loadPlugins,
+    walletEnabled: s.walletEnabled,
+  }));
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [activeSection, setActiveSection] = useState<string | null>(
     () => initialSection ?? readSettingsHashSection(),

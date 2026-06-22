@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type VoiceConfig } from "../../api";
 import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { replaceNameTokens } from "../../utils/name-tokens";
 import {
   EDGE_BACKUP_VOICES,
@@ -226,7 +226,17 @@ export function IdentitySettingsSection() {
     loadCharacter,
     elizaCloudConnected,
     elizaCloudVoiceProxyAvailable,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    characterData: s.characterData,
+    characterDraft: s.characterDraft,
+    characterLoading: s.characterLoading,
+    handleCharacterFieldInput: s.handleCharacterFieldInput,
+    handleSaveCharacter: s.handleSaveCharacter,
+    loadCharacter: s.loadCharacter,
+    elizaCloudConnected: s.elizaCloudConnected,
+    elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
+  }));
 
   const useElevenLabs = elizaCloudConnected || elizaCloudVoiceProxyAvailable;
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>({});

@@ -11,6 +11,7 @@ import {
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../../api/client-types-chat";
+import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
 
 const { clientMock, updateSecretsMock } = vi.hoisted(() => ({
@@ -68,15 +69,14 @@ function renderWithApp(
   message: ConversationMessage,
   sendActionMessage = vi.fn(),
 ) {
+  const appValue = {
+    t: (key: string) => key,
+    sendActionMessage,
+  } as never;
+  // MessageContent reads context via the selector store, so seed it too.
+  __setAppValueForTests(appValue);
   render(
-    <AppContext.Provider
-      value={
-        {
-          t: (key: string) => key,
-          sendActionMessage,
-        } as never
-      }
-    >
+    <AppContext.Provider value={appValue}>
       <MessageContent message={message} />
     </AppContext.Provider>,
   );
@@ -153,6 +153,7 @@ function pendingOAuthRequest(): ConversationMessage["secretRequest"] {
 describe("MessageContent sensitive requests", () => {
   afterEach(() => {
     cleanup();
+    __setAppValueForTests(null);
   });
 
   beforeEach(() => {
@@ -318,6 +319,7 @@ describe("MessageContent sensitive requests", () => {
 describe("MessageContent permission cards", () => {
   afterEach(() => {
     cleanup();
+    __setAppValueForTests(null);
   });
 
   beforeEach(() => {

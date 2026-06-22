@@ -1,6 +1,6 @@
 import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo, PluginParamDef } from "../../api";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { PluginVisual } from "./PluginVisual";
 
@@ -53,7 +53,7 @@ export function PluginCard({
   loadFailedLabel,
   notInstalledLabel,
 }: PluginCardProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
 
   const toggleControl = useAgentElement<HTMLButtonElement>({
     id: `plugin-card-${p.id}-toggle`,

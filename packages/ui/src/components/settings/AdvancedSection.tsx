@@ -1,7 +1,11 @@
 import { AlertTriangle, Download, Trash2, Upload } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
-import { setDeveloperMode, useApp, useIsDeveloperMode } from "../../state";
+import {
+  setDeveloperMode,
+  useAppSelectorShallow,
+  useIsDeveloperMode,
+} from "../../state";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -12,8 +16,8 @@ import { SettingsActionButton, SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 export function AdvancedSection() {
-  const { t } = useApp();
   const {
+    t,
     handleReset,
     exportBusy,
     exportPassword,
@@ -28,7 +32,23 @@ export function AdvancedSection() {
     handleAgentExport,
     handleAgentImport,
     setState,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    handleReset: s.handleReset,
+    exportBusy: s.exportBusy,
+    exportPassword: s.exportPassword,
+    exportIncludeLogs: s.exportIncludeLogs,
+    exportError: s.exportError,
+    exportSuccess: s.exportSuccess,
+    importBusy: s.importBusy,
+    importPassword: s.importPassword,
+    importFile: s.importFile,
+    importError: s.importError,
+    importSuccess: s.importSuccess,
+    handleAgentExport: s.handleAgentExport,
+    handleAgentImport: s.handleAgentImport,
+    setState: s.setState,
+  }));
   const developerMode = useIsDeveloperMode();
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);

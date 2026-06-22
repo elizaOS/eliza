@@ -12,7 +12,7 @@ import {
 import { useAgentElement } from "../../agent-surface";
 import type { TriggerSummary } from "../../api/client";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
@@ -144,7 +144,25 @@ function useHeartbeatsViewController() {
     },
     t,
     uiLanguage,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    triggers: s.triggers,
+    triggersLoaded: s.triggersLoaded,
+    triggersLoading: s.triggersLoading,
+    triggersSaving: s.triggersSaving,
+    triggerRunsById: s.triggerRunsById,
+    triggerHealth: s.triggerHealth,
+    triggerError: s.triggerError,
+    loadTriggers: s.loadTriggers,
+    createTrigger: s.createTrigger,
+    updateTrigger: s.updateTrigger,
+    deleteTrigger: s.deleteTrigger,
+    runTriggerNow: s.runTriggerNow,
+    loadTriggerRuns: s.loadTriggerRuns,
+    loadTriggerHealth: s.loadTriggerHealth,
+    ensureTriggersLoaded: s.ensureTriggersLoaded,
+    t: s.t,
+    uiLanguage: s.uiLanguage,
+  }));
 
   const [form, setForm] = useState<TriggerFormState>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);

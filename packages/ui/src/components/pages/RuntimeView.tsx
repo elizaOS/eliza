@@ -16,7 +16,7 @@ import {
 } from "../../api";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useApp, useAppSelector } from "../../state";
+import { useAppSelector } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatDateTime } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
@@ -160,7 +160,7 @@ function TreeNode(props: {
   expanded: Set<string>;
   onToggle: (path: string) => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const { label, value, path, depth, expanded, onToggle } = props;
   const canExpand = isExpandable(value);
   const open = expanded.has(path);

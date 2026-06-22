@@ -20,7 +20,7 @@ import {
   openMobilePermissionSettings,
 } from "../../platform/mobile-permissions-client";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
-import { useApp } from "../../state/useApp";
+import { useAppSelectorShallow } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { PermissionCard } from "../composites/chat/permission-card";
 import {
@@ -549,7 +549,11 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
   const [dismissed, setDismissed] = useState(false);
   const mountedRef = useRef(true);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { setActionNotice, loadPlugins, t } = useApp();
+  const { setActionNotice, loadPlugins, t } = useAppSelectorShallow((s) => ({
+    setActionNotice: s.setActionNotice,
+    loadPlugins: s.loadPlugins,
+    t: s.t,
+  }));
 
   // Track mount state — reset to true on each mount (needed for StrictMode
   // which unmounts/remounts and would leave the ref false otherwise).
@@ -842,8 +846,10 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
 // ── UiSpec block ────────────────────────────────────────────────────
 
 function UiSpecBlock({ spec, raw }: { spec: UiSpec; raw: string }) {
-  const { t } = useApp();
-  const { sendActionMessage } = useApp();
+  const { t, sendActionMessage } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    sendActionMessage: s.sendActionMessage,
+  }));
   const [showRaw, setShowRaw] = useState(false);
 
   const handleAction = useCallback(
@@ -1174,8 +1180,13 @@ export function MessageContent({
   analysisMode = false,
 }: MessageContentProps) {
   useRenderGuard(`MessageContent:${message.id ?? "unknown"}`);
-  const app = useApp();
-  const { sendActionMessage } = app;
+  const { sendActionMessage, setTab, handleChatRetry } = useAppSelectorShallow(
+    (s) => ({
+      sendActionMessage: s.sendActionMessage,
+      setTab: s.setTab,
+      handleChatRetry: s.handleChatRetry,
+    }),
+  );
   // Composer prefill for followup `prompt` chips. Outside the chat provider,
   // `useChatComposer` returns an inert setter, so this is safe everywhere.
   const { setChatInput } = useChatComposer();
@@ -1273,8 +1284,8 @@ export function MessageContent({
   );
 
   const handleOpenSettings = useCallback(() => {
-    app.setTab?.("settings");
-  }, [app.setTab]);
+    setTab?.("settings");
+  }, [setTab]);
 
   const handleDownloadDefaultLocalModel = useCallback(async () => {
     const modelId = message.localInference?.modelId;
@@ -1385,7 +1396,7 @@ export function MessageContent({
           type="button"
           size="sm"
           onClick={() => {
-            if (message.id) app.handleChatRetry(message.id);
+            if (message.id) handleChatRetry(message.id);
           }}
         >
           Retry

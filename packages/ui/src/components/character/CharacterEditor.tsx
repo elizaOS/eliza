@@ -9,7 +9,7 @@ import {
 } from "../../events/index";
 import { useChatAvatarVoiceBridge, useVoiceChat } from "../../hooks";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { useApp } from "../../state/useApp";
+import { useAppSelectorShallow } from "../../state";
 import { normalizeCharacterMessageExamples } from "../../utils/character-message-examples";
 import {
   hasConfiguredApiKey,
@@ -294,7 +294,43 @@ export function CharacterEditor({
     walletConfig: _walletConfig,
     elizaCloudConnected,
     elizaCloudVoiceProxyAvailable,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    tab: s.tab,
+    setTab: s.setTab,
+    characterData: s.characterData,
+    characterDraft: s.characterDraft,
+    characterLoading: s.characterLoading,
+    characterSaving: s.characterSaving,
+    characterSaveSuccess: s.characterSaveSuccess,
+    chatAgentVoiceMuted: s.chatAgentVoiceMuted,
+    characterSaveError: s.characterSaveError,
+    handleCharacterFieldInput: s.handleCharacterFieldInput,
+    handleCharacterStyleInput: s.handleCharacterStyleInput,
+    handleSaveCharacter: s.handleSaveCharacter,
+    loadCharacter: s.loadCharacter,
+    setState: s.setState,
+    firstRunOptions: s.firstRunOptions,
+    selectedVrmIndex: s.selectedVrmIndex,
+    customVrmUrl: s.customVrmUrl,
+    customVrmPreviewUrl: s.customVrmPreviewUrl,
+    customCatchphrase: s.customCatchphrase,
+    customVoicePresetId: s.customVoicePresetId,
+    activePackId: s.activePackId,
+    t: s.t,
+    uiLanguage: s.uiLanguage,
+    registryStatus: s.registryStatus,
+    registryLoading: s.registryLoading,
+    registryRegistering: s.registryRegistering,
+    registryError: s.registryError,
+    dropStatus: s.dropStatus,
+    loadRegistryStatus: s.loadRegistryStatus,
+    registerOnChain: s.registerOnChain,
+    syncRegistryProfile: s.syncRegistryProfile,
+    loadDropStatus: s.loadDropStatus,
+    walletConfig: s.walletConfig,
+    elizaCloudConnected: s.elizaCloudConnected,
+    elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
+  }));
 
   /** ElevenLabs voices are available only when direct key or cloud voice routing is active. */
   const useElevenLabs = elizaCloudConnected || elizaCloudVoiceProxyAvailable;

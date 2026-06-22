@@ -8,7 +8,7 @@ import {
   getWindowNavigationPath,
   shouldUseHashNavigation,
 } from "../../navigation";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { GameView } from "../apps/GameView";
 import { getAppSlug } from "../apps/helpers";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
@@ -25,7 +25,13 @@ export function AppsPageView({
   appsView?: AppsPageViewRenderer;
   gameView?: AppsPageViewRenderer;
 } = {}) {
-  const { appRuns, appsSubTab, activeGameRunId, setState } = useApp();
+  const { appRuns, appsSubTab, activeGameRunId, setState } =
+    useAppSelectorShallow((s) => ({
+      appRuns: s.appRuns,
+      appsSubTab: s.appsSubTab,
+      activeGameRunId: s.activeGameRunId,
+      setState: s.setState,
+    }));
   const hasActiveGame = activeGameRunId.trim().length > 0;
   const activeGameRun = hasActiveGame
     ? appRuns.find((run) => run.runId === activeGameRunId)

@@ -6,7 +6,7 @@ import {
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   type SubscriptionProviderSelectionId,
 } from "../../providers";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { ProvidersList } from "../local-inference/ProvidersList";
 import { RoutingMatrix } from "../local-inference/RoutingMatrix";
 import { ProviderCard } from "./ProviderCard";
@@ -64,7 +64,16 @@ function getSubscriptionProviderDescription(
 }
 
 export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
-  const app = useApp();
+  const app = useAppSelectorShallow((s) => ({
+    t: s.t,
+    elizaCloudConnected: s.elizaCloudConnected,
+    plugins: s.plugins,
+    pluginSaving: s.pluginSaving,
+    pluginSaveSuccess: s.pluginSaveSuccess,
+    loadPlugins: s.loadPlugins,
+    handlePluginConfigSave: s.handlePluginConfigSave,
+    setActionNotice: s.setActionNotice,
+  }));
   const t = app.t;
   // Warm the runtime-mode default voice/ASR cache for the Voice section.
   useDefaultProviderPresets();

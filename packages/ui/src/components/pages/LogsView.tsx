@@ -3,7 +3,7 @@ import { useAgentElement } from "../../agent-surface";
 import type { LogEntry } from "../../api";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatTime } from "../../utils/format";
 import { ChatSearchHint } from "../composites/chat-search-hint";
@@ -69,7 +69,18 @@ function LogsViewBody() {
     loadLogs,
     setState,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    logs: s.logs,
+    logSources: s.logSources,
+    logTags: s.logTags,
+    logTagFilter: s.logTagFilter,
+    logLevelFilter: s.logLevelFilter,
+    logSourceFilter: s.logSourceFilter,
+    logLoadError: s.logLoadError,
+    loadLogs: s.loadLogs,
+    setState: s.setState,
+    t: s.t,
+  }));
 
   // The floating chat composer becomes this view's search box: while Logs is
   // open it takes over the composer placeholder and feeds the live draft into

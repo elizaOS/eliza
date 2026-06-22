@@ -18,7 +18,7 @@ import {
   getApplicationUpdateSnapshot,
   mapAgentUpdateStatusToSnapshot,
 } from "../../services/app-updates/update-policy";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { openDesktopSurfaceWindow } from "../../utils/desktop-workspace";
 import {
@@ -135,7 +135,13 @@ export function ReleaseCenterView() {
   const { appUrl } = useBranding();
   const defaultReleaseNotesUrl = `${appUrl}/releases/`;
   const desktopRuntime = isElectrobunRuntime();
-  const { loadUpdateStatus, t, updateLoading, updateStatus } = useApp();
+  const { loadUpdateStatus, t, updateLoading, updateStatus } =
+    useAppSelectorShallow((s) => ({
+      loadUpdateStatus: s.loadUpdateStatus,
+      t: s.t,
+      updateLoading: s.updateLoading,
+      updateStatus: s.updateStatus,
+    }));
 
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);

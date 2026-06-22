@@ -11,7 +11,7 @@ import {
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
-import { useApp, useAppSelector } from "../../state";
+import { useAppSelector, useAppSelectorShallow } from "../../state";
 import { Button } from "../ui/button";
 import {
   SettingsActionButton,
@@ -61,7 +61,13 @@ type CapabilityRouterConnectResponse = {
 
 export function CapabilitiesSection() {
   const { walletEnabled, browserEnabled, computerUseEnabled, setState, t } =
-    useApp();
+    useAppSelectorShallow((s) => ({
+      walletEnabled: s.walletEnabled,
+      browserEnabled: s.browserEnabled,
+      computerUseEnabled: s.computerUseEnabled,
+      setState: s.setState,
+      t: s.t,
+    }));
   const [autoTrainingConfig, setAutoTrainingConfig] =
     useState<AutoTrainingConfig | null>(null);
   const [autoTrainingAvailable, setAutoTrainingAvailable] = useState<

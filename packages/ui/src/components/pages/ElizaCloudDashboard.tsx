@@ -16,7 +16,7 @@ import {
 } from "../../api";
 import { useBranding } from "../../config/branding";
 import { isElizaCloudRuntimeLocked } from "../../first-run/mobile-runtime-mode";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { openExternalUrl, preOpenWindow } from "../../utils";
 import { StripeEmbeddedCheckout } from "../cloud/StripeEmbeddedCheckout";
 import { Button } from "../ui/button";
@@ -58,10 +58,28 @@ export function CloudDashboard() {
     elizaCloudLoginFallbackUrl,
     handleCloudLogin,
     handleCloudDisconnect,
-    elizaCloudDisconnecting: cloudDisconnecting,
+    cloudDisconnecting,
     setActionNotice,
     setState,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    elizaCloudConnected: s.elizaCloudConnected,
+    elizaCloudCredits: s.elizaCloudCredits,
+    elizaCloudCreditsLow: s.elizaCloudCreditsLow,
+    elizaCloudCreditsCritical: s.elizaCloudCreditsCritical,
+    elizaCloudAuthRejected: s.elizaCloudAuthRejected,
+    elizaCloudTopUpUrl: s.elizaCloudTopUpUrl,
+    elizaCloudUserId: s.elizaCloudUserId,
+    elizaCloudStatusReason: s.elizaCloudStatusReason,
+    cloudDashboardView: s.cloudDashboardView,
+    elizaCloudLoginBusy: s.elizaCloudLoginBusy,
+    elizaCloudLoginFallbackUrl: s.elizaCloudLoginFallbackUrl,
+    handleCloudLogin: s.handleCloudLogin,
+    handleCloudDisconnect: s.handleCloudDisconnect,
+    cloudDisconnecting: s.elizaCloudDisconnecting,
+    setActionNotice: s.setActionNotice,
+    setState: s.setState,
+  }));
   const branding = useBranding();
 
   const [refreshing, setRefreshing] = useState(false);

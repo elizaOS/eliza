@@ -20,7 +20,7 @@ import {
   isSubscriptionProviderSelectionId,
   type SubscriptionProviderSelectionId,
 } from "../../providers";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 
 export type ProviderPanelId = "__cloud__" | "__local__" | string;
 
@@ -71,7 +71,12 @@ export function useProviderSelection(
   availableProviderIds: Set<string>,
   notifySelectionFailure: (prefix: string, err: unknown) => void,
 ): ProviderSelection {
-  const app = useApp();
+  const { setActionNotice, handleCloudDisconnect } = useAppSelectorShallow(
+    (s) => ({
+      setActionNotice: s.setActionNotice,
+      handleCloudDisconnect: s.handleCloudDisconnect,
+    }),
+  );
   const branding = useBranding();
   const cloudRuntimeLocked =
     branding.cloudOnly === true || isElizaCloudRuntimeLocked();
@@ -226,7 +231,7 @@ export function useProviderSelection(
 
   const handleSelectLocalOnly = useCallback(async () => {
     if (cloudRuntimeLocked) {
-      app.setActionNotice?.(
+      setActionNotice?.(
         "Eliza Cloud is required while this app is running in cloud mode.",
         "error",
         6000,
@@ -240,7 +245,7 @@ export function useProviderSelection(
     setCloudCallsDisabled(true);
     setRoutingModeSaving(true);
     try {
-      await app.handleCloudDisconnect({ skipConfirmation: true });
+      await handleCloudDisconnect({ skipConfirmation: true });
       void client.restartAgent().catch((err) => {
         notifySelectionFailure("Local-only mode saved; restart failed", err);
       });
@@ -252,7 +257,8 @@ export function useProviderSelection(
       setRoutingModeSaving(false);
     }
   }, [
-    app,
+    setActionNotice,
+    handleCloudDisconnect,
     cloudCallsDisabled,
     cloudRuntimeLocked,
     notifySelectionFailure,

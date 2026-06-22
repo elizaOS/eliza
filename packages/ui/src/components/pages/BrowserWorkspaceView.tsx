@@ -22,7 +22,7 @@ import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-m
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { openExternalUrl } from "../../utils";
 import {
   BROWSER_TAB_PRELOAD_SCRIPT,
@@ -573,7 +573,16 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     uiTheme,
     walletAddresses,
     walletConfig,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    getStewardPending: s.getStewardPending,
+    getStewardStatus: s.getStewardStatus,
+    setActionNotice: s.setActionNotice,
+    t: s.t,
+    plugins: s.plugins,
+    uiTheme: s.uiTheme,
+    walletAddresses: s.walletAddresses,
+    walletConfig: s.walletConfig,
+  }));
   const [workspace, setWorkspace] = useState<BrowserWorkspaceSnapshot>({
     mode: "web",
     tabs: [],

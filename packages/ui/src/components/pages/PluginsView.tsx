@@ -13,7 +13,7 @@ import { client } from "../../api";
 import { useLinkedSidebarSelection } from "../../hooks/useLinkedSidebarSelection";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { PageLayoutHeader } from "../../layouts/page-layout/page-layout-header";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { openExternalUrl } from "../../utils";
 import { ChatSearchHint } from "../composites/chat-search-hint";
@@ -79,7 +79,24 @@ function PluginListView({
     setActionNotice,
     setState,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    plugins: s.plugins,
+    pluginStatusFilter: s.pluginStatusFilter,
+    pluginSearch: s.pluginSearch,
+    pluginSettingsOpen: s.pluginSettingsOpen,
+    pluginSaving: s.pluginSaving,
+    pluginSaveSuccess: s.pluginSaveSuccess,
+    isLoadingPlugins: s.isLoadingPlugins,
+    pluginsLoadError: s.pluginsLoadError,
+    pluginsLoaded: s.pluginsLoaded,
+    loadPlugins: s.loadPlugins,
+    ensurePluginsLoaded: s.ensurePluginsLoaded,
+    handlePluginToggle: s.handlePluginToggle,
+    handlePluginConfigSave: s.handlePluginConfigSave,
+    setActionNotice: s.setActionNotice,
+    setState: s.setState,
+    t: s.t,
+  }));
 
   // The floating chat composer is this view's search box. While Plugins is the
   // active view it takes over the composer (placeholder + live draft) and feeds

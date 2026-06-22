@@ -9,7 +9,7 @@ import { LayoutGrid, MoreHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { AppIdentityTile } from "../apps/app-identity";
 import { loadMergedCatalogApps } from "../apps/catalog-loader";
@@ -56,7 +56,14 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
     setState,
     setActionNotice,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    favoriteApps: s.favoriteApps,
+    appRuns: s.appRuns,
+    setTab: s.setTab,
+    setState: s.setState,
+    setActionNotice: s.setActionNotice,
+    t: s.t,
+  }));
 
   const favoriteApps = Array.isArray(favoriteAppsValue)
     ? favoriteAppsValue

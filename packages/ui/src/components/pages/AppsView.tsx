@@ -16,7 +16,7 @@ import {
   shouldUseHashNavigation,
 } from "../../navigation";
 
-import { useApp, useIsDeveloperMode } from "../../state";
+import { useAppSelectorShallow, useIsDeveloperMode } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { AppsCatalogGrid } from "../apps/AppsCatalogGrid";
 import { AppsSidebar } from "../apps/AppsSidebar";
@@ -264,7 +264,19 @@ export function AppsView() {
     setState,
     setActionNotice,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    appRuns: s.appRuns,
+    activeGameRunId: s.activeGameRunId,
+    activeGameViewerUrl: s.activeGameViewerUrl,
+    appsSubTab: s.appsSubTab,
+    favoriteApps: s.favoriteApps,
+    walletEnabled: s.walletEnabled,
+    recentApps: s.recentApps,
+    setTab: s.setTab,
+    setState: s.setState,
+    setActionNotice: s.setActionNotice,
+    t: s.t,
+  }));
   const developerMode = useIsDeveloperMode();
   const [apps, setApps] = useState<RegistryAppInfo[]>(
     () => readAppsCache() ?? [],

@@ -22,7 +22,7 @@ import {
   getWindowNavigationPath,
   shouldUseHashNavigation,
 } from "../../navigation";
-import { useApp } from "../../state/useApp";
+import { useAppSelectorShallow } from "../../state";
 // Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
 // chunk-level circular dependency.
 import { WidgetHost } from "../../widgets/WidgetHost";
@@ -197,7 +197,12 @@ export function CharacterHubView({
   onSave: () => Promise<unknown>;
 }) {
   useRenderGuard("CharacterHubView");
-  const { setActionNotice, setTab, tab, t } = useApp();
+  const { setActionNotice, setTab, tab, t } = useAppSelectorShallow((s) => ({
+    setActionNotice: s.setActionNotice,
+    setTab: s.setTab,
+    tab: s.tab,
+    t: s.t,
+  }));
   const [activeSection, setActiveSection] = useState<CharacterHubSection>(() =>
     getSectionFromLocation(tab),
   );

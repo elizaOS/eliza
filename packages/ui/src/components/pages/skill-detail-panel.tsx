@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo } from "../../api";
 import { client } from "../../api";
-import { useApp, useAppSelector } from "../../state";
+import { useAppSelector, useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import {
@@ -280,7 +280,29 @@ export function SkillsModalView() {
     disableMarketplaceSkill,
     copyMarketplaceSkillSource,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    skills: s.skills,
+    skillToggleAction: s.skillToggleAction,
+    loadSkills: s.loadSkills,
+    handleSkillToggle: s.handleSkillToggle,
+    handleDeleteSkill: s.handleDeleteSkill,
+    refreshSkills: s.refreshSkills,
+    setState: s.setState,
+    skillsMarketplaceQuery: s.skillsMarketplaceQuery,
+    skillsMarketplaceResults: s.skillsMarketplaceResults,
+    skillsMarketplaceError: s.skillsMarketplaceError,
+    skillsMarketplaceLoading: s.skillsMarketplaceLoading,
+    skillsMarketplaceAction: s.skillsMarketplaceAction,
+    skillsMarketplaceManualGithubUrl: s.skillsMarketplaceManualGithubUrl,
+    searchSkillsMarketplace: s.searchSkillsMarketplace,
+    installSkillFromMarketplace: s.installSkillFromMarketplace,
+    uninstallMarketplaceSkill: s.uninstallMarketplaceSkill,
+    installSkillFromGithubUrl: s.installSkillFromGithubUrl,
+    enableMarketplaceSkill: s.enableMarketplaceSkill,
+    disableMarketplaceSkill: s.disableMarketplaceSkill,
+    copyMarketplaceSkillSource: s.copyMarketplaceSkillSource,
+    t: s.t,
+  }));
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filterText, setFilterText] = useState("");
