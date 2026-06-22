@@ -13,6 +13,8 @@
  * @module services/goal-prompt
  */
 
+import type { AttemptReflection } from "./orchestrator-task-types.js";
+
 /** The coding-relevant capability fence applied when a caller does not pass an
  * explicit allow-list. Keeps a worker from reaching for unrelated connectors or
  * broad personal-data tools. */
@@ -91,6 +93,9 @@ export interface GoalPromptInput {
   /** Explicit capability fence; overrides {@link GoalPromptInput.capabilityProfile}
    * and defaults to {@link DEFAULT_GOAL_CAPABILITIES}. */
   allowedCapabilities?: readonly string[];
+  /** Reflexion-style post-mortems from prior failed verification attempts of
+   * this same task. Injected on re-spawn so the worker doesn't repeat them. */
+  attemptReflections?: readonly AttemptReflection[];
 }
 
 export type GoalFollowUpReason =
@@ -142,6 +147,21 @@ export function buildGoalPrompt(input: GoalPromptInput): string {
     sections.push(
       "--- Acceptance Criteria ---",
       bulletList(input.acceptanceCriteria),
+    );
+  }
+
+  // Reflexion: replay prior failed verification attempts so a re-spawned worker
+  // doesn't repeat the same mistakes (#8899).
+  if (input.attemptReflections && input.attemptReflections.length > 0) {
+    const reflectionLines = input.attemptReflections.map((r) => {
+      const missing =
+        r.missing.length > 0 ? ` Missing: ${r.missing.join("; ")}.` : "";
+      return `Attempt ${r.attempt}: ${r.summary.trim()}${missing}`;
+    });
+    sections.push(
+      "--- Past Attempt Failures ---",
+      "Previous attempts at this goal failed verification for the reasons below. Do NOT repeat these mistakes — address each one before reporting done.",
+      bulletList(reflectionLines),
     );
   }
 
