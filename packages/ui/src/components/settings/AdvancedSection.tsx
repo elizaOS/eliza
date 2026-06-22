@@ -206,7 +206,6 @@ export function AdvancedSection() {
             agentId="advanced-developer-mode"
             group="advanced"
             label="Developer Mode"
-            description="Show developer tools in the nav."
             checked={developerMode}
             onCheckedChange={(checked) => setDeveloperMode(checked)}
           />
