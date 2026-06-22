@@ -72,6 +72,7 @@ bun run --cwd plugins/plugin-groq clean         # rm -rf dist
 | `GROQ_MEGA_MODEL` | No | falls back to large | Also reads `MEGA_MODEL` |
 | `GROQ_RESPONSE_HANDLER_MODEL` | No | nano tier | Also reads `GROQ_SHOULD_RESPOND_MODEL` / `RESPONSE_HANDLER_MODEL` / `SHOULD_RESPOND_MODEL` |
 | `GROQ_ACTION_PLANNER_MODEL` | No | large tier | Also reads `GROQ_PLANNER_MODEL` / `ACTION_PLANNER_MODEL` / `PLANNER_MODEL` |
+| `GROQ_TRANSCRIPTION_MODEL` | No | `whisper-large-v3-turbo` | Also reads `TRANSCRIPTION_MODEL`; overrides the ASR model used by the `TRANSCRIPTION` handler |
 | `GROQ_TTS_MODEL` | No | `canopylabs/orpheus-v1-english` | |
 | `GROQ_TTS_VOICE` | No | `autumn` (code default) / `troy` (agentConfig) | Per-call `voice` param overrides this |
 | `GROQ_TTS_RESPONSE_FORMAT` | No | `wav` | |

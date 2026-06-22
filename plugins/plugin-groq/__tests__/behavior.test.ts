@@ -63,6 +63,44 @@ describe("@elizaos/plugin-groq behavior", () => {
     expect((init.body as FormData).get("file")).toBeInstanceOf(File);
   });
 
+  it("lets the transcription model be overridden via GROQ_TRANSCRIPTION_MODEL", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ text: "ok" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await groqPlugin.models?.[ModelType.TRANSCRIPTION]?.(
+      runtime({ GROQ_API_KEY: "gsk-test", GROQ_TRANSCRIPTION_MODEL: "whisper-large-v3" }),
+      { audioData: new Uint8Array([1, 2, 3]) }
+    );
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect((init.body as FormData).get("model")).toBe("whisper-large-v3");
+  });
+
+  it("falls back to the generic TRANSCRIPTION_MODEL setting when no Groq-specific one is set", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ text: "ok" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await groqPlugin.models?.[ModelType.TRANSCRIPTION]?.(
+      runtime({ GROQ_API_KEY: "gsk-test", TRANSCRIPTION_MODEL: "distil-whisper-large-v3-en" }),
+      { audioData: new Uint8Array([1, 2, 3]) }
+    );
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect((init.body as FormData).get("model")).toBe("distil-whisper-large-v3-en");
+  });
+
   it("rejects empty or malformed transcription input before calling the API", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
