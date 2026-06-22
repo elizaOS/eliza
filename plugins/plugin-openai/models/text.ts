@@ -904,7 +904,11 @@ function createLlmCallDetails(
     maxTokens:
       typeof nativeParams?.maxOutputTokens === "number"
         ? nativeParams.maxOutputTokens
-        : (params.maxTokens ?? 8192),
+        : params.omitMaxTokens
+          ? 0
+          : (params.maxTokens ?? 8192),
+    maxTokensOmitted:
+      params.omitMaxTokens && typeof nativeParams?.maxOutputTokens !== "number" ? true : undefined,
     purpose: "external_llm",
     actionType,
   };
@@ -1037,7 +1041,10 @@ async function generateTextByModelType(
     ...promptOrMessages,
     system: systemPrompt,
     allowSystemInMessages: true,
-    maxOutputTokens: params.maxTokens ?? 8192,
+    // Omit the cap when the caller opted out (direct-channel Stage-1) so the
+    // model's own max applies — a hardcoded value 400s when it exceeds the
+    // model's limit. Other callers keep the 8192 default.
+    ...(params.omitMaxTokens ? {} : { maxOutputTokens: params.maxTokens ?? 8192 }),
     experimental_telemetry: telemetryConfig,
     ...(normalizedTools ? { tools: normalizedTools } : {}),
     ...(normalizedToolChoice ? { toolChoice: normalizedToolChoice } : {}),

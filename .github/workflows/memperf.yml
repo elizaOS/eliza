@@ -1,0 +1,67 @@
+name: memperf
+
+# Local-inference memory benchmark + regression gate (issue #8809).
+#
+# Runs the memperf harness (`run-all.mjs`) and the real-arbiter unit tests on a
+# GitHub-hosted runner whenever the harness or the MemoryArbiter changes. The
+# harness is CI-safe without model bundles: it exits
+#   0  measured rows present, all budgets pass
+#   1  a real budget / eviction-telemetry floor REGRESSED  → fails CI (the gate)
+#   2  nothing measurable on this host (no model bundle); self-check passed → skip
+# so a model-absent runner still exercises the real arbiter fit/pressure path via
+# the co-residency self-check, and a genuine regression turns CI red.
+
+on:
+  pull_request:
+    paths:
+      - "packages/benchmarks/memperf/**"
+      - "plugins/plugin-local-inference/src/services/memory-arbiter.ts"
+      - "plugins/plugin-local-inference/src/services/active-model.ts"
+      - ".github/workflows/memperf.yml"
+  schedule:
+    # 05:40 UTC — alongside the other nightly benchmark lanes.
+    - cron: "40 5 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: memperf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  harness-gate:
+    name: harness + budget regression gate (no models)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install workspace
+        run: bun install
+      - name: Metric-schema contract (shared with #8800)
+        run: bun test --conditions=eliza-source packages/benchmarks/memperf/metric-schema.test.ts
+      - name: Real-arbiter co-residency eviction self-check
+        run: bun test --conditions=eliza-source packages/benchmarks/memperf/co-residency.test.ts
+      - name: memperf harness + budget regression gate
+        run: |
+          set +e
+          node packages/benchmarks/memperf/run-all.mjs
+          code=$?
+          set -e
+          case "$code" in
+            0) echo "memperf: all budgets pass" ;;
+            2) echo "memperf: skipped (no model bundle on this runner); arbiter telemetry self-check passed" ;;
+            1) echo "::error::memperf budget / eviction-telemetry regression (exit 1)"; exit 1 ;;
+            *) echo "::error::memperf harness errored (exit $code)"; exit "$code" ;;
+          esac
+      - name: Upload memperf summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memperf-summary
+          path: packages/benchmarks/memperf/results/summary/
+          if-no-files-found: ignore

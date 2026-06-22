@@ -276,17 +276,6 @@ function buildTrajectoryParams(
 
 declare module "./client-base" {
   interface ElizaClient {
-    sendChatMessage(
-      text: string,
-      channelType?: ConversationChannelType,
-    ): Promise<{
-      text: string;
-      agentName: string;
-      noResponseReason?: "ignored";
-      failureKind?: ChatFailureKind;
-      localInference?: LocalInferenceChatMetadata;
-      actionResults?: ChatActionResultSummary[];
-    }>;
     sendChatRest(
       text: string,
       channelType?: ConversationChannelType,
@@ -298,6 +287,7 @@ declare module "./client-base" {
       localInference?: LocalInferenceChatMetadata;
       actionResults?: ChatActionResultSummary[];
     }>;
+    sendChatMessage(text: string, channelType?: ConversationChannelType): void;
     sendChatStream(
       text: string,
       onToken: (token: string, accumulatedText?: string) => void,
@@ -798,12 +788,15 @@ ElizaClient.prototype.sendChatRest = async function (
   }
 };
 
-ElizaClient.prototype.sendChatMessage = async function (
+ElizaClient.prototype.sendChatMessage = function (
   this: ElizaClient,
   text,
   channelType = "DM",
 ) {
-  return this.sendChatRest(text, channelType);
+  void this.sendChatRest(text, channelType).catch(() => {
+    // View affordances use this as a fire-and-forget "ask Eliza" bridge; the
+    // chat surface owns visible delivery/error state for full composer sends.
+  });
 };
 
 ElizaClient.prototype.sendChatStream = async function (

@@ -9,6 +9,12 @@ import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { isVerifiedCuratedEliza1Download } from "../../services/local-inference/catalog-policy";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import {
+  installedRuntimeClass,
+  runtimeClassBadge,
+  runtimeClassDescription,
+  runtimeClassUnavailableReason,
+} from "./runtime-class-ui";
 import { LOCAL_INFERENCE_SLOT_DESCRIPTORS } from "./slot-metadata";
 
 interface SlotAssignmentsProps {
@@ -114,12 +120,29 @@ export function SlotAssignments({
         {LOCAL_INFERENCE_SLOT_DESCRIPTORS.map(
           ({ slot, label, description }) => {
             const currentId = assignments[slot] ?? "";
+            const selected = assignableInstalled.find((m) => m.id === currentId);
+            const selectedRuntimeClass = selected
+              ? installedRuntimeClass(selected)
+              : null;
+            const selectedUnavailableReason = selectedRuntimeClass
+              ? runtimeClassUnavailableReason(selectedRuntimeClass)
+              : null;
             return (
               <label
                 key={slot}
                 className="rounded-sm border border-border bg-card p-3 flex flex-col gap-1.5"
               >
-                <span className="text-sm font-medium">{label}</span>
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  {label}
+                  {selectedRuntimeClass ? (
+                    <span
+                      className="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] font-normal leading-none text-muted-foreground"
+                      title={runtimeClassDescription(selectedRuntimeClass)}
+                    >
+                      {runtimeClassBadge(selectedRuntimeClass)}
+                    </span>
+                  ) : null}
+                </span>
                 <span className="text-xs text-muted-foreground">
                   {description}
                 </span>
@@ -136,10 +159,15 @@ export function SlotAssignments({
                   </option>
                   {assignableInstalled.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.displayName}
+                      {m.displayName} · {runtimeClassBadge(installedRuntimeClass(m))}
                     </option>
                   ))}
                 </select>
+                {selectedUnavailableReason ? (
+                  <span className="text-xs text-warn">
+                    {selectedUnavailableReason}
+                  </span>
+                ) : null}
                 {slotErrors[slot] ? (
                   <span className="text-xs text-danger">
                     {slotErrors[slot]}

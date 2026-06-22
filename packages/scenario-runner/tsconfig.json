@@ -31,9 +31,7 @@
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "@elizaos/skills/*": ["../skills/src/*"],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/src/index.ts"
-      ],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
@@ -59,9 +57,10 @@
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
       ],
-      "@elizaos/plugin-app-control": [
-        "../../plugins/plugin-app-control/src/index.ts"
+      "@elizaos/plugin-worker-runtime": [
+        "../plugin-worker-runtime/src/index.ts"
       ],
+      "@elizaos/plugin-worker-runtime/*": ["../plugin-worker-runtime/src/*"],
       "@elizaos/plugin-commands": ["../../plugins/plugin-commands/index.ts"],
       "@elizaos/plugin-device-filesystem": [
         "../../plugins/plugin-device-filesystem/src/index.ts"

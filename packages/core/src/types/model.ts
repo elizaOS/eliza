@@ -481,6 +481,15 @@ export interface GenerateTextParams {
 	 */
 	prompt?: string;
 	maxTokens?: number;
+	/**
+	 * When true, the adapter must avoid applying the runtime's normal default
+	 * output cap and instead use the provider/model maximum. Most hosted adapters
+	 * do this by omitting the max-tokens field; APIs that require a value (or
+	 * local backends that would otherwise fall back to a small default) send a
+	 * model/provider max instead. Scoped opt-in (e.g. direct-channel Stage 1):
+	 * when unset, adapters keep their default cap so other callers stay bounded.
+	 */
+	omitMaxTokens?: boolean;
 	minTokens?: number;
 	temperature?: number;
 	topP?: number;

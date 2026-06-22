@@ -35,9 +35,9 @@ type Story = StoryObj<typeof meta>;
 function Bubbles({ lines }: { lines: string[] }): React.JSX.Element {
   return (
     <>
-      {lines.map((line, i) => (
+      {lines.map((line) => (
         <div
-          key={`${line}-${i}`}
+          key={line}
           className="mb-2 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80"
         >
           {line}

@@ -38,10 +38,10 @@ import {
 	findCommandByKey,
 	getCommandsByCategory,
 	getEnabledCommands,
+	getEnabledCommandsForRuntime,
 	initForRuntime,
 	registerCommand,
 	unregisterCommand,
-	useRuntime,
 } from "./registry";
 import type { CommandContext, CommandDefinition, CommandResult } from "./types";
 
@@ -82,12 +82,9 @@ export const commandRegistryProvider: Provider = {
 		message: Memory,
 		_state: State,
 	): Promise<ProviderResult> {
-		// Scope to the correct runtime's command store
-		useRuntime(runtime.agentId);
-
 		const text = message.content.text ?? "";
 		const isCommand = hasCommand(text);
-		const commands = getEnabledCommands();
+		const commands = getEnabledCommandsForRuntime(runtime.agentId);
 
 		if (isCommand) {
 			// Full command context for command messages — helps the LLM select

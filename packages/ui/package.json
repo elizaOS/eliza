@@ -34,6 +34,7 @@
     "test:e2e": "bun run test:slow",
     "test:agent-surface-e2e": "bun run --cwd ../.. packages/ui/src/agent-surface/__e2e__/run-e2e.mjs",
     "test:chat-sheet-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-sheet-e2e.mjs",
+    "test:chatux-gesture-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chatux-gesture-e2e.mjs",
     "test:home-screen-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-home-screen-e2e.mjs",
     "test:onboarding-e2e": "bun run --cwd ../.. packages/ui/src/first-run/__e2e__/run-onboarding-e2e.mjs",
     "test:chat-ambient-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-ambient-e2e.mjs",

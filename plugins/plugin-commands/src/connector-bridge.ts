@@ -29,7 +29,7 @@
  * decides whether a given command may run for an already-resolved sender.
  */
 
-import { findCommandByKey, useRuntime } from "./registry";
+import { findCommandByKeyForRuntime } from "./registry";
 import type { CommandTarget } from "./types";
 
 /**
@@ -63,15 +63,14 @@ export type ConnectorGateDecision =
  * no special auth (the catalog only emits real commands, and agent-target
  * commands are auth-gated again inside `runCommand`).
  *
- * Call `useRuntime(agentId)` is performed here so the lookup hits the correct
- * per-agent store.
+ * The lookup is scoped directly by `agentId` so concurrent connector requests
+ * cannot move a shared active-store cursor underneath each other.
  */
 export function resolveConnectorCommandAuth(
 	agentId: string,
 	name: string,
 ): ConnectorCommandAuth {
-	useRuntime(agentId);
-	const definition = findCommandByKey(name);
+	const definition = findCommandByKeyForRuntime(name, agentId);
 	return {
 		requiresAuth: definition?.requiresAuth ?? false,
 		requiresElevated: definition?.requiresElevated ?? false,

@@ -84,7 +84,16 @@ export interface CorpusTurnLabel {
 	agentReplyText?: string;
 }
 
+/**
+ * On-disk corpus ground-truth schema version. Bump when the labeled-corpus
+ * shape changes incompatibly; `readVoiceCorpusGroundTruth` treats a corpus
+ * written by a different version as absent (→ `skipped`, never a stale `pass`).
+ */
+export const CORPUS_SCHEMA_VERSION = 1;
+
 export interface CorpusGroundTruth {
+	/** Labeled-corpus schema version (see {@link CORPUS_SCHEMA_VERSION}). */
+	schemaVersion: number;
 	scenarioId: string;
 	classes: VoiceScenario["classes"];
 	sampleRate: number;
@@ -309,6 +318,7 @@ export async function generateVoiceCorpus(
 	}
 
 	const groundTruth: CorpusGroundTruth = {
+		schemaVersion: CORPUS_SCHEMA_VERSION,
 		scenarioId: scenario.id,
 		classes: scenario.classes,
 		sampleRate,
@@ -365,5 +375,12 @@ export function readVoiceCorpusGroundTruth(
 	if (!existsSync(groundTruthPath)) return null;
 	const parsed = JSON.parse(readFileSync(groundTruthPath, "utf8")) as unknown;
 	if (!parsed || typeof parsed !== "object") return null;
+	// Honesty contract: a corpus written by an incompatible schema version is
+	// treated as absent (→ skipped, never a stale pass against drifted labels).
+	if (
+		(parsed as { schemaVersion?: unknown }).schemaVersion !==
+		CORPUS_SCHEMA_VERSION
+	)
+		return null;
 	return parsed as CorpusGroundTruth;
 }

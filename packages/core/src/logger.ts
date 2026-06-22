@@ -22,7 +22,11 @@ export {
 	customLevels,
 	default,
 	elizaLogger,
+	logChatIn,
+	logChatOut,
 	logger,
+	logPrompt,
+	logResponse,
 	recentLogs,
 	removeLogListener,
 } from "@elizaos/logger";

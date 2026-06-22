@@ -354,10 +354,7 @@ export function initForRuntime(agentId: string): void {
  * Providers and actions should call this before accessing commands.
  */
 export function useRuntime(agentId: string): void {
-	const store = runtimeStores.get(agentId);
-	if (store) {
-		activeStore = store;
-	}
+	activeStore = storeForRuntime(agentId);
 }
 
 /**
@@ -476,4 +473,76 @@ export function startsWithCommand(text: string): CommandDefinition | undefined {
 	}
 
 	return undefined;
+}
+
+function storeForRuntime(agentId?: string | null): CommandStore {
+	if (!agentId) return fallbackStore;
+	return runtimeStores.get(agentId) ?? fallbackStore;
+}
+
+function getEnabledCommandsFromStore(store: CommandStore): CommandDefinition[] {
+	return store.commands.filter((cmd) => cmd.enabled !== false);
+}
+
+function getCommandsByCategoryFromStore(
+	store: CommandStore,
+	category: string,
+): CommandDefinition[] {
+	return store.commands.filter(
+		(cmd) => cmd.category === category && cmd.enabled !== false,
+	);
+}
+
+function getAliasMapForStore(
+	store: CommandStore,
+): Map<string, CommandDefinition> {
+	if (store.aliasMap) return store.aliasMap;
+
+	store.aliasMap = new Map();
+	for (const command of store.commands) {
+		if (command.enabled === false) continue;
+
+		for (const alias of command.textAliases) {
+			const normalized = alias.toLowerCase().trim();
+			if (!store.aliasMap.has(normalized)) {
+				store.aliasMap.set(normalized, command);
+			}
+		}
+	}
+	return store.aliasMap;
+}
+
+export function getCommandsForRuntime(
+	agentId?: string | null,
+): CommandDefinition[] {
+	return [...storeForRuntime(agentId).commands];
+}
+
+export function getEnabledCommandsForRuntime(
+	agentId?: string | null,
+): CommandDefinition[] {
+	return getEnabledCommandsFromStore(storeForRuntime(agentId));
+}
+
+export function getCommandsByCategoryForRuntime(
+	category: string,
+	agentId?: string | null,
+): CommandDefinition[] {
+	return getCommandsByCategoryFromStore(storeForRuntime(agentId), category);
+}
+
+export function findCommandByAliasForRuntime(
+	alias: string,
+	agentId?: string | null,
+): CommandDefinition | undefined {
+	return getAliasMapForStore(storeForRuntime(agentId)).get(
+		alias.toLowerCase().trim(),
+	);
+}
+
+export function findCommandByKeyForRuntime(
+	key: string,
+	agentId?: string | null,
+): CommandDefinition | undefined {
+	return storeForRuntime(agentId).commands.find((c) => c.key === key);
 }

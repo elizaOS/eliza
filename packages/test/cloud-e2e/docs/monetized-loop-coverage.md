@@ -33,30 +33,29 @@ honest scaffold (green-but-skipped), never mock assertions masquerading as real.
 | d | `domains.check` + `domains.buy` | **covered** | scaffold (skipped) | CF registrar dev-stub debits exactly $14.95 (1099¢ + 396¢ margin); buy `success && verified`. The live driver (follow-up) would use the real registrar. |
 | e | `apps.monetization.update` | **covered** | scaffold (skipped) | `PUT …/monetization` enables markup + purchase share; `GET …/monetization` reads back `monetizationEnabled: true`. |
 | f | Charge (paid inference billing) | **covered** | scaffold (skipped) | deterministic ledger effects: org debit (`creditsService.deductCredits`) + matching creator earnings ledger entry (`redeemableEarningsService.addEarnings`). A REAL-LLM charge (end-user org debit + creator markup via Cerebras) is covered by [`creator-monetization-journey.spec.ts`](../tests/creator-monetization-journey.spec.ts) behind `CEREBRAS_API_KEY`. |
-| g | Autoscale (daemon-driven) | **partial (mock)** | scaffold (skipped) | `node-autoscale` cron tick is observable (counter increments) + a provision replenishes the Hetzner pool by one running node. The cron→Hetzner wiring (a tick alone growing the pool) is **deferred** — see #8920/#8921 below. |
+| g | Autoscale (daemon-driven) | **covered** | scaffold (skipped) | `node-autoscale` cron tick is observable, and the `agent-hot-pool` daemon cron tick **alone** replenishes the warm pool to its target (`replenishWarmPool`) — no test-enqueued provision job. The real Hetzner node `initializing → running` transition is asserted in step (c). |
 | h | Payout (fiat) | **deferred** | deferred | redeemable balance asserted as the payout-readiness proxy; the actual fiat transfer is **skipped** (`test.skip`) — see #8922 below. No fiat payout mechanism exists today (only Solana/EVM on-chain redemption). |
 
-## Deferred dependencies
+## Dependencies
 
-These are real gaps, not test omissions. Each is referenced inline in the spec
-and surfaced (rather than hidden) so the missing lane is visible in the report.
+### #8920 — local autoscale-loop integration test against the Hetzner mock ✅ implemented
 
-### #8920 — full provisioning-worker autoscale e2e
+The control-plane mock runs the autoscale / hot-pool / pool-replenish crons. The
+`agent-hot-pool` cron replenishes the warm pool toward its target on each tick
+(`store.replenishWarmPool`), so step (g) raises the hot-pool target, ticks the
+cron once, and asserts the tick **alone** grew the pool to target — no
+test-enqueued provision job. Combined with #8921's `--with-daemon` interval
+ticking, the pool is maintained by the daemon, not by manual ticks. Real Hetzner
+node provisioning (`initializing → running`) is exercised separately in step (c).
 
-The mock stack proves the downstream effect of autoscale (a fresh node reaches
-`running` and the pool replenishes), but the `node-autoscale` cron in the mock
-returns `noop` and does not itself call Hetzner. #8920 would run the **real
-provisioning-worker autoscale loop** end to end so that a single cron tick
-observes capacity pressure and provisions a node without a manually enqueued
-provision job — closing the gap between "tick is observable" and "tick grows the
-pool".
+### #8921 — `cloud:mock --with-daemon` ✅ implemented
 
-### #8921 — `cloud:mock --with-daemon`
-
-The mock stack has no long-running autoscale daemon; the test drives ticks
-explicitly. #8921 would add a `--with-daemon` mode to `cloud:mock` that runs the
-autoscale/hot-pool daemons on their real intervals against the mock stack, so the
-loop can assert daemon-driven (not test-driven) pool maintenance over time.
+`cloud:mock --with-daemon` (`scripts/cloud/mock-stack-up.mjs`) runs the
+autoscale / hot-pool / pool-replenish cron loops on real intervals against the
+mock stack — POSTing each `/v1/cron/*` endpoint with the `CRON_SECRET` bearer on
+a `DAEMON_TICK_MS` cadence (default 15s, fires once immediately). The pool is
+then maintained by the daemon, not by test-enqueued ticks, so the loop can
+assert daemon-driven pool maintenance over time. Timers are cleared on shutdown.
 
 ### #8922 — Stripe Connect fiat payout
 

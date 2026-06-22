@@ -923,31 +923,43 @@ const ThreadLine = React.memo(function ThreadLine({
           // responding): show the rich status (thinking / running an action /
           // waking) INSIDE the bubble, anchored where the streamed text fills in
           // — then the text replaces it. Falls back to plain dots if no status.
-          <TurnStatusInner status={turnStatus ?? null} />
+          <>
+            <TurnStatusInner status={turnStatus ?? null} />
+            {message.attachments?.length ? (
+              <MessageAttachments attachments={message.attachments} />
+            ) : null}
+          </>
         ) : isUser ? (
-          <ThreadLineText content={message.content} />
+          // User turns stay raw text (slash command bolded); user uploads render
+          // through the standalone attachment renderer.
+          <>
+            <ThreadLineText content={message.content} />
+            {message.attachments?.length ? (
+              <MessageAttachments attachments={message.attachments} />
+            ) : null}
+          </>
         ) : (
-          // Assistant text renders its inline widgets (task/choice/form/
-          // followups) instead of leaking the raw `[TASK:…]`/`[CHOICE]`/… markers
-          // as text (#8997). Plain replies fall through the fast path unchanged.
-          <InlineWidgetText content={message.content} />
+          // Settled assistant turn: render inline widgets (task/choice/form/
+          // followups) instead of leaking raw `[TASK:…]`/`[CHOICE]`/… markers as
+          // text (#8997); plain replies fall through the fast path unchanged.
+          // Attachments, the secret/OAuth request, and the reasoning block render
+          // alongside. The secret block is `pointer-events-auto` so it stays
+          // clickable inside the pass-through (pointer-events-none) peek sheet.
+          <>
+            <InlineWidgetText content={message.content} />
+            {message.attachments?.length ? (
+              <MessageAttachments attachments={message.attachments} />
+            ) : null}
+            {message.secretRequest ? (
+              <div className="pointer-events-auto">
+                <SensitiveRequestBlock request={message.secretRequest} />
+              </div>
+            ) : null}
+            {message.reasoning?.trim() ? (
+              <ThinkingBlock reasoning={message.reasoning} />
+            ) : null}
+          </>
         )}
-        {message.attachments?.length ? (
-          <MessageAttachments attachments={message.attachments} />
-        ) : null}
-        {isAssistant && message.secretRequest ? (
-          // Secret / OAuth requests are a structured field, not a text marker —
-          // render the same block the full chat surface uses so they're
-          // actionable in the overlay instead of invisible (#8997).
-          // `pointer-events-auto` keeps it clickable inside the peek sheet
-          // (pointer-events-none / pass-through by design).
-          <div className="pointer-events-auto">
-            <SensitiveRequestBlock request={message.secretRequest} />
-          </div>
-        ) : null}
-        {isAssistant && message.reasoning?.trim() ? (
-          <ThinkingBlock reasoning={message.reasoning} />
-        ) : null}
         <AnimatePresence>
           {copied ? (
             <motion.span

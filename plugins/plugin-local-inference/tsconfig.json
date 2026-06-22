@@ -35,6 +35,12 @@
 			"@elizaos/plugin-capacitor-bridge": [
 				"../plugin-capacitor-bridge/src/index.ts"
 			],
+			"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap": [
+				"../plugin-capacitor-bridge/src/mobile-device-bridge-bootstrap.ts"
+			],
+			"@elizaos/plugin-computeruse/mobile/ios-bridge": [
+				"../plugin-computeruse/src/mobile/ios-bridge.ts"
+			],
 			"@elizaos/plugin-app-manager": ["../plugin-app-manager/src/index.ts"],
 			"@elizaos/plugin-app-manager/*": ["../plugin-app-manager/src/*"],
 			"@elizaos/plugin-coding-tools": ["../plugin-coding-tools/src/index.ts"],

@@ -1,3 +1,4 @@
+import type { HandlerCallback } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { BROWSER_SERVICE_TYPE } from "../browser-service.js";
 import { browserAction } from "./browser.js";
@@ -24,6 +25,7 @@ async function runBrowserAction(args: {
   parameters?: Record<string, unknown>;
   messageText?: string;
   service?: ReturnType<typeof browserService> | null;
+  callback?: HandlerCallback;
 }) {
   const service = args.service === undefined ? browserService() : args.service;
   const runtime = runtimeWithService(service);
@@ -32,6 +34,7 @@ async function runBrowserAction(args: {
     { content: { text: args.messageText ?? "" } } as never,
     undefined,
     { parameters: args.parameters ?? {} } as never,
+    args.callback,
   );
   return { result, runtime, service };
 }
@@ -99,6 +102,77 @@ describe("BROWSER action", () => {
     expect(result?.text).toBe(
       "open completed in workspace mode.\nExample\nhttps://example.com/path",
     );
+  });
+
+  it("emits compact progress when streamProgress is true", async () => {
+    const service = browserService({
+      tab: { title: "Example", url: "https://example.com" },
+    });
+    const callback = vi.fn(async () => []);
+
+    await runBrowserAction({
+      service,
+      callback,
+      parameters: {
+        action: "open",
+        url: "https://example.com",
+        streamProgress: true,
+        rationale: "checking example",
+      },
+    });
+
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Step 1: open — checking example",
+        source: "action_progress",
+        merge: "replace",
+        metadata: {
+          transient: true,
+          compactProgress: true,
+          progress: {
+            source: "browser",
+            actionName: "BROWSER",
+            step: 1,
+            kind: "open",
+            rationale: "checking example",
+            success: true,
+            error: undefined,
+          },
+        },
+      }),
+      "BROWSER",
+    );
+  });
+
+  it("does not fail the browser action when compact progress delivery fails", async () => {
+    const callback = vi.fn(async () => {
+      throw new Error("telegram edit failed");
+    });
+
+    const { result } = await runBrowserAction({
+      callback,
+      parameters: {
+        action: "state",
+        streamProgress: true,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps compact progress behind the streamProgress flag", async () => {
+    const callback = vi.fn(async () => []);
+
+    await runBrowserAction({
+      callback,
+      parameters: {
+        action: "state",
+      },
+    });
+
+    expect(callback).not.toHaveBeenCalled();
   });
 
   it("uses navigate instead of open when a URL and tab id are present", async () => {

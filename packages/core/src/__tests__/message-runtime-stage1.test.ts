@@ -480,6 +480,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		const params = firstCall?.[1] as {
 			tools?: Array<{ parameters?: { required?: string[] } }>;
 			maxTokens?: number;
+			omitMaxTokens?: boolean;
 			responseSkeleton?: { spans?: Array<{ key?: string }> };
 			grammar?: string;
 		};
@@ -492,11 +493,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		expect(required).not.toContain("shouldRespond");
 		expect(required).not.toContain("facts");
-		// Direct channels use DIRECT_CHANNEL_STAGE1_MAX_TOKENS (1024) — the cap
-		// was raised from 384 in services/message.ts so long single-turn direct
-		// replies aren't truncated. The schema stays compact (asserted above);
-		// only the token ceiling grew.
-		expect(params.maxTokens).toBe(1024);
+		// Direct channels send NO max-tokens cap: a hardcoded value 400s when it
+		// exceeds the model's real limit and truncates long single-turn replies.
+		// `omitMaxTokens` tells the adapter to drop the wire field so the model's
+		// own max applies. The schema stays compact (asserted above); only the cap
+		// is dropped. (Group channels keep DEFAULT_STAGE1_MAX_TOKENS — see ~L229.)
+		expect(params.maxTokens).toBeUndefined();
+		expect(params.omitMaxTokens).toBe(true);
 		expect(
 			params.responseSkeleton?.spans?.some((s) => s.key === "shouldRespond"),
 		).toBe(false);

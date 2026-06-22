@@ -489,6 +489,7 @@ function normalizeLlmCall(value: unknown): LLMCall | null {
 		response,
 		temperature,
 		maxTokens,
+		maxTokensOmitted: value.maxTokensOmitted === true ? true : undefined,
 		purpose,
 	};
 	for (const key of [
@@ -1662,6 +1663,7 @@ export class TrajectoriesService extends Service {
 				reasoning,
 				temperature: params.temperature,
 				maxTokens: params.maxTokens,
+				maxTokensOmitted: params.maxTokensOmitted,
 				purpose: this.normalizePurpose(params.purpose),
 				actionType: params.actionType,
 				promptTokens: params.promptTokens,

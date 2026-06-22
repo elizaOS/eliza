@@ -18,7 +18,7 @@
  */
 
 import { navigationCommandDefinitions } from "./navigation-commands";
-import { DEFAULT_COMMANDS, getEnabledCommands, useRuntime } from "./registry";
+import { DEFAULT_COMMANDS, getEnabledCommandsForRuntime } from "./registry";
 import { commandVisibleForSurface, serializeCommand } from "./serialize";
 import type {
 	CommandDefinition,
@@ -97,10 +97,7 @@ function commandName(command: CommandDefinition): string {
  */
 function unifiedDefinitions(agentId?: string | null): CommandDefinition[] {
 	const agentCommands = agentId
-		? (() => {
-				useRuntime(agentId);
-				return getEnabledCommands();
-			})()
+		? getEnabledCommandsForRuntime(agentId)
 		: DEFAULT_COMMANDS.filter((command) => command.enabled !== false);
 	const agent = agentCommands.filter(isConnectorScoped);
 	const navigation = navigationCommandDefinitions();

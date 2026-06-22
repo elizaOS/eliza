@@ -406,6 +406,11 @@ export {
 	type VoiceStateMachineOptions,
 } from "./voice-state-machine";
 export {
+	type ArbiterPreloader,
+	VoicePreloadPredictor,
+	type VoicePreloadPredictorOptions,
+} from "./voice-preload-predictor";
+export {
 	GgmlWakeWordModel,
 	isPlaceholderWakeWordHead,
 	loadBundledWakeWordModel,

@@ -253,15 +253,6 @@ import {
 const PLANNER_CONTROL_ACTIONS = new Set(
 	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
 );
-// Direct/DM/API Stage 1 packs the whole user-facing answer into `replyText`
-// (the "simple" fast path emits it without a planner turn). A 384-token cap
-// could not fit a full reply, so any non-trivial answer truncated the
-// HANDLE_RESPONSE tool-call JSON mid-`replyText` → unparseable args →
-// "malformed HANDLE_RESPONSE tool call" → up to 2 futile Stage-1 regenerations
-// (a +12-16s tail-latency spike). Measured against cerebras gpt-oss-120b: ~30%
-// of long-answer turns truncated at 384 vs 0/120 at 1024. The cap is a ceiling,
-// not a target — short replies finish exactly as fast.
-const DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 1024;
 const DIRECT_REPLY_FAST_PATH_MAX_TOKENS = 96;
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
 const STAGE1_TRUNCATION_REPLY =
@@ -4873,7 +4864,7 @@ function getStage1FinishReason(raw: string | GenerateTextResult): string {
 
 function stage1HitCompletionLimit(
 	raw: string | GenerateTextResult,
-	maxTokens: number,
+	maxTokens: number | undefined,
 ): boolean {
 	if (typeof raw === "string") return false;
 	const finishReason = getStage1FinishReason(raw).toLowerCase();
@@ -4884,8 +4875,11 @@ function stage1HitCompletionLimit(
 	) {
 		return true;
 	}
+	// With direct-channel provider/model-max output, the runtime has no reliable
+	// caller cap to compare against. Truncation is detected via finishReason.
 	const completionTokens = raw.usage?.completionTokens;
 	return (
+		typeof maxTokens === "number" &&
 		typeof completionTokens === "number" &&
 		Number.isFinite(completionTokens) &&
 		completionTokens >= maxTokens
@@ -4902,7 +4896,7 @@ function stage1HitCompletionLimit(
 export function shouldRetryStage1Generation(
 	reason: ReturnType<typeof getStage1RetryReason>,
 	raw: string | GenerateTextResult,
-	maxTokens: number,
+	maxTokens: number | undefined,
 ): boolean {
 	if (!reason) return false;
 	return !stage1HitCompletionLimit(raw, maxTokens);
@@ -5953,9 +5947,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			promptSegments: messageHandlerInput.promptSegments,
 			tools: messageHandlerTools,
 			toolChoice: "required" as const,
-			maxTokens: directMessageChannel
-				? DIRECT_CHANNEL_STAGE1_MAX_TOKENS
-				: DEFAULT_STAGE1_MAX_TOKENS,
+			// Direct/DM/API Stage 1 packs the whole answer into `replyText`. We don't
+			// cap it: a hardcoded ceiling 400s on any model whose real limit differs
+			// and truncates long single-turn replies. `omitMaxTokens` tells adapters
+			// to use provider/model-max output instead of the runtime default; group
+			// channels keep DEFAULT_STAGE1_MAX_TOKENS so they stay bounded.
+			maxTokens: directMessageChannel ? undefined : DEFAULT_STAGE1_MAX_TOKENS,
+			omitMaxTokens: directMessageChannel,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 			// / `contexts` route the moment they are known and `replyText` flows to

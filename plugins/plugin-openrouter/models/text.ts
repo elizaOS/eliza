@@ -286,7 +286,12 @@ function buildGenerateParams(
     maxOutputTokens?: number;
     maxTokens?: number;
   };
-  const resolvedMaxOutput = paramsWithMax.maxOutputTokens ?? paramsWithMax.maxTokens ?? 8192;
+  // Opt-out (direct-channel Stage-1): send no cap so the model's own max applies
+  // — a hardcoded value 400s when it exceeds the model's limit. Otherwise resolve
+  // the explicit value or the 8192 default.
+  const resolvedMaxOutput = params.omitMaxTokens
+    ? undefined
+    : (paramsWithMax.maxOutputTokens ?? paramsWithMax.maxTokens ?? 8192);
 
   const openrouter = createOpenRouterProvider(runtime);
   const modelName = getModelNameForType(runtime, modelType);
@@ -367,7 +372,7 @@ function buildGenerateParams(
           ...(stopSequences ? { stopSequences } : {}),
         }
       : {}),
-    maxOutputTokens: resolvedMaxOutput,
+    ...(resolvedMaxOutput !== undefined ? { maxOutputTokens: resolvedMaxOutput } : {}),
     ...(paramsWithAttachments.tools ? { tools: paramsWithAttachments.tools } : {}),
     ...(paramsWithAttachments.toolChoice ? { toolChoice: paramsWithAttachments.toolChoice } : {}),
     ...(paramsWithAttachments.responseSchema

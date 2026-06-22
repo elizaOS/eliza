@@ -62,6 +62,16 @@ describe("BUILTIN_VIEWS categorization", () => {
       );
     }
   });
+
+  it("tags every built-in view explicitly — no view relies on the implicit default", () => {
+    // Per issue #8796: every view must be explicitly tagged system/release/
+    // developer/preview. A bare entry resolves to "release" by default, which
+    // hides an untagged view in plain sight — forbid it.
+    const untagged = BUILTIN_VIEWS.filter(
+      (v) => v.viewKind == null && v.developerOnly == null,
+    ).map((v) => v.id);
+    expect(untagged).toEqual([]);
+  });
 });
 
 describe("listViews kind filtering", () => {

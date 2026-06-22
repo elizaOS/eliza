@@ -195,6 +195,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "background",
+    viewKind: "system",
     label: "Background",
     description:
       "Set the app background — pick a shader color, upload an image, or generate one",

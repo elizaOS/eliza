@@ -3,20 +3,33 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
 	commandActions,
 	commandShortcuts,
+	explicitCommandShortcuts,
 	dispatchCommandMessage,
 	getCommandSettings,
+	naturalShortcuts,
 	resolveCommand,
 } from "../src/actions";
-import { initForRuntime } from "../src/registry";
+import {
+	getEnabledCommandsForRuntime,
+	initForRuntime,
+	registerCommand,
+	useRuntime,
+} from "../src/registry";
 
-function makeRuntime(): IAgentRuntime {
+function makeRuntime(
+	agentId = "agent-1",
+	onGetCache?: (key: string) => void | Promise<void>,
+): IAgentRuntime {
 	const cache = new Map<string, unknown>();
 	return {
-		agentId: "agent-1",
+		agentId,
 		character: { name: "Eliza", settings: {} },
 		getSetting: () => null,
 		setSetting: () => undefined,
-		getCache: async (key: string) => cache.get(key),
+		getCache: async (key: string) => {
+			await onGetCache?.(key);
+			return cache.get(key);
+		},
 		setCache: async (key: string, value: unknown) => {
 			cache.set(key, value);
 			return true;
@@ -54,6 +67,32 @@ describe("runCommand / resolveCommand — deterministic handlers (#8790)", () =>
 		expect(r.handled).toBe(true);
 		expect(r.reply).toContain("Agent: Eliza");
 		expect(r.reply).toContain("Commands enabled:");
+	});
+
+	it("/status keeps its runtime-scoped store across awaited settings reads", async () => {
+		initForRuntime("agent-a");
+		useRuntime("agent-a");
+		registerCommand({
+			key: "agent-a-only",
+			description: "Runtime-local command",
+			textAliases: ["/agent-a-only"],
+			scope: "both",
+			category: "skills",
+		});
+		initForRuntime("agent-b");
+
+		const agentACommandCount = getEnabledCommandsForRuntime("agent-a").length;
+		expect(agentACommandCount).toBe(
+			getEnabledCommandsForRuntime("agent-b").length + 1,
+		);
+
+		const runtimeA = makeRuntime("agent-a", async () => {
+			useRuntime("agent-b");
+		});
+		const r = await resolveCommand(runtimeA, msg("/status"));
+
+		expect(r.handled).toBe(true);
+		expect(r.reply).toContain(`Commands enabled: ${agentACommandCount}`);
 	});
 
 	it("/whoami reflects the sender context", async () => {
@@ -171,11 +210,15 @@ describe("command actions — slash-only validate (#8790)", () => {
 });
 
 describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
-	it("every slash shortcut targets a registered command action", () => {
+	it("every shortcut targets a registered command action", () => {
 		const actionNames = new Set(commandActions.map((a) => a.name));
 		expect(commandShortcuts.length).toBeGreaterThan(0);
+		// commandShortcuts = explicit slash shortcuts + flag-gated natural ones.
+		expect(commandShortcuts).toEqual([
+			...explicitCommandShortcuts,
+			...naturalShortcuts,
+		]);
 		for (const shortcut of commandShortcuts) {
-			expect(shortcut.kind).toBe("explicit");
 			expect(shortcut.target.kind).toBe("action");
 			if (shortcut.target.kind === "action") {
 				expect(actionNames.has(shortcut.target.name)).toBe(true);
@@ -183,12 +226,22 @@ describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
 		}
 	});
 
-	it("shortcut aliases match the command's text aliases (slash-only)", () => {
-		for (const shortcut of commandShortcuts) {
+	it("explicit slash shortcuts are explicit-only with slash aliases", () => {
+		expect(explicitCommandShortcuts.length).toBeGreaterThan(0);
+		for (const shortcut of explicitCommandShortcuts) {
+			expect(shortcut.kind).toBe("explicit");
 			expect(shortcut.aliases && shortcut.aliases.length > 0).toBe(true);
 			for (const alias of shortcut.aliases ?? []) {
 				expect(alias.startsWith("/")).toBe(true);
 			}
+		}
+	});
+
+	it("natural shortcuts carry no slash aliases (flag-gated, anchored patterns)", () => {
+		for (const shortcut of naturalShortcuts) {
+			expect(shortcut.kind).toBe("natural");
+			expect(shortcut.aliases ?? []).toHaveLength(0);
+			expect(shortcut.patterns && shortcut.patterns.length > 0).toBe(true);
 		}
 	});
 

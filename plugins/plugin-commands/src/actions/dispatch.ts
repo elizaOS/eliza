@@ -13,7 +13,7 @@
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { detectCommand, hasCommand } from "../parser";
-import { findCommandByKey, useRuntime } from "../registry";
+import { findCommandByKeyForRuntime } from "../registry";
 import type { CommandContext, ParsedCommand } from "../types";
 import { isGateSafeCommand, runCommand } from "./handlers";
 
@@ -71,7 +71,6 @@ export async function resolveCommand(
 	message: Memory,
 	options: CommandDispatchOptions = {},
 ): Promise<CommandDispatchResult> {
-	useRuntime(runtime.agentId);
 	const text = message.content.text ?? "";
 	if (!hasCommand(text)) return { handled: false };
 
@@ -79,7 +78,7 @@ export async function resolveCommand(
 	if (!detection.isCommand || !detection.command) return { handled: false };
 
 	const parsed = detection.command;
-	const definition = findCommandByKey(parsed.key);
+	const definition = findCommandByKeyForRuntime(parsed.key, runtime.agentId);
 	// Only agent-target commands are dispatched here; navigate/client targets are
 	// resolved by the client/connector, never the agent.
 	if (definition?.target && definition.target.kind !== "agent") {

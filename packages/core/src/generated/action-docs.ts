@@ -3390,6 +3390,29 @@ export const allActionsSpec = {
 						"Optional browser target id. Common values: workspace, bridge, computeruse, stagehand.",
 				},
 				{
+					name: "streamProgress",
+					description:
+						"When true, emit a compact Step 1 progress callback after the browser command dispatches.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"When true, emit a compact Step 1 progress callback after the browser command dispatches.",
+				},
+				{
+					name: "rationale",
+					description:
+						"Optional rationale shown in streamProgress callback text.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional rationale shown in streamProgress callback text.",
+				},
+				{
 					name: "action",
 					description:
 						"Browser action. Snake_case canonical; legacy kebab-case and subaction accepted.",
@@ -3661,6 +3684,8 @@ export const allActionsSpec = {
 					params: {
 						BROWSER: {
 							target: "example",
+							streamProgress: false,
+							rationale: "example",
 							action: "back",
 							pattern: "example",
 							pollIntervalMs: 1,
@@ -4030,7 +4055,7 @@ export const allActionsSpec = {
 		{
 			name: "COMPUTER_USE",
 			description:
-				"computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
+				"computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
 			parameters: [
 				{
 					name: "action",
@@ -4052,6 +4077,7 @@ export const allActionsSpec = {
 							"drag",
 							"detect_elements",
 							"ocr",
+							"resolve_approval",
 						],
 					},
 					descriptionCompressed: "Desktop action to perform.",
@@ -4179,9 +4205,39 @@ export const allActionsSpec = {
 					descriptionCompressed:
 						"Coordinate space: logical default matches display. bounds. backing raw retina pixels macOS only.",
 				},
+				{
+					name: "approvalId",
+					description:
+						"Pending computer-use approval id for action=resolve_approval.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Pending computer-use approval id for action=resolve_approval.",
+				},
+				{
+					name: "approved",
+					description: "Approval decision for action=resolve_approval.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Approval decision for action=resolve_approval.",
+				},
+				{
+					name: "reason",
+					description: "Optional reason for an approval decision.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional reason for an approval decision.",
+				},
 			],
 			descriptionCompressed:
-				"Desktop: screenshot|click|double|right|move|type|key|scroll|drag|detect|ocr",
+				"Desktop: screenshot|click|double|right|move|type|key|scroll|drag|detect|ocr|approve",
 			similes: [
 				"USE_COMPUTER",
 				"CONTROL_COMPUTER",
@@ -4200,6 +4256,8 @@ export const allActionsSpec = {
 				"TAKE_SCREENSHOT",
 				"CAPTURE_SCREEN",
 				"SEE_SCREEN",
+				"APPROVE_COMPUTER_USE",
+				"DENY_COMPUTER_USE",
 			],
 			exampleCalls: [
 				{
@@ -4219,6 +4277,9 @@ export const allActionsSpec = {
 							scrollAmount: 3,
 							displayId: 1,
 							coordSource: "logical",
+							approvalId: "example",
+							approved: false,
+							reason: "example",
 						},
 					},
 				},
@@ -4227,7 +4288,7 @@ export const allActionsSpec = {
 		{
 			name: "COMPUTER_USE_AGENT",
 			description:
-				"computer_use_agent: autonomous desktop loop for a goal until done or maxSteps. Uses WS6 scene-builder, WS7 Brain+Actor cascade, WS5 multi-monitor coords. Prefer COMPUTER_USE for named single steps; use COMPUTER_USE_AGENT for goal-level screen tasks.",
+				"computer_use_agent: autonomous desktop loop for a goal until done or maxSteps. Uses WS6 scene-builder, WS7 Brain+Actor cascade, WS5 multi-monitor coords. Prefer COMPUTER_USE for named single steps; use COMPUTER_USE_AGENT for goal-level screen tasks. Set streamProgress=true to send per-step progress updates to the originating chat.",
 			parameters: [
 				{
 					name: "goal",
@@ -4257,18 +4318,18 @@ export const allActionsSpec = {
 				{
 					name: "streamProgress",
 					description:
-						"Post a chat message after each step so long goals aren't silent.",
+						"When true, emit a chat callback after each dispatched step with compact progress and the step kind/rationale.",
 					required: false,
 					schema: {
 						type: "boolean",
 						default: false,
 					},
 					descriptionCompressed:
-						"Post a chat msg after each step so long goals aren't silent.",
+						"When true, emit a chat callback after each dispatched step with compact progress and the step kind/rationale.",
 				},
 			],
 			descriptionCompressed:
-				"Autonomous desktop loop: scene → Brain → cascade → click. Pass {goal, maxSteps?}.",
+				"Autonomous desktop loop: scene -> Brain -> cascade -> click. Pass {goal, maxSteps?, streamProgress?}.",
 			similes: ["AUTOMATE_SCREEN", "RUN_COMPUTER_AGENT", "SCREEN_AGENT"],
 			exampleCalls: [
 				{

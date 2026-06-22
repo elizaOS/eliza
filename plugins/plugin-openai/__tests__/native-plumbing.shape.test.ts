@@ -186,6 +186,27 @@ describe("OpenAI native text plumbing", () => {
     expect(call.model).toEqual({ modelName: "gpt-oss-120b" });
   });
 
+  it("omits maxOutputTokens only when omitMaxTokens is set", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: "ok",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(createRuntime(), {
+      prompt: "use provider max",
+      omitMaxTokens: true,
+    } as never);
+    await handleTextSmall(createRuntime(), {
+      prompt: "use default cap",
+    } as never);
+
+    const omittedCall = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+    const defaultCall = aiMocks.generateText.mock.calls[1][0] as Record<string, unknown>;
+    expect(omittedCall).not.toHaveProperty("maxOutputTokens");
+    expect(defaultCall.maxOutputTokens).toBe(8192);
+  });
+
   it("keeps streaming native tool-call plumbing in parity with non-streaming", async () => {
     const toolCalls = [{ toolName: "lookup", input: { q: "x" } }];
     const usage = { inputTokens: 7, outputTokens: 3, cachedInputTokens: 5 };
