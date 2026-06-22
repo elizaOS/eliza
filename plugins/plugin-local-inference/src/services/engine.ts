@@ -40,6 +40,7 @@ import {
 } from "./conversation-registry";
 import { desktopFusedFfiBackendRuntime } from "./desktop-fused-ffi-backend-runtime";
 import { FfiStreamingBackend } from "./ffi-streaming-backend";
+import { estimateDecodeTokens, recordDecodeThroughput } from "./live-signals";
 import { MemoryMonitor } from "./memory-monitor";
 import { listInstalledModels } from "./registry";
 import { resolveDefaultPoolSize } from "./session-pool";
@@ -578,7 +579,15 @@ export class LocalInferenceEngine {
 	async generate(args: GenerateArgs): Promise<string> {
 		this.markActivity();
 		const streaming = this.voiceStreamingArgs(args);
+		const startedAt = Date.now();
 		const text = await this.dispatcher.generate(streaming.args);
+		// Decode-throughput routing signal. `generate()` returns only text, so the
+		// decoded-token count is approximated from the output length (the exact
+		// usage block is only available on the `generateInConversation` path).
+		recordDecodeThroughput({
+			tokens: estimateDecodeTokens(text),
+			elapsedMs: Date.now() - startedAt,
+		});
 		await streaming.finish(text);
 		return text;
 	}
@@ -692,12 +701,25 @@ export class LocalInferenceEngine {
 		const cacheKey = `conv:${handle.conversationId}`;
 		const streaming = this.voiceStreamingArgs(args);
 		if (this.activeBackendId() === "llama-cpp") {
+			const startedAt = Date.now();
 			const result: LocalGenerateWithUsageResult =
 				await this.dispatcher.generateWithUsage({
 					...streaming.args,
 					cacheKey,
 					slotId: handle.slotId,
 				});
+			const elapsedMs = Date.now() - startedAt;
+			// Decode-throughput routing signal. Prefer the exact decoded-token count
+			// from the backend usage block; estimate from the text only if the
+			// backend omitted it.
+			const decodedTokens = Number(result.usage?.completion_tokens);
+			recordDecodeThroughput({
+				tokens:
+					Number.isFinite(decodedTokens) && decodedTokens > 0
+						? decodedTokens
+						: estimateDecodeTokens(result.text),
+				elapsedMs,
+			});
 			await streaming.finish(result.text);
 			return {
 				text: result.text,

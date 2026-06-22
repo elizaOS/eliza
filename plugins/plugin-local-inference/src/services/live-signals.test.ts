@@ -1,14 +1,18 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { inferenceTelemetry } from "./inference-telemetry";
 import {
+	estimateDecodeTokens,
 	type LiveDeviceSignals,
 	liveSignalsDemoteLocal,
 	MIN_DECODE_TPS_BUDGET,
 	readLiveDeviceSignals,
+	recordDecodeThroughput,
 	setLiveDeviceSignalsSource,
 } from "./live-signals";
 
 afterEach(() => {
 	setLiveDeviceSignalsSource(null);
+	inferenceTelemetry.reset();
 });
 
 const signals = (over: Partial<LiveDeviceSignals>): LiveDeviceSignals => ({
@@ -83,5 +87,46 @@ describe("readLiveDeviceSignals source injection", () => {
 		const out = readLiveDeviceSignals();
 		expect(out.thermalState).toBeNull();
 		expect(out.decodeTokensPerSecond).toBeNull();
+	});
+});
+
+describe("estimateDecodeTokens", () => {
+	it("approximates ~4 characters per token", () => {
+		expect(estimateDecodeTokens("")).toBe(0);
+		expect(estimateDecodeTokens("abcd")).toBe(1);
+		expect(estimateDecodeTokens("a".repeat(40))).toBe(10);
+	});
+});
+
+describe("recordDecodeThroughput → default source → demotion (end-to-end)", () => {
+	it("a sub-budget generation makes the default source demote local", () => {
+		// 8 tokens in 2 s = 4 tok/s, below the 6 tok/s budget.
+		recordDecodeThroughput({ tokens: 8, elapsedMs: 2000 });
+
+		const out = readLiveDeviceSignals();
+		expect(out.decodeTokensPerSecond).toBeLessThan(MIN_DECODE_TPS_BUDGET);
+		expect(out.decodeTokensPerSecond).toBeCloseTo(4, 5);
+		expect(liveSignalsDemoteLocal(out)).toBe(true);
+	});
+
+	it("a healthy generation does not demote local", () => {
+		// 100 tokens in 1 s = 100 tok/s, comfortably above budget.
+		recordDecodeThroughput({ tokens: 100, elapsedMs: 1000 });
+
+		const out = readLiveDeviceSignals();
+		expect(out.decodeTokensPerSecond).toBeGreaterThanOrEqual(
+			MIN_DECODE_TPS_BUDGET,
+		);
+		expect(liveSignalsDemoteLocal(out)).toBe(false);
+	});
+
+	it("drops noise samples so the signal stays null", () => {
+		recordDecodeThroughput({ tokens: 2, elapsedMs: 1000 }); // too few tokens
+		recordDecodeThroughput({ tokens: 50, elapsedMs: 0 }); // clock didn't advance
+		recordDecodeThroughput({ tokens: 50, elapsedMs: -10 }); // negative span
+
+		const out = readLiveDeviceSignals();
+		expect(out.decodeTokensPerSecond).toBeNull();
+		expect(liveSignalsDemoteLocal(out)).toBe(false);
 	});
 });
