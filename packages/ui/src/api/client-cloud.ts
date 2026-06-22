@@ -1362,12 +1362,7 @@ ElizaClient.prototype.getCloudCredits = async function (this: ElizaClient) {
         this,
         "/api/v1/credits/balance",
       );
-      const balance =
-        typeof data?.balance === "number"
-          ? data.balance
-          : typeof data?.balance === "string"
-            ? Number(data.balance)
-            : null;
+      const balance = numberOrNull(data?.balance);
       return {
         connected: true,
         balance: Number.isFinite(balance) ? balance : null,
@@ -1420,12 +1415,7 @@ ElizaClient.prototype.getCloudBillingSummary = async function (
       typeof direct.pricing === "object" && direct.pricing !== null
         ? (direct.pricing as Record<string, unknown>)
         : {};
-    const balance =
-      typeof organization.creditBalance === "number"
-        ? organization.creditBalance
-        : typeof organization.creditBalance === "string"
-          ? Number(organization.creditBalance)
-          : null;
+    const balance = numberOrNull(organization.creditBalance);
     return {
       ...direct,
       balance: Number.isFinite(balance) ? balance : null,

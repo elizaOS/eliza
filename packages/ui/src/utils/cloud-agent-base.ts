@@ -44,14 +44,6 @@ export function normalizeDirectCloudSharedAgentApiBase(value: string): string {
   return stripTrailingSlash(url.toString());
 }
 
-export function isDirectCloudSharedAgentApiBase(value: string): boolean {
-  const normalized = normalizeDirectCloudSharedAgentApiBase(value);
-  const url = normalizeHttpUrl(normalized);
-  if (!url) return false;
-  const sharedPath = directSharedAgentPath(url.pathname);
-  return Boolean(sharedPath && !sharedPath.hasBridgeSuffix);
-}
-
 /**
  * Eliza Cloud control-plane hostnames. The bare origin (and the
  * `/api/v1/eliza/agents` collection) on any of these is NOT a per-agent base —
