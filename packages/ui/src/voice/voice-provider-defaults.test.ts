@@ -33,27 +33,44 @@ describe("pickDefaultVoiceProvider", () => {
     ).toEqual({ tts: "local-inference", asr: "eliza-cloud" });
   });
 
-  it("web + local agent also leans on Eliza Cloud audio (mobile-like)", () => {
+  it("web + local agent uses fast Edge TTS with Cloud ASR (no on-device audio)", () => {
     expect(
       pickDefaultVoiceProvider({ platform: "web", runtimeMode: "local" }),
-    ).toEqual({ tts: "elevenlabs", asr: "eliza-cloud" });
+    ).toEqual({ tts: "edge", asr: "eliza-cloud" });
   });
 
-  it("cloud agent always routes to Eliza Cloud (any device)", () => {
+  it("cloud agent defaults to fast Edge TTS + Cloud ASR, never slow ElevenLabs", () => {
     const platforms: PresetPlatform[] = ["desktop", "mobile", "web"];
     for (const platform of platforms) {
       expect(
         pickDefaultVoiceProvider({ platform, runtimeMode: "cloud" }),
-      ).toEqual({ tts: "elevenlabs", asr: "eliza-cloud" });
+      ).toEqual({ tts: "edge", asr: "eliza-cloud" });
     }
   });
 
-  it("remote-controller surfaces route to Eliza Cloud (any device)", () => {
+  it("remote-controller surfaces default to fast Edge TTS + Cloud ASR", () => {
     const platforms: PresetPlatform[] = ["desktop", "mobile", "web"];
     for (const platform of platforms) {
       expect(
         pickDefaultVoiceProvider({ platform, runtimeMode: "remote" }),
-      ).toEqual({ tts: "elevenlabs", asr: "eliza-cloud" });
+      ).toEqual({ tts: "edge", asr: "eliza-cloud" });
+    }
+  });
+
+  it("never picks the slow ElevenLabs provider as a default in any combo", () => {
+    const platforms: PresetPlatform[] = ["desktop", "mobile", "web"];
+    const modes: PresetRuntimeMode[] = [
+      "local",
+      "local-only",
+      "cloud",
+      "remote",
+    ];
+    for (const platform of platforms) {
+      for (const runtimeMode of modes) {
+        expect(
+          pickDefaultVoiceProvider({ platform, runtimeMode }).tts,
+        ).not.toBe("elevenlabs");
+      }
     }
   });
 
