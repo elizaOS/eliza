@@ -22,9 +22,13 @@ on:
       - "plugins/plugin-local-inference/src/services/voice/corpus-generator.ts"
       - "plugins/plugin-local-inference/src/services/voice/wav-codec.ts"
       - "plugins/plugin-local-inference/src/services/voice/workbench-*.ts"
+      - "plugins/plugin-local-inference/src/services/voice/corpus-augment.ts"
       - "plugins/plugin-local-inference/src/services/voice/voice-workbench-report.ts"
       - "plugins/plugin-local-inference/scripts/voice-workbench.ts"
       - "packages/shared/src/voice-wer.ts"
+      - "packages/shared/src/voice-eot.ts"
+      - "packages/shared/src/voice/respond-gate.ts"
+      - "packages/shared/src/voice/owner-inference.ts"
       - ".github/workflows/voice-workbench.yml"
   pull_request:
     paths:
@@ -33,9 +37,13 @@ on:
       - "plugins/plugin-local-inference/src/services/voice/corpus-generator.ts"
       - "plugins/plugin-local-inference/src/services/voice/wav-codec.ts"
       - "plugins/plugin-local-inference/src/services/voice/workbench-*.ts"
+      - "plugins/plugin-local-inference/src/services/voice/corpus-augment.ts"
       - "plugins/plugin-local-inference/src/services/voice/voice-workbench-report.ts"
       - "plugins/plugin-local-inference/scripts/voice-workbench.ts"
       - "packages/shared/src/voice-wer.ts"
+      - "packages/shared/src/voice-eot.ts"
+      - "packages/shared/src/voice/respond-gate.ts"
+      - "packages/shared/src/voice/owner-inference.ts"
       - ".github/workflows/voice-workbench.yml"
   workflow_dispatch: {}
 
@@ -65,19 +73,33 @@ jobs:
           bun run --cwd plugins/plugin-local-inference vitest run \
             src/services/voice/wav-codec.test.ts \
             src/services/voice/corpus-generator.test.ts \
+            src/services/voice/corpus-augment.test.ts \
             src/services/voice/workbench-headless-runner.test.ts \
+            src/services/voice/workbench-logic-services.test.ts \
             src/services/voice/workbench-entrypoint.test.ts \
             src/services/voice/voice-workbench.test.ts \
             src/services/voice/voice-workbench-report.test.ts \
             src/services/voice/e2e-harness.test.ts
 
-      - name: voice:workbench mocked lane (runs the matrix → report)
+      - name: Shared voice decision-logic suite (gate, EOT, owner inference)
+        run: |
+          bun run --cwd packages/shared vitest run \
+            src/voice/owner-inference.test.ts \
+            src/voice-eot.test.ts \
+            src/voice-wer.test.ts
+
+      - name: voice:workbench mocked lane (plumbing — runs the matrix → report)
         run: bun run --cwd plugins/plugin-local-inference voice:workbench --out "${RUNNER_TEMP}/voice-workbench-output"
 
-      - name: Upload workbench report
+      - name: voice:workbench logic lane (real shipped decision logic, no models)
+        run: bun run --cwd plugins/plugin-local-inference voice:workbench --logic --out "${RUNNER_TEMP}/voice-workbench-logic-output"
+
+      - name: Upload workbench reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: voice-workbench-report
-          path: ${{ runner.temp }}/voice-workbench-output
+          path: |
+            ${{ runner.temp }}/voice-workbench-output
+            ${{ runner.temp }}/voice-workbench-logic-output
           if-no-files-found: ignore
