@@ -541,7 +541,13 @@ const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] 
       packageName: "@elizaos/plugin-gitpathologist",
       phase: "deferred",
       required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-gitpathologist"),
+      // Not in the mobile bundle — attempting the import there hangs the full
+      // 30s deferred-plugin timeout before being skipped. Skip it up front on
+      // android/ios (it's a desktop dev tool, already gated in plugin-collector).
+      load: () =>
+        isMobilePlatform()
+          ? Promise.resolve(null)
+          : getOptionalPlugin("@elizaos/plugin-gitpathologist"),
     },
   ];
 
@@ -909,7 +915,7 @@ export async function configureLocalEmbeddingPlugin(
   );
   const detectedPreset = detectEmbeddingPreset();
   const SQL_COMPATIBLE_EMBEDDING_DIMENSIONS = new Set([
-    384, 512, 768, 1024, 1536, 3072,
+    384, 512, 768, 1024, 1536, 2048, 3072,
   ]);
 
   const normalizeEmbeddingDimensions = (
