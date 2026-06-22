@@ -245,3 +245,78 @@ export function isInternalCronSchedulerEnabled(): boolean {
   const isProduction = process.env.VERCEL_ENV === "production";
   return !isProduction;
 }
+
+let internalCronLoopHandle: ReturnType<typeof setInterval> | null = null;
+let internalCronInFlight = false;
+
+/**
+ * Entry crons fired by the in-process loop. `game-tick` fans the rest of the
+ * scheduled crons out via {@link triggerScheduledCrons}; `agent-tick` and
+ * `realtime-drain` are excluded from that fan-out so they are fired here.
+ */
+const INTERNAL_LOOP_ENTRY_CRONS = [
+  "/api/cron/game-tick",
+  "/api/cron/agent-tick",
+  "/api/cron/realtime-drain",
+];
+
+/**
+ * Start an in-process scheduler that periodically fires the game loop's entry
+ * crons, so a single always-on web service (e.g. on Railway) runs the live game
+ * with no external cron infrastructure. No-op unless
+ * `ENABLE_INTERNAL_CRON_SCHEDULER === "true"`. Idempotent — safe to call once at
+ * server startup.
+ */
+export function startInternalCronLoop(): void {
+  if (process.env.ENABLE_INTERNAL_CRON_SCHEDULER !== "true") return;
+  if (internalCronLoopHandle) return;
+
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    logger.warn(
+      "ENABLE_INTERNAL_CRON_SCHEDULER is set but CRON_SECRET is missing — internal cron loop disabled",
+      undefined,
+      "CronScheduler",
+    );
+    return;
+  }
+
+  const port = process.env.PORT ?? "3000";
+  const baseUrl =
+    process.env.INTERNAL_CRON_URL?.replace(/\/+$/, "") ??
+    `http://127.0.0.1:${port}`;
+
+  const fire = async (): Promise<void> => {
+    if (internalCronInFlight) return; // skip overlapping ticks
+    internalCronInFlight = true;
+    try {
+      for (const path of INTERNAL_LOOP_ENTRY_CRONS) {
+        try {
+          await fetch(`${baseUrl}${path}`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${cronSecret}` },
+            signal: AbortSignal.timeout(120_000),
+          });
+        } catch (error) {
+          logger.warn(
+            `Internal cron loop failed to fire ${path}`,
+            { error: error instanceof Error ? error.message : String(error) },
+            "CronScheduler",
+          );
+        }
+      }
+    } finally {
+      internalCronInFlight = false;
+    }
+  };
+
+  internalCronLoopHandle = setInterval(() => {
+    void fire();
+  }, 60_000);
+
+  logger.info(
+    "Internal cron loop started — single-service game loop active",
+    { baseUrl, intervalSeconds: 60 },
+    "CronScheduler",
+  );
+}

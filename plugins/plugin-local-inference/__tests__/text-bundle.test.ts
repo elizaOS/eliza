@@ -68,17 +68,27 @@ describe("per-tier text + embedding bundle resolution", () => {
 				);
 			});
 
-			it("declares same-file MTP (no separate drafter component) for MTP tiers", () => {
+			it("declares a separate-drafter MTP component for MTP tiers", () => {
 				if (!MTP_TIERS.has(tierId)) {
 					expect(model?.sourceModel?.components.mtp).toBeUndefined();
 					expect(model?.runtime?.mtp).toBeUndefined();
 					return;
 				}
-				// Same-file MTP: NextN head is embedded in the text GGUF, so
-				// there is no separate drafter component or drafterFile.
-				expect(model?.sourceModel?.components.mtp).toBeUndefined();
+				// Separate-drafter MTP: Gemma 4 ships an official standalone
+				// drafter GGUF, so each MTP tier declares a `mtp` component
+				// (`mtp/drafter-<tier>.gguf`) alongside the text GGUF, and the
+				// runtime carries the matching `drafterFile`.
+				const slug = tierId.slice("eliza-1-".length);
+				expect(model?.sourceModel?.components.mtp?.repo).toBe(
+					ELIZA_1_HF_REPO,
+				);
+				expect(model?.sourceModel?.components.mtp?.file).toBe(
+					`bundles/${slug}/mtp/drafter-${slug}.gguf`,
+				);
 				expect(model?.runtime?.mtp?.specType).toBe("draft-mtp");
-				expect(model?.runtime?.mtp?.drafterFile).toBeUndefined();
+				expect(model?.runtime?.mtp?.drafterFile).toBe(
+					`mtp/drafter-${slug}.gguf`,
+				);
 			});
 
 			it("declares the embedding GGUF component on tiers that ship a dedicated 1024-dim region", () => {

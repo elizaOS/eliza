@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
 	AssignmentRejectedError,
-	canServeRuntimeClassOnHost,
 	readAssignments,
 	setAssignment,
 } from "./assignments";
@@ -71,21 +70,10 @@ async function registerFusedModel(): Promise<InstalledModel> {
 	return model;
 }
 
-describe("canServeRuntimeClassOnHost", () => {
-	it("serves fused Eliza-1 everywhere", async () => {
-		expect(await canServeRuntimeClassOnHost("fused-eliza1")).toBe(true);
-	});
-
-	it("refuses generic GGUF on desktop (no explicit-modelPath binding)", async () => {
-		delete process.env.ELIZA_PLATFORM;
-		expect(await canServeRuntimeClassOnHost("generic-gguf")).toBe(false);
-	});
-
-	it("serves generic GGUF on mobile (capacitor explicit-path binding)", async () => {
-		process.env.ELIZA_PLATFORM = "android";
-		expect(await canServeRuntimeClassOnHost("generic-gguf")).toBe(true);
-	});
-});
+// (Removed "canServeRuntimeClassOnHost" suite — the generic-gguf runtime
+// class + its host-servability helper were retired in the eliza-1-only
+// cutover (#8808/#9033). The setAssignment boundary tests below now own the
+// "non-eliza-1 models are rejected" contract.)
 
 describe("setAssignment boundary validation", () => {
 	it("rejects a generic GGUF on desktop before assignment writes", async () => {

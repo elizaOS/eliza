@@ -59,26 +59,24 @@ describe("fused eliza-1 no-regression (C4)", () => {
 		expect(FUSED_TIER.runtime?.mtp?.specType).toBe("draft-mtp");
 	});
 
-	it("decideBackend routes a fused tier to the fused llama-cpp runtime", () => {
+	it("decideBackend routes a fused Eliza-1 tier to the fused llama-cpp runtime", () => {
 		const decision = decideBackend({
 			override: "auto",
 			catalog: FUSED_TIER,
-			runtimeClass: "fused-eliza1",
 			llamaCppAvailable: true,
 		});
-		expect(decision.runtimeClass).toBe("fused-eliza1");
 		expect(decision.backend).toBe("llama-cpp");
 	});
 
-	it("decideBackend routes a generic-gguf model to the explicit-modelPath runtime", () => {
+	it("decideBackend routes everything to llama-cpp — the stack is Eliza-1 only", () => {
+		// Post-#8808 cutover: there is no generic-gguf backend; every model
+		// (even an unknown catalog entry) routes to the fused llama-cpp runtime.
 		const decision = decideBackend({
 			override: "auto",
 			catalog: undefined,
-			runtimeClass: "generic-gguf",
 			llamaCppAvailable: true,
 		});
-		expect(decision.runtimeClass).toBe("generic-gguf");
-		expect(decision.backend).toBe("generic-gguf");
+		expect(decision.backend).toBe("llama-cpp");
 	});
 
 	it("dispatcher forwards the fused full-pipeline binding (catalog + mtp + bundleRoot) to the fused backend", async () => {

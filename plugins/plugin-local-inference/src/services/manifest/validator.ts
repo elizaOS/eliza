@@ -256,18 +256,12 @@ function collectContractErrors(
 		}
 	}
 
-	// Long-context tiers MUST require turbo3_tcq once any text variant has
-	// ctx > 64k. AGENTS.md §3 Required for desktop/pro/server (#6).
-	const hasLongContextVariant = m.files.text.some(
-		(f) => typeof f.ctx === "number" && f.ctx > 65536,
-	);
-	if (hasLongContextVariant) {
-		if (!declaredRequired.has("turbo3_tcq")) {
-			errors.push(
-				"kernels.required: text variant with ctx > 64k requires turbo3_tcq",
-			);
-		}
-	}
+	// Gemma 4 cutover (#9033): long-context KV is handled by Gemma's native
+	// windowed-SWA + shared-KV at stock q8_0, so the legacy turbo3_tcq trellis
+	// KV-cache kernel is no longer a required long-context kernel — it is an
+	// optional (head_dim=128) accelerator the Gemma stock-KV path doesn't use.
+	// Required kernels are governed by REQUIRED_KERNELS_BY_TIER (turboquant_q4
+	// weight-quant), checked above; nothing extra is gated on context length.
 
 	const visionEnabled = VISION_TIERS.has(m.tier);
 	if (visionEnabled) {
