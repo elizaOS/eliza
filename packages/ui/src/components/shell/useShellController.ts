@@ -357,7 +357,8 @@ export function useShellController(): ShellController {
         cached &&
         cached.content === message.text &&
         cached.failureKind === message.failureKind &&
-        (cached.reasoning || undefined) === (message.reasoning || undefined)
+        (cached.reasoning || undefined) === (message.reasoning || undefined) &&
+        cached.secretRequest === message.secretRequest
       ) {
         next.set(message.id, cached);
         return cached;
@@ -371,6 +372,9 @@ export function useShellController(): ShellController {
         ...(message.reasoning ? { reasoning: message.reasoning } : {}),
         ...(message.attachments?.length
           ? { attachments: message.attachments }
+          : {}),
+        ...(message.secretRequest
+          ? { secretRequest: message.secretRequest }
           : {}),
       };
       next.set(message.id, mapped);
