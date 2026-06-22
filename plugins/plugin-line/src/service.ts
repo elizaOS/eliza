@@ -827,16 +827,49 @@ export class LineService extends Service implements ILineService {
       return;
     }
 
-    const text = typeof content.text === "string" ? content.text.trim() : "";
-    if (!text) {
+    // Agent-generated attachments (#8876). LINE has a dedicated image message
+    // (url-based); it has no generic file message, so non-image media (video
+    // without a thumbnail, audio, documents) is appended to the text as a link
+    // rather than dropped. LINE requires https media URLs.
+    const attachments = Array.isArray(content.attachments) ? content.attachments : [];
+    const imageMessages: Message[] = [];
+    const linkedUrls: string[] = [];
+    for (const media of attachments) {
+      const url = typeof media?.url === "string" ? media.url.trim() : "";
+      if (!/^https:\/\//i.test(url)) continue;
+      if (media.contentType === "image") {
+        imageMessages.push({
+          type: "image",
+          originalContentUrl: url,
+          previewImageUrl: url,
+        });
+      } else {
+        linkedUrls.push(url);
+      }
+    }
+
+    const baseText = typeof content.text === "string" ? content.text.trim() : "";
+    const text =
+      linkedUrls.length > 0 ? [baseText, ...linkedUrls].filter(Boolean).join("\n") : baseText;
+
+    if (!text && imageMessages.length === 0) {
       return;
     }
 
-    const result = await this.sendMessage(to, text, {
-      quickReplyItems: quickReplyItemsFromStrings(data.quickReplies),
-    });
-    if (!result.success) {
-      throw new Error(result.error || "LINE message send failed");
+    if (text) {
+      const result = await this.sendMessage(to, text, {
+        quickReplyItems: quickReplyItemsFromStrings(data.quickReplies),
+      });
+      if (!result.success) {
+        throw new Error(result.error || "LINE message send failed");
+      }
+    }
+
+    if (imageMessages.length > 0) {
+      const result = await this.pushMessages(to, imageMessages);
+      if (!result.success) {
+        throw new Error(result.error || "LINE image send failed");
+      }
     }
   }
 
