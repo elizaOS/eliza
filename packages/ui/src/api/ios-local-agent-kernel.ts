@@ -1523,15 +1523,16 @@ async function listInstalledModels(): Promise<InstalledModel[]> {
   const bundles = readBundleIndex();
   return models
     .filter((model) => typeof model.path === "string" && model.path.length > 0)
-    .map((model): InstalledModel => {
+    .map((model): InstalledModel | null => {
       const catalog = catalogForAvailableModel(model);
+      if (!catalog) return null;
       const id =
-        catalog?.id ??
+        catalog.id ??
         (model.name || model.path || randomId("model")).replace(/\.gguf$/i, "");
-      const bundle = catalog ? bundles[catalog.id] : undefined;
+      const bundle = bundles[catalog.id];
       return {
         id,
-        displayName: catalog?.displayName ?? model.name ?? id,
+        displayName: catalog.displayName,
         path: model.path as string,
         sizeBytes: typeof model.size === "number" ? model.size : 0,
         ...(bundle?.bundleRoot ? { bundleRoot: bundle.bundleRoot } : {}),
@@ -1545,13 +1546,14 @@ async function listInstalledModels(): Promise<InstalledModel[]> {
         ...(typeof bundle?.bundleSizeBytes === "number"
           ? { bundleSizeBytes: bundle.bundleSizeBytes }
           : {}),
-        ...(catalog?.hfRepo ? { hfRepo: catalog.hfRepo } : {}),
+        hfRepo: catalog.hfRepo,
         installedAt,
         lastUsedAt: activeState.modelId === id ? activeState.loadedAt : null,
-        source: catalog ? "eliza-download" : "external-scan",
-        ...(catalog?.runtimeRole ? { runtimeRole: catalog.runtimeRole } : {}),
+        source: "eliza-download",
+        ...(catalog.runtimeRole ? { runtimeRole: catalog.runtimeRole } : {}),
       };
-    });
+    })
+    .filter((model): model is InstalledModel => model !== null);
 }
 
 async function hardwareProbe(): Promise<HardwareProbe> {

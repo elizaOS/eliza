@@ -1,78 +1,41 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_ELIGIBLE_MODEL_IDS } from "./catalog";
-import { searchHuggingFaceGguf } from "./hf-search";
+import {
+  searchHuggingFaceGguf,
+  searchModelHubGguf,
+  searchModelScopeGguf,
+} from "./hf-search";
 
-function jsonResponse(body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    headers: { "content-type": "application/json" },
-    status: 200,
-  });
-}
-
-describe("searchHuggingFaceGguf", () => {
+describe("local model hub compatibility search", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("classifies Qwen3.5 decimal tiers without legacy Qwen3 aliases", async () => {
-    const details = new Map<string, unknown>([
-      [
-        "Qwen/Qwen3.5-0.8B-GGUF",
-        {
-          id: "Qwen/Qwen3.5-0.8B-GGUF",
-          pipeline_tag: "text-generation",
-          siblings: [{ rfilename: "qwen3.5-0.8b-q4_k_m.gguf", size: 512 }],
-          tags: ["gguf", "text-generation"],
-        },
-      ],
-      [
-        "Qwen/Qwen3.5-2B-GGUF",
-        {
-          id: "Qwen/Qwen3.5-2B-GGUF",
-          pipeline_tag: "text-generation",
-          siblings: [{ rfilename: "qwen3.5-2b-q4_k_m.gguf", size: 512 }],
-          tags: ["gguf", "text-generation"],
-        },
-      ],
-      [
-        "org/tiny-0.8b-GGUF",
-        {
-          id: "org/tiny-0.8b-GGUF",
-          pipeline_tag: "text-generation",
-          siblings: [{ rfilename: "tiny-0.8b-q4_k_m.gguf", size: 512 }],
-          tags: ["gguf"],
-        },
-      ],
-    ]);
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.startsWith("https://huggingface.co/api/models?")) {
-        return jsonResponse([...details.keys()].map((id) => ({ id })));
-      }
-
-      const encodedId = url.replace("https://huggingface.co/api/models/", "");
-      const detail = details.get(decodeURIComponent(encodedId));
-      if (detail) return jsonResponse(detail);
-      return new Response("not found", { status: 404 });
-    });
+  it("does not query Hugging Face and returns no custom models", async () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const results = await searchHuggingFaceGguf("qwen", 3);
+    await expect(searchHuggingFaceGguf("qwen", 4)).resolves.toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 
-    expect(results.map((result) => [result.params, result.bucket])).toEqual([
-      ["0.8B", "small"],
-      ["2B", "small"],
-      ["0.8B", "small"],
-    ]);
-    expect(
-      results.map((result) => result.parameterLabel ?? result.params),
-    ).toEqual(["0.8B", "2B", "0.8B"]);
-    expect(results.every((result) => result.id.startsWith("hf:"))).toBe(true);
-    expect(results.every((result) => !result.id.startsWith("eliza-1-"))).toBe(
-      true,
+  it("does not query ModelScope and returns no custom models", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(searchModelScopeGguf("qwen", 4)).resolves.toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the generic hub shim no-network for all supported hubs", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(searchModelHubGguf("qwen", "huggingface", 4)).resolves.toEqual(
+      [],
     );
-    expect(
-      results.every((result) => !DEFAULT_ELIGIBLE_MODEL_IDS.has(result.id)),
-    ).toBe(true);
+    await expect(searchModelHubGguf("qwen", "modelscope", 4)).resolves.toEqual(
+      [],
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
