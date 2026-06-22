@@ -1920,6 +1920,13 @@ export {
   summarizeEnvelope,
 } from "./services/completion-envelope.js";
 export {
+  buildIndependentVerifierPrompt,
+  type IndependentVerifierVerdict,
+  runIndependentVerification,
+  shouldRunIndependentVerify,
+  verifierVerdict,
+} from "./services/independent-verifier.js";
+export {
   collectScreenshotPaths,
   deliverScreenshots,
   screenshotsToAttachments,
