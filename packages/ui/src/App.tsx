@@ -212,6 +212,10 @@ const DatabasePageView = lazyNamedView(
   () => import("./components/pages/DatabasePageView"),
   "DatabasePageView",
 );
+const FilesView = lazyNamedView(
+  () => import("./components/pages/FilesView"),
+  "FilesView",
+);
 const LogsView = lazyNamedView(
   () => import("./components/pages/LogsView"),
   "LogsView",
@@ -960,6 +964,11 @@ function renderStaticViewRouterTab({
       <TabContentView>
         <MemoryViewerView />
       </TabContentView>
+    ),
+    files: (
+      <TabScrollView>
+        <FilesView />
+      </TabScrollView>
     ),
     runtime: (
       <TabContentView>

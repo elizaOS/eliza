@@ -278,6 +278,16 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
+    tabId: "files",
+    path: "/apps/files",
+    label: "Files",
+    group: "Apps",
+    visibility: "all",
+    featureFlag: "VITE_ENABLE_APPS",
+    requiresAuth: true,
+    platformGate: null,
+  },
+  {
     tabId: "logs",
     path: "/apps/logs",
     label: "Logs",

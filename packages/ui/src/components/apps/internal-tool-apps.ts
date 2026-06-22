@@ -128,6 +128,17 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     windowPath: "/apps/database",
   },
   {
+    name: "@elizaos/app-files-viewer",
+    displayName: "Files",
+    description:
+      "Browse every stored file with download, share, and delete, filtered by type.",
+    heroImage: null,
+    targetTab: "files",
+    capabilities: ["files", "attachments", "media", "viewer"],
+    order: 13,
+    windowPath: "/apps/files",
+  },
+  {
     name: "@elizaos/plugin-elizamaker",
     displayName: "ElizaMaker",
     description:

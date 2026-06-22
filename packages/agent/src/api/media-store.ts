@@ -395,6 +395,69 @@ function mimeForFile(fileName: string): string {
   return MIME_BY_EXT[ext] ?? "application/octet-stream";
 }
 
+export interface MediaFileInfo {
+  fileName: string;
+  url: string;
+  hash: string;
+  mimeType: string;
+  size: number;
+  createdAt: number;
+}
+
+/**
+ * List every stored media file with derived metadata (size, mime, mtime) for
+ * the Files surface. Read-only directory scan; never throws (returns [] on
+ * failure). Metadata is derived (no separate index), matching the
+ * content-addressed model — original filenames aren't retained here.
+ */
+export function listMediaFiles(): MediaFileInfo[] {
+  const out: MediaFileInfo[] = [];
+  try {
+    const dir = mediaDir();
+    for (const name of fs.readdirSync(dir)) {
+      if (!MEDIA_FILE_NAME.test(name)) continue;
+      try {
+        const stat = fs.statSync(path.join(dir, name));
+        if (!stat.isFile()) continue;
+        out.push({
+          fileName: name,
+          url: `${MEDIA_URL_PREFIX}${name}`,
+          hash: name.split(".")[0] ?? name,
+          mimeType: mimeForFile(name),
+          size: stat.size,
+          createdAt: stat.mtimeMs,
+        });
+      } catch {
+        // file vanished mid-scan — skip
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      `[media-store] list failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  return out;
+}
+
+/**
+ * Delete a stored media file by its strict content-addressed name. Returns true
+ * when removed. Validates the name + dir to defend against traversal.
+ */
+export function deleteMediaFile(fileName: string): boolean {
+  if (!MEDIA_FILE_NAME.test(fileName)) return false;
+  try {
+    const dir = mediaDir();
+    const filePath = path.join(dir, fileName);
+    if (path.dirname(filePath) !== dir) return false;
+    fs.unlinkSync(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Touch-on-serve → LRU: bump the file's mtime when it's served so eviction
 // (oldest-mtime-first) keeps frequently-viewed media and drops the truly cold
 // files. Throttled per file so a burst of range requests doesn't thrash the fs.
