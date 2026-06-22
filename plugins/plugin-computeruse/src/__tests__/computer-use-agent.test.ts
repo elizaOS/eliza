@@ -225,6 +225,60 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
     expect(report.steps.length).toBe(3);
   });
 
+  it("emits a per-step onStep callback when streamProgress is set (#8912)", async () => {
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "still loading",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: { kind: "wait", rationale: "waiting for page" },
+        }),
+    });
+    const progress: Array<{
+      step: number;
+      actionKind: string;
+      rationale: string;
+      success: boolean;
+    }> = [];
+    const report = await runComputerUseAgentLoop(
+      null,
+      { goal: "g", maxSteps: 3, streamProgress: true },
+      fakeService(),
+      { brain, captureAll, onStep: (p) => void progress.push(p) },
+    );
+    // One callback per dispatched step, in order, carrying kind + rationale.
+    expect(progress.length).toBe(report.steps.length);
+    expect(progress.length).toBeGreaterThanOrEqual(1);
+    expect(progress[0]).toMatchObject({
+      step: 1,
+      actionKind: "wait",
+      rationale: "waiting for page",
+      success: true,
+    });
+  });
+
+  it("does not call onStep when streamProgress is unset", async () => {
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "done",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: { kind: "finish", rationale: "ok" },
+        }),
+    });
+    let calls = 0;
+    await runComputerUseAgentLoop(null, { goal: "g" }, fakeService(), {
+      brain,
+      captureAll,
+      onStep: () => {
+        calls += 1;
+      },
+    });
+    expect(calls).toBe(0);
+  });
+
   it("surfaces cascade failures as `reason: error` instead of throwing", async () => {
     // Brain emits a click with no ref + no roi → cascade can't resolve it.
     const brain = new Brain(null, {

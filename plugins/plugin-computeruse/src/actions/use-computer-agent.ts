@@ -61,14 +61,32 @@ const DEFAULT_MAX_STEPS = 5;
 export interface ComputerUseAgentParams {
   goal: string;
   maxSteps?: number;
+  /**
+   * When true, emit a chat message after each dispatched step so a long-running
+   * goal does not leave the origin chat silent for minutes (#8912). The action
+   * handler wires this to the runtime HandlerCallback; the loop itself calls
+   * per-step progress hooks.
+   */
   streamProgress?: boolean;
+}
+
+/** One per-step progress event, surfaced when `streamProgress` is set. */
+export interface ComputerUseAgentStepProgress {
+  step: number;
+  actionKind: string;
+  rationale: string;
+  success: boolean;
+  error?: string;
 }
 
 interface AgentDeps {
   brain?: Brain;
   computerInterface?: ComputerInterface;
   captureAll?: () => Promise<DisplayCapture[]>;
+  /** Called with compact Content after each dispatched step when enabled. */
   onStepProgress?: (content: Content) => Promise<void> | void;
+  /** Called after each dispatched step when `params.streamProgress` is set. */
+  onStep?: (progress: ComputerUseAgentStepProgress) => void | Promise<void>;
 }
 
 export interface ComputerUseAgentReport {
@@ -175,15 +193,35 @@ export async function runComputerUseAgentLoop(
       },
     });
     if (isStreamProgressEnabled(params.streamProgress)) {
+      const progress: ComputerUseAgentStepProgress = {
+        step,
+        actionKind: proposed.proposed.kind,
+        rationale: proposed.proposed.rationale,
+        success: dispatchResult.success,
+        error: dispatchResult.error?.message,
+      };
+      try {
+        await deps.onStep?.(progress);
+      } catch (error) {
+        logger.warn(
+          {
+            src: "plugin:computeruse",
+            actionName: "COMPUTER_USE_AGENT",
+            step,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Failed to emit computer-use agent step progress callback",
+        );
+      }
       try {
         await deps.onStepProgress?.(
           buildStepProgressContent({
             actionName: "COMPUTER_USE_AGENT",
-            step,
-            kind: proposed.proposed.kind,
-            rationale: proposed.proposed.rationale,
-            success: dispatchResult.success,
-            error: dispatchResult.error?.message,
+            step: progress.step,
+            kind: progress.actionKind,
+            rationale: progress.rationale,
+            success: progress.success,
+            error: progress.error,
           }),
         );
       } catch (error) {

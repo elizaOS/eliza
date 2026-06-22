@@ -1826,6 +1826,11 @@ export function injectCopyForkLlamaLibTask(content) {
     `    return null\n` +
     `}\n` +
     `\n` +
+    `// NOTE: despite the legacy "ForkLlama" name, this stages the SINGLE canonical\n` +
+    `// fused inference lib — libelizainference.so — with its own DT_NEEDED runtime\n` +
+    `// siblings (libggml*, libllama.so, libllama-common.so, libmtmd.so, libomp.so),\n` +
+    `// which ARE libelizainference's GPU/CPU backends, NOT a separate llama.cpp fork.\n` +
+    `// There is no second inference library; do NOT delete this task or its siblings.\n` +
     `task copyForkLlamaLib {\n` +
     `    doLast {\n` +
     `        if (project.findProperty('elizaCloudBuild') == 'true') {\n` +

@@ -219,6 +219,14 @@ def resolveAndroidLibompForAbi = { String abi ->
     return null
 }
 
+// NOTE: despite the legacy "ForkLlama" name, this stages the SINGLE canonical
+// fused inference lib — libelizainference.so — together with its own DT_NEEDED
+// runtime siblings (libggml{,-base,-cpu,-vulkan}.so, libllama.so, libllama-common.so,
+// libmtmd.so, libomp.so). Those siblings ARE libelizainference's GPU/CPU backends
+// (the Vulkan variant links them dynamically), NOT a separate "fork" of llama.cpp.
+// There is no second inference library. Do NOT delete this task or its siblings —
+// that breaks on-device inference. (libelizainference also folds in MTP, omnivoice
+// TTS/Kokoro, ASR, VAD, vision; see verify-fused-symbols.mjs for the symbol gate.)
 task copyForkLlamaLib {
     doLast {
         if (project.findProperty('elizaCloudBuild') == 'true') {
