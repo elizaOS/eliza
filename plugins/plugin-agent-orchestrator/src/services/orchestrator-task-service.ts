@@ -65,7 +65,9 @@ import {
 } from "./orchestrator-task-mapper.js";
 import { OrchestratorTaskStore } from "./orchestrator-task-store.js";
 import {
+  type AttemptReflection,
   type CreateTaskInput,
+  MAX_ATTEMPT_REFLECTIONS,
   type OrchestratorAccountAssignment,
   type OrchestratorAccountOverview,
   type OrchestratorRoomParticipant,
@@ -229,6 +231,31 @@ function str(value: unknown): string | undefined {
 
 function num(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Coerce the persisted `metadata.attemptReflections` (free-form JSON) back into
+ * typed {@link AttemptReflection}s, dropping any malformed entries. See #8899.
+ */
+function readAttemptReflections(
+  metadata: Record<string, unknown> | undefined,
+): AttemptReflection[] {
+  const raw = metadata?.attemptReflections;
+  if (!Array.isArray(raw)) return [];
+  const out: AttemptReflection[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const r = entry as Record<string, unknown>;
+    if (typeof r.attempt !== "number" || typeof r.summary !== "string") continue;
+    out.push({
+      attempt: r.attempt,
+      summary: r.summary,
+      missing: Array.isArray(r.missing)
+        ? r.missing.filter((m): m is string => typeof m === "string")
+        : [],
+    });
+  }
+  return out;
 }
 
 function truncate(text: string, max = 2000): string {
@@ -1380,8 +1407,22 @@ export class OrchestratorTaskService extends Service {
       // `keepAliveAfterComplete`, so the ACP process is still attached and can
       // take a follow-up. Persist the bumped attempt counter first so a
       // redelivered task_complete can't double-count, then reactivate and steer.
+      // Reflexion (#8899): record a verbal post-mortem of this failed attempt so
+      // the next re-spawn of this task can replay it and avoid repeating the gap.
+      const attemptReflections = [
+        ...readAttemptReflections(doc.task.metadata),
+        {
+          attempt: attempts + 1,
+          missing: verdict.missing ?? [],
+          summary: verdict.summary ?? "",
+        },
+      ].slice(-MAX_ATTEMPT_REFLECTIONS);
       await this.store.updateTask(taskId, {
-        metadata: { ...doc.task.metadata, autoVerifyAttempts: attempts + 1 },
+        metadata: {
+          ...doc.task.metadata,
+          autoVerifyAttempts: attempts + 1,
+          attemptReflections,
+        },
       });
       await this.store.addEvent({
         id: randomUUID(),
@@ -1895,6 +1936,9 @@ export class OrchestratorTaskService extends Service {
       taskRoomId: doc.task.taskRoomId ?? doc.task.roomId,
       workdir,
       repo: opts.repo,
+      // Replay prior failed-verification post-mortems so a re-spawn of this task
+      // doesn't repeat them (#8899).
+      attemptReflections: readAttemptReflections(doc.task.metadata),
       ...(capabilityProfile ? { capabilityProfile } : {}),
     });
 
