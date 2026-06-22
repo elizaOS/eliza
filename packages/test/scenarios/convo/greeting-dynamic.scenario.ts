@@ -36,6 +36,10 @@ export default scenario({
   title:
     "Convo framework: greeting triggers non-empty response (scripted port)",
   domain: "convo",
+  // Keyless-deterministic: the only assertion is a non-empty reply, which the
+  // deterministic LLM proxy's default reply satisfies. No external service, no
+  // secret. Verified passing under SCENARIO_USE_LLM_PROXY=1.
+  lane: "pr-deterministic",
   tags: ["smoke", "convo", "greeting"],
   description:
     "Scripted port of the dynamic greeting scenario: sends a single greeting and asserts a non-empty response with the greet-test plugin registered.",

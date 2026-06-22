@@ -12,22 +12,90 @@
  */
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { echoTestPlugin } from "./_fixtures/echo-test-plugin.ts";
 
-function asRuntime(value: unknown): AgentRuntime {
+const ECHO_INPUT = "Please echo this message back to me: hello world";
+
+type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
+  scenarioLlmFixtures?: {
+    register: (...fixtures: Array<Record<string, unknown>>) => void;
+  };
+};
+
+function asRuntime(value: unknown): RuntimeWithScenarioLlmFixtures {
   if (!value || typeof value !== "object" || !("registerPlugin" in value)) {
     throw new Error(
       "echo-self-test seed: runtime did not expose registerPlugin",
     );
   }
-  return value as AgentRuntime;
+  return value as RuntimeWithScenarioLlmFixtures;
+}
+
+/**
+ * Under the deterministic LLM proxy (`SCENARIO_USE_LLM_PROXY=1`) the proxy has
+ * no model intelligence to pick `ECHO_TEST` over a plain reply, so we register
+ * the two routing fixtures that force the selection: the stage-1 response
+ * handler nominates `ECHO_TEST` as the only candidate, and the action planner
+ * emits the matching tool call. This is what makes the scenario genuinely
+ * keyless-deterministic (lane `pr-deterministic`).
+ */
+function echoRouteFixtures(): Array<Record<string, unknown>> {
+  const inputMatches = (value: string) => value.includes(ECHO_INPUT);
+  return [
+    {
+      name: "route-echo-stage1",
+      match: {
+        modelType: ModelType.RESPONSE_HANDLER,
+        input: inputMatches,
+        toolName: "HANDLE_RESPONSE",
+      },
+      response: {
+        contexts: ["general"],
+        intents: ["echo"],
+        replyText: "On it.",
+        threadOps: [],
+        candidateActionNames: ["ECHO_TEST"],
+      },
+      times: 1,
+    },
+    {
+      name: "route-echo-planner",
+      match: {
+        modelType: ModelType.ACTION_PLANNER,
+        input: inputMatches,
+        toolName: "ECHO_TEST",
+      },
+      response: {
+        text: "",
+        thought: "Call ECHO_TEST to echo the user's message.",
+        messageToUser: "On it.",
+        completed: true,
+        finishReason: "tool-calls",
+        toolCalls: [
+          {
+            id: "call-echo-test",
+            name: "ECHO_TEST",
+            type: "function",
+            arguments: {},
+          },
+        ],
+      },
+      times: 1,
+    },
+  ];
 }
 
 export default scenario({
   id: "convo.echo-self-test",
   title: "Convo framework self-test: ECHO_TEST action is captured",
   domain: "convo",
+  // Keyless-deterministic: the trivial ECHO_TEST plugin runs in-memory and the
+  // routing fixtures registered below force the action selection under the
+  // deterministic LLM proxy. No external service, no secret. Verified passing
+  // under SCENARIO_USE_LLM_PROXY=1.
+  lane: "pr-deterministic",
   tags: ["smoke", "convo", "self-test"],
   description:
     "Registers a trivial ECHO_TEST plugin and verifies the scripted runner captures the action call with success=true.",
@@ -44,6 +112,7 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = asRuntime(ctx.runtime);
         await runtime.registerPlugin(echoTestPlugin satisfies Plugin);
+        runtime.scenarioLlmFixtures?.register(...echoRouteFixtures());
       },
     },
   ],
@@ -52,7 +121,7 @@ export default scenario({
     {
       kind: "message",
       name: "echo-hello-world",
-      text: "Please echo this message back to me: hello world",
+      text: ECHO_INPUT,
       expectedActions: ["ECHO_TEST"],
       timeoutMs: 120_000,
       assertTurn: (turn) => {

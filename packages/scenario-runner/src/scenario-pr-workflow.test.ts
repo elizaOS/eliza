@@ -256,7 +256,18 @@ describe("scenario PR workflow contract", () => {
       "bun run --cwd packages/scenario-runner test:pr:e2e",
     );
     expect(scenarioRunnerPackage.scripts?.["test:pr:e2e"]).toBe(
-      "bun run test:deterministic:e2e",
+      "bun run test:deterministic:e2e && bun run test:corpus:pr:e2e",
+    );
+    // The corpus lane runs the big `packages/test/scenarios` corpus filtered to
+    // the `pr-deterministic` lane, keyless, under the same strict proxy.
+    expect(scenarioRunnerPackage.scripts?.["test:corpus:pr:e2e"]).toContain(
+      "SCENARIO_USE_LLM_PROXY=1",
+    );
+    expect(scenarioRunnerPackage.scripts?.["test:corpus:pr:e2e"]).toContain(
+      "--lane pr-deterministic",
+    );
+    expect(scenarioRunnerPackage.scripts?.["test:corpus:pr:e2e"]).toContain(
+      "src/cli.ts run ../test/scenarios",
     );
     expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
       "SCENARIO_USE_LLM_PROXY=1",

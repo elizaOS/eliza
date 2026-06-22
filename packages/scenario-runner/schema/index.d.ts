@@ -273,11 +273,27 @@ export type ScenarioFinalCheck =
       minimumScore?: number;
     });
 
+/**
+ * Which CI lane a scenario runs in.
+ *
+ * - `pr-deterministic`: runs on every PR under the deterministic LLM proxy
+ *   (`SCENARIO_USE_LLM_PROXY=1`) with zero credentials. A scenario may only
+ *   claim this lane if it passes keyless — no live external service, no secret,
+ *   and every LLM call is either backed by a registered proxy fixture or
+ *   satisfied by the proxy's default reply.
+ * - `live-only`: needs live model credentials and/or external connector
+ *   services and runs only in the credentialed live lane. This is the default
+ *   for any scenario that does not declare a lane.
+ */
+export type ScenarioLane = "pr-deterministic" | "live-only";
+
 export type ScenarioDefinition = {
   id: string;
   title: string;
   domain: string;
   status?: "active" | "pending";
+  /** CI lane. Absent means `live-only` (see {@link DEFAULT_SCENARIO_LANE}). */
+  lane?: ScenarioLane;
   turns: ScenarioTurn[];
   seed?: ScenarioSeedStep[];
   finalChecks?: ScenarioFinalCheck[];
@@ -285,5 +301,11 @@ export type ScenarioDefinition = {
 };
 
 export declare const FINAL_CHECK_KEYS: ReadonlyMap<string, ReadonlySet<string>>;
+
+/** Lane assumed for any scenario that does not declare one. */
+export declare const DEFAULT_SCENARIO_LANE: ScenarioLane;
+
+/** Resolve a scenario's effective lane, applying {@link DEFAULT_SCENARIO_LANE}. */
+export declare function scenarioLane(value: ScenarioDefinition): ScenarioLane;
 
 export function scenario<const T extends ScenarioDefinition>(value: T): T;
