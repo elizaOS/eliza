@@ -36,15 +36,15 @@ describe("training CLI collection options", () => {
         dryRun: true,
       },
       benchmarkVsCerebras: {
-        tiers: "0_8b",
+        tiers: "2b",
         benchmark: "eliza_harness_action_selection",
         variants: "both",
         maxSamples: 50,
         dryRun: true,
       },
       evalComparison: {
-        model: "eliza-1-0_8b-base",
-        trainedModelPath: "eliza-1-0_8b-trained",
+        model: "eliza-1-2b-base",
+        trainedModelPath: "eliza-1-2b-trained",
         backend: "cpu",
         dryRun: true,
       },
@@ -64,39 +64,39 @@ describe("training CLI collection options", () => {
     });
     expect(options.actionBenchmarkPairs).toBeUndefined();
     expect(options.actionBenchmarkPair).toEqual({
-      tier: "0_8b",
+      tier: "2b",
       base: {
         variant: "base",
-        modelId: "eliza-1-0_8b-base",
-        runtimeModel: "eliza-1-0_8b-base",
+        modelId: "eliza-1-2b-base",
+        runtimeModel: "eliza-1-2b-base",
       },
       trained: {
         variant: "trained",
-        modelId: "eliza-1-0_8b-trained",
-        runtimeModel: "eliza-1-0_8b-trained",
+        modelId: "eliza-1-2b-trained",
+        runtimeModel: "eliza-1-2b-trained",
       },
     });
   });
 
   it("preserves explicit smallest-tier collection for quick checks", () => {
-    const options = buildRunCollectionOptionsFromCliArgs(["--tiers", "0_8b"]);
+    const options = buildRunCollectionOptionsFromCliArgs(["--tiers", "2b"]);
 
     expect(options.actionBenchmarkPairs).toBeUndefined();
     expect(options.actionBenchmarkPair).toMatchObject({
-      tier: "0_8b",
+      tier: "2b",
       base: {
         variant: "base",
-        modelId: "eliza-1-0_8b-base",
-        runtimeModel: "eliza-1-0_8b-base",
+        modelId: "eliza-1-2b-base",
+        runtimeModel: "eliza-1-2b-base",
       },
       trained: {
         variant: "trained",
-        modelId: "eliza-1-0_8b-trained",
-        runtimeModel: "eliza-1-0_8b-trained",
+        modelId: "eliza-1-2b-trained",
+        runtimeModel: "eliza-1-2b-trained",
       },
     });
     expect(options.benchmarkVsCerebras).toMatchObject({
-      tiers: "0_8b",
+      tiers: "2b",
       benchmark: "eliza_harness_action_selection",
     });
   });
@@ -125,7 +125,7 @@ describe("training CLI collection options", () => {
     const options = buildRunCollectionOptionsFromCliArgs([
       "--live",
       "--benchmark-model",
-      "eliza-1-0_8b",
+      "eliza-1-2b",
       "--benchmark-variant",
       "trained",
       "--benchmark-filter",
@@ -135,8 +135,8 @@ describe("training CLI collection options", () => {
     expect(options.actionBenchmark).toMatchObject({
       dryRun: false,
       useMocks: false,
-      modelId: "eliza-1-0_8b",
-      runtimeModel: "eliza-1-0_8b",
+      modelId: "eliza-1-2b",
+      runtimeModel: "eliza-1-2b",
       variant: "trained",
       filter: "chat-greeting-hi",
     });
@@ -156,7 +156,7 @@ describe("training CLI collection options", () => {
       "--skip-model-registry",
       "--skip-bundle-stage",
       "--tiers",
-      "0_8b",
+      "2b",
       "--cerebras-max-samples",
       "1",
       "--cerebras-variants",
@@ -165,7 +165,7 @@ describe("training CLI collection options", () => {
 
     expect(options.includeBenchmarkVsCerebras).toBe(true);
     expect(options.benchmarkVsCerebras).toMatchObject({
-      tiers: "0_8b",
+      tiers: "2b",
       benchmark: "eliza_harness_action_selection",
       variants: "trained",
       maxSamples: 1,
@@ -177,7 +177,7 @@ describe("training CLI collection options", () => {
     const options = buildRunCollectionOptionsFromCliArgs([
       "--live",
       "--hf-files",
-      "sft/0_8b/train.jsonl, sft/0_8b/val.jsonl",
+      "sft/2b/train.jsonl, sft/2b/val.jsonl",
       "--skip-feed",
       "--skip-natural",
       "--skip-tests",
@@ -201,7 +201,7 @@ describe("training CLI collection options", () => {
     expect(options.includeBenchmarkMatrix).toBe(false);
     expect(options.huggingFace).toMatchObject({
       dryRun: false,
-      files: ["sft/0_8b/train.jsonl", "sft/0_8b/val.jsonl"],
+      files: ["sft/2b/train.jsonl", "sft/2b/val.jsonl"],
     });
   });
 
@@ -265,7 +265,7 @@ describe("training CLI collection options", () => {
     expect(options.actionBenchmarkPair).toBeUndefined();
     expect(options.actionBenchmarkPairs).toEqual([
       {
-        tier: "0_8b",
+        tier: "2b",
         base: { variant: "base" },
         trained: { variant: "trained" },
       },
@@ -291,7 +291,7 @@ describe("training CLI collection options", () => {
       },
     ]);
     expect(options.benchmarkVsCerebras).toMatchObject({
-      tiers: "0_8b,2b,4b,9b,27b",
+      tiers: "2b,2b,4b,9b,27b",
       benchmark: "eliza_harness_action_selection",
       dryRun: false,
     });
@@ -313,7 +313,7 @@ describe("training CLI collection options", () => {
       useMocks: false,
     });
     expect(options.benchmarkVsCerebras).toMatchObject({
-      tiers: "0_8b,2b,4b,9b,27b",
+      tiers: "2b,2b,4b,9b,27b",
       dryRun: false,
     });
   });
@@ -381,13 +381,13 @@ describe("training CLI collection options", () => {
             actionBenchmarkPairs: 5,
             benchmarkRows: 10,
             benchmarkComparisons: 5,
-            tiers: ["0_8b", "2b", "4b", "9b", "27b"],
+            tiers: ["2b", "2b", "4b", "9b", "27b"],
             comparisonInventory: [
               {
-                tier: "0_8b",
+                tier: "2b",
                 benchmark: "eliza_harness_action_selection",
-                baseModelId: "eliza-1-0_8b-base",
-                trainedModelId: "eliza-1-0_8b-trained",
+                baseModelId: "eliza-1-2b-base",
+                trainedModelId: "eliza-1-2b-trained",
                 referenceModelId: null,
                 baseScore: 0.4,
                 trainedScore: 0.5,
@@ -412,7 +412,7 @@ describe("training CLI collection options", () => {
             ],
             improvementComparisons: [
               {
-                tier: "0_8b",
+                tier: "2b",
                 benchmark: "eliza_harness_action_selection",
                 baseScore: 0.4,
                 trainedScore: 0.5,
@@ -421,8 +421,8 @@ describe("training CLI collection options", () => {
               },
             ],
             baselineProgress: {
-              tierOrder: ["0_8b", "2b", "4b", "9b", "27b"],
-              establishedTiers: ["0_8b"],
+              tierOrder: ["2b", "2b", "4b", "9b", "27b"],
+              establishedTiers: ["2b"],
               remainingTiers: ["2b", "4b", "9b", "27b"],
               nextTier: "2b",
               smallestTierEstablished: true,
@@ -440,15 +440,15 @@ describe("training CLI collection options", () => {
             trainingRuns: 1,
             modelInventory: [
               {
-                title: "Eliza-1 0_8b trained",
-                path: "/tmp/collection/eliza1_model_registry/0_8b-model-manifest.json",
+                title: "Eliza-1 2b trained",
+                path: "/tmp/collection/eliza1_model_registry/2b-model-manifest.json",
                 schema: "eliza1_model_registry_entry",
-                model: "eliza-1-0_8b-trained",
-                tier: "0_8b",
+                model: "eliza-1-2b-trained",
+                tier: "2b",
                 variant: "trained",
-                outputPath: "hf://elizaos/eliza-1-0_8b-trained",
-                baseModel: "eliza-1-0_8b-base",
-                repoId: "elizaos/eliza-1-0_8b-trained",
+                outputPath: "hf://elizaos/eliza-1-2b-trained",
+                baseModel: "eliza-1-2b-base",
+                repoId: "elizaos/eliza-1-2b-trained",
                 baseEvalScore: null,
                 trainedEvalScore: null,
                 evalImprovementPercent: null,
@@ -650,10 +650,10 @@ describe("training CLI collection options", () => {
             comparisonInventory: [],
             improvementComparisons: [],
             baselineProgress: {
-              tierOrder: ["0_8b", "2b", "4b", "9b", "27b"],
+              tierOrder: ["2b", "2b", "4b", "9b", "27b"],
               establishedTiers: [],
-              remainingTiers: ["0_8b", "2b", "4b", "9b", "27b"],
-              nextTier: "0_8b",
+              remainingTiers: ["2b", "2b", "4b", "9b", "27b"],
+              nextTier: "2b",
               smallestTierEstablished: false,
               allTiersEstablished: false,
             },
@@ -734,10 +734,10 @@ describe("training CLI collection options", () => {
             comparisonInventory: [],
             improvementComparisons: [],
             baselineProgress: {
-              tierOrder: ["0_8b", "2b", "4b", "9b", "27b"],
+              tierOrder: ["2b", "2b", "4b", "9b", "27b"],
               establishedTiers: [],
-              remainingTiers: ["0_8b", "2b", "4b", "9b", "27b"],
-              nextTier: "0_8b",
+              remainingTiers: ["2b", "2b", "4b", "9b", "27b"],
+              nextTier: "2b",
               smallestTierEstablished: false,
               allTiersEstablished: false,
             },
@@ -879,7 +879,7 @@ describe("training CLI collection options", () => {
                 task: "action_planner",
                 input: "natural input",
                 output: "natural output",
-                model: "eliza-1-0_8b-trained",
+                model: "eliza-1-2b-trained",
               },
             ],
             scenarios: [
@@ -922,8 +922,8 @@ describe("training CLI collection options", () => {
             },
             {
               category: "model",
-              title: "eliza-1-0_8b-trained",
-              path: "/tmp/training/collections/run-1/models/0_8b-trained.json",
+              title: "eliza-1-2b-trained",
+              path: "/tmp/training/collections/run-1/models/2b-trained.json",
               schema: "eliza1_model_registry_entry",
             },
           ],
@@ -932,15 +932,15 @@ describe("training CLI collection options", () => {
             models: 2,
             modelInventory: [
               {
-                title: "eliza-1-0_8b-trained",
-                path: "/tmp/training/collections/run-1/models/0_8b-trained.json",
+                title: "eliza-1-2b-trained",
+                path: "/tmp/training/collections/run-1/models/2b-trained.json",
                 schema: "eliza1_model_registry_entry",
-                model: "eliza-1-0_8b-trained",
-                tier: "0_8b",
+                model: "eliza-1-2b-trained",
+                tier: "2b",
                 variant: "trained",
-                outputPath: "hf://elizaos/eliza-1-0_8b-trained",
-                baseModel: "eliza-1-0_8b-base",
-                repoId: "elizaos/eliza-1-0_8b-trained",
+                outputPath: "hf://elizaos/eliza-1-2b-trained",
+                baseModel: "eliza-1-2b-base",
+                repoId: "elizaos/eliza-1-2b-trained",
                 baseEvalScore: 0.4,
                 trainedEvalScore: 0.5,
                 evalImprovementPercent: 25,
@@ -951,10 +951,10 @@ describe("training CLI collection options", () => {
             actionBenchmarkPairs: 5,
             benchmarkComparisons: 5,
             caseSamples: 8,
-            tiers: ["0_8b", "2b", "4b", "9b", "27b"],
+            tiers: ["2b", "2b", "4b", "9b", "27b"],
             baselineProgress: {
-              tierOrder: ["0_8b", "2b", "4b", "9b", "27b"],
-              establishedTiers: ["0_8b", "2b"],
+              tierOrder: ["2b", "2b", "4b", "9b", "27b"],
+              establishedTiers: ["2b", "2b"],
               remainingTiers: ["4b", "9b", "27b"],
               nextTier: "4b",
               smallestTierEstablished: true,
@@ -968,10 +968,10 @@ describe("training CLI collection options", () => {
             benchmarkMatrices: 1,
             comparisonInventory: [
               {
-                title: "Eval comparison: eliza-1-0_8b-base vs eliza-1-0_8b-trained",
+                title: "Eval comparison: eliza-1-2b-base vs eliza-1-2b-trained",
                 path: "/tmp/training/collections/run-1/eval_comparison/eval-comparison.json",
-                baseModel: "eliza-1-0_8b-base",
-                trainedModel: "eliza-1-0_8b-trained",
+                baseModel: "eliza-1-2b-base",
+                trainedModel: "eliza-1-2b-trained",
                 backend: "cpu",
                 baseScore: 0.4,
                 trainedScore: 0.5,
@@ -994,7 +994,7 @@ describe("training CLI collection options", () => {
     expect(lines).toEqual([
       "[list-collections] root=/tmp/training/collections",
       "[list-collections] count=1",
-      '[list-collections] run=2026-01-02T03:04:05.000Z readiness=partial ready=8 partial=2 missing=1 artifacts=24 sources=hf:1,feed:1,natural:1,scenarios:1,native:1,tests:1,jsonl:2 benchmarks=pairs:5,comparisons:5,cases:8,tiers:0_8b,2b,4b,9b,27b baseline=established:0_8b,2b,next:4b,remaining:4b,9b,27b evals=artifacts:12,comparisons:1,action:10,matrices:1,first:eliza-1-0_8b-base->eliza-1-0_8b-trained,improvement:25% models=runs:1,models:2,inventory:1,first:0_8b/trained/eliza-1-0_8b-trained,improvement:25% samples=huggingFace:1,feed:1,natural:1,scenarios:1,tests:0,trainingJsonl:0,examples:huggingFace:hf-traj-1:response,feed:feed-traj-1,natural:natural-traj-1:action_planner,scenarios:scenario-1:turn-1 artifact-links=source:1,evidence:3 gaps=all_eliza1_tiers_benchmark:missing->terminal-training-run-collection params={"actionBenchmarkPairs":"all"} output=/tmp/training/collections/run-1 readme=/tmp/training/collections/run-1/README.md viewer=/tmp/training/collections/run-1/analysis/index.html',
+      '[list-collections] run=2026-01-02T03:04:05.000Z readiness=partial ready=8 partial=2 missing=1 artifacts=24 sources=hf:1,feed:1,natural:1,scenarios:1,native:1,tests:1,jsonl:2 benchmarks=pairs:5,comparisons:5,cases:8,tiers:2b,2b,4b,9b,27b baseline=established:2b,2b,next:4b,remaining:4b,9b,27b evals=artifacts:12,comparisons:1,action:10,matrices:1,first:eliza-1-2b-base->eliza-1-2b-trained,improvement:25% models=runs:1,models:2,inventory:1,first:2b/trained/eliza-1-2b-trained,improvement:25% samples=huggingFace:1,feed:1,natural:1,scenarios:1,tests:0,trainingJsonl:0,examples:huggingFace:hf-traj-1:response,feed:feed-traj-1,natural:natural-traj-1:action_planner,scenarios:scenario-1:turn-1 artifact-links=source:1,evidence:3 gaps=all_eliza1_tiers_benchmark:missing->terminal-training-run-collection params={"actionBenchmarkPairs":"all"} output=/tmp/training/collections/run-1 readme=/tmp/training/collections/run-1/README.md viewer=/tmp/training/collections/run-1/analysis/index.html',
     ]);
   });
 });

@@ -305,7 +305,7 @@ describe("training analysis index", () => {
         generatedAt: "2026-01-02T03:25:00.000Z",
         source: { kind: "training_benchmark_matrix" },
         referenceModelId: "cerebras/gpt-oss-120b",
-        tiers: ["0b"],
+        tiers: ["2b"],
         benchmarks: ["eliza_harness_action_reason"],
         counts: {
           rows: 3,
@@ -315,11 +315,11 @@ describe("training analysis index", () => {
         },
         rows: [
           {
-            modelId: "eliza-1-0b-base",
+            modelId: "eliza-1-2b-base",
             benchmark: "eliza_harness_action_reason",
             score: 0.4,
             variant: "base",
-            tier: "0b",
+            tier: "2b",
             provider: "local-llama-cpp",
             metrics: { total: 1, passed: 0, failed: 1, useMocks: false },
             raw: {
@@ -328,11 +328,11 @@ describe("training analysis index", () => {
             },
           },
           {
-            modelId: "eliza-1-0b-trained",
+            modelId: "eliza-1-2b-trained",
             benchmark: "eliza_harness_action_reason",
             score: 0.5,
             variant: "trained",
-            tier: "0b",
+            tier: "2b",
             provider: "local-llama-cpp",
             metrics: { total: 1, passed: 1, failed: 0, useMocks: false },
             raw: {
@@ -359,7 +359,7 @@ describe("training analysis index", () => {
         ],
         comparisons: [
           {
-            tier: "0b",
+            tier: "2b",
             benchmark: "eliza_harness_action_reason",
             baseScore: 0.4,
             trainedScore: 0.5,
@@ -782,7 +782,7 @@ describe("training analysis index", () => {
         comparisons: 1,
         scoredComparisons: 1,
         caseSamples: 1,
-        tiers: ["4b"],
+        tiers: ["2b"],
         allEliza1TiersCovered: false,
       },
       models: {
@@ -792,7 +792,7 @@ describe("training analysis index", () => {
     expect(index.manifest.coverage.benchmarks.tierCoverage).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          tier: "4b",
+          tier: "2b",
           hasBase: true,
           hasTrained: true,
           hasReference: true,

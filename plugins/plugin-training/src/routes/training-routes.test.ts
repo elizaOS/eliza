@@ -200,7 +200,7 @@ describe("training routes", () => {
         recipe: {
           evals: {
             actionBenchmarkPairs: [
-              expect.objectContaining({ tier: "0_8b" }),
+              expect.objectContaining({ tier: "2b" }),
               expect.objectContaining({ tier: "2b" }),
               expect.objectContaining({ tier: "4b" }),
               expect.objectContaining({ tier: "9b" }),
@@ -346,16 +346,16 @@ describe("training routes", () => {
       outputDir,
       dryRun: false,
       useMocks: true,
-      modelId: "eliza-1-0_8b-trained",
+      modelId: "eliza-1-2b-trained",
       variant: "trained",
-      tier: "0_8b",
+      tier: "2b",
       benchmark: "eliza_harness_action_selection",
     });
 
     expect(result.status).toBe(201);
     expect(result.payload).toMatchObject({
       matrixSource: {
-        modelId: "eliza-1-0_8b-trained",
+        modelId: "eliza-1-2b-trained",
         variant: "trained",
         useMocks: true,
       },

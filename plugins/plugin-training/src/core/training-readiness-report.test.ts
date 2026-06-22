@@ -77,7 +77,7 @@ function analysis(
 }
 
 function eliza1ModelRegistryArtifacts(): TrainingAnalysisIndex["manifest"]["artifacts"] {
-  return ["0_8b", "2b", "4b", "9b", "27b"].flatMap((tier) =>
+  return ["2b", "4b", "9b", "27b"].flatMap((tier) =>
     (["base", "trained"] as const).map((variant) => {
       const model = `eliza-1-${tier}-${variant}`;
       return {
@@ -190,12 +190,12 @@ describe("training readiness report", () => {
           summary: {
             rows: 3,
             comparisons: 5,
-            tiers: ["0_8b", "2b", "4b", "9b", "27b"],
+            tiers: ["2b", "4b", "9b", "27b"],
             referenceModelId: "cerebras/gpt-oss-120b",
           },
           payload: {
             rows: [
-              ...["0_8b", "2b", "4b", "9b", "27b"].flatMap(
+              ...["2b", "4b", "9b", "27b"].flatMap(
                 (tier, index) => [
                   {
                     modelId: `eliza-1-${tier}-base`,
@@ -215,7 +215,7 @@ describe("training readiness report", () => {
                     raw: {
                       useMocks: false,
                       caseSamples:
-                        tier === "0_8b"
+                        tier === "2b"
                           ? [
                               {
                                 caseId: "message-route",
@@ -232,7 +232,7 @@ describe("training readiness report", () => {
                 ],
               ),
             ],
-            comparisons: ["0_8b", "2b", "4b", "9b", "27b"].map(
+            comparisons: ["2b", "4b", "9b", "27b"].map(
               (tier, index) => ({
                 tier,
                 benchmark: "hermes",
@@ -357,7 +357,7 @@ describe("training readiness report", () => {
           includeBenchmarkMatrix: true,
           actionBenchmarkPairs: [
             {
-              tier: "0_8b",
+              tier: "2b",
               base: { variant: "base" },
               trained: { variant: "trained" },
             },
@@ -417,28 +417,28 @@ describe("training readiness report", () => {
           payload: {
             rows: [
               {
-                modelId: "eliza-1-0_8b-base",
+                modelId: "eliza-1-2b-base",
                 benchmark: "eliza_harness_action_selection",
                 score: 0.4,
                 variant: "base",
-                tier: "0_8b",
+                tier: "2b",
                 metrics: { useMocks: false },
               },
               {
-                modelId: "eliza-1-0_8b-trained",
+                modelId: "eliza-1-2b-trained",
                 benchmark: "eliza_harness_action_selection",
                 score: 0.5,
                 variant: "trained",
-                tier: "0_8b",
+                tier: "2b",
                 metrics: { useMocks: false },
               },
             ],
             comparisons: [
               {
-                tier: "0_8b",
+                tier: "2b",
                 benchmark: "eliza_harness_action_selection",
-                baseModelId: "eliza-1-0_8b-base",
-                trainedModelId: "eliza-1-0_8b-trained",
+                baseModelId: "eliza-1-2b-base",
+                trainedModelId: "eliza-1-2b-trained",
                 baseScore: 0.4,
                 trainedScore: 0.5,
                 improvementPercent: 25,
@@ -475,28 +475,28 @@ describe("training readiness report", () => {
           payload: {
             rows: [
               {
-                modelId: "eliza-1-0_8b-base",
+                modelId: "eliza-1-2b-base",
                 benchmark: "eliza_harness_action_selection",
                 score: 0.4,
                 variant: "base",
-                tier: "0_8b",
+                tier: "2b",
                 metrics: { useMocks: true },
               },
               {
-                modelId: "eliza-1-0_8b-trained",
+                modelId: "eliza-1-2b-trained",
                 benchmark: "eliza_harness_action_selection",
                 score: 0.5,
                 variant: "trained",
-                tier: "0_8b",
+                tier: "2b",
                 metrics: { useMocks: true },
               },
             ],
             comparisons: [
               {
-                tier: "0_8b",
+                tier: "2b",
                 benchmark: "eliza_harness_action_selection",
-                baseModelId: "eliza-1-0_8b-base",
-                trainedModelId: "eliza-1-0_8b-trained",
+                baseModelId: "eliza-1-2b-base",
+                trainedModelId: "eliza-1-2b-trained",
                 baseScore: 0.4,
                 trainedScore: 0.5,
                 improvementPercent: 25,
@@ -552,9 +552,9 @@ describe("training readiness report", () => {
         comparisons: 5,
         scoredComparisons: 5,
         caseSamples: 5,
-        tiers: ["0_8b", "2b", "4b", "9b", "27b"],
+        tiers: ["2b", "4b", "9b", "27b"],
         allEliza1TiersCovered: true,
-        tierCoverage: ["0_8b", "2b", "4b", "9b", "27b"].map((tier) => ({
+        tierCoverage: ["2b", "4b", "9b", "27b"].map((tier) => ({
           tier,
           hasBase: true,
           hasTrained: true,
@@ -566,7 +566,7 @@ describe("training readiness report", () => {
       },
       models: {
         artifacts: 10,
-        inventory: ["0_8b", "2b", "4b", "9b", "27b"].flatMap((tier) =>
+        inventory: ["2b", "4b", "9b", "27b"].flatMap((tier) =>
           (["base", "trained"] as const).map((variant) => ({
             model: `eliza-1-${tier}-${variant}`,
             tier,
@@ -688,7 +688,7 @@ describe("training readiness report", () => {
           path: "/tmp/bundle.json",
           summary: {
             schema: "eliza1_bundle_stage",
-            bundleDir: "/tmp/eliza-1-0_8b.bundle",
+            bundleDir: "/tmp/eliza-1-2b.bundle",
             apply: false,
             stagedCount: 0,
           },
@@ -741,7 +741,7 @@ describe("training readiness report", () => {
           includeBenchmarkMatrix: true,
           actionBenchmarkPairs: [
             {
-              tier: "0_8b",
+              tier: "2b",
               base: { variant: "base" },
               trained: { variant: "trained" },
             },
@@ -760,7 +760,7 @@ describe("training readiness report", () => {
           includeBenchmarkMatrix: true,
           actionBenchmarkPairs: [
             {
-              tier: "0_8b",
+              tier: "2b",
               base: { variant: "base" },
               trained: { variant: "trained" },
             },
@@ -786,7 +786,6 @@ describe("training readiness report", () => {
           includeActionBenchmark: true,
           includeBenchmarkMatrix: true,
           actionBenchmarkPairs: [
-            expect.objectContaining({ tier: "0_8b" }),
             expect.objectContaining({ tier: "2b" }),
             expect.objectContaining({ tier: "4b" }),
             expect.objectContaining({ tier: "9b" }),
@@ -806,7 +805,7 @@ describe("training readiness report", () => {
           includeBenchmarkMatrix: true,
           actionBenchmarkPairs: [
             {
-              tier: "0_8b",
+              tier: "2b",
               base: { variant: "base" },
               trained: { variant: "trained" },
             },
@@ -824,7 +823,6 @@ describe("training readiness report", () => {
           includeActionBenchmark: true,
           includeBenchmarkMatrix: true,
           actionBenchmarkPairs: [
-            expect.objectContaining({ tier: "0_8b" }),
             expect.objectContaining({ tier: "2b" }),
             expect.objectContaining({ tier: "4b" }),
             expect.objectContaining({ tier: "9b" }),
@@ -841,7 +839,7 @@ describe("training readiness report", () => {
         ?.recommendedAction,
     ).toMatchObject({
       capability: "terminal-training-stage-eliza1-bundle",
-      params: { tier: "0_8b", apply: true },
+      params: { tier: "2b", apply: true },
     });
     expect(
       report.checks.find((item) => item.id === "agentic_benchmarks"),
@@ -866,7 +864,7 @@ describe("training readiness report", () => {
             benchmark: "eliza_harness_action_selection",
           }),
           actionBenchmarkPair: {
-            tier: "0_8b",
+            tier: "2b",
             base: { variant: "base" },
             trained: { variant: "trained" },
           },
@@ -880,7 +878,6 @@ describe("training readiness report", () => {
         capability: "terminal-training-run-collection",
         params: {
           actionBenchmarkPairs: [
-            expect.objectContaining({ tier: "0_8b" }),
             expect.objectContaining({ tier: "2b" }),
             expect.objectContaining({ tier: "4b" }),
             expect.objectContaining({ tier: "9b" }),
@@ -897,7 +894,6 @@ describe("training readiness report", () => {
         capability: "terminal-training-run-collection",
         params: {
           actionBenchmarkPairs: [
-            expect.objectContaining({ tier: "0_8b" }),
             expect.objectContaining({ tier: "2b" }),
             expect.objectContaining({ tier: "4b" }),
             expect.objectContaining({ tier: "9b" }),
