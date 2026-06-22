@@ -10,6 +10,7 @@
  * plugins are installed or uninstalled at runtime.
  */
 
+import type { ViewKind } from "@elizaos/core";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { fetchWithCsrf } from "../api/csrf-client";
 import {
@@ -56,8 +57,17 @@ export interface ViewRegistryEntry {
   pluginName: string;
   /** Freeform tags used for search and filtering. */
   tags?: string[];
-  /** When true, the view only appears when Developer Mode is enabled. */
+  /**
+   * When true, the view only appears when Developer Mode is enabled.
+   * Equivalent to `viewKind: "developer"`.
+   */
   developerOnly?: boolean;
+  /**
+   * Four-tier visibility category. Supersedes `developerOnly` when set:
+   * `system`/`release` always show; `developer`/`preview` follow Settings
+   * toggles. See `ViewKind` in `@elizaos/core`.
+   */
+  viewKind?: ViewKind;
   /** When false, the view is hidden from the manager grid (internal views). */
   visibleInManager?: boolean;
   /** Named capabilities the view exposes (informational). */
@@ -166,6 +176,7 @@ function appShellPageToViewEntry(
     available: true,
     pluginName: page.pluginId,
     developerOnly: page.developerOnly,
+    viewKind: page.viewKind,
     visibleInManager: true,
     builtin: false,
   };

@@ -34,7 +34,7 @@ function merge(
     catalog: opts.catalog ?? [],
     installed: opts.installed ?? [],
     activeModality: opts.activeModality ?? "gui",
-    isDeveloperMode: opts.isDeveloperMode ?? false,
+    enabledKinds: opts.enabledKinds ?? { developer: false, preview: false },
   });
 }
 
@@ -95,7 +95,42 @@ describe("mergeViewCatalog", () => {
       catalog: [makeApp({ name: "@elizaos/plugin-dev", developerOnly: true })],
     };
     expect(merge(base)).toHaveLength(0);
-    expect(merge({ ...base, isDeveloperMode: true })).toHaveLength(2);
+    expect(
+      merge({ ...base, enabledKinds: { developer: true, preview: false } }),
+    ).toHaveLength(2);
+  });
+
+  it("hides preview entries unless preview mode is on", () => {
+    const base = {
+      views: [makeView("alpha", { viewKind: "preview" })],
+      catalog: [
+        makeApp({ name: "@elizaos/plugin-alpha-app", viewKind: "preview" }),
+      ],
+    };
+    // Off by default, even with developer mode on.
+    expect(merge(base)).toHaveLength(0);
+    expect(
+      merge({ ...base, enabledKinds: { developer: true, preview: false } }),
+    ).toHaveLength(0);
+    expect(
+      merge({ ...base, enabledKinds: { developer: false, preview: true } }),
+    ).toHaveLength(2);
+  });
+
+  it("always shows system and release views regardless of toggles", () => {
+    const entries = merge({
+      views: [
+        makeView("chat", {
+          viewKind: "system",
+          pluginName: "@elizaos/builtin",
+        }),
+        makeView("wallet", { viewKind: "release" }),
+      ],
+      enabledKinds: { developer: false, preview: false },
+    });
+    expect(entries.map((e) => e.id).sort()).toEqual(["chat", "wallet"]);
+    expect(entries.find((e) => e.id === "chat")?.viewKind).toBe("system");
+    expect(entries.find((e) => e.id === "wallet")?.viewKind).toBe("release");
   });
 
   it("respects visibleInManager:false and visibleInAppStore:false", () => {

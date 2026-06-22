@@ -2,7 +2,7 @@
  * Shared app manager contracts.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, ViewKind } from "@elizaos/core";
 import z from "zod";
 
 // ---------------------------------------------------------------------------
@@ -175,9 +175,16 @@ export interface RegistryAppInfo {
   session?: AppSessionConfig;
   /**
    * If true, the app is a developer-tooling surface and is hidden from the
-   * main UI unless Developer Mode is enabled in Settings.
+   * main UI unless Developer Mode is enabled in Settings. Equivalent to
+   * `viewKind: "developer"`.
    */
   developerOnly?: boolean;
+  /**
+   * Four-tier visibility category. Supersedes `developerOnly` when set:
+   * `system`/`release` always show; `developer`/`preview` follow Settings
+   * toggles. See `ViewKind` in `@elizaos/core`.
+   */
+  viewKind?: ViewKind;
   /**
    * Controls whether the app appears in the user-facing app store/catalog.
    * Defaults to true. Set to false for apps that auto-install or are surfaced
