@@ -539,3 +539,25 @@ body.platform-android * {
     transform: translateY(0);
   }
 }
+
+/* Off-screen render skipping (content-visibility)
+   Defined here in base.css so it ships to every consumer (app styles.css,
+   cloud-ui/index.css, cloud-frontend globals.css, homepage index.css) that
+   @imports this file. Plain CSS classes: add the className to a list/table
+   row to let the browser skip layout + paint for rows scrolled out of view.
+
+   contain-intrinsic-size supplies a placeholder size for skipped rows so the
+   scrollbar stays stable; "auto <h>" lets the browser remember the real
+   measured size after a row has rendered once and fall back to <h> until then.
+
+   .cv-auto      - short list / table rows (logs, trajectories, agents tables).
+   .cv-auto-row  - taller chat-turn rows (a bubble is multi-line + padding). */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 56px;
+}
+
+.cv-auto-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
+}
