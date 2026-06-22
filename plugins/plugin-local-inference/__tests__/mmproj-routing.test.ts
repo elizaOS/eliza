@@ -50,7 +50,7 @@ function makeTempBundle(args: {
 	if (args.hasMtp !== false) {
 		mkdirSync(pathJoin(root, "mtp"), { recursive: true });
 		writeFileSync(
-			pathJoin(root, "mtp", `eliza-1-${args.tier}-drafter.gguf`),
+			pathJoin(root, "mtp", `drafter-${args.tier}.gguf`),
 			"fake-mtp-drafter-gguf",
 		);
 	}
@@ -140,13 +140,13 @@ describe("WS2 mmproj routing", () => {
 		expect(resolved.modelPath).toBe(bundle.textPath);
 	});
 
-	it("resolves same-file MTP with no separate drafter and does not throw", async () => {
+	it("resolves separate-drafter MTP when the bundled drafter GGUF is present", async () => {
 		const tier = "2b";
-		// hasMtp: false ⇒ no bundled drafter GGUF on disk. Same-file MTP
-		// embeds the NextN head in the text GGUF, so the resolver must NOT
-		// throw and must leave draftModelPath unset while still plumbing the
-		// catalog draft window.
-		const bundle = makeTempBundle({ hasMmproj: true, hasMtp: false, tier });
+		// Gemma 4 ships a standalone drafter GGUF (separate-drafter MTP). With
+		// the drafter on disk under mtp/drafter-<tier>.gguf the resolver must NOT
+		// throw, must plumb draftModelPath to the bundled drafter, and must carry
+		// the catalog draft window.
+		const bundle = makeTempBundle({ hasMmproj: true, hasMtp: true, tier });
 		const installed = installedModel({
 			id: `eliza-1-${tier}`,
 			bundleRoot: bundle.bundleRoot,
@@ -154,9 +154,11 @@ describe("WS2 mmproj routing", () => {
 		});
 		const resolved = await resolveLocalInferenceLoadArgs(installed);
 		expect(resolved.modelPath).toBe(bundle.textPath);
-		expect(resolved.draftModelPath).toBeUndefined();
+		expect(resolved.draftModelPath).toBe(
+			pathJoin(bundle.bundleRoot, "mtp", `drafter-${tier}.gguf`),
+		);
 		expect(resolved.draftMin).toBe(1);
-		expect(resolved.draftMax).toBe(2);
+		expect(resolved.draftMax).toBe(4);
 		expect(resolved.useGpu).toBe(true);
 	});
 
