@@ -1,9 +1,12 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * Developer Mode state — when on, the shell renders apps, widgets, and
- * nav tabs marked `developerOnly: true` (logs viewer, trajectory viewer,
- * etc). Persists to localStorage so it survives reloads.
+ * Developer Mode state — when on, the shell renders apps, widgets, nav tabs,
+ * and settings marked `developerOnly: true` (logs viewer, trajectory viewer,
+ * raw config, etc). Persists to localStorage so it survives reloads.
+ *
+ * Default: ON in development builds, OFF in production — until the user sets it
+ * explicitly, after which their choice wins on every platform/build.
  */
 
 const STORAGE_KEY = "eliza:developerMode";
@@ -12,12 +15,24 @@ const DISABLED = "0";
 
 const listeners = new Set<() => void>();
 
-function readStorage(): boolean {
-  if (typeof window === "undefined") return false;
+/** Build-default when the user hasn't chosen: dev builds on, production off. */
+function defaultDeveloperMode(): boolean {
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === ENABLED;
+    return Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV);
   } catch {
     return false;
+  }
+}
+
+function readStorage(): boolean {
+  if (typeof window === "undefined") return defaultDeveloperMode();
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (raw === ENABLED) return true;
+    if (raw === DISABLED) return false;
+    return defaultDeveloperMode();
+  } catch {
+    return defaultDeveloperMode();
   }
 }
 

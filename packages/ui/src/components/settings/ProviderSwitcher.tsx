@@ -184,14 +184,43 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     [allAiProviders, selection],
   );
 
+  // Split the providers by purpose so the page reads as two simple "just works"
+  // decisions — the agent's brain (Local/Cloud) up top, the coding/workflow
+  // subscriptions (Claude/Codex/z.ai) in their own group — with custom keys and
+  // per-slot overrides tucked into Advanced.
+  const intelligenceEntries = providerEntries.filter(
+    (entry) => entry.category === "cloud" || entry.category === "local",
+  );
+  const subscriptionEntries = providerEntries.filter(
+    (entry) => entry.category === "subscription",
+  );
+  const keyEntries = providerEntries.filter(
+    (entry) => entry.category === "key",
+  );
+
+  const renderChip = (entry: ProviderListEntry) => (
+    <ProviderCard
+      key={entry.id}
+      id={entry.id}
+      icon={entry.icon}
+      label={entry.label}
+      category={entry.category}
+      status={entry.status}
+      current={entry.current}
+      selected={visibleProviderPanelId === entry.id}
+      onSelect={selection.handleProviderPanelSelect}
+    />
+  );
+
   return (
     <SettingsStack>
       <SettingsGroup
-        title={t("providerswitcher.providerGroupTitle", {
-          defaultValue: "Provider",
+        title={t("providerswitcher.intelligenceGroupTitle", {
+          defaultValue: "Intelligence",
         })}
-        description={t("providerswitcher.providerGroupDesc", {
-          defaultValue: "Where this agent's intelligence comes from.",
+        description={t("providerswitcher.intelligenceGroupDesc", {
+          defaultValue:
+            "Where your agent thinks. Local runs eliza-1 privately on your device; Cloud is Eliza-managed.",
         })}
         bare
       >
@@ -199,28 +228,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           <ActiveProviderSummary entry={activeEntry} t={t} />
         ) : null}
         <div className="flex flex-wrap gap-2">
-          {providerEntries.map((entry) => (
-            <ProviderCard
-              key={entry.id}
-              id={entry.id}
-              icon={entry.icon}
-              label={entry.label}
-              category={entry.category}
-              status={entry.status}
-              current={entry.current}
-              selected={visibleProviderPanelId === entry.id}
-              onSelect={selection.handleProviderPanelSelect}
-            />
-          ))}
+          {intelligenceEntries.map(renderChip)}
         </div>
-      </SettingsGroup>
 
-      <SettingsGroup
-        title={t("providerswitcher.configGroupTitle", {
-          defaultValue: "Configuration",
-        })}
-        className="min-w-0"
-      >
         {visibleProviderPanelId === "__local__" ? (
           <LocalProviderPanel
             cloudCallsDisabled={selection.cloudCallsDisabled}
@@ -245,43 +255,44 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             onModelFieldChange={cloudModel.handleModelFieldChange}
           />
         ) : null}
-
-        {activeSubscriptionSelection ? (
-          <SubscriptionPanel
-            selection={activeSubscriptionSelection}
-            description={getSubscriptionProviderDescription(
-              activeSubscriptionSelection.id,
-            )}
-            visibleProviderPanelId={visibleProviderPanelId}
-            resolvedSelectedId={resolvedSelectedId}
-            cloudCallsDisabled={selection.cloudCallsDisabled}
-            subscriptionStatus={bootstrap.subscriptionStatus}
-            anthropicConnected={bootstrap.anthropicConnected}
-            setAnthropicConnected={bootstrap.setAnthropicConnected}
-            anthropicCliDetected={bootstrap.anthropicCliDetected}
-            openaiConnected={bootstrap.openaiConnected}
-            setOpenaiConnected={bootstrap.setOpenaiConnected}
-            onSelectSubscription={selection.handleSelectSubscription}
-            loadSubscriptionStatus={bootstrap.loadSubscriptionStatus}
-          />
-        ) : null}
-
-        {selectedPanelProvider ? (
-          <ApiKeyPanel
-            selectedProvider={selectedPanelProvider}
-            panelLabel={apiKeyPanelLabel}
-            visibleProviderPanelId={visibleProviderPanelId}
-            resolvedSelectedId={resolvedSelectedId}
-            cloudCallsDisabled={selection.cloudCallsDisabled}
-            selectedPanelAccountProvider={selectedPanelAccountProvider}
-            onSwitchProvider={onSwitchProvider}
-            pluginSaving={pluginSaving}
-            pluginSaveSuccess={pluginSaveSuccess}
-            handlePluginConfigSave={handlePluginConfigSave}
-            loadPlugins={loadPlugins}
-          />
-        ) : null}
       </SettingsGroup>
+
+      {subscriptionEntries.length > 0 ? (
+        <SettingsGroup
+          title={t("providerswitcher.orchestratorGroupTitle", {
+            defaultValue: "Code orchestrator & workflows",
+          })}
+          description={t("providerswitcher.orchestratorGroupDesc", {
+            defaultValue:
+              "Use your Claude, Codex, or z.ai subscription to power coding and workflows — separate from your agent's main intelligence above.",
+          })}
+          bare
+        >
+          <div className="flex flex-wrap gap-2">
+            {subscriptionEntries.map(renderChip)}
+          </div>
+
+          {activeSubscriptionSelection ? (
+            <SubscriptionPanel
+              selection={activeSubscriptionSelection}
+              description={getSubscriptionProviderDescription(
+                activeSubscriptionSelection.id,
+              )}
+              visibleProviderPanelId={visibleProviderPanelId}
+              resolvedSelectedId={resolvedSelectedId}
+              cloudCallsDisabled={selection.cloudCallsDisabled}
+              subscriptionStatus={bootstrap.subscriptionStatus}
+              anthropicConnected={bootstrap.anthropicConnected}
+              setAnthropicConnected={bootstrap.setAnthropicConnected}
+              anthropicCliDetected={bootstrap.anthropicCliDetected}
+              openaiConnected={bootstrap.openaiConnected}
+              setOpenaiConnected={bootstrap.setOpenaiConnected}
+              onSelectSubscription={selection.handleSelectSubscription}
+              loadSubscriptionStatus={bootstrap.loadSubscriptionStatus}
+            />
+          ) : null}
+        </SettingsGroup>
+      ) : null}
 
       <SettingsGroup
         title={t("providerswitcher.advancedGroupTitle", {
@@ -290,12 +301,34 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         bare
       >
         <AdvancedSettingsDisclosure
-          title={t("providerswitcher.modelSettings", {
-            defaultValue: "Model routing & devices",
+          title={t("providerswitcher.advancedDisclosureTitle", {
+            defaultValue: "Custom providers & model overrides",
           })}
           lazy
         >
           <div className="flex flex-col gap-3">
+            {keyEntries.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {keyEntries.map(renderChip)}
+              </div>
+            ) : null}
+
+            {selectedPanelProvider ? (
+              <ApiKeyPanel
+                selectedProvider={selectedPanelProvider}
+                panelLabel={apiKeyPanelLabel}
+                visibleProviderPanelId={visibleProviderPanelId}
+                resolvedSelectedId={resolvedSelectedId}
+                cloudCallsDisabled={selection.cloudCallsDisabled}
+                selectedPanelAccountProvider={selectedPanelAccountProvider}
+                onSwitchProvider={onSwitchProvider}
+                pluginSaving={pluginSaving}
+                pluginSaveSuccess={pluginSaveSuccess}
+                handlePluginConfigSave={handlePluginConfigSave}
+                loadPlugins={loadPlugins}
+              />
+            ) : null}
+
             <ProvidersList />
             <RoutingMatrix />
           </div>

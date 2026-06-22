@@ -910,7 +910,7 @@ export function useFirstRunController(): FirstRunController {
         setPickerError(list.error ?? "Could not load your agents. Try again.");
         return;
       }
-      // Auto-connect without the picker (0-agent create, 1-agent reuse), routing
+      // Auto-connect without the picker for the brand-new, 0-agent user, routing
       // any failure (402/5xx/network) to the picker's error phase — which has
       // Back + Try again — instead of stranding it on a permanent "Finding your
       // agents…" spinner. Mirrors the onPickAgent failure handling.
