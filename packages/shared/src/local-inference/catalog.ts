@@ -61,12 +61,11 @@ function mtpSupportedForTier(id: Eliza1TierId): boolean {
   return _ELIZA_1_MTP_TIER_ID_SET.has(id);
 }
 
-// The quantized 4B (Qwen3.5) is the minimum tier that is good enough to ship
-// as the default chat model. The 2B tier remains in the catalog as the
-// smallest/entry tier for low-memory phones, but is no longer a first-run
-// default — it is too small for a quality
-// conversational experience.
-export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-4b";
+// The quantized 2B (Qwen3.5) is the shipped first-run default chat model: it is
+// the smallest/entry tier, fits 8 GB-class phones comfortably, downloads fast,
+// and is the model bundled into the AOSP image. Larger tiers (4B/9B/27B) remain
+// available for manual selection on higher-memory hosts.
+export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-2b";
 
 export const DEFAULT_ELIGIBLE_MODEL_IDS: ReadonlySet<string> = new Set(
   ELIZA_1_RELEASE_TIER_IDS,

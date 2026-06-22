@@ -949,21 +949,21 @@ const RECOMMENDED_MODELS: Record<
 	"TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
 	RecommendedModel
 > = {
-	// The quantized 4B is the shipped mobile default. Both chat slots resolve
-	// to it — 2B is the entry/floor tier but too small for quality chat. The
-	// load path runs it at 64k context (see ELIZA_1_LOAD_METADATA) with
-	// compressed KV so it fits 8 GB-class phones.
+	// The quantized 2B is the shipped mobile default. Both chat slots resolve
+	// to it — it is the entry tier, fits 8 GB-class phones with headroom, and is
+	// the model bundled into the AOSP image. The load path runs it at 64k
+	// context (see ELIZA_1_LOAD_METADATA) with compressed KV.
 	TEXT_SMALL: {
-		id: "eliza-1-4b",
+		id: "eliza-1-2b",
 		hfRepo: "elizaos/eliza-1",
-		ggufFile: "bundles/4b/text/eliza-1-4b-128k.gguf",
-		localFile: "eliza-1-4b-128k.gguf",
+		ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
+		localFile: "eliza-1-2b-128k.gguf",
 	},
 	TEXT_LARGE: {
-		id: "eliza-1-4b",
+		id: "eliza-1-2b",
 		hfRepo: "elizaos/eliza-1",
-		ggufFile: "bundles/4b/text/eliza-1-4b-128k.gguf",
-		localFile: "eliza-1-4b-128k.gguf",
+		ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
+		localFile: "eliza-1-2b-128k.gguf",
 	},
 	TEXT_EMBEDDING: {
 		id: "eliza-1-embedding",
