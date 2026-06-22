@@ -1,6 +1,35 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Decorator, Meta, StoryObj } from "@storybook/react";
+import type { ConversationMessage } from "../../api/client-types-chat";
+import { ConversationMessagesCtx } from "../../state/ConversationMessagesContext.hooks";
 import { mockApp } from "../../storybook/mock-providers.helpers";
 import { ChatView } from "./ChatView";
+
+const NOW = 1_700_000_000_000;
+const SAMPLE_MESSAGES: ConversationMessage[] = [
+  { id: "u1", role: "user", text: "can you deploy the worker?", timestamp: NOW - 40000 },
+  {
+    id: "a1",
+    role: "assistant",
+    text: "Deploying the provisioning worker now — building the image…",
+    timestamp: NOW - 30000,
+  },
+  { id: "u2", role: "user", text: "thanks! and what's my October invoice?", timestamp: NOW - 20000 },
+  {
+    id: "a2",
+    role: "assistant",
+    text: "Your October invoice total is $420.",
+    timestamp: NOW - 10000,
+  },
+];
+
+/** Seed the (otherwise backendless) transcript so the reset button shows. */
+function withMessages(messages: ConversationMessage[]): Decorator {
+  return (Story) => (
+    <ConversationMessagesCtx.Provider value={{ conversationMessages: messages }}>
+      <Story />
+    </ConversationMessagesCtx.Provider>
+  );
+}
 
 const meta = {
   title: "Pages/ChatView",
@@ -70,4 +99,21 @@ export const ComposerHidden: Story = {
  */
 export const GameModal: Story = {
   args: { variant: "game-modal" },
+};
+
+/**
+ * #8930 — with a populated conversation, the RotateCcw reset button appears in
+ * the composer header row (visible only when there are messages to clear).
+ * Clicking it resets to a fresh greeted thread and surfaces the soft-undo toast.
+ */
+export const WithResetButton: Story = {
+  decorators: [withMessages(SAMPLE_MESSAGES)],
+};
+
+/**
+ * #8930 — immediately after a reset the transcript is empty, so the reset
+ * button is hidden again (nothing to clear) and the empty state shows.
+ */
+export const AfterReset: Story = {
+  decorators: [withMessages([])],
 };
