@@ -54,6 +54,7 @@ import {
   shouldConvertPasteToAttachment,
   summarizeDroppedAttachments,
 } from "../../utils/image-attachment";
+import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
@@ -879,7 +880,10 @@ const ThreadLine = React.memo(function ThreadLine({
         ) : isUser ? (
           <ThreadLineText content={message.content} />
         ) : (
-          message.content
+          // Assistant text renders its inline widgets (task/choice/form/
+          // followups) instead of leaking the raw `[TASK:…]`/`[CHOICE]`/… markers
+          // as text (#8997). Plain replies fall through the fast path unchanged.
+          <InlineWidgetText content={message.content} />
         )}
         {message.attachments?.length ? (
           <MessageAttachments attachments={message.attachments} />
