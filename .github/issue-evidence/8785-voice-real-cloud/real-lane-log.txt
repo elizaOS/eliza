@@ -18,3 +18,17 @@
   cloud TTS (ElevenLabs first audio):235 ms
   ── hybrid round-trip (STT+LLM+TTS): 869 ms
 [mixed-roundtrip] PASS
+
+### Real ASR WER under acoustic degradation (real speech + corpus DSP + eliza-1-asr)
+[real-robustness] ── mean WER by condition (real eliza-1-asr) ──
+  clean            mean WER = 0.000  (n=3)
+  noise 10dB       mean WER = 0.000  (n=3)
+  noise 5dB        mean WER = 0.000  (n=3)
+  reverb 0.7       mean WER = 0.000  (n=3)
+  far-field 12dB   mean WER = 0.000  (n=3)
+  low-quality      mean WER = 0.000  (n=3)
+  harsh (all)      mean WER = 0.083  (n=3)
+  noise 0dB        mean WER = 0.000  (n=3)
+  noise -6dB       mean WER = 0.048  (n=3)
+  reverb 0.98      mean WER = 0.042  (n=3)
+  destroyed        mean WER = 1.000  (n=3)
