@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
   AgentModelSlot,
+  DeviceTierResult,
   PublicRegistration,
   RoutingPolicy,
   RoutingPreferences,
@@ -65,6 +66,7 @@ export function RoutingMatrix() {
     policy: {},
   });
   const [error, setError] = useState<string | null>(null);
+  const [deviceTier, setDeviceTier] = useState<DeviceTierResult | null>(null);
   const [busySlots, setBusySlots] = useState<Set<AgentModelSlot>>(
     () => new Set(),
   );
@@ -110,6 +112,39 @@ export function RoutingMatrix() {
       clearInterval(interval);
     };
   }, [t]);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const result = await client.getLocalInferenceDeviceTier();
+      if (active) setDeviceTier(result);
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // For an "Auto" slot (no preferred provider pinned) the runtime resolves
+  // on-device vs cloud from the device tier: MAX/GOOD run locally, OKAY/POOR
+  // route to cloud. Surface the same resolution the runtime will make.
+  const autoResolution = useCallback(
+    (policy: RoutingPolicy): { onDevice: boolean; line: string } | null => {
+      if (!deviceTier) return null;
+      if (policy !== "prefer-local" && policy !== "cheapest") return null;
+      const onDevice = deviceTier.tier === "MAX" || deviceTier.tier === "GOOD";
+      const line = onDevice
+        ? t("routingmatrix.autoOnDevice", {
+            tier: deviceTier.tier,
+            defaultValue: "Auto: on-device · {{tier}} tier",
+          })
+        : t("routingmatrix.autoCloud", {
+            tier: deviceTier.tier,
+            defaultValue: "Auto: cloud · device is {{tier}}",
+          });
+      return { onDevice, line };
+    },
+    [deviceTier, t],
+  );
 
   const handlePolicy = useCallback(
     async (slot: AgentModelSlot, policy: RoutingPolicy) => {
@@ -196,6 +231,8 @@ export function RoutingMatrix() {
           const policy = preferences.policy[slot] ?? DEFAULT_POLICY;
           const preferred = preferences.preferredProvider[slot] ?? "";
           const disabled = busySlots.has(slot);
+          // The auto-resolution hint only applies when no provider is pinned.
+          const resolution = preferred === "" ? autoResolution(policy) : null;
           return (
             <div
               key={slot}
@@ -294,6 +331,22 @@ export function RoutingMatrix() {
                   ))}
                 </div>
               )}
+              {resolution ? (
+                <div
+                  data-testid={`routing-auto-resolution-${slot}`}
+                  className={`flex items-center gap-1.5 text-[10px] ${
+                    resolution.onDevice ? "text-accent" : "text-muted"
+                  }`}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      resolution.onDevice ? "bg-accent" : "bg-muted"
+                    }`}
+                    aria-hidden
+                  />
+                  <span>{resolution.line}</span>
+                </div>
+              ) : null}
             </div>
           );
         })}

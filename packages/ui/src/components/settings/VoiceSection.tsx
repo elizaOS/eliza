@@ -1,10 +1,13 @@
 /**
  * VoiceSection — top-level Settings → Voice tree. Mounts the device-tier
- * banner, continuous-chat mode, wake word, local-vs-cloud strategy,
- * end-of-turn tuning, the models slot, voice profiles, and privacy toggles.
+ * banner, continuous-chat mode, wake word, end-of-turn tuning, the models
+ * slot, voice profiles, and privacy toggles.
+ *
+ * Per-modality local-vs-cloud routing is owned by the RoutingMatrix control
+ * (per-slot policy rows), not by this section.
  */
 
-import { Cloud, Database, Mic, Shield, Sliders, Timer } from "lucide-react";
+import { Database, Mic, Shield, Sliders, Timer } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { VoiceProfilesClient } from "../../api/client-voice-profiles";
@@ -17,8 +20,6 @@ import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { VoiceProfileSection } from "./VoiceProfileSection";
 import { DEFAULT_VAD_AUTO_STOP_PREFS } from "./VoiceSection.helpers";
 import { type VoiceDeviceTier, VoiceTierBanner } from "./VoiceTierBanner";
-
-export type VoiceLocalCloudStrategy = "auto" | "force-local" | "force-cloud";
 
 /**
  * User-facing slice of the auto-stop options: how long silence ends a turn
@@ -109,7 +110,6 @@ function VadSlider({
 
 export interface VoiceSectionPrefs {
   continuous: VoiceContinuousMode;
-  strategy: VoiceLocalCloudStrategy;
   cloudFirstLineCache: boolean;
   autoLearnVoices: boolean;
   /**
@@ -185,19 +185,6 @@ export function VoiceSection({
       group: "voice-section",
       status: wakeWordEnabled ? "active" : "inactive",
       onActivate: () => onWakeWordToggle?.(!wakeWordEnabled),
-    });
-  const { ref: strategyRef, agentProps: strategyAgentProps } =
-    useAgentElement<HTMLSelectElement>({
-      id: "voice-section-strategy-select",
-      role: "select",
-      label: t("voicesection.localVsCloudStrategy", {
-        defaultValue: "Local vs Cloud strategy",
-      }),
-      group: "voice-section",
-      getValue: () => prefs.strategy,
-      onFill: (value) =>
-        updatePrefs({ strategy: value as VoiceLocalCloudStrategy }),
-      options: ["auto", "force-local", "force-cloud"],
     });
   const { ref: cloudCacheRef, agentProps: cloudCacheAgentProps } =
     useAgentElement<HTMLInputElement>({
@@ -289,49 +276,6 @@ export function VoiceSection({
               </label>
             }
           />
-
-          <SettingsRow
-            icon={Cloud}
-            label={t("voicesection.localVsCloud", {
-              defaultValue: "Local vs Cloud",
-            })}
-            description={t("voicesection.localVsCloudDesc", {
-              defaultValue: "Where speech recognition and synthesis run.",
-            })}
-            stacked
-          >
-            <select
-              ref={strategyRef}
-              value={prefs.strategy}
-              onChange={(e) =>
-                updatePrefs({
-                  strategy: e.target.value as VoiceLocalCloudStrategy,
-                })
-              }
-              className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm text-txt transition-colors focus:border-accent focus:outline-none"
-              data-testid="voice-section-strategy-select"
-              aria-label={t("voicesection.localVsCloudStrategy", {
-                defaultValue: "Local vs Cloud strategy",
-              })}
-              {...strategyAgentProps}
-            >
-              <option value="auto">
-                {t("voicesection.strategyAuto", {
-                  defaultValue: "Auto (recommended)",
-                })}
-              </option>
-              <option value="force-local">
-                {t("voicesection.strategyForceLocal", {
-                  defaultValue: "Force local",
-                })}
-              </option>
-              <option value="force-cloud">
-                {t("voicesection.strategyForceCloud", {
-                  defaultValue: "Force cloud",
-                })}
-              </option>
-            </select>
-          </SettingsRow>
         </SettingsGroup>
 
         <SettingsGroup

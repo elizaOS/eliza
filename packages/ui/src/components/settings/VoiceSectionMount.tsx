@@ -14,6 +14,7 @@
 
 import * as React from "react";
 import { client } from "../../api/client";
+import type { DeviceTier } from "../../api/client-local-inference";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
 import { saveVadAutoStop } from "../../state/persistence";
 import {
@@ -22,7 +23,6 @@ import {
 } from "../../voice/voice-chat-types";
 import {
   type VadAutoStopPrefs,
-  type VoiceLocalCloudStrategy,
   VoiceSection,
   type VoiceSectionPrefs,
 } from "./VoiceSection";
@@ -40,12 +40,6 @@ function isContinuousMode(value: unknown): value is VoiceContinuousMode {
     typeof value === "string" &&
     VOICE_CONTINUOUS_MODES.includes(value as VoiceContinuousMode)
   );
-}
-
-function isLocalCloudStrategy(
-  value: unknown,
-): value is VoiceLocalCloudStrategy {
-  return value === "auto" || value === "force-local" || value === "force-cloud";
 }
 
 function readVadAutoStop(value: unknown): VadAutoStopPrefs {
@@ -75,9 +69,6 @@ function readStoredVoicePrefs(
     continuous: isContinuousMode(stored.continuous)
       ? stored.continuous
       : DEFAULT_VOICE_SECTION_PREFS.continuous,
-    strategy: isLocalCloudStrategy(stored.strategy)
-      ? stored.strategy
-      : DEFAULT_VOICE_SECTION_PREFS.strategy,
     cloudFirstLineCache:
       typeof stored.cloudFirstLineCache === "boolean"
         ? stored.cloudFirstLineCache
@@ -95,6 +86,10 @@ export function VoiceSectionMount(): React.ReactElement {
     DEFAULT_VOICE_SECTION_PREFS,
   );
   const [persistError, setPersistError] = React.useState<string | null>(null);
+  const [tier, setTier] = React.useState<DeviceTier | null>(null);
+  const [tierSummary, setTierSummary] = React.useState<string | undefined>(
+    undefined,
+  );
 
   React.useEffect(() => {
     let cancelled = false;
@@ -105,6 +100,19 @@ export function VoiceSectionMount(): React.ReactElement {
       setPrefs(loaded);
       // Seed the local mirror so the capture hot path reads the server value.
       if (loaded.vadAutoStop) saveVadAutoStop(loaded.vadAutoStop);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const result = await client.getLocalInferenceDeviceTier();
+      if (cancelled) return;
+      setTier(result.tier);
+      setTierSummary(result.reason);
     })();
     return () => {
       cancelled = true;
@@ -147,7 +155,8 @@ export function VoiceSectionMount(): React.ReactElement {
         </p>
       ) : null}
       <VoiceSection
-        tier={null}
+        tier={tier}
+        tierSummary={tierSummary}
         prefs={prefs}
         onPrefsChange={(next) => void handlePrefsChange(next)}
         profilesClient={profilesClient}
