@@ -25,7 +25,7 @@ import {
   type CodingAgentTaskUsageSummary,
   client,
   DiffReviewPanel,
-  useApp,
+  useAppSelectorShallow,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
@@ -3041,14 +3041,22 @@ function TimelineHeader({
 }
 
 export function OrchestratorWorkbench() {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
-  const locale =
-    typeof app?.uiLanguage === "string" ? app.uiLanguage : undefined;
-  const copyToClipboard = app?.copyToClipboard;
+  const {
+    t: appT,
+    uiLanguage,
+    copyToClipboard,
+    agentStatus,
+  } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    uiLanguage: s.uiLanguage,
+    copyToClipboard: s.copyToClipboard,
+    agentStatus: s.agentStatus,
+  }));
+  const t = appT ?? fallbackTranslate;
+  const locale = typeof uiLanguage === "string" ? uiLanguage : undefined;
   const mainAgentName =
-    typeof app?.agentStatus?.agentName === "string"
-      ? app.agentStatus.agentName
+    typeof agentStatus?.agentName === "string"
+      ? agentStatus.agentName
       : undefined;
 
   const [status, setStatus] = useState<CodingAgentOrchestratorStatus | null>(

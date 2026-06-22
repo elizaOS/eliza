@@ -23,6 +23,10 @@ vi.mock("@elizaos/ui", () => ({
   cn: (...classes: Array<string | false | null | undefined>) =>
     classes.filter(Boolean).join(" "),
   useApp: () => appHolder.current,
+  useAppSelector: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector(appHolder.current),
+  useAppSelectorShallow: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector(appHolder.current),
   Button: ({
     children,
     ...props

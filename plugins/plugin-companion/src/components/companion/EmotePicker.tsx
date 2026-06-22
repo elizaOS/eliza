@@ -7,7 +7,7 @@ import {
   STOP_EMOTE_EVENT,
 } from "@elizaos/ui/events";
 import { useTimeout } from "@elizaos/ui/hooks";
-import { useApp } from "@elizaos/ui/state";
+import { useAppSelectorShallow } from "@elizaos/ui/state";
 import { Z_SYSTEM_CRITICAL } from "@elizaos/ui/utils";
 import { type LucideIcon, Menu, Sparkles, X } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -35,7 +35,13 @@ const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
 export function EmotePicker() {
   const { setTimeout } = useTimeout();
 
-  const { emotePickerOpen, openEmotePicker, closeEmotePicker, t } = useApp();
+  const { emotePickerOpen, openEmotePicker, closeEmotePicker, t } =
+    useAppSelectorShallow((s) => ({
+      emotePickerOpen: s.emotePickerOpen,
+      openEmotePicker: s.openEmotePicker,
+      closeEmotePicker: s.closeEmotePicker,
+      t: s.t,
+    }));
   const [search, setSearch] = useState("");
   const [playing, setPlaying] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);

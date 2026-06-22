@@ -49,6 +49,10 @@ vi.mock("@elizaos/ui", () => ({
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   useActivityEvents: () => appHooks.activityEvents,
   useApp: appHooks.useApp,
+  useAppSelector: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector(appHooks.useApp()),
+  useAppSelectorShallow: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector(appHooks.useApp()),
 }));
 
 import { InventoryView } from "./InventoryView";

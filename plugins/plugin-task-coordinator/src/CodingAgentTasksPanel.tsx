@@ -5,7 +5,7 @@ import {
   type CodingAgentTaskThreadDetail,
   client,
   TerminalPluginView,
-  useApp,
+  useAppSelectorShallow,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Archive, Bot, ListChecks, Terminal } from "lucide-react";
@@ -593,10 +593,13 @@ function ThreadDetailPane({
 }
 
 export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
+  const { t: appT, uiLanguage: appUiLanguage } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    uiLanguage: s.uiLanguage,
+  }));
+  const t = appT ?? fallbackTranslate;
   const uiLanguage =
-    typeof app?.uiLanguage === "string" ? app.uiLanguage : undefined;
+    typeof appUiLanguage === "string" ? appUiLanguage : undefined;
   const [threads, setThreads] = useState<CodingAgentTaskThread[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [selectedThread, setSelectedThread] =

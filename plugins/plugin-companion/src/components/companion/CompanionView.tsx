@@ -1,6 +1,9 @@
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { useRenderGuard } from "@elizaos/ui/hooks";
-import { useApp, useConversationMessages } from "@elizaos/ui/state";
+import {
+  useAppSelectorShallow,
+  useConversationMessages,
+} from "@elizaos/ui/state";
 import { type CSSProperties, memo, type ReactNode } from "react";
 import { AGENT_EMOTE_CATALOG, EMOTE_CATALOG } from "../../emotes/catalog";
 import { CompanionSceneHost } from "./CompanionSceneHost";
@@ -196,7 +199,24 @@ export function CompanionTuiView() {
     setState,
     setTab,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    uiLanguage: s.uiLanguage,
+    uiTheme: s.uiTheme,
+    chatAgentVoiceMuted: s.chatAgentVoiceMuted,
+    chatLastUsage: s.chatLastUsage,
+    elizaCloudAuthRejected: s.elizaCloudAuthRejected,
+    elizaCloudConnected: s.elizaCloudConnected,
+    elizaCloudCreditsError: s.elizaCloudCreditsError,
+    elizaCloudEnabled: s.elizaCloudEnabled,
+    emotePickerOpen: s.emotePickerOpen,
+    openEmotePicker: s.openEmotePicker,
+    closeEmotePicker: s.closeEmotePicker,
+    handleNewConversation: s.handleNewConversation,
+    navigation: s.navigation,
+    setState: s.setState,
+    setTab: s.setTab,
+    t: s.t,
+  }));
   const { conversationMessages } = useConversationMessages();
 
   const messages = Array.isArray(conversationMessages)

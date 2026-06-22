@@ -43,6 +43,10 @@ vi.mock("@elizaos/ui", () => ({
   dispatchAppEmoteEvent: eventDispatchers.dispatchAppEmoteEvent,
   STOP_EMOTE_EVENT: "eliza:stop-emote",
   useApp: () => appState,
+  useAppSelector: (selector: (s: typeof appState) => unknown) =>
+    selector(appState),
+  useAppSelectorShallow: (selector: (s: typeof appState) => unknown) =>
+    selector(appState),
   useConversationMessages: () => ({
     conversationMessages: appState.conversationMessages,
   }),

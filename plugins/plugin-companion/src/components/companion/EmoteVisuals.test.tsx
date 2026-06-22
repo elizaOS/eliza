@@ -45,6 +45,10 @@ vi.mock("@elizaos/ui", () => ({
   >((props, ref) => <input ref={ref} {...props} />),
   STOP_EMOTE_EVENT: "eliza:test-stop-emote",
   useApp: () => appState,
+  useAppSelector: <T,>(selector: (s: typeof appState) => T): T =>
+    selector(appState),
+  useAppSelectorShallow: <T,>(selector: (s: typeof appState) => T): T =>
+    selector(appState),
   useTimeout: () => ({ setTimeout: window.setTimeout.bind(window) }),
   Z_GLOBAL_EMOTE: 10,
   Z_SYSTEM_CRITICAL: 20,

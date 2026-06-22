@@ -29,6 +29,18 @@ const getCodingAgentTaskThread = vi.fn();
 const archiveCodingAgentTaskThread = vi.fn();
 const reopenCodingAgentTaskThread = vi.fn();
 
+// Shared mock app value so the legacy `useApp()` API and the per-slice
+// `useAppSelector` / `useAppSelectorShallow` selectors all read the same fields.
+const mockAppValue = vi.hoisted(() => ({
+  t: (key: string, vars?: Record<string, unknown>) => {
+    const template = String(vars?.defaultValue ?? key);
+    return template.replace(/\{\{(\w+)\}\}/g, (_m: string, name: string) =>
+      vars && name in vars ? String(vars[name]) : `{{${name}}}`,
+    );
+  },
+  uiLanguage: "en-US",
+}));
+
 vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
 }));
@@ -48,15 +60,11 @@ vi.mock("@elizaos/ui", () => ({
   // render the defaultValue and interpolate `{{var}}` placeholders from `vars`
   // (this is exactly the count/preview interpolation the real catalog performs,
   // so the rendered "2 sessions" / "2 changed files: …" strings are real).
-  useApp: () => ({
-    t: (key: string, vars?: Record<string, unknown>) => {
-      const template = String(vars?.defaultValue ?? key);
-      return template.replace(/\{\{(\w+)\}\}/g, (_m, name: string) =>
-        vars && name in vars ? String(vars[name]) : `{{${name}}}`,
-      );
-    },
-    uiLanguage: "en-US",
-  }),
+  useApp: () => mockAppValue,
+  useAppSelector: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector(mockAppValue),
+  useAppSelectorShallow: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector(mockAppValue),
   // Lightweight Button + TerminalPluginView stubs — the real ones pull a large
   // dependency graph; the panel only needs a clickable button element.
   Button: ({

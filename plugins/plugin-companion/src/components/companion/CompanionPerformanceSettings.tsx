@@ -4,7 +4,7 @@ import type {
   CompanionHalfFramerateMode,
   CompanionVrmPowerMode,
 } from "@elizaos/ui/state";
-import { useApp } from "@elizaos/ui/state";
+import { useAppSelectorShallow } from "@elizaos/ui/state";
 import {
   COMPANION_HALF_FRAMERATE_OPTIONS,
   COMPANION_VRM_POWER_OPTIONS,
@@ -19,7 +19,15 @@ export function CompanionPerformanceSettings() {
     companionAnimateWhenHidden,
     setCompanionAnimateWhenHidden,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    companionVrmPowerMode: s.companionVrmPowerMode,
+    setCompanionVrmPowerMode: s.setCompanionVrmPowerMode,
+    companionHalfFramerateMode: s.companionHalfFramerateMode,
+    setCompanionHalfFramerateMode: s.setCompanionHalfFramerateMode,
+    companionAnimateWhenHidden: s.companionAnimateWhenHidden,
+    setCompanionAnimateWhenHidden: s.setCompanionAnimateWhenHidden,
+    t: s.t,
+  }));
 
   return (
     <section className="space-y-2">

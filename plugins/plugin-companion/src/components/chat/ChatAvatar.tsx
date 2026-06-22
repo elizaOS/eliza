@@ -3,7 +3,11 @@ import {
   type AppEmoteEventDetail,
   STOP_EMOTE_EVENT,
 } from "@elizaos/ui/events";
-import { getVrmPreviewUrl, getVrmUrl, useApp } from "@elizaos/ui/state";
+import {
+  getVrmPreviewUrl,
+  getVrmUrl,
+  useAppSelectorShallow,
+} from "@elizaos/ui/state";
 import { resolveAppAssetUrl } from "@elizaos/ui/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -19,7 +23,13 @@ export function ChatAvatar(_props: ChatAvatarProps) {
     companionVrmPowerMode,
     companionHalfFramerateMode,
     companionAnimateWhenHidden,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    selectedVrmIndex: s.selectedVrmIndex,
+    customVrmUrl: s.customVrmUrl,
+    companionVrmPowerMode: s.companionVrmPowerMode,
+    companionHalfFramerateMode: s.companionHalfFramerateMode,
+    companionAnimateWhenHidden: s.companionAnimateWhenHidden,
+  }));
 
   // Resolve VRM path from selected index or custom upload
   const vrmPath =

@@ -3,7 +3,7 @@
  * Renders inside the Wallets tab as a sub-section or alongside inventory.
  */
 
-import { cn, PagePanel, useApp } from "@elizaos/ui";
+import { cn, PagePanel, useAppSelectorShallow } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { FileText } from "lucide-react";
 import type { ReactNode } from "react";
@@ -67,7 +67,15 @@ export function StewardView() {
     rejectStewardTx,
     copyToClipboard,
     setActionNotice,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    getStewardStatus: s.getStewardStatus,
+    getStewardHistory: s.getStewardHistory,
+    getStewardPending: s.getStewardPending,
+    approveStewardTx: s.approveStewardTx,
+    rejectStewardTx: s.rejectStewardTx,
+    copyToClipboard: s.copyToClipboard,
+    setActionNotice: s.setActionNotice,
+  }));
 
   const [activeTab, setActiveTab] = useState<StewardTab>("approvals");
   const [stewardStatus, setStewardStatus] =

@@ -12,7 +12,7 @@ import { client } from "@elizaos/ui/api";
 import { Button } from "@elizaos/ui/components";
 import { type ActivityEvent, useActivityEvents } from "@elizaos/ui/hooks";
 import type { InventoryChainFilters } from "@elizaos/ui/state";
-import { useApp } from "@elizaos/ui/state";
+import { useAppSelectorShallow } from "@elizaos/ui/state";
 import { cn } from "@elizaos/ui/utils";
 import {
   Activity,
@@ -2011,7 +2011,22 @@ export function InventoryView() {
     setState,
     setTab,
     setActionNotice,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    walletEnabled: s.walletEnabled,
+    walletAddresses: s.walletAddresses,
+    walletConfig: s.walletConfig,
+    walletBalances: s.walletBalances,
+    walletNfts: s.walletNfts,
+    walletLoading: s.walletLoading,
+    walletNftsLoading: s.walletNftsLoading,
+    walletError: s.walletError,
+    loadWalletConfig: s.loadWalletConfig,
+    loadBalances: s.loadBalances,
+    loadNfts: s.loadNfts,
+    setState: s.setState,
+    setTab: s.setTab,
+    setActionNotice: s.setActionNotice,
+  }));
   const { events: activityEvents } = useActivityEvents();
   const [hiddenTokenIds, setHiddenTokenIds] = useState<Set<string>>(() =>
     readHiddenTokenIds(),
