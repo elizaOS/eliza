@@ -20,10 +20,14 @@ constraints — the same ones in the [validation runbook §2/§3](../../../plugi
 1. **Local path** — needs the embedded full-Bun iOS runtime. The pre-built
    binary used here was *not* built with `ELIZA_IOS_FULL_BUN_ENGINE=1`, so
    `@elizaos/capacitor-bun-runtime` is absent and the local agent can't start.
-   A `build:ios:local:sim:full-bun` build embeds it — **but** the simulator has
-   **no Metal**, so on-device token generation is still limited there (a known
-   simulator limitation, not a voice bug; real on-device inference needs a
-   physical device).
+   A `build:ios:local:sim:full-bun` build embeds it — and the **engine itself
+   compiled + validated for the simulator** (`ElizaBunEngine.framework/
+   ios-arm64-simulator` ✓). The full-bun *app* build was then blocked by
+   unrelated **branch build-infra staleness** in the renderer build (`build:web`
+   — first a stale `@elizaos/shared` dist, then a rollup unresolved-module id),
+   not a voice issue. And regardless: the simulator has **no Metal**, so
+   on-device token generation can't run there (a known simulator limitation;
+   real on-device inference needs a physical device).
 2. **Cloud path** — selecting "Eliza Cloud" needs an authenticated session;
    inference returns HTTP 402 (no credits) on the test account.
 
