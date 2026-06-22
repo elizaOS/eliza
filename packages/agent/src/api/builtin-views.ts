@@ -118,6 +118,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   {
     id: "trajectories",
     viewKind: "developer",
+    developerOnly: true,
     label: "Trajectories",
     description: "Agent trajectory logs and training data",
     icon: "GitBranch",
@@ -143,6 +144,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   {
     id: "memories",
     viewKind: "developer",
+    developerOnly: true,
     label: "Memories",
     description: "Agent memory viewer and management",
     icon: "Brain",
@@ -155,6 +157,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   {
     id: "database",
     viewKind: "developer",
+    developerOnly: true,
     label: "Database",
     description: "Raw database viewer and query interface",
     icon: "Database",
@@ -167,6 +170,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   {
     id: "logs",
     viewKind: "developer",
+    developerOnly: true,
     label: "Logs",
     description: "Runtime logs and agent debug output",
     icon: "FileText",
