@@ -88,16 +88,27 @@ const MEDIA_GC_TASK_NAME = "MEDIA_GC";
 const MEDIA_GC_TAGS = ["queue", "repeat", "media-gc"];
 const MEDIA_GC_INTERVAL_MS = 24 * 60 * 60 * 1000; // daily
 
-function collectReferencedMedia(memories: Memory[]): Set<string> {
+export function collectReferencedMedia(memories: Memory[]): Set<string> {
   const referenced = new Set<string>();
   for (const memory of memories) {
     const attachments = (
       memory.content as { attachments?: Array<{ url?: unknown }> } | undefined
     )?.attachments;
-    if (!Array.isArray(attachments)) continue;
-    for (const attachment of attachments) {
-      const url = typeof attachment?.url === "string" ? attachment.url : "";
-      const name = mediaFileNameFromUrl(url);
+    if (Array.isArray(attachments)) {
+      for (const attachment of attachments) {
+        const url = typeof attachment?.url === "string" ? attachment.url : "";
+        const name = mediaFileNameFromUrl(url);
+        if (name) referenced.add(name);
+      }
+    }
+
+    // Document-linked original-bytes files: a knowledge document references its
+    // stored original via `metadata.mediaUrl` (no content.attachments entry).
+    // Collect it so the file survives GC while the document still references it.
+    const mediaUrl = (memory.metadata as { mediaUrl?: unknown } | undefined)
+      ?.mediaUrl;
+    if (typeof mediaUrl === "string") {
+      const name = mediaFileNameFromUrl(mediaUrl);
       if (name) referenced.add(name);
     }
   }

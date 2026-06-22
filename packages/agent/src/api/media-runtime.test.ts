@@ -16,9 +16,10 @@ afterAll(() => {
 });
 
 const { persistMediaBytes } = await import("./media-store.ts");
-const { mediaFileRoute, registerMediaPipelineHook } = await import(
-  "./media-runtime.ts"
-);
+const { collectReferencedMedia, mediaFileRoute, registerMediaPipelineHook } =
+  await import("./media-runtime.ts");
+
+type Memory = import("@elizaos/core").Memory;
 
 type CapturedHook = { handler: (rt: unknown, ctx: unknown) => unknown };
 
@@ -86,6 +87,57 @@ describe("registerMediaPipelineHook", () => {
     expect(wrongPhase.content.attachments[0].url).toBe(
       "data:image/png;base64,AA",
     );
+  });
+});
+
+describe("collectReferencedMedia", () => {
+  const HASH_A = "a".repeat(64);
+  const HASH_B = "b".repeat(64);
+
+  it("collects a file referenced only via memory.metadata.mediaUrl", () => {
+    const memories = [
+      {
+        // Document-linked original-bytes file: no content.attachments entry.
+        content: { text: "a knowledge doc" },
+        metadata: { type: "document", mediaUrl: `/api/media/${HASH_A}.pdf` },
+      },
+    ] as unknown as Memory[];
+
+    const referenced = collectReferencedMedia(memories);
+
+    expect(referenced.has(`${HASH_A}.pdf`)).toBe(true);
+  });
+
+  it("collects from both content.attachments and metadata.mediaUrl", () => {
+    const memories = [
+      {
+        content: {
+          text: "msg",
+          attachments: [{ url: `/api/media/${HASH_B}.png` }],
+        },
+        metadata: { type: "document", mediaUrl: `/api/media/${HASH_A}.pdf` },
+      },
+    ] as unknown as Memory[];
+
+    const referenced = collectReferencedMedia(memories);
+
+    expect(referenced.has(`${HASH_A}.pdf`)).toBe(true);
+    expect(referenced.has(`${HASH_B}.png`)).toBe(true);
+    expect(referenced.size).toBe(2);
+  });
+
+  it("ignores non-media metadata.mediaUrl values", () => {
+    const memories = [
+      {
+        content: { text: "x" },
+        metadata: { type: "document", mediaUrl: "https://example.com/x.pdf" },
+      },
+      { content: { text: "y" }, metadata: { type: "document" } },
+    ] as unknown as Memory[];
+
+    const referenced = collectReferencedMedia(memories);
+
+    expect(referenced.size).toBe(0);
   });
 });
 

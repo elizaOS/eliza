@@ -50,6 +50,12 @@ export interface BaseMetadata {
 export interface DocumentMetadata {
 	base?: BaseMetadata;
 	type?: "document";
+	/** Served original-bytes file (content-addressed) linked to this document. */
+	mediaUrl?: string;
+	/** Served original-bytes file (content-addressed) linked to this document. */
+	mediaHash?: string;
+	/** Served original-bytes file (content-addressed) linked to this document. */
+	mediaFileName?: string;
 }
 
 export interface FragmentMetadata {

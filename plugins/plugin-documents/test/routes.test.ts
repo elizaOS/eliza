@@ -243,6 +243,130 @@ describe("document routes", () => {
     expect(getMemoryById).not.toHaveBeenCalled();
   });
 
+  it("links original bytes (mediaUrl/mediaHash/mediaFileName) when a file-storage service is present", async () => {
+    const store = vi.fn(
+      async (bytes: Buffer | Uint8Array, mimeType: string) => {
+        void bytes;
+        void mimeType;
+        return {
+          url: "/api/media/deadbeef.txt",
+          hash: "deadbeef",
+          fileName: "deadbeef.txt",
+          mimeType: "text/plain",
+          size: 11,
+        };
+      },
+    );
+    const getService = vi.fn(() => ({ store }));
+    addDocument.mockResolvedValueOnce({
+      clientDocumentId: "doc-id",
+      fragmentCount: 1,
+    });
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/documents",
+      runtime: { getService } as Partial<
+        NonNullable<DocumentRouteContext["runtime"]>
+      >,
+      body: {
+        content: "hello world",
+        filename: "notes.txt",
+        contentType: "text/plain",
+      },
+    });
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(200);
+    expect(store).toHaveBeenCalledTimes(1);
+    // Text upload → bytes are UTF-8 of the original content.
+    expect((store.mock.calls[0][0] as Buffer).toString("utf8")).toBe(
+      "hello world",
+    );
+    expect(addDocument).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          mediaUrl: "/api/media/deadbeef.txt",
+          mediaHash: "deadbeef",
+          mediaFileName: "deadbeef.txt",
+        }),
+      }),
+    );
+  });
+
+  it("succeeds without a media link when no file-storage service is available", async () => {
+    addDocument.mockResolvedValueOnce({
+      clientDocumentId: "doc-id",
+      fragmentCount: 1,
+    });
+    const getService = vi.fn(() => null);
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/documents",
+      runtime: { getService } as Partial<
+        NonNullable<DocumentRouteContext["runtime"]>
+      >,
+      body: {
+        content: "hello world",
+        filename: "notes.txt",
+        contentType: "text/plain",
+      },
+    });
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({
+      ok: true,
+      documentId: "doc-id",
+      fragmentCount: 1,
+    });
+    const passedMetadata = (
+      addDocument.mock.calls[0][0] as {
+        metadata: Record<string, unknown>;
+      }
+    ).metadata;
+    expect(passedMetadata.mediaUrl).toBeUndefined();
+    expect(passedMetadata.mediaHash).toBeUndefined();
+    expect(passedMetadata.mediaFileName).toBeUndefined();
+  });
+
+  it("does not fail the upload when the file-storage service throws", async () => {
+    const store = vi.fn(async () => {
+      throw new Error("disk full");
+    });
+    const getService = vi.fn(() => ({ store }));
+    const warn = vi.fn();
+    addDocument.mockResolvedValueOnce({
+      clientDocumentId: "doc-id",
+      fragmentCount: 1,
+    });
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/documents",
+      runtime: { getService, logger: { warn } } as unknown as Partial<
+        NonNullable<DocumentRouteContext["runtime"]>
+      >,
+      body: {
+        content: "hello world",
+        filename: "notes.txt",
+        contentType: "text/plain",
+      },
+    });
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(200);
+    expect(store).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const passedMetadata = (
+      addDocument.mock.calls[0][0] as {
+        metadata: Record<string, unknown>;
+      }
+    ).metadata;
+    expect(passedMetadata.mediaUrl).toBeUndefined();
+  });
+
   it.each([
     null,
     42,

@@ -207,6 +207,12 @@ export interface DocumentMemoryMetadata
 	textBacked?: boolean;
 	timestamp?: number;
 	editedAt?: number;
+	/** Served original-bytes file (content-addressed) linked to this document. */
+	mediaUrl?: string;
+	/** Served original-bytes file (content-addressed) linked to this document. */
+	mediaHash?: string;
+	/** Served original-bytes file (content-addressed) linked to this document. */
+	mediaFileName?: string;
 }
 export interface DocumentFragmentMemoryMetadata
 	extends FragmentMetadata,
