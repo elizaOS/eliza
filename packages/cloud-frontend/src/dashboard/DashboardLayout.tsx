@@ -43,6 +43,11 @@ export default function DashboardLayout() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // Anonymous → authenticated migration swaps the entire session identity:
+    // every TanStack query is keyed on `gate.userId`, and the wallet + Steward
+    // provider tree is mounted per-session. A full reload is the correct way to
+    // re-establish the authenticated session from a clean slate; invalidating
+    // individual query keys would not re-key auth or remount the providers.
     const handleAnonMigrationComplete = () => {
       window.location.reload();
     };

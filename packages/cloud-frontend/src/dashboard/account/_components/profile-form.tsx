@@ -20,6 +20,7 @@ import {
   Image,
   Input,
 } from "@elizaos/ui";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   ImagePlus,
@@ -146,6 +147,7 @@ interface ProfileFormProps {
 }
 
 export function ProfileForm({ user }: ProfileFormProps) {
+  const queryClient = useQueryClient();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -158,6 +160,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const profileFormRef = useRef<HTMLFormElement>(null);
 
   const getInitials = (
     name: string | null,
@@ -282,7 +285,9 @@ export function ProfileForm({ user }: ProfileFormProps) {
       setPendingFile(null);
       // Notify other components (like UserMenu) that avatar was updated
       window.dispatchEvent(new CustomEvent("user-avatar-updated"));
-      window.location.reload();
+      // Refresh the cached profile so the new avatar shows everywhere it's
+      // read off the `["user-profile"]` query without a full document reload.
+      await queryClient.invalidateQueries({ queryKey: ["user-profile"] });
     } else {
       setError(result.error || "Failed to upload avatar");
       toast.error(result.error || "Failed to upload avatar");
@@ -303,7 +308,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
       if (result.success) {
         setSuccess(result.message || "Profile updated successfully");
         toast.success(result.message || "Profile updated successfully");
-        window.location.reload();
+        await queryClient.invalidateQueries({ queryKey: ["user-profile"] });
       } else {
         setError(result.error || "Failed to update profile");
         toast.error(result.error || "Failed to update profile");
@@ -325,7 +330,9 @@ export function ProfileForm({ user }: ProfileFormProps) {
       setSuccess(result.message || "Email added successfully");
       toast.success(result.message || "Email added successfully");
       setEmailAdded(true); // Optimistically hide the form
-      window.location.reload();
+      // Refetch the profile so `user.email` populates and the read-only email
+      // field replaces the add-email form without a full document reload.
+      await queryClient.invalidateQueries({ queryKey: ["user-profile"] });
     } else {
       setError(result.error || "Failed to add email");
       toast.error(result.error || "Failed to add email");
@@ -437,7 +444,11 @@ export function ProfileForm({ user }: ProfileFormProps) {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form
+          ref={profileFormRef}
+          onSubmit={handleSubmit}
+          className="space-y-6"
+        >
           {/* Avatar Section */}
           <div className="flex flex-col sm:flex-row items-start gap-4 pb-6 border-b border-white/10">
             {/* Avatar Display with Preview */}
@@ -707,7 +718,13 @@ export function ProfileForm({ user }: ProfileFormProps) {
             <BrandButton
               type="button"
               variant="outline"
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                // Discard unsaved edits by resetting the uncontrolled inputs
+                // to their `defaultValue`s; no document reload needed.
+                profileFormRef.current?.reset();
+                setError(null);
+                setSuccess(null);
+              }}
               disabled={isPending}
             >
               Cancel
