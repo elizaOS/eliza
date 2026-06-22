@@ -75,7 +75,11 @@ export const DEVICE_TIER_THRESHOLDS = {
 		effectiveModelMemoryGb: 6,
 		freeRamGbAtSession: 3,
 		minTotalRamGb: 16,
-		mobileMinTotalRamGb: 12,
+		// A phone can run eliza-1 2B (≈2.5 GB resident) locally — 6 GB+ total /
+		// ≈3 GB effective is enough — so an 8 GB Pixel is OKAY (local-capable),
+		// not POOR/cloud-only. The desktop floors stay higher.
+		mobileMinTotalRamGb: 6,
+		mobileEffectiveModelMemoryGb: 3,
 	},
 } as const;
 
@@ -250,7 +254,9 @@ function isAppleSilicon8gb(probe: HardwareProbe): boolean {
 export function classifyDeviceTier(probe: HardwareProbe): DeviceTierAssessment {
 	const reasons: string[] = [];
 	const effective = effectiveModelMemoryGb(probe);
-	const mobile = isMobile(probe);
+	// isMobileHost (not isMobile) so a phone whose bun-agent probe reports
+	// platform:"linux" with no mobile field still gets mobile thresholds + clamp.
+	const mobile = isMobileHost(probe);
 	const avx2 = hasAvx2Baseline(probe);
 	const vramGb = probe.gpu?.totalVramGb ?? null;
 	const cpuCores = probe.cpuCores;
@@ -403,8 +409,10 @@ function classifyRawTier(args: ClassifyArgs): DeviceTier {
 		return "GOOD";
 	}
 
-	// OKAY gate.
-	const meetsOkayEffective = effective >= okay.effectiveModelMemoryGb;
+	// OKAY gate. Mobile uses lower effective/total floors — a phone runs 2B fine.
+	const meetsOkayEffective =
+		effective >=
+		(mobile ? okay.mobileEffectiveModelMemoryGb : okay.effectiveModelMemoryGb);
 	const meetsOkayFree = freeRamGb >= okay.freeRamGbAtSession;
 	const meetsOkayTotal =
 		totalRamGb >= (mobile ? okay.mobileMinTotalRamGb : okay.minTotalRamGb);

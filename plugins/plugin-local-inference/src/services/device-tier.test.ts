@@ -74,12 +74,11 @@ describe("selectBestEliza1FitForDevice — mobile guard never hands a phone 9B",
 	it("arm64 phones never hit the AVX2/NEON POOR gate (NEON is mandatory on ARMv8)", () => {
 		// The on-device os-fallback probe (Pixel 9a) reports arm64 + no cpuFeatures.
 		// Before the fix it fell to "No AVX2 baseline" → POOR; that wrong reason must
-		// be gone. (This 8GB phone may still be POOR for *RAM* — mobileMinTotalRamGb
-		// is 12 — but never for a bogus missing-SIMD reason.)
+		// be gone (NEON is mandatory on ARMv8).
 		const assessment = classifyDeviceTier(devicePhoneProbe);
-		expect(
-			assessment.reasons.some((r) => /AVX2|< 4 CPU cores/i.test(r)),
-		).toBe(false);
+		expect(assessment.reasons.some((r) => /AVX2|< 4 CPU cores/i.test(r))).toBe(
+			false,
+		);
 		// A 16GB arm64 phone (above the mobile floor) with no cpuFeatures now runs
 		// local instead of being misclassified cloud-only by the SIMD gate.
 		const midPhone = probe({
@@ -90,6 +89,14 @@ describe("selectBestEliza1FitForDevice — mobile guard never hands a phone 9B",
 			cpuFeatures: undefined,
 		});
 		expect(classifyDeviceTier(midPhone).canRunLocalLm).toBe(true);
+	});
+
+	it("an 8GB phone is OKAY / local-capable (runs eliza-1 2B), not cloud-only POOR", () => {
+		withPlatform("android", () => {
+			const assessment = classifyDeviceTier(devicePhoneProbe);
+			expect(assessment.tier).toBe("OKAY");
+			expect(assessment.canRunLocalLm).toBe(true);
+		});
 	});
 
 	it("the SAME 24GB box as a desktop (no android env) may use a larger tier", () => {
