@@ -123,12 +123,27 @@ export interface BuildVoiceTurnSignalContext extends ShouldRespondContext {
   wakeWordActive?: boolean;
   /** Entity ids the agent answers to without a wake word (owner + enrolled). */
   knownSpeakerEntityIds?: readonly string[];
+  /**
+   * Cosine similarity (0..1) of THIS turn's speaker embedding against the
+   * agent's own TTS-voice imprint, when the speaker encoder is available. High =
+   * the agent is hearing ITSELF (its TTS bled back into the mic). This is the
+   * ACOUSTIC self-echo signal — it catches an echo the transcript word-overlap
+   * guard misses (a mis-transcribed echo whose words don't match the reply).
+   */
+  selfVoiceSimilarity?: number;
 }
 
 /** Server SUPPRESS threshold for EOT — below this reads as "user still talking". */
 export const SERVER_EOT_SUPPRESS_THRESHOLD = 0.4;
 /** Only a CONFIDENT bystander attribution is allowed to silence a turn. */
 export const BYSTANDER_SUPPRESS_CONFIDENCE = 0.7;
+/**
+ * Cosine at/above which an incoming turn is treated as the agent's OWN voice and
+ * hard-suppressed. WeSpeaker enrolls the device owner at ~0.78; the agent's own
+ * TTS imprint is a tighter, single-source match, so a slightly lower bar is
+ * safe and catches echo the transcript guard cannot.
+ */
+export const AGENT_SELF_VOICE_THRESHOLD = 0.7;
 
 export function buildVoiceTurnSignal(
   transcript: string,
@@ -161,17 +176,34 @@ export function buildVoiceTurnSignal(
   // soft echo/disfluency miss, because the user deliberately summoned the agent.
   if (context.wakeWordActive === true) agentShouldSpeak = true;
 
+  // Acoustic self-voice rejection: if the incoming voice MATCHES the agent's own
+  // TTS imprint while it is (or just was) speaking, it is the agent hearing
+  // itself — hard-suppress, even past the wake word. This is definitive (the
+  // owner cannot sound like the agent's synthetic voice) and catches the echo
+  // the transcript word-overlap guard misses (e.g. a mis-transcribed echo, or a
+  // "hey eliza" that the agent itself spoke).
+  const replyRecent =
+    context.agentSpeaking === true ||
+    (context.replyAgeMs ?? Number.POSITIVE_INFINITY) <= ECHO_WINDOW_MS;
+  const isSelfVoice =
+    context.selfVoiceSimilarity !== undefined &&
+    context.selfVoiceSimilarity >= AGENT_SELF_VOICE_THRESHOLD &&
+    replyRecent;
+  if (isSelfVoice) agentShouldSpeak = false;
+
   const nextSpeaker: VoiceTurnSignal["nextSpeaker"] = !agentShouldSpeak
     ? "user"
     : endOfTurnProbability < SERVER_EOT_SUPPRESS_THRESHOLD
       ? "user"
       : "agent";
 
-  const source = context.wakeWordActive
-    ? "client-ambient+wakeword"
-    : speaker
-      ? "client-ambient+diarization"
-      : "client-ambient";
+  const source = isSelfVoice
+    ? "client-ambient+self-voice"
+    : context.wakeWordActive
+      ? "client-ambient+wakeword"
+      : speaker
+        ? "client-ambient+diarization"
+        : "client-ambient";
 
   return { endOfTurnProbability, nextSpeaker, agentShouldSpeak, source };
 }

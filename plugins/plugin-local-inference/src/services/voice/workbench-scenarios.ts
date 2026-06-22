@@ -214,6 +214,31 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 		assertions: { minEchoRejectionRate: 1, minRespondAccuracy: 0.9 },
 	},
 	{
+		id: "echo-mistranscribed",
+		description:
+			"The agent's echo is mis-transcribed (no word overlap); the ACOUSTIC self-voice gate still rejects it.",
+		classes: ["echo-rejection"],
+		knownSpeakerEntityIds: ["entity-owner"],
+		participants: [{ label: "owner", entityId: "entity-owner", isOwner: true }],
+		turns: [
+			{
+				speaker: "owner",
+				text: "hey Eliza how many days until friday",
+				expectRespond: true,
+				agentReplyText: "There are three days until Friday",
+			},
+			{
+				// ASR garbled the echoed reply — NO words overlap "three days until
+				// friday", so the transcript guard would miss it. Self-voice catches it.
+				speaker: "owner",
+				text: "thudder ays untl fryeday",
+				isAgentEcho: true,
+				expectRespond: false,
+			},
+		],
+		assertions: { minEchoRejectionRate: 1 },
+	},
+	{
 		id: "owner-enrollment-inference",
 		description:
 			"No owner is enrolled; the agent infers the owner from who speaks to it most.",

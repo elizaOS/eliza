@@ -14,6 +14,7 @@
  */
 
 export {
+  AGENT_SELF_VOICE_THRESHOLD,
   type BuildVoiceTurnSignalContext,
   BYSTANDER_SUPPRESS_CONFIDENCE,
   buildVoiceTurnSignal,
