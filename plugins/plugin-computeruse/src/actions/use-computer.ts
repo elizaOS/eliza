@@ -8,7 +8,12 @@ import type {
   State,
 } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
-import type { ComputerActionResult, DesktopActionParams } from "../types.js";
+import type {
+  ComputerActionResult,
+  DesktopActionParams,
+  DesktopActionType,
+  PendingApproval,
+} from "../types.js";
 import {
   buildScreenshotAttachment,
   resolveActionParams,
@@ -20,6 +25,35 @@ function getComputerUseService(
 ): ComputerUseService | null {
   return (runtime.getService("computeruse") as ComputerUseService) ?? null;
 }
+
+const DESKTOP_ACTIONS = new Set<DesktopActionType>([
+  "screenshot",
+  "click",
+  "click_with_modifiers",
+  "double_click",
+  "right_click",
+  "mouse_move",
+  "type",
+  "key",
+  "key_combo",
+  "scroll",
+  "drag",
+  "detect_elements",
+  "ocr",
+]);
+
+type ComputerUseActionParams = Omit<DesktopActionParams, "action"> & {
+  action?: DesktopActionType | "resolve_approval";
+  approvalId?: string;
+  approved?: boolean;
+  reason?: string;
+};
+
+type ApprovalDecision = {
+  approvalId: string;
+  approved: boolean;
+  reason?: string;
+};
 
 function formatDesktopResultText(
   params: DesktopActionParams,
@@ -39,6 +73,89 @@ function formatDesktopResultText(
     return result.message ?? "Here is the current screen.";
   }
   return result.message ?? `Completed ${params.action}.`;
+}
+
+function parseApprovalDecision(
+  params: ComputerUseActionParams,
+  message: Memory,
+): ApprovalDecision | null {
+  if (params.action === "resolve_approval") {
+    const approvalId = params.approvalId?.trim();
+    if (!approvalId || typeof params.approved !== "boolean") {
+      return null;
+    }
+    return {
+      approvalId,
+      approved: params.approved,
+      reason: params.reason,
+    };
+  }
+
+  const text = message.content?.text?.trim() ?? "";
+  const match = /^(approve|deny):([A-Za-z0-9_-]+)$/.exec(text);
+  if (!match) {
+    return null;
+  }
+  return {
+    approved: match[1] === "approve",
+    approvalId: match[2] ?? "",
+    reason: `Resolved from chat button (${match[1]})`,
+  };
+}
+
+function buildApprovalPromptContent(approval: PendingApproval) {
+  const command = approval.command || "computer-use action";
+  return {
+    text: `Computer-use approval needed for ${command}.\n[CHOICE:computeruse-approval id=${approval.id}]\napprove:${approval.id}=Approve\ndeny:${approval.id}=Deny\n[/CHOICE]`,
+    data: {
+      source: "computeruse",
+      computerUseAction: "COMPUTER_USE",
+      type: "computeruse_approval_request",
+      approval: {
+        id: approval.id,
+        command: approval.command,
+        requestedAt: approval.requestedAt,
+      },
+    },
+  };
+}
+
+function subscribeApprovalPrompts(
+  service: ComputerUseService,
+  callback?: HandlerCallback,
+): () => void {
+  if (!callback) {
+    return () => {};
+  }
+  const seen = new Set(
+    service
+      .getApprovalSnapshot()
+      .pendingApprovals.map((approval) => approval.id),
+  );
+  return service.subscribeApprovals((snapshot) => {
+    for (const approval of snapshot.pendingApprovals) {
+      if (seen.has(approval.id)) {
+        continue;
+      }
+      seen.add(approval.id);
+      void callback(buildApprovalPromptContent(approval), "COMPUTER_USE").catch(
+        () => {},
+      );
+    }
+  });
+}
+
+function toDesktopActionParams(
+  params: ComputerUseActionParams,
+): DesktopActionParams | null {
+  const action = params.action ?? "screenshot";
+  if (!DESKTOP_ACTIONS.has(action as DesktopActionType)) {
+    return null;
+  }
+  return {
+    ...params,
+    action: action as DesktopActionType,
+  };
 }
 
 async function deliverResult(
@@ -71,6 +188,7 @@ async function deliverResult(
 export const useComputerAction: Action = {
   name: "COMPUTER_USE",
   contexts: [
+    "chat",
     "browser",
     "files",
     "terminal",
@@ -80,6 +198,7 @@ export const useComputerAction: Action = {
   ],
   contextGate: {
     anyOf: [
+      "chat",
       "browser",
       "files",
       "terminal",
@@ -107,11 +226,13 @@ export const useComputerAction: Action = {
     "TAKE_SCREENSHOT",
     "CAPTURE_SCREEN",
     "SEE_SCREEN",
+    "APPROVE_COMPUTER_USE",
+    "DENY_COMPUTER_USE",
   ],
   description:
-    "computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
+    "computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
   descriptionCompressed:
-    "Desktop: screenshot|click|double|right|move|type|key|scroll|drag|detect|ocr",
+    "Desktop: screenshot|click|double|right|move|type|key|scroll|drag|detect|ocr|approve",
   routingHint:
     "desktop/computer/native-app/Finder/window screenshots or control -> COMPUTER_USE; never invent takeScreenshot",
 
@@ -136,6 +257,7 @@ export const useComputerAction: Action = {
           "drag",
           "detect_elements",
           "ocr",
+          "resolve_approval",
         ],
       },
     },
@@ -208,6 +330,25 @@ export const useComputerAction: Action = {
       required: false,
       schema: { type: "string", enum: ["logical", "backing"] },
     },
+    {
+      name: "approvalId",
+      description:
+        "Pending computer-use approval id for action=resolve_approval.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "approved",
+      description: "Approval decision for action=resolve_approval.",
+      required: false,
+      schema: { type: "boolean" },
+    },
+    {
+      name: "reason",
+      description: "Optional reason for an approval decision.",
+      required: false,
+      schema: { type: "string" },
+    },
   ],
   validate: async (
     runtime: IAgentRuntime,
@@ -224,19 +365,60 @@ export const useComputerAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const params = resolveActionParams<DesktopActionParams>(message, options);
-    params.action ??= "screenshot";
+    const params = resolveActionParams<ComputerUseActionParams>(
+      message,
+      options,
+    );
 
     const service = getComputerUseService(runtime);
     if (!service) {
       return { success: false, error: "ComputerUseService not available" };
     }
 
-    const result = await service.executeDesktopAction(params);
-    const text = formatDesktopResultText(params, result);
-    await deliverResult(params, result, text, callback);
+    const approvalDecision = parseApprovalDecision(params, message);
+    if (approvalDecision) {
+      const resolution = service.resolveApproval(
+        approvalDecision.approvalId,
+        approvalDecision.approved,
+        approvalDecision.reason,
+      );
+      const verb = approvalDecision.approved ? "approved" : "denied";
+      const text = resolution
+        ? `Computer-use approval ${approvalDecision.approvalId} ${verb}.`
+        : `Computer-use approval ${approvalDecision.approvalId} is not pending.`;
+      if (callback) {
+        await callback({ text }, "COMPUTER_USE");
+      }
+      return {
+        success: resolution !== null,
+        text,
+        data: {
+          source: "computeruse",
+          computerUseAction: "COMPUTER_USE",
+          approval: resolution,
+        },
+      };
+    }
+
+    const desktopParams = toDesktopActionParams(params);
+    if (!desktopParams) {
+      return {
+        success: false,
+        error: `Unknown COMPUTER_USE action: ${String(params.action)}`,
+      };
+    }
+
+    const unsubscribe = subscribeApprovalPrompts(service, callback);
+    let result: ComputerActionResult;
+    try {
+      result = await service.executeDesktopAction(desktopParams);
+    } finally {
+      unsubscribe();
+    }
+    const text = formatDesktopResultText(desktopParams, result);
+    await deliverResult(desktopParams, result, text, callback);
     return toComputerUseActionResult({
-      action: params.action,
+      action: desktopParams.action,
       result,
       text,
       suppressClipboard: true,

@@ -226,10 +226,7 @@ export class HetznerCloudClient implements ComputeProvider {
         ...data.server,
         // Map Hetzner's public_net onto the canonical seam field (ipv4 first,
         // then ipv6) so consumers don't depend on the provider-specific shape.
-        publicIpv4:
-          data.server.public_net?.ipv4?.ip ??
-          data.server.public_net?.ipv6?.ip ??
-          null,
+        publicIpv4: data.server.public_net?.ipv4?.ip ?? data.server.public_net?.ipv6?.ip ?? null,
       },
       rootPassword: data.root_password,
     };
