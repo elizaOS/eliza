@@ -38,8 +38,11 @@ beforeAll(async () => {
 
 describe("plugin terminal views — registration + framing", () => {
   it("registers a substantial set of plugin terminal views", () => {
-    // 23 converted plugins (phone + 22). Allow for shared ids; require the bulk.
-    expect(registeredIds.length).toBeGreaterThanOrEqual(20);
+    // Converted plugins each ship a register-terminal-view.tsx. The LifeOps
+    // overview view was removed by the owner (commit 2cd13115b4), so its dead
+    // terminal registration was deleted with the rest of that view's plumbing —
+    // one fewer than the prior floor. Allow for shared ids; require the bulk.
+    expect(registeredIds.length).toBeGreaterThanOrEqual(19);
   });
 
   it("exports all real views for visual review (TUI_REVIEW_OUT)", () => {

@@ -1,9 +1,8 @@
-// Edge/error-path coverage for the TUI interact() capability layer (the data
-// layer exported from viewManagerData.ts and surfaced as the plugin's
-// terminal-open-view / terminal-list-views capabilities in src/index.ts).
-//
-// The happy paths live in ViewManagerView.test.ts; this file pins the failure
-// paths: missing viewId, unknown viewId, and an unsupported capability.
+// Coverage for the TUI interact() capability layer (the data layer exported from
+// viewManagerData.ts and surfaced as the plugin's terminal-open-view /
+// terminal-list-views capabilities in src/index.ts). Pins both the happy paths
+// (list + open) and the failure paths: missing viewId, unknown viewId, and an
+// unsupported capability.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { interact } from "./viewManagerData";
@@ -18,6 +17,14 @@ const tuiViews = {
 			available: true,
 			pluginName: "@elizaos/plugin-wallet-ui",
 		},
+		{
+			id: "messages",
+			label: "Messages",
+			viewType: "tui",
+			path: "/messages/tui",
+			available: true,
+			pluginName: "@elizaos/plugin-messages",
+		},
 	],
 };
 
@@ -31,6 +38,45 @@ function jsonResponse(body: unknown) {
 afterEach(() => {
 	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
+});
+
+describe("interact() happy paths", () => {
+	it("terminal-list-views returns the tui-scoped view list", async () => {
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			expect(String(input)).toBe("/api/views?viewType=tui");
+			return jsonResponse(tuiViews);
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(interact("terminal-list-views")).resolves.toEqual(tuiViews);
+		expect(fetchMock).toHaveBeenCalledOnce();
+	});
+
+	it("terminal-open-view navigates the matched view and reports its viewType", async () => {
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url === "/api/views?viewType=tui") return jsonResponse(tuiViews);
+			if (url === "/api/views/messages/navigate?viewType=tui")
+				return jsonResponse({ ok: true });
+			throw new Error(`Unexpected request: ${url}`);
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(
+			interact("terminal-open-view", { viewId: "messages" }),
+		).resolves.toEqual({
+			opened: true,
+			viewId: "messages",
+			viewType: "tui",
+		});
+		expect(fetchMock).toHaveBeenCalledWith(
+			"/api/views/messages/navigate?viewType=tui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({ path: "/messages/tui", viewType: "tui" }),
+			}),
+		);
+	});
 });
 
 describe("interact() error paths", () => {

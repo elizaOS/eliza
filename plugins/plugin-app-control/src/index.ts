@@ -174,39 +174,22 @@ export const appControlPlugin: Plugin = {
 			?.stop();
 	},
 	views: [
+		// ONE declaration → GUI + XR + TUI, all drawn from the single
+		// ViewManagerView spatial-catalog source (the rich deduped manager:
+		// collapse-by-id + modality chips + per-view open/available state). The
+		// terminal surface renders the registered ViewManagerSpatialView via the
+		// spatial terminal registry (see register-terminal-view.tsx). `modalities`
+		// is a plain literal here (index.ts is not in the view bundle), so no
+		// brand-new `@elizaos/core` runtime export reaches the bundle build.
 		{
 			id: "views-manager",
 			label: "Views",
 			description: "Browse and open available views contributed by plugins",
 			icon: "LayoutGrid",
 			path: "/views",
+			modalities: ["gui", "xr", "tui"],
 			bundlePath: "dist/views/bundle.js",
 			componentExport: "ViewManagerView",
-			visibleInManager: true,
-			desktopTabEnabled: true,
-		},
-		{
-			id: "views-manager",
-			label: "Views XR",
-			description: "Browse and open available views contributed by plugins",
-			icon: "LayoutGrid",
-			path: "/views",
-			viewType: "xr",
-			bundlePath: "dist/views/bundle.js",
-			componentExport: "ViewManagerView",
-			visibleInManager: true,
-			desktopTabEnabled: true,
-		},
-		{
-			id: "views-manager",
-			label: "Views TUI",
-			description:
-				"Terminal view for browsing and opening available plugin views",
-			icon: "Terminal",
-			path: "/views/tui",
-			viewType: "tui",
-			bundlePath: "dist/views/bundle.js",
-			componentExport: "ViewManagerTuiView",
 			visibleInManager: true,
 			desktopTabEnabled: true,
 			capabilities: [
