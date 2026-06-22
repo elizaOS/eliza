@@ -60,6 +60,12 @@ function fakeRuntime(): TranscriptStoreRuntime & { rows: Map<string, Memory> } {
 		async getMemoryById(id) {
 			return rows.get(id) ?? null;
 		},
+		async updateMemory(memory) {
+			const existing = rows.get(memory.id);
+			if (!existing) return false;
+			rows.set(memory.id, { ...existing, ...memory });
+			return true;
+		},
 		async deleteMemory(id) {
 			rows.delete(id);
 		},
@@ -145,6 +151,36 @@ describe("TranscriptStore", () => {
 		await store.create({ roomId: ROOM, entityId: ENTITY, transcript: t });
 		await store.delete(t.id as UUID);
 		expect(await store.get(t.id as UUID)).toBeNull();
+	});
+
+	it("updates a record in place and re-derives the preview + metadata", async () => {
+		const rt = fakeRuntime();
+		const store = new TranscriptStore(rt);
+		const t = makeTranscript();
+		await store.create({ roomId: ROOM, entityId: ENTITY, transcript: t });
+
+		const edited: Transcript = {
+			...t,
+			title: "Standup (edited)",
+			segments: [{ ...t.segments[0], text: "hello edited world", words: [] }],
+			editedAt: 5000,
+		};
+		const returned = await store.update(edited);
+		expect(returned).toEqual(edited);
+
+		// Same row id, overwritten content + re-derived preview text.
+		const row = rt.rows.get(t.id) as Memory;
+		expect(rt.rows.size).toBe(1);
+		expect(row.content.text).toBe("hello edited world");
+		expect(row.metadata?.transcriptId).toBe(t.id);
+		// store.get round-trips the edited record exactly.
+		expect(await store.get(t.id as UUID)).toEqual(edited);
+	});
+
+	it("throws when updating a record that does not exist", async () => {
+		const rt = fakeRuntime();
+		const store = new TranscriptStore(rt);
+		await expect(store.update(makeTranscript())).rejects.toThrow(/not found/);
 	});
 
 	it("exposes the partition name", () => {

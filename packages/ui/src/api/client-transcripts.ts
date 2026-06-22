@@ -33,6 +33,12 @@ export interface TranscriptCreateInput {
   createdAt?: number;
 }
 
+/** Body for a user edit to a transcript (title and/or replacement segments). */
+export interface TranscriptUpdateInput {
+  title?: string;
+  segments?: TranscriptSegment[];
+}
+
 declare module "./client-base" {
   interface ElizaClient {
     listTranscripts(
@@ -41,6 +47,10 @@ declare module "./client-base" {
     getTranscript(id: string): Promise<{ transcript: Transcript }>;
     createTranscript(
       input: TranscriptCreateInput,
+    ): Promise<{ transcript: Transcript }>;
+    updateTranscript(
+      id: string,
+      input: TranscriptUpdateInput,
     ): Promise<{ transcript: Transcript }>;
     deleteTranscript(id: string): Promise<{ ok: boolean }>;
   }
@@ -67,6 +77,17 @@ ElizaClient.prototype.createTranscript = async function (
 ) {
   return this.fetch("/api/transcripts", {
     method: "POST",
+    body: JSON.stringify(input),
+  });
+};
+
+ElizaClient.prototype.updateTranscript = async function (
+  this: ElizaClient,
+  id: string,
+  input: TranscriptUpdateInput,
+) {
+  return this.fetch(`/api/transcripts/${encodeURIComponent(id)}`, {
+    method: "PUT",
     body: JSON.stringify(input),
   });
 };

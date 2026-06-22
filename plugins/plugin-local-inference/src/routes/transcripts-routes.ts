@@ -116,6 +116,39 @@ const deleteRoute: Route = {
 	},
 };
 
+/** The body a transcript editor PUTs to persist a user edit. */
+export interface UpdateTranscriptRequest {
+	worldId?: UUID;
+	roomId?: UUID;
+	entityId?: UUID;
+	title?: string;
+	segments?: TranscriptSegment[];
+}
+
+const updateRoute: Route = {
+	type: "PUT",
+	path: "/api/transcripts/:id",
+	rawPath: true,
+	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
+		const body = (ctx.body ?? {}) as UpdateTranscriptRequest;
+		if (body.title === undefined && body.segments === undefined) {
+			return { status: 400, body: { error: "title or segments is required" } };
+		}
+		if (body.segments !== undefined && !Array.isArray(body.segments)) {
+			return { status: 400, body: { error: "segments must be an array" } };
+		}
+		const agentId = ctx.runtime.agentId as UUID;
+		const updated = await service(ctx).update(ctx.params.id as UUID, {
+			worldId: (body.worldId ?? agentId) as UUID,
+			roomId: (body.roomId ?? agentId) as UUID,
+			entityId: (body.entityId ?? agentId) as UUID,
+			patch: { title: body.title, segments: body.segments },
+		});
+		if (!updated) return { status: 404, body: { error: "not found" } };
+		return { status: 200, body: { transcript: updated } };
+	},
+};
+
 const createRoute: Route = {
 	type: "POST",
 	path: "/api/transcripts",
@@ -155,5 +188,6 @@ export const transcriptsRoutes: Route[] = [
 	listRoute,
 	createRoute,
 	getRoute,
+	updateRoute,
 	deleteRoute,
 ];

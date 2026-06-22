@@ -11,7 +11,12 @@ import { logger, type UUID } from "@elizaos/core";
 import type {
 	Transcript,
 	TranscriptScope,
+	TranscriptSegment,
 	TranscriptSummary,
+} from "@elizaos/shared/transcripts";
+import {
+	transcriptDurationMs,
+	transcriptSpeakerCount,
 } from "@elizaos/shared/transcripts";
 import { transcriptKnowledgePayload } from "./transcript-knowledge";
 import {
@@ -48,6 +53,15 @@ export interface CreateTranscriptInput {
 	transcript: Transcript;
 }
 
+export interface UpdateTranscriptInput {
+	/** Ids the knowledge re-mirror is attributed to (default to the agent ctx). */
+	worldId: UUID;
+	roomId: UUID;
+	entityId: UUID;
+	/** The user edit: a new title and/or replacement segments. */
+	patch: { title?: string; segments?: TranscriptSegment[] };
+}
+
 export class TranscriptService {
 	private readonly store: TranscriptStore;
 
@@ -76,6 +90,56 @@ export class TranscriptService {
 
 	get(id: UUID): Promise<Transcript | null> {
 		return this.store.get(id);
+	}
+
+	/**
+	 * Apply a user edit to a transcript record (title and/or segment text) and
+	 * persist it, re-mirroring the new text into the knowledge index so search
+	 * reflects the correction. Returns the updated record, or null if no record
+	 * with that id exists. Timing/speaker metadata is re-derived from the edited
+	 * segments; the knowledge mirror is replaced (old doc removed best-effort).
+	 */
+	async update(
+		id: UUID,
+		input: UpdateTranscriptInput,
+	): Promise<Transcript | null> {
+		const existing = await this.store.get(id);
+		if (!existing) return null;
+
+		const segments = input.patch.segments ?? existing.segments;
+		const next: Transcript = {
+			...existing,
+			title: input.patch.title?.trim() || existing.title,
+			segments,
+			durationMs: transcriptDurationMs(segments),
+			speakerCount: transcriptSpeakerCount(segments),
+			editedAt: Date.now(),
+		};
+
+		// Replace the knowledge mirror so search reflects the corrected text.
+		if (existing.knowledgeDocumentId) {
+			try {
+				await this.runtime.deleteMemory(existing.knowledgeDocumentId as UUID);
+			} catch (err) {
+				logger.warn(
+					{
+						transcriptId: id,
+						knowledgeDocumentId: existing.knowledgeDocumentId,
+						error: err instanceof Error ? err.message : String(err),
+					},
+					"[TranscriptService] failed to remove stale knowledge mirror on update",
+				);
+			}
+		}
+		const knowledgeDocumentId = await this.mirrorToKnowledge(
+			input.worldId,
+			input.roomId,
+			input.entityId,
+			next,
+		);
+		next.knowledgeDocumentId = knowledgeDocumentId;
+
+		return this.store.update(next);
 	}
 
 	/** Delete the record + its knowledge mirror (mirror removal best-effort). */
