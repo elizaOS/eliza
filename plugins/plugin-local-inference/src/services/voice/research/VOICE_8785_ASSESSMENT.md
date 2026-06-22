@@ -64,7 +64,7 @@ Lanes: `--mock` PASS (plumbing), `--logic` PASS (real decision logic, 12 scenari
 |---|---|---|
 | Ideal pause lengths? | ~200 ms modal inter-turn gap; with a semantic EOT model use **200 ms** end-hangover, fixed-VAD **500 ms**, max-wait **3000 ms**. Pipeline ships 700 ms hangover with semantic early-commit at P≥0.9. | research §1; tune ticket |
 | Optimistic-but-abortable generation? | `optimistic-policy` + `optimistic-rollback` (C1 checkpoint, C7 prefill, battery-aware) | 🟡 GATED, exists |
-| Reject the agent's own voice from TTS? | Word-overlap echo gate (9 s/70 %) — now scored in the workbench (echo-rejection rate 1.0). **PCM-level AEC is still missing** — see §6. | ✅ (transcript) / ❌ (acoustic) |
+| Reject the agent's own voice from TTS? | Two integrated layers: (1) transcript word-overlap echo gate (9 s/70 %), (2) **acoustic self-voice rejection** — `selfVoiceSimilarity ≥ 0.7` vs the agent's TTS imprint hard-suppresses even past the wake word, catching a mis-transcribed echo the transcript guard misses. Both scored (echo-rejection 1.0; `echo-mistranscribed` scenario). PCM-level AEC3 + the embedding wiring still gated — see §6. | ✅ (decision) / 🟡 (audio-frame) |
 | Reverb / low-quality / near-far / noise / background talkers? | `corpus-augment.ts` models all of them deterministically; scenarios assert the decision still holds | ✅ corpus; 🟡 real-model robustness |
 | Interrupting / overlapping voices? | `overlapping-speech` class + background-talkers mixing; barge-in controller exists | ✅ corpus / 🟡 live |
 | Speaker recognition & continuity to cancel others? | bystander suppression (confidence ≥0.7, not enrolled, no wake word) — scored; WeSpeaker centroids continuity | ✅ gate / 🟡 acoustic |
@@ -94,12 +94,16 @@ Per the honesty contract, every one of these reports **`skipped`, never `pass`**
 
 ## 6. Open recommendation: PCM-level acoustic echo cancellation
 
-The single most impactful missing piece. Today self-echo is caught only at the transcript level (word overlap), which fails when ASR mis-transcribes the echo or when the agent's TTS overlaps a real user turn. Recommended (research §3):
+Self-echo now has TWO decision layers (both integrated + scored): the transcript
+word-overlap guard, and **acoustic self-voice rejection** (`selfVoiceSimilarity ≥
+AGENT_SELF_VOICE_THRESHOLD` vs the agent's TTS imprint → hard-suppress). What
+remains is the audio-frame plumbing + the cheap half-duplex layer (research §3):
 1. **`agentSpeaking` flag + ~1.5 s post-TTS cooldown with a raised RMS gate** — cheap, robust, no new model. *(Effective half-duplex; ship first.)*
 2. **WebRTC AEC3 with a time-aligned playback reference**, interrupt detection off the linear-filter output — true barge-in.
-3. **Speaker-embedding self-voice rejection** — imprint the agent's TTS voice (we already have the encoder) and reject frames matching it.
+3. **Wire `selfVoiceSimilarity`** — imprint the agent's TTS voice (we already have the WeSpeaker encoder) and feed the live cosine into the gate's already-built self-voice branch.
 
-Track as a follow-up issue; the workbench `echo-rejection` scorer is ready to gate it.
+Track as a follow-up issue; the workbench `echo-rejection` scorer (incl. the
+mis-transcribed case) is ready to gate it.
 
 ---
 
