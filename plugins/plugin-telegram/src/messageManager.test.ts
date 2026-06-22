@@ -546,6 +546,126 @@ describe("MessageManager send resilience (sendWithRetry)", () => {
   });
 });
 
+describe("MessageManager editMessage", () => {
+  function managerWith(editMessageText: ReturnType<typeof vi.fn>) {
+    const telegram = { editMessageText };
+    const manager = new MessageManager(
+      { telegram } as never,
+      { agentId: "agent-1", getSetting: () => undefined } as never,
+    );
+    return { manager, editMessageText };
+  }
+
+  it("replaces text via editMessageText with MarkdownV2", async () => {
+    const editMessageText = vi.fn(async () => true);
+    const { manager } = managerWith(editMessageText);
+
+    await manager.editMessage(123, 7, "hello world");
+
+    expect(editMessageText).toHaveBeenCalledTimes(1);
+    expect(editMessageText).toHaveBeenCalledWith(
+      123,
+      7,
+      undefined,
+      "hello world",
+      { parse_mode: "MarkdownV2" },
+    );
+  });
+
+  it("retries as plain text on a MarkdownV2 400 parse error", async () => {
+    const editMessageText = vi.fn(
+      async (
+        _chatId: number | string,
+        _messageId: number,
+        _inline: undefined,
+        _text: string,
+        opts?: { parse_mode?: string },
+      ) => {
+        if (opts?.parse_mode === "MarkdownV2") {
+          throw {
+            response: {
+              error_code: 400,
+              description: "Bad Request: can't parse entities",
+            },
+          };
+        }
+        return true;
+      },
+    );
+    const { manager } = managerWith(editMessageText);
+
+    await manager.editMessage(123, 7, "**bold**");
+
+    expect(editMessageText).toHaveBeenCalledTimes(2);
+    // the successful (fallback) edit must NOT carry parse_mode
+    const fallbackCall = editMessageText.mock.calls.find(
+      (call) =>
+        (call[4] as { parse_mode?: string } | undefined)?.parse_mode ===
+        undefined,
+    );
+    expect(fallbackCall).toBeDefined();
+  });
+
+  it('swallows "message is not modified" as a no-op success', async () => {
+    const editMessageText = vi.fn(async () => {
+      throw {
+        response: {
+          error_code: 400,
+          description: "Bad Request: message is not modified",
+        },
+      };
+    });
+    const { manager } = managerWith(editMessageText);
+
+    // identical-content edit must resolve, not throw
+    await expect(
+      manager.editMessage(123, 7, "same text"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("propagates non-parse, non-not-modified errors", async () => {
+    const editMessageText = vi.fn(async () => {
+      throw {
+        response: {
+          error_code: 403,
+          description: "Forbidden: bot was blocked",
+        },
+      };
+    });
+    const { manager } = managerWith(editMessageText);
+
+    await expect(manager.editMessage(123, 7, "hi")).rejects.toBeTruthy();
+  });
+});
+
+describe("MessageManager addReaction", () => {
+  it("sets a single emoji reaction via setMessageReaction", async () => {
+    const setMessageReaction = vi.fn(async () => true);
+    const manager = new MessageManager(
+      { telegram: { setMessageReaction } } as never,
+      { agentId: "agent-1", getSetting: () => undefined } as never,
+    );
+
+    await manager.addReaction(123, 7, "👍");
+
+    expect(setMessageReaction).toHaveBeenCalledWith(123, 7, [
+      { type: "emoji", emoji: "👍" },
+    ]);
+  });
+
+  it("clears reactions when no emoji is provided", async () => {
+    const setMessageReaction = vi.fn(async () => true);
+    const manager = new MessageManager(
+      { telegram: { setMessageReaction } } as never,
+      { agentId: "agent-1", getSetting: () => undefined } as never,
+    );
+
+    await manager.addReaction(123, 7);
+
+    expect(setMessageReaction).toHaveBeenCalledWith(123, 7, []);
+  });
+});
+
 describe("MessageManager typing-indicator resilience", () => {
   it("still sends the reply when the typing action fails", async () => {
     const sendMessage = vi.fn(

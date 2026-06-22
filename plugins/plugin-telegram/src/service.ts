@@ -9,8 +9,10 @@ import {
   type Memory,
   type MessageConnectorChatContext,
   type MessageConnectorCreateThreadParams,
+  type MessageConnectorEditParams,
   type MessageConnectorPostToThreadParams,
   type MessageConnectorQueryContext,
+  type MessageConnectorReactionParams,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
   Role,
@@ -59,6 +61,8 @@ const TELEGRAM_CONNECTOR_CAPABILITIES = [
   "user_context",
   "create_thread",
   "post_to_thread",
+  "edit_message",
+  "react_message",
 ];
 const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/;
 const TELEGRAM_THREADED_CHANNEL_PATTERN = /^(-?\d+)-(\d+)$/;
@@ -2037,6 +2041,120 @@ export class TelegramService extends Service {
     return undefined;
   }
 
+  /**
+   * Resolves a connector `TargetInfo` (channelId / roomId / entityId) to the
+   * concrete Telegram chat id, optional forum thread id, and the account's
+   * `MessageManager`. Shared by the `edit_message` and `react_message`
+   * connector capabilities, mirroring {@link handleSendMessage}'s resolution.
+   */
+  private async resolveConnectorMessageTarget(
+    runtime: IAgentRuntime,
+    target: TargetInfo,
+  ): Promise<{
+    chatId: number | string;
+    threadId?: number;
+    messageManager: MessageManager;
+    accountId: string;
+  }> {
+    const accountId = await this.resolveAccountIdForTarget(runtime, target);
+    const accountState = this.getAccountState(accountId);
+    const messageManager = accountState?.messageManager ?? this.messageManager;
+    if (!messageManager) {
+      throw new Error(
+        "Telegram bot is not initialized — cannot edit or react to a message.",
+      );
+    }
+
+    let chatId: number | string | undefined;
+    let threadId: number | undefined;
+
+    if (target.channelId) {
+      const parts = parseTelegramTargetParts(target.channelId, target.threadId);
+      chatId = parts.chatId;
+      threadId = parts.threadId;
+    } else if (target.roomId) {
+      const room = await runtime.getRoom(target.roomId);
+      const metadata = room?.metadata as Record<string, unknown> | undefined;
+      const metadataThreadId =
+        typeof metadata?.threadId === "string" ? metadata.threadId : undefined;
+      if (room?.channelId) {
+        const parts = parseTelegramTargetParts(
+          room.channelId,
+          metadataThreadId,
+        );
+        chatId = parts.chatId;
+        threadId = parts.threadId;
+      }
+    } else if (target.entityId) {
+      const entity = await runtime.getEntityById(target.entityId);
+      const telegramMeta = entity?.metadata?.telegram as
+        | Record<string, unknown>
+        | undefined;
+      const telegramId = telegramMeta?.id;
+      if (telegramId !== undefined && telegramId !== null) {
+        chatId = telegramId as number | string;
+      }
+      if (target.threadId && /^\d+$/.test(target.threadId)) {
+        threadId = Number.parseInt(target.threadId, 10);
+      }
+    }
+
+    if (chatId === undefined) {
+      throw new Error(
+        `Could not determine target Telegram chat ID for target: ${JSON.stringify(target)}`,
+      );
+    }
+
+    return { chatId, threadId, messageManager, accountId };
+  }
+
+  /**
+   * Connector `edit_message` capability: rewrites a previously-sent message in
+   * place (used by the orchestrator's compact progress mode so heartbeats edit
+   * one message instead of flooding the chat). Returns void — the connector
+   * `editHandler` contract accepts a `Promise<void>`.
+   */
+  public async editConnectorMessage(
+    runtime: IAgentRuntime,
+    params: MessageConnectorEditParams,
+  ): Promise<void> {
+    const text = params.content?.text;
+    if (!text?.trim()) {
+      throw new Error("Telegram edit requires non-empty text.");
+    }
+    const messageId = Number.parseInt(params.messageId, 10);
+    if (!Number.isFinite(messageId)) {
+      throw new Error(
+        `Telegram edit requires a numeric message id, got "${params.messageId}".`,
+      );
+    }
+    const { chatId, threadId, messageManager } =
+      await this.resolveConnectorMessageTarget(runtime, params.target);
+    await messageManager.editMessage(chatId, messageId, text, threadId);
+  }
+
+  /**
+   * Connector `react_message` capability: sets a single emoji reaction on a
+   * message (or clears the bot's reactions when `emoji` is empty).
+   */
+  public async reactConnectorMessage(
+    runtime: IAgentRuntime,
+    params: MessageConnectorReactionParams,
+  ): Promise<void> {
+    const messageId = Number.parseInt(params.messageId, 10);
+    if (!Number.isFinite(messageId)) {
+      throw new Error(
+        `Telegram reaction requires a numeric message id, got "${params.messageId}".`,
+      );
+    }
+    const emoji = params.emoji?.trim();
+    const { chatId, messageManager } = await this.resolveConnectorMessageTarget(
+      runtime,
+      params.target,
+    );
+    await messageManager.addReaction(chatId, messageId, emoji || undefined);
+  }
+
   async resolveConnectorTargets(
     query: string,
     context: MessageConnectorQueryContext,
@@ -2413,7 +2531,7 @@ export class TelegramService extends Service {
             ? `Telegram (${state.account.name})`
             : "Telegram",
           description:
-            "Telegram connector for sending messages to chats, topics, and users.",
+            "Telegram connector for sending, editing, and reacting to messages in chats, topics, and users.",
           capabilities: [...TELEGRAM_CONNECTOR_CAPABILITIES],
           supportedTargetKinds: ["channel", "group", "thread", "user"],
           contexts: [...TELEGRAM_CONNECTOR_CONTEXTS],
@@ -2425,6 +2543,10 @@ export class TelegramService extends Service {
             serviceInstance.createConnectorThread(runtime, params),
           postToThreadHandler: (runtime, params) =>
             serviceInstance.postToConnectorThread(runtime, params),
+          editHandler: (runtime, params) =>
+            serviceInstance.editConnectorMessage(runtime, params),
+          reactHandler: (runtime, params) =>
+            serviceInstance.reactConnectorMessage(runtime, params),
           resolveTargets: (query, context) =>
             serviceInstance.resolveConnectorTargets(
               query,

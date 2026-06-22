@@ -53,6 +53,8 @@ describe("Telegram message connector adapter", () => {
         "resolve_targets",
         "chat_context",
         "user_context",
+        "edit_message",
+        "react_message",
       ]),
       supportedTargetKinds: ["channel", "group", "thread", "user"],
       contexts: ["social", "connectors"],
@@ -453,5 +455,85 @@ describe("Telegram message connector adapter", () => {
 
     initializeBot.mockRestore();
     createAccountRuntime.mockRestore();
+  });
+
+  it("wires edit_message + react_message connector handlers", () => {
+    const runtime = createRuntime();
+    const service = createTelegramService({
+      bot: {},
+      messageManager: {},
+      handleSendMessage: vi.fn(),
+      resolveConnectorTargets: vi.fn(),
+      listRecentConnectorTargets: vi.fn(),
+      listConnectorRooms: vi.fn(),
+      getConnectorChatContext: vi.fn(),
+      getConnectorUserContext: vi.fn(),
+    });
+
+    TelegramService.registerSendHandlers(runtime, service);
+
+    const registration = runtime.registerMessageConnector.mock.calls[0][0];
+    expect(typeof registration.editHandler).toBe("function");
+    expect(typeof registration.reactHandler).toBe("function");
+  });
+
+  it("editConnectorMessage edits via the account message manager", async () => {
+    const runtime = createRuntime();
+    const editMessage = vi.fn().mockResolvedValue(undefined);
+    const service = createTelegramService({
+      bot: {},
+      messageManager: { editMessage },
+      defaultAccountId: "default",
+    });
+
+    await service.editConnectorMessage(runtime, {
+      target: { source: "telegram", channelId: "-1001234567890-42" },
+      messageId: "555",
+      content: { text: "updated text" },
+    });
+
+    expect(editMessage).toHaveBeenCalledWith(
+      "-1001234567890",
+      555,
+      "updated text",
+      42,
+    );
+  });
+
+  it("editConnectorMessage rejects empty text", async () => {
+    const runtime = createRuntime();
+    const editMessage = vi.fn();
+    const service = createTelegramService({
+      bot: {},
+      messageManager: { editMessage },
+      defaultAccountId: "default",
+    });
+
+    await expect(
+      service.editConnectorMessage(runtime, {
+        target: { source: "telegram", channelId: "-100123" },
+        messageId: "555",
+        content: { text: "   " },
+      }),
+    ).rejects.toThrow("Telegram edit requires non-empty text.");
+    expect(editMessage).not.toHaveBeenCalled();
+  });
+
+  it("reactConnectorMessage reacts via the account message manager", async () => {
+    const runtime = createRuntime();
+    const addReaction = vi.fn().mockResolvedValue(undefined);
+    const service = createTelegramService({
+      bot: {},
+      messageManager: { addReaction },
+      defaultAccountId: "default",
+    });
+
+    await service.reactConnectorMessage(runtime, {
+      target: { source: "telegram", channelId: "-100123" },
+      messageId: "777",
+      emoji: "👍",
+    });
+
+    expect(addReaction).toHaveBeenCalledWith("-100123", 777, "👍");
   });
 });

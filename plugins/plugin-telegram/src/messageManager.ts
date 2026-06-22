@@ -101,6 +101,23 @@ type TelegramMediaSender = (
   extra?: { caption?: string },
 ) => Promise<unknown>;
 
+/**
+ * Detects Telegram's "message is not modified" 400 — returned when an edit's
+ * new text/markup is byte-identical to the current message. It is a benign
+ * no-op (not a failure), so the connector edit path swallows it.
+ */
+function isMessageNotModifiedError(error: unknown): boolean {
+  const response = (
+    error as {
+      response?: { error_code?: number; description?: string };
+    }
+  )?.response;
+  return (
+    response?.error_code === 400 &&
+    /message is not modified/i.test(response.description ?? "")
+  );
+}
+
 const getChannelType = (chat: Chat): ChannelType => {
   const chatType = chat.type;
 
@@ -1623,25 +1640,44 @@ export class MessageManager {
     messageThreadId?: number,
   ): Promise<void> {
     const formatted = convertMarkdownToTelegram(text);
-    await this.sendWithRetry(
-      () =>
-        this.bot.telegram.editMessageText(
-          chatId,
-          messageId,
-          undefined,
-          formatted,
-          { parse_mode: "MarkdownV2" },
-        ),
-      // Fallback: Telegram rejected the MarkdownV2 — edit with the raw text so
-      // the user sees the content unformatted rather than a stale message.
-      () =>
-        this.bot.telegram.editMessageText(
-          chatId,
-          messageId,
-          undefined,
-          cleanText(text),
-        ),
-    );
+    try {
+      await this.sendWithRetry(
+        () =>
+          this.bot.telegram.editMessageText(
+            chatId,
+            messageId,
+            undefined,
+            formatted,
+            { parse_mode: "MarkdownV2" },
+          ),
+        // Fallback: Telegram rejected the MarkdownV2 — edit with the raw text so
+        // the user sees the content unformatted rather than a stale message.
+        () =>
+          this.bot.telegram.editMessageText(
+            chatId,
+            messageId,
+            undefined,
+            cleanText(text),
+          ),
+      );
+    } catch (error) {
+      // Telegram returns "message is not modified" when the new text matches
+      // the existing message verbatim — a no-op the orchestrator's heartbeat
+      // edits hit routinely. Treat it as success rather than surfacing an error.
+      if (isMessageNotModifiedError(error)) {
+        logger.debug(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            chatId,
+            messageId,
+          },
+          "Telegram edit was a no-op (message not modified)",
+        );
+        return;
+      }
+      throw error;
+    }
     logger.info(
       {
         src: "plugin:telegram",
