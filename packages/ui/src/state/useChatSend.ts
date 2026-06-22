@@ -9,6 +9,7 @@ import { asRecord } from "@elizaos/shared";
 import { type MutableRefObject, useCallback, useRef } from "react";
 import type { Conversation, CustomActionDef } from "../api";
 import {
+  type ChatTurnStatus,
   type CodingAgentSession,
   type ConversationChannelType,
   type ConversationMessage,
@@ -287,6 +288,9 @@ export interface UseChatSendDeps {
   setChatInput: (v: string) => void;
   setChatSending: (v: boolean) => void;
   setChatFirstTokenReceived: (v: boolean) => void;
+  /** Set/clear the live server-reported phase of the in-flight turn (#8813).
+   *  Fed by the chat-send SSE `onStatus`; cleared when the turn settles. */
+  setServerTurnStatus: (status: ChatTurnStatus | null) => void;
   setChatLastUsage: (v: {
     promptTokens: number;
     completionTokens: number;
@@ -350,6 +354,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     setChatInput,
     setChatSending,
     setChatFirstTokenReceived,
+    setServerTurnStatus,
     setChatLastUsage,
     setChatPendingImages,
     setConversations,
@@ -423,10 +428,12 @@ export function useChatSend(deps: UseChatSendDeps) {
     chatAbortRef.current = null;
     setChatSending(false);
     setChatFirstTokenReceived(false);
+    setServerTurnStatus(null);
   }, [
     chatAbortRef,
     resolveQueuedChatSends,
     setChatFirstTokenReceived,
+    setServerTurnStatus,
     setChatSending,
   ]);
 
@@ -858,6 +865,9 @@ export function useChatSend(deps: UseChatSendDeps) {
           controller.signal,
           imagesToSend,
           turn.metadata,
+          // Live server phase → the rich status indicator. Additive; the reply
+          // streams through onToken above regardless.
+          (status) => setServerTurnStatus(status),
         );
 
         if (!data.text.trim()) {
@@ -1052,6 +1062,9 @@ export function useChatSend(deps: UseChatSendDeps) {
           }
         }
       } finally {
+        // The turn settled (done / error / abort) — drop the live status so the
+        // indicator doesn't linger on a stale phase between turns.
+        setServerTurnStatus(null);
         if (controller && abortServerTurn) {
           controller.signal.removeEventListener("abort", abortServerTurn);
         }
@@ -1075,6 +1088,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       conversationsRef,
       setActiveConversationId,
       setChatFirstTokenReceived,
+      setServerTurnStatus,
       setChatLastUsage,
       setCompanionMessageCutoffTs,
       setConversationMessages,

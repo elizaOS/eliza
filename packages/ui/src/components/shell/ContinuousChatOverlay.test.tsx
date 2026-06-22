@@ -53,6 +53,7 @@ function makeController(
     ],
     canSend: true,
     responding: false,
+    turnStatus: null,
     recording: false,
     transcript: "",
     // Required ShellController surface the overlay reads unconditionally — the
@@ -1095,5 +1096,112 @@ describe("ContinuousChatOverlay", () => {
     openSheetToHalf();
     fireEvent.click(screen.getByTestId("chat-full-views"));
     await vi.waitFor(() => expect(navigateToViews).toHaveBeenCalledTimes(1));
+  });
+
+  // ── Rich turn-status indicator (#8813) ──────────────────────────────────
+  describe("turn status indicator", () => {
+    it("renders the phase label beside the breathing dots while thinking", () => {
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({
+            phase: "responding",
+            responding: true,
+            turnStatus: { kind: "thinking" },
+          } as Partial<ShellController>)}
+        />,
+      );
+      const indicator = screen.getByTestId("turn-status-indicator");
+      expect(indicator.getAttribute("data-status-kind")).toBe("thinking");
+      expect(indicator.getAttribute("role")).toBe("status");
+      expect(indicator.getAttribute("aria-live")).toBe("polite");
+      expect(screen.getByTestId("turn-status-label").textContent).toBe(
+        "Thinking",
+      );
+      // The dots still animate within the indicator.
+      expect(screen.getByTestId("typing-dots")).toBeTruthy();
+    });
+
+    it("humanizes the action name for a running_action phase", () => {
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({
+            phase: "responding",
+            responding: true,
+            turnStatus: { kind: "running_action", actionName: "SEND_MESSAGE" },
+          } as Partial<ShellController>)}
+        />,
+      );
+      expect(screen.getByTestId("turn-status-label").textContent).toBe(
+        "Running Send message",
+      );
+    });
+
+    it("shows the status inline inside the empty in-flight assistant bubble", () => {
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({
+            phase: "responding",
+            responding: true,
+            // Last turn is an empty assistant bubble (the in-flight placeholder).
+            messages: [
+              { id: "u", role: "user", content: "do it", createdAt: 1 },
+              { id: "a", role: "assistant", content: "", createdAt: 2 },
+            ],
+            turnStatus: { kind: "waking" },
+          } as Partial<ShellController>)}
+        />,
+      );
+      // Exactly one indicator (no double-up between the bubble + standalone row).
+      const indicators = screen.getAllByTestId("turn-status-indicator");
+      expect(indicators).toHaveLength(1);
+      expect(indicators[0].getAttribute("data-status-kind")).toBe("waking");
+      expect(screen.getByTestId("turn-status-label").textContent).toBe(
+        "Waking the agent",
+      );
+    });
+
+    it("holds the first label through a fast phase change (min-dwell, no flicker)", () => {
+      vi.useFakeTimers();
+      try {
+        const { rerender } = render(
+          <ContinuousChatOverlay
+            controller={makeController({
+              phase: "responding",
+              responding: true,
+              turnStatus: { kind: "thinking" },
+            } as Partial<ShellController>)}
+          />,
+        );
+        expect(screen.getByTestId("turn-status-label").textContent).toBe(
+          "Thinking",
+        );
+        // A near-instant change to running_action must NOT flip the label yet —
+        // it is held for the min dwell so the words don't strobe.
+        rerender(
+          <ContinuousChatOverlay
+            controller={makeController({
+              phase: "responding",
+              responding: true,
+              turnStatus: {
+                kind: "running_action",
+                actionName: "SEND_MESSAGE",
+              },
+            } as Partial<ShellController>)}
+          />,
+        );
+        expect(screen.getByTestId("turn-status-label").textContent).toBe(
+          "Thinking",
+        );
+        // After the dwell window elapses the new phase is shown.
+        act(() => {
+          vi.advanceTimersByTime(400);
+        });
+        expect(screen.getByTestId("turn-status-label").textContent).toBe(
+          "Running Send message",
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

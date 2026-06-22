@@ -299,3 +299,104 @@ describe("ElizaClient agent streaming transport", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("ElizaClient chat-turn status SSE (#8813)", () => {
+  function streamFromSse(sse: string) {
+    const encoder = new TextEncoder();
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({ done: false, value: encoder.encode(sse) })
+      .mockResolvedValueOnce({ done: true, value: undefined });
+    const cancel = vi.fn(async () => {});
+    const request = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          body: { getReader: () => ({ read, cancel }) },
+        }) as unknown as Response,
+    );
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+    return client;
+  }
+
+  it("routes additive status events to onStatus without ending the stream", async () => {
+    const client = streamFromSse(
+      'data: {"type":"status","kind":"thinking"}\n\n' +
+        'data: {"type":"status","kind":"running_action","actionName":"SEND_MESSAGE"}\n\n' +
+        'data: {"type":"status","kind":"streaming"}\n\n' +
+        'data: {"type":"token","text":"Done.","fullText":"Done."}\n\n' +
+        'data: {"type":"done","fullText":"Done.","agentName":"Eliza"}\n\n',
+    );
+    const onToken = vi.fn();
+    const onStatus = vi.fn();
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "hi",
+      onToken,
+      "DM",
+      undefined,
+      undefined,
+      undefined,
+      onStatus,
+    );
+
+    // The reply still streams + completes — status is purely additive.
+    expect(result.text).toBe("Done.");
+    expect(result.completed).toBe(true);
+    expect(onToken).toHaveBeenCalledWith("Done.", "Done.");
+    // Every status event surfaced, in order, with action detail preserved.
+    expect(onStatus.mock.calls.map((c) => c[0])).toEqual([
+      { kind: "thinking" },
+      { kind: "running_action", actionName: "SEND_MESSAGE" },
+      { kind: "streaming" },
+    ]);
+  });
+
+  it("ignores an unknown status kind (forward-compat) and never crashes", async () => {
+    const client = streamFromSse(
+      'data: {"type":"status","kind":"thinking"}\n\n' +
+        'data: {"type":"status","kind":"future_phase"}\n\n' +
+        'data: {"type":"done","fullText":"ok","agentName":"Eliza"}\n\n',
+    );
+    const onStatus = vi.fn();
+
+    await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "hi",
+      vi.fn(),
+      "DM",
+      undefined,
+      undefined,
+      undefined,
+      onStatus,
+    );
+
+    // Only the recognized kind is delivered; the unknown one is dropped.
+    expect(onStatus.mock.calls.map((c) => c[0])).toEqual([{ kind: "thinking" }]);
+  });
+
+  it("leaves token/done behaviour byte-for-byte unchanged when no onStatus is passed", async () => {
+    const client = streamFromSse(
+      'data: {"type":"status","kind":"thinking"}\n\n' +
+        'data: {"type":"token","text":"hi","fullText":"hi"}\n\n' +
+        'data: {"type":"done","fullText":"hi","agentName":"Eliza"}\n\n',
+    );
+    const onToken = vi.fn();
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "hello",
+      onToken,
+    );
+
+    expect(result).toMatchObject({
+      text: "hi",
+      agentName: "Eliza",
+      completed: true,
+    });
+    expect(onToken).toHaveBeenCalledWith("hi", "hi");
+  });
+});

@@ -30,6 +30,7 @@ import type {
   ChatActionResultSummary,
   ChatFailureKind,
   ChatTokenUsage,
+  ChatTurnStatus,
   ConnectionStateInfo,
   ConversationChannelType,
   ImageAttachment,
@@ -72,6 +73,13 @@ type StreamChatEvent = {
   failureKind?: ChatFailureKind;
   localInference?: LocalInferenceChatMetadata;
   actionResults?: ChatActionResultSummary[];
+  // `type: "status"` carries the in-flight phase flat on the event (the server
+  // spreads ChatTurnStatus into the SSE payload), so `kind` + the optional
+  // action/tool name live alongside the discriminator.
+  kind?: ChatTurnStatus["kind"];
+  label?: string;
+  actionName?: string;
+  toolName?: string;
   usage?: {
     promptTokens?: number;
     completionTokens?: number;
@@ -79,6 +87,37 @@ type StreamChatEvent = {
     model?: string;
   };
 };
+
+const CHAT_TURN_STATUS_KINDS: ReadonlySet<ChatTurnStatus["kind"]> = new Set<
+  ChatTurnStatus["kind"]
+>([
+  "thinking",
+  "streaming",
+  "running_action",
+  "running_tool",
+  "evaluating",
+  "waking",
+  "speaking",
+]);
+
+/** Build a typed ChatTurnStatus from a `type: "status"` SSE event, or null when
+ *  the `kind` is missing/unknown (defensive: a future server kind is ignored,
+ *  not crashed on). */
+function parseChatTurnStatus(parsed: StreamChatEvent): ChatTurnStatus | null {
+  if (!parsed.kind || !CHAT_TURN_STATUS_KINDS.has(parsed.kind)) return null;
+  return {
+    kind: parsed.kind,
+    ...(typeof parsed.label === "string" && parsed.label
+      ? { label: parsed.label }
+      : {}),
+    ...(typeof parsed.actionName === "string" && parsed.actionName
+      ? { actionName: parsed.actionName }
+      : {}),
+    ...(typeof parsed.toolName === "string" && parsed.toolName
+      ? { toolName: parsed.toolName }
+      : {}),
+  };
+}
 
 type StreamChatState = {
   fullText: string;
@@ -197,11 +236,21 @@ function applyStreamChatDataLine(
   line: string,
   state: StreamChatState,
   onToken: (token: string, accumulatedText?: string) => void,
+  onStatus?: (status: ChatTurnStatus) => void,
 ): boolean {
   const parsed = parseStreamChatDataLine(line);
   if (!parsed) return false;
   if (parsed.type === "token") {
     return applyStreamChatTokenEvent(parsed, state, onToken);
+  }
+  if (parsed.type === "status") {
+    // Additive: a non-terminal status event. Surface it (when a consumer wants
+    // it) and keep reading — it never ends the stream.
+    if (onStatus) {
+      const status = parseChatTurnStatus(parsed);
+      if (status) onStatus(status);
+    }
+    return false;
   }
   if (parsed.type === "done") {
     return applyStreamChatDoneEvent(parsed, state);
@@ -597,7 +646,14 @@ export class ElizaClient {
   async rawRequest(
     path: string,
     init?: RequestInit,
-    options?: { allowNonOk?: boolean; timeoutMs?: number },
+    options?: {
+      allowNonOk?: boolean;
+      timeoutMs?: number;
+      /** Invoked once when a non-running cloud agent answers 202 and the resume
+       *  loop starts waiting (#8628). Lets the chat surface a `waking` status
+       *  while the agent boots. */
+      onResuming?: () => void;
+    },
   ): Promise<Response> {
     if (!this.apiAvailable) {
       throw new ApiError({
@@ -631,6 +687,7 @@ export class ElizaClient {
     // eventual response instead of a 202 placeholder. Non-202 responses skip this
     // loop entirely, so ordinary requests are byte-for-byte unaffected.
     let resumeRetries = 0;
+    if (res.status === 202) options?.onResuming?.();
     while (res.status === 202 && resumeRetries < RESUME_MAX_RETRIES) {
       if (init?.signal?.aborted) break;
       await sleepUnlessAborted(resumeRetryDelayMs(res), init?.signal);
@@ -1301,6 +1358,9 @@ export class ElizaClient {
     signal?: AbortSignal,
     images?: ImageAttachment[],
     metadata?: Record<string, unknown>,
+    /** Additive: in-flight phase changes (thinking / streaming / running_action
+     *  / waking …). Omitting it leaves the token/done/error behaviour unchanged. */
+    onStatus?: (status: ChatTurnStatus) => void,
   ): Promise<{
     text: string;
     agentName: string;
@@ -1320,21 +1380,27 @@ export class ElizaClient {
     // is generated here so the contract is in place regardless of when that
     // dedupe lands.
     const clientMessageId = ElizaClient.generateMessageId();
-    const res = await this.rawRequest(path, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
+    const res = await this.rawRequest(
+      path,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify({
+          text,
+          channelType,
+          clientMessageId,
+          ...(images?.length ? { images } : {}),
+          ...(metadata ? { metadata } : {}),
+        }),
+        signal,
       },
-      body: JSON.stringify({
-        text,
-        channelType,
-        clientMessageId,
-        ...(images?.length ? { images } : {}),
-        ...(metadata ? { metadata } : {}),
-      }),
-      signal,
-    });
+      // A non-running cloud agent 202s and auto-resumes; surface `waking` so the
+      // chat shows the agent booting instead of stalled dots.
+      onStatus ? { onResuming: () => onStatus({ kind: "waking" }) } : undefined,
+    );
 
     if (!res.body) {
       throw new Error("Streaming not supported by this browser");
@@ -1388,7 +1454,7 @@ export class ElizaClient {
         buffer = buffer.slice(eventBreak.index + eventBreak.length);
         for (const line of rawEvent.split(/\r?\n/)) {
           if (!line.startsWith("data:")) continue;
-          if (applyStreamChatDataLine(line, streamState, onToken)) {
+          if (applyStreamChatDataLine(line, streamState, onToken, onStatus)) {
             buffer = "";
             void reader.cancel("elizaos-sse-terminal-done").catch(() => {});
             break;
@@ -1403,7 +1469,7 @@ export class ElizaClient {
     if (!streamState.receivedDone && buffer.trim()) {
       for (const line of buffer.split(/\r?\n/)) {
         if (line.startsWith("data:")) {
-          applyStreamChatDataLine(line, streamState, onToken);
+          applyStreamChatDataLine(line, streamState, onToken, onStatus);
         }
       }
     }

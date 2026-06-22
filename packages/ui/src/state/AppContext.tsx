@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { client } from "../api";
+import { type ChatTurnStatus, client } from "../api";
 import { ConfirmDialog, PromptDialog } from "../components/ui/confirm-dialog";
 import { useConfirm, usePrompt } from "../components/ui/confirm-dialog.hooks";
 import { AppBootContext } from "../config/boot-config-react.hooks";
@@ -49,6 +49,7 @@ import {
   clearAllChatDrafts,
   useChatComposerDraftPersistence,
 } from "./ChatComposerContext.hooks";
+import { ChatTurnStatusCtx } from "./ChatTurnStatusContext.hooks";
 import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext.hooks";
 import { ConversationMessagesCtx } from "./ConversationMessagesContext.hooks";
 import { AppContext, type AppContextValue, type AppState } from "./internal";
@@ -347,6 +348,12 @@ function AppProviderInner({
     autonomousReplayInFlightRef,
     addUnread,
   } = chatState;
+  // Live server-reported phase of the in-flight assistant turn (rich status
+  // indicator, #8813). Held outside the giant AppContext value (in its own
+  // ChatTurnStatusCtx, like conversationMessages) so the per-status-event
+  // updates re-render only the chat surfaces, not all ~135 useApp() subscribers.
+  const [serverTurnStatus, setServerTurnStatus] =
+    useState<ChatTurnStatus | null>(null);
   const _chatComposerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   // addUnread / removeUnread wrappers for old setUnreadConversations patterns.
   // Read current unreadConversations through a ref so this callback stays
@@ -1189,6 +1196,7 @@ function AppProviderInner({
     setChatInput,
     setChatSending,
     setChatFirstTokenReceived,
+    setServerTurnStatus,
     setChatLastUsage,
     setChatPendingImages,
     setConversations,
@@ -1861,6 +1869,15 @@ function AppProviderInner({
   const conversationMessagesValue = useMemo(
     () => ({ conversationMessages }),
     [conversationMessages],
+  );
+
+  // Live assistant-turn status (rich status indicator) lives in its own context
+  // for the same isolation reason as conversationMessages above. setServerTurnStatus
+  // is a stable useState setter, so the value identity only changes when the
+  // status itself changes.
+  const chatTurnStatusValue = useMemo(
+    () => ({ serverTurnStatus, setServerTurnStatus }),
+    [serverTurnStatus],
   );
 
   // The AppContext value is memoized and does NOT include chatInput/chatSending/
@@ -2757,15 +2774,17 @@ function AppProviderInner({
         <CompanionSceneConfigCtx.Provider value={companionSceneConfig}>
           <PtySessionsCtx.Provider value={ptySessionsValue}>
             <ConversationMessagesCtx.Provider value={conversationMessagesValue}>
-              <ChatInputRefCtx.Provider value={chatInputRef}>
-                <ChatComposerCtx.Provider value={composerValue}>
-                  <AppContext.Provider value={value}>
-                    {children}
-                    <ConfirmDialog {...modalProps} />
-                    <PromptDialog {...promptModalProps} />
-                  </AppContext.Provider>
-                </ChatComposerCtx.Provider>
-              </ChatInputRefCtx.Provider>
+              <ChatTurnStatusCtx.Provider value={chatTurnStatusValue}>
+                <ChatInputRefCtx.Provider value={chatInputRef}>
+                  <ChatComposerCtx.Provider value={composerValue}>
+                    <AppContext.Provider value={value}>
+                      {children}
+                      <ConfirmDialog {...modalProps} />
+                      <PromptDialog {...promptModalProps} />
+                    </AppContext.Provider>
+                  </ChatComposerCtx.Provider>
+                </ChatInputRefCtx.Provider>
+              </ChatTurnStatusCtx.Provider>
             </ConversationMessagesCtx.Provider>
           </PtySessionsCtx.Provider>
         </CompanionSceneConfigCtx.Provider>

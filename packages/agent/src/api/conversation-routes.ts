@@ -48,6 +48,7 @@ import {
   persistConversationMemory,
   readChatRequestPayload,
   resolveNoResponseFallback,
+  writeChatStatusSse,
   writeChatTokenSse,
   writeSse,
   writeSseJson,
@@ -1966,6 +1967,15 @@ export async function handleConversationRoutes(
         {
           isAborted: () => disconnectTracker.isAborted(),
           abortSignal: disconnectTracker.signal,
+          onStatus: (status) => {
+            if (
+              disconnectTracker.isAborted() ||
+              disconnectTracker.checkConnectionClosed()
+            ) {
+              return;
+            }
+            writeChatStatusSse(res, status);
+          },
           onChunk: (chunk) => {
             if (!chunk) return;
             if (

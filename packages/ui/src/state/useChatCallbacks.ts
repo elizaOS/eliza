@@ -6,7 +6,12 @@
  */
 
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
-import type { CodingAgentSession, Conversation, FirstRunOptions } from "../api";
+import type {
+  ChatTurnStatus,
+  CodingAgentSession,
+  Conversation,
+  FirstRunOptions,
+} from "../api";
 import {
   type AgentStatus,
   type ConversationMessage,
@@ -153,6 +158,8 @@ export interface UseChatCallbacksDeps {
   setChatInput: (v: string) => void;
   setChatSending: (v: boolean) => void;
   setChatFirstTokenReceived: (v: boolean) => void;
+  /** Set/clear the live server-reported phase of the in-flight turn (#8813). */
+  setServerTurnStatus: (status: ChatTurnStatus | null) => void;
   setChatLastUsage: (v: {
     promptTokens: number;
     completionTokens: number;
@@ -299,6 +306,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     setChatInput,
     setChatSending,
     setChatFirstTokenReceived,
+    setServerTurnStatus,
     setChatLastUsage,
     setChatPendingImages,
     setConversations,
@@ -643,6 +651,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     setChatInput,
     setChatSending,
     setChatFirstTokenReceived,
+    setServerTurnStatus,
     setChatLastUsage,
     setChatPendingImages,
     setConversations,

@@ -681,6 +681,14 @@ export interface ChatActionResultSummary {
 export interface ChatGenerateOptions {
   onChunk?: (chunk: string) => void;
   onSnapshot?: (text: string) => void;
+  /**
+   * In-flight phase changes for the rich status indicator. Emitted additively
+   * alongside `onChunk`/`onSnapshot` — `thinking` before the first visible
+   * token, then `streaming` (LLM tokens) or `running_action` (an action handler
+   * is producing the reply, carrying `actionName`). Never required for the reply
+   * itself; a caller that omits it loses only the status surface.
+   */
+  onStatus?: (status: ChatTurnStatus) => void;
   isAborted?: () => boolean;
   abortSignal?: AbortSignal;
   resolveNoResponseText?: () => string;
@@ -1538,6 +1546,39 @@ export function writeChatTokenSse(
   writeSse(res, { type: "token", text, fullText });
 }
 
+/**
+ * In-flight assistant-turn status, surfaced to the UI as an additive SSE
+ * `{ type: "status", ... }` event so the chat can show what the agent is *doing*
+ * rather than just breathing dots. The `token` / `done` / `error` contract is
+ * unchanged — a client that ignores `status` events behaves exactly as before.
+ *
+ * The canonical (and only consumer-facing) definition lives in
+ * `@elizaos/ui` `api/client-types-chat.ts` (`ChatTurnStatus`). It is re-declared
+ * here — not imported — because the server must not depend on the React UI
+ * package; this mirrors the existing `ChatFailureKind` arrangement. The two
+ * declarations are kept structurally identical by the SSE-status unit test.
+ */
+export interface ChatTurnStatus {
+  kind:
+    | "thinking"
+    | "streaming"
+    | "running_action"
+    | "running_tool"
+    | "evaluating"
+    | "waking"
+    | "speaking";
+  label?: string;
+  actionName?: string;
+  toolName?: string;
+}
+
+export function writeChatStatusSse(
+  res: http.ServerResponse,
+  status: ChatTurnStatus,
+): void {
+  writeSse(res, { type: "status", ...status });
+}
+
 export function writeSseData(
   res: http.ServerResponse,
   data: string,
@@ -1974,6 +2015,20 @@ export async function generateChatResponse(
       message.content.source.trim().length > 0
         ? message.content.source
         : "api";
+    // De-duped status emitter for the rich indicator. Coalesces repeats of the
+    // same phase (an action firing many callbacks should emit one
+    // `running_action`, not one per chunk) by tracking the last signature.
+    let lastStatusSignature = "";
+    const emitStatus = (status: ChatTurnStatus): void => {
+      if (!opts?.onStatus) return;
+      const signature = `${status.kind}:${status.actionName ?? ""}:${status.toolName ?? ""}`;
+      if (signature === lastStatusSignature) return;
+      lastStatusSignature = signature;
+      opts.onStatus(status);
+    };
+    // `thinking` is the opening phase: the turn started, the model is being
+    // prompted, but no visible text has streamed yet.
+    emitStatus({ kind: "thinking" });
     const emitChunk = (chunk: string): void => {
       if (!chunk) return;
       responseText += chunk;
@@ -1993,6 +2048,10 @@ export async function generateChatResponse(
     ): boolean => {
       if (activeStreamSource === "unset") {
         activeStreamSource = source;
+        // The first claim is the thinking→producing transition. Raw LLM tokens
+        // are `streaming`; an action handler producing the reply is
+        // `running_action` (its name is stamped by recordActionCallback).
+        if (source === "onStreamChunk") emitStatus({ kind: "streaming" });
         return true;
       }
       return activeStreamSource === source;
@@ -2143,6 +2202,16 @@ export async function generateChatResponse(
       if (normalizedActionTag) {
         seenActionTags.add(normalizedActionTag);
       }
+      // The reply is now coming from an action handler, not raw LLM streaming —
+      // surface it as `running_action`, carrying the concrete action name (when
+      // it is a real action rather than the generic VISIBLE_CALLBACK tag) so the
+      // status reads e.g. "Running SEND_MESSAGE" instead of generic "Working".
+      emitStatus({
+        kind: "running_action",
+        ...(normalizedActionTag && normalizedActionTag !== "VISIBLE_CALLBACK"
+          ? { actionName: normalizedActionTag }
+          : {}),
+      });
       runtime.logger.info(
         {
           src: "eliza-api",

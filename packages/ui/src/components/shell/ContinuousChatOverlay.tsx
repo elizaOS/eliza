@@ -26,7 +26,10 @@ import {
 import * as React from "react";
 
 import { client } from "../../api/client";
-import type { ImageAttachment } from "../../api/client-types-chat";
+import type {
+  ChatTurnStatus,
+  ImageAttachment,
+} from "../../api/client-types-chat";
 import {
   parseSlashDraft,
   runSlashExecution,
@@ -496,34 +499,159 @@ function PillHandle({
   );
 }
 
-/** Three quiet, borderless dots that breathe while the assistant is replying. */
-// Just the three breathing dots — rendered INSIDE a bubble (the in-flight
-// assistant turn, so "thinking" is anchored where the reply will appear) or
-// wrapped in its own bubble by TypingDots for the pre-placeholder gap.
-function TypingDotsInner(): React.JSX.Element {
+/** Humanize an action/tool symbol ("SEND_MESSAGE" → "Send message") for the
+ *  status label so it reads as prose, not a constant. */
+function humanizeStatusName(name: string): string {
+  const cleaned = name.trim().replace(/[_-]+/g, " ").toLowerCase();
+  if (!cleaned) return "";
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+/** The phase label shown beside the breathing dots. Server-provided `label`
+ *  always wins; otherwise derive a concise phrase from the kind (+ action/tool
+ *  name when present). */
+function turnStatusLabel(status: ChatTurnStatus): string {
+  if (status.label?.trim()) return status.label.trim();
+  switch (status.kind) {
+    case "thinking":
+      return "Thinking";
+    case "streaming":
+      return "Replying";
+    case "running_action":
+      return status.actionName
+        ? `Running ${humanizeStatusName(status.actionName)}`
+        : "Working";
+    case "running_tool":
+      return status.toolName
+        ? `Using ${humanizeStatusName(status.toolName)}`
+        : "Using a tool";
+    case "evaluating":
+      return "Reflecting";
+    case "waking":
+      return "Waking the agent";
+    case "speaking":
+      return "Speaking";
+  }
+}
+
+// Min time (ms) a phase label must stay on screen before the next one replaces
+// it. Without this, a fast thinking→action→streaming sequence flickers through
+// labels faster than the eye can read. The text content the user sees is
+// debounced; the dots animate continuously throughout.
+const STATUS_MIN_DWELL_MS = 320;
+
+/** Debounce a fast-changing status to a min on-screen dwell so a rapid
+ *  thinking→action→streaming sequence doesn't strobe the label. The dots animate
+ *  continuously; only the words wait their turn. Returns null when status is
+ *  null (between turns). */
+function useDebouncedTurnStatus(
+  status: ChatTurnStatus | null,
+): ChatTurnStatus | null {
+  const [shown, setShown] = React.useState<ChatTurnStatus | null>(status);
+  const lastChangeRef = React.useRef(0);
+  const timerRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!status) {
+      setShown(null);
+      return;
+    }
+    const now = Date.now();
+    const elapsed = now - lastChangeRef.current;
+    if (elapsed >= STATUS_MIN_DWELL_MS) {
+      lastChangeRef.current = now;
+      setShown(status);
+      return;
+    }
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => {
+      lastChangeRef.current = Date.now();
+      setShown(status);
+      timerRef.current = null;
+    }, STATUS_MIN_DWELL_MS - elapsed);
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [status]);
+  return shown;
+}
+
+/**
+ * The breathing dots + phase label content of the status indicator, WITHOUT a
+ * bubble/motion wrapper — used both standalone (wrapped by TurnStatusIndicator)
+ * and inline inside the in-flight assistant bubble.
+ *
+ * Mirrors ChatVoiceStatusBar's a11y (`role="status"` + `aria-live="polite"`).
+ * Honors reduced motion (no pulse). Brand-safe: orange (the accent) ONLY for
+ * `speaking`; every other phase is neutral white. No blue anywhere. Degrades to
+ * plain dots when no status has arrived.
+ */
+function TurnStatusInner({
+  status,
+}: {
+  status: ChatTurnStatus | null;
+}): React.JSX.Element {
+  const shown = useDebouncedTurnStatus(status);
+  const speaking = shown?.kind === "speaking";
+  const label = shown ? turnStatusLabel(shown) : null;
   return (
     <span
-      className="flex gap-1.5 py-1"
-      data-testid="typing-dots"
+      className="inline-flex items-center gap-2"
+      data-testid="turn-status-indicator"
+      data-status-kind={shown?.kind ?? "none"}
       role="status"
-      aria-label="assistant is responding"
+      aria-live="polite"
     >
-      {[0, 1, 2].map((i) => (
+      <span
+        className="flex gap-1.5"
+        data-testid="typing-dots"
+        aria-hidden="true"
+      >
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className={cn(
+              "h-1.5 w-1.5 animate-pulse rounded-full motion-reduce:animate-none",
+              speaking ? "bg-[rgba(255,190,140,0.9)]" : "bg-white/70",
+            )}
+            style={{ animationDelay: `${i * 180}ms` }}
+          />
+        ))}
+      </span>
+      {label ? (
         <span
-          key={i}
-          className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none"
-          style={{ animationDelay: `${i * 180}ms` }}
-        />
-      ))}
+          className={cn(
+            "text-[13px] font-medium",
+            speaking ? "text-[rgba(255,200,150,0.95)]" : "text-white/90",
+          )}
+          data-testid="turn-status-label"
+        >
+          {label}
+        </span>
+      ) : null}
     </span>
   );
 }
 
-function TypingDots({ reduce }: { reduce?: boolean }): React.JSX.Element {
+/**
+ * The rich, phase-aware status row shown while the assistant works (#8813),
+ * replacing the bare typing dots in the pre-placeholder gap. Wraps
+ * TurnStatusInner in its own glass bubble + fade so it reads as a turn.
+ */
+function TurnStatusIndicator({
+  status,
+  reduce,
+}: {
+  status: ChatTurnStatus | null;
+  reduce?: boolean;
+}): React.JSX.Element {
+  const speaking = status?.kind === "speaking";
   return (
     <motion.div
       className="mb-2.5 flex w-full justify-start"
-      // Fade in/out so the dots dissolve with the reply rather than popping.
+      // Fade in/out so the row dissolves with the reply rather than popping.
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -531,11 +659,16 @@ function TypingDots({ reduce }: { reduce?: boolean }): React.JSX.Element {
     >
       <div
         className={cn(
-          "rounded-2xl rounded-bl-md border border-white/10 bg-black/45 px-3.5 py-2 text-white/90",
+          "rounded-2xl rounded-bl-md border px-3.5 py-2",
           FLOAT_SHADOW,
+          // Orange (the accent) ONLY for spoken replies; every other phase is
+          // neutral white glass. No blue anywhere.
+          speaking
+            ? "border-[rgba(255,180,120,0.45)] bg-black/55"
+            : "border-white/10 bg-black/45",
         )}
       >
-        <TypingDotsInner />
+        <TurnStatusInner status={status} />
       </div>
     </motion.div>
   );
@@ -575,6 +708,7 @@ const ThreadLine = React.memo(function ThreadLine({
   reduce,
   onCopy,
   onOpenSettings,
+  turnStatus,
 }: {
   message: ShellMessage;
   floating?: boolean;
@@ -583,6 +717,9 @@ const ThreadLine = React.memo(function ThreadLine({
   onCopy?: (text: string) => void;
   /** Jump to Settings from the no_provider gate. Stable identity. */
   onOpenSettings?: () => void;
+  /** Rich status for the in-flight (empty) assistant bubble (#8813). Only the
+   *  last, content-less assistant turn reads this; settled turns ignore it. */
+  turnStatus?: ChatTurnStatus | null;
 }): React.JSX.Element {
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
@@ -731,9 +868,10 @@ const ThreadLine = React.memo(function ThreadLine({
         !message.content.trim() &&
         !message.attachments?.length ? (
           // The in-flight assistant turn (kept by visibleMessages only while
-          // responding): breathe the dots INSIDE the bubble so they're anchored
-          // where the streamed text fills in — then the text replaces them.
-          <TypingDotsInner />
+          // responding): show the rich status (thinking / running an action /
+          // waking) INSIDE the bubble, anchored where the streamed text fills in
+          // — then the text replaces it. Falls back to plain dots if no status.
+          <TurnStatusInner status={turnStatus ?? null} />
         ) : isUser ? (
           <ThreadLineText content={message.content} />
         ) : (
@@ -780,6 +918,7 @@ export function ContinuousChatOverlay({
     messages,
     phase,
     responding,
+    turnStatus,
     send,
     canSend,
     recording,
@@ -2655,28 +2794,45 @@ export function ContinuousChatOverlay({
                   until the thread overflows, then it scrolls. */}
                   <div className="mt-auto flex flex-col pb-3 pt-1">
                     <AnimatePresence initial={false}>
-                      {visibleMessages.map((m) => (
-                        <ThreadLine
-                          key={m.id}
-                          message={m}
-                          floating
-                          reduce={reduce}
-                          onCopy={handleCopyMessage}
-                          onOpenSettings={openSettings}
-                        />
-                      ))}
+                      {visibleMessages.map((m, i) => {
+                        // Only the LAST, content-less assistant turn (the
+                        // in-flight one) reads turnStatus — every settled bubble
+                        // gets undefined so its memo identity is unchanged and a
+                        // status tick doesn't re-render the whole thread.
+                        const isInFlight =
+                          i === visibleMessages.length - 1 &&
+                          m.role === "assistant" &&
+                          !m.content.trim();
+                        return (
+                          <ThreadLine
+                            key={m.id}
+                            message={m}
+                            floating
+                            reduce={reduce}
+                            onCopy={handleCopyMessage}
+                            onOpenSettings={openSettings}
+                            turnStatus={isInFlight ? turnStatus : undefined}
+                          />
+                        );
+                      })}
                     </AnimatePresence>
                     <AnimatePresence>
-                      {/* Fallback dots for the brief window where we're
-                          responding but the assistant placeholder turn isn't in
-                          the thread yet. Once the in-flight assistant bubble
-                          exists it carries its own dots, so don't double up. */}
+                      {/* Rich status row (#8813): what the agent is doing —
+                          thinking / running an action / waking / speaking — for
+                          the brief window where we're responding but the assistant
+                          placeholder turn isn't in the thread yet. Once the
+                          in-flight assistant bubble exists it carries the same
+                          status row inline (anchored where the reply fills in),
+                          so don't double up. */}
                       {responding &&
                       !(
                         visibleMessages.at(-1)?.role === "assistant" &&
                         !visibleMessages.at(-1)?.content.trim()
                       ) ? (
-                        <TypingDots reduce={reduce} />
+                        <TurnStatusIndicator
+                          status={turnStatus}
+                          reduce={reduce}
+                        />
                       ) : null}
                     </AnimatePresence>
                     <div ref={endRef} />

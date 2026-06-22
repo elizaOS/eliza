@@ -11,6 +11,7 @@ import type {
   ChatActionResultSummary,
   ChatFailureKind,
   ChatTokenUsage,
+  ChatTurnStatus,
   ConnectionTestResult,
   ContentBlock,
   Conversation,
@@ -417,6 +418,8 @@ declare module "./client-base" {
       signal?: AbortSignal,
       images?: ImageAttachment[],
       metadata?: Record<string, unknown>,
+      /** Additive: in-flight phase changes for the rich status indicator. */
+      onStatus?: (status: ChatTurnStatus) => void,
     ): Promise<{
       text: string;
       agentName: string;
@@ -1100,6 +1103,7 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
   signal?,
   images?,
   metadata?,
+  onStatus?,
 ) {
   return this.streamChatEndpoint(
     `/api/conversations/${encodeURIComponent(id)}/messages/stream`,
@@ -1109,6 +1113,7 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
     signal,
     images,
     metadata,
+    onStatus,
   );
 };
 

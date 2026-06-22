@@ -68,15 +68,22 @@ const appMock = vi.hoisted(() => ({
       timestamp: number;
     }>,
     chatSending: false,
+    chatFirstTokenReceived: false,
     sendChatText: vi.fn(),
     agentStatus: { state: "running", canRespond: true },
   },
+  // Live server-reported turn status (#8813), read via useChatTurnStatus().
+  serverTurnStatus: null as { kind: string } | null,
 }));
 
 vi.mock("../../../state", () => ({
   useApp: () => appMock.value,
   useConversationMessages: () => ({
     conversationMessages: appMock.value.conversationMessages,
+  }),
+  useChatTurnStatus: () => ({
+    serverTurnStatus: appMock.serverTurnStatus,
+    setServerTurnStatus: vi.fn(),
   }),
 }));
 
@@ -107,6 +114,8 @@ afterEach(() => {
   appMock.value.startupCoordinator.phase = "ready";
   appMock.value.conversationMessages = [];
   appMock.value.chatSending = false;
+  appMock.value.chatFirstTokenReceived = false;
+  appMock.serverTurnStatus = null;
   appMock.value.sendChatText.mockClear();
   appMock.value.agentStatus = { ...READY_STATUS };
 });
@@ -152,6 +161,59 @@ describe("useShellController", () => {
 
     expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
     expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe("hi");
+  });
+});
+
+// ── Rich turn status derivation (#8813) ──────────────────────────────────────
+
+describe("useShellController — turnStatus derivation", () => {
+  it("is null when idle", () => {
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.turnStatus).toBeNull();
+  });
+
+  it("is thinking while sending before the first token", () => {
+    appMock.value.chatSending = true;
+    appMock.value.chatFirstTokenReceived = false;
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.turnStatus).toEqual({ kind: "thinking" });
+  });
+
+  it("is streaming once the first token has arrived", () => {
+    appMock.value.chatSending = true;
+    appMock.value.chatFirstTokenReceived = true;
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.turnStatus).toEqual({ kind: "streaming" });
+  });
+
+  it("prefers the live server status (e.g. running_action) while sending", () => {
+    appMock.value.chatSending = true;
+    appMock.value.chatFirstTokenReceived = false;
+    appMock.serverTurnStatus = {
+      kind: "running_action",
+      actionName: "SEND_MESSAGE",
+    } as { kind: string };
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.turnStatus).toEqual({
+      kind: "running_action",
+      actionName: "SEND_MESSAGE",
+    });
+  });
+
+  it("surfaces a waking server status even before chatSending settles", () => {
+    appMock.value.chatSending = false;
+    appMock.serverTurnStatus = { kind: "waking" } as { kind: string };
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.turnStatus).toEqual({ kind: "waking" });
+  });
+
+  it("speaking (voice output) wins over the server status", () => {
+    voiceOutputMock.speaking = true;
+    appMock.value.chatSending = true;
+    appMock.serverTurnStatus = { kind: "streaming" } as { kind: string };
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.turnStatus).toEqual({ kind: "speaking" });
+    voiceOutputMock.speaking = false;
   });
 });
 

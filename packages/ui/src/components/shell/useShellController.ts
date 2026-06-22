@@ -1,12 +1,19 @@
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import * as React from "react";
-import type { ImageAttachment } from "../../api/client-types-chat";
+import type {
+  ChatTurnStatus,
+  ImageAttachment,
+} from "../../api/client-types-chat";
 import {
   VOICE_CONTROL_EVENT,
   type VoiceControlEventDetail,
 } from "../../events";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
-import { useApp, useConversationMessages } from "../../state";
+import {
+  useApp,
+  useChatTurnStatus,
+  useConversationMessages,
+} from "../../state";
 import {
   loadContinuousChatMode,
   loadVadAutoStop,
@@ -46,6 +53,12 @@ export interface ShellController {
    *  phase to "listening"), so the composer reads one honest busy signal: send
    *  stays enabled (queue another turn) while voice input is gated. */
   responding: boolean;
+  /** The rich, phase-aware status of the in-flight turn (#8813) — what the agent
+   *  is *doing* right now (thinking / streaming / running an action / waking /
+   *  speaking), or null when idle. Prefers the live server-reported phase, then
+   *  falls back to client-derived signals. Use this for the status indicator;
+   *  `responding` remains the coarse busy boolean for gating. */
+  turnStatus: ChatTurnStatus | null;
   messages: readonly ShellMessage[];
   canSend: boolean;
   /** Local text-model readiness for the home surface. Gates send while not ready. */
@@ -153,6 +166,7 @@ export function useShellController(): ShellController {
   const app = useApp();
   const {
     chatSending,
+    chatFirstTokenReceived,
     sendChatText,
     agentStatus,
     uiLanguage,
@@ -164,6 +178,9 @@ export function useShellController(): ShellController {
   // Read per-token streaming messages from the isolated context so token updates
   // don't depend on the giant AppContext value identity.
   const { conversationMessages } = useConversationMessages();
+  // Live server-reported phase of the in-flight turn (from the chat-send SSE),
+  // read from its dedicated context so status events re-render only chat surfaces.
+  const { serverTurnStatus } = useChatTurnStatus();
 
   // Jump to Settings from the chat's no_provider gate. Stable identity.
   const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
@@ -653,6 +670,29 @@ export function useShellController(): ShellController {
   // after the mic opens (which flips phase to "listening"), so the composer-send
   // and voice-gating logic both read one honest "a reply is in flight" signal.
   const responding = chatSending || voiceOutput.speaking;
+
+  // The rich status (#8813): what the agent is *doing*, distinct from the coarse
+  // `responding` boolean. Voice playback wins (the server can't see local TTS).
+  // Otherwise prefer the live server phase while a text turn is in flight; if no
+  // server status has arrived yet, fall back to thinking (sent, no first token)
+  // → streaming (first token seen). The server's `waking` status (cloud 202) is
+  // surfaced even before chatSending settles, so it shows while the agent boots.
+  const turnStatus = React.useMemo<ChatTurnStatus | null>(() => {
+    if (voiceOutput.speaking) return { kind: "speaking" };
+    if (serverTurnStatus && (chatSending || serverTurnStatus.kind === "waking")) {
+      return serverTurnStatus;
+    }
+    if (chatSending) {
+      return { kind: chatFirstTokenReceived ? "streaming" : "thinking" };
+    }
+    return null;
+  }, [
+    voiceOutput.speaking,
+    serverTurnStatus,
+    chatSending,
+    chatFirstTokenReceived,
+  ]);
+
   const phase: ShellPhase = !ready
     ? "booting"
     : recording
@@ -854,6 +894,7 @@ export function useShellController(): ShellController {
   return {
     phase,
     responding,
+    turnStatus,
     messages,
     canSend,
     modelStatus,
