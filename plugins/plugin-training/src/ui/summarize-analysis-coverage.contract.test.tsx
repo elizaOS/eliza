@@ -66,6 +66,15 @@ vi.mock("@elizaos/ui", () => ({
     selector(fineTuningAppState),
 }));
 
+// FineTuningView reads useApp/useAppSelector from @elizaos/ui/state (not the
+// root barrel); mock that subpath too or the real store runs and `t` yields
+// raw i18n keys instead of resolved labels.
+vi.mock("@elizaos/ui/state", () => ({
+  useApp: () => fineTuningAppState,
+  useAppSelector: <T,>(selector: (s: typeof fineTuningAppState) => T): T =>
+    selector(fineTuningAppState),
+}));
+
 vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: (descriptor: {
     id: string;
