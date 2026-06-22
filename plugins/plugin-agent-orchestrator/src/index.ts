@@ -1922,6 +1922,25 @@ export { AcpService } from "./services/acp-service.js";
 // Terminal-output normalizer for chat surfaces; consumed by live smoke harnesses.
 export { cleanForChat } from "./services/ansi-utils.js";
 export {
+  COMPLETION_ENVELOPE_INSTRUCTION,
+  type CompletionEnvelope,
+  envelopeCorrection,
+  parseCompletionEnvelope,
+  summarizeEnvelope,
+} from "./services/completion-envelope.js";
+export {
+  buildIndependentVerifierPrompt,
+  type IndependentVerifierVerdict,
+  runIndependentVerification,
+  shouldRunIndependentVerify,
+  verifierVerdict,
+} from "./services/independent-verifier.js";
+export {
+  collectScreenshotPaths,
+  deliverScreenshots,
+  screenshotsToAttachments,
+} from "./services/screenshot-delivery.js";
+export {
   AcpSessionStore,
   FileSessionStore,
   InMemorySessionStore,
