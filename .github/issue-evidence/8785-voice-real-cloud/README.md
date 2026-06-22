@@ -91,6 +91,22 @@ bundle. The speaker-recognition margin (~0.72 vs ~0.15) is exactly what backs
 owner detection, multi-user separation, and the security "owner vs intruder"
 case — with real models.
 
+## 6. Agent self-voice rejection + overlapping speakers (real models)
+
+`bun run --cwd plugins/plugin-local-inference agentvoice:real`:
+
+- **Agent self-voice** ("detect what the agent's voice sounds like / reject it
+  from TTS"): the agent's reply is synthesized **on-device**, then embedded with
+  WeSpeaker. Agent-vs-agent cosine **~0.37** vs agent-vs-human **~0.15 / −0.13**
+  — the agent's voice is clearly more self-similar than human-similar (margin
+  ~0.22), so `selfVoiceSimilarity` separates an agent-echo turn → **rejectable**.
+  *(On-device TTS has more within-speaker variation than a fixed human voice, so
+  production tightens this with a voice centroid over many agent utterances + the
+  `agentSpeaking` timing gate — both already in the design.)*
+- **Overlapping / interrupting speakers**: two voices mixed **simultaneously**
+  into a 5 s window → pyannote flags **overlap-pair labels (4–6) in ~167/293
+  frames** — real detection of people talking over each other.
+
 ## Reproduce
 
 ```bash
