@@ -61,9 +61,12 @@ import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import type { ShellMessage } from "./shell-state";
+import { TopicChipsBar } from "./TopicChipsBar";
+import { TopicGroup } from "./TopicGroup";
+import { deriveChannelTopics, groupMessagesByTopic } from "./topic-grouping";
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import { usePromptSuggestions } from "./usePromptSuggestions";
-import type { ShellController } from "./useShellController";
+import type { ConversationNav, ShellController } from "./useShellController";
 
 /** No-op slash controller so the overlay renders without a provider (stories). */
 const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
@@ -348,6 +351,49 @@ function HeaderButton({
     >
       <Icon className="h-[18px] w-[18px]" aria-hidden />
     </button>
+  );
+}
+
+/** Horizontal travel (px) at which a conversation-swipe edge hint is fully lit. */
+const SWIPE_HINT_FULL = 96;
+
+/** Inert conversation-nav fallback for minimal mock controllers. */
+const EMPTY_CONVERSATION_NAV: ConversationNav = {
+  hasPrev: false,
+  hasNext: false,
+  goPrev: () => {},
+  goNext: () => {},
+};
+
+/**
+ * A soft glass glow on the sheet edge the next/previous conversation will slide
+ * in from during a horizontal swipe (#8929). Brightens with the drag distance;
+ * inert and non-interactive.
+ */
+function SwipeEdgeHint({
+  side,
+  active,
+  amount,
+}: {
+  side: "left" | "right";
+  active: boolean;
+  amount: number;
+}): React.JSX.Element | null {
+  if (!active) return null;
+  const opacity = Math.min(1, Math.max(0, amount) / SWIPE_HINT_FULL);
+  if (opacity <= 0) return null;
+  return (
+    <div
+      aria-hidden
+      data-testid={`conversation-swipe-hint-${side}`}
+      className={cn(
+        "pointer-events-none absolute inset-y-0 z-20 w-16",
+        side === "left"
+          ? "left-0 bg-gradient-to-r from-white/25 to-transparent"
+          : "right-0 bg-gradient-to-l from-white/25 to-transparent",
+      )}
+      style={{ opacity }}
+    />
   );
 }
 
@@ -962,6 +1008,9 @@ export function ContinuousChatOverlay({
     stop,
     modelStatus,
   } = controller;
+  // Defensive default so a minimal mock controller (stories/tests) that predates
+  // the swipe-nav surface still renders without crashing.
+  const conversationNav = controller.conversationNav ?? EMPTY_CONVERSATION_NAV;
 
   // The transcribe control is a voice feature, so it only belongs in the header
   // while voice is actually on — a hands-free conversation, the mic open, or an
@@ -971,6 +1020,24 @@ export function ContinuousChatOverlay({
   // stay put across the re-listen gaps where `recording` momentarily drops
   // between utterances.
   const voiceActive = Boolean(recording || handsFree || transcriptionMode);
+
+  // Horizontal swipe between conversations (#8929). `swipeDx` is the live
+  // horizontal drag (+left toward the next/older chat, -right toward the
+  // newer/previous chat) and drives the edge hint. The gesture defers pointer
+  // capture until a horizontal commit, so vertical thread scrolling is
+  // unaffected; it is only bound while the sheet is open (below).
+  const [swipeDx, setSwipeDx] = React.useState(0);
+  const conversationSwipe = usePullGesture({
+    onDragX: setSwipeDx,
+    onSwipeLeft: () => {
+      setSwipeDx(0);
+      conversationNav.goNext();
+    },
+    onSwipeRight: () => {
+      setSwipeDx(0);
+      conversationNav.goPrev();
+    },
+  });
 
   // Copy an assistant answer (press-and-hold on its bubble). Stable identity so
   // the memoized ThreadLine isn't re-rendered every parent tick.
@@ -1099,6 +1166,80 @@ export function ContinuousChatOverlay({
   // (always pin to bottom) from streaming growth of the current line (follow
   // only when the reader is already at the bottom).
   const scrollPinnedIdRef = React.useRef(lastId);
+
+  // Topic grouping + chips bar (#8928). Derived from the per-message Stage-1
+  // topic tags; when no message is tagged the transcript renders flat (the
+  // chips bar and groups simply don't appear), preserving the prior behavior.
+  const channelTopics = React.useMemo(
+    () => deriveChannelTopics(visibleMessages),
+    [visibleMessages],
+  );
+  const topicSegments = React.useMemo(
+    () => groupMessagesByTopic(visibleMessages),
+    [visibleMessages],
+  );
+  const hasTopics = channelTopics.length > 0;
+  const [collapsedTopics, setCollapsedTopics] = React.useState<
+    ReadonlySet<string>
+  >(() => new Set<string>());
+  const setTopicCollapsed = React.useCallback(
+    (key: string, collapsed: boolean) => {
+      setCollapsedTopics((prev) => {
+        if (collapsed === prev.has(key)) return prev;
+        const next = new Set(prev);
+        if (collapsed) next.add(key);
+        else next.delete(key);
+        return next;
+      });
+    },
+    [],
+  );
+  // Tapping a chip expands its group and scrolls its header into view.
+  const scrollToTopic = React.useCallback((topic: string) => {
+    setCollapsedTopics((prev) => {
+      if (!prev.has(topic)) return prev;
+      const next = new Set(prev);
+      next.delete(topic);
+      return next;
+    });
+    if (typeof requestAnimationFrame === "undefined") return;
+    requestAnimationFrame(() => {
+      const escaped =
+        typeof CSS !== "undefined" && typeof CSS.escape === "function"
+          ? CSS.escape(topic)
+          : topic.replace(/"/g, '\\"');
+      const el = threadRef.current?.querySelector(`[data-topic="${escaped}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, []);
+  // Render one transcript line; shared by the flat and topic-grouped paths so
+  // the in-flight-turn detection stays identical.
+  const renderThreadLine = React.useCallback(
+    (m: ShellMessage, index: number) => {
+      const isInFlight =
+        index === visibleMessages.length - 1 &&
+        m.role === "assistant" &&
+        !m.content.trim();
+      return (
+        <ThreadLine
+          key={m.id}
+          message={m}
+          floating
+          reduce={reduce}
+          onCopy={handleCopyMessage}
+          onOpenSettings={openSettings}
+          turnStatus={isInFlight ? turnStatus : undefined}
+        />
+      );
+    },
+    [
+      visibleMessages.length,
+      reduce,
+      handleCopyMessage,
+      openSettings,
+      turnStatus,
+    ],
+  );
 
   const booting = phase === "booting";
   const listening = phase === "listening";
@@ -2693,6 +2834,22 @@ export function ContinuousChatOverlay({
               borderRadius: fullBleed ? 0 : panelRadius,
             }}
           >
+            {/* Conversation-swipe edge hints (#8929): glow the edge the next /
+                previous conversation will slide in from as the user drags. */}
+            {sheetOpen ? (
+              <>
+                <SwipeEdgeHint
+                  side="left"
+                  active={swipeDx < 0 && conversationNav.hasPrev}
+                  amount={-swipeDx}
+                />
+                <SwipeEdgeHint
+                  side="right"
+                  active={swipeDx > 0 && conversationNav.hasNext}
+                  amount={swipeDx}
+                />
+              </>
+            ) : null}
             {/* Specular sheen — a soft light from the top edge, the liquid-glass
             highlight. Subtle + non-interactive. */}
             <div
@@ -2846,34 +3003,65 @@ export function ContinuousChatOverlay({
                       collapse();
                     }
                   }}
+                  // Horizontal-swipe navigation between conversations, sheet-open
+                  // only (#8929). Deferred capture keeps vertical scroll native.
+                  {...(sheetOpen ? conversationSwipe : {})}
                   className="relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none] focus-visible:outline-none [&::-webkit-scrollbar]:hidden"
                 >
+                  {/* Topic chips bar (#8928): the channel's current topics,
+                      sticky above the scrolling transcript. Tap a chip to jump
+                      to (and expand) its group. Hidden when nothing is tagged. */}
+                  {hasTopics ? (
+                    <TopicChipsBar
+                      topics={channelTopics}
+                      onSelectTopic={scrollToTopic}
+                      className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-black/40 to-transparent px-5 backdrop-blur-sm"
+                    />
+                  ) : null}
                   {/* `mt-auto` keeps the latest line at the bottom (nearest the input)
                   until the thread overflows, then it scrolls. */}
                   <div className="mt-auto flex flex-col pb-3 pt-1">
-                    <AnimatePresence initial={false}>
-                      {visibleMessages.map((m, i) => {
+                    {hasTopics
+                      ? // Topic-grouped transcript: each cluster collapses via a
+                        // gesture on its header (no visible buttons).
+                        (() => {
+                          let lineIndex = 0;
+                          return topicSegments.map((segment) => {
+                            const lines = segment.messages.map((m) =>
+                              renderThreadLine(m, lineIndex++),
+                            );
+                            return (
+                              // The React key is the segment's first message id
+                              // (stable + unique) because a topic can recur in a
+                              // non-adjacent run (A → B → A). Collapse state stays
+                              // keyed by topic (`segment.key`) so a chip tap
+                              // expands every run of that topic.
+                              <TopicGroup
+                                key={segment.messages[0]?.id ?? segment.key}
+                                topic={segment.topic}
+                                count={segment.messages.length}
+                                collapsed={collapsedTopics.has(segment.key)}
+                                onCollapsedChange={(collapsed) =>
+                                  setTopicCollapsed(segment.key, collapsed)
+                                }
+                              >
+                                <AnimatePresence initial={false}>
+                                  {lines}
+                                </AnimatePresence>
+                              </TopicGroup>
+                            );
+                          });
+                        })()
+                      : // Flat transcript (no topic tags) — unchanged behavior.
                         // Only the LAST, content-less assistant turn (the
                         // in-flight one) reads turnStatus — every settled bubble
-                        // gets undefined so its memo identity is unchanged and a
-                        // status tick doesn't re-render the whole thread.
-                        const isInFlight =
-                          i === visibleMessages.length - 1 &&
-                          m.role === "assistant" &&
-                          !m.content.trim();
-                        return (
-                          <ThreadLine
-                            key={m.id}
-                            message={m}
-                            floating
-                            reduce={reduce}
-                            onCopy={handleCopyMessage}
-                            onOpenSettings={openSettings}
-                            turnStatus={isInFlight ? turnStatus : undefined}
-                          />
-                        );
-                      })}
-                    </AnimatePresence>
+                        // gets undefined so its memo identity is unchanged.
+                        null}
+                    {hasTopics ? null : (
+                      <AnimatePresence initial={false}>
+                        {visibleMessages.map((m, i) => renderThreadLine(m, i))}
+                      </AnimatePresence>
+                    )}
                     <AnimatePresence>
                       {/* Rich status row (#8813): what the agent is doing —
                           thinking / running an action / waking / speaking — for
