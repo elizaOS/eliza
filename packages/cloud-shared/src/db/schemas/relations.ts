@@ -5,7 +5,6 @@
  */
 import { relations } from "drizzle-orm";
 import { apiKeys } from "./api-keys";
-import { appBilling } from "./app-billing";
 import { appConfig } from "./app-config";
 import { appCreditBalances } from "./app-credit-balances";
 import { appDatabases } from "./app-databases";
@@ -176,7 +175,6 @@ export const appsRelations = relations(apps, ({ one, many }) => ({
     references: [apiKeys.id],
   }),
   config: one(appConfig),
-  billing: one(appBilling),
   database: one(appDatabases),
   users: many(appUsers),
   analytics: many(appAnalytics),
@@ -190,16 +188,6 @@ export const appsRelations = relations(apps, ({ one, many }) => ({
 export const appConfigRelations = relations(appConfig, ({ one }) => ({
   app: one(apps, {
     fields: [appConfig.app_id],
-    references: [apps.id],
-  }),
-}));
-
-/**
- * App billing table relations.
- */
-export const appBillingRelations = relations(appBilling, ({ one }) => ({
-  app: one(apps, {
-    fields: [appBilling.app_id],
     references: [apps.id],
   }),
 }));

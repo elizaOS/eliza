@@ -405,15 +405,55 @@ function resolveViteCli() {
   return viteCli;
 }
 
+function javaMajorVersion(javaHome) {
+  if (!javaHome || !fs.existsSync(javaHome)) return null;
+  // `release` is the cheapest, most reliable source (no JVM spawn).
+  const releaseFile = path.join(javaHome, "release");
+  if (fs.existsSync(releaseFile)) {
+    const m = fs
+      .readFileSync(releaseFile, "utf8")
+      .match(/JAVA_VERSION="?(\d+)/);
+    if (m) return Number.parseInt(m[1], 10);
+  }
+  const javaBin = path.join(
+    javaHome,
+    "bin",
+    process.platform === "win32" ? "java.exe" : "java",
+  );
+  if (fs.existsSync(javaBin)) {
+    const r = spawnSync(javaBin, ["-version"], { encoding: "utf8" });
+    const m = `${r.stderr ?? ""}${r.stdout ?? ""}`.match(/version "?(\d+)/);
+    if (m) return Number.parseInt(m[1], 10);
+  }
+  return null;
+}
+
+// Auto-select a JDK >= 21 so a plain `build:android` "just works" with no
+// JAVA_HOME juggling. JAVA_HOME is honored ONLY when it actually is >= 21;
+// otherwise we fall through to the well-known JDK 21 install paths and finally
+// scan /usr/lib/jvm. (AGP 9 + the Android toolchain require 21.)
 function resolveJavaHome() {
-  return firstExisting([
+  const candidates = [
     process.env.JAVA_HOME,
     "/opt/homebrew/opt/openjdk@21",
     "/usr/local/opt/openjdk@21",
     "/usr/lib/jvm/temurin-21-jdk-amd64",
     "/usr/lib/jvm/java-21-openjdk-amd64",
     "/usr/lib/jvm/java-21-openjdk",
-  ]);
+  ];
+  for (const candidate of candidates) {
+    if (candidate && (javaMajorVersion(candidate) ?? 0) >= 21) return candidate;
+  }
+  const jvmRoot = "/usr/lib/jvm";
+  if (fs.existsSync(jvmRoot)) {
+    for (const name of fs.readdirSync(jvmRoot)) {
+      const full = path.join(jvmRoot, name);
+      if ((javaMajorVersion(full) ?? 0) >= 21) return full;
+    }
+  }
+  // Nothing >= 21 found — return the first path that exists so the caller's
+  // "JDK 21 not found" error fires with a concrete (if wrong-version) hint.
+  return firstExisting(candidates);
 }
 
 function prependPath(env, entries) {
@@ -1802,9 +1842,18 @@ export function injectCopyForkLlamaLibTask(content) {
     `        project.ext.elizaForkLlamaAbis.each { abi ->\n` +
     `            def libDir = resolveForkLlamaLibDir(abi)\n` +
     `            if (!libDir) {\n` +
+    `                // No fresh source configured. If the fused lib set is already\n` +
+    `                // staged in jniLibs (a prior build, the common dev case), use it\n` +
+    `                // as-is so a plain build:android "just works" without any flag.\n` +
+    `                def alreadyStaged = new File(file("src/main/jniLibs/\${abi}"), 'libelizainference.so')\n` +
+    `                if (alreadyStaged.isFile()) {\n` +
+    `                    logger.lifecycle("[copyForkLlamaLib] no source dir for \${abi}; libelizainference.so already staged in jniLibs — using the pre-staged fused lib set")\n` +
+    `                    if (abi == 'arm64-v8a') stagedArm64 = true\n` +
+    `                    return\n` +
+    `                }\n` +
     `                if (abi == 'arm64-v8a') {\n` +
-    `                    // arm64-v8a is the mandatory baseline ABI; missing it is a hard error.\n` +
-    `                    throw new GradleException("[copyForkLlamaLib] no MTP Android lib dir configured for arm64-v8a. Run packages/app-core/scripts/aosp/compile-libllama.mjs --target android-arm64-vulkan-fused (the Android cross-compiler; build-llama-cpp-mtp.mjs has no Android targets) or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")\n` +
+    `                    // arm64-v8a is the mandatory baseline ABI; missing it (and no pre-staged lib) is a hard error.\n` +
+    `                    throw new GradleException("[copyForkLlamaLib] no fused inference lib for arm64-v8a (not configured, not pre-staged). Run packages/app-core/scripts/aosp/compile-libllama.mjs --target android-arm64-vulkan-fused (the Android cross-compiler; build-llama-cpp-mtp.mjs has no Android targets) or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")\n` +
     `                }\n` +
     `                logger.lifecycle("[copyForkLlamaLib] no fork lib dir for ABI \${abi}; skipping")\n` +
     `                return\n` +
@@ -7204,6 +7253,8 @@ async function buildAndroidSystem() {
     androidDir,
     spikeDir: androidAgentSpikeDir,
     bunChannel: "canary",
+    // Objective AOSP/chip image: riscv64 bun stays fail-closed (it ships it).
+    objective: true,
   });
   auditAndroidSystemSource("pre-gradle");
 

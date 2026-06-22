@@ -235,9 +235,19 @@ task copyForkLlamaLib {
         project.ext.elizaForkLlamaAbis.each { abi ->
             def libDir = resolveForkLlamaLibDir(abi)
             if (!libDir) {
+                // No fresh source configured. If the fused lib set is already
+                // staged in jniLibs (a prior build, the common dev case), use it
+                // as-is — a plain `build:android` "just works" without any flag.
+                def alreadyStaged = new File(file("src/main/jniLibs/${abi}"), 'libelizainference.so')
+                if (alreadyStaged.isFile()) {
+                    logger.lifecycle("[copyForkLlamaLib] no source dir for ${abi}; libelizainference.so already staged in jniLibs — using the pre-staged fused lib set")
+                    if (abi == 'arm64-v8a') stagedArm64 = true
+                    return
+                }
                 if (abi == 'arm64-v8a') {
-                    // arm64-v8a is the mandatory baseline ABI; missing it is a hard error.
-                    throw new GradleException("[copyForkLlamaLib] no MTP Android lib dir configured for arm64-v8a. Run packages/app-core/scripts/aosp/compile-libllama.mjs --target android-arm64-vulkan-fused (the Android cross-compiler; build-llama-cpp-mtp.mjs has no Android targets) or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")
+                    // arm64-v8a is the mandatory baseline ABI; missing it (and no
+                    // pre-staged lib) is a hard error.
+                    throw new GradleException("[copyForkLlamaLib] no fused inference lib for arm64-v8a (not configured, not pre-staged). Run packages/app-core/scripts/aosp/compile-libllama.mjs --target android-arm64-vulkan-fused (the Android cross-compiler; build-llama-cpp-mtp.mjs has no Android targets) or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")
                 }
                 logger.lifecycle("[copyForkLlamaLib] no fork lib dir for ABI ${abi}; skipping")
                 return
