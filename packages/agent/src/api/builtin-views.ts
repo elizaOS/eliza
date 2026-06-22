@@ -85,6 +85,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "documents",
+    viewKind: "system",
     label: "Knowledge",
     description: "Agent knowledge documents, uploads, and retrieval sources",
     icon: "FileText",
