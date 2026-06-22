@@ -63,7 +63,7 @@ import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import type { ShellMessage } from "./shell-state";
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import { usePromptSuggestions } from "./usePromptSuggestions";
-import type { ShellController } from "./useShellController";
+import type { ConversationNav, ShellController } from "./useShellController";
 
 /** No-op slash controller so the overlay renders without a provider (stories). */
 const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
@@ -348,6 +348,49 @@ function HeaderButton({
     >
       <Icon className="h-[18px] w-[18px]" aria-hidden />
     </button>
+  );
+}
+
+/** Horizontal travel (px) at which a conversation-swipe edge hint is fully lit. */
+const SWIPE_HINT_FULL = 96;
+
+/** Inert conversation-nav fallback for minimal mock controllers. */
+const EMPTY_CONVERSATION_NAV: ConversationNav = {
+  hasPrev: false,
+  hasNext: false,
+  goPrev: () => {},
+  goNext: () => {},
+};
+
+/**
+ * A soft glass glow on the sheet edge the next/previous conversation will slide
+ * in from during a horizontal swipe (#8929). Brightens with the drag distance;
+ * inert and non-interactive.
+ */
+function SwipeEdgeHint({
+  side,
+  active,
+  amount,
+}: {
+  side: "left" | "right";
+  active: boolean;
+  amount: number;
+}): React.JSX.Element | null {
+  if (!active) return null;
+  const opacity = Math.min(1, Math.max(0, amount) / SWIPE_HINT_FULL);
+  if (opacity <= 0) return null;
+  return (
+    <div
+      aria-hidden
+      data-testid={`conversation-swipe-hint-${side}`}
+      className={cn(
+        "pointer-events-none absolute inset-y-0 z-20 w-16",
+        side === "left"
+          ? "left-0 bg-gradient-to-r from-white/25 to-transparent"
+          : "right-0 bg-gradient-to-l from-white/25 to-transparent",
+      )}
+      style={{ opacity }}
+    />
   );
 }
 
@@ -962,6 +1005,9 @@ export function ContinuousChatOverlay({
     stop,
     modelStatus,
   } = controller;
+  // Defensive default so a minimal mock controller (stories/tests) that predates
+  // the swipe-nav surface still renders without crashing.
+  const conversationNav = controller.conversationNav ?? EMPTY_CONVERSATION_NAV;
 
   // The transcribe control is a voice feature, so it only belongs in the header
   // while voice is actually on — a hands-free conversation, the mic open, or an
@@ -971,6 +1017,24 @@ export function ContinuousChatOverlay({
   // stay put across the re-listen gaps where `recording` momentarily drops
   // between utterances.
   const voiceActive = Boolean(recording || handsFree || transcriptionMode);
+
+  // Horizontal swipe between conversations (#8929). `swipeDx` is the live
+  // horizontal drag (+left toward the next/older chat, -right toward the
+  // newer/previous chat) and drives the edge hint. The gesture defers pointer
+  // capture until a horizontal commit, so vertical thread scrolling is
+  // unaffected; it is only bound while the sheet is open (below).
+  const [swipeDx, setSwipeDx] = React.useState(0);
+  const conversationSwipe = usePullGesture({
+    onDragX: setSwipeDx,
+    onSwipeLeft: () => {
+      setSwipeDx(0);
+      conversationNav.goNext();
+    },
+    onSwipeRight: () => {
+      setSwipeDx(0);
+      conversationNav.goPrev();
+    },
+  });
 
   // Copy an assistant answer (press-and-hold on its bubble). Stable identity so
   // the memoized ThreadLine isn't re-rendered every parent tick.
@@ -2693,6 +2757,22 @@ export function ContinuousChatOverlay({
               borderRadius: fullBleed ? 0 : panelRadius,
             }}
           >
+            {/* Conversation-swipe edge hints (#8929): glow the edge the next /
+                previous conversation will slide in from as the user drags. */}
+            {sheetOpen ? (
+              <>
+                <SwipeEdgeHint
+                  side="left"
+                  active={swipeDx < 0 && conversationNav.hasPrev}
+                  amount={-swipeDx}
+                />
+                <SwipeEdgeHint
+                  side="right"
+                  active={swipeDx > 0 && conversationNav.hasNext}
+                  amount={swipeDx}
+                />
+              </>
+            ) : null}
             {/* Specular sheen — a soft light from the top edge, the liquid-glass
             highlight. Subtle + non-interactive. */}
             <div
@@ -2846,6 +2926,9 @@ export function ContinuousChatOverlay({
                       collapse();
                     }
                   }}
+                  // Horizontal-swipe navigation between conversations, sheet-open
+                  // only (#8929). Deferred capture keeps vertical scroll native.
+                  {...(sheetOpen ? conversationSwipe : {})}
                   className="relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none] focus-visible:outline-none [&::-webkit-scrollbar]:hidden"
                 >
                   {/* `mt-auto` keeps the latest line at the bottom (nearest the input)

@@ -36,6 +36,7 @@ import {
 } from "../../voice/voice-capture-factory";
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
+import { requestConversationResetUndo } from "./conversation-undo-store";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
 
@@ -154,6 +155,20 @@ export interface ShellController {
   currentTab?: string;
   /** Stop an in-flight reply stream (the composer's stop control). */
   stop: () => void;
+  /** Horizontal-swipe navigation between conversations (sheet-open only). */
+  conversationNav: ConversationNav;
+}
+
+/** Adjacent-conversation navigation for the overlay's horizontal swipe. */
+export interface ConversationNav {
+  /** A newer conversation exists to swipe toward. */
+  hasPrev: boolean;
+  /** An older conversation exists to swipe toward. */
+  hasNext: boolean;
+  /** Select the newer (previous) conversation. */
+  goPrev: () => void;
+  /** Select the older (next) conversation. */
+  goNext: () => void;
 }
 
 /**
@@ -176,8 +191,12 @@ export function useShellController(): ShellController {
     uiLanguage,
     elizaCloudVoiceProxyAvailable,
     handleNewConversation,
+    handleSelectConversation,
+    activeConversationId,
+    conversations,
     setTab,
     handleChatStop,
+    t,
   } = app;
   // Read per-token streaming messages from the isolated context so token updates
   // don't depend on the giant AppContext value identity.
@@ -202,8 +221,37 @@ export function useShellController(): ShellController {
     // clear the voice flag so the greeting isn't spoken aloud after a prior
     // voice session.
     setLastTurnVoice(false);
+    const previousConversationId = activeConversationId;
     void handleNewConversation();
-  }, [handleNewConversation]);
+    // Soft-undo: let the user restore the conversation they just cleared (#8929).
+    requestConversationResetUndo({
+      previousConversationId,
+      restore: (id) => {
+        void handleSelectConversation(id);
+      },
+      translate: typeof t === "function" ? (key) => t(key) : undefined,
+    });
+  }, [activeConversationId, handleNewConversation, handleSelectConversation, t]);
+
+  // Horizontal-swipe navigation between conversations (#8929). `conversations`
+  // is most-recent-first, so "prev" moves toward newer (lower index) and "next"
+  // toward older (higher index). hasPrev/hasNext drive the swipe edge hints.
+  const conversationNav = React.useMemo<ConversationNav>(() => {
+    const list = Array.isArray(conversations) ? conversations : [];
+    const index = list.findIndex((c) => c.id === activeConversationId);
+    const hasPrev = index > 0;
+    const hasNext = index >= 0 && index < list.length - 1;
+    return {
+      hasPrev,
+      hasNext,
+      goPrev: () => {
+        if (hasPrev) void handleSelectConversation(list[index - 1].id);
+      },
+      goNext: () => {
+        if (hasNext) void handleSelectConversation(list[index + 1].id);
+      },
+    };
+  }, [conversations, activeConversationId, handleSelectConversation]);
 
   // "Ready" here means the agent's FIRST-TURN CAPABILITY is online (it can
   // answer) — NOT that the startup coordinator finished hydrating. The shell now
@@ -981,5 +1029,6 @@ export function useShellController(): ShellController {
     navigateToViews,
     currentTab: app.tab,
     stop: stopTurn,
+    conversationNav,
   };
 }

@@ -54,6 +54,7 @@ import { CloudHandoffBanner } from "./components/shell/CloudHandoffBanner";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
+import { ConversationUndoToast } from "./components/shell/ConversationUndoToast";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
@@ -1953,6 +1954,11 @@ export function App() {
           behind stays live.
         */}
         <ContinuousChatOverlayMount />
+        {/* Soft-undo affordance after a conversation reset (#8929): a brief
+            glassmorphic toast that restores the previous conversation. Mounted
+            once here so it is available from both the ChatView reset button and
+            the overlay header reset. */}
+        <ConversationUndoToast />
         {/* Interactive tutorial: a persistent spotlight overlay that survives
             navigation (it sends the user to Settings, back home, …). Renders
             only when the tutorial is active (launched from the home Tutorial
