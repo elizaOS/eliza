@@ -29,6 +29,7 @@ import type {
 } from "./types";
 import { TwitterEventTypes } from "./types";
 import { sendTweet } from "./utils";
+import { describeTweetPhotos } from "./utils/image-descriptions";
 import {
   buildTwitterMessageMetadata,
   createMemorySafe,
@@ -1166,6 +1167,21 @@ Response (YES/NO):`;
     const twitterUserId = normalizedTweet.userId;
     const entityId = createUniqueUuid(this.runtime, twitterUserId);
     const twitterUsername = normalizedTweet.username;
+
+    // Describe any images on the tweet and attach them so the agent can "see"
+    // them: the descriptions ride on message.content.attachments, which the
+    // core ATTACHMENTS provider and recentMessages rendering surface to the
+    // model. Mirrors the Discord connector's image-description behaviour.
+    const imageAttachments = await describeTweetPhotos(
+      this.runtime,
+      normalizedTweet,
+    );
+    if (imageAttachments.length > 0) {
+      message.content.attachments = [
+        ...(message.content.attachments ?? []),
+        ...imageAttachments,
+      ];
+    }
 
     // Add Twitter-specific metadata to message
     message.metadata = {
