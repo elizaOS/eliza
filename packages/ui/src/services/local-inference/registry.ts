@@ -48,8 +48,8 @@ async function writeElizaOwned(models: InstalledModel[]): Promise<void> {
 }
 
 function externalScanEnabled(): boolean {
-  const value = process.env.ELIZA_LOCAL_INFERENCE_ENABLE_EXTERNAL_SCAN?.trim()
-    .toLowerCase();
+  const value =
+    process.env.ELIZA_LOCAL_INFERENCE_ENABLE_EXTERNAL_SCAN?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
 }
 
