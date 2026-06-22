@@ -232,7 +232,7 @@ export function AppPermissionsSection() {
           action={
             row.view.grantedAt ? (
               <span className="text-2xs text-muted">
-                granted {new Date(row.view.grantedAt).toLocaleDateString()}
+                granted {new Date(row.view.grantedAt).toLocaleDateString("en-US")}
               </span>
             ) : undefined
           }

@@ -811,7 +811,7 @@ export function WorkflowEditor({
                               {summary.statusLabel}
                             </span>
                             <span className="block truncate text-2xs text-muted-strong">
-                              {new Date(execution.startedAt).toLocaleString()} /{" "}
+                              {new Date(execution.startedAt).toLocaleString("en-US")} /{" "}
                               {summary.durationLabel}
                             </span>
                           </span>
@@ -982,7 +982,7 @@ function WorkflowRevisionRow({
   disabled: boolean;
   onRestore: (versionId: string) => void;
 }) {
-  const capturedAt = new Date(revision.capturedAt).toLocaleString();
+  const capturedAt = new Date(revision.capturedAt).toLocaleString("en-US");
   const versionLabel = revision.versionId.slice(0, 8);
   const restoreAction = useAgentElement<HTMLButtonElement>({
     id: `restore-workflow-version-${versionLabel}`,

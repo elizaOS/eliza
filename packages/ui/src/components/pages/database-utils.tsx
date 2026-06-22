@@ -263,7 +263,7 @@ export function PaginationBar({
     <div className="flex items-center justify-between px-4 py-2.5 bg-card/60 backdrop-blur-md rounded-b-2xl text-xs-tight text-muted">
       <span className="font-medium">
         {t("databaseview.RowCountSummary", {
-          count: total.toLocaleString(),
+          count: total.toLocaleString("en-US"),
           rowLabel:
             total === 1
               ? t("databaseview.row")

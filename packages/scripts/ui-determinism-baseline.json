@@ -128,57 +128,19 @@
   "packages/ui/src/components/pages/chat-view-hooks.tsx": [
     "L812 Date.now()"
   ],
-  "packages/ui/src/components/pages/database-utils.tsx": [
-    "L266 toLocaleString() [no locale]"
-  ],
-  "packages/ui/src/components/pages/DatabaseView.tsx": [
-    "L467 toLocaleString() [no locale]",
-    "L606 toLocaleString() [no locale]",
-    "L772 toLocaleString() [no locale]",
-    "L866 toLocaleString() [no locale]"
-  ],
   "packages/ui/src/components/pages/ElizaCloudDashboard.tsx": [
     "L594 Date.now()"
   ],
   "packages/ui/src/components/pages/ElizaOsAppsView.tsx": [
-    "L1742 toLocaleString() [no locale]"
+    "L1758 toLocaleString() [no locale]"
   ],
   "packages/ui/src/components/pages/HeartbeatForm.tsx": [
     "L1206 new Date()"
-  ],
-  "packages/ui/src/components/pages/ReleaseCenterView.tsx": [
-    "L293 toLocaleString() [no locale]"
-  ],
-  "packages/ui/src/components/pages/StreamView.tsx": [
-    "L187 toLocaleString() [no locale]"
-  ],
-  "packages/ui/src/components/pages/WorkflowEditor.tsx": [
-    "L814 toLocaleString() [no locale]",
-    "L985 toLocaleString() [no locale]"
-  ],
-  "packages/ui/src/components/release-center/sections.tsx": [
-    "L147 toLocaleString() [no locale]"
-  ],
-  "packages/ui/src/components/settings/AppPermissionsSection.tsx": [
-    "L235 toLocaleDateString() [no locale]"
-  ],
-  "packages/ui/src/components/shell/ComputerUseApprovalOverlay.tsx": [
-    "L297 toLocaleTimeString() [no locale]"
   ],
   "packages/ui/src/components/shell/PairingView.tsx": [
     "L49 Date.now()"
   ],
   "packages/ui/src/components/shell/usePromptSuggestions.ts": [
     "L279 new Date()"
-  ],
-  "packages/ui/src/components/stream/StatusBar.tsx": [
-    "L79 toLocaleString() [no locale]"
-  ],
-  "packages/ui/src/components/training/JobDetailPanel.tsx": [
-    "L132 toLocaleString() [no locale]",
-    "L299 toLocaleString() [no locale]"
-  ],
-  "packages/ui/src/components/training/TrainingDashboard.tsx": [
-    "L141 toLocaleString() [no locale]"
   ]
 }
