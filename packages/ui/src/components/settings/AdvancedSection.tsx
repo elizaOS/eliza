@@ -184,46 +184,21 @@ export function AdvancedSection() {
   return (
     <>
       <SettingsStack>
-        <SettingsGroup bare>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Button
-              ref={exportOpenRef}
-              variant="outline"
-              type="button"
-              onClick={openExportModal}
-              className="min-h-[5.5rem] h-auto rounded-lg border border-border bg-card p-5 text-left transition-[border-color,background-color] group hover:border-accent"
-              aria-haspopup="dialog"
-              {...exportOpenAgentProps}
-            >
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-border bg-surface p-3 transition-all group-hover:border-accent group-hover:bg-accent">
-                <Download className="h-5 w-5 shrink-0 text-txt-strong transition-colors group-hover:text-accent-fg" />
-              </div>
-              <div>
-                <div className="font-medium text-sm">
-                  {t("settings.exportAgent")}
-                </div>
-              </div>
-            </Button>
-
-            <Button
-              ref={importOpenRef}
-              variant="outline"
-              type="button"
-              onClick={openImportModal}
-              className="min-h-[5.5rem] h-auto rounded-lg border border-border bg-card p-5 text-left transition-[border-color,background-color] group hover:border-accent"
-              aria-haspopup="dialog"
-              {...importOpenAgentProps}
-            >
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-border bg-surface p-3 transition-all group-hover:border-accent group-hover:bg-accent">
-                <Upload className="h-5 w-5 shrink-0 text-txt-strong transition-colors group-hover:text-accent-fg" />
-              </div>
-              <div>
-                <div className="font-medium text-sm">
-                  {t("settings.importAgent")}
-                </div>
-              </div>
-            </Button>
-          </div>
+        <SettingsGroup>
+          <SettingsRow
+            icon={Download}
+            label={t("settings.exportAgent")}
+            onClick={openExportModal}
+            buttonRef={exportOpenRef}
+            buttonProps={exportOpenAgentProps}
+          />
+          <SettingsRow
+            icon={Upload}
+            label={t("settings.importAgent")}
+            onClick={openImportModal}
+            buttonRef={importOpenRef}
+            buttonProps={importOpenAgentProps}
+          />
         </SettingsGroup>
 
         <SettingsGroup>
@@ -231,7 +206,7 @@ export function AdvancedSection() {
             agentId="advanced-developer-mode"
             group="advanced"
             label="Developer Mode"
-            description="Show developer tools (logs, trajectory viewer, prompt artifacts) and developer-only apps in the nav."
+            description="Show developer tools in the nav."
             checked={developerMode}
             onCheckedChange={(checked) => setDeveloperMode(checked)}
           />

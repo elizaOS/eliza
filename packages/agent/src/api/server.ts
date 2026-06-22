@@ -235,7 +235,30 @@ function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
 async function getOptionalPluginApi<T>(
   key: keyof typeof optionalPluginImports,
 ): Promise<T> {
-  return (await optionalPluginImports[key]()) as T;
+  try {
+    return (await optionalPluginImports[key]()) as T;
+  } catch (err) {
+    // The plugin is optional and not in this bundle (on mobile, many
+    // desktop/cloud plugins — cloud, whatsapp, wallet-adjacent, mcp,
+    // streaming, … — are excluded). Its dynamic import REJECTS with a
+    // ResolveMessage; without this catch that rejection propagates to the
+    // top-level request handler as a 500 on EVERY renderer poll of the
+    // plugin's routes. Return a Proxy of no-op handlers so route-dispatch
+    // blocks (`if (await handleX(...)) return;`) fall through to the normal
+    // 404/fallback instead of erroring. On desktop/server the import succeeds,
+    // so this branch never runs there.
+    logger.debug(
+      `[eliza-api] optional plugin '${key}' unavailable in this bundle: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return new Proxy(
+      {},
+      {
+        get: () => () => false,
+      },
+    ) as T;
+  }
 }
 type BrowserBridgeKind = BrowserPluginModule["BROWSER_BRIDGE_KINDS"][number];
 type BrowserBridgePackagePathTarget =
@@ -277,7 +300,21 @@ let walletApiPromise:
 function getWalletApi(): Promise<typeof import("@elizaos/plugin-wallet")> {
   walletApiPromise ??= importOptionalPlugin<
     typeof import("@elizaos/plugin-wallet")
-  >("@elizaos/plugin-wallet");
+  >("@elizaos/plugin-wallet").catch((err) => {
+    // plugin-wallet is desktop/cloud-only; on mobile it is not in the bundle so
+    // this import REJECTS. Cache a no-op proxy so /api/wallet/* falls through to
+    // 404 instead of 500ing on every renderer poll. Desktop imports succeed, so
+    // this never runs there.
+    logger.debug(
+      `[eliza-api] plugin-wallet unavailable in this bundle: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return new Proxy(
+      {},
+      { get: () => () => false },
+    ) as typeof import("@elizaos/plugin-wallet");
+  });
   return walletApiPromise;
 }
 

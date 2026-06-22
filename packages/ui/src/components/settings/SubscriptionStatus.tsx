@@ -679,7 +679,7 @@ export function SubscriptionStatus({
   const genericStatus = selectRepresentativeSubscriptionStatus(genericStatuses);
 
   return (
-    <div className="border-t border-border/40 pt-4">
+    <div className="pt-2">
       {resolvedSelectedId === "anthropic-subscription" && (
         <SubscriptionProviderPanel
           providerId="anthropic-subscription"

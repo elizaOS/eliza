@@ -411,6 +411,10 @@ export interface DocumentRecord {
   canDelete: boolean;
   deleteabilityReason?: string;
   content?: { text?: string };
+  /** When this document mirrors a voice Transcript (#8789): the original
+   *  transcript record id (the Knowledge view links back to it) + its audio. */
+  transcriptId?: string;
+  transcriptAudioUrl?: string;
 }
 
 export interface DocumentDetail extends DocumentRecord {

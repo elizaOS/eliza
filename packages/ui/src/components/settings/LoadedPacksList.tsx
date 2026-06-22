@@ -2,7 +2,7 @@ import type { ResolvedContentPack } from "@elizaos/shared";
 import { Check } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
 import { useAppSelector } from "../../state";
-import { SettingsGroup } from "./settings-layout";
+import { SettingsGroup, SettingsRow } from "./settings-layout";
 
 interface LoadedPacksListProps {
   loadedPacks: ResolvedContentPack[];
@@ -10,7 +10,7 @@ interface LoadedPacksListProps {
   onToggle: (pack: ResolvedContentPack) => void;
 }
 
-function LoadedPackCard({
+function LoadedPackRow({
   pack,
   isActive,
   activeLabel,
@@ -31,46 +31,26 @@ function LoadedPackCard({
     onActivate: onToggle,
   });
   return (
-    <button
-      ref={ref}
-      type="button"
+    <SettingsRow
+      label={pack.manifest.name}
+      description={pack.manifest.description ?? undefined}
+      active={isActive}
       onClick={onToggle}
-      aria-current={isActive ? "true" : undefined}
-      className={`flex items-center gap-3 rounded-sm border px-3 py-2 text-left transition-colors ${
-        isActive
-          ? "border-accent bg-accent/8"
-          : "border-border/50 hover:border-accent/40 hover:bg-bg-hover"
-      }`}
-      {...agentProps}
-    >
-      {pack.vrmPreviewUrl && (
-        <img
-          src={pack.vrmPreviewUrl}
-          alt=""
-          className="h-9 w-9 shrink-0 rounded-sm object-cover"
-        />
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-txt">
-          {pack.manifest.name}
-        </p>
-        {pack.manifest.description && (
-          <p className="truncate text-xs text-muted">
-            {pack.manifest.description}
-          </p>
-        )}
-      </div>
-      {isActive && (
-        <span
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-accent/30 bg-accent/10 text-accent"
-          title={activeLabel}
-          role="img"
-          aria-label={activeLabel}
-        >
-          <Check className="h-3.5 w-3.5" aria-hidden />
-        </span>
-      )}
-    </button>
+      buttonRef={ref}
+      buttonProps={agentProps}
+      trailing={
+        isActive ? (
+          <span
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-accent"
+            title={activeLabel}
+            role="img"
+            aria-label={activeLabel}
+          >
+            <Check className="h-4 w-4" aria-hidden />
+          </span>
+        ) : null
+      }
+    />
   );
 }
 
@@ -86,22 +66,19 @@ export function LoadedPacksList({
   });
   return (
     <SettingsGroup
-      bare
       title={t("settings.appearance.loadedPacks", {
         defaultValue: "Loaded content packs",
       })}
     >
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {loadedPacks.map((pack) => (
-          <LoadedPackCard
-            key={pack.manifest.id}
-            pack={pack}
-            isActive={activePackId === pack.manifest.id}
-            activeLabel={activeLabel}
-            onToggle={() => onToggle(pack)}
-          />
-        ))}
-      </div>
+      {loadedPacks.map((pack) => (
+        <LoadedPackRow
+          key={pack.manifest.id}
+          pack={pack}
+          isActive={activePackId === pack.manifest.id}
+          activeLabel={activeLabel}
+          onToggle={() => onToggle(pack)}
+        />
+      ))}
     </SettingsGroup>
   );
 }

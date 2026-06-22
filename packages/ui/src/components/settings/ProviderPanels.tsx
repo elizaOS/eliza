@@ -25,33 +25,22 @@ type SubscriptionProviderSelection =
 function ProviderPanelHeader({
   icon: Icon,
   title,
-  description,
   children,
 }: {
   icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
   title: string;
-  description: string;
   children?: ReactNode;
 }) {
   return (
-    <header
-      className="flex min-h-[3.25rem] flex-wrap items-center justify-between gap-2 border-border border-b px-4 py-3"
-      title={description}
-    >
+    <header className="flex min-h-[3rem] flex-wrap items-center justify-between gap-2 py-2.5">
       <div className="flex min-w-0 items-center gap-3">
-        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface text-txt-strong ring-1 ring-border/70">
-          <Icon className="h-[18px] w-[18px]" aria-hidden />
-        </span>
-        <div className="min-w-0">
-          <h3 className="truncate text-sm font-medium leading-5 text-txt-strong">
-            {title}
-          </h3>
-          {description ? (
-            <p className="truncate text-xs leading-relaxed text-muted">
-              {description}
-            </p>
-          ) : null}
-        </div>
+        <Icon
+          className="h-[18px] w-[18px] shrink-0 text-muted/80"
+          aria-hidden
+        />
+        <h3 className="truncate text-sm font-medium leading-5 text-txt-strong">
+          {title}
+        </h3>
       </div>
       {children ? <div className="shrink-0">{children}</div> : null}
     </header>
@@ -74,10 +63,6 @@ export function LocalProviderPanel({
         icon={Cpu}
         title={t("providerpanels.localProvider", {
           defaultValue: "Local provider",
-        })}
-        description={t("providerpanels.localProviderDesc", {
-          defaultValue:
-            "Local downloads, active models, routing, and device pairing.",
         })}
       >
         <SettingsActionButton
@@ -142,13 +127,7 @@ export function CloudPanel({
   const cloudActive = !cloudCallsDisabled && isCloudSelected;
   return (
     <div className="min-w-0">
-      <ProviderPanelHeader
-        icon={Cloud}
-        title="Eliza Cloud"
-        description={t("providerpanels.cloudDesc", {
-          defaultValue: "Managed models, cloud routing, and account credits.",
-        })}
-      >
+      <ProviderPanelHeader icon={Cloud} title="Eliza Cloud">
         <SettingsActionButton
           agentId="cloud-use-cloud"
           agentStatus={cloudActive ? "active" : undefined}
@@ -171,12 +150,6 @@ export function CloudPanel({
           {t("providerpanels.cloud", { defaultValue: "Cloud" })}
         </SettingsActionButton>
       </ProviderPanelHeader>
-      {/*
-       * The buried account + billing dashboard that used to live here moved to
-       * the dedicated Settings → Cloud sections (Account & Profile, Billing &
-       * Credits). The AI Model panel keeps only the cloud routing toggle (above)
-       * and the model routing controls (below).
-       */}
       <ProviderRoutingPanel
         largeModelOptions={largeModelOptions}
         cloudModelSchema={cloudModelSchema}
@@ -194,7 +167,6 @@ export function CloudPanel({
 
 export interface SubscriptionPanelProps {
   selection: SubscriptionProviderSelection;
-  description: string;
   visibleProviderPanelId: string;
   resolvedSelectedId: string | null;
   cloudCallsDisabled: boolean;
@@ -213,7 +185,6 @@ export interface SubscriptionPanelProps {
 
 export function SubscriptionPanel({
   selection,
-  description,
   visibleProviderPanelId,
   resolvedSelectedId,
   cloudCallsDisabled,
@@ -234,7 +205,6 @@ export function SubscriptionPanel({
       <ProviderPanelHeader
         icon={KeyRound}
         title={t(selection.labelKey, { defaultValue: selection.id })}
-        description={description}
       >
         {showUseButton ? (
           <SettingsActionButton
@@ -310,13 +280,7 @@ export function ApiKeyPanel({
     cloudCallsDisabled || resolvedSelectedId !== visibleProviderPanelId;
   return (
     <div className="min-w-0">
-      <ProviderPanelHeader
-        icon={KeyRound}
-        title={panelLabel}
-        description={t("providerpanels.apiKeyDesc", {
-          defaultValue: "Your provider API key and model routing.",
-        })}
-      >
+      <ProviderPanelHeader icon={KeyRound} title={panelLabel}>
         {showUseButton ? (
           <SettingsActionButton
             agentId={`apikey-use-${visibleProviderPanelId}`}

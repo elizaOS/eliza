@@ -27,13 +27,7 @@ import {
   CloudSourceModeToggle,
 } from "../cloud/CloudSourceControls";
 import { Button } from "../ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Input } from "../ui/input";
 import { SaveFooter } from "../ui/save-footer";
 import { SettingsInput } from "../ui/settings-controls";
@@ -264,14 +258,9 @@ export function DesktopTalkModePanel() {
     <Card className="border-border/60 bg-card/92 ">
       <CardHeader className="px-4 py-4 pb-0">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle className="text-sm">
-              {t("voiceconfigview.DesktopTalkMode")}
-            </CardTitle>
-            <CardDescription className="mt-1 text-xs-tight leading-5">
-              {t("voiceconfigview.TalkModeDescription")}
-            </CardDescription>
-          </div>
+          <CardTitle className="text-sm">
+            {t("voiceconfigview.DesktopTalkMode")}
+          </CardTitle>
           <Button
             ref={refreshRef}
             variant="outline"
@@ -305,33 +294,27 @@ export function DesktopTalkModePanel() {
           </div>
         )}
 
-        <div className="grid gap-2 sm:grid-cols-3">
-          <Card className="border-border/50 bg-bg-hover/60 shadow-none">
-            <CardContent className="px-2.5 py-2 text-xs-tight">
-              <div className="text-xs text-muted">
-                {t("voiceconfigview.State")}
-              </div>
-              <div className="font-semibold text-txt">{panelState.state}</div>
-            </CardContent>
-          </Card>
-          <Card className="border-border/50 bg-bg-hover/60 shadow-none">
-            <CardContent className="px-2.5 py-2 text-xs-tight">
-              <div className="text-xs text-muted">{t("common.enabled")}</div>
-              <div className="font-semibold text-txt">
-                {panelState.enabled ? t("common.yes") : t("common.no")}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-border/50 bg-bg-hover/60 shadow-none">
-            <CardContent className="px-2.5 py-2 text-xs-tight">
-              <div className="text-xs text-muted">
-                {t("voiceconfigview.Speaking")}
-              </div>
-              <div className="font-semibold text-txt">
-                {panelState.speaking ? t("common.yes") : t("common.no")}
-              </div>
-            </CardContent>
-          </Card>
+        <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs-tight">
+          <div>
+            <div className="text-xs text-muted">
+              {t("voiceconfigview.State")}
+            </div>
+            <div className="font-semibold text-txt">{panelState.state}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted">{t("common.enabled")}</div>
+            <div className="font-semibold text-txt">
+              {panelState.enabled ? t("common.yes") : t("common.no")}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted">
+              {t("voiceconfigview.Speaking")}
+            </div>
+            <div className="font-semibold text-txt">
+              {panelState.speaking ? t("common.yes") : t("common.no")}
+            </div>
+          </div>
         </div>
 
         <Input
@@ -749,9 +732,6 @@ function WakeWordSection({
             {...addTriggerAgentProps}
           />
         </div>
-        <div className="text-xs text-muted">
-          {t("voiceconfigview.PressEnterOrComma")}
-        </div>
       </div>
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
@@ -780,12 +760,6 @@ function WakeWordSection({
           }
           {...gapAgentProps}
         />
-        <div className="text-xs text-muted">
-          {t("voiceconfigview.PostTriggerGapHint", {
-            defaultValue:
-              "Quiet time after the wake word before listening resumes.",
-          })}
-        </div>
       </div>
       <div className="flex flex-col gap-1.5">
         <span className="text-xs font-semibold">
@@ -897,9 +871,9 @@ function AsrAdvancedSection({
   }, [currentAsrProvider]);
 
   return (
-    <div className="rounded-sm border border-border/60 bg-card/92 p-4 flex flex-col gap-3">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
-        <span className="text-xs font-semibold text-muted">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted/70">
           {t("voiceconfigview.AsrProvider", {
             defaultValue: "Speech-to-text",
           })}
@@ -924,19 +898,19 @@ function AsrAdvancedSection({
         ))}
       </div>
       {currentAsrProvider === "local-inference" && localStatusBusy && (
-        <div className="rounded-sm border border-warn/35 bg-warn/10 px-3 py-2 text-xs leading-5 text-warn">
+        <p className="text-xs leading-5 text-warn">
           {t("voiceconfigview.AsrDownloading", {
             defaultValue: "Downloading local model — using cloud until ready.",
           })}
-        </div>
+        </p>
       )}
       {currentAsrProvider === "openai" && (
-        <div className="rounded-sm border border-border/40 bg-bg-hover/60 px-3 py-2 text-xs leading-5 text-muted">
+        <p className="text-xs leading-5 text-muted">
           {t("voiceconfigview.AsrUsesOpenAiKey", {
             defaultValue:
               "Uses your OpenAI API key from the Providers section.",
           })}
-        </div>
+        </p>
       )}
     </div>
   );
@@ -1376,16 +1350,16 @@ export function VoiceConfigView() {
       )}
       {currentProvider === "edge" && (
         <SettingsGroup bare>
-          <div className="rounded-lg border border-border bg-card px-4 py-3 text-xs leading-5 text-muted">
+          <p className="py-1 text-xs leading-5 text-muted">
             {t("voiceconfigview.EdgeTTSUsesMicros")}
-          </div>
+          </p>
         </SettingsGroup>
       )}
       {currentProvider === "robot-voice" && (
         <SettingsGroup bare>
-          <div className="rounded-lg border border-border bg-card px-4 py-3 text-xs leading-5 text-muted">
+          <p className="py-1 text-xs leading-5 text-muted">
             {t("voiceconfigview.SimpleVoiceUsesYo")}
-          </div>
+          </p>
         </SettingsGroup>
       )}
 
@@ -1393,10 +1367,6 @@ export function VoiceConfigView() {
         <SettingsRow
           label={t("voiceconfigview.advancedSettings", {
             defaultValue: "Advanced settings",
-          })}
-          description={t("voiceconfigview.advancedSettingsHint", {
-            defaultValue:
-              "Show ASR (speech-to-text) provider picker and per-provider overrides.",
           })}
           control={<AdvancedToggle label="Advanced" />}
         />

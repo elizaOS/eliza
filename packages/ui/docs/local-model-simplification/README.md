@@ -64,6 +64,22 @@ The user downloads **one thing** ("Eliza-1") and gets all six. There is no
 "now also install a TTS model" step — Kokoro ships *inside* the eliza-1 local
 bundle for 2B/4B.
 
+## Status: implemented
+
+- **First-run onboarding already does the simple choice** — a full-screen "How
+  should Eliza run? · Eliza Cloud (recommended) · This device (private) ·
+  Advanced", then "Where should it think? · Cloud inference · On-device". No model
+  names. This is the consumer's first and main decision.
+- **Settings → Models & Providers is now three purpose-grouped sections**
+  (`ProviderSwitcher.tsx`), verified on desktop + mobile:
+  1. **Intelligence** — the agent's brain: `Eliza Cloud` + `Local provider` chips
+     and the main-reasoning model line.
+  2. **Code orchestrator & workflows** — the subscription chips (Claude / ChatGPT /
+     Gemini / z.ai / Kimi / DeepSeek), framed as powering coding + workflows,
+     explicitly separate from the main intelligence.
+  3. **Advanced** (collapsed) — custom API-key providers + small/large model
+     overrides + per-slot routing.
+
 ## The settings surface
 
 Replace the routing grid with a single **Intelligence** section:

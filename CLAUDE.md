@@ -171,7 +171,34 @@ dispatch (use the typed `DispatchResult`), or an identity-merge that bypasses
 the merge engine. Architecture, frozen contracts, and contribution paths live in
 `plugins/plugin-personal-assistant/README.md` and `plugins/plugin-health/README.md`.
 
+## Definition of Done — sync, PR, and human-verifiable evidence
+
+Every fix/feature ships through a **PR against `develop`**, and a reviewer must
+be able to confirm it works **without reading the code**. Full standard:
+`PR_EVIDENCE.md`. The non-negotiables:
+
+- **Always PR; never push feature/fix work straight to `develop`.** Branch as
+  `feat|fix|docs|chore/<slug>`; open an issue first for anything non-trivial.
+- **Always sync before opening or updating a PR.** `git fetch origin &&
+  git rebase origin/develop`, resolve **every** conflict, `bun install`, then
+  `bun run verify`. A branch that can't fast-forward onto `develop` is not ready.
+- **Attach complete, real evidence** — prove the real thing happened, not a
+  mock of it:
+  - **Real-LLM trajectories** for agent/action/prompt/model changes —
+    `packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`
+    against a **live** model (JSON report + run viewer + native jsonl).
+  - **Backend logs** (structured `[ClassName] …`) and **frontend logs**
+    (console + network) showing the actual code path.
+  - **Before/after full-page screenshots** + a **video walkthrough** of the
+    flow — `bun run test:e2e:record`; for cloud-frontend,
+    `bun run --cwd packages/cloud-frontend audit:cloud`.
+  - **Audio + narrated walkthrough** for voice/transcript/TTS/STT changes.
+  - Artifacts land in `.github/issue-evidence/<issue#>-<slug>.<ext>` (see that
+    dir's `README.md`). Each evidence type is attached **or** explicitly marked
+    N/A with a reason — never left blank. If `develop` moved and changed
+    behavior, **re-capture** evidence; stale proof is worse than none.
+
 ## Contributing
 
 Open an issue before a non-trivial PR. License: MIT (`LICENSE`). Security
-policy: `SECURITY.md`.
+policy: `SECURITY.md`. Shipping standard: `PR_EVIDENCE.md`.

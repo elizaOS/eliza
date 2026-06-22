@@ -49,6 +49,56 @@ export const DECODE_TPS_METRIC = "inference.decode_tps";
  */
 export const MIN_DECODE_TPS_BUDGET = 6;
 
+/**
+ * Minimum decoded-token count a generation must produce before its throughput is
+ * trusted as a routing signal. A one- or two-token reply is dominated by prompt
+ * prefill + sampling fixed costs, so its tok/s is noise — recording it would
+ * smear the p50 the router demotes on. Real turns clear this floor easily.
+ */
+const MIN_TOKENS_FOR_TPS_SAMPLE = 4;
+
+/**
+ * Approximate decoded-token count for a generated string when an exact tokenizer
+ * count is not reachable from the call site. English averages ~4 characters per
+ * token; this is deliberately coarse — it only feeds a p50 the router compares
+ * against {@link MIN_DECODE_TPS_BUDGET}, never a billing or context-window count.
+ */
+export function estimateDecodeTokens(text: string): number {
+	return Math.ceil(text.length / 4);
+}
+
+/**
+ * Record one on-device decode-throughput observation into the telemetry ring the
+ * `auto` router reads via {@link DECODE_TPS_METRIC}. This is the producer that
+ * activates the dormant TPS demotion signal: backends call it after a real local
+ * generation completes with a known decoded-token count and wall-clock decode
+ * span.
+ *
+ * Drops the sample (records nothing) when it would be noise rather than signal:
+ * an empty/aborted generation, a sub-{@link MIN_TOKENS_FOR_TPS_SAMPLE} reply, or
+ * a non-positive elapsed time (a clock that did not advance). Never throws —
+ * `inferenceTelemetry.record` already guards the call site.
+ */
+export function recordDecodeThroughput(sample: {
+	tokens: number;
+	elapsedMs: number;
+}): void {
+	const { tokens, elapsedMs } = sample;
+	if (
+		!Number.isFinite(tokens) ||
+		tokens < MIN_TOKENS_FOR_TPS_SAMPLE ||
+		!Number.isFinite(elapsedMs) ||
+		elapsedMs <= 0
+	) {
+		return;
+	}
+	const tokPerSec = tokens / (elapsedMs / 1000);
+	if (!Number.isFinite(tokPerSec) || tokPerSec <= 0) {
+		return;
+	}
+	inferenceTelemetry.record(DECODE_TPS_METRIC, tokPerSec);
+}
+
 /** A point-in-time snapshot of the live device signals. */
 export interface LiveDeviceSignals {
 	/** Current OS thermal pressure, or `null` when no device reported it. */

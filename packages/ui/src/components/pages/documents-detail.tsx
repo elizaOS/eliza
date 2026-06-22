@@ -4,6 +4,7 @@ import {
   CalendarDays,
   FileText,
   Globe2,
+  Headphones,
   Lock,
   Pencil,
   Save,
@@ -16,6 +17,7 @@ import type {
   DocumentDetail,
   DocumentFragmentRecord,
 } from "../../api/client-types-chat";
+import { navigateBrowserPath } from "../../app-navigate-view";
 import { useAppSelector } from "../../state";
 import { formatByteSize } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
@@ -252,6 +254,20 @@ export function DocumentViewer({
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
+                {doc.transcriptId ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="document-open-transcript"
+                    onClick={() => navigateBrowserPath("/apps/transcripts")}
+                  >
+                    <Headphones className="mr-1.5 h-4 w-4" aria-hidden />
+                    {t("documentsview.ViewOriginalTranscript", {
+                      defaultValue: "View original transcript",
+                    })}
+                  </Button>
+                ) : null}
                 {doc.canEditText ? (
                   <>
                     <Button

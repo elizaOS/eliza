@@ -26,11 +26,6 @@ const NAMESPACE_LABELS: Record<RecognisedPermissionNamespace, string> = {
   net: "Network",
 };
 
-const NAMESPACE_DESCRIPTIONS: Record<RecognisedPermissionNamespace, string> = {
-  fs: "Read/write files the app's manifest declares.",
-  net: "Reach the hosts the app's manifest declares.",
-};
-
 type AsyncStatus =
   | { state: "idle" }
   | { state: "loading"; message?: string }
@@ -216,17 +211,13 @@ export function AppPermissionsSection() {
       </div>
 
       {listStatus.state === "error" && (
-        <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
-          {listStatus.message}
-        </div>
+        <p className="text-xs text-danger">{listStatus.message}</p>
       )}
 
       {listStatus.state !== "loading" && grantableRows.length === 0 && (
-        <SettingsGroup bare>
-          <div className="rounded-lg border border-border bg-card px-4 py-6 text-center text-xs text-muted">
-            No apps declare permissions yet.
-          </div>
-        </SettingsGroup>
+        <p className="py-6 text-center text-xs text-muted">
+          No apps declare permissions yet.
+        </p>
       )}
 
       {grantableRows.map((row) => (
@@ -269,7 +260,7 @@ export function AppPermissionsSection() {
       ))}
 
       {noManifestRows.length > 0 && (
-        <details className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-muted">
+        <details className="text-xs text-muted">
           <summary className="cursor-pointer">
             {noManifestRows.length} registered app
             {noManifestRows.length === 1 ? "" : "s"} without a permissions
@@ -314,7 +305,6 @@ function AppPermissionToggle({
     role: "toggle",
     label,
     group: "app-permissions",
-    description: NAMESPACE_DESCRIPTIONS[ns],
     status: granted ? "on" : "off",
     getValue: () => granted,
     onActivate: disabled ? undefined : () => onToggle(slug, ns, !granted),
@@ -324,14 +314,11 @@ function AppPermissionToggle({
       htmlFor={toggleId}
       label={NAMESPACE_LABELS[ns]}
       description={
-        <>
-          {NAMESPACE_DESCRIPTIONS[ns]}
-          {summary ? (
-            <span className="mt-1 block truncate font-mono text-xs text-txt">
-              {summary}
-            </span>
-          ) : null}
-        </>
+        summary ? (
+          <span className="block truncate font-mono text-xs text-txt">
+            {summary}
+          </span>
+        ) : undefined
       }
       control={
         <Switch

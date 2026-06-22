@@ -480,17 +480,14 @@ export function CloudAgentsSection() {
   if (!elizaCloudConnected && !hasToken) {
     return (
       <p className="text-sm text-txt-muted">
-        Sign in to Eliza Cloud (AI Model settings) to manage your cloud agents.
+        Sign in to Eliza Cloud to manage your cloud agents.
       </p>
     );
   }
 
   return (
     <SettingsStack>
-      <SettingsGroup
-        title="Your cloud agents"
-        description="Switch the active agent, shut one down (or start it back up), rename, or remove one you no longer need."
-      >
+      <SettingsGroup title="Your cloud agents">
         {loading ? (
           <div
             className="flex items-center gap-2 px-4 py-3 text-sm text-txt-muted"
@@ -702,10 +699,7 @@ export function CloudAgentsSection() {
         />
       </SettingsGroup>
 
-      <SettingsGroup
-        title="Create a new agent"
-        description="Spin up a fresh cloud agent and switch to it."
-      >
+      <SettingsGroup title="Create a new agent">
         <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center">
           <Input
             value={newName}

@@ -59,6 +59,21 @@ export interface DeviceTierResult {
   cpuOnly: boolean;
   /** True on iOS/Android (clamped to OKAY at best). */
   mobile: boolean;
+  /**
+   * Authoritative fields populated when this came from the server
+   * `/api/local-inference/device-tier` endpoint (the same assessment the router's
+   * AUTO policy uses). Absent when falling back to the coarse client estimate.
+   */
+  recommendedMode?: "local" | "cloud-with-local-voice" | "cloud-only";
+  canRunLocalLm?: boolean;
+  canRunLocalVoice?: boolean;
+  /** The biggest eliza-1 tier (+128k QJL context) that fits, or null → Cloud. */
+  recommendedFit?: {
+    tierId: string;
+    contextLength: number;
+    kvQuant: string;
+    contextDownscaled: boolean;
+  } | null;
 }
 
 /**
@@ -182,6 +197,43 @@ ElizaClient.prototype.getLocalInferenceHardware = async function (
 ElizaClient.prototype.getLocalInferenceDeviceTier = async function (
   this: ElizaClient,
 ) {
+  // Prefer the authoritative server assessment (same one the router's AUTO policy
+  // consumes) so the UI's tier/recommendedMode/recommendedFit cannot disagree with
+  // the actual routing decision. Fall back to the coarse client estimate only when
+  // the endpoint is unavailable (older agent, transient error).
+  try {
+    const res = (await this.fetch("/api/local-inference/device-tier")) as {
+      tier?: {
+        tier?: DeviceTier;
+        reasons?: string[];
+        canRunLocalLm?: boolean;
+        canRunLocalVoice?: boolean;
+        recommendedMode?: DeviceTierResult["recommendedMode"];
+        recommendedFit?: DeviceTierResult["recommendedFit"];
+        numericContext?: {
+          vramGb?: number | null;
+          appleSilicon?: boolean;
+          mobile?: boolean;
+        };
+      };
+    };
+    const a = res?.tier;
+    if (a && typeof a.tier === "string") {
+      const nc = a.numericContext ?? {};
+      return {
+        tier: a.tier,
+        reason: a.reasons?.[0] ?? "",
+        cpuOnly: !nc.vramGb && !nc.appleSilicon,
+        mobile: Boolean(nc.mobile),
+        recommendedMode: a.recommendedMode,
+        canRunLocalLm: a.canRunLocalLm,
+        canRunLocalVoice: a.canRunLocalVoice,
+        recommendedFit: a.recommendedFit ?? null,
+      };
+    }
+  } catch {
+    // fall through to the client-side approximation
+  }
   const probe = await this.getLocalInferenceHardware();
   return classifyDeviceTierFromProbe(probe);
 };

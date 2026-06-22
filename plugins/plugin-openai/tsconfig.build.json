@@ -27,6 +27,7 @@
     "dist",
     "__tests__",
     "**/*.test.ts",
-    "build.ts"
+    "build.ts",
+    "vitest.harness.config.ts"
   ]
 }

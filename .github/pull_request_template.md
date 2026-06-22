@@ -4,6 +4,21 @@
 
 <!-- LINK TO ISSUE OR TICKET -->
 
+<!--
+DEFINITION OF DONE — full standard: PR_EVIDENCE.md
+- This PR targets `develop` and is rebased/merged onto the LATEST origin/develop
+  with ZERO conflicts (`git fetch origin && git rebase origin/develop`, then
+  `bun install && bun run verify`).
+- A reviewer can confirm this works WITHOUT reading the code, from the Evidence below.
+-->
+
+# Sync with develop
+
+<!--
+- [ ] Rebased/merged onto the latest origin/develop; zero conflicts
+- [ ] `bun run verify` passes post-sync; relevant tests pass
+-->
+
 <!-- This risks section must be filled out before the final review and merge. -->
 
 # Risks
@@ -56,11 +71,47 @@ None: Automated tests are acceptable.
   - verify [result]
 -->
 
-<!-- If there is a UI change, please include before and after screenshots or videos. This will speed up PRs being merged. It is extra nice to annotate screenshots with arrows or boxes pointing out the differences. -->
+# Evidence (prove the real thing happened — see PR_EVIDENCE.md)
+
 <!--
-## Screenshots
+Attach each that applies, or write "N/A — <reason>". Don't leave blank.
+Drop files in .github/issue-evidence/<issue#>-<slug>.<ext> and reference them here.
+-->
+
+## Real LLM-call trajectory
+
+<!--
+For agent/action/provider/prompt/model changes — a REAL (live model) run, not the
+deterministic proxy. Produce with:
+  packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out.json>
+Link the JSON report / run viewer / native jsonl, or write N/A — <reason>.
+-->
+
+## Backend + frontend logs
+
+<!--
+Backend: structured logger lines ([ClassName] …) showing the code path firing end to end.
+Frontend: console + network trace showing the request/response and state change.
+Paste here and file under .github/issue-evidence/, or write N/A — <reason>.
+-->
+
+## Screenshots (before / after) + video walkthrough
+
+<!--
+Full-page before AND after for any UI change. A video click-through of the flow:
+  bun run test:e2e:record                 (general E2E recordings)
+  bun run --cwd packages/cloud-frontend audit:cloud   (cloud-frontend — REQUIRED)
 ### Before
 ### After
+### Walkthrough video
+Or write N/A — <reason>.
+-->
+
+## Audio / voice walkthrough
+
+<!--
+For voice / transcript / TTS / STT / omnivoice changes — captured audio of the
+real round-trip plus a narrated walkthrough. Or write N/A — <reason>.
 -->
 
 <!-- If there is anything about the deployment, please make a note. -->

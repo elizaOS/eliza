@@ -36,6 +36,11 @@ export interface PresentedDocument {
   canDelete: boolean;
   deleteabilityReason?: string;
   content?: { text?: string };
+  /** When this document is the searchable mirror of a voice Transcript, the
+   *  original transcript record id (so the Knowledge view can link back to it)
+   *  and its audio URL. Populated from the mirror metadata (#8789). */
+  transcriptId?: string;
+  transcriptAudioUrl?: string;
 }
 
 const BINARY_CONTENT_TYPE_PREFIXES = [
@@ -400,5 +405,11 @@ export function presentDocument(
     canDelete: deleteability.canDelete,
     deleteabilityReason: deleteability.reason,
     ...(previewText ? { content: { text: previewText } } : {}),
+    ...(asString(metadata?.transcriptId)
+      ? { transcriptId: asString(metadata?.transcriptId) }
+      : {}),
+    ...(asString(metadata?.audioUrl)
+      ? { transcriptAudioUrl: asString(metadata?.audioUrl) }
+      : {}),
   };
 }

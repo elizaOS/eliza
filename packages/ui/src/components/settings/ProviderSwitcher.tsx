@@ -4,7 +4,6 @@ import {
   getDirectAccountProviderForFirstRunProvider,
   isSubscriptionProviderSelectionId,
   SUBSCRIPTION_PROVIDER_SELECTIONS,
-  type SubscriptionProviderSelectionId,
 } from "../../providers";
 import { useAppSelectorShallow } from "../../state";
 import { ProvidersList } from "../local-inference/ProvidersList";
@@ -17,7 +16,7 @@ import {
   SubscriptionPanel,
 } from "./ProviderPanels";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
-import { SettingsGroup, SettingsStack } from "./settings-layout";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { useCloudModelConfig } from "./useCloudModelConfig";
 import { useProviderBootstrap } from "./useProviderBootstrap";
 import {
@@ -42,25 +41,6 @@ interface ProviderSwitcherProps {
     pluginId: string,
     values: Record<string, unknown>,
   ) => void | Promise<void>;
-}
-
-function getSubscriptionProviderDescription(
-  providerId: SubscriptionProviderSelectionId,
-): string {
-  switch (providerId) {
-    case "anthropic-subscription":
-      return "Claude Code and task-agent access.";
-    case "openai-subscription":
-      return "Codex-backed coding access.";
-    case "gemini-subscription":
-      return "Gemini CLI coding access.";
-    case "zai-coding-subscription":
-      return "z.ai Coding Plan endpoint.";
-    case "kimi-coding-subscription":
-      return "Kimi Code endpoint.";
-    case "deepseek-coding-subscription":
-      return "Unavailable without a first-party coding surface.";
-  }
 }
 
 export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
@@ -184,14 +164,39 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     [allAiProviders, selection],
   );
 
+  // Split the providers by purpose so the page reads as two simple "just works"
+  // decisions — the agent's brain (Local/Cloud) up top, the coding/workflow
+  // subscriptions (Claude/Codex/z.ai) in their own group — with custom keys and
+  // per-slot overrides tucked into Advanced.
+  const intelligenceEntries = providerEntries.filter(
+    (entry) => entry.category === "cloud" || entry.category === "local",
+  );
+  const subscriptionEntries = providerEntries.filter(
+    (entry) => entry.category === "subscription",
+  );
+  const keyEntries = providerEntries.filter(
+    (entry) => entry.category === "key",
+  );
+
+  const renderChip = (entry: ProviderListEntry) => (
+    <ProviderCard
+      key={entry.id}
+      id={entry.id}
+      icon={entry.icon}
+      label={entry.label}
+      category={entry.category}
+      status={entry.status}
+      current={entry.current}
+      selected={visibleProviderPanelId === entry.id}
+      onSelect={selection.handleProviderPanelSelect}
+    />
+  );
+
   return (
     <SettingsStack>
       <SettingsGroup
-        title={t("providerswitcher.providerGroupTitle", {
-          defaultValue: "Provider",
-        })}
-        description={t("providerswitcher.providerGroupDesc", {
-          defaultValue: "Where this agent's intelligence comes from.",
+        title={t("providerswitcher.intelligenceGroupTitle", {
+          defaultValue: "Intelligence",
         })}
         bare
       >
@@ -199,28 +204,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           <ActiveProviderSummary entry={activeEntry} t={t} />
         ) : null}
         <div className="flex flex-wrap gap-2">
-          {providerEntries.map((entry) => (
-            <ProviderCard
-              key={entry.id}
-              id={entry.id}
-              icon={entry.icon}
-              label={entry.label}
-              category={entry.category}
-              status={entry.status}
-              current={entry.current}
-              selected={visibleProviderPanelId === entry.id}
-              onSelect={selection.handleProviderPanelSelect}
-            />
-          ))}
+          {intelligenceEntries.map(renderChip)}
         </div>
-      </SettingsGroup>
 
-      <SettingsGroup
-        title={t("providerswitcher.configGroupTitle", {
-          defaultValue: "Configuration",
-        })}
-        className="min-w-0"
-      >
         {visibleProviderPanelId === "__local__" ? (
           <LocalProviderPanel
             cloudCallsDisabled={selection.cloudCallsDisabled}
@@ -245,43 +231,37 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             onModelFieldChange={cloudModel.handleModelFieldChange}
           />
         ) : null}
-
-        {activeSubscriptionSelection ? (
-          <SubscriptionPanel
-            selection={activeSubscriptionSelection}
-            description={getSubscriptionProviderDescription(
-              activeSubscriptionSelection.id,
-            )}
-            visibleProviderPanelId={visibleProviderPanelId}
-            resolvedSelectedId={resolvedSelectedId}
-            cloudCallsDisabled={selection.cloudCallsDisabled}
-            subscriptionStatus={bootstrap.subscriptionStatus}
-            anthropicConnected={bootstrap.anthropicConnected}
-            setAnthropicConnected={bootstrap.setAnthropicConnected}
-            anthropicCliDetected={bootstrap.anthropicCliDetected}
-            openaiConnected={bootstrap.openaiConnected}
-            setOpenaiConnected={bootstrap.setOpenaiConnected}
-            onSelectSubscription={selection.handleSelectSubscription}
-            loadSubscriptionStatus={bootstrap.loadSubscriptionStatus}
-          />
-        ) : null}
-
-        {selectedPanelProvider ? (
-          <ApiKeyPanel
-            selectedProvider={selectedPanelProvider}
-            panelLabel={apiKeyPanelLabel}
-            visibleProviderPanelId={visibleProviderPanelId}
-            resolvedSelectedId={resolvedSelectedId}
-            cloudCallsDisabled={selection.cloudCallsDisabled}
-            selectedPanelAccountProvider={selectedPanelAccountProvider}
-            onSwitchProvider={onSwitchProvider}
-            pluginSaving={pluginSaving}
-            pluginSaveSuccess={pluginSaveSuccess}
-            handlePluginConfigSave={handlePluginConfigSave}
-            loadPlugins={loadPlugins}
-          />
-        ) : null}
       </SettingsGroup>
+
+      {subscriptionEntries.length > 0 ? (
+        <SettingsGroup
+          title={t("providerswitcher.orchestratorGroupTitle", {
+            defaultValue: "Code orchestrator & workflows",
+          })}
+          bare
+        >
+          <div className="flex flex-wrap gap-2">
+            {subscriptionEntries.map(renderChip)}
+          </div>
+
+          {activeSubscriptionSelection ? (
+            <SubscriptionPanel
+              selection={activeSubscriptionSelection}
+              visibleProviderPanelId={visibleProviderPanelId}
+              resolvedSelectedId={resolvedSelectedId}
+              cloudCallsDisabled={selection.cloudCallsDisabled}
+              subscriptionStatus={bootstrap.subscriptionStatus}
+              anthropicConnected={bootstrap.anthropicConnected}
+              setAnthropicConnected={bootstrap.setAnthropicConnected}
+              anthropicCliDetected={bootstrap.anthropicCliDetected}
+              openaiConnected={bootstrap.openaiConnected}
+              setOpenaiConnected={bootstrap.setOpenaiConnected}
+              onSelectSubscription={selection.handleSelectSubscription}
+              loadSubscriptionStatus={bootstrap.loadSubscriptionStatus}
+            />
+          ) : null}
+        </SettingsGroup>
+      ) : null}
 
       <SettingsGroup
         title={t("providerswitcher.advancedGroupTitle", {
@@ -290,12 +270,34 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         bare
       >
         <AdvancedSettingsDisclosure
-          title={t("providerswitcher.modelSettings", {
-            defaultValue: "Model routing & devices",
+          title={t("providerswitcher.advancedDisclosureTitle", {
+            defaultValue: "Custom providers & model overrides",
           })}
           lazy
         >
           <div className="flex flex-col gap-3">
+            {keyEntries.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {keyEntries.map(renderChip)}
+              </div>
+            ) : null}
+
+            {selectedPanelProvider ? (
+              <ApiKeyPanel
+                selectedProvider={selectedPanelProvider}
+                panelLabel={apiKeyPanelLabel}
+                visibleProviderPanelId={visibleProviderPanelId}
+                resolvedSelectedId={resolvedSelectedId}
+                cloudCallsDisabled={selection.cloudCallsDisabled}
+                selectedPanelAccountProvider={selectedPanelAccountProvider}
+                onSwitchProvider={onSwitchProvider}
+                pluginSaving={pluginSaving}
+                pluginSaveSuccess={pluginSaveSuccess}
+                handlePluginConfigSave={handlePluginConfigSave}
+                loadPlugins={loadPlugins}
+              />
+            ) : null}
+
             <ProvidersList />
             <RoutingMatrix />
           </div>
@@ -307,8 +309,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
 /**
  * The provider currently routing this agent's intelligence, surfaced as a single
- * anchored summary above the chip cloud so "what's powering me right now" is
- * answered without scanning every chip for the filled/active state.
+ * anchored row above the chip cloud so "what's powering me right now" is answered
+ * without scanning every chip for the filled/active state.
  */
 function ActiveProviderSummary({
   entry,
@@ -319,19 +321,18 @@ function ActiveProviderSummary({
 }) {
   const Icon = entry.icon;
   return (
-    <div className="mb-3 flex items-center gap-3 rounded-lg border border-accent/30 bg-accent/8 px-3 py-2.5">
-      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-accent/12 text-accent ring-1 ring-accent/20">
-        <Icon className="h-[18px] w-[18px]" aria-hidden />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-accent">
-          {t("providerswitcher.activeProvider", { defaultValue: "Active" })}
-        </p>
-        <p className="truncate text-sm font-medium leading-5 text-txt-strong">
+    <SettingsRow
+      label={
+        <span className="flex items-center gap-2">
+          <Icon className="h-[18px] w-[18px] shrink-0 text-accent" aria-hidden />
           {entry.label}
-        </p>
-      </div>
-      <span className="shrink-0 text-xs text-muted">{entry.status.label}</span>
-    </div>
+        </span>
+      }
+      control={
+        <span className="text-xs text-accent">
+          {t("providerswitcher.activeProvider", { defaultValue: "Active" })}
+        </span>
+      }
+    />
   );
 }

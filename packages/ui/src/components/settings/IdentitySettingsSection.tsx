@@ -477,11 +477,11 @@ export function IdentitySettingsSection() {
     <SettingsStack>
       {showCharacterBootstrapping ? (
         <SettingsGroup bare>
-          <div className="rounded-lg border border-border bg-card px-4 py-6 text-center text-xs text-muted">
+          <p className="py-6 text-center text-xs text-muted">
             {t("settings.identity.loading", {
               defaultValue: "Loading identity settings…",
             })}
-          </div>
+          </p>
         </SettingsGroup>
       ) : null}
 

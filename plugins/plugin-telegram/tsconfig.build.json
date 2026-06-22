@@ -8,9 +8,13 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/**/*.ts"
+  ],
   "exclude": [
     "node_modules",
     "dist",
@@ -18,6 +22,7 @@
     "src/**/*.test.tsx",
     "**/__tests__/**",
     "**/*.test.ts",
-    "**/*.test.tsx"
+    "**/*.test.tsx",
+    "vitest.harness.config.ts"
   ]
 }

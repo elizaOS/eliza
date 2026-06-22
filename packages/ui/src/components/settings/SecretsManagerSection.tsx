@@ -10,7 +10,6 @@ import { getShortcutLabel } from "../../hooks/useSecretsManagerShortcut";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -105,11 +104,7 @@ export function SecretsManagerSection() {
 
   return (
     <SettingsStack>
-      <SettingsGroup
-        title="Vault"
-        description="API keys, tokens, and saved logins."
-        footer={`Open the full vault with ${getShortcutLabel()}.`}
-      >
+      <SettingsGroup title="Vault">
         <SettingsRow
           icon={KeyRound}
           label={
@@ -129,7 +124,6 @@ export function SecretsManagerSection() {
               ) : null}
             </span>
           }
-          description="Primary secrets backend for this device."
           control={
             <SettingsActionButton
               agentId="secrets-manage"
@@ -494,10 +488,6 @@ function VaultBody({
             {getShortcutLabel()}
           </span>
         </DialogTitle>
-        <DialogDescription>
-          Backends, secrets, logins, and routing. Local storage is always
-          available.
-        </DialogDescription>
       </DialogHeader>
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-2">
@@ -605,10 +595,7 @@ function VaultBody({
         )}
       </div>
 
-      <DialogFooter className="flex shrink-0 flex-row items-center justify-between gap-3 border-t border-border/30 pt-3 sm:justify-between">
-        <p className="text-xs text-muted sm:max-w-sm">
-          Non-sensitive config always stays in-house.
-        </p>
+      <DialogFooter className="flex shrink-0 flex-row items-center justify-end gap-3 pt-3">
         <div className="flex shrink-0 items-center gap-2">
           <SettingsActionButton
             agentId="secrets-close"

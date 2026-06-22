@@ -929,6 +929,7 @@ export function ContinuousChatOverlay({
     toggleHandsFree,
     transcriptionMode,
     toggleTranscriptionMode,
+    stopTranscriptionAndMic,
     setDictationSink,
     setTranscriptSessionSink,
     setComposerHasDraft,
@@ -1360,11 +1361,13 @@ export function ContinuousChatOverlay({
     // Voice can't be turned ON while a reply is in flight (it's gated until the
     // turn finishes), but an active hands-free session can always be turned OFF.
     if (responding && !handsFree) return;
-    // While transcribing, the mic is the master voice control: a tap ENDS the
-    // transcription (which drops the transcript into the composer as an
-    // attachment) instead of starting a second, conflicting capture.
+    // While transcribing, the mic is the master voice control: a tap turns the
+    // mic OFF, which also ends transcription (mic = parent — turning off the mic
+    // turns off transcript). This is distinct from the transcript button, which
+    // turns transcript off but LEAVES THE MIC ON. The finished transcript still
+    // drops into the composer as an attachment.
     if (transcriptionMode) {
-      toggleTranscriptionMode();
+      stopTranscriptionAndMic();
       return;
     }
     // Quick tap = hands-free conversation: the agent speaks its replies back and
@@ -1375,7 +1378,7 @@ export function ContinuousChatOverlay({
     handsFree,
     toggleHandsFree,
     transcriptionMode,
-    toggleTranscriptionMode,
+    stopTranscriptionAndMic,
   ]);
 
   const hasThread = visibleMessages.length > 0;

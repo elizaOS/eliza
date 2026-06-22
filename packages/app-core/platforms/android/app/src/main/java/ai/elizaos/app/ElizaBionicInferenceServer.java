@@ -96,6 +96,13 @@ final class ElizaBionicInferenceServer {
         // only ~0.4 GB at 8k ctx for the 2B. Re-enable per device once a
         // head_dim=256 QJL/TBQ path is verified.
         setEnvIfAbsent("ELIZA_BIONIC_KV_QUANT", "0");
+        // Arm same-file MTP (NextN speculative head embedded in the 2B/4B/9B
+        // text GGUF — no separate drafter). arm_bionic_text_cfg() reads
+        // ELIZA_BIONIC_MTP; the resident stream-open passes no bundle dir so its
+        // auto-detect stays off, so force it on here. generateResident() handles
+        // the resulting MTP stream (the fused per-turn reset rejects MTP streams,
+        // so it close+reopens instead).
+        setEnvIfAbsent("ELIZA_BIONIC_MTP", "1");
     }
 
     private static void setEnvIfAbsent(String key, String value) {
@@ -270,7 +277,19 @@ final class ElizaBionicInferenceServer {
                 }
             }
             // Drop the previous turn's KV + sampler state for a clean re-prefill.
-            ElizaVoiceNative.nativeLlmStreamReset(residentStream);
+            // The fused nativeLlmStreamReset is non-MTP only and returns a
+            // negative code for a speculative (MTP) stream, so on failure
+            // close + reopen the stream. The resident model/context stay loaded
+            // (only the lightweight stream is recreated), and re-prefill cost is
+            // identical to a reset.
+            if (ElizaVoiceNative.nativeLlmStreamReset(residentStream) != 0) {
+                ElizaVoiceNative.nativeLlmStreamClose(residentStream);
+                residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
+                    residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");
+                if (residentStream == 0L) {
+                    throw new IllegalStateException("resident streamReopen failed");
+                }
+            }
             int[] toks = ElizaVoiceNative.nativeTokenize(residentCtx, prompt, true, true);
             final long t0 = android.os.SystemClock.elapsedRealtime();
             ElizaVoiceNative.nativeLlmStreamPrefill(residentStream, toks);

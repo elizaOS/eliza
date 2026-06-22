@@ -13,13 +13,20 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessageAttachment } from "../../api/client-types-chat";
 
-const { getTranscript, updateTranscript } = vi.hoisted(() => ({
-  getTranscript: vi.fn(),
-  updateTranscript: vi.fn(),
-}));
+const { getTranscript, updateTranscript, deleteTranscript } = vi.hoisted(
+  () => ({
+    getTranscript: vi.fn(),
+    updateTranscript: vi.fn(),
+    deleteTranscript: vi.fn(),
+  }),
+);
 vi.mock("../../api", () => ({
-  client: { getTranscript, updateTranscript },
+  client: { getTranscript, updateTranscript, deleteTranscript },
 }));
+const { navigateBrowserPath } = vi.hoisted(() => ({
+  navigateBrowserPath: vi.fn(),
+}));
+vi.mock("../../app-navigate-view", () => ({ navigateBrowserPath }));
 
 import {
   segmentsFromEditedText,
@@ -81,14 +88,18 @@ describe("TranscriptViewerOverlay", () => {
   beforeEach(() => {
     getTranscript.mockReset();
     updateTranscript.mockReset();
+    deleteTranscript.mockReset();
+    navigateBrowserPath.mockReset();
     getTranscript.mockResolvedValue({
       transcript: {
         id: "00000000-0000-0000-0000-000000000abc",
         title: "My Recording",
         segments: [SEG("hello world")],
+        audioUrl: "/api/media/abc123.wav",
       },
     });
     updateTranscript.mockResolvedValue({ transcript: {} });
+    deleteTranscript.mockResolvedValue({ ok: true });
     Object.assign(navigator, {
       clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
@@ -194,5 +205,78 @@ describe("TranscriptViewerOverlay", () => {
     expect(screen.getByTestId("transcript-text").textContent).not.toContain(
       "eliza:transcript",
     );
+  });
+
+  it("plays the recorded audio and offers save/share-audio when the record has audio", async () => {
+    render(
+      <TranscriptViewerOverlay
+        attachment={transcriptAttachment()}
+        onClose={() => {}}
+      />,
+    );
+    await waitFor(() => screen.getByTestId("transcript-audio"));
+    const audio = screen.getByTestId("transcript-audio") as HTMLAudioElement;
+    expect(audio.getAttribute("src")).toContain("/api/media/abc123.wav");
+    expect(screen.getByTestId("transcript-save-audio")).toBeTruthy();
+    expect(screen.getByTestId("transcript-share-audio")).toBeTruthy();
+  });
+
+  it("hides the audio controls when the transcript has no audio", async () => {
+    getTranscript.mockResolvedValueOnce({
+      transcript: {
+        id: "00000000-0000-0000-0000-000000000abc",
+        title: "No Audio",
+        segments: [SEG("hello world")],
+        audioUrl: null,
+      },
+    });
+    render(
+      <TranscriptViewerOverlay
+        attachment={transcriptAttachment()}
+        onClose={() => {}}
+      />,
+    );
+    await waitFor(() => screen.getByTestId("transcript-text"));
+    expect(screen.queryByTestId("transcript-audio")).toBeNull();
+    expect(screen.queryByTestId("transcript-save-audio")).toBeNull();
+  });
+
+  it("deletes the transcript on a confirmed two-tap, then closes", async () => {
+    const onClose = vi.fn();
+    render(
+      <TranscriptViewerOverlay
+        attachment={transcriptAttachment()}
+        onClose={onClose}
+      />,
+    );
+    await waitFor(() => screen.getByTestId("transcript-delete"));
+    // First tap arms the confirm; does not delete.
+    fireEvent.click(screen.getByTestId("transcript-delete"));
+    expect(deleteTranscript).not.toHaveBeenCalled();
+    expect(screen.getByTestId("transcript-delete").textContent).toMatch(
+      /confirm/i,
+    );
+    // Second tap deletes + closes.
+    fireEvent.click(screen.getByTestId("transcript-delete"));
+    await waitFor(() =>
+      expect(deleteTranscript).toHaveBeenCalledWith(
+        "00000000-0000-0000-0000-000000000abc",
+      ),
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("opens the Transcripts view to listen, and closes", async () => {
+    const onClose = vi.fn();
+    render(
+      <TranscriptViewerOverlay
+        attachment={transcriptAttachment()}
+        onClose={onClose}
+      />,
+    );
+    await waitFor(() => screen.getByTestId("transcript-open-in-transcripts"));
+    fireEvent.click(screen.getByTestId("transcript-open-in-transcripts"));
+    expect(navigateBrowserPath).toHaveBeenCalledWith("/apps/transcripts");
+    expect(onClose).toHaveBeenCalled();
   });
 });

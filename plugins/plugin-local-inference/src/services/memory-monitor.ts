@@ -143,6 +143,12 @@ export interface MemoryPressureAction {
 	evicted: { id: string; role: ResidentModelRole; estimatedMb: number } | null;
 	/** True when pressure was detected but nothing could be evicted. */
 	exhausted: boolean;
+	/**
+	 * True when pressure was detected but eviction was deferred to the registry's
+	 * external eviction owner (the `MemoryArbiter`) so the two loops never
+	 * double-evict on one pressure event (#8809 AC#2).
+	 */
+	delegated?: boolean;
 }
 
 export class MemoryMonitor {
@@ -251,6 +257,12 @@ export class MemoryMonitor {
 			}
 			if (now - this.lastEvictionAtMs < this.config.evictionCooldownMs) {
 				return { sample, evicted: null, exhausted: false };
+			}
+			// Single eviction owner: when the MemoryArbiter owns the registry's
+			// eviction decision, defer to it (its pressure source evicts) rather
+			// than evicting in parallel — no double-eviction on one event.
+			if (this.registry.hasExternalEvictionOwner()) {
+				return { sample, evicted: null, exhausted: false, delegated: true };
 			}
 			const evicted = await this.registry.evictLowestPriorityRole();
 			if (evicted) {

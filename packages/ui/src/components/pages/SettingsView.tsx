@@ -10,7 +10,7 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
 import { useAppSelectorShallow } from "../../state";
-import { PagePanel } from "../composites/page-panel";
+import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import {
   SettingsGroup,
   SettingsRow,
@@ -20,7 +20,7 @@ import {
   getAllSettingsSections,
   readSettingsHashSection,
   replaceSettingsHash,
-  SECTION_HUE_MEDALLION_CLASS,
+  SECTION_TONE_ICON_CLASS,
   SETTINGS_GROUP_LABEL,
   SETTINGS_GROUP_ORDER,
   type SettingsSectionDef,
@@ -131,7 +131,7 @@ function SettingsNavItem({
     return (
       <SettingsRow
         icon={Icon}
-        iconClassName={SECTION_HUE_MEDALLION_CLASS[section.hue]}
+        iconClassName={SECTION_TONE_ICON_CLASS[section.tone]}
         label={label}
         onClick={() => onSelect(section.id)}
         buttonRef={ref}
@@ -150,22 +150,17 @@ function SettingsNavItem({
       aria-current={active ? "page" : undefined}
       className={cn(
         "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
-        active
-          ? "bg-accent/12 font-medium text-accent"
-          : "text-txt hover:bg-surface",
+        active ? "font-medium text-accent" : "text-txt hover:bg-surface",
       )}
       {...agentProps}
     >
-      <span
+      <Icon
         className={cn(
-          "flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
-          active
-            ? "bg-accent/15 text-accent"
-            : SECTION_HUE_MEDALLION_CLASS[section.hue],
+          "h-4 w-4 shrink-0",
+          active ? "text-accent" : SECTION_TONE_ICON_CLASS[section.tone],
         )}
-      >
-        <Icon className="h-4 w-4" aria-hidden />
-      </span>
+        aria-hidden
+      />
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {chip ? <Chip>{chip}</Chip> : null}
     </button>
@@ -210,40 +205,32 @@ function SettingsSectionContent({
   return (
     <div id={section.id}>
       {onBack ? (
-        <div className="mb-2.5">
+        <div className="mb-1.5">
           <SectionBackButton onBack={onBack} />
         </div>
       ) : null}
-      <div className="mb-3 flex items-center gap-3">
-        <div
-          className={cn(
-            "flex h-10 w-10 items-center justify-center rounded-md",
-            SECTION_HUE_MEDALLION_CLASS[section.hue],
-          )}
-        >
-          <Icon className="h-5 w-5" aria-hidden />
-        </div>
-        <h1 className="text-xl font-semibold tracking-tight text-txt-strong">
+      <div className="mb-5 flex items-center gap-2.5">
+        <Icon className="h-5 w-5 shrink-0 text-muted/80" aria-hidden />
+        <h1 className="text-lg font-semibold tracking-tight text-txt-strong">
           {title}
         </h1>
       </div>
-      <PagePanel variant="section">
-        <div className={cn("p-4 sm:p-5", section.bodyClassName)}>
-          <ErrorBoundary
-            key={section.id}
-            fallback={(error, reset) => (
-              <SettingsSectionFallback
-                title={title}
-                error={error}
-                onRetry={reset}
-                t={t}
-              />
-            )}
-          >
-            <Component />
-          </ErrorBoundary>
-        </div>
-      </PagePanel>
+      {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
+      <div className={section.bodyClassName}>
+        <ErrorBoundary
+          key={section.id}
+          fallback={(error, reset) => (
+            <SettingsSectionFallback
+              title={title}
+              error={error}
+              onRetry={reset}
+              t={t}
+            />
+          )}
+        >
+          <Component />
+        </ErrorBoundary>
+      </div>
     </div>
   );
 }
@@ -395,6 +382,7 @@ export function SettingsView({
     walletEnabled: s.walletEnabled,
   }));
   const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const developerMode = useIsDeveloperMode();
   const [activeSection, setActiveSection] = useState<string | null>(
     () => initialSection ?? readSettingsHashSection(),
   );
@@ -402,9 +390,10 @@ export function SettingsView({
   const visibleSections = useMemo(() => {
     return getAllSettingsSections().filter((section) => {
       if (section.id === "wallet-rpc" && walletEnabled === false) return false;
+      if (section.developerOnly && !developerMode) return false;
       return true;
     });
-  }, [walletEnabled]);
+  }, [walletEnabled, developerMode]);
   const visibleSectionIds = useMemo(
     () => new Set(visibleSections.map((section) => section.id)),
     [visibleSections],

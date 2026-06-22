@@ -11,11 +11,12 @@ import { Database, Mic, Shield, Sliders, Timer } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { VoiceProfilesClient } from "../../api/client-voice-profiles";
-import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
+import { AdvancedToggle } from "./AdvancedToggle";
+import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { VoiceProfileSection } from "./VoiceProfileSection";
 import { DEFAULT_VAD_AUTO_STOP_PREFS } from "./VoiceSection.helpers";
@@ -56,7 +57,6 @@ function VadSlider({
   step,
   onChange,
   testId,
-  footer,
 }: {
   agentId: string;
   label: string;
@@ -67,7 +67,6 @@ function VadSlider({
   step: number;
   onChange: (next: number) => void;
   testId: string;
-  footer?: React.ReactNode;
 }) {
   const { ref, agentProps } = useAgentElement<HTMLInputElement>({
     id: agentId,
@@ -103,7 +102,6 @@ function VadSlider({
         aria-label={label}
         {...agentProps}
       />
-      {footer}
     </div>
   );
 }
@@ -154,7 +152,7 @@ export function VoiceSection({
   className,
 }: VoiceSectionProps): React.ReactElement {
   const { t } = useTranslation();
-  const branding = useBranding();
+  const advancedEnabled = useAdvancedSettingsEnabled();
   const updatePrefs = React.useCallback(
     (patch: Partial<VoiceSectionPrefs>) => {
       onPrefsChange({ ...prefs, ...patch });
@@ -228,9 +226,6 @@ export function VoiceSection({
             label={t("voicesection.continuousChat", {
               defaultValue: "Continuous chat",
             })}
-            description={t("voicesection.continuousChatDesc", {
-              defaultValue: "Mic stays open; the agent detects when you stop.",
-            })}
             stacked
           >
             <div data-testid="voice-section-continuous-row">
@@ -245,11 +240,6 @@ export function VoiceSection({
           <SettingsRow
             icon={Sliders}
             label={t("voicesection.wakeWord", { defaultValue: "Wake word" })}
-            description={t("voicesection.wakeWordDesc", {
-              defaultValue:
-                "Listen for a phrase like 'Hey {{appName}}' before opening the mic.",
-              ...appNameInterpolationVars(branding),
-            })}
             control={
               <label
                 className="inline-flex min-h-[44px] cursor-pointer items-center gap-2 text-sm"
@@ -280,70 +270,57 @@ export function VoiceSection({
 
         <SettingsGroup
           title={t("voicesection.endOfTurn", { defaultValue: "End of turn" })}
-          description={t("voicesection.endOfTurnDesc", {
-            defaultValue:
-              "Tune how on-device VAD decides you've finished speaking.",
-          })}
+          action={<AdvancedToggle label="Advanced" />}
           data-testid="voice-section-vad"
         >
-          <SettingsRow
-            icon={Timer}
-            label={t("voicesection.silenceDuration", {
-              defaultValue: "Silence before end of turn",
-            })}
-            stacked
-          >
-            <VadSlider
-              agentId="voice-section-vad-silence"
-              testId="voice-section-vad-silence"
-              label={t("voicesection.silenceDuration", {
-                defaultValue: "Silence before end of turn",
-              })}
-              value={vadAutoStop.silenceMs}
-              valueText={`${(vadAutoStop.silenceMs / 1000).toFixed(1)}s`}
-              min={VAD_SILENCE_MIN_MS}
-              max={VAD_SILENCE_MAX_MS}
-              step={VAD_SILENCE_STEP_MS}
-              onChange={(silenceMs) => updateVadAutoStop({ silenceMs })}
-            />
-          </SettingsRow>
-          <SettingsRow
-            icon={Timer}
-            label={t("voicesection.micSensitivity", {
-              defaultValue: "Speech detection threshold",
-            })}
-            stacked
-          >
-            <VadSlider
-              agentId="voice-section-vad-rms"
-              testId="voice-section-vad-rms"
-              label={t("voicesection.micSensitivity", {
-                defaultValue: "Speech detection threshold",
-              })}
-              value={vadAutoStop.speechRmsThreshold}
-              valueText={vadAutoStop.speechRmsThreshold.toFixed(3)}
-              min={VAD_RMS_MIN}
-              max={VAD_RMS_MAX}
-              step={VAD_RMS_STEP}
-              onChange={(speechRmsThreshold) =>
-                updateVadAutoStop({ speechRmsThreshold })
-              }
-              footer={
-                <span className="mt-1 flex justify-between text-xs text-muted">
-                  <span>
-                    {t("voicesection.thresholdLower", {
-                      defaultValue: "More sensitive",
-                    })}
-                  </span>
-                  <span>
-                    {t("voicesection.thresholdHigher", {
-                      defaultValue: "Less sensitive",
-                    })}
-                  </span>
-                </span>
-              }
-            />
-          </SettingsRow>
+          {advancedEnabled ? (
+            <>
+              <SettingsRow
+                icon={Timer}
+                label={t("voicesection.silenceDuration", {
+                  defaultValue: "Silence before end of turn",
+                })}
+                stacked
+              >
+                <VadSlider
+                  agentId="voice-section-vad-silence"
+                  testId="voice-section-vad-silence"
+                  label={t("voicesection.silenceDuration", {
+                    defaultValue: "Silence before end of turn",
+                  })}
+                  value={vadAutoStop.silenceMs}
+                  valueText={`${(vadAutoStop.silenceMs / 1000).toFixed(1)}s`}
+                  min={VAD_SILENCE_MIN_MS}
+                  max={VAD_SILENCE_MAX_MS}
+                  step={VAD_SILENCE_STEP_MS}
+                  onChange={(silenceMs) => updateVadAutoStop({ silenceMs })}
+                />
+              </SettingsRow>
+              <SettingsRow
+                icon={Timer}
+                label={t("voicesection.micSensitivity", {
+                  defaultValue: "Speech detection threshold",
+                })}
+                stacked
+              >
+                <VadSlider
+                  agentId="voice-section-vad-rms"
+                  testId="voice-section-vad-rms"
+                  label={t("voicesection.micSensitivity", {
+                    defaultValue: "Speech detection threshold",
+                  })}
+                  value={vadAutoStop.speechRmsThreshold}
+                  valueText={vadAutoStop.speechRmsThreshold.toFixed(3)}
+                  min={VAD_RMS_MIN}
+                  max={VAD_RMS_MAX}
+                  step={VAD_RMS_STEP}
+                  onChange={(speechRmsThreshold) =>
+                    updateVadAutoStop({ speechRmsThreshold })
+                  }
+                />
+              </SettingsRow>
+            </>
+          ) : null}
         </SettingsGroup>
 
         <SettingsGroup
@@ -381,10 +358,6 @@ export function VoiceSection({
             label={t("voicesection.cloudFirstLineCache", {
               defaultValue: "Cloud first-line cache",
             })}
-            description={t("voicesection.cloudFirstLineCacheDesc", {
-              defaultValue:
-                "Lets Eliza Cloud cache the agent's short opener phrases for faster replies.",
-            })}
             control={
               <input
                 ref={cloudCacheRef}
@@ -407,10 +380,6 @@ export function VoiceSection({
             icon={Shield}
             label={t("voicesection.autoLearnVoices", {
               defaultValue: "Auto-learn new voices",
-            })}
-            description={t("voicesection.autoLearnVoicesDesc", {
-              defaultValue:
-                "When the agent hears an unfamiliar voice, build a profile for them automatically.",
             })}
             control={
               <input
