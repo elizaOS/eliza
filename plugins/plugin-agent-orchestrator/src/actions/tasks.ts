@@ -765,6 +765,18 @@ type SpawnCapRouter = {
   ): { text: string; deliverable?: string } | undefined;
 };
 
+/** getService is loosely typed and (in test doubles) can resolve a service that
+ *  isn't the SubAgentRouter; verify the cap API exists before calling it. */
+function isSpawnCapRouter(service: unknown): service is SpawnCapRouter {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    typeof (service as SpawnCapRouter).spawnCountForOrigin === "function" &&
+    typeof (service as SpawnCapRouter).noteSpawnForOrigin === "function" &&
+    typeof (service as SpawnCapRouter).bestResultFor === "function"
+  );
+}
+
 /** Max sub-agent spawns per root user message before the orchestrator relays
  *  the best already-captured result instead of re-spawning — bounds the
  *  weak-model re-spawn loop. Default 3 (a legitimate spawn + a retry or two);
@@ -901,9 +913,13 @@ async function runSpawnAgent(
     // 70 spawns for one request → ack+answer Discord spam). Once we've spawned
     // the cap of sub-agents for this connector message + agent type, stop
     // re-spawning and relay the best already-captured result instead.
-    const spawnCapRouter = runtime.getService?.(
-      "ACPX_SUB_AGENT_ROUTER",
-    ) as SpawnCapRouter | null | undefined;
+    // Only treat the resolved service as a spawn-cap router when it actually
+    // exposes the cap API (calling a missing method would throw and abort the
+    // spawn — test doubles return one mock for every service id).
+    const spawnCapRouterService = runtime.getService?.("ACPX_SUB_AGENT_ROUTER");
+    const spawnCapRouter = isSpawnCapRouter(spawnCapRouterService)
+      ? spawnCapRouterService
+      : undefined;
     const spawnOriginKey = originConnectorMessageId
       ? `${originConnectorMessageId}\0${agentType}`
       : undefined;
