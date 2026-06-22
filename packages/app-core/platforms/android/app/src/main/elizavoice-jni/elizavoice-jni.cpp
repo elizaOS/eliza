@@ -1338,6 +1338,18 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamReset(JNIEnv*, jclass,
     return static_cast<jint>(rc == ELIZA_OK ? 1 : 0);
 }
 
+// Prefix-preserving reset: keep the first nKeep tokens of KV resident, drop the
+// rest. Returns the n_keep actually applied (>= 0), or a negative ELIZA_* on a
+// NULL / MTP / unopened stream (caller falls back to a full reset + prefill).
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamResetKeep(JNIEnv*, jclass,
+                                                              jlong streamHandle,
+                                                              jint nKeep) {
+    const int rc = eliza_inference_llm_stream_reset_keep(
+        reinterpret_cast<EliLlmStream*>(streamHandle), static_cast<int32_t>(nKeep));
+    return static_cast<jint>(rc);
+}
+
 // ── LLM self-test (one native call: ctx→tokenize→stream→generate) ─────────
 //
 // THE KEYSTONE PROOF: runs a whole greedy text generation in ONE native call,
