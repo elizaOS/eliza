@@ -811,8 +811,12 @@ API_AVAILABLE(macos(10.14))
 		completionHandler(UNNotificationPresentationOptionBanner |
 						  UNNotificationPresentationOptionSound);
 	} else {
+		// Alert is the correct foreground presentation option on macOS 10.x.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 		completionHandler(UNNotificationPresentationOptionAlert |
 						  UNNotificationPresentationOptionSound);
+#pragma clang diagnostic pop
 	}
 }
 
