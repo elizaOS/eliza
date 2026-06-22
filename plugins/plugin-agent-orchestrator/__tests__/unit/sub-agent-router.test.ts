@@ -2082,12 +2082,12 @@ describe("extractShortToolDeliverable", () => {
     expect(extractShortToolDeliverable(data)).toBe("hello world");
   });
 
-  it("returns undefined for multiple tool-output blocks (stays on model path)", () => {
+  it("returns the LAST block for multiple tool-output blocks (final result wins)", () => {
     const data = {
       response:
         "[tool output: a]\none\n[/tool output]\n[tool output: b]\ntwo\n[/tool output]",
     };
-    expect(extractShortToolDeliverable(data)).toBeUndefined();
+    expect(extractShortToolDeliverable(data)).toBe("two");
   });
 
   it("returns undefined when the block exceeds the 2KB verbatim gate", () => {

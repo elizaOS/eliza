@@ -891,6 +891,22 @@ export class SubAgentRouter extends Service {
     }
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
+    } else if (
+      event === "task_complete" &&
+      deliverable &&
+      !text.includes(deliverable)
+    ) {
+      // The captured tool output IS the answer for a "run it and report the
+      // output" task. The weak model's prose paraphrase of the same run is
+      // routinely truncated (relays "479" for a captured "479001600"), and that
+      // prose — not the metadata deliverable — is what every downstream reader
+      // consumes: the planner re-derives its reply from this narration, and
+      // Stage-1 regenerates any bare-numeric reply from it. So surface the
+      // verbatim deliverable as the narration body (the header's relay /
+      // do-not-respawn directive is preserved on the first line).
+      const firstNewline = text.indexOf("\n");
+      const header = firstNewline === -1 ? text : text.slice(0, firstNewline);
+      text = `${header}\n${deliverable}`;
     }
     if (event === "task_complete") {
       // Remember the best (longest) result for this root origin so the spawn
@@ -2021,16 +2037,25 @@ export function extractShortToolDeliverable(data: unknown): string | undefined {
   const blocks = response.match(
     /\[tool output:[^\]]*\]([\s\S]*?)\[\/tool output\]/g,
   );
-  if (blocks?.length !== 1) return undefined;
-  const inner = blocks[0]
-    .replace(/^\[tool output:[^\]]*\]/, "")
-    .replace(/\[\/tool output\]$/, "")
-    .trim();
-  if (!inner) return undefined;
-  if (Buffer.byteLength(inner, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES) {
-    return undefined;
+  if (!blocks?.length) return undefined;
+  // Multi-step tool use is normal — a failed attempt then a retry (`python`
+  // not found, then `python3`), or write-a-file then run-it. The LAST
+  // non-empty block is the sub-agent's final result, so surface it verbatim:
+  // a weak coding model routinely truncates that result in its own prose
+  // (relays "479" for a captured "479001600"), and the ground-truth tool
+  // output must win over the paraphrase. A block over the size cap is a
+  // transcript dump, not a deliverable — fall back to the summarized path.
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const inner = blocks[i]
+      .replace(/^\[tool output:[^\]]*\]/, "")
+      .replace(/\[\/tool output\]$/, "")
+      .trim();
+    if (!inner) continue;
+    return Buffer.byteLength(inner, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES
+      ? undefined
+      : inner;
   }
-  return inner;
+  return undefined;
 }
 
 function composeNarration(

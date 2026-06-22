@@ -17,11 +17,35 @@ describe("extractShortToolDeliverable", () => {
     );
   });
 
-  it("returns undefined when there are multiple blocks (stays on summarized path)", () => {
+  it("returns the LAST block when there are multiple (final result wins)", () => {
     expect(
       extractShortToolDeliverable({
         response: `${wrap("first")}\n${wrap("second")}`,
       }),
+    ).toBe("second");
+  });
+
+  it("recovers the successful retry's output past a failed first attempt", () => {
+    // `python` not found, then `python3` succeeds — the real factorial bug.
+    expect(
+      extractShortToolDeliverable({
+        response: `${wrap("/usr/bin/bash: line 1: python: command not found")}${wrap("479001600")}479`,
+      }),
+    ).toBe("479001600");
+  });
+
+  it("skips a trailing empty block and returns the last non-empty one", () => {
+    expect(
+      extractShortToolDeliverable({
+        response: `${wrap("479001600")}\n${wrap("")}`,
+      }),
+    ).toBe("479001600");
+  });
+
+  it("returns undefined when the last block exceeds the size cap", () => {
+    const big = "a".repeat(2049);
+    expect(
+      extractShortToolDeliverable({ response: `${wrap("small")}\n${wrap(big)}` }),
     ).toBeUndefined();
   });
 
