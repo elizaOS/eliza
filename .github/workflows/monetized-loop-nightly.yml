@@ -1,12 +1,16 @@
 name: Monetized Loop Nightly (real Hetzner)
 
-# Nightly REAL end-to-end run of the monetized full loop (#8935) against live
-# Hetzner + the Eliza Cloud staging API — NO mocks. The mock-stack variant of
-# the same loop runs per-PR via cloud-e2e.yml (which globs every
-# packages/test/cloud-e2e/tests/*.spec.ts, including monetized-full-loop.spec.ts).
-# This workflow is the live-infra counterpart: it exercises the create → deploy →
-# domain → monetize → charge → autoscale loop where the autoscale + provision
-# steps stand up an actual Hetzner node via the staging control plane.
+# Real-Hetzner parity SCAFFOLD for the monetized full loop (#8935). The active
+# coverage is the mock-stack variant, which runs per-PR via cloud-e2e.yml (it
+# globs every packages/test/cloud-e2e/tests/*.spec.ts, including
+# monetized-full-loop.spec.ts). This workflow is the live-infra counterpart: it
+# sets MONETIZED_LOOP_REAL=1, under which monetized-full-loop.spec.ts currently
+# SKIPS (a describe-level skip, so no mock stack is booted and no mock assertion
+# is ever passed off as real). Wiring the live driver — one that drives
+# MONETIZED_LOOP_BASE_URL with a real key instead of the mock `stack` fixture and
+# lets autoscale/provision stand up an actual Hetzner node — is a tracked #8935
+# follow-up. The workflow is landed now so it activates the moment that driver +
+# secrets exist; until then a real run reports green-but-skipped.
 #
 # Honest-skip: when the required secrets are absent the job exits 0 with a
 # warning (so the workflow can land on develop and be activated later); a manual

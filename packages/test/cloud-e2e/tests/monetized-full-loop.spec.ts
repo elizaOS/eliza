@@ -76,6 +76,18 @@ interface AppMonetizationResponse {
 const CHARGE_USD = 0.5;
 
 test.describe("monetized full loop", () => {
+  // The mock-stack loop below is the active per-PR coverage. The nightly
+  // real-Hetzner workflow sets MONETIZED_LOOP_REAL=1; until the live-infra
+  // driver lands (it must NOT boot the mock `stack` fixture and must drive
+  // MONETIZED_LOOP_BASE_URL with a real Eliza Cloud key — tracked as a #8935
+  // follow-up), skip the whole suite in real mode so the nightly never
+  // masquerades mock assertions as real coverage. A describe-level skip is
+  // evaluated before fixtures resolve, so no mock stack is booted in real mode.
+  test.skip(
+    process.env.MONETIZED_LOOP_REAL === "1",
+    "real-Hetzner monetized loop driver is a follow-up (#8935); the nightly runs as a scaffold — the mock-stack loop is the active coverage",
+  );
+
   test("seed → create → deploy → domain → monetize → charge → autoscale → payout-ready", async ({
     stack,
     seededUser,

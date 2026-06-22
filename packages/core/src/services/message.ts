@@ -251,20 +251,6 @@ import {
 const PLANNER_CONTROL_ACTIONS = new Set(
 	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
 );
-// Direct/DM/API Stage 1 packs the whole user-facing answer into `replyText`
-// (the "simple" fast path emits it without a planner turn). A low cap truncated
-// the HANDLE_RESPONSE tool-call JSON mid-`replyText` → unparseable args →
-// "malformed HANDLE_RESPONSE tool call". We want NO ceiling on a 1:1 reply, but
-// a literal "omit max_tokens" is impossible: Anthropic's API requires the field,
-// and every adapter re-defaults an omitted value to a small number (elizacloud/
-// openai/groq/openrouter `?? 8192`, local FFI `?? 2048`) — which would silently
-// re-cap and even regress desktop-local. So we pass the largest budget the
-// adapters accept without error: 64000 is the Anthropic adapter's hard cap (it
-// `Math.min`s to this; Opus-4 self-clamps to 32000) and fits inside gpt-oss-120b's
-// 128k context (the default cloud RESPONSE_HANDLER model), so the model's own
-// context/EOS/grammar is the only real limit, never this constant. It is a
-// ceiling, not a target — short replies finish exactly as fast.
-const DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 64000;
 const DIRECT_REPLY_FAST_PATH_MAX_TOKENS = 96;
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
 const STAGE1_TRUNCATION_REPLY =
@@ -4868,7 +4854,7 @@ function getStage1FinishReason(raw: string | GenerateTextResult): string {
 
 function stage1HitCompletionLimit(
 	raw: string | GenerateTextResult,
-	maxTokens: number,
+	maxTokens: number | undefined,
 ): boolean {
 	if (typeof raw === "string") return false;
 	const finishReason = getStage1FinishReason(raw).toLowerCase();
@@ -4879,8 +4865,11 @@ function stage1HitCompletionLimit(
 	) {
 		return true;
 	}
+	// With no cap sent (direct channel), the token-count heuristic can't apply —
+	// truncation is detected solely via the finishReason above.
 	const completionTokens = raw.usage?.completionTokens;
 	return (
+		typeof maxTokens === "number" &&
 		typeof completionTokens === "number" &&
 		Number.isFinite(completionTokens) &&
 		completionTokens >= maxTokens
@@ -4897,7 +4886,7 @@ function stage1HitCompletionLimit(
 export function shouldRetryStage1Generation(
 	reason: ReturnType<typeof getStage1RetryReason>,
 	raw: string | GenerateTextResult,
-	maxTokens: number,
+	maxTokens: number | undefined,
 ): boolean {
 	if (!reason) return false;
 	return !stage1HitCompletionLimit(raw, maxTokens);
@@ -5948,9 +5937,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			promptSegments: messageHandlerInput.promptSegments,
 			tools: messageHandlerTools,
 			toolChoice: "required" as const,
-			maxTokens: directMessageChannel
-				? DIRECT_CHANNEL_STAGE1_MAX_TOKENS
-				: DEFAULT_STAGE1_MAX_TOKENS,
+			// Direct/DM/API Stage 1 packs the whole answer into `replyText`. We don't
+			// cap it: a hardcoded ceiling 400s on any model whose real limit differs
+			// and truncates long single-turn replies. `omitMaxTokens` tells adapters
+			// to send no max-tokens field so the model's own max applies; group
+			// channels keep DEFAULT_STAGE1_MAX_TOKENS so they stay bounded.
+			maxTokens: directMessageChannel ? undefined : DEFAULT_STAGE1_MAX_TOKENS,
+			omitMaxTokens: directMessageChannel,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 			// / `contexts` route the moment they are known and `replyText` flows to

@@ -64,6 +64,7 @@ function makeController(
     toggleRecording: vi.fn(),
     handsFree: false,
     toggleHandsFree: vi.fn(),
+    stopTranscriptionAndMic: vi.fn(),
     setDictationSink: vi.fn(),
     setTranscriptSessionSink: vi.fn(),
     setComposerHasDraft: vi.fn(),
@@ -875,20 +876,22 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("a mic tap while transcribing ends transcription, never starts a conversation", () => {
-    const toggleTranscriptionMode = vi.fn();
+    const stopTranscriptionAndMic = vi.fn();
     const toggleHandsFree = vi.fn();
     render(
       <ContinuousChatOverlay
         controller={makeController({
           transcriptionMode: true,
-          toggleTranscriptionMode,
+          stopTranscriptionAndMic,
           toggleHandsFree,
         } as unknown as Partial<ShellController>)}
       />,
     );
     fireEvent.click(screen.getByTestId("chat-composer-mic"));
-    // Ends transcription (→ composer attachment); does NOT open a second capture.
-    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+    // The mic is the master voice control: a tap ends transcription AND the mic
+    // (stopTranscriptionAndMic → finished transcript drops into the composer);
+    // it must NOT open a hands-free conversation.
+    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
     expect(toggleHandsFree).not.toHaveBeenCalled();
   });
 

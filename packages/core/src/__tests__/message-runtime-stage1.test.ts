@@ -480,6 +480,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		const params = firstCall?.[1] as {
 			tools?: Array<{ parameters?: { required?: string[] } }>;
 			maxTokens?: number;
+			omitMaxTokens?: boolean;
 			responseSkeleton?: { spans?: Array<{ key?: string }> };
 			grammar?: string;
 		};
@@ -492,12 +493,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		expect(required).not.toContain("shouldRespond");
 		expect(required).not.toContain("facts");
-		// Direct channels pass the model's full legal output budget
-		// (DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 64000) so a long single-turn direct
-		// reply is never capped by us — a literal "no max_tokens" is impossible
-		// (Anthropic requires the field; adapters re-default an omitted value to
-		// 8192). The schema stays compact (asserted above); only the ceiling grew.
-		expect(params.maxTokens).toBe(64000);
+		// Direct channels send NO max-tokens cap: a hardcoded value 400s when it
+		// exceeds the model's real limit and truncates long single-turn replies.
+		// `omitMaxTokens` tells the adapter to drop the wire field so the model's
+		// own max applies. The schema stays compact (asserted above); only the cap
+		// is dropped. (Group channels keep DEFAULT_STAGE1_MAX_TOKENS — see ~L229.)
+		expect(params.maxTokens).toBeUndefined();
+		expect(params.omitMaxTokens).toBe(true);
 		expect(
 			params.responseSkeleton?.spans?.some((s) => s.key === "shouldRespond"),
 		).toBe(false);

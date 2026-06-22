@@ -481,6 +481,16 @@ export interface GenerateTextParams {
 	 */
 	prompt?: string;
 	maxTokens?: number;
+	/**
+	 * When true, the adapter must NOT send a max-tokens cap on the wire and let
+	 * the provider apply the model's own maximum output. A hardcoded cap rejects
+	 * (HTTP 400) on any model whose real limit differs, and silently truncates
+	 * long replies. Scoped opt-in (e.g. the direct-channel Stage-1 reply): when
+	 * unset, adapters keep their default cap so other callers stay bounded.
+	 * Anthropic's API requires `max_tokens`, so its adapter instead sends the
+	 * model's documented hard cap.
+	 */
+	omitMaxTokens?: boolean;
 	minTokens?: number;
 	temperature?: number;
 	topP?: number;
