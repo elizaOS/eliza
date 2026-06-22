@@ -124,6 +124,45 @@ export const SecretRequest: Story = {
   },
 };
 
+/**
+ * #8910 — a sensitive request can collect an image (e.g. photograph a 2FA seed
+ * or QR). Renders a file input with camera capture on mobile; the upload is
+ * delivered as a data URL through the existing submit path.
+ */
+export const SecretRequestImageField: Story = {
+  args: {
+    message: makeMessage({
+      text: "",
+      secretRequest: {
+        key: "TOTP_SEED_PHOTO",
+        reason: "Photograph the 2FA seed shown on the other device.",
+        status: "pending",
+        delivery: {
+          mode: "inline_owner_app",
+          instruction: "Upload a clear photo of the seed.",
+          canCollectValueInCurrentChannel: true,
+        },
+        form: {
+          type: "sensitive_request_form",
+          kind: "secret",
+          mode: "inline_owner_app",
+          submitLabel: "Upload",
+          fields: [
+            {
+              name: "seed_photo",
+              label: "Seed photo",
+              input: "image",
+              required: true,
+              mimeTypes: ["image/png", "image/jpeg"],
+              maxBytes: 5_000_000,
+            },
+          ],
+        },
+      },
+    }),
+  },
+};
+
 /** Analysis mode surfaces XML reasoning blocks + action-name footer. */
 export const AnalysisMode: Story = {
   args: {

@@ -65,6 +65,35 @@ describe("parse", () => {
 		expect(form.submitLabel).toBe("Submit");
 	});
 
+	it("parses an image field with mimeTypes + maxBytes (#8910)", () => {
+		const text = `[FORM]\n${JSON.stringify({
+			title: "2FA",
+			fields: [
+				{
+					name: "seed_photo",
+					type: "image",
+					label: "Photo of seed",
+					mimeTypes: ["image/png", "image/jpeg"],
+					maxBytes: 5_000_000,
+					required: true,
+				},
+				{ name: "doc", type: "file" },
+				{ name: "ignored_mimes", type: "text", mimeTypes: ["image/png"] },
+			],
+		})}\n[/FORM]`;
+		const { blocks } = parseInteractionBlocks(text);
+		const form = blocks[0] as FormInteraction;
+		const image = form.fields.find((f) => f.name === "seed_photo");
+		expect(image?.type).toBe("image");
+		expect(image?.mimeTypes).toEqual(["image/png", "image/jpeg"]);
+		expect(image?.maxBytes).toBe(5_000_000);
+		expect(form.fields.find((f) => f.name === "doc")?.type).toBe("file");
+		// mimeTypes/maxBytes only attach to image/file fields, not text.
+		expect(form.fields.find((f) => f.name === "ignored_mimes")?.mimeTypes).toBe(
+			undefined,
+		);
+	});
+
 	it("rejects malformed form JSON (left as text)", () => {
 		const text = "[FORM]\n{not json}\n[/FORM]";
 		const { blocks, cleanedText } = parseInteractionBlocks(text);

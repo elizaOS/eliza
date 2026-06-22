@@ -1055,6 +1055,63 @@ function SensitiveRequestBlock({
         <form className="space-y-3" onSubmit={handleSubmit}>
           {fields.map((field) => {
             const label = field.label ?? field.name;
+            const isUpload =
+              field.input === "image" || field.input === "file";
+            if (isUpload) {
+              const accept =
+                field.mimeTypes && field.mimeTypes.length > 0
+                  ? field.mimeTypes.join(",")
+                  : field.input === "image"
+                    ? "image/*"
+                    : undefined;
+              const hasValue = Boolean(values[field.name]);
+              return (
+                <label key={field.name} className="block text-xs space-y-1">
+                  <span className="font-medium">{label}</span>
+                  <input
+                    aria-label={label}
+                    data-testid={`sensitive-request-file-${field.name}`}
+                    className="w-full border border-border bg-bg px-2 py-1.5 text-sm"
+                    type="file"
+                    accept={accept}
+                    // Mobile: prefer the rear camera for image capture (2FA QR/seed).
+                    capture={field.input === "image" ? "environment" : undefined}
+                    required={field.required && !hasValue}
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0];
+                      if (!file) {
+                        setValues((previous) => {
+                          const next = { ...previous };
+                          delete next[field.name];
+                          return next;
+                        });
+                        return;
+                      }
+                      if (field.maxBytes && file.size > field.maxBytes) {
+                        setError(
+                          `${label} is too large (max ${Math.round(
+                            field.maxBytes / 1024,
+                          )} KB).`,
+                        );
+                        event.currentTarget.value = "";
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        setError(null);
+                        setValues((previous) => ({
+                          ...previous,
+                          [field.name]: String(reader.result ?? ""),
+                        }));
+                      };
+                      reader.onerror = () =>
+                        setError(`Could not read ${label}.`);
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                </label>
+              );
+            }
             return (
               <label key={field.name} className="block text-xs space-y-1">
                 <span className="font-medium">{label}</span>

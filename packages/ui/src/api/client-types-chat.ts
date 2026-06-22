@@ -204,8 +204,12 @@ export interface SensitiveRequestDelivery {
 export interface SensitiveRequestFormField {
   name: string;
   label?: string;
-  input?: "secret" | "text";
+  input?: "secret" | "text" | "image" | "file";
   required?: boolean;
+  /** For `input: "image" | "file"` — accepted MIME types (the `accept` attr). */
+  mimeTypes?: string[];
+  /** For `input: "image" | "file"` — max upload size in bytes. */
+  maxBytes?: number;
 }
 
 /**

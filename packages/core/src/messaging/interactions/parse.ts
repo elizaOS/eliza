@@ -45,6 +45,8 @@ const FIELD_TYPES: ReadonlySet<InteractionFieldType> = new Set([
 	"select",
 	"checkbox",
 	"secret",
+	"image",
+	"file",
 ]);
 const FOLLOWUP_KINDS: ReadonlySet<FollowupKind> = new Set([
 	"reply",
@@ -134,6 +136,17 @@ function parseFormField(raw: unknown): InteractionField | null {
 			}
 		}
 		field.options = opts;
+	}
+	if (type === "image" || type === "file") {
+		if (Array.isArray(r.mimeTypes)) {
+			const mimes = r.mimeTypes.filter(
+				(m): m is string => typeof m === "string",
+			);
+			if (mimes.length > 0) field.mimeTypes = mimes;
+		}
+		if (typeof r.maxBytes === "number" && r.maxBytes > 0) {
+			field.maxBytes = r.maxBytes;
+		}
 	}
 	return field;
 }
