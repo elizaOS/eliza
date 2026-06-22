@@ -2,12 +2,14 @@ import {
   BadgeCheck,
   Bot,
   CalendarDays,
+  Download,
   FileText,
   Globe2,
   Headphones,
   Lock,
   Pencil,
   Save,
+  Share2,
   Shield,
   User,
 } from "lucide-react";
@@ -19,6 +21,12 @@ import type {
 } from "../../api/client-types-chat";
 import { navigateBrowserPath } from "../../app-navigate-view";
 import { useAppSelector } from "../../state";
+import {
+  canShareFiles,
+  downloadAttachment,
+  filenameForMime,
+  shareAttachment,
+} from "../../utils/download-share";
 import { formatByteSize } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
@@ -127,6 +135,37 @@ export function DocumentViewer({
         : doc?.scope === "agent-private"
           ? Bot
           : Globe2;
+
+  // The original served file (when the backend exposes a fetchable URL for the
+  // document, e.g. uploaded binaries / mirrored transcript audio). v1 gates the
+  // download/share affordances on this URL existing.
+  const servedFileUrl = doc?.url || doc?.transcriptAudioUrl || null;
+  const shareSupported = canShareFiles();
+
+  const handleDownloadFile = async () => {
+    if (!servedFileUrl || !doc) return;
+    const filename = doc.filename || filenameForMime(doc.contentType);
+    try {
+      await downloadAttachment(servedFileUrl, filename);
+    } catch {
+      setActionNotice(
+        t("documentsview.FailedToDownload", {
+          defaultValue: "Failed to download file",
+        }),
+        "error",
+        4000,
+      );
+    }
+  };
+
+  const handleShareFile = async () => {
+    if (!servedFileUrl || !doc) return;
+    const shared = await shareAttachment(servedFileUrl, {
+      title: doc.filename,
+      filename: doc.filename || undefined,
+    });
+    if (!shared) await handleDownloadFile();
+  };
 
   const handleSave = async () => {
     if (!documentId || !doc) return;
@@ -265,6 +304,36 @@ export function DocumentViewer({
                     <Headphones className="mr-1.5 h-4 w-4" aria-hidden />
                     {t("documentsview.ViewOriginalTranscript", {
                       defaultValue: "View original transcript",
+                    })}
+                  </Button>
+                ) : null}
+                {servedFileUrl ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-sm"
+                    data-testid="document-download"
+                    onClick={() => void handleDownloadFile()}
+                  >
+                    <Download className="mr-1.5 h-4 w-4" aria-hidden />
+                    {t("documentsview.Download", {
+                      defaultValue: "Download",
+                    })}
+                  </Button>
+                ) : null}
+                {servedFileUrl && shareSupported ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-sm"
+                    data-testid="document-share"
+                    onClick={() => void handleShareFile()}
+                  >
+                    <Share2 className="mr-1.5 h-4 w-4" aria-hidden />
+                    {t("documentsview.Share", {
+                      defaultValue: "Share",
                     })}
                   </Button>
                 ) : null}

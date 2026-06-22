@@ -1,14 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildDroppedAttachmentNotice,
+  bytesToMb,
   CHAT_UPLOAD_ACCEPT,
   chatUploadKind,
   createImageThumbnail,
   isSupportedChatUpload,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENTS_TOTAL_BYTES,
+  MAX_CHAT_IMAGES,
+  partitionAttachmentFiles,
+  summarizeDroppedAttachments,
 } from "./image-attachment";
 
 const file = (type: string): File => ({ type }) as File;
 const sizedFile = (type: string, size: number): File =>
   ({ type, size }) as File;
+/** A named, sized File stand-in for partition tests. */
+const namedFile = (name: string, size: number): File =>
+  ({ name, size, type: "image/png" }) as File;
 
 describe("chatUploadKind", () => {
   it("maps MIME types to attachment kinds", () => {
@@ -62,5 +72,189 @@ describe("createImageThumbnail (guards)", () => {
 
   it("returns null for images below the size threshold", async () => {
     expect(await createImageThumbnail(sizedFile("image/png", 1024))).toBeNull();
+  });
+});
+
+describe("partitionAttachmentFiles", () => {
+  it("keeps files under the per-file cap", () => {
+    const files = [
+      namedFile("a.png", 1_000),
+      namedFile("b.png", 2_000),
+      namedFile("c.png", 3_000),
+    ];
+    const result = partitionAttachmentFiles(files);
+    expect(result.accepted.map((f) => f.name)).toEqual([
+      "a.png",
+      "b.png",
+      "c.png",
+    ]);
+    expect(result.droppedTooLarge).toEqual([]);
+    expect(result.droppedOverCount).toEqual([]);
+  });
+
+  it("drops a single file over the per-file cap and reports it as too-large", () => {
+    const files = [
+      namedFile("small.png", 1_000),
+      namedFile("huge.png", MAX_ATTACHMENT_BYTES + 1),
+    ];
+    const result = partitionAttachmentFiles(files);
+    expect(result.accepted.map((f) => f.name)).toEqual(["small.png"]);
+    expect(result.droppedTooLarge).toEqual([
+      { name: "huge.png", reason: "too-large" },
+    ]);
+    expect(result.droppedOverCount).toEqual([]);
+  });
+
+  it("keeps a file that is exactly at the per-file cap (boundary)", () => {
+    const result = partitionAttachmentFiles([
+      namedFile("exact.png", MAX_ATTACHMENT_BYTES),
+    ]);
+    expect(result.accepted.map((f) => f.name)).toEqual(["exact.png"]);
+    expect(result.droppedTooLarge).toEqual([]);
+  });
+
+  it("handles a mix of acceptable and oversized files", () => {
+    const files = [
+      namedFile("ok1.png", 1_000),
+      namedFile("too-big.png", MAX_ATTACHMENT_BYTES + 1),
+      namedFile("ok2.png", 2_000),
+    ];
+    const result = partitionAttachmentFiles(files);
+    expect(result.accepted.map((f) => f.name)).toEqual(["ok1.png", "ok2.png"]);
+    expect(result.droppedTooLarge.map((d) => d.name)).toEqual(["too-big.png"]);
+    expect(result.droppedOverCount).toEqual([]);
+  });
+
+  it("reports files beyond the count cap as over-count", () => {
+    const files = Array.from({ length: MAX_CHAT_IMAGES + 2 }, (_, i) =>
+      namedFile(`f${i}.png`, 1_000),
+    );
+    const result = partitionAttachmentFiles(files);
+    expect(result.accepted).toHaveLength(MAX_CHAT_IMAGES);
+    expect(result.droppedOverCount).toHaveLength(2);
+    expect(
+      result.droppedOverCount.every((d) => d.reason === "over-count"),
+    ).toBe(true);
+    expect(result.droppedTooLarge).toEqual([]);
+  });
+
+  it("accounts for already-pending attachments against the count cap", () => {
+    const files = [namedFile("a.png", 1_000), namedFile("b.png", 1_000)];
+    const result = partitionAttachmentFiles(files, {
+      existingCount: MAX_CHAT_IMAGES - 1,
+    });
+    expect(result.accepted.map((f) => f.name)).toEqual(["a.png"]);
+    expect(result.droppedOverCount.map((d) => d.name)).toEqual(["b.png"]);
+  });
+
+  it("drops files that overflow the combined total byte cap as too-large", () => {
+    // Each file is under the per-file cap, but four of them exceed the total
+    // cap, so the file that tips the running total past the cap is dropped.
+    const eighteenMb = 18 * 1024 * 1024;
+    expect(eighteenMb).toBeLessThan(MAX_ATTACHMENT_BYTES);
+    const files = [
+      namedFile("a.png", eighteenMb),
+      namedFile("b.png", eighteenMb),
+      namedFile("c.png", eighteenMb),
+      namedFile("d.png", eighteenMb),
+    ];
+    // 3 × 18MB = 54MB fits under 60MB; the 4th would make 72MB → dropped.
+    expect(eighteenMb * 3).toBeLessThanOrEqual(MAX_ATTACHMENTS_TOTAL_BYTES);
+    expect(eighteenMb * 4).toBeGreaterThan(MAX_ATTACHMENTS_TOTAL_BYTES);
+    const result = partitionAttachmentFiles(files);
+    expect(result.accepted.map((f) => f.name)).toEqual([
+      "a.png",
+      "b.png",
+      "c.png",
+    ]);
+    expect(result.droppedTooLarge.map((d) => d.name)).toEqual(["d.png"]);
+  });
+
+  it("treats a missing size as 0 (kept)", () => {
+    const noSize = { name: "unknown.png", type: "image/png" } as File;
+    const result = partitionAttachmentFiles([noSize]);
+    expect(result.accepted.map((f) => f.name)).toEqual(["unknown.png"]);
+  });
+});
+
+describe("summarizeDroppedAttachments", () => {
+  it("returns null when nothing was dropped", () => {
+    expect(
+      summarizeDroppedAttachments({
+        acceptedCount: 3,
+        droppedTooLarge: [],
+        droppedOverCount: [],
+      }),
+    ).toBeNull();
+  });
+
+  it("counts kept and dropped across both reasons", () => {
+    const summary = summarizeDroppedAttachments({
+      acceptedCount: 2,
+      droppedTooLarge: [{ name: "a", reason: "too-large" }],
+      droppedOverCount: [{ name: "b", reason: "over-count" }],
+    });
+    expect(summary).toEqual({
+      kept: 2,
+      dropped: 2,
+      droppedTooLarge: 1,
+      droppedOverCount: 1,
+      maxMb: bytesToMb(MAX_ATTACHMENT_BYTES),
+    });
+  });
+});
+
+describe("buildDroppedAttachmentNotice", () => {
+  const t = (key: string, options?: Record<string, unknown>): string =>
+    `${key}|${JSON.stringify(options ?? {})}`;
+
+  it("returns null when nothing was dropped", () => {
+    expect(
+      buildDroppedAttachmentNotice(
+        { acceptedCount: 1, droppedTooLarge: [], droppedOverCount: [] },
+        t,
+      ),
+    ).toBeNull();
+  });
+
+  it("uses the too-large key with kept/dropped/maxMb params", () => {
+    const notice = buildDroppedAttachmentNotice(
+      {
+        acceptedCount: 2,
+        droppedTooLarge: [{ name: "x", reason: "too-large" }],
+        droppedOverCount: [],
+      },
+      t,
+    );
+    expect(notice).toContain("chat.attachmentsKeptDroppedTooLarge");
+    expect(notice).toContain('"kept":2');
+    expect(notice).toContain('"dropped":1');
+    expect(notice).toContain(`"maxMb":${bytesToMb(MAX_ATTACHMENT_BYTES)}`);
+  });
+
+  it("uses the over-count key when only the count cap tripped", () => {
+    const notice = buildDroppedAttachmentNotice(
+      {
+        acceptedCount: 4,
+        droppedTooLarge: [],
+        droppedOverCount: [{ name: "y", reason: "over-count" }],
+      },
+      t,
+    );
+    expect(notice).toContain("chat.attachmentsKeptDroppedOverCount");
+  });
+
+  it("uses the mixed key when both reasons are present", () => {
+    const notice = buildDroppedAttachmentNotice(
+      {
+        acceptedCount: 1,
+        droppedTooLarge: [{ name: "x", reason: "too-large" }],
+        droppedOverCount: [{ name: "y", reason: "over-count" }],
+      },
+      t,
+    );
+    expect(notice).toContain("chat.attachmentsKeptDroppedMixed");
+    expect(notice).toContain('"tooLarge":1');
+    expect(notice).toContain('"overCount":1');
   });
 });

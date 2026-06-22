@@ -15,6 +15,7 @@ import type {
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { resolveApiUrl } from "../../utils/asset-url";
+import { isSafeAttachmentUrl } from "../../utils/attachment-url";
 import { TranscriptViewerOverlay } from "./TranscriptViewerOverlay";
 
 const ABSOLUTE_URL = /^(?:https?:|data:|blob:|[a-z][a-z0-9+.-]*:\/\/)/i;
@@ -241,6 +242,38 @@ function FileTile({
   );
 }
 
+/**
+ * A non-clickable fallback card for an attachment whose URL fails the scheme
+ * allowlist ({@link isSafeAttachmentUrl}) — e.g. a `javascript:` / `file:` /
+ * `data:text/html` URL injected by an untrusted agent. It shows the same chrome
+ * as {@link FileTile} but renders no `href` / `src`, so the dangerous URL is
+ * never handed to the browser.
+ */
+function UnsafeAttachmentTile({
+  att,
+}: {
+  att: MessageAttachment;
+}): React.JSX.Element {
+  const label = attachmentLabel(att);
+  return (
+    <div
+      data-testid="unsafe-attachment"
+      className={cn(
+        "flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
+        "text-white/90",
+      )}
+    >
+      <FileText className="h-5 w-5 shrink-0 text-white/70" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] font-medium">{label}</span>
+        <span className="block text-[11px] uppercase tracking-wide text-white/45">
+          unsupported attachment
+        </span>
+      </span>
+    </div>
+  );
+}
+
 /** A transcript tile — tap to open the maximized, editable transcript viewer. */
 function TranscriptTile({
   att,
@@ -363,10 +396,8 @@ export function MessageAttachments({
     >
       {attachments.map((att) => {
         const kind = resolveKind(att);
-        const src = resolveAttachmentUrl(att.url);
-        if (!src) return null;
-        const label = attachmentLabel(att);
-        // A transcript opens the maximized editor, not a download card.
+        // A transcript opens the maximized editor from the attachment record,
+        // not by navigating to its URL — so it needs no URL guard.
         if (isTranscriptAttachment(att)) {
           return (
             <TranscriptTile
@@ -376,11 +407,23 @@ export function MessageAttachments({
             />
           );
         }
+        // Scheme allowlist: never hand an agent-provided URL with a dangerous
+        // scheme (javascript:/vbscript:/file:/data:text/html/...) to the
+        // browser as an href/src. Guard the RAW url before it is resolved.
+        if (!isSafeAttachmentUrl(att.url)) {
+          return <UnsafeAttachmentTile key={att.id} att={att} />;
+        }
+        const src = resolveAttachmentUrl(att.url);
+        if (!src) return null;
+        const label = attachmentLabel(att);
         switch (kind) {
           case "image": {
-            const thumbSrc = att.thumbnailUrl
-              ? resolveAttachmentUrl(att.thumbnailUrl)
-              : src;
+            // The thumbnail is a separate URL; only use it if it also passes
+            // the scheme allowlist, otherwise fall back to the safe full src.
+            const thumbSrc =
+              att.thumbnailUrl && isSafeAttachmentUrl(att.thumbnailUrl)
+                ? resolveAttachmentUrl(att.thumbnailUrl)
+                : src;
             return (
               <ImageTile
                 key={att.id}
