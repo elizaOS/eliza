@@ -8,6 +8,7 @@
 // Re-export the terminal-view registry so plugins/hosts use one import surface.
 export {
   getTerminalView,
+  getTerminalViewFactory,
   hasTerminalView,
   listTerminalViewIds,
   registerTerminalView,

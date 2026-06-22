@@ -11,7 +11,11 @@
  * `@elizaos/ui/spatial/tui` subpath and is never imported by the browser barrel.
  */
 
-import { type Component, registerTerminalView } from "@elizaos/tui";
+import {
+  type Component,
+  registerTerminalView,
+  type TerminalViewMountOptions,
+} from "@elizaos/tui";
 import type { ReactNode } from "react";
 import {
   createSpatialStateStore,
@@ -147,5 +151,16 @@ export function registerSpatialTerminalView(
   view: () => ReactNode,
   options: SpatialTuiComponentOptions = {},
 ): () => void {
-  return registerTerminalView(id, createSpatialTuiComponent(view, options));
+  // Register both the back-compatible eager component (default mount, the one
+  // `getTerminalView` returns) and a factory so a host can rebuild the view per
+  // mount with its own options — notably `onActivate` to dispatch a focused
+  // control's activation to the runtime, which the default mount has no wiring
+  // for. The host's `onChange`/`onActivate` win over the registration defaults.
+  const factory = (mount?: TerminalViewMountOptions): Component =>
+    createSpatialTuiComponent(view, { ...options, ...mount });
+  return registerTerminalView(
+    id,
+    createSpatialTuiComponent(view, options),
+    factory,
+  );
 }

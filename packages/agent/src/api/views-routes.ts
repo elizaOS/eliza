@@ -36,6 +36,7 @@ import { STANDARD_CAPABILITIES } from "@elizaos/ui/views/view-interact-protocol"
 import {
   type ActiveViewElement,
   clearActiveViewContext,
+  getActiveViewContext,
   setActiveViewContext,
   setActiveViewElements,
 } from "../runtime/view-action-affinity.ts";
@@ -47,6 +48,7 @@ import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
 } from "./platform-detect.ts";
+import type { ViewRegistryEntry } from "./view-registry-types.ts";
 import {
   findHeroOnDisk,
   generateViewHeroSvg,
@@ -643,7 +645,9 @@ export async function handleViewsRoutes(
   if (
     (method === "GET" || method === "HEAD") &&
     subResource !== "" &&
-    !["hero", "navigate", "interact"].includes(subResource)
+    !["hero", "navigate", "interact", "elements", "activate"].includes(
+      subResource,
+    )
   ) {
     const clientPlatform = detectClientPlatform(req);
     if (!isDynamicLoadingAllowed(clientPlatform)) {
@@ -951,6 +955,79 @@ export async function handleViewsRoutes(
     return true;
   }
 
+  // ── POST /api/views/:id/activate ─────────────────────────────────────────
+  // Activate one addressable control in a view by its element id (the focused
+  // button's agent id in a spatial/TUI mount). This is the terminal host's
+  // "a focused view button was pressed" → agent path.
+  //
+  // Contract:
+  //   body: { elementId: string }
+  //   - The element is resolved against the active-view element snapshot
+  //     (reported via POST /:id/elements) for observability/context — absent
+  //     when no snapshot was reported, which is fine.
+  //   - The activation is dispatched as the STANDARD `click-element` capability
+  //     through the exact same interact path as POST /:id/interact (a
+  //     `serverInteract` handler when present, else a frontend round-trip),
+  //     reusing the established CLICK_ELEMENT semantics rather than inventing a
+  //     new dispatch.
+  //   response: { ok, viewId, elementId, element?, dispatch: <interact result> }
+  if (method === "POST" && subResource === "activate") {
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+
+    const elementId =
+      typeof body.elementId === "string" && body.elementId.length > 0
+        ? body.elementId
+        : null;
+    if (!elementId) {
+      error(res, "Missing elementId in activate body", 400);
+      return true;
+    }
+
+    const viewType =
+      parseViewTypeValue(body.viewType) ??
+      parseViewTypeParam(url.searchParams.get("viewType"));
+    const entry = getView(id, { viewType });
+    if (!entry) {
+      error(res, `View "${id}" not found`, 404);
+      return true;
+    }
+
+    // Resolve the element from the active-view snapshot for context (the planner
+    // reports it via /:id/elements). Only used when this view is the foreground
+    // active view; absent otherwise — the click still dispatches by id.
+    const active = getActiveViewContext();
+    const element =
+      active?.viewId === id
+        ? active.elements?.find((el) => el.id === elementId)
+        : undefined;
+
+    const capability = STANDARD_CAPABILITIES.CLICK_ELEMENT;
+    const params: Record<string, unknown> = { elementId, id: elementId };
+
+    logger.info(
+      { src: "ViewsRoutes", viewId: id, elementId, capability },
+      `[ViewsRoutes] Activate element "${elementId}" on view "${id}"`,
+    );
+
+    const dispatch = await dispatchViewInteract(
+      entry,
+      id,
+      capability,
+      params,
+      ctx.broadcastWs,
+    );
+
+    json(res, {
+      ok: dispatch.success,
+      viewId: id,
+      elementId,
+      ...(element ? { element } : {}),
+      dispatch,
+    });
+    return true;
+  }
+
   // ── POST /api/views/interact-result ──────────────────────────────────────
   // Called by the frontend over HTTP (or proxied from WS) when a view has
   // finished handling an interact request.  Resolves the pending promise so
@@ -1110,6 +1187,86 @@ export async function handleViewsRoutes(
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Result of dispatching a capability to a view — the union of the two interact
+ * paths (a `serverInteract` handler, or a frontend `view:interact` round-trip).
+ */
+interface ViewInteractDispatchResult {
+  requestId: string;
+  success: boolean;
+  result?: unknown;
+  error?: string;
+}
+
+/**
+ * Dispatch a capability to a view, reusing the established interact semantics:
+ * a `serverInteract` handler when the view declares one, else a frontend
+ * `view:interact` WebSocket round-trip resolved via the pending-request map.
+ * Shared by POST /:id/activate (CLICK_ELEMENT) so activation never re-implements
+ * the dispatch.
+ */
+async function dispatchViewInteract(
+  entry: ViewRegistryEntry,
+  viewId: string,
+  capability: string,
+  params: Record<string, unknown>,
+  broadcastWs?: (payload: object) => void,
+  timeoutMs = 5_000,
+): Promise<ViewInteractDispatchResult> {
+  const requestId = randomUUID();
+
+  if (typeof entry.serverInteract === "function") {
+    try {
+      const result = await entry.serverInteract(capability, params);
+      broadcastWs?.({
+        type: "view:event",
+        viewEventType: `view:${viewId}:updated`,
+        payload: { viewId, capability },
+      });
+      return { requestId, success: resultSuccess(result), result };
+    } catch (err) {
+      logger.warn(
+        { src: "ViewsRoutes", viewId, capability, requestId, err },
+        `[ViewsRoutes] Server interaction failed for view "${viewId}"`,
+      );
+      return {
+        requestId,
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  const resultPromise = pendingInteractRequests.waitFor(requestId, timeoutMs);
+  broadcastWs?.({
+    type: "view:interact",
+    viewId,
+    viewType: entry.viewType,
+    capability,
+    params,
+    requestId,
+  });
+  try {
+    const result = (await resultPromise) as ViewInteractResult;
+    return {
+      requestId,
+      success: result.success,
+      result: result.result,
+      ...(result.error ? { error: result.error } : {}),
+    };
+  } catch (err) {
+    logger.warn(
+      { src: "ViewsRoutes", viewId, capability, requestId, err },
+      `[ViewsRoutes] Interact timed out for view "${viewId}"`,
+    );
+    return {
+      requestId,
+      success: false,
+      error: `View "${viewId}" did not respond to capability "${capability}" within ${timeoutMs}ms`,
+    };
+  }
+}
 
 function resultSuccess(result: unknown): boolean {
   if (!result || typeof result !== "object" || Array.isArray(result)) {
