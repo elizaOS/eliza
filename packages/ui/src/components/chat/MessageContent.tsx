@@ -19,8 +19,8 @@ import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,
 } from "../../platform/mobile-permissions-client";
-import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { useAppSelectorShallow } from "../../state";
+import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import type { ConfigUiHint } from "../../types";
 import { PermissionCard } from "../composites/chat/permission-card";
 import {
