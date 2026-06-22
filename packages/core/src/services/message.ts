@@ -252,14 +252,19 @@ const PLANNER_CONTROL_ACTIONS = new Set(
 	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
 );
 // Direct/DM/API Stage 1 packs the whole user-facing answer into `replyText`
-// (the "simple" fast path emits it without a planner turn). A 384-token cap
-// could not fit a full reply, so any non-trivial answer truncated the
-// HANDLE_RESPONSE tool-call JSON mid-`replyText` → unparseable args →
-// "malformed HANDLE_RESPONSE tool call" → up to 2 futile Stage-1 regenerations
-// (a +12-16s tail-latency spike). Measured against cerebras gpt-oss-120b: ~30%
-// of long-answer turns truncated at 384 vs 0/120 at 1024. The cap is a ceiling,
-// not a target — short replies finish exactly as fast.
-const DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 1024;
+// (the "simple" fast path emits it without a planner turn). A low cap truncated
+// the HANDLE_RESPONSE tool-call JSON mid-`replyText` → unparseable args →
+// "malformed HANDLE_RESPONSE tool call". We want NO ceiling on a 1:1 reply, but
+// a literal "omit max_tokens" is impossible: Anthropic's API requires the field,
+// and every adapter re-defaults an omitted value to a small number (elizacloud/
+// openai/groq/openrouter `?? 8192`, local FFI `?? 2048`) — which would silently
+// re-cap and even regress desktop-local. So we pass the largest budget the
+// adapters accept without error: 64000 is the Anthropic adapter's hard cap (it
+// `Math.min`s to this; Opus-4 self-clamps to 32000) and fits inside gpt-oss-120b's
+// 128k context (the default cloud RESPONSE_HANDLER model), so the model's own
+// context/EOS/grammar is the only real limit, never this constant. It is a
+// ceiling, not a target — short replies finish exactly as fast.
+const DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 64000;
 const DIRECT_REPLY_FAST_PATH_MAX_TOKENS = 96;
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
 const STAGE1_TRUNCATION_REPLY =

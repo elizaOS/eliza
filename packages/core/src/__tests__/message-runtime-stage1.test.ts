@@ -492,11 +492,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		expect(required).not.toContain("shouldRespond");
 		expect(required).not.toContain("facts");
-		// Direct channels use DIRECT_CHANNEL_STAGE1_MAX_TOKENS (1024) — the cap
-		// was raised from 384 in services/message.ts so long single-turn direct
-		// replies aren't truncated. The schema stays compact (asserted above);
-		// only the token ceiling grew.
-		expect(params.maxTokens).toBe(1024);
+		// Direct channels pass the model's full legal output budget
+		// (DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 64000) so a long single-turn direct
+		// reply is never capped by us — a literal "no max_tokens" is impossible
+		// (Anthropic requires the field; adapters re-default an omitted value to
+		// 8192). The schema stays compact (asserted above); only the ceiling grew.
+		expect(params.maxTokens).toBe(64000);
 		expect(
 			params.responseSkeleton?.spans?.some((s) => s.key === "shouldRespond"),
 		).toBe(false);
