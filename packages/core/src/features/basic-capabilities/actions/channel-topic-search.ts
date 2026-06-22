@@ -64,6 +64,7 @@ export const channelTopicSearchAction: Action = {
 		if (!svc) {
 			return {
 				text: "Channel topic search is unavailable.",
+				success: false,
 				values: { success: false },
 				data: { actionName: "SEARCH_CHANNEL_TOPICS" },
 			};
@@ -72,6 +73,7 @@ export const channelTopicSearchAction: Action = {
 		if (!query) {
 			return {
 				text: "Provide a topic to search for.",
+				success: false,
 				values: { success: false },
 				data: { actionName: "SEARCH_CHANNEL_TOPICS" },
 			};
@@ -85,6 +87,7 @@ export const channelTopicSearchAction: Action = {
 						.join("\n")}`;
 		return {
 			text,
+			success: true,
 			values: { success: true, matchCount: hits.length },
 			data: { actionName: "SEARCH_CHANNEL_TOPICS", query, hits },
 		};
