@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "hold_style.frank.with_injection_attempt.008",
   title:
     "hold_style :: haiku :: frank :: with_injection_attempt :: 24-turn (8)",

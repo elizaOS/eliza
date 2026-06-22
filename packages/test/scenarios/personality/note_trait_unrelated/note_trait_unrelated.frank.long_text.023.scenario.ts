@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "note_trait_unrelated.frank.long_text.023",
   title: "note_trait :: code_blocks_only :: frank :: long_text :: 20-turn (23)",
   domain: "personality",
