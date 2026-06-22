@@ -31,6 +31,7 @@ import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
+import { withTimeout } from "../utils/with-timeout";
 import {
   computeStateHash,
   estimateDeltaBytes,
@@ -95,6 +96,17 @@ export type DeleteAgentResult =
   | { success: true; deletedSandbox: AgentSandbox }
   | { success: false; error: string };
 
+/**
+ * Outcome of the bounded container teardown attempted during `deleteAgent`:
+ * `null` = stop succeeded; `{ error }` = stop failed within the cap (classified
+ * downstream as ignorable vs real); `{ error, timedOut }` = the teardown hit the
+ * hard cap and was abandoned (see `runBoundedSandboxStop`).
+ */
+export type BoundedSandboxStopResult =
+  | null
+  | { error: unknown }
+  | { error: unknown; timedOut: true };
+
 export interface BridgeRequest {
   jsonrpc: "2.0";
   id?: string | number;
@@ -137,6 +149,12 @@ const HEARTBEAT_PROBE_RETRY_MS = 2_000;
 // on success) is the downtime clock. The ~30s heartbeat itself keeps the
 // WireGuard NAT mapping warm, so a reachable agent never trips this.
 const HEARTBEAT_DISCONNECT_AFTER_MS = 120_000;
+// Hard cap on the container+VPN teardown during agent delete. The underlying
+// docker rm (60s) and headscale cleanup (15s) are each internally bounded, but
+// an EARLY hang (SSH connect / provider init) was not — and a single stuck node
+// could then hang the delete past the 300s job watchdog and wedge the whole
+// provisioning worker. Generous over the internal caps, well under the watchdog.
+const SANDBOX_DELETE_STOP_TIMEOUT_MS = 120_000;
 type LifecycleTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 function digestPinnedImageRef(imageRef: string, digest: string): string {
@@ -699,62 +717,76 @@ export class ElizaSandboxService {
   }
 
   async deleteAgent(agentId: string, orgId: string): Promise<DeleteAgentResult> {
-    const result = await dbWrite.transaction(async (tx) => {
-      await this.lockLifecycle(tx, agentId, orgId);
+    // Phase 1 — short transaction: take the lifecycle lock, validate
+    // preconditions, and capture the fields needed for teardown. We deliberately
+    // do NOT run the container teardown inside this transaction: provider.stop()
+    // can hang on an early SSH connect / provider init, and holding the row lock
+    // + write transaction + a pooled connection for the full teardown cap (up to
+    // SANDBOX_DELETE_STOP_TIMEOUT_MS) would wedge concurrent lifecycle ops on the
+    // same agent/org. The lock + transaction are released the moment this returns.
+    const precheck = await this.prepareAgentDelete(agentId, orgId);
 
-      const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
-      if (!rec) return { success: false, error: "Agent not found" } as const;
+    if (!precheck.ok) {
+      return { success: false, error: precheck.error };
+    }
 
-      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
-      if (rec.status === "provisioning" || hasActiveProvisionJob) {
-        return {
-          success: false,
-          error: "Agent provisioning is in progress",
-        } as const;
-      }
+    logger.info("[agent-sandbox] Deleting agent", {
+      agentId,
+      sandbox: precheck.sandboxId,
+    });
 
-      logger.info("[agent-sandbox] Deleting agent", {
-        agentId,
-        sandbox: rec.sandbox_id,
-      });
+    // Phase 2 — bounded container + VPN teardown, run OUTSIDE the write-lock /
+    // transaction. provider.stop() removes the container and cleans up the
+    // headscale route (each internally bounded), but an EARLY hang (SSH connect /
+    // provider init) was unbounded — a single stuck node could hang this delete
+    // past the 300s job watchdog and wedge the entire provisioning worker
+    // (fail-closed on every provision).
+    //
+    // Provider errors are captured as values so `withTimeout` rejects ONLY on a
+    // genuine hang. A real stop failure on a REACHABLE node still escalates
+    // (returns failure / retry), since the container may still be running; an
+    // "already gone" failure is ignorable and we proceed.
+    if (precheck.sandboxId) {
+      const sandboxId = precheck.sandboxId;
+      const stop = await this.runBoundedSandboxStop(sandboxId);
 
-      if (rec.sandbox_id) {
-        try {
-          await (await this.getProvider()).stop(rec.sandbox_id);
-        } catch (e) {
-          const errorMessage = e instanceof Error ? e.message : String(e);
-          if (!this.isIgnorableSandboxStopError(e)) {
-            logger.warn("[agent-sandbox] Stop failed during delete", {
-              sandboxId: rec.sandbox_id,
-              status: rec.status,
-              error: errorMessage,
-            });
-            return {
-              success: false,
-              error: "Failed to delete sandbox",
-            } as const;
-          }
-
+      if (stop) {
+        const errorMessage = stop.error instanceof Error ? stop.error.message : String(stop.error);
+        if ("timedOut" in stop) {
+          // HONEST LIMITATION: there is currently NO automatic reclaimer — no
+          // orphan-sweep / node-reconcile job that lists actual containers on a
+          // node and removes ones with no DB row (see docker-sandbox-provider's
+          // unreachable-node path for the same trade-off). We complete the
+          // delete to keep the provisioning work cycle bounded, but on timeout
+          // the container (and its headscale registration) is ABANDONED and will
+          // LEAK until such a sweeper is built or it is reclaimed by hand. Do NOT
+          // claim a reconciler already reclaims it.
+          logger.warn(
+            "[agent-sandbox] Stop during delete timed out; completing delete and ABANDONING the " +
+              "container — it will LEAK until reclaimed (no automatic orphan-sweep / node-reconcile " +
+              "job exists yet)",
+            { sandboxId, status: precheck.status, error: errorMessage },
+          );
+        } else if (this.isIgnorableSandboxStopError(stop.error)) {
           logger.info("[agent-sandbox] Sandbox already absent during delete cleanup", {
-            sandboxId: rec.sandbox_id,
-            status: rec.status,
+            sandboxId,
+            status: precheck.status,
             error: errorMessage,
           });
+        } else {
+          logger.warn("[agent-sandbox] Stop failed during delete", {
+            sandboxId,
+            status: precheck.status,
+            error: errorMessage,
+          });
+          return { success: false, error: "Failed to delete sandbox" };
         }
       }
+    }
 
-      const result = await tx.execute<AgentSandbox>(sql`
-        DELETE FROM ${agentSandboxes}
-        WHERE id = ${agentId}
-          AND organization_id = ${orgId}
-        RETURNING *
-      `);
-      const deletedSandbox = result.rows[0];
-
-      return deletedSandbox
-        ? ({ success: true, deletedSandbox } as const)
-        : ({ success: false, error: "Agent not found" } as const);
-    });
+    // Phase 3 — short transaction: re-take the lock, re-validate (a concurrent
+    // provision could have started while teardown ran), then delete the row.
+    const result = await this.commitAgentRowDelete(agentId, orgId);
 
     if (result.success) {
       // Best-effort: revoke the per-agent API key after the row delete commits.
@@ -791,6 +823,92 @@ export class ElizaSandboxService {
     }
 
     return result;
+  }
+
+  /**
+   * Phase 1 of `deleteAgent` (see there): short write transaction that takes
+   * the lifecycle lock, validates delete preconditions, and captures the
+   * sandbox id + status for the (out-of-transaction) teardown. Kept separate so
+   * the lock/transaction is held only for these quick DB ops, never across the
+   * bounded container teardown.
+   */
+  private async prepareAgentDelete(
+    agentId: string,
+    orgId: string,
+  ): Promise<
+    | { ok: true; sandboxId: string | null; status: AgentSandbox["status"] }
+    | { ok: false; error: string }
+  > {
+    return dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+
+      const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!rec) return { ok: false as const, error: "Agent not found" };
+
+      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
+      if (rec.status === "provisioning" || hasActiveProvisionJob) {
+        return { ok: false as const, error: "Agent provisioning is in progress" };
+      }
+
+      return { ok: true as const, sandboxId: rec.sandbox_id, status: rec.status };
+    });
+  }
+
+  /**
+   * Phase 3 of `deleteAgent` (see there): short write transaction that re-takes
+   * the lifecycle lock, re-validates (a concurrent provision could have started
+   * while the out-of-transaction teardown ran), then deletes the sandbox row.
+   */
+  private async commitAgentRowDelete(agentId: string, orgId: string): Promise<DeleteAgentResult> {
+    return dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+
+      const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!rec) return { success: false, error: "Agent not found" } as const;
+
+      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
+      if (rec.status === "provisioning" || hasActiveProvisionJob) {
+        return {
+          success: false,
+          error: "Agent provisioning is in progress",
+        } as const;
+      }
+
+      const deleted = await tx.execute<AgentSandbox>(sql`
+        DELETE FROM ${agentSandboxes}
+        WHERE id = ${agentId}
+          AND organization_id = ${orgId}
+        RETURNING *
+      `);
+      const deletedSandbox = deleted.rows[0];
+
+      return deletedSandbox
+        ? ({ success: true, deletedSandbox } as const)
+        : ({ success: false, error: "Agent not found" } as const);
+    });
+  }
+
+  /**
+   * Phase 2 of `deleteAgent` (see there): the bounded container + VPN teardown.
+   * Provider errors are captured as values so `withTimeout` rejects ONLY on a
+   * genuine hang. Returns `null` on success, `{ error }` on a bounded failure,
+   * or `{ error, timedOut: true }` when the teardown hit the hard cap (in which
+   * case the container is abandoned and leaks — there is no reclaimer).
+   */
+  private async runBoundedSandboxStop(sandboxId: string): Promise<BoundedSandboxStopResult> {
+    return withTimeout(
+      (async (): Promise<null | { error: unknown }> => {
+        try {
+          const provider = await this.getProvider();
+          await provider.stop(sandboxId);
+          return null;
+        } catch (error) {
+          return { error };
+        }
+      })(),
+      SANDBOX_DELETE_STOP_TIMEOUT_MS,
+      `agent-delete stop ${sandboxId}`,
+    ).catch((error: unknown) => ({ error, timedOut: true as const }));
   }
 
   /**
