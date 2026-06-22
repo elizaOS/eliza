@@ -129,7 +129,9 @@ export const appControlPlugin: Plugin = {
 	//     resolveIntentView → matchViewCommand. The agent may also pick it.
 	//  3. POST   — viewContextEvaluator (small model): catches CONTEXTUAL intent
 	//     the user never spelled out ("fix the login bug" -> task-coordinator).
-	//     Its gate defers whenever the rigid matcher already matched.
+	//     Its gate defers whenever resolveIntentView already matches a direct
+	//     surface (the rigid matchViewCommand matcher, or the legacy intent
+	//     rules it falls back to), so it never contends with the action.
 	// view-followup-routing handles mutation follow-ups on the active view.
 	evaluators: [viewContextEvaluator],
 	responseHandlerEvaluators: [

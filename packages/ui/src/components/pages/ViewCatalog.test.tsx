@@ -14,10 +14,12 @@ import {
   registerDynamicView,
   unregisterDynamicView,
 } from "../../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { useAvailableViews } from "../../hooks/useAvailableViews";
 import { useViewCatalog } from "../../hooks/useViewCatalog";
 import { getActiveViewModality } from "../../platform/platform-guards";
+import { SPRINGBOARD_STORAGE_KEY } from "../../state/springboard-layout";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import {
   useViewChatBinding,
@@ -54,6 +56,7 @@ vi.mock("../../bridge/electrobun-rpc", () => ({
   unregisterDynamicView: vi.fn(),
 }));
 
+const isElectrobunRuntimeMock = vi.mocked(isElectrobunRuntime);
 const useAvailableViewsMock = vi.mocked(useAvailableViews);
 const useViewCatalogMock = vi.mocked(useViewCatalog);
 const useIsDeveloperModeMock = vi.mocked(useIsDeveloperMode);
@@ -166,6 +169,7 @@ describe("ViewCatalog", () => {
       refresh: vi.fn(),
     });
     useIsDeveloperModeMock.mockReturnValue(false);
+    isElectrobunRuntimeMock.mockReturnValue(true);
     getActiveViewModalityMock.mockReturnValue("gui");
     useViewCatalogMock.mockReturnValue({
       entries: [],
@@ -215,6 +219,23 @@ describe("ViewCatalog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remote Ledger" }));
 
     expect(window.location.pathname).toBe("/apps/remote-ledger");
+  });
+
+  it("falls back to Springboard local favorites when off the Electrobun desktop shell", () => {
+    // useDesktopTabs is inert off-desktop, so the controlled favorites dock
+    // would be permanently empty. Off-Electrobun the catalog must omit the
+    // controlled props and let Springboard manage favorites locally.
+    isElectrobunRuntimeMock.mockReturnValue(false);
+
+    render(<ViewCatalog />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByTestId("springboard-fav-local.notes"));
+
+    const stored = JSON.parse(
+      window.localStorage.getItem(SPRINGBOARD_STORAGE_KEY) ?? "{}",
+    );
+    expect(stored.favorites).toContain("local.notes");
   });
 
   it("hides TUI and XR views entirely on a GUI surface", () => {

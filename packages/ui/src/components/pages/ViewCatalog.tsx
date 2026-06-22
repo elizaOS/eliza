@@ -605,7 +605,8 @@ export function ViewCatalog() {
   } = useDesktopTabs();
   const isDeveloperMode = useIsDeveloperMode();
   const enabledKinds = useEnabledViewKinds();
-  const canManageDynamicViews = isDeveloperMode && isElectrobunRuntime();
+  const isDesktop = isElectrobunRuntime();
+  const canManageDynamicViews = isDeveloperMode && isDesktop;
   // Views are scoped to the surface modality: a GUI surface lists only GUI
   // views (TUI/XR hidden entirely); an XR surface lists only XR views.
   const activeModality = useMemo(() => getActiveViewModality(), []);
@@ -1174,8 +1175,12 @@ export function ViewCatalog() {
               <Springboard
                 entries={springboardEntries}
                 onLaunch={handleSpringboardLaunch}
-                favoriteIds={favoriteViewIds}
-                onToggleFavorite={handleToggleFavorite}
+                // Favorites are unified with desktop tabs only on the Electrobun
+                // shell (useDesktopTabs is inert off-desktop). On web/mobile,
+                // omit the controlled props so Springboard uses its own local
+                // favorites state instead of a permanently empty, no-op dock.
+                favoriteIds={isDesktop ? favoriteViewIds : undefined}
+                onToggleFavorite={isDesktop ? handleToggleFavorite : undefined}
                 canManageView={canManageDynamicViews ? () => true : undefined}
                 onEditView={
                   canManageDynamicViews ? handleSpringboardEdit : undefined
