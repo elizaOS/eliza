@@ -1,0 +1,484 @@
+/**
+ * progress-cadence.test.ts
+ *
+ * Gap (K): the `emitProgress` routing ladder + cadence inside
+ * `registerProgressHook` (plugins/plugin-agent-orchestrator/src/index.ts) had no
+ * unit coverage. That hook is the single hot path that turns AcpService session
+ * events (narration / tool calls / heartbeats / terminal) into user-facing
+ * progress posts, and its behavior is driven entirely by the resolved
+ * `SubAgentProgressPolicy` (mode + delayMs) plus capability probes against the
+ * connector list. A regression in any of:
+ *   - the `delayMs` debounce before the first compact post,
+ *   - the `silent` short-circuit,
+ *   - the one-ack-per-session / one-ack-per-room dedup in `ack` mode,
+ *   - the "create exactly one thread per label, then post into it" branch of the
+ *     `threaded` mode routing ladder,
+ *   - the heartbeat's skip-empty + dedupe-identical guards,
+ * would silently spam (or silence) every sub-agent room, and nothing caught it.
+ *
+ * `registerProgressHook` itself is module-private, so this drives it through the
+ * only real exported seam: `createAgentOrchestratorPlugin().init(config, runtime)`.
+ * init() defers via `setTimeout(0)`, eager-starts the four services, then calls
+ * `registerProgressHook(runtime)`, which subscribes to `acp.onSessionEvent`. We
+ * advance fake timers to run that macrotask, capture the registered session-event
+ * handler from the mock AcpService, and fire `(sessionId, event, data)` tuples at
+ * it — exactly what the live AcpService does — then assert on the calls the hook
+ * made against a fully-mocked runtime (no network, no real model, no wall clock).
+ *
+ * Everything is deterministic: vitest fake timers for the delay/silence/heartbeat
+ * windows, a stubbed `useModel` for the heartbeat summary, and per-test env that
+ * selects the progress mode the hook resolves at registration time.
+ */
+
+import {
+  _resetBuildVariantForTests,
+  isLocalCodeExecutionAllowed,
+} from "@elizaos/core";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from "vitest";
+import { createAgentOrchestratorPlugin } from "../../src/index.js";
+import { AcpService } from "../../src/services/acp-service.js";
+
+type SessionHandler = (
+  sessionId: string,
+  event: string,
+  data: unknown,
+) => void;
+
+const ROOM = "11111111-2222-3333-4444-555555555555" as const;
+const SOURCE = "discord";
+
+// Env keys the progress policy + gating read. Saved/restored per test so modes
+// don't leak between cases and the plugin always registers in code-exec mode.
+const ENV_KEYS = [
+  "ELIZA_BUILD_VARIANT",
+  "ELIZA_PLATFORM",
+  "ELIZA_AOSP_BUILD",
+  "ELIZA_RUNTIME_MODE",
+  "RUNTIME_MODE",
+  "LOCAL_RUNTIME_MODE",
+  "ACPX_PROGRESS_MODE",
+  "ELIZA_SUB_AGENT_PROGRESS_MODE",
+  "ACPX_PROGRESS_DELAY_MS",
+  "ELIZA_SUB_AGENT_PROGRESS_DELAY_MS",
+  "ACPX_PROGRESS_REACTIONS",
+  "ELIZA_SUB_AGENT_PROGRESS_REACTIONS",
+] as const;
+
+interface MockConnector {
+  source: string;
+  capabilities: string[];
+}
+
+interface BuiltRuntime {
+  // Dispatch a session event to EVERY handler the orchestrator subscribed —
+  // init() registers two onSessionEvent listeners (the progress hook AND the
+  // inbox-flush listener), so the stub fans out to all, exactly like the real
+  // AcpService.
+  emit: SessionHandler;
+  sendMessageToTarget: Mock;
+  editMessageOnTarget: Mock;
+  createThreadOnTarget: Mock;
+  postToThreadOnTarget: Mock;
+  addReactionOnTarget: Mock;
+  useModel: Mock;
+  dispose: () => Promise<void>;
+  // Mutable session metadata the hook reads via acp.getSession().
+  sessions: Map<string, { metadata: Record<string, unknown>; status: string }>;
+  sessionOutput: Map<string, string>;
+}
+
+/**
+ * Build a fully-mocked runtime + a stub AcpService, run plugin.init(), and flush
+ * the deferred setTimeout(0) so `registerProgressHook` runs and subscribes. The
+ * captured `onSessionEvent` handler is returned so the test can drive events.
+ */
+async function buildHookedRuntime(
+  connectors: MockConnector[],
+  opts?: { sessionOutput?: string },
+): Promise<BuiltRuntime> {
+  const sessions = new Map<
+    string,
+    { metadata: Record<string, unknown>; status: string }
+  >();
+  const sessionOutput = new Map<string, string>();
+
+  const sessionHandlers: SessionHandler[] = [];
+
+  const sendMessageToTarget = vi.fn(async (_target, _content) => {
+    // Return a Memory-like object carrying a platformMessageId so the hook
+    // records ProgressState (canEdit / thread caching paths depend on it).
+    return {
+      metadata: { platformMessageId: `msg-${sendMessageToTarget.mock.calls.length}` },
+    };
+  });
+  const editMessageOnTarget = vi.fn(async () => ({ metadata: {} }));
+  const createThreadOnTarget = vi.fn(async (_target, params) => ({
+    threadId: `thread-${createThreadOnTarget.mock.calls.length}`,
+    parentChannelId: ROOM,
+    _name: params?.name,
+  }));
+  const postToThreadOnTarget = vi.fn(async () => ({ metadata: {} }));
+  const addReactionOnTarget = vi.fn(async () => undefined);
+  const useModel = vi.fn(async () => "Editing src/index.ts and running tests.");
+
+  // Stub AcpService: only the surface the hook touches. onSessionEvent captures
+  // the handler; getSession returns the per-session metadata/status; the rest
+  // are no-op shims so the eager-start chain and heartbeat don't throw.
+  const acpStub = {
+    onSessionEvent(handler: SessionHandler): () => void {
+      sessionHandlers.push(handler);
+      return () => {
+        const idx = sessionHandlers.indexOf(handler);
+        if (idx >= 0) sessionHandlers.splice(idx, 1);
+      };
+    },
+    async getSession(sessionId: string) {
+      const s = sessions.get(sessionId);
+      if (!s) return undefined;
+      return {
+        id: sessionId,
+        status: s.status,
+        createdAt: new Date(0),
+        lastActivityAt: new Date(0),
+        metadata: s.metadata,
+      };
+    },
+    async getSessionOutput(sessionId: string) {
+      return sessionOutput.get(sessionId) ?? opts?.sessionOutput ?? "";
+    },
+    async updateSessionMetadata() {
+      return undefined;
+    },
+    async stop() {
+      return undefined;
+    },
+    async resumeOrphanedBusySessions() {
+      return undefined;
+    },
+  };
+
+  const logger = {
+    debug: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    error: vi.fn(),
+  };
+
+  const services = new Map<string, unknown>();
+  services.set(AcpService.serviceType, acpStub);
+
+  const runtime = {
+    agentId: "agent-0000-0000-0000-000000000000",
+    logger,
+    getSetting: () => undefined,
+    getService: (type: string) => services.get(type) ?? null,
+    // init() awaits this for each of the 4 service types before registering the
+    // hook. Resolve immediately for every type so the chain proceeds.
+    getServiceLoadPromise: async (_type: string) => undefined,
+    getMessageConnectors: () => connectors,
+    registerEvent: vi.fn(),
+    unregisterEvent: vi.fn(),
+    useModel,
+    sendMessageToTarget,
+    editMessageOnTarget,
+    createThreadOnTarget,
+    postToThreadOnTarget,
+    addReactionOnTarget,
+  } as unknown as Parameters<NonNullable<ReturnType<typeof createAgentOrchestratorPlugin>["init"]>>[1];
+
+  const plugin = createAgentOrchestratorPlugin();
+  // Guard: the whole test premise is that this build registers the code-exec
+  // services + the progress hook. If gating is off, init() returns early.
+  expect(isLocalCodeExecutionAllowed()).toBe(true);
+  expect(plugin.services?.length ?? 0).toBeGreaterThan(0);
+
+  await plugin.init?.({}, runtime);
+  // init() schedules the hook registration on a setTimeout(0) macrotask whose
+  // body awaits getServiceLoadPromise; runAllTimersAsync drains the timer AND
+  // the awaited microtasks so the hook subscribes before we return.
+  await vi.runAllTimersAsync();
+
+  if (sessionHandlers.length === 0) {
+    throw new Error(
+      "registerProgressHook never subscribed via onSessionEvent — init wiring changed",
+    );
+  }
+
+  return {
+    emit: (sessionId, event, data) => {
+      for (const h of sessionHandlers) h(sessionId, event, data);
+    },
+    sendMessageToTarget,
+    editMessageOnTarget,
+    createThreadOnTarget,
+    postToThreadOnTarget,
+    addReactionOnTarget,
+    useModel,
+    dispose: async () => {
+      await plugin.dispose?.(runtime);
+    },
+    sessions,
+    sessionOutput,
+  };
+}
+
+/** Register a session's routing metadata so the hook resolves source/room/label. */
+function seedSession(
+  rt: BuiltRuntime,
+  sessionId: string,
+  label: string,
+  status = "running",
+): void {
+  rt.sessions.set(sessionId, {
+    status,
+    metadata: { source: SOURCE, roomId: ROOM, label },
+  });
+}
+
+/**
+ * Fire one session event and let the hook's async body settle. The hook handler
+ * is fire-and-forget async with a chain of plain awaits (getSession → emitProgress
+ * → sendMessageToTarget). advanceTimersByTimeAsync drains pending timers AND the
+ * awaited microtasks between them; a few extra microtask turns flush the rest.
+ */
+async function fire(
+  rt: BuiltRuntime,
+  sessionId: string,
+  event: string,
+  data: unknown = {},
+): Promise<void> {
+  rt.emit(sessionId, event, data);
+  await vi.advanceTimersByTimeAsync(0);
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+}
+
+describe("emitProgress routing ladder + cadence", () => {
+  let originalEnv: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    originalEnv = Object.fromEntries(
+      ENV_KEYS.map((key) => [key, process.env[key]]),
+    );
+    // Force a clean code-exec-enabled build for every test.
+    for (const key of ENV_KEYS) delete process.env[key];
+    process.env.ELIZA_BUILD_VARIANT = "direct";
+    _resetBuildVariantForTests();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    for (const key of ENV_KEYS) {
+      const value = originalEnv[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    _resetBuildVariantForTests();
+  });
+
+  it("compact mode posts a single debounced message only after delayMs elapses", async () => {
+    process.env.ACPX_PROGRESS_MODE = "compact";
+    process.env.ACPX_PROGRESS_DELAY_MS = "15000";
+    // Plain text connector: no edit/thread caps → fresh-send fallback path.
+    const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+    seedSession(rt, "s-compact", "build-site");
+
+    // Narration chunks accumulate in the message buffer.
+    await fire(rt, "s-compact", "message", { text: "Reading the spec " });
+    await fire(rt, "s-compact", "message", { text: "and starting the build." });
+    expect(rt.sendMessageToTarget).not.toHaveBeenCalled();
+
+    // After the 1.5s silence-flush window, flushMessageBuffer calls emitProgress
+    // — but the 15s delayMs debounce holds the first post back.
+    await vi.advanceTimersByTimeAsync(1_600);
+    expect(rt.sendMessageToTarget).not.toHaveBeenCalled();
+
+    // Crossing delayMs releases exactly one buffered post.
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    const [, content] = rt.sendMessageToTarget.mock.calls[0];
+    // compact strips the `emoji [label]` prefix; the buffered narration survives.
+    expect((content as { text: string }).text).toContain("starting the build");
+    expect((content as { source: string }).source).toBe("sub_agent_progress");
+
+    await rt.dispose();
+  });
+
+  it("silent mode posts nothing for any event", async () => {
+    process.env.ACPX_PROGRESS_MODE = "silent";
+    const rt = await buildHookedRuntime([
+      { source: SOURCE, capabilities: ["edit_message", "create_thread", "post_to_thread"] },
+    ]);
+    seedSession(rt, "s-silent", "quiet-task");
+
+    await fire(rt, "s-silent", "ready");
+    await fire(rt, "s-silent", "message", { text: "doing lots of work" });
+    await fire(rt, "s-silent", "tool_running", {
+      toolCall: { id: "t1", kind: "edit", rawInput: { file_path: "/a/b.ts" } },
+    });
+    // Drain the silence-flush + any heartbeat windows.
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(rt.sendMessageToTarget).not.toHaveBeenCalled();
+    expect(rt.editMessageOnTarget).not.toHaveBeenCalled();
+    expect(rt.postToThreadOnTarget).not.toHaveBeenCalled();
+    expect(rt.createThreadOnTarget).not.toHaveBeenCalled();
+
+    await rt.dispose();
+  });
+
+  it("ack mode posts exactly one ack per session, even across many events", async () => {
+    process.env.ACPX_PROGRESS_MODE = "ack";
+    const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+    seedSession(rt, "s-ack", "ack-task");
+
+    // First non-terminal event triggers the single spawn ACK (delayMs is forced
+    // to 0 for ack mode, so it posts immediately).
+    await fire(rt, "s-ack", "ready");
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+    expect(
+      (rt.sendMessageToTarget.mock.calls[0][1] as { text: string }).text,
+    ).toBe("working on it now.");
+
+    // Subsequent events (narration, tools) must NOT add more acks.
+    await fire(rt, "s-ack", "message", { text: "still working" });
+    await fire(rt, "s-ack", "tool_running", {
+      toolCall: { id: "t1", kind: "read", rawInput: { file_path: "/x.ts" } },
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    await rt.dispose();
+  });
+
+  it("ack mode dedupes a sibling session in the same room within the dedup window", async () => {
+    process.env.ACPX_PROGRESS_MODE = "ack";
+    const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+    seedSession(rt, "s-ack-a", "task-a");
+    seedSession(rt, "s-ack-b", "task-b");
+
+    await fire(rt, "s-ack-a", "ready");
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    // A second session spawned in the SAME room/turn must be suppressed by the
+    // per-room ack dedup (ACK_ROOM_DEDUP_MS), collapsing one user turn to one ack.
+    await fire(rt, "s-ack-b", "ready");
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    await rt.dispose();
+  });
+
+  it("threaded mode creates exactly one thread per label and routes narration into it", async () => {
+    process.env.ACPX_PROGRESS_MODE = "threaded";
+    process.env.ACPX_PROGRESS_DELAY_MS = "0";
+    const rt = await buildHookedRuntime([
+      {
+        source: SOURCE,
+        capabilities: ["create_thread", "post_to_thread", "edit_message"],
+      },
+    ]);
+    seedSession(rt, "s-thread", "feature-x");
+
+    // The first emitProgress (the first narration flush) is what posts the 🚀
+    // spawn message to the main channel and creates the per-label thread off it.
+    // `ready` only arms the heartbeat — it does not post in threaded mode.
+    await fire(rt, "s-thread", "ready");
+    expect(rt.sendMessageToTarget).not.toHaveBeenCalled();
+    expect(rt.createThreadOnTarget).not.toHaveBeenCalled();
+
+    // First narration: buffer, then flush after the silence window. That first
+    // flush posts exactly one main-channel 🚀 message and creates exactly one
+    // thread, and immediately posts the narration into that thread.
+    await fire(rt, "s-thread", "message", { text: "Implementing the feature." });
+    await vi.advanceTimersByTimeAsync(1_600); // silence-flush window
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+    const spawnText = (rt.sendMessageToTarget.mock.calls[0][1] as { text: string })
+      .text;
+    expect(spawnText).toBe("🚀 [feature-x] running");
+    expect(rt.createThreadOnTarget).toHaveBeenCalledTimes(1);
+    expect(rt.postToThreadOnTarget).toHaveBeenCalled();
+
+    // More narration → routes into the SAME thread: no second main-channel send,
+    // no second thread creation.
+    await fire(rt, "s-thread", "message", { text: "Wiring it up." });
+    await vi.advanceTimersByTimeAsync(1_600);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(rt.createThreadOnTarget).toHaveBeenCalledTimes(1);
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    await rt.dispose();
+  });
+
+  it("heartbeat skips when there is no narration and no tool history", async () => {
+    process.env.ACPX_PROGRESS_MODE = "compact";
+    process.env.ACPX_PROGRESS_DELAY_MS = "0";
+    // No edit cap → slow (30s) heartbeat interval; empty session output.
+    const rt = await buildHookedRuntime(
+      [{ source: SOURCE, capabilities: [] }],
+      { sessionOutput: "" },
+    );
+    seedSession(rt, "s-hb-empty", "idle-task");
+
+    // `ready` starts the heartbeat. No message/tool events recorded → nothing
+    // for the summarizer to work with.
+    await fire(rt, "s-hb-empty", "ready");
+    rt.sendMessageToTarget.mockClear();
+    rt.useModel.mockClear();
+
+    // Advance past two slow heartbeat ticks. With empty output AND empty tool
+    // history the tick returns before calling useModel or emitting anything.
+    await vi.advanceTimersByTimeAsync(65_000);
+
+    expect(rt.useModel).not.toHaveBeenCalled();
+    expect(rt.sendMessageToTarget).not.toHaveBeenCalled();
+
+    await rt.dispose();
+  });
+
+  it("heartbeat dedupes an identical summary across consecutive ticks", async () => {
+    process.env.ACPX_PROGRESS_MODE = "compact";
+    process.env.ACPX_PROGRESS_DELAY_MS = "0";
+    // edit_message cap → fast (10s) heartbeat interval; non-empty session output
+    // so the summarizer has something to summarize.
+    const rt = await buildHookedRuntime(
+      [{ source: SOURCE, capabilities: ["edit_message"] }],
+      { sessionOutput: "Now let me build the homepage and deploy it." },
+    );
+    seedSession(rt, "s-hb-dupe", "deploy-task");
+    // Model always returns the SAME line → after the first post, later ticks
+    // must dedupe and stay silent.
+    rt.useModel.mockResolvedValue("Building the homepage and deploying.");
+
+    await fire(rt, "s-hb-dupe", "ready");
+    rt.sendMessageToTarget.mockClear();
+    rt.editMessageOnTarget.mockClear();
+
+    // First fast tick (~10s): the LLM summary posts once.
+    await vi.advanceTimersByTimeAsync(10_500);
+    const postsAfterFirst =
+      rt.sendMessageToTarget.mock.calls.length +
+      rt.editMessageOnTarget.mock.calls.length;
+    expect(postsAfterFirst).toBe(1);
+
+    // Two more ticks producing the identical summary → no additional posts.
+    await vi.advanceTimersByTimeAsync(25_000);
+    const postsAfterMore =
+      rt.sendMessageToTarget.mock.calls.length +
+      rt.editMessageOnTarget.mock.calls.length;
+    expect(postsAfterMore).toBe(1);
+
+    await rt.dispose();
+  });
+});
