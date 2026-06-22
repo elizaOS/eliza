@@ -43,15 +43,6 @@ import {
 
 const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
 
-/**
- * True when the active client base is an Eliza Cloud agent — either the
- * shared-runtime REST adapter (`/api/v1/eliza/agents/<id>`) or a dedicated agent
- * on its own `<id>.elizacloud.ai` subdomain. A chat-send 404 against such a base
- * is ambiguous: it can mean "the conversation was deleted" (recoverable by
- * recreating the conversation) OR "the agent itself was deleted / is
- * unreachable" — in which case recreating the conversation also 404s and the
- * user's message must NOT be silently dropped.
- */
 /** Derive the rendered-attachment kind for an optimistic bubble from its MIME. */
 function optimisticAttachmentKind(
   mimeType: string,
@@ -64,6 +55,15 @@ function optimisticAttachmentKind(
   return "image";
 }
 
+/**
+ * True when the active client base is an Eliza Cloud agent — either the
+ * shared-runtime REST adapter (`/api/v1/eliza/agents/<id>`) or a dedicated agent
+ * on its own `<id>.elizacloud.ai` subdomain. A chat-send 404 against such a base
+ * is ambiguous: it can mean "the conversation was deleted" (recoverable by
+ * recreating the conversation) OR "the agent itself was deleted / is
+ * unreachable" — in which case recreating the conversation also 404s and the
+ * user's message must NOT be silently dropped.
+ */
 function isCloudAgentBase(value: string | null | undefined): boolean {
   if (!value?.trim()) return false;
   // Either the shared-runtime REST adapter or a dedicated <id>.elizacloud.ai
