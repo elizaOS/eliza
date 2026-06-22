@@ -2037,7 +2037,13 @@ async function handleRequest(
   ) {
     return;
   }
-  if (pathname.startsWith("/api/computer-use/")) {
+  // Computer-use is a desktop/cloud-only plugin; on mobile it is not in the
+  // agent bundle, so importing it here would REJECT (`Cannot find module
+  // '@elizaos/plugin-computeruse'`) and surface as a 500 on every renderer poll
+  // of /api/computer-use/approvals. Skip the import path on mobile and let the
+  // request fall through to handleMobileOptionalRoutes, which serves the inert
+  // {mode:"off",…} approval snapshot.
+  if (!isMobilePlatform() && pathname.startsWith("/api/computer-use/")) {
     const { handleComputerUseRoutes } = await getOptionalPluginApi<{
       handleComputerUseRoutes: (
         req: http.IncomingMessage,

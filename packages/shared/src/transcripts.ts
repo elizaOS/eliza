@@ -60,6 +60,8 @@ export interface Transcript {
   createdAt: number;
   /** Epoch ms when the session ended; absent while still recording. */
   endedAt?: number;
+  /** Epoch ms of the most recent user edit to the transcript text. */
+  editedAt?: number;
   durationMs: number;
   /** Served audio URL (content-addressed media store); absent if not retained. */
   audioUrl?: string;

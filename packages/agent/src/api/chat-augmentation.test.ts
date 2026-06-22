@@ -137,4 +137,40 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
     expect(result).toBe(message);
     expect(useModel).not.toHaveBeenCalled();
   });
+
+  it("skips the embedding doc search entirely when the corpus has zero fragments", async () => {
+    const message = makeMessage();
+    // Empty corpus (the common cloud-agent case): the query embed + fragment
+    // search is pure per-turn latency for guaranteed-zero matches. A cheap
+    // fragment count must short-circuit BEFORE searchDocuments embeds anything.
+    const documents = {
+      countMemories: vi.fn().mockResolvedValue(0),
+      searchDocuments: vi.fn().mockResolvedValue([]),
+    };
+    const useModel = vi.fn();
+    const runtime = makeRuntime(documents, useModel);
+
+    const result = await maybeAugmentChatMessageWithDocuments(runtime, message);
+
+    expect(result).toBe(message);
+    expect(documents.countMemories).toHaveBeenCalledWith(
+      expect.objectContaining({ tableName: "document_fragments" }),
+    );
+    expect(documents.searchDocuments).not.toHaveBeenCalled();
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("still runs the document search when the corpus has fragments", async () => {
+    const message = makeMessage();
+    const documents = {
+      countMemories: vi.fn().mockResolvedValue(3),
+      searchDocuments: vi.fn().mockResolvedValue([]),
+    };
+    const runtime = makeRuntime(documents);
+
+    await maybeAugmentChatMessageWithDocuments(runtime, message);
+
+    expect(documents.countMemories).toHaveBeenCalledTimes(1);
+    expect(documents.searchDocuments).toHaveBeenCalled();
+  });
 });

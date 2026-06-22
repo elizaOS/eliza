@@ -40,6 +40,12 @@ function fakeRuntime(): { rows: Map<string, Memory>; runtime: unknown } {
 		},
 		getMemories: async () => [...rows.values()],
 		getMemoryById: async (id: UUID) => rows.get(id) ?? null,
+		updateMemory: async (m: Partial<Memory> & { id: UUID }) => {
+			const existing = rows.get(m.id);
+			if (!existing) return false;
+			rows.set(m.id, { ...existing, ...m });
+			return true;
+		},
 		deleteMemory: async (id: UUID) => {
 			rows.delete(id);
 		},
@@ -139,6 +145,51 @@ describe("transcripts routes", () => {
 			"POST",
 			"/api/transcripts",
 		)(ctx({ runtime: runtime as never, body: { segments: [] } }));
+		expect(res.status).toBe(400);
+	});
+
+	it("PUT edits an existing transcript and 404s on a missing one", async () => {
+		const { runtime } = fakeRuntime();
+		const created = await handlerFor(
+			"POST",
+			"/api/transcripts",
+		)(ctx({ runtime: runtime as never, body: { title: "Raw", segments } }));
+		const id = (created.body as { transcript: { id: string } }).transcript.id;
+
+		const put = await handlerFor(
+			"PUT",
+			"/api/transcripts/:id",
+		)(
+			ctx({
+				runtime: runtime as never,
+				params: { id },
+				body: { title: "Fixed title" },
+			}),
+		);
+		expect(put.status).toBe(200);
+		expect(
+			(put.body as { transcript: { title: string } }).transcript.title,
+		).toBe("Fixed title");
+
+		const missing = await handlerFor(
+			"PUT",
+			"/api/transcripts/:id",
+		)(
+			ctx({
+				runtime: runtime as never,
+				params: { id: "00000000-0000-0000-0000-0000000000ff" },
+				body: { title: "x" },
+			}),
+		);
+		expect(missing.status).toBe(404);
+	});
+
+	it("PUT rejects a body with neither title nor segments", async () => {
+		const { runtime } = fakeRuntime();
+		const res = await handlerFor(
+			"PUT",
+			"/api/transcripts/:id",
+		)(ctx({ runtime: runtime as never, params: { id: "x" }, body: {} }));
 		expect(res.status).toBe(400);
 	});
 });

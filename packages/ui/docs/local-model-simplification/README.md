@@ -1,0 +1,163 @@
+# Local model UX: one model, no picking (eliza-1)
+
+**Status:** design + in-progress implementation
+**Issues:** [#8811](https://github.com/elizaOS/eliza/issues/8811) · [#8809](https://github.com/elizaOS/eliza/issues/8809) · [#8808](https://github.com/elizaOS/eliza/issues/8808) · [#8807](https://github.com/elizaOS/eliza/issues/8807)
+
+## The principle
+
+A consumer should never see a model name, a quantization, a HuggingFace repo, a
+per-slot dropdown, or a routing policy. They make **one** decision — *where does
+my agent think?* — and everything else is automatic:
+
+> **Local** (private, on-device) · **Cloud** (fastest, Eliza-managed) · **Auto** (pick for me)
+
+When they pick **Local**, they get **eliza-1** — a single, curated, all-in-one
+model family that serves *every* modality (text, embeddings, speech-out,
+speech-in, voice activity, vision). There is nothing to choose, search, or
+assemble. When they pick **Cloud**, the same modalities route to Eliza Cloud.
+**Auto** measures the device and routes per modality to whichever is better.
+
+This document is the opposite of "surface real model selection" (#8808) and
+"quant picker / HF auth UX" (#8807) for the *consumer* path: those capabilities
+stay, but they move behind **Advanced / Developer mode**. The default product is
+a single model with zero configuration.
+
+## Why
+
+The repo accreted four overlapping model-choice surfaces:
+- **`RoutingMatrix`** (`packages/ui/src/components/local-inference/RoutingMatrix.tsx`,
+  mounted at `ProviderSwitcher.tsx:291`) — a per-slot policy + preferred-provider
+  grid across TEXT_SMALL/TEXT_LARGE/TEXT_EMBEDDING/TEXT_TO_SPEECH/TRANSCRIPTION.
+- **`SlotAssignments`** — a per-slot installed-model dropdown.
+- **HF / ModelScope search + download** of arbitrary GGUFs (#8808), with a quant
+  picker and HF-token entry (#8807).
+- **The provider switcher** (Local/cloud subscriptions/keys).
+
+A consumer faced with a 5×N routing grid, a model search box, and a quant
+dropdown has already lost. Worse, the routing decision is **capability-blind**
+(#8811) and the device-tier classifier is **dead code** — so the complexity buys
+nothing. The simplest correct product is: **one local model, measured Auto,
+everything else Advanced.**
+
+## The one model: eliza-1
+
+`eliza-1` is a *family*, not a single file. The consumer-facing local model is
+**eliza-1 (2B)** — `eliza-1-2b`. We are **removing the 0.8B tier entirely** and
+**2B is the floor** (`ELIZA_1_TIER_IDS` in
+`packages/shared/src/local-inference/catalog.ts` starts at `eliza-1-2b`). Larger
+tiers (4B/9B/27B) remain for servers/power-users but are **never surfaced as a
+choice** to consumers — Auto/device-tier may pick a larger tier on a strong
+device, silently.
+
+One bundle, every modality (no separate downloads, no per-modality picking):
+
+| Modality | Served by (local) | Notes |
+|---|---|---|
+| Text (small + large) | eliza-1 fused LLM | the same GGUF serves both slots |
+| Embeddings | eliza-1 fused embed | |
+| **Text-to-speech** | **Kokoro** (`ELIZA_1_VOICE_BACKENDS["eliza-1-2b"] = ["kokoro"]`) | bundled with the 2B tier |
+| Transcription / STT | eliza-1 fused ASR | |
+| Voice activity (VAD) | eliza-1 fused VAD | |
+| Vision | eliza-1 fused vision | |
+
+The user downloads **one thing** ("Eliza-1") and gets all six. There is no
+"now also install a TTS model" step — Kokoro ships *inside* the eliza-1 local
+bundle for 2B/4B.
+
+## The settings surface
+
+Replace the routing grid with a single **Intelligence** section:
+
+```
+┌─ Intelligence ───────────────────────────────┐
+│  Where should your agent think?               │
+│                                               │
+│   ( ) Local      Private, on your device      │
+│   (•) Cloud      Fastest · Eliza-managed      │
+│   ( ) Auto       Pick the best for my device  │
+│                                               │
+│  Local model: Eliza-1 (2B)        [ Download ]│  ← only when Local/Auto
+│   2.1 GB · runs offline · text, voice, vision │
+└───────────────────────────────────────────────┘
+```
+
+- **Three radios, one model line.** No per-slot grid, no provider dropdown, no
+  model search on this screen.
+- **Local model line is read-only** — it always says "Eliza-1 (2B)". The only
+  action is **Download** (one tap → the curated SHA-verified bundle) or
+  **Downloaded ✓**.
+- **Auto** shows the same eliza-1 line (it's the local half of Auto) plus a tiny
+  "currently using: on-device / cloud per task" status, never a control.
+- Cloud auth (sign in / API key / dev `eliza auth dev-login`) lives in its own
+  **Cloud account** row, not mixed with model choice.
+
+**Advanced (Developer mode) — collapsed by default**, holds everything from
+#8808/#8807/#8811 for users who opt in:
+- the `RoutingMatrix` per-slot policy grid,
+- `SlotAssignments` per-slot installed-model dropdowns,
+- HF / ModelScope search + arbitrary-GGUF download + quant picker + HF-token
+  entry + disk preflight (the polished #8807 flow),
+- the generic single-GGUF engine path (#8808).
+
+Consumers never see it; power users flip one switch.
+
+## Per-modality routing → one toggle + Auto (#8811)
+
+#8811 asked for a per-modality local/cloud matrix. The consumer answer is **not a
+matrix** — it's the single Local/Cloud/Auto control above, applied to all
+modalities together, with **Auto** doing the per-modality decision *for* the user:
+
+- **Auto** uses the now-wired `classifyDeviceTier()` capability signal (the
+  `auto` `RoutingPolicy` added for #8811): strong device → modality runs local;
+  weak device → that modality routes to cloud. This is the "measure the device
+  and use on-device TTS/STT/ASR when it's strong enough" goal, with **zero UI**.
+- Power users who genuinely want a per-modality matrix get the `RoutingMatrix`
+  under Advanced. It is no longer the default surface.
+
+So #8811's engine work (the `auto` policy, voice-on-the-router) stays and is what
+powers **Auto**; only the *default UI* changes from a grid to one toggle.
+
+## Install UX for the one model (#8807, consumer slice)
+
+The consumer never touches HuggingFace. "Download" pulls the **curated eliza-1
+bundle** — already resumable, SHA-verified, with live SSE progress/ETA/cancel.
+The #8807 hardening (HF `Authorization: Bearer`, disk preflight, retry,
+quant guidance, GGUF-magic validation) applies to the **Advanced** arbitrary-GGUF
+path; the curated bundle needs none of it (no auth, fixed quant, integrity already
+verified). Net consumer install: one tap, one progress bar, done.
+
+## Memory / fit (#8809) — invisible
+
+#8809's memory work (LRU eviction telemetry, fit-to-RAM quant/context selection,
+predictive preload) is **all backend** and *reinforces* the one-model story: with
+a single known model family, "fit eliza-1 to this device" is a tractable, automatic
+decision (pick the tier + quant + context that fits free RAM) rather than a user
+choice. No UI; it makes Local/Auto "just work" on small devices. The consumer
+never sees a quant or context-length setting.
+
+## Removing 0.8B / 2B floor — implementation
+
+- `ELIZA_1_TIER_IDS`, `ELIZA_1_VISION_TIER_IDS`, `ELIZA_1_MTP_TIER_IDS` already
+  start at `eliza-1-2b` (0.8B dropped from the catalog).
+- Sweep the remaining `eliza-1-0_8b` / `0_8b` references (recommendation ladders,
+  configs, device-tier defaults, tests) so nothing assigns or recommends 0.8B.
+- The device-tier "smallest tier" floor becomes 2B; weak devices that can't fit
+  2B locally route that modality to **Cloud** (via Auto) instead of falling to
+  0.8B.
+
+## Implementation checklist (mapping to the issues)
+
+1. **0.8B removal sweep** — finish purging `eliza-1-0_8b` from recommendation,
+   configs, device-tier, tests. (#8808/#8809 adjacent)
+2. **`auto` routing policy** — wire `classifyDeviceTier()` per modality (landed
+   for #8811); this powers **Auto**.
+3. **Consumer Intelligence section** — new Local/Cloud/Auto control; read-only
+   "Eliza-1 (2B)" model line + one-tap curated download.
+4. **Gate the picking surfaces** — move `RoutingMatrix`, `SlotAssignments`, HF
+   search/quant/token, generic-GGUF engine path behind Developer mode. (#8808/#8807)
+5. **Bundle completeness** — assert the eliza-1 2B bundle ships Kokoro + embed +
+   VAD + ASR + vision so "Local" lights up every modality with one download.
+6. **#8807 Advanced hardening** — keep the HF-auth/preflight/retry/quant/integrity
+   work, scoped to the Advanced arbitrary-GGUF path.
+7. **#8809 backend** — fit-to-RAM + eviction telemetry stay backend; they make
+   the single forced model fit small devices automatically.

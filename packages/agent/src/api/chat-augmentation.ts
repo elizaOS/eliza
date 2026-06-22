@@ -189,6 +189,22 @@ export async function maybeAugmentChatMessageWithDocuments(
   const documents = await getDocumentsService(runtime);
   if (!documents.service) return message;
 
+  // Skip the document search entirely when the agent has no searchable corpus.
+  // `searchDocuments` embeds the user query, then searches `document_fragments`;
+  // most cloud agents run with an empty corpus, so that embed round-trip costs
+  // ~1.5s/turn (the dominant chat-latency tax) for guaranteed-zero matches — and
+  // the LLM query-recovery fallback is already gated on having documents. A cheap
+  // fragment count avoids the wasted embed. On a count error we fall through to
+  // the normal path rather than skip augmentation.
+  try {
+    const fragmentCount = await documents.service.countMemories({
+      tableName: "document_fragments",
+    });
+    if (fragmentCount === 0) return message;
+  } catch {
+    // Count failed — do not skip; let the normal search path run.
+  }
+
   const agentId = runtime.agentId as UUID;
   const roomId =
     typeof message.roomId === "string" && message.roomId.trim().length > 0

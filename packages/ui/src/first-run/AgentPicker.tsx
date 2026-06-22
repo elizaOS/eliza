@@ -120,7 +120,10 @@ export function AgentPicker({
         </div>
       ) : (
         <>
-          <div className="flex w-full flex-col gap-2.5">
+          {/* Cap the list height and scroll it — the onboarding card wrapper is
+              overflow:hidden, so without this a user with many agents can't
+              reach the rows below the fold (or the Back/Create row). */}
+          <div className="flex w-full flex-col gap-2.5 max-h-[min(50vh,380px)] overflow-y-auto overscroll-contain pr-0.5">
             {agents.map((agent) => {
               const isActive =
                 activeAgentId !== null && agent.agent_id === activeAgentId;

@@ -301,6 +301,16 @@ export function CloudAgentsSection() {
 
   const deleteAgent = useCallback(
     async (agent: CloudCompatAgent) => {
+      // Destructive + irreversible — tears down the container and its data.
+      // Confirm first (matches the window.confirm pattern in the other settings
+      // sections: wallet keys, vault profiles, remote plugin hosts).
+      if (
+        !window.confirm(
+          `Delete "${agent.agent_name || agent.agent_id}"? This permanently removes the agent and its data and can't be undone.`,
+        )
+      ) {
+        return;
+      }
       setBusyId(agent.agent_id);
       try {
         const res = await client.deleteCloudCompatAgent(agent.agent_id);

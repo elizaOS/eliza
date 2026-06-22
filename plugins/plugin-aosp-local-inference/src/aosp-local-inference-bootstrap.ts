@@ -61,6 +61,10 @@ import {
 // TTS in-process through the fused `eliza_inference_tts_*` ABI.
 import { writeAospLlamaDebugLog } from "./aosp-debug-log.js";
 import {
+  isAospEnabled,
+  resolveAospElizaInferenceLibPath,
+} from "./aosp-llama-paths.js";
+import {
   type AospFfiPointerHelpers,
   type AospFusedLlmSymbols,
   type AospFusedStreamingLlmBinding,
@@ -68,10 +72,6 @@ import {
   createAospStreamingLlmBinding,
   streamGenerate,
 } from "./aosp-llama-streaming.js";
-import {
-  isAospEnabled,
-  resolveAospElizaInferenceLibPath,
-} from "./aosp-llama-paths.js";
 
 const SERVICE_NAME = "localInferenceLoader";
 const PROVIDER = "eliza-aosp-llama";
@@ -239,6 +239,14 @@ export async function activateAospLocalInferenceModel(args: {
       path: args.modelPath,
       loadedAt,
     });
+    // Eagerly stage the on-device Kokoro voice when a local chat model is
+    // selected/activated, so the first spoken reply already uses the neural
+    // voice instead of the platform "android voice". Background + idempotent
+    // (no-op if tts/kokoro/ exists or ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1).
+    ensureKokoroTtsAssetsInBackground(
+      resolveBundleRootFromModelPath(args.modelPath),
+      tierSlugFromModelName(path.basename(args.modelPath)),
+    );
     return activeSnapshotFromLoadArgs(args.modelId, loadedAt, args.loadArgs);
   } catch (err) {
     writeAospActiveModelState({
@@ -1085,12 +1093,13 @@ const AOSP_RECOMMENDED_MODELS: Record<
   AospRecommendedModel
 > = {
   chat: {
-    // The quantized 4B is the shipped mobile default chat model; the 2B entry
-    // tier is too small for quality chat. Mirrors the capacitor bridge and the
-    // catalog FIRST_RUN_DEFAULT_MODEL_ID.
-    id: "eliza-1-4b",
+    // The quantized 2B is the shipped mobile default chat model: entry tier,
+    // fits 8 GB-class phones, downloads fast, and is the model bundled into the
+    // AOSP image. Mirrors the capacitor bridge and the catalog
+    // FIRST_RUN_DEFAULT_MODEL_ID.
+    id: "eliza-1-2b",
     hfRepo: "elizaos/eliza-1",
-    ggufFile: "bundles/4b/text/eliza-1-4b-128k.gguf",
+    ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
   },
   embedding: {
     id: "eliza-1-embedding",
@@ -1239,12 +1248,45 @@ const KOKORO_GGUF_FILE = "kokoro-82m-v1_0-Q4_K_M.gguf";
 const KOKORO_VOICE_FILE = "af_sam.bin";
 let kokoroTtsDownloadInflight: Promise<void> | null = null;
 
-function ensureKokoroTtsAssetsInBackground(bundleRoot: string): void {
+// HF bundle tier slugs, longest-first so "27b-256k" matches before "27b".
+const ELIZA1_TIER_SLUGS = ["27b-256k", "27b", "9b", "4b", "2b"] as const;
+
+// Derive the HF bundle tier slug (e.g. "2b") from a chat model id or GGUF
+// filename like "eliza-1-2b-128k.gguf". The Kokoro voice URL is
+// `bundles/<tier>/tts/kokoro/...`; the old `path.basename(bundleRoot)`
+// derivation yielded "bundle" for the on-device `<files>/eliza-1/bundle`
+// layout and 404'd every Kokoro download (the device fell back to the platform
+// "android voice"). Defaults to the entry tier "2b" so the URL stays valid.
+function tierSlugFromModelName(modelNameOrId: string): string {
+  const lower = modelNameOrId.toLowerCase();
+  for (const slug of ELIZA1_TIER_SLUGS) {
+    if (lower.includes(`eliza-1-${slug}`)) return slug;
+  }
+  return "2b";
+}
+
+// Tier slug of the currently-assigned chat bundle, for the Kokoro voice URL.
+function resolveAssignedChatTierSlug(): string {
+  try {
+    const modelsDir = resolveBundledModelsDir();
+    const assigned = readAssignedBundledModels(modelsDir);
+    const manifest = readBundledModelManifest(modelsDir);
+    const fallback = fallbackFindBundledModels(modelsDir);
+    const chatModel = assigned.chat ?? manifest.chat ?? fallback.chat;
+    return chatModel ? tierSlugFromModelName(path.basename(chatModel)) : "2b";
+  } catch {
+    return "2b";
+  }
+}
+
+function ensureKokoroTtsAssetsInBackground(
+  bundleRoot: string,
+  tier: string,
+): void {
   if (process.env.ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD?.trim() === "1") return;
   if (kokoroTtsDownloadInflight) return;
   const kokoroDir = path.join(bundleRoot, "tts", "kokoro");
   if (existsSync(kokoroDir)) return;
-  const tier = path.basename(bundleRoot) || "2b";
   const stagingDir = path.join(bundleRoot, "tts", "kokoro.staging");
   kokoroTtsDownloadInflight = (async () => {
     rmSync(stagingDir, { recursive: true, force: true });
@@ -1260,7 +1302,9 @@ function ensureKokoroTtsAssetsInBackground(bundleRoot: string): void {
       },
     ];
     for (const { url, name } of downloads) {
-      logger.info(`[aosp-local-inference] Auto-downloading Kokoro voice ${name} from ${url}`);
+      logger.info(
+        `[aosp-local-inference] Auto-downloading Kokoro voice ${name} from ${url}`,
+      );
       const response = await fetch(url, { redirect: "follow" });
       if (!response.ok || !response.body) {
         throw new Error(
@@ -1274,7 +1318,9 @@ function ensureKokoroTtsAssetsInBackground(bundleRoot: string): void {
     }
     // Atomic publish: tts/kokoro/ appears only when both files are complete.
     renameSync(stagingDir, kokoroDir);
-    logger.info(`[aosp-local-inference] Kokoro voice staged under ${kokoroDir}`);
+    logger.info(
+      `[aosp-local-inference] Kokoro voice staged under ${kokoroDir}`,
+    );
   })()
     .catch((err) => {
       logger.warn(
@@ -2078,7 +2124,7 @@ function resolveAospFusedOmnivoiceConfig(): AospFusedOmnivoiceConfig | null {
   // Kokoro-default). Without tts/kokoro/, on-device TTS has nothing to
   // synthesize and the app falls back to the platform "android voice". This
   // fetches in the background; the platform TTS covers replies until it lands.
-  ensureKokoroTtsAssetsInBackground(bundleRoot);
+  ensureKokoroTtsAssetsInBackground(bundleRoot, resolveAssignedChatTierSlug());
   if (!existsSync(path.join(bundleRoot, "tts"))) {
     // No neural-voice assets yet — also kick off the OmniVoice fetch (larger
     // tiers ship it) and report unavailable for now.
@@ -2137,7 +2183,9 @@ function readFfiStringAndFree(
   if (!raw || raw === 0n) return "(no diagnostic)";
   let text = "(unreadable diagnostic)";
   try {
-    text = ffi.CString ? new ffi.CString(Number(raw)).toString() : "(no CString)";
+    text = ffi.CString
+      ? new ffi.CString(Number(raw)).toString()
+      : "(no CString)";
   } catch {}
   try {
     symbols.eliza_inference_free_string?.(raw);

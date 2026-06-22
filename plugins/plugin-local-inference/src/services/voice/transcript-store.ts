@@ -42,6 +42,9 @@ export interface TranscriptStoreRuntime {
 		orderDirection?: "asc" | "desc";
 	}): Promise<Memory[]>;
 	getMemoryById(id: UUID): Promise<Memory | null>;
+	updateMemory(
+		memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
+	): Promise<boolean>;
 	deleteMemory(id: UUID): Promise<void>;
 }
 
@@ -123,6 +126,35 @@ export class TranscriptStore {
 	async get(id: UUID): Promise<Transcript | null> {
 		const row = await this.runtime.getMemoryById(id);
 		return row ? rowToTranscript(row) : null;
+	}
+
+	/**
+	 * Overwrite an existing transcript record in place (same id/row) — used when
+	 * the user edits the transcript text. Re-derives the preview text body and
+	 * the timing/speaker metadata from the updated record so generic memory
+	 * consumers and the list stay consistent. Returns the record as stored.
+	 */
+	async update(transcript: Transcript): Promise<Transcript> {
+		const ok = await this.runtime.updateMemory({
+			id: transcript.id as UUID,
+			content: {
+				text: transcriptPreview(transcript.segments),
+				transcript: JSON.stringify(transcript),
+			},
+			metadata: {
+				type: "custom",
+				source: TRANSCRIPT_METADATA_TYPE,
+				timestamp: transcript.createdAt,
+				transcriptId: transcript.id,
+				durationMs: transcript.durationMs,
+				speakerCount: transcript.speakerCount,
+				status: transcript.status,
+			},
+		});
+		if (!ok) {
+			throw new Error(`transcript ${transcript.id} not found`);
+		}
+		return transcript;
 	}
 
 	/** Delete a transcript record (the knowledge mirror is removed separately). */

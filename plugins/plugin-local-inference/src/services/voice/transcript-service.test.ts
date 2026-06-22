@@ -59,6 +59,12 @@ function fakeRuntime(opts: {
 		async getMemoryById(id) {
 			return rows.get(id) ?? null;
 		},
+		async updateMemory(memory) {
+			const existing = rows.get(memory.id);
+			if (!existing) return false;
+			rows.set(memory.id, { ...existing, ...memory });
+			return true;
+		},
 		async deleteMemory(id) {
 			rows.delete(id);
 		},
@@ -133,5 +139,57 @@ describe("TranscriptService", () => {
 		await svc.delete(t.id as UUID);
 		expect(rt.rows.has(t.id)).toBe(false);
 		expect(rt.rows.has(docId)).toBe(false);
+	});
+
+	it("applies an edit, re-derives metadata, and re-mirrors to knowledge", async () => {
+		const rt = fakeRuntime({ withDocuments: true });
+		const svc = new TranscriptService(rt);
+		const t = makeTranscript();
+		await svc.create(input(t));
+		const firstDocId = "dddddddd-0000-0000-0000-000000000001";
+		rt.rows.set(firstDocId, { id: firstDocId } as Memory); // the create mirror row
+		rt.addDocument.mockClear();
+		rt.addDocument.mockResolvedValueOnce({
+			storedDocumentMemoryId: "dddddddd-0000-0000-0000-000000000002" as UUID,
+		});
+
+		const updated = await svc.update(t.id as UUID, {
+			worldId: WORLD,
+			roomId: ROOM,
+			entityId: ENTITY,
+			patch: {
+				title: "Edited title",
+				segments: [
+					{ ...t.segments[0], text: "corrected words here", words: [] },
+				],
+			},
+		});
+
+		expect(updated?.title).toBe("Edited title");
+		expect(updated?.editedAt).toBeGreaterThan(0);
+		expect(updated?.segments[0].text).toBe("corrected words here");
+		// Re-mirrored: the stale doc was removed and a fresh one created + linked.
+		expect(rt.rows.has(firstDocId)).toBe(false);
+		expect(rt.addDocument).toHaveBeenCalledTimes(1);
+		expect(updated?.knowledgeDocumentId).toBe(
+			"dddddddd-0000-0000-0000-000000000002",
+		);
+		// The store now round-trips the edited record.
+		expect((await svc.get(t.id as UUID))?.title).toBe("Edited title");
+	});
+
+	it("returns null when updating a transcript that does not exist", async () => {
+		const rt = fakeRuntime({ withDocuments: true });
+		const svc = new TranscriptService(rt);
+		const result = await svc.update(
+			"99999999-0000-0000-0000-000000000000" as UUID,
+			{
+				worldId: WORLD,
+				roomId: ROOM,
+				entityId: ENTITY,
+				patch: { title: "nope" },
+			},
+		);
+		expect(result).toBeNull();
 	});
 });
