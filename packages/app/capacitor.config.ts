@@ -87,6 +87,20 @@ function isFlagEnabled(value: string | undefined): boolean {
 const webViewDebuggingEnabled =
   !isIosStoreBuild() && isFlagEnabled(process.env.ELIZA_WEBVIEW_DEBUG);
 
+export function resolveAndroidProjectPath(
+  useAppDir: string | undefined,
+  appId: string,
+): string {
+  return useAppDir === "1" || appId !== "ai.elizaos.app"
+    ? "android"
+    : "../app-core/platforms/android";
+}
+
+const androidProjectPath = resolveAndroidProjectPath(
+  process.env.ELIZA_ANDROID_USE_APP_DIR,
+  appConfig.appId,
+);
+
 const config: CapacitorConfig = {
   appId: appConfig.appId,
   appName: appConfig.appName,
@@ -149,15 +163,10 @@ const config: CapacitorConfig = {
     webContentsDebuggingEnabled: webViewDebuggingEnabled,
   },
   android: {
-    // Point `cap sync` at the SAME android project gradle actually builds
-    // (packages/app-core/platforms/android, resolved relative to this config).
-    // Without this, cap sync writes a full project to packages/app/android while
-    // gradle builds app-core/platforms/android off a STALE committed
-    // capacitor.settings.gradle — so native plugins (@capacitor/browser, haptics,
-    // …) silently never compile and get pruned from the manifest (#8387). With
-    // the path unified, cap sync regenerates the full plugin set in place every
-    // build and nothing drifts.
-    path: "../app-core/platforms/android",
+    // Keep `cap sync` pointed at the same Android tree run-mobile-build will
+    // package. Upstream elizaOS owns the shared app-core tree; white-label or
+    // explicitly isolated builds use the app-local ignored android/ project.
+    path: androidProjectPath,
     backgroundColor: "#FF5800",
     allowMixedContent: false,
     captureInput: true,

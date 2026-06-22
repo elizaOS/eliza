@@ -54,8 +54,37 @@ describe("desktopHttpRequest", () => {
       "https://agent.example:2138",
     ]) {
       expect(() => normalizeDesktopHttpRequest({ url })).toThrow(
-        "external plain HTTP",
+        "configured desktop API plain HTTP",
       );
+    }
+  });
+
+  it("allows the configured external desktop API base even when it is loopback", () => {
+    const previous = process.env.ELIZA_DESKTOP_TEST_API_BASE;
+    process.env.ELIZA_DESKTOP_TEST_API_BASE = "http://127.0.0.1:2138";
+    try {
+      expect(
+        normalizeDesktopHttpRequest({
+          url: "http://127.0.0.1:2138/api/config",
+        }),
+      ).toEqual({
+        url: "http://127.0.0.1:2138/api/config",
+        method: "GET",
+        headers: {},
+        body: null,
+        timeoutMs: undefined,
+      });
+      expect(() =>
+        normalizeDesktopHttpRequest({
+          url: "http://127.0.0.1:31337/api/config",
+        }),
+      ).toThrow("configured desktop API plain HTTP");
+    } finally {
+      if (typeof previous === "undefined") {
+        delete process.env.ELIZA_DESKTOP_TEST_API_BASE;
+      } else {
+        process.env.ELIZA_DESKTOP_TEST_API_BASE = previous;
+      }
     }
   });
 

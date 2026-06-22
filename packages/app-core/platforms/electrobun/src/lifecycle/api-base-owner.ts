@@ -31,6 +31,7 @@
 
 import {
   pushApiBaseToRenderer,
+  resolveDesktopRuntimeMode,
   resolveDesktopRuntimeModeSignal,
 } from "../api-base";
 
@@ -94,7 +95,12 @@ export function injectIntoHtml(html: string): string {
   const runtimeModeInject = runtimeModeSignal
     ? `window.__ELIZA_DESKTOP_RUNTIME_MODE__=${safeJsonForHtml(runtimeModeSignal)};`
     : "";
-  const script = `<script>window.__ELIZA_API_BASE__=${baseLiteral};${runtimeModeInject}${tokenInject}${bootConfigInject}</script>`;
+  const runtime = resolveDesktopRuntimeMode(process.env);
+  const externalApiBaseInject =
+    runtime.mode === "external" && runtime.externalApi.base
+      ? `window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__=${safeJsonForHtml(runtime.externalApi.base)};`
+      : "";
+  const script = `<script>window.__ELIZA_API_BASE__=${baseLiteral};${runtimeModeInject}${externalApiBaseInject}${tokenInject}${bootConfigInject}</script>`;
   if (html.includes("</head>")) {
     return html.replace("</head>", `${script}</head>`);
   }

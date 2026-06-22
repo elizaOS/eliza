@@ -29,9 +29,9 @@ import {
 } from "./browser-workspace-forms.js";
 import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
-  createBrowserWorkspaceJsdomScriptExecutionError,
   assertBrowserWorkspaceJsdomScriptNotRequested,
   createBrowserWorkspaceCommandTargetError,
+  createBrowserWorkspaceJsdomScriptExecutionError,
   createBrowserWorkspaceNotFoundError,
   DEFAULT_TIMEOUT_MS,
   DEFAULT_WAIT_INTERVAL_MS,
@@ -73,6 +73,21 @@ import type {
   BrowserWorkspaceSettingsState,
   WebBrowserWorkspaceTabState,
 } from "./browser-workspace-types.js";
+
+/**
+ * Safely resolve a JSDOM `Storage` area. The `localStorage` / `sessionStorage`
+ * getters themselves throw `SecurityError: localStorage is not available for
+ * opaque origins` on `about:blank` (and other opaque-origin documents), so any
+ * access must be guarded. Callers that can degrade gracefully use the `null`
+ * return; callers that require storage turn `null` into a clear error.
+ */
+function safeWebStorageArea(getArea: () => Storage): Storage | null {
+  try {
+    return getArea();
+  } catch {
+    return null;
+  }
+}
 
 export function getWebBrowserWorkspaceTabIndex(tabId: string): number {
   return webWorkspaceState.tabs.findIndex((tab) => tab.id === tabId);
@@ -425,10 +440,16 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
           tab.partition,
           "storage",
         );
-        const area =
+        const area = safeWebStorageArea(() =>
           command.storageArea === "session"
             ? dom.window.sessionStorage
-            : dom.window.localStorage;
+            : dom.window.localStorage,
+        );
+        if (!area) {
+          throw new Error(
+            "Eliza browser workspace storage is unavailable for this page's origin (e.g. about:blank). Navigate to a real page first.",
+          );
+        }
         const action = command.storageAction ?? "get";
         if (action === "clear") {
           area.clear();
@@ -840,13 +861,17 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
             value: { loaded: true },
           };
         }
+        // `state` is a best-effort snapshot — opaque origins (about:blank) have
+        // no accessible storage, so degrade to empty maps rather than throwing.
+        const localArea = safeWebStorageArea(() => dom.window.localStorage);
+        const sessionArea = safeWebStorageArea(() => dom.window.sessionStorage);
         const payload = {
           clipboard: browserWorkspaceClipboardText,
           cookies: readBrowserWorkspaceCookies(document),
-          localStorage: readBrowserWorkspaceStorage(dom.window.localStorage),
-          sessionStorage: readBrowserWorkspaceStorage(
-            dom.window.sessionStorage,
-          ),
+          localStorage: localArea ? readBrowserWorkspaceStorage(localArea) : {},
+          sessionStorage: sessionArea
+            ? readBrowserWorkspaceStorage(sessionArea)
+            : {},
           settings: runtime.settings,
           url: tab.url,
         };

@@ -2099,6 +2099,15 @@ function writeSseEvent(res, payload) {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
+function sendReadySseStream(req, res) {
+  sendSseHeaders(req, res);
+  writeSseEvent(res, { type: "ready" });
+  const interval = setInterval(() => {
+    res.write(": heartbeat\n\n");
+  }, 15_000);
+  req.on("close", () => clearInterval(interval));
+}
+
 async function readJsonBody(req) {
   const chunks = [];
   for await (const chunk of req) {
@@ -2743,12 +2752,7 @@ async function handleDemoOrchestratorRoute(req, res, url) {
   const task = demoOrchestratorState.tasks.find((item) => item.id === taskId);
 
   if (action === "stream" && req.method === "GET") {
-    sendSseHeaders(req, res);
-    writeSseEvent(res, { type: "ready" });
-    const interval = setInterval(() => {
-      res.write(": heartbeat\n\n");
-    }, 15_000);
-    req.on("close", () => clearInterval(interval));
+    sendReadySseStream(req, res);
     return true;
   }
 
@@ -3190,6 +3194,26 @@ const server = http.createServer(async (req, res) => {
     url.pathname.startsWith("/api/apps/hero/")
   ) {
     sendBinary(req, res, 200, "image/png", ONE_PIXEL_PNG);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/commands") {
+    sendJson(req, res, 200, {
+      commands: [],
+      surface: url.searchParams.get("surface"),
+      agentId: null,
+      generatedAt: SMOKE_GENERATED_AT,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/custom-actions") {
+    sendJson(req, res, 200, { actions: [] });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/notifications") {
+    sendJson(req, res, 200, { notifications: [], unreadCount: 0 });
     return;
   }
 
@@ -4526,6 +4550,10 @@ const server = http.createServer(async (req, res) => {
     /^\/api\/orchestrator\/tasks\/([^/]+)(?:\/([^/]+))?$/.exec(url.pathname);
   if (orchestratorTaskMatch) {
     const [, taskId, action] = orchestratorTaskMatch;
+    if (req.method === "GET" && action === "stream") {
+      sendReadySseStream(req, res);
+      return;
+    }
     if (req.method === "GET" && action === "messages") {
       sendJson(req, res, 200, { items: [], nextCursor: null });
       return;

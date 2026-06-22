@@ -11,8 +11,8 @@ const noteText = "Project kickoff is Tuesday at 10am in room 4.";
 const noteDataUrl = `data:text/plain;base64,${Buffer.from(noteText).toString("base64")}`;
 
 export default scenario({
-  lane: "live-only",
   id: "live-inbound-attachment",
+  lane: "live-only",
   title: "Real LLM reads and summarizes an inbound text attachment",
   domain: "attachments",
   tags: ["live", "real-llm", "attachments", "files"],

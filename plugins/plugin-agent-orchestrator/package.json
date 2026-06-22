@@ -101,6 +101,8 @@
     "test:unit": "bunx vitest run --config vitest.config.ts __tests__/unit",
     "test:e2e:manual": "node tests/e2e/acp-codex-smoke.mjs",
     "test:e2e:multi-account": "bun --conditions=eliza-source scripts/compose-multi-account-e2e.ts",
+    "test:scenarios": "bun --conditions=eliza-source ../../packages/scenario-runner/src/cli.ts run test/scenarios --lane pr-deterministic",
+    "test:scenarios:live": "bun --conditions=eliza-source ../../packages/scenario-runner/src/cli.ts run test/scenarios --lane live-only",
     "test:watch": "bunx vitest --config vitest.config.ts",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"
