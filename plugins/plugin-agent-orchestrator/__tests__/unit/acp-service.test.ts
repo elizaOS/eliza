@@ -37,6 +37,7 @@ type MockNativeClient = {
   cancel: ReturnType<typeof vi.fn>;
   closeSession: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
+  approvesPermissionRequest: ReturnType<typeof vi.fn>;
   setEventHandler: (handler: NativeEventHandler | undefined) => void;
   setTimeoutMs: (timeoutMs: number | undefined) => void;
   emit: (event: AcpJsonRpcMessage, sessionId?: string) => void;
@@ -72,6 +73,10 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
     cancel = vi.fn(async () => undefined);
     closeSession = vi.fn(async () => undefined);
     close = vi.fn(async () => undefined);
+    // Mirrors the real transport's auto-approve decision. Defaults to true to
+    // match the default `autonomous` preset (every op approved); individual
+    // tests override it to exercise the restrictive / cancel paths.
+    approvesPermissionRequest = vi.fn((_params: unknown) => true);
 
     constructor(opts: NativeOptions) {
       this.opts = opts;
@@ -1032,6 +1037,64 @@ describe("AcpService", () => {
     expect(events).toEqual(
       expect.arrayContaining(["blocked", "login_required"]),
     );
+  });
+
+  it("does NOT emit blocked for an auto-approved (non-auth) permission request", async () => {
+    // Regression for the phantom-blocked bug: the native transport auto-responds
+    // (approves) to this request per the session preset, so surfacing "blocked"
+    // is a false signal that derails the planner (re-spawn + user-facing block).
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+    await service.spawnSession({
+      name: "native-auto-approve",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.approvesPermissionRequest.mockReturnValue(true);
+
+    client.emit({
+      jsonrpc: "2.0",
+      id: "permission",
+      method: "session/request_permission",
+      params: {
+        sessionId: "protocol-session",
+        description: "allow read of file.ts",
+        toolCall: { kind: "read" },
+      },
+    } as AcpJsonRpcMessage);
+
+    expect(events).not.toContain("blocked");
+    expect(events).not.toContain("login_required");
+  });
+
+  it("still emits blocked when the transport will NOT auto-approve the request", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+    await service.spawnSession({
+      name: "native-denied",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.approvesPermissionRequest.mockReturnValue(false);
+
+    client.emit({
+      jsonrpc: "2.0",
+      id: "permission",
+      method: "session/request_permission",
+      params: {
+        sessionId: "protocol-session",
+        description: "allow execute of rm -rf",
+        toolCall: { kind: "execute" },
+      },
+    } as AcpJsonRpcMessage);
+
+    expect(events).toContain("blocked");
   });
 
   it("closes one-shot initialTask sessions after completion", async () => {

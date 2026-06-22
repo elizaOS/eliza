@@ -563,13 +563,20 @@ export class NativeAcpClient {
   }
 
   /** Whether a `session/request_permission` will be auto-approved without user
-   *  interaction — mirrors `resolvePermission`'s decision. AcpService uses this
-   *  to avoid surfacing a phantom "blocked" for a request the transport
-   *  immediately approves under the session's preset. */
+   *  interaction — mirrors `resolvePermission`'s decision exactly. AcpService
+   *  uses this to avoid surfacing a phantom "blocked" for a request the
+   *  transport immediately approves under the session's preset. The op being
+   *  approved is necessary but not sufficient: `resolvePermission` only counts
+   *  it as approved when a concrete option is selectable; an empty/malformed
+   *  `options` list makes the transport cancel, which is a genuine block. */
   approvesPermissionRequest(
     params: Record<string, unknown> | undefined,
   ): boolean {
-    return this.isOperationApproved(inferToolKind(asRecord(params?.toolCall)));
+    const options = Array.isArray(params?.options) ? params.options : [];
+    const approve = this.isOperationApproved(
+      inferToolKind(asRecord(params?.toolCall)),
+    );
+    return approve && pickPermissionOption(options, approve) !== undefined;
   }
 
   private async resolveReadablePath(
