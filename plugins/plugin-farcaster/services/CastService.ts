@@ -120,8 +120,13 @@ export class FarcasterCastService implements CastServiceInterface {
   }): Promise<FarcasterCast> {
     try {
       let castText = params.text;
+      const media = (params.media ?? []).filter(
+        (url) => typeof url === "string" && url.trim().length > 0
+      );
 
-      if (!castText || castText.trim() === "") {
+      // Only auto-generate prose when there is neither text nor media — a
+      // media-only cast is a valid (embeds-only) post.
+      if ((!castText || castText.trim() === "") && media.length === 0) {
         castText = await this.generateCastContent();
       }
 
@@ -134,6 +139,7 @@ export class FarcasterCastService implements CastServiceInterface {
         inReplyTo: params.replyTo
           ? { hash: params.replyTo.hash, fid: params.replyTo.fid }
           : undefined,
+        ...(media.length > 0 ? { embeds: media } : {}),
       });
 
       if (casts.length === 0) {
@@ -150,7 +156,7 @@ export class FarcasterCastService implements CastServiceInterface {
         text: cast.text,
         timestamp: cast.timestamp.getTime(),
         inReplyTo: params.replyTo?.hash,
-        media: [],
+        media: media.map((url) => ({ url })),
         metadata: {
           accountId: this.getAccountId(),
           castHash: cast.hash,
@@ -180,8 +186,16 @@ export class FarcasterCastService implements CastServiceInterface {
     }
 
     const text = typeof content.text === "string" ? content.text.trim() : "";
-    if (!text) {
-      throw new Error("Farcaster post connector requires non-empty text content.");
+    // Agent-generated attachments ride along as Farcaster cast embeds (#8876).
+    const media = Array.isArray(content.attachments)
+      ? content.attachments
+          .map((m) => m?.url)
+          .filter((u): u is string => typeof u === "string" && u.trim().length > 0)
+      : [];
+    if (!text && media.length === 0) {
+      throw new Error(
+        "Farcaster post connector requires non-empty text content or at least one attachment."
+      );
     }
 
     const parentHash = readContentString(content, ["parentHash", "replyTo", "replyToHash"]);
@@ -190,6 +204,7 @@ export class FarcasterCastService implements CastServiceInterface {
       agentId: runtime.agentId,
       roomId: createUniqueUuid(runtime, `farcaster:feed:${fid ?? runtime.agentId}`),
       text,
+      ...(media.length > 0 ? { media } : {}),
       ...(parentHash && fid ? { replyTo: { hash: parentHash, fid } } : {}),
     });
 
