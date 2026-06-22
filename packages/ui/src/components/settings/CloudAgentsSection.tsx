@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
-import { resolveCloudAgentApiBase } from "../../api/client-cloud";
+import { getCloudAuthToken, resolveCloudAgentApiBase } from "../../api/client-cloud";
 import type { CloudCompatAgent } from "../../api/client-types-cloud";
 import { getBootConfig } from "../../config/boot-config";
 import { useBranding } from "../../config/branding";
@@ -63,15 +63,20 @@ function activeCloudAgentId(): string | null {
   return id && !id.includes("/") ? id : null;
 }
 
-/** The cloud access token for the current session (persisted, or runtime). */
+/** The cloud access token for the current session. */
 function currentCloudToken(): string {
+  // Canonical Steward-first resolution (matches getCloudAuthToken: Steward JWT →
+  // runtime global → client), then fall back to the persisted active-server
+  // token for sessions without a Steward session. The old order read the
+  // persisted token first and skipped the Steward JWT entirely, which could send
+  // a stale/missing token from the agent manager.
+  const canonical = getCloudAuthToken();
+  if (canonical) return canonical;
   const persisted = loadPersistedActiveServer();
   if (persisted?.kind === "cloud" && persisted.accessToken) {
     return persisted.accessToken;
   }
-  const runtime = (globalThis as Record<string, unknown>)
-    .__ELIZA_CLOUD_AUTH_TOKEN__;
-  return typeof runtime === "string" ? runtime : "";
+  return "";
 }
 
 /**

@@ -68,6 +68,9 @@ vi.mock("../../api", () => ({
 
 vi.mock("../../api/client-cloud", () => ({
   resolveCloudAgentApiBase: () => "https://agent.example.test",
+  // currentCloudToken now resolves Steward-first via getCloudAuthToken; return
+  // null so it falls through to the persisted active-server token these tests set.
+  getCloudAuthToken: () => null,
 }));
 
 vi.mock("../../config/boot-config", () => ({
