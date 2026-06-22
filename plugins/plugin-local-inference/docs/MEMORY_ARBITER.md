@@ -39,11 +39,15 @@ Live in this checkout:
   per-tier resident estimates, installed bundle footprints, and arbiter
   load/eviction/pressure telemetry. Add `--load` to exercise every
   installed Eliza-owned bundle with a short decode and RSS delta sample.
+- The `memperf` harness (`packages/benchmarks/memperf/run-all.mjs`) is wired
+  into CI as a budget / eviction-telemetry regression gate
+  (`.github/workflows/memperf.yml`): exit `1` — a real `budgets.json` peak-RSS
+  or co-residency eviction-count regression — fails the build; a model-absent
+  runner exits `2` (skip) after the real-arbiter co-residency self-check still
+  runs.
 
 Still deferred:
 
-- A CI `budgets.json` regression gate fed by the desktop/server memory
-  benchmark output.
 - Voice next-stage predictors that call `preload()` during ASR / LM /
   TTS transitions.
 - Dedicated embedding-sidecar residency registration for the larger
