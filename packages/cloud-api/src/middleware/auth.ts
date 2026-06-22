@@ -101,6 +101,7 @@ const publicPathPrefixes = [
   "/api/internal",
   "/api/webhooks",
   "/api/v1/telegram/webhook",
+  "/api/v1/earnings/payout/stripe-connect/webhook",
   "/api/eliza-app/auth",
   "/api/eliza-app/connections",
   "/api/eliza-app/webhook",
