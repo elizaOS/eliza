@@ -121,5 +121,10 @@ false-accept at training. Local-mode only; inert in cloud mode.
 - [x] Headful A/V — desktop + web  *(13/13 specs passed + recorded + adversarially verified; `.github/issue-evidence/8785-voice-headful/`)*
 - [~] iOS **simulator** — app boots + UI renders, recorded (`.github/issue-evidence/8785-voice-ios-sim/`); voice *inference* on the sim is Metal-gated (no GPU on the sim) — fundamentally needs a physical device for local, or cloud credits.
 - [ ] iOS **physical device** — needs Apple ID provisioning  *(needs §2)*
-- [ ] Live cloud STT/TTS E2E  *(needs §3 credits)*
-- [ ] Real WER/DER/EOT-latency on degraded corpus  *(needs §4 artifacts)*
+- [x] **Live cloud STT/TTS E2E** — ElevenLabs `eleven_turbo_v2_5` + `scribe_v1` round-trip, WER 0 (`.github/issue-evidence/8785-voice-real-cloud/`).
+- [x] **Real on-device ASR + WER on the degraded corpus** — eliza-1-asr via the fused dylib + Metal; WER 0 across every realistic degradation (noise to 0 dB, reverb to 0.98, far-field, telephone, harsh), graceful past the edge.
+- [x] **Mixed local STT + cloud LLM + cloud TTS** — `roundtrip:real`: ~770–870 ms hybrid (local STT ~200 ms + Cerebras ~270 ms + cloud TTS ~270 ms).
+- [x] **Real speaker recognition + diarization + VAD + local TTS** — `voicestack:real`: WeSpeaker same-speaker ~0.72 vs different ~0.15 (owner-vs-intruder), pyannote ≥2 speakers, Silero speech 1.0 / silence 0.009, on-device TTS 3.9 s. (`.github/issue-evidence/8785-voice-real-cloud/`)
+- [~] EOT turn-detector model — GGUFs present (en/intl); the heuristic EOT is validated in `--logic`; the model path (`eotScore`) needs the text model + tokenizer loaded to drive via FFI.
+- [ ] Wake-word "hey eliza" model — a real head is published (v0.3.0, ~98% true-accept) but not staged in this bundle; the wake-word *decision* (phrase detection + override) is validated in `--logic`.
+- [ ] iOS **physical device** — needs Apple ID provisioning

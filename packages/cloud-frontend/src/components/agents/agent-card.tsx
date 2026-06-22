@@ -19,6 +19,7 @@ import {
   StatusBadge,
   Switch,
 } from "@elizaos/ui";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Copy,
   Globe,
@@ -81,6 +82,16 @@ export function AgentCard({
 }: AgentCardProps) {
   const navigate = useNavigate();
   const t = useT();
+  const queryClient = useQueryClient();
+
+  // After a delete/remove, refresh the TanStack-backed agent lists (the
+  // dashboard overview `["dashboard"]` summary and the runtime agents
+  // `["agent","agents"]` list) so their cards don't go stale. The fetch-based
+  // my-agents library refreshes off the `characters-updated` event below.
+  const refreshAgentLists = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    queryClient.invalidateQueries({ queryKey: ["agent", "agents"] });
+  }, [queryClient]);
 
   const bioText = Array.isArray(agent.bio) ? agent.bio[0] : agent.bio;
   const avatarUrl = agent.avatarUrl || agent.avatar_url;
@@ -270,8 +281,10 @@ export function AgentCard({
         t("cloud.agentCard.deleted", { defaultValue: "Agent deleted" }),
       );
       setShowDeleteConfirm(false);
-      // The owning list (my-agents) refetches on this event; no reload needed.
+      // The owning list (my-agents) refetches on this event; the dashboard
+      // overview + runtime agents lists refresh via query invalidation.
       window.dispatchEvent(new Event("characters-updated"));
+      refreshAgentLists();
     } else {
       toast.error(
         t("cloud.agentCard.deleteFailed", {
@@ -281,7 +294,7 @@ export function AgentCard({
       setIsDeleting(false);
       setShowDeleteConfirm(false);
     }
-  }, [agent.id, t]);
+  }, [agent.id, t, refreshAgentLists]);
 
   const handleCancelDelete = useCallback(() => {
     setShowDeleteConfirm(false);
@@ -306,8 +319,10 @@ export function AgentCard({
             }),
           );
           onRemoveSaved?.(agent.id);
-          // The owning list (my-agents) refetches on this event; no reload.
+          // The owning list (my-agents) refetches on this event; the dashboard
+          // overview + runtime agents lists refresh via query invalidation.
           window.dispatchEvent(new Event("characters-updated"));
+          refreshAgentLists();
         } else {
           const error = await response.json();
           toast.error(
@@ -325,7 +340,7 @@ export function AgentCard({
         );
       }
     },
-    [agent.id, agent.name, onRemoveSaved, t],
+    [agent.id, agent.name, onRemoveSaved, t, refreshAgentLists],
   );
 
   const openAgentAdmin = useCallback(() => {
