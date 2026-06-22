@@ -209,10 +209,10 @@ describe("ViewCatalog", () => {
     expect(screen.queryByText("Internal Hidden")).toBeNull();
   });
 
-  it("opens a view through the actual rendered view card", () => {
+  it("opens a view through the actual rendered springboard tile", () => {
     render(<ViewCatalog />);
 
-    fireEvent.click(screen.getByText("Remote Ledger"));
+    fireEvent.click(screen.getByRole("button", { name: "Remote Ledger" }));
 
     expect(window.location.pathname).toBe("/apps/remote-ledger");
   });
@@ -271,12 +271,12 @@ describe("ViewCatalog", () => {
     render(<ViewCatalog />);
 
     expect(screen.getByText("Spatial XR")).toBeTruthy();
-    expect(screen.getByTestId("view-card-space")).toBeTruthy();
+    expect(screen.getByTestId("springboard-tile-space")).toBeTruthy();
     expect(screen.queryByText("Dashboard GUI")).toBeNull();
     expect(screen.queryByText("Terminal TUI")).toBeNull();
   });
 
-  it("renders launcher tiles with hero images and hides raw metadata (description, tags)", () => {
+  it("renders springboard tiles as icon + name only, hiding raw metadata (description, tags)", () => {
     getActiveViewModalityMock.mockReturnValue("gui");
     useAvailableViewsMock.mockReturnValue({
       views: [
@@ -304,16 +304,12 @@ describe("ViewCatalog", () => {
 
     render(<ViewCatalog />);
 
+    // iOS-like springboard: each view is a tile with the app name below the
+    // icon. No hero images, no descriptions, no raw tags.
+    expect(screen.getByTestId("springboard-tile-withhero")).toBeTruthy();
+    expect(screen.getByTestId("springboard-tile-nohero")).toBeTruthy();
     expect(screen.getByText("With Hero")).toBeTruthy();
     expect(screen.getByText("No Hero")).toBeTruthy();
-    expect(
-      screen.getByTestId("view-card-withhero").querySelector("img"),
-    ).toBeTruthy();
-    expect(
-      screen.getByTestId("view-card-nohero").querySelector("img"),
-    ).toBeNull();
-    // Launcher tiles are icon + label only — descriptions and raw tags are not
-    // rendered (search/context lives in chat).
     expect(screen.queryByText("visible description")).toBeNull();
     expect(screen.queryByText("also visible")).toBeNull();
     expect(screen.queryByText("hiddentag")).toBeNull();
@@ -349,31 +345,22 @@ describe("ViewCatalog", () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 
-  it("pins a remote view through the actual pin button without navigating", () => {
-    const events: CustomEvent[] = [];
-    const listener = (event: Event) => {
-      events.push(event as CustomEvent);
-    };
-    window.addEventListener("eliza:navigate:view", listener);
-
+  it("favorites a view into the dock (= pinning a desktop tab) without navigating", () => {
     render(<ViewCatalog />);
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Pin Remote Ledger as desktop tab",
-      }),
-    );
+    // Enter springboard edit mode, then favorite Remote Ledger.
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByTestId("springboard-fav-remote.ledger"));
 
+    // Favoriting pins it as a desktop tab; no navigation occurs.
     expect(window.location.pathname).toBe("/views");
-    expect(events).toHaveLength(1);
-    expect(events[0]?.detail).toEqual({
-      viewId: "remote.ledger",
-      viewPath: "/apps/remote-ledger",
-      viewLabel: "Remote Ledger",
-      action: "pin-tab",
-    });
-
-    window.removeEventListener("eliza:navigate:view", listener);
+    const pinned = JSON.parse(
+      window.localStorage.getItem("elizaos.desktop.pinned-tabs") ?? "[]",
+    ) as Array<{ viewId: string }>;
+    expect(pinned.some((t) => t.viewId === "remote.ledger")).toBe(true);
+    // The favorited view now appears in the dock.
+    const dock = screen.getByTestId("springboard-dock");
+    expect(dock.textContent).toContain("Remote Ledger");
   });
 
   it("shows pinned and recent views as quick access without duplicates", () => {
@@ -423,26 +410,14 @@ describe("ViewCatalog", () => {
 
     render(<ViewCatalog />);
 
-    const topSection = screen.getByTestId("views-top-section");
-    expect(topSection.textContent).toContain("Quick access");
-    expect(topSection.textContent).toContain("Remote Ledger");
-    expect(topSection.textContent).toContain("Plugin 0");
-    expect(topSection.textContent).toContain("Plugin 6");
-    expect(topSection.textContent).not.toContain("Plugin 7");
-    expect(
-      topSection.querySelectorAll('[data-testid^="view-card-"]'),
-    ).toHaveLength(8);
-    expect(
-      topSection.querySelector(
-        '[data-agent-id="view-card-edit-remote.ledger"]',
-      ),
-    ).toBeTruthy();
-    expect(
-      topSection.querySelector(
-        '[data-agent-id="view-card-delete-remote.ledger"]',
-      ),
-    ).toBeTruthy();
+    // A pinned desktop tab surfaces in the springboard favorites dock and is
+    // not duplicated in the page grid (favorites are excluded from pages).
+    const dock = screen.getByTestId("springboard-dock");
+    expect(dock.textContent).toContain("Remote Ledger");
     expect(screen.getAllByText("Remote Ledger")).toHaveLength(1);
+    expect(screen.queryByTestId("springboard-tile-remote.ledger")).toBeTruthy();
+    // Other views still render as page tiles.
+    expect(screen.getByTestId("springboard-tile-plugin.0")).toBeTruthy();
   });
 
   it("sorts cards alphabetically when A-Z is selected", () => {
@@ -468,11 +443,11 @@ describe("ViewCatalog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "A-Z" }));
 
-    const pluginCards = Array.from(
-      container.querySelectorAll('[data-testid^="view-card-plugin."]'),
+    const pluginTiles = Array.from(
+      container.querySelectorAll('[data-testid^="springboard-tile-plugin."]'),
     );
-    expect(pluginCards.map((card) => card.getAttribute("data-testid"))).toEqual(
-      ["view-card-plugin.a", "view-card-plugin.z"],
+    expect(pluginTiles.map((tile) => tile.getAttribute("data-testid"))).toEqual(
+      ["springboard-tile-plugin.a", "springboard-tile-plugin.z"],
     );
   });
 
@@ -576,6 +551,8 @@ describe("ViewCatalog", () => {
     rerender(<ViewCatalog />);
     expect(screen.getByText("Developer Ledger")).toBeTruthy();
 
+    // Per-tile edit/delete affordances live in springboard edit mode.
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.click(
       screen.getByRole("button", { name: "Edit Developer Ledger" }),
     );

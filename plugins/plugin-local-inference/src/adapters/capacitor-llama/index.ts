@@ -809,9 +809,15 @@ export const localAiPlugin: Plugin = {
 
 export default localAiPlugin;
 
-// On-device fused voice-turn entry (the production caller for
-// `LocalInferenceEngine.runVoiceTurn`, #8786). The native iOS/Android
-// mic-capture layer imports `runDeviceVoiceTurn` and hands it captured PCM.
+// On-device fused voice-turn entry (#8786): `runDeviceVoiceTurn` drives
+// `LocalInferenceEngine.runVoiceTurn` (ASR + MTP text + parallel
+// speaker-attribution in one pass) and, on a memory-constrained device, warms
+// the response model through the arbiter via an optional next-stage preload
+// predictor (#8809). This is the intended seam for a native iOS/Android
+// mic-capture front-end to hand captured PCM to — that native caller is not
+// wired yet, so `runDeviceVoiceTurn` currently has no production invocation
+// (it is exercised by its unit tests). Wiring the native capture front-end is
+// the remaining device-gated step to make this the live on-device voice path.
 export {
 	type CapacitorTextRunnerOptions,
 	createCapacitorMtpTextRunner,
