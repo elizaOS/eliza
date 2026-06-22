@@ -141,6 +141,48 @@ bun run --cwd packages/ui build-storybook     # Storybook static build
 bun run --cwd packages/ui clean
 ```
 
+## Testing
+
+The UI has four complementary layers. Prefer the cheapest layer that can catch a
+given class of bug; reach for the heavier ones when behaviour or pixels matter.
+
+1. **Unit / component (`test`, vitest + jsdom).** Co-locate `*.test.tsx` with the
+   component. Render with `@testing-library/react`, drive with `user-event`,
+   assert on DOM/roles. Setup pins `TZ=UTC`; for clock/RNG-derived UI opt into
+   `test/determinism.ts` (`withFrozenClock()`, `withSeededRandom()`) so renders
+   are reproducible. Runs in CI via `test:client`.
+
+2. **Determinism lint (`audit:ui-determinism`, repo root).** A TS-AST gate that
+   fails CI on **new** render-time nondeterminism — `Date.now()`, `new Date()`,
+   `Math.random()`, `crypto.randomUUID()`, locale-defaulted `toLocale*` in a
+   component/hook render path (the root cause of flaky screenshots). It classifies
+   by execution context, so effect/handler/timer usage is fine. Existing backlog
+   is tracked in `packages/scripts/ui-determinism-baseline.json`; if a new
+   occurrence is intentional, run `audit:ui-determinism:update` and commit the
+   baseline. Wired into `ci.yaml`.
+
+3. **Story gate (`audit:stories`, `test/story-gate/`).** Renders **every**
+   Storybook story in headless Chromium and HARD-fails on a story that throws,
+   renders blank, or raises a pageerror; console errors + serious/critical axe
+   a11y violations are enforced once their baselines are populated. A determinism
+   shim (frozen clock / seeded RNG / en-US-UTC / animations off) makes every
+   screenshot byte-stable. App-context-dependent stories are classified soft
+   `needs-runtime` (covered live by `audit:app`), not failed. Build the catalog
+   first (`build-storybook --output-dir storybook-static`), then run the gate;
+   the dedicated `.github/workflows/ui-story-gate.yml` does both on `packages/ui`
+   changes. Reusable helpers: `determinism-shim.mjs`, `log-capture.mjs`
+   (durable frontend console/network artifact), `backend-log-capture.mjs`.
+
+4. **Isolated browser e2e (`test:*-e2e`, `src/**/__e2e__/`).** esbuild-bundle a
+   fixture → headless Chromium for gesture/animation/flow coverage no jsdom can
+   reach (chat sheet detents, home screen, onboarding, agent surface). Author one
+   when a behaviour depends on real layout, pointer events, or timing.
+
+Every new story automatically gains story-gate coverage; a new interactive
+component should ship at least a `*.stories.tsx` (states) **and** a `*.test.tsx`
+(behaviour). The live full-app visual audit lives in `packages/app`
+(`audit:app`) and `packages/cloud-frontend` (`audit:cloud`).
+
 ## Config / env vars
 
 This package mostly reads config injected by the host, not raw env vars:
