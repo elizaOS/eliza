@@ -81,7 +81,10 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "run-vision",
     "run-vad",
   ],
-  "plugins/plugin-phone/src/components/PhoneAppView.tsx": [
+  // The phone view collapsed to one declaration (componentExport "PhoneView",
+  // modalities gui/xr/tui). The bundle entry re-exports both PhoneView and the
+  // `interact` capability handler, so it owns the terminal parity capabilities.
+  "plugins/plugin-phone/src/components/phone-view-bundle.ts": [
     "terminal-phone-state",
     "terminal-place-call",
     "terminal-open-dialer",
@@ -293,6 +296,23 @@ function stringField(source: string, field: string): string | null {
   return match?.[1] ?? null;
 }
 
+/**
+ * The surfaces a single view object draws: the `modalities: ["gui","xr","tui"]`
+ * array literal when present (the collapsed one-source pattern), otherwise the
+ * single `viewType` (default "gui"). One declaration drawing several surfaces
+ * is equivalent to one duplicate declaration per surface for coverage purposes.
+ */
+function viewObjectModalities(object: string): RoutedViewType[] {
+  const modalitiesMatch = object.match(/modalities:\s*\[([^\]]*)\]/);
+  if (modalitiesMatch) {
+    const mods = [...modalitiesMatch[1].matchAll(/"(gui|tui|xr)"/g)].map(
+      (m) => m[1] as RoutedViewType,
+    );
+    if (mods.length > 0) return mods;
+  }
+  return [(stringField(object, "viewType") ?? "gui") as RoutedViewType];
+}
+
 function coveredViewType(
   viewType: ViewDeclaration["viewType"],
 ): RoutedViewType | undefined {
@@ -320,27 +340,25 @@ function capabilitiesForDeclaration(
 
 function viewDeclarations(manifestPath: string): CoveredView[] {
   return viewObjects(readManifest(manifestPath))
-    .map((object): CoveredView | null => {
+    .flatMap((object): CoveredView[] => {
       const id = stringField(object, "id");
       const label = stringField(object, "label");
       const path = stringField(object, "path");
-      const viewType = stringField(object, "viewType");
       const bundlePath = stringField(object, "bundlePath");
       const componentExport = stringField(object, "componentExport");
-      if (!id || !label || !bundlePath || !componentExport) return null;
-      return {
+      if (!id || !label || !bundlePath || !componentExport) return [];
+      // One declaration with `modalities` expands to one CoveredView per
+      // surface — the same bundle + component routed in gui, tui, and xr.
+      return viewObjectModalities(object).map((viewType) => ({
         id,
         label,
         ...(path === null ? {} : { path }),
-        ...(viewType === "gui" || viewType === "tui" || viewType === "xr"
-          ? { viewType }
-          : {}),
+        viewType,
         bundlePath,
         componentExport,
         visibleInManager: true,
-      } satisfies CoveredView;
-    })
-    .filter((view): view is CoveredView => view !== null);
+      }));
+    });
 }
 
 function makeCtx(
@@ -429,11 +447,13 @@ describe("plugin TUI view coverage", () => {
 
       for (const object of objects) {
         const id = stringField(object, "id");
-        const viewType = stringField(object, "viewType") ?? "gui";
         const bundlePath = stringField(object, "bundlePath");
         if (!id || !bundlePath) continue;
-        if (viewType === "tui") tuiIds.add(id);
-        else if (viewType === "gui") guiIds.add(id);
+        // A `modalities` declaration draws every listed surface from one
+        // source, so it counts as both the gui view and its tui override.
+        const modalities = viewObjectModalities(object);
+        if (modalities.includes("tui")) tuiIds.add(id);
+        if (modalities.includes("gui")) guiIds.add(id);
       }
 
       for (const id of guiIds) {

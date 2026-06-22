@@ -101,14 +101,31 @@ function parseViewEntries(source: string): ViewEntry[] {
   for (const obj of objects) {
     const id = obj.match(/\bid:\s*"([^"]+)"/)?.[1];
     const label = obj.match(/label:\s*"([^"]+)"/)?.[1];
-    const viewType = (obj.match(/viewType:\s*"([^"]+)"/)?.[1] ?? "gui") as
-      | "gui"
-      | "tui"
-      | "xr";
     const bundlePath = obj.match(/bundlePath:\s*"([^"]+)"/)?.[1];
     const componentExport = obj.match(/componentExport:\s*"([^"]+)"/)?.[1];
-    if (id && label && bundlePath && componentExport) {
-      entries.push({ id, label, viewType, bundlePath, componentExport });
+    if (!id || !label || !bundlePath || !componentExport) continue;
+
+    // A single declaration may draw several surfaces via `modalities:
+    // ["gui","xr","tui"]` (the collapsed one-source pattern) instead of a
+    // duplicate declaration per `viewType`. Either form yields one ViewEntry
+    // per surface, sharing the same bundle + component — so the GUI=XR parity
+    // checks hold trivially for the collapsed form (it IS the same declaration).
+    const modalitiesMatch = obj.match(/modalities:\s*([A-Za-z0-9_]+|\[[^\]]*\])/);
+    const modalityLiterals = modalitiesMatch
+      ? [...modalitiesMatch[1].matchAll(/"(gui|tui|xr)"/g)].map((m) => m[1])
+      : [];
+    const viewTypes =
+      modalityLiterals.length > 0
+        ? modalityLiterals
+        : [obj.match(/viewType:\s*"([^"]+)"/)?.[1] ?? "gui"];
+    for (const viewType of viewTypes) {
+      entries.push({
+        id,
+        label,
+        viewType: viewType as "gui" | "tui" | "xr",
+        bundlePath,
+        componentExport,
+      });
     }
   }
   return entries;

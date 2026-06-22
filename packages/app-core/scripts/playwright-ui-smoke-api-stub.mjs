@@ -161,8 +161,10 @@ const smokeViewDeclarations = [
     "ModelTesterTuiView",
     "tui",
   ],
-  ["phone", "Phone", "plugin-phone", "/phone", "PhonePluginView"],
-  ["phone", "Phone TUI", "plugin-phone", "/phone/tui", "PhoneTuiView", "tui"],
+  // Phone collapsed to ONE source: gui + tui (+ xr) all mount the single
+  // PhoneView spatial component from the same bundle.
+  ["phone", "Phone", "plugin-phone", "/phone", "PhoneView"],
+  ["phone", "Phone TUI", "plugin-phone", "/phone/tui", "PhoneView", "tui"],
   [
     "polymarket",
     "Polymarket",

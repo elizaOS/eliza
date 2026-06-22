@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 
+// Agent-facing terminal capability bridge (interact) + the PhoneAppView overlay
+// dialer resilience. The terminal SURFACE itself is now the unified
+// PhoneSpatialView (covered in PhoneSpatialView.test.tsx); this file guards the
+// capability handler the agent terminal calls and the overlay dialer's
+// post-failure usability.
+
 import {
   cleanup,
   fireEvent,
   render,
   screen,
-  waitFor,
 } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -22,7 +27,7 @@ vi.mock("@elizaos/capacitor-phone", () => ({
   Phone: phoneBridge,
 }));
 
-import { PhoneAppView, PhoneTuiView } from "./PhoneAppView";
+import { PhoneAppView } from "./PhoneAppView";
 import { interact } from "./PhoneAppView.interact";
 
 const t = (key: string, opts?: { defaultValue?: string }) =>
@@ -95,41 +100,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("PhoneTuiView", () => {
-  it("mounts recent calls, exposes TUI state, and places calls", async () => {
-    mockBridge();
-
-    const { container } = render(React.createElement(PhoneTuiView));
-
-    await screen.findByText("Ada Lovelace");
-    expect(screen.getByText("+15550200")).toBeTruthy();
-    expect(phoneBridge.getStatus).toHaveBeenCalled();
-    expect(phoneBridge.listRecentCalls).toHaveBeenCalledWith({ limit: 50 });
-
-    const stateElement = container.querySelector("[data-view-state]");
-    expect(
-      JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
-    ).toMatchObject({
-      viewType: "tui",
-      viewId: "phone",
-      callCount: 2,
-      canPlaceCalls: true,
-      isDefaultDialer: false,
-      defaultDialerPackage: "com.android.dialer",
-    });
-
-    fireEvent.change(screen.getByRole("textbox", { name: "number" }), {
-      target: { value: "+1 (555) 777-8888" },
-    });
-    fireEvent.click(screen.getByText("call"));
-
-    await waitFor(() =>
-      expect(phoneBridge.placeCall).toHaveBeenCalledWith({
-        number: "+15557778888",
-      }),
-    );
-  });
-
+describe("phone terminal capability bridge", () => {
   it("supports terminal capabilities for state, dialing, dialer, and transcripts", async () => {
     mockBridge();
 
@@ -218,28 +189,6 @@ describe("PhoneTuiView", () => {
     await interact("terminal-phone-state", { limit: 10_000 });
     expect(phoneBridge.listRecentCalls).toHaveBeenLastCalledWith({
       limit: 200,
-    });
-  });
-
-  it("surfaces native bridge failures in TUI state without throwing during render", async () => {
-    phoneBridge.getStatus.mockRejectedValue(new Error("status unavailable"));
-    phoneBridge.listRecentCalls.mockRejectedValue(
-      new Error("READ_CALL_LOG denied"),
-    );
-
-    const { container } = render(React.createElement(PhoneTuiView));
-
-    await screen.findByText("READ_CALL_LOG denied");
-    const stateElement = container.querySelector("[data-view-state]");
-    expect(
-      JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
-    ).toMatchObject({
-      canPlaceCalls: false,
-      isDefaultDialer: false,
-      defaultDialerPackage: null,
-      callCount: 0,
-      loading: false,
-      error: "READ_CALL_LOG denied",
     });
   });
 

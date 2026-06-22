@@ -78,13 +78,28 @@ export function toPhoneCallRow(
   when: string,
 ): PhoneCallRow {
   const type = String(entry.type ?? "").toLowerCase();
-  const direction: PhoneCallRow["direction"] =
-    type === "incoming" ||
-    type === "outgoing" ||
-    type === "missed" ||
-    type === "voicemail"
-      ? (type as PhoneCallRow["direction"])
-      : "unknown";
+  // Collapse the native call-log types down to the four directions the row
+  // renders: rejected/blocked read as missed, answered_externally as incoming.
+  let direction: PhoneCallRow["direction"];
+  switch (type) {
+    case "incoming":
+    case "answered_externally":
+      direction = "incoming";
+      break;
+    case "outgoing":
+      direction = "outgoing";
+      break;
+    case "missed":
+    case "rejected":
+    case "blocked":
+      direction = "missed";
+      break;
+    case "voicemail":
+      direction = "voicemail";
+      break;
+    default:
+      direction = "unknown";
+  }
   return {
     id: entry.id,
     name: entry.cachedName?.trim() || entry.number || "Unknown",
@@ -96,7 +111,11 @@ export function toPhoneCallRow(
 
 export interface PhoneSpatialViewProps {
   snapshot: PhoneSnapshot;
-  /** Dispatch by agent id: `key:<digit>`, `call`, `open-dialer`, `backspace`, `refresh`. */
+  /**
+   * Dispatched action ids: `key:<digit>` (digit, `*`, `#`, or `+`), `call`,
+   * `open-dialer`, `backspace`, `contacts`, `call-number:<number>` (place a
+   * call to a recent-call row), `refresh`.
+   */
   onAction?: (action: string) => void;
 }
 
@@ -145,6 +164,15 @@ export function PhoneSpatialView({
         ))}
       </HStack>
       <HStack gap={1} wrap>
+        <Button
+          variant="outline"
+          tone="default"
+          width={5}
+          agent="plus"
+          onPress={dispatch("key:+")}
+        >
+          +
+        </Button>
         <Button grow={1} agent="call" onPress={dispatch("call")}>
           Call
         </Button>
@@ -164,6 +192,16 @@ export function PhoneSpatialView({
           onPress={dispatch("backspace")}
         >
           Del
+        </Button>
+      </HStack>
+      <HStack gap={1} justify="center">
+        <Button
+          variant="ghost"
+          tone="default"
+          agent="contacts"
+          onPress={dispatch("contacts")}
+        >
+          Contacts
         </Button>
       </HStack>
 
@@ -197,6 +235,14 @@ export function PhoneSpatialView({
               <Text style="caption" tone="muted">
                 {call.when}
               </Text>
+              <Button
+                variant="ghost"
+                tone="primary"
+                agent={`call:${call.id}`}
+                onPress={dispatch(`call-number:${call.number}`)}
+              >
+                Call
+              </Button>
             </HStack>
           ))}
         </List>

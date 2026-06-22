@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-// Full populated/interactive coverage for the default GUI surface (PhoneAppView)
-// and its xr twin (same component, registered with viewType "xr"). The TUI view
-// is covered separately in PhoneTuiView.test.ts; here we drive every dialer and
-// recent control through the rendered DOM and assert the native bridge is
-// invoked with the exact normalized arguments. The address book lives in the
-// separate Contacts view; the Phone app only links to it via the navigation bus.
+// Full populated/interactive coverage for the rich Android overlay app
+// (PhoneAppView) loaded by the overlay-app registry. The unified plugin-view
+// surface (GUI/XR/TUI) is covered by PhoneView.test.tsx + PhoneSpatialView.test
+// .tsx; here we drive every overlay dialer and recent control through the
+// rendered DOM and assert the native bridge is invoked with the exact
+// normalized arguments. The address book lives in the separate Contacts view;
+// the Phone app only links to it via the navigation bus.
 
 import {
   cleanup,
@@ -39,7 +40,7 @@ vi.mock("@elizaos/capacitor-phone", () => ({
   Phone: phoneBridge,
 }));
 
-import { PhoneAppView, PhonePluginView } from "./PhoneAppView";
+import { PhoneAppView } from "./PhoneAppView";
 
 const t = (key: string, opts?: { defaultValue?: string }) =>
   opts?.defaultValue ?? key;
@@ -320,19 +321,5 @@ describe("PhoneAppView — header", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Recent" }));
     await screen.findByText("Ada Lovelace");
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
-  });
-});
-
-// The xr surface registers the same PhonePluginView component under viewType
-// "xr"; assert the populated dialer/recent path works identically there.
-describe("PhonePluginView (xr/default wrapper)", () => {
-  it("mounts and drives the dialer the same as the gui surface", async () => {
-    render(React.createElement(PhonePluginView));
-    dialKey("7");
-    expect(document.querySelector("output")?.textContent).toBe("7");
-    fireEvent.click(screen.getByTestId("phone-dial-call"));
-    await waitFor(() =>
-      expect(phoneBridge.placeCall).toHaveBeenCalledWith({ number: "7" }),
-    );
   });
 });
