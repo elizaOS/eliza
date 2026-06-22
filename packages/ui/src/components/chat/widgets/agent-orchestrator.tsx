@@ -52,7 +52,7 @@ import type {
   OrchestratorRoomRosterOverview,
 } from "../../../api/client-types-cloud";
 import type { ActivityEvent } from "../../../hooks/useActivityEvents";
-import { useApp } from "../../../state";
+import { useAppSelectorShallow } from "../../../state";
 import type { TranslateFn } from "../../../types";
 import { AppHero, type AppIdentitySource } from "../../apps/app-identity";
 import { loadMergedCatalogApps } from "../../apps/catalog-loader";
@@ -357,11 +357,20 @@ function AppRunCard({
 }
 
 function AppRunsWidget(_props: ChatSidebarWidgetProps) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const appRuns = app?.appRuns;
-  const setTab = app?.setTab ?? (() => undefined);
-  const setState = app?.setState ?? (() => undefined);
-  const t = app?.t ?? fallbackTranslate;
+  const {
+    appRuns,
+    setTab: appSetTab,
+    setState: appSetState,
+    t: appT,
+  } = useAppSelectorShallow((s) => ({
+    appRuns: s.appRuns,
+    setTab: s.setTab,
+    setState: s.setState,
+    t: s.t,
+  }));
+  const setTab = appSetTab ?? (() => undefined);
+  const setState = appSetState ?? (() => undefined);
+  const t = appT ?? fallbackTranslate;
   const [catalogApps, setCatalogApps] = useState<RegistryAppInfo[]>([]);
   const [runs, setRuns] = useState<AppRunSummary[]>(() =>
     Array.isArray(appRuns) ? appRuns : [],
@@ -609,10 +618,16 @@ function OrchestratorActivityWidget({
   events,
   clearEvents,
 }: ChatSidebarWidgetProps) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
-  const setState = app?.setState;
-  const setTab = app?.setTab;
+  const {
+    t: appT,
+    setState,
+    setTab,
+  } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    setState: s.setState,
+    setTab: s.setTab,
+  }));
+  const t = appT ?? fallbackTranslate;
 
   // A click navigates to the activity's origin: a sessionId routes into the
   // terminal channel (mirrors ChatView.focusTerminalSession — clear the inbox
@@ -669,9 +684,11 @@ function OrchestratorActivityWidget({
  * to connect more.
  */
 function OrchestratorAccountsWidget(_props: ChatSidebarWidgetProps) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
-  const setTab = app?.setTab;
+  const { t: appT, setTab } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    setTab: s.setTab,
+  }));
+  const t = appT ?? fallbackTranslate;
   const [accounts, setAccounts] = useState<AccountsListResponse | null>(null);
   const [overview, setOverview] = useState<OrchestratorAccountOverview | null>(
     null,

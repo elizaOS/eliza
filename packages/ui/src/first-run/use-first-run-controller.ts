@@ -20,7 +20,7 @@ import {
   createPersistedActiveServer,
   loadPersistedActiveServer,
   savePersistedActiveServer,
-  useApp,
+  useAppSelectorShallow,
 } from "../state";
 import { isCloudStatusAuthenticated, preOpenWindow } from "../utils";
 import {
@@ -316,7 +316,19 @@ export function useFirstRunController(): FirstRunController {
     setState,
     switchAgentProfile,
     uiLanguage,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    completeFirstRun: s.completeFirstRun,
+    elizaCloudConnected: s.elizaCloudConnected,
+    elizaCloudLoginBusy: s.elizaCloudLoginBusy,
+    elizaCloudLoginError: s.elizaCloudLoginError,
+    handleCloudLogin: s.handleCloudLogin,
+    firstRunName: s.firstRunName,
+    showActionBanner: s.showActionBanner,
+    setTab: s.setTab,
+    setState: s.setState,
+    switchAgentProfile: s.switchAgentProfile,
+    uiLanguage: s.uiLanguage,
+  }));
   const initialRuntimeTarget = React.useMemo(readFirstRunRuntimeTarget, []);
   // Desktop cloud-only opt-in: branding.cloudOnly is set from the injected
   // __ELIZA_DESKTOP_RUNTIME_MODE__ signal (api-base-owner → main.tsx branding).

@@ -20,6 +20,8 @@ const appState = vi.hoisted(() => ({
 vi.mock("@elizaos/app-core/ui-compat", () => ({
   client: { sendAppRunMessage },
   useApp: () => appState,
+  useAppSelectorShallow: <T,>(selector: (s: typeof appState) => T): T =>
+    selector(appState),
 }));
 vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
