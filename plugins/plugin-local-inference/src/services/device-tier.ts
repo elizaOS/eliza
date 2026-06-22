@@ -30,7 +30,10 @@
 import { isMobilePlatform } from "@elizaos/shared";
 import {
 	type Eliza1Fit,
-	selectBestEliza1Fit,
+	// Aliased to a distinct name (no shared `selectBestEliza1Fit*` prefix with the
+	// local `selectBestEliza1FitForDevice`) — the mobile Bun.build minifier was
+	// observed to mangle the same-prefix pair into a dangling `…Fit2` reference.
+	selectBestEliza1Fit as resolveBestEliza1FitForRam,
 } from "@elizaos/shared/local-inference";
 import type { HardwareProbe } from "./types";
 
@@ -72,7 +75,11 @@ export const DEVICE_TIER_THRESHOLDS = {
 		effectiveModelMemoryGb: 6,
 		freeRamGbAtSession: 3,
 		minTotalRamGb: 16,
-		mobileMinTotalRamGb: 12,
+		// A phone can run eliza-1 2B (≈2.5 GB resident) locally — 6 GB+ total /
+		// ≈3 GB effective is enough — so an 8 GB Pixel is OKAY (local-capable),
+		// not POOR/cloud-only. The desktop floors stay higher.
+		mobileMinTotalRamGb: 6,
+		mobileEffectiveModelMemoryGb: 3,
 	},
 } as const;
 
@@ -166,7 +173,21 @@ export function selectBestEliza1FitForDevice(
 	const mobile = isMobileHost(probe);
 	let memGb = effectiveModelMemoryGb(probe);
 	if (mobile) memGb = Math.min(memGb, MOBILE_FIT_CEILING_GB);
-	const fit = selectBestEliza1Fit(memGb);
+	let fit: Eliza1Fit | null;
+	try {
+		fit = resolveBestEliza1FitForRam(memGb);
+	} catch (err) {
+		// `recommendedFit` is an advisory hint, never a routing gate — but
+		// `classifyDeviceTier` (which embeds it) IS called on the routing hot path.
+		// A mobile-bundle minifier artifact has been observed to leave a dangling
+		// reference at this cross-module call, so guard it: degrade to no
+		// recommendation rather than letting an undefined-symbol error crash the
+		// whole device-tier assessment (and with it the AUTO router) on-device.
+		console.warn(
+			`[device-tier] recommendedFit unavailable: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		return null;
+	}
 	if (fit && mobile && fit.contextLength > MOBILE_CONTEXT_CEILING) {
 		return {
 			...fit,
@@ -190,19 +211,22 @@ function isMobile(probe: HardwareProbe): boolean {
 
 /**
  * Compute the CPU SIMD baseline. The hardware probe has no direct AVX2 field
- * today for x86_64, so Linux/Win x86_64 ≥ 4 cores qualifies. ARM must expose
- * NEON/Advanced SIMD in the probe; when ARM feature data is absent, do not
- * claim the CPU route.
+ * today for x86_64, so Linux/Win x86_64 ≥ 4 cores qualifies.
+ *
+ * **arm64 / ARMv8-A architecturally MANDATES NEON (Advanced SIMD)** — every arm64
+ * phone has it — so we trust the architecture rather than the probe's
+ * `cpuFeatures.neon` (the on-device os-fallback probe omits it, which used to
+ * misclassify every Pixel as POOR → cloud-only even though it runs local 2B fine).
+ * We do not support 32-bit ARM (ARMv7), so it (and any other non-x64 arch) is
+ * treated as unsupported.
  *
  * This is a coarse heuristic; the precise check belongs in the FFI layer
  * (it can `cpuid` the actual flags). The tier classifier just refuses POOR
  * when the probe is clearly under-equipped.
  */
 function hasAvx2Baseline(probe: HardwareProbe): boolean {
-	if (probe.arch === "arm64" || probe.arch === "arm") {
-		return probe.cpuFeatures?.neon === true && probe.cpuCores >= 4;
-	}
-	if (probe.arch !== "x64") return false;
+	if (probe.arch === "arm64") return probe.cpuCores >= 4;
+	if (probe.arch !== "x64") return false; // 32-bit ARM + others: unsupported
 	return probe.cpuCores >= 4;
 }
 
@@ -230,7 +254,9 @@ function isAppleSilicon8gb(probe: HardwareProbe): boolean {
 export function classifyDeviceTier(probe: HardwareProbe): DeviceTierAssessment {
 	const reasons: string[] = [];
 	const effective = effectiveModelMemoryGb(probe);
-	const mobile = isMobile(probe);
+	// isMobileHost (not isMobile) so a phone whose bun-agent probe reports
+	// platform:"linux" with no mobile field still gets mobile thresholds + clamp.
+	const mobile = isMobileHost(probe);
 	const avx2 = hasAvx2Baseline(probe);
 	const vramGb = probe.gpu?.totalVramGb ?? null;
 	const cpuCores = probe.cpuCores;
@@ -383,8 +409,10 @@ function classifyRawTier(args: ClassifyArgs): DeviceTier {
 		return "GOOD";
 	}
 
-	// OKAY gate.
-	const meetsOkayEffective = effective >= okay.effectiveModelMemoryGb;
+	// OKAY gate. Mobile uses lower effective/total floors — a phone runs 2B fine.
+	const meetsOkayEffective =
+		effective >=
+		(mobile ? okay.mobileEffectiveModelMemoryGb : okay.effectiveModelMemoryGb);
 	const meetsOkayFree = freeRamGb >= okay.freeRamGbAtSession;
 	const meetsOkayTotal =
 		totalRamGb >= (mobile ? okay.mobileMinTotalRamGb : okay.minTotalRamGb);

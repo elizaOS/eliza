@@ -1151,17 +1151,6 @@ export class AutonomyService extends Service {
 	}
 
 	/**
-	 * Legacy method names for backwards compatibility
-	 */
-	async startLoop(): Promise<void> {
-		await this.enableAutonomy();
-	}
-
-	async stopLoop(): Promise<void> {
-		await this.disableAutonomy();
-	}
-
-	/**
 	 * Trigger an autonomous thinking cycle immediately.
 	 * Useful for testing or manual intervention without waiting for the interval.
 	 * @returns true if thinking was triggered, false if already thinking or an error occurred

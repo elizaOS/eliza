@@ -1,4 +1,4 @@
-import { rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "bun";
 
@@ -29,6 +29,14 @@ const proc = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json", "--emitDecla
   stdio: ["inherit", "inherit", "inherit"],
 });
 
-await proc.exited;
+const exitCode = await proc.exited;
+
+if (exitCode !== 0) {
+  throw new Error(`Type declaration generation failed with exit code ${exitCode}`);
+}
+
+if (!existsSync(join(distDir, "index.d.ts"))) {
+  throw new Error("Type declaration generation did not emit dist/index.d.ts");
+}
 
 console.log("Types generated!");

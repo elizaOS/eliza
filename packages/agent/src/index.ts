@@ -63,8 +63,12 @@ export {
   parseClampedInteger,
   parsePositiveFloat,
   parsePositiveInteger,
+  RESTART_EXIT_CODE,
+  type RestartHandler,
+  requestRestart,
   resolveCloudApiBaseUrl,
   STREAMING_PLUGINS,
+  setRestartHandler,
 } from "@elizaos/shared";
 export {
   type ExtractActionParamsArgs,
@@ -219,7 +223,6 @@ export {
 } from "./runtime/plugin-resolver.ts";
 export * from "./runtime/plugin-types.ts";
 export * from "./runtime/release-plugin-policy.ts";
-export * from "./runtime/restart.ts";
 export * from "./runtime/trajectory-internals.ts";
 export * from "./runtime/trajectory-persistence.ts";
 export * from "./runtime/trajectory-query.ts";

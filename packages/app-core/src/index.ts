@@ -4,7 +4,6 @@
 export * from "./api/auth.ts";
 export * from "./api/automation-node-contributors";
 export * from "./api/compat-route-shared";
-// === Phase 5C: desktop runtime + app-config + first-run config + ios-local-agent-transport moved from @elizaos/ui ===
 export * from "./api/ios-local-agent-transport";
 export * from "./api/response";
 export * from "./api/secrets-inventory-routes";
@@ -30,9 +29,9 @@ export {
   runIosFullBunSmokeIfRequested,
 } from "./platform/ios-runtime-bridge";
 export * from "./registry";
-// `ConfigField` and `getPlugins` also exist in @elizaos/ui, which is bridged
-// below for legacy app-core UI consumers. Keep the app-core registry exports
-// authoritative on the Node barrel to avoid ambiguous star re-exports.
+// `ConfigField` and `getPlugins` also exist in @elizaos/ui. Re-export the
+// app-core registry versions explicitly so the Node barrel stays authoritative
+// and avoids ambiguous star re-exports.
 export { type ConfigField, getPlugins } from "./registry";
 export * from "./runtime/android-avf-microdroid-bridge";
 export * from "./runtime/app-core-runtime-hooks";

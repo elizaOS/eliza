@@ -22,13 +22,11 @@ export const STEWARD_TOKEN_KEY = "steward_session_token";
 /**
  * localStorage key for the Steward refresh token.
  *
- * @deprecated Refresh tokens are now persisted only as the HttpOnly
- * `steward-refresh-token` cookie (set by `/api/auth/steward-session` and
- * `/api/auth/steward-nonce-exchange`). The localStorage copy was XSS-
- * reachable and is being removed; only the key constant and the
- * read/write/clear helpers below remain so legacy tabs left over from
- * before the rollout can still drain their stale value via
- * `clearStoredStewardToken()`. Do NOT add new readers/writers.
+ * Refresh tokens are persisted only as the HttpOnly `steward-refresh-token`
+ * cookie (set by `/api/auth/steward-session` and
+ * `/api/auth/steward-nonce-exchange`). This key is retained solely so
+ * `clearStoredStewardToken()` can drain the stale localStorage value left in
+ * tabs opened before the cookie-only rollout. Do NOT read or write it.
  */
 export const STEWARD_REFRESH_TOKEN_KEY = "steward_refresh_token";
 
@@ -151,62 +149,6 @@ export function writeStoredStewardToken(token: string): void {
     // localStorage may be disabled (private mode, quota, sandboxed iframe);
     // callers that need durability should detect this themselves.
   }
-}
-
-let warnedReadRefresh = false;
-let warnedWriteRefresh = false;
-
-/**
- * @deprecated The refresh token is now persisted only as the HttpOnly
- * `steward-refresh-token` cookie. Reading it from localStorage is XSS-
- * reachable and contradicts the cookie-only model. Callers should POST to
- * `STEWARD_REFRESH_ENDPOINT` with `credentials: "include"` instead — the
- * server reads the cookie and mints fresh tokens with no body payload.
- * This helper is retained for one release window so legacy tabs can still
- * be cleaned up via `clearStoredStewardToken()`; it will be removed once
- * `os-homepage` and `cloud-frontend` have shipped the cookie-only flow.
- */
-export function readStoredStewardRefreshToken(): string | null {
-  if (typeof window === "undefined") return null;
-  if (!warnedReadRefresh) {
-    warnedReadRefresh = true;
-    try {
-      console.warn(
-        "[steward] readStoredStewardRefreshToken() is deprecated — refresh tokens live in the HttpOnly steward-refresh-token cookie. Use STEWARD_REFRESH_ENDPOINT with credentials: 'include' instead.",
-      );
-    } catch {
-      // ignore
-    }
-  }
-  try {
-    return window.localStorage.getItem(STEWARD_REFRESH_TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * @deprecated Writing the refresh token to localStorage defeats the
- * HttpOnly-cookie protection the server already provides. The cookie is
- * set by `/api/auth/steward-session` and `/api/auth/steward-nonce-exchange`
- * — there is no longer any reason for the browser to hold a copy. This
- * helper intentionally does not write and is kept only for one release
- * window; after that it will be deleted.
- */
-export function writeStoredStewardRefreshToken(_token: string): void {
-  if (typeof window === "undefined") return;
-  if (!warnedWriteRefresh) {
-    warnedWriteRefresh = true;
-    try {
-      console.warn(
-        "[steward] writeStoredStewardRefreshToken() is deprecated and no longer writes to localStorage. The HttpOnly steward-refresh-token cookie is now the only persistence. This call intentionally leaves storage unchanged.",
-      );
-    } catch {
-      // ignore
-    }
-  }
-  // Intentionally do not write — the cookie is the source of truth. We keep
-  // the function so existing call sites compile through the rollout window.
 }
 
 export function clearStoredStewardToken(): void {

@@ -3,7 +3,7 @@ import {
   G1DashboardLayout,
   MockSmartglassesTransport,
   SmartglassesService,
-} from "../../../plugins/plugin-facewear/src/index.js";
+} from "@elizaos/plugin-facewear";
 
 const transport = new MockSmartglassesTransport();
 const service = new SmartglassesService();

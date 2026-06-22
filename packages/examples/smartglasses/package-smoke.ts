@@ -842,7 +842,12 @@ try {
     ),
   );
 
-  await smartglassesPlugin.dispose?.(runtime as never);
+  const dispose = (
+    smartglassesPlugin as {
+      dispose?: (runtime: unknown) => Promise<void> | void;
+    }
+  ).dispose;
+  await dispose?.(runtime);
 } finally {
   setSmartglassesTransportForRuntime(null);
   setSmartglassesAudioDecoderForRuntime(null);

@@ -124,6 +124,7 @@ import {
 	getLocalInferenceActiveSnapshot,
 	getLocalInferenceChatStatus,
 	handleLocalInferenceRoutes,
+	reauthorizeRedirectHeaders,
 } from "./local-inference-routes.js";
 
 const { aospMock, bridgeMock, serviceMock } = getRouteTestMocks();
@@ -340,5 +341,50 @@ describe("local inference chat status", () => {
 			loadedCacheTypeK: "qjl1_256",
 			loadedCacheTypeV: "q4_polar",
 		});
+	});
+});
+
+describe("reauthorizeRedirectHeaders — no HF token leak across redirects", () => {
+	const savedToken = process.env.HF_TOKEN;
+	beforeEach(() => {
+		process.env.HF_TOKEN = "hf-secret-token";
+	});
+	afterEach(() => {
+		if (savedToken === undefined) delete process.env.HF_TOKEN;
+		else process.env.HF_TOKEN = savedToken;
+	});
+
+	const baseHeaders = {
+		"user-agent": "Eliza-MobileLocalInference/1.0",
+		authorization: "Bearer hf-secret-token",
+	};
+
+	it.each([
+		"https://cdn-lfs-us-1.hf.co/repo/abc123",
+		"https://prod-cas-shard.s3.amazonaws.com/abc?X-Amz-Signature=z",
+		"https://example.cloudfront.net/model.gguf",
+	])("strips Authorization when redirected cross-host to %s", (nextUrl) => {
+		const next = reauthorizeRedirectHeaders(baseHeaders, nextUrl);
+		expect(next.authorization).toBeUndefined();
+		expect(next.Authorization).toBeUndefined();
+		// Non-auth headers are preserved.
+		expect(next["user-agent"]).toBe("Eliza-MobileLocalInference/1.0");
+	});
+
+	it("keeps Authorization when the redirect target is still a HuggingFace host", () => {
+		const next = reauthorizeRedirectHeaders(
+			baseHeaders,
+			"https://huggingface.co/repo/resolve/main/model.gguf",
+		);
+		expect(next.authorization).toBe("Bearer hf-secret-token");
+	});
+
+	it("does not synthesize an Authorization header when none was configured", () => {
+		delete process.env.HF_TOKEN;
+		const next = reauthorizeRedirectHeaders(
+			{ "user-agent": "x" },
+			"https://huggingface.co/repo/resolve/main/model.gguf",
+		);
+		expect(next.authorization).toBeUndefined();
 	});
 });

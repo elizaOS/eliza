@@ -375,7 +375,9 @@ describe("ElizaClient chat-turn status SSE (#8813)", () => {
     );
 
     // Only the recognized kind is delivered; the unknown one is dropped.
-    expect(onStatus.mock.calls.map((c) => c[0])).toEqual([{ kind: "thinking" }]);
+    expect(onStatus.mock.calls.map((c) => c[0])).toEqual([
+      { kind: "thinking" },
+    ]);
   });
 
   it("leaves token/done behaviour byte-for-byte unchanged when no onStatus is passed", async () => {

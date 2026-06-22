@@ -58,7 +58,6 @@ export * from "./schemas/character";
 export * from "./schemas/index";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
-export * from "./secrets";
 export * from "./security";
 export * from "./services";
 export * from "./services/agentEvent";

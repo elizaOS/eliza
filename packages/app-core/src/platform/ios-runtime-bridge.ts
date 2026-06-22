@@ -1,4 +1,3 @@
-// === Phase 5D: extracted from packages/app/src/main.tsx ===
 // iOS full-Bun smoke harness: when the host build sets the smoke-request
 // flag in localStorage / Capacitor Preferences, this module boots the
 // in-process ElizaBunRuntime, drives a sequence of WebView-fetch and direct

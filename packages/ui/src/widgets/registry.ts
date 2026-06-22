@@ -12,8 +12,8 @@
 import type { PluginInfo } from "../api/client-types-config";
 import {
   getWidgetComponent,
+  registerBuiltinWidgets,
   registerWidgetComponent,
-  seedLegacyWidgets,
 } from "./registry-store";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 
@@ -32,8 +32,8 @@ import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.hel
 
 // -- Seed bundled widgets into the registry ----------------------------------
 
-seedLegacyWidgets(AGENT_ORCHESTRATOR_PLUGIN_WIDGETS);
-seedLegacyWidgets([BROWSER_STATUS_WIDGET, MUSIC_PLAYER_WIDGET]);
+registerBuiltinWidgets(AGENT_ORCHESTRATOR_PLUGIN_WIDGETS);
+registerBuiltinWidgets([BROWSER_STATUS_WIDGET, MUSIC_PLAYER_WIDGET]);
 registerWidgetComponent(
   "music-library",
   "music-library.playlists",

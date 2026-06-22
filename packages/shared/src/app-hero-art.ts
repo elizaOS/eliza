@@ -1,3 +1,5 @@
+import { hashString } from "./utils/string-hash.js";
+
 export interface AppHeroArtworkSource {
   name: string;
   displayName?: string | null;
@@ -65,14 +67,6 @@ const HERO_PALETTES: readonly HeroPalette[] = [
     shadow: "#06090f",
   },
 ] as const;
-
-function hashString(value: string): number {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) | 0;
-  }
-  return Math.abs(hash);
-}
 
 function trimPackagePrefix(value: string): string {
   return value

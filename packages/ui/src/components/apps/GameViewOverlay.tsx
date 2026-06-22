@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { Button } from "../ui/button";
 import {
   buildViewerSessionKey,
@@ -21,7 +21,17 @@ export function GameViewOverlay() {
     activeGameSandbox,
     setState,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    appRuns: s.appRuns,
+    activeGameRunId: s.activeGameRunId,
+    activeGameDisplayName: s.activeGameDisplayName,
+    activeGamePostMessageAuth: s.activeGamePostMessageAuth,
+    activeGamePostMessagePayload: s.activeGamePostMessagePayload,
+    activeGameViewerUrl: s.activeGameViewerUrl,
+    activeGameSandbox: s.activeGameSandbox,
+    setState: s.setState,
+    t: s.t,
+  }));
 
   // --- Drag state ---
   const containerRef = useRef<HTMLDivElement | null>(null);

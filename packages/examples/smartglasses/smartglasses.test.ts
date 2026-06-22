@@ -7,7 +7,7 @@ import {
   type G1Event,
   MockSmartglassesTransport,
   SmartglassesService,
-} from "../../../plugins/plugin-facewear/src/index.js";
+} from "@elizaos/plugin-facewear";
 import {
   createHardwareDoctorSummary,
   hardwareReportAgeMs,

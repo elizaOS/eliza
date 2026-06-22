@@ -22,6 +22,11 @@
       "@elizaos/shared": ["../packages/shared/dist/index.d.ts"],
       "@elizaos/shared/*": ["../packages/shared/dist/*"],
       "@elizaos/ui": ["../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/api": ["../packages/ui/dist/api/index.d.ts"],
+      "@elizaos/ui/api/*": ["../packages/ui/dist/api/*"],
+      "@elizaos/ui/components": ["../packages/ui/dist/components/index.d.ts"],
+      "@elizaos/ui/components/*": ["../packages/ui/dist/components/*"],
+      "@elizaos/ui/utils": ["../packages/ui/dist/utils/index.d.ts"],
       "@elizaos/ui/*": ["../packages/ui/dist/*"],
       "@elizaos/plugin-task-coordinator": [
         "./plugin-task-coordinator/dist/index.d.ts"

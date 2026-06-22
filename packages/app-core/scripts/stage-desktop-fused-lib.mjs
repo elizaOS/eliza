@@ -396,8 +396,14 @@ function verifyFusedSymbols(stagedDir) {
     log("symbol verify skipped (nm/objdump unavailable)");
     return;
   }
-  // eliza_inference_* and ov_* must be in the fused lib itself.
-  const inFused = { "eliza_inference_*": /\beliza_inference_/, "ov_*": /\bov_/ };
+  // eliza_inference_* and ov_* must be in the fused lib itself. Anchor to the
+  // symbol start after nm's type column and allow the Mach-O leading underscore
+  // (`_eliza_inference_*` on macOS, `eliza_inference_*` on Linux) — a bare `\b`
+  // does NOT match between `_` and a letter, so it false-fails on macOS.
+  const inFused = {
+    "eliza_inference_*": /(?:^|\s)_?eliza_inference_/m,
+    "ov_*": /(?:^|\s)_?ov_/m,
+  };
   const missingFused = Object.entries(inFused)
     .filter(([, re]) => !re.test(fusedSyms))
     .map(([n]) => n);
@@ -410,7 +416,7 @@ function verifyFusedSymbols(stagedDir) {
   // llama_* across the staged set (the sibling libllama in a shared build).
   const llamaHere = staged.some((n) => {
     const s = definedSymbols(path.join(stagedDir, n));
-    return s !== null && /\bllama_/.test(s);
+    return s !== null && /(?:^|\s)_?llama_/m.test(s);
   });
   if (!llamaHere) {
     die(`llama_* symbols not found in the staged lib set — incomplete build.`);

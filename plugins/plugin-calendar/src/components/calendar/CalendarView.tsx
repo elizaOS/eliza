@@ -14,7 +14,7 @@
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
-import { useAppSelector } from "@elizaos/ui";
+import { useAppSelector } from "@elizaos/ui/state";
 import type { ReactElement } from "react";
 import { useCallback, useState } from "react";
 import { CalendarSection } from "../CalendarSection.js";
