@@ -25,10 +25,10 @@ import {
   TabsList,
   TabsTrigger,
 } from "../../components/primitives";
+import { useRequireAuth } from "../lib/use-session-auth";
 import { ApprovalsTab } from "./components/approvals-tab";
 import { BallotsTab } from "./components/ballots-tab";
 import { SensitiveTab } from "./components/sensitive-tab";
-import { useRequireAuth } from "./lib/use-session-auth";
 
 /**
  * The Approvals surface. Embeddable: used directly by an owner-facing settings

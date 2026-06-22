@@ -9,7 +9,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api-client";
-import { authenticatedQueryKey, useAuthenticatedQueryGate } from "./auth-query";
+import {
+  authenticatedQueryKey,
+  useAuthenticatedQueryGate,
+} from "../../lib/auth-query";
 
 /**
  * A character row from `GET /api/my-agents/characters`. Fields mirror the

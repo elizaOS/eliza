@@ -17,7 +17,10 @@
 import type { AppDto } from "@elizaos/cloud-shared/types";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api-client";
-import { authenticatedQueryKey, useAuthenticatedQueryGate } from "./auth-query";
+import {
+  authenticatedQueryKey,
+  useAuthenticatedQueryGate,
+} from "../../lib/auth-query";
 
 type LegacyAppDatabaseFields =
   | "user_database_status"

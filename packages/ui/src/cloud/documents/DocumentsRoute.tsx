@@ -13,13 +13,13 @@
 
 import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route-placeholders";
 import { useDocumentTitle } from "../lib/use-document-title";
+import { useRequireAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   type DocumentsPageCharacter,
   DocumentsPageClient,
 } from "./components/documents-page-client";
 import { useMyAgents } from "./lib/agents";
-import { useRequireAuth } from "./lib/use-session-auth";
 
 /**
  * The Documents/Knowledge surface. Embeddable: used directly by the Wave-3
