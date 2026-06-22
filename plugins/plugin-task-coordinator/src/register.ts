@@ -15,26 +15,15 @@ registerAppShellPage({
     })),
 });
 
-registerAppShellPage({
-  id: "orchestrator.tui",
-  pluginId: "@elizaos/plugin-task-coordinator",
-  label: "Orchestrator TUI",
-  icon: "Terminal",
-  path: "/orchestrator/tui",
-  order: 71,
-  group: "developer",
-  loader: () =>
-    import("./CodingAgentTasksPanel").then((module) => ({
-      default: module.OrchestratorTuiView,
-    })),
-});
-
 // In a terminal host (the Node agent, no DOM), register the unified
-// orchestrator view so it renders inline in the terminal. Lazy + DOM-guarded so
-// the terminal engine stays out of browser/mobile bundles.
+// orchestrator + task-coordinator views so they render inline in the terminal.
+// Lazy + DOM-guarded so the terminal engine stays out of browser/mobile bundles.
 if (typeof window === "undefined") {
   void import("./register-terminal-view")
-    .then((m) => m.registerOrchestratorTerminalView())
+    .then((m) => {
+      m.registerOrchestratorTerminalView();
+      m.registerTaskCoordinatorTerminalView();
+    })
     .catch(() => {
       // Terminal rendering is best-effort; never block plugin load.
     });

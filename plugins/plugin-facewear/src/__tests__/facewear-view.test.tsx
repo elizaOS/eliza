@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 //
-// Renders the real FacewearView component (the gui + xr `facewear` view; the xr
-// manifest reuses this same component export) against a stubbed
-// /api/facewear/status response and asserts the populated device grid, the
-// header pill, the active-device chip overflow, loading/error states, and every
-// interactive control (Connect/Manage routing, Refresh re-fetch, quick-action
-// anchor hrefs).
+// Renders the legacy full-screen FacewearAppView dashboard (the app-shell
+// overlay page) against a stubbed /api/facewear/status response and asserts the
+// populated device grid, the header pill, the active-device chip overflow,
+// loading/error states, and every interactive control (Connect/Manage routing,
+// Refresh re-fetch, quick-action anchor hrefs). The collapsed manifest's gui/xr
+// surface now renders through the FacewearView tri-modal wrapper (covered in
+// FacewearView.test.tsx); this dashboard stays mounted as the overlay page.
 
 import {
   act,
@@ -15,7 +16,7 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FacewearView } from "../ui/FacewearView.tsx";
+import { FacewearAppView } from "../ui/FacewearAppView.tsx";
 
 type ConnectedDevice = {
   id: string;
@@ -42,7 +43,7 @@ function stubFetch(body: StatusBody): ReturnType<typeof vi.fn> {
 // Render then let the initial fetch + useEffect resolve so the loading spinner
 // is replaced by the populated UI.
 async function renderResolved(): Promise<void> {
-  render(<FacewearView />);
+  render(<FacewearAppView />);
   await act(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -60,7 +61,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("FacewearView (gui/xr facewear view)", () => {
+describe("FacewearAppView (facewear overlay dashboard)", () => {
   it("renders all four device profiles with exact name/manufacturer/connection-type", async () => {
     stubFetch({ connected: false, devices: [] });
     await renderResolved();
@@ -201,7 +202,7 @@ describe("FacewearView (gui/xr facewear view)", () => {
       "fetch",
       vi.fn(() => pending),
     );
-    const { container } = render(<FacewearView />);
+    const { container } = render(<FacewearAppView />);
 
     // Spinner present; device cards not yet rendered.
     expect(container.querySelector(".animate-spin")).toBeTruthy();

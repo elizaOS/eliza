@@ -32,6 +32,6 @@ registerAppShellPage({
   path: "/trajectory-logger",
   loader: () =>
     import("./ui.ts").then((m) => ({
-      default: m.TrajectoryLoggerView,
+      default: m.TrajectoryLoggerAppView,
     })),
 });

@@ -5,14 +5,14 @@ type DeferredViewComponent = ComponentType<Record<string, unknown>>;
 type DeferredViewModule = { default: DeferredViewComponent };
 type DeferredViewLoader = () => Promise<DeferredViewModule>;
 
-function loadFacewearView(): Promise<DeferredViewModule> {
-  return import("./ui/FacewearView.tsx").then((module) => ({
-    default: module.FacewearView as DeferredViewComponent,
+function loadFacewearAppView(): Promise<DeferredViewModule> {
+  return import("./ui/FacewearAppView.tsx").then((module) => ({
+    default: module.FacewearAppView as DeferredViewComponent,
   }));
 }
 
 function loadFacewearTuiView(): Promise<DeferredViewModule> {
-  return import("./ui/FacewearView.tsx").then((module) => ({
+  return import("./ui/FacewearAppView.tsx").then((module) => ({
     default: module.FacewearTuiView as DeferredViewComponent,
   }));
 }
@@ -24,7 +24,7 @@ function loadSmartglassesView(): Promise<DeferredViewModule> {
 }
 
 function loadSmartglassesTuiView(): Promise<DeferredViewModule> {
-  return import("./ui/FacewearView.tsx").then((module) => ({
+  return import("./ui/FacewearAppView.tsx").then((module) => ({
     default: module.SmartglassesTuiView as DeferredViewComponent,
   }));
 }
@@ -72,7 +72,7 @@ function deferredComponent(loader: DeferredViewLoader): DeferredViewComponent {
   };
 }
 
-export const FacewearView = deferredComponent(loadFacewearView);
+export const FacewearAppView = deferredComponent(loadFacewearAppView);
 export const FacewearTuiView = deferredComponent(loadFacewearTuiView);
 export const SmartglassesView = deferredComponent(loadSmartglassesView);
 export const SmartglassesTuiView = deferredComponent(loadSmartglassesTuiView);
@@ -85,7 +85,7 @@ registerAppShellPage({
   path: "/apps/facewear",
   order: 80,
   group: "hardware",
-  loader: loadFacewearView,
+  loader: loadFacewearAppView,
 });
 
 registerAppShellPage({
@@ -121,12 +121,16 @@ registerAppShellPage({
   loader: loadSmartglassesTuiView,
 });
 
-// In a terminal host (the Node agent, no DOM), register the smartglasses view
-// so it renders inline in the terminal as the unified SmartglassesSpatialView.
-// Lazy + DOM-guarded so the terminal engine stays out of browser/mobile bundles.
+// In a terminal host (the Node agent, no DOM), register the facewear and
+// smartglasses views so they render inline in the terminal as the unified
+// FacewearSpatialView / SmartglassesSpatialView. Lazy + DOM-guarded so the
+// terminal engine stays out of browser/mobile bundles.
 if (typeof window === "undefined") {
   void import("./register-terminal-view.tsx")
-    .then((m) => m.registerSmartglassesTerminalView())
+    .then((m) => {
+      m.registerFacewearTerminalView();
+      m.registerSmartglassesTerminalView();
+    })
     .catch(() => {
       // Terminal rendering is best-effort; never block plugin load.
     });

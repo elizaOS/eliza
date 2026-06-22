@@ -19,15 +19,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // (including data-state from `status`) so the "loaded" asset-control state is
 // observable.
 // ---------------------------------------------------------------------------
-vi.mock("@elizaos/ui", () => ({
-  TerminalPluginView: (props: { id: string; commands?: string[] }) =>
-    React.createElement("div", {
-      "data-testid": "terminal-plugin-view",
-      "data-id": props.id,
-      "data-commands": JSON.stringify(props.commands ?? null),
-    }),
-}));
-
 vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: <T extends HTMLElement>(descriptor: {
     id: string;

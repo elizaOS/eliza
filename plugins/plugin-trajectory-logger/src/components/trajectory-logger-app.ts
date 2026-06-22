@@ -14,8 +14,8 @@ export const trajectoryLoggerApp: OverlayApp = {
   category: "developer",
   icon: null,
   loader: () =>
-    import("./TrajectoryLoggerView").then((m) => ({
-      default: m.TrajectoryLoggerView,
+    import("./TrajectoryLoggerAppView").then((m) => ({
+      default: m.TrajectoryLoggerAppView,
     })),
 };
 

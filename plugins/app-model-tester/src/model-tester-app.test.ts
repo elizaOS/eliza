@@ -13,7 +13,6 @@ vi.mock("@elizaos/ui/components/apps/overlay-app-registry", () => ({
 
 vi.mock("./ModelTesterAppView.js", () => ({
   ModelTesterAppView: () => null,
-  ModelTesterTuiView: () => null,
 }));
 
 describe("model tester app registration", () => {
@@ -30,19 +29,12 @@ describe("model tester app registration", () => {
     expect(modelTesterApp.loader).toEqual(expect.any(Function));
     expect(registerOverlayApp).toHaveBeenCalledTimes(1);
     expect(registerOverlayApp).toHaveBeenCalledWith(modelTesterApp);
-    expect(registerAppShellPage).toHaveBeenCalledTimes(2);
+    expect(registerAppShellPage).toHaveBeenCalledTimes(1);
     expect(registerAppShellPage).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "model-tester",
         pluginId: MODEL_TESTER_APP_NAME,
         path: "/model-tester",
-      }),
-    );
-    expect(registerAppShellPage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "model-tester.tui",
-        pluginId: MODEL_TESTER_APP_NAME,
-        path: "/model-tester/tui",
       }),
     );
   });

@@ -1,12 +1,9 @@
-// Contract test: the Model Tester TUI surfaces its registered capabilities.
-//
-// Bug this locks: ModelTesterTuiView passed `commands={[]}` to the shared
-// TerminalPluginView, so the 5 registered capabilities (get-status,
-// run-text-small, run-transcription, run-vision, run-vad) never rendered as
-// terminal commands — the terminal showed only TerminalPluginView's fallback.
-// The fix wires `commands={MODEL_TESTER_TUI_CAPABILITIES}`. This test asserts the
-// three sources agree (the exported list, plugin.ts `capabilities`, and the
-// interact() handler) and that the view no longer ships an empty command list.
+// Contract test: the Model Tester TUI capability set stays in sync across its
+// three sources — the exported capability list, plugin.ts `capabilities`, and
+// the interact() handler the view bundle re-exports. The terminal surface mounts
+// the unified ModelTesterSpatialView (see register-terminal-view.tsx) and the
+// view bundle exports `interact`, so these capabilities drive real terminal
+// dispatch; this test locks them against drift.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -74,15 +71,5 @@ describe("Model Tester TUI capability wiring", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
-  });
-
-  it("the TUI view no longer ships an empty command list (regression guard)", () => {
-    const viewSrc = readFileSync(
-      resolve(HERE, "ModelTesterAppView.tsx"),
-      "utf8",
-    );
-    // The fix wires the real capabilities; re-introducing commands={[]} fails.
-    expect(viewSrc).toContain("commands={[...MODEL_TESTER_TUI_CAPABILITIES]}");
-    expect(viewSrc).not.toContain("commands={[]}");
   });
 });

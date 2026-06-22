@@ -2,7 +2,7 @@ import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Brain, CheckSquare, Inbox, Zap } from "lucide-react";
 import type { ComponentType } from "react";
 import type { PhaseName, PhaseStatus } from "../phases";
-import type { Slot } from "./TrajectoryLoggerView";
+import type { Slot } from "./TrajectoryLoggerAppView";
 
 interface PhaseChipProps {
   slot: Slot;

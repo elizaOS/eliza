@@ -2,62 +2,16 @@ import { TerminalPluginView } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Bluetooth, Glasses, Wifi, Zap } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import {
+  type ConnectedDevice,
+  FACEWEAR_DEVICE_PROFILES,
+  type FacewearDeviceProfileRow,
+  type FacewearStatusResponse,
+  isProfileConnected,
+} from "../components/facewear-profiles.ts";
 import type { FacewearDeviceType } from "../devices/registry.ts";
 
 const ACTIVE_DEVICE_LIMIT = 4;
-
-interface ConnectedDevice {
-  id: string;
-  kind: "xr" | "smartglasses";
-  deviceType?: string;
-}
-
-interface FacewearStatusResponse {
-  connected: boolean;
-  devices: ConnectedDevice[];
-}
-
-const DEVICE_PROFILES: Array<{
-  type: FacewearDeviceType;
-  name: string;
-  manufacturer: string;
-  connectionType: string;
-  icon: typeof Glasses;
-  description: string;
-}> = [
-  {
-    type: "meta-quest",
-    name: "Meta Quest 3 / 3S / Pro",
-    manufacturer: "Meta",
-    connectionType: "WebXR",
-    icon: Glasses,
-    description: "Passthrough AR/VR",
-  },
-  {
-    type: "xreal",
-    name: "XReal Air 3 / One Pro",
-    manufacturer: "XREAL",
-    connectionType: "WebXR",
-    icon: Glasses,
-    description: "Spatial display",
-  },
-  {
-    type: "even-realities",
-    name: "Even Realities G1 / G2",
-    manufacturer: "Even Realities",
-    connectionType: "Bluetooth BLE",
-    icon: Bluetooth,
-    description: "OLED display and mic",
-  },
-  {
-    type: "apple-vision-pro",
-    name: "Apple Vision Pro",
-    manufacturer: "Apple",
-    connectionType: "WebXR",
-    icon: Glasses,
-    description: "visionOS headset",
-  },
-];
 
 function ConnectionIcon({ connectionType }: { connectionType: string }) {
   if (connectionType.toLowerCase().includes("bluetooth")) {
@@ -74,17 +28,14 @@ function DeviceCard({
   connectedDevices,
   onConnect,
 }: {
-  profile: (typeof DEVICE_PROFILES)[number];
+  profile: FacewearDeviceProfileRow;
   connectedDevices: ConnectedDevice[];
   onConnect: (type: FacewearDeviceType) => void;
 }) {
-  const isConnected = connectedDevices.some(
-    (d) =>
-      d.deviceType === profile.type ||
-      (profile.type === "even-realities" && d.kind === "smartglasses") ||
-      (profile.connectionType === "WebXR" && d.kind === "xr"),
-  );
-  const Icon = profile.icon;
+  const isConnected = isProfileConnected(profile, connectedDevices);
+  const Icon = profile.connectionType.toLowerCase().includes("bluetooth")
+    ? Bluetooth
+    : Glasses;
   const actionLabel = isConnected
     ? `Manage ${profile.name}`
     : `Connect ${profile.name}`;
@@ -155,7 +106,7 @@ function DeviceCard({
   );
 }
 
-export function FacewearView() {
+export function FacewearAppView() {
   const [status, setStatus] = useState<FacewearStatusResponse>({
     connected: false,
     devices: [],
@@ -282,7 +233,7 @@ export function FacewearView() {
             )}
 
             <div className="grid gap-3">
-              {DEVICE_PROFILES.map((profile) => (
+              {FACEWEAR_DEVICE_PROFILES.map((profile) => (
                 <div key={profile.type}>
                   <DeviceCard
                     profile={profile}

@@ -12,11 +12,10 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
-// Mock the three @elizaos/ui module specifiers TrajectoryLoggerView imports:
+// Mock the two @elizaos/ui module specifiers TrajectoryLoggerAppView imports:
 //   - "@elizaos/ui"                      -> Button (passthrough fwd ref/onClick/aria)
 //                                           + OverlayAppContext (type-only, erased)
 //   - "@elizaos/ui/agent-surface"        -> useAgentElement (ref + data-agent-* props)
-//   - "@elizaos/ui/components/views/TerminalPluginView"
 // Lightweight passthroughs keep the test self-contained while preserving the
 // semantics we assert (Button forwards onClick/aria-label; PhaseChip's
 // role="tab"/aria-current come from the real component, not the mock).
@@ -50,16 +49,7 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
   }),
 }));
 
-vi.mock("@elizaos/ui/components/views/TerminalPluginView", () => ({
-  TerminalPluginView: (props: { id: string; endpoints?: string[] }) =>
-    React.createElement("div", {
-      "data-testid": "terminal-plugin-view",
-      "data-id": props.id,
-      "data-endpoints": JSON.stringify(props.endpoints ?? null),
-    }),
-}));
-
-import { TrajectoryLoggerView } from "./TrajectoryLoggerView.js";
+import { TrajectoryLoggerAppView } from "./TrajectoryLoggerAppView.js";
 
 const t = (key: string, opts?: { defaultValue?: string }) =>
   opts?.defaultValue ?? key;
@@ -307,10 +297,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("TrajectoryLoggerView populated render", () => {
+describe("TrajectoryLoggerAppView populated render", () => {
   it("renders the header brand block, both Now/Last strips, and the recording badge", async () => {
     installFetch();
-    render(<TrajectoryLoggerView {...overlayContext()} />);
+    render(<TrajectoryLoggerAppView {...overlayContext()} />);
 
     // Header brand title.
     expect(screen.getByText("Trajectories")).toBeTruthy();
@@ -334,7 +324,7 @@ describe("TrajectoryLoggerView populated render", () => {
 
   it("shows specific populated phase data: HANDLE 'respond' (Now) and PLAN 'REPLY' (Last)", async () => {
     installFetch();
-    render(<TrajectoryLoggerView {...overlayContext()} />);
+    render(<TrajectoryLoggerAppView {...overlayContext()} />);
 
     await waitFor(() =>
       expect(screen.getByTestId("trajectory-logging-badge")).toBeTruthy(),
@@ -375,7 +365,7 @@ describe("TrajectoryLoggerView populated render", () => {
         return { ...env, trajectories: [env.trajectories[1]], total: 1 };
       },
     });
-    render(<TrajectoryLoggerView {...overlayContext()} />);
+    render(<TrajectoryLoggerAppView {...overlayContext()} />);
 
     await waitFor(() =>
       expect(
@@ -404,7 +394,7 @@ describe("TrajectoryLoggerView populated render", () => {
         return { ok: true, json: async () => null } as unknown as Response;
       }),
     );
-    render(<TrajectoryLoggerView {...overlayContext()} />);
+    render(<TrajectoryLoggerAppView {...overlayContext()} />);
 
     await waitFor(() =>
       expect(
@@ -418,11 +408,11 @@ describe("TrajectoryLoggerView populated render", () => {
   });
 });
 
-describe("TrajectoryLoggerView interactions", () => {
+describe("TrajectoryLoggerAppView interactions", () => {
   it("clicking the Back button invokes exitToApps once", async () => {
     installFetch();
     const exitToApps = vi.fn();
-    render(<TrajectoryLoggerView {...overlayContext(exitToApps)} />);
+    render(<TrajectoryLoggerAppView {...overlayContext(exitToApps)} />);
 
     await waitFor(() =>
       expect(screen.getByTestId("trajectory-logging-badge")).toBeTruthy(),
@@ -434,7 +424,7 @@ describe("TrajectoryLoggerView interactions", () => {
 
   it("clicking a HANDLE chip opens the drilldown with decision + provider chips; clicking again closes it", async () => {
     installFetch();
-    render(<TrajectoryLoggerView {...overlayContext()} />);
+    render(<TrajectoryLoggerAppView {...overlayContext()} />);
 
     await waitFor(() =>
       expect(screen.getByTestId("trajectory-logging-badge")).toBeTruthy(),
@@ -466,7 +456,7 @@ describe("TrajectoryLoggerView interactions", () => {
 
   it("clicking a PLAN chip in the Last strip shows actionType + response preview", async () => {
     installFetch();
-    render(<TrajectoryLoggerView {...overlayContext()} />);
+    render(<TrajectoryLoggerAppView {...overlayContext()} />);
 
     await waitFor(() =>
       expect(screen.getByTestId("trajectory-logging-badge")).toBeTruthy(),
@@ -491,7 +481,7 @@ describe("TrajectoryLoggerView interactions", () => {
 
   it("selecting a chip in the other strip swaps the selection (one drilldown at a time)", async () => {
     installFetch();
-    render(<TrajectoryLoggerView {...overlayContext()} />);
+    render(<TrajectoryLoggerAppView {...overlayContext()} />);
 
     await waitFor(() =>
       expect(screen.getByTestId("trajectory-logging-badge")).toBeTruthy(),

@@ -65,8 +65,8 @@ vi.mock("@elizaos/ui", () => ({
     selector(mockAppValue),
   useAppSelectorShallow: (selector: (s: Record<string, unknown>) => unknown) =>
     selector(mockAppValue),
-  // Lightweight Button + TerminalPluginView stubs — the real ones pull a large
-  // dependency graph; the panel only needs a clickable button element.
+  // Lightweight Button stub — the real one pulls a large dependency graph; the
+  // panel only needs a clickable button element.
   Button: ({
     children,
     onClick,
@@ -87,7 +87,6 @@ vi.mock("@elizaos/ui", () => ({
       {children}
     </button>
   ),
-  TerminalPluginView: () => <div data-testid="terminal-plugin-view" />,
 }));
 
 import { CodingAgentTasksPanel } from "../../src/CodingAgentTasksPanel";

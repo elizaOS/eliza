@@ -173,4 +173,32 @@ describe("TrajectoryLoggerSpatialView one source, three modalities", () => {
       unregister();
     }
   });
+
+  it("renders the calm unavailable message instead of the strips when unavailable", () => {
+    const unavailable: TrajectorySnapshot = {
+      ...snapshot,
+      unavailable: true,
+    };
+    const gui = renderToStaticMarkup(
+      <SpatialSurface modality="gui">
+        <TrajectoryLoggerSpatialView snapshot={unavailable} />
+      </SpatialSurface>,
+    );
+    expect(gui).toContain("Trajectory logging unavailable on this surface");
+    // Strips are suppressed under the unavailable state.
+    expect(gui).not.toContain('data-agent-id="strip-now"');
+  });
+
+  it("exposes a Back affordance that dispatches the back action", () => {
+    const actions: string[] = [];
+    const gui = renderToStaticMarkup(
+      <SpatialSurface modality="gui">
+        <TrajectoryLoggerSpatialView
+          snapshot={snapshot}
+          onAction={(action) => actions.push(action)}
+        />
+      </SpatialSurface>,
+    );
+    expect(gui).toContain('data-agent-id="back"');
+  });
 });

@@ -14,6 +14,10 @@ const trajectoryLoggerPlugin: Plugin = {
   description:
     "Realtime trajectory inspector for HANDLE / PLAN / ACTION / EVALUATE phase drilldowns.",
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single
+    // TrajectoryLoggerView spatial source. `modalities` is a plain literal here
+    // (plugin.ts is not in the view bundle), so no brand-new `@elizaos/core`
+    // runtime export reaches the bundle build.
     {
       id: "trajectory-logger",
       label: "Trajectory Logger",
@@ -22,36 +26,9 @@ const trajectoryLoggerPlugin: Plugin = {
         "Realtime view of the agent's last and pending HANDLE / PLAN / ACTION / EVALUATE turns",
       icon: "Activity",
       path: "/trajectory-logger",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "TrajectoryLoggerView",
-      tags: ["developer", "trajectory", "debugging"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "trajectory-logger",
-      label: "Trajectory Logger XR",
-      description:
-        "Realtime view of the agent's last and pending HANDLE / PLAN / ACTION / EVALUATE turns",
-      icon: "Activity",
-      path: "/trajectory-logger",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "TrajectoryLoggerView",
-      tags: ["developer", "trajectory", "debugging"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "trajectory-logger",
-      label: "Trajectory Logger TUI",
-      description:
-        "Terminal realtime trajectory inspector for HANDLE / PLAN / ACTION / EVALUATE turns",
-      icon: "Activity",
-      path: "/trajectory-logger/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "TrajectoryLoggerTuiView",
       capabilities: [
         {
           id: "list-trajectories",

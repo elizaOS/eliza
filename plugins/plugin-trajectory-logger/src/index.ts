@@ -19,6 +19,7 @@ export * from "./register";
 export {
   registerTrajectoryLoggerApp,
   TRAJECTORY_LOGGER_APP_NAME,
+  TrajectoryLoggerAppView,
   TrajectoryLoggerView,
   trajectoryLoggerApp,
 } from "./ui";

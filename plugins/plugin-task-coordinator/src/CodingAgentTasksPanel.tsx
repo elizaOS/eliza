@@ -4,7 +4,6 @@ import {
   type CodingAgentTaskThread,
   type CodingAgentTaskThreadDetail,
   client,
-  TerminalPluginView,
   useAppSelectorShallow,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
@@ -956,33 +955,5 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
         />
       )}
     </div>
-  );
-}
-
-export function TaskCoordinatorTuiView() {
-  return (
-    <TerminalPluginView
-      id="task-coordinator"
-      label="Task Coordinator TUI"
-      description="Terminal coding agent task coordinator"
-      commands={[]}
-      endpoints={[
-        "/api/coding-agents",
-        "/api/orchestrator/tasks",
-        "/api/orchestrator/status",
-      ]}
-    />
-  );
-}
-
-export function OrchestratorTuiView() {
-  return (
-    <TerminalPluginView
-      id="orchestrator"
-      label="Orchestrator TUI"
-      description="Terminal multi-agent task orchestration workbench"
-      commands={[]}
-      endpoints={["/api/orchestrator/status", "/api/orchestrator/tasks"]}
-    />
   );
 }

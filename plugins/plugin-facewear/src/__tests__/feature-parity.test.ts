@@ -92,24 +92,30 @@ describe("XR feature parity audit", () => {
     unregisterPluginViews(XR_ROUTE_TEST_PLUGIN);
   });
 
-  // 1. View registration parity — facewear has gui, tui, and xr views ──────────
-  it("axis 1 — plugin-facewear declares gui, tui, and xr views for the 'facewear' id", () => {
+  // 1. View registration parity — the 'facewear' id collapses gui+xr+tui into
+  //    one tri-modal declaration (`modalities: ["gui","xr","tui"]`) drawn from a
+  //    single spatial source, instead of three duplicate viewType declarations.
+  it("axis 1 — plugin-facewear declares one tri-modal view for the 'facewear' id", () => {
     const source = readFile("plugins/plugin-facewear/src/index.ts");
-    expect(source, "gui view").toContain('viewType: "gui"');
-    expect(source, "tui view").toContain('viewType: "tui"');
-    expect(source, "xr view").toContain('viewType: "xr"');
     expect(source, "facewear view id").toContain('id: "facewear"');
+    expect(source, "tri-modal facewear view").toContain(
+      'modalities: ["gui", "xr", "tui"]',
+    );
+    expect(source, "facewear path").toContain('path: "/apps/facewear"');
+    expect(source, "facewear component").toContain(
+      'componentExport: "FacewearView"',
+    );
   });
 
-  it("axis 1 — plugin-facewear declares focused Smartglasses GUI and XR views", () => {
+  it("axis 1 — plugin-facewear declares one tri-modal Smartglasses view", () => {
     const source = readFile("plugins/plugin-facewear/src/index.ts");
     expect(source, "smartglasses view id").toContain('id: "smartglasses"');
     expect(source, "smartglasses path").toContain('path: "/apps/smartglasses"');
-    expect(source, "smartglasses xr path").toContain(
-      'path: "/apps/smartglasses/xr"',
+    expect(source, "tri-modal smartglasses view").toContain(
+      'modalities: ["gui", "xr", "tui"]',
     );
-    expect(source, "shared Smartglasses component").toContain(
-      'componentExport: "SmartglassesView"',
+    expect(source, "shared Smartglasses panel component").toContain(
+      'componentExport: "SmartglassesPanelView"',
     );
   });
 

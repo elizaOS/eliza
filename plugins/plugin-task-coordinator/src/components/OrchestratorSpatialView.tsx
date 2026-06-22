@@ -34,6 +34,7 @@ import {
   Button,
   Card,
   Divider,
+  Field,
   HStack,
   List,
   type SpatialTone,
@@ -156,9 +157,10 @@ function clamp(text: string, max: number): string {
 export interface OrchestratorSpatialViewProps {
   snapshot: OrchestratorSnapshot;
   /**
-   * Dispatch by agent id. List: `open:<taskId>`, `create`, `pause-all`,
-   * `resume-all`, `refresh`. Detail: `back`, `pause`, `resume`, `validate`,
-   * `fork`, `delete`, `stop-session:<sessionId>`.
+   * Dispatch by agent id. List: `open:<taskId>`, `pause-all`, `resume-all`,
+   * `refresh`. Detail: `back`, `pause`, `resume`, `validate`, `fork`,
+   * `delete`, `archive`, `reopen`, `restart`, `add-agent`, `copy-link`,
+   * `priority:<low|normal|high|urgent>`, `stop-session:<sessionId>`.
    */
   onAction?: (action: string) => void;
 }
@@ -347,6 +349,10 @@ function OrchestratorDetail({
   pendingInputs: CodingAgentPendingDecisionRecord[];
   dispatch: (action: string) => () => void;
 }) {
+  const isTerminal =
+    detail.status === "done" ||
+    detail.status === "failed" ||
+    detail.status === "archived";
   return (
     <Card title="Task" gap={1} padding={1}>
       <HStack gap={1} align="center">
@@ -398,14 +404,63 @@ function OrchestratorDetail({
         >
           Validate
         </Button>
+        {/* The Edit-group (Fork, Restart, Add agent) is hidden on terminal
+            tasks, mirroring the GUI workbench's TaskInspector guard. */}
+        {isTerminal ? null : (
+          <>
+            <Button
+              variant="outline"
+              tone="default"
+              agent="fork"
+              onPress={dispatch("fork")}
+            >
+              Fork
+            </Button>
+            <Button
+              variant="outline"
+              tone="default"
+              agent="restart"
+              onPress={dispatch("restart")}
+            >
+              Restart
+            </Button>
+            <Button
+              variant="outline"
+              tone="default"
+              agent="add-agent"
+              onPress={dispatch("add-agent")}
+            >
+              Add agent
+            </Button>
+          </>
+        )}
         <Button
-          variant="outline"
+          variant="ghost"
           tone="default"
-          agent="fork"
-          onPress={dispatch("fork")}
+          agent="copy-link"
+          onPress={dispatch("copy-link")}
         >
-          Fork
+          Copy link
         </Button>
+        {detail.status === "archived" ? (
+          <Button
+            variant="outline"
+            tone="default"
+            agent="reopen"
+            onPress={dispatch("reopen")}
+          >
+            Reopen
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            tone="default"
+            agent="archive"
+            onPress={dispatch("archive")}
+          >
+            Archive
+          </Button>
+        )}
         <Button
           variant="ghost"
           tone="danger"
@@ -415,6 +470,17 @@ function OrchestratorDetail({
           Delete
         </Button>
       </HStack>
+
+      {isTerminal ? null : (
+        <Field
+          label="priority"
+          kind="select"
+          value={detail.priority}
+          options={["low", "normal", "high", "urgent"]}
+          agent="priority"
+          onChange={(value) => dispatch(`priority:${value}`)()}
+        />
+      )}
 
       {pendingInputs.length > 0 ? (
         <PendingInputs inputs={pendingInputs} />

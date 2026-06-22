@@ -2,9 +2,9 @@
  * Register the trajectory logger view for terminal rendering.
  *
  * The agent terminal mounts plugin views by id from the `@elizaos/tui` terminal
- * registry. This makes the trajectory logger's `viewType: "tui"` declaration
- * render for real in the terminal (the unified
- * {@link TrajectoryLoggerSpatialView}) rather than only navigating a GUI shell.
+ * registry. This makes the trajectory logger's `"tui"` modality render for real
+ * in the terminal (the unified {@link TrajectoryLoggerSpatialView}) rather than
+ * only navigating a GUI shell.
  * A module-level snapshot lets a host push live trajectory data; with no host it
  * defaults to the empty "no turn yet" state.
  */

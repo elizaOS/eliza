@@ -1,3 +1,4 @@
+export { TrajectoryLoggerAppView } from "./components/TrajectoryLoggerAppView";
 export { TrajectoryLoggerView } from "./components/TrajectoryLoggerView";
 export {
   registerTrajectoryLoggerApp,

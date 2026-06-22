@@ -1,4 +1,3 @@
-import { TerminalPluginView } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
 import { Button } from "@elizaos/ui/components/ui/button";
@@ -22,7 +21,11 @@ import {
   Waves,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MODEL_TESTER_TUI_CAPABILITIES } from "./ModelTesterAppView.interact";
+import {
+  type AudioPayload,
+  audioFileToPayload,
+  fileToDataUrl,
+} from "./model-tester-probe.helpers";
 
 type TestId =
   | "text-small"
@@ -47,12 +50,6 @@ interface TestResult {
   durationMs?: number;
   output?: unknown;
   error?: string;
-}
-
-interface AudioPayload {
-  audioDataUrl: string;
-  pcmSamples: number[];
-  sampleRateHz: number;
 }
 
 const DEFAULT_PROMPT =
@@ -132,41 +129,6 @@ const TEST_COPY: Record<
     Icon: ImagePlus,
   },
 };
-
-async function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () =>
-      reject(reader.error ?? new Error("File read failed"));
-    reader.readAsDataURL(file);
-  });
-}
-
-async function audioFileToPayload(file: File): Promise<AudioPayload> {
-  const audioDataUrl = await fileToDataUrl(file);
-  const buffer = await file.arrayBuffer();
-  const AudioContextCtor =
-    window.AudioContext ??
-    (window as unknown as { webkitAudioContext?: typeof AudioContext })
-      .webkitAudioContext;
-  if (!AudioContextCtor) {
-    throw new Error("This browser cannot decode audio files.");
-  }
-  const context = new AudioContextCtor();
-  const decoded = await context.decodeAudioData(buffer.slice(0));
-  const src = decoded.getChannelData(0);
-  const targetRate = 16_000;
-  const maxSamples = targetRate * 15;
-  const ratio = decoded.sampleRate / targetRate;
-  const length = Math.min(maxSamples, Math.floor(src.length / ratio));
-  const pcmSamples = new Array<number>(length);
-  for (let i = 0; i < length; i += 1) {
-    pcmSamples[i] = src[Math.min(src.length - 1, Math.floor(i * ratio))] ?? 0;
-  }
-  await context.close();
-  return { audioDataUrl, pcmSamples, sampleRateHz: targetRate };
-}
 
 function outputText(value: unknown): string {
   if (typeof value === "string") return value;
@@ -533,18 +495,6 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
       </div>
     </div>
-  );
-}
-
-export function ModelTesterTuiView() {
-  return (
-    <TerminalPluginView
-      id="model-tester"
-      label="Model Tester TUI"
-      description="Terminal probes for Eliza-1 text, voice, audio, and vision models"
-      commands={[...MODEL_TESTER_TUI_CAPABILITIES]}
-      endpoints={["/api/model-tester/status", "/api/model-tester/run"]}
-    />
   );
 }
 

@@ -9,7 +9,10 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { FacewearTuiView, SmartglassesTuiView } from "../ui/FacewearView.tsx";
+import {
+  FacewearTuiView,
+  SmartglassesTuiView,
+} from "../ui/FacewearAppView.tsx";
 
 afterEach(() => {
   cleanup();
