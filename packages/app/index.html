@@ -279,17 +279,21 @@
     html, body {
       margin: 0;
       padding: 0;
-      background-color: var(--bg, #FF5800);
+      background-color: var(--bg, #ef5a1f);
       color: #ffffff;
       font-family: var(--font-sans, "Poppins", Arial, system-ui, sans-serif);
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
 
-    /* Safe area insets for notched devices */
+    /* Safe area insets for notched devices. NB: no bottom inset — the
+       full-screen app background (ShaderBackground, fixed inset-0) must reach
+       the true screen bottom so the home-indicator zone shows the same field as
+       the rest of the screen (not the more-saturated body fallback color as a
+       bright band). Components that sit at the bottom (the chat composer) clear
+       the home indicator with their own env(safe-area-inset-bottom) padding. */
     body {
       padding-top: env(safe-area-inset-top);
-      padding-bottom: env(safe-area-inset-bottom);
       padding-left: env(safe-area-inset-left);
       padding-right: env(safe-area-inset-right);
     }

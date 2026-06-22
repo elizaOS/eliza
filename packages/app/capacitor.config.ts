@@ -149,16 +149,21 @@ const config: CapacitorConfig = {
     // Native launch screen color. The app's real startup UI is rendered by React.
     SplashScreen: {
       launchShowDuration: 0,
-      backgroundColor: "#FF5800",
+      backgroundColor: "#ef5a1f",
       androidScaleType: "CENTER_CROP",
       splashFullScreen: true,
       splashImmersive: true,
     },
   },
   ios: {
-    contentInset: "automatic",
+    // "never": the WKWebView extends edge-to-edge under the home indicator
+    // instead of being inset (which revealed the native background as an orange
+    // band at the bottom safe-area). The web layer owns safe-area insets via
+    // viewport-fit=cover + env(safe-area-inset-*); the chat composer adds its
+    // own bottom inset so it stays clear of the home indicator.
+    contentInset: "never",
     preferredContentMode: "mobile",
-    backgroundColor: "#FF5800",
+    backgroundColor: "#ef5a1f",
     allowsLinkPreview: false,
     webContentsDebuggingEnabled: webViewDebuggingEnabled,
   },
@@ -167,7 +172,7 @@ const config: CapacitorConfig = {
     // package. Upstream elizaOS owns the shared app-core tree; white-label or
     // explicitly isolated builds use the app-local ignored android/ project.
     path: androidProjectPath,
-    backgroundColor: "#FF5800",
+    backgroundColor: "#ef5a1f",
     allowMixedContent: false,
     captureInput: true,
     webContentsDebuggingEnabled: webViewDebuggingEnabled,

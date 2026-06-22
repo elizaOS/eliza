@@ -2975,7 +2975,11 @@ export function ContinuousChatOverlay({
               "bg-black/45 backdrop-blur-lg backdrop-saturate-[1.8] backdrop-brightness-[0.68] supports-[backdrop-filter]:bg-black/[0.12]",
               fullBleed
                 ? "shadow-none"
-                : "shadow-[inset_0_1px_0_rgba(255,255,255,0.26),inset_0_0_0_0.5px_rgba(255,255,255,0.08),0_18px_50px_-16px_rgba(0,0,0,0.72)]",
+                : // Keep the inset glass highlights; drop the heavy outer cast
+                  // shadow — over the warm ambient field it darkened the strip
+                  // below the composer into a distinct band. A small, soft, low-
+                  // alpha shadow keeps a hint of lift without the band.
+                  "shadow-[inset_0_1px_0_rgba(255,255,255,0.26),inset_0_0_0_0.5px_rgba(255,255,255,0.08),0_6px_18px_-14px_rgba(0,0,0,0.35)]",
             )}
             style={{
               opacity: glassOpacity,
@@ -2990,16 +2994,7 @@ export function ContinuousChatOverlay({
               // padding) is untouched. Harmless when the inset is 0.
               ...(fullBleed
                 ? { top: "calc(-1 * env(safe-area-inset-top, 0px))" }
-                : // Resting (non-full-bleed): bleed the glass DOWN past the panel
-                  // box to fill the bottom home-gesture clearance, so the dark
-                  // glass reaches the true screen bottom and the orange ambient
-                  // never shows as a bright band below the composer. Mirrors the
-                  // overlay's resting paddingBottom exactly. overflow-visible on
-                  // the panel lets it bleed; the composer content is untouched.
-                  {
-                    bottom:
-                      "calc(-1 * (var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem))",
-                  }),
+                : null),
             }}
           />
           {/* CONTENT — sheen, glow, thread, composer. Crossfades with the glass
