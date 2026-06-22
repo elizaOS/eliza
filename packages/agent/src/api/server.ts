@@ -1817,9 +1817,16 @@ async function handleRequest(
   let handleCloudStatusRoutes = async (_args: unknown): Promise<boolean> =>
     false;
   if (
-    pathname === "/api/first-run/status" ||
-    pathname.startsWith("/api/cloud") ||
-    pathname.startsWith("/api/coding-agents")
+    // plugin-elizacloud is desktop/cloud-only; on mobile its dynamic import
+    // does not resolve and the resulting await stalls the whole request (the
+    // /api/cloud, /api/coding-agents, and cloud-first-run paths then hang).
+    // Skip the import on mobile — the default no-op cloud helpers above keep
+    // isCloudProvisioned=false (correct for a local mobile agent) and let the
+    // request fall through to its normal handler/404.
+    !isMobilePlatform() &&
+    (pathname === "/api/first-run/status" ||
+      pathname.startsWith("/api/cloud") ||
+      pathname.startsWith("/api/coding-agents"))
   ) {
     const cloudApi = await getOptionalPluginApi<{
       isCloudProvisionedContainer: () => boolean;
@@ -2736,7 +2743,10 @@ async function handleRequest(
   // steward-app bridge can pull browser/UI-only dependencies into the agent
   // process and must not block local assistant boot.
   // ═══════════════════════════════════════════════════════════════════════
-  if (pathname.startsWith("/api/wallet/")) {
+  // plugin-wallet is desktop/cloud-only; on mobile its import does not resolve
+  // and the await stalls /api/wallet/* requests. Skip on mobile → fall through
+  // to 404 (the mobile agent has no EVM/Solana wallet surface anyway).
+  if (!isMobilePlatform() && pathname.startsWith("/api/wallet/")) {
     const { handleWalletRoutes } = await getWalletApi();
     const {
       deriveSolanaAddress,
