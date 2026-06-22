@@ -1,8 +1,8 @@
 import {
   type AppDetailExtensionProps,
   type AppRunSummary,
-  useAppSelector,
 } from "@elizaos/ui";
+import { useAppSelector } from "@elizaos/ui/state";
 import { useMemo } from "react";
 
 type AppRunEvent = NonNullable<AppRunSummary["recentEvents"]>[number];

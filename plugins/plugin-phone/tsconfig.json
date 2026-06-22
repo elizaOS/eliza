@@ -47,8 +47,8 @@
         "../../plugins/plugin-wallet-ui/src/index.ts"
       ],
       "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
-      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/dist/*"],
+      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/plugin-signal": ["../plugin-signal/src/index.ts"],
       "@elizaos/plugin-signal/*": ["../plugin-signal/src/*"],

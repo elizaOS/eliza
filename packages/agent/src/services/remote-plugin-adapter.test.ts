@@ -2225,6 +2225,7 @@ describe("remote plugin adapter", () => {
       events: [],
       models: [],
       services: [],
+      shortcuts: [],
       sendHandlerSources: [],
       hasAdapter: false,
       registeredAt: Date.now(),

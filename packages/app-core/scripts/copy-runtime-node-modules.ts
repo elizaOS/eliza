@@ -2095,6 +2095,42 @@ type CopyTargetOptions = {
   resolvedVersion: string | null;
 };
 
+function findReusableAncestorNodeModules({
+  name,
+  requesterDestDir,
+  rootDestDir,
+  resolvedVersion,
+}: Pick<
+  CopyTargetOptions,
+  "name" | "requesterDestDir" | "rootDestDir" | "resolvedVersion"
+>): string | null {
+  const root = path.resolve(rootDestDir);
+  let currentDir = requesterDestDir;
+
+  while (true) {
+    const candidateNodeModules = path.join(currentDir, "node_modules");
+    const candidatePackageDir = packagePath(name, candidateNodeModules);
+    const candidateManifest = path.join(candidatePackageDir, "package.json");
+
+    if (
+      fs.existsSync(candidateManifest) &&
+      getPackageVersion(candidateManifest) === resolvedVersion
+    ) {
+      return candidateNodeModules;
+    }
+
+    if (path.resolve(currentDir) === root) {
+      return null;
+    }
+
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      return null;
+    }
+    currentDir = parentDir;
+  }
+}
+
 export function selectCopyTargetNodeModules({
   name,
   requesterDestDir,
@@ -2120,6 +2156,16 @@ export function selectCopyTargetNodeModules({
     shouldReuseTopLevelRuntimePackage(name, topLevelVersion, resolvedVersion)
   ) {
     return targetNodeModules;
+  }
+
+  const reusableAncestorNodeModules = findReusableAncestorNodeModules({
+    name,
+    requesterDestDir,
+    rootDestDir,
+    resolvedVersion,
+  });
+  if (reusableAncestorNodeModules) {
+    return reusableAncestorNodeModules;
   }
 
   return path.join(requesterDestDir, "node_modules");

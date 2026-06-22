@@ -194,7 +194,7 @@ export function useAppSelector<T>(
 export function useAppSelectorShallow<T>(
   selector: (value: AppContextValue) => T,
 ): T {
-  return useAppSelector(selector, shallowEqual);
+  return useAppSelector<T>(selector, shallowEqual as (a: T, b: T) => boolean);
 }
 
 /** Test-only: seed the store and notify subscribers (mirrors a publish). */

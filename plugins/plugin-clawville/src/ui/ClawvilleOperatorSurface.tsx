@@ -5,9 +5,9 @@ import {
   type GameOperatorAction,
   type GameOperatorEvent,
   GameOperatorShell,
-  useAppSelector,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { useAppSelector } from "@elizaos/ui/state";
 import {
   type CSSProperties,
   type ReactNode,
