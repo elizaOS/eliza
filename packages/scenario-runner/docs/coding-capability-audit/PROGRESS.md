@@ -30,7 +30,25 @@ Legend: ✅ done & verified · 🔧 in progress · ⏳ queued · ⛔ blocked
   - AFTER: inspector suite **18 passed**; full package suite **136 passed (12
     files)**, exit 0.
 
-### ⏳ 0.2 (L) Default per-session workspace isolation (CRITICAL correctness)
+### ✅ 0.2 (L) Default per-session workspace isolation (CRITICAL correctness)
+- **Root cause (audit #1 finding):** `resolveDefaultSpawnWorkdir` collapsed every
+  route-less concurrent task into ONE shared dir (a configured
+  `ELIZA_ACP_WORKSPACE_ROOT`/`ACPX_DEFAULT_CWD`, or the direct-caller
+  `DEFAULT_WORKDIR_ROOT`) → simultaneous projects corrupt each other's files.
+- **Fix (preserves self-checkout):** the resolver now flags a *shared scratch
+  root* with `isolate: true` (cwd self-checkout + route/convention/explicit dirs
+  are NOT flagged); `spawnSession` then lands each session in its own
+  `<root>/task-<sessionId>` subdir via a new pure, exported `computeSessionWorkdir`.
+  Direct (non-orchestrated) callers always isolate (no self-checkout intent).
+  Threaded through `SpawnOptions.isolateWorkdir` + both `tasks.ts` spawn sites.
+  Files: `task-agent-routing.ts`, `services/types.ts`, `actions/tasks.ts`,
+  `services/acp-service.ts`.
+- **Evidence:** new `__tests__/unit/workspace-isolation.test.ts` proves two
+  route-less concurrent spawns under a configured root get DISTINCT workdirs and
+  self-checkout stays in cwd un-isolated; updated `resolve-spawn-workdir.test.ts`
+  (+`isolate: true`) and `acp-service.test.ts` (direct-caller now isolates).
+  Full orchestrator unit suite **687 passed (59 files)**; typecheck exit 0.
+
 ### ⏳ 0.3 (H) Two-phase reload + rollback (CRITICAL correctness)
 
 ### ✅ 0.4 (B) Repair broken task-agent live E2E + drift guard

@@ -102,7 +102,7 @@ export function resolveSpawnWorkdir(
   userRequest: string,
   explicitWorkdir: string | undefined,
   opts: { lockWorkdir?: boolean } = {},
-): { workdir: string; route?: ResolvedWorkdirRoute } {
+): { workdir: string; route?: ResolvedWorkdirRoute; isolate?: boolean } {
   const expandedExplicit = explicitWorkdir
     ? expandHomePath(explicitWorkdir)
     : undefined;
@@ -121,13 +121,20 @@ export function resolveSpawnWorkdir(
   if (expandedExplicit && fs.existsSync(expandedExplicit)) {
     return { workdir: expandedExplicit };
   }
-  const fallbackWorkdir = resolveDefaultSpawnWorkdir(runtime);
+  const fallback = resolveDefaultSpawnWorkdir(runtime);
   if (expandedExplicit) {
     logger.warn(
-      `[workdir-routes] Planner workdir does not exist, ignoring it: ${expandedExplicit} — falling back to ${fallbackWorkdir}`,
+      `[workdir-routes] Planner workdir does not exist, ignoring it: ${expandedExplicit} — falling back to ${fallback.workdir}`,
     );
   }
-  return { workdir: fallbackWorkdir };
+  // `isolate` is only set when the fallback landed on a SHARED scratch root
+  // (a configured ELIZA_ACP_WORKSPACE_ROOT / ACPX_DEFAULT_CWD) — spawnSession
+  // then gives each concurrent session its own subdir so simultaneous projects
+  // can't collide. cwd (self-checkout) and route/convention/explicit matches
+  // resolve to a specific directory and are never auto-isolated.
+  return fallback.isolate
+    ? { workdir: fallback.workdir, isolate: true }
+    : { workdir: fallback.workdir };
 }
 
 /**
@@ -141,7 +148,7 @@ export function resolveSpawnWorkdir(
  */
 function resolveDefaultSpawnWorkdir(
   runtime: IAgentRuntime | undefined,
-): string {
+): { workdir: string; isolate: boolean } {
   const configured =
     (typeof runtime?.getSetting === "function"
       ? ((runtime.getSetting("ELIZA_ACP_WORKSPACE_ROOT") as
@@ -152,7 +159,13 @@ function resolveDefaultSpawnWorkdir(
     readConfigEnvKey("ELIZA_ACP_WORKSPACE_ROOT") ??
     readConfigEnvKey("ACPX_DEFAULT_CWD");
   const trimmed = configured?.trim();
-  return trimmed ? expandHomePath(trimmed) : process.cwd();
+  // A configured workspace ROOT is a shared scratch area for ad-hoc spawned
+  // tasks → isolate=true so each concurrent session gets its own subdir.
+  // With nothing configured we keep process.cwd() WITHOUT isolation, preserving
+  // the run-in-place self-checkout workflow (the agent edits the repo in place).
+  return trimmed
+    ? { workdir: expandHomePath(trimmed), isolate: true }
+    : { workdir: process.cwd(), isolate: false };
 }
 
 export function resolveWorkdirByConvention(

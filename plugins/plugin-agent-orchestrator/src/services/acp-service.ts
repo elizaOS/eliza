@@ -92,6 +92,21 @@ type RunResult = {
 const STDERR_CAP_BYTES = 64 * 1024;
 const KILL_GRACE_MS = 5_000;
 const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
+
+/**
+ * Resolve the absolute workdir for a spawned session. When `isolate` is true,
+ * the session lands in a per-session subdir (`<base>/task-<sessionId>`) so
+ * concurrent tasks sharing a scratch root never collide; otherwise the base is
+ * used verbatim (cwd self-checkout / a route / an explicit caller-chosen dir).
+ * Pure + exported for unit testing the concurrency-isolation guarantee.
+ */
+export function computeSessionWorkdir(
+  base: string,
+  sessionId: string,
+  isolate: boolean,
+): string {
+  return isolate ? resolve(base, `task-${sessionId}`) : resolve(base);
+}
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const ACP_HEALTH_CHECK_INTERVAL_MS = 60_000;
@@ -539,12 +554,20 @@ export class AcpService extends Service {
     // tail is therefore the resolver for DIRECT (non-orchestrated) callers of
     // spawnSession; its last resort is the scratch DEFAULT_WORKDIR_ROOT rather
     // than process.cwd() because a direct caller has no self-checkout intent.
-    const workdir = resolve(
+    const baseWorkdir =
       opts.workdir ??
-        this.setting("ELIZA_ACP_WORKSPACE_ROOT") ??
-        this.setting("ACPX_DEFAULT_CWD") ??
-        DEFAULT_WORKDIR_ROOT,
-    );
+      this.setting("ELIZA_ACP_WORKSPACE_ROOT") ??
+      this.setting("ACPX_DEFAULT_CWD") ??
+      DEFAULT_WORKDIR_ROOT;
+    // Isolate concurrent sessions into a per-session subdir of a SHARED scratch
+    // root so simultaneous projects never write into the same directory and
+    // corrupt each other. Orchestrated callers opt in via opts.isolateWorkdir
+    // (set ONLY when the resolver landed on a configured workspace root — never
+    // for cwd self-checkout or a route/explicit dir). DIRECT callers (no
+    // opts.workdir) always isolate: they have no self-checkout intent and would
+    // otherwise share the configured root / DEFAULT_WORKDIR_ROOT.
+    const isolate = opts.workdir ? opts.isolateWorkdir === true : true;
+    const workdir = computeSessionWorkdir(baseWorkdir, id, isolate);
     await mkdir(workdir, { recursive: true });
     // Give the sub-agent its eliza-context + non-interactive operating manual on
     // disk (where every backend reads it) — only when the workspace is bare, so

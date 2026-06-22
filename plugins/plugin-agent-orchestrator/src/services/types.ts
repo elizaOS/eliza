@@ -68,6 +68,13 @@ export interface SpawnOptions {
   name?: string;
   agentType?: AgentType;
   workdir?: string;
+  /**
+   * When true, spawnSession places this session in a per-session subdir of
+   * `workdir` (a SHARED scratch root) so concurrent tasks can't collide.
+   * Set by the orchestrator only when the workdir resolved to a configured
+   * workspace root — never for cwd self-checkout or a route/explicit dir.
+   */
+  isolateWorkdir?: boolean;
   initialTask?: string;
   env?: Record<string, string>;
   metadata?: Record<string, unknown>;
