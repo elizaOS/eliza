@@ -79,6 +79,7 @@ interface TrajectoriesServiceLike {
     status?: string;
     scenarioId?: string;
     batchId?: string;
+    search?: string;
   }) => Promise<{ trajectories: ServiceTrajectoryListItem[]; total: number }>;
   getTrajectoryDetail?: (id: string) => Promise<ServiceTrajectory | null>;
   getStats?: () => Promise<unknown>;
@@ -261,6 +262,11 @@ export async function tryHandleTrajectoryFallback(options: {
         status: url.searchParams.get("status") || undefined,
         scenarioId: url.searchParams.get("scenarioId") || undefined,
         batchId: url.searchParams.get("batchId") || undefined,
+        // The SQL reader filters + counts by `search` (id/scenario_id/
+        // batch_id/metadata/steps_json LIKE). On mobile this fallback owns
+        // /api/trajectories, so without forwarding `search` the viewer's
+        // search box returned the full unfiltered list.
+        search: url.searchParams.get("search") || undefined,
       })) ?? { trajectories: [], total: 0 };
       sendJson(res, 200, {
         trajectories: result.trajectories.map(listItemToUi),
