@@ -267,12 +267,12 @@ import {
 } from "./pglite-error-compat.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
 import { validateIntentActionMap } from "./prompt-compaction.ts";
+import rolesPlugin from "./roles.ts";
+import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.ts";
 import {
   validateViewActionMap,
   validateViewCoverage,
 } from "./view-action-affinity.ts";
-import rolesPlugin from "./roles.ts";
-import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.ts";
 
 function isPluginSqlResolutionError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);

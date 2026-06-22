@@ -5,13 +5,14 @@
  * Where that file asserts each individual cell, this file runs the FULL fixture
  * matrix through the deterministic cascade once, computes a per-(view, language,
  * modality) accuracy grid plus overall / per-language / per-modality rollups,
- * asserts the model-free landed-accuracy floor, and writes a JSON grid artifact.
+ * asserts the model-free landed-accuracy floor, and optionally writes a JSON grid
+ * artifact when VIEW_ROUTING_BENCHMARK_OUT is set.
  *
  * Model-free and zero-cost: every cell is `resolveIntentView` / `matchViewCommand`
  * over the single-source fixture — no LLM, no network. The accuracy assertions
  * are computed from real resolver output against a real floor; the artifact write
- * is best-effort (a filesystem failure must not fail the benchmark, but a missed
- * accuracy floor or a false navigation always does).
+ * is opt-in and best-effort (a filesystem failure must not fail the benchmark,
+ * but a missed accuracy floor or a false navigation always does).
  *
  * Floor justification: the exhaustive `view-matrix.test.ts` recall block already
  * passes 100% (every noun form resolves to a *registered* navigable view) and the
@@ -25,7 +26,6 @@
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { MATCHER_VIEW_IDS, matchViewCommand } from "./view-command-matcher.js";
 import {
@@ -41,8 +41,8 @@ import { resolveIntentView } from "./views-show.js";
 const LANDED_ACCURACY_FLOOR = 0.99;
 /** Negative controls must never route — precision is binary. */
 const NEGATIVE_PRECISION_FLOOR = 1;
-/** Default artifact path; override with VIEW_ROUTING_BENCHMARK_OUT. */
-const DEFAULT_ARTIFACT_RELATIVE = "reports/view-routing/grid.json";
+/** Opt-in artifact path; e.g. VIEW_ROUTING_BENCHMARK_OUT=reports/view-routing/grid.json. */
+const ARTIFACT_ENV = "VIEW_ROUTING_BENCHMARK_OUT";
 
 /**
  * Resolver phrasing forms benchmarked per (view, language) cell. `verb`,
@@ -213,21 +213,19 @@ function runBenchmark(): {
 }
 
 function resolveArtifactPath(): string {
-	const override = process.env.VIEW_ROUTING_BENCHMARK_OUT;
+	const override = process.env[ARTIFACT_ENV];
 	if (override && override.trim().length > 0) return resolve(override.trim());
-	// Plugin lives at <repoRoot>/plugins/plugin-app-control/src/actions; climb to
-	// the repo root so the artifact lands at <repoRoot>/reports/view-routing/.
-	const here = dirname(fileURLToPath(import.meta.url));
-	const repoRoot = resolve(here, "../../../..");
-	return resolve(repoRoot, DEFAULT_ARTIFACT_RELATIVE);
+	throw new Error(`${ARTIFACT_ENV} is not set`);
 }
 
 const RESULT = runBenchmark();
-const ARTIFACT_PATH = resolveArtifactPath();
+const ARTIFACT_PATH = process.env[ARTIFACT_ENV]?.trim()
+	? resolveArtifactPath()
+	: null;
 
-// Build + write the artifact at module load so it exists regardless of which
-// individual assertions run. Best-effort: a write failure must not fail the
-// benchmark — the accuracy assertions below are the hard gate.
+// Build the artifact payload at module load. Writing is opt-in so normal Vitest
+// runs do not dirty the worktree; when requested, write best-effort so the
+// accuracy assertions below remain the hard gate.
 let artifactWritten = false;
 let artifactError: string | null = null;
 const artifact = {
@@ -256,16 +254,18 @@ const artifact = {
 	grid: RESULT.grid,
 };
 
-try {
-	mkdirSync(dirname(ARTIFACT_PATH), { recursive: true });
-	writeFileSync(
-		ARTIFACT_PATH,
-		`${JSON.stringify(artifact, null, 2)}\n`,
-		"utf8",
-	);
-	artifactWritten = true;
-} catch (err) {
-	artifactError = err instanceof Error ? err.message : String(err);
+if (ARTIFACT_PATH) {
+	try {
+		mkdirSync(dirname(ARTIFACT_PATH), { recursive: true });
+		writeFileSync(
+			ARTIFACT_PATH,
+			`${JSON.stringify(artifact, null, 2)}\n`,
+			"utf8",
+		);
+		artifactWritten = true;
+	} catch (err) {
+		artifactError = err instanceof Error ? err.message : String(err);
+	}
 }
 
 describe("view-routing benchmark — deterministic accuracy grid (#8797)", () => {
@@ -308,7 +308,12 @@ describe("view-routing benchmark — deterministic accuracy grid (#8797)", () =>
 		}
 	});
 
-	it("writes the grid artifact (best-effort; never fails the benchmark)", () => {
+	it("writes the grid artifact only when explicitly requested", () => {
+		if (!ARTIFACT_PATH) {
+			expect(artifactWritten).toBe(false);
+			expect(artifactError).toBeNull();
+			return;
+		}
 		if (!artifactWritten) {
 			// A filesystem failure is reported but is not a benchmark failure.
 			expect(artifactError, "artifact write failed").not.toBeNull();

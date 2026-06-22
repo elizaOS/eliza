@@ -162,3 +162,63 @@ describe("PolicyEngine — prefer-local capability soft-hint", () => {
 		expect(pick?.provider).toBe("eliza-local-inference");
 	});
 });
+
+describe("PolicyEngine — local-only / cloud-only hard pins", () => {
+	it("local-only picks the local handler even when cloud is higher priority", () => {
+		const pick = policyEngine.pickProvider({
+			modelType: "TEXT_LARGE",
+			policy: "local-only",
+			preferredProvider: null,
+			candidates: [
+				registration("eliza-local-inference", -100),
+				registration("anthropic", 1000),
+			],
+			selfProvider: "eliza-router",
+		});
+		expect(pick?.provider).toBe("eliza-local-inference");
+	});
+
+	it("local-only returns null (fails closed) when no local handler exists", () => {
+		const pick = policyEngine.pickProvider({
+			modelType: "TEXT_LARGE",
+			policy: "local-only",
+			preferredProvider: null,
+			candidates: [
+				registration("anthropic", 0),
+				registration("elizacloud", 50),
+			],
+			selfProvider: "eliza-router",
+		});
+		// Never falls through to cloud — the dispatch loop then throws.
+		expect(pick).toBeNull();
+	});
+
+	it("cloud-only picks the highest-priority cloud handler over local", () => {
+		const pick = policyEngine.pickProvider({
+			modelType: "TEXT_LARGE",
+			policy: "cloud-only",
+			preferredProvider: null,
+			candidates: [
+				registration("eliza-local-inference", 1000),
+				registration("anthropic", 0),
+				registration("elizacloud", 50),
+			],
+			selfProvider: "eliza-router",
+		});
+		expect(pick?.provider).toBe("elizacloud");
+	});
+
+	it("cloud-only returns null (fails closed) when only local handlers exist", () => {
+		const pick = policyEngine.pickProvider({
+			modelType: "TEXT_LARGE",
+			policy: "cloud-only",
+			preferredProvider: null,
+			candidates: [
+				registration("eliza-local-inference", -100),
+				registration("capacitor-llama", -90),
+			],
+			selfProvider: "eliza-router",
+		});
+		expect(pick).toBeNull();
+	});
+});

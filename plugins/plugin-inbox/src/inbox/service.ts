@@ -17,7 +17,7 @@
  *     pulling connectors itself.
  */
 
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
+import { resolveKnowledgeGraphService } from "@elizaos/agent/services/knowledge-graph/service";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { EntityResolveCandidate } from "@elizaos/shared";
 import { loadInboxTriageConfig } from "./config.ts";

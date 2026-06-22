@@ -154,10 +154,15 @@ describe("InboxView", () => {
     const allRead = () => {
       const payload = populatedInbox();
       for (const message of payload.messages) message.unread = false;
-      for (const count of Object.values(payload.channelCounts)) count.unread = 0;
+      for (const count of Object.values(payload.channelCounts))
+        count.unread = 0;
       return payload;
     };
-    render(<InboxView fetchers={makeFetchers({ fetchInbox: async () => allRead() })} />);
+    render(
+      <InboxView
+        fetchers={makeFetchers({ fetchInbox: async () => allRead() })}
+      />,
+    );
     await screen.findByTestId("inbox-populated");
     expect(screen.queryByTestId("inbox-nudge")).toBeNull();
   });

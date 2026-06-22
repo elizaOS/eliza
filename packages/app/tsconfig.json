@@ -71,6 +71,8 @@
         "../../plugins/plugin-telegram/src/index.ts"
       ],
       "@elizaos/core": ["../core/src/index.ts"],
+      "@elizaos/logger": ["../logger/src/index.ts"],
+      "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/capacitor-agent": [
         "../../plugins/plugin-native-agent/src/index.ts"

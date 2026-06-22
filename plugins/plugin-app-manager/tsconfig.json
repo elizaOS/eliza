@@ -20,6 +20,8 @@
     "rootDir": "../..",
     "paths": {
       "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../packages/logger/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/types": ["../../packages/shared/src/types/index.ts"],
       "@elizaos/shared/brand": ["../../packages/shared/src/brand/index.ts"],
@@ -49,6 +51,8 @@
         "../../packages/app-core/src/agent-bridge.ts"
       ],
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "@elizaos/vault": ["../../packages/vault/src/index.ts"],
+      "@elizaos/vault/*": ["../../packages/vault/src/*"],
       "@elizaos/plugin-capacitor-bridge": [
         "../../plugins/plugin-capacitor-bridge/src/index.ts"
       ],
@@ -63,6 +67,12 @@
       ],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/capacitor-camera": [
+        "../../plugins/plugin-native-camera/src/index.ts"
+      ],
+      "@elizaos/capacitor-camera/*": [
+        "../../plugins/plugin-native-camera/src/*"
+      ],
       "@elizaos/capacitor-bun-runtime": ["../../plugins/plugin-native-bun-runtime/src/index.ts"]
     }
   },

@@ -4964,7 +4964,6 @@
       "name": "@elizaos/plugin-remote-desktop",
       "version": "2.0.3-beta.2",
       "dependencies": {
-        "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {

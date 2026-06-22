@@ -3,6 +3,12 @@ import {
 	commandVisibleForView,
 	getConnectorCommands,
 } from "../src/connector-catalog";
+import {
+	findCommandByKey,
+	initForRuntime,
+	registerCommand,
+	useRuntime,
+} from "../src/registry";
 
 /**
  * The navigation half of the catalog must point at real app routes and expose
@@ -103,6 +109,41 @@ describe("connector catalog — client command surface filtering", () => {
 		expect(
 			clear?.target.kind === "client" ? clear.target.clientAction : null,
 		).toBe("clear-chat");
+	});
+});
+
+describe("connector catalog — runtime-scoped registry projection", () => {
+	it("projects runtime-registered commands and per-runtime enablement", () => {
+		initForRuntime("connector-agent-a");
+		useRuntime("connector-agent-a");
+		const restart = findCommandByKey("restart");
+		if (!restart) throw new Error("missing restart command");
+		registerCommand({ ...restart, enabled: false });
+		registerCommand({
+			key: "skill-weather",
+			description: "Answer weather questions with the weather skill",
+			textAliases: ["/weather"],
+			scope: "both",
+			category: "skills",
+			acceptsArgs: true,
+		});
+
+		const agentA = new Set(
+			getConnectorCommands("discord", { agentId: "connector-agent-a" }).map(
+				(command) => command.name,
+			),
+		);
+		expect(agentA.has("restart")).toBe(false);
+		expect(agentA.has("skill-weather")).toBe(true);
+
+		initForRuntime("connector-agent-b");
+		const agentB = new Set(
+			getConnectorCommands("discord", { agentId: "connector-agent-b" }).map(
+				(command) => command.name,
+			),
+		);
+		expect(agentB.has("restart")).toBe(true);
+		expect(agentB.has("skill-weather")).toBe(false);
 	});
 });
 

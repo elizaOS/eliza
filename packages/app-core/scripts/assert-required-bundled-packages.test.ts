@@ -17,8 +17,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   assertRequiredBundledPackagesLanded,
-  getWorkspacePackageRuntimeCopyEntries,
   getRuntimeDependencies,
+  getWorkspacePackageRuntimeCopyEntries,
   selectCopyTargetNodeModules,
   shouldCopyPackageEntry,
   shouldCopyWorkspacePublishEntry,
@@ -365,6 +365,27 @@ describe("assertRequiredBundledPackagesLanded", () => {
         resolvedVersion: "2.0.0",
       }),
     ).toBe(path.join(requesterDestDir, "node_modules"));
+  });
+
+  it("hoists the S3 client so packaged S3 adapters do not create tar-unsafe nested AWS paths", () => {
+    const rootDestDir = path.join(tmpDir, "dist");
+    const targetNodeModules = path.join(rootDestDir, "node_modules");
+    const requesterDestDir = path.join(
+      targetNodeModules,
+      "@brighter",
+      "storage-adapter-s3",
+    );
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "@aws-sdk/client-s3",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map([["@aws-sdk/client-s3", "3.1069.0"]]),
+        resolvedVersion: "3.1050.0",
+      }),
+    ).toBe(targetNodeModules);
   });
 
   it("collapses WalletConnect patch drift to avoid duplicate desktop runtime copies", () => {

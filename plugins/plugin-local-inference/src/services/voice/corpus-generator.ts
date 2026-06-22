@@ -59,6 +59,8 @@ export interface CorpusTurnLabel {
 	referenceTranscript: string;
 	/** Ground truth: should the agent respond to this turn? */
 	expectRespond: boolean;
+	/** Ground truth: is this segment a real end-of-turn boundary? */
+	expectEndOfTurn?: boolean;
 	/** Expected inferred/recognized entity, when the scenario asserts one. */
 	expectedEntity?: string;
 	/** TTS voice id used for this turn (real-TTS path), when set. */
@@ -233,6 +235,7 @@ export async function generateVoiceCorpus(
 			segmentEndSample: cursor,
 			referenceTranscript: turnReferenceTranscript(turn),
 			expectRespond: turn.expectRespond,
+			expectEndOfTurn: turn.expectEndOfTurn ?? true,
 			...(turn.expectedEntity ? { expectedEntity: turn.expectedEntity } : {}),
 			...(ttsVoiceId ? { ttsVoiceId } : {}),
 			synthetic,

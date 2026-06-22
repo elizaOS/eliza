@@ -14964,7 +14964,7 @@
           "type": "numeric(12, 6)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'100.000000'"
+          "default": "'0.000000'"
         },
         "settings": {
           "name": "settings",

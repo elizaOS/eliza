@@ -20,7 +20,7 @@
  * inject deterministic fetchers via {@link setInboxFetchers}.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,

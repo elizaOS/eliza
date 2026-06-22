@@ -16,6 +16,8 @@ import type { AgentModelSlot } from "./types.js";
 export type RoutingPolicy =
   | "manual"
   | "auto"
+  | "local-only"
+  | "cloud-only"
   | "cheapest"
   | "fastest"
   | "prefer-local"
@@ -25,10 +27,16 @@ export type RoutingPolicy =
  * The full set of selectable policies, in display order. Kept as a runtime
  * value (not just a type) so route-layer validation and the settings UI share
  * one source of truth for "which policies are accepted".
+ *
+ * `local-only` / `cloud-only` are the canonical per-slot replacements for the
+ * global `ELIZA_LOCAL_ONLY` env hack: `local-only` is a hard guarantee (never
+ * falls through to cloud), `cloud-only` never dispatches on-device.
  */
 export const ROUTING_POLICIES: readonly RoutingPolicy[] = [
   "manual",
   "auto",
+  "local-only",
+  "cloud-only",
   "cheapest",
   "fastest",
   "prefer-local",

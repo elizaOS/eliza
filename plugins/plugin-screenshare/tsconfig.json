@@ -15,6 +15,8 @@
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../packages/logger/src/*"],
       "@elizaos/agent/services/app-session-gate": [
         "../../packages/agent/src/services/app-session-gate.d.ts"
       ],

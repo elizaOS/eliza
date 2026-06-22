@@ -34,6 +34,8 @@
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/logger": ["../logger/src/index.ts"],
+      "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/plugin-elizacloud": ["../../plugins/plugin-elizacloud/src/index.ts"],

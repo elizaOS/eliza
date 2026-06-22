@@ -142,10 +142,11 @@ export async function runVoiceScenarioHeadless(
 			}),
 		);
 
-		// EOT — each turn boundary IS a real end-of-turn (expected === true).
+		// EOT — some corpus segments deliberately stop mid-utterance so the
+		// classifier can be scored for false triggers.
 		eotSamples.push({
 			decided: obs.eotDecided,
-			expected: true,
+			expected: label.expectEndOfTurn ?? true,
 			...(obs.eotLatencyMs !== undefined
 				? { latencyMs: obs.eotLatencyMs }
 				: {}),

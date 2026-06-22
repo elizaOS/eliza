@@ -4,10 +4,9 @@
  * When a brand-new Steward user signs up (branch 5: create user + org), the
  * org is created with a zero balance and the welcome bonus is granted via
  * creditsService.addCredits (which writes a credit-ledger row AND the balance).
- * If that ledger write fails, the grant must NOT be silently dropped: the code
- * logs the failure (logger.error) and writes the balance directly via
- * organizationsService.update as a fallback, then continues — the failure is
- * surfaced, but the user still receives their welcome credits.
+ * If that ledger write fails, the grant must NOT be converted into an unledgered
+ * direct balance write: the code logs the failure, rolls back the organization,
+ * and propagates the error so the signup can retry cleanly.
  *
  * These tests drive the real syncUserFromSteward through to branch 5 with every
  * touched service mocked, then assert the grant-vs-fallback decision in
@@ -19,6 +18,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 // ── Mock state captured per test ─────────────────────────────────────────
 const addCreditsCalls: unknown[] = [];
 const orgUpdateCalls: Array<{ id: string; data: unknown }> = [];
+const orgDeleteCalls: string[] = [];
 const loggerErrorCalls: Array<{ message: string; context?: unknown }> = [];
 let addCreditsImpl: (params: unknown) => Promise<unknown> = async (params) => {
   addCreditsCalls.push(params);
@@ -53,7 +53,10 @@ mock.module("./services/organizations", () => ({
       orgUpdateCalls.push({ id, data });
       return { ...createdOrg, ...(data as object) };
     },
-    delete: async () => undefined,
+    delete: async (id: string) => {
+      orgDeleteCalls.push(id);
+      return undefined;
+    },
   },
 }));
 
@@ -142,6 +145,7 @@ describe("syncUserFromSteward — initial-credits grant fallback", () => {
   beforeEach(() => {
     addCreditsCalls.length = 0;
     orgUpdateCalls.length = 0;
+    orgDeleteCalls.length = 0;
     loggerErrorCalls.length = 0;
     // Default to the happy path; failure tests override this.
     addCreditsImpl = async (params) => {
@@ -173,7 +177,7 @@ describe("syncUserFromSteward — initial-credits grant fallback", () => {
     expect(result).toBe(finalUserWithOrg as never);
   });
 
-  test("ledger failure: writes credit_balance String(5) directly, logs the error, does not throw", async () => {
+  test("ledger failure: rolls back the org and does not write an unledgered balance", async () => {
     addCreditsImpl = async (params) => {
       addCreditsCalls.push(params);
       throw new Error("ledger write failed");
@@ -181,22 +185,18 @@ describe("syncUserFromSteward — initial-credits grant fallback", () => {
 
     const { syncUserFromSteward } = await import("./steward-sync");
 
-    // (c) No error propagates out of the function.
-    const result = await syncUserFromSteward(baseParams);
-    expect(result).toBe(finalUserWithOrg as never);
+    await expect(syncUserFromSteward(baseParams)).rejects.toThrow("ledger write failed");
 
     // addCredits was attempted.
     expect(addCreditsCalls).toHaveLength(1);
 
-    // (a) The fallback wrote the balance directly as String(initialCredits).
-    const fallbackUpdate = orgUpdateCalls.find(
+    // No fallback wrote the balance directly as String(initialCredits).
+    const directBalanceUpdate = orgUpdateCalls.find(
       (c) => (c.data as { credit_balance?: string }).credit_balance !== undefined,
     );
-    expect(fallbackUpdate).toBeDefined();
-    expect(fallbackUpdate!.id).toBe("org-new-1");
-    expect((fallbackUpdate!.data as { credit_balance: string }).credit_balance).toBe("5");
+    expect(directBalanceUpdate).toBeUndefined();
+    expect(orgDeleteCalls).toEqual(["org-new-1"]);
 
-    // (b) The underlying failure was surfaced via logger.error.
     const grantError = loggerErrorCalls.find((c) =>
       c.message.includes("addCredits failed for new org"),
     );

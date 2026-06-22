@@ -22,6 +22,8 @@
     "paths": {
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../packages/logger/src/*"],
       "@elizaos/security": ["../../packages/security/src/index.ts"],
       "@elizaos/security/*": ["../../packages/security/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],

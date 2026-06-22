@@ -11,7 +11,9 @@
     "declarationMap": false,
     "skipLibCheck": true,
     "paths": {
-      "@elizaos/core": ["../core/src/index.node.ts"]
+      "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/logger": ["../logger/src/index.ts"],
+      "@elizaos/logger/*": ["../logger/src/*"]
     }
   },
   "include": ["src/**/*.ts"],

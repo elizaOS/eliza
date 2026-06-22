@@ -95,6 +95,35 @@ describe("runVoiceScenarioHeadless — scoring", () => {
 		expect(failed.has("diarization")).toBe(true);
 		expect(failed.has("respond-decision")).toBe(true);
 	});
+
+	it("fails EOT when a mid-utterance pause is treated as a boundary", async () => {
+		const scenario = VOICE_WORKBENCH_SCENARIOS.find(
+			(candidate) => candidate.id === "pauses-midutterance",
+		);
+		if (!scenario) throw new Error("missing pauses-midutterance scenario");
+		const corpus = await generateVoiceCorpus(scenario);
+		const eagerEot: VoiceWorkbenchServices = {
+			async observeTurn({ label }) {
+				return {
+					hypothesisTranscript: label.referenceTranscript,
+					predictedSpeakerLabel: label.speaker,
+					eotDecided: true,
+					responded: label.expectRespond,
+					inferredEntities: [],
+					matchedEntityId: label.entityId ?? null,
+				};
+			},
+		};
+
+		const run = await runVoiceScenarioHeadless({
+			scenario,
+			corpus,
+			services: eagerEot,
+		});
+		const eot = run.cases.find((c) => c.kind === "eot-decision");
+		expect(eot?.passed).toBe(false);
+		expect(eot).toMatchObject({ falseTriggerRate: 0.5 });
+	});
 });
 
 describe("runVoiceWorkbenchHeadless over the built-in scenario matrix", () => {

@@ -50,7 +50,6 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {

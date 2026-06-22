@@ -154,6 +154,10 @@ function shouldForceLocalInference(
 	policy: string,
 	preferredProvider: string | null,
 ): boolean {
+	// `local-only` is an explicit hard preference for on-device inference, so we
+	// keep the local candidate even when no model is assigned yet (the user
+	// asked for local; don't quietly drop it for cloud).
+	if (policy === "local-only") return true;
 	return policy === "manual" && preferredProvider === "eliza-local-inference";
 }
 

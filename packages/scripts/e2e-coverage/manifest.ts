@@ -91,19 +91,22 @@ export const SHORTCUT_REGISTRY_HINTS: readonly string[] = [
  * (`createCommandShortcuts` → `<KEY>_COMMAND` action targets) are exercised
  * end-to-end against a real `AgentRuntime`: the commands plugin's
  * `Plugin.shortcuts` wire into `runtime.shortcutRegistry`, and `runShortcutGate`
- * resolves `/help` / `/status` deterministically through the real pre-LLM gate
- * with no model call. The `runShortcutGate` + `shortcutRegistry` signals are the
- * anti-larp proof that the real gate and registry — not a mock — were driven.
+ * resolves deterministic replies through the real pre-LLM gate with no model
+ * call. `command-actions.test.ts` snapshots every concrete
+ * `<shortcut-id>:<alias>-><action>` signature; inventory.ts adds the relevant
+ * signature as a per-shortcut signal so the matrix cannot collapse all shortcuts
+ * into one generic covered row.
  */
 export const SHORTCUT_COVERAGE: CoverageEntry = {
   status: "covered",
   artifacts: [
+    "plugins/plugin-commands/__tests__/command-actions.test.ts",
     "packages/agent/src/services/commands-shortcut-runtime.test.ts",
     "packages/core/src/services/message.shortcut-gate.test.ts",
     "packages/core/src/runtime/shortcut-registry.test.ts",
   ],
   signals: ["runShortcutGate", "shortcutRegistry"],
-  note: "createCommandShortcuts → runtime.shortcutRegistry; runShortcutGate resolves /help and /status deterministically through the real gate (no model).",
+  note: "createCommandShortcuts → runtime.shortcutRegistry; runShortcutGate resolves slash shortcuts deterministically through the real gate (no model).",
 };
 
 /** New keyless route tests boot the real handler via this prod entry point. */

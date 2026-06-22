@@ -98,6 +98,8 @@
         "../../plugins/plugin-local-inference/src/services/index.ts"
       ],
       "@elizaos/core": ["../core/src/index.ts"],
+      "@elizaos/logger": ["../logger/src/index.ts"],
+      "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/capacitor-agent": [

@@ -22,7 +22,9 @@
     "allowArbitraryExtensions": true,
     "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"]
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../packages/logger/src/*"]
     },
     "noUnusedLocals": false,
     "noUnusedParameters": false,

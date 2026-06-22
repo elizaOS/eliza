@@ -39,6 +39,8 @@ export interface VoiceScenarioTurn {
 	pausesMs?: number[];
 	/** Ground truth: SHOULD the agent respond to this turn? */
 	expectRespond: boolean;
+	/** Ground truth: is this segment a real end-of-turn boundary? */
+	expectEndOfTurn?: boolean;
 	/** Expected ASR transcript (for WER scoring); defaults to `text`. */
 	expectedTranscript?: string;
 	/** Expected diarization label (defaults to `speaker`). */
@@ -133,6 +135,12 @@ export function validateVoiceScenario(
 		}
 		if (typeof t.expectRespond !== "boolean") {
 			errors.push(`turn[${i}].expectRespond must be a boolean`);
+		}
+		if (
+			t.expectEndOfTurn !== undefined &&
+			typeof t.expectEndOfTurn !== "boolean"
+		) {
+			errors.push(`turn[${i}].expectEndOfTurn must be a boolean`);
 		}
 	});
 	for (const agent of scenario.agents ?? []) {

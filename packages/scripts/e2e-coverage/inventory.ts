@@ -19,6 +19,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { commandShortcuts } from "../../../plugins/plugin-commands/src/actions/shortcuts.ts";
 // Dependency-light: connector-catalog only imports ./registry + ./settings-sections
 // + ./types (a type-only `@elizaos/core` import that erases at compile), so this
 // pulls no runtime framework code.
@@ -197,6 +198,36 @@ export function discoverShortcutRegistry(root = REPO_ROOT): string[] {
   return hits;
 }
 
+export interface ShortcutSurfaceInfo {
+  shortcutId: string;
+  alias: string;
+  targetKind: string;
+  targetName: string;
+  signal: string;
+}
+
+export function discoverCommandShortcutSurfaces(): ShortcutSurfaceInfo[] {
+  const surfaces: ShortcutSurfaceInfo[] = [];
+  for (const shortcut of commandShortcuts) {
+    const target =
+      shortcut.target.kind === "action"
+        ? shortcut.target.name
+        : "path" in shortcut.target
+          ? shortcut.target.path
+          : shortcut.target.kind;
+    for (const alias of shortcut.aliases ?? []) {
+      surfaces.push({
+        shortcutId: shortcut.id,
+        alias,
+        targetKind: shortcut.target.kind,
+        targetName: target,
+        signal: `${shortcut.id}:${alias}->${target}`,
+      });
+    }
+  }
+  return surfaces.sort((a, b) => a.signal.localeCompare(b.signal));
+}
+
 export interface CoverageResolution {
   status: "covered" | "exempt" | "missing";
   detail: string;
@@ -344,22 +375,40 @@ export function buildCoverageMatrix(options?: {
   // requires shortcut coverage, resolved from SHORTCUT_COVERAGE against the real
   // shortcut-gate e2e (runShortcutGate driving a real AgentRuntime).
   const shortcutRegistry = discoverShortcutRegistry(root);
+  const shortcutSurfaces =
+    shortcutRegistry.length === 0 ? [] : discoverCommandShortcutSurfaces();
   const shortcutsGated = shortcutRegistry.length === 0;
   let shortcutsCovered = 0;
   if (!shortcutsGated) {
-    const resolution = resolveCoverage(SHORTCUT_COVERAGE, root);
-    if (resolution.status === "covered") shortcutsCovered += 1;
-    items.push({
-      id: "shortcut:registry",
-      kind: "shortcut",
-      status: resolution.status,
-      detail: `#8791 shortcut registry present (${shortcutRegistry.join(", ")}); ${resolution.detail}`,
-      artifacts: resolution.artifacts,
-      // A landed registry with no real e2e is a blocking gap (the contract:
-      // every shortcut has a deterministic e2e).
-      blocking: resolution.status !== "covered",
-      meta: { registry: shortcutRegistry },
-    });
+    for (const shortcut of shortcutSurfaces) {
+      const resolution = resolveCoverage(
+        SHORTCUT_COVERAGE.status === "covered"
+          ? {
+              ...SHORTCUT_COVERAGE,
+              signals: [...SHORTCUT_COVERAGE.signals, shortcut.signal],
+            }
+          : SHORTCUT_COVERAGE,
+        root,
+      );
+      if (resolution.status === "covered") shortcutsCovered += 1;
+      items.push({
+        id: `shortcut:${shortcut.signal}`,
+        kind: "shortcut",
+        status: resolution.status,
+        detail: `#8791 shortcut registry present (${shortcutRegistry.join(", ")}); alias=${shortcut.alias}; target=${shortcut.targetKind}:${shortcut.targetName}; ${resolution.detail}`,
+        artifacts: resolution.artifacts,
+        // A landed registry with no real e2e is a blocking gap (the contract:
+        // every shortcut alias/target has deterministic e2e evidence).
+        blocking: resolution.status !== "covered",
+        meta: {
+          registry: shortcutRegistry,
+          shortcutId: shortcut.shortcutId,
+          alias: shortcut.alias,
+          targetKind: shortcut.targetKind,
+          targetName: shortcut.targetName,
+        },
+      });
+    }
   }
 
   // ── Plugin routes ───────────────────────────────────────────────────────
@@ -409,7 +458,7 @@ export function buildCoverageMatrix(options?: {
     summary: {
       commands: { total: commands.length, covered: commandsCovered },
       shortcuts: {
-        total: shortcutRegistry.length,
+        total: shortcutSurfaces.length,
         covered: shortcutsCovered,
         gated: shortcutsGated,
       },

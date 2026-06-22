@@ -231,6 +231,18 @@ class PolicyEngine {
 				const cloud = eligible.find((c) => !isLocalProvider(c.provider));
 				return cloud ?? eligible[0] ?? null;
 			}
+			case "local-only": {
+				// Hard local guarantee: only ever return an on-device handler. When
+				// none is registered we return null so the dispatch loop fails
+				// closed — it never silently falls through to a cloud provider.
+				// This is the per-slot canonical replacement for ELIZA_LOCAL_ONLY.
+				return findLocalCandidate(eligible);
+			}
+			case "cloud-only": {
+				// Force cloud: never dispatch to an on-device backend. Returns null
+				// (→ dispatch fails closed) when only local handlers are registered.
+				return eligible.find((c) => !isLocalProvider(c.provider)) ?? null;
+			}
 			case "cheapest": {
 				const ranked = [...eligible].sort((a, b) => {
 					const ca = this.costOf(a.provider) ?? Number.POSITIVE_INFINITY;

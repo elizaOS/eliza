@@ -39,6 +39,8 @@
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/core": ["../core/src/index.node.ts"],
       "@elizaos/core/*": ["../core/src/*"],
+      "@elizaos/logger": ["../logger/src/index.ts"],
+      "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/contracts": ["../contracts/src/index.ts"],
       "@elizaos/contracts/*": ["../contracts/src/*"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],

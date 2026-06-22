@@ -17,6 +17,7 @@ import {
 import {
   BITROUTER_DEFAULT_FREE_MODEL,
   BITROUTER_DEFAULT_TEXT_MODEL,
+  CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
   CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
 } from "./catalog";
 
@@ -57,6 +58,12 @@ function getEnvModelId(tier: ModelTier, defaultId: string): string {
 function extractProvider(modelId: string): string {
   if (modelId.includes("/")) {
     return normalizeProviderKey(modelId.split("/")[0]);
+  }
+  if (
+    modelId === CEREBRAS_DEFAULT_TEXT_SMALL_MODEL ||
+    modelId === CEREBRAS_DEFAULT_TEXT_LARGE_MODEL
+  ) {
+    return "cerebras";
   }
   if (modelId.startsWith("gpt-")) return "openai";
   if (modelId.startsWith("claude-")) return "anthropic";

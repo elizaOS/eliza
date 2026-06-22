@@ -63,6 +63,8 @@
       ],
       "@elizaos/plugin-companion": ["./src/index.ts"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../packages/logger/src/*"],
       "@elizaos/agent/services/app-session-gate": [
         "../../packages/agent/src/services/app-session-gate.d.ts"
       ],

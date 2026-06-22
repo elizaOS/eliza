@@ -191,4 +191,34 @@ describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
 			}
 		}
 	});
+
+	it("records every shortcut alias/action signature for the e2e coverage matrix", () => {
+		const signatures = commandShortcuts
+			.flatMap((shortcut) => {
+				const target =
+					shortcut.target.kind === "action"
+						? shortcut.target.name
+						: shortcut.target.kind;
+				return (shortcut.aliases ?? []).map(
+					(alias) => `${shortcut.id}:${alias}->${target}`,
+				);
+			})
+			.sort();
+
+		expect(signatures).toEqual([
+			"cmd:commands:/cmds->COMMANDS_COMMAND",
+			"cmd:commands:/commands->COMMANDS_COMMAND",
+			"cmd:context:/context->CONTEXT_COMMAND",
+			"cmd:context:/ctx->CONTEXT_COMMAND",
+			"cmd:help:/?->HELP_COMMAND",
+			"cmd:help:/h->HELP_COMMAND",
+			"cmd:help:/help->HELP_COMMAND",
+			"cmd:models:/models->MODELS_COMMAND",
+			"cmd:status:/s->STATUS_COMMAND",
+			"cmd:status:/status->STATUS_COMMAND",
+			"cmd:usage:/usage->USAGE_COMMAND",
+			"cmd:whoami:/who->WHOAMI_COMMAND",
+			"cmd:whoami:/whoami->WHOAMI_COMMAND",
+		]);
+	});
 });

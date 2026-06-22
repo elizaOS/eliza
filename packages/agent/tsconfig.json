@@ -19,6 +19,8 @@
     "noEmit": true,
     "paths": {
       "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/logger": ["../logger/src/index.ts"],
+      "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/native-activity-tracker": [
         "../../plugins/plugin-native-activity-tracker/src/index.ts"
       ],

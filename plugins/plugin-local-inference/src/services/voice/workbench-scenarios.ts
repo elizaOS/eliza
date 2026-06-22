@@ -77,6 +77,7 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 				speaker: "alice",
 				text: "Eliza schedule a meeting with",
 				expectRespond: false,
+				expectEndOfTurn: false,
 				pausesMs: [1200],
 			},
 			{ speaker: "alice", text: "Bob tomorrow at noon", expectRespond: true },
@@ -148,11 +149,12 @@ export function groundTruthMockServices(
 		}: {
 			label: CorpusTurnLabel;
 		}): Promise<VoiceTurnObservation> {
+			const eotDecided = label.expectEndOfTurn ?? true;
 			return {
 				hypothesisTranscript: label.referenceTranscript,
 				predictedSpeakerLabel: label.speaker,
-				eotDecided: true,
-				eotLatencyMs: opts.eotLatencyMs ?? 80,
+				eotDecided,
+				...(eotDecided ? { eotLatencyMs: opts.eotLatencyMs ?? 80 } : {}),
 				responded: label.expectRespond,
 				inferredEntities: label.expectedEntity ? [label.expectedEntity] : [],
 				matchedEntityId: label.entityId ?? null,

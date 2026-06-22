@@ -854,9 +854,10 @@ describe("computeManagedAgentDbEnv (#8696 local agent state)", () => {
 describe("buildRuntimeBootstrapAgent persona seed", () => {
   type BootstrapRec = Pick<AgentSandbox, "id" | "agent_name" | "agent_config" | "environment_vars">;
   type BootstrapAgent = {
+    name: string;
     system: string;
     bio: string[];
-    style: { all?: string[]; chat?: string[]; post?: string[] };
+    style?: { all?: string[]; chat?: string[]; post?: string[] };
   };
 
   async function buildBootstrap(rec: BootstrapRec): Promise<BootstrapAgent> {
@@ -874,23 +875,29 @@ describe("buildRuntimeBootstrapAgent persona seed", () => {
     environment_vars: {},
   };
 
-  test("seeds the default Eliza persona when agent_config has no system/bio", async () => {
-    const { getDefaultElizaCharacterData } = await import("../utils/default-eliza-character");
-    const persona = getDefaultElizaCharacterData();
+  test("seeds a name-aware identity when agent_config has no system/bio", async () => {
     const agent = await buildBootstrap(baseRec);
-    expect(agent.system).toBe(persona.system);
-    expect(agent.bio).toEqual(persona.bio);
-    expect(agent.style).toEqual(persona.style);
-    // No more placeholder identity.
+    // Real identity (no generic deflection) that matches the agent's own name —
+    // not the placeholder, and not a claim to be a differently-named character.
+    expect(agent.name).toBe("bnancy");
+    expect(agent.system).toBe("You are bnancy, a helpful assistant.");
+    expect(agent.bio).toEqual(["bnancy is a helpful Eliza Cloud agent."]);
     expect(agent.system).not.toBe("Concise cloud agent.");
+    expect(agent.system).not.toContain("Eliza - not an assistant");
+    expect(agent.style).toBeUndefined();
   });
 
   test("preserves a real persona supplied in agent_config", async () => {
     const agent = await buildBootstrap({
       ...baseRec,
-      agent_config: { system: "You are shared-nancy.", bio: ["a real bio"] },
+      agent_config: {
+        system: "You are shared-nancy.",
+        bio: ["a real bio"],
+        style: { all: ["terse"] },
+      },
     });
     expect(agent.system).toBe("You are shared-nancy.");
     expect(agent.bio).toEqual(["a real bio"]);
+    expect(agent.style).toEqual({ all: ["terse"] });
   });
 });

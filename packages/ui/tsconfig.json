@@ -114,6 +114,8 @@
       "@elizaos/skills/*": ["../skills/src/*"],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
+      "@elizaos/logger": ["../logger/src/index.ts"],
+      "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/plugin-wallet-ui": [
         "../../plugins/plugin-wallet-ui/src/index.ts"
       ],

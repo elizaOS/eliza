@@ -57,6 +57,10 @@ const ALLOW_REGISTRY_FETCH =
   process.env.ELIZA_RUNTIME_COPY_ALLOW_REGISTRY_FETCH === "1";
 const DEP_SKIP = new Set(["typescript", "@types/node"]);
 const ALWAYS_HOISTED_PACKAGES = new Set([
+  // @brighter/storage-adapter-s3 accepts broad S3 client ranges; reuse the
+  // runtime root copy instead of nesting a private AWS SDK tree that exceeds
+  // Electrobun's tar-safe path limits.
+  "@aws-sdk/client-s3",
   "@elizaos/core",
   "commander",
   "pg",

@@ -30,7 +30,6 @@ import { jobs } from "../../db/schemas/jobs";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
-import { getDefaultElizaCharacterData } from "../utils/default-eliza-character";
 import { logger } from "../utils/logger";
 import {
   computeStateHash,
@@ -387,10 +386,6 @@ export class ElizaSandboxService {
       ...rawSettings,
       secrets,
     };
-    // Without a real persona the provisioned agent has no identity ("what is
-    // your name" gets a generic deflection). Seed the canonical default Eliza
-    // character so the runtime boots with a real system prompt + bio.
-    const persona = getDefaultElizaCharacterData();
 
     return {
       ...rawConfig,
@@ -402,23 +397,29 @@ export class ElizaSandboxService {
               .toLowerCase()
               .replace(/[^a-z0-9]+/g, "-")
               .replace(/^-+|-+$/g, "") || "cloud-agent",
+      // A dedicated agent is created with only a name (no persona is collected
+      // at creation time), so without a real identity "what is your name" gets a
+      // generic deflection. Seed a name-aware identity — mirroring
+      // buildSharedRuntimeCharacter — so the runtime boots with a real system
+      // prompt without claiming to be a differently-named character.
       system:
         typeof rawConfig.system === "string" && rawConfig.system.trim()
           ? rawConfig.system
-          : persona.system,
-      bio: Array.isArray(rawConfig.bio) && rawConfig.bio.length > 0 ? rawConfig.bio : persona.bio,
+          : `You are ${rawName}, a helpful assistant.`,
+      bio:
+        Array.isArray(rawConfig.bio) && rawConfig.bio.length > 0
+          ? rawConfig.bio
+          : [`${rawName} is a helpful Eliza Cloud agent.`],
       topics:
-        Array.isArray(rawConfig.topics) && rawConfig.topics.length > 0
-          ? rawConfig.topics
-          : persona.topics,
+        Array.isArray(rawConfig.topics) && rawConfig.topics.length > 0 ? rawConfig.topics : [],
       adjectives:
         Array.isArray(rawConfig.adjectives) && rawConfig.adjectives.length > 0
           ? rawConfig.adjectives
-          : persona.adjectives,
+          : [],
       style:
         rawConfig.style && typeof rawConfig.style === "object" && !Array.isArray(rawConfig.style)
           ? rawConfig.style
-          : persona.style,
+          : undefined,
       plugins,
       settings,
     };

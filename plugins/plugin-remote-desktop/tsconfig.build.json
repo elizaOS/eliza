@@ -5,6 +5,12 @@
   "compilerOptions": {
     "rootDir": "./src",
     "noEmit": false,
+    "paths": {
+      "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
+      "@elizaos/core/*": ["../../packages/core/dist/*"],
+      "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/dist/*"]
+    },
     "types": ["node", "bun-types"]
   }
 }

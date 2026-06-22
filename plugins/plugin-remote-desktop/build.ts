@@ -12,15 +12,22 @@ try {
 
 console.log("Building @elizaos/plugin-remote-desktop...");
 
-await build({
+const result = await build({
   entrypoints: ["./src/index.ts"],
   outdir: "./dist",
   target: "node",
   format: "esm",
   sourcemap: "external",
   minify: false,
-  external: ["@elizaos/core", "@elizaos/agent"],
+  external: ["@elizaos/core"],
 });
+
+if (!result.success) {
+  for (const log of result.logs) {
+    console.error(log);
+  }
+  throw new Error("Bun bundle failed");
+}
 
 console.log("Build complete.");
 
@@ -32,6 +39,11 @@ const proc = Bun.spawn(
   },
 );
 
-await proc.exited;
+const exitCode = await proc.exited;
+if (exitCode !== 0) {
+  throw new Error(
+    `Type declaration generation failed with exit code ${exitCode}`,
+  );
+}
 
 console.log("Types generated.");

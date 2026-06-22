@@ -10,11 +10,107 @@ import type {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  hasOwnerAccess: vi.fn(async () => false),
+  extractActionParamsViaLlm: vi.fn(async () => ({})),
+  hasLifeOpsAccess: vi.fn(async () => false),
 }));
 
 vi.mock("@elizaos/agent", () => ({
-  hasOwnerAccess: mocks.hasOwnerAccess,
+  extractActionParamsViaLlm: mocks.extractActionParamsViaLlm,
+  hasOwnerAccess: mocks.hasLifeOpsAccess,
+}));
+
+vi.mock("@elizaos/plugin-calendly", () => ({
+  CalendlyAdapter: class CalendlyAdapter {},
+  CalendlyError: class CalendlyError extends Error {},
+  createCalendlySingleUseLink: vi.fn(),
+  getCalendlyAvailability: vi.fn(),
+  listCalendlyEventTypes: vi.fn(),
+  listCalendlyScheduledEvents: vi.fn(),
+  readCalendlyCredentialsFromEnv: vi.fn(() => null),
+}));
+
+vi.mock("@elizaos/plugin-phone/twilio", () => ({
+  readTwilioCredentialsFromEnv: vi.fn(() => null),
+  sendTwilioVoiceCall: vi.fn(),
+}));
+
+vi.mock("../src/lifeops/access.js", () => ({
+  hasLifeOpsAccess: mocks.hasLifeOpsAccess,
+  INTERNAL_URL: new URL("http://127.0.0.1/"),
+}));
+
+vi.mock("../src/lifeops/service.js", () => ({
+  LifeOpsService: class LifeOpsService {},
+  LifeOpsServiceError: class LifeOpsServiceError extends Error {},
+}));
+
+vi.mock("../src/lifeops/connectors/index.js", () => ({
+  getConnectorRegistry: vi.fn(() => null),
+}));
+
+vi.mock("../src/platform/host.js", () => ({
+  darwinUnavailableActionResult: vi.fn(() => ({
+    success: false,
+    data: { error: "DARWIN_UNAVAILABLE" },
+  })),
+  isDarwin: vi.fn(() => true),
+}));
+
+vi.mock("../src/actions/autofill.js", () => ({
+  runAutofillHandler: vi.fn(),
+}));
+
+vi.mock("../src/actions/password-manager.js", () => ({
+  runPasswordManagerHandler: vi.fn(),
+}));
+
+vi.mock("../src/actions/book-travel.js", () => ({
+  runBookTravelHandler: vi.fn(),
+}));
+
+vi.mock("../src/actions/health.js", () => ({
+  createOwnerHealthAction: vi.fn((args: { validate?: unknown }) => ({
+    name: "OWNER_HEALTH",
+    validate: args.validate,
+    handler: vi.fn(),
+  })),
+  runHealthHandler: vi.fn(),
+}));
+
+vi.mock("../src/actions/lib/scheduling-handler.js", () => ({
+  runSchedulingNegotiationHandler: vi.fn(),
+}));
+
+vi.mock("../src/actions/life.js", () => ({
+  OWNER_OPERATION_CONTEXTS: ["tasks"],
+  OWNER_OPERATION_ROLE_GATE: { minRole: "OWNER" },
+  OWNER_OPERATION_SUPPRESS_POST_ACTION_CONTINUATION: true,
+  OWNER_OPERATION_TAGS: ["owner"],
+  OWNER_OPERATION_VALIDATE: vi.fn(async () => true),
+  runLifeOperationHandler: vi.fn(),
+}));
+
+vi.mock("../src/actions/money.js", () => ({
+  MONEY_PARAMETERS: [],
+  OWNER_FINANCE_SIMILES: [],
+  runMoneyHandler: vi.fn(),
+}));
+
+vi.mock("../src/actions/schedule.js", () => ({
+  runScheduleHandler: vi.fn(),
+}));
+
+vi.mock("../src/actions/screen-time.js", () => ({
+  createOwnerScreenTimeAction: vi.fn((args: { validate?: unknown }) => ({
+    name: "OWNER_SCREENTIME",
+    validate: args.validate,
+    handler: vi.fn(),
+  })),
+  runScreenTimeHandler: vi.fn(),
+}));
+
+vi.mock("../src/lifeops/approval-queue.js", () => ({
+  createApprovalQueue: vi.fn(),
 }));
 
 import { connectorAction } from "../src/actions/connector.js";
@@ -59,7 +155,7 @@ async function callAction(
 
 describe("LifeOps owner action handler permissions", () => {
   beforeEach(() => {
-    mocks.hasOwnerAccess.mockReset().mockResolvedValue(false);
+    mocks.hasLifeOpsAccess.mockReset().mockResolvedValue(false);
   });
 
   it.each([
