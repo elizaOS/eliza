@@ -45,7 +45,10 @@ async function fulfillJson(
 }
 
 /** Serialize one agent into the cloud's REST shape (snake_case + aliases). */
-function serializeAgent(agent: StoreAgent, apiBase: string): Record<string, unknown> {
+function serializeAgent(
+  agent: StoreAgent,
+  apiBase: string,
+): Record<string, unknown> {
   return {
     id: agent.id,
     agent_id: agent.id,
@@ -142,7 +145,10 @@ async function installAgentStoreRoutes(
       const method = route.request().method();
       // Sub-resources (…/provision, …/launch, …/pairing-token) just ack.
       if (!/\/agents\/[^/]+$/.test(new URL(url).pathname)) {
-        await fulfillJson(route, 200, { success: true, data: { jobId: "job-x", status: "completed" } });
+        await fulfillJson(route, 200, {
+          success: true,
+          data: { jobId: "job-x", status: "completed" },
+        });
         return;
       }
       const id = lastPathSegment(url);
@@ -230,7 +236,8 @@ async function seedCloudActiveAgent(
   await page.addInitScript(
     ({ token, voiceKey }) => {
       localStorage.setItem(voiceKey, "1");
-      (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ = token;
+      (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
+        token;
     },
     { token: CLOUD_AUTH_TOKEN, voiceKey: VOICE_PREFIX_DONE_STORAGE_KEY },
   );
@@ -269,20 +276,24 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
   await expect(page.getByTestId("cloud-agents-empty")).toHaveCount(0);
 
   // The active agent's delete is intentionally disabled; the other is deletable.
-  await expect(page.getByRole("button", { name: "Delete Disposable" })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Delete Keeper" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Delete Disposable" }),
+  ).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Delete Keeper" }),
+  ).toBeDisabled();
 
   // --- Delete the non-active agent; the row disappears, the keeper remains.
   await page.getByRole("button", { name: "Delete Disposable" }).click();
-  await expect(agentRow(page, "Disposable")).toHaveCount(0, { timeout: 30_000 });
+  await expect(agentRow(page, "Disposable")).toHaveCount(0, {
+    timeout: 30_000,
+  });
   await expect(agentRow(page, "Keeper")).toBeVisible();
   expect(store.agents.map((a) => a.id)).toEqual(["agent-keep"]);
 
   // --- Reprovision: create a brand-new agent; the section binds it active and
   // reloads the app (the same path a returning user takes on switch).
-  await page
-    .getByPlaceholder(/Agent name/i)
-    .fill("Fresh Agent");
+  await page.getByPlaceholder(/Agent name/i).fill("Fresh Agent");
   await page.getByRole("button", { name: /^Create$/ }).click();
 
   // bindAndReload persists the new agent as the active cloud server and reloads.
@@ -306,12 +317,92 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
   await openSettingsSection(page, "Agents");
   await expect(agentRow(page, "Fresh Agent")).toBeVisible({ timeout: 30_000 });
   await expect(agentRow(page, "Keeper")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Delete Fresh Agent" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Delete Keeper" })).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Delete Fresh Agent" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Delete Keeper" }),
+  ).toBeEnabled();
 
   // --- Delete the original; only the freshly provisioned agent survives.
   await page.getByRole("button", { name: "Delete Keeper" }).click();
   await expect(agentRow(page, "Keeper")).toHaveCount(0, { timeout: 30_000 });
   await expect(agentRow(page, "Fresh Agent")).toBeVisible();
   expect(store.agents.map((a) => a.id)).toEqual(["agent-101"]);
+});
+
+/**
+ * The shared→dedicated handoff progress pill ({@link CloudHandoffBanner},
+ * mounted globally in `App.tsx`). The first-run controller drives this banner
+ * off the `ConversationHandoffResult` via the `eliza:cloud-handoff-phase` event;
+ * here we drive that same event directly to assert the user-visible
+ * `migrating → switched` transition (and the retry path) render in the live app
+ * shell — the on-device-legible pill, not a silent swap. The Retry button
+ * dispatches `eliza:cloud-handoff-retry` for the agent, which the handoff runner
+ * consumes to re-invoke the (idempotent) supervisor.
+ */
+test("cloud handoff: the migrating→switched pill is visible, and failures offer Retry", async ({
+  page,
+  baseURL,
+}) => {
+  const apiBase = (baseURL ?? "").replace(/\/$/, "");
+  expect(apiBase, "Playwright baseURL must be configured").toBeTruthy();
+
+  await seedCloudActiveAgent(page, "agent-keep", apiBase);
+  await installDefaultAppRoutes(page);
+  await openAppPath(page, "/");
+
+  // Capture every retry event the banner dispatches so we can assert the
+  // failure path re-invokes the handoff for the right agent.
+  await page.evaluate(() => {
+    const w = globalThis as Record<string, unknown>;
+    w.__handoffRetries = [];
+    window.addEventListener("eliza:cloud-handoff-retry", (e) => {
+      (w.__handoffRetries as string[]).push(
+        (e as CustomEvent<{ agentId: string }>).detail.agentId,
+      );
+    });
+  });
+
+  const emitPhase = (detail: Record<string, unknown>) =>
+    page.evaluate((detail) => {
+      window.dispatchEvent(
+        new CustomEvent("eliza:cloud-handoff-phase", { detail }),
+      );
+    }, detail);
+
+  // migrating: the dedicated container is booting; the user keeps chatting.
+  // The app shell (which mounts CloudHandoffBanner + attaches the window
+  // listener) renders after the boot/first-run sequence; a CustomEvent fired
+  // before the listener is attached is simply dropped (not buffered). Re-emit
+  // until the pill lands so the test isn't racing the shell mount.
+  await expect(async () => {
+    await emitPhase({ agentId: "agent-keep", phase: "migrating" });
+    await expect(page.getByText(/keep chatting/i)).toBeVisible({
+      timeout: 1_000,
+    });
+  }).toPass({ timeout: 45_000 });
+
+  // switched: the live client has swapped to the dedicated container.
+  await emitPhase({ agentId: "agent-keep", phase: "switched", imported: 3 });
+  await expect(page.getByText(/now on your dedicated agent/i)).toBeVisible();
+
+  // failed: a recoverable failure surfaces a Retry that re-invokes the handoff
+  // (instead of a silent permanent fallback to the shared adapter).
+  await emitPhase({
+    agentId: "agent-keep",
+    phase: "failed",
+    error: "boot timeout",
+  });
+  await expect(page.getByText(/still on the shared one/i)).toBeVisible();
+  await page.getByTestId("cloud-handoff-retry").click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (globalThis as { __handoffRetries?: string[] }).__handoffRetries ??
+          [],
+      ),
+    )
+    .toContain("agent-keep");
 });

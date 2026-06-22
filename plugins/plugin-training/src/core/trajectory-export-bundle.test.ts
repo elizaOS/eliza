@@ -448,7 +448,22 @@ describe("trajectory export bundle", () => {
     const trajectory = withRunId(baseTrajectory(), "traj-natural-1", "run-1");
     const listTrajectories = vi.fn<TrainingServiceLike["listTrajectories"]>(
       async () => ({
-        trajectories: [{ id: "traj-natural-1" }],
+        trajectories: [
+          {
+            id: "traj-natural-1",
+            agentId: "agent-1",
+            source: "test",
+            status: "completed",
+            startTime: 0,
+            endTime: 1,
+            durationMs: 1,
+            llmCallCount: 0,
+            providerAccessCount: 0,
+            totalPromptTokens: 0,
+            totalCompletionTokens: 0,
+            createdAt: "1970-01-01T00:00:00.000Z",
+          },
+        ],
         total: 1,
         offset: 0,
         limit: 10,

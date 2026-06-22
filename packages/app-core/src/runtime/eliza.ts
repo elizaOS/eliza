@@ -707,6 +707,18 @@ async function repairRuntimeAfterBoot(
 ): Promise<AgentRuntime> {
   await ensureRuntimeSqlCompatibility(runtime);
 
+  // Invariant guard: the mobile voice backend selector pins phones to the
+  // Kokoro-exclusive TTS path via `mobile: isMobilePlatform()`, which keys off
+  // ELIZA_PLATFORM. The mobile local-inference gate can fire on the
+  // device-bridge / ELIZA_LOCAL_LLAMA / riscv64 triggers without ELIZA_PLATFORM
+  // being set, leaving `mobile` false in the selector — risking OmniVoice on a
+  // phone. Evaluate both predicates here (outside the mobile branch below) so
+  // the warning is actually reachable on the real mismatch.
+  (await _localInference()).warnIfMobileGateActiveWithoutPlatform({
+    mobilePlatform: isMobilePlatform(),
+    warn: logger.warn,
+  });
+
   // Mobile (Android / iOS) shortcut: the runtime is already serving from
   // PGlite + the AI provider plugin. The remaining boot steps either spawn
   // subprocesses (workflow runtime, telegram polling), shell

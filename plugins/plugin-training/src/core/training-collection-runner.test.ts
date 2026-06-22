@@ -21,7 +21,7 @@ function stubLocalBenchmarkModels(modelIds: string[]): () => void {
     new Response(
       JSON.stringify({ data: modelIds.map((id) => ({ id })) }),
       { status: 200, headers: { "content-type": "application/json" } },
-    )) as typeof fetch;
+    )) as unknown as typeof fetch;
   return () => {
     globalThis.fetch = originalFetch;
   };

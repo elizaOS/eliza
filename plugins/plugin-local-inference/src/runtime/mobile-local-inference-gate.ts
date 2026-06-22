@@ -42,3 +42,48 @@ export function shouldEnableMobileLocalInference(
 	const riscv64Auto = arch === "riscv64";
 	return deviceBridge || localLlama || riscv64Auto;
 }
+
+/**
+ * Boot-time invariant check for the mobile voice backend selector.
+ *
+ * The voice engine passes `mobile: isMobilePlatform()` into `selectVoiceBackend`
+ * (`services/engine.ts`). That flag is what pins mobile to the Kokoro-exclusive
+ * TTS path — OmniVoice is never shipped on a phone. But `isMobilePlatform()`
+ * keys solely off `ELIZA_PLATFORM ∈ {ios, android}`, whereas
+ * {@link shouldEnableMobileLocalInference} also fires on the device-bridge /
+ * `ELIZA_LOCAL_LLAMA` / riscv64 triggers — none of which set `ELIZA_PLATFORM`.
+ * So a build that enables the mobile local-inference gate without exporting
+ * `ELIZA_PLATFORM` leaves `mobile` false in the selector and could pick
+ * OmniVoice on a phone, violating the Kokoro-exclusive mobile voice invariant.
+ *
+ * This emits exactly one boot-time warning when the gate is active but the
+ * platform flag is absent (the real mismatch). It is a diagnostic, not a
+ * behavior change: the fix is to export `ELIZA_PLATFORM` from the offending
+ * build, which this surfaces. The caller MUST evaluate it on a boot path where
+ * BOTH predicates are checked (i.e. outside any `if (isMobilePlatform())`
+ * branch) — passing the already-computed `mobilePlatform` makes that explicit.
+ *
+ * Kept dependency-free (injectable `warn` + the already-resolved
+ * `mobilePlatform` boolean) so it can be unit-tested without the runtime or a
+ * logger instance, matching the `engine.warnIfParallelTooLow({ warn })` pattern.
+ *
+ * @returns `true` when the warning fired (the mismatch is real), else `false`.
+ */
+export function warnIfMobileGateActiveWithoutPlatform(args: {
+	mobilePlatform: boolean;
+	warn: (message: string) => void;
+	env?: NodeJS.ProcessEnv;
+	arch?: NodeJS.Architecture;
+}): boolean {
+	const { mobilePlatform, warn, env = process.env, arch = process.arch } = args;
+	if (mobilePlatform) return false;
+	if (!shouldEnableMobileLocalInference(env, arch)) return false;
+	warn(
+		"[local-inference] ELIZA_PLATFORM is not set while the mobile local-inference gate is active " +
+			"(ELIZA_DEVICE_BRIDGE_ENABLED / ELIZA_LOCAL_LLAMA / riscv64), so the Kokoro-exclusive mobile " +
+			"voice invariant may be missed. The voice backend selector keys `mobile` off " +
+			"ELIZA_PLATFORM ∈ {ios,android}; with it unset the selector may pick OmniVoice on a phone. " +
+			"Set ELIZA_PLATFORM=android (or ios) on this build.",
+	);
+	return true;
+}

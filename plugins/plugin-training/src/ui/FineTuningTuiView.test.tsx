@@ -1237,6 +1237,36 @@ function emptyAnalysisIndex(): TrainingAnalysisIndex {
         artifacts: 0,
       },
       artifacts: [],
+      coverage: {
+        dataSources: {
+          huggingFace: 0,
+          feed: 0,
+          natural: 0,
+          scenarios: 0,
+          tests: 0,
+          trainingJsonl: 0,
+        },
+        readableSamples: {
+          huggingFace: 0,
+          feed: 0,
+          natural: 0,
+          scenarios: 0,
+          tests: 0,
+          trainingJsonl: 0,
+          total: 0,
+        },
+        evals: { artifacts: 0, comparisons: 0, scoredComparisons: 0 },
+        benchmarks: {
+          matrices: 0,
+          comparisons: 0,
+          scoredComparisons: 0,
+          caseSamples: 0,
+          tiers: [],
+          allEliza1TiersCovered: false,
+          tierCoverage: [],
+        },
+        models: { artifacts: 0, stagedBundles: 0, inventory: [] },
+      },
     },
   };
 }

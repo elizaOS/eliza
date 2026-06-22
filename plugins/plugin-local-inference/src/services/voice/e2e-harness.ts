@@ -13,6 +13,7 @@
 export { normalizeWerText, wordErrorRate } from "@elizaos/shared/voice-wer";
 
 import { normalizeWerText, wordErrorRate } from "@elizaos/shared/voice-wer";
+import { percentile, round1, round4 } from "./metric-math";
 
 export type VoiceE2eHarnessErrorCode =
 	| "missing-artifact"
@@ -655,15 +656,6 @@ export function scoreVoiceEntityMatch(
 	};
 }
 
-/** Nearest-rank percentile over a sample (null when empty). */
-function percentile(values: ReadonlyArray<number>, p: number): number | null {
-	const finite = values.filter((v) => Number.isFinite(v));
-	if (finite.length === 0) return null;
-	const sorted = [...finite].sort((a, b) => a - b);
-	const rank = Math.ceil((p / 100) * sorted.length);
-	return round1(sorted[Math.min(sorted.length - 1, Math.max(0, rank - 1))]);
-}
-
 export type VoiceE2eCaseResult =
 	| TtsAsrRoundTripResult
 	| BargeInInterruptionResult
@@ -732,12 +724,4 @@ function missingMeasurement(name: string): VoiceE2eHarnessError {
 		`Missing required voice E2E measurement: ${name}`,
 		{ name },
 	);
-}
-
-function round1(value: number): number {
-	return Math.round(value * 10) / 10;
-}
-
-function round4(value: number): number {
-	return Math.round(value * 10000) / 10000;
 }

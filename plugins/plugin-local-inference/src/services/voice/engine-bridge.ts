@@ -821,13 +821,25 @@ function isEventRuntime(
  * Flatten the (possibly lazy) `LiveAttributionConfig` into the plain options
  * the runtime helper consumes. Resolved per turn so a changing household roster
  * is picked up without re-arming voice.
+ *
+ * `transcript` is the turn's joined ASR text. The in-process engine owns ASR, so
+ * it threads the real transcript through to `handleLiveVoiceAttribution` — the
+ * merge engine's live name/partner extraction (`VoiceObserver.ingestTurn`) needs
+ * *what* was said, not just *who* said it (#8786). When empty it is omitted, so
+ * the helper falls back to "" exactly as before and diarization-only callers are
+ * unaffected.
  */
-function resolveLiveAttributionOptions(cfg: LiveAttributionConfig | null): {
+function resolveLiveAttributionOptions(
+	cfg: LiveAttributionConfig | null,
+	transcript = "",
+): {
 	ownerEntityId?: string | null;
 	knownSpeakerEntityIds?: readonly string[];
 	wakeWordActive?: boolean;
+	transcript?: string;
 } {
-	if (!cfg) return {};
+	const transcriptOpt = transcript !== "" ? { transcript } : {};
+	if (!cfg) return transcriptOpt;
 	const ownerEntityId =
 		typeof cfg.ownerEntityId === "function"
 			? cfg.ownerEntityId()
@@ -844,6 +856,7 @@ function resolveLiveAttributionOptions(cfg: LiveAttributionConfig | null): {
 		...(ownerEntityId !== undefined ? { ownerEntityId } : {}),
 		...(knownSpeakerEntityIds !== undefined ? { knownSpeakerEntityIds } : {}),
 		...(wakeWordActive !== undefined ? { wakeWordActive } : {}),
+		...transcriptOpt,
 	};
 }
 
@@ -1834,6 +1847,26 @@ export class EngineVoiceBridge {
 		events?: VoiceTurnEvents,
 	): Promise<"done" | "token-cap" | "cancelled"> {
 		this.assertVoiceOn("run a voice turn");
+		// The turn's ASR transcript materializes inside `pipeline.run` (the
+		// `onAsrComplete` event) while attribution runs in parallel, so the two
+		// have to be correlated. `transcriptReady` resolves with the joined ASR
+		// text the instant ASR finalizes; the attribution `.then` awaits it before
+		// emitting `VOICE_TURN_OBSERVED` so the merge engine sees *what* was said,
+		// not just *who* said it (#8786). The pipeline's `finally` resolves it with
+		// the captured text (or "") so a cancelled/no-ASR turn never hangs the await.
+		let asrTranscript = "";
+		let resolveTranscript: (text: string) => void = () => {};
+		const transcriptReady = new Promise<string>((resolve) => {
+			resolveTranscript = resolve;
+		});
+		const turnEvents: VoiceTurnEvents = {
+			...events,
+			onAsrComplete(tokens) {
+				asrTranscript = tokens.map((t) => t.text).join("");
+				resolveTranscript(asrTranscript);
+				events?.onAsrComplete?.(tokens);
+			},
+		};
 		// If a profileStore was wired, kick off speaker-attribution in parallel
 		// with ASR. The attribution uses the same PCM buffer as the transcriber
 		// but runs through the diarizer + encoder + profile-store independently.
@@ -1841,9 +1874,9 @@ export class EngineVoiceBridge {
 		// arrives via `onAttribution` asynchronously (possibly after onComplete).
 		if (
 			this.attributionPipeline &&
-			(events?.onAttribution || this.eventRuntime)
+			(turnEvents.onAttribution || this.eventRuntime)
 		) {
-			const onAttribution = events?.onAttribution;
+			const onAttribution = turnEvents.onAttribution;
 			const attribution = this.attributionPipeline;
 			const eventRuntime = this.eventRuntime;
 			const liveAttribution = this.liveAttribution;
@@ -1860,13 +1893,14 @@ export class EngineVoiceBridge {
 					// output to the caller. Any caller with a profileStore +
 					// runtime gets diarization-driven gating for free.
 					if (eventRuntime) {
+						const transcript = await transcriptReady;
 						const { handleLiveVoiceAttribution } = await import(
 							"../../runtime/voice-entity-binding.js"
 						);
 						await handleLiveVoiceAttribution(
 							eventRuntime,
 							output,
-							resolveLiveAttributionOptions(liveAttribution),
+							resolveLiveAttributionOptions(liveAttribution, transcript),
 						);
 					}
 					onAttribution?.(output);
@@ -1882,11 +1916,14 @@ export class EngineVoiceBridge {
 					);
 				});
 		}
-		const pipeline = this.buildPipeline(textRunner, config, events);
+		const pipeline = this.buildPipeline(textRunner, config, turnEvents);
 		this.activePipeline = pipeline;
 		try {
 			return await pipeline.run(audio);
 		} finally {
+			// Settle the transcript promise so a cancelled/no-ASR turn (where
+			// `onAsrComplete` never fired) cannot leave the attribution await pending.
+			resolveTranscript(asrTranscript);
 			if (this.activePipeline === pipeline) this.activePipeline = null;
 		}
 	}

@@ -90,7 +90,7 @@ describe("action benchmark runner", () => {
           ],
         }),
         { status: 200, headers: { "content-type": "application/json" } },
-      )) as typeof fetch;
+      )) as unknown as typeof fetch;
     try {
       await expect(
         assertLocalBenchmarkModelAvailable({

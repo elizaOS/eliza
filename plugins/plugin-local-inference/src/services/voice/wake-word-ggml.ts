@@ -2,12 +2,15 @@
  * Wake-word detection — native runtime binding.
  *
  * Loads the standalone `packages/native/plugins/wakeword-cpp/`
- * library directly via `bun:ffi` and exposes the same `WakeWordModel`
- * interface as the previous `onnxruntime-node`-backed implementation
- * in `./wake-word.ts`, so the voice lifecycle can swap the two without
- * changing anything upstream.
+ * library directly via `bun:ffi` and exposes the `WakeWordModel`
+ * interface as `OpenWakeWordGgmlModel`. The sibling `./wake-word.ts`
+ * is the fused-`libelizainference` path (`GgmlWakeWordModel`, the
+ * `eliza_inference_wakeword_*` FFI surface) and selects between the two
+ * native backends; both implement the same interface so the voice
+ * lifecycle can swap them without changing anything upstream. There is
+ * NO ONNX path on either — `onnxruntime-node` was removed.
  *
- * Phase 2 status — this binding is now the default when the
+ * This binding is the standalone-library backend, used when the
  * `libwakeword.{so,dylib,dll}` shared library and three converted
  * GGUFs are present. The C runtime is a pure-fp32 reference
  * implementation of the openWakeWord three-stage pipeline (melspec
@@ -15,10 +18,6 @@
  * laptop CPU runs it under 1 % of real time. ABI parity with the
  * upstream openWakeWord ONNX graphs is gated by
  * `packages/native/plugins/wakeword-cpp/test/wakeword_parity_test.py`.
- *
- * The ONNX path in `./wake-word.ts` stays as the fallback while the
- * native binding shakes out. Once the migration is complete the ONNX
- * path can be removed alongside the `onnxruntime-node` dependency.
  *
  * Three GGUFs back one session, mirroring openWakeWord's three ONNX
  * graphs (the C library is the single source of truth on shapes —

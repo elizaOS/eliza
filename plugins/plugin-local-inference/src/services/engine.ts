@@ -985,7 +985,7 @@ export class LocalInferenceEngine {
 					omnivoiceAvailable: isOmniVoiceBundleAvailable(bundle.root),
 					tierVoiceBackends: bundle.voiceBackends,
 				});
-				console.info(
+				logger.info(
 					`[voice] Selected ${decision.backend} backend for ${bundle.tierId}: ${decision.reason}`,
 				);
 				if (decision.backend === "kokoro") {
