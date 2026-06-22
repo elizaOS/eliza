@@ -30,6 +30,7 @@ import { jobs } from "../../db/schemas/jobs";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
+import { getDefaultElizaCharacterData } from "../utils/default-eliza-character";
 import { logger } from "../utils/logger";
 import {
   computeStateHash,
@@ -386,6 +387,10 @@ export class ElizaSandboxService {
       ...rawSettings,
       secrets,
     };
+    // Without a real persona the provisioned agent has no identity ("what is
+    // your name" gets a generic deflection). Seed the canonical default Eliza
+    // character so the runtime boots with a real system prompt + bio.
+    const persona = getDefaultElizaCharacterData();
 
     return {
       ...rawConfig,
@@ -400,19 +405,20 @@ export class ElizaSandboxService {
       system:
         typeof rawConfig.system === "string" && rawConfig.system.trim()
           ? rawConfig.system
-          : "Concise cloud agent.",
-      bio:
-        Array.isArray(rawConfig.bio) && rawConfig.bio.length > 0
-          ? rawConfig.bio
-          : ["Managed Eliza Cloud agent"],
+          : persona.system,
+      bio: Array.isArray(rawConfig.bio) && rawConfig.bio.length > 0 ? rawConfig.bio : persona.bio,
       topics:
         Array.isArray(rawConfig.topics) && rawConfig.topics.length > 0
           ? rawConfig.topics
-          : ["cloud assistance"],
+          : persona.topics,
       adjectives:
         Array.isArray(rawConfig.adjectives) && rawConfig.adjectives.length > 0
           ? rawConfig.adjectives
-          : ["helpful", "concise"],
+          : persona.adjectives,
+      style:
+        rawConfig.style && typeof rawConfig.style === "object" && !Array.isArray(rawConfig.style)
+          ? rawConfig.style
+          : persona.style,
       plugins,
       settings,
     };

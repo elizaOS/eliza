@@ -850,3 +850,47 @@ describe("computeManagedAgentDbEnv (#8696 local agent state)", () => {
     expect(merged.ELIZA_MANAGED_DATABASE_URL).toBe(DB);
   });
 });
+
+describe("buildRuntimeBootstrapAgent persona seed", () => {
+  type BootstrapRec = Pick<AgentSandbox, "id" | "agent_name" | "agent_config" | "environment_vars">;
+  type BootstrapAgent = {
+    system: string;
+    bio: string[];
+    style: { all?: string[]; chat?: string[]; post?: string[] };
+  };
+
+  async function buildBootstrap(rec: BootstrapRec): Promise<BootstrapAgent> {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService() as unknown as {
+      buildRuntimeBootstrapAgent(r: BootstrapRec): BootstrapAgent;
+    };
+    return svc.buildRuntimeBootstrapAgent(rec);
+  }
+
+  const baseRec: BootstrapRec = {
+    id: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+    agent_name: "bnancy",
+    agent_config: {},
+    environment_vars: {},
+  };
+
+  test("seeds the default Eliza persona when agent_config has no system/bio", async () => {
+    const { getDefaultElizaCharacterData } = await import("../utils/default-eliza-character");
+    const persona = getDefaultElizaCharacterData();
+    const agent = await buildBootstrap(baseRec);
+    expect(agent.system).toBe(persona.system);
+    expect(agent.bio).toEqual(persona.bio);
+    expect(agent.style).toEqual(persona.style);
+    // No more placeholder identity.
+    expect(agent.system).not.toBe("Concise cloud agent.");
+  });
+
+  test("preserves a real persona supplied in agent_config", async () => {
+    const agent = await buildBootstrap({
+      ...baseRec,
+      agent_config: { system: "You are shared-nancy.", bio: ["a real bio"] },
+    });
+    expect(agent.system).toBe("You are shared-nancy.");
+    expect(agent.bio).toEqual(["a real bio"]);
+  });
+});
