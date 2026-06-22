@@ -104,7 +104,15 @@ export function InlineWidgetText({ content }: { content: string }): ReactNode {
     }
     const widget = getInlineWidget(region.widgetKind);
     if (widget) {
-      nodes.push(widget.render(region.data, ctx, `w-${i}`));
+      // `pointer-events-auto` so the interactive widget stays clickable even
+      // where an ancestor is `pointer-events-none` (e.g. the chat overlay's
+      // peek sheet, which is pass-through by design) — the surrounding text is
+      // left as-is so plain replies still tap through. (#8997)
+      nodes.push(
+        <div key={`w-${i}`} className="pointer-events-auto">
+          {widget.render(region.data, ctx, `w-${i}`)}
+        </div>,
+      );
     }
     cursor = region.end;
   });

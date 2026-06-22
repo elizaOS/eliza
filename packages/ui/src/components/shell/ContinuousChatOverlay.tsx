@@ -893,7 +893,11 @@ const ThreadLine = React.memo(function ThreadLine({
           // Secret / OAuth requests are a structured field, not a text marker —
           // render the same block the full chat surface uses so they're
           // actionable in the overlay instead of invisible (#8997).
-          <SensitiveRequestBlock request={message.secretRequest} />
+          // `pointer-events-auto` keeps it clickable inside the peek sheet
+          // (pointer-events-none / pass-through by design).
+          <div className="pointer-events-auto">
+            <SensitiveRequestBlock request={message.secretRequest} />
+          </div>
         ) : null}
         {isAssistant && message.reasoning?.trim() ? (
           <ThinkingBlock reasoning={message.reasoning} />
