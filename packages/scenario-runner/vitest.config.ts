@@ -70,8 +70,13 @@ const workspaceSourceAliases = workspacePluginDirs.flatMap((workspaceDir) =>
             replacement: indexPath,
           },
           {
+            // No `.ts` suffix: a subpath can be a file (`foo` -> `foo.ts`) OR a
+            // directory (`local-inference` -> `local-inference/index.ts`). Let
+            // vite's resolver add the extension / index so directory subpaths
+            // like `@elizaos/shared/local-inference` and `@elizaos/ui/components`
+            // resolve instead of looking for a literal `local-inference.ts`.
             find: new RegExp(`^${packageName}/(.*)$`),
-            replacement: path.join(sourceDir, "$1.ts"),
+            replacement: path.join(sourceDir, "$1"),
           },
         ])
     : [],
@@ -138,6 +143,13 @@ export default defineConfig({
         ),
       },
       ...workspaceSourceAliases,
-    ],
+    ].map((entry) => ({
+      ...entry,
+      // vite `resolve.alias` replacements must be POSIX forward-slash paths.
+      // `path.join` yields backslashes on Windows, which break vite's alias
+      // matching (specifiers like `@elizaos/shared/local-inference` then fall
+      // through to Node and fail with "Cannot find package"). No-op on POSIX.
+      replacement: entry.replacement.split("\\").join("/"),
+    })),
   },
 });
