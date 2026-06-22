@@ -599,7 +599,9 @@ export interface AppStopResult {
   stoppedAt: string;
   pluginUninstalled: boolean;
   needsRestart: boolean;
-  stopScope: "plugin-uninstalled" | "viewer-session" | "no-op";
+  // Mirrors the server contract in @elizaos/shared/contracts/apps (AppStopResult):
+  // the producer emits "nothing-stopped", never "no-op".
+  stopScope: "plugin-uninstalled" | "viewer-session" | "nothing-stopped";
   message: string;
 }
 
