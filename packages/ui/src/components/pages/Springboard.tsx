@@ -14,7 +14,7 @@
  */
 
 import { Pencil, Trash2 } from "lucide-react";
-import { Reorder } from "motion/react";
+import { motion, Reorder } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
@@ -54,6 +54,8 @@ interface IconTileProps {
 }
 
 const LONG_PRESS_MS = 450;
+/** Horizontal drag distance (px) needed to flip to the adjacent page. */
+const SWIPE_THRESHOLD = 60;
 
 function IconTile({
   entry,
@@ -276,9 +278,28 @@ export function Springboard({
         </button>
       </div>
 
-      {/* Swipeable pages. */}
+      {/* Swipeable pages. Swipe paging is active only outside edit mode, so it
+          never fights the in-tile drag-to-reorder gesture. */}
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 py-6">
+        <motion.div
+          key={clampedPage}
+          drag={editing ? false : "x"}
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.2}
+          dragSnapToOrigin
+          onDragEnd={(_event, info) => {
+            if (editing) return;
+            if (
+              info.offset.x < -SWIPE_THRESHOLD &&
+              clampedPage < pages.length - 1
+            ) {
+              setPage(clampedPage + 1);
+            } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage > 0) {
+              setPage(clampedPage - 1);
+            }
+          }}
+          className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 py-6"
+        >
           <Reorder.Group
             axis="y"
             values={pages[clampedPage] ?? []}
@@ -301,7 +322,7 @@ export function Springboard({
               );
             })}
           </Reorder.Group>
-        </div>
+        </motion.div>
 
         {/* Page dots. */}
         {pages.length > 1 ? (
