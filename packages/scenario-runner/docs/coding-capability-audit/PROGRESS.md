@@ -49,7 +49,31 @@ Legend: ✅ done & verified · 🔧 in progress · ⏳ queued · ⛔ blocked
   (+`isolate: true`) and `acp-service.test.ts` (direct-caller now isolates).
   Full orchestrator unit suite **687 passed (59 files)**; typecheck exit 0.
 
-### ⏳ 0.3 (H) Two-phase reload + rollback (CRITICAL correctness)
+### ✅ 0.3 (H) Two-phase reload + rollback (CRITICAL correctness)
+- **Root cause:** `applyPluginRuntimeMutation`'s `plugin_reload` path unloads
+  plugins then registers replacements; on a register-throw it jumped straight to
+  a restart fallback. When `restartRuntime` was absent (or failed) the runtime
+  was left **half-torn-down** — plugins unloaded, replacement not registered.
+- **Fix:** added `rollbackPartialReload` — on a reload throw, unregister anything
+  newly registered, then re-register the unloaded plugins from their PREVIOUS
+  resolved definitions, restoring the pre-reload graph BEFORE any restart
+  fallback. Clean rollback returns `restart_required` (caller schedules a restart
+  to apply the failed change; the old plugin keeps working meanwhile). Files:
+  `packages/agent/src/api/plugin-runtime-apply.ts`.
+- **Evidence:** NEW `plugin-runtime-apply.test.ts` (the pipeline had ZERO tests)
+  — 5 passing: none / config_apply / plugin_reload / **rollback-on-register-throw
+  (asserts the PREVIOUS plugin is re-registered)** / runtime_reload adapter
+  escalation. Agent `typecheck` exit 0.
+- **Deferred → Wave 3.4 (lifecycle/rollback):** the cold-restart "keep old
+  runtime until new boots" contract lives in the opaque `restartRuntime` closure
+  in the API boot path (large, full-boot-only-verifiable) + the
+  `load-plugin-from-directory` edit→v2 reload test. Grouped with lifecycle
+  scenarios there, per the master plan.
+
+---
+
+**Wave 0 COMPLETE** ✅ (0.1, 0.2, 0.3-critical, 0.4). CI suite unblocked; both
+critical correctness bugs (workspace collision, reload half-state) fixed + tested.
 
 ### ✅ 0.4 (B) Repair broken task-agent live E2E + drift guard
 - **Root cause (3 axes, all confirmed):** the e2e
