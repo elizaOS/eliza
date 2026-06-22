@@ -276,6 +276,17 @@ function buildTrajectoryParams(
 
 declare module "./client-base" {
   interface ElizaClient {
+    sendChatMessage(
+      text: string,
+      channelType?: ConversationChannelType,
+    ): Promise<{
+      text: string;
+      agentName: string;
+      noResponseReason?: "ignored";
+      failureKind?: ChatFailureKind;
+      localInference?: LocalInferenceChatMetadata;
+      actionResults?: ChatActionResultSummary[];
+    }>;
     sendChatRest(
       text: string,
       channelType?: ConversationChannelType,
@@ -785,6 +796,14 @@ ElizaClient.prototype.sendChatRest = async function (
     }
     throw error;
   }
+};
+
+ElizaClient.prototype.sendChatMessage = async function (
+  this: ElizaClient,
+  text,
+  channelType = "DM",
+) {
+  return this.sendChatRest(text, channelType);
 };
 
 ElizaClient.prototype.sendChatStream = async function (

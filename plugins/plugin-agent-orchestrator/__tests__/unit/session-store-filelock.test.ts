@@ -222,7 +222,7 @@ describe("FileSessionStore cross-instance file-lock contention", () => {
 
     // Another process holds a FRESH (non-stale) lock. Its mtime is "now", so
     // removeStaleLock must refuse to delete it and the writer must wait.
-    await writeFile(lockFile, "55555\n" + `${Date.now()}\n`, "utf8");
+    await writeFile(lockFile, `55555\n${Date.now()}\n`, "utf8");
 
     const store = new FileSessionStore(file);
 

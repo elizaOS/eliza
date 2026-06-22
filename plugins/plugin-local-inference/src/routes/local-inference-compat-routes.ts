@@ -18,7 +18,10 @@ import {
 	type LocalInferenceLoadOverrides,
 	validateLocalInferenceLoadArgs,
 } from "../services/active-model";
-import { AssignmentNotServableError } from "../services/assignments";
+import {
+	AssignmentNotServableError,
+	AssignmentRejectedError,
+} from "../services/assignments";
 import { deviceBridge } from "../services/device-bridge";
 import { classifyDeviceTier } from "../services/device-tier";
 import {
@@ -564,6 +567,10 @@ export async function handleLocalInferenceCompatRoutes(
 			);
 			sendJsonResponse(res, 200, { assignments });
 		} catch (err) {
+			if (err instanceof AssignmentRejectedError) {
+				sendJsonErrorResponse(res, 422, err.message, { code: err.code });
+				return true;
+			}
 			if (err instanceof AssignmentNotServableError) {
 				// The pick cannot run on this platform — a typed, user-visible
 				// reason (422) instead of a silent deferred load failure.
