@@ -2929,6 +2929,7 @@ const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
 	"",
 	"rules:",
 	"- answer directly in the agent's voice",
+	"- reply to the final user_message only; recent_context shows earlier turns that are already answered — never reply to an earlier message again",
 	"- when the user asks for exact words, output only those exact words",
 	`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
 	"- do not select actions or tools",
@@ -2984,11 +2985,20 @@ function directReplyPromptForMessage(args: {
 		"response",
 		RESPONSE_TASK_BASELINE_INSTRUCTIONS,
 	);
+	// The current message must win against `recent_context` (the composed state,
+	// which carries the conversation history). When history is non-trivial the
+	// single `user_message:` line is easy for the model to lose against a large
+	// context block — it would intermittently re-answer an earlier turn (the
+	// off-by-one). Label the context as already-handled reference and give the
+	// current message an unambiguous, directive lead-in so it stays the target.
 	return [
 		instructions,
 		"",
-		contextText ? `recent_context:\n${contextText}` : "",
+		contextText
+			? `recent_context (earlier turns, already answered — reference only, do not reply to these):\n${contextText}`
+			: "",
 		contextText ? "" : "",
+		"Now write your reply to this new message, and only this message:",
 		`user_message: ${latestText}`,
 		`routing_thought: ${args.messageHandler.thought}`,
 	]
