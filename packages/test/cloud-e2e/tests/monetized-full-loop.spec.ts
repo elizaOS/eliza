@@ -261,30 +261,31 @@ test.describe("monetized full loop", () => {
       "creator redeemable balance rose by exactly the markup",
     ).toBeLessThan(1e-9);
 
-    // ── g. Autoscale: daemon-driven node-autoscale tick replenishes pool. ───
-    // Trigger the control-plane mock's node-autoscale cron — the same endpoint
-    // the real autoscale daemon hits — and assert the tick is observable. NOTE:
-    // wiring the autoscale cron to actually call Hetzner (so a tick alone grows
-    // the pool) is the real provisioning-worker `--with-daemon` lane deferred to
-    // #8920 / #8921. Until then we prove the pool replenishes by standing up a
-    // second node through the same provision seam as step (c).
+    // ── g. Autoscale: the daemon-driven hot-pool cron grows the pool. ───────
+    // #8920/#8921 landed the daemon path: `cloud:mock --with-daemon`
+    // (`scripts/cloud/mock-stack-up.mjs`) ticks the autoscale / hot-pool /
+    // pool-replenish crons on an interval, and the `agent-hot-pool` cron
+    // replenishes the warm pool toward its target. Here we drive that same cron
+    // ONCE (as the daemon would on its interval) and assert the tick ALONE grows
+    // the pool — no manually enqueued provision job. (The real Hetzner node
+    // `initializing → running` transition is asserted in step (c).)
+    const cronAuth = {
+      // The in-process control-plane mock authenticates cron requests with the
+      // bearer `test-token`, and ALSO requires `x-container-control-plane-token`
+      // when CONTAINER_CONTROL_PLANE_TOKEN is set in the runner env (it is, in
+      // CI). Send both so the tick is accepted regardless of that env.
+      Authorization: "Bearer test-token",
+      "x-container-control-plane-token":
+        process.env.CONTAINER_CONTROL_PLANE_TOKEN ?? "test-token",
+    };
+
+    // node-autoscale cron endpoint is wired and its tick is observable.
     const autoscaleTicksBefore = controlPlane.store.getCronCount(
       "node-autoscale-tick",
     );
-    // The in-process control-plane mock authenticates cron requests with the
-    // bearer `test-token`, and ALSO requires `x-container-control-plane-token`
-    // when CONTAINER_CONTROL_PLANE_TOKEN is set in the runner env (it is, in
-    // CI). Send both so the tick is accepted regardless of that env.
     const autoscaleRes = await fetch(
       `${controlPlane.url}/api/v1/cron/node-autoscale`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer test-token",
-          "x-container-control-plane-token":
-            process.env.CONTAINER_CONTROL_PLANE_TOKEN ?? "test-token",
-        },
-      },
+      { method: "POST", headers: cronAuth },
     );
     expect(autoscaleRes.status, "node-autoscale cron must accept the tick").toBe(
       200,
@@ -294,30 +295,35 @@ test.describe("monetized full loop", () => {
       "node-autoscale cron tick is observable",
     ).toBe(autoscaleTicksBefore + 1);
 
-    // Replenish the pool: a second provision stands up another running node,
-    // proving the autoscaler's downstream effect (creating → running, pool +1).
-    const runningBeforeReplenish = runningCount();
-    const replenishSandbox = controlPlane.store.createSandbox({
-      organizationId: seededUser.organizationId,
-      userId: seededUser.userId,
-      agentId: appId,
-    });
-    controlPlane.store.createJob({
-      type: "agent_provision",
-      sandboxId: replenishSandbox.id,
-      organizationId: seededUser.organizationId,
-      userId: seededUser.userId,
-      payload: { agentName: "full-loop-autoscale-replenish" },
-    });
-    const replenishTick = await controlPlane.tick();
-    expect(replenishTick.failed, "replenish tick must not fail").toBe(0);
-    expect(controlPlane.store.getSandbox(replenishSandbox.id)?.status).toBe(
-      "running",
+    // Raise the hot-pool target, then tick the agent-hot-pool cron once: the
+    // cron (not a test-enqueued provision) must replenish the warm pool up to
+    // the new target on its own.
+    const warmBefore = controlPlane.store.warmPoolSnapshot().length;
+    const hotPoolTarget = warmBefore + 2;
+    controlPlane.store.setHotPoolTarget(hotPoolTarget);
+
+    const hotPoolRes = await fetch(
+      `${controlPlane.url}/api/v1/cron/agent-hot-pool`,
+      { method: "POST", headers: cronAuth },
     );
+    expect(hotPoolRes.status, "agent-hot-pool cron must accept the tick").toBe(
+      200,
+    );
+    const hotPool = (await hotPoolRes.json()) as {
+      data?: { added?: number; warmPoolSize?: number };
+    };
     expect(
-      runningCount(),
-      "autoscale replenished the pool by exactly one running node",
-    ).toBe(runningBeforeReplenish + 1);
+      hotPool.data?.added,
+      "the hot-pool cron tick alone added the missing warm sandboxes",
+    ).toBe(hotPoolTarget - warmBefore);
+    expect(
+      hotPool.data?.warmPoolSize,
+      "the cron reports the pool grown to target",
+    ).toBe(hotPoolTarget);
+    expect(
+      controlPlane.store.warmPoolSnapshot().length,
+      "daemon-driven autoscale grew the warm pool to target (no manual provision)",
+    ).toBe(hotPoolTarget);
 
     // ── h. Payout: redeemable balance is the payout-readiness proxy. ────────
     // The redeemable balance reflects the creator's accrued earnings and is the
