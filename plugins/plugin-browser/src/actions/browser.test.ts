@@ -217,6 +217,101 @@ describe("BROWSER action", () => {
     });
   });
 
+  it("wait_for_url opens the url, streams a watch status, and resolves on match", async () => {
+    // open → tab; get url → matching url on the first poll.
+    const service = {
+      execute: vi.fn(async (command: { subaction: string }) => {
+        if (command.subaction === "open") {
+          return {
+            mode: "workspace",
+            subaction: "open",
+            tab: {
+              id: "tab-9",
+              title: "OAuth",
+              url: "https://gh.example/oauth",
+            },
+          };
+        }
+        if (command.subaction === "get") {
+          return {
+            mode: "workspace",
+            subaction: "get",
+            value: "https://gh.example/callback?code=abc",
+          };
+        }
+        return { mode: "workspace", subaction: command.subaction };
+      }),
+    };
+    const runtime = runtimeWithService(service);
+    const callback = vi.fn(async () => []);
+
+    const result = await browserAction.handler?.(
+      runtime as never,
+      { content: { text: "" } } as never,
+      undefined,
+      {
+        parameters: {
+          action: "wait_for_url",
+          url: "https://gh.example/oauth",
+          pattern: "callback?code=",
+          timeoutMs: 5_000,
+          pollIntervalMs: 100,
+        },
+      } as never,
+      callback as never,
+    );
+
+    // Opened the starting url, then polled the current url.
+    expect(service.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subaction: "open",
+        url: "https://gh.example/oauth",
+      }),
+      undefined,
+    );
+    // First callback is the "I opened X, watching" message.
+    expect(callback.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        text: expect.stringContaining("watching"),
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        values: expect.objectContaining({
+          success: true,
+          subaction: "wait_for_url",
+          status: "matched",
+          matched: true,
+        }),
+      }),
+    );
+    expect(result?.text).toContain("callback?code=abc");
+  });
+
+  it("wait_for_url fails fast when no pattern is supplied", async () => {
+    const service = browserService();
+    const runtime = runtimeWithService(service);
+
+    const result = await browserAction.handler?.(
+      runtime as never,
+      { content: { text: "" } } as never,
+      undefined,
+      { parameters: { action: "wait_for_url" } } as never,
+      (async () => []) as never,
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: false,
+        values: expect.objectContaining({
+          error: "BROWSER_WAIT_FOR_URL_NO_PATTERN",
+        }),
+      }),
+    );
+    expect(service.execute).not.toHaveBeenCalled();
+  });
+
   it("returns a structured failure when no service or workspace backend can execute", async () => {
     const { result } = await runBrowserAction({
       service: null,

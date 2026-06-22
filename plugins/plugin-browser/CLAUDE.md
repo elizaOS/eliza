@@ -10,7 +10,7 @@ Owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, 
 
 ### Actions
 
-- **BROWSER** (`src/actions/browser.ts`) — Core browser control. Dispatches to the active `BrowserService` target. Subactions: `open`, `navigate`, `click`, `type`, `press`, `get`, `state`, `snapshot`, `screenshot`, `reload`, `back`, `forward`, `close`, `show`, `hide`, `wait`, `tab`, `realistic-click`, `realistic-fill`, `realistic-type`, `realistic-press`, `cursor-move`, `cursor-hide`, `autofill_login`. Role-gated OWNER only.
+- **BROWSER** (`src/actions/browser.ts`) — Core browser control. Dispatches to the active `BrowserService` target. Subactions: `open`, `navigate`, `click`, `type`, `press`, `get`, `state`, `snapshot`, `screenshot`, `reload`, `back`, `forward`, `close`, `show`, `hide`, `wait`, `wait_for_url`, `tab`, `realistic-click`, `realistic-fill`, `realistic-type`, `realistic-press`, `cursor-move`, `cursor-hide`, `autofill_login`. Role-gated OWNER only. `wait_for_url` (pure predicate + poll loop in `src/actions/wait-for-url*.ts`) optionally opens a `url`, then polls the current tab URL against a `pattern` (substring, or a `/regex/` literal — invalid regex falls back to substring), streaming a `HandlerCallback` status each poll and resolving with a typed match/timeout result (never throws on timeout). Tunables: `timeoutMs` (default 300000) and `pollIntervalMs` (default 2000).
 - **MANAGE_BROWSER_BRIDGE** (`src/actions/manage-browser-bridge.ts`) — Companion extension lifecycle for Chrome/Safari. Subactions: `install`, `reveal_folder`, `open_manager`, `refresh`. Role-gated OWNER only.
 
 ### Providers
@@ -63,6 +63,8 @@ src/
   actions/
     browser.ts                     BROWSER action
     browser-autofill-login.ts      autofill_login subaction (vault-gated)
+    wait-for-url-predicate.ts      Pure URL-match predicate (substring + /regex/)
+    wait-for-url.ts                wait_for_url poll loop (injectable clock/sleep/url source)
     manage-browser-bridge.ts       MANAGE_BROWSER_BRIDGE action
   providers/
     workspace.ts                   browser_workspace provider
