@@ -210,40 +210,32 @@ function SettingsSectionContent({
   return (
     <div id={section.id}>
       {onBack ? (
-        <div className="mb-2.5">
+        <div className="mb-1.5">
           <SectionBackButton onBack={onBack} />
         </div>
       ) : null}
-      <div className="mb-3 flex items-center gap-3">
-        <div
-          className={cn(
-            "flex h-10 w-10 items-center justify-center rounded-md",
-            SECTION_HUE_MEDALLION_CLASS[section.hue],
-          )}
-        >
-          <Icon className="h-5 w-5" aria-hidden />
-        </div>
-        <h1 className="text-xl font-semibold tracking-tight text-txt-strong">
+      <div className="mb-5 flex items-center gap-2.5">
+        <Icon className="h-5 w-5 shrink-0 text-muted/80" aria-hidden />
+        <h1 className="text-lg font-semibold tracking-tight text-txt-strong">
           {title}
         </h1>
       </div>
-      <PagePanel variant="section">
-        <div className={cn("p-4 sm:p-5", section.bodyClassName)}>
-          <ErrorBoundary
-            key={section.id}
-            fallback={(error, reset) => (
-              <SettingsSectionFallback
-                title={title}
-                error={error}
-                onRetry={reset}
-                t={t}
-              />
-            )}
-          >
-            <Component />
-          </ErrorBoundary>
-        </div>
-      </PagePanel>
+      {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
+      <div className={section.bodyClassName}>
+        <ErrorBoundary
+          key={section.id}
+          fallback={(error, reset) => (
+            <SettingsSectionFallback
+              title={title}
+              error={error}
+              onRetry={reset}
+              t={t}
+            />
+          )}
+        >
+          <Component />
+        </ErrorBoundary>
+      </div>
     </div>
   );
 }
