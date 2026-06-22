@@ -9,7 +9,7 @@ import {
 } from "@elizaos/core";
 import type { FarcasterClient } from "../client/FarcasterClient";
 import { type Cast, FARCASTER_SOURCE } from "../types";
-import { castUuid, neynarCastToCast } from "../utils";
+import { castUuid, extractCastEmbedUrls, neynarCastToCast } from "../utils";
 import {
   DEFAULT_FARCASTER_ACCOUNT_ID,
   getFarcasterFid,
@@ -186,12 +186,9 @@ export class FarcasterCastService implements CastServiceInterface {
     }
 
     const text = typeof content.text === "string" ? content.text.trim() : "";
-    // Agent-generated attachments ride along as Farcaster cast embeds (#8876).
-    const media = Array.isArray(content.attachments)
-      ? content.attachments
-          .map((m) => m?.url)
-          .filter((u): u is string => typeof u === "string" && u.trim().length > 0)
-      : [];
+    // Agent-generated attachments ride along as Farcaster cast embeds (#8876);
+    // shared with the mention-reply callback via extractCastEmbedUrls (#8990).
+    const media = extractCastEmbedUrls(content);
     if (!text && media.length === 0) {
       throw new Error(
         "Farcaster post connector requires non-empty text content or at least one attachment."
