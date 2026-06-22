@@ -7464,5 +7464,7 @@
   "messageattachments.pdfPreviewTitle": "PDF preview: {{name}}",
   "messageattachments.codePreviewTitle": "Text preview: {{name}}",
   "messageattachments.pdfLabel": "PDF",
-  "messageattachments.textLabel": "Text"
+  "messageattachments.textLabel": "Text",
+  "messageattachments.model3dLoading": "Loading 3D model",
+  "messageattachments.model3dDownloadToView": "3D preview unavailable here. Download to view."
 }

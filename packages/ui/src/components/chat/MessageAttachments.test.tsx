@@ -144,6 +144,26 @@ describe("attachmentPreviewKind", () => {
     ).toBe("code");
   });
 
+  it("maps 3D models from extension and mime (before text/code)", () => {
+    expect(attachmentPreviewKind(make({ url: "https://x/scene.glb" }))).toBe(
+      "model3d",
+    );
+    expect(
+      attachmentPreviewKind(make({ url: "https://x/scene.gltf?v=2#a" })),
+    ).toBe("model3d");
+    expect(
+      attachmentPreviewKind(
+        make({ url: "https://x/blob", mimeType: "model/gltf-binary" }),
+      ),
+    ).toBe("model3d");
+    // A .gltf is JSON text, but it must still preview as a model, not as code.
+    expect(
+      attachmentPreviewKind(
+        make({ url: "https://x/scene.gltf", text: '{"asset":{}}' }),
+      ),
+    ).toBe("model3d");
+  });
+
   it("falls back to file for unknown / binary documents", () => {
     expect(attachmentPreviewKind(make({ url: "https://x/archive.zip" }))).toBe(
       "file",
@@ -197,6 +217,29 @@ describe("MessageAttachments — PDF + text/code previews", () => {
     expect(card.getAttribute("href")).toBe(
       "data:application/pdf;base64,JVBERi0=",
     );
+  });
+
+  it("renders the 3D tile, degrading to a download fallback without WebGL (jsdom)", async () => {
+    // jsdom has no WebGL context, so the model tile must surface its
+    // download-to-view fallback rather than throwing — the bytes stay reachable.
+    render(
+      <MessageAttachments
+        attachments={[
+          {
+            id: "model",
+            url: "https://x/scene.glb",
+            contentType: "document",
+            title: "scene.glb",
+          },
+        ]}
+      />,
+    );
+    // The tile chrome (with a download affordance) is always present.
+    expect(screen.getByTestId("model3d-attachment")).not.toBeNull();
+    // The WebGL probe runs in an effect; the fallback appears once it bails.
+    const fallback = await screen.findByTestId("model3d-attachment-fallback");
+    expect(fallback.getAttribute("href")).toBe("https://x/scene.glb");
+    expect(fallback.getAttribute("download")).toMatch(/\.glb$/);
   });
 
   it("renders inline CodeBlock content when att.text is present", () => {
