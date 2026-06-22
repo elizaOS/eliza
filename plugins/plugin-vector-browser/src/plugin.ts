@@ -8,6 +8,15 @@ import type { Plugin } from "@elizaos/core";
  * always-loaded @elizaos/ui bundle. The view is served by the agent router at
  * `/api/views/vector-browser/bundle.js` and mounted by the shell's
  * DynamicViewLoader.
+ *
+ * Modalities — tri-modal via KEEP-RICH-GUI + SPATIAL-TUI-FALLBACK:
+ *   - GUI / XR — the rich `VectorBrowserView` (`componentExport`): the 3D point
+ *     cloud (three.js / WebGL) and the 2D canvas projection. These are
+ *     INFEASIBLE in a terminal, so they stay GUI/XR-only.
+ *   - TUI      — the terminal registry renders `VectorBrowserSpatialView` (see
+ *     `register-terminal-view.tsx`): a presentational summary-stats
+ *     (vectors / with-embeddings / dim / clusters / table) + points-list
+ *     fallback, with a "3D point cloud renders in GUI/XR" note.
  */
 export const vectorBrowserPlugin: Plugin = {
   name: "@elizaos/plugin-vector-browser",
@@ -22,6 +31,7 @@ export const vectorBrowserPlugin: Plugin = {
         "Browse agent memories and visualise their embeddings as a 2D or 3D projection",
       icon: "ScatterChart",
       path: "/vector-browser",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "VectorBrowserView",
       tags: ["memory", "embeddings", "vectors", "database"],

@@ -1,6 +1,6 @@
-// Shared pure helpers for the Fine-Tuning view, used by both FineTuningView /
-// FineTuningTuiView (in FineTuningView.tsx) and the `interact` capability handler
-// (in FineTuningView.interact.ts). Kept out of the .tsx so that file exports only
+// Shared pure helpers for the Fine-Tuning view, used by FineTuningView (in
+// FineTuningView.tsx) and the `interact` capability handler (in
+// FineTuningView.interact.ts). Kept out of the .tsx so that file exports only
 // React components and stays Fast-Refresh-compatible in dev.
 import type {
   TrainingDatasetRecord,

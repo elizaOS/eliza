@@ -15,9 +15,10 @@ import type { Plugin } from "@elizaos/core";
  * `pancakeswap-v3:swap` handler + agent signer land (SWAP_EXECUTE_TODO).
  *
  * The `views` array is the discovery + launch contract read by
- * plugin-app-manager: it points at the third-partyized view bundle
- * (`dist/views/bundle.js`) and the `SwapAppView` component export, and marks
- * the view visible in the app manager and as a desktop tab.
+ * plugin-app-manager: ONE declaration → GUI + XR + TUI, all drawn from the
+ * single `SwapView` spatial source. `modalities` is a plain literal here
+ * (plugin.ts is not in the view bundle), so no brand-new `@elizaos/core` runtime
+ * export reaches the bundle build.
  */
 export const waifuSwapPlugin: Plugin = {
   name: "@elizaos/plugin-waifu-swap-app",
@@ -32,23 +33,9 @@ export const waifuSwapPlugin: Plugin = {
       icon: "ArrowLeftRight",
       heroImagePath: "assets/hero.png",
       path: "/waifu-swap",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "SwapAppView",
-      tags: ["trading", "swap", "waifu", "pancakeswap"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "waifu-swap",
-      label: "Swap XR",
-      description:
-        "Swap tokens through PancakeSwap v3 with live quotes and route detail",
-      icon: "ArrowLeftRight",
-      heroImagePath: "assets/hero.png",
-      path: "/waifu-swap",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "SwapAppView",
+      componentExport: "SwapView",
       tags: ["trading", "swap", "waifu", "pancakeswap"],
       visibleInManager: true,
       desktopTabEnabled: true,

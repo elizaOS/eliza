@@ -5,6 +5,6 @@ export default createViewBundleConfig({
   viewId: "waifu-imagegen",
   entry: "./src/imagegen-app-view-bundle.ts",
   outDir: "dist/views",
-  componentExport: "ImageGenAppView",
+  componentExport: "ImageGenView",
   additionalExternals: ["@elizaos/app-core"],
 });

@@ -9,9 +9,10 @@ import type { Plugin } from "@elizaos/core";
  * backend already lives on the waifu API.
  *
  * The `views` array is the discovery + launch contract read by
- * plugin-app-manager: it points at the third-partyized view bundle
- * (`dist/views/bundle.js`) and the `ImageGenAppView` component export, and
- * marks the view visible in the app manager and as a desktop tab.
+ * plugin-app-manager: ONE declaration → GUI + XR + TUI, all drawn from the
+ * single `ImageGenView` spatial source. `modalities` is a plain literal here
+ * (plugin.ts is not in the view bundle), so no brand-new `@elizaos/core` runtime
+ * export reaches the bundle build.
  */
 export const waifuImageGenPlugin: Plugin = {
   name: "@elizaos/plugin-waifu-imagegen-app",
@@ -26,23 +27,9 @@ export const waifuImageGenPlugin: Plugin = {
       icon: "ImageIcon",
       heroImagePath: "assets/hero.png",
       path: "/waifu-imagegen",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "ImageGenAppView",
-      tags: ["creative", "image", "waifu", "generation"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "waifu-imagegen",
-      label: "Image Generation XR",
-      description:
-        "Generate images with the agent's image-gen mini-app, settled in credits",
-      icon: "ImageIcon",
-      heroImagePath: "assets/hero.png",
-      path: "/waifu-imagegen",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "ImageGenAppView",
+      componentExport: "ImageGenView",
       tags: ["creative", "image", "waifu", "generation"],
       visibleInManager: true,
       desktopTabEnabled: true,

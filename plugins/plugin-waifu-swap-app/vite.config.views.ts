@@ -5,6 +5,6 @@ export default createViewBundleConfig({
   viewId: "waifu-swap",
   entry: "./src/swap-app-view-bundle.ts",
   outDir: "dist/views",
-  componentExport: "SwapAppView",
+  componentExport: "SwapView",
   additionalExternals: ["@elizaos/app-core"],
 });
