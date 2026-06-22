@@ -77,7 +77,8 @@ export type BuiltinTab =
   | "settings"
   | "tutorial"
   | "help"
-  | "logs";
+  | "logs"
+  | "background";
 
 /**
  * Tab identifier — includes all built-in tabs plus arbitrary strings
@@ -311,6 +312,7 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   tutorial: "/tutorial",
   help: "/help",
   logs: "/apps/logs",
+  background: "/background",
 };
 
 const PATH_TO_TAB = new Map(
@@ -566,6 +568,8 @@ export function titleForTab(tab: Tab): string {
       return "Settings";
     case "logs":
       return "Logs";
+    case "background":
+      return "Background";
     case "stream":
       return "Stream";
     default:

@@ -949,8 +949,12 @@ export function ViewCatalog() {
 
   return (
     <ShellViewAgentSurface viewId="views">
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="shrink-0 border-b border-border/40 bg-bg px-5 pb-3 pt-5">
+      {/* Frosted material over the unified app background: the chosen wallpaper
+          shows through (softly blurred) so the catalog reads as the same
+          surface as the home, while the scrim keeps text legible on any
+          background. */}
+      <div className="flex min-h-0 flex-1 flex-col bg-bg/55 backdrop-blur-2xl">
+        <div className="shrink-0 border-b border-border/40 px-5 pb-3 pt-5">
           <div className="flex items-center justify-between gap-3">
             <h1 className="text-2xl font-semibold leading-tight text-txt">
               {t("viewmanager.title", { defaultValue: "Views" })}

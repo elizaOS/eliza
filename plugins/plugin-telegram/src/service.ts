@@ -9,8 +9,10 @@ import {
   type Memory,
   type MessageConnectorChatContext,
   type MessageConnectorCreateThreadParams,
+  type MessageConnectorEditParams,
   type MessageConnectorPostToThreadParams,
   type MessageConnectorQueryContext,
+  type MessageConnectorReactionParams,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
   Role,
@@ -53,6 +55,8 @@ const CANONICAL_OWNER_SETTING_KEYS = ["ELIZA_ADMIN_ENTITY_ID"] as const;
 const TELEGRAM_CONNECTOR_CONTEXTS = ["social", "connectors"];
 const TELEGRAM_CONNECTOR_CAPABILITIES = [
   "send_message",
+  "edit_message",
+  "react_message",
   "resolve_targets",
   "list_rooms",
   "chat_context",
@@ -2425,6 +2429,30 @@ export class TelegramService extends Service {
             serviceInstance.createConnectorThread(runtime, params),
           postToThreadHandler: (runtime, params) =>
             serviceInstance.postToConnectorThread(runtime, params),
+          editHandler: (runtime, params) =>
+            serviceInstance.editConnectorMessage(runtime, {
+              ...params,
+              target:
+                normalizedAccountId &&
+                !(params.target as AccountScopedTargetInfo).accountId
+                  ? ({
+                      ...params.target,
+                      accountId: normalizedAccountId,
+                    } as TargetInfo)
+                  : params.target,
+            }),
+          reactHandler: (runtime, params) =>
+            serviceInstance.reactConnectorMessage(runtime, {
+              ...params,
+              target:
+                normalizedAccountId &&
+                !(params.target as AccountScopedTargetInfo).accountId
+                  ? ({
+                      ...params.target,
+                      accountId: normalizedAccountId,
+                    } as TargetInfo)
+                  : params.target,
+            }),
           resolveTargets: (query, context) =>
             serviceInstance.resolveConnectorTargets(
               query,
@@ -2567,11 +2595,22 @@ export class TelegramService extends Service {
     }
   }
 
-  async handleSendMessage(
+  /**
+   * Resolves a {@link TargetInfo} to the concrete Telegram bot, message
+   * manager, chat id and (optional) forum thread id. Shared by the send, edit
+   * and react connector handlers so the channelId / roomId / entityId
+   * resolution lives in exactly one place.
+   */
+  private async resolveTelegramSendTarget(
     runtime: IAgentRuntime,
     target: TargetInfo,
-    content: Content,
-  ): Promise<void> {
+  ): Promise<{
+    accountId: string;
+    bot: Telegraf<Context>;
+    messageManager: MessageManager;
+    chatId: number | string;
+    threadId: number | undefined;
+  }> {
     const accountId = await this.resolveAccountIdForTarget(runtime, target);
     const accountState = this.getAccountState(accountId);
     const messageManager = accountState?.messageManager ?? this.messageManager;
@@ -2671,6 +2710,17 @@ export class TelegramService extends Service {
       );
     }
 
+    return { accountId, bot, messageManager, chatId, threadId };
+  }
+
+  async handleSendMessage(
+    runtime: IAgentRuntime,
+    target: TargetInfo,
+    content: Content,
+  ): Promise<void> {
+    const { accountId, messageManager, chatId, threadId } =
+      await this.resolveTelegramSendTarget(runtime, target);
+
     try {
       // Use existing MessageManager method, pass chatId and content
       // Assuming sendMessage handles splitting, markdown, etc.
@@ -2711,5 +2761,63 @@ export class TelegramService extends Service {
       );
       throw error;
     }
+  }
+
+  /**
+   * Edits a previously-sent Telegram message in place (capability
+   * `edit_message`). Lets the orchestrator's compact progress mode rewrite a
+   * single line across heartbeats instead of flooding the chat with new
+   * messages. Markdown is converted to MarkdownV2 with the same plain-text
+   * fallback the send path uses.
+   */
+  async editConnectorMessage(
+    runtime: IAgentRuntime,
+    params: MessageConnectorEditParams,
+  ): Promise<Memory | undefined> {
+    if (!params.messageId || !/^\d+$/.test(params.messageId)) {
+      throw new Error(
+        `Telegram edit requires a numeric messageId (got "${params.messageId}").`,
+      );
+    }
+    const text = params.content?.text;
+    if (!text?.trim()) {
+      throw new Error("Telegram edit requires non-empty content.text.");
+    }
+    const { messageManager, chatId, threadId } =
+      await this.resolveTelegramSendTarget(runtime, params.target);
+    await messageManager.editMessage(
+      chatId,
+      Number.parseInt(params.messageId, 10),
+      text,
+      threadId,
+    );
+    // Telegram's editMessageText returns the edited Message; the orchestrator
+    // only needs the call to succeed for compact-edit mode, so no Memory is
+    // synthesized here (the original send already produced one).
+    return undefined;
+  }
+
+  /**
+   * Sets (or clears) an emoji reaction on a Telegram message (capability
+   * `react_message`). Passing `remove: true` clears the bot's reactions.
+   */
+  async reactConnectorMessage(
+    runtime: IAgentRuntime,
+    params: MessageConnectorReactionParams & { remove?: boolean },
+  ): Promise<void> {
+    if (!params.messageId || !/^\d+$/.test(params.messageId)) {
+      throw new Error(
+        `Telegram reaction requires a numeric messageId (got "${params.messageId}").`,
+      );
+    }
+    const { messageManager, chatId } = await this.resolveTelegramSendTarget(
+      runtime,
+      params.target,
+    );
+    await messageManager.addReaction(
+      chatId,
+      Number.parseInt(params.messageId, 10),
+      params.remove ? undefined : params.emoji,
+    );
   }
 }

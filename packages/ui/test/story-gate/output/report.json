@@ -1,0 +1,193 @@
+{
+  "schema": "eliza_story_gate_v1",
+  "generatedAt": "2026-06-22T06:21:00.579Z",
+  "frozenEpochMs": 1748779200000,
+  "totals": {
+    "stories": 16,
+    "good": 0,
+    "broken": 0,
+    "needsRuntime": 16,
+    "withConsoleErrors": 0,
+    "withA11yViolations": 0,
+    "failures": 0
+  },
+  "failures": [],
+  "results": [
+    {
+      "id": "cloudui-aielements-elizaavatar--animated",
+      "title": "CloudUI/AiElements/ElizaAvatar",
+      "name": "Animated",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    },
+    {
+      "id": "cloudui-aielements-elizaavatar--default",
+      "title": "CloudUI/AiElements/ElizaAvatar",
+      "name": "Default",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    },
+    {
+      "id": "cloudui-aielements-elizaavatar--large",
+      "title": "CloudUI/AiElements/ElizaAvatar",
+      "name": "Large",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    },
+    {
+      "id": "cloudui-aielements-elizaavatar--name-derived",
+      "title": "CloudUI/AiElements/ElizaAvatar",
+      "name": "Name Derived",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    },
+    {
+      "id": "cloudui-aielements-elizaavatar--small",
+      "title": "CloudUI/AiElements/ElizaAvatar",
+      "name": "Small",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    },
+    {
+      "id": "cloudui-aielements-memoizedchatmessage--agent-markdown-list",
+      "title": "CloudUI/AiElements/MemoizedChatMessage",
+      "name": "Agent Markdown List",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    },
+    {
+      "id": "cloudui-aielements-elizaavatar--with-custom-url",
+      "title": "CloudUI/AiElements/ElizaAvatar",
+      "name": "With Custom Url",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    },
+    {
+      "id": "cloudui-aielements-memoizedchatmessage--agent-message",
+      "title": "CloudUI/AiElements/MemoizedChatMessage",
+      "name": "Agent Message",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    },
+    {
+      "id": "cloudui-aielements-memoizedchatmessage--streaming-response",
+      "title": "CloudUI/AiElements/MemoizedChatMessage",
+      "name": "Streaming Response",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    },
+    {
+      "id": "cloudui-aielements-memoizedchatmessage--copied-state",
+      "title": "CloudUI/AiElements/MemoizedChatMessage",
+      "name": "Copied State",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    },
+    {
+      "id": "cloudui-aielements-memoizedchatmessage--thinking-indicator",
+      "title": "CloudUI/AiElements/MemoizedChatMessage",
+      "name": "Thinking Indicator",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    },
+    {
+      "id": "cloudui-aielements-memoizedchatmessage--agent-with-image-attachment",
+      "title": "CloudUI/AiElements/MemoizedChatMessage",
+      "name": "Agent With Image Attachment",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    },
+    {
+      "id": "cloudui-aielements-memoizedchatmessage--thinking-with-reasoning",
+      "title": "CloudUI/AiElements/MemoizedChatMessage",
+      "name": "Thinking With Reasoning",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    },
+    {
+      "id": "cloudui-aielements-memoizedchatmessage--user-message",
+      "title": "CloudUI/AiElements/MemoizedChatMessage",
+      "name": "User Message",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    },
+    {
+      "id": "cloudui-aielements-memoizedchatmessage--with-audio-playing",
+      "title": "CloudUI/AiElements/MemoizedChatMessage",
+      "name": "With Audio Playing",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    },
+    {
+      "id": "cloudui-analytics-costalerts--all-alerts-triggered",
+      "title": "CloudUI/Analytics/CostAlerts",
+      "name": "All Alerts Triggered",
+      "verdict": "needs-runtime",
+      "issues": [
+        "did-not-settle: no sb-show-* state within 4s"
+      ],
+      "consoleErrors": [],
+      "a11y": []
+    }
+  ]
+}

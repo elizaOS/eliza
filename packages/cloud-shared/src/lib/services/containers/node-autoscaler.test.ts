@@ -89,6 +89,7 @@ afterAll(() => {
   mock.module("./node-bootstrap", () => realNodeBootstrap);
 });
 
+import { InMemoryComputeProvider } from "./compute-provider-fake";
 import { type AutoscalePolicy, NodeAutoscaler } from "./node-autoscaler";
 
 const policy: AutoscalePolicy = {
@@ -133,6 +134,9 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       server: {
         id: 4242,
         name: "node-test",
+        // The Hetzner client now collapses public_net onto the canonical seam
+        // field; the autoscaler reads publicIpv4 (not provider-specific shapes).
+        publicIpv4: "203.0.113.10",
         public_net: {
           ipv4: { ip: "203.0.113.10" },
           ipv6: null,
@@ -327,5 +331,42 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       shouldScaleUp: true,
       reason: "available 0 < hot floor 1",
     });
+  });
+
+  // #8919: the autoscaler resolves its provider via the ComputeProvider seam, so
+  // a fake can be injected directly — no monkey-patching of getHetznerCloudClient.
+  test("provisions through an injected ComputeProvider without monkey-patching (#8919)", async () => {
+    const fake = new InMemoryComputeProvider({ serverActivateAfterTicks: 0 });
+    const autoscaler = new NodeAutoscaler(
+      policy,
+      () => Date.parse("2026-05-15T12:00:00Z"),
+      fake,
+    );
+
+    const result = await autoscaler.provisionNode(
+      { nodeId: "seam-node", capacity: 4, prePullImages: [] },
+      {
+        controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+        registrationUrl: "https://cloud.example.test/register",
+        registrationSecret: "secret",
+      },
+    );
+
+    // The injected fake handled createServer — the module-mocked Hetzner client
+    // was bypassed entirely.
+    expect(mocks.createServer).not.toHaveBeenCalled();
+    const servers = await fake.listServers();
+    expect(servers.some((s) => s.name === "seam-node")).toBe(true);
+
+    // The docker node is registered with the seam's canonical publicIpv4
+    // (the fake assigns 10.0.0.<id> once active), not a provider-specific shape.
+    expect(result.nodeId).toBe("seam-node");
+    expect(result.hostname).toMatch(/^10\.0\.0\./);
+    expect(mocks.createNode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        node_id: "seam-node",
+        hostname: result.hostname,
+      }),
+    );
   });
 });

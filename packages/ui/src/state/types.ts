@@ -76,7 +76,12 @@ import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
 import type { Tab } from "../navigation";
 import type { AgentProfile } from "./agent-profile-types";
-import type { UiShellMode, UiTheme, UiThemeMode } from "./ui-preferences";
+import type {
+  BackgroundConfig,
+  UiShellMode,
+  UiTheme,
+  UiThemeMode,
+} from "./ui-preferences";
 
 export type { UiShellMode } from "./ui-preferences";
 
@@ -360,6 +365,8 @@ export interface AppState {
   uiLanguage: UiLanguage;
   uiTheme: UiTheme;
   uiThemeMode: UiThemeMode;
+  /** The unified home/app background, shared across the home and every view. */
+  backgroundConfig: BackgroundConfig;
   ownerName: string | null;
   /** VRM quality vs GPU use: always full quality, battery-aware (default), or always efficient. */
   companionVrmPowerMode: CompanionVrmPowerMode;
@@ -813,6 +820,7 @@ export interface AppActions {
   setUiLanguage: (language: UiLanguage) => void;
   setUiTheme: (theme: UiTheme) => void;
   setUiThemeMode: (mode: UiThemeMode) => void;
+  setBackgroundConfig: (config: BackgroundConfig) => void;
   setCompanionVrmPowerMode: (mode: CompanionVrmPowerMode) => void;
   setCompanionAnimateWhenHidden: (enabled: boolean) => void;
   setCompanionHalfFramerateMode: (mode: CompanionHalfFramerateMode) => void;

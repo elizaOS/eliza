@@ -180,4 +180,17 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     visibleInManager: true,
     desktopTabEnabled: true,
   },
+  {
+    id: "background",
+    label: "Background",
+    description:
+      "Set the app background — pick a shader color, upload an image, or generate one",
+    icon: "Image",
+    path: "/background",
+    order: 92,
+    tags: ["background", "wallpaper", "color", "theme", "appearance", "image"],
+    visibleInManager: true,
+    desktopTabEnabled: true,
+    platforms: ["web", "desktop", "ios", "android"],
+  },
 ];

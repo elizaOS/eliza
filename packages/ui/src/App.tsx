@@ -20,6 +20,7 @@ import {
   type ActiveViewLayout,
   createNavigateViewHandler,
 } from "./app-navigate-view";
+import { AppBackground } from "./backgrounds/AppBackground";
 import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
@@ -43,7 +44,6 @@ import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSec
 import { ActionBanner } from "./components/shell/ActionBanner";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
-import { ChatAmbientBackground } from "./components/shell/ChatAmbientBackground";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { CloudHandoffBanner } from "./components/shell/CloudHandoffBanner";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
@@ -151,6 +151,10 @@ import { useIsDeveloperMode } from "./state/useDeveloperMode";
 const ViewCatalog = lazyNamedView(
   () => import("./components/pages/ViewCatalog"),
   "ViewCatalog",
+);
+const BackgroundView = lazyNamedView(
+  () => import("./components/pages/BackgroundView"),
+  "BackgroundView",
 );
 const AutomationsFeed = lazyNamedView(
   () => import("./components/pages/AutomationsFeed"),
@@ -985,6 +989,11 @@ function renderStaticViewRouterTab({
   if (tab === "views" || tab === "apps") {
     return renderAppsSurface(navigationPath);
   }
+  if (tab === "background") {
+    // Rendered directly (no opaque TabContentView chrome) so the live app
+    // background shows through behind the controls.
+    return <BackgroundView />;
+  }
   if (
     tab === "character" ||
     tab === "character-select" ||
@@ -1123,6 +1132,12 @@ function greetingForTimeOfDay(): string {
 const APP_SHELL_CLASS =
   "flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg";
 
+// The home and the Views catalog opt into the unified app background (mounted
+// once at the shell root), so their shell is transparent — no `bg-bg` to paint
+// over it. Every other view keeps the opaque shell (its own background).
+const APP_SHELL_CLASS_TRANSPARENT =
+  "flex flex-col flex-1 min-h-0 w-full font-body text-txt";
+
 type ShellContentProps = {
   CompanionShell: ComponentType<CompanionShellComponentProps> | undefined;
   actionNotice: ActionNotice | null;
@@ -1159,12 +1174,12 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   // The /chat route is the ambient conversational home: open space behind the
   // always-present ContinuousChatOverlay (mounted at the shell root), which is
   // the whole chat experience. Ask it anything, or ask it to open a view ("show
-  // me the coding view") which surfaces over this base. The home is wordless —
-  // a warm, gently pulsing orange field, no greeting text.
+  // me the coding view") which surfaces over this base. The home is wordless,
+  // sitting directly on the unified app background (mounted once at the shell
+  // root) — its shell is transparent so that background shows through.
   return (
-    <div key="chat-shell" className={APP_SHELL_CLASS}>
+    <div key="chat-shell" className={APP_SHELL_CLASS_TRANSPARENT}>
       <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
-        <ChatAmbientBackground />
         <HomeScreenMount />
         <CustomActionsPanel
           open={props.customActionsPanelOpen}
@@ -1182,9 +1197,12 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
 function routedShellMainClass(tab: string): string {
   // One tight page gutter for every routed view: minimal top so headers sit
   // right under the chrome, a small side gutter, modest bottom. Views that own
-  // their full surface (browser/apps/views) still get zero padding.
+  // their full surface (browser/apps/views/background) still get zero padding.
   const pagePadding =
-    tab === "browser" || tab === "apps" || tab === "views"
+    tab === "browser" ||
+    tab === "apps" ||
+    tab === "views" ||
+    tab === "background"
       ? ""
       : "px-2 sm:px-3 pt-2 pb-4";
   const mobilePadding = tab === "browser" ? "" : MOBILE_NAV_PADDING_CLASS;
@@ -1199,8 +1217,14 @@ function routedShellMainClass(tab: string): string {
  * per-view.
  */
 function RoutedShellContent(props: ShellContentProps): ReactNode {
+  // The Views catalog and the Background view share the unified app background;
+  // every other routed view keeps its own opaque shell.
+  const shellClass =
+    props.tab === "views" || props.tab === "background"
+      ? APP_SHELL_CLASS_TRANSPARENT
+      : APP_SHELL_CLASS;
   return (
-    <div key={`tab-shell-${props.tab}`} className={APP_SHELL_CLASS}>
+    <div key={`tab-shell-${props.tab}`} className={shellClass}>
       {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
         {props.viewLayout ? (
@@ -1855,17 +1879,25 @@ export function App() {
     <BugReportProvider value={bugReport}>
       <ShellControllerProvider>
         <div
-          className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
+          className="relative flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
           // Reserve the status-bar safe area so view headers + back buttons sit
           // below the status bar. Top banners bleed their bg back up through it
           // via `.mobile-top-banner:first-child` (see styles.css). No-op on web.
           style={{ paddingTop: "var(--safe-area-top, 0px)" }}
         >
-          <ConnectionFailedBanner />
-          <SystemWarningBanner />
-          <ActionBanner />
-          <CloudHandoffBanner />
-          {shellContent}
+          {/* The unified app background, mounted once here so it persists
+              seamlessly across the home and every view (never remounts on
+              navigation). It is fixed + z-0; the content layer below sits at
+              z-10 so opaque views paint over it and transparent ones (home,
+              Views) let it show through. */}
+          <AppBackground />
+          <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
+            <ConnectionFailedBanner />
+            <SystemWarningBanner />
+            <ActionBanner />
+            <CloudHandoffBanner />
+            {shellContent}
+          </div>
         </div>
         {/* Full-screen overlay app — renders whichever overlay app is active */}
         {resolvedOverlayApp &&

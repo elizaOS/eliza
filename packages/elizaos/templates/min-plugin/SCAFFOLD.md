@@ -55,6 +55,19 @@ Do not emit legacy fields such as `name`, `testsPassed`, or `lintClean`; the orc
 
 The orchestrator will cross-check the claims against disk and the verification log. If anything you assert does not match reality, it will retry you with a structured failure report (capped by `ELIZA_APP_VERIFICATION_MAX_RETRIES`, default `3`).
 
+## 6. View kind (only if your plugin adds a view)
+
+If your plugin contributes a UI view (a `Plugin.views` entry), set its `viewKind`
+so the shell knows when to show it. The four kinds (escalating exposure):
+
+- `system` — core, always-present views (reserved for built-ins; don't use).
+- `release` — public, production-ready, always visible. **Default for a finished view.**
+- `developer` — dev tooling (logs, inspectors); shown in dev builds, hidden in prod until enabled in Settings.
+- `preview` — unfinished / experimental; hidden on every build until enabled in Settings.
+
+Choose `release` for a complete, user-facing view; `preview` for an early/experimental one.
+If you omit `viewKind`, it defaults to `release`.
+
 ## Rules
 
 - Actions, providers, and evaluators belong in their own files under `src/actions/`, `src/providers/`, `src/evaluators/`. The plugin barrel is wiring only.

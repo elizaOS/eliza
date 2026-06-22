@@ -16,7 +16,14 @@ import type {
   CompanionVrmPowerMode,
   SetupStep,
 } from "./types";
-import type { UiShellMode, UiTheme, UiThemeMode } from "./ui-preferences";
+import {
+  type BackgroundConfig,
+  DEFAULT_BACKGROUND_COLOR,
+  DEFAULT_BACKGROUND_CONFIG,
+  type UiShellMode,
+  type UiTheme,
+  type UiThemeMode,
+} from "./ui-preferences";
 import { normalizeAvatarIndex } from "./vrm";
 
 /* ── Shared localStorage helper ──────────────────────────────────────── */
@@ -123,6 +130,53 @@ export function saveUiTheme(theme: UiTheme): void {
     const normalized = normalizeUiTheme(theme);
     localStorage.setItem(UI_THEME_STORAGE_KEY, normalized);
     localStorage.setItem(LEGACY_UI_THEME_STORAGE_KEY, normalized);
+  }, undefined);
+}
+
+/* ── Background persistence ───────────────────────────────────────────── */
+
+const UI_BACKGROUND_STORAGE_KEY = "eliza:ui-background";
+
+/** Accept a 6-digit hex color; anything else falls back to the default. */
+function normalizeHexColor(value: unknown): string {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value)
+    ? value.toLowerCase()
+    : DEFAULT_BACKGROUND_COLOR;
+}
+
+export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
+  const record = asRecord(value);
+  if (!record) return { ...DEFAULT_BACKGROUND_CONFIG };
+  const color = normalizeHexColor(record.color);
+  const imageUrl =
+    typeof record.imageUrl === "string" && record.imageUrl.length > 0
+      ? record.imageUrl
+      : undefined;
+  // Image mode without a usable source is meaningless — fall back to the shader.
+  if (record.mode === "image" && imageUrl) {
+    return { mode: "image", color, imageUrl };
+  }
+  return { mode: "shader", color };
+}
+
+export function loadBackgroundConfig(): BackgroundConfig {
+  return tryLocalStorage(
+    () => {
+      const raw = localStorage.getItem(UI_BACKGROUND_STORAGE_KEY);
+      return raw
+        ? normalizeBackgroundConfig(JSON.parse(raw))
+        : { ...DEFAULT_BACKGROUND_CONFIG };
+    },
+    { ...DEFAULT_BACKGROUND_CONFIG },
+  );
+}
+
+export function saveBackgroundConfig(config: BackgroundConfig): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(
+      UI_BACKGROUND_STORAGE_KEY,
+      JSON.stringify(normalizeBackgroundConfig(config)),
+    );
   }, undefined);
 }
 

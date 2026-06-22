@@ -31,7 +31,10 @@ import {
   isArchitectureCompatibleWithPlatform,
 } from "../docker-sandbox-utils";
 import {
-  getHetznerCloudClient,
+  type ComputeProvider,
+  getComputeProvider,
+} from "./compute-provider";
+import {
   HetznerCloudError,
   isHetznerCloudConfigured,
 } from "./hetzner-cloud-api";
@@ -121,7 +124,17 @@ export class NodeAutoscaler {
   constructor(
     private readonly policy: AutoscalePolicy = DEFAULT_AUTOSCALE_POLICY,
     private readonly nowFn: () => number = () => Date.now(),
+    // Compute provider seam: defaults (lazily, per-call) to `getComputeProvider()`
+    // — which resolves to the Hetzner client in production, so behavior is
+    // unchanged. Injecting `InMemoryComputeProvider` here lets tests drive the
+    // provision/drain path without monkey-patching the module. #8919
+    private readonly provider?: ComputeProvider,
   ) {}
+
+  /** The compute provider for this run — injected fake, or the configured default. */
+  private computeProvider(): ComputeProvider {
+    return this.provider ?? getComputeProvider();
+  }
 
   /**
    * Inspect current pool state and return a decision: should we scale up,
@@ -243,7 +256,7 @@ export class NodeAutoscaler {
       capacity,
     });
 
-    const client = getHetznerCloudClient();
+    const client = this.computeProvider();
     // `environment` + `tier` let the orchestrator scope server lookups via
     // Hetzner's label_selector (e.g. `environment=staging,tier=data-plane`) so
     // staging never touches a production node, and a runaway daemon can't
@@ -269,10 +282,10 @@ export class NodeAutoscaler {
       labels,
     });
 
-    const ip =
-      provisioned.server.public_net.ipv4?.ip ??
-      provisioned.server.public_net.ipv6?.ip ??
-      provisioned.server.name;
+    // Resolve via the canonical seam field (ipv4→ipv6 already collapsed by the
+    // provider) so this works for any ComputeProvider, not just Hetzner.
+    const ip = provisioned.server.publicIpv4 ?? provisioned.server.name;
+    const hcloudServerId = Number(provisioned.server.id);
 
     // Insert the row in `unknown` status — the cloud-init bootstrap is
     // still running; the periodic health check will flip it to healthy.
@@ -288,7 +301,7 @@ export class NodeAutoscaler {
       metadata: {
         provider: "hetzner-cloud",
         autoscaled: true,
-        hcloudServerId: provisioned.server.id,
+        hcloudServerId,
         serverType,
         location,
         image,
@@ -299,7 +312,7 @@ export class NodeAutoscaler {
 
     logger.info("[autoscaler] Provisioned new container node", {
       nodeId,
-      hcloudServerId: provisioned.server.id,
+      hcloudServerId,
       ip,
       serverType,
       location,
@@ -308,7 +321,7 @@ export class NodeAutoscaler {
     return {
       nodeId,
       hostname: ip,
-      hcloudServerId: provisioned.server.id,
+      hcloudServerId,
       rootPassword: provisioned.rootPassword,
     };
   }
@@ -361,7 +374,7 @@ export class NodeAutoscaler {
       return;
     }
 
-    const client = getHetznerCloudClient();
+    const client = this.computeProvider();
     try {
       await client.deleteServer(hcloudServerId);
     } catch (err) {

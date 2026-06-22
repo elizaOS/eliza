@@ -82,6 +82,24 @@ export interface OrchestratorTaskRecord {
   metadata: Record<string, unknown>;
 }
 
+/**
+ * A Reflexion-style verbal post-mortem captured when an automatic verification
+ * attempt fails. Stored on the task (under `metadata.attemptReflections`) and
+ * injected into the re-spawn prompt so a retried sub-agent doesn't repeat the
+ * same mistakes. See #8899.
+ */
+export interface AttemptReflection {
+  /** 1-based attempt number this reflection is for. */
+  attempt: number;
+  /** Acceptance criteria / evidence the verifier found missing. */
+  missing: string[];
+  /** The verifier's one-line summary of why the attempt fell short. */
+  summary: string;
+}
+
+/** Cap on retained reflections — keep the most recent few to bound prompt size. */
+export const MAX_ATTEMPT_REFLECTIONS = 5;
+
 export interface TaskProviderPolicy {
   /** Preferred sub-agent framework: claude | codex | opencode | elizaos | pi-agent. */
   preferredFramework?: string;

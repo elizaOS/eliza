@@ -26,6 +26,7 @@ import { runtimeAction } from "../actions/runtime.ts";
 import { settingsAction } from "../actions/settings-actions.ts";
 import { terminalAction } from "../actions/terminal.ts";
 import { triggerAction } from "../actions/trigger.ts";
+import { backgroundGenerateImageRoute } from "../api/background-routes.ts";
 import {
   mediaFileRoute,
   registerMediaGcTask,
@@ -220,7 +221,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     // Public media route — only reached on iOS (in-process dispatch, no HTTP
     // server). HTTP platforms serve media via the pre-auth handler in server.ts.
-    routes: [mediaFileRoute],
+    routes: [mediaFileRoute, backgroundGenerateImageRoute],
 
     actions: [
       terminalAction,
