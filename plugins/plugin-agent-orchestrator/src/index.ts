@@ -58,6 +58,7 @@ import {
 import { OrchestratorTaskService } from "./services/orchestrator-task-service.js";
 import { SubAgentInbox } from "./services/sub-agent-inbox.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
+import { TaskSupervisorService } from "./services/task-supervisor-service.js";
 import { detectOrchestratorTerminalSupport } from "./services/terminal-capabilities.js";
 import {
   type AcpToolCall,
@@ -101,6 +102,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
         serviceClass(OrchestratorTaskService),
         serviceClass(SubAgentRouter),
         serviceClass(CodingWorkspaceService),
+        serviceClass(TaskSupervisorService),
       ]
     : [];
 
@@ -270,6 +272,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
         OrchestratorTaskService.serviceType,
         SubAgentRouter.serviceType,
         CodingWorkspaceService.serviceType,
+        TaskSupervisorService.serviceType,
       ];
       setTimeout(() => {
         void (async () => {
@@ -435,6 +438,10 @@ export function createAgentOrchestratorPlugin(): Plugin {
         SubAgentRouter.serviceType,
       );
       await router?.stop();
+      const supervisor = runtime.getService<TaskSupervisorService>(
+        TaskSupervisorService.serviceType,
+      );
+      await supervisor?.stop();
       await CodingWorkspaceService.stopRuntime(runtime);
     },
   };

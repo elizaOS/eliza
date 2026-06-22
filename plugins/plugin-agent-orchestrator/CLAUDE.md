@@ -59,6 +59,7 @@ All are sub-operations of the single `TASKS` parent action:
 | `OrchestratorTaskService` | `ORCHESTRATOR_TASK_SERVICE` | Durable task store, sub-agent lifecycle API, event bridge from ACP to task records |
 | `SubAgentRouter` | `ACPX_SUB_AGENT_ROUTER` | Subscribes to AcpService events, routes terminal events into the runtime as synthetic memories |
 | `CodingWorkspaceService` | `CODING_WORKSPACE_SERVICE` | Git workspace lifecycle (clone, branch, commit, push, PR) |
+| `TaskSupervisorService` | `ORCHESTRATOR_TASK_SUPERVISOR` | Interval loop: posts a change-driven, deduped per-room digest of every live task; watchdogs each session for stall / near-cap / over-spend. Per-tick logic is the timer-free `runTick()`; clock is the settable `now` field. |
 
 ### Evaluator
 
@@ -111,6 +112,7 @@ plugins/plugin-agent-orchestrator/
                                  transport selection (native vs cli)
       acp-native-transport.ts    NativeAcpClient (ACP JSON-RPC over stdio)
       sub-agent-router.ts        SubAgentRouter service — terminal event → synthetic memory
+      task-supervisor-service.ts TaskSupervisorService — per-room digest loop + stalled/near-cap/over-spend watchdog (runTick + settable now)
       orchestrator-task-service.ts OrchestratorTaskService — durable task lifecycle
       orchestrator-task-store.ts Task persistence (DB or JSON file)
       orchestrator-task-mapper.ts DTOs: TaskThreadDto, TaskThreadDetailDto
@@ -232,7 +234,9 @@ All are optional unless noted. Read by `src/services/config-env.ts` and
 | `ACPX_DEFAULT_CWD` | runtime cwd | Default working directory for ACP sessions |
 | `ACPX_FORMAT` | `json` | ACP event format for the legacy CLI transport |
 | `ACPX_SUB_AGENT_ROUTER_DISABLED` | unset | Set to `1` to keep SubAgentRouter registered but unbound |
-| `ACPX_SUB_AGENT_ROUND_TRIP_CAP` | `32` | Per-session inject cap; force-stops ping-pong loops |
+| `ACPX_SUB_AGENT_ROUND_TRIP_CAP` | `32` | Per-session inject cap; force-stops ping-pong loops. Also read by `TaskSupervisorService` for the near-cap warning. |
+| `ELIZA_ORCHESTRATOR_SUPERVISOR` | `1` (enabled) | Set to `0` to disable the `TaskSupervisorService` digest loop + watchdog entirely |
+| `ELIZA_ORCHESTRATOR_SUPERVISOR_INTERVAL_MS` | `45000` | `TaskSupervisorService` tick interval (ms) |
 | `ACPX_PROGRESS_MODE` / `ELIZA_SUB_AGENT_PROGRESS_MODE` | `compact` | Progress UX: `compact`, `threaded`, or `silent` |
 | `ACPX_PROGRESS_DELAY_MS` / `ELIZA_SUB_AGENT_PROGRESS_DELAY_MS` | `15000` | Delay before first progress post (ms) |
 | `ACPX_PROGRESS_REACTIONS` / `ELIZA_SUB_AGENT_PROGRESS_REACTIONS` | unset | Set to `1` for emoji reactions in `threaded` mode |

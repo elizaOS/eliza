@@ -150,6 +150,52 @@ describe("activeSubAgentsProvider", () => {
     expect(result.text).toContain("status=blocked");
   });
 
+  it("surfaces the stored stalled flag as a structural field", async () => {
+    const service = serviceMock({
+      listSessions: () => [
+        sub({
+          id: "00000000-cccc-dddd-eeee-000000000001",
+          status: "ready",
+          metadata: {
+            label: "demo",
+            roomId: ROOM,
+            userId: USER,
+            stalled: true,
+          },
+        }),
+      ],
+    });
+    const runtime = runtimeWith(service);
+    const result = await activeSubAgentsProvider.get(runtime, memory(), state);
+    expect(result.text).toContain("stalled=true");
+    const sessions = (result.data as { sessions: { stalled: boolean }[] })
+      .sessions;
+    expect(sessions[0]?.stalled).toBe(true);
+  });
+
+  it("omits the stalled marker when the flag is absent/false (cache-stable)", async () => {
+    const notStalled = sub({ status: "ready" });
+    const explicitFalse = sub({
+      status: "ready",
+      metadata: { label: "demo", roomId: ROOM, userId: USER, stalled: false },
+    });
+    const runs = [notStalled, explicitFalse].map(async (s) => {
+      const service = serviceMock({ listSessions: () => [s] });
+      const runtime = runtimeWith(service);
+      const result = await activeSubAgentsProvider.get(
+        runtime,
+        memory(),
+        state,
+      );
+      return result.text;
+    });
+    const [absentText, falseText] = await Promise.all(runs);
+    expect(absentText).not.toContain("stalled=");
+    // absent and explicit-false render identically — the provider reads the
+    // stored flag only, never computes staleness, so the text is cache-stable.
+    expect(absentText).toBe(falseText);
+  });
+
   it("renders identical text when only transient status flips occur", async () => {
     const sessionA = sub({ status: "ready" });
     const sessionB = sub({ status: "tool_running" });

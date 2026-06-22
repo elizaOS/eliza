@@ -114,6 +114,10 @@ export const activeSubAgentsProvider: Provider = {
           agentType: s.agentType,
           status: s.status,
           workdirTail: workdirTail(s.workdir),
+          // Structural watchdog flag persisted by TaskSupervisorService. Read as
+          // stored — never compute staleness here, so this provider segment
+          // stays cache-stable.
+          stalled: isStalled(s),
           originRoomId: (s.metadata as Record<string, unknown> | undefined)
             ?.roomId,
           originUserId: (s.metadata as Record<string, unknown> | undefined)
@@ -139,11 +143,20 @@ function hasOrigin(session: SessionInfo): boolean {
   return typeof roomId === "string" && roomId.length > 0;
 }
 
+function isStalled(session: SessionInfo): boolean {
+  const meta = session.metadata as Record<string, unknown> | undefined;
+  return meta?.stalled === true;
+}
+
 function formatLine(session: SessionInfo, live?: string): string {
   const label = labelOf(session);
   const tail = workdirTail(session.workdir);
   const bucket = bucketStatus(session.status);
-  const base = `- [${label}] sessionId=${session.id} agentType=${session.agentType} status=${bucket} workdir=…${tail}`;
+  // `stalled` is a STRUCTURAL flag stamped on the session by the watchdog —
+  // including it in the text keeps the provider cache-stable (it only flips
+  // when the stored flag flips, never on a per-render clock read).
+  const stalledMark = isStalled(session) ? " stalled=true" : "";
+  const base = `- [${label}] sessionId=${session.id} agentType=${session.agentType} status=${bucket}${stalledMark} workdir=…${tail}`;
   return live ? `${base} live="${live}"` : base;
 }
 

@@ -103,7 +103,8 @@ export type GoalFollowUpReason =
   | "orchestrator"
   | "incomplete_completion"
   | "validation_failed"
-  | "resume";
+  | "resume"
+  | "watchdog_grill";
 
 export interface GoalFollowUpInput {
   goal: string;
@@ -214,6 +215,8 @@ const FOLLOW_UP_FRAMING: Record<GoalFollowUpReason, string> = {
     "Validation of your previous completion did not pass. Address the gap against the goal and acceptance criteria below, then re-verify.",
   resume:
     "Resume the goal below where you left off. Re-check current state before making changes.",
+  watchdog_grill:
+    "The orchestrator's watchdog noticed no activity from you for a while. Report your current status against the goal below and what (if anything) is blocking you. If the goal is met, report completion with proof; otherwise keep working.",
 };
 
 /**
