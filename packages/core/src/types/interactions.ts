@@ -34,7 +34,9 @@ export type InteractionFieldType =
 	| "number"
 	| "select"
 	| "checkbox"
-	| "secret";
+	| "secret"
+	| "image"
+	| "file";
 
 /** A single field in a form or secret request. */
 export interface InteractionField {
@@ -46,6 +48,13 @@ export interface InteractionField {
 	required?: boolean;
 	/** For `type: "select"` only. */
 	options?: InteractionOption[];
+	/**
+	 * For `type: "image" | "file"` only — accepted MIME types (maps to the file
+	 * input's `accept`). Defaults to `image/*` for image fields when omitted.
+	 */
+	mimeTypes?: string[];
+	/** For `type: "image" | "file"` only — max upload size in bytes. */
+	maxBytes?: number;
 }
 
 /** `[FORM]` — a structured multi-field input rendered as an inline form. */

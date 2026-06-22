@@ -40,6 +40,8 @@ export interface DiscordInteractionRender {
 export interface DiscordInteractionOptions {
 	/** Resolve a link-out URL for task / form / secret blocks. */
 	resolveUrl?: (block: InteractionBlock) => string | undefined;
+	/** Resolve a link-out URL for `navigate` followup chips. */
+	resolveNavigateUrl?: (payload: string) => string | undefined;
 }
 
 function toComponent(button: NeutralButton): DiscordComponentOptions | null {
@@ -89,6 +91,7 @@ export function renderDiscordInteractions(
 	for (const block of blocks) {
 		const layout = toNeutralLayout(block, {
 			resolveUrl: opts.resolveUrl,
+			resolveNavigateUrl: opts.resolveNavigateUrl,
 			maxButtonsPerRow: MAX_BUTTONS_PER_ROW,
 		});
 		let producedButton = false;

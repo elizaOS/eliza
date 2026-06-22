@@ -123,6 +123,13 @@ export {
 	triageMessagesAction,
 	WhatsappMessageAdapter,
 } from "./features/messaging/triage";
+// OAuth provider contract (the canonical provider identifiers the atomic OAuth
+// actions accept). Exported so cloud-shared can enforce core ⊆ cloud-registry.
+export {
+	CONNECTOR_NATIVE_OAUTH_PROVIDERS,
+	OAUTH_PROVIDERS,
+	type OAuthProvider,
+} from "./features/oauth/types.ts";
 export { paymentsPlugin } from "./features/payments/index.ts";
 export { PluginManagerService } from "./features/plugin-manager/services/pluginManagerService.ts";
 export {

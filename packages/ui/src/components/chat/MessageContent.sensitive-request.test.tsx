@@ -150,6 +150,37 @@ function pendingOAuthRequest(): ConversationMessage["secretRequest"] {
   };
 }
 
+function pendingImageSecretRequest(): ConversationMessage["secretRequest"] {
+  return {
+    key: "TOTP_SEED_PHOTO",
+    reason: "Photograph the 2FA seed",
+    status: "pending",
+    delivery: {
+      mode: "inline_owner_app",
+      instruction: "Upload a photo of the seed.",
+      privateRouteRequired: true,
+      canCollectValueInCurrentChannel: true,
+    },
+    form: {
+      type: "sensitive_request_form",
+      kind: "secret",
+      mode: "inline_owner_app",
+      fields: [
+        {
+          name: "seed_photo",
+          label: "Seed photo",
+          input: "image",
+          required: true,
+          mimeTypes: ["image/png"],
+          maxBytes: 1_000_000,
+        },
+      ],
+      submitLabel: "Upload",
+      statusOnly: true,
+    },
+  };
+}
+
 describe("MessageContent sensitive requests", () => {
   afterEach(() => {
     cleanup();
@@ -239,6 +270,50 @@ describe("MessageContent sensitive requests", () => {
     ]);
     expect(container.textContent?.includes(rawSecret)).toBe(false);
     expect(screen.queryByLabelText("OPENAI_API_KEY")).toBeNull();
+  });
+
+  it("renders an image field as a file input and delivers it via updateSecrets (#8910)", async () => {
+    updateSecretsMock.mockResolvedValueOnce({
+      ok: true,
+      updated: ["seed_photo"],
+    });
+    render(
+      <MessageContent
+        message={baseMessage({ secretRequest: pendingImageSecretRequest() })}
+      />,
+    );
+
+    const input = screen.getByTestId(
+      "sensitive-request-file-seed_photo",
+    ) as HTMLInputElement;
+    expect(input.type).toBe("file");
+    expect(input.accept).toBe("image/png");
+    expect(input.getAttribute("capture")).toBe("environment");
+
+    const file = new File([new Uint8Array([1, 2, 3])], "seed.png", {
+      type: "image/png",
+    });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    // FileReader populates the value asynchronously; wait for the submit to enable.
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId("sensitive-request-submit") as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    });
+    fireEvent.click(screen.getByTestId("sensitive-request-submit"));
+
+    await waitFor(() => {
+      expect(updateSecretsMock).toHaveBeenCalledTimes(1);
+    });
+    const payload = updateSecretsMock.mock.calls[0]?.[0] as Record<
+      string,
+      string
+    >;
+    expect(Object.keys(payload)).toEqual(["seed_photo"]);
+    // Delivered as a data URL through the existing submit path.
+    expect(payload.seed_photo.startsWith("data:image/png")).toBe(true);
   });
 
   it("renders an OAuth request with a Connect button and never shows the URL in chat", () => {
