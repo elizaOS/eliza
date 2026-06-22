@@ -30,7 +30,10 @@
 import { isMobilePlatform } from "@elizaos/shared";
 import {
 	type Eliza1Fit,
-	selectBestEliza1Fit,
+	// Aliased to a distinct name (no shared `selectBestEliza1Fit*` prefix with the
+	// local `selectBestEliza1FitForDevice`) — the mobile Bun.build minifier was
+	// observed to mangle the same-prefix pair into a dangling `…Fit2` reference.
+	selectBestEliza1Fit as resolveBestEliza1FitForRam,
 } from "@elizaos/shared/local-inference";
 import type { HardwareProbe } from "./types";
 
@@ -166,7 +169,21 @@ export function selectBestEliza1FitForDevice(
 	const mobile = isMobileHost(probe);
 	let memGb = effectiveModelMemoryGb(probe);
 	if (mobile) memGb = Math.min(memGb, MOBILE_FIT_CEILING_GB);
-	const fit = selectBestEliza1Fit(memGb);
+	let fit: Eliza1Fit | null;
+	try {
+		fit = resolveBestEliza1FitForRam(memGb);
+	} catch (err) {
+		// `recommendedFit` is an advisory hint, never a routing gate — but
+		// `classifyDeviceTier` (which embeds it) IS called on the routing hot path.
+		// A mobile-bundle minifier artifact has been observed to leave a dangling
+		// reference at this cross-module call, so guard it: degrade to no
+		// recommendation rather than letting an undefined-symbol error crash the
+		// whole device-tier assessment (and with it the AUTO router) on-device.
+		console.warn(
+			`[device-tier] recommendedFit unavailable: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		return null;
+	}
 	if (fit && mobile && fit.contextLength > MOBILE_CONTEXT_CEILING) {
 		return {
 			...fit,
