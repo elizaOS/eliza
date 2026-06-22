@@ -480,7 +480,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		const params = firstCall?.[1] as {
 			tools?: Array<{ parameters?: { required?: string[] } }>;
 			maxTokens?: number;
-			omitMaxTokens?: boolean;
 			responseSkeleton?: { spans?: Array<{ key?: string }> };
 			grammar?: string;
 		};
@@ -495,11 +494,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(required).not.toContain("facts");
 		// Direct channels send NO max-tokens cap: a hardcoded value 400s when it
 		// exceeds the model's real limit and truncates long single-turn replies.
-		// `omitMaxTokens` tells the adapter to drop the wire field so the model's
-		// own max applies. The schema stays compact (asserted above); only the cap
-		// is dropped. (Group channels keep DEFAULT_STAGE1_MAX_TOKENS — see ~L229.)
+		// Leaving `maxTokens` undefined makes the adapter omit the wire field so
+		// the model's own max applies. The schema stays compact (asserted above);
+		// only the cap is dropped. (Group channels keep DEFAULT_STAGE1_MAX_TOKENS — see ~L229.)
 		expect(params.maxTokens).toBeUndefined();
-		expect(params.omitMaxTokens).toBe(true);
 		expect(
 			params.responseSkeleton?.spans?.some((s) => s.key === "shouldRespond"),
 		).toBe(false);

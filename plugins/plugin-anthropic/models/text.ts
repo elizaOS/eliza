@@ -773,19 +773,17 @@ function resolveTextParams(
     temperature = 1;
   }
 
-  const defaultMaxTokens = modelName.includes("-3-") ? 4096 : 8192;
   // Cap output tokens at the model's hard limit. Opus 4.x = 32k, Sonnet 4.x = 64k.
   // Callers (eliza runtime) sometimes pass the prompt context window (128k+) as
   // maxTokens, which the API rejects with "Invalid request data".
   const modelHardCap = isOpus4Model(modelName) ? 32_000 : 64_000;
-  // Anthropic's Messages API REQUIRES max_tokens — an opt-out caller (direct-
-  // channel Stage-1) can't drop it, so send the model's hard cap. The reply is
-  // then bounded only by the model's real max (never an arbitrary 8192), and the
-  // value never 400s because it equals the documented limit. Other callers keep
-  // the existing default, Math.min-capped.
-  const maxTokens = params.omitMaxTokens
-    ? modelHardCap
-    : Math.min(params.maxTokens ?? defaultMaxTokens, modelHardCap);
+  // Anthropic's Messages API REQUIRES max_tokens. When the caller passes an
+  // explicit cap, Math.min-clamp it to the model's hard limit; otherwise send
+  // the model's hard cap so the reply is bounded only by the model's real max
+  // (never an arbitrary default) and the value never 400s — it equals the
+  // documented limit.
+  const maxTokens =
+    typeof params.maxTokens === "number" ? Math.min(params.maxTokens, modelHardCap) : modelHardCap;
 
   const rawProviderOptions = params.providerOptions;
   const rawAnthropicOptions = rawProviderOptions?.anthropic;

@@ -443,7 +443,6 @@ async function generateWithRetry(
     system?: string;
     temperature: number;
     maxTokens?: number;
-    omitMaxTokens?: boolean;
     frequencyPenalty: number;
     presencePenalty: number;
     stopSequences: string[];
@@ -461,7 +460,6 @@ async function generateWithRetry(
       userPrompt: params.prompt,
       temperature: params.temperature,
       maxTokens: params.maxTokens ?? 0,
-      maxTokensOmitted: params.omitMaxTokens ? true : undefined,
       purpose: "external_llm",
       actionType: "ai.generateText",
     };
@@ -477,9 +475,11 @@ async function generateWithRetry(
         model: groq.languageModel(model),
         system: params.system,
         temperature: params.temperature,
-        // Omit the cap on opt-out (direct-channel Stage-1) so the model's own
-        // max applies; otherwise send the resolved value.
-        ...(params.omitMaxTokens ? {} : { maxOutputTokens: params.maxTokens }),
+        // Only cap output when a caller passes an explicit positive maxTokens;
+        // otherwise omit the field so the model's own max applies.
+        ...(typeof params.maxTokens === "number" && params.maxTokens > 0
+          ? { maxOutputTokens: params.maxTokens }
+          : {}),
         maxRetries: 3,
         frequencyPenalty: params.frequencyPenalty,
         presencePenalty: params.presencePenalty,
@@ -560,7 +560,6 @@ function buildGroqGenerateParams(
   system?: string;
   temperature: number;
   maxTokens?: number;
-  omitMaxTokens?: boolean;
   frequencyPenalty: number;
   presencePenalty: number;
   stopSequences: string[];
@@ -586,10 +585,12 @@ function buildGroqGenerateParams(
     prompt: promptText,
     system: systemPrompt,
     temperature: boundedNumber(params.temperature, 0.7, 0, 2),
-    // Stage-1 direct reply opts out of any cap; everyone else keeps the 8192
-    // default so they stay bounded.
-    maxTokens: params.omitMaxTokens ? undefined : positiveInteger(params.maxTokens, 8192),
-    omitMaxTokens: params.omitMaxTokens,
+    // No maxTokens passed -> stay undefined so the wire omits the cap and the
+    // model's own max applies; an explicit positive value is normalized.
+    maxTokens:
+      typeof params.maxTokens === "number" && params.maxTokens > 0
+        ? positiveInteger(params.maxTokens, 8192)
+        : undefined,
     frequencyPenalty: boundedNumber(params.frequencyPenalty, 0.7, -2, 2),
     presencePenalty: boundedNumber(params.presencePenalty, 0.7, -2, 2),
     stopSequences: stringArray(params.stopSequences),

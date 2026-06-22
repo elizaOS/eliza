@@ -513,7 +513,7 @@ async function handleTextWithModelType(
 ): Promise<string | TextStreamResult> {
   const extended = params as GenerateTextParamsWithNativeOptions;
   const { prompt, temperature = 0.7, frequencyPenalty = 0.7, presencePenalty = 0.7 } = params;
-  const maxTokens = params.omitMaxTokens ? undefined : (params.maxTokens ?? 8192);
+  const maxTokens = params.maxTokens;
 
   let modelIdForLog = "";
   try {

@@ -494,9 +494,7 @@ async function generateText(
   if (temperature !== undefined) {
     body.temperature = temperature;
   }
-  const maxTokens = params.omitMaxTokens
-    ? undefined
-    : sanitizeMaxTokens(params.maxTokens);
+  const maxTokens = sanitizeMaxTokens(params.maxTokens);
   if (maxTokens !== undefined) {
     body.max_tokens = maxTokens;
   }

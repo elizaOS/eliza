@@ -120,20 +120,23 @@ describe("Groq native text plumbing", () => {
       stopSequences: ["ok", 42, null, ""] as unknown[],
     });
 
-    expect(generateText.mock.calls[0]?.[0]).toMatchObject({
+    const sanitizedCall = generateText.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(sanitizedCall).toMatchObject({
       temperature: 0.7,
-      maxOutputTokens: 8192,
       maxRetries: 3,
       frequencyPenalty: 0.7,
       presencePenalty: -2,
       stopSequences: ["ok", ""],
     });
+    // A non-positive maxTokens (-10) is not a valid cap, so no maxOutputTokens
+    // is sent — the model's own max applies (only an explicit positive value caps).
+    expect(sanitizedCall).not.toHaveProperty("maxOutputTokens");
   });
 
-  it("omits maxOutputTokens on the wire when omitMaxTokens is set", async () => {
-    // Direct-channel Stage-1 opts out of a cap so the model's own max applies;
-    // the wire request must carry no maxOutputTokens (a hardcoded value 400s when
-    // it exceeds the model's real limit).
+  it("omits maxOutputTokens when no maxTokens passed", async () => {
+    // When a caller does not pass maxTokens, the wire request must carry no
+    // maxOutputTokens so the model's own max applies (a hardcoded value 400s
+    // when it exceeds the model's real limit).
     const generateText = vi.fn(async () => ({
       text: "uncapped",
       finishReason: "stop",
@@ -154,7 +157,7 @@ describe("Groq native text plumbing", () => {
       runtime: IAgentRuntime,
       params: unknown
     ) => Promise<unknown>;
-    await handler(createRuntime(), { prompt: "no cap", omitMaxTokens: true });
+    await handler(createRuntime(), { prompt: "no cap" });
 
     const call = generateText.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(call).not.toHaveProperty("maxOutputTokens");
