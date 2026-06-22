@@ -30,6 +30,22 @@ export function isAppBuildTask(taskText: string | undefined | null): boolean {
   return APP_DEPLOY_TASK_RE.test(taskText);
 }
 
+/**
+ * Whether a task builds an elizaOS VIEW or PLUGIN. These get the cloud-vs-local
+ * sandbox contract (#8918) rather than the hosted-app deploy contract: a view
+ * usually runs in the agent's LOCAL sandbox (registered via Plugin.views) and
+ * only goes to Cloud when it must be hosted/shared beyond this agent.
+ */
+const VIEW_PLUGIN_TASK_RE =
+  /\b(view[-\s]?plugin|plugin[-\s]?view|(creat|build|add|mak)(e|ing)?\s+(?:(?:a|an|new)\s+)*(view|plugin)|register[-\s]?(?:a\s+)?view|viewKind)\b/i;
+
+export function isViewPluginTask(taskText: string | undefined | null): boolean {
+  if (typeof taskText !== "string" || taskText.trim().length === 0) {
+    return false;
+  }
+  return VIEW_PLUGIN_TASK_RE.test(taskText);
+}
+
 export type AppDeployTarget = "eliza-cloud" | "agent-home";
 
 export interface AppDeployConfig {
@@ -87,6 +103,20 @@ function agentHomeGuidance(config: AppDeployConfig): string {
   ].join("\n");
 }
 
+/**
+ * Cloud-vs-local-sandbox contract for a view/plugin task (#8918). A view-plugin
+ * defaults to running in the agent's LOCAL sandbox; Cloud is opt-in (hosted).
+ */
+export function viewPluginGuidance(): string {
+  return [
+    "--- View/Plugin Deployment (cloud vs local sandbox) ---",
+    "This task builds an elizaOS view or plugin. Choose the deploy target deliberately:",
+    "- LOCAL SANDBOX (default): register the view via `Plugin.views` with an explicit `viewKind`; it loads in this agent's runtime with no Cloud deploy. Verify it appears in `/api/views` and renders before reporting done.",
+    "- ELIZA CLOUD: only when the view/plugin must be hosted or shared beyond this agent — deploy via the Cloud app/container flow (register for an `appId`), as in the app-build contract. Report the verified live Cloud URL.",
+    "Do NOT push a local-only view to Cloud, and do NOT leave a Cloud-intended view as un-deployed local files. State which path you took and the matching verification (local: present in `/api/views`; cloud: verified live URL).",
+  ].join("\n");
+}
+
 /** Build the deploy-guidance block for the configured target. */
 export function buildAppDeployGuidance(config?: AppDeployConfig): string {
   const resolved = config ?? resolveAppDeployConfig();
@@ -103,7 +133,22 @@ export function augmentTaskWithDeployGuidance(
   task: string,
   config?: AppDeployConfig,
 ): string {
-  if (!isAppBuildTask(task) || task.includes("--- App Deployment")) {
+  // Idempotent: if either deploy block is already present, no-op. Checked first
+  // because each guidance block itself contains app/view keywords that would
+  // otherwise re-trigger detection on a second pass.
+  if (
+    task.includes("--- View/Plugin Deployment") ||
+    task.includes("--- App Deployment")
+  ) {
+    return task;
+  }
+  // View/plugin tasks get the cloud-vs-local sandbox contract (#8918), checked
+  // before the hosted-app contract so a "build a view plugin" task isn't
+  // mis-routed to "deploy + report a live URL".
+  if (isViewPluginTask(task) && !isAppBuildTask(task)) {
+    return `${task.trimEnd()}\n\n${viewPluginGuidance()}`;
+  }
+  if (!isAppBuildTask(task)) {
     return task;
   }
   return `${task.trimEnd()}\n\n${buildAppDeployGuidance(config)}`;
