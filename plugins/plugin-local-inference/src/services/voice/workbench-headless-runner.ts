@@ -18,12 +18,18 @@
  * here, so it is unit-testable with a fake services adapter.
  */
 
-import type { CorpusTurnLabel, GeneratedVoiceCorpus } from "./corpus-generator";
+import type {
+	CorpusGroundTruth,
+	CorpusTurnLabel,
+	GeneratedVoiceCorpus,
+} from "./corpus-generator";
 import {
 	scoreDiarization,
+	scoreEchoRejection,
 	scoreEntityExtraction,
 	scoreEotDecision,
 	scoreFirstResponseLatency,
+	scoreOwnerSecurity,
 	scoreRespondDecision,
 	scoreTtsAsrRoundTrip,
 	scoreVoiceEntityMatch,
@@ -50,6 +56,8 @@ export interface VoiceTurnObservation {
 	matchedEntityId: string | null;
 	/** First-audio latency (ms) of the agent's spoken reply, when it replied. */
 	firstAudioMs?: number;
+	/** The system judged this turn to be the device owner (owner-security). */
+	predictedOwner?: boolean;
 }
 
 export interface VoiceWorkbenchServices {
@@ -63,6 +71,8 @@ export interface VoiceWorkbenchServices {
 		audio: Float32Array;
 		sampleRate: number;
 		label: CorpusTurnLabel;
+		/** Scenario-level ground truth (participants, owner set, agents). */
+		groundTruth: CorpusGroundTruth;
 	}): Promise<VoiceTurnObservation>;
 }
 
@@ -118,6 +128,12 @@ export async function runVoiceScenarioHeadless(
 	}> = [];
 	const inferredEntities: string[] = [];
 	const expectedEntities: string[] = [];
+	const echoSamples: Array<{ isAgentEcho: boolean; responded: boolean }> = [];
+	const ownerSamples: Array<{
+		predictedOwner: boolean;
+		expectedOwner: boolean;
+	}> = [];
+	const wantsOwnerScoring = scenario.classes.includes("owner-security");
 
 	for (const label of corpus.groundTruth.turns) {
 		const audio = corpus.pcm.subarray(
@@ -129,6 +145,7 @@ export async function runVoiceScenarioHeadless(
 			audio,
 			sampleRate: corpus.sampleRate,
 			label,
+			groundTruth: corpus.groundTruth,
 		});
 
 		// WER — one round-trip case per turn (referenceTranscript vs ASR hypothesis).
@@ -167,6 +184,16 @@ export async function runVoiceScenarioHeadless(
 		}
 		if (label.expectedEntity) expectedEntities.push(label.expectedEntity);
 		inferredEntities.push(...obs.inferredEntities);
+
+		if (label.isAgentEcho) {
+			echoSamples.push({ isAgentEcho: true, responded: obs.responded });
+		}
+		if (wantsOwnerScoring && typeof obs.predictedOwner === "boolean") {
+			ownerSamples.push({
+				predictedOwner: obs.predictedOwner,
+				expectedOwner: label.isOwner === true,
+			});
+		}
 
 		if (obs.responded && typeof obs.firstAudioMs === "number") {
 			cases.push(
@@ -214,6 +241,24 @@ export async function runVoiceScenarioHeadless(
 			scoreVoiceEntityMatch(voiceEntitySamples, {
 				...(assertions.minVoiceEntityMatchRate !== undefined
 					? { minMatchRate: assertions.minVoiceEntityMatchRate }
+					: {}),
+			}),
+		);
+	}
+	if (echoSamples.length > 0) {
+		cases.push(
+			scoreEchoRejection(echoSamples, {
+				...(assertions.minEchoRejectionRate !== undefined
+					? { minRejectionRate: assertions.minEchoRejectionRate }
+					: {}),
+			}),
+		);
+	}
+	if (ownerSamples.length > 0) {
+		cases.push(
+			scoreOwnerSecurity(ownerSamples, {
+				...(assertions.minOwnerAccuracy !== undefined
+					? { minAccuracy: assertions.minOwnerAccuracy }
 					: {}),
 			}),
 		);

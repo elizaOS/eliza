@@ -6,8 +6,12 @@
  * Modes:
  *   --mock  (default)  ground-truth mock services → runs + passes; the CI
  *                      plumbing lane (no model, no network).
- *   --real             real local backend. No real services adapter is
- *                      provisioned here yet, so every scenario reports
+ *   --logic            real-decision-logic services → runs the SHIPPED EOT /
+ *                      respond / echo / bystander / wake-word gate + name
+ *                      extraction over the corpus (no acoustic models). CI-
+ *                      runnable; catches a regression in the decision logic.
+ *   --real             real local backend (acoustic models). No real services
+ *                      adapter is provisioned here yet, so every scenario reports
  *                      `skipped` — never a false `pass` (the honesty contract).
  *   --out <dir>        output directory (default ./voice-workbench-output).
  *
@@ -16,21 +20,29 @@
 
 import path from "node:path";
 import { buildAndRunVoiceWorkbench, writeVoiceWorkbenchResult } from "../src/services/voice/workbench-entrypoint.ts";
+import { realDecisionLogicServices } from "../src/services/voice/workbench-logic-services.ts";
 import { groundTruthMockServices } from "../src/services/voice/workbench-scenarios.ts";
 
 async function main(): Promise<void> {
 	const args = process.argv.slice(2);
 	const real = args.includes("--real");
+	const logic = args.includes("--logic");
 	const outIdx = args.indexOf("--out");
 	const outDir =
 		outIdx >= 0 && args[outIdx + 1]
 			? path.resolve(args[outIdx + 1])
 			: path.resolve("voice-workbench-output");
 
-	// Real-backend services are gated: when none is provisioned we pass `null`,
-	// which makes every scenario `skipped` (never a false pass). The mocked lane
-	// echoes ground truth so the runner → scorers → report path runs end-to-end.
-	const services = real ? null : groundTruthMockServices();
+	// --real: real-backend (acoustic) services are gated; when none is provisioned
+	// we pass `null`, making every scenario `skipped` (never a false pass).
+	// --logic: the real shipped decision logic (no acoustic models).
+	// default (--mock): echoes ground truth so the runner → scorers → report path
+	// runs end-to-end.
+	const services = real
+		? null
+		: logic
+			? realDecisionLogicServices()
+			: groundTruthMockServices();
 
 	const result = await buildAndRunVoiceWorkbench({ services });
 	const artifacts = writeVoiceWorkbenchResult(result, outDir);

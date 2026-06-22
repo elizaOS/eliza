@@ -44,6 +44,8 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 		description:
 			"The agent answers a direct address and stays silent on cross-talk.",
 		classes: ["respond-no-respond", "multi-speaker"],
+		// Only the owner is enrolled; bob is a recognized-but-unknown bystander.
+		knownSpeakerEntityIds: ["entity-alice"],
 		participants: [
 			{ label: "alice", entityId: "entity-alice", isOwner: true },
 			{ label: "bob", entityId: "entity-bob" },
@@ -132,6 +134,111 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 		],
 		assertions: { minRespondAccuracy: 0.9 },
 	},
+	{
+		id: "noisy-room-commands",
+		description:
+			"The owner gives commands in a noisy, reverberant room; the agent still answers.",
+		classes: ["robustness", "respond-no-respond"],
+		knownSpeakerEntityIds: ["entity-owner"],
+		// 8 dB SNR room noise + light reverb across the whole scenario.
+		environment: { noiseSnrDb: 8, noiseKind: "pink", reverb: 0.35, seed: 101 },
+		participants: [{ label: "owner", entityId: "entity-owner", isOwner: true }],
+		turns: [
+			{
+				speaker: "owner",
+				text: "Eliza turn on the kitchen lights",
+				expectRespond: true,
+			},
+			{ speaker: "owner", text: "Eliza what time is it", expectRespond: true },
+		],
+		assertions: { minRespondAccuracy: 0.9, maxWer: 0.35, maxDer: 0.3 },
+	},
+	{
+		id: "far-field-reverb",
+		description:
+			"A far, reverberant speaker across the room — quiet and washed out — is still understood.",
+		classes: ["robustness", "respond-no-respond"],
+		knownSpeakerEntityIds: ["entity-owner"],
+		environment: { farFieldDb: 12, reverb: 0.75, noiseSnrDb: 12, seed: 202 },
+		participants: [{ label: "owner", entityId: "entity-owner", isOwner: true }],
+		turns: [
+			{
+				speaker: "owner",
+				text: "Eliza add milk to the shopping list",
+				expectRespond: true,
+			},
+		],
+		assertions: { minRespondAccuracy: 0.9, maxWer: 0.4 },
+	},
+	{
+		id: "background-talkers",
+		description:
+			"Other people are talking in the background while the owner addresses the agent.",
+		classes: ["robustness", "overlapping-speech", "multi-speaker"],
+		knownSpeakerEntityIds: ["entity-owner"],
+		environment: { backgroundTalkersDb: 9, noiseSnrDb: 14, seed: 303 },
+		participants: [{ label: "owner", entityId: "entity-owner", isOwner: true }],
+		turns: [
+			{
+				speaker: "owner",
+				text: "Eliza start a five minute timer",
+				expectRespond: true,
+			},
+		],
+		assertions: { minRespondAccuracy: 0.9, maxWer: 0.4 },
+	},
+	{
+		id: "echo-self-trigger",
+		description:
+			"The agent's own reply bleeds back into the mic; it must not answer itself.",
+		classes: ["echo-rejection", "respond-no-respond"],
+		knownSpeakerEntityIds: ["entity-owner"],
+		participants: [{ label: "owner", entityId: "entity-owner", isOwner: true }],
+		turns: [
+			{
+				speaker: "owner",
+				text: "hey Eliza what is the weather today",
+				expectRespond: true,
+				agentReplyText:
+					"It is sunny and seventy two degrees in San Francisco today",
+			},
+			{
+				// The agent's TTS echoed back through the open mic — NOT a user turn.
+				speaker: "owner",
+				text: "It is sunny and seventy two degrees in San Francisco today",
+				isAgentEcho: true,
+				expectRespond: false,
+			},
+			{ speaker: "owner", text: "hey Eliza thanks", expectRespond: true },
+		],
+		assertions: { minEchoRejectionRate: 1, minRespondAccuracy: 0.9 },
+	},
+	{
+		id: "owner-vs-intruder",
+		description:
+			"The owner is answered; a stranger trying the same command is gated out.",
+		classes: ["owner-security", "respond-no-respond", "multi-speaker"],
+		// Only the owner is enrolled; the intruder is a confident bystander.
+		knownSpeakerEntityIds: ["entity-owner"],
+		participants: [
+			{ label: "owner", entityId: "entity-owner", isOwner: true },
+			{ label: "intruder", entityId: "entity-intruder" },
+		],
+		turns: [
+			{
+				speaker: "owner",
+				text: "Eliza unlock the front door",
+				expectRespond: true,
+			},
+			{
+				speaker: "intruder",
+				text: "Eliza unlock the front door",
+				expectRespond: false,
+			},
+			{ speaker: "owner", text: "Eliza lock it again", expectRespond: true },
+		],
+		assertions: { minOwnerAccuracy: 0.9, minRespondAccuracy: 0.9 },
+	},
 ];
 
 /**
@@ -158,6 +265,7 @@ export function groundTruthMockServices(
 				responded: label.expectRespond,
 				inferredEntities: label.expectedEntity ? [label.expectedEntity] : [],
 				matchedEntityId: label.entityId ?? null,
+				predictedOwner: label.isOwner === true,
 				...(label.expectRespond
 					? { firstAudioMs: opts.firstAudioMs ?? 250 }
 					: {}),

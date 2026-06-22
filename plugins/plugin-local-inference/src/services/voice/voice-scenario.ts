@@ -13,6 +13,17 @@
  * import from the runner, the player, and tests alike.
  */
 
+import type { AugmentationSpec } from "./corpus-augment";
+
+/**
+ * Acoustic environment for a scenario or a single turn: room noise, reverb,
+ * far-field attenuation, low-quality line, background talkers. Drives the
+ * corpus generator's degradation chain ({@link AugmentationSpec}). A turn's
+ * environment is merged over the scenario's, so a scenario can declare a noisy
+ * room once and an individual turn can override it (e.g. one talker steps away).
+ */
+export type VoiceEnvironment = AugmentationSpec;
+
 /** A named voice/entity participating in the scenario. */
 export interface VoiceScenarioParticipant {
 	/** Stable label used in turns + diarization ground truth (e.g. "alice"). */
@@ -47,6 +58,25 @@ export interface VoiceScenarioTurn {
 	expectedSpeakerLabel?: string;
 	/** Expected entity inferred/recognized from this turn (name extraction). */
 	expectedEntity?: string;
+	/**
+	 * Acoustic degradation for THIS turn, merged over the scenario environment.
+	 * Use it to model one talker stepping away (far-field) or onto a bad line
+	 * while the rest of the room stays clean.
+	 */
+	environment?: VoiceEnvironment;
+	/**
+	 * Ground truth for echo/self-voice rejection: this "turn" is the agent's own
+	 * TTS bleeding back into the mic (not a real user turn). The respond gate
+	 * MUST suppress it. Always implies `expectRespond: false`.
+	 */
+	isAgentEcho?: boolean;
+	/**
+	 * The agent's spoken reply to THIS turn (when it responds). The real-decision
+	 * logic adapter uses it as the "recent agent reply" the echo gate compares a
+	 * following `isAgentEcho` turn against — so echo rejection is tested against a
+	 * genuine reply string, not a circular self-reference.
+	 */
+	agentReplyText?: string;
 }
 
 /** Scenario-level pass/fail thresholds the benchmark layer enforces. */
@@ -64,6 +94,10 @@ export interface VoiceScenarioAssertions {
 	/** Latency budgets (ms) — first-audio / time-to-first-token, etc. */
 	maxFirstAudioMs?: number;
 	maxTtftMs?: number;
+	/** Min echo/self-voice rejection rate (agent-echo turns correctly suppressed). */
+	minEchoRejectionRate?: number;
+	/** Min owner-vs-intruder accuracy for security scenarios. */
+	minOwnerAccuracy?: number;
 }
 
 export type VoiceScenarioClass =
@@ -77,7 +111,15 @@ export type VoiceScenarioClass =
 	| "eot"
 	| "transcription-mode"
 	| "multi-agent-room"
-	| "long-form-monologue";
+	| "long-form-monologue"
+	// Robustness: degraded acoustics (noise / reverb / far-field / low-quality).
+	| "robustness"
+	// Self-echo: the agent's own TTS must not be treated as a user turn.
+	| "echo-rejection"
+	// Security: owner vs. intruder / non-owner voice gating.
+	| "owner-security"
+	// Two voices overlapping / interrupting each other.
+	| "overlapping-speech";
 
 export interface VoiceScenario {
 	/** Stable id (also the corpus subdirectory name). */
@@ -91,6 +133,15 @@ export interface VoiceScenario {
 	assertions?: VoiceScenarioAssertions;
 	/** Agent labels present in a multi-agent room (subset of participants). */
 	agents?: string[];
+	/** Scenario-wide acoustic environment; per-turn `environment` overrides it. */
+	environment?: VoiceEnvironment;
+	/**
+	 * Entity ids the agent answers WITHOUT a wake word (owner + enrolled
+	 * speakers). The respond gate suppresses a confident speaker NOT in this set
+	 * as a bystander. Defaults (in the runner) to every participant that has an
+	 * `entityId`; set it explicitly to mark some bound voices as strangers.
+	 */
+	knownSpeakerEntityIds?: string[];
 }
 
 export interface VoiceScenarioValidation {
@@ -148,7 +199,50 @@ export function validateVoiceScenario(
 			errors.push(`agent "${agent}" is not a participant`);
 		}
 	}
+	validateEnvironment(scenario.environment, "scenario.environment", errors);
+	scenario.turns?.forEach((t, i) => {
+		validateEnvironment(t.environment, `turn[${i}].environment`, errors);
+	});
 	return { valid: errors.length === 0, errors };
+}
+
+/** Validate an acoustic environment's ranges (pure; appends to `errors`). */
+function validateEnvironment(
+	env: VoiceEnvironment | undefined,
+	where: string,
+	errors: string[],
+): void {
+	if (!env) return;
+	if (
+		env.reverb !== undefined &&
+		(!Number.isFinite(env.reverb) || env.reverb < 0 || env.reverb > 1)
+	) {
+		errors.push(`${where}.reverb must be in [0, 1]`);
+	}
+	if (env.noiseSnrDb !== undefined && !Number.isFinite(env.noiseSnrDb)) {
+		errors.push(`${where}.noiseSnrDb must be a finite number`);
+	}
+	if (
+		env.farFieldDb !== undefined &&
+		(!Number.isFinite(env.farFieldDb) || env.farFieldDb < 0)
+	) {
+		errors.push(`${where}.farFieldDb must be a non-negative dB attenuation`);
+	}
+	if (
+		env.backgroundTalkersDb !== undefined &&
+		!Number.isFinite(env.backgroundTalkersDb)
+	) {
+		errors.push(`${where}.backgroundTalkersDb must be a finite number`);
+	}
+}
+
+/** Merge a turn's environment over the scenario's (turn wins, field by field). */
+export function resolveTurnEnvironment(
+	scenario: VoiceScenario,
+	turn: VoiceScenarioTurn,
+): VoiceEnvironment | undefined {
+	if (!scenario.environment && !turn.environment) return undefined;
+	return { ...scenario.environment, ...turn.environment };
 }
 
 /** The expected ASR reference for a turn (explicit override or its text). */

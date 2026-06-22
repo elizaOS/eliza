@@ -44,6 +44,12 @@ export default defineConfig({
 					import.meta.url,
 				),
 			),
+			"@elizaos/shared/voice/respond-gate": fileURLToPath(
+				new URL(
+					"../../packages/shared/src/voice/respond-gate.ts",
+					import.meta.url,
+				),
+			),
 			"@elizaos/shared/voice-wer": fileURLToPath(
 				new URL("../../packages/shared/src/voice-wer.ts", import.meta.url),
 			),

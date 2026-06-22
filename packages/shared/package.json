@@ -188,6 +188,16 @@
       "import": "./dist/voice-eot.js",
       "default": "./dist/voice-eot.js"
     },
+    "./voice/respond-gate": {
+      "types": "./dist/voice/respond-gate.d.ts",
+      "eliza-source": {
+        "types": "./src/voice/respond-gate.ts",
+        "import": "./src/voice/respond-gate.ts",
+        "default": "./src/voice/respond-gate.ts"
+      },
+      "import": "./dist/voice/respond-gate.js",
+      "default": "./dist/voice/respond-gate.js"
+    },
     "./transcripts": {
       "types": "./dist/transcripts.d.ts",
       "eliza-source": {

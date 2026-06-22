@@ -23,8 +23,15 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { makeSpeechWithSilenceFixture } from "./__test-helpers__/synthetic-speech";
 import {
+	type AugmentationSpec,
+	augmentPcm,
+	specIsClean,
+} from "./corpus-augment";
+import {
+	resolveTurnEnvironment,
 	turnReferenceTranscript,
 	turnSpeakerLabel,
+	type VoiceEnvironment,
 	type VoiceScenario,
 	validateVoiceScenario,
 } from "./voice-scenario";
@@ -67,6 +74,14 @@ export interface CorpusTurnLabel {
 	ttsVoiceId?: string;
 	/** True when this turn was formant-synthesized rather than real TTS. */
 	synthetic: boolean;
+	/** Acoustic degradation applied to this turn's audio (when any). */
+	environment?: VoiceEnvironment;
+	/** True when this "turn" is the agent's own TTS echoed back (not a user turn). */
+	isAgentEcho?: boolean;
+	/** Ground truth: the speaker is the device owner / primary enrolled voice. */
+	isOwner?: boolean;
+	/** The agent's spoken reply to this turn (drives the echo gate downstream). */
+	agentReplyText?: string;
 }
 
 export interface CorpusGroundTruth {
@@ -82,6 +97,8 @@ export interface CorpusGroundTruth {
 		ttsVoiceId?: string;
 	}>;
 	agents?: string[];
+	/** Entity ids the agent answers without a wake word (owner + enrolled). */
+	knownSpeakerEntityIds?: string[];
 	turns: CorpusTurnLabel[];
 	/** True when EVERY turn was synthetic (no real TTS used anywhere). */
 	synthetic: boolean;
@@ -128,6 +145,26 @@ function labelSeed(label: string): number {
 
 function silenceSamples(ms: number, sampleRate: number): number {
 	return Math.max(0, Math.round((ms / 1000) * sampleRate));
+}
+
+/**
+ * A continuous competing-talker stream for `backgroundTalkersDb`, built from
+ * formant-synth speech (no models) so it is deterministic. `augmentPcm` mixes +
+ * loops it under the real turn at the requested level.
+ */
+function synthesizeBabble(
+	sampleRate: number,
+	lengthSamples: number,
+	seed: number,
+): Float32Array {
+	const fixture = makeSpeechWithSilenceFixture({
+		sampleRate,
+		leadSilenceSec: 0,
+		speechSec: Math.max(0.3, lengthSamples / sampleRate),
+		tailSilenceSec: 0,
+		seed,
+	});
+	return fixture.pcm;
 }
 
 /**
@@ -209,9 +246,6 @@ export async function generateVoiceCorpus(
 			synthetic = true;
 		}
 
-		segments.push(speech);
-		cursor += speech.length;
-
 		// Trailing pauses: explicit per-turn gaps, else the default inter-turn gap
 		// (except after the final turn).
 		const pauseTotal =
@@ -220,10 +254,31 @@ export async function generateVoiceCorpus(
 				: i < scenario.turns.length - 1
 					? interTurnSilence
 					: 0;
-		if (pauseTotal > 0) {
-			segments.push(new Float32Array(pauseTotal));
-			cursor += pauseTotal;
+
+		// Assemble the turn's full segment (voiced speech + trailing pause) so the
+		// per-turn acoustic degradation — reverb ringing into the gap, a noise
+		// floor in the "silence" — covers the pause, not just the speech.
+		let segment: Float32Array = new Float32Array(speech.length + pauseTotal);
+		segment.set(speech, 0);
+
+		const env = resolveTurnEnvironment(scenario, turn);
+		let appliedEnv: VoiceEnvironment | undefined;
+		if (env && !specIsClean(env)) {
+			const seed =
+				env.seed ?? (labelSeed(scenario.id) ^ (i * 0x9e3779b1)) >>> 0;
+			const resolvedEnv: AugmentationSpec = { ...env, seed };
+			const babble =
+				resolvedEnv.backgroundTalkersDb !== undefined
+					? synthesizeBabble(sampleRate, segment.length, (seed ^ 0x1234) >>> 0)
+					: undefined;
+			segment = augmentPcm(segment, sampleRate, resolvedEnv, {
+				...(babble ? { babble } : {}),
+			});
+			appliedEnv = resolvedEnv;
 		}
+
+		segments.push(segment);
+		cursor += segment.length;
 
 		labels.push({
 			index: i,
@@ -234,11 +289,15 @@ export async function generateVoiceCorpus(
 			segmentStartSample,
 			segmentEndSample: cursor,
 			referenceTranscript: turnReferenceTranscript(turn),
-			expectRespond: turn.expectRespond,
+			expectRespond: turn.isAgentEcho ? false : turn.expectRespond,
 			expectEndOfTurn: turn.expectEndOfTurn ?? true,
 			...(turn.expectedEntity ? { expectedEntity: turn.expectedEntity } : {}),
 			...(ttsVoiceId ? { ttsVoiceId } : {}),
 			synthetic,
+			...(appliedEnv ? { environment: appliedEnv } : {}),
+			...(turn.isAgentEcho ? { isAgentEcho: true } : {}),
+			...(participant?.isOwner ? { isOwner: true } : {}),
+			...(turn.agentReplyText ? { agentReplyText: turn.agentReplyText } : {}),
 		});
 	}
 
@@ -262,6 +321,9 @@ export async function generateVoiceCorpus(
 			...(p.ttsVoiceId ? { ttsVoiceId: p.ttsVoiceId } : {}),
 		})),
 		...(scenario.agents ? { agents: scenario.agents } : {}),
+		...(scenario.knownSpeakerEntityIds
+			? { knownSpeakerEntityIds: scenario.knownSpeakerEntityIds }
+			: {}),
 		turns: labels,
 		synthetic: !anyReal,
 	};
