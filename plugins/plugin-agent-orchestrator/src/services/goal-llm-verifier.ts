@@ -64,17 +64,67 @@ export function shouldAutoVerifyGoal(): boolean {
 export const MAX_AUTO_VERIFY_ATTEMPTS = 3;
 
 /**
+ * Pick the concrete proof a sub-agent must paste for a given unmet criterion.
+ * A demanding manager doesn't accept "I fixed it" — it names the exact artifact
+ * that would settle the question (a passing build/test line, a screenshot, a
+ * scenario trajectory) and asks for it inline. Keyword-driven so the guidance
+ * matches the kind of work the criterion describes; falls back to the
+ * build/test default that fits most coding criteria.
+ */
+function proofDemandFor(criterion: string): string {
+  const c = criterion.toLowerCase();
+  if (
+    /\b(ui|screen|page|view|button|render|css|layout|visual|frontend|component|storybook)\b/.test(
+      c,
+    )
+  ) {
+    return "capture a full-page screenshot of the working UI (paste the file path) AND, if it is a route in the app, the URL you reached";
+  }
+  if (
+    /\b(agent|prompt|conversation|reply|respond|chat|trajectory|scenario|behaviou?r|tool[- ]?call)\b/.test(
+      c,
+    )
+  ) {
+    return "produce a scenario trajectory against a live model and paste the report path (and the decisive turn) — do not just assert the behavior";
+  }
+  if (/\b(url|endpoint|deploy|live|reachable|http|served|api)\b/.test(c)) {
+    return "paste the reachable, non-loopback URL and the response (status line / curl output) proving it serves — a localhost/127.0.0.1 URL does NOT count";
+  }
+  if (/\b(perf|latenc|benchmark|speed|throughput|memory)\b/.test(c)) {
+    return "paste the before/after measurement output (the actual numbers, not a claim)";
+  }
+  if (
+    /\b(test|spec|coverage|unit|e2e|integration|vitest|jest)\b/.test(c) ||
+    /\b(build|compile|typecheck|lint|tsc)\b/.test(c)
+  ) {
+    return "run the command and paste its passing output tail (the summary line, e.g. the test/build/typecheck result)";
+  }
+  return "run build/typecheck/tests for the affected package and paste the passing output, plus the exact diff hunk that satisfies this criterion";
+}
+
+/**
  * Compose the corrective message body sent back to a sub-agent when automatic
  * verification did not confirm every acceptance criterion. The
  * goal/acceptance-criteria envelope is re-applied by `buildGoalFollowUp`
  * (reason `validation_failed`); this is just the human-readable gap report.
+ *
+ * Behaves like a demanding manager: for EACH unmet criterion it names the
+ * specific proof the worker must produce and re-report WITH (a passing
+ * build/test line, a screenshot for UI, a scenario trajectory for agent
+ * behavior, a reachable URL for a deploy), so the next completion arrives with
+ * verifiable evidence instead of another plausible-but-unproven claim.
  */
 export function buildAutoVerifyCorrection(missing: readonly string[]): string {
   const lines = [
-    "Automatic verification did not confirm the task is complete. The following acceptance criteria are not yet demonstrated as met:",
-    ...missing.map((criterion) => `- ${criterion}`),
+    "Automatic verification did not confirm the task is complete. A plausible description is NOT proof — each criterion below is still unproven and must be backed by a concrete artifact.",
     "",
-    "Address each unmet criterion, then re-verify by running the relevant tests/build/typecheck before reporting complete again.",
+    "For EACH unmet acceptance criterion, do the work and then paste the exact proof named:",
+    ...missing.map(
+      (criterion) =>
+        `- ${criterion}\n    → proof to produce: ${proofDemandFor(criterion)}`,
+    ),
+    "",
+    "Then report complete AGAIN, and this time INCLUDE that proof inline in your final message: the actual command output (build/typecheck/test summary lines), screenshot path(s) for any UI, scenario trajectory report path for any agent behavior, and reachable non-loopback URL(s) for anything deployed. Claims without pasted evidence will fail verification again.",
   ];
   return lines.join("\n");
 }
@@ -126,12 +176,14 @@ function bulletList(items: readonly string[]): string {
 }
 
 /** The judge prompt. Kept deliberately small and structured so a small
- *  model can produce parseable JSON reliably. */
+ *  model can produce parseable JSON reliably, but written as a demanding,
+ *  evidence-first manager: each criterion must be backed by CONCRETE PROOF in
+ *  the evidence, not a plausible-sounding claim. */
 export function buildVerificationPrompt(input: GoalVerificationInput): string {
   const criteria = bulletList(input.acceptanceCriteria);
   const evidence = trimEvidence(input.completionEvidence.trim());
   return [
-    "You are verifying whether a coding sub-agent satisfied every acceptance criterion of an orchestrator task before the parent agent marks the task done.",
+    "You are a demanding engineering manager doing final sign-off on a coding sub-agent's work before the parent agent marks the task done. Your job is to be skeptical, not agreeable: a task passes ONLY when the evidence PROVES every acceptance criterion, not when the sub-agent merely claims it.",
     "",
     `Task goal:`,
     input.goal.trim() || "(no goal text was provided)",
@@ -139,19 +191,28 @@ export function buildVerificationPrompt(input: GoalVerificationInput): string {
     "Acceptance criteria (each must hold for the task to pass):",
     criteria,
     "",
-    "Completion evidence reported by the sub-agent:",
+    "Completion evidence collected for the sub-agent (git diffstat/changeset, deliverable + final reply, verified URLs, test/build/typecheck output, artifact references):",
     "---",
     evidence || "(no evidence)",
     "---",
     "",
-    "For EACH numbered criterion above, decide whether the evidence directly demonstrates the criterion holds.",
-    "Be strict: if the evidence is silent on a criterion, that criterion fails.",
+    "For EACH numbered criterion above, find the SPECIFIC place in the evidence that directly demonstrates it with concrete proof. Acceptable proof, depending on the criterion:",
+    "- a passing test / build / typecheck / lint output line (e.g. a green summary line) for 'tests pass', 'builds', 'typechecks';",
+    "- a concrete diff hunk in the changeset showing the exact code that implements the criterion;",
+    "- a reachable, NON-loopback URL (localhost / 127.0.0.1 / ::1 do NOT count as reachable) for 'deployed' / 'live' / 'served';",
+    "- a screenshot or trajectory artifact reference for UI or agent-behavior criteria.",
+    "",
+    "Hard rules — apply them strictly:",
+    "- A plausible-but-unproven claim FAILS. 'I ran the tests and they pass', 'the page renders correctly', or 'it's deployed' with NO pasted output / URL / screenshot in the evidence is NOT proof — mark that criterion as missing.",
+    "- If the evidence is silent on a criterion, or only describes intent / future work, that criterion FAILS.",
+    "- If the evidence contains a failure marker (a non-zero exit, a failing/red test line, an error/traceback, a loopback-only URL where a public one is required) relevant to a criterion, that criterion FAILS.",
+    "- Do not give the benefit of the doubt. When in doubt, mark it missing.",
     "",
     "Respond with a SINGLE JSON object and nothing else. Do not wrap it in ```. Schema:",
-    '{ "passed": <true|false>, "summary": "<one sentence under 200 chars>", "missing": ["<criterion text that was NOT confirmed>", ...] }',
+    '{ "passed": <true|false>, "summary": "<one sentence under 200 chars>", "missing": ["<criterion text that was NOT proven>", ...] }',
     "",
     "`passed` MUST be false whenever `missing` is non-empty.",
-    "If every criterion is confirmed, `missing` must be an empty array and `passed` true.",
+    "If and only if every criterion is backed by concrete proof in the evidence, `missing` must be an empty array and `passed` true.",
   ].join("\n");
 }
 

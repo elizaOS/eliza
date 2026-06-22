@@ -33,11 +33,15 @@ describe("shouldAutoVerifyGoal", () => {
 });
 
 describe("buildAutoVerifyCorrection", () => {
-  it("lists each unmet criterion and asks for re-verification", () => {
+  it("lists each unmet criterion, names the proof to produce, and asks to re-report with it", () => {
     const msg = buildAutoVerifyCorrection(["tests pass", "no console usage"]);
     expect(msg).toContain("- tests pass");
     expect(msg).toContain("- no console usage");
-    expect(msg).toContain("re-verify");
+    // Strengthened contract: demand concrete proof per criterion and a
+    // re-report that INCLUDES it (issue: evidence-demanding critic).
+    expect(msg).toMatch(/proof to produce:/);
+    expect(msg).toMatch(/report complete AGAIN/i);
+    expect(msg).toMatch(/INCLUDE that proof inline/i);
   });
 });
 
