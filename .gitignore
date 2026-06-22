@@ -1487,3 +1487,6 @@ waifu.fun/
 /packages/benchmarks/solana/solana-gym-env/docs/trajectory-viewer/public/assets/program_discovery.png
 /packages/os-homepage/tests/visual.spec.ts-snapshots/hardware-usb-desktop-desktop-linux.png
 /packages/os-homepage/tests/visual.spec.ts-snapshots/hardware-usb-desktop-mobile-linux.png
+
+# chat-ux gesture e2e generated artifacts (video + screenshots)
+/packages/ui/src/components/shell/__e2e__/output-chatux/
