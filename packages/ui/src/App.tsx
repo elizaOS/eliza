@@ -2,6 +2,11 @@
  * Root App component — routing shell.
  */
 
+import {
+  type EnabledViewKinds,
+  isViewVisible,
+  type ViewKind,
+} from "@elizaos/core";
 import { X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
@@ -146,7 +151,7 @@ import {
   type ViewRegistryEntry,
 } from "./hooks/useAvailableViews";
 import { useDesktopTabs } from "./hooks/useDesktopTabs";
-import { useIsDeveloperMode } from "./state/useDeveloperMode";
+import { useEnabledViewKinds } from "./state/useViewKinds";
 
 const ViewCatalog = lazyNamedView(
   () => import("./components/pages/ViewCatalog"),
@@ -477,6 +482,7 @@ interface ResolvedDynamicPage {
   id: string;
   pluginId: string;
   developerOnly: boolean;
+  viewKind?: ViewKind;
   registration?: AppShellPageRegistration;
   componentExport?: string;
 }
@@ -506,6 +512,7 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
         id: registered.id,
         pluginId: registered.pluginId,
         developerOnly: registered.developerOnly === true,
+        viewKind: registered.viewKind,
         registration: registered,
       };
     }
@@ -522,6 +529,8 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
           pluginId: plugin.id,
           developerOnly:
             plugin.app?.developerOnly === true || navTab.developerOnly === true,
+          // A nav tab's own kind wins; otherwise inherit the app's kind.
+          viewKind: navTab.viewKind ?? plugin.app?.viewKind,
           registration: reg,
           componentExport: navTab.componentExport,
         };
@@ -633,9 +642,9 @@ function WalletInventoryPage() {
 
 function visibleDynamicPage(
   page: ResolvedDynamicPage | null,
-  developerModeEnabled: boolean,
+  enabledKinds: EnabledViewKinds,
 ): page is ResolvedDynamicPage {
-  return Boolean(page && (developerModeEnabled || !page.developerOnly));
+  return Boolean(page && isViewVisible(page, enabledKinds));
 }
 
 /**
@@ -1017,7 +1026,7 @@ function renderViewRouterContent({
   tab,
   dynamicPage,
   dynamicAppPage,
-  developerModeEnabled,
+  enabledKinds,
   navigationPath,
   availableViews,
   appSlug,
@@ -1027,21 +1036,21 @@ function renderViewRouterContent({
   tab: string;
   dynamicPage: ResolvedDynamicPage | null;
   dynamicAppPage: ResolvedDynamicPage | null;
-  developerModeEnabled: boolean;
+  enabledKinds: EnabledViewKinds;
   navigationPath: string;
   availableViews: ViewRegistryEntry[];
   appSlug: string | null;
   androidPhoneSurfaceEnabled: boolean;
   settingsInitialSection?: string | null;
 }): ReactNode {
-  if (visibleDynamicPage(dynamicPage, developerModeEnabled)) {
+  if (visibleDynamicPage(dynamicPage, enabledKinds)) {
     return (
       <TabContentView>
         <DynamicPluginPage resolved={dynamicPage} />
       </TabContentView>
     );
   }
-  if (visibleDynamicPage(dynamicAppPage, developerModeEnabled)) {
+  if (visibleDynamicPage(dynamicAppPage, enabledKinds)) {
     return (
       <TabContentView>
         <DynamicPluginPage resolved={dynamicAppPage} />
@@ -1079,7 +1088,7 @@ function ViewRouter({
       ? getAppSlugFromPath(navigationPath)
       : null;
   const dynamicAppPage = useResolvedDynamicPage(appSlug ?? "");
-  const developerModeEnabled = useIsDeveloperMode();
+  const enabledKinds = useEnabledViewKinds();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1098,7 +1107,7 @@ function ViewRouter({
     tab,
     dynamicPage,
     dynamicAppPage,
-    developerModeEnabled,
+    enabledKinds,
     navigationPath,
     availableViews,
     appSlug,

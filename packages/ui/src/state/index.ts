@@ -23,4 +23,6 @@ export * from "./ui-preferences";
 export * from "./useApp";
 export * from "./useContentPack";
 export * from "./useDeveloperMode";
+export * from "./usePreviewMode";
+export * from "./useViewKinds";
 export * from "./useWalletState";

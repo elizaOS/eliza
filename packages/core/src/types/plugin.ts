@@ -13,6 +13,7 @@ import type { IAgentRuntime } from "./runtime";
 import type { Service } from "./service";
 import type { ShortcutDefinition } from "./shortcut";
 import type { TestSuite } from "./testing";
+import type { ViewKind } from "./view-kind";
 
 /**
  * Type for a service class constructor.
@@ -375,9 +376,15 @@ export interface PluginAppNavTab {
 	order?: number;
 	/**
 	 * If true, this tab is only visible when Developer Mode is enabled
-	 * in Settings. Defaults to false.
+	 * in Settings. Defaults to false. Equivalent to `viewKind: "developer"`.
 	 */
 	developerOnly?: boolean;
+	/**
+	 * Four-tier visibility category. When set it supersedes `developerOnly`:
+	 * `system`/`release` are always shown, `developer`/`preview` follow their
+	 * Settings toggles. Omit to fall back to `developerOnly` → `release`.
+	 */
+	viewKind?: ViewKind;
 	/**
 	 * Optional named group the tab belongs to (used by the shell to render
 	 * grouped tab strips, e.g. workbench/dev/wallet groupings).
@@ -426,9 +433,14 @@ export interface PluginWidgetDeclaration {
 	navGroup?: string;
 	/**
 	 * If true, this widget is only visible when Developer Mode is enabled
-	 * in Settings. Defaults to false.
+	 * in Settings. Defaults to false. Equivalent to `viewKind: "developer"`.
 	 */
 	developerOnly?: boolean;
+	/**
+	 * Four-tier visibility category. Supersedes `developerOnly` when set.
+	 * See {@link ViewKind}.
+	 */
+	viewKind?: ViewKind;
 	/**
 	 * Optional package export specifier the shell will dynamically import
 	 * when rendering. Format: "<package-subpath>#<named-export>".
@@ -557,8 +569,20 @@ export interface ViewDeclaration {
 	 * Dynamic plugin install is disabled on restricted store builds (ios, android).
 	 */
 	platforms?: ViewPlatform[];
-	/** Hidden unless developer mode is enabled. Default false. */
+	/**
+	 * Hidden unless developer mode is enabled. Default false. Equivalent to
+	 * `viewKind: "developer"`.
+	 */
 	developerOnly?: boolean;
+	/**
+	 * Four-tier visibility category for this view. Supersedes `developerOnly`
+	 * when set:
+	 *  - `system`    — always shown (core shell views).
+	 *  - `release`   — always shown (public, production-ready). The default.
+	 *  - `developer` — shown when Developer views are enabled (dev builds on).
+	 *  - `preview`   — shown when Preview views are enabled (off by default).
+	 */
+	viewKind?: ViewKind;
 	/**
 	 * Named export the shell mounts from the loaded bundle module.
 	 * Defaults to `"default"`.
@@ -617,9 +641,15 @@ export interface PluginApp {
 	/**
 	 * If true, the app is a developer-tooling surface (logs, trajectory
 	 * viewer, etc.) and is hidden from the main UI unless Developer Mode is
-	 * enabled in Settings. Defaults to false.
+	 * enabled in Settings. Defaults to false. Equivalent to
+	 * `viewKind: "developer"`.
 	 */
 	developerOnly?: boolean;
+	/**
+	 * Four-tier visibility category for this app. Supersedes `developerOnly`
+	 * when set. See {@link ViewKind}.
+	 */
+	viewKind?: ViewKind;
 	/**
 	 * Controls whether the app appears in the user-facing app store/catalog.
 	 * Defaults to true. Set to false for apps that auto-install or are

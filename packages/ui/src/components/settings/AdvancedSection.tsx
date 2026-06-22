@@ -3,8 +3,10 @@ import { useCallback, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import {
   setDeveloperMode,
+  setPreviewMode,
   useAppSelectorShallow,
   useIsDeveloperMode,
+  useIsPreviewMode,
 } from "../../state";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -50,6 +52,7 @@ export function AdvancedSection() {
     setState: s.setState,
   }));
   const developerMode = useIsDeveloperMode();
+  const previewMode = useIsPreviewMode();
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
@@ -201,13 +204,25 @@ export function AdvancedSection() {
           />
         </SettingsGroup>
 
-        <SettingsGroup>
+        <SettingsGroup
+          title="View visibility"
+          description="Views are sorted into four kinds. System and Release views are always shown. Turn on the kinds below to reveal the rest."
+        >
           <SettingsSwitchRow
             agentId="advanced-developer-mode"
             group="advanced"
-            label="Developer Mode"
+            label="Developer views"
+            description="Developer tooling to verify the app is working — logs, database, trajectories. On by default in dev builds."
             checked={developerMode}
             onCheckedChange={(checked) => setDeveloperMode(checked)}
+          />
+          <SettingsSwitchRow
+            agentId="advanced-preview-mode"
+            group="advanced"
+            label="Preview views"
+            description="Unfinished, alpha, or experimental views still in progress. Off by default."
+            checked={previewMode}
+            onCheckedChange={(checked) => setPreviewMode(checked)}
           />
         </SettingsGroup>
 

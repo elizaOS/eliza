@@ -392,12 +392,14 @@ export async function handleViewsRoutes(
 
   // ── GET /api/views ────────────────────────────────────────────────────────
   if (method === "GET" && (pathname === PREFIX || pathname === `${PREFIX}/`)) {
-    const developerMode =
-      ctx.developerMode ?? url.searchParams.get("developerMode") === "true";
     const platform = detectClientPlatform(req);
     const dynamicAllowed = isDynamicLoadingAllowed(platform);
     const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
-    const allViews = listViews({ developerMode, viewType });
+    // Return every view (all four kinds) with its `viewKind` so the client can
+    // apply the user's Settings toggles + build defaults itself. The server has
+    // no way to know whether it is talking to a dev build or which kinds the
+    // user enabled, so kind-gating is a client responsibility.
+    const allViews = listViews({ includeAllKinds: true, viewType });
     // On restricted platforms (iOS/Android store builds), only surface views
     // without a dynamic bundle URL (already in-process).
     const filtered = dynamicAllowed

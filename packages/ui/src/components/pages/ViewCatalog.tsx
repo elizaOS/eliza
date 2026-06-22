@@ -7,6 +7,7 @@
  * or the `eliza:navigate:view` event dispatched by VIEWS actions.
  */
 
+import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
 import {
   ArrowDownAZ,
   Clock3,
@@ -39,6 +40,7 @@ import {
 } from "../../platform/platform-guards";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
+import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import {
   readRecentViewIds,
@@ -141,13 +143,13 @@ function isShellNavigationEntry(view: Pick<ViewRegistryEntry, "id" | "path">) {
 
 function isVisibleCatalogView(
   view: ViewRegistryEntry,
-  isDeveloperMode: boolean,
+  enabledKinds: EnabledViewKinds,
   activeModality: ViewModality,
 ) {
   if (isViewManagerEntry(view)) return false;
   if (isShellNavigationEntry(view)) return false;
   if ((view.viewType ?? "gui") !== activeModality) return false;
-  if (view.developerOnly && !isDeveloperMode) return false;
+  if (!isViewVisible(view, enabledKinds)) return false;
   if (view.visibleInManager === false) return false;
   return true;
 }
@@ -597,6 +599,7 @@ export function ViewCatalog() {
   const { views, loading, error, refresh } = useAvailableViews();
   const { tabs: desktopTabs } = useDesktopTabs();
   const isDeveloperMode = useIsDeveloperMode();
+  const enabledKinds = useEnabledViewKinds();
   const canManageDynamicViews = isDeveloperMode && isElectrobunRuntime();
   // Views are scoped to the surface modality: a GUI surface lists only GUI
   // views (TUI/XR hidden entirely); an XR surface lists only XR views.
@@ -717,7 +720,7 @@ export function ViewCatalog() {
     // When the search endpoint returned results, display those ranked by score.
     if (searchResults !== null) {
       const visible = searchResults.filter((v) => {
-        return isVisibleCatalogView(v, isDeveloperMode, activeModality);
+        return isVisibleCatalogView(v, enabledKinds, activeModality);
       });
       return {
         builtinViews: visible.filter((v) => v.builtin),
@@ -727,7 +730,7 @@ export function ViewCatalog() {
     // No active search — show all views with client-side visibility rules.
     const q = query.trim().toLowerCase();
     const visible = views.filter((v) => {
-      if (!isVisibleCatalogView(v, isDeveloperMode, activeModality)) {
+      if (!isVisibleCatalogView(v, enabledKinds, activeModality)) {
         return false;
       }
       if (!q) return true;
@@ -742,7 +745,7 @@ export function ViewCatalog() {
       builtinViews: visible.filter((v) => v.builtin),
       pluginViews: visible.filter((v) => !v.builtin),
     };
-  }, [views, isDeveloperMode, query, searchResults, activeModality]);
+  }, [views, enabledKinds, query, searchResults, activeModality]);
   const visibleViews = useMemo(
     () => [...builtinViews, ...pluginViews],
     [builtinViews, pluginViews],

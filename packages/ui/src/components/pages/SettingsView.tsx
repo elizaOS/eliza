@@ -1,3 +1,4 @@
+import { isViewVisible } from "@elizaos/core";
 import { ArrowLeft } from "lucide-react";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -10,7 +11,7 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
 import { useAppSelectorShallow } from "../../state";
-import { useIsDeveloperMode } from "../../state/useDeveloperMode";
+import { useEnabledViewKinds } from "../../state/useViewKinds";
 import {
   SettingsGroup,
   SettingsRow,
@@ -382,7 +383,7 @@ export function SettingsView({
     walletEnabled: s.walletEnabled,
   }));
   const isDesktop = useMediaQuery("(min-width: 1024px)");
-  const developerMode = useIsDeveloperMode();
+  const enabledKinds = useEnabledViewKinds();
   const [activeSection, setActiveSection] = useState<string | null>(
     () => initialSection ?? readSettingsHashSection(),
   );
@@ -390,10 +391,10 @@ export function SettingsView({
   const visibleSections = useMemo(() => {
     return getAllSettingsSections().filter((section) => {
       if (section.id === "wallet-rpc" && walletEnabled === false) return false;
-      if (section.developerOnly && !developerMode) return false;
+      if (!isViewVisible(section, enabledKinds)) return false;
       return true;
     });
-  }, [walletEnabled, developerMode]);
+  }, [walletEnabled, enabledKinds]);
   const visibleSectionIds = useMemo(
     () => new Set(visibleSections.map((section) => section.id)),
     [visibleSections],
