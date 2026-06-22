@@ -3,9 +3,8 @@ export { runScenario } from "./executor.ts";
 export { attachInterceptor } from "./interceptor.ts";
 export { judgeTextWithLlm } from "./judge.ts";
 export {
-  discoverScenarios,
   countScenarioCorpus,
-  validateScenarioCorpus,
+  discoverScenarios,
   expandScenarioDefinition,
   expandScenarioMetadata,
   listScenarioMetadata,
@@ -13,20 +12,25 @@ export {
   loadScenarioFile,
   loadScenarioMetadataFile,
   SCENARIO_EDGE_VARIANTS,
+  validateScenarioCorpus,
 } from "./loader.ts";
-export type { NativeBoundaryRow } from "./native-export.ts";
+export type {
+  NativeBoundaryRow,
+  ScenarioNativeExportManifest,
+} from "./native-export.ts";
 export {
   exportScenarioNativeJsonl,
+  recordedTrajectoryToNativeRows,
   SCENARIO_NATIVE_EXPORT_SCHEMA,
   SCENARIO_NATIVE_EXPORT_VERSION,
-  recordedTrajectoryToNativeRows,
 } from "./native-export.ts";
-export type { ScenarioNativeExportManifest } from "./native-export.ts";
+export type { TimelineEvent } from "./reporter.ts";
 export {
   buildAggregate,
   printStdoutSummary,
   writeReport,
   writeScenarioRunViewer,
+  writeTimeline,
 } from "./reporter.ts";
 export type {
   AggregateReport,

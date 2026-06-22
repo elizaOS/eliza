@@ -7,8 +7,8 @@
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -55,6 +55,117 @@ export function writeReport(report: AggregateReport, filePath: string): void {
   mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileSync(filePath, JSON.stringify(report, null, 2), "utf-8");
   logger.info(`[scenario-runner] wrote report → ${filePath}`);
+}
+
+export interface TimelineEvent {
+  seq: number;
+  scenarioId: string;
+  kind: "scenario" | "turn" | "action" | "finalCheck";
+  name: string;
+  /** ms relative to run start */
+  startMs: number;
+  endMs: number;
+  durationMs: number;
+  status: string;
+}
+
+/**
+ * Emit an ordered, scrubbable run timeline derived from the aggregate report:
+ * scenarios laid out sequentially, turns within each scenario, and the actions
+ * captured per turn placed inside that turn's span. Times are relative to run
+ * start (ms). Per-action wall-clock isn't recorded, so a turn's actions are
+ * distributed evenly across the turn span — enough to align a video / trajectory
+ * scrubber to turn + action boundaries. Returns the events (also written as
+ * `timeline.json`).
+ */
+export function writeTimeline(
+  report: AggregateReport,
+  filePath: string,
+): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
+  let seq = 0;
+  let cursor = 0;
+  for (const scenario of report.scenarios) {
+    const scenarioStart = cursor;
+    const scenarioDur = Math.max(0, scenario.durationMs || 0);
+    const scenarioEnd = scenarioStart + scenarioDur;
+    events.push({
+      seq: seq++,
+      scenarioId: scenario.id,
+      kind: "scenario",
+      name: scenario.title || scenario.id,
+      startMs: scenarioStart,
+      endMs: scenarioEnd,
+      durationMs: scenarioDur,
+      status: scenario.status,
+    });
+    let turnCursor = scenarioStart;
+    for (const turn of scenario.turns) {
+      const turnStart = turnCursor;
+      const turnDur = Math.max(0, turn.durationMs || 0);
+      const turnEnd = turnStart + turnDur;
+      events.push({
+        seq: seq++,
+        scenarioId: scenario.id,
+        kind: "turn",
+        name: turn.name || turn.kind,
+        startMs: turnStart,
+        endMs: turnEnd,
+        durationMs: turnDur,
+        status: turn.failedAssertions.length > 0 ? "failed" : "passed",
+      });
+      const actions = turn.actionsCalled ?? [];
+      if (actions.length > 0) {
+        const slice = turnDur / actions.length;
+        actions.forEach((action, i) => {
+          const aStart = turnStart + slice * i;
+          events.push({
+            seq: seq++,
+            scenarioId: scenario.id,
+            kind: "action",
+            name: action.actionName,
+            startMs: Math.round(aStart),
+            endMs: Math.round(aStart + slice),
+            durationMs: Math.round(slice),
+            status: action.result?.success === false ? "failed" : "passed",
+          });
+        });
+      }
+      turnCursor = turnEnd;
+    }
+    for (const fc of scenario.finalChecks) {
+      events.push({
+        seq: seq++,
+        scenarioId: scenario.id,
+        kind: "finalCheck",
+        name: fc.label || fc.type,
+        startMs: scenarioEnd,
+        endMs: scenarioEnd,
+        durationMs: 0,
+        status: fc.status,
+      });
+    }
+    cursor = scenarioEnd;
+  }
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  writeFileSync(
+    filePath,
+    JSON.stringify(
+      {
+        runId: report.runId,
+        startedAtIso: report.startedAtIso,
+        totalMs: cursor,
+        events,
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  logger.info(
+    `[scenario-runner] wrote timeline → ${filePath} (${events.length} events)`,
+  );
+  return events;
 }
 
 function scenarioReportFileName(id: string, index: number): string {
@@ -150,10 +261,12 @@ function asNumber(value: unknown): number | null {
 
 function truncateText(value: unknown, maxLength = 420): string {
   const text =
-    typeof value === "string" ? value : value == null ? "" : JSON.stringify(value);
-  return text.length > maxLength
-    ? `${text.slice(0, maxLength - 1)}…`
-    : text;
+    typeof value === "string"
+      ? value
+      : value == null
+        ? ""
+        : JSON.stringify(value);
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
 
 function summarizeTrajectoryFile(
@@ -228,7 +341,9 @@ function summarizeTrajectoryFile(
   };
 }
 
-function defaultNativeManifestPath(nativeJsonlPath?: string): string | undefined {
+function defaultNativeManifestPath(
+  nativeJsonlPath?: string,
+): string | undefined {
   if (!nativeJsonlPath) return undefined;
   return nativeJsonlPath.endsWith(".jsonl")
     ? `${nativeJsonlPath.slice(0, -".jsonl".length)}.manifest.json`
