@@ -87,6 +87,7 @@
 		"dev": "bun run build.ts",
 		"test": "NODE_OPTIONS='--experimental-sqlite' vitest run",
 		"test:asr:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/asr-real-smoke.ts",
+		"test:kokoro:real": "bun scripts/kokoro-real-smoke.ts",
 		"probe:sd-cpp": "node scripts/probe-sd-cpp.mjs --human",
 		"voice:workbench": "bun run scripts/voice-workbench.ts",
 		"clean": "rm -rf dist .turbo node_modules",

@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { compressPromptDescription } from "@elizaos/core";
 import fc from "fast-check";
-import { compressPromptDescription } from "../scripts/prompt-compression.js";
 import * as prompts from "../src/index.ts";
 
 const exportedPrompts = Object.fromEntries(Object.entries(prompts));

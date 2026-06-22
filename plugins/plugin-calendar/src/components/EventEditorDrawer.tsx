@@ -6,10 +6,11 @@ import type {
   LifeOpsCalendarSummary,
   LifeOpsConnectorSide,
 } from "@elizaos/shared";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { client } from "@elizaos/ui/api";
 import {
   Button,
   ConfirmDialog,
-  client,
   Dialog,
   DialogContent,
   Input,
@@ -20,9 +21,8 @@ import {
   SelectValue,
   TagEditor,
   Textarea,
-  useAppSelector,
-} from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
+} from "@elizaos/ui/components";
+import { useAppSelector } from "@elizaos/ui/state";
 import {
   Check,
   Loader2,
@@ -41,6 +41,9 @@ import {
   useState,
 } from "react";
 import "../api/client-calendar.js";
+import type { CalendarClientMethods } from "../api/client-calendar.js";
+
+const calendarClient = client as typeof client & CalendarClientMethods;
 
 type EditorMode = "edit" | "create";
 
@@ -419,14 +422,14 @@ export function EventEditorDrawer({
   }, [open, isCreate, event, createDefaults]);
 
   // Load calendar list when drawer opens. The selector is sourced from
-  // `client.getLifeOpsCalendars()`; if the call fails we fall back to a
+  // `calendarClient.getLifeOpsCalendars()`; if the call fails we fall back to a
   // single "Primary" pseudo-row so the UI still renders.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setCalendarsLoading(true);
     setCalendarsError(null);
-    void client
+    void calendarClient
       .getLifeOpsCalendars({ side: calendarRequestSide })
       .then((response) => {
         if (cancelled) return;
@@ -544,7 +547,8 @@ export function EventEditorDrawer({
             timeZone: TIME_ZONE,
             attendees: attendees.length > 0 ? attendees : undefined,
           };
-          const result = await client.createLifeOpsCalendarEvent(request);
+          const result =
+            await calendarClient.createLifeOpsCalendarEvent(request);
           if (!result.event) {
             throw new Error("Calendar create returned no event.");
           }
@@ -588,7 +592,7 @@ export function EventEditorDrawer({
           if (didAttendeesChange(form.attendees, event)) {
             patch.attendees = attendeesToContract(form.attendees);
           }
-          const result = await client.updateLifeOpsCalendarEvent(
+          const result = await calendarClient.updateLifeOpsCalendarEvent(
             event.externalId,
             patch,
           );
@@ -634,7 +638,7 @@ export function EventEditorDrawer({
     setDeleting(true);
     setError(null);
     try {
-      await client.deleteLifeOpsCalendarEvent(event.externalId, {
+      await calendarClient.deleteLifeOpsCalendarEvent(event.externalId, {
         side: event.side,
         grantId: event.grantId,
         calendarId: event.calendarId,

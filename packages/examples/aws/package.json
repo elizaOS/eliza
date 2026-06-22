@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/handler.js",
   "scripts": {
-    "build": "bun build handler.ts --outdir=dist --target=node --format=esm --outfile=dist/handler.js --packages=external",
+    "build": "bun build handler.ts --outdir=dist --target=node --format=esm --outfile=dist/handler.js --packages=external --external:@elizaos/core --external:@elizaos/plugin-openai --external:@elizaos/plugin-sql",
     "build:watch": "bun run build --watch",
     "clean": "rm -rf dist",
     "test": "cd ../../.. && bunx tsx packages/examples/aws/test-local.ts",

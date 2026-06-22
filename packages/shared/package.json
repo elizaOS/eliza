@@ -118,6 +118,16 @@
       "import": "./dist/steward-session-client/index.js",
       "default": "./dist/steward-session-client/index.js"
     },
+    "./events": {
+      "types": "./dist/events/index.d.ts",
+      "eliza-source": {
+        "types": "./src/events/index.ts",
+        "import": "./src/events/index.ts",
+        "default": "./src/events/index.ts"
+      },
+      "import": "./dist/events/index.js",
+      "default": "./dist/events/index.js"
+    },
     "./utils/permission-deep-links": {
       "types": "./dist/utils/permission-deep-links.d.ts",
       "eliza-source": {

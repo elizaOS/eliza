@@ -41,7 +41,6 @@ export const createElizaPlugin = noop;
 export const createIntegrationTelemetrySpan = noop;
 export const createZipArchive = noop;
 export const CUSTOM_PLUGINS_DIRNAME = [];
-export const DatabaseSync = noop;
 export const detectEmbeddingTier = noop;
 export const DIRECT_ACCOUNT_PROVIDER_ENV = [];
 export const DIRECT_ACCOUNT_PROVIDER_IDS = [];

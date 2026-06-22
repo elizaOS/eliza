@@ -282,6 +282,7 @@ export * from "./ui/carousel";
 export * from "./ui/chart";
 export * from "./ui/checkbox";
 export * from "./ui/collapsible";
+export * from "./ui/confirm-dialog";
 export {
   ConfirmDialog as ConfirmModal,
   type ConfirmDialogProps as ConfirmModalProps,
@@ -297,19 +298,23 @@ export * from "./ui/input";
 export * from "./ui/input-group";
 export * from "./ui/label";
 export * from "./ui/pagination";
+export * from "./ui/popover";
 export * from "./ui/progress";
 export { SaveFooter as ConfigSaveFooter } from "./ui/save-footer";
 export * from "./ui/scroll-area";
+export * from "./ui/segmented-control";
 export * from "./ui/select";
 export * from "./ui/separator";
 export * from "./ui/skeleton";
 export * from "./ui/skeleton-layouts";
 export * from "./ui/slider";
+export * from "./ui/spinner";
 export * from "./ui/status-badge";
 export * from "./ui/status-badge.helpers";
 export * from "./ui/switch";
 export * from "./ui/table";
 export * from "./ui/tabs";
+export * from "./ui/tag-editor";
 export * from "./ui/textarea";
 export * from "./ui/toggle";
 export * from "./ui/tooltip";

@@ -248,6 +248,14 @@ function Harness(): React.JSX.Element {
     // `?speaking` for the spoken reply, so the trailing control + voice-gating
     // behave exactly as they do in the app.
     responding: phase === "responding" || initialSpeaking,
+    // Rich status (#8813): mirror the real controller's derivation so the
+    // screenshots show the phase-aware indicator. Speaking wins; otherwise a
+    // responding phase reads as "thinking" in the fixture (no token stream).
+    turnStatus: initialSpeaking
+      ? { kind: "speaking" as const }
+      : phase === "responding"
+        ? { kind: "thinking" as const }
+        : null,
     messages,
     canSend: initialCanSend && phase !== "booting",
     recording,

@@ -23,7 +23,8 @@ packages/prompts/
     generate-plugin-action-spec.js  scans plugins/**/*.ts for `export const …: Action`,
                                      merges with core.json → specs/actions/plugins.generated.json
     generate-action-docs.js         reads specs/* → writes packages/core/src/generated/action-docs.ts
-    prompt-compression.js           shrinks long action/provider descriptions (used by docs gen)
+                                     (imports compressPromptDescription from @elizaos/core — the single
+                                     canonical description compressor; no vendored copy in this package)
     check-secrets.js                scans prompt .ts files for embedded secrets/PII
     file-utils.js                   readJson/readText/ensureDirectory helpers for the scripts
   test/prompts.test.js  regression assertions on template wording (bun test)

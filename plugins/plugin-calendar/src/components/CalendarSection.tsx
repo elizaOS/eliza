@@ -14,6 +14,7 @@
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Button,
   Popover,
@@ -21,10 +22,9 @@ import {
   PopoverTrigger,
   SegmentedControl,
   Spinner,
-  useAppSelector,
-  useMediaQuery,
-} from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
+} from "@elizaos/ui/components";
+import { useMediaQuery } from "@elizaos/ui/hooks";
+import { useAppSelector } from "@elizaos/ui/state";
 import { CalendarClock, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {

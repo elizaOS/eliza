@@ -7,9 +7,6 @@ import {
   getAutofillAllowed,
   getSavedLogin,
   type InstallMethod,
-  type LoginListEntry,
-  type LoginListResult,
-  type LoginReveal,
   type ManagerPreferences,
   resolveRunnableMethods,
   type SecretsManager,
@@ -26,6 +23,12 @@ import {
 } from "../services/secrets-manager-installer";
 import { sharedVault } from "../services/vault-mirror";
 import { sendJson, sendJsonError } from "./response";
+
+type LoginListResult = Awaited<
+  ReturnType<SecretsManager["listAllSavedLogins"]>
+>;
+type LoginListEntry = LoginListResult["logins"][number];
+type LoginReveal = Awaited<ReturnType<SecretsManager["revealSavedLogin"]>>;
 
 /**
  * Routes that drive the Settings → Secrets Manager UI.

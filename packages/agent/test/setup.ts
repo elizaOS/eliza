@@ -1,3 +1,8 @@
+import {
+  ReadableStream as NodeReadableStream,
+  TransformStream as NodeTransformStream,
+  WritableStream as NodeWritableStream,
+} from "node:stream/web";
 import { afterAll, afterEach, vi } from "vitest";
 
 // Ensure Vitest environment is properly set
@@ -12,6 +17,23 @@ declare global {
 }
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+// jsdom (used by `.tsx` tests via `// @vitest-environment jsdom`) does not
+// provide the Web Streams API globals. The `ai` SDK references `TransformStream`
+// at module-load time, so polyfill the trio from Node's implementation when the
+// active environment is missing them.
+if (typeof globalThis.TransformStream === "undefined") {
+  globalThis.TransformStream =
+    NodeTransformStream as unknown as typeof globalThis.TransformStream;
+}
+if (typeof globalThis.ReadableStream === "undefined") {
+  globalThis.ReadableStream =
+    NodeReadableStream as unknown as typeof globalThis.ReadableStream;
+}
+if (typeof globalThis.WritableStream === "undefined") {
+  globalThis.WritableStream =
+    NodeWritableStream as unknown as typeof globalThis.WritableStream;
+}
 
 const originalConsoleError = console.error.bind(console);
 

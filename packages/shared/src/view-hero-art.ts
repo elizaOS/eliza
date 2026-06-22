@@ -17,6 +17,8 @@
  * from the runtime-agnostic `@elizaos/shared` barrel (browser + server).
  */
 
+import { hashString } from "./utils/string-hash.js";
+
 const W = 1024;
 const CX = W / 2;
 
@@ -286,14 +288,6 @@ export type ViewHeroIconKind = keyof typeof VIEW_HERO_ICONS;
 const VIEW_HERO_HUES = [
   12, 25, 38, 52, 96, 130, 150, 168, 190, 270, 286, 300, 332, 348,
 ] as const;
-
-function hashString(value: string): number {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) | 0;
-  }
-  return Math.abs(hash);
-}
 
 /** Deterministically pick a non-blue accent hue for an arbitrary view key. */
 export function hueForViewKey(key: string): number {
