@@ -246,19 +246,51 @@ function captureRegionLinux(tmpFile: string, region: ScreenRegion): void {
 
 // ── Windows ─────────────────────────────────────────────────────────────────
 
+/**
+ * Coerce a capture region to integer pixels and reject empty/degenerate sizes.
+ *
+ * `New-Object System.Drawing.Bitmap(w, h)` throws an opaque "Parameter is not
+ * valid" GDI+ error for a zero/negative/non-integer width or height, so we
+ * validate up front and surface a clear message. `x`/`y` may legitimately be
+ * negative — secondary monitors placed left of / above the primary live in the
+ * negative quadrant of the Windows virtual-desktop coordinate space — so only
+ * the dimensions are bounds-checked. Exported for cross-platform unit tests.
+ */
+export function normalizeCaptureRegion(region: ScreenRegion): ScreenRegion {
+  const width = Math.round(region.width);
+  const height = Math.round(region.height);
+  if (!Number.isFinite(width) || !Number.isFinite(height)) {
+    throw new Error(
+      `Invalid capture region: width/height must be finite numbers (got ${region.width}x${region.height}).`,
+    );
+  }
+  if (width <= 0 || height <= 0) {
+    throw new Error(
+      `Invalid capture region: width and height must be positive (got ${width}x${height}).`,
+    );
+  }
+  return {
+    x: Math.round(region.x),
+    y: Math.round(region.y),
+    width,
+    height,
+  };
+}
+
 function captureDisplayWindows(tmpFile: string, display: DisplayInfo): void {
   const [x, y, w, h] = display.bounds;
   captureRegionWindows(tmpFile, { x, y, width: w, height: h });
 }
 
 function captureRegionWindows(tmpFile: string, region: ScreenRegion): void {
+  const safe = normalizeCaptureRegion(region);
   const escapedPath = tmpFile.replace(/\//g, "\\");
   const psCmd = [
     "Add-Type -AssemblyName System.Windows.Forms,System.Drawing",
-    `$bitmap = New-Object System.Drawing.Bitmap(${region.width}, ${region.height})`,
+    `$bitmap = New-Object System.Drawing.Bitmap(${safe.width}, ${safe.height})`,
     "$graphics = [System.Drawing.Graphics]::FromImage($bitmap)",
-    `$origin = New-Object System.Drawing.Point(${region.x}, ${region.y})`,
-    `$size = New-Object System.Drawing.Size(${region.width}, ${region.height})`,
+    `$origin = New-Object System.Drawing.Point(${safe.x}, ${safe.y})`,
+    `$size = New-Object System.Drawing.Size(${safe.width}, ${safe.height})`,
     "$graphics.CopyFromScreen($origin, [System.Drawing.Point]::Empty, $size)",
     `$bitmap.Save('${escapedPath}')`,
     "$graphics.Dispose()",
