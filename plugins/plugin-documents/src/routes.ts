@@ -1,5 +1,6 @@
 import type {
   AgentRuntime,
+  IFileStorageService,
   Memory,
   RouteHelpers,
   RouteRequestContext,
@@ -9,6 +10,7 @@ import {
   __setDocumentUrlFetchImplForTests,
   fetchDocumentFromUrl,
   isYouTubeUrl,
+  ServiceType,
 } from "@elizaos/core";
 import { parseClampedFloat, parsePositiveInteger } from "@elizaos/shared";
 import {
@@ -1032,6 +1034,9 @@ export async function handleDocumentsRoutes(
     warnings?: string[];
   }> {
     let content = document.content;
+    // Capture the bytes exactly as uploaded before any content rewrite (e.g.
+    // image → description text), so the linked original-bytes file is faithful.
+    const originalContent = document.content;
     const originalContentType = document.contentType || "text/plain";
     let contentType = originalContentType;
     const warnings: string[] = [];
@@ -1095,6 +1100,42 @@ export async function handleDocumentsRoutes(
         : actor.entityId;
     const metadata = asRecord(document.metadata);
 
+    // Persist the ORIGINAL uploaded bytes (content-addressed) and link them on
+    // the document record so it stays downloadable/previewable. Best-effort: a
+    // missing service or storage failure must never fail the upload — we log a
+    // warning and proceed without the link.
+    let mediaLink:
+      | { mediaUrl: string; mediaHash: string; mediaFileName: string }
+      | undefined;
+    if (originalContent.length > 0) {
+      try {
+        const fileStorage = runtime?.getService(
+          ServiceType.REMOTE_FILES,
+        ) as IFileStorageService | null;
+        if (fileStorage) {
+          // Text uploads carry UTF-8 text; binary/non-text uploads (images,
+          // PDFs, …) arrive base64-encoded in `content`.
+          const bytes = textBacked
+            ? Buffer.from(originalContent, "utf8")
+            : Buffer.from(originalContent, "base64");
+          const stored = await fileStorage.store(bytes, originalContentType);
+          mediaLink = {
+            mediaUrl: stored.url,
+            mediaHash: stored.hash,
+            mediaFileName: stored.fileName,
+          };
+        }
+      } catch (storageErr) {
+        runtime?.logger?.warn(
+          `[documents] failed to persist original bytes for "${document.filename}": ${
+            storageErr instanceof Error
+              ? storageErr.message
+              : String(storageErr)
+          }`,
+        );
+      }
+    }
+
     const result = await service.addDocument({
       agentId,
       worldId,
@@ -1121,6 +1162,7 @@ export async function handleDocumentsRoutes(
         ...(scopedToEntityId ? { scopedToEntityId } : {}),
         addedBy: actor.entityId,
         addedByRole: routeActorAddedByRole(actor),
+        ...(mediaLink ?? {}),
       },
     });
 
