@@ -42,6 +42,7 @@ import { retrieveActions } from "../runtime/action-retrieval";
 import { resolveActionRolePolicyRole } from "../runtime/action-role-policy";
 import { tierActionResults } from "../runtime/action-tiering";
 import { applyAddressedTo } from "../runtime/addressed-to";
+import { normalizeTopics } from "../runtime/builtin-field-evaluators";
 import {
 	filterByContextGate,
 	satisfiesContextGate,
@@ -231,6 +232,7 @@ import {
 } from "../utils/text-splitting";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
+import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
 import {
 	buildFailureReplyPrompt,
@@ -272,6 +274,7 @@ const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
 	"shouldRespond",
 	"facts",
 	"relationships",
+	"topics",
 	"addressedTo",
 	"emotion",
 ]);
@@ -3476,6 +3479,9 @@ function normalizeRawParsedForFieldRegistry(
 			? extract.addressedTo
 			: [];
 	}
+	if (normalized.topics === undefined) {
+		normalized.topics = Array.isArray(extract?.topics) ? extract.topics : [];
+	}
 	return normalized;
 }
 
@@ -3634,6 +3640,7 @@ export function messageHandlerFromFieldResult(
 				.map((addressed) => String(addressed).trim())
 				.filter(Boolean)
 		: [];
+	const topics = normalizeTopics(result.topics);
 	const preempt = fieldRun?.preempt;
 	const processMessage =
 		preempt?.mode === "ignore"
@@ -3737,8 +3744,11 @@ export function messageHandlerFromFieldResult(
 		plan.candidateActions = planCandidateActions;
 	}
 	const extract =
-		facts.length > 0 || relationships.length > 0 || addressedTo.length > 0
-			? { facts, relationships, addressedTo }
+		facts.length > 0 ||
+		relationships.length > 0 ||
+		addressedTo.length > 0 ||
+		topics.length > 0
+			? { facts, relationships, addressedTo, topics }
 			: undefined;
 	return {
 		processMessage,
@@ -6221,6 +6231,32 @@ export async function runV5MessageRuntimeStage1(args: {
 					"[message] applyAddressedTo failed",
 				);
 			});
+		}
+
+		// Record Stage-1-extracted topics into the per-channel LRU. Pure
+		// fire-and-forget side-effect (like facts/addressedTo): it persists the
+		// room's running topic list for the CHANNEL_TOPICS provider and must
+		// never block or break the turn.
+		const topics = messageHandler.extract?.topics ?? [];
+		if (topics.length > 0 && args.message.roomId) {
+			const channelTopics = args.runtime.getService<ChannelTopicsService>(
+				ChannelTopicsService.serviceType,
+			);
+			if (channelTopics) {
+				void channelTopics
+					.recordTopics(args.message.roomId, topics)
+					.catch((error) => {
+						args.runtime.logger?.warn?.(
+							{
+								err: error,
+								messageId: args.message.id,
+								roomId: args.message.roomId,
+								topicCount: topics.length,
+							},
+							"[message] recordTopics failed",
+						);
+					});
+			}
 		}
 
 		const responseHandlerEvaluation = fieldRunResult?.preempt

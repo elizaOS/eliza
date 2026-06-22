@@ -5,6 +5,7 @@ import type {
 	MessageHandlerResult,
 } from "../types/components";
 import type { AgentContext } from "../types/contexts";
+import { normalizeTopics } from "./builtin-field-evaluators";
 import { parseJsonObject, stripJsonStructuralJunkReply } from "./json-output";
 import {
 	looksLikeNonRefusalStage1HonestyViolation,
@@ -174,10 +175,12 @@ function parseExtract(raw: unknown): MessageHandlerExtract | undefined {
 				.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
 				.filter((entry): entry is string => entry.length > 0)
 		: [];
+	const topics = normalizeTopics(source.topics);
 	if (
 		facts.length === 0 &&
 		relationships.length === 0 &&
-		addressedTo.length === 0
+		addressedTo.length === 0 &&
+		topics.length === 0
 	) {
 		return undefined;
 	}
@@ -185,6 +188,7 @@ function parseExtract(raw: unknown): MessageHandlerExtract | undefined {
 	if (facts.length > 0) result.facts = facts;
 	if (relationships.length > 0) result.relationships = relationships;
 	if (addressedTo.length > 0) result.addressedTo = addressedTo;
+	if (topics.length > 0) result.topics = topics;
 	return result;
 }
 

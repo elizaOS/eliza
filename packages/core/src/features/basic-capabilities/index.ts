@@ -19,6 +19,7 @@ import {
 	postCreationTemplate,
 } from "../../prompts.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes";
+import { ChannelTopicsService } from "../../services/channel-topics.ts";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
@@ -117,6 +118,7 @@ import { linkExtractionEvaluator } from "./evaluators/link-extraction.ts";
 import { actionStateProvider } from "./providers/actionState.ts";
 import { actionsProvider } from "./providers/actions.ts";
 import { attachmentsProvider } from "./providers/attachments.ts";
+import { channelTopicsProvider } from "./providers/channelTopics.ts";
 import { characterProvider } from "./providers/character.ts";
 import { choiceProvider } from "./providers/choice.ts";
 import { contextBenchProvider } from "./providers/contextBench.ts";
@@ -1232,6 +1234,7 @@ export const basicProviders = [
 	actionsProvider,
 	actionStateProvider,
 	attachmentsProvider,
+	channelTopicsProvider,
 	characterProvider,
 	choiceProvider,
 	contextBenchProvider,
@@ -1288,6 +1291,9 @@ export const basicServices: ServiceClass[] = [
 	// in-memory cache; registering it on every runtime so the planner-loop
 	// can pick up artifacts produced by `bun run train -- --backend native`.
 	OptimizedPromptService,
+	// Per-channel topic LRU. Records Stage-1-extracted topics per room and
+	// surfaces them back into routing via the CHANNEL_TOPICS provider.
+	ChannelTopicsService,
 ];
 
 /**
@@ -1422,6 +1428,7 @@ export function createBasicCapabilitiesPlugin(
 			await runtime.getService(EmbeddingGenerationService.serviceType)?.stop();
 			await runtime.getService(EvaluatorService.serviceType)?.stop();
 			await runtime.getService(OptimizedPromptService.serviceType)?.stop();
+			await runtime.getService(ChannelTopicsService.serviceType)?.stop();
 			if (config.enableAutonomy) {
 				await runtime.getService(AutonomyService.serviceType)?.stop();
 			}

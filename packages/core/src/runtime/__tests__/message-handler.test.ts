@@ -196,6 +196,7 @@ describe("v5 message handler routing", () => {
 			"candidateActionNames",
 			"facts",
 			"relationships",
+			"topics",
 			"addressedTo",
 			"emotion",
 		]);
@@ -207,6 +208,7 @@ describe("v5 message handler routing", () => {
 			"candidateActionNames",
 			"facts",
 			"relationships",
+			"topics",
 			"addressedTo",
 			"emotion",
 		]);
