@@ -21,9 +21,9 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
-import { runV5MessageRuntimeStage1 } from "../services/message";
-import type { V5MessageRuntimeStage1Result } from "../services/message";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+import type { V5MessageRuntimeStage1Result } from "../services/message";
+import { runV5MessageRuntimeStage1 } from "../services/message";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
@@ -95,7 +95,8 @@ function respondFixture() {
 }
 
 function makeAgentRuntime(agentName: string): IAgentRuntime {
-	const agentId = `00000000-0000-0000-0000-0000000000a${agentName.length}` as UUID;
+	const agentId =
+		`00000000-0000-0000-0000-0000000000a${agentName.length}` as UUID;
 	const queue: unknown[] = [respondFixture()];
 
 	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
@@ -156,9 +157,9 @@ describe("multi-agent VOICE_GROUP turn-taking through the Stage-1 pipeline (#878
 
 		// The addressed agent is NOT suppressed: it reaches a real reply.
 		expect(isIgnore(eliza)).toBe(false);
-		expect(eliza.kind === "direct_reply" || eliza.kind === "planned_reply").toBe(
-			true,
-		);
+		expect(
+			eliza.kind === "direct_reply" || eliza.kind === "planned_reply",
+		).toBe(true);
 
 		// The two un-addressed agents defer via core.voice_group_address.
 		expect(isIgnore(claude)).toBe(true);

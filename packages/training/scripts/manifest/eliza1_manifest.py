@@ -37,9 +37,20 @@ ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
 )
 ELIZA_1_HF_REPO: Final[str] = "elizaos/eliza-1"
 
+# Tokenizer identity for the Gemma 4 Eliza-1 line. Mirrors schema.ts
+# (ELIZA_1_TOKENIZER_FAMILY / ELIZA_1_TOKENIZER_VOCAB_SIZE). Stamped into the
+# emitted manifest by build_manifest() so the bundle records its tokenizer.
+ELIZA_1_TOKENIZER_FAMILY: Final[str] = "gemma"
+ELIZA_1_TOKENIZER_VOCAB_SIZE: Final[int] = 262_144
+
+# Gemma 4 KV-cache policy (MQA + windowed-SWA + shared-KV → stock q8_0; no
+# QJL/Polar) and MTP shape (a separate drafter GGUF, not an embedded NextN
+# head). Stamped into the manifest alongside the tokenizer block.
+ELIZA_1_KV_POLICY: Final[str] = "stock-q8_0"
+ELIZA_1_MTP_MODE: Final[str] = "separate-drafter"
+
 # The canonical current Eliza-1 release tiers.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
-    "0_8b",
     "2b",
     "4b",
     "9b",
@@ -124,11 +135,6 @@ QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT: Final[Mapping[str, tuple[str, ...]]] = {
     "embedding": QWEN3_EMBEDDING_GGUF_REPOS,
 }
 CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": (
-        "google/gemma-4-E2B",
-        "google/gemma-4-E2B-Base",
-        "unsloth/gemma-4-E2B-GGUF",
-    ),
     "2b": (
         "google/gemma-4-E2B",
         "google/gemma-4-E2B-Base",
@@ -153,13 +159,14 @@ CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     ),
 }
 
+# Gemma 4 drops QJL/Polar (its KV is MQA + windowed-SWA + shared-KV, stock
+# q8_0). Matches schema.ts REQUIRED_KERNELS_BY_TIER for the Gemma cutover.
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
-    "2b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
-    "4b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
-    "9b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
-    "27b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
-    "27b-256k": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
+    "2b": ("turboquant_q4", "turbo3_tcq"),
+    "4b": ("turboquant_q4", "turbo3_tcq"),
+    "9b": ("turboquant_q4", "turbo3_tcq"),
+    "27b": ("turboquant_q4", "turbo3_tcq"),
+    "27b-256k": ("turboquant_q4", "turbo3_tcq"),
 }
 
 RECIPE_TARGETS_BY_REQUIRED_KERNEL: Final[Mapping[str, tuple[str, ...]]] = {
@@ -171,7 +178,6 @@ RECIPE_TARGETS_BY_REQUIRED_KERNEL: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("metal", "vulkan", "cpu"),
     "2b": ("metal", "vulkan", "cpu"),
     "4b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
@@ -183,7 +189,6 @@ ELIZA_1_MTP_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
-    "0_8b": "Q4_K_M",
     "2b": "Q4_K_M",
     "4b": "Q4_K_M",
     "9b": "Q8_0",
@@ -197,7 +202,6 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 # the appropriate level from this ladder at install time based on the
 # host's RAM/SoC class (no silent fallback — AGENTS.md §3).
 VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
     "2b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
     "4b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
     "9b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
@@ -206,7 +210,6 @@ VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("omnivoice", "kokoro"),
     "2b": ("omnivoice", "kokoro"),
     "4b": ("omnivoice", "kokoro"),
     "9b": ("omnivoice", "kokoro"),
@@ -225,7 +228,7 @@ def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
     """Return the frozen TTS artifacts required for ``tier``.
 
     Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
-    release line mirrors the staged release contract: 0_8b/2b/4b/9b bundle
+    release line mirrors the staged release contract: 2b/4b/9b bundle
     OmniVoice with Kokoro fallback, and 27B-class tiers ship OmniVoice only.
     """
 
@@ -1121,6 +1124,29 @@ def validate_manifest(
                             f"voice.capabilities: unknown capability {capability!r}"
                         )
 
+    # ── tokenizer / kv / mtp identity (Gemma cutover) ───────────────────
+    # Optional blocks, but when present they must declare the Gemma values
+    # (mirrors schema.ts). build_manifest() always stamps them.
+    tokenizer = manifest.get("tokenizer")
+    if tokenizer is not None:
+        if not _is_object(tokenizer):
+            errors.append("tokenizer: must be an object when present")
+        else:
+            if tokenizer.get("family") != ELIZA_1_TOKENIZER_FAMILY:
+                errors.append(
+                    f"tokenizer.family: must be {ELIZA_1_TOKENIZER_FAMILY!r}"
+                )
+            if tokenizer.get("vocabSize") != ELIZA_1_TOKENIZER_VOCAB_SIZE:
+                errors.append(
+                    f"tokenizer.vocabSize: must be {ELIZA_1_TOKENIZER_VOCAB_SIZE}"
+                )
+    kv = manifest.get("kv")
+    if kv is not None and kv != ELIZA_1_KV_POLICY:
+        errors.append(f"kv: must be {ELIZA_1_KV_POLICY!r} when present")
+    mtp_mode = manifest.get("mtp")
+    if mtp_mode is not None and mtp_mode != ELIZA_1_MTP_MODE:
+        errors.append(f"mtp: must be {ELIZA_1_MTP_MODE!r} when present")
+
     # ── provenance (release-state + per-component source model) ─────────
     # Optional. Present on `base-v1` bundles so the "base, not fine-tuned"
     # plan is auditable from the manifest itself: which upstream repo each
@@ -1524,6 +1550,10 @@ def build_manifest(
     #                     "voice": {"repo": "Serveurperso/OmniVoice-GGUF"}, ...}}
     provenance: Mapping[str, Any] | None = None,
     bundle_id: str | None = None,
+    # Tokenizer identity stamped into the manifest. Defaults to the Gemma 4
+    # constants (mirrors schema.ts ELIZA_1_TOKENIZER_FAMILY / VOCAB_SIZE).
+    tokenizer_family: str = ELIZA_1_TOKENIZER_FAMILY,
+    tokenizer_vocab_size: int = ELIZA_1_TOKENIZER_VOCAB_SIZE,
     require_publish_ready: bool = True,
 ) -> dict[str, Any]:
     """Assemble a manifest dict from typed inputs and validate it.
@@ -1535,6 +1565,21 @@ def build_manifest(
 
     if tier not in ELIZA_1_TIERS:
         raise Eliza1ManifestError([f"tier: unknown tier {tier!r}"])
+
+    if tokenizer_family != ELIZA_1_TOKENIZER_FAMILY:
+        raise Eliza1ManifestError(
+            [
+                "tokenizer_family: must be "
+                f"{ELIZA_1_TOKENIZER_FAMILY!r}, got {tokenizer_family!r}"
+            ]
+        )
+    if tokenizer_vocab_size != ELIZA_1_TOKENIZER_VOCAB_SIZE:
+        raise Eliza1ManifestError(
+            [
+                "tokenizer_vocab_size: must be "
+                f"{ELIZA_1_TOKENIZER_VOCAB_SIZE}, got {tokenizer_vocab_size}"
+            ]
+        )
 
     if bundle_id is None:
         bundle_id = f"eliza-1-{tier}"
@@ -1642,6 +1687,14 @@ def build_manifest(
             },
         },
         "evals": evals,
+        # Gemma cutover identity: tokenizer family/vocab, KV-cache policy
+        # (stock q8_0 — no QJL/Polar), and the separate-drafter MTP shape.
+        "tokenizer": {
+            "family": tokenizer_family,
+            "vocabSize": tokenizer_vocab_size,
+        },
+        "kv": ELIZA_1_KV_POLICY,
+        "mtp": ELIZA_1_MTP_MODE,
     }
     # Recipe-level kernel layout pins. Accept either pre-merged
     # ``recipe_manifest`` or raw ``kernel_manifest_fragments`` (the sidecar

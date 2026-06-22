@@ -24,10 +24,12 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
-import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../services/message";
-import { runV5MessageRuntimeStage1 } from "../services/message";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+import {
+	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
+	runV5MessageRuntimeStage1,
+} from "../services/message";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
@@ -218,9 +220,9 @@ async function tracePipeline(channelType: ChannelType): Promise<PipelineTrace> {
 	});
 	// Both transports must reach a real reply (RESPOND), never a terminal IGNORE
 	// — otherwise "parity" would be the trivial parity of two short-circuits.
-	expect(result.kind === "direct_reply" || result.kind === "planned_reply").toBe(
-		true,
-	);
+	expect(
+		result.kind === "direct_reply" || result.kind === "planned_reply",
+	).toBe(true);
 	return {
 		providers: uniqueSorted(trace.providers),
 		actionModes: uniqueSorted(trace.actionModes),

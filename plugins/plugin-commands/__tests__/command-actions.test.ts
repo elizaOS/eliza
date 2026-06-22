@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
 	commandActions,
 	commandShortcuts,
-	explicitCommandShortcuts,
 	dispatchCommandMessage,
+	explicitCommandShortcuts,
 	getCommandSettings,
 	naturalShortcuts,
 	resolveCommand,

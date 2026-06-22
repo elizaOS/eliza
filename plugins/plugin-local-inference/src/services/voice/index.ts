@@ -372,6 +372,11 @@ export {
 	voiceEnsembleSteadyStateMb,
 } from "./voice-budget";
 export {
+	type ArbiterPreloader,
+	VoicePreloadPredictor,
+	type VoicePreloadPredictorOptions,
+} from "./voice-preload-predictor";
+export {
 	readVoicePresetFile,
 	VOICE_PRESET_MAGIC,
 	type VoicePresetFile,
@@ -405,11 +410,6 @@ export {
 	type VoiceStateMachineEvents,
 	type VoiceStateMachineOptions,
 } from "./voice-state-machine";
-export {
-	type ArbiterPreloader,
-	VoicePreloadPredictor,
-	type VoicePreloadPredictorOptions,
-} from "./voice-preload-predictor";
 export {
 	GgmlWakeWordModel,
 	isPlaceholderWakeWordHead,

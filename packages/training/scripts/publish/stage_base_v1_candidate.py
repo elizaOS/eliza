@@ -47,7 +47,6 @@ REQUIRED_KERNELS_BY_TIER = {
     for tier in M.ELIZA_1_TIERS
 }
 RAM_BUDGET_MB = {
-    "0_8b": (2500, 3700),
     "2b": (4000, 5500),
     "4b": (6000, 8000),
     "9b": (12000, 18000),
@@ -55,7 +54,6 @@ RAM_BUDGET_MB = {
 }
 # Per-tier upstream text base used by lineage and README/provenance prose.
 TEXT_BASE_BY_TIER = {
-    "0_8b": "google/gemma-4-E2B",
     "2b": "google/gemma-4-E2B",
     "4b": "google/gemma-4-E4B",
     "9b": "google/gemma-4-12B",
@@ -69,9 +67,15 @@ TEXT_CTX_BY_TIER = {
     tier: M.parse_ctx_string(ctx)
     for tier, ctx in TEXT_CONTEXT_BY_TIER.items()
 }
+# The only local 2b drafter is the Gemma-4 E4B MTP drafter extracted from
+# LiteRT (`shadowlilac/gemma-4-e4b-mtp-extraction-effort`). It shares the
+# 262144-token Gemma-4 tokenizer with the E2B text target so speculative
+# decoding is correct, but it is the E4B head (external_hidden_size 2560),
+# not an E2B-matched drafter — a tokenizer-compatible *smoke* drafter only.
+# That tier mismatch makes the bundle candidate-only (defaultEligible=False);
+# the orchestrator's `drafter.matchesTargetCheckpoint` gate is FALSE here.
 DRAFTER_SOURCE_BY_TIER = {
-    "0_8b": None,
-    "2b": None,
+    "2b": "shadowlilac/gemma-4-e4b-mtp-extraction-effort",
     "4b": "z-lab/gemma-4-E4B-MTP",
     "9b": "z-lab/gemma-4-12B-MTP",
     "27b": "spiritbuun/gemma-4-31B-MTP-GGUF",
@@ -225,6 +229,30 @@ def main(argv: list[str] | None = None) -> int:
     drafter_dest = out / "mtp" / f"drafter-{tier}.gguf"
     shutil.copy2(args.drafter_gguf, drafter_dest)
     drafter_sha = sha256_file(drafter_dest)
+    # The only local 2b drafter is the E4B-extracted MTP head, staged on the
+    # E2B text target: a tokenizer-compatible *smoke* drafter, not an
+    # E2B-matched one. Record the tier mismatch so the orchestrator's
+    # `matchesTargetCheckpoint` gate stays FALSE (candidate-only).
+    drafter_is_smoke = tier == "2b"
+    drafter_note = (
+        f"MTP drafter for the {tier} Gemma 4 text target. "
+        "It must share the 262144-token Gemma 4 tokenizer with the target "
+        "so speculative decoding is correct. "
+    )
+    if drafter_is_smoke:
+        drafter_note += (
+            "This is the E4B-extracted MTP drafter "
+            f"({drafter_source}, external_hidden_size 2560) staged on the E2B "
+            "text target as a tokenizer-compatible SMOKE drafter — a tier "
+            "mismatch, NOT an E2B-matched release drafter. The bundle is "
+            "candidate-only (defaultEligible=false); a real release needs an "
+            "E2B-matched drafter."
+        )
+    else:
+        drafter_note += (
+            "See the drafter source repo for whether this candidate is distilled "
+            "or a tokenizer-compatible smoke artifact."
+        )
     (out / "mtp" / "target-meta.json").write_text(json.dumps({
         "schemaVersion": 2,
         "tier": tier,
@@ -240,13 +268,9 @@ def main(argv: list[str] | None = None) -> int:
             "path": f"mtp/drafter-{tier}.gguf",
             "sha256": drafter_sha,
             "source": drafter_source,
-            "note": (
-                f"MTP drafter for the {tier} Gemma 4 text target. "
-                "It must share the 262144-token Gemma 4 tokenizer with the target "
-                "so speculative decoding is correct. See the drafter source repo "
-                "for whether this candidate is distilled or a tokenizer-compatible "
-                "smoke artifact."
-            ),
+            "matchesTargetCheckpoint": not drafter_is_smoke,
+            "tokenizerVocabSize": 262144,
+            "note": drafter_note,
         },
         "acceptanceWindow": None,
         "acceptanceRate": None,

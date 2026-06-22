@@ -50,7 +50,7 @@ log = logging.getLogger("deprecate_legacy_qwen3_repos")
 
 ORG: Final[str] = "elizaos"
 
-DEPRECATED_BUNDLE_TIERS: Final[tuple[str, ...]] = ("0_6b", "1_7b", "4b")
+DEPRECATED_BUNDLE_TIERS: Final[tuple[str, ...]] = ("0_6b", "0_8b", "1_7b")
 DEPRECATED_COMPANION_SUFFIXES: Final[tuple[str, ...]] = ("optimized", "drafter", "sft")
 
 # Cards for the model-bundle repos (manifest + GGUF parent repo for the tier).

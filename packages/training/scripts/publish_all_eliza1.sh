@@ -21,7 +21,7 @@
 # tts/, asr/, vision/, mtp/, cache/, evals/, licenses/).
 #
 # Metal verification is hardware-only. To publish a tier that includes
-# the Metal backend (0_8b, 2b, 4b, 9b, 27b) you
+# the Metal backend (2b, 4b, 9b, 27b, 27b-256k) you
 # must record a metal_verify.json on a verified host (run
 # packages/inference/verify/metal_verify there) and pass it via
 # --metal-verification-<tier> PATH OR by placing it at
@@ -45,17 +45,17 @@ readonly TRAINING_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${TRAINING_ROOT}"
 
-readonly TIERS=("0_8b" "2b" "4b" "9b" "27b")
+readonly TIERS=("2b" "4b" "9b" "27b" "27b-256k")
 
 DRY_RUN=0
 PUBLIC=0
 FILTER_TIER=""
 BUNDLES_ROOT=""
-METAL_PATH_0_8B=""
 METAL_PATH_2B=""
 METAL_PATH_4B=""
 METAL_PATH_9B=""
 METAL_PATH_27B=""
+METAL_PATH_27B_256K=""
 
 usage() {
   sed -n '2,40{s/^# //;s/^#//;p;}' "${SCRIPT_PATH}"
@@ -67,11 +67,11 @@ while [[ $# -gt 0 ]]; do
     --public)             PUBLIC=1; shift ;;
     --filter-tier)        FILTER_TIER="$2"; shift 2 ;;
     --bundles-root)       BUNDLES_ROOT="$2"; shift 2 ;;
-    --metal-verification-0_8b)    METAL_PATH_0_8B="$2"; shift 2 ;;
-    --metal-verification-2b)      METAL_PATH_2B="$2"; shift 2 ;;
-    --metal-verification-4b)      METAL_PATH_4B="$2"; shift 2 ;;
-    --metal-verification-9b)      METAL_PATH_9B="$2"; shift 2 ;;
-    --metal-verification-27b)     METAL_PATH_27B="$2"; shift 2 ;;
+    --metal-verification-2b)        METAL_PATH_2B="$2"; shift 2 ;;
+    --metal-verification-4b)        METAL_PATH_4B="$2"; shift 2 ;;
+    --metal-verification-9b)        METAL_PATH_9B="$2"; shift 2 ;;
+    --metal-verification-27b)       METAL_PATH_27B="$2"; shift 2 ;;
+    --metal-verification-27b-256k)  METAL_PATH_27B_256K="$2"; shift 2 ;;
     -h|--help)            usage; exit 0 ;;
     *)
       echo "unknown arg: $1" >&2
@@ -107,11 +107,11 @@ RESULTS=()
 
 metal_path_for_tier() {
   case "$1" in
-    0_8b)      printf '%s' "${METAL_PATH_0_8B}" ;;
     2b)        printf '%s' "${METAL_PATH_2B}" ;;
     4b)        printf '%s' "${METAL_PATH_4B}" ;;
     9b)        printf '%s' "${METAL_PATH_9B}" ;;
     27b)       printf '%s' "${METAL_PATH_27B}" ;;
+    27b-256k)  printf '%s' "${METAL_PATH_27B_256K}" ;;
     *)         printf '%s' "" ;;
   esac
 }

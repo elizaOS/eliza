@@ -16,11 +16,7 @@ import path from "node:path";
 import { findCatalogModel, isDefaultEligibleId } from "./catalog";
 import { localInferenceRoot } from "./paths";
 import { listInstalledModels } from "./registry";
-import type {
-	AgentModelSlot,
-	InstalledModel,
-	ModelAssignments,
-} from "./types";
+import type { AgentModelSlot, InstalledModel, ModelAssignments } from "./types";
 
 const ASSIGNMENTS_FILENAME = "assignments.json";
 
