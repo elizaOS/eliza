@@ -770,7 +770,10 @@ export class SubAgentRouter extends Service {
     // with an empty completion. Gated to a single short block so multi-KB
     // transcripts stay on the model-rendered (summarized) path.
     let deliverable: string | undefined;
-    if (event === "task_complete" && !changeSet && verifiedUrls.length === 0) {
+    // Capture the deliverable even when files changed: a "do X and report the
+    // output" task that also writes a file must still surface the output, not
+    // only the diff summary. The verifiedUrls path keeps its dedicated handling.
+    if (event === "task_complete" && verifiedUrls.length === 0) {
       deliverable = extractShortToolDeliverable(data);
     }
     // Verify-retry: the sub-agent reported done but referenced URLs that
@@ -2014,7 +2017,15 @@ function composeNarration(
     // Preserve any deployed URL the sub-agent claimed so the downstream
     // reachability verification still runs.
     const urls = collectVerifiableUrlCandidates(response ?? "");
+    // A file write must not swallow the answer the user asked for: when the
+    // sub-agent captured a concrete deliverable (e.g. a script's stdout for a
+    // "run it and report the output" task), surface it ABOVE the change
+    // summary. This is the typed `[tool output: …]` envelope, not the raw
+    // transcript, so the leak/respawn problems the diff-summary path solved
+    // stay solved.
+    const capturedDeliverable = extractShortToolDeliverable(data);
     const lines = [
+      ...(capturedDeliverable ? [capturedDeliverable] : []),
       summarizeChangeSet(changeSet),
       changeSet.diffStat,
       ...urls,
