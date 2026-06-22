@@ -3,9 +3,9 @@ import {
   Button,
   client,
   registerDetailExtension,
-  useAppSelector,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { useAppSelector } from "@elizaos/ui/state";
 import type {
   HuggingFaceDatasetIngestResponse,
   ListTrainingCollectionsResponse,
