@@ -214,6 +214,52 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 		assertions: { minEchoRejectionRate: 1, minRespondAccuracy: 0.9 },
 	},
 	{
+		id: "multi-speaker-name-capture",
+		description:
+			"Two new people in the room introduce themselves; each name is captured and bound to a distinct entity, separate from the owner.",
+		classes: [
+			"diarization",
+			"entity-extraction",
+			"multi-speaker",
+			"voice-recognition",
+		],
+		knownSpeakerEntityIds: ["entity-owner", "entity-marcus", "entity-priya"],
+		participants: [
+			{ label: "owner", entityId: "entity-owner", isOwner: true },
+			{ label: "marcus", entityId: "entity-marcus" },
+			{ label: "priya", entityId: "entity-priya" },
+		],
+		turns: [
+			{
+				speaker: "owner",
+				text: "Eliza meet my two coworkers",
+				expectRespond: true,
+			},
+			{
+				speaker: "marcus",
+				text: "hey Eliza I am Marcus good to meet you",
+				expectRespond: true,
+				expectedEntity: "entity-marcus",
+			},
+			{
+				speaker: "priya",
+				text: "Eliza I am Priya from the design team",
+				expectRespond: true,
+				expectedEntity: "entity-priya",
+			},
+			{
+				speaker: "owner",
+				text: "Eliza remember them for later",
+				expectRespond: true,
+			},
+		],
+		assertions: {
+			minRespondAccuracy: 0.9,
+			maxDer: 0.2,
+			minVoiceEntityMatchRate: 0.9,
+		},
+	},
+	{
 		id: "echo-mistranscribed",
 		description:
 			"The agent's echo is mis-transcribed (no word overlap); the ACOUSTIC self-voice gate still rejects it.",

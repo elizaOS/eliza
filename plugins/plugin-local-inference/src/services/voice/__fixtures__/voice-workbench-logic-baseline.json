@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "overall": "pass",
-  "scenariosTotal": 13,
-  "scenariosRan": 13,
+  "scenariosTotal": 14,
+  "scenariosRan": 14,
   "scenariosSkipped": 0,
   "scenarios": [
     {
@@ -117,6 +117,19 @@
       "failedCaseKinds": []
     },
     {
+      "scenarioId": "multi-speaker-name-capture",
+      "classes": [
+        "diarization",
+        "entity-extraction",
+        "multi-speaker",
+        "voice-recognition"
+      ],
+      "status": "ran",
+      "verdict": "pass",
+      "caseCount": 13,
+      "failedCaseKinds": []
+    },
+    {
       "scenarioId": "echo-mistranscribed",
       "classes": [
         "echo-rejection"
@@ -152,39 +165,39 @@
   ],
   "metrics": {
     "wer": {
-      "count": 28,
+      "count": 32,
       "mean": 0,
       "worst": 0
     },
     "eotFalseTriggerRate": {
-      "count": 13,
+      "count": 14,
       "mean": 0,
       "worst": 0
     },
     "eotLatencyP50Ms": null,
     "eotLatencyP95Ms": null,
     "der": {
-      "count": 13,
+      "count": 14,
       "mean": 0,
       "worst": 0
     },
     "respondAccuracy": {
-      "count": 13,
+      "count": 14,
       "mean": 1,
       "worst": 1
     },
     "entityF1": {
-      "count": 1,
+      "count": 2,
       "mean": 1,
       "worst": 1
     },
     "voiceEntityMatchRate": {
-      "count": 13,
+      "count": 14,
       "mean": 1,
       "worst": 1
     },
     "firstAudioMs": {
-      "count": 22,
+      "count": 26,
       "mean": 250,
       "worst": 250
     },
