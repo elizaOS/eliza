@@ -51,12 +51,14 @@ observes capacity pressure and provisions a node without a manually enqueued
 provision job — closing the gap between "tick is observable" and "tick grows the
 pool".
 
-### #8921 — `cloud:mock --with-daemon`
+### #8921 — `cloud:mock --with-daemon` ✅ implemented
 
-The mock stack has no long-running autoscale daemon; the test drives ticks
-explicitly. #8921 would add a `--with-daemon` mode to `cloud:mock` that runs the
-autoscale/hot-pool daemons on their real intervals against the mock stack, so the
-loop can assert daemon-driven (not test-driven) pool maintenance over time.
+`cloud:mock --with-daemon` (`scripts/cloud/mock-stack-up.mjs`) runs the
+autoscale / hot-pool / pool-replenish cron loops on real intervals against the
+mock stack — POSTing each `/v1/cron/*` endpoint with the `CRON_SECRET` bearer on
+a `DAEMON_TICK_MS` cadence (default 15s, fires once immediately). The pool is
+then maintained by the daemon, not by test-enqueued ticks, so the loop can
+assert daemon-driven pool maintenance over time. Timers are cleared on shutdown.
 
 ### #8922 — Stripe Connect fiat payout
 

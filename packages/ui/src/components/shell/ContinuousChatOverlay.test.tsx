@@ -69,6 +69,9 @@ function makeController(
     setTranscriptSessionSink: vi.fn(),
     setComposerHasDraft: vi.fn(),
     clearConversation: vi.fn(),
+    // A mic tap while transcribing routes through this (the mic is the master
+    // voice control); the real controller always supplies it, so the mock must.
+    stopTranscriptionAndMic: vi.fn(),
     ...overrides,
   } as unknown as ShellController;
 }
