@@ -123,7 +123,7 @@ describe("createPreEditSnapshot", () => {
 		// The snapshot must stage everything and commit with --no-verify (skip
 		// hooks) + --allow-empty (no diff still produces a snapshot point).
 		const addCall = calls.find((c) => c.args[0] === "add");
-		expect(addCall?.args).toEqual(["add", "-A"]);
+		expect(addCall?.args).toEqual(["add", "-A", "--", "."]);
 		const commitCall = calls.find((c) => c.args[0] === "commit");
 		expect(commitCall?.args).toContain("--no-verify");
 		expect(commitCall?.args).toContain("--allow-empty");
@@ -144,17 +144,23 @@ describe("createPreEditSnapshot", () => {
 });
 
 describe("rollbackToSnapshot", () => {
-	it("runs git reset --hard <sha> in the workdir", async () => {
+	it("restores ONLY the workdir (checkout + clean, never reset --hard)", async () => {
 		const sha = "abc1234";
 		const { git, calls } = fakeGit({
 			"rev-parse:--is-inside-work-tree": { stdout: "true\n" },
-			reset: {},
+			checkout: {},
+			clean: {},
 		});
 		const result = await rollbackToSnapshot("/work/dir", sha, { git });
 		expect(result).toEqual({ ok: true, sha });
-		const resetCall = calls.find((c) => c.args[0] === "reset");
-		expect(resetCall?.args).toEqual(["reset", "--hard", sha]);
-		expect(resetCall?.cwd).toBe("/work/dir");
+		// A repo-wide `git reset --hard` would discard unrelated uncommitted work.
+		expect(calls.some((c) => c.args[0] === "reset")).toBe(false);
+		const checkoutCall = calls.find((c) => c.args[0] === "checkout");
+		expect(checkoutCall?.args).toEqual(["checkout", sha, "--", "."]);
+		expect(checkoutCall?.cwd).toBe("/work/dir");
+		const cleanCall = calls.find((c) => c.args[0] === "clean");
+		expect(cleanCall?.args).toEqual(["clean", "-fd", "--", "."]);
+		expect(cleanCall?.cwd).toBe("/work/dir");
 	});
 
 	it("refuses an invalid sha without touching git", async () => {
@@ -164,14 +170,14 @@ describe("rollbackToSnapshot", () => {
 		expect(calls).toHaveLength(0);
 	});
 
-	it("surfaces a git reset failure", async () => {
+	it("surfaces a git checkout failure", async () => {
 		const { git } = fakeGit({
 			"rev-parse:--is-inside-work-tree": { stdout: "true\n" },
-			reset: { exitCode: 1, stderr: "unknown revision" },
+			checkout: { exitCode: 1, stderr: "unknown revision" },
 		});
 		const result = await rollbackToSnapshot("/work/dir", "abc1234", { git });
 		expect(result.ok).toBe(false);
-		if (!result.ok) expect(result.reason).toContain("git reset --hard failed");
+		if (!result.ok) expect(result.reason).toContain("git checkout");
 	});
 });
 
@@ -285,7 +291,8 @@ describe("runViewsRollback", () => {
 		const runtime = createRuntime(tasks);
 		const { git, calls } = fakeGit({
 			"rev-parse:--is-inside-work-tree": { stdout: "true\n" },
-			reset: {},
+			checkout: {},
+			clean: {},
 		});
 		const reregister = vi.fn(async () => ({
 			ok: true,
@@ -303,10 +310,11 @@ describe("runViewsRollback", () => {
 		});
 
 		expect(result.success).toBe(true);
-		// reset --hard <sha> ran in the recorded workdir.
-		const resetCall = calls.find((c) => c.args[0] === "reset");
-		expect(resetCall?.args).toEqual(["reset", "--hard", sha]);
-		expect(resetCall?.cwd).toBe("/repo/plugins/plugin-habits");
+		// scoped checkout restored the recorded workdir (never reset --hard).
+		expect(calls.some((c) => c.args[0] === "reset")).toBe(false);
+		const checkoutCall = calls.find((c) => c.args[0] === "checkout");
+		expect(checkoutCall?.args).toEqual(["checkout", sha, "--", "."]);
+		expect(checkoutCall?.cwd).toBe("/repo/plugins/plugin-habits");
 		// re-registration was triggered with the same workdir.
 		expect(reregister).toHaveBeenCalledWith("/repo/plugins/plugin-habits");
 		// the consumed snapshot record was deleted.
@@ -338,7 +346,8 @@ describe("runViewsRollback", () => {
 		const runtime = createRuntime([]);
 		const { git, calls } = fakeGit({
 			"rev-parse:--is-inside-work-tree": { stdout: "true\n" },
-			reset: {},
+			checkout: {},
+			clean: {},
 		});
 		const reregister = vi.fn(async () => ({ ok: true }));
 		const result = await runViewsRollback({
@@ -350,8 +359,8 @@ describe("runViewsRollback", () => {
 			reregister,
 		});
 		expect(result.success).toBe(true);
-		const resetCall = calls.find((c) => c.args[0] === "reset");
-		expect(resetCall?.args).toEqual(["reset", "--hard", "cafe123"]);
+		const checkoutCall = calls.find((c) => c.args[0] === "checkout");
+		expect(checkoutCall?.args).toEqual(["checkout", "cafe123", "--", "."]);
 		expect(reregister).toHaveBeenCalledWith("/explicit/dir");
 	});
 
@@ -372,7 +381,8 @@ describe("runViewsRollback", () => {
 		const runtime = createRuntime(tasks);
 		const { git } = fakeGit({
 			"rev-parse:--is-inside-work-tree": { stdout: "true\n" },
-			reset: {},
+			checkout: {},
+			clean: {},
 		});
 		const reregister = vi.fn(async () => ({
 			ok: false,
