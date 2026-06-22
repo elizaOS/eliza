@@ -10,6 +10,7 @@ import {
   addSessionSpendUsd,
   decideSpendAuthorization,
   getSessionSpendUsd,
+  hydrateSessionSpendUsd,
   readSpendCapUsd,
   stripSpendHints,
 } from "./spend-allowance.js";
@@ -1072,6 +1073,15 @@ async function runCloudCommand(args: {
   const log = getLogger(args.runtime);
   const params = args.params ?? {};
   const capUsd = readSpendCapUsd();
+  // Read the session's DURABLE spend total back before enforcing the cap, so a
+  // configured cap survives a process restart (the in-memory ledger is empty
+  // after a restart) and reflects spend from other instances sharing the same
+  // task store (#8924). No-op (keeps the cached value) when no durable backend
+  // is installed; skipped entirely when the allowance is disabled so the
+  // default confirm-everything path stays zero-overhead.
+  if (capUsd > 0) {
+    await hydrateSessionSpendUsd(args.sessionId);
+  }
   const spendDecision = decideSpendAuthorization({
     command: definition.command,
     risk: definition.risk,
