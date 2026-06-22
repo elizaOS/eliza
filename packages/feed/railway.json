@@ -1,23 +1,8 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "nixpacksPlan": {
-      "providers": ["node"],
-      "phases": {
-        "setup": {
-          "nixPkgs": ["bun", "nodejs_24", "git"]
-        },
-        "install": {
-          "cmds": ["bun install"]
-        },
-        "build": {
-          "cmds": [
-            "NODE_OPTIONS=--max-old-space-size=8192 bun run --cwd packages/feed/apps/web build"
-          ]
-        }
-      }
-    }
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "packages/feed/Dockerfile"
   },
   "deploy": {
     "startCommand": "bash packages/feed/scripts/railway-start.sh",
