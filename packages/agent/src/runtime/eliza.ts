@@ -268,7 +268,10 @@ import {
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
 import { validateIntentActionMap } from "./prompt-compaction.ts";
 import rolesPlugin from "./roles.ts";
-import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.ts";
+import {
+  installDatabaseTrajectoryLogger,
+  shouldEnableTrajectoryLoggingByDefault,
+} from "./trajectory-persistence.ts";
 import {
   validateViewActionMap,
   validateViewCoverage,
@@ -1538,6 +1541,19 @@ async function prepareRuntimeForTrajectoryCapture(
 ): Promise<void> {
   await waitForTrajectoriesService(runtime, context);
   ensureTrajectoryLoggerEnabled(runtime, context);
+  // Bridge the in-memory "trajectories" service to the SQL trajectory_steps
+  // tables that the viewer + collection read. Without this the core service
+  // captures LLM calls only into its own trajectory_step_index store, so every
+  // platform without the plugin-training log-backfill (mobile, cloud) shows a
+  // trajectory with zero recorded LLM calls. Patching here makes capture land
+  // in trajectory_steps universally (local + cloud + mobile).
+  try {
+    await installDatabaseTrajectoryLogger(runtime);
+  } catch (err) {
+    logger.warn(
+      `[eliza] Failed to install database trajectory logger (${context}): ${err instanceof Error ? err.message : err}`,
+    );
+  }
   await installPromptOptimizationLayer(runtime, context, config);
 }
 

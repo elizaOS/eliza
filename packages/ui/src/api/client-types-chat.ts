@@ -76,6 +76,11 @@ export interface ImageAttachment {
    * resolution opens in the lightbox.
    */
   thumbnail?: { data: string; mimeType: string };
+  /**
+   * The stored {@link Transcript} record id when this attachment is a saved
+   * transcript — lets the chat tile re-open the rich, editable record.
+   */
+  transcriptId?: string;
 }
 
 /**
@@ -110,6 +115,11 @@ export interface MessageAttachment {
   mimeType?: string;
   /** Downscaled preview URL for the inline tile; `url` is the full original. */
   thumbnailUrl?: string;
+  /**
+   * The stored {@link Transcript} record id when this attachment is a saved
+   * transcript — the chat tile opens it in the maximized, editable viewer.
+   */
+  transcriptId?: string;
 }
 
 export interface ConversationMessageReaction {
