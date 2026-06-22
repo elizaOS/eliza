@@ -175,26 +175,37 @@ describe("per-target execute branching", () => {
 		expect(arg.content).toContain("ai-model");
 	});
 
-	it("agent (gate-safe): resolves a deterministic local reply without touching the pipeline", async () => {
+	it("agent (non-gate-safe option): routes the reconstructed command text through the pipeline", async () => {
+		// `think` carries an option (`/think high`). Option commands own
+		// side effects in the pipeline, so they are NOT gate-safe and must route
+		// the reconstructed command text through the message service rather than
+		// resolving to a deterministic local reply.
 		const think = findCatalog("think");
 		const interaction = makeInteraction({ level: "high" });
-		const handleMessage = vi.fn(async () => undefined);
+		const handleMessage = vi.fn(
+			async (
+				_runtime: IAgentRuntime,
+				_message: Memory,
+				callback: (content: Content) => Promise<Memory[]>,
+			) => {
+				await callback({ text: "Thinking set to high.", source: "discord" });
+			},
+		);
 		const runtime = makeRuntime({
 			messageService: { handleMessage } as never,
 		});
 
 		await think.execute(interaction as never, runtime);
 
-		// Gate-safe commands answer locally — no pipeline round-trip, no defer.
-		expect(handleMessage).not.toHaveBeenCalled();
-		expect(interaction.deferReply).not.toHaveBeenCalled();
-		expect(interaction.reply).toHaveBeenCalledTimes(1);
-		const arg = interaction.reply.mock.calls[0][0] as {
+		expect(interaction.deferReply).toHaveBeenCalledTimes(1);
+		expect(handleMessage).toHaveBeenCalledTimes(1);
+		const routedMessage = handleMessage.mock.calls[0][1] as Memory;
+		expect(routedMessage.content.text).toBe("/think high");
+		expect(routedMessage.content.source).toBe("discord");
+		const editArg = interaction.editReply.mock.calls[0][0] as {
 			content: string;
-			ephemeral: boolean;
 		};
-		expect(arg.ephemeral).toBe(true);
-		expect(arg.content).toContain("high");
+		expect(editArg.content).toBe("Thinking set to high.");
 	});
 
 	it("agent (non-gate-safe): routes the command text through the message service and replies", async () => {

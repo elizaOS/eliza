@@ -60,6 +60,7 @@ const packageJsonPath = resolve(
 const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
   "@elizaos/plugin-app-control": appControlPlugin,
   "@elizaos/plugin-coding-tools": codingToolsPlugin,
+  "@elizaos/plugin-commands": commandsPlugin,
   "@elizaos/plugin-agent-skills": agentSkillsPlugin,
   "@elizaos/plugin-local-inference": localInferencePlugin,
   "@elizaos/plugin-gitpathologist": gitPathologyPlugin,
@@ -75,6 +76,15 @@ const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
 const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
   "@elizaos/plugin-app-control": ["APP", "HOMESCREEN", "VIEWS"],
   "@elizaos/plugin-coding-tools": ["FILE", "SHELL", "WORKTREE"],
+  "@elizaos/plugin-commands": [
+    "COMMANDS_COMMAND",
+    "CONTEXT_COMMAND",
+    "HELP_COMMAND",
+    "MODELS_COMMAND",
+    "STATUS_COMMAND",
+    "USAGE_COMMAND",
+    "WHOAMI_COMMAND",
+  ],
   "@elizaos/plugin-agent-skills": [
     "SKILL",
     "SKILL_DETAILS",
@@ -127,7 +137,6 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
 /** Core plugins that intentionally expose no agent actions (service/registry only). */
 const ACTIONLESS_CORE_PLUGINS: Record<string, Plugin> = {
   "@elizaos/plugin-shell": shellPlugin,
-  "@elizaos/plugin-commands": commandsPlugin,
   "@elizaos/plugin-video": videoPlugin,
   "@elizaos/plugin-device-filesystem": deviceFilesystemPlugin,
 };
@@ -183,6 +192,16 @@ const KNOWN_UNCOVERED: readonly string[] = [
   // New on-device transcription actions; no deterministic keyless scenario yet.
   "START_TRANSCRIPTION",
   "STOP_TRANSCRIPTION",
+  // plugin-commands slash-command actions (/help, /status, /models, …) are
+  // dispatched through the command palette, not the keyless scenario pipeline,
+  // so they have no deterministic scenario yet.
+  "COMMANDS_COMMAND",
+  "CONTEXT_COMMAND",
+  "HELP_COMMAND",
+  "MODELS_COMMAND",
+  "STATUS_COMMAND",
+  "USAGE_COMMAND",
+  "WHOAMI_COMMAND",
 ];
 
 /**
