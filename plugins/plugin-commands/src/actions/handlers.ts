@@ -11,9 +11,9 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import {
-	findCommandByKey,
-	getCommandsByCategory,
-	getEnabledCommands,
+	findCommandByKeyForRuntime,
+	getCommandsByCategoryForRuntime,
+	getEnabledCommandsForRuntime,
 	useRuntime,
 } from "../registry";
 import type {
@@ -68,10 +68,10 @@ function authError(): CommandResult {
 	return reply("This command requires authorization.");
 }
 
-function formatCommandList(): string {
+function formatCommandList(agentId?: string | null): string {
 	const lines: string[] = [];
 	for (const category of CATEGORY_ORDER) {
-		const commands = getCommandsByCategory(category);
+		const commands = getCommandsByCategoryForRuntime(category, agentId);
 		if (commands.length === 0) continue;
 		lines.push(`**${category}**`);
 		for (const command of commands) {
@@ -110,8 +110,9 @@ export async function runCommand(
 	parsed: ParsedCommand,
 	context: CommandContext,
 ): Promise<CommandResult> {
-	useRuntime(runtime.agentId);
-	const definition = findCommandByKey(parsed.key);
+	const agentId = runtime.agentId;
+	useRuntime(agentId);
+	const definition = findCommandByKeyForRuntime(parsed.key, agentId);
 
 	// Auth gate — enforced server-side on every surface, never client-trusted.
 	if (definition?.requiresAuth && !context.isAuthorized) return authError();
@@ -124,7 +125,7 @@ export async function runCommand(
 	switch (parsed.key) {
 		case "help":
 		case "commands":
-			return reply(`Available commands:\n${formatCommandList()}`);
+			return reply(`Available commands:\n${formatCommandList(agentId)}`);
 
 		case "status": {
 			const settings = await getCommandSettings(runtime, roomId);
@@ -134,7 +135,7 @@ export async function runCommand(
 				`Thinking: ${settings.thinking ?? "default"}`,
 				`Reasoning: ${settings.reasoning ?? "default"}`,
 				`Verbose: ${settings.verbose ?? "default"}`,
-				`Commands enabled: ${getEnabledCommands().length}`,
+				`Commands enabled: ${getEnabledCommandsForRuntime(agentId).length}`,
 			];
 			return reply(lines.join("\n"));
 		}

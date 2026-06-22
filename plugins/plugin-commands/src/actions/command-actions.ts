@@ -11,7 +11,7 @@
 
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
 import { detectCommand, hasCommand } from "../parser";
-import { findCommandByKey, useRuntime } from "../registry";
+import { findCommandByKey } from "../registry";
 import { resolveCommand } from "./dispatch";
 import { isGateSafeCommand } from "./handlers";
 
@@ -52,8 +52,7 @@ function buildAction(
 		similes: aliases,
 		suppressEarlyReply: true,
 		suppressPostActionContinuation: true,
-		validate: async (runtime: IAgentRuntime, message: Memory) => {
-			useRuntime(runtime.agentId);
+		validate: async (_runtime: IAgentRuntime, message: Memory) => {
 			const text = message.content.text ?? "";
 			if (!hasCommand(text)) return false;
 			const detection = detectCommand(text);

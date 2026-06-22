@@ -337,11 +337,7 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
   // a fake can be injected directly — no monkey-patching of getHetznerCloudClient.
   test("provisions through an injected ComputeProvider without monkey-patching (#8919)", async () => {
     const fake = new InMemoryComputeProvider({ serverActivateAfterTicks: 0 });
-    const autoscaler = new NodeAutoscaler(
-      policy,
-      () => Date.parse("2026-05-15T12:00:00Z"),
-      fake,
-    );
+    const autoscaler = new NodeAutoscaler(policy, () => Date.parse("2026-05-15T12:00:00Z"), fake);
 
     const result = await autoscaler.provisionNode(
       { nodeId: "seam-node", capacity: 4, prePullImages: [] },

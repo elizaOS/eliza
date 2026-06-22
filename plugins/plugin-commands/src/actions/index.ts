@@ -18,6 +18,6 @@ export * from "./shortcuts";
 /**
  * The deterministic command actions for the built-in gate-safe commands. Built
  * from the default registry so they can be registered statically on the plugin;
- * each action's `validate()` re-scopes to the per-runtime store at call time.
+ * request-time command resolution reads the per-runtime store directly.
  */
 export const commandActions = createCommandActions([...GATE_SAFE_COMMAND_KEYS]);

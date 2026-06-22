@@ -238,7 +238,6 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		const service = await VerificationRoomBridgeService.start(runtime);
 
 		const event = pluginEvent("pass");
-		// biome-ignore lint/performance/noDelete: test mutation
 		delete (event.data.verification as { params?: unknown }).params;
 		coordinator.__emit(event);
 		await flush();

@@ -18,6 +18,8 @@
  * here, so it is unit-testable with a fake services adapter.
  */
 
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import type {
 	CorpusGroundTruth,
 	CorpusTurnLabel,
@@ -36,7 +38,11 @@ import {
 	type VoiceE2eCaseResult,
 } from "./e2e-harness";
 import type { VoiceScenario } from "./voice-scenario";
-import type { VoiceWorkbenchScenarioRun } from "./voice-workbench-report";
+import type {
+	VoiceAudioArtifact,
+	VoiceWorkbenchScenarioRun,
+} from "./voice-workbench-report";
+import { encodeMonoPcm16Wav } from "./wav-codec";
 
 /** What the real (or mock) services observed for one turn of audio. */
 export interface VoiceTurnObservation {
@@ -76,12 +82,54 @@ export interface VoiceWorkbenchServices {
 	}): Promise<VoiceTurnObservation>;
 }
 
+/**
+ * Where to write per-run `.wav` artifacts. When present, the runner encodes the
+ * full corpus + each consumed per-turn slice to disk under `dir` and records the
+ * paths (relative to `relativeTo`) on the run's `audioArtifacts`. Absent ⇒ no IO.
+ */
+export interface VoiceAudioCaptureSink {
+	/** Directory the `.wav` files are written into (created recursively). */
+	dir: string;
+	/** Artifact paths are recorded relative to this dir (the scenario run dir). */
+	relativeTo: string;
+}
+
 export interface RunVoiceScenarioHeadlessArgs {
 	scenario: VoiceScenario;
 	/** The generated/loaded corpus; null when its artifacts are absent. */
 	corpus: GeneratedVoiceCorpus | null;
 	/** The voice services; null when no backend is provisioned. */
 	services: VoiceWorkbenchServices | null;
+	/** When set, write the run's audio as `.wav` artifacts and record their paths. */
+	captureAudio?: VoiceAudioCaptureSink;
+}
+
+/** Encode `pcm` to `<dir>/<fileName>` and return a relative-path artifact. */
+function writeAudioArtifact(args: {
+	sink: VoiceAudioCaptureSink;
+	fileName: string;
+	pcm: Float32Array;
+	sampleRate: number;
+	turnIndex: number;
+	kind: VoiceAudioArtifact["kind"];
+	speakerLabel?: string;
+}): VoiceAudioArtifact {
+	const absolutePath = path.join(args.sink.dir, args.fileName);
+	writeFileSync(absolutePath, encodeMonoPcm16Wav(args.pcm, args.sampleRate));
+	const relativePath = path
+		.relative(args.sink.relativeTo, absolutePath)
+		.split(path.sep)
+		.join("/");
+	return {
+		turnIndex: args.turnIndex,
+		kind: args.kind,
+		path: relativePath,
+		sampleRate: args.sampleRate,
+		durationMs: Math.round((args.pcm.length / args.sampleRate) * 1000),
+		...(args.speakerLabel !== undefined
+			? { speakerLabel: args.speakerLabel }
+			: {}),
+	};
 }
 
 function skipped(
@@ -104,12 +152,29 @@ function skipped(
 export async function runVoiceScenarioHeadless(
 	args: RunVoiceScenarioHeadlessArgs,
 ): Promise<VoiceWorkbenchScenarioRun> {
-	const { scenario, corpus, services } = args;
+	const { scenario, corpus, services, captureAudio } = args;
 	if (!corpus) return skipped(scenario, "corpus artifacts absent");
 	if (!services) return skipped(scenario, "no voice backend provisioned");
 
 	const assertions = scenario.assertions ?? {};
 	const cases: VoiceE2eCaseResult[] = [];
+
+	// When a capture sink is active, write the full corpus once + each per-turn
+	// slice as `.wav` artifacts and record their (run-dir-relative) paths.
+	const audioArtifacts: VoiceAudioArtifact[] = [];
+	if (captureAudio) {
+		mkdirSync(captureAudio.dir, { recursive: true });
+		audioArtifacts.push(
+			writeAudioArtifact({
+				sink: captureAudio,
+				fileName: "corpus.wav",
+				pcm: corpus.pcm,
+				sampleRate: corpus.sampleRate,
+				turnIndex: 0,
+				kind: "generated",
+			}),
+		);
+	}
 
 	const eotSamples: Array<{
 		decided: boolean;
@@ -140,6 +205,19 @@ export async function runVoiceScenarioHeadless(
 			label.segmentStartSample,
 			label.segmentEndSample,
 		);
+		if (captureAudio) {
+			audioArtifacts.push(
+				writeAudioArtifact({
+					sink: captureAudio,
+					fileName: `turn-${label.index}.wav`,
+					pcm: audio,
+					sampleRate: corpus.sampleRate,
+					turnIndex: label.index,
+					kind: "consumed",
+					speakerLabel: label.speaker,
+				}),
+			);
+		}
 		const obs = await services.observeTurn({
 			turnIndex: label.index,
 			audio,
@@ -269,6 +347,7 @@ export async function runVoiceScenarioHeadless(
 		classes: scenario.classes,
 		status: "ran",
 		cases,
+		...(audioArtifacts.length > 0 ? { audioArtifacts } : {}),
 	};
 }
 

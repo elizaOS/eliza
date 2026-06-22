@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { IAgentRuntime } from "../types/index";
-import type { Memory, State } from "../types/index";
 import type { MessageHandlerResult } from "../types/components";
+import type { IAgentRuntime, Memory, State } from "../types/index";
 import { directReplyPromptForMessage } from "./message";
 
 /**

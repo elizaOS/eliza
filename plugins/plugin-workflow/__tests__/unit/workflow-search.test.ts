@@ -1,8 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  rankWorkflowsByQuery,
-  scoreWorkflowMatch,
-} from '../../src/services/workflow-service';
+import { rankWorkflowsByQuery, scoreWorkflowMatch } from '../../src/services/workflow-service';
 
 /**
  * Unit coverage for the WORKFLOW `search` op ranking (#8913).
@@ -34,10 +31,7 @@ describe('scoreWorkflowMatch', () => {
       wf({ name: 'x', nodes: [{ type: 'n8n-nodes-base.slack' }] }),
       'slack'
     );
-    const byDesc = scoreWorkflowMatch(
-      wf({ name: 'x', description: 'posts to slack' }),
-      'slack'
-    );
+    const byDesc = scoreWorkflowMatch(wf({ name: 'x', description: 'posts to slack' }), 'slack');
     const byName = scoreWorkflowMatch(wf({ name: 'slack' }), 'slack');
     expect(byNode).toBeGreaterThan(0);
     expect(byDesc).toBeGreaterThan(0);

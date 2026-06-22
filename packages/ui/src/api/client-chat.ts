@@ -287,6 +287,7 @@ declare module "./client-base" {
       localInference?: LocalInferenceChatMetadata;
       actionResults?: ChatActionResultSummary[];
     }>;
+    sendChatMessage(text: string, channelType?: ConversationChannelType): void;
     sendChatStream(
       text: string,
       onToken: (token: string, accumulatedText?: string) => void,
@@ -785,6 +786,17 @@ ElizaClient.prototype.sendChatRest = async function (
     }
     throw error;
   }
+};
+
+ElizaClient.prototype.sendChatMessage = function (
+  this: ElizaClient,
+  text,
+  channelType = "DM",
+) {
+  void this.sendChatRest(text, channelType).catch(() => {
+    // View affordances use this as a fire-and-forget "ask Eliza" bridge; the
+    // chat surface owns visible delivery/error state for full composer sends.
+  });
 };
 
 ElizaClient.prototype.sendChatStream = async function (

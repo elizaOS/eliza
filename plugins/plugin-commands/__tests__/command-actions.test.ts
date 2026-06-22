@@ -7,16 +7,27 @@ import {
 	getCommandSettings,
 	resolveCommand,
 } from "../src/actions";
-import { initForRuntime } from "../src/registry";
+import {
+	getEnabledCommandsForRuntime,
+	initForRuntime,
+	registerCommand,
+	useRuntime,
+} from "../src/registry";
 
-function makeRuntime(): IAgentRuntime {
+function makeRuntime(
+	agentId = "agent-1",
+	onGetCache?: (key: string) => void | Promise<void>,
+): IAgentRuntime {
 	const cache = new Map<string, unknown>();
 	return {
-		agentId: "agent-1",
+		agentId,
 		character: { name: "Eliza", settings: {} },
 		getSetting: () => null,
 		setSetting: () => undefined,
-		getCache: async (key: string) => cache.get(key),
+		getCache: async (key: string) => {
+			await onGetCache?.(key);
+			return cache.get(key);
+		},
 		setCache: async (key: string, value: unknown) => {
 			cache.set(key, value);
 			return true;
@@ -54,6 +65,32 @@ describe("runCommand / resolveCommand — deterministic handlers (#8790)", () =>
 		expect(r.handled).toBe(true);
 		expect(r.reply).toContain("Agent: Eliza");
 		expect(r.reply).toContain("Commands enabled:");
+	});
+
+	it("/status keeps its runtime-scoped store across awaited settings reads", async () => {
+		initForRuntime("agent-a");
+		useRuntime("agent-a");
+		registerCommand({
+			key: "agent-a-only",
+			description: "Runtime-local command",
+			textAliases: ["/agent-a-only"],
+			scope: "both",
+			category: "skills",
+		});
+		initForRuntime("agent-b");
+
+		const agentACommandCount = getEnabledCommandsForRuntime("agent-a").length;
+		expect(agentACommandCount).toBe(
+			getEnabledCommandsForRuntime("agent-b").length + 1,
+		);
+
+		const runtimeA = makeRuntime("agent-a", async () => {
+			useRuntime("agent-b");
+		});
+		const r = await resolveCommand(runtimeA, msg("/status"));
+
+		expect(r.handled).toBe(true);
+		expect(r.reply).toContain(`Commands enabled: ${agentACommandCount}`);
 	});
 
 	it("/whoami reflects the sender context", async () => {

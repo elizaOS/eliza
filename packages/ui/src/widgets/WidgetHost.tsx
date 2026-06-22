@@ -10,8 +10,8 @@
  * to the declarative UiRenderer for uiSpec widgets.
  */
 
-import { Component, type ErrorInfo, type ReactNode, useMemo } from "react";
 import { isViewVisible } from "@elizaos/core";
+import { Component, type ErrorInfo, type ReactNode, useMemo } from "react";
 import { UiRenderer } from "../components/config-ui/ui-renderer";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 import { useAppSelectorShallow } from "../state";

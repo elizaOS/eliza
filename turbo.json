@@ -444,6 +444,17 @@
       ],
       "outputs": []
     },
+    "@elizaos/plugin-capacitor-bridge#typecheck": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/plugin-agent-skills#build",
+        "@elizaos/plugin-app-manager#build",
+        "@elizaos/ui#build",
+        "^build"
+      ],
+      "outputs": []
+    },
     "@elizaos/example-autonomous#typecheck": {
       "dependsOn": [
         "@elizaos/app-core#build",
