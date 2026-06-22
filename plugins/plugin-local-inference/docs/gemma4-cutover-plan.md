@@ -130,9 +130,30 @@ eliza-1 v1 is **base-not-fine-tuned** (`releaseState=base-v1`) → v1 cutover is
 - **M2 — Code cutover Qwen→Gemma** (registry, catalog/types, memory_calc, EOT,
   abliterate, AGENTS; remove Qwen; tier map E2B/E4B/12B/31B(/26B-A4B); Gemma-aware
   runtime defaults: `swa_full=false`, bounded ctx-checkpoints, mmap-on/PLE-on-CPU).
-- **M3 — Multi-backend FFI seam** (backend abstraction + `backend-selector`).
-- **M4 — LiteRT-LM in-process backend** (Android NPU delegate ladder).
-- **M5 — CoreML/MLX in-process backend** (mac first, iOS later).
+- **M3 — Multi-backend FFI seam** (backend abstraction + `backend-selector`). ✅
+  **Done + verified on Linux.** `src/llm-backend.h` (the `LlmBackendSession` /
+  `LlmBackendFactory` interfaces + the `llm_backend_context_bundle_dir` accessor),
+  `src/llm-backend-selector.cpp` (registry + env/rank selection, inert-by-default),
+  and the non-invasive `eliza_inference_llm_stream_*` dispatch (one backend branch
+  inserted *above* each existing llama.cpp/MTP branch). Compiles + links into the
+  default fused `libelizainference.so` with the FFI pipe intact and the seam inert
+  (no alternate backend registered → byte-for-byte the prior llama.cpp path).
+  Design: [`docs/multi-backend-ffi-seam.md`](multi-backend-ffi-seam.md).
+- **M4 — LiteRT-LM in-process backend** (Android NPU delegate ladder). 🧩
+  **Scaffolded, gated `-DELIZA_ENABLE_LITERT` (OFF default).**
+  `src/backends/litert-backend.{h,cpp}`: full `LlmBackendSession`/factory against
+  the researched LiteRT-LM C++ API (Engine/Session, NPU→GPU→CPU ladder,
+  `text/*.litertlm` probe) behind the gate; a no-SDK stub when OFF. CMake adds the
+  source + SDK include/link knobs (`ELIZA_LITERT_SDK_DIR`/`ELIZA_LITERT_LIBS`) when
+  enabled. Every hardware assumption tagged `DEVICE-VERIFY`; needs a Pixel/NPU
+  device + the LiteRT-LM SDK to build + validate.
+- **M5 — CoreML/MLX in-process backend** (mac first, iOS later). 🧩
+  **Scaffolded, gated `-DELIZA_ENABLE_MLX` + `__APPLE__` (OFF default; FATALs on a
+  non-Apple host).** `src/backends/mlx-coreml-backend.{h,mm}`: MLX-primary (mlx-c
+  decode graph) + CoreML-alternate (stateful `MLState` KV) sessions behind the
+  gate; a no-SDK stub when OFF. CMake adds the `.mm` + MLX/CoreML/Metal link knobs
+  when enabled. Tagged `DEVICE-VERIFY`; needs Apple Silicon + the MLX/CoreML
+  toolchain to build + validate.
 - **M6 — Kernel re-optimization for Gemma geometry** (TurboQuant weight-quant +
   QJL/Polar KV-quant on windowed/global KV) across CPU/CUDA/Vulkan-Mali/Metal/NPU
   + low-precision + long context; re-verify 8/8.
