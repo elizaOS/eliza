@@ -1652,8 +1652,8 @@ describe("training collection runner", () => {
 
     const index = await writeTrainingCollectionIndex({ root });
     const html = await readFile(index.indexHtmlPath, "utf8");
-    expect(html).toContain("established:2b,2b");
-    expect(html).toContain("next:4b");
+    expect(html).toContain("established:2b,4b");
+    expect(html).toContain("next:9b");
     expect(html).toContain("vs-reference:-37.5%");
     expect(html).toContain("model-backed");
     expect(html).toContain("feed:feed-export");
@@ -1682,8 +1682,8 @@ describe("training collection runner", () => {
     const restoreLocalModels = stubLocalBenchmarkModels([
       "eliza-1-2b-base",
       "eliza-1-2b-trained",
-      "eliza-1-2b-base",
-      "eliza-1-2b-trained",
+      "eliza-1-4b-base",
+      "eliza-1-4b-trained",
     ]);
     let result: Awaited<ReturnType<typeof runTrainingCollection>>;
     try {
@@ -1709,7 +1709,7 @@ describe("training collection runner", () => {
           datasetVersion: "eliza-native-v1",
           runsPerCase: 1,
         },
-        actionBenchmarkPairs: [{ tier: "2b" }, { tier: "2b" }],
+        actionBenchmarkPairs: [{ tier: "2b" }, { tier: "4b" }],
         now: () => new Date("2026-01-02T03:04:05.000Z"),
       });
     } finally {
@@ -1752,21 +1752,21 @@ describe("training collection runner", () => {
           },
         },
         {
-          label: "2b",
-          tier: "2b",
+          label: "4b",
+          tier: "4b",
           runs: {
             base: {
               matrixSource: {
-                modelId: "eliza-1-2b-base",
+                modelId: "eliza-1-4b-base",
                 variant: "base",
-                tier: "2b",
+                tier: "4b",
               },
             },
             trained: {
               matrixSource: {
-                modelId: "eliza-1-2b-trained",
+                modelId: "eliza-1-4b-trained",
                 variant: "trained",
-                tier: "2b",
+                tier: "4b",
               },
             },
           },
@@ -1775,8 +1775,8 @@ describe("training collection runner", () => {
       matrixSources: expect.arrayContaining([
         expect.objectContaining({ modelId: "eliza-1-2b-base" }),
         expect.objectContaining({ modelId: "eliza-1-2b-trained" }),
-        expect.objectContaining({ modelId: "eliza-1-2b-base" }),
-        expect.objectContaining({ modelId: "eliza-1-2b-trained" }),
+        expect.objectContaining({ modelId: "eliza-1-4b-base" }),
+        expect.objectContaining({ modelId: "eliza-1-4b-trained" }),
       ]),
     });
 
@@ -1799,7 +1799,7 @@ describe("training collection runner", () => {
               improvementPercent: 50,
             }),
             expect.objectContaining({
-              tier: "2b",
+              tier: "4b",
               improvementPercent: 50,
             }),
           ]),
@@ -1815,31 +1815,31 @@ describe("training collection runner", () => {
       actionBenchmarkMatrixSources: 4,
       benchmarkRows: 4,
       benchmarkComparisons: 2,
-      tiers: ["2b", "2b"],
+      tiers: ["2b", "4b"],
       improvementComparisons: expect.arrayContaining([
         expect.objectContaining({
           tier: "2b",
           improvementPercent: 50,
         }),
         expect.objectContaining({
-          tier: "2b",
+          tier: "4b",
           improvementPercent: 50,
         }),
       ]),
       baselineProgress: {
-        tierOrder: ["2b", "2b", "4b", "9b", "27b"],
-        establishedTiers: ["2b", "2b"],
-        remainingTiers: ["4b", "9b", "27b"],
-        nextTier: "4b",
+        tierOrder: ["2b", "4b", "9b", "27b"],
+        establishedTiers: ["2b", "4b"],
+        remainingTiers: ["9b", "27b"],
+        nextTier: "9b",
         smallestTierEstablished: true,
         allTiersEstablished: false,
       },
     });
     const readme = await readFile(result.readmePath, "utf8");
     expect(readme).toContain("## Baseline Progression");
-    expect(readme).toContain("Tier order: 2b -> 2b -> 4b -> 9b -> 27b");
-    expect(readme).toContain("Established tiers: 2b, 2b");
-    expect(readme).toContain("Next tier: 4b");
+    expect(readme).toContain("Tier order: 2b -> 4b -> 9b -> 27b");
+    expect(readme).toContain("Established tiers: 2b, 4b");
+    expect(readme).toContain("Next tier: 9b");
   });
 
   it("defaults action benchmark matrix runs to the smallest base-trained pair", async () => {
@@ -1930,9 +1930,9 @@ describe("training collection runner", () => {
       tiers: ["2b"],
       improvementComparisons: [],
       baselineProgress: {
-        tierOrder: ["2b", "2b", "4b", "9b", "27b"],
+        tierOrder: ["2b", "4b", "9b", "27b"],
         establishedTiers: [],
-        remainingTiers: ["2b", "2b", "4b", "9b", "27b"],
+        remainingTiers: ["2b", "4b", "9b", "27b"],
         nextTier: "2b",
         smallestTierEstablished: false,
         allTiersEstablished: false,
