@@ -91,6 +91,12 @@ const DEDICATED_TOOL: Readonly<Record<string, string>> = {
     "runs via `bun run --cwd packages/app audit:app`; it walks every app view " +
     "at desktop and mobile, captures artifacts, and writes manual-review " +
     "stubs, so it is a deliberate visual-audit tool rather than default smoke.",
+  "settings-spacing-audit.spec.ts":
+    "runs on demand via `ELIZA_SETTINGS_SPACING=1 node scripts/run-ui-playwright.mjs " +
+    "--config playwright.ui-smoke.config.ts test/ui-smoke/settings-spacing-audit.spec.ts`; " +
+    "it measures per-section safe-area/spacing, writes a JSON verdict report plus " +
+    "notch-simulated screenshots to reports/settings-spacing, so it is a deliberate " +
+    "layout-audit harness rather than a narrow keyless PR assertion.",
 };
 
 /**
