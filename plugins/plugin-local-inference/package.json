@@ -89,6 +89,7 @@
 		"test:asr:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/asr-real-smoke.ts",
 		"test:kokoro:real": "bun scripts/kokoro-real-smoke.ts",
 		"probe:sd-cpp": "node scripts/probe-sd-cpp.mjs --human",
+		"memory:benchmark": "bun run scripts/memory-benchmark.ts",
 		"voice:workbench": "bun run scripts/voice-workbench.ts",
 		"corpus:generate": "bun run scripts/generate-voice-corpus.ts",
 		"roundtrip:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/mixed-real-roundtrip.ts",

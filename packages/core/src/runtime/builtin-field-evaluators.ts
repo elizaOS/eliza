@@ -304,6 +304,61 @@ export const relationshipsFieldEvaluator: ResponseHandlerFieldEvaluator<
 };
 
 // ---------------------------------------------------------------------------
+// topics — priority 88. Per-channel topic LRU (extract pipeline).
+//
+// Emits 1-5 SHORT topic labels for THIS message. Normalized: lowercase,
+// trimmed, deduped, empties/overlong dropped, capped at 5. Recorded into
+// `ChannelTopicsService` per-room after Stage-1 parse and surfaced back into
+// routing via the `CHANNEL_TOPICS` provider so shouldRespond/the planner can
+// weigh topic relevance.
+// ---------------------------------------------------------------------------
+
+/** Max topic labels kept per turn. */
+export const MAX_MESSAGE_TOPICS = 5;
+/** Drop topic labels longer than this (a topic label, not a sentence). */
+export const MAX_TOPIC_LABEL_LENGTH = 40;
+
+/**
+ * Normalize a raw list of topic candidates into 1-5 SHORT labels: lowercase,
+ * trimmed, deduped, empties/overlong dropped, capped at {@link MAX_MESSAGE_TOPICS}.
+ * Shared by the field evaluator and the message-handler parse path so both
+ * apply identical rules.
+ */
+export function normalizeTopics(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const item of value) {
+		const normalized = String(item ?? "")
+			.trim()
+			.toLowerCase()
+			.replace(/\s+/g, " ");
+		if (!normalized || normalized.length > MAX_TOPIC_LABEL_LENGTH) continue;
+		if (seen.has(normalized)) continue;
+		seen.add(normalized);
+		result.push(normalized);
+		if (result.length >= MAX_MESSAGE_TOPICS) break;
+	}
+	return result;
+}
+
+export const topicsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
+	name: "topics",
+	description:
+		'1-5 SHORT topic labels for this message (lowercase nouns/noun-phrases): ["billing", "auth bug", "vacation plans"]. NOT verbs/sentences. Tracks what this channel is about over time. Empty when no salient topic.',
+	priority: 88,
+	schema: {
+		type: "array",
+		items: { type: "string" },
+		description:
+			"Short topic labels. Lowercase. 1-3 words each. Nouns/noun-phrases, not verbs. Max 5.",
+	},
+	parse(value) {
+		return normalizeTopics(value);
+	},
+};
+
+// ---------------------------------------------------------------------------
 // addressedTo — priority 90. Memory pipeline.
 // ---------------------------------------------------------------------------
 
@@ -390,6 +445,7 @@ export const BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS: ReadonlyArray<ResponseHa
 		candidateActionNamesFieldEvaluator,
 		factsFieldEvaluator,
 		relationshipsFieldEvaluator,
+		topicsFieldEvaluator,
 		addressedToFieldEvaluator,
 		emotionFieldEvaluator,
 	];

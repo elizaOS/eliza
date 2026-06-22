@@ -52,6 +52,27 @@ export class AssignmentNotServableError extends Error {
 }
 
 /**
+ * Raised when a slot assignment is outside the curated Eliza-1 catalog.
+ * Generic GGUF installs may still be visible to lower-level tooling, but the
+ * agent assignment policy is deliberately Eliza-1-only.
+ */
+export class AssignmentRejectedError extends Error {
+	readonly code = "ASSIGNMENT_REJECTED" as const;
+	readonly slot: AgentModelSlot;
+	readonly modelId: string;
+	constructor(args: {
+		slot: AgentModelSlot;
+		modelId: string;
+		message: string;
+	}) {
+		super(args.message);
+		this.name = "AssignmentRejectedError";
+		this.slot = args.slot;
+		this.modelId = args.modelId;
+	}
+}
+
+/**
  * Whether the current platform can serve a model of the given runtime class.
  * Fused Eliza-1 bundles are servable everywhere a fused libelizainference is
  * present (the engine's own load gate enforces the build requirement).
@@ -189,6 +210,14 @@ export async function setAssignment(
 	const current = await readAssignments();
 	const next: ModelAssignments = { ...current };
 	if (modelId) {
+		if (!isCuratedEliza1AssignmentId(modelId)) {
+			throw new AssignmentRejectedError({
+				slot,
+				modelId,
+				message:
+					"Local inference assignments are limited to curated Eliza-1 tiers.",
+			});
+		}
 		await assertAssignmentServable(slot, modelId);
 		next[slot] = modelId;
 	} else {

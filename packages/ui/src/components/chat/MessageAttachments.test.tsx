@@ -67,6 +67,18 @@ describe("MessageAttachments", () => {
     // Audio + video players
     expect(container.querySelector("audio")).not.toBeNull();
     expect(container.querySelector("video")).not.toBeNull();
+    // The audio card carries a stable testid (consistent with the pdf/model3d/
+    // code/transcript/image tiles) so the generated-audio chat journey can
+    // assert the player rendered. The <audio> element exposes its own testid.
+    const audioCard = container.querySelector(
+      '[data-testid="audio-attachment"]',
+    );
+    expect(audioCard).not.toBeNull();
+    const audioEl = container.querySelector(
+      '[data-testid="audio-attachment-player"]',
+    );
+    expect(audioEl).not.toBeNull();
+    expect(audioEl?.getAttribute("src")).toBe("https://x/clip.mp3");
     // File card links to the document with a download affordance
     const docLink = screen.getByRole("link", { name: /archive\.zip/i });
     expect(docLink.getAttribute("href")).toBe("https://x/archive.zip");
@@ -275,5 +287,65 @@ describe("MessageAttachments — PDF + text/code previews", () => {
     );
     expect(screen.queryByTestId("code-attachment")).toBeNull();
     expect(screen.getByTestId("code-attachment-fallback")).not.toBeNull();
+  });
+});
+
+describe("MessageAttachments — unsafe-URL handling (security/error path)", () => {
+  // An untrusted agent can put a dangerous-scheme URL on an attachment. The
+  // renderer must NEVER hand such a URL to the browser as href/src — it degrades
+  // to a non-clickable "unsupported attachment" card instead. This is the
+  // scheme-allowlist guard (isSafeAttachmentUrl) at the render boundary.
+  const DANGEROUS: Array<{ name: string; url: string }> = [
+    { name: "javascript:", url: "javascript:alert(1)" },
+    { name: "vbscript:", url: "vbscript:msgbox(1)" },
+    { name: "file:", url: "file:///etc/passwd" },
+    { name: "data:text/html", url: "data:text/html,<script>alert(1)</script>" },
+    { name: "scheme-relative", url: "//evil.example.com/x.png" },
+  ];
+
+  for (const { name, url } of DANGEROUS) {
+    it(`renders the neutralized unsafe card for a ${name} URL and never emits it`, () => {
+      const { container } = render(
+        <MessageAttachments
+          attachments={[
+            { id: "bad", url, contentType: "image", title: "evil" },
+          ]}
+        />,
+      );
+      // Degrades to the non-clickable unsafe card...
+      expect(screen.getByTestId("unsafe-attachment")).not.toBeNull();
+      // ...not an image/file/link that carries the dangerous URL.
+      expect(container.querySelector("img")).toBeNull();
+      expect(container.querySelector("a")).toBeNull();
+      // The dangerous URL must appear in NO href/src anywhere in the DOM.
+      const hrefs = Array.from(container.querySelectorAll("[href]")).map((el) =>
+        el.getAttribute("href"),
+      );
+      const srcs = Array.from(container.querySelectorAll("[src]")).map((el) =>
+        el.getAttribute("src"),
+      );
+      expect([...hrefs, ...srcs]).not.toContain(url);
+    });
+  }
+
+  it("still renders safe sibling attachments alongside an unsafe one", () => {
+    render(
+      <MessageAttachments
+        attachments={[
+          { id: "bad", url: "javascript:alert(1)", contentType: "image" },
+          {
+            id: "ok",
+            url: "https://x/cat.png",
+            contentType: "image",
+            title: "cat",
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("unsafe-attachment")).not.toBeNull();
+    // The safe image is unaffected — the guard is per-attachment, not all-or-nothing.
+    expect(
+      document.querySelector('img[src="https://x/cat.png"]'),
+    ).not.toBeNull();
   });
 });

@@ -971,6 +971,7 @@ export function MessageAttachments({
             return (
               <div
                 key={att.id}
+                data-testid="audio-attachment"
                 className="max-w-[min(22rem,100%)] rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5"
               >
                 {att.title?.trim() ? (
@@ -978,7 +979,13 @@ export function MessageAttachments({
                     {att.title.trim()}
                   </div>
                 ) : null}
-                <audio src={src} controls preload="metadata" className="w-full">
+                <audio
+                  src={src}
+                  controls
+                  preload="metadata"
+                  className="w-full"
+                  data-testid="audio-attachment-player"
+                >
                   <track kind="captions" />
                 </audio>
               </div>

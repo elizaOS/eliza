@@ -81,6 +81,12 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 			},
 			description: "Durable subject-predicate-object relationships.",
 		},
+		topics: {
+			type: "array",
+			items: { type: "string" },
+			description:
+				"Short topic labels for this message. Lowercase nouns/noun-phrases. Max 5.",
+		},
 		addressedTo: {
 			type: "array",
 			items: { type: "string" },
@@ -110,6 +116,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 		"candidateActionNames",
 		"facts",
 		"relationships",
+		"topics",
 		"addressedTo",
 		"emotion",
 	],
@@ -134,7 +141,7 @@ export function assertNativeToolName(name: string): void {
 }
 
 const HANDLE_RESPONSE_DESCRIPTION =
-	"Stage 1: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, intents, replyText, candidateActionNames, facts, relationships, addressedTo, emotion. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
+	"Stage 1: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, intents, replyText, candidateActionNames, facts, relationships, topics, addressedTo, emotion. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
 
 const HANDLE_RESPONSE_DIRECT_DESCRIPTION =
 	"Stage 1 direct-message: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, intents, replyText, candidateActionNames, facts, relationships, addressedTo, emotion. Usually RESPOND unless explicit stop. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";

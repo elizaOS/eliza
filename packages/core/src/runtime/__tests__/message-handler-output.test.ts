@@ -114,6 +114,7 @@ describe("message handler retrieval hint output", () => {
 			"candidateActionNames",
 			"facts",
 			"relationships",
+			"topics",
 			"addressedTo",
 			"emotion",
 		]);
@@ -125,6 +126,7 @@ describe("message handler retrieval hint output", () => {
 			"candidateActionNames",
 			"facts",
 			"relationships",
+			"topics",
 			"addressedTo",
 			"emotion",
 		]);
@@ -146,6 +148,7 @@ describe("message handler retrieval hint output", () => {
 			"candidateActionNames",
 			"facts",
 			"relationships",
+			"topics",
 			"addressedTo",
 			"emotion",
 		]);
@@ -157,6 +160,7 @@ describe("message handler retrieval hint output", () => {
 			candidateActionNames: { type: "array" },
 			facts: { type: "array" },
 			relationships: { type: "array" },
+			topics: { type: "array" },
 			addressedTo: { type: "array" },
 			emotion: { type: "string" },
 		});

@@ -58,6 +58,8 @@ import {
 import { OrchestratorTaskService } from "./services/orchestrator-task-service.js";
 import { SubAgentInbox } from "./services/sub-agent-inbox.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
+import { TaskSupervisorService } from "./services/task-supervisor-service.js";
+import { TaskWatchdogService } from "./services/task-watchdog-service.js";
 import { detectOrchestratorTerminalSupport } from "./services/terminal-capabilities.js";
 import {
   type AcpToolCall,
@@ -101,6 +103,8 @@ export function createAgentOrchestratorPlugin(): Plugin {
         serviceClass(OrchestratorTaskService),
         serviceClass(SubAgentRouter),
         serviceClass(CodingWorkspaceService),
+        serviceClass(TaskSupervisorService),
+        serviceClass(TaskWatchdogService),
       ]
     : [];
 
@@ -270,6 +274,11 @@ export function createAgentOrchestratorPlugin(): Plugin {
         OrchestratorTaskService.serviceType,
         SubAgentRouter.serviceType,
         CodingWorkspaceService.serviceType,
+        // Eager-start so its digest interval begins without waiting for a
+        // getService() that nothing else issues (#8900).
+        TaskSupervisorService.serviceType,
+        // Eager-start the stalled-agent watchdog loop too (#8901).
+        TaskWatchdogService.serviceType,
       ];
       setTimeout(() => {
         void (async () => {
@@ -1913,12 +1922,46 @@ export { AcpService } from "./services/acp-service.js";
 // Terminal-output normalizer for chat surfaces; consumed by live smoke harnesses.
 export { cleanForChat } from "./services/ansi-utils.js";
 export {
+  COMPLETION_ENVELOPE_INSTRUCTION,
+  type CompletionEnvelope,
+  envelopeCorrection,
+  parseCompletionEnvelope,
+  summarizeEnvelope,
+} from "./services/completion-envelope.js";
+export {
+  buildIndependentVerifierPrompt,
+  type IndependentVerifierVerdict,
+  runIndependentVerification,
+  shouldRunIndependentVerify,
+  verifierVerdict,
+} from "./services/independent-verifier.js";
+export {
+  collectScreenshotPaths,
+  deliverScreenshots,
+  screenshotsToAttachments,
+} from "./services/screenshot-delivery.js";
+export {
   AcpSessionStore,
   FileSessionStore,
   InMemorySessionStore,
   RuntimeDbSessionStore,
 } from "./services/session-store.js";
 export { SubAgentRouter } from "./services/sub-agent-router.js";
+export {
+  composeRoomDigest,
+  runSupervisorTick,
+  type SupervisorTaskView,
+  statusEmoji,
+  TASK_SUPERVISOR_SERVICE_TYPE,
+  TaskSupervisorService,
+} from "./services/task-supervisor-service.js";
+export {
+  detectStalledSessions,
+  STALL_GRILL_PROMPT,
+  TASK_WATCHDOG_SERVICE_TYPE,
+  TaskWatchdogService,
+  type WatchdogSessionView,
+} from "./services/task-watchdog-service.js";
 // ACP types
 export type {
   AcpEventCallback,

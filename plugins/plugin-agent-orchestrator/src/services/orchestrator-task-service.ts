@@ -18,9 +18,17 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import { type IAgentRuntime, Service } from "@elizaos/core";
+import {
+  detectTaskType,
+  generateDefaultAcceptanceCriteria,
+  isNonTrivialGoal,
+  type OrchestratorTaskType,
+  shouldRequireGoalContract,
+} from "./acceptance-criteria.js";
 import { AcpService } from "./acp-service.js";
 import { assignAgentName } from "./agent-name-assignment.js";
 import {
@@ -30,8 +38,11 @@ import {
 } from "./coding-account-selection.js";
 import {
   buildCompletionEvidenceString,
+  type CompletionEvidenceBundle,
+  classifyToolOutput,
   type EvidenceArtifactRef,
   type EvidenceSignal,
+  renderChangeSetBody,
 } from "./completion-evidence.js";
 import {
   buildAutoVerifyCorrection,
@@ -862,63 +873,24 @@ export class OrchestratorTaskService extends Service {
     fallbackSummary: string,
   ): Promise<string> {
     try {
-      const doc = await this.store.getTask(taskId);
-      if (!doc) return fallbackSummary;
-
-      // Scope to this session's rows, but keep cross-session task events too
-      // (validation/build steps are sometimes recorded without a sessionId).
-      const sessionEvents = doc.events.filter(
-        (event) =>
-          event.sessionId === sessionId || event.sessionId === undefined,
-      );
-      const sessionMessages = doc.messages.filter(
-        (message) => message.sessionId === sessionId,
-      );
-
-      const changeSet = await this.resolveCompletionChangeSet(sessionId, doc);
-
-      // The longest recorded `sub_agent` stdout reply is the richest final
-      // narration; the completion summary is the reported result. Surface both.
-      const subAgentReplies = sessionMessages
-        .filter(
-          (message) =>
-            message.senderKind === "sub_agent" &&
-            message.direction === "stdout",
-        )
-        .map((message) => message.content.trim())
-        .filter((content) => content.length > 0);
-      const longestReply = subAgentReplies.sort(
-        (a, b) => b.length - a.length,
-      )[0];
-
-      const signals: EvidenceSignal[] = [
-        ...sessionEvents.map((event) => ({
-          text: `${event.summary}\n${stringifyEventData(event.data)}`,
-          source: event.eventType,
-        })),
-        ...sessionMessages.map((message) => ({
-          text: message.content,
-          source: message.senderKind,
-        })),
-      ];
-
-      const verifiedUrls = collectUrls([
+      const bundle = await this.collectEvidenceBundle(
+        taskId,
+        sessionId,
         fallbackSummary,
-        longestReply ?? "",
-        ...subAgentReplies,
-      ]);
-
-      const artifacts = this.collectArtifactRefs(doc, sessionId);
-
-      return buildCompletionEvidenceString({
-        fallbackSummary,
-        changeSet,
-        deliverable: longestReply,
-        finalReply: fallbackSummary,
-        verifiedUrls,
-        signals,
-        artifacts,
-      });
+      );
+      // Stamp the deterministic trajectory path onto the bundle so the verifier
+      // evidence (and the serialized string) cite the durable artifact, then
+      // serialize immediately and fire the actual JSONL write off the critical
+      // path. The write is fire-and-forget (`void`) so trajectory IO never
+      // delays the verifier or the event-bridge write path, and any IO failure
+      // is swallowed inside the writer — the path is valid regardless of when
+      // the file lands.
+      bundle.trajectoryPath = await this.resolveTrajectoryPath(
+        taskId,
+        sessionId,
+      );
+      void this.writeEvidenceTrajectory(taskId, sessionId, bundle);
+      return buildCompletionEvidenceString(bundle);
     } catch (err) {
       this.log("debug", "build completion evidence failed", {
         taskId,
@@ -927,6 +899,213 @@ export class OrchestratorTaskService extends Service {
       });
       return fallbackSummary;
     }
+  }
+
+  /**
+   * Assemble the TYPED {@link CompletionEvidenceBundle} from data the
+   * orchestrator already has (issue #8894). Each field resolves from a named
+   * source:
+   *  - `summary` — the `task_complete` response (fallback);
+   *  - `diffSummary` — the real git change set captured at completion, via the
+   *    same {@link readLastChangeSet} mechanism the CODING_SESSION_CHANGES path
+   *    and `mirrorChangeSetToStore` use, rendered with {@link renderChangeSetBody};
+   *  - `toolOutput` — test/build/lint stdout mined from recorded `tool_running`
+   *    events (and sub-agent messages) and classified by {@link classifyToolOutput};
+   *  - `verifiedUrls` — URLs probed at completion (session/task `subAgentVerifiedUrls`
+   *    metadata plus URLs mined from the summary and sub-agent replies);
+   *  - `screenshots` — screenshot artifact paths on the task/session.
+   *
+   * Pure with respect to throwing: returns at least the summary on any error.
+   */
+  private async collectEvidenceBundle(
+    taskId: string,
+    sessionId: string,
+    fallbackSummary: string,
+  ): Promise<CompletionEvidenceBundle> {
+    const summary = fallbackSummary.trim();
+    const empty: CompletionEvidenceBundle = {
+      summary,
+      verifiedUrls: [],
+      screenshots: [],
+    };
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return empty;
+
+    // Scope to this session's rows, but keep cross-session task events too
+    // (validation/build steps are sometimes recorded without a sessionId).
+    const sessionEvents = doc.events.filter(
+      (event) => event.sessionId === sessionId || event.sessionId === undefined,
+    );
+    const sessionMessages = doc.messages.filter(
+      (message) => message.sessionId === sessionId,
+    );
+
+    const changeSet = await this.resolveCompletionChangeSet(sessionId, doc);
+    const diffSummary =
+      changeSet && changeSet.changedFiles.length > 0
+        ? renderChangeSetBody(changeSet)
+        : undefined;
+
+    const subAgentReplies = sessionMessages
+      .filter(
+        (message) =>
+          message.senderKind === "sub_agent" && message.direction === "stdout",
+      )
+      .map((message) => message.content.trim())
+      .filter((content) => content.length > 0);
+
+    // Tool-output signals: prefer the structured `toolCall.output` recorded on
+    // `tool_running`/`tool_result` events, labelled by the tool command/title so
+    // the classifier can route the stdout to its test/build/lint bucket. Fall
+    // back to the full event/message bodies so a real run still surfaces even
+    // when the adapter folded its output into the assistant text.
+    const toolSignals: EvidenceSignal[] = [
+      ...this.extractToolSignals(sessionEvents),
+      ...sessionEvents.map((event) => ({
+        text: `${event.summary}\n${stringifyEventData(event.data)}`,
+        source: event.eventType,
+      })),
+      ...sessionMessages.map((message) => ({
+        text: message.content,
+        source: message.senderKind,
+      })),
+    ];
+    const toolOutput = classifyToolOutput(toolSignals);
+
+    const verifiedUrls = [
+      ...new Set([
+        ...this.metadataVerifiedUrls(doc, sessionId),
+        ...collectUrls([summary, ...subAgentReplies]),
+      ]),
+    ];
+
+    const screenshots = this.collectArtifactRefs(doc, sessionId).flatMap(
+      (ref) => (ref.artifactType === "screenshot" && ref.ref ? [ref.ref] : []),
+    );
+
+    return {
+      summary,
+      diffSummary,
+      toolOutput,
+      verifiedUrls,
+      screenshots: [...new Set(screenshots)],
+    };
+  }
+
+  /** Build per-tool evidence signals from recorded `tool_running`/`tool_result`
+   *  events: the signal text is the tool's captured stdout, and the source label
+   *  carries the command/title so {@link classifyToolOutput} can class it. */
+  private extractToolSignals(
+    events: OrchestratorTaskDocument["events"],
+  ): EvidenceSignal[] {
+    const signals: EvidenceSignal[] = [];
+    for (const event of events) {
+      if (
+        event.eventType !== "tool_running" &&
+        event.eventType !== "tool_result"
+      )
+        continue;
+      const toolCall = isRecord(event.data.toolCall)
+        ? event.data.toolCall
+        : event.data;
+      const output = str(toolCall.output) ?? str(event.data.output);
+      if (!output) continue;
+      const rawInput = isRecord(toolCall.rawInput) ? toolCall.rawInput : {};
+      const command =
+        str(rawInput.command) ??
+        str(toolCall.title) ??
+        str(toolCall.kind) ??
+        "tool";
+      signals.push({ text: output, source: command });
+    }
+    return signals;
+  }
+
+  /** URLs the router stamped as verified onto the task or session metadata
+   *  (`subAgentVerifiedUrls`), separate from URLs mined out of free text. */
+  private metadataVerifiedUrls(
+    doc: OrchestratorTaskDocument,
+    sessionId: string,
+  ): string[] {
+    const out: string[] = [];
+    const session = doc.sessions.find((row) => row.sessionId === sessionId);
+    for (const meta of [doc.task.metadata, session?.metadata]) {
+      const raw = meta?.subAgentVerifiedUrls;
+      if (!Array.isArray(raw)) continue;
+      for (const entry of raw) {
+        const url = str(entry);
+        if (url) out.push(url);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Write the completion-evidence bundle as a single appended JSONL line and
+   * record the artifact path on a task event so a reviewer can re-read exactly
+   * what the verifier judged.
+   *
+   * Fire-and-forget: invoked with `void` from {@link buildCompletionEvidence},
+   * so every IO step is wrapped — a failure logs and continues without throwing
+   * into the `task_complete` event path. The path is already stamped on the
+   * bundle by the caller, so a write failure only means the artifact never lands;
+   * the evidence string still cites the (intended) path.
+   */
+  private async writeEvidenceTrajectory(
+    taskId: string,
+    sessionId: string,
+    bundle: CompletionEvidenceBundle,
+  ): Promise<void> {
+    const trajectoryPath = bundle.trajectoryPath;
+    if (!trajectoryPath) return;
+    try {
+      await mkdir(dirname(trajectoryPath), { recursive: true });
+      const line = `${JSON.stringify({
+        kind: "completion_evidence_bundle",
+        taskId,
+        sessionId,
+        recordedAt: nowIso(),
+        bundle,
+      })}\n`;
+      await appendFile(trajectoryPath, line, "utf8");
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        sessionId,
+        eventType: "completion_evidence_persisted",
+        summary: "Persisted completion-evidence bundle to trajectory artifact.",
+        data: { trajectoryPath },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      this.emitChange(taskId);
+    } catch (err) {
+      this.log("debug", "persist evidence trajectory failed", {
+        taskId,
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /** The completion-evidence trajectory file path: a `completion-evidence.jsonl`
+   *  under the live session workdir's `.eliza/trajectories`, else a `~/.eliza`-
+   *  scoped per-task dir when no workspace is available. Deterministic so it can
+   *  be cited in the evidence before the file is actually written. */
+  private async resolveTrajectoryPath(
+    taskId: string,
+    sessionId: string,
+  ): Promise<string> {
+    let dir = join(homedir(), ".eliza", "trajectories", taskId);
+    try {
+      const acp = this.acp();
+      const live = acp ? await acp.getSession(sessionId) : undefined;
+      const workdir = str(live?.workdir);
+      if (workdir) dir = join(workdir, ".eliza", "trajectories");
+    } catch {
+      // best-effort — keep the home-scoped task dir
+    }
+    return join(dir, "completion-evidence.jsonl");
   }
 
   /** The git change set for a completed session: prefer the live ACP session
@@ -1141,7 +1320,9 @@ export class OrchestratorTaskService extends Service {
   // ---- lifecycle ---------------------------------------------------------
 
   async createTask(input: CreateTaskInput): Promise<TaskThreadDetailDto> {
-    const doc = await this.store.createTask(input);
+    const doc = await this.store.createTask(
+      await this.withDefaultAcceptanceCriteria(input),
+    );
     if (input.originalRequest) {
       await this.recordMessage(doc.task.id, {
         content: input.originalRequest,
@@ -1151,6 +1332,60 @@ export class OrchestratorTaskService extends Service {
     }
     const detail = await this.store.getTask(doc.task.id);
     return toTaskThreadDetail(detail ?? doc);
+  }
+
+  /**
+   * When a task is created WITHOUT acceptance criteria and with a non-trivial
+   * goal, populate 3-5 measurable default criteria so the auto goal-verifier
+   * (#8896) always has something to grill against instead of fast-pathing to
+   * pass / parking forever in `validating`.
+   *
+   * - **No-op when criteria were supplied** — the caller's contract wins; the
+   *   input is returned unchanged.
+   * - **Gated** behind `ELIZA_REQUIRE_GOAL_CONTRACT` (default ON; `"0"`
+   *   disables), mirroring {@link shouldAutoVerifyGoal}.
+   * - **Defensive** — {@link generateDefaultAcceptanceCriteria} never throws;
+   *   on any model failure it returns the static template set, so task creation
+   *   can never be broken by criteria generation.
+   */
+  private async withDefaultAcceptanceCriteria(
+    input: CreateTaskInput,
+  ): Promise<CreateTaskInput> {
+    const supplied = input.acceptanceCriteria;
+    // Caller-supplied criteria are authoritative — never overwrite them.
+    if (supplied && supplied.length > 0) return input;
+    if (!shouldRequireGoalContract()) return input;
+    if (!isNonTrivialGoal(input.goal)) return input;
+
+    const hint = this.taskTypeHintFor(input);
+    const generated = await generateDefaultAcceptanceCriteria(
+      input.goal,
+      hint,
+      this.runtime,
+    );
+    if (generated.length === 0) return input;
+    this.log(
+      "debug",
+      `auto-generated ${generated.length} default acceptance criteria for criteria-free task (type=${hint ?? detectTaskType(input.goal)})`,
+    );
+    return { ...input, acceptanceCriteria: generated };
+  }
+
+  /** Map an explicit `kind` on the create input to a task type when it lines up
+   *  with a known template type, so the caller's stated kind beats keyword
+   *  detection; otherwise let {@link detectTaskType} read the goal text. */
+  private taskTypeHintFor(
+    input: CreateTaskInput,
+  ): OrchestratorTaskType | undefined {
+    switch (input.kind) {
+      case "coding":
+      case "view-create":
+      case "app-build":
+      case "deploy":
+        return input.kind;
+      default:
+        return undefined;
+    }
   }
 
   async listTasks(filter: TaskListFilter = {}): Promise<TaskThreadDto[]> {
@@ -1166,6 +1401,31 @@ export class OrchestratorTaskService extends Service {
   async getTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     return doc ? toTaskThreadDetail(doc) : null;
+  }
+
+  /**
+   * Resolve the originating chat target for a task — the room + connector source
+   * it was created from — so proactive surfaces (the TaskSupervisorService
+   * digest, #8900) can post back to where the user is. The origin `source` is
+   * read from the task record metadata stamped at create time. Returns null when
+   * the task has no origin room (e.g. an API-created task with no chat).
+   */
+  async getTaskOriginTarget(
+    taskId: string,
+  ): Promise<{ roomId: string; source: string; worldId?: string } | null> {
+    const doc = await this.store.getTask(taskId);
+    const roomId = doc?.task.roomId;
+    if (!roomId) return null;
+    const meta = doc.task.metadata ?? {};
+    const source =
+      typeof meta.source === "string" && meta.source
+        ? meta.source
+        : "orchestrator";
+    return {
+      roomId,
+      source,
+      ...(doc.task.worldId ? { worldId: doc.task.worldId } : {}),
+    };
   }
 
   async updateTask(
@@ -1450,7 +1710,10 @@ export class OrchestratorTaskService extends Service {
         await this.sendToTaskAgent(
           taskId,
           sessionId,
-          buildAutoVerifyCorrection(verdict.missing),
+          // Escalate the grill per attempt: `attempts` is the count of prior
+          // failures, so `attempts + 1` is this correction's 1-based stage
+          // (matches the persisted autoVerifyAttempts bump above).
+          buildAutoVerifyCorrection(verdict.missing, attempts + 1),
           "validation_failed",
         );
         await this.store.updateTask(taskId, { status: "active" });

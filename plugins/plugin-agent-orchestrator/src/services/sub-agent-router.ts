@@ -15,6 +15,10 @@ import {
   extractParentAgentDirective,
   parentAgentMarkerIndex,
 } from "./parent-agent-dispatch.js";
+import {
+  collectScreenshotPaths,
+  deliverScreenshots,
+} from "./screenshot-delivery.js";
 import { SsrfBlockedError, safeFetch } from "./ssrf-guard.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
 import {
@@ -943,6 +947,26 @@ export class SubAgentRouter extends Service {
             error: err instanceof Error ? err.message : String(err),
           });
         });
+      // #8904: forward any screenshots/artifacts the completion carries to the
+      // origin chat as photos (best-effort; missing target/paths → no-op). The
+      // connector renders Content.attachments (Telegram via sendMedia PHOTO).
+      const completionText =
+        pickPayloadString(data, "response") ??
+        pickPayloadString(data, "finalText");
+      const screenshotPaths = collectScreenshotPaths(
+        completionText,
+        session.metadata as Record<string, unknown> | undefined,
+      ).filter((p) => fs.existsSync(p));
+      const sendShots = (this.runtime as RuntimeWithSendTarget)
+        .sendMessageToTarget;
+      if (screenshotPaths.length > 0 && origin.source && sendShots) {
+        await deliverScreenshots(
+          (t, c) => sendShots(t, c),
+          { source: origin.source, roomId: origin.roomId },
+          screenshotPaths,
+          origin.label,
+        );
+      }
     }
     const routingKind = routingKindForEvent(event, data, capExceeded);
     const targets = swarmTargetsForRouting(origin, routingKind);

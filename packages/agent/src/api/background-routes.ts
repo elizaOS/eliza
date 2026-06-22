@@ -11,7 +11,9 @@
 
 import { Buffer } from "node:buffer";
 import {
+  fetchRemoteMedia,
   type IMediaGenerationService,
+  logger,
   type MediaGenerationRequest,
   type Route,
   ServiceType,
@@ -31,6 +33,9 @@ function jsonResult(status: number, body: unknown) {
   };
 }
 
+/** Cap on a re-hosted background image (generated art is small). */
+const BACKGROUND_IMAGE_MAX_BYTES = 16 * 1024 * 1024;
+
 /** Normalize a generated image (base64 / data URL / remote URL) to a served URL. */
 async function persistGeneratedImage(
   imageBase64: string | undefined,
@@ -45,11 +50,19 @@ async function persistGeneratedImage(
     if (persisted) return persisted.url;
   }
   if (/^https?:\/\//.test(imageUrl)) {
-    const resp = await fetch(imageUrl);
-    if (resp.ok) {
-      const bytes = Buffer.from(await resp.arrayBuffer());
-      const contentType = resp.headers.get("content-type") ?? mimeType;
-      return persistMediaBytes(bytes, contentType).url;
+    try {
+      // SSRF-guarded server-side fetch (mandated for all remote media fetches).
+      const { buffer, contentType } = await fetchRemoteMedia({
+        url: imageUrl,
+        maxBytes: BACKGROUND_IMAGE_MAX_BYTES,
+      });
+      return persistMediaBytes(buffer, contentType ?? mimeType).url;
+    } catch (err) {
+      logger.warn(
+        `[background] could not re-host generated image ${imageUrl}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
   }
   // Already a usable URL we couldn't (or needn't) re-host.

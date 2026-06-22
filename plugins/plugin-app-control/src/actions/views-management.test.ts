@@ -1380,6 +1380,64 @@ describe("view management actions", () => {
 		expect(ownerCheck).toHaveBeenCalledTimes(3);
 	});
 
+	it("owner-gates the rollback sub-mode like other mutating modes (#8915)", async () => {
+		const { runtime } = createRuntime();
+		const ownerCheck = vi.fn(async () => false);
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [view()]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: ownerCheck,
+		});
+
+		// Explicit action=rollback is owner-gated.
+		await expect(
+			action.validate?.(
+				runtime as never,
+				message("rollback") as never,
+				undefined,
+				{ action: "rollback" },
+			),
+		).resolves.toBe(false);
+		// Natural-language rollback phrasing is owner-gated too.
+		await expect(
+			action.validate?.(
+				runtime as never,
+				message("roll back the remote ledger plugin") as never,
+			),
+		).resolves.toBe(false);
+		expect(ownerCheck).toHaveBeenCalledTimes(2);
+	});
+
+	it("routes action=rollback to the rollback handler and reports no snapshot when none recorded (#8915)", async () => {
+		// No snapshot tasks recorded -> rollback short-circuits before any git/fetch,
+		// proving the dispatcher wired the rollback sub-mode in.
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [view()]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		const result = await action.handler(
+			runtime as never,
+			message("rollback the remote ledger plugin") as never,
+			undefined,
+			{ action: "rollback" },
+			callback,
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.text?.toLowerCase()).toContain("no pre-edit snapshot");
+		// rollback never touched git/fetch when there's nothing to roll back.
+		expect(globalThis.fetch).not.toHaveBeenCalled();
+		expect(runtime.getTasks).toHaveBeenCalled();
+	});
+
 	it("includes explicit TUI view type and always-on-top false in window navigation payloads", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();

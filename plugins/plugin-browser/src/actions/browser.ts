@@ -13,9 +13,15 @@ import {
 } from "../browser-service.js";
 import {
   type BrowserWorkspaceCommand,
+  type BrowserWorkspaceCommandResult,
   executeBrowserWorkspaceCommand,
   getBrowserWorkspaceMode,
 } from "../workspace/browser-workspace.js";
+import {
+  WAIT_FOR_URL_DEFAULT_POLL_INTERVAL_MS,
+  WAIT_FOR_URL_DEFAULT_TIMEOUT_MS,
+  waitForUrl,
+} from "./wait-for-url.js";
 
 /**
  * Targets are the registered browser backends. The agent uses what is
@@ -60,14 +66,20 @@ type BrowserWorkspaceAction =
   | "cursor_move"
   | "cursor_hide";
 
-type BrowserActionSubaction = BrowserWorkspaceSubaction | "autofill-login";
+type BrowserActionSubaction =
+  | BrowserWorkspaceSubaction
+  | "autofill-login"
+  | "wait-for-url";
 type BrowserActionValue =
   | BrowserWorkspaceAction
   | "autofill_login"
-  | "autofill-login";
+  | "autofill-login"
+  | "wait_for_url"
+  | "wait-for-url";
 type NormalizedBrowserAction =
   | BrowserWorkspaceSubaction
   | "autofill-login"
+  | "wait-for-url"
   | "info"
   | "context"
   | "get_context"
@@ -100,6 +112,10 @@ type BrowserActionParameters = {
     | "close_tab"
     | "switch_tab";
   subaction?: BrowserActionSubaction;
+  /** For action=wait_for_url: substring or regex to match the tab URL. */
+  pattern?: string;
+  /** For action=wait_for_url: poll cadence in ms (default ~2000). */
+  pollIntervalMs?: number;
   /** Registrable hostname for `action: "autofill_login"`. */
   domain?: string;
   /** Saved login username for autofill-login (optional). */
@@ -144,13 +160,20 @@ function extractFirstUrl(value: string): string | null {
 function inferBrowserSubaction(
   params: BrowserActionParameters | undefined,
   messageText: string,
-): BrowserWorkspaceCommand["subaction"] | "autofill-login" {
+): BrowserWorkspaceCommand["subaction"] | "autofill-login" | "wait-for-url" {
   const normalizedAction = normalizeBrowserAction(params?.action);
   if (
     normalizedAction === "autofill-login" ||
     params?.subaction === "autofill-login"
   ) {
     return "autofill-login";
+  }
+
+  if (
+    normalizedAction === "wait-for-url" ||
+    params?.subaction === "wait-for-url"
+  ) {
+    return "wait-for-url";
   }
 
   const legacySubaction = normalizeLegacyBrowserAction(normalizedAction);
@@ -204,6 +227,9 @@ function normalizeBrowserAction(
       return "cursor-hide";
     case "autofill_login":
       return "autofill-login";
+    case "wait_for_url":
+    case "wait-for-url":
+      return "wait-for-url";
     default:
       return action as NormalizedBrowserAction | undefined;
   }
@@ -224,6 +250,7 @@ function normalizeLegacyBrowserAction(
     case "switch_tab":
       return "tab";
     case "autofill-login":
+    case "wait-for-url":
       return undefined;
     case undefined:
       return undefined;
@@ -433,6 +460,173 @@ async function emitBrowserStepProgress(
   }
 }
 
+function currentUrlFromResult(
+  result: BrowserWorkspaceCommandResult,
+): string | null {
+  if (result.tab?.url) {
+    return result.tab.url;
+  }
+  if (typeof result.value === "string" && result.value.trim()) {
+    return result.value.trim();
+  }
+  if (Array.isArray(result.tabs)) {
+    const visible = result.tabs.find((tab) => tab.visible) ?? result.tabs[0];
+    if (visible?.url) {
+      return visible.url;
+    }
+  }
+  return null;
+}
+
+/**
+ * Reads the current tab URL via the active browser target. Prefers a targeted
+ * `get url` (cheap), falling back to `state` for backends that don't implement
+ * the get-url mode. Returns null when the URL is not yet readable.
+ */
+async function readCurrentBrowserUrl(
+  browserService: BrowserService | null,
+  target: BrowserTarget | undefined,
+  tabId: string | undefined,
+): Promise<string | null> {
+  const run = async (
+    command: BrowserWorkspaceCommand,
+  ): Promise<BrowserWorkspaceCommandResult> =>
+    browserService
+      ? browserService.execute(command, target)
+      : executeBrowserWorkspaceCommand(command);
+
+  try {
+    const got = await run({
+      subaction: "get",
+      getMode: "url",
+      id: tabId,
+    });
+    const url = currentUrlFromResult(got);
+    if (url) {
+      return url;
+    }
+  } catch (error) {
+    logger.debug(
+      `[BROWSER] wait_for_url get-url poll failed, falling back to state: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  try {
+    const state = await run({ subaction: "state", id: tabId });
+    return currentUrlFromResult(state);
+  } catch (error) {
+    logger.debug(
+      `[BROWSER] wait_for_url state poll could not read URL: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
+}
+
+/**
+ * Handles `action: "wait_for_url"`. Optionally opens/navigates to a starting
+ * URL, tells the user it is watching, then polls the tab URL against `pattern`,
+ * streaming a status update each poll. Resolves with a typed success/timeout
+ * result and never throws on timeout.
+ */
+async function executeBrowserWaitForUrl(
+  runtime: Parameters<NonNullable<Action["handler"]>>[0],
+  params: BrowserActionParameters | undefined,
+  messageText: string,
+  callback: HandlerCallback | undefined,
+): Promise<ReturnType<NonNullable<Action["handler"]>>> {
+  const pattern = (params?.pattern ?? "").trim();
+  if (!pattern) {
+    const text =
+      "wait_for_url needs a `pattern` (substring or regex) to watch for.";
+    logger.warn(`[BROWSER] ${text}`);
+    return {
+      text,
+      success: false,
+      values: { success: false, error: "BROWSER_WAIT_FOR_URL_NO_PATTERN" },
+      data: { actionName: "BROWSER", subaction: "wait_for_url" },
+    };
+  }
+
+  const browserService =
+    runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE) ?? null;
+  const target = params?.target;
+  const startUrl =
+    params?.url?.trim() || extractFirstUrl(messageText) || undefined;
+  const timeoutMs = params?.timeoutMs ?? WAIT_FOR_URL_DEFAULT_TIMEOUT_MS;
+  const pollIntervalMs =
+    params?.pollIntervalMs ?? WAIT_FOR_URL_DEFAULT_POLL_INTERVAL_MS;
+
+  let tabId = params?.id?.trim() || undefined;
+
+  // Optionally launch the starting URL so the user can act on it.
+  if (startUrl) {
+    const openCommand: BrowserWorkspaceCommand = {
+      subaction: tabId ? "navigate" : "open",
+      url: startUrl,
+      id: tabId,
+    };
+    try {
+      const opened = browserService
+        ? await browserService.execute(openCommand, target)
+        : await executeBrowserWorkspaceCommand(openCommand);
+      tabId = opened.tab?.id ?? tabId;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      logger.warn(
+        `[BROWSER] wait_for_url could not open ${startUrl}: ${reason}`,
+      );
+      return {
+        text: `Couldn't open ${startUrl} to watch for "${pattern}": ${reason}`,
+        success: false,
+        values: { success: false, error: "BROWSER_WAIT_FOR_URL_OPEN_FAILED" },
+        data: { actionName: "BROWSER", subaction: "wait_for_url" },
+      };
+    }
+  }
+
+  await callback?.({
+    text: startUrl
+      ? `I opened ${startUrl} — watching for "${pattern}" and I'll resume when it's reached.`
+      : `Watching the current tab for "${pattern}" — I'll resume when it's reached.`,
+  });
+
+  logger.info(
+    `[BROWSER] wait_for_url pattern="${pattern}" timeoutMs=${timeoutMs} pollIntervalMs=${pollIntervalMs} target=${target ?? "auto"}`,
+  );
+
+  const outcome = await waitForUrl(
+    { pattern, timeoutMs, pollIntervalMs },
+    {
+      getCurrentUrl: () => readCurrentBrowserUrl(browserService, target, tabId),
+      emitStatus: async (text) => {
+        await callback?.({ text });
+      },
+    },
+  );
+
+  return {
+    text: outcome.message,
+    success: outcome.matched,
+    userFacingText: outcome.message,
+    values: {
+      success: outcome.matched,
+      subaction: "wait_for_url",
+      status: outcome.status,
+      matched: outcome.matched,
+      polls: outcome.polls,
+    },
+    data: {
+      actionName: "BROWSER",
+      subaction: "wait_for_url",
+      outcome,
+    },
+  };
+}
+
 export const browserAction: Action = {
   name: "BROWSER",
   contexts: ["browser", "web", "automation", "secrets"],
@@ -456,9 +650,9 @@ export const browserAction: Action = {
     "SIGN_IN_TO_SITE",
   ],
   description:
-    "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab.",
+    "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
   descriptionCompressed:
-    "Browser open|navigate|click|type|screenshot|state|autofill_login; bridge status elsewhere",
+    "Browser open|navigate|click|type|screenshot|state|autofill_login|wait_for_url; bridge status elsewhere",
   validate: async () => true,
   handler: async (
     runtime,
@@ -478,6 +672,10 @@ export const browserAction: Action = {
         "./browser-autofill-login.js"
       );
       return executeBrowserAutofillLogin(runtime, message, options);
+    }
+
+    if (subaction === "wait-for-url") {
+      return executeBrowserWaitForUrl(runtime, params, messageText, callback);
     }
 
     const url =
@@ -617,8 +815,22 @@ export const browserAction: Action = {
           "cursor_move",
           "cursor_hide",
           "autofill_login",
+          "wait_for_url",
         ],
       },
+    },
+    {
+      name: "pattern",
+      description:
+        "For action=wait_for_url: substring or /regex/ to match the tab URL (e.g. callback?code=, or /\\/done$/).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "pollIntervalMs",
+      description: "For action=wait_for_url: poll cadence in ms. Default 2000.",
+      required: false,
+      schema: { type: "number" as const },
     },
     {
       name: "tabAction",
@@ -760,6 +972,21 @@ export const browserAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "click completed in desktop mode.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Open the GitHub OAuth page and let me know when it redirects back to our callback.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I opened https://github.com/login/oauth/authorize — watching for \"callback?code=\" and I'll resume when it's reached.",
+          actions: ["BROWSER"],
         },
       },
     ],

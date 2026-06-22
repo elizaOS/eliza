@@ -232,6 +232,61 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		await service.stop();
 	});
 
+	it("offers a rollback in the verifyPlugin fail verdict (#8915)", async () => {
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		coordinator.__emit(pluginEvent("fail"));
+		await flush();
+
+		const [memory] = (runtime.createMemory as ReturnType<typeof vi.fn>).mock
+			.calls[0];
+		const text = memory.content.text as string;
+		// The user is offered a one-reply rollback that names the VIEWS rollback
+		// action + the target, instead of being left with a broken plugin.
+		expect(text).toMatch(/rollback/i);
+		expect(text).toContain("action=rollback");
+		expect(text).toContain("plugin-habit-tracker");
+		// Retry/cancel remain available.
+		expect(text).toMatch(/retry/i);
+		expect(text).toMatch(/cancel/i);
+
+		await service.stop();
+	});
+
+	it("does not offer a rollback for an app fail verdict (no app snapshot mode)", async () => {
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		coordinator.__emit({
+			type: "escalation",
+			sessionId: "sess-app-fail",
+			data: {
+				originRoomId: "room-7",
+				label: "create-app:notes",
+				summary: "build error",
+				verification: {
+					source: "custom-validator",
+					verdict: "fail",
+					validator: { service: "app-verification", method: "verifyApp" },
+					params: { appName: "notes", workdir: "/repo/apps/app-notes" },
+				},
+			},
+		});
+		await flush();
+
+		const [memory] = (runtime.createMemory as ReturnType<typeof vi.fn>).mock
+			.calls[0];
+		const text = memory.content.text as string;
+		expect(text).not.toContain("action=rollback");
+		expect(text).toMatch(/retry/i);
+		expect(text).toMatch(/cancel/i);
+
+		await service.stop();
+	});
+
 	it("drops a verdict event missing the validator params (no targetName)", async () => {
 		const coordinator = makeCoordinator();
 		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });

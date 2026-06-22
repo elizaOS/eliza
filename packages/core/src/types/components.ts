@@ -150,6 +150,13 @@ export interface MessageHandlerExtract {
 	 * Drives the "addressed" relationship edge from speaker → target.
 	 */
 	addressedTo?: string[];
+	/**
+	 * Short, normalized topic labels for the current message (1-5, lowercase,
+	 * trimmed, deduped). Maintained per-channel as an LRU by
+	 * `ChannelTopicsService` and surfaced back into Stage-1 routing via the
+	 * `CHANNEL_TOPICS` provider. Empty / omitted means "no salient topic".
+	 */
+	topics?: string[];
 }
 
 export interface MessageHandlerResult {

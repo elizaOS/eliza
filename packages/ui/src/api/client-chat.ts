@@ -276,6 +276,17 @@ function buildTrajectoryParams(
 
 declare module "./client-base" {
   interface ElizaClient {
+    sendChatMessage(
+      text: string,
+      channelType?: ConversationChannelType,
+    ): Promise<{
+      text: string;
+      agentName: string;
+      noResponseReason?: "ignored";
+      failureKind?: ChatFailureKind;
+      localInference?: LocalInferenceChatMetadata;
+      actionResults?: ChatActionResultSummary[];
+    }>;
     sendChatRest(
       text: string,
       channelType?: ConversationChannelType,

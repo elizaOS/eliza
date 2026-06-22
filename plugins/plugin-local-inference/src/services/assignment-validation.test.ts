@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-	AssignmentNotServableError,
+	AssignmentRejectedError,
 	canServeRuntimeClassOnHost,
 	readAssignments,
 	setAssignment,
@@ -88,20 +88,22 @@ describe("canServeRuntimeClassOnHost", () => {
 });
 
 describe("setAssignment boundary validation", () => {
-	it("rejects a generic GGUF on desktop with a typed reason", async () => {
+	it("rejects a generic GGUF on desktop before assignment writes", async () => {
 		const model = await registerGenericModel();
 		await expect(setAssignment("TEXT_LARGE", model.id)).rejects.toBeInstanceOf(
-			AssignmentNotServableError,
+			AssignmentRejectedError,
 		);
 		// Nothing was written.
 		expect(await readAssignments()).toEqual({});
 	});
 
-	it("accepts a generic GGUF on mobile", async () => {
+	it("rejects a generic GGUF on mobile too", async () => {
 		process.env.ELIZA_PLATFORM = "ios";
 		const model = await registerGenericModel();
-		const next = await setAssignment("TEXT_LARGE", model.id);
-		expect(next.TEXT_LARGE).toBe(model.id);
+		await expect(setAssignment("TEXT_LARGE", model.id)).rejects.toThrow(
+			/curated Eliza-1/i,
+		);
+		expect(await readAssignments()).toEqual({});
 	});
 
 	it("always accepts a fused Eliza-1 model on desktop", async () => {
@@ -118,8 +120,7 @@ describe("setAssignment boundary validation", () => {
 	});
 
 	it("clearing a slot is never gated", async () => {
-		process.env.ELIZA_PLATFORM = "ios";
-		const model = await registerGenericModel();
+		const model = await registerFusedModel();
 		await setAssignment("TEXT_LARGE", model.id);
 		delete process.env.ELIZA_PLATFORM; // back to desktop
 		const next = await setAssignment("TEXT_LARGE", null);

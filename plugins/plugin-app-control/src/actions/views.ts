@@ -40,6 +40,7 @@ import {
 import { runViewsEdit } from "./views-edit.js";
 import { isViewIconRequest, runViewsIcon } from "./views-icon.js";
 import { runViewsList } from "./views-list.js";
+import { isRollbackRequest, runViewsRollback } from "./views-rollback.js";
 import { runViewsSearch, scoreView } from "./views-search.js";
 import { resolveIntentView, runViewsShow } from "./views-show.js";
 
@@ -56,6 +57,7 @@ export type ViewsMode =
 	| "create"
 	| "edit"
 	| "icon"
+	| "rollback"
 	| "delete"
 	| "remove"
 	| "pin"
@@ -138,6 +140,7 @@ const MODES: readonly ViewsMode[] = [
 	"create",
 	"edit",
 	"icon",
+	"rollback",
 	"delete",
 	"remove",
 	"pin",
@@ -429,6 +432,17 @@ function inferMode(
 		if (isTileLayoutRequest(trimmed)) return "tile";
 		if (isSplitLayoutRequest(trimmed)) return "split";
 	}
+	// Explicit rollback aliases. Handled before the generic non-mode -> interact
+	// fallthrough so `action=revert`/`action=undo` resolve to the rollback handler.
+	if (
+		normalizedExplicit === "rollback" ||
+		normalizedExplicit === "roll_back" ||
+		normalizedExplicit === "revert" ||
+		normalizedExplicit === "undo" ||
+		normalizedExplicit === "restore"
+	) {
+		return "rollback";
+	}
 	if (
 		normalizedExplicit &&
 		!(MODES as readonly string[]).includes(normalizedExplicit)
@@ -450,6 +464,10 @@ function inferMode(
 
 	if (!trimmed) return null;
 
+	// Rollback/undo of a view-plugin create/edit must be checked before the
+	// edit/delete verbs so "undo the view creation" / "roll back the plugin edit"
+	// route to the rollback handler instead of being treated as an edit/delete.
+	if (isRollbackRequest(trimmed)) return "rollback";
 	if (DELETE_VERBS_RE.test(trimmed)) return "delete";
 	if (CREATE_VERBS.test(trimmed)) return "create";
 	if (EDIT_VERBS_RE.test(trimmed)) return "edit";
@@ -654,6 +672,9 @@ const CAPABILITY_PARAM_RESERVED_KEYS = new Set([
 	"editTarget",
 	"choice",
 	"confirm",
+	"sha",
+	"pluginName",
+	"workdir",
 ]);
 
 type ResolvedViewCapability = {
@@ -1883,6 +1904,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"MAKE_VIEW",
 			"EDIT_VIEW",
 			"UPDATE_VIEW",
+			"ROLLBACK_VIEW",
+			"ROLLBACK_PLUGIN",
+			"REVERT_VIEW",
+			"REVERT_PLUGIN",
+			"UNDO_VIEW_CREATE",
+			"UNDO_PLUGIN_CREATE",
+			"RESTORE_VIEW",
 			"SET_VIEW_ICON",
 			"CHANGE_VIEW_ICON",
 			"GENERATE_VIEW_ICON",
@@ -1919,7 +1947,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "action",
 				description:
-					"Operation: list | current | show | open | close | search | manager | broadcast | interact | pin | window | split | tile | create | edit | icon | delete | remove, or a registered/generated view capability name to resolve through the view catalog.",
+					"Operation: list | current | show | open | close | search | manager | broadcast | interact | pin | window | split | tile | create | edit | icon | rollback | delete | remove, or a registered/generated view capability name to resolve through the view catalog. Use rollback to undo a view/plugin create or edit by resetting its source to the pre-edit snapshot.",
 				required: true,
 				schema: {
 					type: "string",
@@ -2113,6 +2141,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				required: false,
 				schema: { type: "string" },
 			},
+			{
+				name: "sha",
+				description:
+					"Explicit pre-edit snapshot commit id to reset to (rollback mode). Defaults to the most recent recorded snapshot for this room.",
+				required: false,
+				schema: { type: "string" },
+			},
 		],
 
 		validate: async (
@@ -2145,6 +2180,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				mode === "create" ||
 				mode === "edit" ||
 				mode === "icon" ||
+				mode === "rollback" ||
 				mode === "delete" ||
 				mode === "remove"
 			) {
@@ -2491,6 +2527,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							repoRoot: getRepoRoot(),
 						});
 					}
+
+					case "rollback":
+						return runViewsRollback({
+							runtime,
+							message,
+							options: actionOptions,
+							callback,
+						});
 
 					case "delete":
 					case "remove": {
