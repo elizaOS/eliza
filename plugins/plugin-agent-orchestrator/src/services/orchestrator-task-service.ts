@@ -99,6 +99,10 @@ import {
 } from "./orchestrator-task-types.js";
 import { PARENT_AGENT_BROKER_MANIFEST_ENTRY } from "./parent-agent-broker.js";
 import { buildSkillsManifest } from "./skill-manifest.js";
+import {
+  configureSpendLedger,
+  createTaskStoreSpendLedger,
+} from "./spend-allowance.js";
 import type { ApprovalPreset } from "./types.js";
 import {
   ensureTaskWorkdir,
@@ -538,6 +542,9 @@ export class OrchestratorTaskService extends Service {
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    // Persist self-spend durably so a configured ELIZA_AGENT_SPEND_CAP_USD
+    // survives a restart instead of resetting to zero (#8924).
+    configureSpendLedger(createTaskStoreSpendLedger(this.store));
     const acp = this.acp();
     if (acp) {
       this.subscribeToAcp(acp);
