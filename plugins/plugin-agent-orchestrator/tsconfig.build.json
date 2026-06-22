@@ -25,6 +25,7 @@
     "vendor/**",
     "scripts/**",
     "src/test-utils/**",
+    "test/**",
     "vitest.config.ts",
     "**/__tests__/**",
     "**/*.test.ts",
