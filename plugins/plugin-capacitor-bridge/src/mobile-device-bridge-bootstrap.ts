@@ -1174,6 +1174,21 @@ function deriveBionicBundleDir(modelPath: string): string {
 
 /** Qwen/ChatML prompt — eliza-1's template — built without the device-bridge. */
 function buildChatMlPrompt(params: GenerateTextParams): string {
+	// If the caller already handed us a complete ChatML prompt — e.g. the Android
+	// direct-chat fast path, whose prompt ends with an `<|im_start|>assistant`
+	// turn pre-filled with an empty `<think></think>` block (Qwen3
+	// enable_thinking=false) — use it VERBATIM. Re-wrapping it in another
+	// <|im_start|>user/…/assistant turn double-nests the markers AND drops the
+	// pre-filled think block, so the model burns its first (capped) tokens on
+	// hidden `<think>…` reasoning and the short-reply fast path returns empty —
+	// which then falls through to the full response handler and pays a SECOND
+	// cold prefill. Pass it through so the fast path can actually answer.
+	if (
+		typeof params.prompt === "string" &&
+		params.prompt.includes("<|im_start|>assistant")
+	) {
+		return params.prompt;
+	}
 	const msgs = collectMessagesForNativeTemplate(params);
 	if (!msgs || msgs.length === 0) {
 		return `<|im_start|>user\n${flattenChatParamsForPrompt(params)}<|im_end|>\n<|im_start|>assistant\n`;
