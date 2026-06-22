@@ -1125,3 +1125,18 @@ export function clearPersistedActiveServer(): void {
     localStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
   }, undefined);
 }
+
+/**
+ * Drop the bearer access token from the persisted active server while keeping
+ * the server selection (kind/apiBase/label). Call this on sign-out: the token
+ * is a JWT and leaving it in localStorage after sign-out is an at-rest leak,
+ * but clearing the whole record would needlessly forget which backend to
+ * re-authenticate against.
+ */
+export function scrubPersistedActiveServerToken(): void {
+  const current = loadPersistedActiveServer();
+  if (!current?.accessToken) return;
+  const scrubbed = { ...current };
+  delete scrubbed.accessToken;
+  savePersistedActiveServer(scrubbed);
+}
