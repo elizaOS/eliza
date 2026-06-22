@@ -437,6 +437,16 @@ const ROUTES: DevRouteEntry[] = [
     requiresAuth: true,
     platformGate: "desktop",
   },
+  {
+    tabId: "background",
+    path: "/background",
+    label: "Background",
+    group: "Hidden",
+    visibility: "all",
+    featureFlag: null,
+    requiresAuth: true,
+    platformGate: null,
+  },
 ];
 
 /**
@@ -521,3 +531,4 @@ export function buildRouteCatalog(
     modals: MODALS.map((m) => ({ ...m })),
   };
 }
+
