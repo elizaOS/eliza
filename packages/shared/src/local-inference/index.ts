@@ -126,3 +126,10 @@ export {
   type VoiceModelVersion,
   versionsFor,
 } from "./voice-models.js";
+export {
+  ELIZA_1_CONTEXT_TARGET,
+  ELIZA_1_KV_QUANT,
+  ELIZA_1_MIN_LOCAL_CONTEXT,
+  type Eliza1Fit,
+  selectBestEliza1Fit,
+} from "./device-fit.js";
