@@ -30,6 +30,7 @@ import {
 } from "../inference-timing";
 import { logger } from "../logger";
 import { describeImageCached } from "../media";
+import { fetchRemoteMedia } from "../media/fetch";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
 import { checkSenderRole } from "../roles";
 import {
@@ -1349,6 +1350,13 @@ type MediaWithInlineData = Media & {
 	_data?: unknown;
 	_mimeType?: unknown;
 };
+
+/**
+ * Hard cap on bytes fetched while enriching a single attachment (description /
+ * transcription / text extraction). Bounds memory and is enforced by the
+ * SSRF-guarded fetcher for remote URLs and explicitly for local ones.
+ */
+const ATTACHMENT_FETCH_MAX_BYTES = 50 * 1024 * 1024;
 
 function sanitizeAttachmentsForStorage(
 	attachments: Media[] | undefined,
@@ -11237,221 +11245,270 @@ export class DefaultMessageService implements IMessageService {
 					? attachment.url
 					: getLocalServerUrl(attachment.url);
 
-				// Only process images that don't already have descriptions
-				if (
-					attachment.contentType === ContentType.IMAGE &&
-					!attachment.description
-				) {
-					// Skip image analysis when vision / image-description is explicitly
-					// disabled (e.g. the user toggled the Vision capability off).
-					const disableImageDesc = runtime.getSetting(
-						"DISABLE_IMAGE_DESCRIPTION",
-					);
-					if (disableImageDesc === true || disableImageDesc === "true") {
-						return processedAttachment;
-					}
-
-					runtime.logger.debug(
-						{ src: "service:message", imageUrl: attachment.url },
-						"Generating image description",
-					);
-
-					let imageUrl = url;
-					const runtimeFetch = runtime.fetch ?? globalThis.fetch;
-					const inlineData = attachment as MediaWithInlineData;
-
+				try {
+					// Only process images that don't already have descriptions
 					if (
-						typeof inlineData._data === "string" &&
-						inlineData._data.trim() &&
-						typeof inlineData._mimeType === "string" &&
-						inlineData._mimeType.trim()
+						attachment.contentType === ContentType.IMAGE &&
+						!attachment.description
 					) {
-						imageUrl = `data:${inlineData._mimeType};base64,${inlineData._data}`;
-					} else if (!isRemote) {
-						// Convert local/internal media to base64
-						const res = await runtimeFetch(url);
-						if (!res.ok)
-							throw new Error(`Failed to fetch image: ${res.statusText}`);
-
-						const arrayBuffer = await res.arrayBuffer();
-						const buffer = Buffer.from(arrayBuffer);
-						const contentType =
-							res.headers.get("content-type") || "application/octet-stream";
-						imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
-					}
-
-					// Describe via the shared content-addressed cache: identical image
-					// bytes reuse one stored description across messages and across the
-					// other describe paths (read action, basic-capabilities helper)
-					// instead of re-invoking the vision model every turn.
-					const resolvedImagePrompt = resolveOptimizedPromptForRuntime(
-						runtime,
-						"media_description",
-						imageDescriptionTemplate,
-					);
-					const described = await describeImageCached(
-						runtime,
-						imageUrl,
-						resolvedImagePrompt,
-					);
-					if (described) {
-						processedAttachment.description = described.description;
-						processedAttachment.title = described.title || "Image";
-						processedAttachment.text = described.text;
-						runtime.logger.debug(
-							{
-								src: "service:message",
-								descriptionPreview: described.description?.substring(0, 100),
-							},
-							"Generated image description",
+						// Skip image analysis when vision / image-description is explicitly
+						// disabled (e.g. the user toggled the Vision capability off).
+						const disableImageDesc = runtime.getSetting(
+							"DISABLE_IMAGE_DESCRIPTION",
 						);
-					} else {
-						runtime.logger.warn(
-							{ src: "service:message" },
-							"Image description unavailable for attachment",
-						);
-					}
-				} else if (
-					attachment.contentType === ContentType.DOCUMENT &&
-					!attachment.text
-				) {
-					const docFetch = runtime.fetch ?? globalThis.fetch;
-					const res = await docFetch(url);
-					if (!res.ok)
-						throw new Error(`Failed to fetch document: ${res.statusText}`);
-
-					const contentType = res.headers.get("content-type") || "";
-					const isPlainText = contentType.startsWith("text/plain");
-
-					if (isPlainText) {
-						runtime.logger.debug(
-							{ src: "service:message", documentUrl: attachment.url },
-							"Processing plain text document",
-						);
-
-						const textContent = await res.text();
-						processedAttachment.text = textContent;
-						processedAttachment.title =
-							processedAttachment.title || "Text File";
-
-						runtime.logger.debug(
-							{
-								src: "service:message",
-								textPreview: processedAttachment.text?.substring(0, 100),
-							},
-							"Extracted text content",
-						);
-					} else {
-						runtime.logger.warn(
-							{ src: "service:message", contentType },
-							"Skipping non-plain-text document",
-						);
-					}
-				} else if (
-					attachment.contentType === ContentType.AUDIO &&
-					!attachment.text
-				) {
-					runtime.logger.debug(
-						{ src: "service:message", audioUrl: attachment.url },
-						"Transcribing audio attachment",
-					);
-
-					try {
-						let transcriptionInput: string | Buffer = url;
-						const audioFetch = runtime.fetch ?? globalThis.fetch;
-
-						// For local/internal URLs, fetch the audio as a buffer
-						if (!isRemote) {
-							const res = await audioFetch(url);
-							if (!res.ok)
-								throw new Error(`Failed to fetch audio: ${res.statusText}`);
-							const arrayBuffer = await res.arrayBuffer();
-							transcriptionInput = Buffer.from(arrayBuffer);
+						if (disableImageDesc === true || disableImageDesc === "true") {
+							return processedAttachment;
 						}
 
-						const transcript = await runtime.useModel(
-							ModelType.TRANSCRIPTION,
-							transcriptionInput,
+						runtime.logger.debug(
+							{ src: "service:message", imageUrl: attachment.url },
+							"Generating image description",
 						);
 
-						if (typeof transcript === "string" && transcript.trim()) {
-							processedAttachment.text = transcript.trim();
-							processedAttachment.title = processedAttachment.title || "Audio";
-							processedAttachment.description = `Transcript: ${transcript.trim()}`;
+						let imageUrl = url;
+						const inlineData = attachment as MediaWithInlineData;
+
+						if (
+							typeof inlineData._data === "string" &&
+							inlineData._data.trim() &&
+							typeof inlineData._mimeType === "string" &&
+							inlineData._mimeType.trim()
+						) {
+							imageUrl = `data:${inlineData._mimeType};base64,${inlineData._data}`;
+						} else {
+							// Inline the bytes as a data URL so the vision model never fetches
+							// an attacker-controlled URL itself. Remote bytes go through the
+							// SSRF-guarded fetcher (blocks private/loopback hosts); local
+							// media-store URLs use the trusted runtime fetch.
+							const { buffer, contentType } = await this.fetchAttachmentBytes(
+								runtime,
+								attachment.url,
+								url,
+								isRemote,
+							);
+							imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
+						}
+
+						// Describe via the shared content-addressed cache: identical image
+						// bytes reuse one stored description across messages and across the
+						// other describe paths (read action, basic-capabilities helper)
+						// instead of re-invoking the vision model every turn.
+						const resolvedImagePrompt = resolveOptimizedPromptForRuntime(
+							runtime,
+							"media_description",
+							imageDescriptionTemplate,
+						);
+						const described = await describeImageCached(
+							runtime,
+							imageUrl,
+							resolvedImagePrompt,
+						);
+						if (described) {
+							processedAttachment.description = described.description;
+							processedAttachment.title = described.title || "Image";
+							processedAttachment.text = described.text;
+							runtime.logger.debug(
+								{
+									src: "service:message",
+									descriptionPreview: described.description?.substring(0, 100),
+								},
+								"Generated image description",
+							);
+						} else {
+							runtime.logger.warn(
+								{ src: "service:message" },
+								"Image description unavailable for attachment",
+							);
+						}
+					} else if (
+						attachment.contentType === ContentType.DOCUMENT &&
+						!attachment.text
+					) {
+						const { buffer, contentType } = await this.fetchAttachmentBytes(
+							runtime,
+							attachment.url,
+							url,
+							isRemote,
+						);
+						const isPlainText = contentType.startsWith("text/plain");
+
+						if (isPlainText) {
+							runtime.logger.debug(
+								{ src: "service:message", documentUrl: attachment.url },
+								"Processing plain text document",
+							);
+
+							const textContent = buffer.toString("utf8");
+							processedAttachment.text = textContent;
+							processedAttachment.title =
+								processedAttachment.title || "Text File";
 
 							runtime.logger.debug(
 								{
 									src: "service:message",
-									transcriptPreview: processedAttachment.text?.substring(
-										0,
-										100,
-									),
+									textPreview: processedAttachment.text?.substring(0, 100),
 								},
-								"Transcribed audio attachment",
+								"Extracted text content",
+							);
+						} else {
+							runtime.logger.warn(
+								{ src: "service:message", contentType },
+								"Skipping non-plain-text document",
 							);
 						}
-					} catch (err) {
-						runtime.logger.warn(
-							{ src: "service:message", err },
-							"Audio transcription failed, continuing without transcript",
+					} else if (
+						attachment.contentType === ContentType.AUDIO &&
+						!attachment.text
+					) {
+						runtime.logger.debug(
+							{ src: "service:message", audioUrl: attachment.url },
+							"Transcribing audio attachment",
 						);
+
+						try {
+							// Fetch the bytes (remote → SSRF-guarded, size-capped) and pass
+							// the buffer to the transcription model so it never fetches an
+							// attacker-controlled URL itself.
+							const { buffer } = await this.fetchAttachmentBytes(
+								runtime,
+								attachment.url,
+								url,
+								isRemote,
+							);
+
+							const transcript = await runtime.useModel(
+								ModelType.TRANSCRIPTION,
+								buffer,
+							);
+
+							if (typeof transcript === "string" && transcript.trim()) {
+								processedAttachment.text = transcript.trim();
+								processedAttachment.title =
+									processedAttachment.title || "Audio";
+								processedAttachment.description = `Transcript: ${transcript.trim()}`;
+
+								runtime.logger.debug(
+									{
+										src: "service:message",
+										transcriptPreview: processedAttachment.text?.substring(
+											0,
+											100,
+										),
+									},
+									"Transcribed audio attachment",
+								);
+							}
+						} catch (err) {
+							runtime.logger.warn(
+								{ src: "service:message", err },
+								"Audio transcription failed, continuing without transcript",
+							);
+						}
+					} else if (
+						attachment.contentType === ContentType.VIDEO &&
+						!attachment.text
+					) {
+						runtime.logger.debug(
+							{ src: "service:message", videoUrl: attachment.url },
+							"Transcribing video attachment",
+						);
+
+						try {
+							// Fetch the bytes (remote → SSRF-guarded, size-capped) and pass
+							// the buffer to the transcription model so it never fetches an
+							// attacker-controlled URL itself.
+							const { buffer } = await this.fetchAttachmentBytes(
+								runtime,
+								attachment.url,
+								url,
+								isRemote,
+							);
+
+							const transcript = await runtime.useModel(
+								ModelType.TRANSCRIPTION,
+								buffer,
+							);
+
+							if (typeof transcript === "string" && transcript.trim()) {
+								processedAttachment.text = transcript.trim();
+								processedAttachment.title =
+									processedAttachment.title || "Video";
+								processedAttachment.description = `Transcript: ${transcript.trim()}`;
+
+								runtime.logger.debug(
+									{
+										src: "service:message",
+										transcriptPreview: processedAttachment.text?.substring(
+											0,
+											100,
+										),
+									},
+									"Transcribed video attachment",
+								);
+							}
+						} catch (err) {
+							runtime.logger.warn(
+								{ src: "service:message", err },
+								"Video transcription failed, continuing without transcript",
+							);
+						}
 					}
-				} else if (
-					attachment.contentType === ContentType.VIDEO &&
-					!attachment.text
-				) {
-					runtime.logger.debug(
-						{ src: "service:message", videoUrl: attachment.url },
-						"Transcribing video attachment",
+
+					return processedAttachment;
+				} catch (err) {
+					// One bad attachment must never drop the others or the message text.
+					// Degrade to the un-enriched attachment (marking remote ones
+					// ephemeral so the UI can offer a retry) and keep processing.
+					runtime.logger.warn(
+						{ src: "service:message", url: attachment.url, err },
+						"Attachment processing failed; keeping un-enriched attachment",
 					);
-
-					try {
-						let transcriptionInput: string | Buffer = url;
-						const videoFetch = runtime.fetch ?? globalThis.fetch;
-
-						// For local/internal URLs, fetch the video as a buffer
-						if (!isRemote) {
-							const res = await videoFetch(url);
-							if (!res.ok)
-								throw new Error(`Failed to fetch video: ${res.statusText}`);
-							const arrayBuffer = await res.arrayBuffer();
-							transcriptionInput = Buffer.from(arrayBuffer);
-						}
-
-						const transcript = await runtime.useModel(
-							ModelType.TRANSCRIPTION,
-							transcriptionInput,
-						);
-
-						if (typeof transcript === "string" && transcript.trim()) {
-							processedAttachment.text = transcript.trim();
-							processedAttachment.title = processedAttachment.title || "Video";
-							processedAttachment.description = `Transcript: ${transcript.trim()}`;
-
-							runtime.logger.debug(
-								{
-									src: "service:message",
-									transcriptPreview: processedAttachment.text?.substring(
-										0,
-										100,
-									),
-								},
-								"Transcribed video attachment",
-							);
-						}
-					} catch (err) {
-						runtime.logger.warn(
-							{ src: "service:message", err },
-							"Video transcription failed, continuing without transcript",
-						);
-					}
+					return {
+						...attachment,
+						ephemeral: isRemote ? true : attachment.ephemeral,
+					};
 				}
-
-				return processedAttachment;
 			}),
 		);
 
 		return processedAttachments;
+	}
+
+	/**
+	 * Fetch an attachment's bytes for enrichment with a hard size cap. Remote
+	 * (attacker-influenceable) URLs go through the SSRF-guarded fetcher, which
+	 * blocks private/loopback/link-local hosts; trusted local media-store URLs
+	 * (built from a path-validated relative URL) use the runtime fetch. This is
+	 * the ONLY place a raw fetch is used during attachment enrichment.
+	 */
+	private async fetchAttachmentBytes(
+		runtime: IAgentRuntime,
+		rawUrl: string,
+		resolvedLocalUrl: string,
+		isRemote: boolean,
+	): Promise<{ buffer: Buffer; contentType: string }> {
+		if (isRemote) {
+			const { buffer, contentType } = await fetchRemoteMedia({
+				url: rawUrl,
+				maxBytes: ATTACHMENT_FETCH_MAX_BYTES,
+			});
+			return {
+				buffer,
+				contentType: contentType ?? "application/octet-stream",
+			};
+		}
+		const runtimeFetch = runtime.fetch ?? globalThis.fetch;
+		const res = await runtimeFetch(resolvedLocalUrl);
+		if (!res.ok) {
+			throw new Error(`Failed to fetch attachment: ${res.statusText}`);
+		}
+		const buffer = Buffer.from(await res.arrayBuffer());
+		if (buffer.length > ATTACHMENT_FETCH_MAX_BYTES) {
+			throw new Error(`Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`);
+		}
+		const contentType =
+			res.headers.get("content-type") || "application/octet-stream";
+		return { buffer, contentType };
 	}
 
 	private resolveRecentMessagesForFailureReply(
