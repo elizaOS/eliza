@@ -63,10 +63,21 @@ type StoryModules = Record<string, unknown>;
 export function smokeStoryModules(
   label: string,
   modules: StoryModules,
-  options: { wrap?: (node: ReactNode) => ReactNode; minModules?: number } = {},
+  options: {
+    wrap?: (node: ReactNode) => ReactNode;
+    minModules?: number;
+    /**
+     * `"<Module>/<Story>"` keys to render as `it.skip` — for stories that need
+     * the full app runtime (live AppProvider data: plugins, appRuns, transcript
+     * sinks) that jsdom composition can't supply. These are covered by the
+     * browser story gate's `needs-runtime` path and the live `audit:app`.
+     */
+    skip?: string[];
+  } = {},
 ): void {
   const wrap =
     options.wrap ?? ((node: ReactNode) => <TooltipProvider>{node}</TooltipProvider>);
+  const skip = new Set(options.skip ?? []);
 
   beforeAll(installJsdomUiPolyfills);
   afterEach(cleanup);
@@ -94,7 +105,8 @@ export function smokeStoryModules(
     if (!stories.length) continue;
     describe(`${label}: ${name}`, () => {
       for (const [storyName, Story] of stories) {
-        it(`${storyName} renders without throwing`, () => {
+        const testFn = skip.has(`${name}/${storyName}`) ? it.skip : it;
+        testFn(`${storyName} renders without throwing`, () => {
           const { container } = render(wrap(<Story />) as React.ReactElement);
           expect(container.firstChild ?? container).toBeTruthy();
         });
