@@ -93,9 +93,9 @@ describe("readEnvBool (wrapper: default set, 2-valued, configurable default)", (
 		expect(readEnvBool("ELIZA_FLAG", { env: {}, defaultValue: true })).toBe(
 			true,
 		);
-		expect(
-			readEnvBool("ELIZA_FLAG", { env: { ELIZA_FLAG: "maybe" } }),
-		).toBe(false);
+		expect(readEnvBool("ELIZA_FLAG", { env: { ELIZA_FLAG: "maybe" } })).toBe(
+			false,
+		);
 		expect(
 			readEnvBool("ELIZA_FLAG", {
 				env: { ELIZA_FLAG: "maybe" },
