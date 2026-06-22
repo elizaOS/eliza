@@ -152,6 +152,56 @@ function normalizeGeneratedNodeParameterShapes(
 }
 
 /**
+ * Score a workflow against a lowercased query: name beats node type beats
+ * description, and an exact/prefix name match beats a substring. Returns 0 for
+ * no match. Pure + exported so the ranking is unit-testable without a DB.
+ */
+export function scoreWorkflowMatch(workflow: WorkflowDefinitionResponse, query: string): number {
+  const q = query.trim().toLowerCase();
+  if (!q) return 0;
+  const name = String(workflow.name ?? '').toLowerCase();
+  let score = 0;
+  if (name === q) score += 100;
+  else if (name.startsWith(q)) score += 50;
+  else if (name.includes(q)) score += 30;
+
+  const nodes = (workflow as { nodes?: Array<{ type?: unknown; name?: unknown }> }).nodes;
+  if (Array.isArray(nodes)) {
+    for (const node of nodes) {
+      const type = String(node?.type ?? '').toLowerCase();
+      const nodeName = String(node?.name ?? '').toLowerCase();
+      if (type.includes(q) || nodeName.includes(q)) {
+        score += 10;
+        break;
+      }
+    }
+  }
+
+  const description = String(
+    (workflow as { description?: unknown }).description ?? ''
+  ).toLowerCase();
+  if (description.includes(q)) score += 5;
+
+  return score;
+}
+
+/**
+ * Rank workflows best-match-first for a free-text query, dropping non-matches.
+ * An empty query returns the input order unchanged. Pure + exported (#8913).
+ */
+export function rankWorkflowsByQuery(
+  workflows: WorkflowDefinitionResponse[],
+  query: string
+): WorkflowDefinitionResponse[] {
+  if (!query.trim()) return workflows;
+  return workflows
+    .map((workflow) => ({ workflow, score: scoreWorkflowMatch(workflow, query) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.workflow);
+}
+
+/**
  * Workflow Service - Orchestrates the RAG pipeline for workflow generation.
  *
  * generateWorkflowDraft(): keywords → node search → LLM generation → validation → positioning
@@ -864,6 +914,16 @@ export class WorkflowService extends Service {
 
     const response = await client.listWorkflows();
     return response.data;
+  }
+
+  /**
+   * Free-text search over the user's workflows by name, node type, and
+   * description, ranked best-match-first (#8913). Lets a user find "the Slack
+   * workflow" from a chat message without knowing its id.
+   */
+  async searchWorkflows(query: string, userId?: string): Promise<WorkflowDefinitionResponse[]> {
+    const workflows = await this.listWorkflows(userId);
+    return rankWorkflowsByQuery(workflows, query);
   }
 
   async activateWorkflow(workflowId: string): Promise<void> {

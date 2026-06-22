@@ -53,6 +53,7 @@ const WORKFLOW_ACTION = 'WORKFLOW';
 
 const WORKFLOW_OPS = [
   'list',
+  'search',
   'get',
   'create',
   'modify',
@@ -69,7 +70,9 @@ const WORKFLOW_OPS = [
 ] as const;
 type WorkflowOp = (typeof WORKFLOW_OPS)[number];
 
-const WORKFLOW_CONTEXTS = ['automation', 'tasks', 'agent_internal'] as const;
+// `chat` is included so a plain chat/Telegram message ("find my Slack workflow")
+// can route to WORKFLOW search, not just automation/agent-internal turns (#8913).
+const WORKFLOW_CONTEXTS = ['chat', 'automation', 'tasks', 'agent_internal'] as const;
 
 interface WorkflowActionParameters {
   action?: unknown;
@@ -82,6 +85,8 @@ interface WorkflowActionParameters {
   active?: unknown;
   limit?: unknown;
   versionId?: unknown;
+  query?: unknown;
+  q?: unknown;
 }
 
 function readString(value: unknown): string | undefined {
@@ -176,6 +181,47 @@ async function handleListWorkflows(
     const message = err instanceof Error ? err.message : String(err);
     logger.warn({ src: 'plugin:workflow:action:list' }, message);
     return { success: false, text: message };
+  }
+}
+
+async function handleSearchWorkflows(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  message: Memory,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const query = readString(params.query) ?? readString(params.q);
+  if (!query) {
+    return {
+      success: false,
+      text: 'A search `query` is required (free text to match workflow name / node type / description).',
+    };
+  }
+  const limit = Math.min(Math.max(1, readNumber(params.limit) ?? 20), 50);
+  try {
+    const matches = await service.searchWorkflows(query, String(message.entityId));
+    const summaries = matches.slice(0, limit).map(summarizeWorkflow);
+    const text =
+      summaries.length === 0
+        ? `No workflows match "${query}".`
+        : `Found ${summaries.length} workflow${summaries.length === 1 ? '' : 's'} matching "${query}".`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: { count: summaries.length, query },
+      });
+    }
+    return {
+      success: true,
+      text,
+      values: { count: summaries.length },
+      data: { workflows: summaries, total: matches.length, query },
+    };
+  } catch (err) {
+    const errMessage = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:search' }, errMessage);
+    return { success: false, text: errMessage };
   }
 }
 
@@ -803,6 +849,8 @@ export const workflowAction: Action = {
     switch (op) {
       case 'list':
         return handleListWorkflows(service, params, message, callback);
+      case 'search':
+        return handleSearchWorkflows(service, params, message, callback);
       case 'get':
         return handleGetWorkflow(service, params, callback);
       case 'create':
