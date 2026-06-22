@@ -25,29 +25,26 @@ Pass bar: `[voice:workbench] no regressions … PASS`; 14 scenarios under
 
 ---
 
-## 1. Headful A/V capture — desktop + web (Playwright)
+## 1. Headful A/V capture — desktop + web (Playwright) ✅ DONE
 
-**Precondition:** the app shell mounts. As of 2026-06-22 it crashes at boot with
-`autonomousEvents is not defined` (a concurrent `AppContext.tsx` refactor — see
-the flagged task). Fix that first (`bun run --cwd plugins/plugin-local-inference
-typecheck` must be 0; today it reports the TS2322 at `AppContext.tsx:1887`).
+**Status (2026-06-22): PASSING + recorded + adversarially verified.** `13 passed`;
+evidence under `.github/issue-evidence/8785-voice-headful/`. (Precondition: the
+app shell mounts — `typecheck` is 0. An earlier run failed against a transient
+concurrent `AppContext.tsx` mid-refactor; once stabilized the matrix passed.)
 
 ```bash
-# One scenario class (records video on the ui-smoke config):
+# Full voice headful matrix WITH A/V recording (video+trace+screenshot per spec):
 cd packages/app
-node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts \
-  test/ui-smoke/voice-workbench-eot.spec.ts
-
-# The full voice-workbench headful matrix:
-node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts \
-  test/ui-smoke/voice-workbench-*.spec.ts
+E2E_RECORD=1 node scripts/run-ui-playwright.mjs \
+  --config playwright.ui-smoke.config.ts voice-
 ```
-**Artifacts:** `packages/app/test-results/<spec>/video.webm`, `…/test-failed-*.png`,
-`…/trace.zip` (open with `npx playwright show-trace`), and the per-turn DOM
-verdicts at `[data-testid="voice-workbench-turn-<i>"]` / `…-overall`.
-**Pass bar:** every `voice-workbench-*.spec.ts` green; `voice-workbench-overall`
-reads `pass`. (Backends are mocked here — this proves the real client pipeline
-wiring + the player, not acoustic accuracy.)
+**Artifacts:** `e2e-recordings/app/test-results/<spec>/{video.webm,trace.zip,test-finished-1.png}`
+(open a trace: `npx playwright show-trace …/trace.zip`); per-turn DOM verdicts at
+`[data-testid="voice-workbench-turn-<i>"]` / `…-overall`.
+**Pass bar:** every `voice-*.spec.ts` green; `voice-workbench-overall` reads
+`pass`; the real-mic round-trip (`voice-realaudio`) transcribes the injected
+phrase at WER 0. (Backends are mocked — this proves the real client pipeline +
+player + respond/EOT/diarization decisions, not acoustic-model accuracy.)
 
 > The Playwright recording pipeline itself is verified working — a run on the
 > broken branch already produced `video.webm` + a screenshot of the error
@@ -121,7 +118,7 @@ false-accept at training. Local-mode only; inert in cloud mode.
 - [x] Decision logic (EOT / respond / echo×2 / bystander / wake / owner) — CI `--logic` + regression gate
 - [x] Robustness corpus (noise/reverb/far-field/low-quality/babble/overlap) — DSP tests + corpus:generate
 - [x] Research (pause lengths, VAD, AEC, diarization, owner verification, model landscape, hybrid latency)
-- [ ] Headful A/V — desktop + web  *(needs §1 precondition)*
+- [x] Headful A/V — desktop + web  *(13/13 specs passed + recorded + adversarially verified; `.github/issue-evidence/8785-voice-headful/`)*
 - [ ] Headful A/V — simulator + iOS device  *(needs §2)*
 - [ ] Live cloud STT/TTS E2E  *(needs §3 credits)*
 - [ ] Real WER/DER/EOT-latency on degraded corpus  *(needs §4 artifacts)*

@@ -88,7 +88,18 @@ The `--real` lane and the headful real-backend run need artifacts CI does not ha
 
 Per the honesty contract, every one of these reports **`skipped`, never `pass`**, when the artifact is absent. The decision logic that does NOT need them is proven by `--logic` + the unit suites.
 
-**Branch-state note (2026-06-22).** A headful run of `voice-workbench-eot.spec.ts` on this branch fails because the app shell crashes at boot with **"autonomousEvents is not defined"** (an `AppContext.tsx` refactor by concurrent work left `autonomousEvents` + several `AppState` fields undefined; `tsgo` flags the same TS2322 at `AppContext.tsx:1887`). This crashes *every* ui-smoke headful test, not just voice, and is independent of the voice work here — the voice UI re-exports' own unit tests pass. The Playwright recording pipeline itself is healthy (the failing run captured `video.webm` + a screenshot of the error boundary). The headful lane is unblocked once that AppContext regression is fixed (flagged separately).
+**Headful desktop/web — NOW PROVEN (2026-06-22).** The full headful matrix runs
+green with recorded A/V: **`13 passed (5.3m)`** for `voice-*.spec.ts` (Chromium,
+`E2E_RECORD`) — the real-mic round-trip (`getUserMedia` + injected audio → real
+local-ASR → agent → `/api/tts/cloud`, WER 0), the STT→agent→TTS self-test, and
+10 voice-workbench scenario specs. A 14-agent adversarial review confirmed all
+13 are genuine passes, **0 false-green** (real ASR latency, WER-0 transcript
+match, correct negative-path non-responses). Evidence (13 screenshots + 3
+round-trip videos + manifest): `.github/issue-evidence/8785-voice-headful/`.
+*(An earlier run failed when it raced a concurrent, unrelated `AppContext.tsx`
+mid-refactor — "autonomousEvents is not defined", which broke every ui-smoke
+test, not just voice; once the working tree stabilized the voice matrix passed
+unchanged. The voice work here never depended on it.)*
 
 ---
 
