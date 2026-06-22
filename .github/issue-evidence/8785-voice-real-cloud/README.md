@@ -73,6 +73,24 @@ gracefully past the edge (−6 dB noise), and only fully fails on "destroyed"
 audio — which confirms the DSP genuinely bites (the WER-0 results are real
 robustness, not a no-op). This is "real WER on the degraded corpus."
 
+## 5. Real voice-model stack — speaker recognition / diarization / VAD / local TTS
+
+`bun run --cwd plugins/plugin-local-inference voicestack:real` — drives the rest
+of the on-device GGUF stack (beyond ASR) with real ElevenLabs voices:
+
+| Model | Result |
+|---|---|
+| **Speaker recognition** (WeSpeaker 256-d) | same speaker cosine **~0.72**, different speaker **~0.15** — a clear margin. This is "detect the user's voice", owner-vs-other, and continuity: an intruder's voice (~0.15) is far below the 0.78 imprint threshold → **rejected**. |
+| **Diarization** (pyannote-segmentation-3.0) | 293 frames of a 5 s two-speaker window → multiple non-silence powerset labels → **≥2 speakers detected**. |
+| **VAD** (Silero) | speech max prob **1.000** vs silence **0.009** — perfect speech/silence separation. |
+| **Local TTS** (on-device, bundle default) | synthesized 3.9 s of audio in ~3 s, rms 0.077 — real on-device speech. |
+
+So the full local model stack is real here: **ASR + speaker recognition +
+diarization + VAD + TTS**, plus the EOT/turn-detector + wake-word GGUFs in the
+bundle. The speaker-recognition margin (~0.72 vs ~0.15) is exactly what backs
+owner detection, multi-user separation, and the security "owner vs intruder"
+case — with real models.
+
 ## Reproduce
 
 ```bash

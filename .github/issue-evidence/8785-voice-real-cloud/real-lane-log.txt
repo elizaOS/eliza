@@ -32,3 +32,20 @@
   noise -6dB       mean WER = 0.048  (n=3)
   reverb 0.98      mean WER = 0.042  (n=3)
   destroyed        mean WER = 1.000  (n=3)
+
+### Real voice-model stack (speaker recognition / diarization / VAD / local TTS)
+[real-voice-stack] synthesizing real voices (ElevenLabs)…
+[real-voice-stack] SPEAKER RECOGNITION (WeSpeaker 256-d):
+  same speaker  (A1 vs A2): cosine = 0.719
+  diff speakers (A1 vs B1): cosine = 0.208
+  → PASS (same > diff by a clear margin)
+[real-voice-stack] DIARIZATION (pyannote, 5 s 2-speaker window):
+  frames=293 distinct non-silence powerset labels=1,2,3,4,5,6
+  → PASS (diarizer produced speaker frames)
+[real-voice-stack] VAD (Silero):
+  speech max prob = 1.000, silence max prob = 0.009
+  → PASS (speech scores above silence)
+[real-voice-stack] LOCAL TTS (on-device, bundle default):
+  synthesized 62400 samples (3.90s) in 3089ms, rms=0.0774
+  → PASS
+[real-voice-stack] PASS
