@@ -31,6 +31,7 @@ import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
+import { withTimeout } from "../utils/with-timeout";
 import {
   computeStateHash,
   estimateDeltaBytes,
@@ -137,6 +138,12 @@ const HEARTBEAT_PROBE_RETRY_MS = 2_000;
 // on success) is the downtime clock. The ~30s heartbeat itself keeps the
 // WireGuard NAT mapping warm, so a reachable agent never trips this.
 const HEARTBEAT_DISCONNECT_AFTER_MS = 120_000;
+// Hard cap on the container+VPN teardown during agent delete. The underlying
+// docker rm (60s) and headscale cleanup (15s) are each internally bounded, but
+// an EARLY hang (SSH connect / provider init) was not — and a single stuck node
+// could then hang the delete past the 300s job watchdog and wedge the whole
+// provisioning worker. Generous over the internal caps, well under the watchdog.
+const SANDBOX_DELETE_STOP_TIMEOUT_MS = 120_000;
 type LifecycleTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 function digestPinnedImageRef(imageRef: string, digest: string): string {
@@ -719,13 +726,50 @@ export class ElizaSandboxService {
       });
 
       if (rec.sandbox_id) {
-        try {
-          await (await this.getProvider()).stop(rec.sandbox_id);
-        } catch (e) {
-          const errorMessage = e instanceof Error ? e.message : String(e);
-          if (!this.isIgnorableSandboxStopError(e)) {
+        const sandboxId = rec.sandbox_id;
+        // Hard cap on the container + VPN teardown. provider.stop() removes the
+        // container and cleans up the headscale route (each internally bounded),
+        // but an EARLY hang (SSH connect / provider init) was unbounded — a single
+        // stuck node could hang this delete past the 300s job watchdog and wedge
+        // the entire provisioning worker (fail-closed on every provision).
+        //
+        // Provider errors are captured as values so `withTimeout` rejects ONLY on
+        // a genuine hang. A hang is then swallowed and the delete proceeds (the
+        // alloc reconciler sweeps the orphaned container) — never retrying into the
+        // same hang. A real stop failure on a REACHABLE node still escalates
+        // (retry), since the container may still be running; the provider already
+        // classifies an UNREACHABLE node as terminal/resolved.
+        const stop = await withTimeout(
+          (async (): Promise<null | { error: unknown }> => {
+            try {
+              const provider = await this.getProvider();
+              await provider.stop(sandboxId);
+              return null;
+            } catch (error) {
+              return { error };
+            }
+          })(),
+          SANDBOX_DELETE_STOP_TIMEOUT_MS,
+          `agent-delete stop ${sandboxId}`,
+        ).catch((error: unknown) => ({ error, timedOut: true as const }));
+
+        if (stop) {
+          const errorMessage =
+            stop.error instanceof Error ? stop.error.message : String(stop.error);
+          if ("timedOut" in stop) {
+            logger.warn(
+              "[agent-sandbox] Stop during delete timed out; proceeding (reconciler sweeps orphan)",
+              { sandboxId, status: rec.status, error: errorMessage },
+            );
+          } else if (this.isIgnorableSandboxStopError(stop.error)) {
+            logger.info("[agent-sandbox] Sandbox already absent during delete cleanup", {
+              sandboxId,
+              status: rec.status,
+              error: errorMessage,
+            });
+          } else {
             logger.warn("[agent-sandbox] Stop failed during delete", {
-              sandboxId: rec.sandbox_id,
+              sandboxId,
               status: rec.status,
               error: errorMessage,
             });
@@ -734,12 +778,6 @@ export class ElizaSandboxService {
               error: "Failed to delete sandbox",
             } as const;
           }
-
-          logger.info("[agent-sandbox] Sandbox already absent during delete cleanup", {
-            sandboxId: rec.sandbox_id,
-            status: rec.status,
-            error: errorMessage,
-          });
         }
       }
 
