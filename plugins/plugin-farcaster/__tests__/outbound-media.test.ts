@@ -122,10 +122,7 @@ describe("extractCastEmbedUrls (#8990)", () => {
         { id: "4", url: "https://cdn.example.com/b.mp4" },
       ],
     } as unknown as Content);
-    expect(urls).toEqual([
-      "https://cdn.example.com/a.png",
-      "https://cdn.example.com/b.mp4",
-    ]);
+    expect(urls).toEqual(["https://cdn.example.com/a.png", "https://cdn.example.com/b.mp4"]);
   });
 
   it("returns [] when there are no attachments", () => {
@@ -149,9 +146,7 @@ describe("Farcaster mention-reply attaches media (#8990)", () => {
 
     await callback({
       text: "here you go",
-      attachments: [
-        { id: "img", url: "https://cdn.example.com/cat.png", contentType: "image" },
-      ],
+      attachments: [{ id: "img", url: "https://cdn.example.com/cat.png", contentType: "image" }],
     } as Content);
 
     expect(testClient.sendCast).toHaveBeenCalledWith(

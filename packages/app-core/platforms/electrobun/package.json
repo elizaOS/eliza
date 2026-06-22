@@ -29,6 +29,7 @@
     "@elizaos/app-core": "workspace:*",
     "@elizaos/plugin-remote-manifest": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
+    "@elizaos/plugin-capacitor-bridge": "workspace:*",
     "@elizaos/plugin-registry": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "bonjour-service": "1.3.0",
