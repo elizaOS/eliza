@@ -13,6 +13,7 @@
  * @module services/goal-prompt
  */
 
+import { COMPLETION_ENVELOPE_INSTRUCTION } from "./completion-envelope.js";
 import type { AttemptReflection } from "./orchestrator-task-types.js";
 
 /** The coding-relevant capability fence applied when a caller does not pass an
@@ -196,6 +197,10 @@ export function buildGoalPrompt(input: GoalPromptInput): string {
     capabilityLine,
     "--- Working Agreement ---",
     bulletList([...COMPLETION_CONTRACT]),
+    // #8895: ask for a machine-checkable CompletionEnvelope on completion so the
+    // verifier can grill against a contract, not free-form prose.
+    "--- Completion Report ---",
+    COMPLETION_ENVELOPE_INSTRUCTION,
     "--- Task ---",
     task,
   );
