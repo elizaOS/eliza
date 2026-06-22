@@ -141,7 +141,9 @@
         "./plugins/plugin-hyperliquid-app/src/index.ts"
       ],
       "@elizaos/plugin-imessage": ["./plugins/plugin-imessage/src/index.ts"],
-      "@elizaos/plugin-personal-assistant": ["./plugins/plugin-personal-assistant/src/index.ts"],
+      "@elizaos/plugin-personal-assistant": [
+        "./plugins/plugin-personal-assistant/src/index.ts"
+      ],
       "@elizaos/plugin-local-inference": [
         "./plugins/plugin-local-inference/src/index.ts"
       ],
