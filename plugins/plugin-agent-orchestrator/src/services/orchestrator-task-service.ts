@@ -246,7 +246,8 @@ function readAttemptReflections(
   for (const entry of raw) {
     if (!entry || typeof entry !== "object") continue;
     const r = entry as Record<string, unknown>;
-    if (typeof r.attempt !== "number" || typeof r.summary !== "string") continue;
+    if (typeof r.attempt !== "number" || typeof r.summary !== "string")
+      continue;
     out.push({
       attempt: r.attempt,
       summary: r.summary,
@@ -1165,6 +1166,31 @@ export class OrchestratorTaskService extends Service {
   async getTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     return doc ? toTaskThreadDetail(doc) : null;
+  }
+
+  /**
+   * Resolve the originating chat target for a task — the room + connector source
+   * it was created from — so proactive surfaces (the TaskSupervisorService
+   * digest, #8900) can post back to where the user is. The origin `source` is
+   * read from the task record metadata stamped at create time. Returns null when
+   * the task has no origin room (e.g. an API-created task with no chat).
+   */
+  async getTaskOriginTarget(
+    taskId: string,
+  ): Promise<{ roomId: string; source: string; worldId?: string } | null> {
+    const doc = await this.store.getTask(taskId);
+    const roomId = doc?.task.roomId;
+    if (!roomId) return null;
+    const meta = doc.task.metadata ?? {};
+    const source =
+      typeof meta.source === "string" && meta.source
+        ? meta.source
+        : "orchestrator";
+    return {
+      roomId,
+      source,
+      ...(doc.task.worldId ? { worldId: doc.task.worldId } : {}),
+    };
   }
 
   async updateTask(
