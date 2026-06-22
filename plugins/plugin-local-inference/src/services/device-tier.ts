@@ -207,16 +207,25 @@ function isMobile(probe: HardwareProbe): boolean {
 
 /**
  * Compute the CPU SIMD baseline. The hardware probe has no direct AVX2 field
- * today for x86_64, so Linux/Win x86_64 ≥ 4 cores qualifies. ARM must expose
- * NEON/Advanced SIMD in the probe; when ARM feature data is absent, do not
- * claim the CPU route.
+ * today for x86_64, so Linux/Win x86_64 ≥ 4 cores qualifies.
+ *
+ * ARM: **arm64 / ARMv8-A architecturally MANDATES NEON (Advanced SIMD)** — every
+ * arm64 phone has it — so we do NOT require the probe to spell out
+ * `cpuFeatures.neon` (the on-device os-fallback probe usually omits it, which used
+ * to misclassify every Pixel as POOR → cloud-only even though it runs local 2B
+ * fine). Only 32-bit `arm` (ARMv7, where NEON is optional) still needs explicit
+ * feature data.
  *
  * This is a coarse heuristic; the precise check belongs in the FFI layer
  * (it can `cpuid` the actual flags). The tier classifier just refuses POOR
  * when the probe is clearly under-equipped.
  */
 function hasAvx2Baseline(probe: HardwareProbe): boolean {
-	if (probe.arch === "arm64" || probe.arch === "arm") {
+	if (probe.arch === "arm64") {
+		// NEON is guaranteed on ARMv8-A; trust the architecture, not the probe.
+		return probe.cpuCores >= 4;
+	}
+	if (probe.arch === "arm") {
 		return probe.cpuFeatures?.neon === true && probe.cpuCores >= 4;
 	}
 	if (probe.arch !== "x64") return false;

@@ -71,6 +71,27 @@ describe("selectBestEliza1FitForDevice — mobile guard never hands a phone 9B",
 		});
 	});
 
+	it("arm64 phones never hit the AVX2/NEON POOR gate (NEON is mandatory on ARMv8)", () => {
+		// The on-device os-fallback probe (Pixel 9a) reports arm64 + no cpuFeatures.
+		// Before the fix it fell to "No AVX2 baseline" → POOR; that wrong reason must
+		// be gone. (This 8GB phone may still be POOR for *RAM* — mobileMinTotalRamGb
+		// is 12 — but never for a bogus missing-SIMD reason.)
+		const assessment = classifyDeviceTier(devicePhoneProbe);
+		expect(
+			assessment.reasons.some((r) => /AVX2|< 4 CPU cores/i.test(r)),
+		).toBe(false);
+		// A 16GB arm64 phone (above the mobile floor) with no cpuFeatures now runs
+		// local instead of being misclassified cloud-only by the SIMD gate.
+		const midPhone = probe({
+			totalRamGb: 16,
+			freeRamGb: 9,
+			gpu: null,
+			arch: "arm64",
+			cpuFeatures: undefined,
+		});
+		expect(classifyDeviceTier(midPhone).canRunLocalLm).toBe(true);
+	});
+
 	it("the SAME 24GB box as a desktop (no android env) may use a larger tier", () => {
 		const bigBox = probe({ totalRamGb: 48, freeRamGb: 40, gpu: null });
 		withPlatform(undefined, () => {
@@ -254,7 +275,9 @@ describe("classifyDeviceTier", () => {
 			expect(result.reasons.join(" ")).toMatch(/AVX2|cores/);
 		});
 
-		it("classifies ARM without CPU feature evidence as POOR", () => {
+		it("classifies 32-bit ARM (ARMv7) without NEON evidence as POOR", () => {
+			// NEON is optional on 32-bit ARMv7, so we still require explicit feature
+			// evidence there (unlike arm64/ARMv8, where NEON is mandatory).
 			const result = classifyDeviceTier(
 				probe({
 					totalRamGb: 32,
@@ -262,7 +285,7 @@ describe("classifyDeviceTier", () => {
 					gpu: null,
 					cpuCores: 8,
 					platform: "linux",
-					arch: "arm64",
+					arch: "arm",
 					cpuFeatures: undefined,
 				}),
 			);
