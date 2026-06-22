@@ -89,6 +89,8 @@ the previously-gated lanes were executed for real on macOS (Metal). Evidence:
 - ✅ **Live cloud STT/TTS** — ElevenLabs `eleven_turbo_v2_5` TTS + `scribe_v1` STT round-trip, **WER 0** (the cloud `/api/v1/voice/*` routes wrap this; the 402 was a free-plan key — a funded key works).
 - ✅ **Mixed local + cloud** — cloud TTS → LOCAL ASR → Cerebras LLM → cloud TTS, **~770–870 ms** end-to-end (inside the research <800 ms band).
 - ✅ **Real ASR WER under degradation** — robust to **WER 0** across every realistic corpus-DSP condition (noise to 0 dB, reverb to 0.98, far-field, telephone, harsh); graceful past the edge; fully fails only on "destroyed" audio (so the DSP genuinely bites).
+- ✅ **Real speaker recognition** (WeSpeaker 256-d) — same-speaker cosine ~0.72 vs different-speaker ~0.15: an intruder is far below the 0.78 imprint threshold → rejected. Backs owner-vs-other, "detect the user's voice", and continuity, with real models.
+- ✅ **Real diarization** (pyannote) — ≥2 speakers detected in a 5 s two-speaker window. ✅ **Real VAD** (Silero) — speech 1.000 vs silence 0.009. ✅ **Real on-device TTS** — 3.9 s synthesized in ~3 s.
 
 **Still gated (genuinely external):** a **physical iOS device** (the simulator has no Metal, so on-device inference can't run there — needs Apple ID provisioning); and the `.mjs` diarizer/speaker-encoder benchmark harnesses need `-fp32` model variants + a separate classifier lib (the GGUFs are present; the ASR + fused-lib + Metal path is proven). Honesty contract unchanged: a lane reports **`skipped`, never `pass`**, when its artifact is absent.
 
