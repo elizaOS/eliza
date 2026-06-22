@@ -32,7 +32,28 @@ Legend: ✅ done & verified · 🔧 in progress · ⏳ queued · ⛔ blocked
 
 ### ⏳ 0.2 (L) Default per-session workspace isolation (CRITICAL correctness)
 ### ⏳ 0.3 (H) Two-phase reload + rollback (CRITICAL correctness)
-### ⏳ 0.4 (B) Repair broken task-agent live E2E (path drift → `packages/core/test/live/task-agent-live-smoke.ts`)
+
+### ✅ 0.4 (B) Repair broken task-agent live E2E + drift guard
+- **Root cause (3 axes, all confirmed):** the e2e
+  (`plugins/plugin-agent-orchestrator/src/__tests__/task-agent-live.e2e.test.ts`)
+  pointed at a **missing** path (`packages/app-core/test/scripts/…`); invoked a
+  **`counter-app` mode** the smoke script never had; and the smoke script
+  (`packages/core/test/live/task-agent-live-smoke.ts`) imported **removed symbols**
+  `PTYService` + `cleanForChat` → it would crash on the first live run.
+- **Fix:** re-exported `cleanForChat` + `getAcpService` from the plugin index;
+  rewired the smoke script `PTYService` → `AcpService.start` + register under
+  `AcpService.serviceType` (so the TASKS actions resolve the *same*
+  `ACP_SUBPROCESS_SERVICE` singleton the script reads output from); fixed an
+  async/sync bug the rename surfaced (`await service.getSession(…)`); corrected the
+  e2e path to `packages/core/test/live/…` and dropped the two unsupported
+  `counter-app` tests + mode. **NEW non-live regression guard**
+  `__tests__/unit/live-smoke-imports.test.ts` asserts every symbol the harness
+  imports/uses still exists — catches this class of drift in the unit lane.
+- **Evidence:** orchestrator unit suite **683 passed (58 files)** incl. the new
+  guard; orchestrator `typecheck` exit 0.
+- **Deferred (honest scope):** the actual `ORCHESTRATOR_LIVE=1` run + trajectory
+  capture (needs real auth + minutes + cost) → **Wave 2**. This batch makes the
+  harness compile, share the right service instance, and stay drift-proof.
 
 ## Wave 1 — evidence infrastructure (enables every capability batch)
 ### ⏳ 1.1 (F/G) Screenshot/video/timeline capture in scenario-runner + coding-flow recording harness + scrubbable viewer

@@ -1908,6 +1908,12 @@ export {
 
 // ACP service surface.
 export { AcpService } from "./services/acp-service.js";
+// Action helper: resolve the runtime's registered ACP service singleton. Used by
+// out-of-tree live harnesses (e.g. packages/core/test/live/task-agent-live-smoke)
+// so they read output from the same service instance the actions spawn into.
+export { getAcpService } from "./actions/common.js";
+// Terminal-output normalizer for chat surfaces; consumed by live smoke harnesses.
+export { cleanForChat } from "./services/ansi-utils.js";
 export {
   AcpSessionStore,
   FileSessionStore,

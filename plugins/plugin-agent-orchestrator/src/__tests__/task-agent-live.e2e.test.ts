@@ -29,9 +29,9 @@ const runNodeTsxScript = path.join(
 const liveSmokeScript = path.join(
   repoRoot,
   "packages",
-  "app-core",
+  "core",
   "test",
-  "scripts",
+  "live",
   "task-agent-live-smoke.ts",
 );
 
@@ -199,7 +199,7 @@ const webLiveIt = RUN_WEB_LIVE ? it : it.skip;
 
 async function runLiveSmokeScript(
   framework: "claude" | "codex",
-  mode: "sequential" | "web" | "counter-app",
+  mode: "sequential" | "web",
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const bunBinary = process.execPath;
@@ -260,14 +260,6 @@ claudeLiveDescribe("task-agent live smoke (claude)", () => {
     },
     12 * 60 * 1000,
   );
-
-  it(
-    "has Claude Code create a counter app and load it through APP",
-    async () => {
-      await runLiveSmokeScript("claude", "counter-app");
-    },
-    25 * 60 * 1000,
-  );
 });
 
 codexLiveDescribe("task-agent live smoke (codex)", () => {
@@ -285,13 +277,5 @@ codexLiveDescribe("task-agent live smoke (codex)", () => {
       await runLiveSmokeScript("codex", "web");
     },
     12 * 60 * 1000,
-  );
-
-  it(
-    "has Codex create a counter app and load it through APP",
-    async () => {
-      await runLiveSmokeScript("codex", "counter-app");
-    },
-    25 * 60 * 1000,
   );
 });
