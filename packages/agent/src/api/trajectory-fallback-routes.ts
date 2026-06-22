@@ -35,6 +35,7 @@ interface ServiceTrajectoryListItem {
 interface ServiceLlmCall {
   callId?: string;
   model?: string;
+  provider?: string;
   response?: string;
   purpose?: string;
   actionType?: string;
@@ -140,6 +141,7 @@ function detailToUi(traj: ServiceTrajectory): Record<string, unknown> {
       llmCalls.push({
         id: c.callId || `${stepId}-call-${i}`,
         model: c.model || "unknown",
+        provider: c.provider || "",
         response: c.response || "",
         purpose: c.purpose || "",
         actionType: c.actionType || "",
