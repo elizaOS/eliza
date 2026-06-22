@@ -309,11 +309,7 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
   }
 
   if (error) {
-    return (
-      <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-        {error}
-      </div>
-    );
+    return <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>;
   }
 
   if (feed.length === 0) {
@@ -481,9 +477,7 @@ function MemoryBrowserPanel({
       {loading && !result ? (
         <ListSkeleton rows={6} />
       ) : error ? (
-        <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-          {error}
-        </div>
+        <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>
       ) : !result || result.memories.length === 0 ? (
         <PagePanel.FeatureEmpty
           icon={Search}

@@ -27,6 +27,9 @@ export interface ModuleCacheTelemetryEvent {
   route?: string;
 }
 
+/** Non-optional eviction reason carried on cache telemetry events. */
+export type EvictReason = NonNullable<ModuleCacheTelemetryEvent["reason"]>;
+
 let moduleCacheTelemetrySequence = 0;
 
 function currentRoute(): string | undefined {

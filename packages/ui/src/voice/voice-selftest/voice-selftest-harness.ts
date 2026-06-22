@@ -25,6 +25,7 @@ import {
   isLocalInferenceAsrReady,
   transcribeLocalInferenceWav,
 } from "../local-asr-transcribe";
+import { now, sleep } from "./timing";
 
 /** Re-exported from the single source of truth (`@elizaos/shared/voice-wer`). */
 export { wordErrorRate };
@@ -104,12 +105,6 @@ async function captureMicWav(signal?: AbortSignal): Promise<Uint8Array> {
     });
   });
 }
-
-const now = (): number =>
-  typeof performance !== "undefined" ? performance.now() : 0;
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Peak + RMS amplitude across every channel of a decoded buffer. A buffer of

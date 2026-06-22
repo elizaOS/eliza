@@ -700,9 +700,7 @@ export function RuntimeView({
       >
         <div className="flex min-h-0 flex-1 flex-col gap-4">
           {error ? (
-            <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-              {error}
-            </div>
+            <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>
           ) : null}
 
           {loading && !snapshot ? (
