@@ -7,6 +7,7 @@ import { useAgentElement } from "../../agent-surface";
 // grouping below reads — so the cloud sections render whenever Settings mounts.
 import { listExtraSettingsGroups } from "../../cloud/settings";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
 import { useAppSelectorShallow } from "../../state";
@@ -391,6 +392,7 @@ export function SettingsView({
     return getAllSettingsSections().filter((section) => {
       if (section.id === "wallet-rpc" && walletEnabled === false) return false;
       if (section.developerOnly && !developerMode) return false;
+      if (section.hideOnCloud && isAndroidCloudBuild()) return false;
       return true;
     });
   }, [walletEnabled, developerMode]);

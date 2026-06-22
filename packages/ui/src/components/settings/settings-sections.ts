@@ -49,6 +49,7 @@ import {
 } from "./settings-section-registry";
 import { VoiceSectionMount } from "./VoiceSectionMount";
 import { WalletRpcSection } from "./WalletRpcSection";
+import { isAndroidCloudBuild } from "../../platform/android-runtime";
 
 export {
   getSettingsSection,
@@ -94,6 +95,8 @@ interface SectionVisual {
   bodyClassName?: string;
   /** Hide unless Developer Mode is on. */
   developerOnly?: boolean;
+  /** Hide on the cloud mobile build (no host machine). */
+  hideOnCloud?: boolean;
   Component: ComponentType;
 }
 
@@ -212,6 +215,10 @@ const SECTION_VISUALS: Record<string, SectionVisual> = {
     tone: "warn",
     hue: "amber",
     labelKey: "settings.sections.security.label",
+    // Host/self-host concept ("set a remote password so other machines can log
+    // into your host"). Meaningless for a cloud mobile user — the cloud
+    // "Sessions & Privacy" section covers real account security on cloud.
+    hideOnCloud: true,
     Component: SecuritySettingsSection,
   },
 };
@@ -235,6 +242,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] =
       defaultTitle: meta.defaultLabel,
       bodyClassName: visual.bodyClassName,
       developerOnly: visual.developerOnly,
+      hideOnCloud: visual.hideOnCloud,
       order: index,
       Component: visual.Component,
     };

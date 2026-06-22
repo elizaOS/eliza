@@ -13,6 +13,7 @@ import { type CodingAgentSession, client } from "../../api/client";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import { isRoutineCodingAgentMessage } from "../../chat";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
+import { deriveAgentReady } from "../../state/types";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
@@ -269,14 +270,15 @@ export function ChatView({
   // ── Derived composer state ──────────────────────────────────────
   const isAgentStarting =
     agentStatus?.state === "starting" || agentStatus?.state === "restarting";
-  // The agent is up but has no inference model wired — no point letting the
-  // user hit send. Surfaced as a composer lock + a pointer to Settings.
-  const agentModel =
-    typeof agentStatus?.model === "string" ? agentStatus.model.trim() : "";
+  // The agent is up but genuinely can't respond (no inference provider wired) —
+  // no point letting the user hit send. Use the server-authoritative readiness
+  // (`canRespond`) via deriveAgentReady, NOT a raw `model` string: a dedicated
+  // cloud agent reports canRespond:true with no local `model` (server-side
+  // inference), so the old model-empty check wrongly hard-locked its composer.
   const isMobileLocalRuntime = readPersistedMobileRuntimeMode() === "local";
   const isMissingInferenceProvider =
     agentStatus?.state === "running" &&
-    agentModel.length === 0 &&
+    !deriveAgentReady(agentStatus) &&
     !isMobileLocalRuntime;
   // First-turn capability fades in: the composer stays usable while the agent
   // warms up (a turn submitted during warmup is held server-side until the
