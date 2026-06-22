@@ -286,10 +286,12 @@ function buildGenerateParams(
     maxOutputTokens?: number;
     maxTokens?: number;
   };
-  // Send no max-tokens field unless the caller passes an explicit cap, so the
-  // model's own max applies by default — a hardcoded value 400s when it exceeds
-  // the model's limit. The wire send below is conditional on `!== undefined`.
-  const resolvedMaxOutput = paramsWithMax.maxOutputTokens ?? paramsWithMax.maxTokens;
+  // Opt-out (direct-channel Stage-1): send no cap so the model's own max applies
+  // — a hardcoded value 400s when it exceeds the model's limit. Otherwise resolve
+  // the explicit value or the 8192 default.
+  const resolvedMaxOutput = params.omitMaxTokens
+    ? undefined
+    : (paramsWithMax.maxOutputTokens ?? paramsWithMax.maxTokens ?? 8192);
 
   const openrouter = createOpenRouterProvider(runtime);
   const modelName = getModelNameForType(runtime, modelType);

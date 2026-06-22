@@ -328,6 +328,7 @@ function createLlmCallDetails(
   systemInstruction: string | undefined,
   temperature: number,
   maxTokens: number | undefined,
+  maxTokensOmitted?: boolean,
 ): RecordLlmCallDetails {
   return {
     model: modelName,
@@ -335,6 +336,7 @@ function createLlmCallDetails(
     userPrompt: prompt,
     temperature,
     maxTokens: maxTokens ?? 0,
+    maxTokensOmitted: maxTokensOmitted ? true : undefined,
     purpose: "external_llm",
     actionType: `google-genai.${modelType}.generateContent`,
   };
@@ -349,6 +351,7 @@ async function generateContentWithTrajectory(
   systemInstruction: string | undefined,
   temperature: number,
   maxTokens: number | undefined,
+  maxTokensOmitted: boolean | undefined,
   request: GenerateContentParams,
 ): Promise<string> {
   const details = createLlmCallDetails(
@@ -358,6 +361,7 @@ async function generateContentWithTrajectory(
     systemInstruction,
     temperature,
     maxTokens,
+    maxTokensOmitted,
   );
   const response = await recordLlmCall(runtime, details, async () => {
     const result = await genAI.models.generateContent(request);
@@ -387,7 +391,9 @@ export async function handleTextSmall(
   params: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   const { stopSequences = [], temperature = 0.7, attachments } = params;
-  const maxTokens = params.maxTokens;
+  const maxTokens = params.omitMaxTokens
+    ? undefined
+    : (params.maxTokens ?? 8192);
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");
@@ -409,6 +415,7 @@ export async function handleTextSmall(
       systemInstruction,
       temperature,
       maxTokens,
+      params.omitMaxTokens,
       {
         model: modelName,
         contents:
@@ -442,7 +449,9 @@ export async function handleTextLarge(
   params: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   const { stopSequences = [], temperature = 0.7, attachments } = params;
-  const maxTokens = params.maxTokens;
+  const maxTokens = params.omitMaxTokens
+    ? undefined
+    : (params.maxTokens ?? 8192);
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");
@@ -464,6 +473,7 @@ export async function handleTextLarge(
       systemInstruction,
       temperature,
       maxTokens,
+      params.omitMaxTokens,
       {
         model: modelName,
         contents:
@@ -533,7 +543,9 @@ async function handleTextWithType(
   params: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   const { stopSequences = [], temperature = 0.7, attachments } = params;
-  const maxTokens = params.maxTokens;
+  const maxTokens = params.omitMaxTokens
+    ? undefined
+    : (params.maxTokens ?? 8192);
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");
@@ -555,6 +567,7 @@ async function handleTextWithType(
       systemInstruction,
       temperature,
       maxTokens,
+      params.omitMaxTokens,
       {
         model: modelName,
         contents:

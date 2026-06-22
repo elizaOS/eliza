@@ -60,7 +60,7 @@ import {
 } from "./types";
 
 const DEFAULT_LOCAL_SYSTEM_PROMPT = "Respond to the current request only.";
-const LOCAL_DEFAULT_MAX_OUTPUT_TOKENS = 64_000;
+const OMIT_MAX_TOKENS_LOCAL_BUDGET = 64_000;
 
 interface ContextEntry {
 	ctx: CapacitorLlamaContext;
@@ -531,7 +531,9 @@ class LocalAIManager {
 
 		const baseParams: CapacitorLlamaCompletionParams = {
 			prompt: renderCompletionPrompt({ ...params, system: systemPrompt }),
-			n_predict: params.maxTokens ?? LOCAL_DEFAULT_MAX_OUTPUT_TOKENS,
+			n_predict: params.omitMaxTokens
+				? (params.maxTokens ?? OMIT_MAX_TOKENS_LOCAL_BUDGET)
+				: (params.maxTokens ?? 8192),
 			temperature: params.temperature ?? 0.7,
 			top_p: params.topP ?? 0.9,
 			...(typeof params.topK === "number" ? { top_k: params.topK } : {}),

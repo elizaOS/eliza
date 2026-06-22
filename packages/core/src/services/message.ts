@@ -5949,10 +5949,11 @@ export async function runV5MessageRuntimeStage1(args: {
 			toolChoice: "required" as const,
 			// Direct/DM/API Stage 1 packs the whole answer into `replyText`. We don't
 			// cap it: a hardcoded ceiling 400s on any model whose real limit differs
-			// and truncates long single-turn replies. Leaving `maxTokens` undefined
-			// makes the adapter omit the wire field so the provider/model max applies;
-			// group channels keep DEFAULT_STAGE1_MAX_TOKENS so they stay bounded.
+			// and truncates long single-turn replies. `omitMaxTokens` tells adapters
+			// to use provider/model-max output instead of the runtime default; group
+			// channels keep DEFAULT_STAGE1_MAX_TOKENS so they stay bounded.
 			maxTokens: directMessageChannel ? undefined : DEFAULT_STAGE1_MAX_TOKENS,
+			omitMaxTokens: directMessageChannel,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 			// / `contexts` route the moment they are known and `replyText` flows to

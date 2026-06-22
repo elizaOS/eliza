@@ -46,7 +46,8 @@ function resolveTextParams(
   const temperature = params.temperature ?? 0.7;
   const topP = topPExplicit ? (params.topP ?? 0.9) : undefined;
 
-  const maxTokens = params.maxTokens;
+  const defaultMaxTokens = modelName.includes("air") || modelName.includes("flash") ? 4096 : 8192;
+  const maxTokens = params.omitMaxTokens ? undefined : (params.maxTokens ?? defaultMaxTokens);
 
   const rawProviderOptions = rawParams.providerOptions as ProviderOptions | undefined;
   const providerOptions: ProviderOptions = rawProviderOptions
