@@ -1398,9 +1398,18 @@ function reconcilePluginManifestWithGradle(targetAssets) {
   // via bun:ffi) does NOT use this Capacitor plugin, so the device-bridge import
   // failing as a catchable "LlamaCpp plugin not implemented" JS error costs
   // nothing and keeps the JS↔native surface honest.
+  // The llama-cpp-capacitor plugin is RETIRED: agent inference runs entirely
+  // through the single fused libelizainference.so, and nothing loads this
+  // plugin's separate libllama-cpp-arm64.so (its JS adapter is retired). Drop it
+  // from the manifest BY DEFAULT so the LlamaCpp class never registers / its
+  // static System.loadLibrary never runs — libelizainference is the only
+  // inference library loaded in-process. Opt back in (full second lib) only with
+  // ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR=1. (The old
+  // ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB flag also stubbed it; that is now the
+  // default and the flag is no longer required for this.)
   const stubLlamaCpp =
-    process.env.ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB === "1" ||
-    process.env.elizaSkipForkLlamaLib === "true";
+    process.env.ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR !== "1" &&
+    process.env.elizaIncludeLlamaCppCapacitor !== "true";
   // Third-party Capacitor plugins that `cap sync` includes (they ship an
   // android/ dir, so they ARE in capacitor.settings.gradle) but whose Kotlin
   // plugin class never lands in the app dex on AGP 8.x: both rely on AGP's
