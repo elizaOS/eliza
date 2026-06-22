@@ -56,12 +56,29 @@ const DEFAULT_MAX_STEPS = 5;
 export interface ComputerUseAgentParams {
   goal: string;
   maxSteps?: number;
+  /**
+   * When true, emit a chat message after each dispatched step so a long-running
+   * goal does not leave the origin chat silent for minutes (#8912). The action
+   * handler wires this to the runtime HandlerCallback; the loop itself calls
+   * `deps.onStep`.
+   */
+  streamProgress?: boolean;
+}
+
+/** One per-step progress event, surfaced when `streamProgress` is set. */
+export interface ComputerUseAgentStepProgress {
+  step: number;
+  actionKind: string;
+  rationale: string;
+  success: boolean;
 }
 
 interface AgentDeps {
   brain?: Brain;
   computerInterface?: ComputerInterface;
   captureAll?: () => Promise<DisplayCapture[]>;
+  /** Called after each dispatched step when `params.streamProgress` is set. */
+  onStep?: (progress: ComputerUseAgentStepProgress) => void | Promise<void>;
 }
 
 export interface ComputerUseAgentReport {
@@ -167,6 +184,14 @@ export async function runComputerUseAgentLoop(
         error: dispatchResult.error?.message,
       },
     });
+    if (params.streamProgress && deps.onStep) {
+      await deps.onStep({
+        step,
+        actionKind: proposed.proposed.kind,
+        rationale: proposed.proposed.rationale,
+        success: dispatchResult.success,
+      });
+    }
     if (!dispatchResult.success) {
       report.reason = "error";
       report.error = dispatchResult.error?.message;
@@ -235,6 +260,13 @@ export const computerUseAgentAction: Action = {
         default: DEFAULT_MAX_STEPS,
       },
     },
+    {
+      name: "streamProgress",
+      description:
+        "Post a chat message after each step so long goals aren't silent.",
+      required: false,
+      schema: { type: "boolean", default: false },
+    },
   ],
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     return getService(runtime) !== null;
@@ -263,7 +295,19 @@ export const computerUseAgentAction: Action = {
         error: "ComputerUseService not available",
       };
     }
-    const report = await runComputerUseAgentLoop(runtime, params, service);
+    const report = await runComputerUseAgentLoop(runtime, params, service, {
+      // Stream each step to the origin chat so long goals aren't silent (#8912).
+      onStep:
+        params.streamProgress && callback
+          ? async (p) => {
+              await callback({
+                text: `Step ${p.step}: ${p.actionKind}${
+                  p.success ? "" : " (failed)"
+                } — ${p.rationale}`,
+              });
+            }
+          : undefined,
+    });
     const text =
       report.reason === "finish"
         ? `Computer-use agent finished after ${report.steps.length} step(s): goal="${report.goal}"`
