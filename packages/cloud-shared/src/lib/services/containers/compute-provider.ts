@@ -44,6 +44,13 @@ export interface ComputeServer {
   status: string;
   /** ISO-8601 creation timestamp. */
   created?: string;
+  /**
+   * Canonical public address (IPv4, falling back to IPv6) once the provider
+   * has assigned one — `null`/absent while still provisioning. Exposed on the
+   * seam so consumers (e.g. the node autoscaler) can resolve a hostname without
+   * reaching into provider-specific shapes like Hetzner's `public_net`.
+   */
+  publicIpv4?: string | null;
   /** Free-form provider labels. */
   labels?: Record<string, string>;
 }

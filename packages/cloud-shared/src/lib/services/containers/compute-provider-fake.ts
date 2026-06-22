@@ -430,11 +430,15 @@ export class InMemoryComputeProvider implements ComputeProvider {
   }
 
   private toServer(rec: ServerRecord): ComputeServer {
+    const active = this.currentTick >= rec.activeAtTick;
     return {
       id: rec.id,
       name: rec.name,
-      status: this.currentTick >= rec.activeAtTick ? SERVER_STATUS_ACTIVE : SERVER_STATUS_NEW,
+      status: active ? SERVER_STATUS_ACTIVE : SERVER_STATUS_NEW,
       created: rec.createdIso,
+      // Deterministic fake address, assigned only once the server is active —
+      // mirrors real providers, which return no IP while still provisioning.
+      publicIpv4: active ? `10.0.0.${rec.id % 256}` : null,
       labels: { ...rec.labels },
     };
   }

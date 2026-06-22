@@ -240,9 +240,10 @@ describe("HetznerCloudClient servers", () => {
       networks: [33],
       labels: { purpose: "test" },
     });
-    // Response mapping: root_password → rootPassword.
+    // Response mapping: root_password → rootPassword, and public_net collapsed
+    // onto the canonical seam field publicIpv4 (null when absent).
     expect(result).toEqual({
-      server: { id: 100, name: "n1" } as never,
+      server: { id: 100, name: "n1", publicIpv4: null } as never,
       rootPassword: "pw",
     });
   });
