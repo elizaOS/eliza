@@ -7,7 +7,9 @@
  *   GET {base}/api/lifeops/relationships   -> { relationships: RelationshipWire[] }
  *
  * These tests cover the four-state machine (loading / error / empty / populated)
- * plus the retry, add-someone, refresh, and kind-filter affordances. The
+ * plus the retry, add-someone, quiet background-poll refetch, and kind-filter
+ * affordances. There is no manual refresh control — the graph stays fresh via a
+ * 20s background poll that re-runs the loader in place. The
  * fetcher seam is injected so the suite stays offline;
  * `@elizaos/ui` and `@elizaos/ui/agent-surface` are mocked so the instrumented
  * controls render outside a provider.
@@ -244,32 +246,44 @@ describe("RelationshipsView", () => {
     expect(screen.getByText(/relationships down/i)).toBeTruthy();
   });
 
-  it("re-fetches the graph from the refresh control", async () => {
-    let entityCalls = 0;
-    let relationshipCalls = 0;
-    const fetchers = makeFetchers({
-      fetchEntities: async () => {
-        entityCalls += 1;
-        return { entities: [entity()] };
-      },
-      fetchRelationships: async () => {
-        relationshipCalls += 1;
-        return { relationships: [] };
-      },
-    });
+  it("re-fetches the graph on the quiet background poll", async () => {
+    // The manual Refresh control was removed by design (RelationshipsView.tsx:561):
+    // the populated graph stays fresh via a 20s background poll that re-runs the
+    // loader in place (never flashing back to the loading state). Drive that poll
+    // with fake timers rather than clicking a button that no longer exists.
+    vi.useFakeTimers();
+    try {
+      let entityCalls = 0;
+      let relationshipCalls = 0;
+      const fetchers = makeFetchers({
+        fetchEntities: async () => {
+          entityCalls += 1;
+          return { entities: [entity()] };
+        },
+        fetchRelationships: async () => {
+          relationshipCalls += 1;
+          return { relationships: [] };
+        },
+      });
 
-    render(<RelationshipsView fetchers={fetchers} />);
-    expect(await screen.findByTestId("relationships-populated")).toBeTruthy();
-    expect(entityCalls).toBe(1);
-    expect(relationshipCalls).toBe(1);
+      render(<RelationshipsView fetchers={fetchers} />);
+      // Flush the initial load() promise chain under fake timers.
+      await vi.waitFor(() => {
+        expect(screen.getByTestId("relationships-populated")).toBeTruthy();
+      });
+      expect(entityCalls).toBe(1);
+      expect(relationshipCalls).toBe(1);
 
-    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
+      // Advance past one 20s poll interval (RELATIONSHIPS_POLL_INTERVAL_MS) → the
+      // loader re-runs and both endpoints are hit again, in place.
+      await vi.advanceTimersByTimeAsync(20_000);
 
-    await waitFor(() => {
       expect(entityCalls).toBe(2);
       expect(relationshipCalls).toBe(2);
-    });
-    expect(screen.getByTestId("relationships-populated")).toBeTruthy();
+      expect(screen.getByTestId("relationships-populated")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("narrows the visible entity cards when a kind filter chip is toggled", async () => {
