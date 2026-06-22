@@ -310,6 +310,11 @@ run("cmake", [
   buildDir,
   "--target",
   "elizainference",
+  // Multi-config generators (MSVC, Xcode) ignore -DCMAKE_BUILD_TYPE and pick
+  // Debug unless the build step names the config; single-config generators
+  // (Make, Ninja) silently ignore --config, so this is safe everywhere.
+  "--config",
+  "Release",
   "-j",
   String(jobs),
 ]);
@@ -317,14 +322,23 @@ run("cmake", [
 // Collect the produced shared libs (the fused lib + its ggml/llama/mtmd
 // backends) and stage them as one consistent set. Sweep the out dir first so a
 // backend switch never leaves a stale sibling the loader could pick up.
-const binDir = path.join(buildDir, "bin");
+// Multi-config generators (MSVC, Xcode) nest the artifacts under bin/<Config>;
+// single-config generators (Make, Ninja) emit straight into bin/.
+let binDir = path.join(buildDir, "bin");
+const releaseBinDir = path.join(binDir, "Release");
+if (existsSync(releaseBinDir)) binDir = releaseBinDir;
 const libExt =
   process.platform === "darwin"
     ? ".dylib"
     : process.platform === "win32"
       ? ".dll"
       : ".so";
-const fusedName = `libelizainference${libExt}`;
+// CMake prepends the `lib` prefix to shared libs on Unix only; MSVC/Windows
+// emits the bare target name (elizainference.dll).
+const fusedName =
+  process.platform === "win32"
+    ? `elizainference${libExt}`
+    : `libelizainference${libExt}`;
 if (!existsSync(path.join(binDir, fusedName))) {
   die(`build did not produce ${fusedName} in ${binDir}`);
 }
