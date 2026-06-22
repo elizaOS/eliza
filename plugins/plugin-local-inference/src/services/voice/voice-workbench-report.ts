@@ -13,6 +13,7 @@
  */
 
 import type { VoiceE2eCaseResult } from "./e2e-harness";
+import { percentile, round4 } from "./metric-math";
 import type { VoiceScenarioClass } from "./voice-scenario";
 
 export type VoiceWorkbenchStatus = "ran" | "skipped";
@@ -80,23 +81,6 @@ function mean(values: ReadonlyArray<number>): number | null {
 	if (values.length === 0) return null;
 	const sum = values.reduce((a, b) => a + b, 0);
 	return round4(sum / values.length);
-}
-
-function round4(n: number): number {
-	return Math.round(n * 1e4) / 1e4;
-}
-
-function round1(n: number): number {
-	return Math.round(n * 10) / 10;
-}
-
-/** Nearest-rank percentile over a sample (null when empty). */
-function percentile(values: ReadonlyArray<number>, p: number): number | null {
-	const finite = values.filter((v) => Number.isFinite(v));
-	if (finite.length === 0) return null;
-	const sorted = [...finite].sort((a, b) => a - b);
-	const rank = Math.ceil((p / 100) * sorted.length);
-	return round1(sorted[Math.min(sorted.length - 1, Math.max(0, rank - 1))]);
 }
 
 function rollupMax(values: ReadonlyArray<number>): MetricRollup {
