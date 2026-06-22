@@ -16,6 +16,7 @@ import type { StewardClient as StewardReactClient } from "@stwd/react";
 import { StewardProvider, useAuth as useStewardAuth } from "@stwd/react";
 import { StewardClient } from "@stwd/sdk";
 import { type ReactNode, useEffect, useMemo, useRef } from "react";
+import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import {
   clearServerStewardSessionCookies,
@@ -214,7 +215,10 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
         // Drop the at-rest JWT from the persisted active server before the SDK
         // sign-out — leaving it in localStorage is an at-rest token leak. Keeps
         // the backend selection (kind/apiBase) so re-auth lands on the same one.
+        // The same JWT is also copied into the per-agent profile records, so
+        // scrub those too — otherwise the token survives at rest there.
         scrubPersistedActiveServerToken();
+        scrubPersistedAgentProfileTokens();
         auth.signOut();
       },
       getToken: () => auth.getToken(),
