@@ -4,8 +4,10 @@
 > superseded by the current staging contract. The audited 0.8B GGUF declares
 > `qwen35.context_length = 262144`; release validation still blocks artifacts
 > published under misleading `32k`/`64k` text paths, while the catalog/platform
-> plan use a 128k release floor for the active 0_8B/2B/4B/9B/27B tiers
-> unless a distinct verified long-context catalog tier is introduced.
+> plan use a 128k release floor for the active 2B/4B/9B/27B/27B-256k tiers
+> (the 0.8B tier referenced above was an audit-time artifact and is no longer
+> a shipping tier — see `ELIZA_1_TIER_IDS` in `catalog.ts`) unless a distinct
+> verified long-context catalog tier is introduced.
 
 This is the analysis behind the per-tier `contextLength` in `catalog.ts`, the
 `mtp.{contextSize,draftContextSize}` knobs in `runtimeFor()`, and the
