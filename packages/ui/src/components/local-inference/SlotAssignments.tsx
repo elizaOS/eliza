@@ -7,6 +7,7 @@ import type {
 } from "../../api/client-local-inference";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { isVerifiedCuratedEliza1Download } from "../../services/local-inference/catalog-policy";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { LOCAL_INFERENCE_SLOT_DESCRIPTORS } from "./slot-metadata";
 
@@ -69,12 +70,14 @@ export function SlotAssignments({
     [onChange, setSlotBusy],
   );
 
-  if (installed.length === 0) {
+  const assignableInstalled = installed.filter(isVerifiedCuratedEliza1Download);
+
+  if (assignableInstalled.length === 0) {
     return (
       <div className="rounded-sm border border-dashed border-border p-4 text-sm text-muted-foreground">
         {t("slotassignments.empty", {
           defaultValue:
-            "Download or scan at least one model to use local inference.",
+            "Download Eliza-1 to enable local inference. Local setup no longer uses scanned or custom GGUFs.",
         })}
       </div>
     );
@@ -84,13 +87,13 @@ export function SlotAssignments({
     <section className="flex flex-col gap-3">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         {t("slotassignments.title", {
-          defaultValue: "Local model assignments",
+          defaultValue: "Managed Eliza-1 routing",
         })}
       </h3>
       <p className="text-xs text-muted-foreground">
         {t("slotassignments.description", {
           defaultValue:
-            "{{appName}} defaults both text routes to the largest installed local model so only one model has to stay in memory. Override a slot only when you explicitly want a different local model.",
+            "{{appName}} keeps every local slot on the selected Eliza-1 bundle so setup stays one-click and the FFI runtime controls memory.",
           ...appNameInterpolationVars(branding),
         })}
       </p>
@@ -118,15 +121,9 @@ export function SlotAssignments({
                   <option value="">
                     {t("slotassignments.auto", { defaultValue: "Auto" })}
                   </option>
-                  {installed.map((m) => (
+                  {assignableInstalled.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.displayName}
-                      {m.source === "external-scan"
-                        ? t("slotassignments.viaOrigin", {
-                            origin: m.externalOrigin,
-                            defaultValue: " · via {{origin}}",
-                          })
-                        : ""}
                     </option>
                   ))}
                 </select>

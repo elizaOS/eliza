@@ -5,6 +5,10 @@ import {
   MODEL_CATALOG,
 } from "../services/local-inference/catalog";
 import {
+  filterSettingsDefaultLocalModels,
+  isSettingsDefaultLocalModel,
+} from "../services/local-inference/catalog-policy";
+import {
   assessCatalogModelFit,
   catalogDownloadSizeGb,
   chooseSmallerFallbackModel,
@@ -665,11 +669,40 @@ function writeActiveModelState(state: ActiveModelState): void {
 }
 
 function readAssignments(): ModelAssignments {
-  return readJson<ModelAssignments>(ASSIGNMENTS_KEY, {});
+  const parsed = readJson<ModelAssignments>(ASSIGNMENTS_KEY, {});
+  const next: ModelAssignments = {};
+  for (const [slot, modelId] of Object.entries(parsed) as Array<
+    [AgentModelSlot, string | undefined]
+  >) {
+    const catalog = modelId ? findCatalogModel(modelId) : null;
+    if (
+      isAgentModelSlot(slot) &&
+      modelId &&
+      catalog &&
+      isSettingsDefaultLocalModel(catalog)
+    ) {
+      next[slot] = modelId;
+    }
+  }
+  return next;
 }
 
 function writeAssignments(assignments: ModelAssignments): void {
-  writeJson(ASSIGNMENTS_KEY, assignments);
+  const next: ModelAssignments = {};
+  for (const [slot, modelId] of Object.entries(assignments) as Array<
+    [AgentModelSlot, string | undefined]
+  >) {
+    const catalog = modelId ? findCatalogModel(modelId) : null;
+    if (
+      isAgentModelSlot(slot) &&
+      modelId &&
+      catalog &&
+      isSettingsDefaultLocalModel(catalog)
+    ) {
+      next[slot] = modelId;
+    }
+  }
+  writeJson(ASSIGNMENTS_KEY, next);
 }
 
 function isAgentModelSlot(value: string): value is AgentModelSlot {
@@ -1526,9 +1559,7 @@ async function listInstalledModels(): Promise<InstalledModel[]> {
     .map((model): InstalledModel | null => {
       const catalog = catalogForAvailableModel(model);
       if (!catalog) return null;
-      const id =
-        catalog.id ??
-        (model.name || model.path || randomId("model")).replace(/\.gguf$/i, "");
+      const id = catalog.id;
       const bundle = bundles[catalog.id];
       return {
         id,
@@ -1550,6 +1581,9 @@ async function listInstalledModels(): Promise<InstalledModel[]> {
         installedAt,
         lastUsedAt: activeState.modelId === id ? activeState.loadedAt : null,
         source: "eliza-download",
+        ...(bundle?.installedAt
+          ? { bundleVerifiedAt: bundle.installedAt }
+          : {}),
         ...(catalog.runtimeRole ? { runtimeRole: catalog.runtimeRole } : {}),
       };
     })
@@ -1687,6 +1721,20 @@ async function ensureActiveModelLoadedImpl(): Promise<void> {
       error: "Active model file is missing",
     });
     throw new Error("Active model file is missing");
+  }
+  const catalog = findCatalogModel(model.id);
+  if (
+    !catalog ||
+    !isSettingsDefaultLocalModel(catalog) ||
+    !model.bundleVerifiedAt
+  ) {
+    writeActiveModelState({
+      modelId: activeState.modelId,
+      loadedAt: null,
+      status: "error",
+      error: "Active model is not a verified Eliza-1 bundle",
+    });
+    throw new Error("Active model is not a verified Eliza-1 bundle");
   }
 
   const llama = await loadCapacitorLlama();
@@ -2706,6 +2754,7 @@ async function activateModel(
   knownPath?: string,
 ): Promise<ActiveModelState> {
   const catalog = findCatalogModel(modelId);
+  const bundle = catalog ? readBundleIndex()[catalog.id] : undefined;
   const installed = await listInstalledModels();
   const model =
     installed.find((entry) => entry.id === modelId) ??
@@ -2718,6 +2767,22 @@ async function activateModel(
           installedAt: nowIso(),
           lastUsedAt: null,
           source: "eliza-download" as const,
+          ...(bundle?.installedAt
+            ? { bundleVerifiedAt: bundle.installedAt }
+            : {}),
+          ...(bundle?.bundleRoot ? { bundleRoot: bundle.bundleRoot } : {}),
+          ...(bundle?.manifestPath
+            ? { manifestPath: bundle.manifestPath }
+            : {}),
+          ...(bundle?.manifestSha256
+            ? { manifestSha256: bundle.manifestSha256 }
+            : {}),
+          ...(bundle?.bundleVersion
+            ? { bundleVersion: bundle.bundleVersion }
+            : {}),
+          ...(typeof bundle?.bundleSizeBytes === "number"
+            ? { bundleSizeBytes: bundle.bundleSizeBytes }
+            : {}),
           ...(catalog?.runtimeRole ? { runtimeRole: catalog.runtimeRole } : {}),
         } satisfies InstalledModel)
       : null);
@@ -2727,6 +2792,20 @@ async function activateModel(
       loadedAt: null,
       status: "error",
       error: `Model ${modelId} is not installed.`,
+    };
+    writeActiveModelState(state);
+    return state;
+  }
+  if (
+    !catalog ||
+    !isSettingsDefaultLocalModel(catalog) ||
+    !model.bundleVerifiedAt
+  ) {
+    const state: ActiveModelState = {
+      modelId,
+      loadedAt: null,
+      status: "error",
+      error: `Model ${modelId} is not a verified Eliza-1 bundle.`,
     };
     writeActiveModelState(state);
     return state;
@@ -3367,7 +3446,7 @@ export async function handleIosLocalAgentRequest(
   }
 
   if (method === "GET" && pathname === "/api/local-inference/catalog") {
-    return json({ models: MODEL_CATALOG });
+    return json({ models: filterSettingsDefaultLocalModels(MODEL_CATALOG) });
   }
 
   if (method === "GET" && pathname === "/api/local-inference/installed") {
@@ -3393,17 +3472,11 @@ export async function handleIosLocalAgentRequest(
 
   if (method === "POST" && pathname === "/api/local-inference/downloads") {
     const body = await requestJson(request);
-    const modelId =
-      typeof body.modelId === "string"
-        ? body.modelId
-        : typeof body.spec === "object" &&
-            body.spec &&
-            !Array.isArray(body.spec) &&
-            typeof (body.spec as { id?: unknown }).id === "string"
-          ? (body.spec as { id: string }).id
-          : "";
+    const modelId = typeof body.modelId === "string" ? body.modelId : "";
     const catalog = findCatalogModel(modelId);
-    if (!catalog) return json({ error: `Unknown model id: ${modelId}` }, 404);
+    if (!catalog || !isSettingsDefaultLocalModel(catalog)) {
+      return json({ error: `Unknown model id: ${modelId}` }, 404);
+    }
     const validationError = await validateMobileModelFit(catalog);
     if (validationError) return json({ error: validationError }, 409);
     return json({ job: startDownload(catalog) });
@@ -3463,6 +3536,25 @@ export async function handleIosLocalAgentRequest(
     const modelId = typeof body.modelId === "string" ? body.modelId : null;
     if (!isAgentModelSlot(slot)) {
       return json({ error: "slot is required" }, 400);
+    }
+    if (modelId !== null) {
+      const catalog = findCatalogModel(modelId);
+      const installed = await listInstalledModels();
+      const installedModel = installed.find((entry) => entry.id === modelId);
+      if (
+        !catalog ||
+        !isSettingsDefaultLocalModel(catalog) ||
+        installedModel?.source !== "eliza-download" ||
+        !installedModel.bundleVerifiedAt
+      ) {
+        return json(
+          {
+            error:
+              "Local inference assignments are limited to verified Eliza-1 bundles.",
+          },
+          400,
+        );
+      }
     }
     const assignments = { ...readAssignments(), [slot]: modelId };
     if (modelId === null) delete assignments[slot];
