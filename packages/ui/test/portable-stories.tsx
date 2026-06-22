@@ -106,9 +106,20 @@ export function smokeStoryModules(
     describe(`${label}: ${name}`, () => {
       for (const [storyName, Story] of stories) {
         const testFn = skip.has(`${name}/${storyName}`) ? it.skip : it;
-        testFn(`${storyName} renders without throwing`, () => {
+        testFn(`${storyName} renders without throwing`, async () => {
           const { container } = render(wrap(<Story />) as ReactElement);
           expect(container.firstChild ?? container).toBeTruthy();
+          // If the story defines an interaction (`play`), run it — so authoring a
+          // play function automatically gets it exercised in this lane, with no
+          // per-component test to wire up.
+          const play = (
+            Story as {
+              play?: (ctx: { canvasElement: HTMLElement }) => void | Promise<void>;
+            }
+          ).play;
+          if (typeof play === "function") {
+            await play({ canvasElement: container });
+          }
         });
       }
     });
