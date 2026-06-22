@@ -189,7 +189,6 @@ export function createNavigateViewHandler({
     if (detail.action === "split-view" || detail.action === "tile-views") {
       const viewIds = layoutViewIdsForDetail(detail);
       const resolvedViewIds: string[] = [];
-      let primaryPath: string | null = detail.viewPath ?? null;
       for (const viewId of viewIds) {
         const entry = desktopEntryForDetail(
           availableViewsForDesktopTabs,
@@ -199,7 +198,6 @@ export function createNavigateViewHandler({
         resolvedViewIds.push(entry.id);
         recordRecentViewId(entry.id);
         openDesktopTab(entry, { pinned: false });
-        primaryPath ??= entry.path ?? `/apps/${entry.id}`;
       }
       const primaryViewId = viewIds[0] ?? detail.viewId ?? null;
       if (primaryViewId) setActiveDesktopTabId(primaryViewId);
@@ -210,7 +208,7 @@ export function createNavigateViewHandler({
         placement: detail.placement,
       });
       setTab("views");
-      if (primaryPath) navigatePath(primaryPath);
+      navigatePath("/views");
       return;
     }
     const path = pathForNavigateViewDetail(detail);

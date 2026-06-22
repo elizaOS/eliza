@@ -29,6 +29,29 @@ function isExternalPlainHttpUrl(url: string): boolean {
   }
 }
 
+function getConfiguredExternalApiBaseOrigin(): string | null {
+  if (typeof window === "undefined") return null;
+  const value = (window as { __ELIZA_DESKTOP_EXTERNAL_API_BASE__?: unknown })
+    .__ELIZA_DESKTOP_EXTERNAL_API_BASE__;
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" ? parsed.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+function isConfiguredExternalApiBaseUrl(url: string): boolean {
+  const allowedOrigin = getConfiguredExternalApiBaseOrigin();
+  if (!allowedOrigin) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" && parsed.origin === allowedOrigin;
+  } catch {
+    return false;
+  }
+}
 const desktopHttpTransport: AgentRequestTransport = {
   async request(url, init, context) {
     const rpc = getElectrobunRendererRpc();
@@ -66,7 +89,8 @@ const desktopHttpTransport: AgentRequestTransport = {
 export function desktopHttpTransportForUrl(
   url: string,
 ): AgentRequestTransport | null {
-  return isElectrobunRuntime() && isExternalPlainHttpUrl(url)
+  return isElectrobunRuntime() &&
+    (isExternalPlainHttpUrl(url) || isConfiguredExternalApiBaseUrl(url))
     ? desktopHttpTransport
     : null;
 }
