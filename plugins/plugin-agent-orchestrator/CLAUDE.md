@@ -208,6 +208,7 @@ All are optional unless noted. Read by `src/services/config-env.ts` and
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command |
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command |
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap |
+| `ELIZA_MAX_SPAWNS_PER_ORIGIN` | `3` | Max sub-agent spawns per root user message before relaying the best captured result instead of re-spawning (bounds the weak-model re-spawn loop) |
 | `ELIZA_ACP_STATE_DIR` | `~/.eliza/plugin-acp` | Session state persistence dir when no runtime DB |
 | `ELIZA_ACP_SESSION_STORE_BACKEND` | unset | Override session store backend (`db`, `file`, or `memory`) |
 | `ELIZA_ACP_MCP_SERVERS` | unset | JSON list of MCP servers to pass to spawned sub-agents |
