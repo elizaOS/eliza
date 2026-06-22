@@ -1,8 +1,7 @@
 import { useMemo } from "react";
 import { invokeDesktopBridgeRequest } from "../../bridge";
+import type { TranslateFn } from "../../types";
 import type { DesktopWorkspaceSnapshot } from "../../utils/desktop-workspace";
-
-type Translator = (key: string, options?: Record<string, unknown>) => string;
 
 export interface DesktopWindowControls {
   show: () => Promise<void>;
@@ -15,7 +14,7 @@ export interface DesktopWindowControls {
 
 export function useDesktopWindowControls(
   snapshot: DesktopWorkspaceSnapshot | null,
-  t: Translator,
+  t: TranslateFn,
 ): DesktopWindowControls {
   return useMemo<DesktopWindowControls>(
     () => ({

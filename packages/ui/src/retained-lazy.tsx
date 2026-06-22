@@ -6,13 +6,13 @@ import {
   useState,
 } from "react";
 import {
+  type EvictReason,
   emitModuleCacheTelemetry,
   type ModuleCacheTelemetryEvent,
 } from "./cache-telemetry";
 import { APP_PAUSE_EVENT } from "./events";
 
 type RetainedCleanup = () => void | Promise<void>;
-type EvictReason = NonNullable<ModuleCacheTelemetryEvent["reason"]>;
 
 export interface RetainedLazyModule<TProps extends object> {
   default: ComponentType<TProps>;
