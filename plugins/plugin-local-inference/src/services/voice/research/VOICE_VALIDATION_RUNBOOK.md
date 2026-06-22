@@ -119,6 +119,7 @@ false-accept at training. Local-mode only; inert in cloud mode.
 - [x] Robustness corpus (noise/reverb/far-field/low-quality/babble/overlap) — DSP tests + corpus:generate
 - [x] Research (pause lengths, VAD, AEC, diarization, owner verification, model landscape, hybrid latency)
 - [x] Headful A/V — desktop + web  *(13/13 specs passed + recorded + adversarially verified; `.github/issue-evidence/8785-voice-headful/`)*
-- [ ] Headful A/V — simulator + iOS device  *(needs §2)*
+- [~] iOS **simulator** — app boots + UI renders, recorded (`.github/issue-evidence/8785-voice-ios-sim/`); voice *inference* on the sim is Metal-gated (no GPU on the sim) — fundamentally needs a physical device for local, or cloud credits.
+- [ ] iOS **physical device** — needs Apple ID provisioning  *(needs §2)*
 - [ ] Live cloud STT/TTS E2E  *(needs §3 credits)*
 - [ ] Real WER/DER/EOT-latency on degraded corpus  *(needs §4 artifacts)*
