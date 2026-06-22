@@ -1602,6 +1602,81 @@ export class MessageManager {
   }
 
   /**
+   * Edits the text of a previously-sent Telegram message in place. Converts
+   * markdown to MarkdownV2 and, on a MarkdownV2 rejection, retries as plain
+   * text — mirroring {@link sendMessageInChunks}'s fallback. Used by the
+   * connector `edit_message` capability so the orchestrator's compact progress
+   * mode can rewrite one line across heartbeats instead of flooding the chat.
+   */
+  public async editMessage(
+    chatId: number | string,
+    messageId: number,
+    text: string,
+    messageThreadId?: number,
+  ): Promise<void> {
+    const formatted = convertMarkdownToTelegram(text);
+    await this.sendWithRetry(
+      () =>
+        this.bot.telegram.editMessageText(
+          chatId,
+          messageId,
+          undefined,
+          formatted,
+          { parse_mode: "MarkdownV2" },
+        ),
+      // Fallback: Telegram rejected the MarkdownV2 — edit with the raw text so
+      // the user sees the content unformatted rather than a stale message.
+      () =>
+        this.bot.telegram.editMessageText(
+          chatId,
+          messageId,
+          undefined,
+          cleanText(text),
+        ),
+    );
+    logger.info(
+      {
+        src: "plugin:telegram",
+        agentId: this.runtime.agentId,
+        chatId,
+        messageId,
+        messageThreadId,
+      },
+      "Message edited",
+    );
+  }
+
+  /**
+   * Sets a single emoji reaction on a Telegram message, or clears the bot's
+   * reactions when `emoji` is undefined. Used by the connector `react_message`
+   * capability.
+   */
+  public async addReaction(
+    chatId: number | string,
+    messageId: number,
+    emoji?: string,
+  ): Promise<void> {
+    await this.bot.telegram.setMessageReaction(
+      chatId,
+      messageId,
+      // Telegram only accepts a fixed set of reaction emoji (the `TelegramEmoji`
+      // union); the connector passes an arbitrary string, so cast and let
+      // Telegram reject an unsupported emoji at the API boundary.
+      emoji ? [{ type: "emoji", emoji } as ReactionType] : [],
+    );
+    logger.info(
+      {
+        src: "plugin:telegram",
+        agentId: this.runtime.agentId,
+        chatId,
+        messageId,
+        emoji: emoji ?? "(cleared)",
+      },
+      "Message reaction set",
+    );
+  }
+
+  /**
    * Sends a message to a Telegram chat and emits appropriate events
    * @param {number | string} chatId - The Telegram chat ID to send the message to
    * @param {Content} content - The content to send
