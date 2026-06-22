@@ -12,9 +12,10 @@
  * downloader depends on (content-length, content-range, accept-ranges, etag,
  * content-type). `Range` is forwarded so 206 partial-content resume works.
  *
- * SECURITY: only `*/resolve/*` paths on huggingface.co are forwarded — the
- * route never proxies an arbitrary host or path, and the upstream host is fixed
- * (no client-controlled hostname), so it cannot be used as an open SSRF relay.
+ * SECURITY: only paths containing a `/resolve/` segment on huggingface.co are
+ * forwarded — the route never proxies an arbitrary host or path, and the
+ * upstream host is fixed (no client-controlled hostname), so it cannot be used
+ * as an open SSRF relay.
  */
 
 import { Hono } from "hono";
