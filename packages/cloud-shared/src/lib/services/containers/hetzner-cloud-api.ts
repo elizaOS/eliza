@@ -25,7 +25,17 @@ import type {
 // names from `hetzner-cloud-api` keep resolving after the seam extraction.
 export type { CreateServerInput, CreateVolumeInput, ProvisionedServer } from "./compute-provider";
 
-const HCLOUD_API_BASE = process.env.HCLOUD_API_BASE_URL ?? "https://api.hetzner.cloud/v1";
+/**
+ * Resolve the Hetzner API base URL lazily (per request) rather than freezing it
+ * at module load. Production reads the real endpoint; local integration tests
+ * point `HCLOUD_API_BASE_URL` at the stateful Hetzner mock AFTER this module is
+ * imported, so a module-load-time const would capture the wrong (real) endpoint
+ * and the test client would hit the live API. Reading per request keeps prod
+ * behavior identical while making the endpoint injectable.
+ */
+function hcloudApiBase(): string {
+  return process.env.HCLOUD_API_BASE_URL ?? "https://api.hetzner.cloud/v1";
+}
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export type HetznerCloudErrorCode =
@@ -374,7 +384,7 @@ export class HetznerCloudClient implements ComputeProvider {
     const timer = setTimeout(() => ac.abort(), REQUEST_TIMEOUT_MS);
     let response: Response;
     try {
-      response = await fetch(`${HCLOUD_API_BASE}${path}`, {
+      response = await fetch(`${hcloudApiBase()}${path}`, {
         method,
         headers: {
           Authorization: `Bearer ${this.token}`,

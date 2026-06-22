@@ -31,10 +31,12 @@ import {
   isArchitectureCompatibleWithPlatform,
 } from "../docker-sandbox-utils";
 import {
-  getHetznerCloudClient,
-  HetznerCloudError,
-  isHetznerCloudConfigured,
-} from "./hetzner-cloud-api";
+  type ComputeProvider,
+  type ComputeServer,
+  getComputeProvider,
+  isComputeConfigured,
+} from "./compute-provider";
+import { HetznerCloudError } from "./hetzner-cloud-api";
 import { buildContainerNodeUserData, type NodeBootstrapInput } from "./node-bootstrap";
 
 // ---------------------------------------------------------------------------
@@ -113,15 +115,55 @@ export interface DrainOptions {
   deprovision?: boolean;
 }
 
+/**
+ * Dependency-injection seam for {@link NodeAutoscaler}.
+ *
+ * In production these default (lazily) to the `ComputeProvider` selected by
+ * `getComputeProvider()` (Hetzner unless `COMPUTE_PROVIDER=digitalocean`) and
+ * the matching `isComputeConfigured()` check — so runtime behavior is
+ * unchanged. Tests inject a deterministic fake (`InMemoryComputeProvider`) or a
+ * real client pointed at a local Hetzner mock, with NO monkey-patching of the
+ * provider singletons.
+ *
+ * Both are resolved lazily (`provider`/`isConfigured` are getters, called only
+ * when an actual provision/drain runs) so simply constructing a
+ * `NodeAutoscaler` never builds a Hetzner client or reads `HCLOUD_TOKEN`.
+ */
+export interface NodeAutoscalerDeps {
+  /** The IaaS provider used for server create/delete. */
+  provider: ComputeProvider;
+  /** Whether the provider's elastic-provisioning surface is configured. */
+  isConfigured(): boolean;
+}
+
 // ---------------------------------------------------------------------------
 // NodeAutoscaler
 // ---------------------------------------------------------------------------
 
 export class NodeAutoscaler {
+  /** Lazily-resolved compute provider (built once, on first provision/drain). */
+  private readonly resolveProvider: () => ComputeProvider;
+  /** Configured-check for the selected provider. */
+  private readonly isConfigured: () => boolean;
+
+  /**
+   * @param policy autoscale thresholds (defaults to env-derived production policy)
+   * @param nowFn injectable clock (defaults to `Date.now`)
+   * @param deps  IaaS seam injection. Omit to use `getComputeProvider()` /
+   *              `isComputeConfigured()` (production default: Hetzner). Pass a
+   *              fake/mock-backed provider in tests — no monkey-patching needed.
+   */
   constructor(
     private readonly policy: AutoscalePolicy = DEFAULT_AUTOSCALE_POLICY,
     private readonly nowFn: () => number = () => Date.now(),
-  ) {}
+    deps?: Partial<NodeAutoscalerDeps>,
+  ) {
+    // Memoize an injected provider; otherwise defer to the seam so a bare
+    // `new NodeAutoscaler()` never constructs a Hetzner client up front.
+    const injected = deps?.provider;
+    this.resolveProvider = injected ? () => injected : () => getComputeProvider();
+    this.isConfigured = deps?.isConfigured ?? isComputeConfigured;
+  }
 
   /**
    * Inspect current pool state and return a decision: should we scale up,
@@ -212,10 +254,10 @@ export class NodeAutoscaler {
       "controlPlanePublicKey" | "registrationUrl" | "registrationSecret"
     >,
   ): Promise<ProvisionResult> {
-    if (!isHetznerCloudConfigured()) {
+    if (!this.isConfigured()) {
       throw new HetznerCloudError(
         "missing_token",
-        "Cannot provision a node: HCLOUD_TOKEN is not set.",
+        "Cannot provision a node: the compute provider is not configured (HCLOUD_TOKEN unset).",
       );
     }
     if (bootstrap.controlPlanePublicKey.trim().length === 0) {
@@ -243,7 +285,7 @@ export class NodeAutoscaler {
       capacity,
     });
 
-    const client = getHetznerCloudClient();
+    const client = this.resolveProvider();
     // `environment` + `tier` let the orchestrator scope server lookups via
     // Hetzner's label_selector (e.g. `environment=staging,tier=data-plane`) so
     // staging never touches a production node, and a runaway daemon can't
@@ -269,10 +311,11 @@ export class NodeAutoscaler {
       labels,
     });
 
-    const ip =
-      provisioned.server.public_net.ipv4?.ip ??
-      provisioned.server.public_net.ipv6?.ip ??
-      provisioned.server.name;
+    const ip = extractServerAddress(provisioned.server);
+    // The seam declares ids as `number | string`; we store/consume the server id
+    // as a numeric `hcloudServerId` throughout (it feeds `deleteServer(number)`),
+    // so normalize at this boundary. Hetzner/DO both mint numeric ids.
+    const serverId = coerceServerId(provisioned.server.id);
 
     // Insert the row in `unknown` status — the cloud-init bootstrap is
     // still running; the periodic health check will flip it to healthy.
@@ -288,7 +331,7 @@ export class NodeAutoscaler {
       metadata: {
         provider: "hetzner-cloud",
         autoscaled: true,
-        hcloudServerId: provisioned.server.id,
+        hcloudServerId: serverId,
         serverType,
         location,
         image,
@@ -299,7 +342,7 @@ export class NodeAutoscaler {
 
     logger.info("[autoscaler] Provisioned new container node", {
       nodeId,
-      hcloudServerId: provisioned.server.id,
+      hcloudServerId: serverId,
       ip,
       serverType,
       location,
@@ -308,7 +351,7 @@ export class NodeAutoscaler {
     return {
       nodeId,
       hostname: ip,
-      hcloudServerId: provisioned.server.id,
+      hcloudServerId: serverId,
       rootPassword: provisioned.rootPassword,
     };
   }
@@ -352,8 +395,8 @@ export class NodeAutoscaler {
       return;
     }
 
-    if (!isHetznerCloudConfigured()) {
-      logger.warn("[autoscaler] HCLOUD_TOKEN not set; cannot delete Hetzner server", {
+    if (!this.isConfigured()) {
+      logger.warn("[autoscaler] compute provider not configured; cannot delete server", {
         nodeId,
         hcloudServerId,
       });
@@ -361,7 +404,7 @@ export class NodeAutoscaler {
       return;
     }
 
-    const client = getHetznerCloudClient();
+    const client = this.resolveProvider();
     try {
       await client.deleteServer(hcloudServerId);
     } catch (err) {
@@ -445,6 +488,72 @@ function generateNodeId(): string {
   crypto.getRandomValues(bytes);
   const random = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
   return `eliza-core-${random}`;
+}
+
+/**
+ * Normalize a provider server id (`number | string` at the seam) to the numeric
+ * `hcloudServerId` the autoscaler persists and later passes to
+ * `deleteServer(number)`. Both supported providers return numeric ids; a numeric
+ * string is parsed, anything else throws so a malformed id never silently
+ * becomes `NaN` in the DB.
+ */
+function coerceServerId(id: number | string): number {
+  const n = typeof id === "number" ? id : Number(id);
+  if (!Number.isFinite(n)) {
+    throw new HetznerCloudError(
+      "server_error",
+      `Compute provider returned a non-numeric server id: ${String(id)}`,
+    );
+  }
+  return n;
+}
+
+/**
+ * Extract a reachable address for a freshly-provisioned server through the
+ * provider-agnostic seam.
+ *
+ * The seam's `ComputeServer` only guarantees `id`/`name`/`status`; each provider
+ * carries IPs in its own richer subtype (Hetzner: `public_net.ipv4.ip`;
+ * DigitalOcean: `publicIp`). Rather than widen the seam or unsafe-cast the
+ * concrete type back, we probe both known shapes at runtime with type guards and
+ * fall back to the server name (Hetzner created the row in `unknown` status and
+ * the health check fixes the hostname once the node registers). This keeps the
+ * autoscaler decoupled from any single provider's wire shape.
+ */
+function extractServerAddress(server: ComputeServer): string {
+  const hetznerIp = readHetznerPublicIp(server);
+  if (hetznerIp) return hetznerIp;
+
+  const publicIp = readStringField(server, "publicIp");
+  if (publicIp) return publicIp;
+
+  return server.name;
+}
+
+/** Hetzner's `public_net.ipv4.ip ?? public_net.ipv6.ip`, runtime-validated. */
+function readHetznerPublicIp(server: ComputeServer): string | undefined {
+  const publicNet = readRecordField(server, "public_net");
+  if (!publicNet) return undefined;
+  return readNestedIp(publicNet, "ipv4") ?? readNestedIp(publicNet, "ipv6");
+}
+
+function readNestedIp(publicNet: Record<string, unknown>, family: string): string | undefined {
+  const entry = publicNet[family];
+  if (entry === null || typeof entry !== "object") return undefined;
+  const ip = (entry as Record<string, unknown>).ip;
+  return typeof ip === "string" && ip.length > 0 ? ip : undefined;
+}
+
+function readRecordField(obj: object, key: string): Record<string, unknown> | undefined {
+  const value = (obj as Record<string, unknown>)[key];
+  return value !== null && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function readStringField(obj: object, key: string): string | undefined {
+  const value = (obj as Record<string, unknown>)[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function getHcloudServerId(node: DockerNode): number | undefined {

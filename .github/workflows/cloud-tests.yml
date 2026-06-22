@@ -14,6 +14,10 @@ on:
       - "packages/cloud-sdk/**"
       - "packages/cloud-services/**"
       - "packages/scripts/cloud/**"
+      # Stateful Hetzner/control-plane mocks used by cloud integration tests
+      # (e.g. node-autoscaler.integration.test.ts) — re-run the cloud suite when
+      # the mock changes so the autoscaler gate stays honest.
+      - "packages/test/cloud-mocks/**"
       - "package.json"
       - "bun.lock"
       - ".github/workflows/cloud-tests.yml"
@@ -27,6 +31,7 @@ on:
       - "packages/cloud-sdk/**"
       - "packages/cloud-services/**"
       - "packages/scripts/cloud/**"
+      - "packages/test/cloud-mocks/**"
       - "package.json"
       - "bun.lock"
       - ".github/workflows/cloud-tests.yml"

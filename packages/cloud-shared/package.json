@@ -88,6 +88,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.0",
     "@cloudflare/workers-types": "^4.20260429.1",
+    "@elizaos/cloud-test-mocks": "workspace:*",
     "@types/node": "^25.6.0",
     "@types/nodemailer": "^8.0.0",
     "@types/pg": "^8.20.0",
