@@ -91,6 +91,12 @@ export interface DeviceTierAssessment {
 	canRunLocalVoice: boolean;
 	/** Default backend mode for the user. */
 	recommendedMode: RecommendedMode;
+	/**
+	 * The biggest eliza-1 tier (+ 128k-targeted QJL context) that fits this device,
+	 * or `null` when nothing local fits and the modality should route to Cloud.
+	 * This is the single forced-model decision the consumer UI renders read-only.
+	 */
+	recommendedFit: Eliza1Fit | null;
 	/** Numeric snapshot to drive UI badges and first-run copy. */
 	numericContext: {
 		totalRamGb: number;
@@ -256,6 +262,7 @@ export function classifyDeviceTier(probe: HardwareProbe): DeviceTierAssessment {
 		canRunLocalLm,
 		canRunLocalVoice,
 		recommendedMode,
+		recommendedFit: selectBestEliza1FitForDevice(probe),
 		numericContext: {
 			totalRamGb,
 			freeRamGb,
