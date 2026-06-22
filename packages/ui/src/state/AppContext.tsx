@@ -1877,13 +1877,33 @@ function AppProviderInner({
     [serverTurnStatus],
   );
 
-  // High-write-frequency state is deliberately NOT in this value: the composer
-  // fields (ChatComposerCtx), ptySessions (PtySessionsCtx), conversationMessages
-  // (ConversationMessagesCtx), and the autonomous heartbeat fields (held in refs)
-  // are routed through narrower contexts so their updates re-render only the chat
-  // surfaces instead of fanning out to every AppContext subscriber. Because none
-  // of them appear in the value body, the dep array below is exhaustive — keep it
-  // that way: never add a per-keystroke/per-token/per-poll field here.
+  // High-write-frequency state is exposed through narrow fresh contexts below.
+  // AppContext keeps stale compatibility copies for older consumers, but they
+  // intentionally stay out of the dependency list so per-keystroke/per-token/
+  // per-poll updates do not fan out to every AppContext subscriber.
+  const appContextHotCompatibility = useRef<
+    Pick<
+      AppState,
+      | "autonomousEvents"
+      | "autonomousLatestEventId"
+      | "autonomousRunHealthByRunId"
+      | "chatInput"
+      | "chatPendingImages"
+      | "chatSending"
+      | "conversationMessages"
+      | "ptySessions"
+    >
+  >({
+    autonomousEvents: [],
+    autonomousLatestEventId: null,
+    autonomousRunHealthByRunId: {},
+    chatInput: "",
+    chatPendingImages: [],
+    chatSending: false,
+    conversationMessages: [],
+    ptySessions: [],
+  }).current;
+
   const value: AppContextValue = useMemo(
     () => ({
       // Translations
@@ -1930,6 +1950,7 @@ function AppProviderInner({
       conversations,
       activeConversationId,
       companionMessageCutoffTs,
+      ...appContextHotCompatibility,
       unreadConversations,
       triggers,
       triggersLoaded,
@@ -2345,6 +2366,7 @@ function AppProviderInner({
       conversations,
       activeConversationId,
       companionMessageCutoffTs,
+      appContextHotCompatibility,
       // NOTE: conversationMessages intentionally EXCLUDED — it gets a new array
       // reference on every streamed token. Provided fresh via
       // ConversationMessagesCtx (useConversationMessages()); the copy left in the

@@ -294,7 +294,9 @@ export function ComputerUseApprovalOverlay() {
                       {approval.command}
                     </div>
                     <div className="mt-2 text-xs text-muted">
-                      {new Date(approval.requestedAt).toLocaleTimeString("en-US")}
+                      {new Date(approval.requestedAt).toLocaleTimeString(
+                        "en-US",
+                      )}
                     </div>
                     <pre className="mt-4 max-h-56 overflow-auto rounded-sm bg-bg/60 p-3 text-xs leading-relaxed text-txt">
                       {approval.parametersText || "{}"}

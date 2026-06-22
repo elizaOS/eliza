@@ -6,6 +6,7 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 
+import { MockAppProvider } from "../../../storybook/mock-providers";
 import { ContinuousChatOverlay } from "../ContinuousChatOverlay";
 import type { ShellMessage } from "../shell-state";
 import type { ShellController } from "../useShellController";
@@ -331,4 +332,12 @@ function Harness(): React.JSX.Element {
 }
 
 const root = document.getElementById("root");
-if (root) createRoot(root).render(<Harness />);
+// Assistant turns render via MessageContent (through AssistantMessageBody), which
+// reads the app store + chat composer — wrap the headless harness in the mock app
+// provider so the rich segment pipeline resolves without the real shell.
+if (root)
+  createRoot(root).render(
+    <MockAppProvider>
+      <Harness />
+    </MockAppProvider>,
+  );

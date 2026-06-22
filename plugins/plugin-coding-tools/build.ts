@@ -19,7 +19,13 @@ await build({
   format: "esm",
   sourcemap: "external",
   minify: false,
-  external: ["@elizaos/core", "@vscode/ripgrep", "phonemizer", "figlet"],
+  external: [
+    "@elizaos/core",
+    "@elizaos/shared",
+    "@vscode/ripgrep",
+    "phonemizer",
+    "figlet",
+  ],
 });
 
 console.log("Build complete.");

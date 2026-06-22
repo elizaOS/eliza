@@ -76,7 +76,9 @@ export function StatusBar({
           <span className="inline-flex min-h-9 items-center gap-1.5 rounded-sm border border-border/45 bg-card/92 px-2.5 py-1.5 text-xs-tight text-muted-strong font-mono text-2xs">
             <span className="text-txt">{formatUptime(uptime)}</span>
             <span className="text-border">|</span>
-            <span className="text-txt">{frameCount.toLocaleString("en-US")}f</span>
+            <span className="text-txt">
+              {frameCount.toLocaleString("en-US")}f
+            </span>
           </span>
         )}
 

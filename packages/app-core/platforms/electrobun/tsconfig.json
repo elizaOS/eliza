@@ -49,6 +49,8 @@
       "@elizaos/logger/*": ["../../../logger/src/*"],
       "@elizaos/shared": ["../../../shared/src/index.ts"],
       "@elizaos/shared/*": ["../../../shared/src/*"],
+      "@elizaos/security": ["../../../security/src/index.ts"],
+      "@elizaos/security/*": ["../../../security/src/*"],
       "@elizaos/ui": ["../../../ui/src/index.ts"],
       "@elizaos/ui/*": ["../../../ui/src/*"],
       "@elizaos/plugin-elizacloud": [

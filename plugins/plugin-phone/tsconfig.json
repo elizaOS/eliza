@@ -49,6 +49,12 @@
       "@elizaos/plugin-commands/*": ["../plugin-commands/src/*"],
       "@elizaos/plugin-health": ["../plugin-health/src/index.ts"],
       "@elizaos/plugin-health/*": ["../plugin-health/src/*"],
+      "@elizaos/plugin-task-coordinator": [
+        "../../plugins/plugin-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/plugin-task-coordinator/*": [
+        "../../plugins/plugin-task-coordinator/src/*"
+      ],
       "@elizaos/plugin-wallet-ui": [
         "../../plugins/plugin-wallet-ui/src/index.ts"
       ],

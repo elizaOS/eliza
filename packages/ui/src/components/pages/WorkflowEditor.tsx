@@ -811,8 +811,10 @@ export function WorkflowEditor({
                               {summary.statusLabel}
                             </span>
                             <span className="block truncate text-2xs text-muted-strong">
-                              {new Date(execution.startedAt).toLocaleString("en-US")} /{" "}
-                              {summary.durationLabel}
+                              {new Date(execution.startedAt).toLocaleString(
+                                "en-US",
+                              )}{" "}
+                              / {summary.durationLabel}
                             </span>
                           </span>
                         </button>

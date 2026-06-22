@@ -464,7 +464,9 @@ export function DatabaseView({
                         </SidebarContent.ItemTitle>
                         <SidebarContent.ItemDescription>
                           {t("databaseview.RowCountLabel", {
-                            count: (table.rowCount ?? 0).toLocaleString("en-US"),
+                            count: (table.rowCount ?? 0).toLocaleString(
+                              "en-US",
+                            ),
                             defaultValue: "{{count}} rows",
                           })}
                         </SidebarContent.ItemDescription>
@@ -603,7 +605,8 @@ export function DatabaseView({
                           </MetaPill>
                         )}
                         <MetaPill>
-                          {tableData.total.toLocaleString("en-US")} {t("common.rows")}
+                          {tableData.total.toLocaleString("en-US")}{" "}
+                          {t("common.rows")}
                         </MetaPill>
                       </div>
                     </div>

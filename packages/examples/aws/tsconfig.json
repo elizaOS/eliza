@@ -15,7 +15,10 @@
     "declarationMap": false,
     "sourceMap": true,
     "noEmit": true,
-    "types": ["bun-types", "node"]
+    "types": ["bun-types", "node"],
+    "paths": {
+      "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/dist/index.d.ts"]
+    }
   },
   "include": ["*.ts"],
   "exclude": ["node_modules", "dist"],
