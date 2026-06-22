@@ -67,6 +67,18 @@ describe("MessageAttachments", () => {
     // Audio + video players
     expect(container.querySelector("audio")).not.toBeNull();
     expect(container.querySelector("video")).not.toBeNull();
+    // The audio card carries a stable testid (consistent with the pdf/model3d/
+    // code/transcript/image tiles) so the generated-audio chat journey can
+    // assert the player rendered. The <audio> element exposes its own testid.
+    const audioCard = container.querySelector(
+      '[data-testid="audio-attachment"]',
+    );
+    expect(audioCard).not.toBeNull();
+    const audioEl = container.querySelector(
+      '[data-testid="audio-attachment-player"]',
+    );
+    expect(audioEl).not.toBeNull();
+    expect(audioEl?.getAttribute("src")).toBe("https://x/clip.mp3");
     // File card links to the document with a download affordance
     const docLink = screen.getByRole("link", { name: /archive\.zip/i });
     expect(docLink.getAttribute("href")).toBe("https://x/archive.zip");
