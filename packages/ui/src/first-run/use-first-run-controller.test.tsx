@@ -358,6 +358,24 @@ describe("useFirstRunController cloud first-run", () => {
     });
   });
 
+  it("routes a 0-agent auto-create failure to the picker error phase (no stuck spinner)", async () => {
+    mocks.getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
+    mocks.selectOrProvisionCloudAgent.mockRejectedValue(
+      new Error("Out of credits."),
+    );
+    const { result } = renderHook(() => useFirstRunController());
+
+    await act(async () => {
+      await result.current.finishRuntime();
+    });
+
+    // The auto-create rejected — land on the picker error phase (Back + Try
+    // again), not hang forever on the "Finding your agents…" loading spinner.
+    expect(result.current.step).toBe("pick-agent");
+    expect(result.current.pickerPhase).toBe("error");
+    expect(result.current.pickerError).toBeTruthy();
+  });
+
   it("does not arm shared-runtime handoff when a new cloud agent is already on a dedicated base", async () => {
     mocks.selectOrProvisionCloudAgent.mockResolvedValue({
       agentId: "agent-1",

@@ -291,6 +291,10 @@ function resetClientMocks() {
   clientMock.getCloudCompatAgentStatus.mockReset();
   persistenceMock.loadPersistedActiveServer.mockReset();
   persistenceMock.savePersistedActiveServer.mockReset();
+  // deleteAgent now guards on window.confirm; default it to accept so the
+  // lifecycle tests exercise the delete path (the dismissal path is tested
+  // explicitly below).
+  window.confirm = () => true;
 }
 
 describe("CloudAgentsSection lifecycle (suspend/resume)", () => {
@@ -684,6 +688,16 @@ describe("CloudAgentsSection delete (job polling)", () => {
 
     await waitFor(() => expect(screen.queryByText("Sync")).toBeNull());
     expect(clientMock.getCloudCompatJobStatus).not.toHaveBeenCalled();
+  });
+
+  it("does NOT delete when the confirm dialog is dismissed", async () => {
+    window.confirm = () => false;
+    await renderWithAgents([agent({ agent_name: "Sync" })]);
+
+    fireEvent.click(screen.getByLabelText("Delete Sync"));
+
+    expect(clientMock.deleteCloudCompatAgent).not.toHaveBeenCalled();
+    expect(screen.queryByText("Sync")).not.toBeNull();
   });
 });
 
