@@ -2823,7 +2823,23 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
         code = injectBrandUserAgentMarkers(code, APP.userAgentMarkers ?? []);
       }
       fs.writeFileSync(path.join(dstJava, file), code, "utf8");
-      if (path.resolve(src) !== path.resolve(path.join(dstJava, file))) {
+      // Rewrite the legacy-package copy's R/BuildConfig imports so any file left
+      // behind in the old package still resolves — but ONLY when that copy lives
+      // in THIS build's own android dir. NEVER write into the shared elizaOS
+      // template tree (platforms/android): a whitelabel build
+      // (ELIZA_ANDROID_USE_APP_DIR) reads that template READ-ONLY, and writing
+      // the brand package back into it corrupts the elizaOS checkout's
+      // ai/elizaos/app sources (the recurring "package ai.milady.app does not
+      // exist" pollution that breaks the next elizaOS build). srcJava resolves
+      // to templateJava for a whitelabel build, so this guard is what keeps the
+      // two brands' source trees separate.
+      const srcInOwnAndroidDir = path
+        .resolve(src)
+        .startsWith(`${path.resolve(androidDir)}${path.sep}`);
+      if (
+        srcInOwnAndroidDir &&
+        path.resolve(src) !== path.resolve(path.join(dstJava, file))
+      ) {
         const legacyCode = fs
           .readFileSync(src, "utf8")
           .replaceAll(
