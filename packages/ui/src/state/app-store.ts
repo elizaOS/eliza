@@ -194,9 +194,7 @@ export function useAppSelector<T>(
 export function useAppSelectorShallow<T>(
   selector: (value: AppContextValue) => T,
 ): T {
-  // Pin the type param so inference doesn't widen `T` to `unknown` when the
-  // (intentionally `unknown`-typed) `shallowEqual` is supplied as the comparator.
-  return useAppSelector<T>(selector, shallowEqual);
+  return useAppSelector<T>(selector, shallowEqual as (a: T, b: T) => boolean);
 }
 
 /** Test-only: seed the store and notify subscribers (mirrors a publish). */

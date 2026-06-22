@@ -36,6 +36,8 @@
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
       ],
+      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/app-core/agent-bridge": [
         "../../packages/app-core/src/agent-bridge.ts"
       ],
