@@ -2,14 +2,18 @@
  * Springboard — iOS-like home-screen view catalog.
  *
  * Renders every available view as a names-only icon on swipeable pages plus a
- * pinned favorites dock. Tap launches; long-press (or the Edit toggle) enters
- * edit mode where icons can be reordered (drag) and favorited into the dock.
- * Layout is persisted via the pure `springboard-layout` model. The component is
- * fully token-themed, so it tracks light/dark and theme overrides automatically,
- * and it renders no background of its own — the shared root `AppBackground`
- * shows through, matching the home screen.
+ * pinned favorites dock. Tap launches; the Edit toggle (or long-press) enters
+ * edit mode where icons can be reordered (drag), favorited into the dock, and —
+ * for manageable (dynamic developer) views — edited or deleted. Page order is
+ * persisted via the pure `springboard-layout` model. Favorites are
+ * controlled-optional: when `onToggleFavorite` is supplied the dock reflects the
+ * caller's `favoriteIds` (the app wires this to desktop tabs, so favoriting a
+ * view pins it as a tab); otherwise favorites are kept locally. Fully
+ * token-themed (light/dark + overrides) and renders no background of its own —
+ * the shared root `AppBackground` shows through, matching the home screen.
  */
 
+import { Pencil, Trash2 } from "lucide-react";
 import { Reorder } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ViewEntry } from "../../hooks/view-catalog";
@@ -27,6 +31,13 @@ import { ViewIcon } from "../views/ViewIcon";
 export interface SpringboardProps {
   entries: ViewEntry[];
   onLaunch: (entry: ViewEntry) => void;
+  /** When set, favorites are controlled by the caller (e.g. desktop tabs). */
+  favoriteIds?: string[];
+  onToggleFavorite?: (id: string) => void;
+  /** Per-tile management for dynamic views, shown in edit mode when allowed. */
+  canManageView?: (id: string) => boolean;
+  onEditView?: (id: string) => void;
+  onDeleteView?: (id: string) => void;
   className?: string;
 }
 
@@ -34,8 +45,11 @@ interface IconTileProps {
   entry: ViewEntry;
   editing: boolean;
   favorited: boolean;
+  manageable: boolean;
   onLaunch: (entry: ViewEntry) => void;
   onToggleFavorite: (id: string) => void;
+  onEdit?: (id: string) => void;
+  onDelete?: (id: string) => void;
   onLongPress: () => void;
 }
 
@@ -45,8 +59,11 @@ function IconTile({
   entry,
   editing,
   favorited,
+  manageable,
   onLaunch,
   onToggleFavorite,
+  onEdit,
+  onDelete,
   onLongPress,
 }: IconTileProps) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -111,6 +128,38 @@ function IconTile({
             {favorited ? "★" : "+"}
           </button>
         ) : null}
+        {editing && manageable ? (
+          <div className="absolute -left-1.5 -top-1.5 flex gap-1">
+            {onEdit ? (
+              <button
+                type="button"
+                aria-label={`Edit ${entry.label}`}
+                data-testid={`springboard-edit-${entry.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(entry.id);
+                }}
+                className="grid h-5 w-5 place-items-center rounded-full bg-bg-accent text-foreground"
+              >
+                <Pencil className="h-3 w-3" aria-hidden="true" />
+              </button>
+            ) : null}
+            {onDelete ? (
+              <button
+                type="button"
+                aria-label={`Delete ${entry.label}`}
+                data-testid={`springboard-delete-${entry.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(entry.id);
+                }}
+                className="grid h-5 w-5 place-items-center rounded-full bg-destructive/80 text-destructive-foreground"
+              >
+                <Trash2 className="h-3 w-3" aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <span className="max-w-[4.5rem] truncate text-center text-[11px] leading-tight text-muted">
         {entry.label}
@@ -122,33 +171,62 @@ function IconTile({
 export function Springboard({
   entries,
   onLaunch,
+  favoriteIds,
+  onToggleFavorite,
+  canManageView,
+  onEditView,
+  onDeleteView,
   className,
 }: SpringboardProps) {
   const availableIds = useMemo(() => entries.map((e) => e.id), [entries]);
   const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
 
-  const [layout, setLayout] = useState<SpringboardLayout>(() =>
-    reconcileLayout(
-      readSpringboardLayout(),
-      entries.map((e) => e.id),
-    ),
+  const controlled = onToggleFavorite != null;
+  const favorites = useMemo(
+    () => (controlled ? (favoriteIds ?? []) : null),
+    [controlled, favoriteIds],
   );
+
+  const [layout, setLayout] = useState<SpringboardLayout>(() => {
+    const stored = readSpringboardLayout();
+    return reconcileLayout(
+      { favorites: favorites ?? stored.favorites, pages: stored.pages },
+      entries.map((e) => e.id),
+    );
+  });
   const [page, setPage] = useState(0);
   const [editing, setEditing] = useState(false);
 
-  // Re-reconcile whenever the available views change (install/uninstall/gating).
+  // Re-reconcile when the available views or controlled favorites change.
   useEffect(() => {
-    setLayout((prev) => reconcileLayout(prev, availableIds));
-  }, [availableIds]);
+    setLayout((prev) =>
+      reconcileLayout(
+        { favorites: favorites ?? prev.favorites, pages: prev.pages },
+        availableIds,
+      ),
+    );
+  }, [availableIds, favorites]);
 
   const commit = useCallback((next: SpringboardLayout) => {
     setLayout(next);
     writeSpringboardLayout(next);
   }, []);
 
+  const toggleFav = useCallback(
+    (id: string) => {
+      if (controlled) {
+        onToggleFavorite?.(id);
+        return;
+      }
+      commit(reconcileLayout(toggleFavorite(layout, id), availableIds));
+    },
+    [controlled, onToggleFavorite, commit, layout, availableIds],
+  );
+
   const pages = layout.pages.length > 0 ? layout.pages : [[]];
   const clampedPage = Math.min(page, pages.length - 1);
-  const favoriteEntries = layout.favorites
+  const favoriteIdList = favorites ?? layout.favorites;
+  const favoriteEntries = favoriteIdList
     .map((id) => byId.get(id))
     .filter((e): e is ViewEntry => e != null);
 
@@ -162,6 +240,20 @@ export function Springboard({
       commit(next);
     },
     [layout, commit],
+  );
+
+  const renderTile = (entry: ViewEntry, favorited: boolean) => (
+    <IconTile
+      entry={entry}
+      editing={editing}
+      favorited={favorited}
+      manageable={canManageView?.(entry.id) ?? false}
+      onLaunch={onLaunch}
+      onToggleFavorite={toggleFav}
+      onEdit={onEditView}
+      onDelete={onDeleteView}
+      onLongPress={() => setEditing(true)}
+    />
   );
 
   return (
@@ -204,21 +296,7 @@ export function Springboard({
                   dragListener={editing}
                   className="flex justify-center"
                 >
-                  <IconTile
-                    entry={entry}
-                    editing={editing}
-                    favorited={layout.favorites.includes(id)}
-                    onLaunch={onLaunch}
-                    onToggleFavorite={(fid) =>
-                      commit(
-                        reconcileLayout(
-                          toggleFavorite(layout, fid),
-                          availableIds,
-                        ),
-                      )
-                    }
-                    onLongPress={() => setEditing(true)}
-                  />
+                  {renderTile(entry, favoriteIdList.includes(id))}
                 </Reorder.Item>
               );
             })}
@@ -248,21 +326,12 @@ export function Springboard({
 
       {/* Favorites dock. */}
       {favoriteEntries.length > 0 ? (
-        <div className="mx-4 mb-4 flex items-center justify-center gap-4 rounded-3xl bg-bg-accent/60 px-6 py-3 backdrop-blur-2xl">
+        <div
+          data-testid="springboard-dock"
+          className="mx-4 mb-4 flex items-center justify-center gap-4 rounded-3xl bg-bg-accent/60 px-6 py-3 backdrop-blur-2xl"
+        >
           {favoriteEntries.map((entry) => (
-            <IconTile
-              key={`dock-${entry.id}`}
-              entry={entry}
-              editing={editing}
-              favorited
-              onLaunch={onLaunch}
-              onToggleFavorite={(fid) =>
-                commit(
-                  reconcileLayout(toggleFavorite(layout, fid), availableIds),
-                )
-              }
-              onLongPress={() => setEditing(true)}
-            />
+            <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>
           ))}
         </div>
       ) : null}

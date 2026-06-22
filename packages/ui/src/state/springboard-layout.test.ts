@@ -26,10 +26,16 @@ describe("springboard-layout reconcile", () => {
     expect(out.favorites).toEqual([]);
   });
 
-  it("preserves existing order and appends new ids at the end", () => {
-    const layout = { favorites: [], pages: [["b", "a"]] };
+  it("preserves a manual order and appends new ids at the end", () => {
+    const layout = { favorites: [], pages: [["b", "a"]], manual: true };
     const out = reconcileLayout(layout, ["a", "b", "c"], 4);
     expect(out.pages[0]).toEqual(["b", "a", "c"]);
+  });
+
+  it("follows the incoming catalog order until manually arranged", () => {
+    const layout = { favorites: [], pages: [["b", "a"]] };
+    const out = reconcileLayout(layout, ["a", "b", "c"], 4);
+    expect(out.pages[0]).toEqual(["a", "b", "c"]);
   });
 
   it("keeps favorites out of the page grid", () => {
