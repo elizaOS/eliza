@@ -147,7 +147,7 @@ function connectedChannels(
 function unreadNudge(items: InboxItem[]): string | null {
   const unread = items.reduce((n, item) => (item.unread ? n + 1 : n), 0);
   if (unread === 0) return null;
-  return `${unread} thread${unread === 1 ? "" : "s"} still need a reply.`;
+  return `${unread} thread${unread === 1 ? " still needs" : "s still need"} a reply.`;
 }
 
 function formatTime(value: string): string {

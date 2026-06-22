@@ -147,7 +147,7 @@ describe("InboxView", () => {
     await screen.findByTestId("inbox-populated");
     // The fixture has exactly one unread thread (gmail); discord is read.
     const nudge = screen.getByTestId("inbox-nudge");
-    expect(nudge.textContent).toBe("1 thread still need a reply.");
+    expect(nudge.textContent).toBe("1 thread still needs a reply.");
   });
 
   it("omits the unread nudge entirely when nothing is unread (no '0 threads' placeholder)", async () => {
