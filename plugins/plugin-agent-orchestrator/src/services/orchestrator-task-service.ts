@@ -21,6 +21,13 @@ import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type IAgentRuntime, Service } from "@elizaos/core";
+import {
+  detectTaskType,
+  generateDefaultAcceptanceCriteria,
+  isNonTrivialGoal,
+  type OrchestratorTaskType,
+  shouldRequireGoalContract,
+} from "./acceptance-criteria.js";
 import { AcpService } from "./acp-service.js";
 import { assignAgentName } from "./agent-name-assignment.js";
 import {
@@ -1140,7 +1147,9 @@ export class OrchestratorTaskService extends Service {
   // ---- lifecycle ---------------------------------------------------------
 
   async createTask(input: CreateTaskInput): Promise<TaskThreadDetailDto> {
-    const doc = await this.store.createTask(input);
+    const doc = await this.store.createTask(
+      await this.withDefaultAcceptanceCriteria(input),
+    );
     if (input.originalRequest) {
       await this.recordMessage(doc.task.id, {
         content: input.originalRequest,
@@ -1150,6 +1159,60 @@ export class OrchestratorTaskService extends Service {
     }
     const detail = await this.store.getTask(doc.task.id);
     return toTaskThreadDetail(detail ?? doc);
+  }
+
+  /**
+   * When a task is created WITHOUT acceptance criteria and with a non-trivial
+   * goal, populate 3-5 measurable default criteria so the auto goal-verifier
+   * (#8896) always has something to grill against instead of fast-pathing to
+   * pass / parking forever in `validating`.
+   *
+   * - **No-op when criteria were supplied** — the caller's contract wins; the
+   *   input is returned unchanged.
+   * - **Gated** behind `ELIZA_REQUIRE_GOAL_CONTRACT` (default ON; `"0"`
+   *   disables), mirroring {@link shouldAutoVerifyGoal}.
+   * - **Defensive** — {@link generateDefaultAcceptanceCriteria} never throws;
+   *   on any model failure it returns the static template set, so task creation
+   *   can never be broken by criteria generation.
+   */
+  private async withDefaultAcceptanceCriteria(
+    input: CreateTaskInput,
+  ): Promise<CreateTaskInput> {
+    const supplied = input.acceptanceCriteria;
+    // Caller-supplied criteria are authoritative — never overwrite them.
+    if (supplied && supplied.length > 0) return input;
+    if (!shouldRequireGoalContract()) return input;
+    if (!isNonTrivialGoal(input.goal)) return input;
+
+    const hint = this.taskTypeHintFor(input);
+    const generated = await generateDefaultAcceptanceCriteria(
+      input.goal,
+      hint,
+      this.runtime,
+    );
+    if (generated.length === 0) return input;
+    this.log(
+      "debug",
+      `auto-generated ${generated.length} default acceptance criteria for criteria-free task (type=${hint ?? detectTaskType(input.goal)})`,
+    );
+    return { ...input, acceptanceCriteria: generated };
+  }
+
+  /** Map an explicit `kind` on the create input to a task type when it lines up
+   *  with a known template type, so the caller's stated kind beats keyword
+   *  detection; otherwise let {@link detectTaskType} read the goal text. */
+  private taskTypeHintFor(
+    input: CreateTaskInput,
+  ): OrchestratorTaskType | undefined {
+    switch (input.kind) {
+      case "coding":
+      case "view-create":
+      case "app-build":
+      case "deploy":
+        return input.kind;
+      default:
+        return undefined;
+    }
   }
 
   async listTasks(filter: TaskListFilter = {}): Promise<TaskThreadDto[]> {
