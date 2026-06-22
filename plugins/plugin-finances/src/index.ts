@@ -16,7 +16,21 @@ export {
   OWNER_FINANCE_SIMILES,
   runPaymentsHandler,
 } from "./actions/finances.ts";
-export { FinancesView } from "./components/finances/FinancesView.tsx";
+export {
+  FinancesView,
+  type FinancesFetchers,
+  type FinancesViewProps as FinancesViewComponentProps,
+  formatMinor,
+} from "./components/finances/FinancesView.tsx";
+export {
+  EMPTY_FINANCES_SNAPSHOT,
+  type FinanceBalanceCard,
+  type FinanceRecurringCard,
+  type FinancesSnapshot,
+  FinancesSpatialView,
+  type FinancesViewState,
+  type FinanceTransactionCard,
+} from "./components/finances/FinancesSpatialView.tsx";
 export {
   createLifeOpsSubscriptionAudit,
   createLifeOpsSubscriptionCancellation,
@@ -80,3 +94,12 @@ export {
   resolveTokenEncryptionKey,
 } from "./token-encryption.ts";
 export * from "./types.ts";
+export {
+  registerFinancesTerminalView,
+  setFinancesTerminalSnapshot,
+} from "./register-terminal-view.ts";
+
+// Side-effect: in a terminal host (Node agent, no DOM) this registers the
+// finances terminal view. DOM-guarded so the terminal engine stays out of
+// browser bundles.
+import "./register.ts";

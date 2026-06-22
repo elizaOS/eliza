@@ -1,35 +1,46 @@
 /**
- * FinancesView — overlay view for the Finances / money app.
+ * FinancesView — the single GUI/XR data wrapper for the owner finance dashboard.
  *
- * Data-fetching view over the four read-only money endpoints served by the
- * personal-assistant routes (PA owns the persistence; this plugin only renders):
+ * It owns the live money data (the fetcher seams over the four read-only
+ * endpoints PA serves, the quiet background poll, wire->display mapping, the
+ * USD-float->minor-units boundary, and the proactive signal) and renders the one
+ * presentational {@link FinancesSpatialView} inside a {@link SpatialSurface}.
+ * Omitting the `modality` prop lets `SpatialSurface` auto-detect GUI vs XR, so
+ * the SAME component serves both surfaces; the TUI surface renders the same
+ * `FinancesSpatialView` through the terminal registry (see
+ * `../../register-terminal-view.tsx`).
+ *
+ * Data sources (PA owns the persistence; this plugin only reads):
  *   GET {base}/api/lifeops/money/dashboard       (balance summary)
+ *   GET {base}/api/lifeops/money/sources         (connected-vs-disconnected)
  *   GET {base}/api/lifeops/money/transactions    (recent transactions)
  *   GET {base}/api/lifeops/money/recurring       (recurring charges)
- *   GET {base}/api/lifeops/money/sources         (connected-vs-disconnected)
  *
- * It renders one of four distinct states (loading, error, empty, populated),
- * polls every 30s to stay fresh, and instruments its connect control through
- * the agent surface so the floating chat can drive it.
- *
- * The default fetchers build URLs from `client.getBaseUrl()`; tests inject the
- * fetcher seam so they stay offline. The wire amounts arrive as USD floats; we
- * convert to minor units at the fetch boundary so the whole view renders through
- * the single `formatMinor` boundary helper.
- *
- * This plugin MUST NOT import from @elizaos/plugin-personal-assistant. The wire
- * DTOs below are declared locally to match the JSON shape PA emits.
+ * The client DISPLAYS, never COMPUTES: every total, sign, and currency amount is
+ * resolved HERE into a pre-formatted string and handed to the spatial view as a
+ * snapshot. The owner actions are `connect` (route a connect-a-source request
+ * through the assistant chat — no fabricated balances) and `retry` (reload after
+ * an error). This plugin MUST NOT import from @elizaos/plugin-personal-assistant;
+ * the wire DTOs below are declared locally to match the JSON shape PA emits.
  */
 
 import { client } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import type { CSSProperties, ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { SpatialSurface } from "@elizaos/ui/spatial";
+import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   FinanceBalanceSummaryDTO,
   FinanceTransactionDTO,
   RecurringChargeDTO,
 } from "../../types.ts";
+import {
+  EMPTY_FINANCES_SNAPSHOT,
+  type FinanceBalanceCard,
+  type FinanceRecurringCard,
+  type FinancesSnapshot,
+  FinancesSpatialView,
+  type FinanceTransactionCard,
+} from "./FinancesSpatialView.tsx";
 
 // ---------------------------------------------------------------------------
 // Wire DTOs — local mirror of the JSON shape served by the PA money routes.
@@ -143,10 +154,6 @@ function usdToMinor(amountUsd: number): number {
   return Math.round(amountUsd * 100);
 }
 
-/**
- * Currency-aware status the DTO carries. The wire transaction has no posted/
- * pending split; debits/credits all settle to "posted" once imported.
- */
 function mapBalance(dashboard: MoneyDashboardWire): FinanceBalanceSummaryDTO {
   const { spending } = dashboard;
   return {
@@ -227,7 +234,7 @@ export function formatMinor(amountMinor: number, currency: string): string {
 }
 
 function formatDate(value: string | null): string {
-  if (!value) return "—";
+  if (!value) return "";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
 }
@@ -237,14 +244,14 @@ function formatDate(value: string | null): string {
  * genuine, actionable money signal — never a placeholder. Precedence:
  *   1. a negative net balance (overdrawn), then
  *   2. recurring bills landing within the next 7 days.
- * Returns null when neither holds, so the line renders nothing on no signal.
+ * Returns "" when neither holds, so the line renders nothing on no signal.
  * Computed entirely from data the view already loads; no new imports.
  */
 function proactiveNote(
   balance: FinanceBalanceSummaryDTO,
   recurring: RecurringChargeDTO[],
   now: number = Date.now(),
-): string | null {
+): string {
   if (balance.netBalanceMinor < 0) {
     return `Balance is negative (${formatMinor(
       balance.netBalanceMinor,
@@ -260,267 +267,51 @@ function proactiveNote(
   if (dueSoon > 0) {
     return `${dueSoon} bill${dueSoon === 1 ? "" : "s"} due this week.`;
   }
-  return null;
+  return "";
 }
 
 // ---------------------------------------------------------------------------
-// Styling — CSS vars, orange accent only.
+// Display-DTO -> spatial-card projection (pre-format every string HERE).
 // ---------------------------------------------------------------------------
 
-const STYLE_TAG_ID = "finances-view-styles";
-
-const FINANCES_VIEW_CSS = `
-.finances-view-btn {
-  min-height: 44px;
-  min-width: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 0 16px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
-}
-.finances-view-btn-primary {
-  background: var(--primary, #ff8a24);
-  color: var(--primary-foreground, #fff);
-  border: 1px solid var(--primary, #ff8a24);
-}
-.finances-view-btn-primary:hover {
-  background: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
-}
-`;
-
-function useFinancesViewStyles(): void {
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_TAG_ID)) return;
-    const style = document.createElement("style");
-    style.id = STYLE_TAG_ID;
-    style.textContent = FINANCES_VIEW_CSS;
-    document.head.appendChild(style);
-  }, []);
+function toBalanceCard(balance: FinanceBalanceSummaryDTO): FinanceBalanceCard {
+  return {
+    net: formatMinor(balance.netBalanceMinor, balance.currency),
+    negative: balance.netBalanceMinor < 0,
+    income: formatMinor(balance.monthlyIncomeMinor, balance.currency),
+    outflow: formatMinor(balance.monthlyOutflowMinor, balance.currency),
+    asOf: formatDate(balance.asOf),
+  };
 }
 
-const containerStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 16,
-  padding: 24,
-  height: "100%",
-  boxSizing: "border-box",
-  overflowY: "auto",
-  background: "var(--background, #fff)",
-  color: "var(--foreground, #111)",
-  fontFamily: "system-ui, sans-serif",
-};
-
-const sectionStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-};
-
-const populatedSectionStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 32,
-};
-
-const h1Style: CSSProperties = { margin: 0, fontSize: 18, fontWeight: 600 };
-const h2Style: CSSProperties = { margin: 0, fontSize: 16, fontWeight: 600 };
-
-const cardStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-};
-
-const dimStyle: CSSProperties = {
-  opacity: 0.65,
-  fontSize: 13,
-  lineHeight: 1.5,
-};
-
-const statValueStyle: CSSProperties = { fontWeight: 600 };
-
-const balanceHeadlineStyle: CSSProperties = {
-  fontSize: 32,
-  fontWeight: 600,
-  lineHeight: 1.1,
-};
-
-const balanceSublineStyle: CSSProperties = {
-  display: "flex",
-  gap: 16,
-  fontSize: 13,
-  opacity: 0.65,
-};
-
-const captionStyle: CSSProperties = {
-  fontSize: 12,
-  opacity: 0.5,
-};
-
-const rowStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "baseline",
-  gap: 12,
-  padding: "8px 0",
-  borderBottom: "1px solid var(--border, rgba(0,0,0,0.04))",
-  fontSize: 14,
-};
-
-const rowMainStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 2,
-  minWidth: 0,
-};
-
-const listStyle: CSSProperties = {
-  listStyle: "none",
-  margin: 0,
-  padding: 0,
-  display: "flex",
-  flexDirection: "column",
-};
-
-// ---------------------------------------------------------------------------
-// Agent-instrumented controls (hooks cannot run inside .map()).
-// ---------------------------------------------------------------------------
-
-function ConnectButton({ onActivate }: { onActivate: () => void }): ReactNode {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "finances-connect",
-    role: "button",
-    label: "Connect a payment source",
-    group: "finances-actions",
-    description: "Connect a bank, PayPal, or CSV so Eliza can track your money",
-    onActivate,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className="finances-view-btn finances-view-btn-primary"
-      onClick={onActivate}
-      aria-label="Connect a payment source"
-      {...agentProps}
-    >
-      Connect a source
-    </button>
-  );
+function toTransactionCard(tx: FinanceTransactionDTO): FinanceTransactionCard {
+  const date = formatDate(tx.occurredAt);
+  const meta = tx.category ? `${date} • ${tx.category}` : date;
+  return {
+    id: tx.id,
+    description: tx.description,
+    meta,
+    amount: formatMinor(tx.amountMinor, tx.currency),
+    outflow: tx.amountMinor < 0,
+  };
 }
 
-function FinancesHeader(): ReactNode {
-  return (
-    <header style={sectionStyle}>
-      <h1 style={h1Style}>Finances</h1>
-    </header>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Populated sub-sections.
-// ---------------------------------------------------------------------------
-
-function BalanceCard({
-  balance,
-}: {
-  balance: FinanceBalanceSummaryDTO;
-}): ReactNode {
-  return (
-    <div style={cardStyle} data-testid="finances-balance">
-      <h2 style={h2Style}>Balance</h2>
-      <div style={balanceHeadlineStyle}>
-        {formatMinor(balance.netBalanceMinor, balance.currency)}
-      </div>
-      <div style={balanceSublineStyle}>
-        <span>
-          In {formatMinor(balance.monthlyIncomeMinor, balance.currency)}
-        </span>
-        <span>
-          Out {formatMinor(balance.monthlyOutflowMinor, balance.currency)}
-        </span>
-      </div>
-      <div style={captionStyle}>As of {formatDate(balance.asOf)}</div>
-    </div>
-  );
-}
-
-function TransactionsCard({
-  transactions,
-}: {
-  transactions: FinanceTransactionDTO[];
-}): ReactNode {
-  return (
-    <div style={cardStyle} data-testid="finances-transactions">
-      <h2 style={h2Style}>Recent transactions</h2>
-      {transactions.length > 0 ? (
-        <ul style={listStyle} aria-label="Recent transactions">
-          {transactions.map((tx) => (
-            <li key={tx.id} style={rowStyle}>
-              <span style={rowMainStyle}>
-                <span style={statValueStyle}>{tx.description}</span>
-                <span style={dimStyle}>
-                  {formatDate(tx.occurredAt)}
-                  {tx.category ? ` · ${tx.category}` : ""}
-                </span>
-              </span>
-              <span style={statValueStyle}>
-                {formatMinor(tx.amountMinor, tx.currency)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div style={dimStyle}>No transactions in this window.</div>
-      )}
-    </div>
-  );
-}
-
-function RecurringCard({
-  recurring,
-}: {
-  recurring: RecurringChargeDTO[];
-}): ReactNode {
-  return (
-    <div style={cardStyle} data-testid="finances-recurring">
-      <h2 style={h2Style}>Recurring charges</h2>
-      {recurring.length > 0 ? (
-        <ul style={listStyle} aria-label="Recurring charges">
-          {recurring.map((row) => (
-            <li key={row.id} style={rowStyle}>
-              <span style={rowMainStyle}>
-                <span style={statValueStyle}>{row.label}</span>
-                <span style={dimStyle}>
-                  {row.cadence} · next {formatDate(row.nextChargeAt)}
-                </span>
-              </span>
-              <span style={statValueStyle}>
-                {formatMinor(row.amountMinor, row.currency)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div style={dimStyle}>No recurring charges detected.</div>
-      )}
-    </div>
-  );
+function toRecurringCard(row: RecurringChargeDTO): FinanceRecurringCard {
+  const next = formatDate(row.nextChargeAt);
+  const meta = next ? `${row.cadence} • next ${next}` : row.cadence;
+  return {
+    id: row.id,
+    label: row.label,
+    meta,
+    amount: formatMinor(row.amountMinor, row.currency),
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Fetch-driven state machine.
 // ---------------------------------------------------------------------------
+
+const POLL_INTERVAL_MS = 30_000;
 
 interface FinancesData {
   hasSource: boolean;
@@ -534,9 +325,16 @@ type LoadState =
   | { kind: "error"; message: string }
   | { kind: "ready"; data: FinancesData };
 
-export function FinancesView(props: FinancesViewProps = {}): ReactNode {
-  useFinancesViewStyles();
+function requestConnectSource(): void {
+  // The connect-a-source affordance routes through the assistant chat. `client`
+  // does not type `sendChatMessage`, so read it through a narrow optional-method
+  // view and call it only when present — no fabricated balances.
+  const send = (client as { sendChatMessage?: (text: string) => void })
+    .sendChatMessage;
+  send?.("Connect a payment source so you can track my money.");
+}
 
+export function FinancesView(props: FinancesViewProps = {}): ReactNode {
   const fetchers = props.fetchers ?? defaultFetchers;
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
@@ -582,90 +380,59 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
 
   useEffect(() => load(), [load]);
 
-  // Poll quietly every 30s so the dashboard stays fresh without a manual refresh.
+  // Poll quietly every 30s so the dashboard stays fresh without a manual
+  // refresh. Transient poll failures are ignored — the explicit Retry path is
+  // what surfaces errors to the user.
   useEffect(() => {
-    const id = setInterval(() => load(true), 30_000);
+    const id = setInterval(() => load(true), POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [load]);
 
-  const refresh = useCallback(() => load(), [load]);
+  const snapshot = useMemo<FinancesSnapshot>(() => {
+    if (state.kind === "loading") {
+      return EMPTY_FINANCES_SNAPSHOT;
+    }
+    if (state.kind === "error") {
+      return { ...EMPTY_FINANCES_SNAPSHOT, state: "error", error: state.message };
+    }
+    const { hasSource, balance, transactions, recurring } = state.data;
+    if (!hasSource) {
+      return { ...EMPTY_FINANCES_SNAPSHOT, state: "empty" };
+    }
+    return {
+      state: "ready",
+      balance: toBalanceCard(balance),
+      transactions: transactions.map(toTransactionCard),
+      recurring: recurring.map(toRecurringCard),
+      note: proactiveNote(balance, recurring),
+    };
+  }, [state]);
 
-  const requestConnect = useCallback(() => {
-    client.sendChatMessage?.(
-      "Connect a payment source so you can track my money.",
-    );
-  }, []);
-
-  if (state.kind === "loading") {
-    return (
-      <div style={containerStyle} data-testid="finances-loading">
-        <FinancesHeader />
-        <div style={{ ...cardStyle, ...dimStyle }}>Loading finances…</div>
-      </div>
-    );
-  }
-
-  if (state.kind === "error") {
-    return (
-      <div style={containerStyle} data-testid="finances-error">
-        <FinancesHeader />
-        <div style={cardStyle}>
-          <div style={{ fontWeight: 600 }}>Couldn’t load finances</div>
-          <div style={dimStyle}>{state.message}</div>
-          <div>
-            <button
-              type="button"
-              className="finances-view-btn finances-view-btn-primary"
-              onClick={refresh}
-              aria-label="Retry loading finances"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const { hasSource, balance, transactions, recurring } = state.data;
-
-  // No payment source connected → honest connect-a-source affordance. This is
-  // the disconnected state; show no fabricated balances.
-  if (!hasSource) {
-    return (
-      <div style={containerStyle} data-testid="finances-empty">
-        <FinancesHeader />
-        <div style={cardStyle}>
-          <div style={{ fontWeight: 600 }}>No money sources connected</div>
-          <div style={dimStyle}>
-            Connect a bank, PayPal, or import a CSV so Eliza can track your
-            balance, transactions, and recurring charges. Nothing is shown until
-            a source is linked.
-          </div>
-          <div>
-            <ConnectButton onActivate={requestConnect} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const note = proactiveNote(balance, recurring);
+  const onAction = useCallback(
+    (action: string) => {
+      if (action === "retry") {
+        load();
+        return;
+      }
+      if (action === "connect") {
+        requestConnectSource();
+        return;
+      }
+      // `txn-<id>` / `bill-<id>` open affordances route to chat; PA owns the
+      // detail surface, so this view never fabricates a drill-down.
+      if (action.startsWith("txn-") || action.startsWith("bill-")) {
+        const send = (client as { sendChatMessage?: (text: string) => void })
+          .sendChatMessage;
+        send?.(`Show me the details for ${action}.`);
+      }
+    },
+    [load],
+  );
 
   return (
-    <div style={containerStyle} data-testid="finances-populated">
-      <FinancesHeader />
-      {note ? (
-        <div style={dimStyle} data-testid="finances-proactive-note">
-          {note}
-        </div>
-      ) : null}
-      <section style={populatedSectionStyle}>
-        <BalanceCard balance={balance} />
-        <TransactionsCard transactions={transactions} />
-        <RecurringCard recurring={recurring} />
-      </section>
-    </div>
+    <SpatialSurface>
+      <FinancesSpatialView snapshot={snapshot} onAction={onAction} />
+    </SpatialSurface>
   );
 }
 

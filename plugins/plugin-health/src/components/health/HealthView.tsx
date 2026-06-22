@@ -1,32 +1,48 @@
 /**
- * HealthView — overlay view for the Health / sleep app.
+ * HealthView — the single GUI/XR data wrapper for the owner sleep summary.
  *
- * Data-fetching view over the three read-only sleep endpoints served by
- * `src/routes/sleep.ts`:
+ * It owns the live sleep data (the fetcher seam over the three read-only
+ * endpoints the host serves, the quiet background poll, the window-range state,
+ * and the wire->display projection) and renders the one presentational
+ * {@link HealthSpatialView} inside a {@link SpatialSurface}. Omitting the
+ * `modality` prop lets `SpatialSurface` auto-detect GUI vs XR, so the SAME
+ * component serves both surfaces; the TUI surface renders the same
+ * `HealthSpatialView` through the terminal registry (see
+ * `../../register-terminal-view.tsx`).
+ *
+ * Data source (three read-only sleep endpoints served by `src/routes/sleep.ts`):
  *   GET {base}/api/lifeops/sleep/history?windowDays&includeNaps   (primary)
- *   GET {base}/api/lifeops/sleep/regularity?windowDays&includeNaps (enrich)
- *   GET {base}/api/lifeops/sleep/baseline?windowDays               (enrich)
+ *   GET {base}/api/lifeops/sleep/regularity?windowDays            (enrich)
+ *   GET {base}/api/lifeops/sleep/baseline?windowDays              (enrich)
  *
- * It renders one of four distinct states (loading, error, empty, populated)
- * and instruments its window-range control through the agent surface so the
- * floating chat can drive it. The data is kept fresh by a quiet background
- * poll; there is no manual refresh control.
+ * The view is read-only: the only owner actions are `retry` (reload after an
+ * error) and `window:7|14|30` (change the look-back window). All durations,
+ * times, and percentages are formatted to strings HERE (client displays, never
+ * computes) and handed to the presentational view as a snapshot.
  *
  * The default fetchers build URLs from `client.getBaseUrl()`; tests inject the
  * fetcher seams so they stay offline.
  */
 
 import { client } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import type { CSSProperties, ReactNode } from "react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { SpatialSurface } from "@elizaos/ui/spatial";
+import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   LifeOpsPersonalBaselineResponse,
   LifeOpsRegularityClass,
-  LifeOpsSleepHistoryEpisode,
   LifeOpsSleepHistoryResponse,
   LifeOpsSleepRegularityResponse,
 } from "../../contracts/health.js";
+import {
+  EMPTY_HEALTH_SNAPSHOT,
+  type HealthSnapshot,
+  HealthSpatialView,
+  type StatRow,
+  type WindowDays,
+} from "./HealthSpatialView.tsx";
+
+export type { WindowDays } from "./HealthSpatialView.tsx";
 
 // ---------------------------------------------------------------------------
 // Fetcher seams — default to real GETs; tests inject offline fakes.
@@ -74,274 +90,8 @@ export interface HealthViewProps {
   initialWindowDays?: WindowDays;
 }
 
-export type WindowDays = 7 | 14 | 30;
-const WINDOW_OPTIONS: readonly WindowDays[] = [7, 14, 30];
-
 /** Quiet background-poll cadence that keeps the view fresh. */
 const POLL_INTERVAL_MS = 20_000;
-
-// ---------------------------------------------------------------------------
-// Styling — light surface, CSS vars, orange accent only.
-// ---------------------------------------------------------------------------
-
-const STYLE_TAG_ID = "health-view-styles";
-
-const HEALTH_VIEW_CSS = `
-.health-view-btn {
-  min-height: 44px;
-  min-width: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 0 16px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
-}
-.health-view-btn-primary {
-  background: var(--primary, #ff8a24);
-  color: var(--primary-foreground, #ffffff);
-  border: 1px solid var(--primary, #ff8a24);
-}
-.health-view-btn-primary:hover {
-  background: color-mix(in srgb, var(--primary, #ff8a24) 85%, #c0560f);
-  border-color: color-mix(in srgb, var(--primary, #ff8a24) 85%, #c0560f);
-}
-.health-view-btn-neutral {
-  background: var(--surface, rgba(0, 0, 0, 0.03));
-  color: var(--foreground, #0a0a0a);
-  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
-}
-.health-view-btn-neutral:hover {
-  background: color-mix(in srgb, var(--foreground, #0a0a0a) 6%, transparent);
-}
-.health-view-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.health-view-range-btn {
-  min-height: 44px;
-  min-width: 44px;
-  padding: 0 14px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  background: var(--surface, rgba(0, 0, 0, 0.03));
-  color: var(--foreground, #0a0a0a);
-  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
-  transition: background-color 120ms ease, border-color 120ms ease;
-}
-.health-view-range-btn:hover {
-  background: color-mix(in srgb, var(--foreground, #0a0a0a) 6%, transparent);
-}
-.health-view-range-btn[aria-pressed="true"] {
-  background: var(--primary, #ff8a24);
-  color: var(--primary-foreground, #ffffff);
-  border-color: var(--primary, #ff8a24);
-}
-.health-view-range-btn[aria-pressed="true"]:hover {
-  background: color-mix(in srgb, var(--primary, #ff8a24) 85%, #c0560f);
-  border-color: color-mix(in srgb, var(--primary, #ff8a24) 85%, #c0560f);
-}
-`;
-
-function useHealthViewStyles(): void {
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_TAG_ID)) return;
-    const style = document.createElement("style");
-    style.id = STYLE_TAG_ID;
-    style.textContent = HEALTH_VIEW_CSS;
-    document.head.appendChild(style);
-  }, []);
-}
-
-const containerStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 16,
-  padding: 24,
-  height: "100%",
-  boxSizing: "border-box",
-  overflowY: "auto",
-  background: "var(--background, #eef8ff)",
-  color: "var(--foreground, #0a0a0a)",
-  fontFamily: "system-ui, sans-serif",
-};
-
-const sectionStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-};
-
-const headerRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  flexWrap: "wrap",
-};
-
-const h1Style: CSSProperties = { margin: 0, fontSize: 18, fontWeight: 600 };
-const h2Style: CSSProperties = { margin: 0, fontSize: 16, fontWeight: 600 };
-
-const cardStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-};
-
-const dimStyle: CSSProperties = {
-  opacity: 0.65,
-  fontSize: 13,
-  lineHeight: 1.5,
-};
-
-const statRowStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 12,
-  fontSize: 14,
-};
-
-const statLabelStyle: CSSProperties = { opacity: 0.65 };
-const statValueStyle: CSSProperties = { fontWeight: 600 };
-
-const gridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-  gap: 24,
-};
-
-const subtitleStyle: CSSProperties = { ...dimStyle, marginTop: 2 };
-
-const dividerStyle: CSSProperties = {
-  height: 1,
-  border: 0,
-  margin: "8px 0",
-  background: "var(--border, rgba(0,0,0,0.08))",
-};
-
-const visuallyHiddenStyle: CSSProperties = {
-  position: "absolute",
-  width: 1,
-  height: 1,
-  padding: 0,
-  margin: -1,
-  overflow: "hidden",
-  clip: "rect(0, 0, 0, 0)",
-  whiteSpace: "nowrap",
-  border: 0,
-};
-
-// ---------------------------------------------------------------------------
-// Agent-instrumented controls (hooks cannot run inside .map()).
-// ---------------------------------------------------------------------------
-
-const RangeButton = memo(function RangeButton({
-  days,
-  selected,
-  onSelect,
-  disabled,
-}: {
-  days: WindowDays;
-  selected: boolean;
-  onSelect: (days: WindowDays) => void;
-  disabled: boolean;
-}): ReactNode {
-  const activate = useCallback(() => onSelect(days), [days, onSelect]);
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `health-range-${days}`,
-    role: "select",
-    label: `Show last ${days} days`,
-    group: "health-window-range",
-    description: `Set the sleep look-back window to ${days} days`,
-    onActivate: activate,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className="health-view-range-btn"
-      aria-pressed={selected}
-      aria-label={`Show last ${days} days`}
-      onClick={activate}
-      disabled={disabled}
-      {...agentProps}
-    >
-      {days}d
-    </button>
-  );
-});
-
-function WindowRange({
-  windowDays,
-  onSelect,
-  disabled,
-}: {
-  windowDays: WindowDays;
-  onSelect: (days: WindowDays) => void;
-  disabled: boolean;
-}): ReactNode {
-  return (
-    <fieldset
-      aria-label="Sleep window range"
-      style={{
-        display: "flex",
-        gap: 6,
-        border: "none",
-        margin: 0,
-        padding: 0,
-      }}
-    >
-      <legend style={visuallyHiddenStyle}>Sleep window range</legend>
-      {WINDOW_OPTIONS.map((days) => (
-        <RangeButton
-          key={days}
-          days={days}
-          selected={days === windowDays}
-          onSelect={onSelect}
-          disabled={disabled}
-        />
-      ))}
-    </fieldset>
-  );
-}
-
-function HealthHeader({
-  ownerName,
-  windowDays,
-  onSelectWindow,
-  busy,
-}: {
-  ownerName: string;
-  windowDays: WindowDays;
-  onSelectWindow: (days: WindowDays) => void;
-  busy: boolean;
-}): ReactNode {
-  return (
-    <header style={sectionStyle}>
-      <div style={headerRowStyle}>
-        <h1 style={h1Style}>Health</h1>
-        <WindowRange
-          windowDays={windowDays}
-          onSelect={onSelectWindow}
-          disabled={busy}
-        />
-      </div>
-      <div style={subtitleStyle}>
-        {`Sleep, circadian rhythm, and the rolling baseline for ${ownerName}.`}
-      </div>
-    </header>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Formatting helpers (display-only; no business computation).
@@ -366,8 +116,7 @@ function formatLocalHour(hour: number | null): string {
   const normalized = ((hour % 24) + 24) % 24;
   const whole = Math.floor(normalized);
   const mins = Math.round((normalized - whole) * 60);
-  const stamp = `${String(whole).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-  return stamp;
+  return `${String(whole).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
 }
 
 const REGULARITY_LABELS: Record<LifeOpsRegularityClass, string> = {
@@ -379,116 +128,25 @@ const REGULARITY_LABELS: Record<LifeOpsRegularityClass, string> = {
 };
 
 /**
- * Quiet proactive line for the top of the view: the agent only speaks up when
- * the loaded regularity classification reads as off-rhythm. Returns null (render
- * nothing) for regular/very-regular nights and when there isn't enough data to
- * judge — no placeholder, no "all good" banner.
+ * Quiet proactive line: the agent only speaks up when the loaded regularity
+ * classification reads as off-rhythm. Returns "" (render nothing) for
+ * regular/very-regular nights and when there isn't enough data to judge — no
+ * placeholder, no "all good" banner.
  */
 function sleepProactiveLine(
   regularity: LifeOpsSleepRegularityResponse,
-): string | null {
+): string {
   if (regularity.classification === "very_irregular") {
     return "Sleep was very irregular this window — bedtime and wake times drifted a lot.";
   }
   if (regularity.classification === "irregular") {
     return "Sleep was irregular this window — bedtime and wake times varied.";
   }
-  return null;
+  return "";
 }
 
-const StatRow = memo(function StatRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}): ReactNode {
-  return (
-    <div style={statRowStyle}>
-      <span style={statLabelStyle}>{label}</span>
-      <span style={statValueStyle}>{value}</span>
-    </div>
-  );
-});
-
 // ---------------------------------------------------------------------------
-// Populated sub-sections.
-// ---------------------------------------------------------------------------
-
-const LatestNightCard = memo(function LatestNightCard({
-  episode,
-}: {
-  episode: LifeOpsSleepHistoryEpisode;
-}): ReactNode {
-  return (
-    <div style={cardStyle} data-testid="health-latest-night">
-      <h2 style={h2Style}>Last sleep</h2>
-      <StatRow label="Duration" value={formatDuration(episode.durationMin)} />
-      <StatRow label="Bedtime" value={formatDateTime(episode.startedAt)} />
-      <StatRow label="Wake" value={formatDateTime(episode.endedAt)} />
-      <StatRow label="Type" value={episode.cycleType} />
-      <StatRow label="Source" value={episode.source} />
-      <StatRow
-        label="Confidence"
-        value={`${Math.round(episode.confidence * 100)}%`}
-      />
-    </div>
-  );
-});
-
-const RegularityCard = memo(function RegularityCard({
-  regularity,
-}: {
-  regularity: LifeOpsSleepRegularityResponse;
-}): ReactNode {
-  return (
-    <div style={cardStyle} data-testid="health-regularity">
-      <h2 style={h2Style}>Regularity</h2>
-      <StatRow
-        label="Classification"
-        value={REGULARITY_LABELS[regularity.classification]}
-      />
-      <StatRow label="SRI" value={`${Math.round(regularity.sri)}`} />
-      <StatRow
-        label="Bedtime spread"
-        value={formatDuration(Math.round(regularity.bedtimeStddevMin))}
-      />
-      <StatRow
-        label="Wake spread"
-        value={formatDuration(Math.round(regularity.wakeStddevMin))}
-      />
-      <StatRow label="Samples" value={`${regularity.sampleSize}`} />
-    </div>
-  );
-});
-
-const BaselineCard = memo(function BaselineCard({
-  baseline,
-}: {
-  baseline: LifeOpsPersonalBaselineResponse;
-}): ReactNode {
-  return (
-    <div style={cardStyle} data-testid="health-baseline">
-      <h2 style={h2Style}>Baseline</h2>
-      <StatRow
-        label="Typical bedtime"
-        value={formatLocalHour(baseline.medianBedtimeLocalHour)}
-      />
-      <StatRow
-        label="Typical wake"
-        value={formatLocalHour(baseline.medianWakeLocalHour)}
-      />
-      <StatRow
-        label="Typical duration"
-        value={formatDuration(baseline.medianSleepDurationMin)}
-      />
-      <StatRow label="Samples" value={`${baseline.sampleSize}`} />
-    </div>
-  );
-});
-
-// ---------------------------------------------------------------------------
-// Fetch-driven state machine.
+// Wire -> display snapshot projection (all formatting happens here).
 // ---------------------------------------------------------------------------
 
 interface SleepData {
@@ -497,15 +155,78 @@ interface SleepData {
   baseline: LifeOpsPersonalBaselineResponse;
 }
 
+function lastSleepRows(data: SleepData): StatRow[] {
+  const [latest] = data.history.episodes;
+  if (!latest) return [];
+  return [
+    { label: "Duration", value: formatDuration(latest.durationMin) },
+    { label: "Bedtime", value: formatDateTime(latest.startedAt) },
+    { label: "Wake", value: formatDateTime(latest.endedAt) },
+    { label: "Type", value: latest.cycleType },
+    { label: "Source", value: latest.source },
+    { label: "Confidence", value: `${Math.round(latest.confidence * 100)}%` },
+  ];
+}
+
+function regularityRows(regularity: LifeOpsSleepRegularityResponse): StatRow[] {
+  return [
+    {
+      label: "Classification",
+      value: REGULARITY_LABELS[regularity.classification],
+    },
+    { label: "SRI", value: `${Math.round(regularity.sri)}` },
+    {
+      label: "Bedtime spread",
+      value: formatDuration(Math.round(regularity.bedtimeStddevMin)),
+    },
+    {
+      label: "Wake spread",
+      value: formatDuration(Math.round(regularity.wakeStddevMin)),
+    },
+    { label: "Samples", value: `${regularity.sampleSize}` },
+  ];
+}
+
+function baselineRows(baseline: LifeOpsPersonalBaselineResponse): StatRow[] {
+  return [
+    {
+      label: "Typical bedtime",
+      value: formatLocalHour(baseline.medianBedtimeLocalHour),
+    },
+    {
+      label: "Typical wake",
+      value: formatLocalHour(baseline.medianWakeLocalHour),
+    },
+    {
+      label: "Typical duration",
+      value: formatDuration(baseline.medianSleepDurationMin),
+    },
+    { label: "Samples", value: `${baseline.sampleSize}` },
+  ];
+}
+
+function windowSummaryRows(history: LifeOpsSleepHistoryResponse): StatRow[] {
+  return [
+    { label: "Nights recorded", value: `${history.summary.cycleCount}` },
+    {
+      label: "Average duration",
+      value: formatDuration(history.summary.averageDurationMin),
+    },
+    { label: "Overnight", value: `${history.summary.overnightCount}` },
+    { label: "Naps", value: `${history.summary.napCount}` },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Fetch-driven state machine.
+// ---------------------------------------------------------------------------
+
 type LoadState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
   | { kind: "ready"; data: SleepData };
 
 export function HealthView(props: HealthViewProps = {}): ReactNode {
-  useHealthViewStyles();
-
-  const ownerName = props.ownerName ?? "Owner";
   const fetchers = props.fetchers ?? defaultFetchers;
   const [windowDays, setWindowDays] = useState<WindowDays>(
     props.initialWindowDays ?? 14,
@@ -564,120 +285,64 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
     return () => clearInterval(id);
   }, [windowDays]);
 
-  // Error-state recovery only: re-run the full load (with loading flash).
-  const retry = useCallback(() => load(windowDays), [load, windowDays]);
+  const snapshot = useMemo<HealthSnapshot>(() => {
+    if (state.kind === "loading") {
+      return { ...EMPTY_HEALTH_SNAPSHOT, state: "loading", windowDays };
+    }
+    if (state.kind === "error") {
+      return {
+        ...EMPTY_HEALTH_SNAPSHOT,
+        state: "error",
+        windowDays,
+        error: state.message,
+      };
+    }
+    const { history, regularity, baseline } = state.data;
+    const [latest] = history.episodes;
+    if (!latest) {
+      return {
+        ...EMPTY_HEALTH_SNAPSHOT,
+        state: "empty",
+        windowDays,
+        emptyDetail: `Nothing was recorded in the last ${history.windowDays} days. Connect a health source (Apple Health, Google Fit, Oura, Fitbit, Withings, or Strava) so Eliza can track your sleep.`,
+      };
+    }
+    return {
+      state: "ready",
+      windowDays,
+      proactive: sleepProactiveLine(regularity),
+      lastSleep: lastSleepRows(state.data),
+      regularity: regularityRows(regularity),
+      baseline: baselineRows(baseline),
+      windowSummary: windowSummaryRows(history),
+      emptyDetail: "",
+    };
+  }, [state, windowDays]);
 
-  if (state.kind === "loading") {
-    return (
-      <div style={containerStyle} data-testid="health-loading">
-        <HealthHeader
-          ownerName={ownerName}
-          windowDays={windowDays}
-          onSelectWindow={setWindowDays}
-          busy={true}
-        />
-        <div style={{ ...cardStyle, ...dimStyle }}>Loading sleep data…</div>
-      </div>
-    );
-  }
-
-  if (state.kind === "error") {
-    return (
-      <div style={containerStyle} data-testid="health-error">
-        <HealthHeader
-          ownerName={ownerName}
-          windowDays={windowDays}
-          onSelectWindow={setWindowDays}
-          busy={false}
-        />
-        <div style={cardStyle}>
-          <div style={{ fontWeight: 600 }}>Couldn’t load sleep data</div>
-          <div style={dimStyle}>{state.message}</div>
-          <div>
-            <button
-              type="button"
-              className="health-view-btn health-view-btn-primary"
-              onClick={retry}
-              aria-label="Retry loading sleep data"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const { history, regularity, baseline } = state.data;
-  const [latest] = history.episodes;
-  const proactiveLine = sleepProactiveLine(regularity);
-
-  // No sleep episodes recorded → no linked source yet. Honest connect-a-source
-  // affordance; this doubles as the disconnected state.
-  if (!latest) {
-    return (
-      <div style={containerStyle} data-testid="health-empty">
-        <HealthHeader
-          ownerName={ownerName}
-          windowDays={windowDays}
-          onSelectWindow={setWindowDays}
-          busy={false}
-        />
-        <div style={cardStyle}>
-          <div style={{ fontWeight: 600 }}>No sleep data yet</div>
-          <div style={dimStyle}>
-            Nothing was recorded in the last {history.windowDays} days. Connect
-            a health source (Apple Health, Google Fit, Oura, Fitbit, Withings,
-            or Strava) so Eliza can track your sleep and circadian rhythm.
-          </div>
-          <div style={dimStyle}>
-            Ask the assistant to “connect a health source” to get started.
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const onAction = useCallback(
+    (action: string) => {
+      switch (action) {
+        case "retry":
+          load(windowDays);
+          return;
+        case "window:7":
+          setWindowDays(7);
+          return;
+        case "window:14":
+          setWindowDays(14);
+          return;
+        case "window:30":
+          setWindowDays(30);
+          return;
+      }
+    },
+    [load, windowDays],
+  );
 
   return (
-    <div style={containerStyle} data-testid="health-populated">
-      <HealthHeader
-        ownerName={ownerName}
-        windowDays={windowDays}
-        onSelectWindow={setWindowDays}
-        busy={false}
-      />
-      {proactiveLine ? (
-        <div style={dimStyle} data-testid="health-proactive">
-          {proactiveLine}
-        </div>
-      ) : null}
-      <section style={sectionStyle}>
-        <div style={gridStyle}>
-          <LatestNightCard episode={latest} />
-          <RegularityCard regularity={regularity} />
-          <BaselineCard baseline={baseline} />
-        </div>
-      </section>
-      <hr style={dividerStyle} />
-      <section style={sectionStyle}>
-        <div style={cardStyle} data-testid="health-window-summary">
-          <h2 style={h2Style}>Window summary</h2>
-          <StatRow
-            label="Nights recorded"
-            value={`${history.summary.cycleCount}`}
-          />
-          <StatRow
-            label="Average duration"
-            value={formatDuration(history.summary.averageDurationMin)}
-          />
-          <StatRow
-            label="Overnight"
-            value={`${history.summary.overnightCount}`}
-          />
-          <StatRow label="Naps" value={`${history.summary.napCount}`} />
-        </div>
-      </section>
-    </div>
+    <SpatialSurface>
+      <HealthSpatialView snapshot={snapshot} onAction={onAction} />
+    </SpatialSurface>
   );
 }
 

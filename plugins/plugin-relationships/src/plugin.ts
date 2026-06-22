@@ -40,7 +40,7 @@ export const relationshipsPlugin: Plugin = {
         "Entity and relationship knowledge-graph viewer: people, organizations, identities, and the typed edges between them.",
       icon: "Users",
       path: "/relationships",
-      viewType: "gui",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "RelationshipsView",
       tags: ["relationships", "entities", "people", "contacts", "graph"],

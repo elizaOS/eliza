@@ -1,23 +1,18 @@
 // @vitest-environment jsdom
 
 /**
- * RelationshipsView is a data-fetching view over the two read-only graph
- * endpoints served by the personal-assistant routes:
+ * Drives the unified RelationshipsView (the single GUI/XR data wrapper) through
+ * the rendered DOM: the same component the bundle exports for both the "gui" and
+ * "xr" modalities. It is a read-only entity/relationship graph viewer over the
+ * two endpoints the personal-assistant routes serve:
  *   GET {base}/api/lifeops/entities       -> { entities: EntityWire[] }
  *   GET {base}/api/lifeops/relationships   -> { relationships: RelationshipWire[] }
  *
- * These tests cover the four-state machine (loading / error / empty / populated)
- * plus the retry, add-someone, quiet background-poll refetch, and kind-filter
- * affordances. There is no manual refresh control — the graph stays fresh via a
- * 20s background poll that re-runs the loader in place. The
- * fetcher seam is injected so the suite stays offline;
- * `@elizaos/ui` and `@elizaos/ui/agent-surface` are mocked so the instrumented
- * controls render outside a provider.
- *
- * The wire fixtures mirror the PA route DTOs field-for-field (Entity /
- * Relationship from plugin-personal-assistant/src/lifeops/{entities,relationships}/types.ts):
- * entity { entityId, type, preferredName, identities[] }; relationship
- * { relationshipId, fromEntityId, toEntityId, type, metadata, state }.
+ * The default fetchers hit those URLs via `client.getBaseUrl()`; every test here
+ * injects the `fetchers` seam so the suite stays offline. We assert the rendered
+ * spatial DOM across the four states (loading / error / empty / populated), plus
+ * the add-someone, open-entity, retry, and quiet background-poll affordances —
+ * all addressed through the agent surface (`data-agent-id`).
  */
 
 import {
@@ -26,13 +21,14 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// jest-dom matchers are NOT installed in this repo, so we assert against real
-// DOM nodes / Testing Library queries with plain Vitest matchers (mirrors
-// plugin-inbox / plugin-goals view tests).
+// `@elizaos/ui` is the giant renderer barrel; RelationshipsView only touches
+// `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
+// `client.sendChatMessage()` (add-someone + open-entity affordances). The
+// spatial primitives come from the separate `@elizaos/ui/spatial` subpath, which
+// is not mocked.
 const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
 vi.mock("@elizaos/ui", () => ({
   client: {
@@ -40,14 +36,11 @@ vi.mock("@elizaos/ui", () => ({
     sendChatMessage,
   },
 }));
-vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
-}));
 
 import {
   type RelationshipsFetchers,
   RelationshipsView,
-} from "./RelationshipsView.tsx";
+} from "./RelationshipsView.js";
 
 // ---------------------------------------------------------------------------
 // Wire fixtures — mirror the PA route DTOs exactly.
@@ -58,11 +51,7 @@ function entity(
     entityId?: string;
     type?: string;
     preferredName?: string;
-    identities?: {
-      platform: string;
-      handle: string;
-      verified?: boolean;
-    }[];
+    identities?: { platform: string; handle: string; verified?: boolean }[];
   } = {},
 ) {
   return {
@@ -116,12 +105,18 @@ function makeFetchers(
   };
 }
 
+function agent(agentId: string): HTMLElement {
+  const el = document.querySelector(`[data-agent-id="${agentId}"]`);
+  if (!el) throw new Error(`no element with data-agent-id="${agentId}"`);
+  return el as HTMLElement;
+}
+
 afterEach(() => {
   cleanup();
   sendChatMessage.mockClear();
 });
 
-describe("RelationshipsView", () => {
+describe("RelationshipsView — states", () => {
   it("shows the loading state while the first fetch is in flight", () => {
     const never = new Promise<never>(() => {});
     render(
@@ -132,10 +127,10 @@ describe("RelationshipsView", () => {
         })}
       />,
     );
-    expect(screen.getByTestId("relationships-loading")).toBeTruthy();
+    expect(screen.getByText("Loading relationships")).toBeTruthy();
   });
 
-  it("renders the populated graph with entity nodes and their edges + real fields", async () => {
+  it("renders the populated graph with entity nodes and their edges", async () => {
     render(
       <RelationshipsView
         fetchers={makeFetchers({
@@ -176,19 +171,14 @@ describe("RelationshipsView", () => {
         })}
       />,
     );
-    expect(await screen.findByTestId("relationships-populated")).toBeTruthy();
 
+    await screen.findByText("Owner");
     // The self node carries the colleague edge to Pat with cadence + last contact.
-    const selfCard = screen.getByTestId("relationships-entity-self");
-    expect(within(selfCard).getByText("Pat Doe")).toBeTruthy();
-    expect(
-      within(selfCard).getByText(/colleague_of · every 14d · last/),
-    ).toBeTruthy();
-
-    // Pat's card surfaces the identity claim and its kind badge.
-    const patCard = screen.getByTestId("relationships-entity-ent-pat");
-    expect(within(patCard).getByText(/discord:pat#1/)).toBeTruthy();
-    expect(screen.getByTestId("relationships-entity-ent-acme")).toBeTruthy();
+    expect(agent("rel-self")).toBeTruthy();
+    expect(screen.getByText(/colleague_of · every 14d · last/)).toBeTruthy();
+    // Pat's node surfaces the identity claim.
+    expect(screen.getByText("discord:pat#1")).toBeTruthy();
+    expect(agent("rel-ent-acme")).toBeTruthy();
   });
 
   it("shows the empty state when the graph has no entities (no fabrication)", async () => {
@@ -200,9 +190,8 @@ describe("RelationshipsView", () => {
         })}
       />,
     );
-    expect(await screen.findByTestId("relationships-empty")).toBeTruthy();
-    expect(screen.getByText(/No people or relationships yet/i)).toBeTruthy();
-    expect(screen.queryByTestId("relationships-populated")).toBeNull();
+    await screen.findByText("No people yet");
+    expect(screen.queryByText("Pat Doe")).toBeNull();
   });
 
   it("routes the add-someone affordance through the assistant chat", async () => {
@@ -214,8 +203,25 @@ describe("RelationshipsView", () => {
         })}
       />,
     );
-    await screen.findByTestId("relationships-empty");
-    fireEvent.click(screen.getByRole("button", { name: /add someone/i }));
+    await screen.findByText("No people yet");
+    fireEvent.click(agent("add"));
+    expect(sendChatMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes the open-entity affordance through the assistant chat", async () => {
+    render(
+      <RelationshipsView
+        fetchers={makeFetchers({
+          fetchEntities: async () => ({
+            entities: [
+              entity({ entityId: "ent-pat", preferredName: "Pat Doe" }),
+            ],
+          }),
+        })}
+      />,
+    );
+    await screen.findByText("Pat Doe");
+    fireEvent.click(agent("open-ent-pat"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
 
@@ -224,12 +230,12 @@ describe("RelationshipsView", () => {
     const fetchEntities = async () => {
       attempt += 1;
       if (attempt === 1) throw new Error("boom");
-      return { entities: [entity()] };
+      return { entities: [entity({ preferredName: "Pat Doe" })] };
     };
     render(<RelationshipsView fetchers={makeFetchers({ fetchEntities })} />);
-    expect(await screen.findByTestId("relationships-error")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
-    expect(await screen.findByTestId("relationships-populated")).toBeTruthy();
+    await screen.findByText("boom");
+    fireEvent.click(agent("retry"));
+    await screen.findByText("Pat Doe");
   });
 
   it("surfaces a relationships-endpoint failure as the error state", async () => {
@@ -242,51 +248,12 @@ describe("RelationshipsView", () => {
         })}
       />,
     );
-    expect(await screen.findByTestId("relationships-error")).toBeTruthy();
-    expect(screen.getByText(/relationships down/i)).toBeTruthy();
+    await screen.findByText("relationships down");
   });
+});
 
-  it("re-fetches the graph on the quiet background poll", async () => {
-    // The manual Refresh control was removed by design (RelationshipsView.tsx:561):
-    // the populated graph stays fresh via a 20s background poll that re-runs the
-    // loader in place (never flashing back to the loading state). Drive that poll
-    // with fake timers rather than clicking a button that no longer exists.
-    vi.useFakeTimers();
-    try {
-      let entityCalls = 0;
-      let relationshipCalls = 0;
-      const fetchers = makeFetchers({
-        fetchEntities: async () => {
-          entityCalls += 1;
-          return { entities: [entity()] };
-        },
-        fetchRelationships: async () => {
-          relationshipCalls += 1;
-          return { relationships: [] };
-        },
-      });
-
-      render(<RelationshipsView fetchers={fetchers} />);
-      // Flush the initial load() promise chain under fake timers.
-      await vi.waitFor(() => {
-        expect(screen.getByTestId("relationships-populated")).toBeTruthy();
-      });
-      expect(entityCalls).toBe(1);
-      expect(relationshipCalls).toBe(1);
-
-      // Advance past one 20s poll interval (RELATIONSHIPS_POLL_INTERVAL_MS) → the
-      // loader re-runs and both endpoints are hit again, in place.
-      await vi.advanceTimersByTimeAsync(20_000);
-
-      expect(entityCalls).toBe(2);
-      expect(relationshipCalls).toBe(2);
-      expect(screen.getByTestId("relationships-populated")).toBeTruthy();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("narrows the visible entity cards when a kind filter chip is toggled", async () => {
+describe("RelationshipsView — filtering + freshness", () => {
+  it("narrows the visible entity nodes when a kind filter chip is toggled", async () => {
     render(
       <RelationshipsView
         fetchers={makeFetchers({
@@ -307,15 +274,42 @@ describe("RelationshipsView", () => {
         })}
       />,
     );
-    await screen.findByTestId("relationships-populated");
-    expect(screen.getByTestId("relationships-entity-ent-pat")).toBeTruthy();
-    expect(screen.getByTestId("relationships-entity-ent-acme")).toBeTruthy();
+    await screen.findByText("Pat Doe");
+    expect(screen.getByText("Acme Corp")).toBeTruthy();
 
-    // Toggle the "Organizations" filter: only the org card should remain.
-    fireEvent.click(screen.getByRole("button", { name: "Organizations" }));
-    await waitFor(() =>
-      expect(screen.queryByTestId("relationships-entity-ent-pat")).toBeNull(),
-    );
-    expect(screen.getByTestId("relationships-entity-ent-acme")).toBeTruthy();
+    // Toggle the Organizations filter: only the org node should remain.
+    fireEvent.click(agent("relationships-kind-organization"));
+    await waitFor(() => expect(screen.queryByText("Pat Doe")).toBeNull());
+    expect(screen.getByText("Acme Corp")).toBeTruthy();
+  });
+
+  it("refetches both endpoints on the background poll without manual interaction", async () => {
+    vi.useFakeTimers();
+    try {
+      let entityCalls = 0;
+      let relationshipCalls = 0;
+      const fetchers = makeFetchers({
+        fetchEntities: async () => {
+          entityCalls += 1;
+          return { entities: [entity()] };
+        },
+        fetchRelationships: async () => {
+          relationshipCalls += 1;
+          return { relationships: [] };
+        },
+      });
+      render(<RelationshipsView fetchers={fetchers} />);
+      // Flush the initial mount fetch.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(entityCalls).toBe(1);
+      expect(relationshipCalls).toBe(1);
+
+      // The quiet poll fires on its interval (20s) and refetches both endpoints.
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(entityCalls).toBe(2);
+      expect(relationshipCalls).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -52,6 +52,14 @@ export default defineConfig({
 				find: /^@elizaos\/shared\/(.*)\.js$/,
 				replacement: path.join(sharedSrc, "$1.ts"),
 			},
+			// Directory-style subpaths (e.g. `@elizaos/shared/steward-session-client`)
+			// resolve to their `index.ts`, matching the package's export map. Must
+			// precede the generic `$1.ts` rule below, which would otherwise rewrite a
+			// directory subpath to a non-existent `<name>.ts` file.
+			{
+				find: /^@elizaos\/shared\/(steward-session-client)$/,
+				replacement: path.join(sharedSrc, "$1", "index.ts"),
+			},
 			{
 				find: /^@elizaos\/shared\/(.*)$/,
 				replacement: path.join(sharedSrc, "$1.ts"),
