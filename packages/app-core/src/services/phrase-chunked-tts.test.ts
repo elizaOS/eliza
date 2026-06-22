@@ -328,7 +328,11 @@ describe("PhraseChunkedTts — latency benchmark assertions", () => {
 
     expect(dispatchAt.length).toBeGreaterThanOrEqual(3);
     // First TTS call must happen on the first ! — which is after about 3
-    // tokens (≈ 27 ms inter-token + overhead). Generous upper bound.
-    expect(dispatchAt[0]).toBeLessThan(80);
+    // tokens. Generous upper bound: the whole text streams over ~17 tokens, so
+    // a late (end-buffered) dispatch would land well past this; the bound only
+    // needs to separate "dispatched on the boundary" from "dispatched at end".
+    // Windows' ~15.6 ms default timer resolution rounds each 9 ms setTimeout up,
+    // so the early dispatch + scheduler jitter can exceed a tight 80 ms cap.
+    expect(dispatchAt[0]).toBeLessThan(150);
   });
 });
