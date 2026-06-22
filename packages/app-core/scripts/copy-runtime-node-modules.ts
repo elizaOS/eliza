@@ -159,6 +159,7 @@ const registryPackageIndex = new Map<string, ResolvedPackage>();
 const trackedPackageIndex = new Map<string, ResolvedPackage>();
 const workspacePackageIndex = new Map<string, ResolvedPackage[]>();
 let workspacePackageIndexBuilt = false;
+let activeRuntimeCopyTargetNodeModules: string | null = null;
 
 function isRequiredRuntimeDocDirectory(entryPath: string): boolean {
   const normalizedPath = entryPath.split(path.sep).join("/");
@@ -369,6 +370,14 @@ function packagePath(name: string, baseDir: string): string {
     return path.join(baseDir, scope, pkg);
   }
   return path.join(baseDir, name);
+}
+
+function isPathInsideOrEqual(candidate: string, parent: string): boolean {
+  const relative = path.relative(parent, candidate);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
 }
 
 function addWorkspacePackageCandidate(
@@ -962,6 +971,16 @@ function copyPackageDirSync(
       });
       return;
     } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        (error as { code?: string }).code === "ENAMETOOLONG"
+      ) {
+        throw new Error(
+          `[runtime-copy] path too long while copying ${name} from ${sourceDir} to ${copyDest}`,
+          { cause: error },
+        );
+      }
       if (!isEnoentError(error) || attempt === maxAttempts - 1) {
         throw error;
       }
@@ -1848,6 +1867,12 @@ function collectInstalledPackageDirs(
 
   const addCandidate = (candidate: string): void => {
     if (!fs.existsSync(candidate) || seen.has(candidate)) return;
+    if (
+      activeRuntimeCopyTargetNodeModules &&
+      isPathInsideOrEqual(candidate, activeRuntimeCopyTargetNodeModules)
+    ) {
+      return;
+    }
     seen.add(candidate);
     candidates.push(candidate);
   };
@@ -2292,6 +2317,7 @@ function assertTarSafeRuntimePaths(targetDist: string): void {
 function main(): void {
   const { scanDir, targetDist } = parseArgs(process.argv.slice(2));
   const targetNodeModules = path.join(targetDist, "node_modules");
+  activeRuntimeCopyTargetNodeModules = targetNodeModules;
 
   if (!fs.existsSync(scanDir)) {
     throw new Error(`scan dir does not exist: ${scanDir}`);
@@ -2478,6 +2504,7 @@ function main(): void {
       );
     }
   } finally {
+    activeRuntimeCopyTargetNodeModules = null;
     releaseRuntimeCopyLock();
   }
 }
