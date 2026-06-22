@@ -117,12 +117,6 @@ export interface CloudHandoffPhaseDetail {
   imported?: number;
   /** Error message on `failed`. */
   error?: string;
-  /**
-   * Re-run the same handoff. Set only on the terminal `timed-out` / `failed`
-   * phases so the banner can offer a Retry button that re-invokes the original
-   * `startCloudAgentHandoff(...)` with the same arguments.
-   */
-  onRetry?: () => void;
 }
 
 /**

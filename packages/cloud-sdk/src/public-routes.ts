@@ -168,6 +168,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud-api/v1/connections/[platform]/route.ts",
   },
+  "DELETE /api/v1/containers/{id}": {
+    method: "DELETE",
+    path: "/api/v1/containers/{id}",
+    methodName: "deleteApiV1ContainersById",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud-api/v1/containers/[id]/route.ts",
+  },
   "DELETE /api/v1/discord/connections/{id}": {
     method: "DELETE",
     path: "/api/v1/discord/connections/{id}",
@@ -672,6 +681,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud-api/v1/apps/route.ts",
   },
+  "GET /api/v1/apps-ingress/ask": {
+    method: "GET",
+    path: "/api/v1/apps-ingress/ask",
+    methodName: "getApiV1AppsIngressAsk",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud-api/v1/apps-ingress/ask/route.ts",
+  },
   "GET /api/v1/apps/{id}": {
     method: "GET",
     path: "/api/v1/apps/{id}",
@@ -725,6 +743,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id", "chargeId"],
     catchAllPathParams: [],
     file: "packages/cloud-api/v1/apps/[id]/charges/[chargeId]/route.ts",
+  },
+  "GET /api/v1/apps/{id}/database": {
+    method: "GET",
+    path: "/api/v1/apps/{id}/database",
+    methodName: "getApiV1AppsByIdDatabase",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud-api/v1/apps/[id]/database/route.ts",
   },
   "GET /api/v1/apps/{id}/deploy/status": {
     method: "GET",
@@ -978,6 +1005,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud-api/v1/chain/transfers/[chain]/[address]/route.ts",
   },
+  "GET /api/v1/cli-auth/{session}/token": {
+    method: "GET",
+    path: "/api/v1/cli-auth/{session}/token",
+    methodName: "getApiV1CliAuthBySessionToken",
+    responseMode: "json",
+    pathParams: ["session"],
+    catchAllPathParams: [],
+    file: "packages/cloud-api/v1/cli-auth/[session]/token/route.ts",
+  },
   "GET /api/v1/connections/{platform}": {
     method: "GET",
     path: "/api/v1/connections/{platform}",
@@ -986,6 +1022,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["platform"],
     catchAllPathParams: [],
     file: "packages/cloud-api/v1/connections/[platform]/route.ts",
+  },
+  "GET /api/v1/containers": {
+    method: "GET",
+    path: "/api/v1/containers",
+    methodName: "getApiV1Containers",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud-api/v1/containers/route.ts",
   },
   "GET /api/v1/credits/balance": {
     method: "GET",
@@ -1157,6 +1202,44 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["agentId"],
     catchAllPathParams: [],
     file: "packages/cloud-api/v1/eliza/agents/[agentId]/route.ts",
+  },
+  "GET /api/v1/eliza/agents/{agentId}/api/{path}": {
+    method: "GET",
+    path: "/api/v1/eliza/agents/{agentId}/api/{path}",
+    methodName: "getApiV1ElizaAgentsByAgentIdApiByPath",
+    responseMode: "json",
+    pathParams: ["agentId", "path"],
+    catchAllPathParams: ["path"],
+    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/[...path]/route.ts",
+  },
+  "GET /api/v1/eliza/agents/{agentId}/api/conversations": {
+    method: "GET",
+    path: "/api/v1/eliza/agents/{agentId}/api/conversations",
+    methodName: "getApiV1ElizaAgentsByAgentIdApiConversations",
+    responseMode: "json",
+    pathParams: ["agentId"],
+    catchAllPathParams: [],
+    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/conversations/route.ts",
+  },
+  "GET /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages":
+    {
+      method: "GET",
+      path: "/api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages",
+      methodName:
+        "getApiV1ElizaAgentsByAgentIdApiConversationsByConversationIdMessages",
+      responseMode: "json",
+      pathParams: ["agentId", "conversationId"],
+      catchAllPathParams: [],
+      file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/route.ts",
+    },
+  "GET /api/v1/eliza/agents/{agentId}/api/health": {
+    method: "GET",
+    path: "/api/v1/eliza/agents/{agentId}/api/health",
+    methodName: "getApiV1ElizaAgentsByAgentIdApiHealth",
+    responseMode: "json",
+    pathParams: ["agentId"],
+    catchAllPathParams: [],
+    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/health/route.ts",
   },
   "GET /api/v1/eliza/agents/{agentId}/api/identity": {
     method: "GET",
@@ -1563,6 +1646,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: ["model"],
     file: "packages/cloud-api/v1/models/[...model]/route.ts",
   },
+  "GET /api/v1/models/status": {
+    method: "GET",
+    path: "/api/v1/models/status",
+    methodName: "getApiV1ModelsStatus",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud-api/v1/models/status/route.ts",
+  },
   "GET /api/v1/oauth-intents": {
     method: "GET",
     path: "/api/v1/oauth-intents",
@@ -1697,15 +1789,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud-api/v1/pricing/summary/route.ts",
-  },
-  "GET /api/v1/provisioning-agent": {
-    method: "GET",
-    path: "/api/v1/provisioning-agent",
-    methodName: "getApiV1ProvisioningAgent",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud-api/v1/provisioning-agent/route.ts",
   },
   "GET /api/v1/proxy/birdeye/{path}": {
     method: "GET",
@@ -2112,6 +2195,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud-api/v1/connections/[platform]/route.ts",
   },
+  "PATCH /api/v1/containers/{id}": {
+    method: "PATCH",
+    path: "/api/v1/containers/{id}",
+    methodName: "patchApiV1ContainersById",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud-api/v1/containers/[id]/route.ts",
+  },
   "PATCH /api/v1/discord/connections/{id}": {
     method: "PATCH",
     path: "/api/v1/discord/connections/{id}",
@@ -2129,6 +2221,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["agentId"],
     catchAllPathParams: [],
     file: "packages/cloud-api/v1/eliza/agents/[agentId]/route.ts",
+  },
+  "PATCH /api/v1/eliza/agents/{agentId}/environment": {
+    method: "PATCH",
+    path: "/api/v1/eliza/agents/{agentId}/environment",
+    methodName: "patchApiV1ElizaAgentsByAgentIdEnvironment",
+    responseMode: "json",
+    pathParams: ["agentId"],
+    catchAllPathParams: [],
+    file: "packages/cloud-api/v1/eliza/agents/[agentId]/environment/route.ts",
   },
   "PATCH /api/v1/eliza/google/calendar/events/{eventId}": {
     method: "PATCH",
@@ -2327,6 +2428,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud-api/v1/agents/route.ts",
+  },
+  "POST /api/v1/agents/{agentId}/message": {
+    method: "POST",
+    path: "/api/v1/agents/{agentId}/message",
+    methodName: "postApiV1AgentsByAgentIdMessage",
+    responseMode: "json",
+    pathParams: ["agentId"],
+    catchAllPathParams: [],
+    file: "packages/cloud-api/v1/agents/[agentId]/message/route.ts",
   },
   "POST /api/v1/agents/{agentId}/publish": {
     method: "POST",
@@ -2859,6 +2969,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud-api/v1/connections/[platform]/route.ts",
   },
+  "POST /api/v1/containers": {
+    method: "POST",
+    path: "/api/v1/containers",
+    methodName: "postApiV1Containers",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud-api/v1/containers/route.ts",
+  },
   "POST /api/v1/credits/checkout": {
     method: "POST",
     path: "/api/v1/credits/checkout",
@@ -2976,6 +3095,46 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud-api/v1/eliza/agents/route.ts",
   },
+  "POST /api/v1/eliza/agents/{agentId}/api/{path}": {
+    method: "POST",
+    path: "/api/v1/eliza/agents/{agentId}/api/{path}",
+    methodName: "postApiV1ElizaAgentsByAgentIdApiByPath",
+    responseMode: "json",
+    pathParams: ["agentId", "path"],
+    catchAllPathParams: ["path"],
+    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/[...path]/route.ts",
+  },
+  "POST /api/v1/eliza/agents/{agentId}/api/conversations": {
+    method: "POST",
+    path: "/api/v1/eliza/agents/{agentId}/api/conversations",
+    methodName: "postApiV1ElizaAgentsByAgentIdApiConversations",
+    responseMode: "json",
+    pathParams: ["agentId"],
+    catchAllPathParams: [],
+    file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/conversations/route.ts",
+  },
+  "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages":
+    {
+      method: "POST",
+      path: "/api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages",
+      methodName:
+        "postApiV1ElizaAgentsByAgentIdApiConversationsByConversationIdMessages",
+      responseMode: "json",
+      pathParams: ["agentId", "conversationId"],
+      catchAllPathParams: [],
+      file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/route.ts",
+    },
+  "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages/stream":
+    {
+      method: "POST",
+      path: "/api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages/stream",
+      methodName:
+        "postApiV1ElizaAgentsByAgentIdApiConversationsByConversationIdMessagesStream",
+      responseMode: "stream",
+      pathParams: ["agentId", "conversationId"],
+      catchAllPathParams: [],
+      file: "packages/cloud-api/v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/stream/route.ts",
+    },
   "POST /api/v1/eliza/agents/{agentId}/api/identity/register": {
     method: "POST",
     path: "/api/v1/eliza/agents/{agentId}/api/identity/register",
@@ -3426,15 +3585,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud-api/v1/payment-requests/[id]/expire/route.ts",
   },
-  "POST /api/v1/provisioning-agent/chat": {
-    method: "POST",
-    path: "/api/v1/provisioning-agent/chat",
-    methodName: "postApiV1ProvisioningAgentChat",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud-api/v1/provisioning-agent/chat/route.ts",
-  },
   "POST /api/v1/proxy/birdeye/{path}": {
     method: "POST",
     path: "/api/v1/proxy/birdeye/{path}",
@@ -3533,6 +3683,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud-api/v1/search/route.ts",
+  },
+  "POST /api/v1/security/audit": {
+    method: "POST",
+    path: "/api/v1/security/audit",
+    methodName: "postApiV1SecurityAudit",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud-api/v1/security/audit/route.ts",
   },
   "POST /api/v1/sensitive-requests": {
     method: "POST",
@@ -3894,6 +4053,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud-api/v1/apps/[id]/characters/route.ts",
   },
+  "PUT /api/v1/apps/{id}/database": {
+    method: "PUT",
+    path: "/api/v1/apps/{id}/database",
+    methodName: "putApiV1AppsByIdDatabase",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud-api/v1/apps/[id]/database/route.ts",
+  },
   "PUT /api/v1/apps/{id}/generate-image": {
     method: "PUT",
     path: "/api/v1/apps/{id}/generate-image",
@@ -4053,6 +4221,7 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/blooio/disconnect": Record<never, never>;
   "DELETE /api/v1/browser/sessions/{id}": { id: string | number };
   "DELETE /api/v1/connections/{platform}": { platform: string | number };
+  "DELETE /api/v1/containers/{id}": { id: string | number };
   "DELETE /api/v1/discord/connections/{id}": { id: string | number };
   "DELETE /api/v1/documents/{id}": { id: string | number };
   "DELETE /api/v1/documents/pre-upload": Record<never, never>;
@@ -4127,6 +4296,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/approval-requests": Record<never, never>;
   "GET /api/v1/approval-requests/{id}": { id: string | number };
   "GET /api/v1/apps": Record<never, never>;
+  "GET /api/v1/apps-ingress/ask": Record<never, never>;
   "GET /api/v1/apps/{id}": { id: string | number };
   "GET /api/v1/apps/{id}/analytics": { id: string | number };
   "GET /api/v1/apps/{id}/analytics/requests": { id: string | number };
@@ -4136,6 +4306,7 @@ export interface PublicRoutePathParams {
     id: string | number;
     chargeId: string | number;
   };
+  "GET /api/v1/apps/{id}/database": { id: string | number };
   "GET /api/v1/apps/{id}/deploy/status": { id: string | number };
   "GET /api/v1/apps/{id}/discord-automation": { id: string | number };
   "GET /api/v1/apps/{id}/domains": { id: string | number };
@@ -4180,7 +4351,9 @@ export interface PublicRoutePathParams {
     chain: string | number;
     address: string | number;
   };
+  "GET /api/v1/cli-auth/{session}/token": { session: string | number };
   "GET /api/v1/connections/{platform}": { platform: string | number };
+  "GET /api/v1/containers": Record<never, never>;
   "GET /api/v1/credits/balance": Record<never, never>;
   "GET /api/v1/credits/summary": Record<never, never>;
   "GET /api/v1/credits/verify": Record<never, never>;
@@ -4202,6 +4375,18 @@ export interface PublicRoutePathParams {
   "GET /api/v1/domains/resolve": Record<never, never>;
   "GET /api/v1/eliza/agents": Record<never, never>;
   "GET /api/v1/eliza/agents/{agentId}": { agentId: string | number };
+  "GET /api/v1/eliza/agents/{agentId}/api/{path}": {
+    agentId: string | number;
+    path: string | number | readonly (string | number)[];
+  };
+  "GET /api/v1/eliza/agents/{agentId}/api/conversations": {
+    agentId: string | number;
+  };
+  "GET /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages": {
+    agentId: string | number;
+    conversationId: string | number;
+  };
+  "GET /api/v1/eliza/agents/{agentId}/api/health": { agentId: string | number };
   "GET /api/v1/eliza/agents/{agentId}/api/identity": {
     agentId: string | number;
   };
@@ -4288,6 +4473,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/models/{model}": {
     model: string | number | readonly (string | number)[];
   };
+  "GET /api/v1/models/status": Record<never, never>;
   "GET /api/v1/oauth-intents": Record<never, never>;
   "GET /api/v1/oauth-intents/{id}": { id: string | number };
   "GET /api/v1/oauth/{platform}/callback": { platform: string | number };
@@ -4303,7 +4489,6 @@ export interface PublicRoutePathParams {
   "GET /api/v1/payment-requests": Record<never, never>;
   "GET /api/v1/payment-requests/{id}": { id: string | number };
   "GET /api/v1/pricing/summary": Record<never, never>;
-  "GET /api/v1/provisioning-agent": Record<never, never>;
   "GET /api/v1/proxy/birdeye/{path}": {
     path: string | number | readonly (string | number)[];
   };
@@ -4355,8 +4540,12 @@ export interface PublicRoutePathParams {
   };
   "PATCH /api/v1/apps/{id}/generate-image": { id: string | number };
   "PATCH /api/v1/connections/{platform}": { platform: string | number };
+  "PATCH /api/v1/containers/{id}": { id: string | number };
   "PATCH /api/v1/discord/connections/{id}": { id: string | number };
   "PATCH /api/v1/eliza/agents/{agentId}": { agentId: string | number };
+  "PATCH /api/v1/eliza/agents/{agentId}/environment": {
+    agentId: string | number;
+  };
   "PATCH /api/v1/eliza/google/calendar/events/{eventId}": {
     eventId: string | number;
   };
@@ -4383,6 +4572,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/affiliates/link": Record<never, never>;
   "POST /api/v1/agent-tokens": Record<never, never>;
   "POST /api/v1/agents": Record<never, never>;
+  "POST /api/v1/agents/{agentId}/message": { agentId: string | number };
   "POST /api/v1/agents/{agentId}/publish": { agentId: string | number };
   "POST /api/v1/agents/{agentId}/restart": { agentId: string | number };
   "POST /api/v1/agents/{agentId}/resume": { agentId: string | number };
@@ -4453,6 +4643,7 @@ export interface PublicRoutePathParams {
   };
   "POST /api/v1/coding-containers/promotions": Record<never, never>;
   "POST /api/v1/connections/{platform}": { platform: string | number };
+  "POST /api/v1/containers": Record<never, never>;
   "POST /api/v1/credits/checkout": Record<never, never>;
   "POST /api/v1/device-bus/devices": Record<never, never>;
   "POST /api/v1/device-bus/intents": Record<never, never>;
@@ -4466,6 +4657,21 @@ export interface PublicRoutePathParams {
   "POST /api/v1/documents/upload-file": Record<never, never>;
   "POST /api/v1/domains/search": Record<never, never>;
   "POST /api/v1/eliza/agents": Record<never, never>;
+  "POST /api/v1/eliza/agents/{agentId}/api/{path}": {
+    agentId: string | number;
+    path: string | number | readonly (string | number)[];
+  };
+  "POST /api/v1/eliza/agents/{agentId}/api/conversations": {
+    agentId: string | number;
+  };
+  "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages": {
+    agentId: string | number;
+    conversationId: string | number;
+  };
+  "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages/stream": {
+    agentId: string | number;
+    conversationId: string | number;
+  };
   "POST /api/v1/eliza/agents/{agentId}/api/identity/register": {
     agentId: string | number;
   };
@@ -4533,7 +4739,6 @@ export interface PublicRoutePathParams {
   "POST /api/v1/payment-requests": Record<never, never>;
   "POST /api/v1/payment-requests/{id}/cancel": { id: string | number };
   "POST /api/v1/payment-requests/{id}/expire": { id: string | number };
-  "POST /api/v1/provisioning-agent/chat": Record<never, never>;
   "POST /api/v1/proxy/birdeye/{path}": {
     path: string | number | readonly (string | number)[];
   };
@@ -4547,6 +4752,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/responses": Record<never, never>;
   "POST /api/v1/rpc/{chain}": { chain: string | number };
   "POST /api/v1/search": Record<never, never>;
+  "POST /api/v1/security/audit": Record<never, never>;
   "POST /api/v1/sensitive-requests": Record<never, never>;
   "POST /api/v1/sensitive-requests/{id}/cancel": { id: string | number };
   "POST /api/v1/sensitive-requests/{id}/expire": { id: string | number };
@@ -4592,6 +4798,7 @@ export interface PublicRoutePathParams {
   };
   "PUT /api/v1/apps/{id}": { id: string | number };
   "PUT /api/v1/apps/{id}/characters": { id: string | number };
+  "PUT /api/v1/apps/{id}/database": { id: string | number };
   "PUT /api/v1/apps/{id}/generate-image": { id: string | number };
   "PUT /api/v1/apps/{id}/monetization": { id: string | number };
   "PUT /api/v1/billing/settings": Record<never, never>;
@@ -4907,6 +5114,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"DELETE /api/v1/connections/{platform}", TResponse>(
       "DELETE /api/v1/connections/{platform}",
+      options,
+    );
+  }
+
+  deleteApiV1ContainersById<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/containers/{id}">,
+  ): Promise<TResponse> {
+    return this.call<"DELETE /api/v1/containers/{id}", TResponse>(
+      "DELETE /api/v1/containers/{id}",
       options,
     );
   }
@@ -5418,6 +5634,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1AppsIngressAsk<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/apps-ingress/ask"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/apps-ingress/ask", TResponse>(
+      "GET /api/v1/apps-ingress/ask",
+      options,
+    );
+  }
+
   getApiV1AppsById<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/apps/{id}">,
   ): Promise<TResponse> {
@@ -5468,6 +5693,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/apps/{id}/charges/{chargeId}", TResponse>(
       "GET /api/v1/apps/{id}/charges/{chargeId}",
+      options,
+    );
+  }
+
+  getApiV1AppsByIdDatabase<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/database">,
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/apps/{id}/database", TResponse>(
+      "GET /api/v1/apps/{id}/database",
       options,
     );
   }
@@ -5724,11 +5958,29 @@ export class ElizaCloudPublicRoutesClient {
     >("GET /api/v1/chain/transfers/{chain}/{address}", options);
   }
 
+  getApiV1CliAuthBySessionToken<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/cli-auth/{session}/token">,
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/cli-auth/{session}/token", TResponse>(
+      "GET /api/v1/cli-auth/{session}/token",
+      options,
+    );
+  }
+
   getApiV1ConnectionsByPlatform<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/connections/{platform}">,
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/connections/{platform}", TResponse>(
       "GET /api/v1/connections/{platform}",
+      options,
+    );
+  }
+
+  getApiV1Containers<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/containers"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/containers", TResponse>(
+      "GET /api/v1/containers",
       options,
     );
   }
@@ -5902,6 +6154,47 @@ export class ElizaCloudPublicRoutesClient {
       "GET /api/v1/eliza/agents/{agentId}",
       options,
     );
+  }
+
+  getApiV1ElizaAgentsByAgentIdApiByPath<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/api/{path}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/eliza/agents/{agentId}/api/{path}",
+      TResponse
+    >("GET /api/v1/eliza/agents/{agentId}/api/{path}", options);
+  }
+
+  getApiV1ElizaAgentsByAgentIdApiConversations<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/api/conversations">,
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/eliza/agents/{agentId}/api/conversations",
+      TResponse
+    >("GET /api/v1/eliza/agents/{agentId}/api/conversations", options);
+  }
+
+  getApiV1ElizaAgentsByAgentIdApiConversationsByConversationIdMessages<
+    TResponse = unknown,
+  >(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages">,
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages",
+      TResponse
+    >(
+      "GET /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages",
+      options,
+    );
+  }
+
+  getApiV1ElizaAgentsByAgentIdApiHealth<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/api/health">,
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/eliza/agents/{agentId}/api/health",
+      TResponse
+    >("GET /api/v1/eliza/agents/{agentId}/api/health", options);
   }
 
   getApiV1ElizaAgentsByAgentIdApiIdentity<TResponse = unknown>(
@@ -6309,6 +6602,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1ModelsStatus<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/models/status"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/models/status", TResponse>(
+      "GET /api/v1/models/status",
+      options,
+    );
+  }
+
   getApiV1OauthIntents<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/oauth-intents"> = {},
   ): Promise<TResponse> {
@@ -6440,15 +6742,6 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/pricing/summary", TResponse>(
       "GET /api/v1/pricing/summary",
-      options,
-    );
-  }
-
-  getApiV1ProvisioningAgent<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/provisioning-agent"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/provisioning-agent", TResponse>(
-      "GET /api/v1/provisioning-agent",
       options,
     );
   }
@@ -6858,6 +7151,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  patchApiV1ContainersById<TResponse = unknown>(
+    options: PublicRouteCallOptions<"PATCH /api/v1/containers/{id}">,
+  ): Promise<TResponse> {
+    return this.call<"PATCH /api/v1/containers/{id}", TResponse>(
+      "PATCH /api/v1/containers/{id}",
+      options,
+    );
+  }
+
   patchApiV1DiscordConnectionsById<TResponse = unknown>(
     options: PublicRouteCallOptions<"PATCH /api/v1/discord/connections/{id}">,
   ): Promise<TResponse> {
@@ -6874,6 +7176,15 @@ export class ElizaCloudPublicRoutesClient {
       "PATCH /api/v1/eliza/agents/{agentId}",
       options,
     );
+  }
+
+  patchApiV1ElizaAgentsByAgentIdEnvironment<TResponse = unknown>(
+    options: PublicRouteCallOptions<"PATCH /api/v1/eliza/agents/{agentId}/environment">,
+  ): Promise<TResponse> {
+    return this.call<
+      "PATCH /api/v1/eliza/agents/{agentId}/environment",
+      TResponse
+    >("PATCH /api/v1/eliza/agents/{agentId}/environment", options);
   }
 
   patchApiV1ElizaGoogleCalendarEventsByEventId<TResponse = unknown>(
@@ -7067,6 +7378,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/agents", TResponse>(
       "POST /api/v1/agents",
+      options,
+    );
+  }
+
+  postApiV1AgentsByAgentIdMessage<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/agents/{agentId}/message">,
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/agents/{agentId}/message", TResponse>(
+      "POST /api/v1/agents/{agentId}/message",
       options,
     );
   }
@@ -7602,6 +7922,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1Containers<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/containers"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/containers", TResponse>(
+      "POST /api/v1/containers",
+      options,
+    );
+  }
+
   postApiV1CreditsCheckout<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/credits/checkout"> = {},
   ): Promise<TResponse> {
@@ -7715,6 +8044,47 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/eliza/agents", TResponse>(
       "POST /api/v1/eliza/agents",
+      options,
+    );
+  }
+
+  postApiV1ElizaAgentsByAgentIdApiByPath<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/api/{path}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/eliza/agents/{agentId}/api/{path}",
+      TResponse
+    >("POST /api/v1/eliza/agents/{agentId}/api/{path}", options);
+  }
+
+  postApiV1ElizaAgentsByAgentIdApiConversations<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/api/conversations">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/eliza/agents/{agentId}/api/conversations",
+      TResponse
+    >("POST /api/v1/eliza/agents/{agentId}/api/conversations", options);
+  }
+
+  postApiV1ElizaAgentsByAgentIdApiConversationsByConversationIdMessages<
+    TResponse = unknown,
+  >(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages",
+      TResponse
+    >(
+      "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages",
+      options,
+    );
+  }
+
+  postApiV1ElizaAgentsByAgentIdApiConversationsByConversationIdMessagesStream(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages/stream">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages/stream",
       options,
     );
   }
@@ -8172,15 +8542,6 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  postApiV1ProvisioningAgentChat<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/provisioning-agent/chat"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/provisioning-agent/chat", TResponse>(
-      "POST /api/v1/provisioning-agent/chat",
-      options,
-    );
-  }
-
   postApiV1ProxyBirdeyeByPath<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/proxy/birdeye/{path}">,
   ): Promise<TResponse> {
@@ -8276,6 +8637,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/search", TResponse>(
       "POST /api/v1/search",
+      options,
+    );
+  }
+
+  postApiV1SecurityAudit<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/security/audit"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/security/audit", TResponse>(
+      "POST /api/v1/security/audit",
       options,
     );
   }
@@ -8637,6 +9007,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  putApiV1AppsByIdDatabase<TResponse = unknown>(
+    options: PublicRouteCallOptions<"PUT /api/v1/apps/{id}/database">,
+  ): Promise<TResponse> {
+    return this.call<"PUT /api/v1/apps/{id}/database", TResponse>(
+      "PUT /api/v1/apps/{id}/database",
+      options,
+    );
+  }
+
   putApiV1AppsByIdGenerateImage<TResponse = unknown>(
     options: PublicRouteCallOptions<"PUT /api/v1/apps/{id}/generate-image">,
   ): Promise<TResponse> {
@@ -8860,6 +9239,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"DELETE /api/v1/connections/{platform}">,
   ): Promise<Response> {
     return this.callRaw("DELETE /api/v1/connections/{platform}", options);
+  }
+
+  deleteApiV1ContainersByIdRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/containers/{id}">,
+  ): Promise<Response> {
+    return this.callRaw("DELETE /api/v1/containers/{id}", options);
   }
 
   deleteApiV1DiscordConnectionsByIdRaw(
@@ -9222,6 +9607,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/apps", options);
   }
 
+  getApiV1AppsIngressAskRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/apps-ingress/ask"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/apps-ingress/ask", options);
+  }
+
   getApiV1AppsByIdRaw(
     options: PublicRouteCallOptions<"GET /api/v1/apps/{id}">,
   ): Promise<Response> {
@@ -9256,6 +9647,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/charges/{chargeId}">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/apps/{id}/charges/{chargeId}", options);
+  }
+
+  getApiV1AppsByIdDatabaseRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/database">,
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/apps/{id}/database", options);
   }
 
   getApiV1AppsByIdDeployStatusRaw(
@@ -9432,10 +9829,22 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1CliAuthBySessionTokenRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/cli-auth/{session}/token">,
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/cli-auth/{session}/token", options);
+  }
+
   getApiV1ConnectionsByPlatformRaw(
     options: PublicRouteCallOptions<"GET /api/v1/connections/{platform}">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/connections/{platform}", options);
+  }
+
+  getApiV1ContainersRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/containers"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/containers", options);
   }
 
   getApiV1CreditsBalanceRaw(
@@ -9553,6 +9962,42 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/eliza/agents/{agentId}", options);
+  }
+
+  getApiV1ElizaAgentsByAgentIdApiByPathRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/api/{path}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/eliza/agents/{agentId}/api/{path}",
+      options,
+    );
+  }
+
+  getApiV1ElizaAgentsByAgentIdApiConversationsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/api/conversations">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/eliza/agents/{agentId}/api/conversations",
+      options,
+    );
+  }
+
+  getApiV1ElizaAgentsByAgentIdApiConversationsByConversationIdMessagesRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages",
+      options,
+    );
+  }
+
+  getApiV1ElizaAgentsByAgentIdApiHealthRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/api/health">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/eliza/agents/{agentId}/api/health",
+      options,
+    );
   }
 
   getApiV1ElizaAgentsByAgentIdApiIdentityRaw(
@@ -9864,6 +10309,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/models/{model}", options);
   }
 
+  getApiV1ModelsStatusRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/models/status"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/models/status", options);
+  }
+
   getApiV1OauthIntentsRaw(
     options: PublicRouteCallOptions<"GET /api/v1/oauth-intents"> = {},
   ): Promise<Response> {
@@ -9952,12 +10403,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/pricing/summary"> = {},
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/pricing/summary", options);
-  }
-
-  getApiV1ProvisioningAgentRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/provisioning-agent"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/provisioning-agent", options);
   }
 
   getApiV1ProxyBirdeyeByPathRaw(
@@ -10233,6 +10678,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("PATCH /api/v1/connections/{platform}", options);
   }
 
+  patchApiV1ContainersByIdRaw(
+    options: PublicRouteCallOptions<"PATCH /api/v1/containers/{id}">,
+  ): Promise<Response> {
+    return this.callRaw("PATCH /api/v1/containers/{id}", options);
+  }
+
   patchApiV1DiscordConnectionsByIdRaw(
     options: PublicRouteCallOptions<"PATCH /api/v1/discord/connections/{id}">,
   ): Promise<Response> {
@@ -10243,6 +10694,15 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"PATCH /api/v1/eliza/agents/{agentId}">,
   ): Promise<Response> {
     return this.callRaw("PATCH /api/v1/eliza/agents/{agentId}", options);
+  }
+
+  patchApiV1ElizaAgentsByAgentIdEnvironmentRaw(
+    options: PublicRouteCallOptions<"PATCH /api/v1/eliza/agents/{agentId}/environment">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "PATCH /api/v1/eliza/agents/{agentId}/environment",
+      options,
+    );
   }
 
   patchApiV1ElizaGoogleCalendarEventsByEventIdRaw(
@@ -10390,6 +10850,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/agents"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/agents", options);
+  }
+
+  postApiV1AgentsByAgentIdMessageRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/agents/{agentId}/message">,
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/agents/{agentId}/message", options);
   }
 
   postApiV1AgentsByAgentIdPublishRaw(
@@ -10767,6 +11233,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/connections/{platform}", options);
   }
 
+  postApiV1ContainersRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/containers"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/containers", options);
+  }
+
   postApiV1CreditsCheckoutRaw(
     options: PublicRouteCallOptions<"POST /api/v1/credits/checkout"> = {},
   ): Promise<Response> {
@@ -10843,6 +11315,42 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/eliza/agents"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/eliza/agents", options);
+  }
+
+  postApiV1ElizaAgentsByAgentIdApiByPathRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/api/{path}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/eliza/agents/{agentId}/api/{path}",
+      options,
+    );
+  }
+
+  postApiV1ElizaAgentsByAgentIdApiConversationsRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/api/conversations">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/eliza/agents/{agentId}/api/conversations",
+      options,
+    );
+  }
+
+  postApiV1ElizaAgentsByAgentIdApiConversationsByConversationIdMessagesRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages",
+      options,
+    );
+  }
+
+  postApiV1ElizaAgentsByAgentIdApiConversationsByConversationIdMessagesStreamRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages/stream">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages/stream",
+      options,
+    );
   }
 
   postApiV1ElizaAgentsByAgentIdApiIdentityRegisterRaw(
@@ -11178,12 +11686,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/payment-requests/{id}/expire", options);
   }
 
-  postApiV1ProvisioningAgentChatRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/provisioning-agent/chat"> = {},
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/provisioning-agent/chat", options);
-  }
-
   postApiV1ProxyBirdeyeByPathRaw(
     options: PublicRouteCallOptions<"POST /api/v1/proxy/birdeye/{path}">,
   ): Promise<Response> {
@@ -11248,6 +11750,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/search"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/search", options);
+  }
+
+  postApiV1SecurityAuditRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/security/audit"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/security/audit", options);
   }
 
   postApiV1SensitiveRequestsRaw(
@@ -11491,6 +11999,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"PUT /api/v1/apps/{id}/characters">,
   ): Promise<Response> {
     return this.callRaw("PUT /api/v1/apps/{id}/characters", options);
+  }
+
+  putApiV1AppsByIdDatabaseRaw(
+    options: PublicRouteCallOptions<"PUT /api/v1/apps/{id}/database">,
+  ): Promise<Response> {
+    return this.callRaw("PUT /api/v1/apps/{id}/database", options);
   }
 
   putApiV1AppsByIdGenerateImageRaw(
