@@ -28,6 +28,7 @@ import {
   getDefaultTriageService,
   logger,
   ModelType,
+  resolveOptimizedPromptForRuntime,
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
@@ -447,10 +448,21 @@ function newBriefingId(): string {
   return `brief-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function buildNarrativePrompt(args: {
+// Static instruction block for the briefing narrative. This is the optimization
+// target for the `morning_brief` LifeOps task (#8795): an OptimizedPromptService
+// artifact, when present, replaces it; otherwise this inline baseline is used,
+// so the absence of an artifact is a no-op. The dynamic header line and the data
+// payload are composed around the resolved instructions, never optimized away.
+const BRIEF_NARRATIVE_INSTRUCTIONS = `Render a concise narrative paragraph (2-5 sentences). Lead with the
+schedule-changing or reply-needed items first. Mention each non-empty domain
+once. If a domain is empty, omit it rather than saying "nothing to report".
+No invented facts; only describe items in the data below.`;
+
+export function buildNarrativePrompt(args: {
   kind: LifeOpsBriefingKind;
   period: LifeOpsBriefingPeriod;
   sections: LifeOpsBriefingSections;
+  runtime?: IAgentRuntime;
 }): string {
   const payload = JSON.stringify(
     {
@@ -461,12 +473,16 @@ function buildNarrativePrompt(args: {
     null,
     2,
   );
+  const instructions = args.runtime
+    ? resolveOptimizedPromptForRuntime(
+        args.runtime,
+        "morning_brief",
+        BRIEF_NARRATIVE_INSTRUCTIONS,
+      )
+    : BRIEF_NARRATIVE_INSTRUCTIONS;
   return `You are composing the owner's ${args.kind} briefing for ${args.period}.
 
-Render a concise narrative paragraph (2-5 sentences). Lead with the
-schedule-changing or reply-needed items first. Mention each non-empty domain
-once. If a domain is empty, omit it rather than saying "nothing to report".
-No invented facts; only describe items in the data below.
+${instructions}
 
 Data:
 ${payload}`;
@@ -485,9 +501,12 @@ async function composeNarrative(args: {
     kind: args.kind,
     period: args.period,
     sections: args.sections,
+    runtime: args.runtime,
   });
+  // Tag the trajectory with the `morning_brief` LifeOps task so the call buckets
+  // into its per-capability dataset for the GEPA loop (#8795).
   const raw = await runWithTrajectoryContext(
-    { purpose: "lifeops-brief-compose" },
+    { purpose: "morning_brief" },
     () => args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
   );
   return typeof raw === "string" ? raw.trim() : undefined;

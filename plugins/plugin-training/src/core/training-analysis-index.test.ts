@@ -6,21 +6,21 @@ import {
   BENCHMARK_MATRIX_ARTIFACT_SCHEMA,
   BENCHMARK_MATRIX_ARTIFACT_VERSION,
 } from "./benchmark-matrix-artifact.js";
+import { ELIZA1_BUNDLE_STAGE_SCHEMA } from "./eliza1-bundle-stager.js";
 import {
   EVAL_COMPARISON_ARTIFACT_SCHEMA,
   EVAL_COMPARISON_ARTIFACT_VERSION,
 } from "./eval-comparison-artifact.js";
-import { ELIZA1_BUNDLE_STAGE_SCHEMA } from "./eliza1-bundle-stager.js";
 import {
   buildTrainingAnalysisIndex,
   TRAINING_ANALYSIS_INDEX_SCHEMA,
 } from "./training-analysis-index.js";
+import type { TrainingRunRecord } from "./training-orchestrator.js";
 import {
   TRAJECTORY_EXPORT_BUNDLE_SCHEMA,
   TRAJECTORY_EXPORT_BUNDLE_VERSION,
   type TrajectoryExportBundleManifest,
 } from "./trajectory-export-bundle.js";
-import type { TrainingRunRecord } from "./training-orchestrator.js";
 
 const tempDirs: string[] = [];
 
@@ -73,7 +73,13 @@ describe("training analysis index", () => {
         bundleDir: join(root, "bundles", "run-1"),
         manifestPath: join(root, "bundles", "run-1", "manifest.json"),
         viewerHtmlPath: join(root, "bundles", "run-1", "index.html"),
-        rawJsonlPath: join(root, "bundles", "run-1", "raw", "trajectories.jsonl"),
+        rawJsonlPath: join(
+          root,
+          "bundles",
+          "run-1",
+          "raw",
+          "trajectories.jsonl",
+        ),
         sanitizedJsonlPath: join(
           root,
           "bundles",
@@ -100,6 +106,14 @@ describe("training analysis index", () => {
           response: 1,
           media_description: 0,
           view_context: 0,
+          calendar_extract: 0,
+          schedule_plan: 0,
+          reminder_dispatch: 0,
+          inbox_triage: 0,
+          meeting_prep: 0,
+          morning_brief: 0,
+          health_checkin: 0,
+          screentime_recap: 0,
         },
         taskFiles: 2,
         taskExamples: 2,
@@ -189,7 +203,7 @@ describe("training analysis index", () => {
         run_id: "run-1-canonical",
         kind: "action",
         model: "gpt-oss-120b",
-        prompt: "channel_type: dm\nincoming_message: \"good morning\"",
+        prompt: 'channel_type: dm\nincoming_message: "good morning"',
         response: "Action completed.",
         actions: ["REPLY"],
       },
@@ -649,7 +663,13 @@ describe("training analysis index", () => {
           providerSnapshots: [],
         },
         actions: [],
-        events: [{ type: "RUN_ENDED", timestamp: Date.UTC(2026, 0, 2, 3, 16, 4), data: {} }],
+        events: [
+          {
+            type: "RUN_ENDED",
+            timestamp: Date.UTC(2026, 0, 2, 3, 16, 4),
+            data: {},
+          },
+        ],
         memoriesWritten: [
           {
             timestamp: Date.UTC(2026, 0, 2, 3, 16, 4),
@@ -883,7 +903,7 @@ describe("training analysis index", () => {
     expect(html).toContain("Feed Generation");
     expect(html).toContain("Feed Trajectory Samples");
     expect(html).toContain("feed-export.jsonl");
-    expect(html).toContain("target = \"_blank\"");
+    expect(html).toContain('target = "_blank"');
     expect(html).toContain("market odds moved");
     expect(html).toContain("opened long position");
     expect(html).toContain("app_core_test_trajectory");
@@ -1261,7 +1281,12 @@ describe("training analysis index", () => {
       latencyDeltaMs: 10,
       promptCount: 12,
       distinctResponseCount: 9,
-      reportPath: join(root, "evals", "comparison", "local_model_comparison.json"),
+      reportPath: join(
+        root,
+        "evals",
+        "comparison",
+        "local_model_comparison.json",
+      ),
       evalSamplePreviews: [
         expect.objectContaining({
           prompt: "choose a tool for sending an update",
@@ -1541,7 +1566,11 @@ describe("training analysis index", () => {
           huggingFace: [
             {
               title: "hf",
-              path: join(collectionDir, "hf", "huggingface-dataset-manifest.json"),
+              path: join(
+                collectionDir,
+                "hf",
+                "huggingface-dataset-manifest.json",
+              ),
               schema: "eliza_huggingface_dataset_ingest",
               sourceKind: "huggingface_dataset",
               trajectoryId: "hf-sft-traj-1",
@@ -2336,26 +2365,29 @@ describe("training analysis index", () => {
       process.cwd(),
       join(bundleDir, "tasks", "response.jsonl"),
     );
-    await writeJsonl(join(bundleDir, "sanitized", "trajectories.sanitized.jsonl"), [
-      {
-        trajectoryId: "natural-cwd-relative-traj-1",
-        agentId: "agent-natural",
-        steps: [
-          {
-            stepId: "step-1",
-            llmCalls: [
-              {
-                callId: "call-1",
-                purpose: "response",
-                model: "eliza-1-4b-trained",
-                userPrompt: "cwd relative natural input",
-                response: "cwd relative natural output",
-              },
-            ],
-          },
-        ],
-      },
-    ]);
+    await writeJsonl(
+      join(bundleDir, "sanitized", "trajectories.sanitized.jsonl"),
+      [
+        {
+          trajectoryId: "natural-cwd-relative-traj-1",
+          agentId: "agent-natural",
+          steps: [
+            {
+              stepId: "step-1",
+              llmCalls: [
+                {
+                  callId: "call-1",
+                  purpose: "response",
+                  model: "eliza-1-4b-trained",
+                  userPrompt: "cwd relative natural input",
+                  response: "cwd relative natural output",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    );
     await writeJsonl(join(bundleDir, "tasks", "response.jsonl"), [
       {
         task: "response",
@@ -2518,7 +2550,11 @@ describe("training analysis index", () => {
       runDir,
       viewerHtmlPath: join(runDir, "viewer", "index.html"),
       nativeJsonlPath: join(runDir, "native", "scenario-native.jsonl"),
-      nativeManifestPath: join(runDir, "native", "scenario-native.manifest.json"),
+      nativeManifestPath: join(
+        runDir,
+        "native",
+        "scenario-native.manifest.json",
+      ),
       turnPreviews: [
         expect.objectContaining({
           scenarioId: "scenario.cwd",

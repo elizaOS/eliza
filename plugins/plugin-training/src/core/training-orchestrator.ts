@@ -257,6 +257,133 @@ rules:
 return:
 JSON object only with viewId (a registered view id or "none") and an optional reason.`;
 
+// -----------------------------------------------------------------------------
+// LifeOps per-capability baselines (#8795). Concrete starting prompts the
+// optimizer evolves. The live LifeOps prompt templates live in
+// @elizaos/plugin-personal-assistant / @elizaos/plugin-health, which training
+// must not import (layering), so these bundled baselines stand in until a
+// LifeOps call site registers its inline template as the baseline at run time.
+// -----------------------------------------------------------------------------
+
+const CALENDAR_EXTRACT_BASELINE = `task: Extract a structured calendar event from a natural-language request.
+
+request:
+{{request}}
+
+rules:
+- resolve relative dates/times against the owner's current local time
+- infer end time from a stated duration; default to a 30-minute event when none is given
+- only include attendees explicitly named in the request
+
+return:
+JSON object only: { title, start (ISO 8601), end (ISO 8601), recurrence (RRULE or null), attendees (array), location (string or null) }.`;
+
+const SCHEDULE_PLAN_BASELINE = `task: Order the owner's pending commitments into a concrete plan for the available time.
+
+commitments:
+{{commitments}}
+
+free_slots:
+{{freeSlots}}
+
+rules:
+- never double-book a slot; respect hard deadlines and fixed-time events first
+- keep travel/buffer time between location-bound items
+- surface anything that does not fit rather than silently dropping it
+
+return:
+JSON object only: { schedule: [{ itemId, start, end }], unplaced: [itemId], notes }.`;
+
+const REMINDER_DISPATCH_BASELINE = `task: Decide whether to fire a reminder now and compose its message.
+
+reminder:
+{{reminder}}
+
+context:
+{{context}}
+
+rules:
+- only fire when the trigger condition is met; otherwise return shouldFire false
+- write a short, specific message in the owner's voice; no filler
+- escalate channel only when the reminder is overdue or marked urgent
+
+return:
+JSON object only: { shouldFire (boolean), channel, message }.`;
+
+const INBOX_TRIAGE_BASELINE = `task: Triage one inbox item for the owner.
+
+item:
+{{item}}
+
+rules:
+- classify priority as high/normal/low based on sender, deadline, and ask
+- set needsResponse true only when the owner must personally reply
+- pick the single best category; do not invent categories
+
+return:
+JSON object only: { priority, needsResponse (boolean), category, summary }.`;
+
+const MEETING_PREP_BASELINE = `task: Produce a concise prebrief for an upcoming meeting.
+
+meeting:
+{{meeting}}
+
+context:
+{{context}}
+
+rules:
+- lead with the meeting's purpose and the owner's desired outcome
+- include only attendees and prior-thread facts that matter for this meeting
+- keep talking points actionable; no generic advice
+
+return:
+JSON object only: { purpose, attendees: [{ name, note }], agenda: [string], talkingPoints: [string] }.`;
+
+const MORNING_BRIEF_BASELINE = `task: Compose the owner's morning brief.
+
+calendar:
+{{calendar}}
+
+tasks:
+{{tasks}}
+
+inbox:
+{{inbox}}
+
+rules:
+- lead with the single most important thing for the day
+- group by calendar, then must-do tasks, then inbox items needing a reply
+- be brief and scannable; no greetings or filler
+
+return:
+Markdown brief only.`;
+
+const HEALTH_CHECKIN_BASELINE = `task: Generate a health/sleep check-in for the owner.
+
+signals:
+{{signals}}
+
+rules:
+- ground every observation in a provided signal; never fabricate metrics
+- ask at most one follow-up question, and only when a signal is missing or anomalous
+- keep an encouraging, non-clinical tone
+
+return:
+JSON object only: { observation, question (string or null), suggestion }.`;
+
+const SCREENTIME_RECAP_BASELINE = `task: Summarize the owner's screen-time and propose a focus adjustment.
+
+usage:
+{{usage}}
+
+rules:
+- highlight the largest changes vs. the prior period, not raw totals alone
+- tie any suggestion to an actual usage pattern in the data
+- propose at most one concrete blocker/focus change
+
+return:
+JSON object only: { recap, topApps: [{ app, minutes }], suggestion }.`;
+
 function defaultBaselineForTask(task: TrajectoryTrainingTask): string {
   switch (task) {
     case "should_respond":
@@ -271,6 +398,22 @@ function defaultBaselineForTask(task: TrajectoryTrainingTask): string {
       return MEDIA_DESCRIPTION_BASELINE;
     case "view_context":
       return VIEW_CONTEXT_BASELINE;
+    case "calendar_extract":
+      return CALENDAR_EXTRACT_BASELINE;
+    case "schedule_plan":
+      return SCHEDULE_PLAN_BASELINE;
+    case "reminder_dispatch":
+      return REMINDER_DISPATCH_BASELINE;
+    case "inbox_triage":
+      return INBOX_TRIAGE_BASELINE;
+    case "meeting_prep":
+      return MEETING_PREP_BASELINE;
+    case "morning_brief":
+      return MORNING_BRIEF_BASELINE;
+    case "health_checkin":
+      return HEALTH_CHECKIN_BASELINE;
+    case "screentime_recap":
+      return SCREENTIME_RECAP_BASELINE;
   }
 }
 
@@ -304,6 +447,22 @@ function pathForTask(
       return paths.mediaDescriptionPath;
     case "view_context":
       return paths.viewContextPath;
+    case "calendar_extract":
+      return paths.calendarExtractPath;
+    case "schedule_plan":
+      return paths.schedulePlanPath;
+    case "reminder_dispatch":
+      return paths.reminderDispatchPath;
+    case "inbox_triage":
+      return paths.inboxTriagePath;
+    case "meeting_prep":
+      return paths.meetingPrepPath;
+    case "morning_brief":
+      return paths.morningBriefPath;
+    case "health_checkin":
+      return paths.healthCheckinPath;
+    case "screentime_recap":
+      return paths.screentimeRecapPath;
   }
 }
 
@@ -474,6 +633,19 @@ export async function loadBaselineForTask(
       // The runtime exposes no core template for the contextual view evaluator;
       // its baseline lives in @elizaos/plugin-app-control. Use the bundled
       // baseline so the optimizer always has a concrete starting prompt.
+      return defaultBaselineForTask(task);
+    case "calendar_extract":
+    case "schedule_plan":
+    case "reminder_dispatch":
+    case "inbox_triage":
+    case "meeting_prep":
+    case "morning_brief":
+    case "health_checkin":
+    case "screentime_recap":
+      // LifeOps templates live in @elizaos/plugin-personal-assistant /
+      // @elizaos/plugin-health, which training must not import (layering). The
+      // bundled baseline is the starting point; a LifeOps call site can pass
+      // its live inline template as the baseline when it drives optimization.
       return defaultBaselineForTask(task);
   }
 }
