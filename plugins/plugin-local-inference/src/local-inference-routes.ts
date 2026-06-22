@@ -1276,7 +1276,9 @@ export async function handleLocalInferenceRoutes(
 	// the app-core compat route so mobile (which mounts this upstream variant)
 	// also gets the authoritative assessment instead of the coarse client estimate.
 	if (method === "GET" && pathname === "/api/local-inference/device-tier") {
-		sendJson(res, { tier: classifyDeviceTier((await hubSnapshot()).hardware) });
+		sendJson(res, {
+			tier: classifyDeviceTier(await localInferenceService.getHardware()),
+		});
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/catalog") {
