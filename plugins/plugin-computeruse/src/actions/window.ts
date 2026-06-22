@@ -65,6 +65,15 @@ function resolveWindowAction(
   );
 }
 
+function approvalOwnerIdFromMemory(message: Memory): string | undefined {
+  const metadata = message.metadata;
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const telegramUserId = (metadata as Record<string, unknown>).telegramUserId;
+  return typeof telegramUserId === "string" && telegramUserId.length > 0
+    ? telegramUserId
+    : undefined;
+}
+
 export const windowAction: Action = {
   name: "WINDOW",
   contexts: ["screen_time", "automation"],
@@ -156,6 +165,7 @@ export const windowAction: Action = {
       service,
       { ...params, action } as WindowActionParams,
       callback,
+      { ownerId: approvalOwnerIdFromMemory(message) },
     );
   },
 

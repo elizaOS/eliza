@@ -3390,6 +3390,29 @@ export const allActionsSpec = {
 						"Optional browser target id. Common values: workspace, bridge, computeruse, stagehand.",
 				},
 				{
+					name: "streamProgress",
+					description:
+						"When true, emit a compact Step 1 progress callback after the browser command dispatches.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"When true, emit a compact Step 1 progress callback after the browser command dispatches.",
+				},
+				{
+					name: "rationale",
+					description:
+						"Optional rationale shown in streamProgress callback text.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional rationale shown in streamProgress callback text.",
+				},
+				{
 					name: "action",
 					description:
 						"Browser action. Snake_case canonical; legacy kebab-case and subaction accepted.",
@@ -3638,6 +3661,8 @@ export const allActionsSpec = {
 					params: {
 						BROWSER: {
 							target: "example",
+							streamProgress: false,
+							rationale: "example",
 							action: "back",
 							tabAction: "close",
 							domain: "example",
@@ -4229,6 +4254,18 @@ export const allActionsSpec = {
 					descriptionCompressed:
 						"Max Brain->dispatch cycles before giving up. Default 5.",
 				},
+				{
+					name: "streamProgress",
+					description:
+						"When true, emit a compact callback after each dispatched step so the originating chat can show progress.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					descriptionCompressed:
+						"When true, emit a compact callback after each dispatched step so the originating chat can show progress.",
+				},
 			],
 			descriptionCompressed:
 				"Autonomous desktop loop: scene → Brain → cascade → click. Pass {goal, maxSteps?}.",
@@ -4241,6 +4278,7 @@ export const allActionsSpec = {
 						COMPUTER_USE_AGENT: {
 							goal: "example",
 							maxSteps: 5,
+							streamProgress: false,
 						},
 					},
 				},

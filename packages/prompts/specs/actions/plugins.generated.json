@@ -413,6 +413,23 @@
           }
         },
         {
+          "name": "streamProgress",
+          "description": "When true, emit a compact Step 1 progress callback after the browser command dispatches.",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        {
+          "name": "rationale",
+          "description": "Optional rationale shown in streamProgress callback text.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
           "name": "action",
           "description": "Browser action. Snake_case canonical; legacy kebab-case and subaction accepted.",
           "required": false,
@@ -625,6 +642,8 @@
           "params": {
             "BROWSER": {
               "target": "example",
+              "streamProgress": false,
+              "rationale": "example",
               "action": "back",
               "tabAction": "close",
               "domain": "example",
@@ -1143,6 +1162,15 @@
             "minimum": 1,
             "maximum": 20
           }
+        },
+        {
+          "name": "streamProgress",
+          "description": "When true, emit a compact callback after each dispatched step so the originating chat can show progress.",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
         }
       ],
       "descriptionCompressed": "Autonomous desktop loop: scene → Brain → cascade → click. Pass {goal, maxSteps?}.",
@@ -1154,7 +1182,8 @@
           "params": {
             "COMPUTER_USE_AGENT": {
               "goal": "example",
-              "maxSteps": 5
+              "maxSteps": 5,
+              "streamProgress": false
             }
           }
         }

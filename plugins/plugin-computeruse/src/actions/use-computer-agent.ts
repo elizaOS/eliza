@@ -24,6 +24,7 @@
 import {
   type Action,
   type ActionResult,
+  type Content,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -50,18 +51,24 @@ import { listDisplays } from "../platform/displays.js";
 import type { Scene } from "../scene/scene-types.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 import { resolveActionParams } from "./helpers.js";
+import {
+  buildStepProgressContent,
+  isStreamProgressEnabled,
+} from "./progress.js";
 
 const DEFAULT_MAX_STEPS = 5;
 
 export interface ComputerUseAgentParams {
   goal: string;
   maxSteps?: number;
+  streamProgress?: boolean;
 }
 
 interface AgentDeps {
   brain?: Brain;
   computerInterface?: ComputerInterface;
   captureAll?: () => Promise<DisplayCapture[]>;
+  onStepProgress?: (content: Content) => Promise<void> | void;
 }
 
 export interface ComputerUseAgentReport {
@@ -167,6 +174,30 @@ export async function runComputerUseAgentLoop(
         error: dispatchResult.error?.message,
       },
     });
+    if (isStreamProgressEnabled(params.streamProgress)) {
+      try {
+        await deps.onStepProgress?.(
+          buildStepProgressContent({
+            actionName: "COMPUTER_USE_AGENT",
+            step,
+            kind: proposed.proposed.kind,
+            rationale: proposed.proposed.rationale,
+            success: dispatchResult.success,
+            error: dispatchResult.error?.message,
+          }),
+        );
+      } catch (error) {
+        logger.warn(
+          {
+            src: "plugin:computeruse",
+            actionName: "COMPUTER_USE_AGENT",
+            step,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Failed to emit computer-use agent progress callback",
+        );
+      }
+    }
     if (!dispatchResult.success) {
       report.reason = "error";
       report.error = dispatchResult.error?.message;
@@ -235,6 +266,13 @@ export const computerUseAgentAction: Action = {
         default: DEFAULT_MAX_STEPS,
       },
     },
+    {
+      name: "streamProgress",
+      description:
+        "When true, emit a compact callback after each dispatched step so the originating chat can show progress.",
+      required: false,
+      schema: { type: "boolean", default: false },
+    },
   ],
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     return getService(runtime) !== null;
@@ -263,7 +301,13 @@ export const computerUseAgentAction: Action = {
         error: "ComputerUseService not available",
       };
     }
-    const report = await runComputerUseAgentLoop(runtime, params, service);
+    const report = await runComputerUseAgentLoop(runtime, params, service, {
+      onStepProgress: callback
+        ? async (content) => {
+            await callback(content, "COMPUTER_USE_AGENT");
+          }
+        : undefined,
+    });
     const text =
       report.reason === "finish"
         ? `Computer-use agent finished after ${report.steps.length} step(s): goal="${report.goal}"`

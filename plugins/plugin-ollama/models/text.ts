@@ -512,13 +512,8 @@ async function handleTextWithModelType(
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
   const extended = params as GenerateTextParamsWithNativeOptions;
-  const {
-    prompt,
-    maxTokens = 8192,
-    temperature = 0.7,
-    frequencyPenalty = 0.7,
-    presencePenalty = 0.7,
-  } = params;
+  const { prompt, temperature = 0.7, frequencyPenalty = 0.7, presencePenalty = 0.7 } = params;
+  const maxTokens = params.omitMaxTokens ? undefined : (params.maxTokens ?? 8192);
 
   let modelIdForLog = "";
   try {
@@ -603,9 +598,9 @@ async function handleTextWithModelType(
       ...promptOrMessages,
       system,
       temperature,
-      maxOutputTokens: maxTokens,
       frequencyPenalty,
       presencePenalty,
+      ...(typeof maxTokens === "number" ? { maxOutputTokens: maxTokens } : {}),
       ...(resolvedStopSequences ? { stopSequences: resolvedStopSequences } : {}),
       ...(tools ? { tools, ...(toolChoice ? { toolChoice } : {}) } : {}),
       ...(outputSpec ? { output: outputSpec } : {}),

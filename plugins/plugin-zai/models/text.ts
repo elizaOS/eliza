@@ -15,7 +15,7 @@ import { emitModelUsageEvent } from "../utils/events";
 interface ResolvedTextParams {
   readonly prompt: string;
   readonly stopSequences: readonly string[];
-  readonly maxTokens: number;
+  readonly maxTokens?: number;
   readonly temperature: number | undefined;
   readonly topP: number | undefined;
   readonly frequencyPenalty: number;
@@ -47,7 +47,7 @@ function resolveTextParams(
   const topP = topPExplicit ? (params.topP ?? 0.9) : undefined;
 
   const defaultMaxTokens = modelName.includes("air") || modelName.includes("flash") ? 4096 : 8192;
-  const maxTokens = params.maxTokens ?? defaultMaxTokens;
+  const maxTokens = params.omitMaxTokens ? undefined : (params.maxTokens ?? defaultMaxTokens);
 
   const rawProviderOptions = rawParams.providerOptions as ProviderOptions | undefined;
   const providerOptions: ProviderOptions = rawProviderOptions
@@ -121,8 +121,8 @@ async function generateTextWithModel(
     frequencyPenalty: resolved.frequencyPenalty,
     presencePenalty: resolved.presencePenalty,
     experimental_telemetry: telemetryConfig,
-    maxTokens: resolved.maxTokens,
     topP: resolved.topP,
+    ...(typeof resolved.maxTokens === "number" ? { maxTokens: resolved.maxTokens } : {}),
   };
 
   const { text, usage } = await generateText(

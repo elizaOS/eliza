@@ -1,6 +1,8 @@
 import type {
   Action,
   ActionExample,
+  Content,
+  HandlerCallback,
   HandlerOptions,
   Memory,
 } from "@elizaos/core";
@@ -120,6 +122,10 @@ type BrowserActionParameters = {
   y?: number;
   /** Hint that the agent is operating in a watch-mode (page-browser) scope. */
   watchMode?: boolean;
+  /** Emit one compact progress callback after the browser step dispatches. */
+  streamProgress?: boolean;
+  /** Optional rationale to show in the compact progress callback. */
+  rationale?: string;
 };
 
 function getMessageText(message: Memory | undefined): string {
@@ -321,6 +327,112 @@ function formatBrowserSessionResult(
   return `Browser ${command.subaction} completed in ${result.mode} mode.`;
 }
 
+function browserProgressRationale(
+  command: BrowserWorkspaceCommand,
+  params: BrowserActionParameters | undefined,
+  messageText: string,
+): string {
+  const explicit = params?.rationale?.trim();
+  if (explicit) return explicit;
+
+  switch (command.subaction) {
+    case "open":
+    case "navigate":
+      return command.url ? `open ${command.url}` : "open requested page";
+    case "click":
+    case "realistic-click":
+      return command.selector
+        ? `click ${command.selector}`
+        : "click requested target";
+    case "type":
+    case "realistic-fill":
+    case "realistic-type":
+      return command.selector
+        ? `fill ${command.selector}`
+        : "type requested text";
+    case "press":
+    case "realistic-press":
+      return command.key ? `press ${command.key}` : "press requested key";
+    case "tab":
+      return command.tabAction
+        ? `${command.tabAction} browser tab`
+        : "manage browser tabs";
+    case "wait":
+      return command.selector
+        ? `wait for ${command.selector}`
+        : "wait for browser state";
+    case "state":
+      return messageText.trim() || "read browser state";
+    default:
+      return `run browser ${command.subaction}`;
+  }
+}
+
+function buildBrowserStepProgressContent(
+  command: BrowserWorkspaceCommand,
+  params: BrowserActionParameters | undefined,
+  messageText: string,
+  success: boolean,
+  error?: string,
+): Content {
+  const rationale = error
+    ? `failed: ${error}`
+    : browserProgressRationale(command, params, messageText);
+  return {
+    text: `Step 1: ${command.subaction} — ${rationale}`,
+    source: "action_progress",
+    merge: "replace",
+    metadata: {
+      transient: true,
+      compactProgress: true,
+      progress: {
+        source: "browser",
+        actionName: "BROWSER",
+        step: 1,
+        kind: command.subaction,
+        rationale,
+        success,
+        error,
+      },
+    },
+  };
+}
+
+async function emitBrowserStepProgress(
+  callback: HandlerCallback | undefined,
+  command: BrowserWorkspaceCommand,
+  params: BrowserActionParameters | undefined,
+  messageText: string,
+  success: boolean,
+  error?: string,
+): Promise<void> {
+  if (params?.streamProgress !== true || !callback) return;
+  try {
+    await callback(
+      buildBrowserStepProgressContent(
+        command,
+        params,
+        messageText,
+        success,
+        error,
+      ),
+      "BROWSER",
+    );
+  } catch (callbackError) {
+    logger.warn(
+      {
+        src: "plugin:browser",
+        action: command.subaction,
+        error:
+          callbackError instanceof Error
+            ? callbackError.message
+            : String(callbackError),
+      },
+      "Failed to emit browser progress callback",
+    );
+  }
+}
+
 export const browserAction: Action = {
   name: "BROWSER",
   contexts: ["browser", "web", "automation", "secrets"],
@@ -348,7 +460,13 @@ export const browserAction: Action = {
   descriptionCompressed:
     "Browser open|navigate|click|type|screenshot|state|autofill_login; bridge status elsewhere",
   validate: async () => true,
-  handler: async (runtime, message, _state, options) => {
+  handler: async (
+    runtime,
+    message,
+    _state,
+    options,
+    callback?: HandlerCallback,
+  ) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | BrowserActionParameters
       | undefined;
@@ -394,6 +512,13 @@ export const browserAction: Action = {
       const result = browserService
         ? await browserService.execute(command, params?.target)
         : await executeBrowserWorkspaceCommand(command);
+      await emitBrowserStepProgress(
+        callback,
+        command,
+        params,
+        messageText,
+        true,
+      );
 
       return {
         text: formatBrowserSessionResult(command, result),
@@ -410,11 +535,19 @@ export const browserAction: Action = {
         },
       };
     } catch (error) {
-      const messageText =
+      const errorText =
         error instanceof Error ? error.message : "Browser action failed";
-      logger.warn(`[BROWSER] Failed: ${messageText}`);
+      logger.warn(`[BROWSER] Failed: ${errorText}`);
+      await emitBrowserStepProgress(
+        callback,
+        command,
+        params,
+        messageText,
+        false,
+        errorText,
+      );
       return {
-        text: `Browser action failed: ${messageText}`,
+        text: `Browser action failed: ${errorText}`,
         success: false,
         values: { success: false, error: "BROWSER_FAILED" },
         data: {
@@ -429,6 +562,19 @@ export const browserAction: Action = {
       name: "target",
       description:
         "Optional browser target id. Common values: workspace, bridge, computeruse, stagehand.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "streamProgress",
+      description:
+        "When true, emit a compact Step 1 progress callback after the browser command dispatches.",
+      required: false,
+      schema: { type: "boolean" as const, default: false },
+    },
+    {
+      name: "rationale",
+      description: "Optional rationale shown in streamProgress callback text.",
       required: false,
       schema: { type: "string" as const },
     },

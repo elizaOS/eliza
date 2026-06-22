@@ -17,6 +17,7 @@
  * default).
  */
 
+import type { Content } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   type ComputerUseAgentReport,
@@ -104,6 +105,75 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
     expect(report.finished).toBe(true);
     expect(report.steps.length).toBe(1);
     expect(report.steps[0]?.actionKind).toBe("finish");
+  });
+
+  it("emits per-step callback content when streamProgress is true", async () => {
+    const progress: Content[] = [];
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "done",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: { kind: "finish", rationale: "ok" },
+        }),
+    });
+
+    const report = await runComputerUseAgentLoop(
+      null,
+      { goal: "g", streamProgress: true },
+      fakeService(),
+      {
+        brain,
+        captureAll,
+        onStepProgress: (content) => {
+          progress.push(content);
+        },
+      },
+    );
+
+    expect(report.reason).toBe("finish");
+    expect(progress).toHaveLength(1);
+    expect(progress[0]).toMatchObject({
+      text: "Step 1: finish — ok",
+      source: "action_progress",
+      merge: "replace",
+      metadata: {
+        transient: true,
+        compactProgress: true,
+        progress: {
+          source: "computeruse",
+          actionName: "COMPUTER_USE_AGENT",
+          step: 1,
+          kind: "finish",
+          rationale: "ok",
+          success: true,
+        },
+      },
+    });
+  });
+
+  it("keeps per-step callbacks behind the streamProgress flag", async () => {
+    const progress: Content[] = [];
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "done",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: { kind: "finish", rationale: "ok" },
+        }),
+    });
+
+    await runComputerUseAgentLoop(null, { goal: "g" }, fakeService(), {
+      brain,
+      captureAll,
+      onStepProgress: (content) => {
+        progress.push(content);
+      },
+    });
+
+    expect(progress).toEqual([]);
   });
 
   it("hits maxSteps when the Brain keeps emitting wait", async () => {

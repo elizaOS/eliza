@@ -14,6 +14,16 @@ import {
   resolveActionParams,
   toComputerUseActionResult,
 } from "./helpers.js";
+import { withApprovalRelay } from "./progress.js";
+
+function approvalOwnerIdFromMemory(message: Memory): string | undefined {
+  const metadata = message.metadata;
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const telegramUserId = (metadata as Record<string, unknown>).telegramUserId;
+  return typeof telegramUserId === "string" && telegramUserId.length > 0
+    ? telegramUserId
+    : undefined;
+}
 
 function getComputerUseService(
   runtime: IAgentRuntime,
@@ -232,7 +242,12 @@ export const useComputerAction: Action = {
       return { success: false, error: "ComputerUseService not available" };
     }
 
-    const result = await service.executeDesktopAction(params);
+    const result = await withApprovalRelay(
+      service,
+      callback,
+      () => service.executeDesktopAction(params),
+      { ownerId: approvalOwnerIdFromMemory(message) },
+    );
     const text = formatDesktopResultText(params, result);
     await deliverResult(params, result, text, callback);
     return toComputerUseActionResult({
