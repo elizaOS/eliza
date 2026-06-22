@@ -19,8 +19,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AgentRuntime } from "@elizaos/core";
 import type { Plugin } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { installDatabaseTrajectoryLogger } from "./trajectory-persistence.ts";
 import { flushTrajectoryWrites } from "./trajectory-storage.ts";
@@ -39,17 +39,19 @@ interface TrajLogger {
   ) => Promise<string>;
   startStep: (trajectoryId: string) => string;
   logLlmCall: (params: Record<string, unknown>) => void;
-  listTrajectories: (opts?: {
-    limit?: number;
-    offset?: number;
-  }) => Promise<{
+  listTrajectories: (opts?: { limit?: number; offset?: number }) => Promise<{
     trajectories: Array<{ id: string; llmCallCount: number }>;
     total: number;
   }>;
   getTrajectoryDetail: (id: string) => Promise<TrajectoryDetailLike | null>;
 }
 
-function llmCall(stepId: string, provider: string, model: string, text: string) {
+function llmCall(
+  stepId: string,
+  provider: string,
+  model: string,
+  text: string,
+) {
   return {
     stepId,
     model,
@@ -158,7 +160,10 @@ describe("trajectory capture -> DB -> viewer", () => {
     const list = await logger.listTrajectories({ limit: 50, offset: 0 });
     expect(list.total).toBeGreaterThan(0);
     const found = list.trajectories.find((t) => t.id === trajectoryId);
-    expect(found, "trajectory must be listed by the viewer reader").toBeTruthy();
+    expect(
+      found,
+      "trajectory must be listed by the viewer reader",
+    ).toBeTruthy();
     expect(
       found?.llmCallCount ?? 0,
       "BOTH local + cloud LLM calls must be counted",

@@ -1,5 +1,6 @@
 import {
   ChannelType,
+  composePromptFromState,
   type Content,
   createUniqueUuid,
   EventType,
@@ -9,6 +10,7 @@ import {
   type Memory,
   type MessagePayload,
   ModelType,
+  parseJSONObjectFromText,
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import { SearchMode } from "./client/index";
@@ -18,7 +20,9 @@ import {
   getTargetUsers,
   shouldTargetUser,
 } from "./environment";
+import { quoteTweetTemplate, twitterActionTemplate } from "./templates";
 import type {
+  ActionResponse,
   TwitterClientState,
   TwitterInteractionMemory,
   TwitterInteractionPayload,
@@ -28,7 +32,7 @@ import type {
   TwitterRetweetReceivedPayload,
 } from "./types";
 import { TwitterEventTypes } from "./types";
-import { sendTweet } from "./utils";
+import { parseActionResponseFromText, sendTweet } from "./utils";
 import {
   buildTwitterMessageMetadata,
   createMemorySafe,
@@ -380,10 +384,10 @@ export class TwitterInteractionClient {
         continue;
       }
 
-      // Decide whether to engage with this tweet
-      const shouldEngage = await this.shouldEngageWithTweet(tweet);
+      // Decide which actions (like / retweet / quote / reply) to take
+      const actions = await this.decideTweetActions(tweet);
 
-      if (shouldEngage) {
+      if (actions.like || actions.retweet || actions.quote || actions.reply) {
         logger.info(
           `Engaging with tweet from @${username}: ${tweet.text.substring(0, 50)}...`,
         );
@@ -391,8 +395,8 @@ export class TwitterInteractionClient {
         // Create necessary context for the tweet
         await this.ensureTweetContext(tweet);
 
-        // Handle the tweet (generate and send reply)
-        const engaged = await this.engageWithTweet(tweet);
+        // Execute the chosen actions (like / retweet / quote / reply)
+        const engaged = await this.engageWithTweet(tweet, actions);
 
         if (engaged) {
           engagementCount++;
@@ -443,64 +447,73 @@ export class TwitterInteractionClient {
   }
 
   /**
-   * Determine if the bot should engage with a specific tweet
+   * Build a Memory object for a search-discovered tweet so it can be used to
+   * compose model state for action decisions.
    */
-  private async shouldEngageWithTweet(
+  private buildTweetMessage(tweet: ProcessableTweet): Memory {
+    const entityId = createUniqueUuid(this.runtime, tweet.userId);
+    return {
+      id: createUniqueUuid(this.runtime, tweet.id),
+      entityId,
+      agentId: this.runtime.agentId,
+      roomId: createUniqueUuid(this.runtime, tweet.conversationId),
+      content: {
+        text: tweet.text,
+        source: "twitter",
+        tweet: JSON.parse(JSON.stringify(tweet)),
+      },
+      metadata: buildTwitterMessageMetadata(
+        tweet,
+        entityId,
+        this.client.accountId,
+      ),
+      createdAt: getEpochMs(tweet.timestamp),
+    };
+  }
+
+  /**
+   * Decide which actions ([LIKE], [RETWEET], [QUOTE], [REPLY]) the agent should
+   * take on a search-discovered tweet. Mirrors the timeline action-decision flow
+   * so search engagement supports likes, retweets, and quote tweets — not just
+   * replies.
+   */
+  private async decideTweetActions(
     tweet: ProcessableTweet,
-  ): Promise<boolean> {
+  ): Promise<ActionResponse> {
+    const noAction: ActionResponse = {
+      like: false,
+      retweet: false,
+      quote: false,
+      reply: false,
+    };
+
     try {
-      // Create a simple evaluation prompt
-      const evaluationContext = {
-        tweet: tweet.text,
-        author: tweet.username,
-        metrics: {
-          likes: tweet.likes || 0,
-          retweets: tweet.retweets || 0,
-          replies: tweet.replies || 0,
-        },
-      };
+      const message = this.buildTweetMessage(tweet);
+      const state = await this.runtime.composeState(message);
 
-      const shouldEngageMemory: Memory = {
-        id: createUniqueUuid(this.runtime, `eval-${tweet.id}`),
-        entityId: this.runtime.agentId,
-        agentId: this.runtime.agentId,
-        roomId: createUniqueUuid(this.runtime, tweet.conversationId),
-        content: {
-          text: `Should I engage with this tweet? Tweet: "${tweet.text}" by @${tweet.username}`,
-          evaluationContext,
-        },
-        createdAt: Date.now(),
-      };
+      const actionRespondPrompt =
+        composePromptFromState({
+          state,
+          template:
+            this.runtime.character.templates?.twitterActionTemplate ||
+            twitterActionTemplate,
+        }) +
+        `
+Tweet:
+${tweet.text}
 
-      const _state = await this.runtime.composeState(shouldEngageMemory);
-      const characterName = this.runtime?.character?.name || "AI Assistant";
-      const context = `You are ${characterName}. Should you reply to this tweet based on your interests and expertise?
-      
-Tweet by @${tweet.username}: "${tweet.text}"
+# Respond with qualifying action tags only.
 
-Reply with YES if:
-- The topic relates to your interests or expertise
-- You can add valuable insights or perspective
-- The conversation seems constructive
+Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appropriate. Each action must be on its own line. Your response must only include the chosen actions.`;
 
-Reply with NO if:
-- The topic is outside your knowledge
-- The tweet is inflammatory or controversial
-- You have nothing meaningful to add
-
-Response (YES/NO):`;
-
-      const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt: context,
-        temperature: 0.3,
-        maxTokens: 10,
-        stopSequences: ["\n"],
+      const actionResponse = await this.runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt: actionRespondPrompt,
       });
 
-      return response.trim().toUpperCase().includes("YES");
+      return parseActionResponseFromText(actionResponse).actions;
     } catch (error) {
       logger.error("Error determining engagement:", errorMessage(error));
-      return false;
+      return noAction;
     }
   }
 
@@ -548,28 +561,133 @@ Response (YES/NO):`;
   }
 
   /**
-   * Engage with a tweet by generating and sending a reply
+   * Engage with a search-discovered tweet by executing the decided actions:
+   * like, retweet, quote, and/or reply.
+   *
+   * @returns `true` if at least one action was executed.
    */
-  private async engageWithTweet(tweet: ProcessableTweet): Promise<boolean> {
+  private async engageWithTweet(
+    tweet: ProcessableTweet,
+    actions: ActionResponse,
+  ): Promise<boolean> {
+    let engaged = false;
+
+    if (actions.like) {
+      await this.handleLikeAction(tweet);
+      engaged = true;
+    }
+
+    if (actions.retweet) {
+      await this.handleRetweetAction(tweet);
+      engaged = true;
+    }
+
+    if (actions.quote) {
+      await this.handleQuoteAction(tweet);
+      engaged = true;
+    }
+
+    if (actions.reply) {
+      const replied = await this.handleReplyAction(tweet);
+      engaged = engaged || replied;
+    }
+
+    return engaged;
+  }
+
+  /**
+   * Like a search-discovered tweet.
+   */
+  private async handleLikeAction(tweet: ProcessableTweet): Promise<void> {
     try {
-      const entityId = createUniqueUuid(this.runtime, tweet.userId);
-      const message: Memory = {
-        id: createUniqueUuid(this.runtime, tweet.id),
-        entityId,
-        content: {
-          text: tweet.text,
-          source: "twitter",
-          tweet: JSON.parse(JSON.stringify(tweet)),
-        },
-        agentId: this.runtime.agentId,
-        roomId: createUniqueUuid(this.runtime, tweet.conversationId),
-        metadata: buildTwitterMessageMetadata(
-          tweet,
-          entityId,
-          this.client.accountId,
-        ),
-        createdAt: getEpochMs(tweet.timestamp),
-      };
+      if (this.isDryRun) {
+        logger.info(`[DRY RUN] Would have liked tweet ${tweet.id}`);
+        return;
+      }
+      await this.client.twitterClient.likeTweet(tweet.id);
+      logger.info(`Liked tweet ${tweet.id}`);
+    } catch (error) {
+      logger.error(`Error liking tweet ${tweet.id}:`, errorMessage(error));
+    }
+  }
+
+  /**
+   * Retweet a search-discovered tweet.
+   */
+  private async handleRetweetAction(tweet: ProcessableTweet): Promise<void> {
+    try {
+      if (this.isDryRun) {
+        logger.info(`[DRY RUN] Would have retweeted tweet ${tweet.id}`);
+        return;
+      }
+      await this.client.twitterClient.retweet(tweet.id);
+      logger.info(`Retweeted tweet ${tweet.id}`);
+    } catch (error) {
+      logger.error(`Error retweeting tweet ${tweet.id}:`, errorMessage(error));
+    }
+  }
+
+  /**
+   * Quote a search-discovered tweet with model-generated commentary.
+   */
+  private async handleQuoteAction(tweet: ProcessableTweet): Promise<void> {
+    try {
+      const message = this.buildTweetMessage(tweet);
+      const state = await this.runtime.composeState(message);
+
+      const quotePrompt =
+        composePromptFromState({
+          state,
+          template:
+            this.runtime.character.templates?.quoteTweetTemplate ||
+            quoteTweetTemplate,
+        }) +
+        `
+You are responding to this tweet:
+${tweet.text}`;
+
+      const quoteResponse = await this.runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt: quotePrompt,
+      });
+      const responseObject =
+        (parseJSONObjectFromText(quoteResponse) as Record<
+          string,
+          unknown
+        > | null) ?? {};
+
+      const post = responseObject.post;
+      if (typeof post !== "string" || post.trim().length === 0) {
+        logger.warn(`No quote text generated for tweet ${tweet.id}`);
+        return;
+      }
+
+      if (this.isDryRun) {
+        logger.info(
+          `[DRY RUN] Would have quoted tweet ${tweet.id} with: ${post}`,
+        );
+        return;
+      }
+
+      await this.client.requestQueue.add(() =>
+        this.client.twitterClient.sendQuoteTweet(post, tweet.id),
+      );
+      logger.info(`Quoted tweet ${tweet.id}`);
+    } catch (error) {
+      logger.error(
+        `Error quoting tweet ${tweet.id}:`,
+        errorMessage(error),
+      );
+    }
+  }
+
+  /**
+   * Reply to a search-discovered tweet by generating and sending a response.
+   *
+   * @returns `true` if a reply was produced.
+   */
+  private async handleReplyAction(tweet: ProcessableTweet): Promise<boolean> {
+    try {
+      const message = this.buildTweetMessage(tweet);
 
       const result = await this.handleTweet({
         tweet,

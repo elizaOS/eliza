@@ -204,9 +204,8 @@ export async function handleAuthPairingCompatRoutes(
   const url = new URL(req.url ?? "/", "http://localhost");
 
   // ── GET /api/first-run/status ──────────────────────────────────────
-  // Cloud-provisioned containers used to skip auth here entirely. That
-  // bypass is gone: callers now need a trusted local request, a valid
-  // cookie session, an allowed bearer token, or a bootstrap exchange.
+  // Requires a trusted local request, a valid cookie session, an allowed
+  // bearer token, or a bootstrap exchange — no unauthenticated bypass.
   if (method === "GET" && url.pathname === "/api/first-run/status") {
     if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;

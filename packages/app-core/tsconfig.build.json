@@ -25,10 +25,14 @@
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/dist/index.node.d.ts"
       ],
-      "@elizaos/plugin-sql": [
-        "../../plugins/plugin-sql/src/dist/index.node.d.ts"
-      ],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/plugin-wechat": ["../../plugins/plugin-wechat/dist/index.d.ts"],
+      "@elizaos/capacitor-canvas": [
+        "../../plugins/plugin-native-canvas/dist/esm/index.d.ts"
+      ],
+      "@elizaos/capacitor-location": [
+        "../../plugins/plugin-native-location/dist/esm/index.d.ts"
+      ],
       "@elizaos/capacitor-*": ["../native-plugins/*/dist/index.d.ts"],
       "@elizaos/native-activity-tracker": [
         "../native-plugins/activity-tracker/dist/index.d.ts"

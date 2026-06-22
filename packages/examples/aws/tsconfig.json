@@ -15,9 +15,11 @@
     "declarationMap": false,
     "sourceMap": true,
     "noEmit": true,
-    "types": ["bun-types", "node"]
+    "types": ["bun-types", "node"],
+    "paths": {
+      "@elizaos/core": ["../../core/dist/index.d.ts"]
+    }
   },
   "include": ["*.ts"],
-  "exclude": ["node_modules", "dist"],
-  "extends": "../../../tsconfig.dist-paths.json"
+  "exclude": ["node_modules", "dist"]
 }

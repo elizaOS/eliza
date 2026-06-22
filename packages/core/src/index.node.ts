@@ -244,7 +244,6 @@ export * from "./schemas/character";
 export * from "./schemas/index";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
-export * from "./secrets";
 // Export security utilities
 export * from "./security";
 export * from "./sensitive-request-policy";

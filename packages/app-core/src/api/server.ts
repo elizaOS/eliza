@@ -152,13 +152,6 @@ import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
-
-// Wallet market overview route extracted to @elizaos/plugin-wallet/routes/wallet-market-overview-route.
-// Now served via walletRoutePlugin.routes (rawPath) on the runtime plugin route system.
-
-// Phase 2 extraction: Steward compat routes → app-steward/src/plugin.ts (stewardPlugin)
-// Includes: handleWalletBrowserCompatRoutes, handleWalletTradeCompatRoutes,
-//           handleStewardCompatRoutes, handleWalletCompatRoutes
 import { handleWorkbenchCompatRoutes } from "./workbench-compat-routes";
 
 const _require = createRequire(import.meta.url);
@@ -574,12 +567,6 @@ async function _getTableColumnNames(
   return columns;
 }
 
-// normalizePluginCategory, normalizePluginId, titleCasePluginId,
-// buildPluginParamDefs, findNearestFile, resolvePluginManifestPath,
-// resolveInstalledPackageVersion, resolveLoadedPluginNames, isPluginLoaded,
-// buildPluginListResponse, validateCompatPluginConfig, persistCompatPluginMutation
-// — extracted to ./plugins-routes
-
 /**
  * Load config from disk and backfill `cloud.apiKey` from sealed secrets when the
  * user is still linked to Eliza Cloud but a stale write dropped the key.
@@ -726,7 +713,7 @@ async function handleCompatRouteInner(
     });
   }
 
-  // Dev observability routes — extracted to dev-compat-routes.ts
+  // Dev observability routes.
   if (await handleDevCompatRoutes(req, res, state)) return true;
 
   // Cloud SSO popup landing — `/pair?token=X` calls cloud-api server-side,
@@ -740,7 +727,7 @@ async function handleCompatRouteInner(
   // Cookie + CSRF session lifecycle (setup, login, logout, me, sessions).
   if (await handleAuthSessionRoutes(req, res, state)) return true;
 
-  // Auth / pairing / first-run status — extracted to auth-pairing-routes.ts
+  // Auth / pairing / first-run status.
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
   // Sensitive-request REST surface (create/get/submit/cancel) for owner secret
   // collection — e.g. orchestrator provider keys land in the shared vault
@@ -770,13 +757,6 @@ async function handleCompatRouteInner(
   }
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 
-  // workflow routes — extracted to plugins/plugin-workflow/src/plugin-routes.ts.
-  // Now served via workflowRoutePlugin.routes (rawPath) on the runtime
-  // plugin route system.
-
-  // GitHub PAT routes — extracted to plugins/plugin-github/src/routes/github-routes.ts.
-  // Now served via githubPlugin.routes (rawPath) on the runtime plugin route system.
-
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const { handleCloudTtsPreviewRoute } = await import(
@@ -801,11 +781,9 @@ async function handleCompatRouteInner(
     return false;
   }
 
-  // Workbench / todos routes — extracted to workbench-compat-routes.ts
+  // Workbench / todos routes.
   if (await handleWorkbenchCompatRoutes(req, res, state)) return true;
 
-  // Public cached market overview for wallet empty states and cloud feeds —
-  // now served via @elizaos/plugin-wallet:routes Plugin.routes (rawPath).
   if (url.pathname.startsWith("/api/secrets/")) {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     if (await handleSecretsInventoryRoute(req, res, url.pathname, method)) {
@@ -816,15 +794,10 @@ async function handleCompatRouteInner(
     }
   }
 
-  // ── /api/cloud/* routes — extracted to plugins/plugin-elizacloud ──────
-  // (cloud-routes, cloud-status-routes). Now served via
-  // elizaCloudRoutePlugin.routes (rawPath) on the runtime plugin route
-  // system. The plugin handlers carry the cloud-provisioned auth exemption
-  // for `/api/cloud/status` and the post-dispatch loopback sync that keeps
-  // the upstream state.config in agreement with disk on login / disconnect.
-  // Note: /api/cloud/compat/* and /api/cloud/billing/* still dispatch
-  // above this point through @elizaos/agent (intentional — those are thin
-  // proxies to Eliza Cloud, not local cloud-connection management).
+  // `/api/cloud/compat/*` and `/api/cloud/billing/*` dispatch above this
+  // point through @elizaos/agent — thin proxies to Eliza Cloud, not local
+  // cloud-connection management. `/api/cloud/*` connection management is
+  // served by elizaCloudRoutePlugin.routes on the runtime plugin route system.
 
   if (method === "GET" && url.pathname === "/api/drop/status") {
     const config = loadElizaConfig() as ElizaConfig & {
@@ -845,14 +818,6 @@ async function handleCompatRouteInner(
     });
     return true;
   }
-
-  // ── Vincent OAuth routes — extracted to app-vincent/src/plugin.ts ──
-  // Now served via vincentPlugin.routes (rawPath) on the runtime plugin
-  // route system.  /callback/vincent is marked public: true.
-
-  // ── Shopify routes — extracted to app-shopify/src/plugin.ts ───────
-  // Now served via shopifyPlugin.routes (rawPath) on the runtime plugin
-  // route system.
 
   if (method === "POST" && url.pathname === "/api/agent/reset") {
     if (!ensureCompatSensitiveRouteAuthorized(req, res)) {
@@ -897,14 +862,9 @@ async function handleCompatRouteInner(
     return true;
   }
 
-  // ── Steward wallet compat routes — extracted to app-steward/src/plugin.ts ──
-  // All four handler groups (wallet-compat, wallet-browser-compat,
-  // steward-compat, wallet-trade-compat) are now served via
-  // stewardPlugin.routes (rawPath) on the runtime plugin route system.
-
-  // Plugin routes — extracted to @elizaos/plugin-registry. That package pulls
-  // in heavyweight registry/install code, so keep it out of the startup path
-  // and only load it for plugin-management requests.
+  // Plugin routes load @elizaos/plugin-registry lazily: that package pulls in
+  // heavyweight registry/install code, so keep it out of the startup path and
+  // only load it for plugin-management requests.
   if (url.pathname.startsWith("/api/plugins")) {
     const { handlePluginsCompatRoutes } = await getPluginRegistryApi();
     if (await handlePluginsCompatRoutes(req, res, state)) return true;

@@ -679,7 +679,10 @@ export function useShellController(): ShellController {
   // surfaced even before chatSending settles, so it shows while the agent boots.
   const turnStatus = React.useMemo<ChatTurnStatus | null>(() => {
     if (voiceOutput.speaking) return { kind: "speaking" };
-    if (serverTurnStatus && (chatSending || serverTurnStatus.kind === "waking")) {
+    if (
+      serverTurnStatus &&
+      (chatSending || serverTurnStatus.kind === "waking")
+    ) {
       return serverTurnStatus;
     }
     if (chatSending) {

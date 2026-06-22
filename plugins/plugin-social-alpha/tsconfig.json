@@ -18,7 +18,11 @@
 		"noUnusedParameters": false,
 		"jsx": "react-jsx",
 		"allowImportingTsExtensions": true,
-		"types": ["node"]
+		"types": ["node"],
+		"paths": {
+			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
+			"@elizaos/ui/*": ["../../packages/ui/src/*"]
+		}
 	},
 	"include": ["src/**/*.ts", "src/**/*.tsx"],
 	"exclude": [

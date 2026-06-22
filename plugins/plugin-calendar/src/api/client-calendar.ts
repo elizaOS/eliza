@@ -20,7 +20,7 @@ import type {
   ListLifeOpsCalendarsRequest,
   SetLifeOpsCalendarIncludedRequest,
 } from "@elizaos/shared";
-import { ElizaClient } from "@elizaos/ui";
+import { ElizaClient } from "@elizaos/ui/api";
 
 export interface CalendarClientMethods {
   getLifeOpsCalendarFeed(
