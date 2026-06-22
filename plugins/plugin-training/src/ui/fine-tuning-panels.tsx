@@ -7,8 +7,7 @@ import type {
   TrainingTrajectoryDetail,
   TrainingTrajectoryList,
 } from "@elizaos/ui/api";
-import { Button } from "@elizaos/ui/button";
-import { Input } from "@elizaos/ui/input";
+import { Button, Input } from "@elizaos/ui/components";
 import {
   Select,
   SelectContent,
