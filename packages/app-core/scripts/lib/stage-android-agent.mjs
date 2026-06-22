@@ -926,6 +926,7 @@ export async function stageAndroidAgentRuntime({
   spikeDir,
   cacheDir,
   bunChannel: preferredBunChannel,
+  objective = false,
   log = console.log,
 } = {}) {
   if (!androidDir)
@@ -959,7 +960,7 @@ export async function stageAndroidAgentRuntime({
   let stagedCount = 0;
   const stagedFiles = [];
   const riscv64Artifact = {
-    required: true,
+    required: objective,
     filename: RISCV64_BUN_ARTIFACT_FILENAME,
     sha256: riscv64BunSha256(),
     source: riscv64BunArtifactSource(),
@@ -976,10 +977,18 @@ export async function stageAndroidAgentRuntime({
     if (bunArch === "riscv64") {
       const riscvFile = riscv64BunFilePath();
       const riscvUrl = riscv64BunUrl();
-      const optional = process.env.ELIZA_BUN_RISCV64_OPTIONAL === "1";
-      if (!riscvFile && !riscvUrl && optional) {
+      // riscv64 is fail-closed ONLY for objective AOSP/chip builds (they ship
+      // riscv64 and must prove it). A stock arm64 phone build skips the slice
+      // when no artifact is configured instead of aborting — upstream Bun has
+      // no riscv64-linux-musl release, so a plain `build:android` would
+      // otherwise demand a binary it never packages. ELIZA_BUN_RISCV64_OPTIONAL=1
+      // still force-skips even for objective builds (native-lib iteration). A
+      // genuine riscv64 build supplies ELIZA_BUN_RISCV64_FILE/_URL, so the slice
+      // stages either way — the skip only fires when there is no artifact at all.
+      const forceSkip = process.env.ELIZA_BUN_RISCV64_OPTIONAL === "1";
+      if (!riscvFile && !riscvUrl && (!objective || forceSkip)) {
         tlog(
-          `Skipping optional ABI ${androidAbi}: no ELIZA_BUN_RISCV64_FILE or URL is set ` +
+          `Skipping ABI ${androidAbi}: no ELIZA_BUN_RISCV64_FILE or URL is set ` +
             `(upstream Bun has no riscv64-linux-musl release). Build with ` +
             `packages/app-core/scripts/bun-riscv64/build.sh and re-run for AOSP/chip evidence.`,
         );
