@@ -139,6 +139,42 @@ if (
   }
 }
 
+// The ui-smoke web server builds the renderer (`packages/app build:web`) whenever
+// the dist is stale — in BOTH stub and live mode (see playwright-ui-live-stack.ts
+// `viteRendererBuildNeeded` → `build:web`). That vite build BUNDLES @elizaos/core
+// (resolved via its `browser` export condition → dist/browser/index.browser.js).
+// On a fresh CI checkout (e.g. the scenario-pr `Zero-Key app browser *` jobs,
+// which run stub mode and never build core) that dist isn't built, so the build
+// aborts with `Failed to resolve entry for package "@elizaos/core"` and the whole
+// stack fails to start. Build core first — gated only on the ui-smoke config (NOT
+// on live mode), mirroring the view-build step above. Turbo-cached → a fast no-op
+// when already up to date; skip with ELIZA_UI_SMOKE_SKIP_CORE_BUILD=1.
+if (
+  playwrightArgs.includes("--config") &&
+  playwrightArgs.some((value) =>
+    value.includes("playwright.ui-smoke.config.ts"),
+  ) &&
+  env.ELIZA_UI_SMOKE_SKIP_CORE_BUILD !== "1"
+) {
+  const coreBuild = spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "packages", "scripts", "run-turbo.mjs"),
+      "run",
+      "build",
+      "--filter=@elizaos/core",
+    ],
+    {
+      cwd: repoRoot,
+      env,
+      stdio: "inherit",
+    },
+  );
+  if ((coreBuild.status ?? 1) !== 0) {
+    process.exit(coreBuild.status ?? 1);
+  }
+}
+
 if (
   playwrightArgs.includes("--config") &&
   playwrightArgs.some((value) =>
