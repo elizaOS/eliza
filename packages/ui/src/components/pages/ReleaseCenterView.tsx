@@ -464,13 +464,9 @@ export function ReleaseCenterView() {
   const resetUrlLabel = t("releasecenter.ResetUrl", {
     defaultValue: "Reset URL",
   });
-  const releaseDetail =
-    [
-      applicationUpdate && !desktopRuntime ? applicationUpdate.detail : null,
-      agentUpdate ? (agentUpdate.error ?? agentUpdate.detail) : null,
-    ]
-      .filter(Boolean)
-      .join(" · ") || null;
+  // Surface only a live update error here; the per-channel prose `detail`
+  // strings are explanatory copy, not functional state.
+  const releaseDetail = agentUpdate?.error ?? null;
 
   const refreshAgent = useAgentElement<HTMLButtonElement>({
     id: "updates-refresh",

@@ -28,6 +28,10 @@ const coreMock = vi.hoisted(() => ({
 		TEXT_SMALL: "TEXT_SMALL",
 	},
 	resolveServerOnlyPort: vi.fn(() => 3456),
+	// @elizaos/shared re-exports formatError (as errorMessage) from @elizaos/core,
+	// and app-control imports @elizaos/shared at module load — the mock must carry it.
+	formatError: (error: unknown): string =>
+		error instanceof Error ? error.message : String(error),
 	spawnWithTrajectoryLink: vi.fn(
 		async (
 			_runtime: unknown,

@@ -35,6 +35,9 @@ export function SlotAssignments({
   const [busySlots, setBusySlots] = useState<Set<AgentModelSlot>>(
     () => new Set(),
   );
+  const [slotErrors, setSlotErrors] = useState<
+    Partial<Record<AgentModelSlot, string>>
+  >({});
 
   const setSlotBusy = useCallback((slot: AgentModelSlot, busy: boolean) => {
     setBusySlots((prev) => {
@@ -53,6 +56,7 @@ export function SlotAssignments({
       const requestId = (requestSeqRef.current.get(slot) ?? 0) + 1;
       requestSeqRef.current.set(slot, requestId);
       setSlotBusy(slot, true);
+      setSlotErrors((prev) => ({ ...prev, [slot]: undefined }));
       try {
         const response = await client.setLocalInferenceAssignment(
           slot,
@@ -60,6 +64,15 @@ export function SlotAssignments({
         );
         if (requestSeqRef.current.get(slot) === requestId) {
           onChange(response.assignments);
+        }
+      } catch (err) {
+        // The server rejects a pick the platform's engine can't serve with a
+        // typed reason (422). Surface it inline instead of a silent no-op.
+        if (requestSeqRef.current.get(slot) === requestId) {
+          setSlotErrors((prev) => ({
+            ...prev,
+            [slot]: err instanceof Error ? err.message : String(err),
+          }));
         }
       } finally {
         if (requestSeqRef.current.get(slot) === requestId) {
@@ -127,6 +140,11 @@ export function SlotAssignments({
                     </option>
                   ))}
                 </select>
+                {slotErrors[slot] ? (
+                  <span className="text-xs text-danger">
+                    {slotErrors[slot]}
+                  </span>
+                ) : null}
               </label>
             );
           },

@@ -83,4 +83,32 @@ describe("shouldRetryStage1Generation", () => {
 			),
 		).toBe(true);
 	});
+
+	it("retries one token under the cap (the boundary the whole guard turns on)", () => {
+		// completionTokens < maxTokens is NOT a truncation: the output stopped on
+		// its own, so a fresh attempt can still fix genuinely-garbled args.
+		expect(
+			shouldRetryStage1Generation(
+				"malformed HANDLE_RESPONSE tool call",
+				rawWith({ completionTokens: MAX - 1 }),
+				MAX,
+			),
+		).toBe(true);
+	});
+
+	it("treats the max-token finish-reason aliases as truncation", () => {
+		// Providers report the cap differently (max_tokens / token-limit /
+		// output_limit); the finish-reason match must catch these aliases, not just
+		// the literal "length". An unenumerated reason (e.g. "content_filter") is
+		// NOT a cap hit and would still retry.
+		for (const finishReason of ["max_tokens", "token-limit", "output_limit"]) {
+			expect(
+				shouldRetryStage1Generation(
+					"malformed HANDLE_RESPONSE tool call",
+					rawWith({ finishReason }),
+					MAX,
+				),
+			).toBe(false);
+		}
+	});
 });

@@ -11,6 +11,8 @@
       "@elizaos/plugin-starter": [
         "./packages/examples/_plugin/dist/index.d.ts"
       ],
+      "@elizaos/plugin-facewear": ["./plugins/plugin-facewear/dist/index.d.ts"],
+      "@elizaos/plugin-facewear/*": ["./plugins/plugin-facewear/dist/*.d.ts"],
       "@elizaos/cloud-routing": ["./packages/cloud-routing/dist/index.d.ts"],
       "@elizaos/agent": ["./packages/agent/dist/index.d.ts"],
       "@elizaos/agent/*": ["./packages/agent/dist/*.d.ts"],
@@ -209,7 +211,7 @@
       "@elizaos/plugin-browser": ["./plugins/plugin-browser/dist/index.d.ts"],
       "@elizaos/plugin-vision": ["./plugins/plugin-vision/dist/index.d.ts"],
       "@elizaos/plugin-suno": ["./plugins/plugin-suno/dist/index.d.ts"],
-      "@elizaos/plugin-sql": ["./plugins/plugin-sql/src/dist/index.d.ts"],
+      "@elizaos/plugin-sql": ["./plugins/plugin-sql/src/dist/index.node.d.ts"],
       "@elizaos/plugin-tailscale": [
         "./plugins/plugin-tailscale/dist/index.d.ts"
       ],
@@ -252,7 +254,9 @@
       "@elizaos/plugin-edge-tts": ["./plugins/plugin-edge-tts/dist/index.d.ts"],
       "@elizaos/plugin-todos": ["./plugins/plugin-todos/dist/index.d.ts"],
       "@elizaos/plugin-line": ["./plugins/plugin-line/dist/index.d.ts"],
-      "@elizaos/plugin-personal-assistant": ["./plugins/plugin-personal-assistant/dist/index.d.ts"],
+      "@elizaos/plugin-personal-assistant": [
+        "./plugins/plugin-personal-assistant/dist/index.d.ts"
+      ],
       "@elizaos/plugin-screenshare": [
         "./plugins/plugin-screenshare/dist/index.d.ts"
       ],
@@ -347,7 +351,7 @@
       "@elizaos/plugin-defense-of-the-agents": [
         "./plugins/plugin-defense-of-the-agents/dist/index.d.ts"
       ],
-      "@elizaos/plugin-wallet": ["./plugins/plugin-wallet/dist/index.d.mts"],
+      "@elizaos/plugin-wallet": ["./plugins/plugin-wallet/dist/index.d.ts"],
       "@elizaos/plugin-agent-orchestrator": [
         "./plugins/plugin-agent-orchestrator/dist/index.d.ts"
       ],

@@ -16,7 +16,6 @@ packages/prompts/
 └── scripts/          # Spec + docs generators
     ├── generate-action-docs.js
     ├── generate-plugin-action-spec.js
-    ├── prompt-compression.js
     └── check-secrets.js
 ```
 

@@ -47,6 +47,7 @@ TWITTER_ENABLE_DISCOVERY=         # defaults to true when ACTIONS=true, unless s
 TWITTER_DRY_RUN=false             # simulate writes, post nothing
 TWITTER_POST_IMMEDIATELY=false    # post once on startup
 TWITTER_TARGET_USERS=             # comma-separated usernames; empty or "*" = all
+TWITTER_NICKNAMES=                # comma-separated nicknames the agent answers to (TWITTER_IDENTITY provider)
 TWITTER_MAX_TWEET_LENGTH=280
 TWITTER_RETRY_LIMIT=5
 

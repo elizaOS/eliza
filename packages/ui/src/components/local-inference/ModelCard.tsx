@@ -17,6 +17,10 @@ import {
   findInstalled,
   fitLabel,
 } from "./hub-utils";
+import {
+  catalogRuntimeClass,
+  runtimeClassDescription,
+} from "./runtime-class-ui";
 
 const formatBytes = (bytes: number): string =>
   formatByteSize(bytes, { unknownLabel: "—" });
@@ -80,6 +84,12 @@ export function ModelCard({
           </div>
           <div className="text-xs text-muted-foreground truncate">
             {parameterLabel} · {model.quant} · {model.sizeGb.toFixed(1)} GB
+          </div>
+          <div
+            className="mt-1 inline-flex w-fit rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground"
+            title={runtimeClassDescription(catalogRuntimeClass(model))}
+          >
+            {runtimeClassDescription(catalogRuntimeClass(model))}
           </div>
         </div>
         <span

@@ -36,9 +36,22 @@ so the hook resolves to the host singleton and shares the loader's React context
 | `agent-scroll-to` | `{id}`              | `{ok}`                                   |
 | `set-highlight`   | `{on}`              | `{highlighting}`                         |
 
-The legacy standard caps (`get-state`, `focus-element`, `click-element`,
-`fill-input`) also accept `{agentId}` and route through the registry; `get-state`
-returns the registry snapshot when elements are registered.
+### Standard view-interact caps
+
+Alongside the agent-surface caps above, every view accepts the protocol's
+standard caps — `get-state`, `refresh`, `focus-element`, `get-text`,
+`click-element`, `fill-input` (`STANDARD_CAPABILITIES` in
+`packages/ui/src/views/view-interact-protocol.ts`). `get-state` returns the
+registry snapshot when elements are registered; `focus-element` /
+`click-element` / `fill-input` accept `{agentId}` and route through the registry.
+
+The interact route's bypass allowlist
+(`STANDARD_CAPABILITY_IDS` in `packages/agent/src/api/views-routes.ts`) is the
+**union** of these two sets — `AGENT_SURFACE_CAPABILITY_IDS` ∪
+`STANDARD_CAPABILITIES` — derived directly from these canonical sources, so a
+view with its own declared `capabilities` allowlist still accepts every cap the
+shell dispatches generically. Edit the ids in the two source files; the route
+follows.
 
 ## Converting a view
 

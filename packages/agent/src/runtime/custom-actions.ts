@@ -567,6 +567,20 @@ export interface GuardedHttpGetResult {
  * https scheme, rejects redirects, and caps both the timeout and the number of
  * body bytes read.
  */
+// Default User-Agent for guarded GETs. Many public REST/JSON APIs (crypto
+// price, weather, news endpoints) reject undici's default `node` User-Agent - or
+// a missing one - with HTTP 403, which silently broke every WEB_FETCH live-info
+// lookup. A browser-like string is what these WAF-fronted endpoints accept; it
+// is overridable via ELIZA_WEB_FETCH_USER_AGENT so operators can refresh it
+// without a code change, and any caller-supplied User-Agent header still wins.
+const GUARDED_GET_DEFAULT_USER_AGENT =
+  process.env.ELIZA_WEB_FETCH_USER_AGENT?.trim() ||
+  [
+    "Mozilla/5.0 (X11; Linux x86_64)",
+    "AppleWebKit/537.36 (KHTML, like Gecko)",
+    "Chrome/124.0.0.0 Safari/537.36",
+  ].join(" ");
+
 export async function performGuardedHttpGet(
   url: string,
   opts: GuardedHttpGetOptions = {},
@@ -589,9 +603,18 @@ export async function performGuardedHttpGet(
     return { ok: false, status: 0, text: "", blocked: true };
   }
 
+  // Build headers via the Headers API so a caller-supplied User-Agent (in any
+  // casing) cleanly overrides the default rather than being comma-joined onto it.
+  const headers = new Headers({ "User-Agent": GUARDED_GET_DEFAULT_USER_AGENT });
+  if (opts.headers) {
+    for (const [key, value] of Object.entries(opts.headers)) {
+      headers.set(key, value);
+    }
+  }
+
   const fetchOpts: RequestInit = {
     method: "GET",
-    headers: opts.headers,
+    headers,
     redirect: "manual",
   };
 

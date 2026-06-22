@@ -2622,6 +2622,9 @@
     "packages/prompts": {
       "name": "@elizaos/prompts",
       "version": "2.0.3-beta.2",
+      "devDependencies": {
+        "@elizaos/core": "workspace:*",
+      },
     },
     "packages/registry": {
       "name": "@elizaos/registry",

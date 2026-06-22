@@ -1,22 +1,24 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "../../../tsconfig.dist-paths.json",
   "compilerOptions": {
     "composite": false,
     "declaration": false,
     "declarationMap": false,
     "incremental": false,
     "noEmit": true,
-    "rootDir": "../../../",
+    "rootDir": ".",
     "strict": false,
     "types": ["node", "bun-types"],
     "paths": {
+      "@elizaos/core": ["../../../packages/core/dist/index.d.ts"],
+      "@elizaos/shared": ["../../../packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["../../../packages/shared/dist/*"],
+      "@elizaos/ui": ["../../../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/*": ["../../../packages/ui/dist/*"],
       "@elizaos/plugin-facewear": [
-        "../../../plugins/plugin-facewear/src/index.ts"
+        "../../../plugins/plugin-facewear/dist/index.d.ts"
       ],
-      "@elizaos/plugin-facewear/register": [
-        "../../../plugins/plugin-facewear/src/register.ts"
-      ],
-      "@elizaos/plugin-facewear/*": ["../../../plugins/plugin-facewear/src/*"]
+      "@elizaos/plugin-facewear/*": ["../../../plugins/plugin-facewear/dist/*"]
     }
   },
   "include": [
@@ -24,13 +26,13 @@
     "eliza-runtime-smoke.ts",
     "evenhub-smoke.ts",
     "hardware-evidence.ts",
+    "hardware-local-bluetooth.ts",
     "hardware-report-status.ts",
     "hardware-smoke.ts",
     "noble-hardware-smoke.ts",
     "package-smoke.ts",
     "simulator-automation-smoke.ts",
-    "validate-hardware-report.ts",
-    "../../../plugins/plugin-facewear/src/**/*.ts"
+    "validate-hardware-report.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

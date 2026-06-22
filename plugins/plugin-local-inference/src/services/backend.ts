@@ -25,7 +25,12 @@
 
 import { findCatalogModel } from "./catalog";
 import type { StructuredGenerateParams } from "./structured-output";
-import type { CatalogModel, LocalRuntimeKernel } from "./types";
+import {
+	type CatalogModel,
+	classifyCatalogModelRuntimeClass,
+	type LocalRuntimeKernel,
+	type RuntimeClass,
+} from "./types";
 import type { VerifierStreamEvent } from "./voice/types";
 
 /**
@@ -66,6 +71,13 @@ export interface BackendPlan {
 	modelId?: string;
 	/** Catalog entry, when the caller already resolved it. */
 	catalog?: CatalogModel;
+	/**
+	 * Runtime class of the model being loaded, resolved by the caller from
+	 * the installed-model registry (the canonical `runtimeClass` field). When
+	 * absent the dispatcher derives it from the catalog entry — a known
+	 * Eliza-1 tier is `fused-eliza1`, everything else `generic-gguf`.
+	 */
+	runtimeClass?: RuntimeClass;
 	/**
 	 * Per-load runtime overrides resolved by the active-model coordinator.
 	 * The dispatcher passes these through verbatim to the chosen backend
@@ -169,7 +181,7 @@ export interface LocalRuntimeLoadConfig {
  */
 export interface LocalInferenceBackend {
 	/** Identifier for the concrete backend implementation. */
-	readonly id: "capacitor-llama" | "llama-cpp";
+	readonly id: "capacitor-llama" | "llama-cpp" | "generic-gguf";
 	available(): Promise<boolean>;
 	load(plan: BackendPlan): Promise<void>;
 	unload(): Promise<void>;
@@ -249,6 +261,35 @@ export interface LocalInferenceBackend {
 	currentRuntimeLoadConfig?(): LocalRuntimeLoadConfig | null;
 }
 
+/**
+ * Raised when a generic single-file GGUF is assigned/loaded but the current
+ * platform has no explicit-`modelPath` runtime wired to serve it. This is a
+ * loud, typed failure — never a silent fall-through to the Eliza-1 fused path
+ * (which is bundle-locked to the Qwen3.5 vocab and would gibberish-tokenize an
+ * arbitrary GGUF).
+ *
+ * On mobile the explicit-path `llama-cpp-capacitor` binding serves generic
+ * GGUF; on desktop the explicit-path FFI binding (the retired libllama +
+ * eliza-llama-shim) is not built into the shipping `libelizainference`, so this
+ * error names the gap instead of crashing.
+ */
+export class GenericRuntimeUnavailableError extends Error {
+	readonly code = "GENERIC_RUNTIME_UNAVAILABLE" as const;
+	readonly modelPath: string;
+	constructor(modelPath: string) {
+		super(
+			`[local-inference] No generic single-file GGUF runtime is available on this platform to serve "${modelPath}". ` +
+				"Generic (non-Eliza-1) local models need the explicit-modelPath binding: " +
+				"on mobile this is llama-cpp-capacitor; on desktop it requires a libllama-backed " +
+				"runtime built into libelizainference (the fused Eliza-1 lib is bundle-locked to the " +
+				"Eliza-1 vocab and cannot serve an arbitrary GGUF). Pick an Eliza-1 model, or rebuild " +
+				"the runtime with the generic GGUF binding.",
+		);
+		this.name = "GenericRuntimeUnavailableError";
+		this.modelPath = modelPath;
+	}
+}
+
 export type BackendOverride = "auto" | "llama-cpp";
 
 export function readBackendOverride(): BackendOverride {
@@ -310,9 +351,22 @@ export function __resetReducedModeWarnedForTests(): void {
 }
 
 export interface BackendDecision {
-	backend: "llama-cpp";
+	/**
+	 * Concrete backend slot the dispatcher routes to. `"llama-cpp"` is the
+	 * fused `libelizainference` path that serves Eliza-1 bundles;
+	 * `"generic-gguf"` is the explicit-`modelPath` runtime for a single
+	 * downloaded/scanned GGUF.
+	 */
+	backend: "llama-cpp" | "generic-gguf";
+	/** Which model class this decision resolved to. */
+	runtimeClass: RuntimeClass;
 	/** Why this backend was chosen — for diagnostics and warnings. */
-	reason: "env-override" | "kernel-required" | "preferred-backend" | "default";
+	reason:
+		| "env-override"
+		| "kernel-required"
+		| "preferred-backend"
+		| "generic-gguf"
+		| "default";
 	/** Required kernels declared by the catalog, when any. */
 	kernels: LocalRuntimeKernel[];
 	/**
@@ -342,6 +396,12 @@ export interface BackendDecision {
 export function decideBackend(input: {
 	override: BackendOverride;
 	catalog: CatalogModel | undefined;
+	/**
+	 * Runtime class resolved by the caller from the installed-model registry.
+	 * Wins over catalog-derived classification — an external GGUF has no
+	 * catalog entry, so its class is only knowable from the registry row.
+	 */
+	runtimeClass?: RuntimeClass;
 	llamaCppAvailable: boolean;
 	binaryKernels?: Partial<Record<LocalRuntimeKernel | string, boolean>> | null;
 }): BackendDecision {
@@ -352,19 +412,40 @@ export function decideBackend(input: {
 		kernels,
 		input.binaryKernels ?? null,
 	);
+	const runtimeClass = resolveRuntimeClassForDecision(
+		input.runtimeClass,
+		catalog,
+	);
 
-	if (override === "llama-cpp") {
+	// `ELIZA_INFERENCE_BACKEND=llama-cpp` forces the fused path. It is the
+	// Eliza-1 escape hatch; it does not apply to a generic GGUF (the fused lib
+	// cannot serve a non-Eliza-1 vocab), so a generic model still routes to the
+	// generic runtime even under the override.
+	if (override === "llama-cpp" && runtimeClass === "fused-eliza1") {
 		return {
 			backend: "llama-cpp",
+			runtimeClass,
 			reason: "env-override",
 			kernels,
 			unsatisfiedKernels,
 		};
 	}
 
+	if (runtimeClass === "generic-gguf") {
+		return {
+			backend: "generic-gguf",
+			runtimeClass,
+			reason: "generic-gguf",
+			// Generic GGUF runs with stock f16 KV; Eliza-1 fork kernels do not
+			// apply to it, so we never surface them as required/unsatisfied here.
+			kernels: [],
+		};
+	}
+
 	if (kernels.length > 0) {
 		return {
 			backend: "llama-cpp",
+			runtimeClass,
 			reason: "kernel-required",
 			kernels,
 			unsatisfiedKernels,
@@ -372,10 +453,27 @@ export function decideBackend(input: {
 	}
 	return {
 		backend: "llama-cpp",
+		runtimeClass,
 		reason: "default",
 		kernels,
 		unsatisfiedKernels,
 	};
+}
+
+/**
+ * Resolve the model class for a backend decision. The caller's
+ * registry-derived `runtimeClass` is authoritative (an external GGUF has no
+ * catalog entry). When absent, classify the catalog entry; with neither, a
+ * model the dispatcher cannot place is treated as `generic-gguf` so it routes
+ * to the explicit-`modelPath` runtime rather than the bundle-locked fused path.
+ */
+function resolveRuntimeClassForDecision(
+	explicit: RuntimeClass | undefined,
+	catalog: CatalogModel | undefined,
+): RuntimeClass {
+	if (explicit) return explicit;
+	if (catalog) return classifyCatalogModelRuntimeClass(catalog);
+	return "generic-gguf";
 }
 
 /**
@@ -432,13 +530,21 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		private readonly probeBinaryKernels?: () => Partial<
 			Record<string, boolean>
 		> | null,
+		/**
+		 * Generic single-file GGUF runtime — the explicit-`modelPath` path for a
+		 * model the user downloaded/scanned (no Eliza-1 bundle layout). The
+		 * dispatcher routes here when the decision's class is `generic-gguf`.
+		 * Optional: a host with no generic runtime wired raises a typed
+		 * unavailable error from `load()` rather than crashing the fused path.
+		 */
+		private readonly genericGguf?: LocalInferenceBackend | null,
 	) {}
 
 	async available(): Promise<boolean> {
 		return this.ffiStreaming.available();
 	}
 
-	activeBackendId(): "capacitor-llama" | "llama-cpp" | null {
+	activeBackendId(): "capacitor-llama" | "llama-cpp" | "generic-gguf" | null {
 		return this.active ? this.active.id : null;
 	}
 
@@ -455,14 +561,34 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		return decideBackend({
 			override: readBackendOverride(),
 			catalog,
+			runtimeClass: plan.runtimeClass,
 			llamaCppAvailable: this.probeFfiAvailable(),
 			binaryKernels: this.probeBinaryKernels?.() ?? null,
 		});
 	}
 
 	async load(plan: BackendPlan): Promise<void> {
-		let effectivePlan = plan;
 		const decision = this.decide(plan);
+
+		// Generic single-file GGUF: route to the explicit-`modelPath` runtime.
+		// A host without a generic runtime wired (or a runtime that reports
+		// unavailable) raises a typed error here instead of trying to load a
+		// non-Eliza-1 GGUF through the bundle-locked fused path (which would
+		// gibberish-tokenize or crash).
+		if (decision.backend === "generic-gguf") {
+			const generic = this.genericGguf;
+			if (!generic || !(await generic.available())) {
+				throw new GenericRuntimeUnavailableError(plan.modelPath);
+			}
+			if (this.active && this.active !== generic) {
+				await this.active.unload();
+			}
+			this.active = generic;
+			await generic.load(plan);
+			return;
+		}
+
+		let effectivePlan = plan;
 		if (decision.unsatisfiedKernels && decision.unsatisfiedKernels.length > 0) {
 			const missing = decision.unsatisfiedKernels.join(", ");
 			if (localAllowStockKv()) {

@@ -4,6 +4,7 @@ import {
 	DEVICE_TIER_ORDER,
 	DEVICE_TIER_THRESHOLDS,
 	effectiveModelMemoryGb,
+	selectBestEliza1FitForDevice,
 	TIER_WARNING_COPY,
 } from "./device-tier";
 import type { HardwareProbe } from "./types";
@@ -23,6 +24,90 @@ const baseProbe: HardwareProbe = {
 function probe(overrides: Partial<HardwareProbe>): HardwareProbe {
 	return { ...baseProbe, ...overrides };
 }
+
+describe("selectBestEliza1FitForDevice — mobile guard never hands a phone 9B", () => {
+	const prevPlatform = process.env.ELIZA_PLATFORM;
+	function withPlatform(value: string | undefined, fn: () => void) {
+		if (value === undefined) delete process.env.ELIZA_PLATFORM;
+		else process.env.ELIZA_PLATFORM = value;
+		try {
+			fn();
+		} finally {
+			if (prevPlatform === undefined) delete process.env.ELIZA_PLATFORM;
+			else process.env.ELIZA_PLATFORM = prevPlatform;
+		}
+	}
+
+	// The on-device bun probe: reports linux + arm64 + no gpu + no mobile field.
+	const devicePhoneProbe = probe({
+		totalRamGb: 7.4,
+		freeRamGb: 3.3,
+		gpu: null,
+		arch: "arm64",
+		platform: "linux",
+	});
+
+	it("this 8GB phone lands on 2B with a phone-sized window", () => {
+		withPlatform("android", () => {
+			const fit = selectBestEliza1FitForDevice(devicePhoneProbe);
+			expect(fit?.tierId).toBe("eliza-1-2b");
+			expect(fit?.contextLength).toBeLessThanOrEqual(65536);
+		});
+	});
+
+	it("caps a HIGH-RAM phone at 4B (never 9B+) even when the probe says linux", () => {
+		const bigPhone = probe({
+			totalRamGb: 24,
+			freeRamGb: 16,
+			gpu: null,
+			arch: "arm64",
+			platform: "linux",
+		});
+		withPlatform("android", () => {
+			const fit = selectBestEliza1FitForDevice(bigPhone);
+			expect(["eliza-1-2b", "eliza-1-4b"]).toContain(fit?.tierId);
+			expect(fit?.tierId).not.toBe("eliza-1-9b");
+			expect(fit?.contextLength).toBeLessThanOrEqual(65536);
+		});
+	});
+
+	it("arm64 phones never hit the AVX2/NEON POOR gate (NEON is mandatory on ARMv8)", () => {
+		// The on-device os-fallback probe (Pixel 9a) reports arm64 + no cpuFeatures.
+		// Before the fix it fell to "No AVX2 baseline" → POOR; that wrong reason must
+		// be gone (NEON is mandatory on ARMv8).
+		const assessment = classifyDeviceTier(devicePhoneProbe);
+		expect(assessment.reasons.some((r) => /AVX2|< 4 CPU cores/i.test(r))).toBe(
+			false,
+		);
+		// A 16GB arm64 phone (above the mobile floor) with no cpuFeatures now runs
+		// local instead of being misclassified cloud-only by the SIMD gate.
+		const midPhone = probe({
+			totalRamGb: 16,
+			freeRamGb: 9,
+			gpu: null,
+			arch: "arm64",
+			cpuFeatures: undefined,
+		});
+		expect(classifyDeviceTier(midPhone).canRunLocalLm).toBe(true);
+	});
+
+	it("an 8GB phone is OKAY / local-capable (runs eliza-1 2B), not cloud-only POOR", () => {
+		withPlatform("android", () => {
+			const assessment = classifyDeviceTier(devicePhoneProbe);
+			expect(assessment.tier).toBe("OKAY");
+			expect(assessment.canRunLocalLm).toBe(true);
+		});
+	});
+
+	it("the SAME 24GB box as a desktop (no android env) may use a larger tier", () => {
+		const bigBox = probe({ totalRamGb: 48, freeRamGb: 40, gpu: null });
+		withPlatform(undefined, () => {
+			const fit = selectBestEliza1FitForDevice(bigBox);
+			// effective = 48*0.5 = 24 → 9B fits on a desktop (not capped).
+			expect(fit?.tierId).toBe("eliza-1-9b");
+		});
+	});
+});
 
 describe("classifyDeviceTier", () => {
 	describe("MAX tier", () => {
@@ -197,7 +282,9 @@ describe("classifyDeviceTier", () => {
 			expect(result.reasons.join(" ")).toMatch(/AVX2|cores/);
 		});
 
-		it("classifies ARM without CPU feature evidence as POOR", () => {
+		it("classifies 32-bit ARM (ARMv7) without NEON evidence as POOR", () => {
+			// NEON is optional on 32-bit ARMv7, so we still require explicit feature
+			// evidence there (unlike arm64/ARMv8, where NEON is mandatory).
 			const result = classifyDeviceTier(
 				probe({
 					totalRamGb: 32,
@@ -205,7 +292,7 @@ describe("classifyDeviceTier", () => {
 					gpu: null,
 					cpuCores: 8,
 					platform: "linux",
-					arch: "arm64",
+					arch: "arm",
 					cpuFeatures: undefined,
 				}),
 			);

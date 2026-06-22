@@ -13,10 +13,10 @@
 
   /* Backgrounds */
   --bg: var(--brand-white);
-  --bg-accent: rgba(11, 53, 241, 0.08);
+  --bg-accent: rgba(0, 0, 0, 0.05);
   --bg-elevated: rgba(255, 255, 255, 0.94);
-  --bg-hover: rgba(11, 53, 241, 0.1);
-  --bg-muted: rgba(11, 53, 241, 0.12);
+  --bg-hover: rgba(0, 0, 0, 0.06);
+  --bg-muted: rgba(0, 0, 0, 0.08);
 
   --card: var(--brand-white);
   --card-foreground: var(--brand-black);
@@ -40,7 +40,7 @@
   --border-strong: rgba(0, 0, 0, 0.22);
   --border-hover: var(--brand-orange);
   --input: var(--brand-white);
-  --ring: var(--brand-blue);
+  --ring: var(--brand-orange);
 
   /* Accent */
   --accent: var(--brand-orange);
@@ -77,16 +77,16 @@
   --status-info: var(--muted-strong);
   --status-info-bg: rgba(0, 0, 0, 0.06);
 
-  --focus: rgba(11, 53, 241, 0.18);
+  --focus: rgba(255, 88, 0, 0.2);
   --focus-ring: none;
   --scrollbar-track: rgba(255, 255, 255, 0.3);
-  --scrollbar-thumb-start: rgba(11, 53, 241, 0.42);
-  --scrollbar-thumb-mid: rgba(11, 53, 241, 0.58);
-  --scrollbar-thumb-end: rgba(11, 53, 241, 0.66);
+  --scrollbar-thumb-start: rgba(0, 0, 0, 0.22);
+  --scrollbar-thumb-mid: rgba(0, 0, 0, 0.3);
+  --scrollbar-thumb-end: rgba(0, 0, 0, 0.36);
   --scrollbar-thumb-hover-start: rgba(255, 88, 0, 0.56);
   --scrollbar-thumb-hover-mid: rgba(255, 88, 0, 0.7);
   --scrollbar-thumb-hover-end: rgba(255, 88, 0, 0.78);
-  --scrollbar-thumb-edge: rgba(11, 53, 241, 0.12);
+  --scrollbar-thumb-edge: rgba(0, 0, 0, 0.1);
 
   /* Header */
   --header-bar-bg: rgba(255, 255, 255, 0.9);
@@ -183,7 +183,7 @@
   --border-strong: rgba(255, 255, 255, 0.22);
   --border-hover: var(--brand-orange);
   --input: rgba(255, 255, 255, 0.08);
-  --ring: var(--brand-blue);
+  --ring: var(--brand-orange);
 
   --accent: var(--brand-orange);
   --accent-rgb: 255, 88, 0;
@@ -216,12 +216,12 @@
   --status-info: var(--muted-strong);
   --status-info-bg: rgba(255, 255, 255, 0.08);
 
-  --focus: rgba(11, 53, 241, 0.18);
+  --focus: rgba(255, 88, 0, 0.22);
   --focus-ring: none;
   --scrollbar-track: transparent;
-  --scrollbar-thumb-start: rgba(11, 53, 241, 0.88);
-  --scrollbar-thumb-mid: rgba(11, 53, 241, 0.72);
-  --scrollbar-thumb-end: rgba(11, 53, 241, 0.8);
+  --scrollbar-thumb-start: rgba(255, 255, 255, 0.32);
+  --scrollbar-thumb-mid: rgba(255, 255, 255, 0.24);
+  --scrollbar-thumb-end: rgba(255, 255, 255, 0.28);
   --scrollbar-thumb-hover-start: rgba(255, 88, 0, 0.94);
   --scrollbar-thumb-hover-mid: rgba(255, 88, 0, 0.82);
   --scrollbar-thumb-hover-end: rgba(255, 88, 0, 0.88);

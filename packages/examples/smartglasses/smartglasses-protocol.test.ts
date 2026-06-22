@@ -10,7 +10,7 @@ import {
   microphoneActionForInteractionEvent,
   paginateDisplayText,
   parseG1Notification,
-} from "../../../plugins/plugin-facewear/src/protocol/smartglasses.js";
+} from "@elizaos/plugin-facewear/protocol/smartglasses";
 
 test("G1 display text wraps by measured display width and packet payload limit", () => {
   const lines = formatDisplayLines(

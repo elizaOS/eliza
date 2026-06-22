@@ -92,34 +92,19 @@ export function WebsiteBlockerSettingsCard({
   );
 
   if (mode === "web" || mode === "mobile") {
+    // Flat row to match the permission rows above it (no card chrome / prose).
     return (
-      <div className="rounded-xl border border-border/60 bg-card/92 px-4 py-4 shadow-sm">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-bg/40">
-            <Monitor className="h-5 w-5 text-muted" aria-hidden />
-          </div>
-          <div className="min-w-0 space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="font-bold text-sm text-txt">{title}</div>
-              <Badge variant="outline">
-                {translate(t, "permissionssection.desktopOnly", "Desktop only")}
-              </Badge>
-            </div>
-            <div className="text-xs-tight leading-5 text-muted">
-              {mode === "web"
-                ? translate(
-                    t,
-                    "permissionssection.websiteBlocking.webInfo",
-                    "Use the desktop app to manage system hosts blocking.",
-                  )
-                : translate(
-                    t,
-                    "permissionssection.websiteBlocking.mobileInfo",
-                    "Install the desktop build to manage blocked sites.",
-                  )}
-            </div>
-          </div>
+      <div className="flex items-center gap-3 py-2.5">
+        <Monitor
+          className="h-[18px] w-[18px] shrink-0 text-muted/80"
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1 text-sm font-medium text-txt">
+          {title}
         </div>
+        <Badge variant="outline">
+          {translate(t, "permissionssection.desktopOnly", "Desktop only")}
+        </Badge>
       </div>
     );
   }

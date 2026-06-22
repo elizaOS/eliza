@@ -14,11 +14,61 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { findCatalogModel, isDefaultEligibleId } from "./catalog";
+import { CapacitorExplicitModelPathLoader } from "./generic-gguf-backend";
 import { localInferenceRoot } from "./paths";
 import { listInstalledModels } from "./registry";
-import type { AgentModelSlot, InstalledModel, ModelAssignments } from "./types";
+import {
+	type AgentModelSlot,
+	classifyInstalledModelRuntimeClass,
+	type InstalledModel,
+	type ModelAssignments,
+	type RuntimeClass,
+} from "./types";
 
 const ASSIGNMENTS_FILENAME = "assignments.json";
+
+/**
+ * Raised when a slot assignment names a model the current platform's engine
+ * cannot serve. Carries a typed reason so the route layer can surface a clean
+ * 4xx instead of a deferred lazy-load failure with no UI signal.
+ */
+export class AssignmentNotServableError extends Error {
+	readonly code = "ASSIGNMENT_NOT_SERVABLE" as const;
+	readonly slot: AgentModelSlot;
+	readonly modelId: string;
+	readonly runtimeClass: RuntimeClass;
+	constructor(args: {
+		slot: AgentModelSlot;
+		modelId: string;
+		runtimeClass: RuntimeClass;
+		message: string;
+	}) {
+		super(args.message);
+		this.name = "AssignmentNotServableError";
+		this.slot = args.slot;
+		this.modelId = args.modelId;
+		this.runtimeClass = args.runtimeClass;
+	}
+}
+
+/**
+ * Whether the current platform can serve a model of the given runtime class.
+ * Fused Eliza-1 bundles are servable everywhere a fused libelizainference is
+ * present (the engine's own load gate enforces the build requirement).
+ * Generic single-file GGUF needs the explicit-`modelPath` binding, which ships
+ * on mobile (`llama-cpp-capacitor`) but is not built into the desktop
+ * libelizainference — so a desktop host cannot serve a generic model until
+ * that binding is rebuilt in.
+ */
+export function canServeRuntimeClassOnHost(
+	runtimeClass: RuntimeClass,
+	loader: {
+		available(): boolean | Promise<boolean>;
+	} = new CapacitorExplicitModelPathLoader(),
+): boolean | Promise<boolean> {
+	if (runtimeClass === "fused-eliza1") return true;
+	return loader.available();
+}
 
 interface AssignmentsFile {
 	version: 1;
@@ -139,17 +189,44 @@ export async function setAssignment(
 	const current = await readAssignments();
 	const next: ModelAssignments = { ...current };
 	if (modelId) {
-		if (!isCuratedEliza1AssignmentId(modelId)) {
-			throw new Error(
-				"Local inference assignments are limited to curated Eliza-1 tiers.",
-			);
-		}
+		await assertAssignmentServable(slot, modelId);
 		next[slot] = modelId;
 	} else {
 		delete next[slot];
 	}
 	await writeAssignments(next);
 	return next;
+}
+
+/**
+ * Validate at the boundary that the current platform's engine can actually
+ * serve `modelId` before persisting the assignment. A non-Eliza-1 GGUF picked
+ * on a host without the explicit-`modelPath` binding (desktop today) is
+ * rejected with a typed reason — no silent deferred lazy-load failure. An id
+ * that is not in the installed registry (e.g. a catalog tier not yet
+ * downloaded) is allowed through: assignments are a declared policy and the
+ * download/readiness layer surfaces the missing file separately.
+ */
+async function assertAssignmentServable(
+	slot: AgentModelSlot,
+	modelId: string,
+): Promise<void> {
+	const installed = await listInstalledModels();
+	const target = installed.find((m) => m.id === modelId);
+	if (!target) return;
+	const runtimeClass = classifyInstalledModelRuntimeClass(target);
+	const servable = await canServeRuntimeClassOnHost(runtimeClass);
+	if (servable) return;
+	throw new AssignmentNotServableError({
+		slot,
+		modelId,
+		runtimeClass,
+		message:
+			`Cannot assign "${target.displayName}" to ${slot}: it is a generic single-file GGUF, ` +
+			"and this platform has no runtime to serve a non-Eliza-1 model. Generic local models " +
+			"need the explicit-modelPath binding (available on mobile; not built into the desktop " +
+			"runtime yet). Pick an Eliza-1 model for this slot, or run on a platform with the generic binding.",
+	});
 }
 
 /**

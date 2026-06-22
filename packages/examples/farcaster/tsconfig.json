@@ -20,7 +20,9 @@
       "@elizaos/plugin-openai": [
         "../../../plugins/plugin-openai/dist/index.d.ts"
       ],
-      "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/dist/index.d.ts"]
+      "@elizaos/plugin-sql": [
+        "../../../plugins/plugin-sql/src/dist/index.node.d.ts"
+      ]
     }
   },
   "include": ["*.ts"],

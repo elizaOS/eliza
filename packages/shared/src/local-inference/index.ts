@@ -87,6 +87,12 @@ export {
   ROUTING_POLICIES,
 } from "./routing-preferences.js";
 export {
+  classifyCatalogModelRuntimeClass,
+  classifyInstalledModelRuntimeClass,
+  type RuntimeClass,
+  withRuntimeClass,
+} from "./runtime-class.js";
+export {
   computeGenerationThroughput,
   type GenerationCounters,
   type GenerationThroughput,

@@ -27,6 +27,7 @@
  */
 
 import type { JSONSchema } from "../types/model";
+import { stripJsonStructuralJunkReply } from "./json-output";
 import type { ResponseHandlerFieldEvaluator } from "./response-handler-field-evaluator";
 
 /**
@@ -57,12 +58,6 @@ function isExpressiveEmotionEnumValue(
 	value: string,
 ): value is ExpressiveEmotionEnumValue {
 	return (EXPRESSIVE_EMOTION_ENUM_VALUES as readonly string[]).includes(value);
-}
-
-function stripJsonStructuralJunkReply(value: string): string {
-	const trimmed = value.trim();
-	if (!trimmed) return "";
-	return /^[\s{}[\]":,]+$/.test(trimmed) ? "" : trimmed;
 }
 
 // ---------------------------------------------------------------------------

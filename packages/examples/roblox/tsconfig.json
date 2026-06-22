@@ -11,7 +11,19 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2022",
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@elizaos/core": ["../../core/dist/index.d.ts"],
+      "@elizaos/plugin-openai": [
+        "../../../plugins/plugin-openai/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-roblox": [
+        "../../../plugins/plugin-roblox/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-sql": [
+        "../../../plugins/plugin-sql/src/dist/index.node.d.ts"
+      ]
+    }
   },
   "exclude": ["node_modules", "dist"],
   "include": ["*.ts", "**/*.ts"]

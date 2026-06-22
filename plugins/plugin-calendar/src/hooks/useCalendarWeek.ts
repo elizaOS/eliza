@@ -6,8 +6,13 @@
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
-import { client, useAppSelector } from "@elizaos/ui";
+import { client } from "@elizaos/ui/api";
+import { useAppSelector } from "@elizaos/ui/state";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import "../api/client-calendar.js";
+import type { CalendarClientMethods } from "../api/client-calendar.js";
+
+const calendarClient = client as typeof client & CalendarClientMethods;
 
 export type CalendarViewMode = "day" | "week" | "month";
 
@@ -126,7 +131,7 @@ export function useCalendarWeek(
     setLoading(true);
     setError(null);
     try {
-      const feed = await client.getLifeOpsCalendarFeed({
+      const feed = await calendarClient.getLifeOpsCalendarFeed({
         side: "owner",
         timeMin: windowStart.toISOString(),
         timeMax: windowEnd.toISOString(),

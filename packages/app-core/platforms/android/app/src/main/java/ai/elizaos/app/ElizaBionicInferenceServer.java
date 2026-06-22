@@ -277,12 +277,15 @@ final class ElizaBionicInferenceServer {
                 }
             }
             // Drop the previous turn's KV + sampler state for a clean re-prefill.
-            // The fused nativeLlmStreamReset is non-MTP only and returns a
-            // negative code for a speculative (MTP) stream, so on failure
-            // close + reopen the stream. The resident model/context stay loaded
-            // (only the lightweight stream is recreated), and re-prefill cost is
-            // identical to a reset.
-            if (ElizaVoiceNative.nativeLlmStreamReset(residentStream) != 0) {
+            // The fused nativeLlmStreamReset now handles speculative (MTP)
+            // streams too (it clears the engine's target+draft KV and the
+            // committed-token accumulator), so the fast in-place reset is the
+            // primary path. nativeLlmStreamReset returns 1 on success, 0 on
+            // failure; only on an actual failure do we close + reopen the
+            // stream as a fallback. The resident model/context stay loaded
+            // either way (only the lightweight stream is recreated), so the
+            // fallback re-prefill cost is identical to a reset.
+            if (ElizaVoiceNative.nativeLlmStreamReset(residentStream) != 1) {
                 ElizaVoiceNative.nativeLlmStreamClose(residentStream);
                 residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
                     residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");

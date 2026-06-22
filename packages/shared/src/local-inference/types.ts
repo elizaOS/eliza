@@ -99,6 +99,16 @@ export interface InstalledModel {
   bundleVerifiedAt?: string;
   runtimeRole?: "chat" | "mtp-drafter";
   companionFor?: string;
+  /**
+   * Which desktop text runtime serves this model. `"fused-eliza1"` for an
+   * Eliza-1 bundle (full pipeline: same-file MTP, fork KV kernels, fused
+   * voice/vision); `"generic-gguf"` for a single downloaded/scanned GGUF
+   * served from an explicit `path` with stock f16 KV and reduced
+   * optimizations. Backfilled at the registry-read boundary for legacy rows
+   * via `classifyInstalledModelRuntimeClass`; consumers read the field rather
+   * than re-deriving it from the id.
+   */
+  runtimeClass?: import("./runtime-class.js").RuntimeClass;
 }
 
 export type ModelBucket = "small" | "mid" | "large" | "xl";
@@ -424,6 +434,14 @@ export interface CatalogModel {
   };
   /** Runtime-specific acceleration metadata. */
   runtime?: LocalRuntimeAcceleration;
+  /**
+   * Which desktop text runtime serves this catalog model. `"fused-eliza1"`
+   * for the curated Eliza-1 tiers (full pipeline); `"generic-gguf"` for
+   * synthetic Hugging Face / ModelScope search results (reduced
+   * optimizations). Populated by the catalog factory and the hub-search
+   * synthesizers; consumers read the field rather than matching the id prefix.
+   */
+  runtimeClass?: import("./runtime-class.js").RuntimeClass;
   /**
    * Whether this tier's bundle is published
    * on Hugging Face yet. Defaults to `"published"` when omitted, which

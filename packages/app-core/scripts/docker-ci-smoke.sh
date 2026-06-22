@@ -69,11 +69,12 @@ BOOT_CRASH_PATTERNS=(
   'ERR_MODULE_NOT_FOUND'
   'ERR_REQUIRE_ESM'
   'MODULE_NOT_FOUND'
-  # The agent now starts under plain `node` (no tsx loader, #8837). If any
-  # workspace package shipped without a built dist, link-docker-local-app-packages.mjs
-  # rewrites its exports to ./src/*.ts, and importing that at runtime throws
-  # ERR_UNKNOWN_FILE_EXTENSION on the core boot path. Fail fast on that signature
-  # instead of waiting out the full health timeout.
+  # Defense-in-depth: the agent boots under the tsx loader (see APP_CMD_START),
+  # so .ts extensions resolve at runtime today. But if a workspace package ever
+  # shipped without a built dist, link-docker-local-app-packages.mjs rewrites its
+  # exports to ./src/*.ts, and importing that under a tsx-less or mislinked boot
+  # would throw ERR_UNKNOWN_FILE_EXTENSION on the core boot path. Fail fast on that
+  # signature instead of waiting out the full health timeout.
   'ERR_UNKNOWN_FILE_EXTENSION'
   'Unknown file extension'
   'Failed to start'

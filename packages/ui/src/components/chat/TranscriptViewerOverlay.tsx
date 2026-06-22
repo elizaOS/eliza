@@ -434,16 +434,40 @@ export function TranscriptViewerOverlay({
         <div className="min-h-0 flex-1 overflow-auto p-4">
           {audioUrl ? (
             // Listen to the real recorded audio inline (the Transcripts view
-            // adds word-synced playback — "Open in Transcripts" below).
-            <audio
-              src={audioUrl}
-              controls
-              preload="metadata"
-              data-testid="transcript-audio"
-              className="mb-3 w-full"
-            >
-              <track kind="captions" />
-            </audio>
+            // adds word-synced playback — "Open in Transcripts" below). The
+            // recording's own save/share sit with the player, so the footer
+            // stays about the transcript text.
+            <div className="mb-3 space-y-1.5">
+              <audio
+                src={audioUrl}
+                controls
+                preload="metadata"
+                data-testid="transcript-audio"
+                className="w-full"
+              >
+                <track kind="captions" />
+              </audio>
+              <div className="flex items-center gap-1 text-xs text-white/50">
+                <FileAudio className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span className="mr-1">Recording</span>
+                <button
+                  type="button"
+                  onClick={handleDownloadAudio}
+                  data-testid="transcript-save-audio"
+                  className="rounded px-1.5 py-0.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  Download
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleShareAudio()}
+                  data-testid="transcript-share-audio"
+                  className="rounded px-1.5 py-0.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  Share
+                </button>
+              </div>
+            </div>
           ) : null}
           {load.status === "loading" ? (
             <div className="flex items-center gap-2 py-8 text-sm text-white/60">
@@ -530,30 +554,8 @@ export function TranscriptViewerOverlay({
             data-testid="transcript-save-to-files"
             className="text-white/85 hover:bg-white/10"
           >
-            <Download className="mr-1.5 h-4 w-4" /> Save text
+            <Download className="mr-1.5 h-4 w-4" /> Download
           </Button>
-          {audioUrl ? (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleDownloadAudio}
-                data-testid="transcript-save-audio"
-                className="text-white/85 hover:bg-white/10"
-              >
-                <FileAudio className="mr-1.5 h-4 w-4" /> Save audio
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void handleShareAudio()}
-                data-testid="transcript-share-audio"
-                className="text-white/85 hover:bg-white/10"
-              >
-                <Share2 className="mr-1.5 h-4 w-4" /> Share audio
-              </Button>
-            </>
-          ) : null}
           {resolvedId || audioUrl ? (
             <Button
               variant="ghost"

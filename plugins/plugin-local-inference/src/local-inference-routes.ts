@@ -29,6 +29,7 @@ import {
 	assertManifestEvalsPassed,
 	CandidateModelActivationError,
 } from "./services/active-model.js";
+import { classifyDeviceTier } from "./services/device-tier.js";
 import { localInferenceService } from "./services/service.js";
 import { prewarmLocalVoiceStackForModel } from "./services/voice-prewarm.js";
 
@@ -327,6 +328,25 @@ const mobileLookup: http.RequestOptions["lookup"] = (
 	});
 };
 
+/**
+ * Recompute request headers when following a redirect. The HuggingFace bearer
+ * token must never leak past a cross-host redirect: HF `/resolve/` URLs 302 to
+ * cdn-lfs*.hf.co / *.amazonaws.com / *.cloudfront.net, none of which are HF
+ * hosts. Strip Authorization, then re-add it only if the redirect target is
+ * itself a HuggingFace host — mirroring the cross-origin auth stripping WHATWG
+ * fetch performs for the sibling `Downloader` path.
+ */
+export function reauthorizeRedirectHeaders(
+	headers: Record<string, string>,
+	nextUrl: string,
+): Record<string, string> {
+	const next: Record<string, string> = { ...headers };
+	delete next.authorization;
+	delete next.Authorization;
+	Object.assign(next, resolveHubAuthHeaders(nextUrl));
+	return next;
+}
+
 async function openDownloadResponse(
 	url: string,
 	headers: Record<string, string>,
@@ -352,10 +372,11 @@ async function openDownloadResponse(
 				const location = response.headers.location;
 				if (location && [301, 302, 303, 307, 308].includes(statusCode)) {
 					response.resume();
+					const nextUrl = new URL(location, parsed).toString();
 					resolve(
 						openDownloadResponse(
-							new URL(location, parsed).toString(),
-							headers,
+							nextUrl,
+							reauthorizeRedirectHeaders(headers, nextUrl),
 							signal,
 							redirectCount + 1,
 						),
@@ -1268,6 +1289,16 @@ export async function handleLocalInferenceRoutes(
 	}
 	if (method === "GET" && pathname === "/api/local-inference/hardware") {
 		sendJson(res, (await hubSnapshot()).hardware);
+		return true;
+	}
+	// The authoritative device-tier assessment (tier + recommendedMode +
+	// recommendedFit) — the same one the router's AUTO policy consumes. Mirrors
+	// the app-core compat route so mobile (which mounts this upstream variant)
+	// also gets the authoritative assessment instead of the coarse client estimate.
+	if (method === "GET" && pathname === "/api/local-inference/device-tier") {
+		sendJson(res, {
+			tier: classifyDeviceTier(await localInferenceService.getHardware()),
+		});
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/catalog") {

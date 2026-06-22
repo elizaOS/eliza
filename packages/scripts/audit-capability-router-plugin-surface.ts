@@ -44,6 +44,10 @@ const localOnly = new Set([
   "dependencies",
   "testDependencies",
   "autoEnable",
+  // Pre-LLM shortcut gate (#8791): registered into the runtime ShortcutRegistry,
+  // not exposed over the capability-router remote boundary (RemotePluginModuleManifest
+  // has no shortcuts key and no remote-manifest builder reads it).
+  "shortcuts",
   "mode",
   "remote",
 ]);

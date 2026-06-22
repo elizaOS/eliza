@@ -21,6 +21,5 @@
     }
   },
   "include": ["*.ts"],
-  "exclude": ["node_modules", "dist"],
-  "extends": "../../../tsconfig.dist-paths.json"
+  "exclude": ["node_modules", "dist"]
 }
