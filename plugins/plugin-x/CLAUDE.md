@@ -38,7 +38,7 @@ plugins/plugin-x/
     templates.ts                   LLM prompt templates for post/interaction generation
     post.ts                        TwitterPostClient — autonomous tweet generation loop
     interactions.ts                TwitterInteractionClient — mention/reply polling loop
-    timeline.ts                    TwitterTimelineClient — home timeline action loop (like/retweet/quote)
+    timeline.ts                    TwitterTimelineClient — home/following feed action loop (like/retweet/quote/reply); interprets tweet media (image/gif/video) via IMAGE_DESCRIPTION before deciding/replying
     discovery.ts                   TwitterDiscoveryClient — autonomous follow/like/reply discovery loop
     lifeops-message-adapter.ts     LifeOps BaseMessageAdapter adapter — bridges XService DM send/list to the LifeOps message-adapter interface
     connector-account-provider.ts  ConnectorAccountProvider impl; bridges env-mode + OAuth PKCE to ConnectorAccountManager
