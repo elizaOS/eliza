@@ -135,6 +135,15 @@ android {
         jniLibs {
             useLegacyPackaging = true
             keepDebugSymbols += ["**/libimage_processing_util_jni.so"]
+            // The retired llama-cpp-capacitor plugin is dropped from the manifest
+            // by default (stubLlamaCpp), so its separate libllama-cpp-arm64.so —
+            // a second, unused llama.cpp — is never loaded. Keep that dead 6.6 MB
+            // out of the APK too, so libelizainference is the ONLY inference lib
+            // shipped. Opt back in (plugin + its lib) with
+            // ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR=1.
+            if (System.getenv('ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR') != '1') {
+                excludes += ["**/libllama-cpp-arm64.so"]
+            }
         }
     }
 
