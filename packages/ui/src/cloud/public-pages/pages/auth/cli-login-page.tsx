@@ -5,16 +5,10 @@
  * Ported from `@elizaos/cloud-frontend/src/pages/auth/cli-login/page.tsx`.
  */
 
-import {
-  AlertCircle,
-  CheckCircle2,
-  Key,
-  Loader2,
-  Terminal,
-} from "lucide-react";
+import { AlertCircle, CheckCircle2, Key, Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
 import { ApiError, apiFetch } from "../../../lib/api-client";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
@@ -134,6 +128,7 @@ export default function CliLoginPage() {
   const t = useCloudT();
   const { authenticated, ready, user } = useSessionAuth();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const sessionId = searchParams.get("session");
   const [completion, setCompletion] = useState<CompletionState>({
     status: "idle",
@@ -143,7 +138,7 @@ export default function CliLoginPage() {
 
   usePageTitle(
     t("cloud.cliLogin.metaTitle", {
-      defaultValue: "CLI Authentication | Eliza Cloud",
+      defaultValue: "Sign in | Eliza Cloud",
     }),
   );
 
@@ -220,6 +215,35 @@ export default function CliLoginPage() {
   const signInHref = `/login?returnTo=${encodeURIComponent(returnTo)}`;
   const userEmail = getUserEmail(user);
 
+  // No "CLI Authentication" interstitial: when the user isn't signed in yet,
+  // forward straight to the Steward login. `returnTo` brings the browser back
+  // here once authenticated, where the session auto-completes. Guarded per
+  // session via sessionStorage so a login page that bounces back without
+  // establishing a session falls back to a manual button instead of looping.
+  const autoSignInKey = sessionId
+    ? `eliza-cloud-cli-login-autosignin:${sessionId}`
+    : null;
+  const autoSignInTried =
+    autoSignInKey !== null &&
+    typeof sessionStorage !== "undefined" &&
+    sessionStorage.getItem(autoSignInKey) === "1";
+
+  useEffect(() => {
+    if (
+      pageState.status !== "waiting_auth" ||
+      !autoSignInKey ||
+      autoSignInTried
+    ) {
+      return;
+    }
+    try {
+      sessionStorage.setItem(autoSignInKey, "1");
+    } catch {
+      // sessionStorage unavailable — fall through to the manual sign-in button.
+    }
+    navigate(signInHref, { replace: true });
+  }, [pageState.status, autoSignInKey, autoSignInTried, signInHref, navigate]);
+
   if (pageState.status === "initializing" || pageState.status === "loading") {
     return (
       <CliLoginPanel
@@ -276,6 +300,25 @@ export default function CliLoginPage() {
   }
 
   if (pageState.status === "waiting_auth") {
+    // Happy path: the effect above is forwarding to /login — render a neutral
+    // "redirecting" state, never the CLI interstitial. Only if the login page
+    // bounced back here still unauthenticated (guard already set) do we show a
+    // manual sign-in button as a non-looping fallback.
+    if (!autoSignInTried) {
+      return (
+        <CliLoginPanel
+          description={t("cloud.cliLogin.redirecting", {
+            defaultValue: "Taking you to sign in…",
+          })}
+          icon={Loader2}
+          iconClassName="animate-spin"
+          title={t("cloud.cliLogin.redirectingTitle", {
+            defaultValue: "Signing in",
+          })}
+          tone="accent"
+        />
+      );
+    }
     return (
       <CliLoginPanel
         actions={
@@ -296,12 +339,11 @@ export default function CliLoginPage() {
           </a>
         }
         description={t("cloud.cliLogin.waitingAuthDescription", {
-          defaultValue:
-            "Sign in to connect your Eliza app or CLI to Eliza Cloud",
+          defaultValue: "Sign in to connect your Eliza app to Eliza Cloud",
         })}
-        icon={Terminal}
+        icon={Key}
         title={t("cloud.cliLogin.cliAuthentication", {
-          defaultValue: "CLI Authentication",
+          defaultValue: "Sign in to Eliza Cloud",
         })}
         tone="accent"
       />
@@ -312,7 +354,7 @@ export default function CliLoginPage() {
     return (
       <CliLoginPanel
         description={t("cloud.cliLogin.completingDescription", {
-          defaultValue: "Creating your credentials for CLI access...",
+          defaultValue: "Finishing sign-in…",
         })}
         icon={Key}
         iconClassName="animate-pulse"
@@ -343,7 +385,8 @@ export default function CliLoginPage() {
           </Button>
         }
         description={t("cloud.cliLogin.successDescription", {
-          defaultValue: "Your API key has been generated and sent to the CLI",
+          defaultValue:
+            "You're signed in. Your credentials were sent to the app or CLI you started from.",
         })}
         icon={CheckCircle2}
         title={t("cloud.cliLogin.authComplete", {
@@ -386,8 +429,7 @@ export default function CliLoginPage() {
           <p className="text-sm text-green-400 flex items-center justify-center gap-2">
             <CheckCircle2 className="h-4 w-4" />
             {t("cloud.cliLogin.returnToTerminal", {
-              defaultValue:
-                "You can now close this window and return to your terminal",
+              defaultValue: "You can now close this window.",
             })}
           </p>
         </div>
