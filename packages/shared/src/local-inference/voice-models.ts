@@ -117,7 +117,7 @@ export interface VoiceModelEvalDeltas {
 /**
  * Runtime backend label for a voice model version.
  * - `"ggml"` — the elizaOS llama.cpp fork (canonical single-runtime policy).
- * - `"onnx"` — onnxruntime-node (one-release deprecation runway only; do not add new models here).
+ * - `"onnx"` — onnxruntime-node (removed; retained only as a historical asset/label for already-published versions — do not add new models here).
  * - `"ffi"` — direct bun:ffi into libelizainference (VAD, wake-word).
  * - `"llama-server"` — fork's llama-server HTTP route (Kokoro, OmniVoice TTS, EOT text model).
  */
@@ -139,9 +139,9 @@ export interface VoiceModelVersion {
   /**
    * Preferred runtime backend for this version. When set, the runtime
    * prefers the named backend over any default. K7 policy: set to `"ggml"` /
-   * `"llama-server"` / `"ffi"` as each model migrates off ONNX. Assets with
-   * `quant: "onnx-*"` that are NOT the preferred backend are on the
-   * one-release deprecation runway.
+   * `"llama-server"` / `"ffi"` as each model migrated off ONNX. onnxruntime-node
+   * has since been removed, so assets with `quant: "onnx-*"` are historical
+   * labels only — the runtime never loads them.
    */
   readonly preferredBackend?: VoiceModelBackend;
   /**
@@ -516,7 +516,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     // + iSTFTNet inference pipeline (LLM_ARCH_KOKORO arch + GGML graph +
     // CPU iSTFT vocoder). The runtime selector (`pickKokoroRuntimeBackend`)
     // defaults `KOKORO_BACKEND=fork` and POSTs to llama-server's
-    // /v1/audio/speech route; ONNX path remains as one-release deprecation.
+    // /v1/audio/speech route; the old onnxruntime-node ONNX path was removed.
     //
     // Quality gap: the from-scratch port runs at lower acoustic quality
     // vs the ONNX baseline (the predictor convs + ResBlock decoder need
@@ -533,8 +533,8 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     publishedToHfAt: "2026-05-15T05:00:00Z",
     hfRepo: "elizaos/eliza-1",
     hfRevision: "4b8809b197aa90ae486f83c1e0a5dc7effb6b285",
-    // K7: runtime defaults to KOKORO_BACKEND=fork (pick-runtime.ts). ONNX
-    // path is one-release deprecation runway (KOKORO_BACKEND=onnx env only).
+    // K7: runtime runs KOKORO_BACKEND=fork (pick-runtime.ts) exclusively; the
+    // onnxruntime-node ONNX path (formerly KOKORO_BACKEND=onnx) was removed.
     // GGUF conversion pending (K4 scope; missingAssets carries the target).
     preferredBackend: "llama-server",
     deprecatedBackends: ["onnx"],
