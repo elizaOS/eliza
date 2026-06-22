@@ -6,11 +6,19 @@ name: External API Live Drift
 # in NO workflow until now — they were dark. This lane turns the LIVE gate on and
 # injects the optional provider secrets.
 #
-# Public APIs (Polymarket, Hyperliquid, CoinGecko) run with no secret. Key-gated
-# ones (Calendly, Tavily) self-skip unless their secret is present, so a missing
-# secret is a clean no-op, not a failure. continue-on-error keeps a provider
-# outage / drift from red-X'ing the branch — a failure here is a real signal that
-# a mock has drifted from the live API.
+# Provider coverage (9 runnable steps + 1 config-blocked marker):
+#   PUBLIC (no secret, always run): Polymarket, Hyperliquid, CoinGecko.
+#   CREDENTIAL-BLOCKED (self-skip via describe.skipIf unless their
+#     <PROVIDER>_ACCESS_TOKEN / API_KEY secret is present): Calendly, Tavily,
+#     Strava, Oura, Withings, Fitbit.
+#   CONFIG-BLOCKED (test exists + secret wired, but the plugin's vitest config
+#     excludes *.real.test.ts so it can't run from here yet): Google Calendar —
+#     see the structural-lane marker at the bottom of the steps.
+# A missing secret is a clean no-op (describe.skipIf), not a failure — so the
+# credential-blocked lanes only light up once their token secret is added to the
+# repo. continue-on-error keeps a provider outage / drift from red-X'ing the
+# branch — a failure here is a real signal that a mock has drifted from the
+# live API.
 #
 # Nightly + on-demand; never on pull_request.
 
@@ -38,9 +46,19 @@ env:
   COINGECKO_LIVE_TEST: "1"
   CALENDLY_LIVE_TEST: "1"
   TAVILY_LIVE_TEST: "1"
-  # Key-gated providers (tests self-skip when absent).
+  STRAVA_LIVE_TEST: "1"
+  OURA_LIVE_TEST: "1"
+  WITHINGS_LIVE_TEST: "1"
+  FITBIT_LIVE_TEST: "1"
+  GOOGLE_CALENDAR_LIVE_TEST: "1"
+  # Key-gated providers (tests self-skip when their token secret is absent).
   CALENDLY_ACCESS_TOKEN: ${{ secrets.CALENDLY_ACCESS_TOKEN }}
   TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+  STRAVA_ACCESS_TOKEN: ${{ secrets.STRAVA_ACCESS_TOKEN }}
+  OURA_ACCESS_TOKEN: ${{ secrets.OURA_ACCESS_TOKEN }}
+  WITHINGS_ACCESS_TOKEN: ${{ secrets.WITHINGS_ACCESS_TOKEN }}
+  FITBIT_ACCESS_TOKEN: ${{ secrets.FITBIT_ACCESS_TOKEN }}
+  GOOGLE_CALENDAR_ACCESS_TOKEN: ${{ secrets.GOOGLE_CALENDAR_ACCESS_TOKEN }}
 
 jobs:
   live-drift:
@@ -82,3 +100,26 @@ jobs:
 
       - name: Tavily web-search live drift (key-gated, self-skips)
         run: bunx vitest run --root plugins/plugin-web-search src/services/webSearchService.real.test.ts
+
+      - name: Strava live drift (token-gated, self-skips)
+        run: bunx vitest run --root plugins/plugin-health test/strava-connector.real.test.ts
+
+      - name: Oura live drift (token-gated, self-skips)
+        run: bunx vitest run --root plugins/plugin-health test/oura-connector.real.test.ts
+
+      - name: Withings live drift (token-gated, self-skips)
+        run: bunx vitest run --root plugins/plugin-health test/withings-connector.real.test.ts
+
+      - name: Fitbit live drift (token-gated, self-skips)
+        run: bunx vitest run --root plugins/plugin-health test/fitbit-connector.real.test.ts
+
+      # Structural-lane marker — NOT YET RUNNABLE here.
+      # plugins/plugin-calendar/test/google-calendar-connector.real.test.ts
+      # exists and self-gates on GOOGLE_CALENDAR_LIVE_TEST + GOOGLE_CALENDAR_ACCESS_TOKEN
+      # (secret wired in the env block above), but plugin-calendar's vitest.config.ts
+      # excludes `**/*.real.test.{ts,tsx}` with passWithNoTests:true, so a vitest
+      # invocation here finds zero tests and would silently "pass" with no drift
+      # coverage. That config exclude can only be lifted in the plugin's own config
+      # (out of this slice's file ownership). Wire the step below once
+      # plugin-calendar's config stops excluding real tests:
+      #   run: bunx vitest run --root plugins/plugin-calendar test/google-calendar-connector.real.test.ts
