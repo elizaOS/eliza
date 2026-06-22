@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "scope_global_vs_user.neutral.short_text.002",
   title:
     "scope :: admin_global_terse_user_verbose :: neutral :: short_text :: 4-turn (2)",

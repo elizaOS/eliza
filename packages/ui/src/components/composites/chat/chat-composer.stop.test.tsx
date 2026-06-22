@@ -170,6 +170,7 @@ function makeDeps(
     ptySessionsRef: { current: [] as CodingAgentSession[] },
     setChatInput: vi.fn(),
     setChatSending: vi.fn(),
+    setServerTurnStatus: vi.fn(),
     setChatFirstTokenReceived: vi.fn(),
     setServerTurnStatus: vi.fn(),
     setChatLastUsage: vi.fn(),

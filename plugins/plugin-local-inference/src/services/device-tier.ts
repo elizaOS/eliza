@@ -27,6 +27,10 @@
  * 3–4 GB ceiling; Android foreground-service requirement).
  */
 
+import {
+	type Eliza1Fit,
+	selectBestEliza1Fit,
+} from "@elizaos/shared/local-inference";
 import type { HardwareProbe } from "./types";
 
 /** The four device tiers used by the runtime + UI. */
@@ -87,6 +91,12 @@ export interface DeviceTierAssessment {
 	canRunLocalVoice: boolean;
 	/** Default backend mode for the user. */
 	recommendedMode: RecommendedMode;
+	/**
+	 * The biggest eliza-1 tier (+ 128k-targeted QJL context) that fits this device,
+	 * or `null` when nothing local fits and the modality should route to Cloud.
+	 * This is the single forced-model decision the consumer UI renders read-only.
+	 */
+	recommendedFit: Eliza1Fit | null;
 	/** Numeric snapshot to drive UI badges and first-run copy. */
 	numericContext: {
 		totalRamGb: number;
@@ -112,6 +122,28 @@ export function effectiveModelMemoryGb(probe: HardwareProbe): number {
 		return Math.max(probe.gpu.totalVramGb, probe.totalRamGb * 0.5);
 	}
 	return probe.totalRamGb * 0.5;
+}
+
+/**
+ * Mobile OS background-task model makes large local tiers unsafe regardless of how
+ * much RAM the phone reports, so cap mobile fit at the 4B floor. A strong phone may
+ * run 4B; a typical one lands on 2B; both still flow through `selectBestEliza1Fit`.
+ */
+const MOBILE_FIT_CEILING_GB = 6;
+
+/**
+ * The canonical "biggest eliza-1 that fits this device" decision: normalize the
+ * hardware probe to usable model memory, then pick the largest tier at a 128k QJL
+ * window (or a downscaled 2B window, or `null` → route to Cloud). This is the one
+ * function callers should use to answer "what local model runs here" — it always
+ * applies TurboQuant weights + the QJL KV cache and targets a 128k window.
+ */
+export function selectBestEliza1FitForDevice(
+	probe: HardwareProbe,
+): Eliza1Fit | null {
+	let memGb = effectiveModelMemoryGb(probe);
+	if (isMobile(probe)) memGb = Math.min(memGb, MOBILE_FIT_CEILING_GB);
+	return selectBestEliza1Fit(memGb);
 }
 
 /**
@@ -230,6 +262,7 @@ export function classifyDeviceTier(probe: HardwareProbe): DeviceTierAssessment {
 		canRunLocalLm,
 		canRunLocalVoice,
 		recommendedMode,
+		recommendedFit: selectBestEliza1FitForDevice(probe),
 		numericContext: {
 			totalRamGb,
 			freeRamGb,

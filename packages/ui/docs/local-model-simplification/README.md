@@ -126,6 +126,35 @@ quant guidance, GGUF-magic validation) applies to the **Advanced** arbitrary-GGU
 path; the curated bundle needs none of it (no auth, fixed quant, integrity already
 verified). Net consumer install: one tap, one progress bar, done.
 
+## How we measure what fits (the device-fit rule)
+
+The measurement is one pure function — `selectBestEliza1Fit(freeRamGb)`
+(`packages/shared/src/local-inference/device-fit.ts`), wrapped by
+`selectBestEliza1FitForDevice(probe)`
+(`plugins/plugin-local-inference/src/services/device-tier.ts`) which normalizes a
+hardware probe to usable memory first:
+
+- **Usable memory** — Apple-silicon: unified `totalRamGb`; discrete GPU:
+  `max(vramGb, totalRamGb × 0.5)`; CPU-only: `totalRamGb × 0.5`. Mobile is capped
+  at the 4B floor because the OS background-task model makes large local tiers
+  unsafe no matter how much RAM the phone reports.
+- **Always the biggest we can.** Tiers are sorted by RAM floor, largest first; we
+  return the first whose floor fits. Because every tier's `minRamGb` already
+  includes a **native 128k window under QJL**, "largest tier that fits" is
+  identical to "biggest model that still gets 128k".
+- **Every shrink is always on.** Weights are **TurboQuant** (the catalog `sizeGb`
+  is the compressed GGUF), and the KV cache is **QJL** (`qjl1_256`, head_dim=256)
+  — never user-selectable. These are what let a 2B model carry a 128k window in a
+  couple of GB and a 27B model fit a 32 GB box.
+- **128k is the target, context flexes only as a last resort.** When even 2B can't
+  reach 128k on this device, we keep 2B and shrink the QJL window to the largest
+  that fits (QJL KV scales ~linearly with tokens) — we never drop to a smaller or
+  0.8B model. If not even a minimal (8k) window fits, the function returns `null`
+  and the modality routes to **Cloud** (AUTO).
+
+So the device-fit answer is deterministic and consumer-invisible: the biggest
+eliza-1 that fits, at 128k when possible, with TurboQuant + QJL always applied.
+
 ## Memory / fit (#8809) — invisible
 
 #8809's memory work (LRU eviction telemetry, fit-to-RAM quant/context selection,

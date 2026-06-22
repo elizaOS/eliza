@@ -15,12 +15,25 @@ import path from "node:path";
 import process from "node:process";
 import { logger } from "@elizaos/core";
 import {
+  DEFAULT_SCENARIO_LANE,
+  type ScenarioLane,
+} from "@elizaos/scenario-runner/schema";
+import {
   countScenarioCorpus,
   listScenarioMetadata,
   loadAllScenarios,
   validateScenarioCorpus,
 } from "./loader.ts";
 import type { ScenarioReport } from "./types.ts";
+
+const SCENARIO_LANES: readonly ScenarioLane[] = [
+  "pr-deterministic",
+  "live-only",
+];
+
+function isScenarioLane(value: string): value is ScenarioLane {
+  return (SCENARIO_LANES as readonly string[]).includes(value);
+}
 
 type ExecutorModule = typeof import("./executor.ts");
 type ReporterModule = typeof import("./reporter.ts");
@@ -42,7 +55,7 @@ interface ParsedArgs {
   exportNativePath?: string;
   runId?: string;
   filter?: Set<string>;
-  lane?: string;
+  lane?: ScenarioLane;
   fileGlobs?: string[];
   expandScenarios?: boolean;
   countScenarios?: boolean;
@@ -61,7 +74,7 @@ function scenarioNativeManifestPath(
 function usageAndExit(message: string, code: number): never {
   process.stderr.write(`[eliza-scenarios] ${message}\n`);
   process.stderr.write(
-    "Usage:\n  eliza-scenarios run  <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--run-dir <dir>] [--export-native <jsonlPath>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [--lane <name>] [fileGlob ...]\n  eliza-scenarios list <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [fileGlob ...]\n",
+    "Usage:\n  eliza-scenarios run  <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--run-dir <dir>] [--export-native <jsonlPath>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [--lane pr-deterministic|live-only] [fileGlob ...]\n  eliza-scenarios list <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--lane pr-deterministic|live-only] [fileGlob ...]\n",
   );
   process.exit(code);
 }
@@ -84,7 +97,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
   let exportNativePath: string | undefined;
   let runId: string | undefined;
   let filter: Set<string> | undefined;
-  let lane: string | undefined;
+  let lane: ScenarioLane | undefined;
   let expandScenarios = false;
   let countScenarios = false;
   let validateScenarios = false;
@@ -131,7 +144,13 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
     } else if (arg === "--lane") {
       const next = argv[i + 1];
       if (!next) usageAndExit("--lane missing value", 2);
-      lane = next.trim();
+      if (!isScenarioLane(next)) {
+        usageAndExit(
+          `--lane must be one of ${SCENARIO_LANES.join(", ")} (got '${next}')`,
+          2,
+        );
+      }
+      lane = next;
       i += 1;
     } else if (arg === "--expand-scenarios") {
       expandScenarios = true;
@@ -196,7 +215,14 @@ async function main(): Promise<number> {
       parsed.expandScenarios,
       parsed.lane,
     );
-    for (const scenario of loaded) {
+    const requestedLane = parsed.lane;
+    const selected = requestedLane
+      ? loaded.filter(
+          (scenario) =>
+            (scenario.lane ?? DEFAULT_SCENARIO_LANE) === requestedLane,
+        )
+      : loaded;
+    for (const scenario of selected) {
       process.stdout.write(`${scenario.id}\n`);
     }
     return 0;

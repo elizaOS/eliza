@@ -2,6 +2,7 @@ import {
 	buildFactKeywordsForStorage,
 	scoreFactKeywordRelevance,
 } from "../features/advanced-capabilities/fact-keywords.ts";
+import { isMobilePlatform } from "../runtime-env";
 import type {
 	MessageHandlerExtract,
 	MessageHandlerExtractedRelationship,
@@ -130,6 +131,23 @@ export async function runFactsAndRelationshipsStage(
 	args: FactsAndRelationshipsRunArgs,
 ): Promise<FactsAndRelationshipsRunResult> {
 	const { runtime, message, extract } = args;
+	// On mobile (single on-device GPU context, single-threaded agent) the facts
+	// stage is another blocking TEXT_LARGE generation that serializes on the
+	// same engine as the reply and is awaited before endTrajectory, stalling the
+	// next turn. Skip it on android/ios — the on-device knowledge-graph value at
+	// the 2B tier doesn't justify the per-turn latency. Desktop/server keep it.
+	if (isMobilePlatform()) {
+		return {
+			parsed: {
+				facts: [],
+				relationships: [],
+				thought: "skipped on mobile",
+			},
+			messages: [],
+			tools: [],
+			written: { facts: 0, relationships: 0 },
+		};
+	}
 	if (isSyntheticMemory(message)) {
 		return {
 			parsed: {

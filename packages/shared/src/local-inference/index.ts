@@ -75,6 +75,11 @@ export type {
   RoutingPreferences,
 } from "./routing-preferences.js";
 export {
+  DEFAULT_ROUTING_POLICY,
+  isRoutingPolicy,
+  ROUTING_POLICIES,
+} from "./routing-preferences.js";
+export {
   computeGenerationThroughput,
   type GenerationCounters,
   type GenerationThroughput,
@@ -126,3 +131,10 @@ export {
   type VoiceModelVersion,
   versionsFor,
 } from "./voice-models.js";
+export {
+  ELIZA_1_CONTEXT_TARGET,
+  ELIZA_1_KV_QUANT,
+  ELIZA_1_MIN_LOCAL_CONTEXT,
+  type Eliza1Fit,
+  selectBestEliza1Fit,
+} from "./device-fit.js";
