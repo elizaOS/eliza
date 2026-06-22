@@ -1785,6 +1785,10 @@ export async function runScenario(
         runtime,
         opts.minJudgeScore,
       );
+      const voiceRun =
+        kind === "voice"
+          ? (execution.responseBody as VoiceWorkbenchScenarioRun | undefined)
+          : undefined;
       report.turns.push({
         name: turn.name,
         kind,
@@ -1793,6 +1797,9 @@ export async function runScenario(
         actionsCalled: actionsThisTurn,
         durationMs: execution.durationMs ?? 0,
         failedAssertions,
+        ...(voiceRun?.audioArtifacts && voiceRun.audioArtifacts.length > 0
+          ? { audioArtifacts: voiceRun.audioArtifacts }
+          : {}),
       });
       if (failedAssertions.length > 0) {
         report.status = "failed";

@@ -314,6 +314,8 @@ function scenarioViewerHtml(): string {
     summary { cursor:pointer; padding:9px 12px; background:#fff; }
     pre { margin:0; max-height:520px; overflow:auto; white-space:pre-wrap; word-break:break-word; background:#101510; color:#eef7ea; padding:10px 12px; }
     .turn { border-top:1px solid var(--line); padding:10px 12px; }
+    .audio-artifact { display:flex; flex-direction:column; gap:2px; margin-bottom:6px; }
+    .audio-artifact audio { width:200px; height:30px; }
     @media (max-width:900px) { main { grid-template-columns:1fr; } th { top:0; } }
   </style>
 </head>
@@ -375,10 +377,20 @@ function scenarioViewerHtml(): string {
       document.getElementById("scenario-list").innerHTML = rows.map(s => \`<button class="scenario-item \${s.id === activeId ? "active" : ""}" data-id="\${esc(s.id)}"><strong>\${esc(s.id)}</strong><br><span class="\${esc(s.status)}">\${esc(s.status)}</span> <span class="muted">\${esc(s.durationMs)}ms</span></button>\`).join("");
       renderDetail();
     }
+    function audioArtifactsCell(t) {
+      const artifacts = t.audioArtifacts || [];
+      if (!artifacts.length) return "";
+      // The viewer html lives in <runDir>/viewer/; artifact paths are run-dir
+      // relative, so prefix "../" to resolve them from the viewer document.
+      return artifacts.map(a => {
+        const label = [a.kind, "turn " + a.turnIndex, a.speakerLabel].filter(Boolean).join(" · ");
+        return \`<div class="audio-artifact"><span class="muted">\${esc(label)}</span><audio controls preload="none" src="../\${esc(a.path)}"></audio></div>\`;
+      }).join("");
+    }
     function turnsTable(s) {
       const turns = s.turns || [];
       if (!turns.length) return '<div class="turn muted">No turn reports.</div>';
-      return '<table><thead><tr><th>turn</th><th>kind</th><th>status</th><th>input</th><th>response</th><th>actions</th></tr></thead><tbody>' + turns.map(t => \`<tr><td>\${esc(t.name)}</td><td>\${esc(t.kind)}</td><td>\${esc((t.failedAssertions||[]).length ? "failed" : "ok")}</td><td>\${esc(t.text)}</td><td>\${esc(t.responseText)}</td><td>\${esc((t.actionsCalled||[]).map(a => a.name || a.actionName || "").join(", "))}</td></tr>\`).join("") + '</tbody></table>';
+      return '<table><thead><tr><th>turn</th><th>kind</th><th>status</th><th>input</th><th>response</th><th>actions</th><th>audio</th></tr></thead><tbody>' + turns.map(t => \`<tr><td>\${esc(t.name)}</td><td>\${esc(t.kind)}</td><td>\${esc((t.failedAssertions||[]).length ? "failed" : "ok")}</td><td>\${esc(t.text)}</td><td>\${esc(t.responseText)}</td><td>\${esc((t.actionsCalled||[]).map(a => a.name || a.actionName || "").join(", "))}</td><td>\${audioArtifactsCell(t)}</td></tr>\`).join("") + '</tbody></table>';
     }
     function fmtNum(v) {
       return typeof v === "number" && Number.isFinite(v) ? Math.round(v).toLocaleString() : "";

@@ -11,9 +11,11 @@
  * or set `allowVoiceSkip` only for explicitly optional/manual voice coverage.
  */
 
+import path from "node:path";
 import {
   generateVoiceCorpus,
   runVoiceScenarioHeadless,
+  type VoiceAudioCaptureSink,
   type VoiceScenario,
   type VoiceWorkbenchScenarioRun,
   type VoiceWorkbenchServices,
@@ -41,6 +43,22 @@ export function voiceRunVerdict(
   return run.cases.every((c) => c.passed) ? "pass" : "fail";
 }
 
+/**
+ * When the CLI runs with `--run-dir`, voice turns write their `.wav` artifacts
+ * under `<runDir>/audio/<scenarioId>` and record run-dir-relative paths so the
+ * run viewer (served from the run dir) can link/play them. Unset ⇒ no audio IO.
+ */
+function resolveAudioCaptureSink(scenario: VoiceScenario): VoiceAudioCaptureSink | undefined {
+  const runDir = process.env.ELIZA_LIFEOPS_RUN_DIR;
+  if (!runDir) {
+    return undefined;
+  }
+  return {
+    dir: path.join(runDir, "audio", scenario.id),
+    relativeTo: runDir,
+  };
+}
+
 /** Execute a `voice` turn: generate the corpus and run it headless. */
 export async function executeVoiceTurn(
   turn: ScenarioTurn,
@@ -52,7 +70,13 @@ export async function executeVoiceTurn(
   }
   const services = voiceTurn.voiceServices ?? null;
   const corpus = await generateVoiceCorpus(scenario);
-  const run = await runVoiceScenarioHeadless({ scenario, corpus, services });
+  const captureAudio = resolveAudioCaptureSink(scenario);
+  const run = await runVoiceScenarioHeadless({
+    scenario,
+    corpus,
+    services,
+    ...(captureAudio ? { captureAudio } : {}),
+  });
   return {
     responseText: `voice:${run.scenarioId} ${voiceRunVerdict(run)} (${run.status}, ${run.cases.length} cases)`,
     responseBody: run,
