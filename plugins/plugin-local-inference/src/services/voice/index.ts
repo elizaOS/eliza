@@ -396,15 +396,6 @@ export {
 	verifyVoiceProfileArtifact,
 } from "./voice-profile-artifact";
 export {
-	DEFAULT_VOICE_SETTINGS,
-	effectiveBackendMode,
-	qualityPresetQuantizationRanking,
-	resolveVoiceSettings,
-	type VoiceBackendMode,
-	type VoiceModelQualityPreset,
-	type VoiceSettings,
-} from "./voice-settings";
-export {
 	type DrafterAbortReason,
 	type DrafterHandle,
 	type StartDrafterFn,

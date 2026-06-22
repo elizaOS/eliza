@@ -23,7 +23,7 @@ const baseProps = {
 };
 
 describe("VoiceSection", () => {
-  it("renders all six sub-panels", () => {
+  it("renders the sub-panels", () => {
     render(
       <VoiceSection
         {...baseProps}
@@ -35,10 +35,12 @@ describe("VoiceSection", () => {
     expect(screen.getByTestId("voice-tier-banner")).toBeTruthy();
     expect(screen.getByTestId("voice-section-continuous-row")).toBeTruthy();
     expect(screen.getByTestId("voice-section-wake-row")).toBeTruthy();
-    expect(screen.getByTestId("voice-section-strategy-select")).toBeTruthy();
     expect(screen.getByTestId("voice-section-models")).toBeTruthy();
     expect(screen.getByTestId("voice-profile-section")).toBeTruthy();
     expect(screen.getByTestId("voice-section-privacy")).toBeTruthy();
+    // The local-vs-cloud strategy control was removed — per-modality routing
+    // is owned by RoutingMatrix, not VoiceSection.
+    expect(screen.queryByTestId("voice-section-strategy-select")).toBeNull();
   });
 
   it("renders the models slot when supplied", () => {
@@ -83,7 +85,7 @@ describe("VoiceSection", () => {
     expect(call.continuous).toBe("always-on");
   });
 
-  it("propagates strategy changes", () => {
+  it("propagates auto-learn-voices changes", () => {
     const onPrefsChange = vi.fn();
     render(
       <VoiceSection
@@ -92,13 +94,15 @@ describe("VoiceSection", () => {
         onPrefsChange={onPrefsChange}
       />,
     );
-    const forceCloud = screen
-      .getByTestId("voice-section-strategy-select")
-      .querySelector("button[data-value='force-cloud']") as HTMLButtonElement;
-    fireEvent.click(forceCloud);
+    const autoLearn = screen.getByTestId(
+      "voice-section-auto-learn-toggle",
+    ) as HTMLInputElement;
+    // Default is on; clicking turns it off.
+    expect(autoLearn.checked).toBe(true);
+    fireEvent.click(autoLearn);
     expect(onPrefsChange).toHaveBeenCalled();
     const call = onPrefsChange.mock.calls[0]?.[0] as VoiceSectionPrefs;
-    expect(call.strategy).toBe("force-cloud");
+    expect(call.autoLearnVoices).toBe(false);
   });
 
   it("toggles the privacy switches", () => {

@@ -429,3 +429,5 @@ jobs:
             Branch: develop
             Commit: ${{ github.sha }}
           color: 0xff0000
+
+# ci-touch: re-trigger prod daemon deploy (dispatch runs were runner-starved) 2026-06-21
