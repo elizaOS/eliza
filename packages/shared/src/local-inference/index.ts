@@ -69,6 +69,11 @@ export type {
   RoutingPreferences,
 } from "./routing-preferences.js";
 export {
+  DEFAULT_ROUTING_POLICY,
+  isRoutingPolicy,
+  ROUTING_POLICIES,
+} from "./routing-preferences.js";
+export {
   type ActiveModelState,
   AGENT_MODEL_SLOTS,
   type AgentModelSlot,

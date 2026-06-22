@@ -15,10 +15,36 @@ import type { AgentModelSlot } from "./types.js";
 
 export type RoutingPolicy =
   | "manual"
+  | "auto"
   | "cheapest"
   | "fastest"
   | "prefer-local"
+  | "local-only"
+  | "cloud-only"
   | "round-robin";
+
+/**
+ * The full set of selectable policies, in display order. Kept as a runtime
+ * value (not just a type) so route-layer validation and the settings UI share
+ * one source of truth for "which policies are accepted".
+ */
+export const ROUTING_POLICIES: readonly RoutingPolicy[] = [
+  "manual",
+  "auto",
+  "cheapest",
+  "fastest",
+  "prefer-local",
+  "local-only",
+  "cloud-only",
+  "round-robin",
+] as const;
+
+export function isRoutingPolicy(value: unknown): value is RoutingPolicy {
+  return (
+    typeof value === "string" &&
+    (ROUTING_POLICIES as readonly string[]).includes(value)
+  );
+}
 
 export const DEFAULT_ROUTING_POLICY: RoutingPolicy = "prefer-local";
 

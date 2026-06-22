@@ -10,11 +10,25 @@
  *   - manual       — honour `preferredProvider`; when no pref set, fall
  *                    through to the runtime's native priority order
  *                    (highest registered priority wins).
+ *   - auto         — capability-driven: consult the device-tier assessment AND
+ *                    the live device signals (thermal + decode throughput). Route
+ *                    local only when the device can comfortably run the slot's
+ *                    modality (text → `canRunLocalLm`, voice → `canRunLocalVoice`)
+ *                    AND it is not currently throttled / below the TPS budget.
+ *                    Otherwise pick the highest-priority cloud provider.
  *   - cheapest     — pick the provider with the lowest per-token cost.
  *   - fastest      — pick the provider with the lowest tracked p50 latency
  *                    (needs at least a few samples; falls back to native).
  *   - prefer-local — try local first; if it fails or has no handler,
- *                    fall through to the next-best non-local.
+ *                    fall through to the next-best non-local. A device that
+ *                    cannot run the slot's modality softly demotes the local
+ *                    pick so an unusable on-device path isn't forced.
+ *   - local-only   — always on-device: never returns a cloud provider. When no
+ *                    local handler is registered, returns `null` so the caller
+ *                    surfaces "no local provider" instead of silently routing
+ *                    to a paid API.
+ *   - cloud-only   — always off-device: never returns a local provider. Returns
+ *                    `null` when only local handlers exist.
  *   - round-robin  — distribute load evenly across eligible providers.
  *
  * Latency is tracked in a ring buffer per provider per model type. Cost
@@ -23,10 +37,83 @@
  * rather than dollar-accurate billing.
  */
 
+import type { DeviceTierAssessment } from "./device-tier";
 import type { HandlerRegistration } from "./handler-registry";
+import type { LiveDeviceSignals } from "./live-signals";
+import { liveSignalsDemoteLocal } from "./live-signals";
 import type { RoutingPolicy } from "./routing-preferences";
+import type { AgentModelSlot } from "./types";
 
 const RING_SIZE = 32;
+
+/** Provider IDs that serve inference on-device (no network round-trip). */
+const LOCAL_PROVIDERS: ReadonlySet<string> = new Set([
+	"eliza-local-inference",
+	"capacitor-llama",
+	"eliza-device-bridge",
+]);
+
+function isLocalProvider(provider: string): boolean {
+	return LOCAL_PROVIDERS.has(provider);
+}
+
+/** Voice slots use `canRunLocalVoice`; text slots use `canRunLocalLm`. */
+const VOICE_SLOTS: ReadonlySet<AgentModelSlot> = new Set([
+	"TEXT_TO_SPEECH",
+	"TRANSCRIPTION",
+]);
+
+/**
+ * The first registered local handler in priority order, or null. Prefers the
+ * in-process / Capacitor backends over the device bridge, matching the
+ * `prefer-local` precedence.
+ */
+function findLocalCandidate(
+	candidates: HandlerRegistration[],
+): HandlerRegistration | null {
+	const inProcess = candidates.find(
+		(c) =>
+			c.provider === "eliza-local-inference" ||
+			c.provider === "capacitor-llama",
+	);
+	if (inProcess) return inProcess;
+	return candidates.find((c) => c.provider === "eliza-device-bridge") ?? null;
+}
+
+/**
+ * Whether the device can run this slot's modality locally *at all*, per the
+ * static tier assessment. Voice slots gate on `canRunLocalVoice` (the ASR + TTS
+ * budget is stricter than text); every other slot gates on `canRunLocalLm`.
+ * This is the per-modality independence AC4 requires — one assessment can yield
+ * local text + cloud voice (OKAY desktop) simultaneously.
+ */
+function modalityViableForSlot(
+	assessment: DeviceTierAssessment,
+	slot: AgentModelSlot | undefined,
+): boolean {
+	return slot !== undefined && VOICE_SLOTS.has(slot)
+		? assessment.canRunLocalVoice
+		: assessment.canRunLocalLm;
+}
+
+/**
+ * Whether `auto` should default this slot to local: the modality must be viable
+ * AND the device must be a generally local-first machine (recommended "local",
+ * or a MAX/GOOD tier). A device that merely *can* run the modality but is steered
+ * to cloud by the classifier does not get a local default.
+ */
+function tierFavoursLocalForSlot(
+	assessment: DeviceTierAssessment | null,
+	slot: AgentModelSlot | undefined,
+): boolean {
+	if (!assessment) return false;
+	if (!modalityViableForSlot(assessment, slot)) return false;
+	return (
+		assessment.recommendedMode === "local" ||
+		assessment.tier === "MAX" ||
+		assessment.tier === "GOOD"
+	);
+}
 
 interface LatencySample {
 	durationMs: number;
@@ -141,6 +228,26 @@ class PolicyEngine {
 		candidates: HandlerRegistration[];
 		/** Provider ID of the router itself — always excluded from candidates. */
 		selfProvider: string;
+		/**
+		 * The agent slot being routed. Drives the per-modality `auto` gate:
+		 * voice slots (`TEXT_TO_SPEECH` / `TRANSCRIPTION`) check
+		 * `canRunLocalVoice`; every other slot checks `canRunLocalLm`.
+		 */
+		slot?: AgentModelSlot;
+		/**
+		 * Static device-capability assessment from `classifyDeviceTier()`.
+		 * Consulted by `auto` (per-modality gate) and used as a soft hint by
+		 * `prefer-local`. Null when the host hasn't probed hardware yet — `auto`
+		 * then falls back to cloud.
+		 */
+		deviceTier?: DeviceTierAssessment | null;
+		/**
+		 * Live device signals (thermal + decode throughput). When the device is
+		 * currently throttled or below the TPS budget, `auto` demotes a local
+		 * pick to cloud even if the static tier favoured local. Null = no live
+		 * demotion (the static decision stands).
+		 */
+		liveSignals?: LiveDeviceSignals | null;
 	}): HandlerRegistration | null {
 		const eligible = args.candidates
 			.filter((c) => c.provider !== args.selfProvider)
@@ -185,18 +292,46 @@ class PolicyEngine {
 				});
 				return ranked[0] ?? null;
 			}
+			case "auto": {
+				// Capability-driven: route local only when the device can run this
+				// slot's modality (per-modality gate) AND it is not currently
+				// throttled / below the TPS budget. Otherwise pick cloud.
+				const local = findLocalCandidate(eligible);
+				const tierFavours = tierFavoursLocalForSlot(
+					args.deviceTier ?? null,
+					args.slot,
+				);
+				const liveDemotes =
+					args.liveSignals != null && liveSignalsDemoteLocal(args.liveSignals);
+				if (local && tierFavours && !liveDemotes) {
+					return local;
+				}
+				const cloud = eligible.find((c) => !isLocalProvider(c.provider));
+				return cloud ?? eligible[0] ?? null;
+			}
+			case "local-only": {
+				// Never leaves the device. Returns null when no local handler is
+				// registered so the caller surfaces "no local provider" rather than
+				// silently falling back to a paid API.
+				return findLocalCandidate(eligible);
+			}
+			case "cloud-only": {
+				// Never runs on-device. Returns null when only local handlers exist.
+				return eligible.find((c) => !isLocalProvider(c.provider)) ?? null;
+			}
 			case "prefer-local": {
-				const local = eligible.find(
-					(c) =>
-						c.provider === "eliza-local-inference" ||
-						c.provider === "capacitor-llama",
-				);
-				if (local) return local;
-				const bridge = eligible.find(
-					(c) => c.provider === "eliza-device-bridge",
-				);
-				if (bridge) return bridge;
-				return eligible[0] ?? null;
+				const local = findLocalCandidate(eligible);
+				// Soft capability hint: a device that cannot run this slot's
+				// modality demotes the local pick so we don't force an unusable
+				// on-device path. When no assessment is present, keep the
+				// historical local-first behaviour.
+				const tier = args.deviceTier ?? null;
+				const localUnviable =
+					tier !== null && !modalityViableForSlot(tier, args.slot);
+				if (local && !localUnviable) return local;
+				const cloud = eligible.find((c) => !isLocalProvider(c.provider));
+				if (cloud) return cloud;
+				return local ?? eligible[0] ?? null;
 			}
 			case "round-robin": {
 				// Pick the one least-recently-picked. Ties broken by priority.
