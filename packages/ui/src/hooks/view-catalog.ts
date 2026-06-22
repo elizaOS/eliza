@@ -16,6 +16,7 @@
  */
 
 import {
+  dedupeModalities,
   type EnabledViewKinds,
   isViewVisible,
   type ViewKind,
@@ -44,6 +45,13 @@ export interface ViewEntry {
   category?: string;
   /** Presentation modality (`gui` for catalog apps until loaded). */
   modality: ViewModality;
+  /**
+   * Every surface this logical view renders on. A single-declaration entry has
+   * `[modality]`; after {@link collapseViewEntries} it carries the union of all
+   * same-id declarations (e.g. `["gui", "xr", "tui"]`) so the view lists once
+   * with modality badges instead of one duplicate row per surface.
+   */
+  modalities?: ViewModality[];
   state: ViewEntryState;
   kind: ViewEntryKind;
   /** Catalog/plugin package name — used to launch and to dedupe vs loaded. */
@@ -79,6 +87,7 @@ function viewToEntry(view: ViewRegistryEntry): ViewEntry {
     heroUrl: hasHero ? view.heroImageUrl : undefined,
     hasHero,
     modality: view.viewType ?? "gui",
+    modalities: [view.viewType ?? "gui"],
     state: "loaded",
     kind: "view",
     pluginName: view.pluginName,
@@ -164,4 +173,39 @@ export function mergeViewCatalog(input: {
   }
 
   return [...viewEntries, ...catalogEntries];
+}
+
+/**
+ * Collapse entries that share an `id` into one logical entry carrying the union
+ * of every surface they render on. The GUI entry is preferred as the base (its
+ * label has no "XR"/"TUI" suffix); its `modalities` becomes the deduped union of
+ * all same-id entries. First-seen order is preserved. App entries (`kind:"app"`)
+ * have unique package-name ids, so they collapse to themselves.
+ *
+ * This is what makes a view appear ONCE with modality badges instead of one
+ * duplicate row per surface ("Phone" / "Phone XR" / "Phone TUI").
+ */
+export function collapseViewEntries(entries: ViewEntry[]): ViewEntry[] {
+  const order: string[] = [];
+  const byId = new Map<string, ViewEntry>();
+  for (const entry of entries) {
+    const mods = entry.modalities ?? [entry.modality];
+    const existing = byId.get(entry.id);
+    if (!existing) {
+      order.push(entry.id);
+      byId.set(entry.id, { ...entry, modalities: dedupeModalities(mods) });
+      continue;
+    }
+    const merged = dedupeModalities([
+      ...(existing.modalities ?? [existing.modality]),
+      ...mods,
+    ]);
+    // Prefer the gui entry as the canonical base (clean label, no surface
+    // suffix); otherwise keep the first-seen entry.
+    const base = entry.modality === "gui" && existing.modality !== "gui"
+      ? entry
+      : existing;
+    byId.set(entry.id, { ...base, modalities: merged });
+  }
+  return order.map((id) => byId.get(id) as ViewEntry);
 }

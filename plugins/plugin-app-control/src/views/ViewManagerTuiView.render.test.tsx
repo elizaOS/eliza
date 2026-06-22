@@ -129,6 +129,51 @@ describe("ViewManagerTuiView render", () => {
 		expect(calls[0].url).toBe("/api/views?viewType=tui");
 	});
 
+	it("collapses duplicate same-id rows into one and joins surfaces in the modality cell", async () => {
+		// Two declarations of one id (the tui surface plus a gui sibling that the
+		// agent included) must render as ONE row whose modality cell lists every
+		// surface joined as "gui · tui" — not two separate rows.
+		const dupTui = {
+			views: [
+				{
+					id: "wallet",
+					label: "Wallet",
+					viewType: "gui",
+					path: "/wallet",
+					available: true,
+					pluginName: "@elizaos/plugin-wallet-ui",
+				},
+				{
+					id: "wallet",
+					label: "Wallet TUI",
+					viewType: "tui",
+					path: "/wallet/tui",
+					available: true,
+					pluginName: "@elizaos/plugin-wallet-ui",
+				},
+			],
+		};
+		stubFetch(({ url }) => {
+			if (url === "/api/views?viewType=tui") return jsonResponse(dupTui);
+			throw new Error(`Unexpected request: ${url}`);
+		});
+
+		render(<ViewManagerTuiView />);
+		await screen.findByText("elizaos://views-manager --type=tui");
+
+		// One row only (gui base label, single zero-padded index, no "02").
+		await screen.findByText("Wallet");
+		expect(screen.queryByText("Wallet TUI")).toBeNull();
+		expect(screen.getByText("01")).toBeTruthy();
+		expect(screen.queryByText("02")).toBeNull();
+
+		// The modality cell joins both surfaces, ordered gui · tui.
+		expect(screen.getByText("gui · tui")).toBeTruthy();
+
+		// data-view-state count reflects the single collapsed view.
+		expect(viewState().viewCount).toBe(1);
+	});
+
 	it("renders 'no tui views registered' for an empty payload", async () => {
 		stubFetch(({ url }) => {
 			if (url === "/api/views?viewType=tui") return jsonResponse({ views: [] });

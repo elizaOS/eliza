@@ -191,6 +191,62 @@ describe("ViewManagerView (gui/xr) render", () => {
 		await screen.findByText("Wallet");
 	});
 
+	it("collapses duplicate gui/xr/tui declarations of one id into a single card with modality badges", async () => {
+		// /api/views can return the same logical view once per surface. The card
+		// grid must show it ONCE, with one chip per surface (no "Phone / Phone XR /
+		// Phone TUI" duplicates).
+		const dupViews = {
+			views: [
+				{
+					id: "phone",
+					label: "Phone",
+					viewType: "gui",
+					path: "/phone",
+					available: true,
+					pluginName: "@elizaos/plugin-phone",
+				},
+				{
+					id: "phone",
+					label: "Phone XR",
+					viewType: "xr",
+					path: "/phone",
+					available: true,
+					pluginName: "@elizaos/plugin-phone",
+				},
+				{
+					id: "phone",
+					label: "Phone TUI",
+					viewType: "tui",
+					path: "/phone",
+					available: true,
+					pluginName: "@elizaos/plugin-phone",
+				},
+			],
+		};
+		stubFetch(({ url }) => {
+			if (url === "/api/views") return jsonResponse(dupViews);
+			throw new Error(`Unexpected request: ${url}`);
+		});
+
+		render(<ViewManagerView />);
+
+		// Exactly one open-card button for the collapsed id, labelled from the gui
+		// base ("Phone" — no surface suffix).
+		const cards = await screen.findAllByLabelText(/^Open Phone/);
+		expect(cards).toHaveLength(1);
+		expect(screen.getByLabelText("Open Phone")).toBeTruthy();
+		expect(screen.queryByText("Phone XR")).toBeNull();
+		expect(screen.queryByText("Phone TUI")).toBeNull();
+
+		// Header count reflects the single collapsed view.
+		expect(screen.getByText("1")).toBeTruthy();
+
+		// One modality chip per surface, ordered gui · xr · tui.
+		expect(screen.getByText("gui")).toBeTruthy();
+		expect(screen.getByText("xr")).toBeTruthy();
+		expect(screen.getByText("tui")).toBeTruthy();
+	});
+
 	it("XR reuses the same component and fetches the gui list (no viewType qs)", async () => {
 		// The xr entry in src/index.ts uses componentExport "ViewManagerView" —
 		// the exact export rendered here — and fetchViewEntries() is called with

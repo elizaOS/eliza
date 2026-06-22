@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { RegistryAppInfo } from "../api";
 import type { ViewRegistryEntry } from "./useAvailableViews";
-import { mergeViewCatalog, type ViewModality } from "./view-catalog";
+import {
+  collapseViewEntries,
+  mergeViewCatalog,
+  type ViewEntry,
+  type ViewModality,
+} from "./view-catalog";
 
 function makeView(
   id: string,
@@ -164,5 +169,52 @@ describe("mergeViewCatalog", () => {
       ],
     });
     expect(entries.map((e) => e.id)).toEqual(["a"]);
+  });
+});
+
+function viewEntry(id: string, patch: Partial<ViewEntry> = {}): ViewEntry {
+  return {
+    key: `view:${id}`,
+    id,
+    label: id,
+    hasHero: false,
+    modality: "gui",
+    state: "loaded",
+    kind: "view",
+    ...patch,
+  };
+}
+
+describe("collapseViewEntries", () => {
+  it("collapses same-id gui/xr/tui entries into one with the surface union", () => {
+    const collapsed = collapseViewEntries([
+      viewEntry("phone", { label: "Phone", modality: "gui" }),
+      viewEntry("phone", { label: "Phone XR", modality: "xr" }),
+      viewEntry("phone", { label: "Phone TUI", modality: "tui" }),
+    ]);
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0].label).toBe("Phone");
+    expect(collapsed[0].modalities).toEqual(["gui", "xr", "tui"]);
+  });
+
+  it("prefers the gui entry as the base even when it arrives last", () => {
+    const collapsed = collapseViewEntries([
+      viewEntry("phone", { label: "Phone TUI", modality: "tui" }),
+      viewEntry("phone", { label: "Phone", modality: "gui" }),
+    ]);
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0].label).toBe("Phone");
+    expect(collapsed[0].modalities).toEqual(["gui", "tui"]);
+  });
+
+  it("preserves first-seen order and leaves app entries (unique ids) untouched", () => {
+    const collapsed = collapseViewEntries([
+      viewEntry("wallet", { modality: "gui" }),
+      { ...viewEntry("@x/app"), kind: "app", appName: "@x/app" },
+      viewEntry("wallet", { modality: "tui" }),
+    ]);
+    expect(collapsed.map((e) => e.id)).toEqual(["wallet", "@x/app"]);
+    expect(collapsed[0].modalities).toEqual(["gui", "tui"]);
+    expect(collapsed[1].modalities).toEqual(["gui"]);
   });
 });

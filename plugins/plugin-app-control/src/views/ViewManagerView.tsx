@@ -17,12 +17,18 @@ import {
 	RefreshCw,
 	XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+	collapseViewEntries,
 	fetchViewEntries,
 	requestViewNavigation,
 	type ViewEntry,
 } from "./viewManagerData";
+
+/** The surfaces this logical view renders on, ordered gui · xr · tui. */
+function viewModalities(view: ViewEntry): string[] {
+	return view.modalities ?? [view.viewType ?? "gui"];
+}
 
 // Shell theme tokens — inherit the host shell chrome instead of hardcoding a
 // dark cyan palette. Fallbacks avoid the forbidden literal colors.
@@ -41,6 +47,34 @@ const viewManagerTheme = {
 };
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
+
+/**
+ * Small muted modality badges — one chip per surface (gui · xr · tui) so a
+ * collapsed view shows every surface it renders on in a single row instead of a
+ * duplicate row per surface.
+ */
+function ModalityChips({ view }: { view: ViewEntry }) {
+	return (
+		<div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+			{viewModalities(view).map((modality) => (
+				<span
+					key={modality}
+					style={{
+						fontSize: 10,
+						lineHeight: 1.4,
+						padding: "0 5px",
+						borderRadius: 4,
+						color: viewManagerTheme.muted,
+						background: viewManagerTheme.surfaceMuted,
+						border: `1px solid ${viewManagerTheme.border}`,
+					}}
+				>
+					{modality}
+				</span>
+			))}
+		</div>
+	);
+}
 
 function ViewCard({
 	view,
@@ -127,6 +161,7 @@ function ViewCard({
 				>
 					{view.path}
 				</div>
+				<ModalityChips view={view} />
 			</div>
 			{view.available ? (
 				<CheckCircle2
@@ -234,6 +269,10 @@ export function ViewManagerView() {
 		void fetchViews();
 	}, [fetchViews]);
 
+	// One row per logical view id, carrying the union of its surfaces — collapses
+	// duplicate gui/xr/tui declarations of the same view into a single card.
+	const displayViews = useMemo(() => collapseViewEntries(views), [views]);
+
 	const openView = useCallback((view: ViewEntry) => {
 		void requestViewNavigation(view);
 	}, []);
@@ -267,7 +306,7 @@ export function ViewManagerView() {
 								marginLeft: 4,
 							}}
 						>
-							{views.length}
+							{displayViews.length}
 						</span>
 					)}
 				</div>
@@ -314,7 +353,7 @@ export function ViewManagerView() {
 							margin: "0 auto",
 						}}
 					>
-						{views.map((view) => (
+						{displayViews.map((view) => (
 							<ViewCard key={view.id} view={view} onOpen={openView} />
 						))}
 					</div>
@@ -418,7 +457,7 @@ function TuiViewRow({
 				{view.label}
 			</span>
 			<span style={{ color: viewManagerTheme.success }}>
-				{view.viewType ?? "gui"}
+				{viewModalities(view).join(" · ")}
 			</span>
 			<span
 				style={{
@@ -486,6 +525,9 @@ export function ViewManagerTuiView() {
 		void fetchViews();
 	}, [fetchViews]);
 
+	// One row per logical view id, carrying the union of its surfaces.
+	const displayViews = useMemo(() => collapseViewEntries(views), [views]);
+
 	const openView = useCallback((view: ViewEntry) => {
 		void requestViewNavigation(view)
 			.then(() => setLastAction(`opened ${view.id}`))
@@ -500,7 +542,7 @@ export function ViewManagerTuiView() {
 		<div
 			data-view-state={JSON.stringify({
 				viewType: "tui",
-				viewCount: views.length,
+				viewCount: displayViews.length,
 				lastAction,
 			})}
 			style={{
@@ -519,7 +561,7 @@ export function ViewManagerTuiView() {
 				data-status={lastAction}
 				style={{ color: viewManagerTheme.muted, marginBottom: 16 }}
 			>
-				{loading ? "loading" : `${views.length} entries`} | {lastAction}
+				{loading ? "loading" : `${displayViews.length} entries`} | {lastAction}
 			</div>
 
 			<div
@@ -548,14 +590,14 @@ export function ViewManagerTuiView() {
 				</div>
 
 				{error && <div style={{ color: viewManagerTheme.danger }}>{error}</div>}
-				{!error && views.length === 0 && !loading && (
+				{!error && displayViews.length === 0 && !loading && (
 					<div style={{ color: viewManagerTheme.muted }}>
 						no tui views registered
 					</div>
 				)}
-				{views.map((view, index) => (
+				{displayViews.map((view, index) => (
 					<TuiViewRow
-						key={`${view.viewType ?? "gui"}:${view.id}`}
+						key={view.id}
 						view={view}
 						index={index}
 						onOpen={openView}

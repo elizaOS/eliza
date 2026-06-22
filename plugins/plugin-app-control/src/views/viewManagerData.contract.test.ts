@@ -11,7 +11,11 @@
 // heroImageUrl).
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchViewEntries } from "./viewManagerData";
+import {
+	collapseViewEntries,
+	fetchViewEntries,
+	type ViewEntry,
+} from "./viewManagerData";
 
 /**
  * One realistic /api/views entry covering the complete ViewRegistryEntry shape
@@ -130,5 +134,60 @@ describe("fetchViewEntries contract (/api/views ViewRegistryEntry shape)", () =>
 			vi.fn(async () => jsonResponse({ error: "boom" }, { status: 500 })),
 		);
 		await expect(fetchViewEntries("tui")).rejects.toThrow("HTTP 500");
+	});
+});
+
+function entry(id: string, patch: Partial<ViewEntry> = {}): ViewEntry {
+	return {
+		id,
+		label: id,
+		available: true,
+		pluginName: `@elizaos/plugin-${id}`,
+		...patch,
+	};
+}
+
+describe("collapseViewEntries", () => {
+	it("collapses same-id gui/xr/tui declarations into one entry with the surface union", () => {
+		const collapsed = collapseViewEntries([
+			entry("phone", { label: "Phone", viewType: "gui" }),
+			entry("phone", { label: "Phone XR", viewType: "xr" }),
+			entry("phone", { label: "Phone TUI", viewType: "tui" }),
+		]);
+		expect(collapsed).toHaveLength(1);
+		expect(collapsed[0].id).toBe("phone");
+		// gui base wins the label (clean, no surface suffix).
+		expect(collapsed[0].label).toBe("Phone");
+		// Surfaces unioned and ordered gui · xr · tui.
+		expect(collapsed[0].modalities).toEqual(["gui", "xr", "tui"]);
+	});
+
+	it("prefers the gui declaration as the base even when it arrives after a non-gui one", () => {
+		const collapsed = collapseViewEntries([
+			entry("phone", { label: "Phone TUI", viewType: "tui" }),
+			entry("phone", { label: "Phone", viewType: "gui" }),
+		]);
+		expect(collapsed).toHaveLength(1);
+		expect(collapsed[0].label).toBe("Phone");
+		expect(collapsed[0].modalities).toEqual(["gui", "tui"]);
+	});
+
+	it("preserves first-seen order and leaves distinct ids untouched (one modality each)", () => {
+		const collapsed = collapseViewEntries([
+			entry("wallet", { viewType: "gui" }),
+			entry("messages", { viewType: "tui" }),
+			entry("wallet", { viewType: "tui" }),
+		]);
+		expect(collapsed.map((e) => e.id)).toEqual(["wallet", "messages"]);
+		expect(collapsed[0].modalities).toEqual(["gui", "tui"]);
+		expect(collapsed[1].modalities).toEqual(["tui"]);
+	});
+
+	it("honors a pre-set modalities array (one declaration drawing several surfaces)", () => {
+		const collapsed = collapseViewEntries([
+			entry("phone", { modalities: ["gui", "xr", "tui"] }),
+		]);
+		expect(collapsed).toHaveLength(1);
+		expect(collapsed[0].modalities).toEqual(["gui", "xr", "tui"]);
 	});
 });
