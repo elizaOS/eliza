@@ -1920,6 +1920,11 @@ export {
   summarizeEnvelope,
 } from "./services/completion-envelope.js";
 export {
+  collectScreenshotPaths,
+  deliverScreenshots,
+  screenshotsToAttachments,
+} from "./services/screenshot-delivery.js";
+export {
   AcpSessionStore,
   FileSessionStore,
   InMemorySessionStore,
