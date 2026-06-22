@@ -53,6 +53,12 @@ export interface SettingsSectionDef {
   bodyClassName?: string;
   /** Hide unless Developer Mode is on (dev builds default on; prod off). */
   developerOnly?: boolean;
+  /**
+   * Hide on the cloud mobile build (no host machine). For host/self-host
+   * concepts that are meaningless to a cloud user — e.g. the host
+   * remote-password security section. Evaluated against isAndroidCloudBuild().
+   */
+  hideOnCloud?: boolean;
   Component: ComponentType;
 }
 
