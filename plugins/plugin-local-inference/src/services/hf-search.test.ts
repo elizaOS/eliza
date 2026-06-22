@@ -66,4 +66,39 @@ describe("searchHuggingFaceGguf", () => {
 			results.map((result) => result.parameterLabel ?? result.params),
 		).toEqual(["0.8B", "2B", "0.8B"]);
 	});
+
+	it("sends the HuggingFace bearer token on search + detail when configured", async () => {
+		const saved = process.env.HF_TOKEN;
+		process.env.HF_TOKEN = "secret-search-token";
+		const authHeaders: Array<string | undefined> = [];
+		const fetchMock = vi.fn(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				const headers = (init?.headers ?? {}) as Record<string, string>;
+				authHeaders.push(headers.authorization);
+				const url = String(input);
+				if (url.startsWith("https://huggingface.co/api/models?")) {
+					return jsonResponse([{ id: "gated/private-GGUF" }]);
+				}
+				return jsonResponse({
+					id: "gated/private-GGUF",
+					tags: ["gguf"],
+					siblings: [{ rfilename: "model-q4_k_m.gguf", size: 1024 }],
+					pipeline_tag: "text-generation",
+				});
+			},
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		try {
+			await searchHuggingFaceGguf("private", 1);
+			// Both the search request and the per-repo detail request carry the token.
+			expect(authHeaders.length).toBeGreaterThanOrEqual(2);
+			expect(authHeaders.every((h) => h === "Bearer secret-search-token")).toBe(
+				true,
+			);
+		} finally {
+			if (saved === undefined) delete process.env.HF_TOKEN;
+			else process.env.HF_TOKEN = saved;
+		}
+	});
 });
