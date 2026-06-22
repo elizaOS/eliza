@@ -231,6 +231,8 @@ packages/client/ui-tests/screenshots/
 **/ui-tests/screenshots/**
 test-results/
 **/test-results*/
+# Opt-in machine-readable audit reports (VIEW_AUDIT_REPORT=1, #8798)
+packages/agent/test-output/
 playwright-report/
 **/playwright-report/
 **/test-results/

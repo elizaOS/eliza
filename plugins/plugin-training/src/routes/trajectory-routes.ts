@@ -1616,77 +1616,6 @@ async function maybeBackfillTrajectoryFromConversationMemory(
   }
 }
 
-function normalizeSearchQuery(value: string | undefined): string {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase();
-}
-
-function trajectoryMatchesSearch(
-  item: TrajectoryListItem,
-  detail: Trajectory | null,
-  search: string,
-): boolean {
-  const needle = normalizeSearchQuery(search);
-  if (!needle) return true;
-
-  const parts: string[] = [item.id, item.source, item.status, item.createdAt];
-  const metadata = detail?.metadata;
-  if (metadata && Object.keys(metadata).length > 0) {
-    parts.push(JSON.stringify(metadata));
-  }
-
-  for (const step of detail?.steps ?? []) {
-    for (const call of step.llmCalls ?? []) {
-      parts.push(
-        String(call.model ?? ""),
-        String(call.systemPrompt ?? ""),
-        String(call.userPrompt ?? ""),
-        String(call.response ?? ""),
-        String(call.purpose ?? ""),
-        String(call.actionType ?? ""),
-      );
-    }
-    for (const access of step.providerAccesses ?? []) {
-      parts.push(
-        String(access.providerName ?? ""),
-        String(access.purpose ?? ""),
-        JSON.stringify(access.data ?? {}),
-        JSON.stringify(access.query ?? {}),
-      );
-    }
-  }
-
-  return parts.some((part) => part.toLowerCase().includes(needle));
-}
-
-async function applyRouteSearchFilter(
-  runtime: AgentRuntime,
-  logger: TrajectoryLoggerApi,
-  list: TrajectoryListResult,
-  search: string,
-): Promise<TrajectoryListResult> {
-  const filtered = await Promise.all(
-    list.trajectories.map(async (item) => {
-      const detail = await logger.getTrajectoryDetail(item.id);
-      const hydrated = detail
-        ? await maybeBackfillTrajectoryFromConversationMemory(
-            runtime,
-            await maybeBackfillTrajectoryFromUseModelLogs(runtime, detail),
-          )
-        : null;
-      return trajectoryMatchesSearch(item, hydrated, search) ? item : null;
-    }),
-  );
-
-  return {
-    trajectories: filtered.filter((item): item is TrajectoryListItem => !!item),
-    total: filtered.filter(Boolean).length,
-    offset: list.offset,
-    limit: list.limit,
-  };
-}
-
 // ============================================================================
 // Handlers
 // ============================================================================
@@ -1732,26 +1661,16 @@ async function handleGetTrajectories(
   const limit = options.limit ?? 50;
   const offset = options.offset ?? 0;
 
-  const result = options.search
-    ? await applyRouteSearchFilter(
-        runtime,
-        logger,
-        await logger.listTrajectories({
-          ...options,
-          search: undefined,
-          limit: 500,
-          offset: 0,
-        }),
-        options.search,
-      )
-    : await logger.listTrajectories(options);
-
-  const pagedTrajectories = options.search
-    ? result.trajectories.slice(offset, offset + limit)
-    : result.trajectories;
+  // Search is delegated to the SQL reader: `buildTrajectoryWhereClauses`
+  // matches `search` against id/scenario_id/batch_id/metadata and the full
+  // `steps_json` blob (which carries every llmCall systemPrompt/userPrompt/
+  // response and providerAccess body). That covers the same surface as the
+  // old in-memory filter, so `total` is the DB-wide COUNT and pagination
+  // spans every match instead of only the first 500 rows.
+  const result = await logger.listTrajectories(options);
 
   const uiResult = {
-    trajectories: pagedTrajectories.map(listItemToUIRecord),
+    trajectories: result.trajectories.map(listItemToUIRecord),
     total: result.total,
     offset,
     limit,

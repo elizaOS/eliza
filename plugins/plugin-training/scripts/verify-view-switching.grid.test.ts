@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildResultGrid, type GridRow } from "./verify-view-switching.ts";
+import {
+  buildResultGrid,
+  evaluateAccuracyGate,
+  type GridRow,
+} from "./verify-view-switching.ts";
 
 // Hand-built fixture spanning 2 views × 2 languages × 2 modalities with mixed
 // pass/fail, deliberately omitting one combination so the grid must report an
@@ -64,5 +68,78 @@ describe("buildResultGrid", () => {
 
     expect(result.grid.inbox.en.text).toBe("fail");
     expect(result.cells).toHaveLength(1);
+  });
+});
+
+describe("evaluateAccuracyGate", () => {
+  const summary = {
+    total: 24,
+    landedAccuracy: 0.4,
+    directAccuracy: 0.5,
+    negativeControlPrecision: 1,
+  };
+
+  it("fails when landedAccuracy is below the floor", () => {
+    const gate = evaluateAccuracyGate(summary, { minLandedAccuracy: 0.8 });
+    expect(gate.pass).toBe(false);
+    expect(gate.failures).toHaveLength(1);
+    expect(gate.failures[0]).toMatch(
+      /landedAccuracy 40\.0% below floor 80\.0%/,
+    );
+  });
+
+  it("passes when landedAccuracy is exactly at the floor", () => {
+    const gate = evaluateAccuracyGate(
+      { ...summary, landedAccuracy: 0.8 },
+      { minLandedAccuracy: 0.8 },
+    );
+    expect(gate.pass).toBe(true);
+    expect(gate.failures).toEqual([]);
+  });
+
+  it("passes when landedAccuracy is above the floor", () => {
+    const gate = evaluateAccuracyGate(
+      { ...summary, landedAccuracy: 0.95 },
+      { minLandedAccuracy: 0.8 },
+    );
+    expect(gate.pass).toBe(true);
+    expect(gate.failures).toEqual([]);
+  });
+
+  it("passes with no floors configured (opt-in)", () => {
+    const gate = evaluateAccuracyGate(summary, {});
+    expect(gate.pass).toBe(true);
+    expect(gate.failures).toEqual([]);
+  });
+
+  it("gates per-kind direct accuracy and negative-control precision independently", () => {
+    const gate = evaluateAccuracyGate(summary, {
+      minDirectAccuracy: 0.9,
+      minNegativeControlPrecision: 0.9,
+    });
+    // direct 0.5 < 0.9 fails; negative-control 1.0 >= 0.9 passes.
+    expect(gate.pass).toBe(false);
+    expect(gate.failures).toHaveLength(1);
+    expect(gate.failures[0]).toMatch(
+      /directAccuracy 50\.0% below floor 90\.0%/,
+    );
+  });
+
+  it("collects every failing floor", () => {
+    const gate = evaluateAccuracyGate(
+      { total: 24, landedAccuracy: 0.4, directAccuracy: 0.3 },
+      { minLandedAccuracy: 0.8, minDirectAccuracy: 0.9 },
+    );
+    expect(gate.pass).toBe(false);
+    expect(gate.failures).toHaveLength(2);
+  });
+
+  it("flags a gated metric that has no value rather than silently passing", () => {
+    const gate = evaluateAccuracyGate(
+      { total: 24, landedAccuracy: 0.95 },
+      { minDirectAccuracy: 0.9 },
+    );
+    expect(gate.pass).toBe(false);
+    expect(gate.failures[0]).toMatch(/directAccuracy: no value/);
   });
 });

@@ -1,104 +1,41 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { searchHuggingFaceGguf } from "./hf-search";
+import {
+	searchHuggingFaceGguf,
+	searchModelHubGguf,
+	searchModelScopeGguf,
+} from "./hf-search";
 
-function jsonResponse(body: unknown): Response {
-	return new Response(JSON.stringify(body), {
-		status: 200,
-		headers: { "content-type": "application/json" },
-	});
-}
-
-describe("searchHuggingFaceGguf", () => {
+describe("local model hub compatibility search", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
 	});
 
-	it("classifies Qwen3.5 decimal tiers without legacy Qwen3 aliases", async () => {
-		const details = new Map<string, unknown>([
-			[
-				"Qwen/Qwen3.5-0.8B-GGUF",
-				{
-					id: "Qwen/Qwen3.5-0.8B-GGUF",
-					tags: ["gguf", "text-generation"],
-					siblings: [{ rfilename: "qwen3.5-0.8b-q4_k_m.gguf", size: 512 }],
-					pipeline_tag: "text-generation",
-				},
-			],
-			[
-				"Qwen/Qwen3.5-2B-GGUF",
-				{
-					id: "Qwen/Qwen3.5-2B-GGUF",
-					tags: ["gguf", "text-generation"],
-					siblings: [{ rfilename: "qwen3.5-2b-q4_k_m.gguf", size: 512 }],
-					pipeline_tag: "text-generation",
-				},
-			],
-			[
-				"org/tiny-0.8b-GGUF",
-				{
-					id: "org/tiny-0.8b-GGUF",
-					tags: ["gguf"],
-					siblings: [{ rfilename: "tiny-0.8b-q4_k_m.gguf", size: 512 }],
-					pipeline_tag: "text-generation",
-				},
-			],
-		]);
-		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-			const url = String(input);
-			if (url.startsWith("https://huggingface.co/api/models?")) {
-				return jsonResponse([...details.keys()].map((id) => ({ id })));
-			}
-			const encodedId = url.replace("https://huggingface.co/api/models/", "");
-			const detail = details.get(decodeURIComponent(encodedId));
-			if (detail) return jsonResponse(detail);
-			return new Response("not found", { status: 404 });
-		});
+	it("does not query Hugging Face and returns no custom models", async () => {
+		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
 
-		const results = await searchHuggingFaceGguf("qwen", 4);
-
-		expect(results.map((result) => [result.params, result.bucket])).toEqual([
-			["0.8B", "small"],
-			["2B", "small"],
-			["0.8B", "small"],
-		]);
-		expect(
-			results.map((result) => result.parameterLabel ?? result.params),
-		).toEqual(["0.8B", "2B", "0.8B"]);
+		await expect(searchHuggingFaceGguf("qwen", 4)).resolves.toEqual([]);
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
-	it("sends the HuggingFace bearer token on search + detail when configured", async () => {
-		const saved = process.env.HF_TOKEN;
-		process.env.HF_TOKEN = "secret-search-token";
-		const authHeaders: Array<string | undefined> = [];
-		const fetchMock = vi.fn(
-			async (input: RequestInfo | URL, init?: RequestInit) => {
-				const headers = (init?.headers ?? {}) as Record<string, string>;
-				authHeaders.push(headers.authorization);
-				const url = String(input);
-				if (url.startsWith("https://huggingface.co/api/models?")) {
-					return jsonResponse([{ id: "gated/private-GGUF" }]);
-				}
-				return jsonResponse({
-					id: "gated/private-GGUF",
-					tags: ["gguf"],
-					siblings: [{ rfilename: "model-q4_k_m.gguf", size: 1024 }],
-					pipeline_tag: "text-generation",
-				});
-			},
-		);
+	it("does not query ModelScope and returns no custom models", async () => {
+		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
 
-		try {
-			await searchHuggingFaceGguf("private", 1);
-			// Both the search request and the per-repo detail request carry the token.
-			expect(authHeaders.length).toBeGreaterThanOrEqual(2);
-			expect(authHeaders.every((h) => h === "Bearer secret-search-token")).toBe(
-				true,
-			);
-		} finally {
-			if (saved === undefined) delete process.env.HF_TOKEN;
-			else process.env.HF_TOKEN = saved;
-		}
+		await expect(searchModelScopeGguf("qwen", 4)).resolves.toEqual([]);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("keeps the generic hub shim no-network for all supported hubs", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(searchModelHubGguf("qwen", "huggingface", 4)).resolves.toEqual(
+			[],
+		);
+		await expect(searchModelHubGguf("qwen", "modelscope", 4)).resolves.toEqual(
+			[],
+		);
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 });

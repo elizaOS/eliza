@@ -27,15 +27,25 @@ type GenerateFn = (_options: Record<string, unknown>) => Promise<{
   durationMs: number;
 }>;
 
+type TestBundleRecord = {
+  modelId: string;
+  bundleVersion: string;
+  files: Record<string, string>;
+  installedAt: string;
+};
+
 type MockOptions = {
   hardware?: Record<string, unknown>;
   availableModels?: Array<{ name?: string; path?: string; size?: number }>;
+  bundleRecords?: TestBundleRecord[];
   downloadModel?: DownloadModelFn;
   hashFile?: HashFileFn;
   getDownloadProgress?: GetDownloadProgressFn;
   load?: LoadFn;
   generate?: GenerateFn;
 };
+
+const BUNDLE_INDEX_KEY = "eliza:ios-local-agent:eliza-1-bundles:v1";
 
 function eliza1MobileManifest(modelId = "eliza-1-2b"): Record<string, unknown> {
   // Must match the catalog's ggufFile for the tier — the kernel's manifest
@@ -188,6 +198,21 @@ function stubLocalStorage(): Storage {
   } as Storage;
 }
 
+function verifiedEliza1BundleRecord(
+  modelId: string,
+  modelPath: string,
+): TestBundleRecord {
+  const fileName = modelPath.split("/").pop() ?? `${modelId}-128k.gguf`;
+  return {
+    modelId,
+    bundleVersion: "1.0.0",
+    files: {
+      [`text/${fileName}`]: modelPath,
+    },
+    installedAt: "2026-05-11T01:00:00.000Z",
+  };
+}
+
 async function loadKernel(options: MockOptions = {}): Promise<KernelModule> {
   mockState.hardware = options.hardware ?? {};
   mockState.availableModels = options.availableModels ?? [];
@@ -250,6 +275,16 @@ async function loadKernel(options: MockOptions = {}): Promise<KernelModule> {
       body: "{}",
     }),
   );
+  if (options.bundleRecords?.length) {
+    localStorage.setItem(
+      BUNDLE_INDEX_KEY,
+      JSON.stringify(
+        Object.fromEntries(
+          options.bundleRecords.map((record) => [record.modelId, record]),
+        ),
+      ),
+    );
+  }
   return { handleIosLocalAgentRequest };
 }
 
@@ -428,6 +463,12 @@ describe("iOS local-agent local inference flow", () => {
           size: 1_200_000_000,
         },
       ],
+      bundleRecords: [
+        verifiedEliza1BundleRecord(
+          "eliza-1-2b",
+          "/models/eliza-1-2b-128k.gguf",
+        ),
+      ],
     });
 
     await jsonRequest(kernel, "POST", "/api/local-inference/active", {
@@ -518,6 +559,12 @@ describe("iOS local-agent local inference flow", () => {
           path: "/models/eliza-1-2b-128k.gguf",
           size: 1_200_000_000,
         },
+      ],
+      bundleRecords: [
+        verifiedEliza1BundleRecord(
+          "eliza-1-2b",
+          "/models/eliza-1-2b-128k.gguf",
+        ),
       ],
     });
 

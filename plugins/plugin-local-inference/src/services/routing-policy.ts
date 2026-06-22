@@ -347,6 +347,7 @@ class PolicyEngine {
 				return ranked[0] ?? null;
 			}
 		}
+		return eligible[0] ?? null;
 	}
 
 	/** For tests and diagnostics. */

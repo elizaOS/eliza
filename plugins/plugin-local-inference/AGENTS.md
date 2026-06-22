@@ -164,6 +164,7 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `IMAGEGEN_TRT_BIN` | No | Absolute path to TensorRT image-gen binary |
 | `LOCAL_INFERENCE_IMAGE_MODEL_KEY` | No | Pin a specific image-gen model key |
 | `LOCAL_INFERENCE_ACTIVE_TIER` | No | Pin a specific Eliza-1 tier (e.g. `eliza-1-4b`) |
+| `ELIZA_LOCAL_INFERENCE_ENABLE_EXTERNAL_SCAN` | No | Developer-only diagnostic opt-in; set `1`/`true`/`yes` to include external GGUF files in installed-model inventory. Default product setup is curated Eliza-1 only. |
 | `ELIZA_WHISPER_USE_GPU` | No | Enable GPU acceleration for Whisper ASR |
 | `LOCAL_EMBEDDING_MODEL` | No | Override embedding model filename |
 | `LOCAL_EMBEDDING_GPU_LAYERS` | No | GPU layers for embedding model |

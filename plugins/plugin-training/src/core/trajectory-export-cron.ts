@@ -57,7 +57,8 @@ interface RuntimeLike {
 interface TrajectoryServiceLike {
   listTrajectories: (options: {
     limit?: number;
-  }) => Promise<{ trajectories: Array<{ id: string }> }>;
+    offset?: number;
+  }) => Promise<{ trajectories: Array<{ id: string }>; total?: number }>;
   getTrajectoryDetail: (id: string) => Promise<ExportableTrajectory | null>;
 }
 
@@ -115,10 +116,50 @@ export async function runNightlyTrajectoryExport(
     return null;
   }
 
-  const limit = options.trajectoryLimit ?? DEFAULT_TRAJECTORY_LIMIT;
-  const list = await trajectoryService.listTrajectories({ limit });
+  // The export's purpose is the FULL eligible dataset. By default we page
+  // through every trajectory (the SQL reader caps each page at 500, so a
+  // single call silently dropped everything beyond the most-recent 500).
+  // An explicit `options.trajectoryLimit` acts as a hard cap; when it
+  // truncates the available set we log what was dropped (no silent caps).
+  const explicitCap = options.trajectoryLimit;
+  const items: Array<{ id: string }> = [];
+  let offset = 0;
+  let dbTotal: number | undefined;
+  while (true) {
+    const remaining =
+      explicitCap !== undefined
+        ? explicitCap - items.length
+        : DEFAULT_TRAJECTORY_LIMIT;
+    if (explicitCap !== undefined && remaining <= 0) break;
+    const pageLimit = Math.min(
+      DEFAULT_TRAJECTORY_LIMIT,
+      Math.max(1, remaining),
+    );
+    const page = await trajectoryService.listTrajectories({
+      limit: pageLimit,
+      offset,
+    });
+    if (typeof page.total === "number") dbTotal = page.total;
+    const batch = page.trajectories;
+    items.push(...batch);
+    offset += batch.length;
+    // Stop when the page came back short (no more rows) or the reader
+    // returned nothing (defensive against a non-advancing offset).
+    if (batch.length < pageLimit || batch.length === 0) break;
+  }
+
+  if (
+    explicitCap !== undefined &&
+    typeof dbTotal === "number" &&
+    dbTotal > items.length
+  ) {
+    log.warn(
+      `[TrajectoryExportCron] trajectoryLimit=${explicitCap} truncated the export: ${dbTotal - items.length} of ${dbTotal} eligible trajectories were dropped`,
+    );
+  }
+
   const trajectories: ExportableTrajectory[] = [];
-  for (const item of list.trajectories) {
+  for (const item of items) {
     const detail = await trajectoryService.getTrajectoryDetail(item.id);
     if (detail) trajectories.push(detail);
   }
