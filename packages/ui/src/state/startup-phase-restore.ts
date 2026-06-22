@@ -26,7 +26,12 @@ import {
   readPersistedMobileRuntimeMode,
 } from "../first-run/mobile-runtime-mode";
 import type { UiLanguage } from "../i18n";
-import { isAndroid, isForceFreshFirstRunEnabled, isIOS } from "../platform";
+import {
+  clearForceFreshFirstRun,
+  isAndroid,
+  isForceFreshFirstRunEnabled,
+  isIOS,
+} from "../platform";
 import type { ExistingElizaInstallInfo } from "../types";
 import {
   buildCloudSharedAgentApiBase,
@@ -386,6 +391,14 @@ export async function runRestoringSession(
   let hadPrior = loadPersistedFirstRunComplete();
   const forceFreshFirstRun = isForceFreshFirstRunEnabled();
   if (forceFreshFirstRun) {
+    // force-fresh is a ONE-SHOT directive: it forces exactly one fresh
+    // onboarding after an escape hatch (unreachable backend, pairing dead-end,
+    // ?reset). Clear it the moment restore consumes it so the *next* launch is
+    // back to normal server-authoritative behavior. Previously it was only
+    // cleared by the submitFirstRun client patch, so any completion path that
+    // doesn't POST first-run (cloud shared-agent's swallowed 404, pairing
+    // early-return) left the flag set — re-onboarding the user on every launch.
+    clearForceFreshFirstRun();
     clearPersistedActiveServer();
     savePersistedFirstRunComplete(false);
     persistedActiveServer = null;
