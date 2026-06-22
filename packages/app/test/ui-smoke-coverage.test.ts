@@ -97,6 +97,12 @@ const DEDICATED_TOOL: Readonly<Record<string, string>> = {
     "it measures per-section safe-area/spacing, writes a JSON verdict report plus " +
     "notch-simulated screenshots to reports/settings-spacing, so it is a deliberate " +
     "layout-audit harness rather than a narrow keyless PR assertion.",
+  "settings-theme-audit.spec.ts":
+    "runs on demand via `ELIZA_SETTINGS_THEME=1 node scripts/run-ui-playwright.mjs " +
+    "--config playwright.ui-smoke.config.ts test/ui-smoke/settings-theme-audit.spec.ts`; " +
+    "it flips every settings section through light and dark themes, captures " +
+    "screenshots, and writes theme response findings to reports/settings-theme, " +
+    "so it is a deliberate visual audit rather than default smoke.",
 };
 
 /**
