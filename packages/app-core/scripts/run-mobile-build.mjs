@@ -7452,6 +7452,20 @@ export async function main(argv = process.argv.slice(2)) {
   } else {
     prepareIosOverlay();
     await generateIosBrandAssets();
+    // The App Store release pipeline splits the build into `bun run build`
+    // (web) + `cap:sync:ios` + this overlay + fastlane, so it never runs
+    // buildIos()'s local-agent staging. When the build embeds the full Bun
+    // engine, stage the agent runtime payload here (after cap sync, before
+    // pod install / fastlane archive) so the shipped IPA actually contains the
+    // agent the engine runs — without it the engine boots with nothing to
+    // execute. The agent bundle must already be built (packages/agent
+    // build:ios-bun); stageIosAgentRuntime throws with that hint if missing.
+    if (shouldIncludeIosFullBunEngine()) {
+      stageIosAgentRuntime({
+        appStoreBuild: isIosAppStoreBuild(),
+        includeFullBunEngine: true,
+      });
+    }
   }
 }
 
