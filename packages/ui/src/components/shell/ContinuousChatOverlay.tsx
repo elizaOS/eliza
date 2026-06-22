@@ -50,6 +50,7 @@ import {
 } from "../../utils/image-attachment";
 import { MessageAttachments } from "../chat/MessageAttachments";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
+import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import type { ShellMessage } from "./shell-state";
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";

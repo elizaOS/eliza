@@ -14,6 +14,7 @@ import {
   type ConversationMessage,
   client,
   type ImageAttachment,
+  type MessageAttachmentContentType,
 } from "../api";
 import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
 import {
@@ -50,6 +51,18 @@ const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
  * unreachable" — in which case recreating the conversation also 404s and the
  * user's message must NOT be silently dropped.
  */
+/** Derive the rendered-attachment kind for an optimistic bubble from its MIME. */
+function optimisticAttachmentKind(
+  mimeType: string,
+): MessageAttachmentContentType {
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType.startsWith("audio/")) return "audio";
+  if (mimeType.startsWith("text/") || mimeType === "application/pdf") {
+    return "document";
+  }
+  return "image";
+}
+
 function isCloudAgentBase(value: string | null | undefined): boolean {
   if (!value?.trim()) return false;
   // Either the shared-runtime REST adapter or a dedicated <id>.elizacloud.ai
@@ -793,10 +806,15 @@ export function useChatSend(deps: UseChatSendDeps) {
         ? imagesToSend.map((img, i) => ({
             id: `${userMsgId}-img-${i}`,
             url: `data:${img.mimeType};base64,${img.data}`,
-            contentType: "image" as const,
+            // Derive the kind from the MIME type — not every pending attachment
+            // is an image (e.g. a `text/markdown` transcript), and hardcoding
+            // "image" mis-tagged the optimistic bubble until the post-turn
+            // reload corrected it.
+            contentType: optimisticAttachmentKind(img.mimeType),
             ...(img.name ? { title: img.name } : {}),
             mimeType: img.mimeType,
             source: "client_chat",
+            ...(img.transcriptId ? { transcriptId: img.transcriptId } : {}),
             ...(img.thumbnail
               ? {
                   thumbnailUrl: `data:${img.thumbnail.mimeType};base64,${img.thumbnail.data}`,
