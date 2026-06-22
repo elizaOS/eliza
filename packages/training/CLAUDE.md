@@ -31,7 +31,7 @@ This file describes what training has to *do* to satisfy that contract.
 
 ## 1. What this package owns
 
-- Text fine-tuning of the Qwen3.5 0.8B / 2B / 4B / 9B / 27B
+- Text fine-tuning of the Qwen3.5 2B / 4B / 9B / 27B
   backbones used by the current Eliza-1 release line.
 - Drafter training for MTP speculative decoding.
 - Voice handling (freeze, cache, evaluate — see §4; we do not retrain
@@ -59,7 +59,7 @@ unchanged for now):
 
 | Component       | Status                                        | Why                                  |
 | --------------- | --------------------------------------------- | ------------------------------------ |
-| Text backbone   | **Fine-tune** (Qwen3.5 0.8B / 2B / 4B)        | This is the primary product loop.    |
+| Text backbone   | **Fine-tune** (Qwen3.5 2B / 4B)               | This is the primary product loop.    |
 | MTP drafter  | **Fine-tune to match the text checkpoint**    | Acceptance rate depends on alignment.|
 | OmniVoice TTS   | **Frozen**                                    | No license to retrain; no eval lift. |
 | ASR             | **Frozen**                                    | Same.                                |

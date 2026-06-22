@@ -183,14 +183,6 @@ function hasReadableSamplePreview(
 function normalizeTier(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.toLowerCase();
-  if (
-    normalized === "0b" ||
-    normalized === "0_8b" ||
-    normalized === "qwen3.5-0.8b" ||
-    normalized.includes("0.8b")
-  ) {
-    return "0_8b";
-  }
   if (normalized.includes("27b")) return "27b";
   if (normalized.includes("9b")) return "9b";
   if (normalized.includes("4b")) return "4b";
@@ -338,7 +330,7 @@ function hasSmallestTierComparison(
   return modelBackedComparisonTierSet(
     artifact,
     hasBaseTrainedComparison,
-  ).has("0_8b");
+  ).has("2b");
 }
 
 function hasAllEliza1BenchmarkTierComparisons(
@@ -523,7 +515,7 @@ function buildModelTrackingCheck(
         : {
             label: "Stage or register concrete base/trained Eliza-1 model artifacts",
             capability: "terminal-training-stage-eliza1-bundle",
-            params: { tier: "0_8b", apply: true },
+            params: { tier: "2b", apply: true },
           },
   };
 }
@@ -682,7 +674,7 @@ function applyCoverageReadiness(
         item,
         coverageTierStatus(
           coverage,
-          ["0_8b"],
+          ["2b"],
           (tier) => tier.hasBase && tier.hasTrained,
         ),
         {
@@ -716,7 +708,7 @@ function applyCoverageReadiness(
         item,
         coverageTierStatus(
           coverage,
-          ["0_8b"],
+          ["2b"],
           (tier) => tier.hasReference,
         ) === "ready" ||
           coverage.benchmarks.tierCoverage.some((tier) => tier.hasReference)
@@ -1006,7 +998,7 @@ export function buildTrainingReadinessReportPayload(
         "No base-vs-trained Eliza harness eval comparison artifact was found.",
       recommendedAction: actionBenchmarkPairCollectionAction(
         "Run scored base-vs-trained Eliza harness eval comparison",
-        ["0_8b"],
+        ["2b"],
       ),
     }),
     check(artifacts, {
@@ -1040,7 +1032,7 @@ export function buildTrainingReadinessReportPayload(
             benchmark: "eliza_harness_action_selection",
           },
           actionBenchmarkPair: {
-            tier: "0_8b",
+            tier: "2b",
             base: { variant: "base" },
             trained: { variant: "trained" },
           },
@@ -1061,7 +1053,7 @@ export function buildTrainingReadinessReportPayload(
       missingNote: "No benchmark matrix artifact was found.",
       recommendedAction: actionBenchmarkPairCollectionAction(
         "Generate benchmark matrix from Eliza harness artifacts",
-        ["0_8b"],
+        ["2b"],
       ),
     }),
     check(artifacts, {
@@ -1079,7 +1071,7 @@ export function buildTrainingReadinessReportPayload(
         "No benchmark matrix with Eliza harness case provenance was found.",
       recommendedAction: actionBenchmarkPairCollectionAction(
         "Run Eliza harness benchmark with trajectory capture",
-        ["0_8b"],
+        ["2b"],
       ),
     }),
     check(artifacts, {
@@ -1096,7 +1088,7 @@ export function buildTrainingReadinessReportPayload(
       missingNote: "No benchmark matrix exists for the smallest Eliza-1 tier.",
       recommendedAction: actionBenchmarkPairCollectionAction(
         "Run smallest-tier base/trained Eliza harness benchmark",
-        ["0_8b"],
+        ["2b"],
       ),
     }),
     check(artifacts, {
@@ -1107,7 +1099,7 @@ export function buildTrainingReadinessReportPayload(
         hasAllEliza1BenchmarkTierComparisons(artifact),
       partial: (artifact) => artifact.kind === "benchmark_matrix",
       readyNote:
-        "Benchmark matrix includes scored coverage for 0.8B, 2B, 4B, 9B, and 27B tiers.",
+        "Benchmark matrix includes scored coverage for 2B, 4B, 9B, and 27B tiers.",
       partialNote:
         "A benchmark matrix exists, but it does not prove scored coverage for every Eliza-1 tier.",
       missingNote:
@@ -1154,7 +1146,7 @@ export function buildTrainingReadinessReportPayload(
         "No benchmark matrix exists with base/trained percentage improvement.",
       recommendedAction: actionBenchmarkPairCollectionAction(
         "Run base/trained Eliza harness improvement comparison",
-        ["0_8b"],
+        ["2b"],
       ),
     }),
     check(artifacts, {
@@ -1165,7 +1157,7 @@ export function buildTrainingReadinessReportPayload(
         hasAllEliza1TierImprovementComparisons(artifact),
       partial: (artifact) => artifact.kind === "benchmark_matrix",
       readyNote:
-        "Benchmark matrix includes percentage improvement for 0.8B, 2B, 4B, 9B, and 27B tiers.",
+        "Benchmark matrix includes percentage improvement for 2B, 4B, 9B, and 27B tiers.",
       partialNote:
         "A benchmark matrix exists, but it does not prove percentage improvement for every Eliza-1 tier.",
       missingNote:

@@ -208,6 +208,7 @@ import {
   debugLogResolvedContext,
   validateRuntimeContext,
 } from "../api/plugin-validation.ts";
+import { listViews } from "../api/views-registry.ts";
 import { getWalletAddresses, syncSolanaPublicKeyEnv } from "../api/wallet.ts";
 import {
   configFileExists,
@@ -266,6 +267,10 @@ import {
 } from "./pglite-error-compat.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
 import { validateIntentActionMap } from "./prompt-compaction.ts";
+import {
+  validateViewActionMap,
+  validateViewCoverage,
+} from "./view-action-affinity.ts";
 import rolesPlugin from "./roles.ts";
 import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.ts";
 
@@ -4944,6 +4949,20 @@ export async function startEliza(
     // simply hadn't loaded yet.
     validateIntentActionMap(
       runtime.actions.map((a) => a.name),
+      runtime.logger,
+    );
+    // Same timing: turn the (previously dead-but-tested) view-coverage validators
+    // into a live drift guard now that all plugins/views are registered (#8798).
+    // Warns when a VIEW_ACTION_MAP entry names an unregistered action, or a
+    // registered view has neither an affinity entry nor a declared ViewCapability.
+    const developerViews = listViews({ developerMode: true });
+    validateViewActionMap(
+      runtime.actions.map((a) => a.name),
+      runtime.logger,
+    );
+    validateViewCoverage(
+      developerViews.map((v) => v.id),
+      developerViews.filter((v) => v.capabilities?.length).map((v) => v.id),
       runtime.logger,
     );
     bootTimer.lap("deferred:complete");

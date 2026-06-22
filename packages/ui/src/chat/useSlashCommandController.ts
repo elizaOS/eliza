@@ -34,9 +34,10 @@ export const NAVIGATE_SETTINGS_EVENT = "eliza:navigate:settings";
  * Report a user-initiated view switch to the agent (#8792). Fire-and-forget,
  * fully guarded: a failure here must never break navigation. `source: "user"`
  * makes the server record state + emit VIEW_SWITCHED without echoing
- * shell:navigate:view back to the client.
+ * shell:navigate:view back to the client. The surface id is any view/tab id
+ * (e.g. a view id, a tab id, or "settings") the proactive decider keys off.
  */
-function reportUserViewSwitch(viewId: string, viewPath?: string): void {
+export function reportUserViewSwitch(viewId: string, viewPath?: string): void {
   try {
     const base = getElizaApiBase();
     if (!base || typeof fetch === "undefined") return;
@@ -214,7 +215,12 @@ export function useSlashCommandController(
   );
 
   const navigateTab = React.useCallback(
-    (tab: string) => setTab(tab as Tab),
+    (tab: string) => {
+      setTab(tab as Tab);
+      // Report the tab id as a surface so the proactive decider can react to
+      // user-initiated tab navigation (#8792). Fire-and-forget.
+      reportUserViewSwitch(tab);
+    },
     [setTab],
   );
 
@@ -225,6 +231,9 @@ export function useSlashCommandController(
         detail: { section },
       }),
     );
+    // Surface key is "settings" with the section threaded through as the path
+    // so the decider can distinguish settings sub-screens (#8792).
+    reportUserViewSwitch("settings", section);
   }, []);
 
   const navigateView = React.useCallback(

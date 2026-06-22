@@ -40,15 +40,15 @@ describe("benchmark matrix artifacts", () => {
           score: 0.8,
         },
         {
-          modelId: "qwen3.5-0.8b-base",
-          tier: "qwen3.5-0.8b",
+          modelId: "qwen3.5-2b-base",
+          tier: "qwen3.5-2b",
           variant: "base",
           benchmark: "eliza_harness_action_reason",
           score: 0.4,
         },
         {
-          modelId: "qwen3.5-0.8b-trained",
-          tier: "qwen3.5-0.8b",
+          modelId: "qwen3.5-2b-trained",
+          tier: "qwen3.5-2b",
           variant: "trained",
           benchmark: "eliza_harness_action_reason",
           score: 0.5,
@@ -65,7 +65,7 @@ describe("benchmark matrix artifacts", () => {
       benchmarks: 1,
     });
     expect(artifact.comparisons[0]).toMatchObject({
-      tier: "0_8b",
+      tier: "2b",
       benchmark: "eliza_harness_action_reason",
       baseScore: 0.4,
       trainedScore: 0.5,
@@ -109,15 +109,15 @@ describe("benchmark matrix artifacts", () => {
           score: 0.55,
         },
         {
-          modelId: "eliza-1-2b-base",
-          tier: "2b",
+          modelId: "eliza-1-4b-base",
+          tier: "4b",
           variant: "base",
           benchmark: "eliza_harness_action_selection",
           score: 0.45,
         },
         {
-          modelId: "eliza-1-0_8b-base",
-          tier: "0_8b",
+          modelId: "eliza-1-2b-base",
+          tier: "2b",
           variant: "base",
           benchmark: "eliza_harness_action_selection",
           score: 0.35,
@@ -125,10 +125,10 @@ describe("benchmark matrix artifacts", () => {
       ],
     });
 
-    expect(artifact.tiers).toEqual(["0_8b", "2b", "27b"]);
+    expect(artifact.tiers).toEqual(["2b", "4b", "27b"]);
     expect(artifact.comparisons.map((comparison) => comparison.tier)).toEqual([
-      "0_8b",
       "2b",
+      "4b",
       "27b",
     ]);
   });
@@ -139,7 +139,7 @@ describe("benchmark matrix artifacts", () => {
         {
           modelId: "cerebras/gpt-oss-120b",
           provider: "cerebras",
-          tier: "0_8b",
+          tier: "2b",
           variant: "reference",
           benchmark: "eliza_harness_action_selection",
           score: 1,
@@ -147,7 +147,7 @@ describe("benchmark matrix artifacts", () => {
       ],
     });
 
-    expect(artifact.tiers).toEqual(["0_8b"]);
+    expect(artifact.tiers).toEqual(["2b"]);
     expect(artifact.counts).toMatchObject({
       rows: 1,
       comparisons: 1,
@@ -156,7 +156,7 @@ describe("benchmark matrix artifacts", () => {
     });
     expect(artifact.comparisons).toEqual([
       expect.objectContaining({
-        tier: "0_8b",
+        tier: "2b",
         benchmark: "eliza_harness_action_selection",
         baseScore: null,
         trainedScore: null,
@@ -185,8 +185,8 @@ describe("benchmark matrix artifacts", () => {
           score: 0.7,
         },
         {
-          modelId: "eliza-1-0_8b-trained",
-          tier: "0_8b",
+          modelId: "eliza-1-4b-trained",
+          tier: "4b",
           variant: "trained",
           benchmark: "eliza_harness_action_selection",
           score: 0.5,
@@ -207,8 +207,8 @@ describe("benchmark matrix artifacts", () => {
         comparison.referenceScore,
       ]),
     ).toEqual([
-      ["0_8b", 0.8],
       ["2b", 0.7],
+      ["4b", 0.8],
     ]);
   });
 
@@ -216,16 +216,16 @@ describe("benchmark matrix artifacts", () => {
     const artifact = buildBenchmarkMatrixArtifactPayload({
       rows: [
         {
-          modelId: "eliza-1-0_8b-base",
-          tier: "0_8b",
+          modelId: "eliza-1-2b-base",
+          tier: "2b",
           variant: "base",
           benchmark: "eliza_harness_action_selection",
           score: 0,
           metrics: { dryRun: true },
         },
         {
-          modelId: "eliza-1-0_8b-trained",
-          tier: "0_8b",
+          modelId: "eliza-1-2b-trained",
+          tier: "2b",
           variant: "trained",
           benchmark: "eliza_harness_action_selection",
           score: 0,
@@ -236,7 +236,7 @@ describe("benchmark matrix artifacts", () => {
 
     expect(artifact.comparisons).toEqual([
       expect.objectContaining({
-        tier: "0_8b",
+        tier: "2b",
         benchmark: "eliza_harness_action_selection",
         dryRun: true,
         improvementPercent: null,
@@ -314,9 +314,9 @@ describe("benchmark matrix artifacts", () => {
         generatedAt: "2026-05-23T12:00:00.000Z",
         source: {
           kind: "app_core_action_selection_benchmark",
-          modelId: "eliza-1-0_8b-trained",
+          modelId: "eliza-1-2b-trained",
           variant: "trained",
-          tier: "0_8b",
+          tier: "2b",
           benchmark: "eliza_harness_action_selection",
           datasetVersion: "eliza-native-v1",
           codeCommit: "abc123",
@@ -336,9 +336,9 @@ describe("benchmark matrix artifacts", () => {
 
     expect(rows).toEqual([
       expect.objectContaining({
-        modelId: "eliza-1-0_8b-trained",
+        modelId: "eliza-1-2b-trained",
         variant: "trained",
-        tier: "0_8b",
+        tier: "2b",
         benchmark: "eliza_harness_action_selection",
         score: 0.7,
         datasetVersion: "eliza-native-v1",
@@ -357,9 +357,9 @@ describe("benchmark matrix artifacts", () => {
         dryRun: true,
         source: {
           kind: "app_core_action_selection_benchmark",
-          modelId: "eliza-1-0_8b-base",
+          modelId: "eliza-1-2b-base",
           variant: "base",
-          tier: "0_8b",
+          tier: "2b",
           benchmark: "eliza_harness_action_selection",
           dryRun: true,
         },
@@ -376,7 +376,7 @@ describe("benchmark matrix artifacts", () => {
 
     expect(rows).toEqual([
       expect.objectContaining({
-        modelId: "eliza-1-0_8b-base",
+        modelId: "eliza-1-2b-base",
         variant: "base",
         score: 0,
         metrics: expect.objectContaining({ dryRun: true }),
@@ -431,9 +431,9 @@ describe("benchmark matrix artifacts", () => {
         schema: BENCHMARK_MATRIX_ARTIFACT_SCHEMA,
         rows: [
           {
-            modelId: "eliza-1-0_8b-trained",
+            modelId: "eliza-1-2b-trained",
             variant: "trained",
-            tier: "0_8b",
+            tier: "2b",
             benchmark: "hermes",
             score: 0.52,
             metrics: { improvementPercent: 30 },
@@ -454,9 +454,9 @@ describe("benchmark matrix artifacts", () => {
 
     expect(rows).toEqual([
       expect.objectContaining({
-        modelId: "eliza-1-0_8b-trained",
+        modelId: "eliza-1-2b-trained",
         variant: "trained",
-        tier: "0_8b",
+        tier: "2b",
         benchmark: "hermes",
         score: 0.52,
         metrics: expect.objectContaining({ improvementPercent: 30 }),

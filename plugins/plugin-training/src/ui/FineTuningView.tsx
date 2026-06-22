@@ -5,6 +5,7 @@ import {
   registerDetailExtension,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { useAppSelector } from "@elizaos/ui/state";
 import type {
   HuggingFaceDatasetIngestResponse,
   ListTrainingCollectionsResponse,
@@ -887,9 +888,9 @@ export function FineTuningView({
   const [evalComparisonManifestPath, setEvalComparisonManifestPath] =
     useState("");
   const [evalComparisonBaseModel, setEvalComparisonBaseModel] =
-    useState("eliza-1-0_8b-base");
+    useState("eliza-1-2b-base");
   const [evalComparisonTrainedModelPath, setEvalComparisonTrainedModelPath] =
-    useState("eliza-1-0_8b-trained");
+    useState("eliza-1-2b-trained");
   const [evalComparisonBackend, setEvalComparisonBackend] = useState<
     "cpu" | "mlx" | "cuda"
   >("cpu");
@@ -898,7 +899,7 @@ export function FineTuningView({
   const [benchmarkRunning, setBenchmarkRunning] = useState(false);
   const [benchmarkResult, setBenchmarkResult] =
     useState<RunBenchmarkVsCerebrasResponse | null>(null);
-  const [benchmarkTiers, setBenchmarkTiers] = useState("0_8b");
+  const [benchmarkTiers, setBenchmarkTiers] = useState("2b");
   const [benchmarkKind, setBenchmarkKind] = useState<
     "eliza_harness_action_selection" | "hermes" | "clawbench" | "all"
   >("eliza_harness_action_selection");
@@ -915,7 +916,7 @@ export function FineTuningView({
   const [bundleStageResult, setBundleStageResult] =
     useState<StageEliza1BundleResponse | null>(null);
   const [bundleStageRepoId, setBundleStageRepoId] = useState("elizaos/eliza-1");
-  const [bundleStageTier, setBundleStageTier] = useState("0_8b");
+  const [bundleStageTier, setBundleStageTier] = useState("2b");
   const [bundleStageLocalDir, setBundleStageLocalDir] = useState(
     "/tmp/eliza-1-bundles",
   );
@@ -930,18 +931,18 @@ export function FineTuningView({
     useState("1");
   const [actionBenchmarkOutputDir, setActionBenchmarkOutputDir] = useState("");
   const [actionBenchmarkModelId, setActionBenchmarkModelId] = useState(
-    "eliza-1-0_8b-trained",
+    "eliza-1-2b-trained",
   );
   const [actionBenchmarkRuntimeModel, setActionBenchmarkRuntimeModel] =
-    useState("eliza-1-0_8b-trained");
+    useState("eliza-1-2b-trained");
   const [actionBenchmarkPairEnabled, setActionBenchmarkPairEnabled] =
     useState(true);
   const [actionBenchmarkPairTiers, setActionBenchmarkPairTiers] =
-    useState("0_8b");
+    useState("2b");
   const [actionBenchmarkBaseModelId, setActionBenchmarkBaseModelId] =
-    useState("eliza-1-0_8b-base");
+    useState("eliza-1-2b-base");
   const [actionBenchmarkBaseRuntimeModel, setActionBenchmarkBaseRuntimeModel] =
-    useState("eliza-1-0_8b-base");
+    useState("eliza-1-2b-base");
   const [actionBenchmarkProvider, setActionBenchmarkProvider] =
     useState("local-llama-cpp");
   const [actionBenchmarkBaseUrl, setActionBenchmarkBaseUrl] = useState(
@@ -950,7 +951,7 @@ export function FineTuningView({
   const [actionBenchmarkVariant, setActionBenchmarkVariant] = useState<
     "reference" | "base" | "trained"
   >("trained");
-  const [actionBenchmarkTier, setActionBenchmarkTier] = useState("0_8b");
+  const [actionBenchmarkTier, setActionBenchmarkTier] = useState("2b");
   const [actionBenchmarkMatrixBenchmark, setActionBenchmarkMatrixBenchmark] =
     useState("eliza_harness_action_selection");
   const [actionBenchmarkDatasetVersion, setActionBenchmarkDatasetVersion] =
@@ -4292,7 +4293,7 @@ export function FineTuningView({
                     className={AGENT_FIELD_INPUT_CLASS}
                     value={evalComparisonBaseModel}
                     onChange={setEvalComparisonBaseModel}
-                    placeholder="eliza-1-0_8b-base"
+                    placeholder="eliza-1-2b-base"
                   />
                 </div>
                 <div className="space-y-1 text-xs text-muted">
@@ -4307,7 +4308,7 @@ export function FineTuningView({
                     className={AGENT_FIELD_INPUT_CLASS}
                     value={evalComparisonTrainedModelPath}
                     onChange={setEvalComparisonTrainedModelPath}
-                    placeholder="eliza-1-0_8b-trained"
+                    placeholder="eliza-1-2b-trained"
                   />
                 </div>
                 <div className="space-y-1 text-xs text-muted">
@@ -4595,7 +4596,7 @@ export function FineTuningView({
                   className={AGENT_FIELD_INPUT_CLASS}
                   value={benchmarkTrainedModelPath}
                   onChange={setBenchmarkTrainedModelPath}
-                  placeholder="packages/training/checkpoints/eliza-1-0_8b/final"
+                  placeholder="packages/training/checkpoints/eliza-1-2b/final"
                 />
               </div>
               <div className="space-y-1 text-xs text-muted">
@@ -4763,9 +4764,8 @@ export function FineTuningView({
                   className={AGENT_FIELD_INPUT_CLASS}
                   value={bundleStageTier}
                   onChange={setBundleStageTier}
-                  options={["0_8b", "2b", "4b", "9b", "27b", "27b-256k"]}
+                  options={["2b", "4b", "9b", "27b", "27b-256k"]}
                 >
-                  <option value="0_8b">0_8b</option>
                   <option value="2b">2b</option>
                   <option value="4b">4b</option>
                   <option value="9b">9b</option>

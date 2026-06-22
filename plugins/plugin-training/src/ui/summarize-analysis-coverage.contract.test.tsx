@@ -191,7 +191,7 @@ async function buildRealIndex(): Promise<TrainingAnalysisIndexResponse> {
 
   // Hugging Face dataset ingest (downloaded file + manifest).
   const hfDir = join(root, "hf");
-  await writeJsonl(join(hfDir, "sft", "0_8b", "train.jsonl"), [
+  await writeJsonl(join(hfDir, "sft", "2b", "train.jsonl"), [
     {
       schema: "eliza.eliza1_sft_record.v1",
       source_dataset: "huggingface_sft",
@@ -214,8 +214,8 @@ async function buildRealIndex(): Promise<TrainingAnalysisIndexResponse> {
     counts: { files: 1, downloadedFiles: 1, dryRunFiles: 0, jsonlRows: 1 },
     files: [
       {
-        hfPath: "sft/0_8b/train.jsonl",
-        localPath: join(hfDir, "sft", "0_8b", "train.jsonl"),
+        hfPath: "sft/2b/train.jsonl",
+        localPath: join(hfDir, "sft", "2b", "train.jsonl"),
         rows: 1,
         bytes: 128,
         status: "downloaded",
@@ -230,32 +230,32 @@ async function buildRealIndex(): Promise<TrainingAnalysisIndexResponse> {
     generatedAt: "2026-01-02T03:25:00.000Z",
     source: { kind: "training_benchmark_matrix" },
     referenceModelId: "cerebras/gpt-oss-120b",
-    tiers: ["0_8b"],
+    tiers: ["2b"],
     benchmarks: ["eliza_harness_action_selection"],
     counts: { rows: 2, comparisons: 1, tiers: 1, benchmarks: 1 },
     rows: [
       {
-        modelId: "eliza-1-0_8b-base",
+        modelId: "eliza-1-2b-base",
         benchmark: "eliza_harness_action_selection",
         score: 0.4,
         variant: "base",
-        tier: "0_8b",
+        tier: "2b",
         provider: "local-llama-cpp",
         metrics: { total: 1, passed: 0, failed: 1, useMocks: false },
       },
       {
-        modelId: "eliza-1-0_8b-trained",
+        modelId: "eliza-1-2b-trained",
         benchmark: "eliza_harness_action_selection",
         score: 0.5,
         variant: "trained",
-        tier: "0_8b",
+        tier: "2b",
         provider: "local-llama-cpp",
         metrics: { total: 1, passed: 1, failed: 0, useMocks: false },
       },
     ],
     comparisons: [
       {
-        tier: "0_8b",
+        tier: "2b",
         benchmark: "eliza_harness_action_selection",
         baseScore: 0.4,
         trainedScore: 0.5,
@@ -266,14 +266,14 @@ async function buildRealIndex(): Promise<TrainingAnalysisIndexResponse> {
   });
 
   // Model registry entry.
-  await writeJson(join(root, "models", "0_8b-model-manifest.json"), {
+  await writeJson(join(root, "models", "2b-model-manifest.json"), {
     schema: "eliza1_model_registry_entry",
-    model: "eliza-1-0_8b-trained",
+    model: "eliza-1-2b-trained",
     variant: "trained",
-    tier: "0_8b",
-    outputPath: "hf://elizaos/eliza-1-0_8b-trained",
-    baseModel: "eliza-1-0_8b-base",
-    repoId: "elizaos/eliza-1-0_8b-trained",
+    tier: "2b",
+    outputPath: "hf://elizaos/eliza-1-2b-trained",
+    baseModel: "eliza-1-2b-base",
+    repoId: "elizaos/eliza-1-2b-trained",
   });
 
   return (await buildTrainingAnalysisIndex({

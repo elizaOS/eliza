@@ -36,6 +36,13 @@ export type InteractionPayload =
   | SlashCommandInvokedPayload
   | ShortcutFiredPayload;
 
+/**
+ * Runtime setting key for the user-facing "Proactive suggestions" control
+ * (off/subtle/chatty). Read via `runtime.getSetting`, it takes precedence over
+ * the `ELIZA_PROACTIVE_INTERACTIONS` env default inside the gate resolver.
+ */
+export const PROACTIVE_CHATTINESS_SETTING_KEY = "ELIZA_PROACTIVE_INTERACTIONS";
+
 /** A model judge: given an interaction context, return an offer or null. */
 export type ProactiveJudge = (
   payload: InteractionPayload,
@@ -172,7 +179,14 @@ export function registerProactiveInteractionDecider(
   wiring: ProactiveDeciderWiring,
 ): void {
   const clock = wiring.now ?? Date.now;
-  const config = resolveProactiveGateConfig();
+  // The user-facing "Proactive suggestions" control (off/subtle/chatty) is a
+  // runtime setting; it overrides the env default in the gate resolver, so
+  // "off" suppresses entirely and "chatty" relaxes the caps (#8792).
+  const userSetting = runtime.getSetting(PROACTIVE_CHATTINESS_SETTING_KEY);
+  const config = resolveProactiveGateConfig(
+    process.env,
+    typeof userSetting === "string" ? userSetting : undefined,
+  );
   wiring.gate.setConfig(config);
   if (config.chattiness === "off") {
     logger.debug("[proactive-interaction] disabled by config; not subscribing");

@@ -10,13 +10,6 @@
     "rule": "If --provider is not set, run-on-cloud.sh picks tiers[$TIER].recommended_provider. min_vram_gb is the hard floor: dispatch refuses to provision a GPU below it."
   },
   "tiers": {
-    "0_8b": {
-      "min_vram_gb": 8,
-      "recommended_provider": "local",
-      "default_vast_gpu": "rtx4090",
-      "default_nebius_preset": "gpu-h200x1",
-      "notes": "0.8B fits in 8GB at int4. Run locally; cloud is overkill. Cloud fallback uses the cheapest 24GB+ card."
-    },
     "2b": {
       "min_vram_gb": 20,
       "recommended_provider": "vast",

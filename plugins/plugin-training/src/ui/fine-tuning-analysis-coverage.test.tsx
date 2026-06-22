@@ -211,7 +211,7 @@ const manifestCoverageIndex: TrainingAnalysisIndexResponse = {
         allEliza1TiersCovered: true,
         tierCoverage: [
           {
-            tier: "0_8b",
+            tier: "2b",
             hasBase: true,
             hasTrained: true,
             hasReference: true,
@@ -234,7 +234,7 @@ const manifestCoverageIndex: TrainingAnalysisIndexResponse = {
         payload: {
           comparisons: [
             {
-              tier: "0_8b",
+              tier: "2b",
               benchmark: "eliza_harness_action_selection",
               baseScore: 0.4,
               trainedScore: 0.5,
@@ -356,14 +356,14 @@ const artifactAggregationIndex: TrainingAnalysisIndexResponse = {
         summary: {
           schema: "eliza_benchmark_matrix_artifact",
           modelStats: [
-            { modelId: "eliza-1-0_8b-base", averageScore: 0.4 },
-            { modelId: "eliza-1-0_8b-trained", averageScore: 0.72 },
+            { modelId: "eliza-1-2b-base", averageScore: 0.4 },
+            { modelId: "eliza-1-2b-trained", averageScore: 0.72 },
           ],
         },
         payload: {
           comparisons: [
             {
-              tier: "0_8b",
+              tier: "2b",
               benchmark: "eliza_harness_action_selection",
               baseScore: 0.4,
               trainedScore: 0.5,
@@ -379,7 +379,7 @@ const artifactAggregationIndex: TrainingAnalysisIndexResponse = {
         kind: "model",
         title: "model",
         path: "/tmp/model.json",
-        summary: { model: "eliza-1-0_8b-trained" },
+        summary: { model: "eliza-1-2b-trained" },
         payload: {},
       },
     ],
@@ -442,12 +442,12 @@ describe("FineTuningView analysis coverage panel", () => {
     expect(expectMonoLine("models:2 best:none")).toBeTruthy();
     // all tiers covered + tier coverage row.
     expect(
-      expectMonoLine("all tiers covered 0_8b:base/trained/ref/improvement"),
+      expectMonoLine("all tiers covered 2b:base/trained/ref/improvement"),
     ).toBeTruthy();
     // benchmarkComparisons row (from artifact payload).
     expect(
       expectMonoLine(
-        "0_8b eliza_harness_action_selection base:0.4 trained:0.5 reference:0.8 improvement:25% vs-ref:-37.5%",
+        "2b eliza_harness_action_selection base:0.4 trained:0.5 reference:0.8 improvement:25% vs-ref:-37.5%",
       ),
     ).toBeTruthy();
   });
@@ -483,14 +483,14 @@ describe("FineTuningView analysis coverage panel", () => {
     expect(expectMonoLine("evals:1 matrices:1 models:1")).toBeTruthy();
     // model inventory summary from modelStats → best model + avg score.
     expect(
-      expectMonoLine("models:2 best:eliza-1-0_8b-trained avg:0.72"),
+      expectMonoLine("models:2 best:eliza-1-2b-trained avg:0.72"),
     ).toBeTruthy();
     // fallback branch reports partial tier coverage (no tier rows).
     expect(expectMonoLine("partial")).toBeTruthy();
     // benchmarkComparisons row.
     expect(
       expectMonoLine(
-        "0_8b eliza_harness_action_selection base:0.4 trained:0.5 reference:0.8 improvement:25% vs-ref:-37.5%",
+        "2b eliza_harness_action_selection base:0.4 trained:0.5 reference:0.8 improvement:25% vs-ref:-37.5%",
       ),
     ).toBeTruthy();
   });

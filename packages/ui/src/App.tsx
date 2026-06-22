@@ -27,6 +27,7 @@ import {
 import {
   NAVIGATE_SETTINGS_EVENT,
   type NavigateSettingsDetail,
+  reportUserViewSwitch,
   useSlashCommandController,
 } from "./chat/useSlashCommandController";
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
@@ -1300,6 +1301,7 @@ function ContinuousChatOverlayMount(): ReactNode {
  */
 function HomeScreenMount(): ReactNode {
   const { setTab } = useApp();
+  const { views } = useAvailableViews();
   // Host apps can override the home screen via the `homeScreen` boot-config slot
   // (whitelabel seam); fall back to the built-in HomeScreen.
   const { homeScreen: HomeScreenOverride } = useBootConfig();
@@ -1307,15 +1309,23 @@ function HomeScreenMount(): ReactNode {
     (target: HomeTileTarget) => {
       if (target.kind === "tab") {
         setTab(target.tab);
+        // Report the tab id as a surface so the proactive decider reacts to
+        // user-initiated tile navigation (#8792). Fire-and-forget.
+        reportUserViewSwitch(target.tab);
       } else {
         window.dispatchEvent(
           new CustomEvent("eliza:navigate:view", {
             detail: { viewPath: target.path },
           }),
         );
+        // The tile only carries a path; resolve the registered view id so the
+        // decider keys off the same id the rest of the navigation bus uses
+        // (#8792). Skip the report when no view is registered at that path.
+        const viewId = views.find((v) => v.path === target.path)?.id;
+        if (viewId) reportUserViewSwitch(viewId, target.path);
       }
     },
-    [setTab],
+    [setTab, views],
   );
   const Home = HomeScreenOverride ?? HomeScreen;
   return (
