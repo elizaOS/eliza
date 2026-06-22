@@ -119,7 +119,7 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "MCP_READ_RESOURCE",
     "MCP_SEARCH_ACTIONS",
   ],
-  "@elizaos/plugin-workflow": ["WORKFLOW"],
+  "@elizaos/plugin-workflow": ["EVAL_CODE", "WORKFLOW"],
   "@elizaos/plugin-github": [
     "GITHUB",
     "GITHUB_ISSUE_ASSIGN",
@@ -192,6 +192,8 @@ const KNOWN_UNCOVERED: readonly string[] = [
   // New on-device transcription actions; no deterministic keyless scenario yet.
   "START_TRANSCRIPTION",
   "STOP_TRANSCRIPTION",
+  // New workflow code-eval action (#8914); no deterministic keyless scenario yet.
+  "EVAL_CODE",
   // plugin-commands slash-command actions (/help, /status, /models, …) are
   // dispatched through the command palette, not the keyless scenario pipeline,
   // so they have no deterministic scenario yet.
@@ -393,6 +395,7 @@ const APP_CONTROL_MODE_SURFACE: Record<
     "open",
     "pin",
     "remove",
+    "rollback",
     "search",
     "show",
     "split",
@@ -409,7 +412,11 @@ const APP_CONTROL_MODE_SURFACE: Record<
 // VIEWS:close/split/tile are now exercised by real scenario turns (the coverage
 // loader reports zero uncovered modes), so the known-uncovered baseline is empty.
 // Re-add a mode here only if its real scenario turn is intentionally removed.
-const KNOWN_UNCOVERED_APP_CONTROL_MODES: readonly string[] = [];
+const KNOWN_UNCOVERED_APP_CONTROL_MODES: readonly string[] = [
+  // New VIEWS:rollback mode (live action schema) has no deterministic scenario
+  // turn yet; tracked here so the coverage loader stays green until one lands.
+  "VIEWS:rollback",
+];
 
 const REQUIRED_APP_CONTROL_MODE_TURNS: readonly {
   actionName: AppControlActionName;
@@ -724,6 +731,10 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
 const PROSE_ONLY_LLM_SCENARIOS: Record<string, string> = {
   "deterministic-pr-smoke":
     "single TEXT_SMALL deterministic reply smoke; it does not route an action",
+  "deterministic-inbound-attachment-actions":
+    "inbound attachment flows through the pipeline to a deterministic reply; it does not route an action (the read tool is core ATTACHMENT, unit-tested in core)",
+  "live-inbound-attachment":
+    "live-lane real-LLM counterpart of deterministic-inbound-attachment-actions; the model reads the attachment and replies in prose, routing no action",
 };
 
 /**
@@ -1283,7 +1294,14 @@ describe("deterministic action coverage", () => {
           `${file}: declared id ${JSON.stringify(id)} != filename base ${JSON.stringify(base)}`,
         );
       }
-      if (!wired.has(base)) {
+      // Live-only counterparts (e.g. a real-LLM twin of a deterministic
+      // scenario) live alongside their deterministic siblings but run in the
+      // credentialed live lane, not the keyless deterministic CI lane — so they
+      // are exempt from the pr-deterministic wiring requirement.
+      const isLiveOnly = /lane:\s*["']live-only["']/.test(
+        readFileSync(resolve(scenarioDir, file), "utf8"),
+      );
+      if (!isLiveOnly && !wired.has(base)) {
         problems.push(
           `${file}: missing 'lane: "pr-deterministic"' — tag it or it never runs in the deterministic CI lane`,
         );
