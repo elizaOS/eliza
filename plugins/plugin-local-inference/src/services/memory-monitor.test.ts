@@ -65,6 +65,30 @@ describe("MemoryMonitor", () => {
 		expect(text.evictCount()).toBe(0);
 	});
 
+	it("defers eviction to the registry's external owner — no double-eviction (#8809 AC#2)", async () => {
+		const registry = new SharedResourceRegistry();
+		const tts = fakeRole("tts", 300);
+		const text = fakeRole("text-target", 2000);
+		registry.acquire(tts.resource);
+		registry.acquire(text.resource);
+
+		// The arbiter owns the eviction decision for this registry.
+		registry.claimEvictionOwnership("memory-arbiter");
+		const monitor = monitorWithFreeMb(registry, 256); // well under low-water
+		const deferred = await monitor.tick();
+		expect(deferred.delegated).toBe(true);
+		expect(deferred.evicted).toBeNull();
+		expect(tts.evictCount()).toBe(0); // the monitor did NOT evict
+		expect(text.evictCount()).toBe(0);
+
+		// Once the owner releases, the monitor resumes evicting itself.
+		registry.releaseEvictionOwnership("memory-arbiter");
+		const evicted = await monitor.tick();
+		expect(evicted.delegated).toBeFalsy();
+		expect(evicted.evicted?.role).toBe("tts");
+		expect(tts.evictCount()).toBe(1);
+	});
+
 	it("under pressure, evicts the lowest-priority resident role first", async () => {
 		const registry = new SharedResourceRegistry();
 		const emotion = fakeRole("emotion", 800);

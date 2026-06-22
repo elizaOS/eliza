@@ -110,6 +110,9 @@ export type ArbiterCapability =
 	| "image-gen"
 	| "transcribe";
 
+/** Identifies the arbiter as the registry's eviction-decision owner (#8809 AC#2). */
+const MEMORY_ARBITER_EVICTION_OWNER = "memory-arbiter";
+
 /**
  * Map a capability to the resident-role bucket the existing
  * `SharedResourceRegistry` already tracks. Adding a new capability MUST
@@ -326,6 +329,9 @@ export class MemoryArbiter {
 				);
 			});
 		});
+		// This arbiter is now the single eviction-decision owner for the shared
+		// registry; the simpler MemoryMonitor poll defers to it (#8809 AC#2).
+		this.registry.claimEvictionOwnership(MEMORY_ARBITER_EVICTION_OWNER);
 	}
 
 	/** Stop observing pressure. Does NOT evict resident handles. */
@@ -335,6 +341,7 @@ export class MemoryArbiter {
 			this.pressureUnsubscribe = null;
 		}
 		this.pressureSource?.stop();
+		this.registry.releaseEvictionOwnership(MEMORY_ARBITER_EVICTION_OWNER);
 	}
 
 	/** Tear down: stop pressure observation and unload every resident handle. */
