@@ -5,12 +5,12 @@ import {
   SurfaceEmptyState,
   selectLatestRunForApp,
   toneForStatusText,
-  useApp,
+  useAppSelector,
 } from "@elizaos/app-core/ui-compat";
 import { useMemo } from "react";
 
 export function DefenseAgentsDetailExtension({ app }: AppDetailExtensionProps) {
-  const { appRuns } = useApp();
+  const appRuns = useAppSelector((s) => s.appRuns);
   const { run, matchingRuns } = useMemo(
     () => selectLatestRunForApp(app.name, appRuns),
     [app.name, appRuns],

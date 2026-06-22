@@ -1,4 +1,4 @@
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 
@@ -10,13 +10,19 @@ import { Spinner } from "../ui/spinner";
  * Renders in document flow to push the header and content down.
  */
 export function ConnectionFailedBanner() {
-  const { t } = useApp();
   const {
+    t,
     backendConnection,
     backendDisconnectedBannerDismissed,
     dismissBackendDisconnectedBanner,
     retryBackendConnection,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    backendConnection: s.backendConnection,
+    backendDisconnectedBannerDismissed: s.backendDisconnectedBannerDismissed,
+    dismissBackendDisconnectedBanner: s.dismissBackendDisconnectedBanner,
+    retryBackendConnection: s.retryBackendConnection,
+  }));
 
   if (!backendConnection) return null;
   if (backendConnection.showDisconnectedUI) return null;

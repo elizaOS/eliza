@@ -83,7 +83,11 @@ import {
 } from "./navigation";
 import { isIOS, isNative } from "./platform/init";
 import { RetainedLazyComponent } from "./retained-lazy";
-import { type ActionNotice, useApp } from "./state";
+import {
+  type ActionNotice,
+  useAppSelector,
+  useAppSelectorShallow,
+} from "./state";
 import { isShellPaintable } from "./state/startup-coordinator";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
@@ -491,7 +495,7 @@ function useAppShellPageRegistryVersion(): number {
  * `app.navTabs` declaration. Returns `null` when no plugin claims the tab.
  */
 function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
-  const { plugins } = useApp();
+  const plugins = useAppSelector((s) => s.plugins);
   const registryVersion = useAppShellPageRegistryVersion();
   return useMemo(() => {
     void registryVersion;
@@ -1064,7 +1068,7 @@ function ViewRouter({
 }: {
   settingsInitialSection?: string | null;
 }) {
-  const { tab } = useApp();
+  const tab = useAppSelector((s) => s.tab);
   const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
   const dynamicPage = useResolvedDynamicPage(tab);
   const [navigationPath, setNavigationPath] = useState(() =>
@@ -1276,7 +1280,10 @@ function ShellFoundationMount() {
  */
 function ContinuousChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
-  const { characterData, agentStatus } = useApp();
+  const { characterData, agentStatus } = useAppSelectorShallow((s) => ({
+    characterData: s.characterData,
+    agentStatus: s.agentStatus,
+  }));
   const slash = useSlashCommandController();
   if (!controller) return null;
   // The live agent's name drives the composer placeholder ("Ask {name}").
@@ -1300,7 +1307,7 @@ function ContinuousChatOverlayMount(): ReactNode {
  * builtin tabs via setTab, plugin/remote views via the eliza:navigate:view event.
  */
 function HomeScreenMount(): ReactNode {
-  const { setTab } = useApp();
+  const setTab = useAppSelector((s) => s.setTab);
   const { views } = useAvailableViews();
   // Host apps can override the home screen via the `homeScreen` boot-config slot
   // (whitelabel seam); fall back to the built-in HomeScreen.
@@ -1349,7 +1356,22 @@ export function App() {
     gameOverlayEnabled,
     uiShellMode,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    startupError: s.startupError,
+    startupCoordinator: s.startupCoordinator,
+    retryStartup: s.retryStartup,
+    tab: s.tab,
+    setTab: s.setTab,
+    setState: s.setState,
+    actionNotice: s.actionNotice,
+    activeOverlayApp: s.activeOverlayApp,
+    uiTheme: s.uiTheme,
+    backendConnection: s.backendConnection,
+    activeGameViewerUrl: s.activeGameViewerUrl,
+    gameOverlayEnabled: s.gameOverlayEnabled,
+    uiShellMode: s.uiShellMode,
+    t: s.t,
+  }));
   const { companionShell: CompanionShell } = useBootConfig();
 
   const isPopout = useIsPopout();

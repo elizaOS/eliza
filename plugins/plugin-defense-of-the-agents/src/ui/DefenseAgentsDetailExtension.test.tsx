@@ -30,6 +30,8 @@ function latestRunForApp(
 
 vi.mock("@elizaos/app-core/ui-compat", () => ({
   useApp: () => appState,
+  useAppSelector: <T,>(selector: (s: typeof appState) => T): T =>
+    selector(appState),
   selectLatestRunForApp: latestRunForApp,
   toneForStatusText: () => "neutral",
   SurfaceBadge: ({ children }: { children?: ReactTypes.ReactNode }) => {

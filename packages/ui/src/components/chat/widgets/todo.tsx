@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../api";
 import type { WorkbenchTodo } from "../../../api/client-types-config";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
-import { useApp } from "../../../state";
+import { useAppSelectorShallow } from "../../../state";
 import type { TranslateFn } from "../../../types";
 import { Badge } from "../../ui/badge";
 import { EmptyWidgetState, WidgetSection } from "./shared";
@@ -138,9 +138,11 @@ function TodoItemsContent({
 }
 
 function TodoSidebarWidget(_props: ChatSidebarWidgetProps) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const workbench = app?.workbench;
-  const t = app?.t ?? fallbackTranslate;
+  const { workbench, t: appT } = useAppSelectorShallow((s) => ({
+    workbench: s.workbench,
+    t: s.t,
+  }));
+  const t = appT ?? fallbackTranslate;
   const [todos, setTodos] = useState<WorkbenchTodo[]>(() =>
     dedupeTodos(workbench?.todos ?? []),
   );

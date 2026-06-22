@@ -1,7 +1,7 @@
 import { client } from "../../api";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { startFreshFirstRunReload } from "../../platform";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { Button } from "../ui/button";
 import {
   Card,
@@ -31,7 +31,16 @@ export function PairingView() {
     handlePairingSubmit,
     setState,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    pairingEnabled: s.pairingEnabled,
+    pairingExpiresAt: s.pairingExpiresAt,
+    pairingCodeInput: s.pairingCodeInput,
+    pairingError: s.pairingError,
+    pairingBusy: s.pairingBusy,
+    handlePairingSubmit: s.handlePairingSubmit,
+    setState: s.setState,
+    t: s.t,
+  }));
   const branding = useBranding();
   const pairingCode = pairingCodeInput.trim();
 
