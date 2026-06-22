@@ -15,7 +15,12 @@
  *   2. A plugin action whose handler calls `runtime.useModel` runs to completion
  *      through the mock LLM and the agent's reply matches the fixture.
  */
-import { type Action, type Memory, ModelType, type Plugin } from "@elizaos/core";
+import {
+  type Action,
+  type Memory,
+  ModelType,
+  type Plugin,
+} from "@elizaos/core";
 import { type MockLlmRuntime, withMockLlmRuntime } from "@elizaos/test-harness";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { googleGenAIPlugin } from "../index.ts";
@@ -72,7 +77,7 @@ describe("google-genai provider (keyless harness)", () => {
             times: 1,
           },
         ],
-      })
+      }),
     );
 
     const out = await harness.runtime.useModel(ModelType.TEXT_LARGE, {
@@ -115,7 +120,7 @@ describe("google-genai provider (keyless harness)", () => {
             times: 1,
           },
         ],
-      })
+      }),
     );
 
     const message = { content: { text: "say something" } } as Memory;
