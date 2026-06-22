@@ -750,14 +750,15 @@ export async function importPluginModuleFromPath(
   const packageRelativePath =
     pkgRoot === absPath ? [] : ["node_modules", ...packageName.split("/")];
 
-  // Cold-boot fast-path (opt-in): on the FIRST import of this package in this
-  // process there is no ESM module record to bust, so staging's recursive
-  // `fs.cp` copy is pure I/O waste + unbounded `.runtime-imports/` growth.
-  // Import in place from the real package root instead, but ONLY when a stable
-  // built `dist/` exists. Any re-import (name already in the set) falls back to
-  // staging so hot-reloads still force a fresh module evaluation.
+  // Cold-boot fast-path: on the FIRST import of this package in this process
+  // there is no ESM module record to bust, so staging's recursive `fs.cp` copy
+  // is pure I/O waste + unbounded `.runtime-imports/` growth. Import in place
+  // from the real package root instead, but ONLY when a stable built `dist/`
+  // exists. Any re-import (name already in the set) falls back to staging so
+  // hot-reloads still force a fresh module evaluation. This is a single
+  // behavior for every boot — local dev and the container resolve plugins
+  // identically.
   const useColdFastPath =
-    coldImportInPlaceEnabled() &&
     !importedPluginPackageNames.has(packageName) &&
     existsSync(path.join(pkgRoot, "dist"));
   const importRoot = useColdFastPath
@@ -1069,24 +1070,6 @@ function stageAllHoistedNodeModulesEnabled(): boolean {
 
 function stageFullPluginPackageEnabled(): boolean {
   const raw = process.env.ELIZA_STAGE_FULL_PLUGIN_PACKAGE;
-  if (!raw) return false;
-  const normalized = raw.trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes";
-}
-
-/**
- * Cold-boot fast-path opt-in. When enabled, the *first* import of a given
- * plugin package in this process is loaded in place from its real package root
- * — skipping the `fs.cp` staging copy — provided a built `dist/` is present.
- *
- * Staging exists only to bust the ESM module graph when hot-reloading a mutated
- * plugin (a fresh staged URL forces re-evaluation since ESM has no
- * cache-eviction API). On a cold boot the plugin was never imported, so there
- * is no module record to bust and staging is pure I/O waste. Default OFF; only
- * the literal "1"/"true"/"yes" enables it.
- */
-function coldImportInPlaceEnabled(): boolean {
-  const raw = process.env.ELIZA_PLUGIN_COLD_IMPORT_IN_PLACE;
   if (!raw) return false;
   const normalized = raw.trim().toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes";

@@ -17,7 +17,9 @@
  *                                     the agent-hot-pool daemon cron tick alone
  *                                     replenishes the warm pool to target
  *   h. PAYOUT                       → redeemable balance is the payout-readiness
- *                                     proxy; the fiat transfer is skipped (#8922)
+ *                                     proxy; the full Stripe Connect fiat
+ *                                     withdrawal is exercised in the test below
+ *                                     (onboard → transfer → draw-down) (#8922)
  *
  * Why this drives provisioning through the control-plane STORE + tick() rather
  * than the cloud-api deploy route: the mock stack's DB-backed AGENT_PROVISION
@@ -47,8 +49,15 @@
  * running PGlite bridge before the direct cloud-shared service calls run.
  */
 
+import { stripeConnectAccountsRepository } from "@elizaos/cloud-shared/db/repositories/stripe-connect-accounts";
 import { creditsService } from "@elizaos/cloud-shared/lib/services/credits";
 import { redeemableEarningsService } from "@elizaos/cloud-shared/lib/services/redeemable-earnings";
+import {
+  createConnectOnboarding,
+  mapConnectWebhookEvent,
+  type StripeConnectClient,
+  transferToConnectAccount,
+} from "@elizaos/cloud-shared/lib/services/stripe-connect-payout";
 import type { CreditBalanceResponse } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import type { MockServer } from "@elizaos/cloud-test-mocks/hetzner";
 import { authedClient } from "../src/helpers/monetization";
@@ -330,9 +339,10 @@ test.describe("monetized full loop", () => {
     ).toBe(hotPoolTarget);
 
     // ── h. Payout: redeemable balance is the payout-readiness proxy. ────────
-    // The redeemable balance reflects the creator's accrued earnings and is the
-    // available payout-readiness signal. The actual fiat transfer is skipped —
-    // no fiat payout mechanism exists (only Solana/EVM redemption).
+    // The redeemable balance reflects the creator's accrued earnings — the
+    // amount a payout draws from. The end-to-end fiat withdrawal (Stripe Connect
+    // onboarding → transfer → ledger draw-down → compensating refund) is
+    // exercised in the dedicated test below (#8922).
     const payoutReadyBalance =
       (await redeemableEarningsService.getBalance(seededUser.userId))
         ?.availableBalance ?? 0;
@@ -342,15 +352,177 @@ test.describe("monetized full loop", () => {
     ).toBeGreaterThanOrEqual(CHARGE_USD);
   });
 
-  // Stripe Connect fiat payout deferred to #8922 — no fiat transfer mechanism
-  // exists in this codebase (only Solana/EVM on-chain redemption). The earnings
-  // ledger that a fiat payout would draw from is asserted in step (f) above;
-  // the redeemable balance is asserted as the payout-readiness proxy in step
-  // (h). This block stays skipped (not deleted) so the missing lane is visible
-  // in the report instead of silently absent. Do NOT fake a Stripe transfer.
-  test.skip("creator withdraws earnings via Stripe Connect fiat payout (#8922)", () => {
-    // Intentionally empty: implement once #8922 lands a Stripe Connect transfer
-    // path. It would assert: connect-account onboarding → payout request →
-    // redeemable balance locked → fiat transfer settled → balance drawn down.
+  // Stripe Connect fiat payout (#8922) — the alternative to on-chain redemption.
+  // Exercises the real onboarding/transfer/webhook services + the redeemable
+  // ledger against the live PGlite DB. The Stripe SDK boundary is the one thing
+  // mocked (via the injectable `StripeConnectClient` the service is built around,
+  // exactly as the transfer route's `requireStripe()` is) — no real money moves.
+  test("creator withdraws earnings via Stripe Connect fiat payout (#8922)", async ({
+    seededUser,
+  }) => {
+    const userId = seededUser.userId;
+    const PAYOUT_USD = 5;
+    const idem = `payout-${Date.now().toString(36)}-${userId.slice(0, 8)}`
+      .padEnd(16, "0")
+      .slice(0, 64);
+
+    // Records calls + returns canned ids; `failTransfer` drives the
+    // compensating-saga refund path the transfer route relies on.
+    const mockStripe = (opts?: {
+      failTransfer?: boolean;
+    }): StripeConnectClient => ({
+      accounts: { create: async () => ({ id: "acct_e2e_123" }) },
+      accountLinks: {
+        create: async () => ({
+          url: "https://connect.stripe.com/setup/acct_e2e_123",
+        }),
+      },
+      transfers: {
+        create: async (p) => {
+          if (opts?.failTransfer) {
+            throw new Error("stripe transfer failed (simulated)");
+          }
+          return { id: `tr_e2e_${p.amount}` };
+        },
+      },
+    });
+
+    // ── onboard: create + persist the Express account. ──────────────────────
+    const onboarding = await createConnectOnboarding(mockStripe(), {
+      userId,
+      email: "creator@example.invalid",
+      refreshUrl: "https://app.invalid/refresh",
+      returnUrl: "https://app.invalid/return",
+    });
+    expect(onboarding.created, "a fresh Express account is created").toBe(true);
+    expect(onboarding.accountId).toBe("acct_e2e_123");
+    expect(onboarding.onboardingUrl).toContain("connect.stripe.com");
+    await stripeConnectAccountsRepository.upsert({
+      user_id: userId,
+      stripe_connect_account_id: onboarding.accountId,
+    });
+    expect(
+      (await stripeConnectAccountsRepository.findByUserId(userId))?.status,
+      "account starts pending until KYC completes",
+    ).toBe("pending");
+
+    // account.updated webhook → capabilities enabled → status active.
+    const accountUpdated = mapConnectWebhookEvent({
+      type: "account.updated",
+      account: onboarding.accountId,
+      data: { object: { charges_enabled: true, payouts_enabled: true } },
+    });
+    expect(accountUpdated.status).toBe("active");
+    await stripeConnectAccountsRepository.updateByAccountId(
+      onboarding.accountId,
+      {
+        status: accountUpdated.status,
+        charges_enabled: true,
+        payouts_enabled: true,
+      },
+    );
+    const active = await stripeConnectAccountsRepository.findByUserId(userId);
+    expect(active?.status, "account is payout-ready after onboarding").toBe(
+      "active",
+    );
+    expect(active?.payouts_enabled).toBe(true);
+
+    // ── fund the creator's redeemable balance (the markup they accrued). ────
+    await redeemableEarningsService.addEarnings({
+      userId,
+      amount: PAYOUT_USD,
+      source: "creator_revenue_share",
+      sourceId: `${idem}:earn`,
+      description: "accrued markup available for fiat payout",
+    });
+    const funded =
+      (await redeemableEarningsService.getBalance(userId))?.availableBalance ??
+      0;
+    expect(
+      funded,
+      "creator has the accrued markup available",
+    ).toBeGreaterThanOrEqual(PAYOUT_USD);
+
+    // ── happy path: debit the ledger then transfer (the route's saga order). ─
+    const debit = await redeemableEarningsService.reduceEarnings({
+      userId,
+      amount: PAYOUT_USD,
+      source: "creator_revenue_share",
+      sourceId: idem,
+      description: "Stripe Connect fiat payout",
+      metadata: { payout_method: "stripe_connect" },
+    });
+    expect(debit.success, "the payout debits the redeemable ledger").toBe(true);
+
+    const transfer = await transferToConnectAccount(mockStripe(), {
+      accountId: active?.stripe_connect_account_id ?? onboarding.accountId,
+      amountUsd: PAYOUT_USD,
+      idempotencyKey: idem,
+      metadata: { userId },
+    });
+    expect(transfer.transferId, "Stripe transfer created").toBe(
+      `tr_e2e_${PAYOUT_USD * 100}`,
+    );
+    expect(transfer.amountCents, "USD converted to integer cents").toBe(
+      PAYOUT_USD * 100,
+    );
+    const afterPayout =
+      (await redeemableEarningsService.getBalance(userId))?.availableBalance ??
+      0;
+    expect(
+      Math.abs(afterPayout - (funded - PAYOUT_USD)),
+      "redeemable balance drew down by exactly the fiat payout",
+    ).toBeLessThan(1e-9);
+
+    // payout.paid webhook is recognized as the settling event.
+    expect(
+      mapConnectWebhookEvent({
+        type: "payout.paid",
+        account: onboarding.accountId,
+      }).payoutStatus,
+    ).toBe("paid");
+
+    // ── compensating saga: a Stripe failure after the debit restores balance. ─
+    await redeemableEarningsService.addEarnings({
+      userId,
+      amount: PAYOUT_USD,
+      source: "creator_revenue_share",
+      sourceId: `${idem}:earn2`,
+      description: "fund a second payout to exercise the failure path",
+    });
+    const beforeFail =
+      (await redeemableEarningsService.getBalance(userId))?.availableBalance ??
+      0;
+    const failIdem = `${idem}-fail`.slice(0, 64);
+    await redeemableEarningsService.reduceEarnings({
+      userId,
+      amount: PAYOUT_USD,
+      source: "creator_revenue_share",
+      sourceId: failIdem,
+      description: "Stripe Connect fiat payout (will fail)",
+    });
+    await expect(
+      transferToConnectAccount(mockStripe({ failTransfer: true }), {
+        accountId: onboarding.accountId,
+        amountUsd: PAYOUT_USD,
+        idempotencyKey: failIdem,
+      }),
+      "a Stripe failure surfaces (no silent swallow)",
+    ).rejects.toThrow();
+    // The route compensates by re-crediting; assert that restores the balance.
+    await redeemableEarningsService.addEarnings({
+      userId,
+      amount: PAYOUT_USD,
+      source: "creator_revenue_share",
+      sourceId: `${failIdem}:refund`,
+      description: "Stripe Connect payout failed — balance restored",
+    });
+    const restored =
+      (await redeemableEarningsService.getBalance(userId))?.availableBalance ??
+      0;
+    expect(
+      Math.abs(restored - beforeFail),
+      "a failed transfer leaves the balance whole (debit fully compensated)",
+    ).toBeLessThan(1e-9);
   });
 });
