@@ -30,14 +30,8 @@ import {
   inferNodeArchitectureFromMetadata,
   isArchitectureCompatibleWithPlatform,
 } from "../docker-sandbox-utils";
-import {
-  type ComputeProvider,
-  getComputeProvider,
-} from "./compute-provider";
-import {
-  HetznerCloudError,
-  isHetznerCloudConfigured,
-} from "./hetzner-cloud-api";
+import { type ComputeProvider, getComputeProvider } from "./compute-provider";
+import { HetznerCloudError, isHetznerCloudConfigured } from "./hetzner-cloud-api";
 import { buildContainerNodeUserData, type NodeBootstrapInput } from "./node-bootstrap";
 
 // ---------------------------------------------------------------------------

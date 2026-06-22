@@ -402,7 +402,7 @@
     },
     {
       "name": "BROWSER",
-      "description": "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab.",
+      "description": "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
       "parameters": [
         {
           "name": "target",
@@ -449,8 +449,25 @@
               "realistic_press",
               "cursor_move",
               "cursor_hide",
-              "autofill_login"
+              "autofill_login",
+              "wait_for_url"
             ]
+          }
+        },
+        {
+          "name": "pattern",
+          "description": "For action=wait_for_url: substring or /regex/ to match the tab URL (e.g. callback?code=, or /\\/done$/).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "pollIntervalMs",
+          "description": "For action=wait_for_url: poll cadence in ms. Default 2000.",
+          "required": false,
+          "schema": {
+            "type": "number"
           }
         },
         {
@@ -599,7 +616,7 @@
           }
         }
       ],
-      "descriptionCompressed": "Browser open|navigate|click|type|screenshot|state|autofill_login; bridge status elsewhere",
+      "descriptionCompressed": "Browser open|navigate|click|type|screenshot|state|autofill_login|wait_for_url; bridge status elsewhere",
       "similes": [
         "BROWSE_SITE",
         "BROWSER_SESSION",
@@ -626,6 +643,8 @@
             "BROWSER": {
               "target": "example",
               "action": "back",
+              "pattern": "example",
+              "pollIntervalMs": 1,
               "tabAction": "close",
               "domain": "example",
               "username": "example",
@@ -947,7 +966,7 @@
     },
     {
       "name": "COMPUTER_USE",
-      "description": "computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
+      "description": "computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
       "parameters": [
         {
           "name": "action",
@@ -968,7 +987,8 @@
               "scroll",
               "drag",
               "detect_elements",
-              "ocr"
+              "ocr",
+              "resolve_approval"
             ]
           }
         },
@@ -1076,9 +1096,33 @@
             "type": "string",
             "enum": ["logical", "backing"]
           }
+        },
+        {
+          "name": "approvalId",
+          "description": "Pending computer-use approval id for action=resolve_approval.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "approved",
+          "description": "Approval decision for action=resolve_approval.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "reason",
+          "description": "Optional reason for an approval decision.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
         }
       ],
-      "descriptionCompressed": "Desktop: screenshot|click|double|right|move|type|key|scroll|drag|detect|ocr",
+      "descriptionCompressed": "Desktop: screenshot|click|double|right|move|type|key|scroll|drag|detect|ocr|approve",
       "similes": [
         "USE_COMPUTER",
         "CONTROL_COMPUTER",
@@ -1096,7 +1140,9 @@
         "CLICK_WITH_MODIFIERS",
         "TAKE_SCREENSHOT",
         "CAPTURE_SCREEN",
-        "SEE_SCREEN"
+        "SEE_SCREEN",
+        "APPROVE_COMPUTER_USE",
+        "DENY_COMPUTER_USE"
       ],
       "exampleCalls": [
         {
@@ -1115,7 +1161,10 @@
               "scrollDirection": "up",
               "scrollAmount": 3,
               "displayId": 1,
-              "coordSource": "logical"
+              "coordSource": "logical",
+              "approvalId": "example",
+              "approved": false,
+              "reason": "example"
             }
           }
         }
@@ -1123,7 +1172,7 @@
     },
     {
       "name": "COMPUTER_USE_AGENT",
-      "description": "computer_use_agent: autonomous desktop loop for a goal until done or maxSteps. Uses WS6 scene-builder, WS7 Brain+Actor cascade, WS5 multi-monitor coords. Prefer COMPUTER_USE for named single steps; use COMPUTER_USE_AGENT for goal-level screen tasks.",
+      "description": "computer_use_agent: autonomous desktop loop for a goal until done or maxSteps. Uses WS6 scene-builder, WS7 Brain+Actor cascade, WS5 multi-monitor coords. Prefer COMPUTER_USE for named single steps; use COMPUTER_USE_AGENT for goal-level screen tasks. Set streamProgress=true to send per-step progress updates to the originating chat.",
       "parameters": [
         {
           "name": "goal",
@@ -1143,9 +1192,18 @@
             "minimum": 1,
             "maximum": 20
           }
+        },
+        {
+          "name": "streamProgress",
+          "description": "When true, emit a chat callback after each dispatched step with the step kind and rationale.",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
         }
       ],
-      "descriptionCompressed": "Autonomous desktop loop: scene → Brain → cascade → click. Pass {goal, maxSteps?}.",
+      "descriptionCompressed": "Autonomous desktop loop: scene -> Brain -> cascade -> click. Pass {goal, maxSteps?, streamProgress?}.",
       "similes": ["AUTOMATE_SCREEN", "RUN_COMPUTER_AGENT", "SCREEN_AGENT"],
       "exampleCalls": [
         {
@@ -1154,7 +1212,8 @@
           "params": {
             "COMPUTER_USE_AGENT": {
               "goal": "example",
-              "maxSteps": 5
+              "maxSteps": 5,
+              "streamProgress": false
             }
           }
         }
@@ -5640,7 +5699,7 @@
       "parameters": [
         {
           "name": "action",
-          "description": "Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.",
+          "description": "Operation: list, get, search, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.",
           "required": true,
           "schema": {
             "type": "string",
@@ -5661,6 +5720,14 @@
               "diagnose",
               "eval_samples"
             ]
+          }
+        },
+        {
+          "name": "query",
+          "description": "Free text to match a workflow by name / node type for action=search.",
+          "required": false,
+          "schema": {
+            "type": "string"
           }
         },
         {
@@ -5780,6 +5847,7 @@
           "params": {
             "WORKFLOW": {
               "action": "list",
+              "query": "example",
               "workflowId": "example",
               "executionId": "example",
               "workflowName": "example",
