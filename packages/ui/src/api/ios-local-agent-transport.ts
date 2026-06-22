@@ -10,7 +10,7 @@ import {
   startIosLocalAgentKernel,
 } from "./ios-local-agent-kernel";
 import { createIttpAgentTransport } from "./ittp-agent-transport";
-import type { AgentRequestTransport } from "./transport";
+import { type AgentRequestTransport, headersToRecord } from "./transport";
 
 let transport: AgentRequestTransport | null = null;
 let globalRequestHandlerInstalled = false;
@@ -414,14 +414,6 @@ function requestPathFromUrl(url: string): string {
   if (localAgentPath) return localAgentPath;
   const parsed = new URL(url, `${IOS_LOCAL_AGENT_IPC_BASE}/`);
   return `${parsed.pathname}${parsed.search}`;
-}
-
-function headersToRecord(headers: Headers): Record<string, string> {
-  const out: Record<string, string> = {};
-  headers.forEach((value, key) => {
-    out[key] = value;
-  });
-  return out;
 }
 
 function normalizeNativeResult(
