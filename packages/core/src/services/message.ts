@@ -6257,6 +6257,24 @@ export async function runV5MessageRuntimeStage1(args: {
 			}
 		}
 
+		// Stamp the turn's topics onto the inbound message memory so the dashboard
+		// can group the transcript by topic + show a topic chips bar (#8928).
+		// Additive, fire-and-forget metadata write — never blocks/breaks the turn.
+		if (topics.length > 0 && args.message.id) {
+			const existingMetadata = args.message.metadata;
+			void args.runtime
+				.updateMemory({
+					id: args.message.id,
+					metadata: { ...(existingMetadata ?? { type: "message" }), topics },
+				})
+				.catch((error) => {
+					args.runtime.logger?.warn?.(
+						{ err: error, messageId: args.message.id },
+						"[message] stamp message topics failed",
+					);
+				});
+		}
+
 		const responseHandlerEvaluation = fieldRunResult?.preempt
 			? {
 					activeEvaluators: [],

@@ -34,4 +34,9 @@ export interface ShellMessage {
   attachments?: MessageAttachment[];
   /** Pending secret / OAuth request (rendered as an actionable block). */
   secretRequest?: ConversationSecretRequest;
+  /**
+   * Short topic labels for this turn (Stage-1 `topics`). Drives the transcript
+   * topic grouping + chips bar (#8928). Absent when the turn had no topic.
+   */
+  topics?: string[];
 }

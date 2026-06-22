@@ -1,3 +1,4 @@
+import { RotateCcw } from "lucide-react";
 import {
   type ChangeEvent,
   type DragEvent,
@@ -61,6 +62,7 @@ import { ChatThreadLayout } from "../composites/chat/chat-thread-layout";
 import { ChatTranscript } from "../composites/chat/chat-transcript";
 import type { ChatMessageData } from "../composites/chat/chat-types";
 import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
+import { useConversationReset } from "../shell/use-conversation-reset";
 import {
   useChatVoiceController,
   useGameModalMessages,
@@ -170,6 +172,9 @@ export function ChatView({
     t: appTranslate,
   } = app;
   const { ptySessions } = usePtySessions();
+  // Reset-to-fresh-thread with soft-undo (#8929/#8930). Same path + undo
+  // affordance as the overlay header reset.
+  const resetConversation = useConversationReset();
   // Per-token streaming messages come from the isolated context so token updates
   // don't ride on the giant AppContext value identity.
   const { conversationMessages } = useConversationMessages();
@@ -701,6 +706,24 @@ export function ChatView({
       "calc(var(--safe-area-bottom, 0px) + var(--eliza-mobile-nav-offset, 0px) + 0.375rem)",
   } as const;
 
+  // Reset-to-fresh-thread control for the main ChatView header row (#8930).
+  // Visible only when there are messages to clear; routes through the shared
+  // reset path which also surfaces the soft-undo toast. Neutral resting →
+  // neutral-with-opacity hover (no orange, no blue), matching nearby controls.
+  const resetConversationButton =
+    visibleMsgs.length > 0 ? (
+      <button
+        type="button"
+        data-testid="chat-view-reset-button"
+        aria-label="Reset conversation"
+        title="Reset conversation"
+        onClick={resetConversation}
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/40 text-muted transition-colors hover:bg-bg-hover hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-txt/30"
+      >
+        <RotateCcw className="h-[18px] w-[18px]" aria-hidden />
+      </button>
+    ) : null;
+
   const composerNode = hideComposer ? null : isGameModal ? (
     <ChatComposerShell
       variant="game-modal"
@@ -708,15 +731,18 @@ export function ChatView({
       before={
         <>
           <CodingAgentControlChip />
-          {continuousChatToggleVisible ? (
-            <div className="flex justify-end px-1 pb-0.5">
-              <ContinuousChatToggle
-                compact
-                value={continuousChatMode}
-                onChange={handleContinuousChatModeChange}
-                disabled={isComposerLocked}
-                data-testid="chat-view-continuous-chat-toggle-game-modal"
-              />
+          {continuousChatToggleVisible || resetConversationButton ? (
+            <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
+              {resetConversationButton}
+              {continuousChatToggleVisible ? (
+                <ContinuousChatToggle
+                  compact
+                  value={continuousChatMode}
+                  onChange={handleContinuousChatModeChange}
+                  disabled={isComposerLocked}
+                  data-testid="chat-view-continuous-chat-toggle-game-modal"
+                />
+              ) : null}
             </div>
           ) : null}
           <AgentActivityBox
@@ -768,15 +794,18 @@ export function ChatView({
       before={
         <>
           <CodingAgentControlChip />
-          {continuousChatToggleVisible ? (
-            <div className="flex justify-end px-1 pb-0.5">
-              <ContinuousChatToggle
-                compact
-                value={continuousChatMode}
-                onChange={handleContinuousChatModeChange}
-                disabled={isComposerLocked}
-                data-testid="chat-view-continuous-chat-toggle"
-              />
+          {continuousChatToggleVisible || resetConversationButton ? (
+            <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
+              {resetConversationButton}
+              {continuousChatToggleVisible ? (
+                <ContinuousChatToggle
+                  compact
+                  value={continuousChatMode}
+                  onChange={handleContinuousChatModeChange}
+                  disabled={isComposerLocked}
+                  data-testid="chat-view-continuous-chat-toggle"
+                />
+              ) : null}
             </div>
           ) : null}
         </>
