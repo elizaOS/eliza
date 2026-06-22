@@ -29,6 +29,10 @@ export const goalsPlugin: Plugin = {
   services: [GoalsCheckinService, GoalsMigrationService],
   schema: dbSchema,
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single GoalsView
+    // spatial source. `modalities` is a plain literal here (plugin.ts is not in
+    // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
+    // the bundle build.
     {
       id: "goals",
       label: "Goals",
@@ -36,6 +40,7 @@ export const goalsPlugin: Plugin = {
         "Life goals, routines, today's reminders and alarms, self-care check-in.",
       icon: "Target",
       path: "/goals",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "GoalsView",
       tags: ["goals", "routines", "reminders", "self-care", "owner"],

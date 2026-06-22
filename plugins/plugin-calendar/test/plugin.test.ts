@@ -11,6 +11,10 @@ describe("plugin-calendar surface", () => {
     expect(calendarPlugin.views?.[0]?.componentExport).toBe("CalendarView");
   });
 
+  it("declares the calendar view as tri-modal (gui + xr + tui)", () => {
+    expect(calendarPlugin.views?.[0]?.modalities).toEqual(["gui", "xr", "tui"]);
+  });
+
   it("does not expose scaffold calendar actions directly", () => {
     expect(calendarPlugin.actions ?? []).toEqual([]);
   });

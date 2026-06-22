@@ -6,6 +6,13 @@ export {
   inboxAction,
   setInboxFetchers,
 } from "./actions/inbox.ts";
+export {
+  EMPTY_INBOX_SNAPSHOT,
+  type InboxChannelFilter,
+  type InboxSnapshot,
+  InboxSpatialView,
+  type InboxStatus,
+} from "./components/inbox/InboxSpatialView.tsx";
 export { InboxView } from "./components/inbox/InboxView.tsx";
 export {
   type EmailUnsubscribeRow,
@@ -69,6 +76,14 @@ export {
   type InboxUnsubscribeServiceDeps,
 } from "./inbox/unsubscribe-service.ts";
 export { default, inboxPlugin } from "./plugin.ts";
+// Side-effect: in a terminal host (no DOM), register the inbox spatial view so
+// it renders inline in the agent terminal. Inert in browser/mobile bundles.
+import "./register.ts";
+
 export { inboxTriageProvider } from "./providers/inbox-triage.ts";
+export {
+  registerInboxTerminalView,
+  setInboxTerminalSnapshot,
+} from "./register-terminal-view.tsx";
 
 export * from "./types.ts";

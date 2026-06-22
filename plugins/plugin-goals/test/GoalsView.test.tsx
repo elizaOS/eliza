@@ -1,17 +1,20 @@
 // @vitest-environment jsdom
 
 /**
- * GoalsView is a data-fetching view over the single read-only goals endpoint
+ * GoalsView is the single GUI/XR data wrapper over the read-only goals endpoint
  * served by the personal-assistant routes:
  *   GET {base}/api/lifeops/goals  ->  { goals: LifeOpsGoalRecord[] }
  *
- * These tests cover the four-state machine (loading / error / empty / populated)
- * plus the retry, quiet background poll, status-filter, and set-a-goal
- * affordances. The fetcher seam is injected so the suite stays offline;
- * `@elizaos/ui` and `@elizaos/ui/agent-surface` are mocked so the instrumented
- * controls render outside a provider.
+ * It owns the fetch state machine (loading / error / ready), the status-filter
+ * selection, and the quiet background poll, then renders the unified
+ * {@link GoalsSpatialView} inside a SpatialSurface. These tests drive the
+ * rendered spatial DOM — the same surface the bundle exports for the "gui" and
+ * "xr" modalities — asserting the populated grouped list, the status-filter
+ * toggle, the error -> Retry refetch, the empty set-a-goal chat affordance, and
+ * the quiet 20s poll. The fetcher seam is injected so the suite stays offline;
+ * `@elizaos/ui` is mocked so the wrapper renders outside a provider.
  *
- * External-API contract test: the wire shape is mirrored verbatim from the PA
+ * External-API contract: the wire shape is mirrored verbatim from the PA
  * `/api/lifeops/goals` response (LifeOpsGoalRecord = { goal, links } from
  * @elizaos/shared); the fixtures below match that shape field-for-field.
  */
@@ -22,24 +25,18 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // `@elizaos/ui` is the giant renderer barrel; GoalsView only touches
 // `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
-// `client.sendChatMessage()` (set-a-goal affordance). `@elizaos/ui/agent-surface`
-// is mocked to an inert hook so the instrumented controls render outside a
-// provider.
+// `client.sendChatMessage()` (set-a-goal affordance).
 const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
 vi.mock("@elizaos/ui", () => ({
   client: {
     getBaseUrl: () => "http://test.local",
     sendChatMessage,
   },
-}));
-vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 
 import {
@@ -112,19 +109,31 @@ function makeFetchers(overrides: Partial<GoalsFetchers> = {}): GoalsFetchers {
   };
 }
 
+function agent(agentId: string): HTMLElement {
+  const el = document.querySelector(`[data-agent-id="${agentId}"]`);
+  if (!el) throw new Error(`no element with data-agent-id="${agentId}"`);
+  return el as HTMLElement;
+}
+
+function queryAgent(agentId: string): HTMLElement | null {
+  return document.querySelector(
+    `[data-agent-id="${agentId}"]`,
+  ) as HTMLElement | null;
+}
+
 afterEach(() => {
   cleanup();
   sendChatMessage.mockClear();
 });
 
-describe("GoalsView", () => {
-  it("shows the loading state while the first fetch is in flight", () => {
+describe("GoalsView — spatial GUI/XR wrapper", () => {
+  it("shows the loading line while the first fetch is in flight", () => {
     const never = new Promise<never>(() => {});
     render(<GoalsView fetchers={makeFetchers({ fetchGoals: () => never })} />);
-    expect(screen.getByTestId("goals-loading")).toBeTruthy();
+    expect(screen.getByText("Loading goals")).toBeTruthy();
   });
 
-  it("renders the populated goals list grouped by status with real fields", async () => {
+  it("renders the populated list grouped by status with real fields", async () => {
     render(
       <GoalsView
         fetchers={makeFetchers({
@@ -150,15 +159,15 @@ describe("GoalsView", () => {
         })}
       />,
     );
-    expect(await screen.findByTestId("goals-populated")).toBeTruthy();
-    const activeGroup = screen.getByTestId("goals-group-active");
-    expect(within(activeGroup).getByText("Run a half marathon")).toBeTruthy();
+    await screen.findByText("Run a half marathon");
     // Cadence + target + linked-count meta line.
     expect(
-      within(activeGroup).getByText(/weekly · 21km continuous run · 2 linked/),
+      screen.getByText(/weekly · 21km continuous run · 2 linked/),
     ).toBeTruthy();
-    expect(screen.getByTestId("goals-group-paused")).toBeTruthy();
     expect(screen.getByText("Learn Spanish")).toBeTruthy();
+    // The status-filter chips are present and addressable by the agent surface.
+    expect(agent("filter:active")).toBeTruthy();
+    expect(agent("filter:paused")).toBeTruthy();
   });
 
   it("shows the empty state when zero goals exist (no fabricated goals)", async () => {
@@ -167,9 +176,8 @@ describe("GoalsView", () => {
         fetchers={makeFetchers({ fetchGoals: async () => ({ goals: [] }) })}
       />,
     );
-    expect(await screen.findByTestId("goals-empty")).toBeTruthy();
-    expect(screen.getByText(/No goals yet/i)).toBeTruthy();
-    expect(screen.queryByTestId("goals-populated")).toBeNull();
+    await screen.findByText("No goals yet");
+    expect(queryAgent("filter:active")).toBeNull();
   });
 
   it("routes the set-a-goal affordance through the assistant chat", async () => {
@@ -178,12 +186,12 @@ describe("GoalsView", () => {
         fetchers={makeFetchers({ fetchGoals: async () => ({ goals: [] }) })}
       />,
     );
-    await screen.findByTestId("goals-empty");
-    fireEvent.click(screen.getByRole("button", { name: /set a goal/i }));
+    await screen.findByText("No goals yet");
+    fireEvent.click(agent("new"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the error state with a Retry that refetches into the populated state", async () => {
+  it("shows the error state with a Retry that refetches into the populated list", async () => {
     let attempt = 0;
     const fetchGoals = async () => {
       attempt += 1;
@@ -191,14 +199,13 @@ describe("GoalsView", () => {
       return { goals: [goalRecord()] };
     };
     render(<GoalsView fetchers={makeFetchers({ fetchGoals })} />);
-    expect(await screen.findByTestId("goals-error")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
-    expect(await screen.findByTestId("goals-populated")).toBeTruthy();
+    await screen.findByText("Could not load goals");
+    expect(screen.getByText("boom")).toBeTruthy();
+    fireEvent.click(agent("retry"));
+    await screen.findByText("Run a half marathon");
   });
 
   it("quietly refetches on the background poll (no manual refresh control)", async () => {
-    // The manual Refresh button was removed for the chat-forward redesign; the
-    // view now stays fresh via a quiet 20s poll. There is no refresh affordance.
     let calls = 0;
     const fetchGoals = async () => {
       calls += 1;
@@ -207,18 +214,18 @@ describe("GoalsView", () => {
     vi.useFakeTimers();
     try {
       render(<GoalsView fetchers={makeFetchers({ fetchGoals })} />);
-      // Drain the initial in-flight fetch under fake timers.
       await vi.waitFor(() => {
-        expect(screen.getByTestId("goals-populated")).toBeTruthy();
+        expect(screen.getByText("pass 1")).toBeTruthy();
       });
       expect(calls).toBe(1);
-      expect(screen.queryByRole("button", { name: /refresh/i })).toBeNull();
 
       // One poll tick → exactly one more silent refetch, no loading flash.
       await vi.advanceTimersByTimeAsync(20000);
       expect(calls).toBe(2);
-      expect(screen.getByTestId("goals-populated")).toBeTruthy();
-      expect(screen.queryByTestId("goals-loading")).toBeNull();
+      await vi.waitFor(() => {
+        expect(screen.getByText("pass 2")).toBeTruthy();
+      });
+      expect(screen.queryByText("Loading goals")).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -241,15 +248,14 @@ describe("GoalsView", () => {
         })}
       />,
     );
-    await screen.findByTestId("goals-populated");
-    expect(screen.getByTestId("goals-group-active")).toBeTruthy();
-    expect(screen.getByTestId("goals-group-paused")).toBeTruthy();
+    await screen.findByText("Run a half marathon");
+    expect(screen.getByText("Learn Spanish")).toBeTruthy();
 
     // Toggle the "Paused" filter: only the paused group should remain.
-    fireEvent.click(screen.getByRole("button", { name: "Paused" }));
+    fireEvent.click(agent("filter:paused"));
     await waitFor(() =>
-      expect(screen.queryByTestId("goals-group-active")).toBeNull(),
+      expect(screen.queryByText("Run a half marathon")).toBeNull(),
     );
-    expect(screen.getByTestId("goals-group-paused")).toBeTruthy();
+    expect(screen.getByText("Learn Spanish")).toBeTruthy();
   });
 });

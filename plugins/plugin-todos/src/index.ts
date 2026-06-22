@@ -21,6 +21,7 @@ export const todosPlugin: Plugin = {
       description: "Three-lane todo board: Today / Upcoming / Someday",
       icon: "ListChecks",
       path: "/todos",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "TodosView",
       tags: ["todos", "tasks", "productivity"],
@@ -54,3 +55,18 @@ export {
 export * from "./types.js";
 
 export { TodosView } from "./components/todos/TodosView.js";
+export {
+  type LaneId,
+  type TodoCard,
+  type TodosSnapshot,
+  TodosSpatialView,
+  type TodosViewState,
+} from "./components/todos/TodosSpatialView.js";
+export {
+  registerTodosTerminalView,
+  setTodosTerminalSnapshot,
+} from "./register-terminal-view.js";
+
+// Side-effect: in a terminal host (Node agent, no DOM) this registers the todos
+// terminal view. DOM-guarded so the terminal engine stays out of browser bundles.
+import "./register.js";

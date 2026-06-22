@@ -24,6 +24,10 @@ export const calendarPlugin: Plugin = {
   actions: [],
   providers: [],
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single CalendarView
+    // spatial source. `modalities` is a plain literal here (plugin.ts is not in
+    // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
+    // the bundle build.
     {
       id: "calendar",
       label: "Calendar",
@@ -31,6 +35,7 @@ export const calendarPlugin: Plugin = {
         "Unified Google + Apple calendar with day/week/month tabs and inline conflict detection.",
       icon: "Calendar",
       path: "/calendar",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "CalendarView",
       tags: ["calendar", "schedule", "events"],

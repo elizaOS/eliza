@@ -1,31 +1,36 @@
 /**
- * TodosView — owner three-lane todo board.
+ * TodosView — the single GUI/XR data wrapper for the owner todo board.
  *
- * Data-fetching view over the single read-only todos endpoint served by the
- * personal-assistant routes (PA owns the shared scheduled-task spine; this
- * plugin only renders):
- *   GET {base}/api/lifeops/todos
+ * It owns the live todos data (the fetcher seam over the single read-only
+ * endpoint PA serves, the quiet background poll, wire->display mapping, lane
+ * grouping, and the overdue signal) and renders the one presentational
+ * {@link TodosSpatialView} inside a {@link SpatialSurface}. Omitting the
+ * `modality` prop lets `SpatialSurface` auto-detect GUI vs XR, so the SAME
+ * component serves both surfaces; the TUI surface renders the same
+ * `TodosSpatialView` through the terminal registry (see
+ * `../../register-terminal-view.tsx`).
  *
- * The wire payload is `{ todos: TodoWire[] }`, projected by PA from the owner's
- * `life_task_*` occurrences. We map each wire row to a `TodoItem` at the fetch
- * boundary so the rest of the view renders display-only.
+ * Data source (PA owns the shared scheduled-task spine; this plugin only reads):
+ *   GET {base}/api/lifeops/todos -> { todos: TodoWire[] }
  *
- * Lanes (computed from the real `dueDate` field):
- *  - Today    — active todos due now or overdue (dueDate <= now + 24h).
- *  - Upcoming — active todos with a future due date.
- *  - Someday  — active todos with no (or unparseable) due date.
- *
- * It renders one of four distinct states (loading, error, empty, populated) and
- * stays fresh via a quiet background poll. The default fetcher builds its URL
- * from `client.getBaseUrl()`; tests inject the fetcher seam so they stay offline.
- *
- * This plugin MUST NOT import from @elizaos/plugin-personal-assistant. The wire
- * DTO below is declared locally to match the JSON shape PA emits.
+ * The board is read-only: the only owner actions are `add` (route an add-a-todo
+ * request through the assistant chat — no fabricated todos) and `retry` (reload
+ * after an error). This plugin MUST NOT import from
+ * @elizaos/plugin-personal-assistant; the wire DTO below is declared locally to
+ * match the JSON shape PA emits.
  */
 
 import { client } from "@elizaos/ui";
-import type { CSSProperties, ReactNode } from "react";
+import { SpatialSurface } from "@elizaos/ui/spatial";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  EMPTY_LANES,
+  type LaneId,
+  type TodoCard,
+  type TodosSnapshot,
+  TodosSpatialView,
+} from "./TodosSpatialView.tsx";
 
 // ---------------------------------------------------------------------------
 // Wire DTO — local mirror of the JSON shape served by the PA todos route.
@@ -103,8 +108,6 @@ function isActive(todo: TodoItem): boolean {
   return todo.status === "pending" || todo.status === "in_progress";
 }
 
-type LaneId = "today" | "upcoming" | "someday";
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function laneFor(todo: TodoItem, now: number): LaneId {
@@ -127,252 +130,23 @@ function overdueCount(todos: TodoItem[], now: number): number {
   return count;
 }
 
-interface LaneDef {
-  id: LaneId;
-  label: string;
-}
-
-const LANES: readonly LaneDef[] = [
-  { id: "today", label: "Today" },
-  { id: "upcoming", label: "Upcoming" },
-  { id: "someday", label: "Someday" },
-];
-
-function formatDue(value: string): string {
+function formatDue(value: string | null): string {
+  if (!value) return "";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
   });
 }
 
-// ---------------------------------------------------------------------------
-// Styling — light theme, CSS vars, orange accent only.
-// ---------------------------------------------------------------------------
-
-const STYLE_TAG_ID = "todos-view-styles";
-
-const TODOS_VIEW_CSS = `
-.todos-view-btn {
-  min-height: 44px;
-  min-width: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 0 16px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
-}
-.todos-view-btn-primary {
-  background: var(--primary, #ff8a24);
-  color: var(--primary-foreground, #ffffff);
-  border: 1px solid var(--primary, #ff8a24);
-}
-.todos-view-btn-primary:hover {
-  background: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff8a24) 82%, black);
-}
-.todos-view-btn-neutral {
-  background: var(--surface, rgba(0, 0, 0, 0.04));
-  color: var(--foreground, #111);
-  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
-}
-.todos-view-btn-neutral:hover {
-  background: color-mix(in srgb, var(--foreground, #111) 8%, transparent);
-}
-.todos-view-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-`;
-
-function useTodosViewStyles(): void {
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_TAG_ID)) return;
-    const style = document.createElement("style");
-    style.id = STYLE_TAG_ID;
-    style.textContent = TODOS_VIEW_CSS;
-    document.head.appendChild(style);
-  }, []);
-}
-
-const containerStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 16,
-  padding: 24,
-  height: "100%",
-  boxSizing: "border-box",
-  background: "var(--background, #ffffff)",
-  color: "var(--foreground, #111)",
-  fontFamily: "system-ui, sans-serif",
-};
-
-const sectionStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-};
-
-const headerRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  flexWrap: "wrap",
-};
-
-const h1Style: CSSProperties = { margin: 0, fontSize: 18, fontWeight: 600 };
-const h2Style: CSSProperties = { margin: 0, fontSize: 15, fontWeight: 600 };
-
-const cardStyle: CSSProperties = {
-  padding: 16,
-  borderRadius: 8,
-  border: "1px solid var(--border, rgba(0,0,0,0.12))",
-  background: "var(--surface, rgba(0,0,0,0.04))",
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-};
-
-const dimStyle: CSSProperties = {
-  opacity: 0.65,
-  fontSize: 13,
-  lineHeight: 1.5,
-};
-
-const subtitleStyle: CSSProperties = { ...dimStyle, marginTop: 2 };
-
-const lanesGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 16,
-  flex: 1,
-  minHeight: 0,
-};
-
-// Lanes are separated by whitespace (grid gap) only — no card edge per lane.
-const laneCardStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-  padding: 0,
-  minHeight: 0,
-};
-
-const laneHeaderStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "baseline",
-  justifyContent: "space-between",
-  gap: 8,
-};
-
-const listStyle: CSSProperties = {
-  listStyle: "none",
-  margin: 0,
-  padding: 0,
-  display: "flex",
-  flexDirection: "column",
-};
-
-const rowStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 12,
-  padding: "8px 0",
-  fontSize: 14,
-};
-
-const rowMainStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  minWidth: 0,
-};
-
-const titleStyle: CSSProperties = { fontWeight: 600 };
-
-const metaStyle: CSSProperties = {
-  ...dimStyle,
-  whiteSpace: "nowrap",
-  flexShrink: 0,
-};
-
-// Status dot: orange = in_progress (busy/running), neutral = pending (idle).
-const statusDotStyle = (status: TodoStatus): CSSProperties => ({
-  width: 8,
-  height: 8,
-  borderRadius: "50%",
-  flexShrink: 0,
-  background:
-    status === "in_progress"
-      ? "var(--primary, #ff8a24)"
-      : "color-mix(in srgb, var(--foreground, #111) 35%, transparent)",
-});
-
-function TodosHeader(): ReactNode {
-  return (
-    <header style={sectionStyle}>
-      <div style={headerRowStyle}>
-        <h1 style={h1Style}>Todos</h1>
-      </div>
-      <div style={subtitleStyle}>
-        Three lanes: Today, Upcoming, Someday.
-      </div>
-    </header>
-  );
-}
-
-function TodoRow({ todo }: { todo: TodoItem }): ReactNode {
-  const due = todo.dueDate ? formatDue(todo.dueDate) : "";
-  return (
-    <li style={rowStyle}>
-      <span style={rowMainStyle}>
-        <span
-          style={statusDotStyle(todo.status)}
-          aria-label={
-            todo.status === "in_progress" ? "In progress" : "Pending"
-          }
-        />
-        <span style={titleStyle}>{todo.title}</span>
-      </span>
-      {due ? <span style={metaStyle}>{due}</span> : null}
-    </li>
-  );
-}
-
-function Lane({ lane, todos }: { lane: LaneDef; todos: TodoItem[] }): ReactNode {
-  return (
-    <article
-      style={laneCardStyle}
-      aria-label={`${lane.label} lane`}
-      data-testid={`todos-lane-${lane.id}`}
-    >
-      <div style={laneHeaderStyle}>
-        <h2 style={h2Style}>{lane.label}</h2>
-        <span style={dimStyle} aria-label={`${lane.label} count`}>
-          {todos.length}
-        </span>
-      </div>
-      {todos.length === 0 ? (
-        <div style={{ ...dimStyle, fontStyle: "italic" }}>Nothing here.</div>
-      ) : (
-        <ul style={listStyle} aria-label={`${lane.label} todos`}>
-          {todos.map((todo) => (
-            <TodoRow key={todo.id} todo={todo} />
-          ))}
-        </ul>
-      )}
-    </article>
-  );
+function toCard(todo: TodoItem): TodoCard {
+  return {
+    id: todo.id,
+    title: todo.title,
+    inProgress: todo.status === "in_progress",
+    due: formatDue(todo.dueDate),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -387,12 +161,15 @@ type LoadState =
   | { kind: "ready"; todos: TodoItem[] };
 
 function requestNewTodo(): void {
-  client.sendChatMessage?.("Add a todo for me.");
+  // The add-a-todo affordance routes through the assistant chat. `client` does
+  // not type `sendChatMessage`, so read it through a narrow optional-method view
+  // and call it only when present — no fabricated todos, best-effort dispatch.
+  const send = (client as { sendChatMessage?: (text: string) => void })
+    .sendChatMessage;
+  send?.("Add a todo for me.");
 }
 
 export function TodosView(props: TodosViewProps = {}): ReactNode {
-  useTodosViewStyles();
-
   const fetchers = props.fetchers ?? defaultFetchers;
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
@@ -443,8 +220,8 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
   }, []);
 
   // Lane grouping is presentation-only over the active todos the route returns.
-  const byLane = useMemo(() => {
-    const grouped: Record<LaneId, TodoItem[]> = {
+  const lanes = useMemo(() => {
+    const grouped: Record<LaneId, TodoCard[]> = {
       today: [],
       upcoming: [],
       someday: [],
@@ -453,7 +230,7 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
     const now = Date.now();
     for (const todo of state.todos) {
       if (!isActive(todo)) continue;
-      grouped[laneFor(todo, now)].push(todo);
+      grouped[laneFor(todo, now)].push(toCard(todo));
     }
     return grouped;
   }, [state]);
@@ -464,80 +241,44 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
     [state],
   );
 
-  if (state.kind === "loading") {
-    return (
-      <div style={containerStyle} data-testid="todos-loading">
-        <TodosHeader />
-        <div style={{ ...cardStyle, ...dimStyle }}>Loading todos…</div>
-      </div>
-    );
-  }
+  const snapshot = useMemo<TodosSnapshot>(() => {
+    if (state.kind === "loading") {
+      return { state: "loading", lanes: EMPTY_LANES, overdue: 0 };
+    }
+    if (state.kind === "error") {
+      return {
+        state: "error",
+        lanes: EMPTY_LANES,
+        overdue: 0,
+        error: state.message,
+      };
+    }
+    const activeCount =
+      lanes.today.length + lanes.upcoming.length + lanes.someday.length;
+    if (activeCount === 0) {
+      return { state: "empty", lanes: EMPTY_LANES, overdue: 0 };
+    }
+    return { state: "ready", lanes, overdue };
+  }, [state, lanes, overdue]);
 
-  if (state.kind === "error") {
-    return (
-      <div style={containerStyle} data-testid="todos-error">
-        <TodosHeader />
-        <div style={cardStyle}>
-          <div style={{ fontWeight: 600 }}>Couldn’t load todos</div>
-          <div style={dimStyle}>{state.message}</div>
-          <div>
-            <button
-              type="button"
-              className="todos-view-btn todos-view-btn-primary"
-              onClick={load}
-              aria-label="Retry loading todos"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Fetched OK but no active todos → honest add-a-todo affordance routed through
-  // the assistant chat. No fabricated todos.
-  const activeCount =
-    byLane.today.length + byLane.upcoming.length + byLane.someday.length;
-  if (activeCount === 0) {
-    return (
-      <div style={containerStyle} data-testid="todos-empty">
-        <TodosHeader />
-        <div style={cardStyle}>
-          <div style={{ fontWeight: 600 }}>No todos</div>
-          <div style={dimStyle}>
-            Nothing on the board yet. Ask Eliza to add one — tell her what you
-            need to get done and she’ll track it for you.
-          </div>
-          <div>
-            <button
-              type="button"
-              className="todos-view-btn todos-view-btn-primary"
-              onClick={requestNewTodo}
-              aria-label="Ask Eliza to add a todo"
-            >
-              Add a todo
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const onAction = useCallback(
+    (action: string) => {
+      switch (action) {
+        case "retry":
+          load();
+          return;
+        case "add":
+          requestNewTodo();
+          return;
+      }
+    },
+    [load],
+  );
 
   return (
-    <div style={containerStyle} data-testid="todos-populated">
-      <TodosHeader />
-      {overdue > 0 ? (
-        <p style={dimStyle} data-testid="todos-proactive">
-          {overdue === 1 ? "1 todo is overdue." : `${overdue} todos are overdue.`}
-        </p>
-      ) : null}
-      <section style={lanesGridStyle} aria-label="Todo lanes">
-        {LANES.map((lane) => (
-          <Lane key={lane.id} lane={lane} todos={byLane[lane.id]} />
-        ))}
-      </section>
-    </div>
+    <SpatialSurface>
+      <TodosSpatialView snapshot={snapshot} onAction={onAction} />
+    </SpatialSurface>
   );
 }
 

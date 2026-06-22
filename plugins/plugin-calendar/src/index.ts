@@ -36,3 +36,16 @@ export {
   type UseCalendarWeekOptions,
   type UseCalendarWeekResult,
 } from "./hooks/useCalendarWeek.js";
+export {
+  type CalendarEventRow,
+  type CalendarMode,
+  type CalendarSnapshot,
+  CalendarSpatialView,
+} from "./components/calendar/CalendarSpatialView.js";
+export { CalendarView } from "./components/calendar/CalendarView.js";
+export {
+  registerCalendarTerminalView,
+  setCalendarTerminalSnapshot,
+} from "./register-terminal-view.js";
+// Side-effect: DOM-guarded terminal-view registration for the Node agent host.
+import "./register.js";
