@@ -44,10 +44,87 @@ export type {
   VerifyResult,
 };
 
+/** Hardware classification tier (mirrors the plugin `DeviceTier`). */
+export type DeviceTier = "MAX" | "GOOD" | "OKAY" | "POOR";
+
+/**
+ * Resolved device tier for the UI. `reason` is a short human line explaining
+ * the classification (e.g. "16.0 GB free · dGPU"); `cpuOnly` and `mobile` drive
+ * the "Auto: on-device vs cloud" resolution shown next to per-slot routing.
+ */
+export interface DeviceTierResult {
+  tier: DeviceTier;
+  reason: string;
+  /** True when no supported GPU is present (CPU-only host). */
+  cpuOnly: boolean;
+  /** True on iOS/Android (clamped to OKAY at best). */
+  mobile: boolean;
+}
+
+/**
+ * Classify a `HardwareProbe` into a coarse device tier for UI display.
+ *
+ * This is a deliberately small client-side approximation of the plugin's
+ * `classifyDeviceTier` (which carries the authoritative R9 thresholds). The UI
+ * only needs the tier label + a one-line reason to render the banner and the
+ * per-slot "Auto" resolution; it does not gate runtime behaviour, so the full
+ * server classifier is not required on the client.
+ */
+export function classifyDeviceTierFromProbe(
+  probe: HardwareProbe,
+): DeviceTierResult {
+  const mobile =
+    probe.mobile?.platform === "ios" || probe.mobile?.platform === "android";
+  const cpuOnly = !probe.gpu && !probe.appleSilicon;
+  const vramGb = probe.gpu?.totalVramGb ?? 0;
+  const effectiveMemoryGb = probe.appleSilicon
+    ? probe.totalRamGb
+    : probe.gpu
+      ? Math.max(vramGb, probe.totalRamGb * 0.5)
+      : probe.totalRamGb * 0.5;
+
+  const accelerator = probe.appleSilicon
+    ? `Apple Silicon ${probe.totalRamGb.toFixed(0)} GB`
+    : probe.gpu
+      ? `${vramGb.toFixed(0)} GB VRAM`
+      : `${probe.totalRamGb.toFixed(0)} GB RAM, ${probe.cpuCores} cores`;
+  const reason = `${effectiveMemoryGb.toFixed(1)} GB effective · ${probe.freeRamGb.toFixed(1)} GB free · ${accelerator}`;
+
+  const tier = ((): DeviceTier => {
+    // Mobile clamps to OKAY at best (OS background-task limits).
+    if (mobile) {
+      return probe.freeRamGb >= 3 ? "OKAY" : "POOR";
+    }
+    if (probe.cpuCores < 4) return "POOR";
+    const meetsMax =
+      effectiveMemoryGb >= 24 &&
+      probe.freeRamGb >= 16 &&
+      (vramGb >= 16 || (probe.appleSilicon && probe.totalRamGb >= 32));
+    if (meetsMax) return "MAX";
+    const meetsGood =
+      effectiveMemoryGb >= 12 &&
+      probe.freeRamGb >= 8 &&
+      (vramGb >= 8 ||
+        (probe.appleSilicon && probe.totalRamGb >= 16) ||
+        (cpuOnly && probe.totalRamGb >= 32));
+    if (meetsGood) return "GOOD";
+    const meetsOkay = effectiveMemoryGb >= 6 && probe.freeRamGb >= 3;
+    return meetsOkay ? "OKAY" : "POOR";
+  })();
+
+  return { tier, reason, cpuOnly, mobile };
+}
+
 declare module "./client-base" {
   interface ElizaClient {
     getLocalInferenceHub(): Promise<ModelHubSnapshot>;
     getLocalInferenceHardware(): Promise<HardwareProbe>;
+    /**
+     * Resolve the live device tier by probing hardware and classifying it.
+     * Backs the Settings → Voice tier banner and the per-slot "Auto"
+     * resolution in the routing matrix.
+     */
+    getLocalInferenceDeviceTier(): Promise<DeviceTierResult>;
     getLocalInferenceCatalog(): Promise<{ models: CatalogModel[] }>;
     getLocalInferenceInstalled(): Promise<{ models: InstalledModel[] }>;
     startLocalInferenceDownload(
@@ -100,6 +177,13 @@ ElizaClient.prototype.getLocalInferenceHardware = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/hardware");
+};
+
+ElizaClient.prototype.getLocalInferenceDeviceTier = async function (
+  this: ElizaClient,
+) {
+  const probe = await this.getLocalInferenceHardware();
+  return classifyDeviceTierFromProbe(probe);
 };
 
 ElizaClient.prototype.getLocalInferenceCatalog = async function (
