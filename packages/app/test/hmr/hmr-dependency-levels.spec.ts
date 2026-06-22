@@ -159,7 +159,7 @@ const LEVELS = [
   },
   {
     name: "plugin view facewear",
-    file: "plugins/plugin-facewear/src/ui/FacewearView.tsx",
+    file: "plugins/plugin-facewear/src/components/FacewearView.tsx",
   },
   {
     name: "plugin view smartglasses",

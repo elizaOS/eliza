@@ -59,22 +59,26 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-companion-play-emote",
     "terminal-companion-stop-emote",
   ],
-  "plugins/plugin-contacts/src/components/ContactsAppView.tsx": [
+  // Each collapsed plugin re-exports its `<Name>View` componentExport and the
+  // `interact` capability handler from a `<name>-view-bundle.ts` entry file, so
+  // that bundle entry owns the terminal parity capabilities (same pattern as
+  // phone below).
+  "plugins/plugin-contacts/src/components/contacts-view-bundle.ts": [
     "terminal-list-contacts",
     "terminal-create-contact",
     "terminal-import-vcard",
   ],
-  "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx": [
+  "plugins/plugin-hyperliquid-app/src/hyperliquid-app-view-bundle.ts": [
     "terminal-hyperliquid-state",
     "terminal-hyperliquid-market",
     "terminal-hyperliquid-execution-check",
   ],
-  "plugins/plugin-messages/src/components/MessagesAppView.tsx": [
+  "plugins/plugin-messages/src/components/messages-view-bundle.ts": [
     "terminal-list-threads",
     "terminal-send-sms",
     "terminal-request-sms-role",
   ],
-  "plugins/app-model-tester/src/ModelTesterAppView.tsx": [
+  "plugins/app-model-tester/src/model-tester-view-bundle.ts": [
     "get-status",
     "run-text-small",
     "run-transcription",
@@ -90,14 +94,14 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-open-dialer",
     "terminal-save-call-transcript",
   ],
-  "plugins/plugin-polymarket-app/src/PolymarketAppView.tsx": [
+  "plugins/plugin-polymarket-app/src/polymarket-view-bundle.ts": [
     "terminal-polymarket-state",
     "terminal-polymarket-market",
     "terminal-polymarket-orderbook",
     "terminal-polymarket-positions",
     "terminal-polymarket-trading-check",
   ],
-  "plugins/plugin-shopify-ui/src/ShopifyAppView.tsx": [
+  "plugins/plugin-shopify-ui/src/shopify-view-bundle.ts": [
     "terminal-shopify-state",
     "terminal-shopify-products",
     "terminal-shopify-orders",
@@ -113,7 +117,7 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-steward-approve",
     "terminal-steward-deny",
   ],
-  "plugins/plugin-vincent/src/VincentAppView.tsx": [
+  "plugins/plugin-vincent/src/vincent-view-bundle.ts": [
     "terminal-vincent-state",
     "terminal-vincent-start-login",
     "terminal-vincent-disconnect",
@@ -124,7 +128,7 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-wallet-market-overview",
     "terminal-wallet-trading-profile",
   ],
-  "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx": [
+  "plugins/plugin-feed/src/ui/feed-view-bundle.ts": [
     "get-state",
     "refresh-agent-status",
     "open-live-dashboard",
@@ -138,11 +142,11 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-list-views",
     "terminal-open-view",
   ],
-  "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx": [
+  "plugins/plugin-clawville/src/ui/clawville-view-bundle.ts": [
     "terminal-clawville-state",
     "terminal-clawville-command",
   ],
-  "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx":
+  "plugins/plugin-defense-of-the-agents/src/ui/defense-of-the-agents-view-bundle.ts":
     ["terminal-defense-state", "terminal-defense-command"],
   "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx": [
     "terminal-screenshare-state",
@@ -152,7 +156,11 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-screenshare-input",
     "terminal-screenshare-viewer-url",
   ],
-  "plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.tsx": [
+  // The task-coordinator bundle re-exports BOTH collapsed view components
+  // (`TaskCoordinatorView` and `OrchestratorView`) plus the shared `interact`
+  // handler, so this one bundle entry owns the terminal parity capabilities for
+  // both the task-coordinator and orchestrator declarations.
+  "plugins/plugin-task-coordinator/src/task-coordinator-view-bundle.ts": [
     "list-sessions",
     "list-task-threads",
     "open-thread",

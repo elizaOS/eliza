@@ -215,7 +215,7 @@ const PLUGIN_REGISTRY: Array<{
     pluginDir: "plugins/plugin-wallet-ui",
     manifestPath: "plugins/plugin-wallet-ui/src/plugin.ts",
     xrComponentSrc: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
-    requiredTerms: ["InventoryView", "Button", "useInventoryData"],
+    requiredTerms: ["InventoryView", "useInventoryData"],
   },
   {
     pluginDir: "plugins/plugin-feed",

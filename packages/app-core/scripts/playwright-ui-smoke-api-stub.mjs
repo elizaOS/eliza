@@ -74,39 +74,37 @@ function readSmokeVrm() {
 
 const SMOKE_VRM = readSmokeVrm();
 
+// A collapsed plugin declares ONE view that draws gui + tui (+ xr) from the
+// same `<Name>View` componentExport and the same bundle on the same `/<id>`
+// route. In the stub a `modalities` 6th element expands that single declaration
+// into one gui object + one tui object (both at `/<id>`, both serving the same
+// componentExport), mirroring how the real /api/views collapses modalities.
+// Plugins that still declare a standalone tui route (training) keep a separate
+// `tui` row with its own `/<id>/tui` path below.
 const smokeViewDeclarations = [
-  ["companion", "Companion", "plugin-companion", "/companion", "CompanionView"],
   [
     "companion",
-    "Companion TUI",
+    "Companion",
     "plugin-companion",
-    "/companion/tui",
-    "CompanionTuiView",
-    "tui",
+    "/companion",
+    "CompanionView",
+    ["gui", "tui"],
   ],
-  ["contacts", "Contacts", "plugin-contacts", "/contacts", "ContactsAppView"],
   [
     "contacts",
-    "Contacts TUI",
+    "Contacts",
     "plugin-contacts",
-    "/contacts/tui",
-    "ContactsTuiView",
-    "tui",
+    "/contacts",
+    "ContactsView",
+    ["gui", "tui"],
   ],
   [
     "hyperliquid",
     "Hyperliquid",
     "plugin-hyperliquid-app",
     "/hyperliquid",
-    "HyperliquidAppView",
-  ],
-  [
-    "hyperliquid",
-    "Hyperliquid TUI",
-    "plugin-hyperliquid-app",
-    "/hyperliquid/tui",
-    "HyperliquidTuiView",
-    "tui",
+    "HyperliquidView",
+    ["gui", "tui"],
   ],
   // NOTE: the LifeOps overview view was removed (PA no longer registers a
   // `lifeops` view). Its stub entries are deleted so the smoke launcher matches
@@ -136,85 +134,59 @@ const smokeViewDeclarations = [
     "Messages",
     "plugin-messages",
     "/messages",
-    "MessagesPluginView",
-  ],
-  [
-    "messages",
-    "Messages TUI",
-    "plugin-messages",
-    "/messages/tui",
-    "MessagesTuiView",
-    "tui",
+    "MessagesView",
+    ["gui", "tui"],
   ],
   [
     "model-tester",
     "Model Tester",
     "app-model-tester",
     "/model-tester",
-    "ModelTesterAppView",
-  ],
-  [
-    "model-tester",
-    "Model Tester TUI",
-    "app-model-tester",
-    "/model-tester/tui",
-    "ModelTesterTuiView",
-    "tui",
+    "ModelTesterView",
+    ["gui", "tui"],
   ],
   // Phone collapsed to ONE source: gui + tui (+ xr) all mount the single
   // PhoneView spatial component from the same bundle.
-  ["phone", "Phone", "plugin-phone", "/phone", "PhoneView"],
-  ["phone", "Phone TUI", "plugin-phone", "/phone/tui", "PhoneView", "tui"],
+  ["phone", "Phone", "plugin-phone", "/phone", "PhoneView", ["gui", "tui"]],
   [
     "polymarket",
     "Polymarket",
     "plugin-polymarket-app",
     "/polymarket",
-    "PolymarketAppView",
+    "PolymarketView",
+    ["gui", "tui"],
   ],
-  [
-    "polymarket",
-    "Polymarket TUI",
-    "plugin-polymarket-app",
-    "/polymarket/tui",
-    "PolymarketTuiView",
-    "tui",
-  ],
-  ["shopify", "Shopify", "plugin-shopify-ui", "/shopify", "ShopifyAppView"],
   [
     "shopify",
-    "Shopify TUI",
+    "Shopify",
     "plugin-shopify-ui",
-    "/shopify/tui",
-    "ShopifyTuiView",
-    "tui",
+    "/shopify",
+    "ShopifyView",
+    ["gui", "tui"],
   ],
-  ["steward", "Steward", "plugin-steward-app", "/steward", "StewardView"],
   [
     "steward",
-    "Steward TUI",
+    "Steward",
     "plugin-steward-app",
-    "/steward/tui",
-    "StewardTuiView",
-    "tui",
+    "/steward",
+    "StewardView",
+    ["gui", "tui"],
   ],
-  ["vincent", "Vincent", "plugin-vincent", "/vincent", "VincentAppView"],
   [
     "vincent",
-    "Vincent TUI",
+    "Vincent",
     "plugin-vincent",
-    "/vincent/tui",
-    "VincentTuiView",
-    "tui",
+    "/vincent",
+    "VincentView",
+    ["gui", "tui"],
   ],
-  ["wallet", "Wallet", "plugin-wallet-ui", "/wallet", "InventoryView"],
   [
     "wallet",
-    "Wallet TUI",
+    "Wallet",
     "plugin-wallet-ui",
-    "/wallet/tui",
-    "InventoryTuiView",
-    "tui",
+    "/wallet",
+    "InventoryView",
+    ["gui", "tui"],
   ],
   [
     "vector-browser",
@@ -223,61 +195,38 @@ const smokeViewDeclarations = [
     "/vector-browser",
     "VectorBrowserView",
   ],
-  ["feed", "Feed", "plugin-feed", "/feed", "FeedOperatorSurface"],
-  ["feed", "Feed TUI", "plugin-feed", "/feed/tui", "FeedTuiView", "tui"],
-  ["views-manager", "Views", "plugin-app-control", "/views", "ViewManagerView"],
+  ["feed", "Feed", "plugin-feed", "/feed", "FeedView", ["gui", "tui"]],
   [
     "views-manager",
-    "Views TUI",
+    "Views",
     "plugin-app-control",
-    "/views/tui",
-    "ViewManagerTuiView",
-    "tui",
+    "/views",
+    "ViewManagerView",
+    ["gui", "tui"],
   ],
   [
     "clawville",
     "Clawville",
     "plugin-clawville",
     "/clawville",
-    "ClawvilleOperatorSurface",
-  ],
-  [
-    "clawville",
-    "Clawville TUI",
-    "plugin-clawville",
-    "/clawville/tui",
-    "ClawvilleTuiView",
-    "tui",
+    "ClawvilleView",
+    ["gui", "tui"],
   ],
   [
     "defense-of-the-agents",
     "Defense of the Agents",
     "plugin-defense-of-the-agents",
     "/defense-of-the-agents",
-    "DefenseAgentsOperatorSurface",
-  ],
-  [
-    "defense-of-the-agents",
-    "Defense of the Agents TUI",
-    "plugin-defense-of-the-agents",
-    "/defense-of-the-agents/tui",
-    "DefenseAgentsTuiView",
-    "tui",
+    "DefenseAgentsView",
+    ["gui", "tui"],
   ],
   [
     "screenshare",
     "Screenshare",
     "plugin-screenshare",
     "/screenshare",
-    "ScreenshareOperatorSurface",
-  ],
-  [
-    "screenshare",
-    "Screenshare TUI",
-    "plugin-screenshare",
-    "/screenshare/tui",
-    "ScreenshareTuiView",
-    "tui",
+    "ScreenshareView",
+    ["gui", "tui"],
   ],
   [
     "social-alpha",
@@ -291,15 +240,16 @@ const smokeViewDeclarations = [
     "Task Coordinator",
     "plugin-task-coordinator",
     "/task-coordinator",
-    "CodingAgentTasksPanel",
+    "TaskCoordinatorView",
+    ["gui", "tui"],
   ],
   [
-    "task-coordinator",
-    "Task Coordinator TUI",
+    "orchestrator",
+    "Orchestrator",
     "plugin-task-coordinator",
-    "/task-coordinator/tui",
-    "TaskCoordinatorTuiView",
-    "tui",
+    "/orchestrator",
+    "OrchestratorView",
+    ["gui", "tui"],
   ],
   [
     "trajectory-logger",
@@ -307,15 +257,10 @@ const smokeViewDeclarations = [
     "plugin-trajectory-logger",
     "/trajectory-logger",
     "TrajectoryLoggerView",
+    ["gui", "tui"],
   ],
-  [
-    "trajectory-logger",
-    "Trajectory Logger TUI",
-    "plugin-trajectory-logger",
-    "/trajectory-logger/tui",
-    "TrajectoryLoggerTuiView",
-    "tui",
-  ],
+  // Training is NOT collapsed: it keeps a standalone gui route plus a separate
+  // tui declaration on its own `/training/tui` route.
   ["training", "Fine Tuning", "plugin-training", "/training", "FineTuningView"],
   [
     "training",
@@ -327,41 +272,74 @@ const smokeViewDeclarations = [
   ],
 ];
 
-const smokeViews = smokeViewDeclarations.map(
-  ([id, label, pluginDirName, viewPath, componentExport, viewType = "gui"]) => {
-    const encodedId = encodeURIComponent(id);
-    const query =
-      viewType === "tui" ? "?viewType=tui&v=ui-smoke" : "?v=ui-smoke";
-    const bundlePath = path.join(
-      repoRoot,
-      "plugins",
-      pluginDirName,
-      "dist",
-      "views",
-      "bundle.js",
+function smokeViewObject({
+  id,
+  label,
+  pluginDirName,
+  viewPath,
+  componentExport,
+  viewType,
+}) {
+  const encodedId = encodeURIComponent(id);
+  const query = viewType === "tui" ? "?viewType=tui&v=ui-smoke" : "?v=ui-smoke";
+  const bundlePath = path.join(
+    repoRoot,
+    "plugins",
+    pluginDirName,
+    "dist",
+    "views",
+    "bundle.js",
+  );
+  return {
+    id,
+    label,
+    viewType,
+    pluginName: `@elizaos/${pluginDirName}`,
+    path: viewPath,
+    order: 100,
+    bundlePath: "dist/views/bundle.js",
+    bundleUrl: `/api/views/${encodedId}/bundle.js${query}`,
+    componentExport,
+    available: true,
+    realBundleAvailable: existsSync(bundlePath),
+    visibleInManager: true,
+    capabilities: [
+      {
+        id: "get-state",
+        label: "Get state",
+        inputSchema: { type: "object" },
+      },
+    ],
+    _smokePluginDirName: pluginDirName,
+  };
+}
+
+// A collapsed declaration carries a `modalities` array as its 6th element and
+// expands to one view object per surface (gui + tui), all sharing the same
+// `/<id>` route and `<Name>View` componentExport. A legacy declaration carries
+// a single `viewType` string (default "gui").
+const smokeViews = smokeViewDeclarations.flatMap(
+  ([
+    id,
+    label,
+    pluginDirName,
+    viewPath,
+    componentExport,
+    modalitiesOrViewType = "gui",
+  ]) => {
+    const viewTypes = Array.isArray(modalitiesOrViewType)
+      ? modalitiesOrViewType
+      : [modalitiesOrViewType];
+    return viewTypes.map((viewType) =>
+      smokeViewObject({
+        id,
+        label,
+        pluginDirName,
+        viewPath,
+        componentExport,
+        viewType,
+      }),
     );
-    return {
-      id,
-      label,
-      viewType,
-      pluginName: `@elizaos/${pluginDirName}`,
-      path: viewPath,
-      order: 100,
-      bundlePath: "dist/views/bundle.js",
-      bundleUrl: `/api/views/${encodedId}/bundle.js${query}`,
-      componentExport,
-      available: true,
-      realBundleAvailable: existsSync(bundlePath),
-      visibleInManager: true,
-      capabilities: [
-        {
-          id: "get-state",
-          label: "Get state",
-          inputSchema: { type: "object" },
-        },
-      ],
-      _smokePluginDirName: pluginDirName,
-    };
   },
 );
 

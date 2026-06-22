@@ -59,7 +59,17 @@ type PluginViewCase = {
   path: string;
 };
 
-type PluginViewManifestContract = PluginViewCase & {
+/**
+ * A collapsed operator view: ONE declaration that draws several modalities from
+ * one source (`modalities`), one `path`, one `componentExport` (a
+ * SpatialSurface-wrapped view). The gate asserts that single declaration keeps
+ * its canonical path, bundle, component, and modality coverage.
+ */
+type PluginViewManifestContract = {
+  manifestPath: string;
+  id: string;
+  modalities: ReadonlyArray<"gui" | "tui" | "xr">;
+  path: string;
   componentExport: string;
 };
 
@@ -320,17 +330,25 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     path: "/training",
   },
   {
+    // Facewear collapsed to one declaration: gui/xr/tui all draw from the same
+    // `/apps/facewear` route (the standalone `/apps/facewear/xr` route is gone).
     manifestPath: "plugins/plugin-facewear/src/index.ts",
     id: "facewear",
     viewType: "xr",
-    path: "/apps/facewear/xr",
+    path: "/apps/facewear",
   },
   {
     manifestPath: "plugins/plugin-facewear/src/index.ts",
     id: "smartglasses",
     viewType: "xr",
-    path: "/apps/smartglasses/xr",
+    path: "/apps/smartglasses",
   },
+];
+
+const ALL_MODALITIES: ReadonlyArray<"gui" | "tui" | "xr"> = [
+  "gui",
+  "xr",
+  "tui",
 ];
 
 const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
@@ -338,128 +356,44 @@ const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
     {
       manifestPath: "plugins/plugin-clawville/src/index.ts",
       id: "clawville",
-      viewType: "gui",
+      modalities: ALL_MODALITIES,
       path: "/clawville",
-      componentExport: "ClawvilleOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-clawville/src/index.ts",
-      id: "clawville",
-      viewType: "xr",
-      path: "/clawville",
-      componentExport: "ClawvilleOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-clawville/src/index.ts",
-      id: "clawville",
-      viewType: "tui",
-      path: "/clawville/tui",
-      componentExport: "ClawvilleTuiView",
+      componentExport: "ClawvilleView",
     },
     {
       manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
       id: "defense-of-the-agents",
-      viewType: "gui",
+      modalities: ALL_MODALITIES,
       path: "/defense-of-the-agents",
-      componentExport: "DefenseAgentsOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
-      id: "defense-of-the-agents",
-      viewType: "xr",
-      path: "/defense-of-the-agents",
-      componentExport: "DefenseAgentsOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
-      id: "defense-of-the-agents",
-      viewType: "tui",
-      path: "/defense-of-the-agents/tui",
-      componentExport: "DefenseAgentsTuiView",
+      componentExport: "DefenseAgentsView",
     },
     {
       manifestPath: "plugins/plugin-feed/src/index.ts",
       id: "feed",
-      viewType: "gui",
+      modalities: ALL_MODALITIES,
       path: "/feed",
-      componentExport: "FeedOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-feed/src/index.ts",
-      id: "feed",
-      viewType: "xr",
-      path: "/feed",
-      componentExport: "FeedOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-feed/src/index.ts",
-      id: "feed",
-      viewType: "tui",
-      path: "/feed/tui",
-      componentExport: "FeedTuiView",
+      componentExport: "FeedView",
     },
     {
       manifestPath: "plugins/plugin-screenshare/src/index.ts",
       id: "screenshare",
-      viewType: "gui",
+      modalities: ALL_MODALITIES,
       path: "/screenshare",
-      componentExport: "ScreenshareOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-screenshare/src/index.ts",
-      id: "screenshare",
-      viewType: "xr",
-      path: "/screenshare",
-      componentExport: "ScreenshareOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-screenshare/src/index.ts",
-      id: "screenshare",
-      viewType: "tui",
-      path: "/screenshare/tui",
-      componentExport: "ScreenshareTuiView",
+      componentExport: "ScreenshareView",
     },
     {
       manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
       id: "task-coordinator",
-      viewType: "gui",
+      modalities: ALL_MODALITIES,
       path: "/task-coordinator",
-      componentExport: "CodingAgentTasksPanel",
-    },
-    {
-      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
-      id: "task-coordinator",
-      viewType: "xr",
-      path: "/task-coordinator",
-      componentExport: "CodingAgentTasksPanel",
-    },
-    {
-      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
-      id: "task-coordinator",
-      viewType: "tui",
-      path: "/task-coordinator/tui",
-      componentExport: "TaskCoordinatorTuiView",
+      componentExport: "TaskCoordinatorView",
     },
     {
       manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
       id: "orchestrator",
-      viewType: "gui",
+      modalities: ALL_MODALITIES,
       path: "/orchestrator",
-      componentExport: "OrchestratorWorkbench",
-    },
-    {
-      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
-      id: "orchestrator",
-      viewType: "xr",
-      path: "/orchestrator",
-      componentExport: "OrchestratorWorkbench",
-    },
-    {
-      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
-      id: "orchestrator",
-      viewType: "tui",
-      path: "/orchestrator/tui",
-      componentExport: "OrchestratorTuiView",
+      componentExport: "OrchestratorView",
     },
   ];
 
@@ -524,17 +458,37 @@ function stringField(source: string, field: string): string | null {
   return match?.[1] ?? null;
 }
 
+/**
+ * The surfaces a single view object draws. A collapsed declaration uses
+ * `modalities: ["gui","xr","tui"]` — one source, one route, drawn in several
+ * modes — and expands to one logical case per surface (all sharing the same
+ * `path`). A legacy declaration uses a single `viewType` (default "gui").
+ */
+function viewObjectViewTypes(object: string): Array<"gui" | "tui" | "xr"> {
+  const modalitiesMatch = object.match(/modalities:\s*\[([^\]]*)\]/);
+  if (modalitiesMatch) {
+    const mods = [...modalitiesMatch[1].matchAll(/"(gui|tui|xr)"/g)].map(
+      (match) => match[1] as "gui" | "tui" | "xr",
+    );
+    if (mods.length > 0) return mods;
+  }
+  const viewType = stringField(object, "viewType") ?? "gui";
+  if (viewType !== "gui" && viewType !== "tui" && viewType !== "xr") return [];
+  return [viewType];
+}
+
 function pluginViewCasesFromManifest(manifestPath: string): PluginViewCase[] {
   const source = readFileSync(path.resolve(REPO_ROOT, manifestPath), "utf8");
   return viewObjects(source).flatMap((object) => {
     const id = stringField(object, "id");
     const pathValue = stringField(object, "path");
-    const viewType = stringField(object, "viewType") ?? "gui";
     if (!id || !pathValue) return [];
-    if (viewType !== "gui" && viewType !== "tui" && viewType !== "xr") {
-      return [];
-    }
-    return [{ manifestPath, id, viewType, path: pathValue }];
+    return viewObjectViewTypes(object).map((viewType) => ({
+      manifestPath,
+      id,
+      viewType,
+      path: pathValue,
+    }));
   });
 }
 
@@ -681,9 +635,9 @@ function managerVisibleGuiViewPaths(): Map<string, string> {
     for (const object of viewObjects(source)) {
       const id = stringField(object, "id");
       const pathValue = stringField(object, "path");
-      const viewType = stringField(object, "viewType") ?? "gui";
+      const drawsGui = viewObjectViewTypes(object).includes("gui");
       const visibleInManager = /visibleInManager:\s*true/.test(object);
-      if (!id || !pathValue || viewType !== "gui" || !visibleInManager) {
+      if (!id || !pathValue || !drawsGui || !visibleInManager) {
         continue;
       }
       if (!byId.has(id)) byId.set(id, pathValue);
@@ -826,7 +780,7 @@ describe("app route coverage gate", () => {
     ).toEqual([]);
   });
 
-  it("operator plugin view manifests keep explicit gui/xr/tui contracts", () => {
+  it("operator plugin view manifests keep one collapsed gui/xr/tui contract", () => {
     const contractsByManifest = new Map<string, PluginViewManifestContract[]>();
     for (const contract of OPERATOR_VIEW_MANIFEST_CONTRACTS) {
       const contracts = contractsByManifest.get(contract.manifestPath) ?? [];
@@ -840,36 +794,39 @@ describe("app route coverage gate", () => {
           path.resolve(REPO_ROOT, manifestPath),
           "utf8",
         );
-        const objectsByKey = new Map(
-          viewObjects(source).map((object) => {
-            const id = stringField(object, "id") ?? "";
-            const viewType = stringField(object, "viewType") ?? "gui";
-            return [`${id}:${viewType}`, object];
-          }),
+        // One collapsed declaration per id (no longer one per viewType).
+        const objectsById = new Map(
+          viewObjects(source).map((object) => [
+            stringField(object, "id") ?? "",
+            object,
+          ]),
         );
 
         return contracts.flatMap((contract) => {
-          const object = objectsByKey.get(
-            `${contract.id}:${contract.viewType}`,
-          );
+          const object = objectsById.get(contract.id);
           if (!object) {
-            return [
-              `${manifestPath}:${contract.id}:${contract.viewType} missing view declaration`,
-            ];
+            return [`${manifestPath}:${contract.id} missing view declaration`];
           }
           const bundlePath = stringField(object, "bundlePath");
           const componentExport = stringField(object, "componentExport");
           const pathValue = stringField(object, "path");
+          const modalities = viewObjectViewTypes(object);
+          const missingModalities = contract.modalities.filter(
+            (modality) => !modalities.includes(modality),
+          );
           return [
             pathValue === contract.path
               ? null
-              : `${manifestPath}:${contract.id}:${contract.viewType} path expected ${contract.path} got ${pathValue}`,
+              : `${manifestPath}:${contract.id} path expected ${contract.path} got ${pathValue}`,
             bundlePath === "dist/views/bundle.js"
               ? null
-              : `${manifestPath}:${contract.id}:${contract.viewType} bundle expected dist/views/bundle.js got ${bundlePath}`,
+              : `${manifestPath}:${contract.id} bundle expected dist/views/bundle.js got ${bundlePath}`,
             componentExport === contract.componentExport
               ? null
-              : `${manifestPath}:${contract.id}:${contract.viewType} component expected ${contract.componentExport} got ${componentExport}`,
+              : `${manifestPath}:${contract.id} component expected ${contract.componentExport} got ${componentExport}`,
+            missingModalities.length === 0
+              ? null
+              : `${manifestPath}:${contract.id} missing modalities ${missingModalities.join(",")}`,
           ].filter((failure): failure is string => Boolean(failure));
         });
       },
