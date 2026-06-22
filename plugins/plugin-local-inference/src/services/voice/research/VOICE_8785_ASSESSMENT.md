@@ -88,6 +88,8 @@ The `--real` lane and the headful real-backend run need artifacts CI does not ha
 
 Per the honesty contract, every one of these reports **`skipped`, never `pass`**, when the artifact is absent. The decision logic that does NOT need them is proven by `--logic` + the unit suites.
 
+**Branch-state note (2026-06-22).** A headful run of `voice-workbench-eot.spec.ts` on this branch fails because the app shell crashes at boot with **"autonomousEvents is not defined"** (an `AppContext.tsx` refactor by concurrent work left `autonomousEvents` + several `AppState` fields undefined; `tsgo` flags the same TS2322 at `AppContext.tsx:1887`). This crashes *every* ui-smoke headful test, not just voice, and is independent of the voice work here — the voice UI re-exports' own unit tests pass. The Playwright recording pipeline itself is healthy (the failing run captured `video.webm` + a screenshot of the error boundary). The headful lane is unblocked once that AppContext regression is fixed (flagged separately).
+
 ---
 
 ## 6. Open recommendation: PCM-level acoustic echo cancellation
