@@ -18,8 +18,8 @@
  * builder, so cloud and direct paths share one URL-construction shape.
  */
 
-import { getCloudSecret } from "../elizacloud/cloud-secrets.js";
 import { resolveCloudApiBaseUrl } from "../elizacloud/base-url.js";
+import { getCloudSecret } from "../elizacloud/cloud-secrets.js";
 
 const DEFAULT_HF_HOST = "https://huggingface.co";
 

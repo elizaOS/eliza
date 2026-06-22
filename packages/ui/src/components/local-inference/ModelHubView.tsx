@@ -210,7 +210,10 @@ function ModelListRow({
               </span>
             ) : null}
             {notRunnable ? (
-              <span className="text-warn" title={unavailableReason ?? undefined}>
+              <span
+                className="text-warn"
+                title={unavailableReason ?? undefined}
+              >
                 {t("modelhub.notRunnable", {
                   defaultValue: "Not runnable on this platform",
                 })}

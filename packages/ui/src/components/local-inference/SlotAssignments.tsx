@@ -120,7 +120,9 @@ export function SlotAssignments({
         {LOCAL_INFERENCE_SLOT_DESCRIPTORS.map(
           ({ slot, label, description }) => {
             const currentId = assignments[slot] ?? "";
-            const selected = assignableInstalled.find((m) => m.id === currentId);
+            const selected = assignableInstalled.find(
+              (m) => m.id === currentId,
+            );
             const selectedRuntimeClass = selected
               ? installedRuntimeClass(selected)
               : null;
@@ -159,7 +161,8 @@ export function SlotAssignments({
                   </option>
                   {assignableInstalled.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.displayName} · {runtimeClassBadge(installedRuntimeClass(m))}
+                      {m.displayName} ·{" "}
+                      {runtimeClassBadge(installedRuntimeClass(m))}
                     </option>
                   ))}
                 </select>

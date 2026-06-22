@@ -40,7 +40,13 @@ describe("springboard-layout reconcile", () => {
   });
 
   it("repacks pages so removals leave no holes", () => {
-    const layout = { favorites: [], pages: [["a", "b"], ["c", "d"]] };
+    const layout = {
+      favorites: [],
+      pages: [
+        ["a", "b"],
+        ["c", "d"],
+      ],
+    };
     const out = reconcileLayout(layout, ["a", "c", "d"], 2);
     expect(out.pages).toEqual([["a", "c"], ["d"]]);
   });
