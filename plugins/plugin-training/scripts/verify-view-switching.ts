@@ -253,6 +253,83 @@ export function buildResultGrid(rows: GridRow[]): ResultGrid {
   return { views, languages, modalities, grid, cells };
 }
 
+// Accuracy summary the gate scores against. `landedAccuracy` is always present;
+// `directAccuracy` (direct "open X" commands) and `negativeControlPrecision`
+// (negatives that correctly did NOT navigate) are cheaply derivable from the
+// run and let the gate guard the two most regression-prone axes.
+export interface AccuracySummary {
+  total: number;
+  landedAccuracy: number;
+  directAccuracy?: number;
+  negativeControlPrecision?: number;
+}
+
+// Floors are opt-in: a metric is only gated when its floor is a finite number.
+export interface AccuracyFloors {
+  minLandedAccuracy?: number;
+  minDirectAccuracy?: number;
+  minNegativeControlPrecision?: number;
+}
+
+// Pure, model-free accuracy gate. Compares the run's accuracy metrics against
+// the provided floors and returns whether every gated metric cleared its floor,
+// plus a human-readable failure list. A metric with no floor (or a non-finite
+// floor) is not gated. With no floors at all the gate always passes (opt-in).
+export function evaluateAccuracyGate(
+  summary: AccuracySummary,
+  floors: AccuracyFloors,
+): { pass: boolean; failures: string[] } {
+  const failures: string[] = [];
+  const check = (
+    label: string,
+    actual: number | undefined,
+    floor: number | undefined,
+  ): void => {
+    if (floor === undefined || !Number.isFinite(floor)) return;
+    if (actual === undefined || !Number.isFinite(actual)) {
+      failures.push(`${label}: no value to compare against floor ${floor}`);
+      return;
+    }
+    if (actual < floor) {
+      failures.push(
+        `${label} ${(actual * 100).toFixed(1)}% below floor ${(floor * 100).toFixed(1)}%`,
+      );
+    }
+  };
+  check("landedAccuracy", summary.landedAccuracy, floors.minLandedAccuracy);
+  check("directAccuracy", summary.directAccuracy, floors.minDirectAccuracy);
+  check(
+    "negativeControlPrecision",
+    summary.negativeControlPrecision,
+    floors.minNegativeControlPrecision,
+  );
+  return { pass: failures.length === 0, failures };
+}
+
+// Read opt-in accuracy floors from the environment. A metric is only gated when
+// its env var parses to a finite number.
+function readAccuracyFloors(env: NodeJS.ProcessEnv): AccuracyFloors {
+  const num = (raw: string | undefined): number | undefined => {
+    if (raw === undefined || raw.trim() === "") return undefined;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+  return {
+    minLandedAccuracy: num(env.MIN_LANDED_ACCURACY),
+    minDirectAccuracy: num(env.MIN_DIRECT_ACCURACY),
+    minNegativeControlPrecision: num(env.MIN_NEGATIVE_CONTROL_PRECISION),
+  };
+}
+
+// True when at least one floor is configured.
+function anyFloorConfigured(floors: AccuracyFloors): boolean {
+  return (
+    floors.minLandedAccuracy !== undefined ||
+    floors.minDirectAccuracy !== undefined ||
+    floors.minNegativeControlPrecision !== undefined
+  );
+}
+
 async function main() {
   console.log(`[verify] model=${MODEL_LABEL} url=${MODEL_URL} name=${MODEL_NAME}`);
   const rows: Array<{
@@ -276,11 +353,23 @@ async function main() {
   }
   const n = rows.length;
   const sum = (k: "actionOk" | "rawViewOk" | "landedOk") => rows.filter((r) => r[k]).length;
+  // Per-kind accuracy on the two most regression-prone axes: direct "open X"
+  // commands (must land) and negatives (must NOT navigate).
+  const accuracyOver = (predicate: (r: (typeof rows)[number]) => boolean) => {
+    const subset = rows.filter(predicate);
+    return subset.length === 0
+      ? undefined
+      : subset.filter((r) => r.landedOk).length / subset.length;
+  };
+  const directAccuracy = accuracyOver((r) => r.c.kind === "direct");
+  const negativeControlPrecision = accuracyOver((r) => r.c.kind === "negative");
   const summary = {
     model: MODEL_LABEL, modelName: MODEL_NAME, url: MODEL_URL, total: n,
     actionAccuracy: sum("actionOk") / n,
     rawViewAccuracy: sum("rawViewOk") / n,
     landedAccuracy: sum("landedOk") / n,
+    directAccuracy,
+    negativeControlPrecision,
   };
   console.log(`\n[verify] ${MODEL_LABEL}: action ${sum("actionOk")}/${n} | rawView ${sum("rawViewOk")}/${n} | LANDED ${sum("landedOk")}/${n}`);
 
@@ -315,6 +404,29 @@ ${rows.map((r) => `<tr><td>${r.c.kind}</td><td><code>${r.c.prompt}</code></td><t
 </table>`;
   writeFileSync(path.join(outDir, `report-${stamp}.html`), html);
   console.log(`[verify] wrote output/view-switching-verify/report-${stamp}.{json,html}`);
+
+  // Opt-in accuracy gate. A model regression must fail the script — but only
+  // when a floor is configured AND a model endpoint was actually reached (the
+  // run produced at least one non-error result). Ad-hoc runs with no floor, and
+  // runs that never reached an endpoint, never fail here.
+  const floors = readAccuracyFloors(process.env);
+  if (anyFloorConfigured(floors)) {
+    const reached = rows.some((r) => r.action !== "ERR");
+    if (!reached) {
+      console.warn(
+        "[verify] accuracy floors set but no model endpoint was reached — skipping gate",
+      );
+      return;
+    }
+    const gate = evaluateAccuracyGate(summary, floors);
+    if (!gate.pass) {
+      console.error(
+        `[verify] accuracy gate FAILED:\n${gate.failures.map((f) => `  - ${f}`).join("\n")}`,
+      );
+      process.exit(1);
+    }
+    console.log("[verify] accuracy gate passed");
+  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
