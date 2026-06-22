@@ -130,6 +130,7 @@ const PLUGIN_NAMES = [
   "views-integration-dev",
   "views-integration-remote",
   "views-integration-local-bundle",
+  "todos",
 ];
 
 // ---------------------------------------------------------------------------
@@ -175,6 +176,30 @@ function rawResponse(ctx: ViewsRouteContext): {
 // ---------------------------------------------------------------------------
 
 describe("GET /api/views", () => {
+  it("resolves short first-party plugin names to their workspace package roots", async () => {
+    await registerPluginViews(
+      {
+        name: "todos",
+        description: "short-name first-party plugin",
+        actions: [],
+        views: [
+          {
+            id: "short-name.todos",
+            label: "Short Name Todos",
+            path: "/short-name-todos",
+            bundlePath: "package.json",
+          },
+        ],
+      },
+      undefined,
+    );
+
+    const entry = getView("short-name.todos");
+    expect(entry?.pluginName).toBe("todos");
+    expect(entry?.pluginDir).toContain("plugin-todos");
+    expect(entry?.available).toBe(true);
+  });
+
   it("returns registered views with views key in response body", async () => {
     await registerPluginViews(
       {

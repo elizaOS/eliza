@@ -39,6 +39,7 @@ import type {
   WorkflowExecution,
   WorkflowRevision,
 } from "../../api/client-types-chat";
+import { dispatchChatPrefill } from "../../events";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import {
   buildWorkflowExecutionDiagnostics,
@@ -57,8 +58,6 @@ import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
 import { WorkflowGraphViewer } from "./WorkflowGraphViewer";
-
-const CHAT_PREFILL_EVENT = "eliza:chat:prefill";
 
 export interface WorkflowEditorProps {
   initial?: WorkflowDefinition | null;
@@ -365,26 +364,21 @@ export function WorkflowEditor({
   }, [selectedExecution]);
 
   const handleTroubleshootInChat = useCallback(() => {
-    if (!selectedExecution || typeof window === "undefined") return;
+    if (!selectedExecution) return;
     const workflowId =
       persistedWorkflowId ?? selectedExecution.workflowId ?? "unknown";
     const diagnostics = buildWorkflowExecutionDiagnostics(selectedExecution);
-    window.dispatchEvent(
-      new CustomEvent(CHAT_PREFILL_EVENT, {
-        detail: {
-          text: [
-            `Troubleshoot workflow ${workflowId} execution ${selectedExecution.id}.`,
-            "",
-            diagnostics,
-          ].join("\n"),
-          select: false,
-        },
-      }),
-    );
+    dispatchChatPrefill({
+      text: [
+        `Troubleshoot workflow ${workflowId} execution ${selectedExecution.id}.`,
+        "",
+        diagnostics,
+      ].join("\n"),
+      select: false,
+    });
   }, [persistedWorkflowId, selectedExecution]);
 
   const handleEditInChat = useCallback(() => {
-    if (typeof window === "undefined") return;
     const workflowName = lastValidWorkflow?.name ?? "this workflow";
     const workflowId =
       persistedWorkflowId ?? lastValidWorkflow?.id ?? initial?.id ?? "draft";
@@ -392,14 +386,7 @@ export function WorkflowEditor({
       workflowId === "draft"
         ? "Create a workflow that "
         : `Modify workflow ${workflowId} (${workflowName}). `;
-    window.dispatchEvent(
-      new CustomEvent(CHAT_PREFILL_EVENT, {
-        detail: {
-          text,
-          select: false,
-        },
-      }),
-    );
+    dispatchChatPrefill({ text, select: false });
   }, [initial?.id, lastValidWorkflow, persistedWorkflowId]);
 
   const handleCopyEvaluationSamples = useCallback(async () => {

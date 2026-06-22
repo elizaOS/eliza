@@ -23,8 +23,11 @@ import type {
   TrainingTrajectoryList,
 } from "@elizaos/ui/api";
 import { client } from "@elizaos/ui/api";
-import { Button, registerDetailExtension } from "@elizaos/ui/components";
-import type { AppDetailExtensionProps } from "@elizaos/ui/components/apps/extensions/types";
+import {
+  type AppDetailExtensionProps,
+  Button,
+  registerDetailExtension,
+} from "@elizaos/ui/components";
 import { useIntervalWhenDocumentVisible } from "@elizaos/ui/hooks";
 import { ContentLayout } from "@elizaos/ui/layouts";
 import { type AppContextValue, useAppSelector } from "@elizaos/ui/state";

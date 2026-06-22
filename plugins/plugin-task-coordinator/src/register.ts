@@ -1,5 +1,7 @@
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 
+import "./register-slots.js";
+
 registerAppShellPage({
   id: "orchestrator",
   pluginId: "@elizaos/plugin-task-coordinator",

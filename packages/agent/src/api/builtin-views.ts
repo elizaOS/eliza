@@ -84,6 +84,18 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     desktopTabEnabled: true,
   },
   {
+    id: "documents",
+    label: "Knowledge",
+    description: "Agent knowledge documents, uploads, and retrieval sources",
+    icon: "FileText",
+    heroImagePath: "assets/view-heroes/character.png",
+    path: "/character/documents",
+    order: 51,
+    tags: ["documents", "notes", "knowledge", "files", "uploads", "retrieval"],
+    visibleInManager: true,
+    desktopTabEnabled: true,
+  },
+  {
     id: "automations",
     viewKind: "release",
     label: "Automations",

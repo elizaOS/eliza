@@ -87,6 +87,25 @@ const calendarView = {
   viewType: "gui" as const,
 };
 
+const documentsView = {
+  id: "documents",
+  label: "Knowledge",
+  available: true,
+  pluginName: "@elizaos/plugin-documents",
+  path: "/documents",
+  bundleUrl: "/api/views/documents/bundle.js",
+  viewType: "gui" as const,
+};
+
+const mockAvailableViews = [
+  remoteLedgerView,
+  viewsManagerView,
+  viewsManagerTuiView,
+  notesView,
+  calendarView,
+  documentsView,
+];
+
 vi.mock("@capacitor/keyboard", () => ({
   Keyboard: { setScroll: vi.fn(async () => undefined) },
 }));
@@ -110,13 +129,10 @@ vi.mock("./hooks/useDesktopTabs", () => ({
 
 vi.mock("./hooks/useAvailableViews", () => ({
   useAvailableViews: () => ({
-    views: [
-      remoteLedgerView,
-      viewsManagerView,
-      viewsManagerTuiView,
-      notesView,
-      calendarView,
-    ],
+    views: mockAvailableViews,
+  }),
+  useRoutableViews: () => ({
+    views: mockAvailableViews,
   }),
 }));
 
@@ -154,13 +170,23 @@ vi.mock("./state", () => {
     actionNotice: null,
     activeGameViewerUrl: null,
     activeOverlayApp: null,
+    agentStatus: null,
     backendConnection: { state: "connected" },
+    cloudHandoffPhase: "idle",
+    copyToClipboard: vi.fn(),
+    databaseSubTab: "overview",
+    dismissActionBanner: vi.fn(),
+    dismissSystemWarning: vi.fn(),
+    elizaCloudConnected: false,
+    elizaCloudVoiceProxyAvailable: false,
     gameOverlayEnabled: false,
+    handlePluginToggle: vi.fn(),
     loadDropStatus: vi.fn(async () => undefined),
     firstRunComplete: true,
     ownerName: "Test Owner",
     plugins: [],
     retryStartup: vi.fn(),
+    setActionNotice: vi.fn(),
     setState: vi.fn(),
     setTab: appState.setTab,
     setUiLanguage: vi.fn(),
@@ -171,6 +197,7 @@ vi.mock("./state", () => {
       retry: vi.fn(),
     },
     startupError: null,
+    systemWarnings: [],
     tab: appState.tab,
     t: (_key: string, options?: { defaultValue?: string }) =>
       options?.defaultValue ?? "",
@@ -254,6 +281,17 @@ vi.mock("./components/chat/SaveCommandModal", () => ({
 vi.mock("./components/pages/ChatView", () => ({
   ChatView: () => <div data-testid="chat-view" />,
   __resetCompanionSpeechMemoryForTests: vi.fn(),
+}));
+
+vi.mock("./components/character/CharacterEditor", () => ({
+  CharacterEditor: ({ initialPage }: { initialPage?: string }) => (
+    <div
+      data-initial-page={initialPage ?? ""}
+      data-testid={
+        initialPage === "documents" ? "documents-view" : "character-editor"
+      }
+    />
+  ),
 }));
 
 vi.mock("./components/pages/ViewCatalog", () => ({
@@ -401,6 +439,36 @@ describe("App navigate-view event wiring", () => {
       loaders.map((loader) => loader.getAttribute("data-view-id")),
     ).toEqual(["notes", "calendar"]);
     expect(desktopTabsMock.openTab).toHaveBeenCalledWith(notesView, {
+      pinned: false,
+    });
+    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(calendarView, {
+      pinned: false,
+    });
+  });
+
+  it("renders registered documents bundles inside split-view when registry wins", async () => {
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/views");
+
+    const { getAllByTestId, getByTestId } = render(<App />);
+
+    navigateView({
+      action: "split-view",
+      viewId: "documents",
+      views: ["documents", "calendar"],
+      layout: "horizontal",
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("view-layout-surface")).toBeTruthy();
+    });
+    expect(getByTestId("view-layout-pane-documents")).toBeTruthy();
+    expect(
+      getAllByTestId("dynamic-view-loader").map((loader) =>
+        loader.getAttribute("data-view-id"),
+      ),
+    ).toEqual(["documents", "calendar"]);
+    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(documentsView, {
       pinned: false,
     });
     expect(desktopTabsMock.openTab).toHaveBeenCalledWith(calendarView, {
