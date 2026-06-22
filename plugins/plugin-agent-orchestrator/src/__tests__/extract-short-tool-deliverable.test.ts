@@ -45,7 +45,9 @@ describe("extractShortToolDeliverable", () => {
   it("returns undefined when the last block exceeds the size cap", () => {
     const big = "a".repeat(2049);
     expect(
-      extractShortToolDeliverable({ response: `${wrap("small")}\n${wrap(big)}` }),
+      extractShortToolDeliverable({
+        response: `${wrap("small")}\n${wrap(big)}`,
+      }),
     ).toBeUndefined();
   });
 
