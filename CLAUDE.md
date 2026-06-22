@@ -171,6 +171,25 @@ dispatch (use the typed `DispatchResult`), or an identity-merge that bypasses
 the merge engine. Architecture, frozen contracts, and contribution paths live in
 `plugins/plugin-personal-assistant/README.md` and `plugins/plugin-health/README.md`.
 
+## Attachments & files: one content-addressed store, additive model
+
+Attachment bytes live in a **single content-addressed store** —
+`packages/agent/src/api/media-store.ts` (`${STATE_DIR}/media/<sha256>.<ext>`,
+served at `/api/media/<sha256>.<ext>`). The sha256 URL is the canonical,
+unguessable, deduped handle; `Media` (`packages/core/src/types/primitives.ts`)
+is the in-message reference and is widened **additively only**. Bytes are served
+pre-auth (the hash is the capability), with `nosniff` + a download
+`Content-Disposition` for SVG/active types; every server-side attachment fetch
+must go through the SSRF guard (`packages/core/src/network` + `media/fetch.ts`).
+
+**Do not add:** a second file store or storage abstraction/selector; a
+`files`/`file_references` DB table or a refcount/GC engine (the store already
+GCs via `gcUnreferencedMedia` + a grace window); a `fileId` on `Media`; a
+rewrite/rehost on the pre-auth serve path (rehost only on authenticated write);
+or a repurpose/removal of a `ContentType` enum value (it is **frozen,
+append-only** — derive fine-grained kind from `mimeType` at read time). Scope,
+deferrals, and rationale live in issue #8876.
+
 ## Definition of Done — sync, PR, and human-verifiable evidence
 
 Every fix/feature ships through a **PR against `develop`**, and a reviewer must

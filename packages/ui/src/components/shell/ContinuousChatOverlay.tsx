@@ -48,8 +48,9 @@ import { copyTextToClipboard } from "../../utils/clipboard";
 import {
   CHAT_UPLOAD_ACCEPT,
   chatUploadKind,
-  filesToImageAttachments,
+  intakeAttachmentFiles,
   MAX_CHAT_IMAGES,
+  summarizeDroppedAttachments,
 } from "../../utils/image-attachment";
 import { MessageAttachments } from "../chat/MessageAttachments";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
@@ -1267,13 +1268,26 @@ export function ContinuousChatOverlay({
   );
 
   const addImageFiles = React.useCallback((files: FileList | File[]) => {
-    void filesToImageAttachments(files)
-      .then((attachments) => {
-        if (!attachments.length) return;
-        setImageError(null);
-        setPendingImages((prev) =>
-          [...prev, ...attachments].slice(0, MAX_CHAT_IMAGES),
+    void intakeAttachmentFiles(files)
+      .then(({ attachments, droppedTooLarge }) => {
+        // The overlay is a pure component without an i18n translator, so it
+        // surfaces the "kept N, dropped M" notice inline in English (matching
+        // its other hardcoded strings) via the existing imageError channel.
+        const summary = summarizeDroppedAttachments({
+          acceptedCount: attachments.length,
+          droppedTooLarge,
+          droppedOverCount: [],
+        });
+        setImageError(
+          summary
+            ? `Kept ${summary.kept}, dropped ${summary.dropped} (too large — max ${summary.maxMb}MB)`
+            : null,
         );
+        if (attachments.length) {
+          setPendingImages((prev) =>
+            [...prev, ...attachments].slice(0, MAX_CHAT_IMAGES),
+          );
+        }
       })
       .catch((err: unknown) => {
         // Surface the failure inline rather than silently dropping the image —

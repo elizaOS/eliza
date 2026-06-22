@@ -1,5 +1,4 @@
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "./storage/r2-runtime-binding";
-import { logger } from "./utils/logger";
 
 const DEFAULT_R2_PUBLIC_HOST = "blob.elizacloud.ai";
 
@@ -158,21 +157,6 @@ export async function uploadBase64Image(
 }
 
 /**
- * Checks if a URL is from Fal.ai CDN.
- *
- * @param url - URL to check.
- * @returns True if the URL is from Fal.ai CDN.
- */
-export function isFalAiUrl(url: string): boolean {
-  try {
-    const urlObj = new URL(url);
-    return urlObj.hostname.includes("fal.media") || urlObj.hostname.includes("fal.ai");
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Downloads content from a URL and uploads it to R2 storage.
  *
  * @param sourceUrl - URL to download content from.
@@ -196,34 +180,6 @@ export async function uploadFromUrl(
     ...options,
     contentType,
   });
-}
-
-/**
- * Ensures a URL is from our storage, not Fal.ai CDN.
- *
- * If the URL is from Fal.ai, downloads and uploads it to our storage.
- * Returns our storage URL or the original URL if it's already ours or upload fails.
- *
- * @param sourceUrl - URL to ensure is from our storage.
- * @param options - Upload options and fallback behavior.
- * @returns Our storage URL or the original URL if fallback is enabled.
- * @throws Error if upload fails and fallback is disabled.
- */
-export async function ensureElizaCloudUrl(
-  sourceUrl: string,
-  options: BlobUploadOptions & { fallbackToOriginal?: boolean },
-): Promise<string> {
-  if (!isFalAiUrl(sourceUrl)) {
-    return sourceUrl;
-  }
-
-  try {
-    const result = await uploadFromUrl(sourceUrl, options);
-    return result.url;
-  } catch (error) {
-    logger.error("[ensureElizaCloudUrl] Failed to upload Fal.ai URL to our storage:", error);
-    throw error;
-  }
 }
 
 /**

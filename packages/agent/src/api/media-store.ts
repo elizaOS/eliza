@@ -86,6 +86,88 @@ const MEDIA_FILE_NAME = /^[a-f0-9]{64}\.[a-z0-9]{1,8}$/;
 
 const MEDIA_URL_PREFIX = "/api/media/";
 
+/**
+ * MIME types that are safe to render inline in a browser context. Everything
+ * else — notably `image/svg+xml`, `text/html`, and unknown/active types — is
+ * served with `Content-Disposition: attachment` so it can never execute script
+ * on the dashboard origin (stored-XSS defence). SVG is deliberately excluded:
+ * it is an XML document that can carry `<script>` and event handlers.
+ */
+export function isInlineSafeMime(mime: string): boolean {
+  const m = (mime.split(";")[0] ?? "").trim().toLowerCase();
+  if (m === "image/svg+xml") return false;
+  return (
+    (m.startsWith("image/") && m !== "image/svg+xml") ||
+    m.startsWith("audio/") ||
+    m.startsWith("video/") ||
+    m === "application/pdf"
+  );
+}
+
+/**
+ * Sniff the leading bytes for active XML/HTML markup. Returns the TRUE dangerous
+ * mime when the content is SVG or HTML, else null. Used to reconcile a declared
+ * "safe image" mime against bytes that are really markup, so the store records
+ * (and later serves) the truthful, attachment-served type — defence in depth on
+ * top of the strict extension map and the nosniff header.
+ */
+export function sniffMarkupMime(buffer: Buffer): string | null {
+  // Skip a leading UTF-8 BOM / whitespace before peeking at the first token.
+  let i = 0;
+  if (
+    buffer.length >= 3 &&
+    buffer[0] === 0xef &&
+    buffer[1] === 0xbb &&
+    buffer[2] === 0xbf
+  ) {
+    i = 3;
+  }
+  while (i < buffer.length && i < 64) {
+    const c = buffer[i];
+    if (c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d) {
+      i += 1;
+      continue;
+    }
+    break;
+  }
+  const head = buffer
+    .subarray(i, Math.min(buffer.length, i + 512))
+    .toString("utf8")
+    .toLowerCase();
+  if (
+    head.startsWith("<svg") ||
+    (head.startsWith("<?xml") && head.includes("<svg"))
+  ) {
+    return "image/svg+xml";
+  }
+  if (head.startsWith("<!doctype html") || head.startsWith("<html")) {
+    return "text/html";
+  }
+  return null;
+}
+
+/**
+ * Build the security headers for a served media response. Always sets
+ * `X-Content-Type-Options: nosniff` (so a mislabelled image is never sniffed to
+ * HTML) and a fully-sandboxed CSP (applies when the URL is navigated to as a
+ * document). Inline-safe types render inline; everything else (SVG, HTML,
+ * unknown/active) is forced to download so it cannot execute on this origin.
+ */
+function mediaSecurityHeaders(
+  fileName: string,
+  contentType: string,
+): Record<string, string> {
+  const disposition = isInlineSafeMime(contentType)
+    ? "inline"
+    : `attachment; filename="${fileName}"`;
+  return {
+    "X-Content-Type-Options": "nosniff",
+    "Content-Disposition": disposition,
+    "Content-Security-Policy":
+      "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+  };
+}
+
 let cachedMediaDir: string | null = null;
 
 function mediaDir(): string {
@@ -204,8 +286,22 @@ export function persistMediaBytes(
   buffer: Buffer,
   mimeType: string,
 ): PersistedMedia {
+  // Reconcile a declared "safe image" mime against bytes that are really active
+  // markup (SVG/HTML), so the store records the truthful type and the serve path
+  // forces an attachment download instead of inline rendering. Truthful active
+  // types declared up front are left as-is (still served as attachments).
+  let effectiveMime = mimeType;
+  if (isInlineSafeMime(mimeType)) {
+    const sniffed = sniffMarkupMime(buffer);
+    if (sniffed) {
+      logger.warn(
+        `[media-store] declared ${mimeType} but content sniffed as ${sniffed}; storing as ${sniffed} (served as download)`,
+      );
+      effectiveMime = sniffed;
+    }
+  }
   const hash = crypto.createHash("sha256").update(buffer).digest("hex");
-  const fileName = `${hash}.${extForMime(mimeType)}`;
+  const fileName = `${hash}.${extForMime(effectiveMime)}`;
   const filePath = path.join(mediaDir(), fileName);
   if (!fs.existsSync(filePath)) {
     fs.writeFileSync(filePath, buffer);
@@ -321,6 +417,7 @@ interface ResolvedMediaFile {
   filePath: string;
   size: number;
   contentType: string;
+  name: string;
 }
 
 /**
@@ -349,7 +446,7 @@ function resolveMediaFile(
     return { error: 404 };
   }
   touchOnServe(filePath);
-  return { filePath, size: stat.size, contentType: mimeForFile(name) };
+  return { filePath, size: stat.size, contentType: mimeForFile(name), name };
 }
 
 /**
@@ -385,6 +482,7 @@ export function handleMediaRouteRequest(
     "Content-Type": resolved.contentType,
     "Cache-Control": "public, max-age=31536000, immutable",
     "Content-Length": String(resolved.size),
+    ...mediaSecurityHeaders(resolved.name, resolved.contentType),
   };
   if (method === "HEAD") return { status: 200, headers };
   return { status: 200, headers, body: fs.readFileSync(resolved.filePath) };
@@ -419,6 +517,7 @@ export function serveMediaFile(
     "Content-Type": contentType,
     "Cache-Control": "public, max-age=31536000, immutable",
     "Accept-Ranges": "bytes",
+    ...mediaSecurityHeaders(resolved.name, contentType),
   };
 
   const range = req.headers.range;

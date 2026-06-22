@@ -2,6 +2,7 @@ import fs from "node:fs";
 import {
   ChannelType,
   type Content,
+  type ContentType,
   createUniqueUuid,
   decodeCallback,
   EventType,
@@ -63,6 +64,18 @@ export enum MediaType {
   DOCUMENT = "document",
   AUDIO = "audio",
   ANIMATION = "animation",
+}
+
+/**
+ * Map a Telegram file's MIME type to the coarse core ContentType. Returns the
+ * literal string values (not the `ContentType` enum object) so this stays a
+ * pure, dependency-free mapping — `ContentType` is imported as a type only.
+ */
+function contentTypeForMime(mime?: string): ContentType {
+  if (mime?.startsWith("image/")) return "image";
+  if (mime?.startsWith("video/")) return "video";
+  if (mime?.startsWith("audio/")) return "audio";
+  return "document";
 }
 
 const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
@@ -448,6 +461,7 @@ export class MessageManager {
             source: document.mime_type?.startsWith("application/pdf")
               ? "PDF"
               : "Document",
+            contentType: contentTypeForMime(document.mime_type),
             description: documentInfo.formattedDescription,
             text: fullText,
           });
@@ -504,6 +518,7 @@ export class MessageManager {
             url: fileLink.toString(),
             title: "Image Attachment",
             source: "Image",
+            contentType: "image",
             description: imageInfo.description,
             text: imageInfo.description,
           });
@@ -518,6 +533,85 @@ export class MessageManager {
           );
         }
       }
+    }
+
+    // Voice / audio / video / animation / sticker — previously silently dropped.
+    // Setting contentType lets processAttachments transcribe audio/video and
+    // lets the attachment round-trip safely back out to any connector.
+    const pushFileAttachment = async (
+      fileId: string,
+      contentType: ContentType,
+      title: string,
+      source: string,
+    ): Promise<void> => {
+      try {
+        const fileLink = await this.bot.telegram.getFileLink(fileId);
+        attachments.push({
+          id: fileId,
+          url: fileLink.toString(),
+          title,
+          source,
+          contentType,
+        });
+      } catch (error) {
+        logger.error(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          `Error attaching ${source}`,
+        );
+      }
+    };
+
+    if ("voice" in message && message.voice) {
+      await pushFileAttachment(
+        message.voice.file_id,
+        "audio",
+        "Voice Message",
+        "Voice",
+      );
+    }
+    if ("audio" in message && message.audio) {
+      await pushFileAttachment(
+        message.audio.file_id,
+        "audio",
+        message.audio.title || message.audio.file_name || "Audio",
+        "Audio",
+      );
+    }
+    if ("video" in message && message.video) {
+      await pushFileAttachment(
+        message.video.file_id,
+        "video",
+        "Video",
+        "Video",
+      );
+    }
+    if ("video_note" in message && message.video_note) {
+      await pushFileAttachment(
+        message.video_note.file_id,
+        "video",
+        "Video Note",
+        "Video",
+      );
+    }
+    if ("animation" in message && message.animation) {
+      await pushFileAttachment(
+        message.animation.file_id,
+        "video",
+        "Animation",
+        "Animation",
+      );
+    }
+    if ("sticker" in message && message.sticker) {
+      await pushFileAttachment(
+        message.sticker.file_id,
+        "image",
+        "Sticker",
+        "Sticker",
+      );
     }
 
     logger.debug(
@@ -631,9 +725,18 @@ export class MessageManager {
           }
 
           if (!mediaType) {
-            throw new Error(
-              `Unsupported Telegram attachment content type: ${attachment.contentType}`,
+            // Degrade unknown/absent content types to a document upload instead
+            // of throwing — a throw inside Promise.all aborts the whole reply
+            // and silently drops the agent's text.
+            logger.warn(
+              {
+                src: "plugin:telegram",
+                agentId: this.runtime.agentId,
+                contentType: attachment.contentType,
+              },
+              "Unknown Telegram attachment content type; sending as document",
             );
+            mediaType = MediaType.DOCUMENT;
           }
 
           await this.sendMedia(
@@ -644,8 +747,11 @@ export class MessageManager {
           );
         }),
       );
-      return [];
-    } else {
+      // Fall through to the text path below so an attachment reply never drops
+      // the agent's accompanying prose (sent as a follow-up message).
+    }
+
+    {
       // Project any interactive blocks (choices, task cards, …) the agent
       // embedded in the text onto native inline keyboards, and send the prose
       // with the markers stripped. Plain replies pass through unchanged.
@@ -661,6 +767,12 @@ export class MessageManager {
           : hasKeyboardRows
             ? INTERACTION_ONLY_FALLBACK_TEXT
             : "";
+      // Nothing textual to send (e.g. an attachments-only reply that already
+      // dispatched its media above) — don't post an empty trailing message.
+      if (textToSend.trim().length === 0 && !hasKeyboardRows) {
+        return sentMessages;
+      }
+
       const chunks = this.splitMessage(textToSend);
 
       if (!ctx.chat) {
@@ -752,19 +864,23 @@ export class MessageManager {
   ): Promise<void> {
     try {
       const isUrl = /^(http|https):\/\//.test(mediaPath);
-      const sendFunctionMap: Record<MediaType, TelegramMediaSender> = {
-        [MediaType.PHOTO]: ctx.telegram.sendPhoto.bind(ctx.telegram),
-        [MediaType.VIDEO]: ctx.telegram.sendVideo.bind(ctx.telegram),
-        [MediaType.DOCUMENT]: ctx.telegram.sendDocument.bind(ctx.telegram),
-        [MediaType.AUDIO]: ctx.telegram.sendAudio.bind(ctx.telegram),
-        [MediaType.ANIMATION]: ctx.telegram.sendAnimation.bind(ctx.telegram),
+      // Look up the raw sender lazily and bind only the one we need. Building
+      // the full map up front and `.bind`-ing every entry would crash with
+      // "Cannot read properties of undefined" if the Telegram client is missing
+      // any single sender, aborting an unrelated media send.
+      const rawSenders: Record<MediaType, TelegramMediaSender | undefined> = {
+        [MediaType.PHOTO]: ctx.telegram.sendPhoto,
+        [MediaType.VIDEO]: ctx.telegram.sendVideo,
+        [MediaType.DOCUMENT]: ctx.telegram.sendDocument,
+        [MediaType.AUDIO]: ctx.telegram.sendAudio,
+        [MediaType.ANIMATION]: ctx.telegram.sendAnimation,
       };
 
-      const sendFunction = sendFunctionMap[type];
-
-      if (!sendFunction) {
+      const rawSend = rawSenders[type];
+      if (typeof rawSend !== "function") {
         throw new Error(`Unsupported media type: ${type}`);
       }
+      const sendFunction = rawSend.bind(ctx.telegram);
 
       if (!ctx.chat) {
         throw new Error("sendMedia: ctx.chat is undefined");
