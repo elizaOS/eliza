@@ -1,4 +1,5 @@
 import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import { buildVoiceTurnSignal } from "@elizaos/shared/voice/respond-gate";
 import type { TraceService } from "../trace/trace-service";
 import { VoiceError } from "./errors";
 import type {
@@ -11,6 +12,7 @@ import type {
   VoicePipelineId,
   VoicePipelineSnapshot,
   VoicePipelineStatus,
+  VoiceRuntimeHandoffParams,
   VoiceRuntimeStatus,
   VoiceSpeakParams,
   VoiceStartParams,
@@ -165,6 +167,9 @@ export class VoiceService {
   private traceSessionReady: Promise<void> | null = null;
   private readonly unsubscriptions: Array<() => void> = [];
   private runtimeCommitTurnId: VoiceTurnId | null = null;
+  /** Agent's most recent spoken reply + when it landed — feeds the echo guard. */
+  private lastAgentReply: string | undefined;
+  private lastAgentReplyAtMs: number | undefined;
 
   constructor(options: VoiceServiceOptions = {}) {
     this.traceService = options.traceService ?? null;
@@ -774,6 +779,36 @@ export class VoiceService {
       text,
     });
 
+    // Build the client voice-turn signal from the final transcript so the
+    // server voice gate (`core.voice_turn_signal` / `_confirm`) actually runs on
+    // desktop — matching the web `useShellController` path (#8786). Without it
+    // `getVoiceTurnSignalMetadata` returns null and both gates are inert, so
+    // desktop voice silently bypasses the turn-taking authority. The echo guard
+    // uses the agent's most recent spoken reply (recorded below).
+    // At handoff the agent is "thinking" (the user just finished), so echo
+    // suppression keys off how recently the agent last spoke, not a live
+    // agentSpeaking flag (which is always false here).
+    const signal = buildVoiceTurnSignal(text, {
+      recentAgentReply: this.lastAgentReply,
+      replyAgeMs:
+        this.lastAgentReplyAtMs !== undefined
+          ? this.now().getTime() - this.lastAgentReplyAtMs
+          : undefined,
+    });
+    const handoff: VoiceRuntimeHandoffParams = {
+      text,
+      // Spelled out as a JSON-safe literal (the signal is an interface, which is
+      // not assignable to Record<string, JsonValue> without an index signature).
+      metadata: {
+        voiceTurnSignal: {
+          endOfTurnProbability: signal.endOfTurnProbability,
+          nextSpeaker: signal.nextSpeaker,
+          agentShouldSpeak: signal.agentShouldSpeak,
+          source: signal.source,
+        },
+      },
+    };
+
     // Streaming handoff: consume the reply token-by-token so the first_token
     // mark reflects the true time-to-first-token (not full-reply latency) and
     // so a future phrase-by-phrase synth can begin before generation finishes.
@@ -789,29 +824,26 @@ export class VoiceService {
       try {
         let firstMarked = false;
         let accumulated = "";
-        const result = await streamFn.call(
-          this.runtimeAdapter,
-          { text },
-          {
-            onTextDelta: (_delta: string, fullText: string) => {
-              accumulated = fullText;
-              if (!firstMarked) {
-                firstMarked = true;
-                // Mark at first-delta wall time (mark() stamps now()).
-                void this.markModelFirstToken(fullText.slice(0, 32) || "…");
-              }
-            },
-            onDone: ({ fullText }: { fullText: string }) => {
-              if (fullText) accumulated = fullText;
-            },
+        const result = await streamFn.call(this.runtimeAdapter, handoff, {
+          onTextDelta: (_delta: string, fullText: string) => {
+            accumulated = fullText;
+            if (!firstMarked) {
+              firstMarked = true;
+              // Mark at first-delta wall time (mark() stamps now()).
+              void this.markModelFirstToken(fullText.slice(0, 32) || "…");
+            }
           },
-        );
+          onDone: ({ fullText }: { fullText: string }) => {
+            if (fullText) accumulated = fullText;
+          },
+        });
         const responseText = result.responseText ?? accumulated;
         if (!firstMarked) {
           await this.markModelFirstToken(responseText.slice(0, 32) || "…");
         }
         if (responseText) {
           this.requireActiveTurn().responseText = responseText;
+          this.recordAgentReply(responseText);
         }
         return;
       } catch {
@@ -827,11 +859,12 @@ export class VoiceService {
       (this.mode === "local-runtime" || this.mode === "live-audio") &&
       this.runtimeAdapter.sendRuntimeMessage
     ) {
-      const result = await this.runtimeAdapter.sendRuntimeMessage({ text });
+      const result = await this.runtimeAdapter.sendRuntimeMessage(handoff);
       firstTokenText = result.firstTokenText ?? result.responseText ?? "";
       responseText = result.responseText;
       raw = result.raw;
     }
+    if (responseText) this.recordAgentReply(responseText);
     const modelMark = await this.markModelFirstToken(
       firstTokenText,
       raw ?? null,
@@ -848,6 +881,13 @@ export class VoiceService {
         );
       }
     }
+  }
+
+  /** Remember the agent's last spoken reply so the next turn's echo guard can
+   * suppress the agent's own TTS bleeding back into an always-on mic (#8786). */
+  private recordAgentReply(reply: string): void {
+    this.lastAgentReply = reply;
+    this.lastAgentReplyAtMs = this.now().getTime();
   }
 
   private async handleTtsResult(

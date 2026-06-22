@@ -58,6 +58,7 @@ class MockVoiceRuntimeAdapter implements VoiceRuntimeAdapter {
   played = false;
   runtimeHandedOff = false;
   runtimeHandoffCount = 0;
+  lastHandoffParams: VoiceRuntimeHandoffParams | undefined;
   playbackAvailable = true;
   asrAvailable = true;
   ttsAvailable = true;
@@ -179,6 +180,7 @@ class MockVoiceRuntimeAdapter implements VoiceRuntimeAdapter {
   ): Promise<VoiceRuntimeHandoffResult> {
     this.runtimeHandedOff = true;
     this.runtimeHandoffCount += 1;
+    this.lastHandoffParams = params;
     return {
       firstTokenText: "ok",
       responseText: `response:${params.text}`,
@@ -460,6 +462,30 @@ describe("VoiceService", () => {
     await flushVoiceEvents();
 
     expect(adapter.runtimeHandoffCount).toBe(1);
+  });
+
+  it("hands the final transcript off as VOICE_DM with a COMPUTED turn signal (#8786)", async () => {
+    const { voice, adapter } = harness({
+      ELIZA_VOICE_LIVE_RUNTIME: "1",
+    });
+
+    await voice.start({ mode: "local-runtime" });
+    adapter.emitAsrFinal({ text: "what is on my calendar today" });
+    await flushVoiceEvents();
+
+    expect(adapter.runtimeHandedOff).toBe(true);
+    // The signal must be COMPUTED by voice-service from the transcript — not
+    // injected by the caller — so the server voice gate
+    // (core.voice_turn_signal / _confirm) actually has something to read on
+    // desktop. Before #8786 this path sent a bare { text } and the gate was inert.
+    const signal = adapter.lastHandoffParams?.metadata?.voiceTurnSignal as
+      | Record<string, unknown>
+      | undefined;
+    expect(signal).toBeDefined();
+    expect(typeof signal?.endOfTurnProbability).toBe("number");
+    expect(signal?.agentShouldSpeak).toBe(true);
+    expect(["agent", "user", "unknown"]).toContain(signal?.nextSpeaker);
+    expect(String(signal?.source)).toMatch(/^client-ambient/);
   });
 
   it("starts live audio mode with a mocked adapter", async () => {
