@@ -491,6 +491,9 @@
   "chat.agentStarting": "Agent starting...",
   "chat.agentVoiceOff": "Agent Voice Off",
   "chat.agentVoiceOn": "Agent Voice On",
+  "chat.attachmentsKeptDroppedMixed": "Kept {{kept}}, dropped {{dropped}} ({{tooLarge}} too large over {{maxMb}}MB, {{overCount}} over limit)",
+  "chat.attachmentsKeptDroppedOverCount": "Kept {{kept}}, dropped {{dropped}} (too many attachments)",
+  "chat.attachmentsKeptDroppedTooLarge": "Kept {{kept}}, dropped {{dropped}} (too large — max {{maxMb}}MB)",
   "chat.cached": "cached",
   "chat.collapseWidgets": "Collapse widgets",
   "chat.conversations": "Conversations",
@@ -7427,5 +7430,10 @@
   "desktop.tray.hideWindow": "Hide Window",
   "desktop.tray.quit": "Quit",
   "desktop.tray.testNotification.title": "Desktop",
-  "desktop.tray.testNotification.body": "Renderer tray actions are wired and responding."
+  "desktop.tray.testNotification.body": "Renderer tray actions are wired and responding.",
+  "mediagalleryview.Download": "Download",
+  "mediagalleryview.Share": "Share",
+  "documentsview.Download": "Download",
+  "documentsview.Share": "Share",
+  "documentsview.FailedToDownload": "Failed to download file"
 }

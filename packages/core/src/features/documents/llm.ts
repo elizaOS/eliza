@@ -724,7 +724,6 @@ async function generateClaudeWithCaching(
 			}),
 	});
 
-	logCacheMetrics(result);
 	const totalTokens =
 		(result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
 	logger.debug(
@@ -771,7 +770,6 @@ async function generateGeminiWithCaching(
 			}),
 	});
 
-	logCacheMetrics(result);
 	const totalTokens =
 		(result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
 	logger.debug(
@@ -821,5 +819,3 @@ async function generateStandardOpenRouterText(
 	);
 	return result;
 }
-
-function logCacheMetrics(_result: TextGenerationResult): void {}

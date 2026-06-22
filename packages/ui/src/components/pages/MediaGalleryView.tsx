@@ -1,3 +1,4 @@
+import { Download, Share2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
@@ -7,6 +8,12 @@ import { useAppSelector } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import type { TranslateFn } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
+import {
+  canShareFiles,
+  downloadAttachment,
+  filenameForMime,
+  shareAttachment,
+} from "../../utils/download-share";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
@@ -393,6 +400,36 @@ export function MediaGalleryView({
     defaultValue: "Media item",
   });
 
+  const shareSupported = useMemo(() => canShareFiles(), []);
+
+  const handleDownloadSelected = useCallback(async () => {
+    if (!selectedItem) return;
+    const url = normalizeMediaUrl(selectedItem.url);
+    const mime =
+      selectedItem.type === "image"
+        ? "image/png"
+        : selectedItem.type === "video"
+          ? "video/mp4"
+          : "audio/mpeg";
+    const filename = selectedItem.filename || filenameForMime(mime);
+    try {
+      await downloadAttachment(url, filename);
+    } catch {
+      // Download failed for this transport — nothing more we can do client-side.
+    }
+  }, [selectedItem]);
+
+  const handleShareSelected = useCallback(async () => {
+    if (!selectedItem) return;
+    const url = normalizeMediaUrl(selectedItem.url);
+    const title = selectedItem.filename || mediaItemFallbackTitle;
+    const shared = await shareAttachment(url, {
+      title,
+      filename: selectedItem.filename || undefined,
+    });
+    if (!shared) await handleDownloadSelected();
+  }, [handleDownloadSelected, mediaItemFallbackTitle, selectedItem]);
+
   const mediaSidebar = (
     <AppPageSidebar testId="media-sidebar" collapsible contentIdentity="media">
       <SidebarPanel>
@@ -519,6 +556,36 @@ export function MediaGalleryView({
                 })}{" "}
                 {selectedItem.source}
                 {selectedItem.createdAt ? ` · ${selectedItem.createdAt}` : ""}
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-sm"
+                  data-testid="media-download"
+                  onClick={() => void handleDownloadSelected()}
+                >
+                  <Download className="mr-1.5 h-4 w-4" aria-hidden />
+                  {t("mediagalleryview.Download", {
+                    defaultValue: "Download",
+                  })}
+                </Button>
+                {shareSupported ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-sm"
+                    data-testid="media-share"
+                    onClick={() => void handleShareSelected()}
+                  >
+                    <Share2 className="mr-1.5 h-4 w-4" aria-hidden />
+                    {t("mediagalleryview.Share", {
+                      defaultValue: "Share",
+                    })}
+                  </Button>
+                ) : null}
               </div>
             </PagePanel>
 

@@ -32,9 +32,10 @@ import { useApp } from "../../state/useApp";
 import { getVrmPreviewUrl } from "../../state/vrm";
 import type { TranslateFn } from "../../types";
 import {
+  buildDroppedAttachmentNotice,
   CHAT_UPLOAD_ACCEPT,
   chatUploadKind,
-  filesToImageAttachments,
+  intakeAttachmentFiles,
   MAX_CHAT_IMAGES,
 } from "../../utils/image-attachment";
 import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
@@ -469,12 +470,28 @@ export function ChatView({
 
   const addImageFiles = useCallback(
     (files: FileList | File[]) => {
-      void filesToImageAttachments(files)
-        .then((attachments) => {
-          if (!attachments.length) return;
-          setChatPendingImages((prev) =>
-            [...prev, ...attachments].slice(0, MAX_CHAT_IMAGES),
-          );
+      void intakeAttachmentFiles(files)
+        .then(({ attachments, droppedTooLarge }) => {
+          setChatPendingImages((prev) => {
+            const merged = [...prev, ...attachments];
+            const kept = merged.slice(0, MAX_CHAT_IMAGES);
+            const overCount = Math.max(0, merged.length - kept.length);
+            const notice = buildDroppedAttachmentNotice(
+              {
+                acceptedCount: kept.length,
+                droppedTooLarge,
+                droppedOverCount: Array.from({ length: overCount }, () => ({
+                  name: "",
+                  reason: "over-count" as const,
+                })),
+              },
+              app.t,
+            );
+            // Defer the side-effect out of the state updater so it fires once.
+            if (notice)
+              queueMicrotask(() => app.setActionNotice?.(notice, "info"));
+            return kept;
+          });
         })
         .catch((err: unknown) => {
           // A failed image read leaves nothing attached; tell the user rather

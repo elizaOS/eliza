@@ -26,6 +26,8 @@ const {
   handleMediaRouteRequest,
   mediaFileNameFromUrl,
   gcUnreferencedMedia,
+  isInlineSafeMime,
+  sniffMarkupMime,
 } = await import("./media-store.ts");
 
 function mediaPath(fileName: string): string {
@@ -173,6 +175,76 @@ describe("media-store", () => {
         "/api/health",
       ),
     ).toBe(false);
+  });
+});
+
+describe("serve-path security headers (stored-XSS defence)", () => {
+  it("sets nosniff + a sandboxed CSP on every served response", () => {
+    const { url } = persistMediaBytes(Buffer.from("png-1"), "image/png");
+    const { res, get } = makeRes();
+    serveMediaFile({ method: "HEAD", headers: {} } as never, res, url);
+    const { headers } = get();
+    expect(headers["X-Content-Type-Options"]).toBe("nosniff");
+    expect(String(headers["Content-Security-Policy"])).toContain("sandbox");
+  });
+
+  it("serves images inline so <img> tags keep working", () => {
+    const { url } = persistMediaBytes(Buffer.from("png-2"), "image/png");
+    const { res, get } = makeRes();
+    serveMediaFile({ method: "HEAD", headers: {} } as never, res, url);
+    expect(get().headers["Content-Disposition"]).toBe("inline");
+  });
+
+  it("forces SVG to download (attachment) — never inline-rendered", () => {
+    // Declared svg → stored as .svg → served as image/svg+xml + attachment.
+    const { url, fileName } = persistMediaBytes(
+      Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'></svg>"),
+      "image/svg+xml",
+    );
+    expect(fileName.endsWith(".svg")).toBe(true);
+    const { res, get } = makeRes();
+    serveMediaFile({ method: "HEAD", headers: {} } as never, res, url);
+    const { headers } = get();
+    expect(headers["Content-Type"]).toBe("image/svg+xml");
+    expect(String(headers["Content-Disposition"])).toContain("attachment");
+  });
+
+  it("reconciles markup masquerading as a PNG → stored + served as a download", () => {
+    // Bytes are really an SVG but the caller declared image/png.
+    const { fileName } = persistMediaBytes(
+      Buffer.from("<svg onload=alert(1)></svg>"),
+      "image/png",
+    );
+    // Stored truthfully as .svg, so the serve path forces an attachment.
+    expect(fileName.endsWith(".svg")).toBe(true);
+  });
+
+  it("applies the same security headers on the in-process (iOS) path", () => {
+    const { url } = persistMediaBytes(Buffer.from("png-3"), "image/png");
+    const res = handleMediaRouteRequest(url, "HEAD");
+    expect(res.headers["X-Content-Type-Options"]).toBe("nosniff");
+    expect(res.headers["Content-Disposition"]).toBe("inline");
+  });
+
+  it("classifies inline-safe vs active mime types", () => {
+    expect(isInlineSafeMime("image/png")).toBe(true);
+    expect(isInlineSafeMime("audio/mpeg")).toBe(true);
+    expect(isInlineSafeMime("video/mp4")).toBe(true);
+    expect(isInlineSafeMime("application/pdf")).toBe(true);
+    expect(isInlineSafeMime("image/svg+xml")).toBe(false);
+    expect(isInlineSafeMime("text/html")).toBe(false);
+    expect(isInlineSafeMime("application/octet-stream")).toBe(false);
+  });
+
+  it("sniffs SVG/HTML markup from leading bytes", () => {
+    expect(sniffMarkupMime(Buffer.from("<svg></svg>"))).toBe("image/svg+xml");
+    expect(
+      sniffMarkupMime(Buffer.from("  \n<?xml version='1.0'?><svg/>")),
+    ).toBe("image/svg+xml");
+    expect(sniffMarkupMime(Buffer.from("<!DOCTYPE html><html></html>"))).toBe(
+      "text/html",
+    );
+    expect(sniffMarkupMime(Buffer.from([0x89, 0x50, 0x4e, 0x47]))).toBeNull();
   });
 });
 
