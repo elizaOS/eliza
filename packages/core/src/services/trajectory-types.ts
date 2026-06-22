@@ -102,7 +102,6 @@ export interface TrajectoryLlmCallRecord {
 	reasoning?: string;
 	temperature?: number;
 	maxTokens?: number;
-	maxTokensOmitted?: boolean;
 	topP?: number;
 	purpose?: string;
 	actionType?: string;

@@ -52,7 +52,6 @@ export type TrajectoryLlmCallDetails = {
 	reasoning?: string;
 	temperature: number;
 	maxTokens: number;
-	maxTokensOmitted?: boolean;
 	/**
 	 * High-level model-call category. Prefer the canonical taxonomy in
 	 * {@link TRAJECTORY_LLM_PURPOSES}; custom strings remain accepted for

@@ -78,7 +78,6 @@ export type PersistedLlmCall = TrajectoryLlmCall & {
   response: string;
   temperature: number;
   maxTokens: number;
-  maxTokensOmitted?: boolean;
   purpose: string;
   actionType: string;
   latencyMs: number;
