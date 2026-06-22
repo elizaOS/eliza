@@ -1782,15 +1782,16 @@ export function ContinuousChatOverlay({
     setTranscriptSessionSink((segments, startedAtMs, audioWav) => {
       if (segments.length === 0) return;
       const text = transcriptPlainText(segments);
+      const stamp = new Date(startedAtMs)
+        .toISOString()
+        .slice(0, 16)
+        .replace("T", " ");
+      const attachmentName = `Transcript ${stamp}.md`;
       if (text) {
-        const stamp = new Date(startedAtMs)
-          .toISOString()
-          .slice(0, 16)
-          .replace("T", " ");
         const attachment: ImageAttachment = {
           data: textToBase64(text),
           mimeType: "text/markdown",
-          name: `Transcript ${stamp}.md`,
+          name: attachmentName,
         };
         setPendingImages((prev) =>
           [...prev, attachment].slice(0, MAX_CHAT_IMAGES),
@@ -1808,6 +1809,28 @@ export function ContinuousChatOverlay({
                 audioContentType: "audio/wav",
               }
             : {}),
+        })
+        .then(({ transcript }) => {
+          // Link the pending attachment to the saved record so tapping it opens
+          // the editable viewer and edits persist — both via the client-only
+          // `transcriptId` field and a durable marker embedded in the markdown
+          // (which survives the server round-trip in the attachment's text).
+          if (!text) return;
+          setPendingImages((prev) =>
+            prev.map((a) =>
+              a.name === attachmentName &&
+              a.mimeType === "text/markdown" &&
+              !a.transcriptId
+                ? {
+                    ...a,
+                    transcriptId: transcript.id,
+                    data: textToBase64(
+                      withTranscriptMarker(transcript.id, text),
+                    ),
+                  }
+                : a,
+            ),
+          );
         })
         .catch(() => {
           /* archival is best-effort; a failed save just skips the record */

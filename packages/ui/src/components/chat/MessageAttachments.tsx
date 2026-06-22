@@ -1,4 +1,11 @@
-import { Download, FileText, LinkIcon, Maximize2, X } from "lucide-react";
+import {
+  Download,
+  FileText,
+  LinkIcon,
+  Maximize2,
+  ScrollText,
+  X,
+} from "lucide-react";
 import * as React from "react";
 import { createPortal } from "react-dom";
 import type {
@@ -8,6 +15,7 @@ import type {
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { resolveApiUrl } from "../../utils/asset-url";
+import { TranscriptViewerOverlay } from "./TranscriptViewerOverlay";
 
 const ABSOLUTE_URL = /^(?:https?:|data:|blob:|[a-z][a-z0-9+.-]*:\/\/)/i;
 
@@ -48,6 +56,19 @@ function resolveKind(att: MessageAttachment): MessageAttachmentContentType {
   if (AUDIO_EXT.test(u) || u.startsWith("data:audio/")) return "audio";
   if (DOC_EXT.test(u) || u.startsWith("data:application/")) return "document";
   return "link";
+}
+
+/**
+ * A transcript attachment: a saved transcript record (carries `transcriptId`)
+ * or, for older attachments produced before the link existed, a markdown
+ * attachment whose title reads as a transcript. These open the maximized,
+ * editable {@link TranscriptViewerOverlay} instead of downloading.
+ */
+function isTranscriptAttachment(att: MessageAttachment): boolean {
+  if (att.transcriptId) return true;
+  const mime = att.mimeType ?? "";
+  const title = att.title?.trim() ?? "";
+  return mime === "text/markdown" && /transcript/i.test(title);
 }
 
 function attachmentLabel(att: MessageAttachment): string {
@@ -220,6 +241,37 @@ function FileTile({
   );
 }
 
+/** A transcript tile — tap to open the maximized, editable transcript viewer. */
+function TranscriptTile({
+  att,
+  onOpen,
+}: {
+  att: MessageAttachment;
+  onOpen: () => void;
+}): React.JSX.Element {
+  const label = attachmentLabel(att);
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      data-testid="transcript-attachment"
+      className={cn(
+        "group flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5 text-left",
+        "text-white/90 transition-colors hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+      )}
+    >
+      <ScrollText className="h-5 w-5 shrink-0 text-white/70" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] font-medium">{label}</span>
+        <span className="block text-[11px] uppercase tracking-wide text-white/45">
+          Transcript · tap to open
+        </span>
+      </span>
+      <Maximize2 className="h-4 w-4 shrink-0 text-white/55 transition-colors group-hover:text-white/80" />
+    </button>
+  );
+}
+
 function Lightbox({
   src,
   alt,
@@ -298,6 +350,9 @@ export function MessageAttachments({
     alt: string;
     downloadAs: string;
   } | null>(null);
+  const [transcript, setTranscript] = React.useState<MessageAttachment | null>(
+    null,
+  );
 
   if (!attachments || attachments.length === 0) return null;
 
@@ -311,6 +366,16 @@ export function MessageAttachments({
         const src = resolveAttachmentUrl(att.url);
         if (!src) return null;
         const label = attachmentLabel(att);
+        // A transcript opens the maximized editor, not a download card.
+        if (isTranscriptAttachment(att)) {
+          return (
+            <TranscriptTile
+              key={att.id}
+              att={att}
+              onOpen={() => setTranscript(att)}
+            />
+          );
+        }
         switch (kind) {
           case "image": {
             const thumbSrc = att.thumbnailUrl
@@ -370,6 +435,12 @@ export function MessageAttachments({
           alt={lightbox.alt}
           downloadAs={lightbox.downloadAs}
           onClose={() => setLightbox(null)}
+        />
+      ) : null}
+      {transcript ? (
+        <TranscriptViewerOverlay
+          attachment={transcript}
+          onClose={() => setTranscript(null)}
         />
       ) : null}
     </div>
