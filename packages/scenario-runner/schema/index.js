@@ -63,6 +63,9 @@ export const FINAL_CHECK_KEYS = new Map(
       "expected",
       "minCount",
     ],
+    subAgentSpawned: ["type", "name", "agentType", "minCount"],
+    fileMutationOccurred: ["type", "name", "path", "minCount"],
+    buildValidation: ["type", "name", "workdir", "command", "expectExitZero"],
   }).map(([type, keys]) => [type, new Set(keys)]),
 );
 

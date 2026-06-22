@@ -4,6 +4,8 @@
  * cannot be misspelled or silently skipped.
  */
 
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   FINAL_CHECK_KEYS,
@@ -1162,6 +1164,186 @@ registerFinalCheckHandler("workflowDispatchOccurred", (check, { ctx }) => {
   return {
     status: "passed",
     detail: `${total} workflow dispatch record(s) observed`,
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Coding / sub-agent orchestration checks (audit Wave 1.2)
+// ---------------------------------------------------------------------------
+
+// Action names that represent spawning a coding sub-agent. The orchestrator
+// promotes TASKS subactions to standalone names (TASKS_SPAWN_AGENT, etc.); the
+// direct coding path uses START_CODING_TASK / CREATE_TASK.
+const SUB_AGENT_SPAWN_ACTIONS = [
+  "TASKS_SPAWN_AGENT",
+  "TASKS_CREATE",
+  "SPAWN_AGENT",
+  "SPAWN_TASK_AGENT",
+  "START_CODING_TASK",
+  "CREATE_TASK",
+];
+
+function isSpawnAction(name: string): boolean {
+  return (
+    SUB_AGENT_SPAWN_ACTIONS.includes(name) || /SPAWN|START_CODING/i.test(name)
+  );
+}
+
+registerFinalCheckHandler("subAgentSpawned", (check, { ctx }) => {
+  const { agentType, minCount } = check as {
+    agentType?: string | string[];
+    minCount?: number;
+  };
+  const want = typeof minCount === "number" ? minCount : 1;
+  const spawns = ctx.actionsCalled.filter((a) => {
+    if (isSynthesizedReply(a) || !isSpawnAction(a.actionName)) return false;
+    if (agentType !== undefined) {
+      const params = actionParameters(a);
+      const at = String(
+        params?.agentType ??
+          params?.adapter ??
+          readPath(params ?? {}, "content.agentType") ??
+          "",
+      );
+      if (!toArray(agentType).some((t) => matchesPattern(at, t))) return false;
+    }
+    return true;
+  });
+  if (spawns.length < want) {
+    return {
+      status: "failed",
+      detail: `expected ${want} sub-agent spawn(s)${
+        agentType ? ` (agentType ${toArray(agentType).join("|")})` : ""
+      }, saw ${spawns.length}. Called: ${
+        ctx.actionsCalled.map((a) => a.actionName).join(",") || "(none)"
+      }`,
+    };
+  }
+  return {
+    status: "passed",
+    detail: `${spawns.length} sub-agent spawn(s) observed`,
+  };
+});
+
+function isFileMutation(action: { actionName: string }): boolean {
+  const name = action.actionName;
+  if (name === "FILE") {
+    const params = actionParameters(action as never);
+    const sub = String(params?.action ?? params?.subaction ?? "").toLowerCase();
+    return ["write", "edit", "create", "multi_edit", "append"].includes(sub);
+  }
+  return (
+    [
+      "WRITE_FILE",
+      "EDIT_FILE",
+      "WRITE",
+      "EDIT",
+      "CREATE_FILE",
+      "APPLY_PATCH",
+      "MULTI_EDIT",
+    ].includes(name) || /(WRITE|EDIT|PATCH)/i.test(name)
+  );
+}
+
+registerFinalCheckHandler("fileMutationOccurred", (check, { ctx }) => {
+  const { path: pathMatch, minCount } = check as {
+    path?: string | string[];
+    minCount?: number;
+  };
+  const want = typeof minCount === "number" ? minCount : 1;
+  const muts = ctx.actionsCalled.filter((a) => {
+    if (isSynthesizedReply(a) || !isFileMutation(a)) return false;
+    if (pathMatch !== undefined) {
+      const params = actionParameters(a);
+      const p = String(
+        params?.path ?? params?.file_path ?? a.result?.path ?? "",
+      );
+      if (!toArray(pathMatch).some((m) => matchesPattern(p, m))) return false;
+    }
+    return true;
+  });
+  if (muts.length < want) {
+    return {
+      status: "failed",
+      detail: `expected ${want} file mutation(s)${
+        pathMatch ? ` matching ${toArray(pathMatch).join("|")}` : ""
+      }, saw ${muts.length}`,
+    };
+  }
+  return {
+    status: "passed",
+    detail: `${muts.length} file mutation(s) observed`,
+  };
+});
+
+/**
+ * Run a build/typecheck/test command in a workspace and resolve its exit code +
+ * captured output. Never rejects; SIGKILLs on timeout (exit 124).
+ */
+function runBuildCommand(
+  command: string,
+  cwd: string,
+  timeoutMs = 180_000,
+): Promise<{ code: number; output: string }> {
+  return new Promise((resolve) => {
+    const child = spawn("/bin/bash", ["-lc", command], { cwd });
+    let output = "";
+    const onData = (d: Buffer): void => {
+      output += d.toString();
+      if (output.length > 200_000) output = output.slice(-200_000);
+    };
+    child.stdout?.on("data", onData);
+    child.stderr?.on("data", onData);
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      resolve({ code: 124, output: `${output}\n[buildValidation timeout]` });
+    }, timeoutMs);
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      resolve({ code: 127, output: `${output}${String(e)}` });
+    });
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      resolve({ code: code ?? -1, output });
+    });
+  });
+}
+
+// Dynamic build validation: actually run a build/typecheck/test in a seeded or
+// generated workspace and assert the exit code — proof the produced code is
+// sound (audit: "dynamic build validation").
+registerFinalCheckHandler("buildValidation", async (check) => {
+  const { workdir, command, expectExitZero } = check as {
+    workdir?: string;
+    command?: string;
+    expectExitZero?: boolean;
+  };
+  if (typeof workdir !== "string" || typeof command !== "string") {
+    return {
+      status: "failed",
+      detail: "buildValidation requires string `workdir` and `command`",
+    };
+  }
+  if (!existsSync(workdir)) {
+    return {
+      status: "skipped-dependency-missing",
+      detail: `buildValidation workdir does not exist: ${workdir}`,
+    };
+  }
+  const wantZero = expectExitZero !== false;
+  const { code, output } = await runBuildCommand(command, workdir);
+  const ok = wantZero ? code === 0 : code !== 0;
+  if (!ok) {
+    return {
+      status: "failed",
+      detail: `buildValidation: \`${command}\` exited ${code} (expected ${
+        wantZero ? "0" : "non-zero"
+      }). Output tail: ${output.slice(-500)}`,
+    };
+  }
+  return {
+    status: "passed",
+    detail: `buildValidation: \`${command}\` exited ${code} as expected`,
   };
 });
 

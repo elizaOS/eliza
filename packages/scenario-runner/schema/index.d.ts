@@ -267,6 +267,19 @@ export type ScenarioFinalCheck =
       expected?: boolean;
       minCount?: number;
     })
+  | (CheckBase<"subAgentSpawned"> & {
+      agentType?: StringMatcher;
+      minCount?: number;
+    })
+  | (CheckBase<"fileMutationOccurred"> & {
+      path?: StringMatcher;
+      minCount?: number;
+    })
+  | (CheckBase<"buildValidation"> & {
+      workdir: string;
+      command: string;
+      expectExitZero?: boolean;
+    })
   | (CheckBase<"judgeRubric"> & {
       name: string;
       rubric: string;
