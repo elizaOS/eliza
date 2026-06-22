@@ -2,16 +2,16 @@
  * Live Cerebras regression test for the "spawn sub-agent" Stage-1 refusal
  * documented in elizaOS/eliza#7620.
  *
- * What was broken: Cerebras-hosted `gpt-oss-120b` and
- * `qwen-3-235b-a22b-instruct-2507` occasionally emit a refusal in Stage-1
+ * What was broken: Cerebras-hosted reasoning/coding models occasionally emit a
+ * refusal in Stage-1
  * `replyText` ("I'm unable to spawn a sub-agent in this context. I can
  * create /tmp/foo.py directly...") even on turns whose
  * `candidateActionNames` correctly include `TASKS_SPAWN_AGENT`. The
  * refusal then ships to the user via the early-reply path and contradicts
  * the planner's subsequent action call.
  *
- * This test runs the EXACT user prompt from #7620 against both reported
- * Cerebras models across N trials and asserts:
+ * This test runs the EXACT user prompt from #7620 against the configured
+ * Cerebras small/large models across N trials and asserts:
  *
  *   (a) After parsing through `parseMessageHandlerOutput` (which applies
  *       the refusal-suppression fix), no trial that routed to a planning
@@ -98,6 +98,7 @@ const HANDLE_RESPONSE_TOOL = {
       "Stage 1 — populate the response-handler fields. NEVER refuse on the planning path; the planner stage runs the actual tool.",
     parameters: {
       type: "object",
+      additionalProperties: false,
       properties: {
         shouldRespond: {
           type: "string",
@@ -280,9 +281,27 @@ Sample leaked refusal: ${bucket.samples.leak ? `"${bucket.samples.leak}"` : "(no
 
 const TRIALS = Number.parseInt(process.env.CEREBRAS_REFUSAL_TRIALS ?? "20", 10);
 const TIMEOUT_MS = TRIALS * 20_000 + 30_000;
+const PROBE_MODELS = Array.from(
+  new Set(
+    (
+      process.env.CEREBRAS_REFUSAL_MODELS ??
+      [
+        process.env.OPENAI_SMALL_MODEL,
+        process.env.OPENAI_LARGE_MODEL,
+        "gpt-oss-120b",
+        "zai-glm-4.7",
+      ]
+        .filter((model): model is string => Boolean(model?.trim()))
+        .join(",")
+    )
+      .split(",")
+      .map((model) => model.trim())
+      .filter(Boolean)
+  )
+);
 
 liveDescribe("Cerebras `spawn sub-agent` Stage-1 refusal suppression — elizaOS/eliza#7620", () => {
-  for (const model of ["gpt-oss-120b", "qwen-3-235b-a22b-instruct-2507"]) {
+  for (const model of PROBE_MODELS) {
     it(
       `${model}: planning-path replies never leak refusal text after parsing`,
       async () => {
@@ -364,7 +383,7 @@ async function callAdversarialStage1(model: string): Promise<{ rawArgs: string }
 adversarialDescribe(
   "Cerebras adversarial — parser suppresses refusals even when prompt does not discourage them",
   () => {
-    for (const model of ["gpt-oss-120b", "qwen-3-235b-a22b-instruct-2507"]) {
+    for (const model of PROBE_MODELS) {
       it(
         `${model}: every wire refusal that lands on a planning context is suppressed`,
         async () => {

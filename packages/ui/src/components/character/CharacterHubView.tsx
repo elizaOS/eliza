@@ -160,6 +160,7 @@ function writeHubCache<T>(suffix: string, value: T): void {
 }
 
 export function CharacterHubView({
+  initialSection,
   d,
   bioText,
   normalizedMessageExamples,
@@ -176,6 +177,7 @@ export function CharacterHubView({
   hasPendingChanges,
   onSave,
 }: {
+  initialSection?: CharacterHubSection;
   d: CharacterData;
   bioText: string;
   normalizedMessageExamples: MessageExampleGroup[];
@@ -203,8 +205,8 @@ export function CharacterHubView({
     tab: s.tab,
     t: s.t,
   }));
-  const [activeSection, setActiveSection] = useState<CharacterHubSection>(() =>
-    getSectionFromLocation(tab),
+  const [activeSection, setActiveSection] = useState<CharacterHubSection>(
+    () => initialSection ?? getSectionFromLocation(tab),
   );
   const [documentRecords, setDocumentRecords] = useState<DocumentRecord[]>(() =>
     readHubCache<DocumentRecord[]>("documents", []),
@@ -300,10 +302,15 @@ export function CharacterHubView({
   }, [flushPendingAutoSave]);
 
   useEffect(() => {
+    if (initialSection) {
+      setActiveSection(initialSection);
+      return;
+    }
     setActiveSection(getSectionFromLocation(tab));
-  }, [tab]);
+  }, [initialSection, tab]);
 
   useEffect(() => {
+    if (initialSection) return;
     const syncSectionFromLocation = () => {
       setActiveSection(getSectionFromLocation(tab));
     };
@@ -313,7 +320,7 @@ export function CharacterHubView({
       window.removeEventListener("popstate", syncSectionFromLocation);
       window.removeEventListener("hashchange", syncSectionFromLocation);
     };
-  }, [tab]);
+  }, [initialSection, tab]);
 
   useEffect(() => {
     let cancelled = false;
@@ -711,6 +718,7 @@ export function CharacterHubView({
   const navigateToSection = useCallback(
     (section: CharacterHubSection) => {
       setActiveSection(section);
+      if (initialSection) return;
       if (section === "documents") {
         if (tab !== "documents") {
           setTab("documents");
@@ -721,7 +729,7 @@ export function CharacterHubView({
       }
       updateCharacterSectionPath(section);
     },
-    [setTab, tab],
+    [initialSection, setTab, tab],
   );
 
   const handleOverviewOpenSection = (

@@ -2,7 +2,11 @@ import fs from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
+import {
+  formatError,
+  resolveApiToken,
+  resolveDesktopApiPort,
+} from "@elizaos/shared";
 import type { BrowserWindow } from "electrobun/bun";
 import Electrobun, {
   ApplicationMenu,
@@ -629,10 +633,23 @@ let surfaceWindowManager: SurfaceWindowManager | null = null;
 let rendererUrlPromise: Promise<string> | null = null;
 let backgroundWindowPromise: Promise<void> | null = null;
 let isQuitting = false;
+let quitRequestPromise: Promise<void> | null = null;
 
-function requestAppQuit(): void {
+function requestAppQuit(): Promise<void> {
+  if (quitRequestPromise) {
+    return quitRequestPromise;
+  }
+
   isQuitting = true;
+  quitRequestPromise = (async () => {
+    await runShutdownCleanup("explicit-quit").catch((err) => {
+      logger.warn(
+        `[Main] Shutdown cleanup failed before explicit quit: ${formatError(err)}`,
+      );
+    });
   Utils.quit();
+  })();
+  return quitRequestPromise;
 }
 
 /**
@@ -647,6 +664,7 @@ function isPackagedDesktopBuild(): boolean {
 }
 
 const cleanupFns: Array<() => void | Promise<void>> = [];
+let shutdownCleanupPromise: Promise<void> | null = null;
 let lastFocusedWindow: ManagedWindowLike | null = null;
 const macOpenedDevtoolsWindowIds = new Set<number>();
 
@@ -1160,7 +1178,7 @@ function attachMainWindow(
       logger.info(
         "[Main] Window close on Linux with no tray — quitting (no surface to restore from)",
       );
-      requestAppQuit();
+      void requestAppQuit();
       return;
     }
 
@@ -2172,13 +2190,41 @@ function setupDockReopen(): void {
 }
 
 async function runShutdownCleanup(reason: string): Promise<void> {
+  if (shutdownCleanupPromise) {
+    return shutdownCleanupPromise;
+  }
+
+  shutdownCleanupPromise = (async () => {
   logger.info(`[Main] App quitting (${reason}), disposing native modules...`);
   isQuitting = true;
   sendToActiveRenderer("desktopShutdownStarted", { reason });
-  for (const cleanupFn of cleanupFns) {
-    await Promise.resolve(cleanupFn());
+    const cleanupFnsToRun = cleanupFns.splice(0);
+    const cleanupResults = await Promise.allSettled(
+      cleanupFnsToRun.map((cleanupFn) => Promise.resolve().then(cleanupFn)),
+    );
+    for (const result of cleanupResults) {
+      if (result.status === "rejected") {
+        logger.warn(
+          `[Main] Shutdown cleanup callback failed: ${
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason)
+          }`,
+        );
+      }
   }
+    try {
   await disposeNativeModules();
+    } catch (error) {
+      logger.warn(
+        `[Main] Native module disposal failed during shutdown: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  })();
+
+  return shutdownCleanupPromise;
 }
 
 function setupShutdown(): void {
@@ -2632,7 +2678,7 @@ async function main(): Promise<void> {
   });
   getDesktopManager().setRestoreMainWindowCallback(() => restoreWindow());
   getDesktopManager().setRequestQuitCallback(() => {
-    requestAppQuit();
+    void requestAppQuit();
   });
   getDesktopManager().setOpenSurfaceWindowCallback(
     (surface, browse, alwaysOnTop) => {

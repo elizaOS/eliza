@@ -20,6 +20,11 @@ vi.mock("@elizaos/ui", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 
+vi.mock("@elizaos/ui/state", () => ({
+  useAppSelector: <T,>(selector: (s: typeof appState) => T): T =>
+    selector(appState),
+}));
+
 const { render, screen, fireEvent, waitFor, cleanup } = await import(
   "@testing-library/react"
 );

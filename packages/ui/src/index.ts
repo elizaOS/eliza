@@ -474,6 +474,8 @@ export {
   getVrmPreviewUrl,
   getVrmUrl,
   mergeStreamingText,
+  useAppSelector,
+  useAppSelectorShallow,
   useCompanionSceneConfig,
   usePtySessions,
   useTranslation,

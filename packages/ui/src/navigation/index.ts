@@ -429,6 +429,14 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     return "views";
   }
 
+  // /character/<sub> — resolve nested character paths
+  if (normalized.startsWith("/character/")) {
+    const sub = normalized.slice("/character/".length);
+    if (sub === "documents") return "documents";
+    if (sub === "select") return "character-select";
+    return "character";
+  }
+
   const appShellAlias = APP_SHELL_PATH_TAB_ALIASES[normalized];
   if (appShellAlias) return appShellAlias;
   const registeredAppShellPage = listAppShellPages().find(
@@ -445,14 +453,6 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   if (normalized.startsWith("/apps/")) {
     const sub = normalized.slice("/apps/".length);
     return APPS_SUB_TABS[sub] ?? "apps";
-  }
-
-  // /character/<sub> — resolve nested character paths
-  if (normalized.startsWith("/character/")) {
-    const sub = normalized.slice("/character/".length);
-    if (sub === "documents") return "documents";
-    if (sub === "select") return "character-select";
-    return "character";
   }
 
   // /settings/<sub> — resolve nested settings paths

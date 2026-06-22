@@ -521,7 +521,10 @@ function recoverEvaluatorTextOutput(
 		};
 	}
 
-	if (!hasSuccessfulToolResult(trajectory)) return output;
+	const hasSuccessfulTool = hasSuccessfulToolResult(trajectory);
+	const hasFailedTool = hasFailedToolResult(trajectory);
+	if (!hasSuccessfulTool && !hasFailedTool) return output;
+	if (hasFailedTool && trajectory.plannedQueue.length > 0) return output;
 	if (!looksLikeUserFacingAnswer(text)) return output;
 
 	const userFacing = stripTrailingEvaluatorEnvelope(text);
@@ -529,10 +532,15 @@ function recoverEvaluatorTextOutput(
 	return {
 		success: true,
 		decision: "FINISH",
-		thought:
-			"Recovered user-facing evaluator prose after a successful tool result.",
+		thought: hasSuccessfulTool
+			? "Recovered user-facing evaluator prose after a successful tool result."
+			: "Recovered user-facing evaluator prose after a failed tool result.",
 		messageToUser: userFacing,
-		raw: { recoverySource: "prose_after_successful_tool" },
+		raw: {
+			recoverySource: hasSuccessfulTool
+				? "prose_after_successful_tool"
+				: "prose_after_failed_tool",
+		},
 	};
 }
 
@@ -591,6 +599,10 @@ function rawText(raw: string | { text?: string; object?: unknown }): string {
 
 function hasSuccessfulToolResult(trajectory: PlannerTrajectory): boolean {
 	return trajectory.steps.some((step) => step.result?.success === true);
+}
+
+function hasFailedToolResult(trajectory: PlannerTrajectory): boolean {
+	return trajectory.steps.some((step) => step.result?.success === false);
 }
 
 function containsToolAttemptObject(text: string): boolean {
@@ -652,10 +664,17 @@ function containsInternalWorkPlanning(text: string): boolean {
 			/^(?:i|we)\s+(?:need|needs|should|must|will|can|have)\s+(?:to\s+)?(?:locate|find|search|grep|inspect|check|read|open|run|use|try|verify|figure out|determine|look\s+(?:for|up))\b/i.test(
 				normalized,
 			) ||
+			/^(?:i\s+|we\s+)?need(?:s)?\s+(?:one\s+more|another|a)\s+(?:tool|lookup|search|fetch|step|source)\b/i.test(
+				normalized,
+			) ||
 			/^(?:let'?s\s+)?(?:grep|search|find|inspect|check|read|open|run|try|look)\s+(?:for|through|in|at|up|again|path)\b/i.test(
 				normalized,
 			) ||
-			/^use\s+(?:grep|rg|search|find|shell|bash|curl)\b/i.test(normalized)
+			/^use\s+(?:grep|rg|search|find|shell|bash|curl)\b/i.test(normalized) ||
+			/\b(?:respond|reply|answer)\s+with\s+(?:the\s+)?(?:required|requested|exact)\s+(?:prefix|marker)\b/i.test(
+				normalized,
+			) ||
+			/\bso\s+(?:respond|reply|answer)\s+(?:that|with)\b/i.test(normalized)
 		);
 	});
 }

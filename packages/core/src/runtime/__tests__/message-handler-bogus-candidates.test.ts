@@ -664,6 +664,35 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.reply).toBe("");
 	});
 
+	it("keeps explicit tool-free market-data smoke replies direct despite runnable hints", () => {
+		const reply =
+			"LIVE_BTC_PRICE_HANDLED_OK The current price of BTC is not available right now.";
+		const messageSearch = makeAction("MESSAGE_SEARCH");
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				candidateActionNames: ["MESSAGE_SEARCH"],
+				replyText: reply,
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [messageSearch],
+				messageText:
+					"For a Playwright end-to-end smoke test, start your reply with exactly LIVE_BTC_PRICE_HANDLED_OK, then answer this tool-free user request in one sentence: what is the price of BTC? Do not call tools or look up live prices; say live market data is unavailable.",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(true);
+		expect(handler.plan.requiresTool).toBe(false);
+		expect(handler.plan.contexts).toEqual(["simple"]);
+		expect(handler.plan.candidateActions).toBeUndefined();
+		expect(handler.plan.reply).toBe(reply);
+	});
+
 	it("infers TASKS for direct app-build requests without explicit sub-agent wording", () => {
 		const handler = messageHandlerFromFieldResult(
 			{

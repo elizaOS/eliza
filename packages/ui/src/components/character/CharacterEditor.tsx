@@ -249,10 +249,12 @@ function CharacterAgentButton({
 /* ── Component ─────────────────────────────────────────────────────── */
 
 export function CharacterEditor({
+  initialPage,
   sceneOverlay = false,
   inModal: _inModal = false,
   onHeaderActionsChange,
 }: {
+  initialPage?: CharacterEditorPage;
   sceneOverlay?: boolean;
   inModal?: boolean;
   onHeaderActionsChange?: (actions: ReactNode | null) => void;
@@ -361,7 +363,7 @@ export function CharacterEditor({
   );
 
   const [activePage, setActivePage] = useState<CharacterEditorPage>(
-    tab === "documents" ? "documents" : "personality",
+    initialPage ?? (tab === "documents" ? "documents" : "personality"),
   );
   const [rightTab, setRightTab] = useState<"style" | "examples">("style");
   const [customizing, setCustomizing] = useState(false);
@@ -378,12 +380,17 @@ export function CharacterEditor({
     else if (activePage === "examples") setRightTab("examples");
   }, [activePage]);
 
-  // Sync activePage when tab changes externally (e.g. nav to /documents)
+  // Sync activePage when tab changes externally (e.g. nav to /documents) or
+  // when an embedded router renders a specific built-in subpage in split view.
   useEffect(() => {
+    if (initialPage && activePage !== initialPage) {
+      setActivePage(initialPage);
+      return;
+    }
     if (tab === "documents" && activePage !== "documents") {
       setActivePage("documents");
     }
-  }, [tab, activePage]);
+  }, [initialPage, tab, activePage]);
 
   /* ── Style entry state ──────────────────────────────────────────── */
   const [pendingStyleEntries, setPendingStyleEntries] = useState<
@@ -1444,6 +1451,11 @@ export function CharacterEditor({
           {/* ── Standalone page: character hub */}
           {!sceneOverlay && (
             <CharacterHubView
+              initialSection={
+                initialPage === "documents" || initialPage === "personality"
+                  ? initialPage
+                  : undefined
+              }
               d={d}
               bioText={bioText}
               normalizedMessageExamples={normalizedMessageExamples}

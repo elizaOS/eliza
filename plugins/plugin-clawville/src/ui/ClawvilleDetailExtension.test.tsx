@@ -18,6 +18,11 @@ vi.mock("@elizaos/ui", () => ({
     selector(appState),
 }));
 
+vi.mock("@elizaos/ui/state", () => ({
+  useAppSelector: <T,>(selector: (s: typeof appState) => T): T =>
+    selector(appState),
+}));
+
 const { render, screen, cleanup } = await import("@testing-library/react");
 const { ClawvilleDetailExtension } = await import("./ClawvilleDetailExtension");
 

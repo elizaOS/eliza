@@ -28,6 +28,7 @@ import * as React from "react";
 import { client } from "../../api/client";
 import type {
   ChatTurnStatus,
+  ConversationMessage,
   ImageAttachment,
 } from "../../api/client-types-chat";
 import {
@@ -38,6 +39,8 @@ import {
 } from "../../chat/slash-menu";
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import {
+  CHAT_PREFILL_EVENT,
+  type ChatPrefillEventDetail,
   TUTORIAL_CHAT_CONTROL_EVENT,
   type TutorialChatControlDetail,
 } from "../../events";
@@ -55,6 +58,7 @@ import {
   summarizeDroppedAttachments,
 } from "../../utils/image-attachment";
 import { MessageAttachments } from "../chat/MessageAttachments";
+import { MessageContent } from "../chat/MessageContent";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
@@ -150,6 +154,8 @@ type PttPhase =
   | { kind: "pending"; pointerId: number; timer: number }
   | { kind: "holding"; pointerId: number };
 
+type MotionControls = { stop: () => void };
+
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
 // px kept clear above the panel. Sized to clear an edge-to-edge status bar
 // (~58px) plus a buffer so the grabber sits BELOW the notification-shade pull
@@ -220,6 +226,18 @@ function rubberBand(overshoot: number): number {
 const PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
 // Stop generating: a centered rounded square (the universal "stop" affordance).
 const STOP_GLYPH = "M12 12H24V24H12Z";
+
+function shellMessageToConversationMessage(
+  message: ShellMessage,
+): ConversationMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    text: message.content,
+    timestamp: message.createdAt,
+    failureKind: message.failureKind,
+  };
+}
 
 /** Base64-encode WAV bytes in chunks (avoids the apply() arg-count limit). */
 function wavBytesToBase64(bytes: Uint8Array): string {
@@ -852,9 +870,9 @@ const ThreadLine = React.memo(function ThreadLine({
           // behind. The light tone is for any embedding that supplies its own
           // surrounding scrim.
           isUser ? "rounded-br-md" : "rounded-bl-md",
-          // Assistant bubbles own the press-and-hold copy gesture, so suppress
-          // the native long-press selection/callout that would fight it.
-          canCopy && "select-none [-webkit-touch-callout:none]",
+          // Message text must remain selectable for normal highlight/copy.
+          // Assistant bubbles still keep the press-and-hold copy shortcut.
+          "select-text [-webkit-touch-callout:default]",
           floating
             ? cn(
                 "border",
@@ -868,19 +886,23 @@ const ThreadLine = React.memo(function ThreadLine({
               : "bg-white/10 text-white/90",
         )}
       >
-        {isAssistant &&
-        !message.content.trim() &&
-        !message.attachments?.length ? (
-          // The in-flight assistant turn (kept by visibleMessages only while
-          // responding): show the rich status (thinking / running an action /
-          // waking) INSIDE the bubble, anchored where the streamed text fills in
-          // — then the text replaces it. Falls back to plain dots if no status.
-          <TurnStatusInner status={turnStatus ?? null} />
-        ) : isUser ? (
-          <ThreadLineText content={message.content} />
-        ) : (
-          message.content
-        )}
+        <div data-chat-selectable="true">
+          {isAssistant &&
+          !message.content.trim() &&
+          !message.attachments?.length ? (
+            // The in-flight assistant turn (kept by visibleMessages only while
+            // responding): show the rich status (thinking / running an action /
+            // waking) INSIDE the bubble, anchored where the streamed text fills in
+            // — then the text replaces it. Falls back to plain dots if no status.
+            <TurnStatusInner status={turnStatus ?? null} />
+          ) : isUser ? (
+            <ThreadLineText content={message.content} />
+          ) : (
+            <MessageContent
+              message={shellMessageToConversationMessage(message)}
+            />
+          )}
+        </div>
         {message.attachments?.length ? (
           <MessageAttachments attachments={message.attachments} />
         ) : null}
@@ -947,15 +969,6 @@ export function ContinuousChatOverlay({
     stop,
     modelStatus,
   } = controller;
-
-  // The transcribe control is a voice feature, so it only belongs in the header
-  // while voice is actually on — a hands-free conversation, the mic open, or an
-  // in-progress transcription. When voice is off it's hidden (the `/transcribe`
-  // command still starts transcription from cold). `transcriptionMode` is part
-  // of the predicate so the button (then "stop transcription") and its badge
-  // stay put across the re-listen gaps where `recording` momentarily drops
-  // between utterances.
-  const voiceActive = Boolean(recording || handsFree || transcriptionMode);
 
   // Copy an assistant answer (press-and-hold on its bubble). Stable identity so
   // the memoized ThreadLine isn't re-rendered every parent tick.
@@ -1030,6 +1043,69 @@ export function ContinuousChatOverlay({
   // re-render. Drives the glass/content crossfade + scale; `threadHeight` stays
   // 0 until the input is fully formed, then takes over for input → chat.
   const openProgress = useMotionValue(pilled ? 0 : 1);
+  // Imperative animations triggered from gesture callbacks are outside React's
+  // effect cleanup, so keep one owner per motion value and stop stale springs
+  // before starting another.
+  const threadAnimationRef = React.useRef<MotionControls | null>(null);
+  const openProgressAnimationRef = React.useRef<MotionControls | null>(null);
+  const delayedNavigationTimerRef = React.useRef<number | null>(null);
+  const prefillFocusFrameRef = React.useRef<number | null>(null);
+  const prefillFocusTimerRef = React.useRef<number | null>(null);
+  const stopThreadAnimation = React.useCallback(() => {
+    threadAnimationRef.current?.stop();
+    threadAnimationRef.current = null;
+  }, []);
+  const stopOpenProgressAnimation = React.useCallback(() => {
+    openProgressAnimationRef.current?.stop();
+    openProgressAnimationRef.current = null;
+  }, []);
+  const animateThreadHeight = React.useCallback(
+    (target: number) => {
+      stopThreadAnimation();
+      threadAnimationRef.current = animate(threadHeight, target, SHEET_SPRING);
+    },
+    [stopThreadAnimation, threadHeight],
+  );
+  const animateOpenProgress = React.useCallback(
+    (target: number) => {
+      stopOpenProgressAnimation();
+      openProgressAnimationRef.current = animate(
+        openProgress,
+        target,
+        OPEN_SPRING,
+      );
+    },
+    [openProgress, stopOpenProgressAnimation],
+  );
+  const clearPrefillFocusSchedule = React.useCallback(() => {
+    if (
+      prefillFocusFrameRef.current !== null &&
+      typeof window !== "undefined" &&
+      typeof window.cancelAnimationFrame === "function"
+    ) {
+      window.cancelAnimationFrame(prefillFocusFrameRef.current);
+    }
+    if (
+      prefillFocusTimerRef.current !== null &&
+      typeof window !== "undefined"
+    ) {
+      window.clearTimeout(prefillFocusTimerRef.current);
+    }
+    prefillFocusFrameRef.current = null;
+    prefillFocusTimerRef.current = null;
+  }, []);
+  React.useEffect(
+    () => () => {
+      stopThreadAnimation();
+      stopOpenProgressAnimation();
+      if (delayedNavigationTimerRef.current !== null) {
+        window.clearTimeout(delayedNavigationTimerRef.current);
+        delayedNavigationTimerRef.current = null;
+      }
+      clearPrefillFocusSchedule();
+    },
+    [stopThreadAnimation, stopOpenProgressAnimation, clearPrefillFocusSchedule],
+  );
   // Latest `settleDrag` (defined below) exposed to the viewport-resize effect
   // (which runs earlier). A rotation can orphan an in-flight drag — re-settling
   // the morph keeps the pill↔input crossfade from stranding both bars visible.
@@ -1320,6 +1396,7 @@ export function ContinuousChatOverlay({
         event.button !== 0 ||
         hasDraft ||
         recording ||
+        transcriptionMode ||
         // Voice input is gated while a reply is in flight; type + send to queue
         // another turn instead. Re-enabled the instant the reply finishes.
         responding
@@ -1342,7 +1419,7 @@ export function ContinuousChatOverlay({
       }, 200);
       pttRef.current = { kind: "pending", pointerId, timer };
     },
-    [hasDraft, recording, responding, startRecording],
+    [hasDraft, recording, responding, startRecording, transcriptionMode],
   );
 
   // One funnel for BOTH pointerup (cancelled=false) and pointercancel
@@ -1353,7 +1430,10 @@ export function ContinuousChatOverlay({
     (event: React.PointerEvent<HTMLButtonElement>, cancelled: boolean) => {
       const phase = pttRef.current;
       if (phase.kind === "pending") window.clearTimeout(phase.timer);
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      if (
+        typeof event.currentTarget.hasPointerCapture === "function" &&
+        event.currentTarget.hasPointerCapture(event.pointerId)
+      ) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
       pttRef.current = { kind: "idle" };
@@ -1703,13 +1783,25 @@ export function ContinuousChatOverlay({
     draggingRef.current = false;
     const open = pilled ? 0 : 1;
     if (reduce) {
+      stopThreadAnimation();
+      stopOpenProgressAnimation();
       threadHeight.set(baseH);
       openProgress.set(open);
     } else {
-      animate(threadHeight, baseH, SHEET_SPRING);
-      animate(openProgress, open, OPEN_SPRING);
+      animateThreadHeight(baseH);
+      animateOpenProgress(open);
     }
-  }, [threadHeight, openProgress, baseH, pilled, reduce]);
+  }, [
+    threadHeight,
+    openProgress,
+    baseH,
+    pilled,
+    reduce,
+    stopThreadAnimation,
+    stopOpenProgressAnimation,
+    animateThreadHeight,
+    animateOpenProgress,
+  ]);
   // Keep the ref the (earlier-declared) viewport-resize effect calls pointing at
   // the latest settleDrag, so a rotation re-settles with current pilled/baseH.
   settleDragRef.current = settleDrag;
@@ -1717,24 +1809,32 @@ export function ContinuousChatOverlay({
   // Drive openProgress from the pilled flag for NON-drag transitions (tap the
   // pill, programmatic open/close): a live finger drag owns openProgress itself
   // (draggingRef gates this so it never fights the gesture).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: openProgress is a stable motion value ref
   React.useEffect(() => {
     if (draggingRef.current) return;
     const open = pilled ? 0 : 1;
     if (reduce) {
+      stopOpenProgressAnimation();
       openProgress.set(open);
       return;
     }
-    const controls = animate(openProgress, open, OPEN_SPRING);
-    return () => controls.stop();
-  }, [pilled, reduce]);
+    animateOpenProgress(open);
+    return stopOpenProgressAnimation;
+  }, [
+    pilled,
+    reduce,
+    openProgress,
+    animateOpenProgress,
+    stopOpenProgressAnimation,
+  ]);
 
   const closeSheet = React.useCallback(() => {
     draggingRef.current = false;
+    stopThreadAnimation();
+    stopOpenProgressAnimation();
     setFreeH(null);
     setMaximized(false);
     setMode("input");
-  }, []);
+  }, [stopThreadAnimation, stopOpenProgressAnimation]);
 
   // Leaving the chat for Settings/Home: animate OUT of maximize and collapse the
   // sheet (closeSheet un-maximizes + springs the thread height down) BEFORE
@@ -1746,7 +1846,16 @@ export function ContinuousChatOverlay({
     (go: () => void) => {
       const wasMaximized = maximized;
       closeSheet();
-      window.setTimeout(go, reduce ? 0 : wasMaximized ? 260 : 190);
+      if (delayedNavigationTimerRef.current !== null) {
+        window.clearTimeout(delayedNavigationTimerRef.current);
+      }
+      delayedNavigationTimerRef.current = window.setTimeout(
+        () => {
+          delayedNavigationTimerRef.current = null;
+          go();
+        },
+        reduce ? 0 : wasMaximized ? 260 : 190,
+      );
     },
     [closeSheet, maximized, reduce],
   );
@@ -1758,50 +1867,57 @@ export function ContinuousChatOverlay({
   // nothing). Un-maximizing drops back to the inset FULL detent.
   const toggleMaximize = React.useCallback(() => {
     if (maximized) {
+      stopThreadAnimation();
       setMaximized(false);
       return;
     }
     // Snap the morph fully open BEFORE flipping to full-bleed so no in-flight
     // pill-open spring can leak a sub-1 scale into the maximized frame (top gap).
     draggingRef.current = false;
+    stopThreadAnimation();
+    stopOpenProgressAnimation();
     openProgress.set(1);
     setFreeH(null);
     setMode("full");
     setMaximized(true);
-  }, [maximized, openProgress]);
+  }, [maximized, openProgress, stopThreadAnimation, stopOpenProgressAnimation]);
 
   // The single detent→detent animator: whenever the settled detent (or viewport)
   // changes and we're not mid finger-drag, spring the history height to it. The
   // gesture / open paths just flip sheetOpen/expanded and this reacts — no
   // per-frame React state, so the live drag stays buttery.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: baseH already encodes sheetOpen/expanded/freeH/viewportH; threadHeight is a stable ref
   React.useEffect(() => {
     if (draggingRef.current) return;
     if (reduce) {
+      stopThreadAnimation();
       threadHeight.set(baseH);
       return;
     }
-    const controls = animate(threadHeight, baseH, SHEET_SPRING);
-    return () => controls.stop();
-  }, [baseH, reduce]);
+    animateThreadHeight(baseH);
+    return stopThreadAnimation;
+  }, [baseH, reduce, threadHeight, animateThreadHeight, stopThreadAnimation]);
 
   // Snap to one of the three iOS-style detents and settle the live drag. A
   // detent change fires a light haptic so the snap feels physical on device.
   // "collapsed" hides the history entirely (just the input); "half" is the
   // comfortable reading height; "full" the near-fullscreen reading mode.
-  const goToDetent = React.useCallback((to: "collapsed" | "half" | "full") => {
-    // Flip the settled detent; the [baseH] effect springs the height to it.
-    // A detent always clears any free-drag rest height and (since only FULL
-    // can be maximized) drops full-bleed when stepping anywhere else.
-    draggingRef.current = false;
-    setFreeH(null);
-    if (to !== "full") setMaximized(false);
-    // "collapsed" is the input peek (sheet closed); half/full open the thread.
-    setMode(to === "collapsed" ? "input" : to);
-    // Stepping all the way down closes the keyboard (the chat is dismissed).
-    if (to === "collapsed") inputRef.current?.blur();
-    detentHaptic();
-  }, []);
+  const goToDetent = React.useCallback(
+    (to: "collapsed" | "half" | "full") => {
+      // Flip the settled detent; the [baseH] effect springs the height to it.
+      // A detent always clears any free-drag rest height and (since only FULL
+      // can be maximized) drops full-bleed when stepping anywhere else.
+      draggingRef.current = false;
+      stopThreadAnimation();
+      setFreeH(null);
+      if (to !== "full") setMaximized(false);
+      // "collapsed" is the input peek (sheet closed); half/full open the thread.
+      setMode(to === "collapsed" ? "input" : to);
+      // Stepping all the way down closes the keyboard (the chat is dismissed).
+      if (to === "collapsed") inputRef.current?.blur();
+      detentHaptic();
+    },
+    [stopThreadAnimation],
+  );
 
   // Collapsing always drops input focus, so the mobile keyboard goes away the
   // moment the chat is dismissed (pull-down, Escape, or click-out) — the chat is
@@ -1918,6 +2034,35 @@ export function ContinuousChatOverlay({
     return () =>
       window.removeEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
   }, [goToDetent]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onPrefill = (event: Event) => {
+      const detail = (event as CustomEvent<ChatPrefillEventDetail>).detail;
+      const text = typeof detail?.text === "string" ? detail.text : "";
+      if (!text.trim()) return;
+      setMode((m) => (m === "pill" ? "input" : m));
+      setDraft(text);
+      const focusComposer = () => {
+        prefillFocusFrameRef.current = null;
+        prefillFocusTimerRef.current = null;
+        const input = inputRef.current;
+        input?.focus();
+        if (detail?.select) {
+          input?.setSelectionRange(0, text.length);
+        }
+      };
+      clearPrefillFocusSchedule();
+      if (typeof window.requestAnimationFrame === "function") {
+        prefillFocusFrameRef.current =
+          window.requestAnimationFrame(focusComposer);
+      } else {
+        prefillFocusTimerRef.current = window.setTimeout(focusComposer, 0);
+      }
+    };
+    window.addEventListener(CHAT_PREFILL_EVENT, onPrefill);
+    return () => window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
+  }, [clearPrefillFocusSchedule]);
 
   // Push-to-talk dictation drops its final transcript into the composer draft
   // (no send): register the sink with the controller while this overlay is
@@ -2155,8 +2300,10 @@ export function ContinuousChatOverlay({
       preFocusCollapsedRef.current = true;
       detentHaptic();
     }
-    if (reduce) openProgress.set(1);
-    else animate(openProgress, 1, OPEN_SPRING);
+    if (reduce) {
+      stopOpenProgressAnimation();
+      openProgress.set(1);
+    } else animateOpenProgress(1);
     // Raise the keyboard on the SAME tap that opens the pill. While pilled, the
     // composer content is `inert`, and React only clears that on the next
     // render — too late for iOS WebKit, which honors focus() only synchronously
@@ -2170,7 +2317,14 @@ export function ContinuousChatOverlay({
     contentRef.current?.removeAttribute("inert");
     suppressExpandOnFocusRef.current = true;
     inputRef.current?.focus();
-  }, [openProgress, reduce, hasThread, goToDetent]);
+  }, [
+    openProgress,
+    reduce,
+    hasThread,
+    goToDetent,
+    stopOpenProgressAnimation,
+    animateOpenProgress,
+  ]);
 
   // --- Pull gesture --------------------------------------------------------
   // The grabber is the draggable handle. A live drag sets the threadHeight motion
@@ -2179,6 +2333,10 @@ export function ContinuousChatOverlay({
   // usePullGesture) to snap to a detent.
   const onDragOffset = React.useCallback(
     (offset: number) => {
+      if (!draggingRef.current) {
+        stopThreadAnimation();
+        stopOpenProgressAnimation();
+      }
       draggingRef.current = true;
       // PILL drag: map the upward travel to the pill→input morph (openProgress).
       // The thread stays at 0 until the input is fully formed; only the EXCESS
@@ -2221,6 +2379,8 @@ export function ContinuousChatOverlay({
       clampHeight,
       threadHeight,
       openProgress,
+      stopThreadAnimation,
+      stopOpenProgressAnimation,
     ],
   );
 
@@ -2242,8 +2402,10 @@ export function ContinuousChatOverlay({
         } else {
           // Pill → bare input bar (no thread to open into).
           setMode("input");
-          if (reduce) threadHeight.set(0);
-          else animate(threadHeight, 0, SHEET_SPRING);
+          if (reduce) {
+            stopThreadAnimation();
+            threadHeight.set(0);
+          } else animateThreadHeight(0);
           detentHaptic();
         }
         return;
@@ -3115,24 +3277,8 @@ export function ContinuousChatOverlay({
                 {agentName} is waking up — you can type now; your message sends
                 and the reply arrives in a moment.
               </span>
-              {/* Trailing controls. The transcribe toggle sits directly LEFT of
-              the mic — it's a voice control, so it appears only while voice is on
-              (voiceActive), giving record-only long-form capture next to the
-              audio button. */}
+              {/* Trailing controls. */}
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-                {voiceActive ? (
-                  <SoftButton
-                    icon={FileText}
-                    label={
-                      transcriptionMode
-                        ? "stop transcription"
-                        : "transcription mode"
-                    }
-                    active={transcriptionMode}
-                    onClick={toggleTranscriptionMode}
-                    testId="chat-composer-transcribe"
-                  />
-                ) : null}
                 {/* One trailing control, ChatGPT-style: mic when there's nothing
                 to send (or while recording, to stop), swapping to send once the
                 user starts typing or attaches an image. It morphs IN PLACE (one

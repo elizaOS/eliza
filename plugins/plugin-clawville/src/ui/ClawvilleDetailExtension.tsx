@@ -1,7 +1,4 @@
-import {
-  type AppDetailExtensionProps,
-  type AppRunSummary,
-} from "@elizaos/ui";
+import type { AppDetailExtensionProps, AppRunSummary } from "@elizaos/ui";
 import { useAppSelector } from "@elizaos/ui/state";
 import { useMemo } from "react";
 

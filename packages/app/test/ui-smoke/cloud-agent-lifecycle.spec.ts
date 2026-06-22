@@ -284,6 +284,7 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
   ).toBeDisabled();
 
   // --- Delete the non-active agent; the row disappears, the keeper remains.
+  page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("button", { name: "Delete Disposable" }).click();
   await expect(agentRow(page, "Disposable")).toHaveCount(0, {
     timeout: 30_000,
@@ -325,6 +326,7 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
   ).toBeEnabled();
 
   // --- Delete the original; only the freshly provisioned agent survives.
+  page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("button", { name: "Delete Keeper" }).click();
   await expect(agentRow(page, "Keeper")).toHaveCount(0, { timeout: 30_000 });
   await expect(agentRow(page, "Fresh Agent")).toBeVisible();

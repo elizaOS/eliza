@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("selectLiveProvider", () => {
@@ -18,6 +21,11 @@ describe("selectLiveProvider", () => {
       "OPENROUTER_API_KEY",
       "ELIZA_E2E_OPENROUTER_API_KEY",
       "ELIZA_PROVIDER",
+      "ELIZA_LIVE_PROVIDER_CONFIG_PATH",
+      "ELIZA_LIVE_PROVIDER_STATE_DIR",
+      "ELIZA_STATE_DIR",
+      "ELIZA_NAMESPACE",
+      "XDG_STATE_HOME",
     ]) {
       vi.stubEnv(key, "");
     }
@@ -25,6 +33,7 @@ describe("selectLiveProvider", () => {
 
   afterEach(() => {
     vi.resetModules();
+    vi.doUnmock("@elizaos/vault");
     vi.unstubAllEnvs();
   });
 
@@ -98,9 +107,90 @@ describe("selectLiveProvider", () => {
     const provider = selectLiveProvider();
     expect(provider?.name).toBe("cerebras");
     expect(provider?.baseUrl).toBe("https://api.cerebras.ai/v1");
-    expect(provider?.largeModel).toBe("gpt-oss-120b");
+    expect(provider?.largeModel).toBe("zai-glm-4.7");
     expect(provider?.smallModel).toBe("gpt-oss-120b");
     expect(provider?.env.ELIZA_PROVIDER).toBe("cerebras");
+    expect(provider?.env.CEREBRAS_MODEL).toBe("zai-glm-4.7");
+    expect(provider?.env.OPENAI_SMALL_MODEL).toBe("gpt-oss-120b");
+    expect(provider?.env.OPENAI_LARGE_MODEL).toBe("zai-glm-4.7");
+  });
+
+  it("resolves Cerebras vault references in the async selector", async () => {
+    vi.stubEnv("CEREBRAS_API_KEY", "vault://providers.cerebras.api-key");
+    vi.stubEnv("GROQ_API_KEY", "");
+    vi.stubEnv("OPENAI_API_KEY", "");
+    vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+
+    const get = vi.fn(async (key: string) => {
+      expect(key).toBe("providers.cerebras.api-key");
+      return "csk_resolved_cerebras_key";
+    });
+    const close = vi.fn(async () => {});
+    vi.doMock("@elizaos/vault", () => ({
+      createVault: vi.fn(() => ({ get, close })),
+    }));
+
+    const { selectLiveProviderAsync } = await import("./live-provider.ts");
+
+    const provider = await selectLiveProviderAsync();
+    expect(provider?.name).toBe("cerebras");
+    expect(provider?.apiKey).toBe("csk_resolved_cerebras_key");
+    expect(provider?.env.CEREBRAS_API_KEY).toBe("csk_resolved_cerebras_key");
+    expect(provider?.env.OPENAI_API_KEY).toBe("csk_resolved_cerebras_key");
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads a vault-referenced Cerebras key from local eliza.json in the async selector", async () => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "eliza-live-provider-"));
+    await writeFile(
+      path.join(stateDir, "eliza.json"),
+      JSON.stringify({
+        env: {
+          vars: {
+            CEREBRAS_API_KEY: "vault://CEREBRAS_API_KEY",
+          },
+        },
+      }),
+      "utf8",
+    );
+    vi.stubEnv("ELIZA_LIVE_PROVIDER_STATE_DIR", stateDir);
+    vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+    vi.stubEnv("CEREBRAS_API_KEY", "");
+    vi.stubEnv("GROQ_API_KEY", "");
+    vi.stubEnv("OPENAI_API_KEY", "");
+
+    const createVault = vi.fn(() => ({
+      get: vi.fn(async (key: string) => {
+        expect(key).toBe("CEREBRAS_API_KEY");
+        return "csk_local_config_cerebras_key";
+      }),
+      close: vi.fn(async () => {}),
+    }));
+    vi.doMock("@elizaos/vault", () => ({ createVault }));
+
+    try {
+      const { selectLiveProviderAsync } = await import("./live-provider.ts");
+
+      const provider = await selectLiveProviderAsync();
+      expect(provider?.name).toBe("cerebras");
+      expect(provider?.apiKey).toBe("csk_local_config_cerebras_key");
+      expect(createVault).toHaveBeenCalledWith({ workDir: stateDir });
+    } finally {
+      await rm(stateDir, { force: true, recursive: true });
+    }
+  });
+
+  it("uses the first-class Cerebras first-run provider id", async () => {
+    const { getFirstRunProviderForLiveProvider } = await import(
+      "./live-provider.ts"
+    );
+
+    expect(getFirstRunProviderForLiveProvider({ name: "cerebras" })).toBe(
+      "cerebras",
+    );
+    expect(
+      getFirstRunProviderForLiveProvider({ name: "local-llama-cpp" }),
+    ).toBe("openai");
   });
 
   it("prefers groq over a bare cerebras eval key unless cerebras is explicitly selected", async () => {

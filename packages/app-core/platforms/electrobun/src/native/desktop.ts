@@ -730,7 +730,11 @@ export class DesktopManager {
       } else if (action === "restart-agent" || action === "tray-restart") {
         triggerAgentRestart();
       } else if (action === "quit") {
-        Utils.quit();
+        void this.quit().catch((err: unknown) => {
+          logger.warn(
+            `[Desktop] Failed to quit from tray menu: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
       } else if (action === "open-settings") {
         this.openSettingsCallback?.();
       }
@@ -2326,7 +2330,7 @@ X-GNOME-Autostart-enabled=true
   /**
    * Clean up all resources.
    */
-  dispose(): void {
+  async dispose(): Promise<void> {
     if (this._focusPoller) {
       clearInterval(this._focusPoller);
       this._focusPoller = null;
@@ -2336,8 +2340,8 @@ X-GNOME-Autostart-enabled=true
     this.releaseNotesView?.remove();
     this.releaseNotesView = null;
     this.releaseNotesWindow = null;
-    this.unregisterAllShortcuts();
-    void this.destroyTray();
+    await this.unregisterAllShortcuts();
+    await this.destroyTray();
     this.trayMenuItems.clear();
     this.sendToWebview = null;
   }

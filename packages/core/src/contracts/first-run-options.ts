@@ -425,6 +425,19 @@ export const FIRST_RUN_PROVIDER_CATALOG = [
 		order: 100,
 	},
 	{
+		id: "cerebras",
+		name: "Cerebras",
+		envKey: "CEREBRAS_API_KEY",
+		pluginName: "@elizaos/plugin-openai",
+		keyPrefix: "csk-",
+		description: "Fast OpenAI-compatible inference via Cerebras.",
+		family: "cerebras",
+		authMode: "api-key",
+		group: "local",
+		order: 105,
+		supportsPrimaryModelOverride: true,
+	},
+	{
 		id: "deepseek",
 		name: "DeepSeek",
 		envKey: "DEEPSEEK_API_KEY",
@@ -515,6 +528,7 @@ export const FIRST_RUN_PROVIDER_CATALOG = [
 export const DIRECT_ACCOUNT_PROVIDER_BY_FIRST_RUN_PROVIDER = {
 	anthropic: "anthropic-api",
 	openai: "openai-api",
+	cerebras: "cerebras-api",
 	deepseek: "deepseek-api",
 	zai: "zai-api",
 	moonshot: "moonshot-api",

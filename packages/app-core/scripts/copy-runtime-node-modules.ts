@@ -165,6 +165,12 @@ const workspacePackageIndex = new Map<string, ResolvedPackage[]>();
 let workspacePackageIndexBuilt = false;
 let activeRuntimeCopyTargetNodeModules: string | null = null;
 
+function resolveBunCommand(): string {
+  return path.basename(process.execPath).startsWith("bun")
+    ? process.execPath
+    : (process.env.BUN ?? "bun");
+}
+
 function isRequiredRuntimeDocDirectory(entryPath: string): boolean {
   const normalizedPath = entryPath.split(path.sep).join("/");
   return (
@@ -2283,6 +2289,69 @@ function getRequiredRuntimeEntryPaths(pkgJsonPath: string): string[] {
   return [...entries].sort();
 }
 
+function workspacePackageNeedsRuntimeBuild(packageJsonPath: string): boolean {
+  for (const entryPath of getRequiredRuntimeEntryPaths(packageJsonPath)) {
+    if (!runtimeManifestEntryExists(path.dirname(packageJsonPath), entryPath)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function packageHasBuildScript(packageJsonPath: string): boolean {
+  try {
+    const manifest = readJson<{ scripts?: Record<string, unknown> }>(
+      packageJsonPath,
+    );
+    return typeof manifest.scripts?.build === "string";
+  } catch {
+    return false;
+  }
+}
+
+function ensureWorkspaceRuntimeEntriesBuilt(
+  packageNames: Iterable<string>,
+): void {
+  buildWorkspacePackageIndex();
+  const built = new Set<string>();
+
+  for (const packageName of [...new Set(packageNames)].sort()) {
+    if (!isPackageNameCompatibleWithCurrentPlatform(packageName)) continue;
+
+    for (const candidate of workspacePackageIndex.get(packageName) ?? []) {
+      if (built.has(candidate.sourceDir)) continue;
+      if (!isPackageCompatibleWithCurrentPlatform(candidate.packageJsonPath)) {
+        continue;
+      }
+      if (!workspacePackageNeedsRuntimeBuild(candidate.packageJsonPath)) {
+        continue;
+      }
+      if (!packageHasBuildScript(candidate.packageJsonPath)) {
+        continue;
+      }
+
+      console.log(
+        `[runtime-copy] building ${packageName} workspace runtime entries`,
+      );
+      try {
+        execFileSync(resolveBunCommand(), ["run", "build"], {
+          cwd: candidate.sourceDir,
+          env: { ...process.env, FORCE_COLOR: "0" },
+          stdio: "inherit",
+        });
+      } catch (error) {
+        if (workspacePackageNeedsRuntimeBuild(candidate.packageJsonPath)) {
+          throw error;
+        }
+        console.warn(
+          `[runtime-copy] warning: ${packageName} build exited non-zero after producing required runtime entries; continuing`,
+        );
+      }
+      built.add(candidate.sourceDir);
+    }
+  }
+}
+
 // Post-copy assertion: missingAlwaysBundled catches resolve failures, but
 // can't catch a transitive-walk filter silently skipping a CORE plugin or
 // pruneCopiedPackageDir removing a load-bearing package.json or entrypoint.
@@ -2415,6 +2484,7 @@ function main(): void {
         return shouldBundle;
       }),
     );
+    ensureWorkspaceRuntimeEntriesBuilt([...alwaysBundled, ...discovered]);
     const queue: QueueEntry[] = [...new Set([...alwaysBundled, ...discovered])]
       .sort()
       .map((name) => ({

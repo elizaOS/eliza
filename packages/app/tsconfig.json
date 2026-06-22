@@ -16,6 +16,7 @@
       "@elizaos/plugin-personal-assistant": [
         "../../plugins/plugin-personal-assistant/src/index.ts"
       ],
+      "@elizaos/plugin-blocker": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
       "@elizaos/plugin-phone/*": ["../../plugins/plugin-phone/src/*"],
       "@elizaos/plugin-vector-browser/register": [
@@ -68,6 +69,9 @@
         "../../plugins/plugin-registry/dist/index.d.ts"
       ],
       "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/dist/*"],
+      "@elizaos/plugin-commands": [
+        "../../plugins/plugin-commands/src/index.ts"
+      ],
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],

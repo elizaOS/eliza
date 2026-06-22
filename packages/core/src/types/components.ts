@@ -6,7 +6,12 @@ import type {
 	RoleGate,
 } from "./contexts";
 import type { Memory } from "./memory";
-import type { Content, JsonPrimitive, JsonValue } from "./primitives";
+import type {
+	Content,
+	JsonObject,
+	JsonPrimitive,
+	JsonValue,
+} from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
 
@@ -118,6 +123,11 @@ export interface ActionExample {
 
 export type MessageHandlerAction = "RESPOND" | "IGNORE" | "STOP";
 
+export type MessageHandlerDeterministicToolCall = JsonObject & {
+	name: string;
+	params?: JsonObject;
+};
+
 export interface MessageHandlerPlan {
 	contexts: AgentContext[];
 	reply?: string;
@@ -131,6 +141,7 @@ export interface MessageHandlerPlan {
 	contextSlices?: string[];
 	candidateActions?: string[];
 	parentActionHints?: string[];
+	deterministicToolCall?: MessageHandlerDeterministicToolCall;
 	[key: string]: JsonValue | undefined;
 }
 

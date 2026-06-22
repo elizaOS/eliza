@@ -23,6 +23,11 @@ import {
 } from "../../../shared/src/contracts/wallet.js";
 import { resolveElizaCloudTopology } from "./cloud-topology.js";
 import {
+	getDirectAccountProviderForFirstRunProvider,
+	getFirstRunProviderOption,
+	normalizeFirstRunProviderId,
+} from "./first-run-options.js";
+import {
 	normalizeDeploymentTargetConfig,
 	normalizeLinkedAccountRecord,
 	normalizeLinkedAccountsRecords,
@@ -94,6 +99,20 @@ function validLinkedAccount(
 }
 
 describe("core contract implementation alignment", () => {
+	it("keeps Cerebras available as a direct first-run API-key provider", () => {
+		expect(normalizeFirstRunProviderId("cerebras")).toBe("cerebras");
+		expect(getFirstRunProviderOption("cerebras")).toMatchObject({
+			id: "cerebras",
+			envKey: "CEREBRAS_API_KEY",
+			pluginName: "@elizaos/plugin-openai",
+			authMode: "api-key",
+			group: "local",
+		});
+		expect(getDirectAccountProviderForFirstRunProvider("cerebras")).toBe(
+			"cerebras-api",
+		);
+	});
+
 	it("keeps service capability literals aligned with @elizaos/contracts", () => {
 		expect([...SERVICE_CAPABILITIES]).toEqual([
 			...CONTRACT_SERVICE_CAPABILITIES,

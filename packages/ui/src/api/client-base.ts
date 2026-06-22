@@ -61,6 +61,8 @@ const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
   "www.elizacloud.ai",
   "dev.elizacloud.ai",
 ]);
+const REPLAYABLE_WS_EVENT_TYPES = new Set(["shell:navigate:view"]);
+const WS_EVENT_BACKLOG_LIMIT = 8;
 
 type StreamChatEvent = {
   type?: string;
@@ -446,6 +448,7 @@ export class ElizaClient {
   private requestTransport: AgentRequestTransport = fetchAgentTransport;
   private ws: WebSocket | null = null;
   private wsHandlers = new Map<string, Set<WsEventHandler>>();
+  private wsEventBacklog = new Map<string, Record<string, unknown>[]>();
   private wsSendQueue: string[] = [];
   private readonly wsSendQueueLimit = 32;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -962,6 +965,47 @@ export class ElizaClient {
 
   // --- WebSocket ---
 
+  private rememberReplayableWsEvent(
+    type: string,
+    data: Record<string, unknown>,
+  ): void {
+    if (!REPLAYABLE_WS_EVENT_TYPES.has(type)) return;
+    const backlog = this.wsEventBacklog.get(type) ?? [];
+    backlog.push(data);
+    if (backlog.length > WS_EVENT_BACKLOG_LIMIT) {
+      backlog.splice(0, backlog.length - WS_EVENT_BACKLOG_LIMIT);
+    }
+    this.wsEventBacklog.set(type, backlog);
+  }
+
+  private replayBackloggedWsEvents(
+    type: string,
+    handler: WsEventHandler,
+  ): void {
+    const backlog = this.wsEventBacklog.get(type);
+    if (!backlog?.length) return;
+    const pending = backlog.slice();
+    queueMicrotask(() => {
+      if (!this.wsHandlers.get(type)?.has(handler)) return;
+      for (const data of pending) {
+        try {
+          handler(data);
+        } catch {
+          // Match normal WS dispatch: a handler error must not poison replay.
+        }
+      }
+      const current = this.wsEventBacklog.get(type);
+      if (!current?.length) return;
+      const delivered = new Set(pending);
+      const remaining = current.filter((data) => !delivered.has(data));
+      if (remaining.length > 0) {
+        this.wsEventBacklog.set(type, remaining);
+      } else {
+        this.wsEventBacklog.delete(type);
+      }
+    });
+  }
+
   connectWs(): void {
     if (shouldTreatAsConnectedWithoutWebSocket(this.baseUrl)) {
       this.backoffMs = 500;
@@ -1086,10 +1130,12 @@ export class ElizaClient {
         >;
         const type = data.type as string;
         const handlers = this.wsHandlers.get(type);
-        if (handlers) {
+        if (handlers?.size) {
           for (const handler of handlers) {
             handler(data);
           }
+        } else {
+          this.rememberReplayableWsEvent(type, data);
         }
         // Also fire "all" handlers
         const allHandlers = this.wsHandlers.get("*");
@@ -1290,6 +1336,7 @@ export class ElizaClient {
       this.wsHandlers.set(type, new Set());
     }
     this.wsHandlers.get(type)?.add(handler);
+    this.replayBackloggedWsEvents(type, handler);
     return () => {
       this.wsHandlers.get(type)?.delete(handler);
     };
@@ -1307,6 +1354,7 @@ export class ElizaClient {
     this.ws?.close();
     this.ws = null;
     this.wsSendQueue = [];
+    this.wsEventBacklog.clear();
     // Reset connection state on intentional disconnect
     this.reconnectAttempt = 0;
     this.disconnectedAt = null;

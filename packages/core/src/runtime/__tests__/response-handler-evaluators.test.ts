@@ -6,7 +6,7 @@ import type { State } from "../../types/state";
 import {
 	type ResponseHandlerEvaluator,
 	runResponseHandlerEvaluators,
-} from "../response-handler-evaluators";
+} from "../response-handler-evaluators.ts";
 
 function runtimeWith(evaluators: ResponseHandlerEvaluator[]): IAgentRuntime {
 	return {
@@ -49,6 +49,10 @@ describe("response-handler evaluators", () => {
 						addCandidateActions: ["lifeops_thread_control"],
 						addParentActionHints: ["LIFEOPS_THREAD_CONTROL"],
 						addContextSlices: ["active thread available"],
+						deterministicToolCall: {
+							name: "LIFEOPS_THREAD_CONTROL",
+							params: { action: "resume" },
+						},
 						debug: ["patched"],
 					}),
 				},
@@ -75,8 +79,15 @@ describe("response-handler evaluators", () => {
 		expect(messageHandler.plan.contextSlices).toEqual([
 			"active thread available",
 		]);
+		expect(messageHandler.plan.deterministicToolCall).toEqual({
+			name: "LIFEOPS_THREAD_CONTROL",
+			params: { action: "resume" },
+		});
 		expect(result.activeEvaluators).toEqual(["threads"]);
 		expect(result.appliedPatches[0]?.changed).toContain("contexts:set");
+		expect(result.appliedPatches[0]?.changed).toContain(
+			"deterministicToolCall:set",
+		);
 	});
 
 	it("orders patchers and isolates failures", async () => {
@@ -145,5 +156,35 @@ describe("response-handler evaluators", () => {
 		expect(messageHandler.plan.candidateActions).toBeUndefined();
 		expect(messageHandler.plan.parentActionHints).toBeUndefined();
 		expect(messageHandler.plan.reply).toBe("Done.");
+	});
+
+	it("clears stale action hints before adding replacement hints", async () => {
+		const messageHandler = handler();
+		messageHandler.plan.requiresTool = true;
+		messageHandler.plan.candidateActions = ["CODING_TOOLS"];
+		messageHandler.plan.parentActionHints = ["CODING_TOOLS"];
+
+		await runResponseHandlerEvaluators({
+			runtime: runtimeWith([
+				{
+					name: "view-shortcut",
+					priority: 10,
+					shouldRun: () => true,
+					evaluate: () => ({
+						clearCandidateActions: true,
+						addCandidateActions: ["VIEWS"],
+						clearParentActionHints: true,
+						addParentActionHints: ["VIEWS"],
+					}),
+				},
+			]),
+			message,
+			state,
+			messageHandler,
+			availableContexts: [],
+		});
+
+		expect(messageHandler.plan.candidateActions).toEqual(["VIEWS"]);
+		expect(messageHandler.plan.parentActionHints).toEqual(["VIEWS"]);
 	});
 });

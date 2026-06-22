@@ -523,6 +523,187 @@ df -h / /home
 		expect(result.messageToUser).toContain("Bitcoin is trading");
 	});
 
+	it("recovers unavailable-data prose after a failed web fetch", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () =>
+					"LIVE_BTC_PRICE_HANDLED_OK Live market data is unavailable.",
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: {
+							id: "tool-1",
+							name: "WEB_FETCH",
+							params: {
+								url: "https://api.example.test/price",
+							},
+						},
+						result: {
+							success: false,
+							text: "Fetch failed for https://api.example.test/price",
+							error: "fetch failed",
+						},
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.decision).toBe("FINISH");
+		expect(result.parseError).toBeUndefined();
+		expect(result.messageToUser).toBe(
+			"LIVE_BTC_PRICE_HANDLED_OK Live market data is unavailable.",
+		);
+	});
+
+	it("does not recover failed-tool work-planning notes as a user message", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => "Need one more lookup."),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: {
+							id: "tool-1",
+							name: "WEB_FETCH",
+							params: { url: "https://api.example.test/price" },
+						},
+						result: {
+							success: false,
+							text: "Fetch failed for https://api.example.test/price",
+							error: "fetch failed",
+						},
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser).toBeUndefined();
+		expect(result.thought).toContain("Invalid evaluator output");
+	});
+
+	it("does not recover failed-tool prefix instructions as a user message", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () =>
+					"Live price fetch attempts failed; cannot obtain BTC price, so respond with required prefix and note unavailability.",
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: {
+							id: "tool-1",
+							name: "WEB_FETCH",
+							params: { url: "https://api.example.test/price" },
+						},
+						result: {
+							success: false,
+							text: "Fetch failed for https://api.example.test/price",
+							error: "fetch failed",
+						},
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser).toBeUndefined();
+		expect(result.thought).toContain("Invalid evaluator output");
+	});
+
+	it("does not recover failed-tool response instructions as a user message", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () =>
+					"Fetched live BTC price but request failed; price unavailable, so respond that live market data is not available.",
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: {
+							id: "tool-1",
+							name: "WEB_FETCH",
+							params: { url: "https://api.example.test/price" },
+						},
+						result: {
+							success: false,
+							text: "Fetch failed for https://api.example.test/price",
+							error: "fetch failed",
+						},
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser).toBeUndefined();
+		expect(result.thought).toContain("Invalid evaluator output");
+	});
+
 	it("does not recover evaluator work-planning notes as a user message", async () => {
 		const runtime = {
 			useModel: vi.fn(

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
-import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
+import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators.ts";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import {
@@ -492,7 +492,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		expect(required).not.toContain("shouldRespond");
 		expect(required).not.toContain("facts");
-		expect(params.maxTokens).toBe(384);
+		expect(params.maxTokens).toBe(1024);
 		expect(
 			params.responseSkeleton?.spans?.some((s) => s.key === "shouldRespond"),
 		).toBe(false);
@@ -700,6 +700,37 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(params.responseSkeleton).toBeUndefined();
 	});
 
+	it("raises the fast direct reply token budget for tiny HTML examples", async () => {
+		const runtime = makeRuntime([
+			"LIVE_WEBSITE_CODE_OK\n```html\n<!doctype html><title>Hi</title>\n```",
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "For a Playwright end-to-end smoke test, start your reply with exactly LIVE_WEBSITE_CODE_OK, then provide a tiny complete HTML example for a simple personal website.",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		const firstCall = useModelCalls(runtime)[0];
+		expect(firstCall?.[0]).toBe(ModelType.TEXT_SMALL);
+		const params = firstCall?.[1] as {
+			maxTokens?: number;
+			prompt?: string;
+		};
+		expect(params.prompt).toContain("LIVE_WEBSITE_CODE_OK");
+		expect(params.maxTokens).toBe(384);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toContain(
+				"LIVE_WEBSITE_CODE_OK",
+			);
+		}
+	});
+
 	it("honors exact-word direct replies even when the small model emits thinking", async () => {
 		const runtime = makeRuntime([
 			`routing_thought: Direct private chat fast path.
@@ -748,6 +779,43 @@ android smoke model works`,
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe(
 				"Check speaker output before enabling voice.",
+			);
+		}
+	});
+
+	it("does not let the fast direct reply path bypass registered response-handler evaluators", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Routed through Stage 1.",
+			}),
+		]);
+		const shouldRun = vi.fn(() => true);
+		runtime.responseHandlerEvaluators = [
+			{
+				name: "test.view-shortcut",
+				priority: 10,
+				shouldRun,
+				evaluate: () => undefined,
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "muéstrame mi calendario",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(shouldRun).toHaveBeenCalled();
+		expect(useModelCalls(runtime)[0]?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Routed through Stage 1.",
 			);
 		}
 	});
@@ -817,6 +885,54 @@ android smoke model works`,
 		expect(result.kind).toBe("planned_reply");
 		const firstCall = useModelCalls(runtime)[0];
 		expect(firstCall?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+	});
+
+	it("uses the fast direct reply path for explicit tool-free market prompts", async () => {
+		const runtime = makeRuntime(["LIVE_BTC_CHECK_OK BTC is Bitcoin."]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "For a Playwright end-to-end smoke test, start your reply with exactly LIVE_BTC_CHECK_OK, then answer this tool-free user request in one sentence: in plain terms, what is BTC? Do not look up live prices.",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		const firstCall = useModelCalls(runtime)[0];
+		expect(firstCall?.[0]).toBe(ModelType.TEXT_SMALL);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"LIVE_BTC_CHECK_OK BTC is Bitcoin.",
+			);
+		}
+	});
+
+	it("keeps explicit no-tool current-price prompts direct instead of routing to search", async () => {
+		const runtime = makeRuntime([
+			"LIVE_BTC_PRICE_HANDLED_OK Live market data is unavailable.",
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "For a Playwright end-to-end smoke test, start your reply with exactly LIVE_BTC_PRICE_HANDLED_OK, then answer this tool-free user request in one sentence: what is the price of BTC? Do not call tools or look up live prices; say live market data is unavailable.",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		const firstCall = useModelCalls(runtime)[0];
+		expect(firstCall?.[0]).toBe(ModelType.TEXT_SMALL);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"LIVE_BTC_PRICE_HANDLED_OK Live market data is unavailable.",
+			);
+		}
 	});
 
 	it("keeps edit-style direct messages on the structured routing path", async () => {
@@ -3038,6 +3154,501 @@ android smoke model works`,
 		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
+	it("executes a direct VIEWS command without a planner call when Stage 1 transiently fails", async () => {
+		const runtime = makeRuntime([]);
+		const handler = vi.fn(async () => ({
+			success: true,
+			text: "Navigated to Inbox (gui).",
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "Open app views.",
+				similes: ["GO_EMAIL", "OPEN_INBOX", "SHOW_INBOX"],
+				tags: ["view-capability", "email", "inbox"],
+				contexts: ["general"],
+				parameters: [
+					{
+						name: "action",
+						description: "View operation.",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+				allowAdditionalParameters: true,
+				validate: vi.fn(async () => true),
+				handler,
+			},
+		] as IAgentRuntime["actions"];
+		runtime.useModel = vi
+			.fn()
+			.mockRejectedValueOnce(
+				new Error("Failed after 3 attempts. Last error: Too Many Requests"),
+			);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "go to my email",
+				channelType: ChannelType.API,
+				source: "client_chat",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(useModelCalls(runtime)[0]?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		expect(
+			useModelCalls(runtime).map(([modelType]) => modelType),
+		).not.toContain(ModelType.ACTION_PLANNER);
+		expect(result.messageHandler.plan.candidateActions).toEqual(["VIEWS"]);
+		expect(handler).toHaveBeenCalledTimes(1);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Navigated to Inbox (gui).",
+			);
+		}
+	});
+
+		it("executes a direct VIEWS command without a planner call when Stage 1 hard-fails", async () => {
+		const runtime = makeRuntime([]);
+		const handler = vi.fn(async () => ({
+			success: true,
+			text: "Navigated to Settings (gui).",
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "Open app views.",
+				similes: ["OPEN_SETTINGS", "SHOW_SETTINGS"],
+				tags: ["view-capability", "settings"],
+				contexts: ["general"],
+				parameters: [
+					{
+						name: "action",
+						description: "View operation.",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+				allowAdditionalParameters: true,
+				validate: vi.fn(async () => true),
+				handler,
+			},
+		] as IAgentRuntime["actions"];
+		runtime.useModel = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("provider returned invalid JSON"));
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "open settings",
+				channelType: ChannelType.API,
+				source: "client_chat",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(
+			useModelCalls(runtime).map(([modelType]) => modelType),
+		).not.toContain(ModelType.ACTION_PLANNER);
+		expect(result.messageHandler.plan.candidateActions).toEqual(["VIEWS"]);
+		expect(handler).toHaveBeenCalledTimes(1);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Navigated to Settings (gui).",
+			);
+			}
+		});
+
+		it("preserves VIEWS manager/list intent in deterministic fallback params", async () => {
+			const runtime = makeRuntime([]);
+			const handler = vi.fn(async (...args: unknown[]) => {
+				expect(args[3]).toMatchObject({
+					parameters: { action: "manager", intent: "show all views" },
+				});
+				return {
+					success: true,
+					text: "Opened the view manager.",
+				};
+			});
+			runtime.actions = [
+				{
+					name: "VIEWS",
+					description: "Open app views.",
+					similes: ["OPEN_VIEW", "SHOW_VIEW", "VIEW_MANAGER", "LIST_VIEWS"],
+					tags: ["view-capability"],
+					contexts: ["general"],
+					parameters: [
+						{
+							name: "action",
+							description: "View operation.",
+							required: false,
+							schema: { type: "string" },
+						},
+					],
+					allowAdditionalParameters: true,
+					validate: vi.fn(async () => true),
+					handler,
+				},
+			] as IAgentRuntime["actions"];
+			runtime.useModel = vi.fn().mockRejectedValueOnce(new Error("Bad Request"));
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "show all views",
+					channelType: ChannelType.API,
+					source: "client_chat",
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("planned_reply");
+			expect(
+				useModelCalls(runtime).map(([modelType]) => modelType),
+			).not.toContain(ModelType.ACTION_PLANNER);
+			expect(handler).toHaveBeenCalledTimes(1);
+			if (result.kind === "planned_reply") {
+				expect(result.result.responseContent?.text).toBe(
+					"Opened the view manager.",
+				);
+			}
+		});
+
+		it("supplies show action for passive app-feature view routing", async () => {
+			const runtime = makeRuntime([]);
+			const handler = vi.fn(async (...args: unknown[]) => {
+				expect(args[3]).toMatchObject({
+					parameters: {
+						action: "show",
+						intent: "I want to add a new feature to my app",
+					},
+				});
+				return {
+					success: true,
+					text: "Navigated to App Builder (gui).",
+				};
+			});
+			runtime.actions = [
+				{
+					name: "VIEWS",
+					description: "Open app views.",
+					similes: ["ADD_APP_FEATURE", "OPEN_TASK_COORDINATOR"],
+					tags: ["view-capability", "app", "task-coordinator"],
+					contexts: ["general"],
+					parameters: [
+						{
+							name: "action",
+							description: "View operation.",
+							required: false,
+							schema: { type: "string" },
+						},
+					],
+					allowAdditionalParameters: true,
+					validate: vi.fn(async () => true),
+					handler,
+				},
+			] as IAgentRuntime["actions"];
+			runtime.useModel = vi.fn().mockRejectedValueOnce(new Error("Bad Request"));
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "I want to add a new feature to my app",
+					channelType: ChannelType.API,
+					source: "client_chat",
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("planned_reply");
+			expect(
+				useModelCalls(runtime).map(([modelType]) => modelType),
+			).not.toContain(ModelType.ACTION_PLANNER);
+			expect(handler).toHaveBeenCalledTimes(1);
+			if (result.kind === "planned_reply") {
+				expect(result.result.responseContent?.text).toBe(
+					"Navigated to App Builder (gui).",
+				);
+			}
+		});
+
+		it("uses a registered deterministic VIEWS evaluator when Stage 1 hard-fails for a localized UI chat command", async () => {
+		const runtime = makeRuntime([]);
+		const handler = vi.fn(async (...args: unknown[]) => {
+			expect(args[3]).toMatchObject({
+				parameters: { action: "show" },
+			});
+			return {
+				success: true,
+				text: "Navigated to Calendar (gui).",
+			};
+		});
+		const shouldRun = vi.fn(() => true);
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "Open app views.",
+				similes: ["OPEN_VIEW", "SHOW_VIEW"],
+				tags: ["view-capability", "calendar"],
+				contexts: ["general"],
+				parameters: [
+					{
+						name: "action",
+						description: "View operation.",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+				allowAdditionalParameters: true,
+				validate: vi.fn(async () => true),
+				handler,
+			},
+		] as IAgentRuntime["actions"];
+		runtime.responseHandlerEvaluators = [
+			{
+				name: "app-control.view-command-shortcut",
+				priority: 10,
+				shouldRun,
+				evaluate: () => ({
+					requiresTool: true,
+					clearCandidateActions: true,
+					addCandidateActions: ["VIEWS"],
+					clearParentActionHints: true,
+					addParentActionHints: ["VIEWS"],
+					deterministicToolCall: {
+						name: "VIEWS",
+						params: { action: "show" },
+					},
+				}),
+			} satisfies ResponseHandlerEvaluator,
+		];
+		runtime.useModel = vi.fn().mockRejectedValueOnce(new Error("Bad Request"));
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "muéstrame mi calendario",
+				channelType: ChannelType.DM,
+				source: "client_chat",
+				metadata: {
+					uiView: "chat",
+					uiTab: "chat",
+					uiViewPath: "/chat",
+					uiViewCapabilities: ["general-chat"],
+					__responseContext: {
+						primaryContext: "general",
+						secondaryContexts: ["general"],
+					},
+				},
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		expect(useModelCalls(runtime)[0]?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		expect(
+			useModelCalls(runtime).map(([modelType]) => modelType),
+		).not.toContain(ModelType.ACTION_PLANNER);
+		expect(shouldRun).toHaveBeenCalled();
+		expect(result.messageHandler.plan.candidateActions).toEqual(["VIEWS"]);
+		expect(result.messageHandler.plan.deterministicToolCall).toEqual({
+			name: "VIEWS",
+			params: { action: "show" },
+		});
+		expect(handler).toHaveBeenCalledTimes(1);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Navigated to Calendar (gui).",
+			);
+		}
+	});
+
+	it("executes a direct VIEWS command without a planner call after valid Stage 1 routing", async () => {
+		const stage1 = stage1Response({
+			contexts: ["general"],
+			candidateActionNames: ["VIEWS"],
+			replyText: "Opening it now.",
+			extra: { requiresTool: true },
+		});
+		const runtime = makeRuntime([]);
+		const handler = vi.fn(async () => ({
+			success: true,
+			text: "Navigated to Inbox (gui).",
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "Open app views.",
+				similes: ["GO_EMAIL", "OPEN_INBOX", "SHOW_INBOX"],
+				tags: ["view-capability", "email", "inbox"],
+				contexts: ["general"],
+				parameters: [
+					{
+						name: "action",
+						description: "View operation.",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+				allowAdditionalParameters: true,
+				validate: vi.fn(async () => true),
+				handler,
+			},
+		] as IAgentRuntime["actions"];
+		runtime.useModel = vi.fn().mockResolvedValueOnce(stage1);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "go to my email",
+				channelType: ChannelType.API,
+				source: "client_chat",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(useModelCalls(runtime)[0]?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		expect(handler).toHaveBeenCalledTimes(1);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Navigated to Inbox (gui).",
+			);
+		}
+	});
+
+	it("prefers a complete direct answer over an ungrounded VIEWS candidate", async () => {
+		const stage1 = stage1Response({
+			contexts: ["general"],
+			candidateActionNames: ["VIEWS"],
+			replyText:
+				"LIVE_TIME_CHECK_OK. It's 3:19:44 AM UTC on Monday, June 22, 2026.",
+			extra: { requiresTool: true },
+		});
+		const runtime = makeRuntime([stage1]);
+		const handler = vi.fn(async () => ({
+			success: false,
+			text: 'Tell me which view to open. Try: "open wallet" or "show settings".',
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "Open app views.",
+				similes: ["OPEN_VIEW", "SHOW_VIEW"],
+				tags: ["view-capability", "calendar"],
+				contexts: ["general"],
+				parameters: [
+					{
+						name: "action",
+						description: "View operation.",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+				allowAdditionalParameters: true,
+				validate: vi.fn(async () => true),
+				handler,
+			},
+		] as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "For a Playwright end-to-end smoke test, start your reply with exactly LIVE_TIME_CHECK_OK, then answer this user request in one sentence: what time is it?",
+				channelType: ChannelType.GROUP,
+				source: "client_chat",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(handler).not.toHaveBeenCalled();
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toContain(
+				"LIVE_TIME_CHECK_OK",
+			);
+			expect(result.messageHandler.plan).toMatchObject({
+				contexts: ["simple"],
+				requiresTool: false,
+				simple: true,
+			});
+		}
+	});
+
+	it("uses the deterministic VIEWS fast path for show/open intents", async () => {
+		const stage1 = stage1Response({
+			contexts: ["general"],
+			candidateActionNames: ["VIEWS"],
+			replyText: "Opening that now.",
+			extra: { requiresTool: true },
+		});
+		const runtime = makeRuntime([]);
+		const handler = vi.fn(async () => ({
+			success: true,
+			text: "Opened notes.",
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "Use app views.",
+				similes: ["OPEN_STICKY_NOTES"],
+				tags: ["view-capability", "sticky-notes"],
+				contexts: ["general"],
+				parameters: [
+					{
+						name: "action",
+						description: "View operation.",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+				allowAdditionalParameters: true,
+				validate: vi.fn(async () => true),
+				handler,
+			},
+		] as IAgentRuntime["actions"];
+		runtime.useModel = vi
+			.fn()
+			.mockResolvedValueOnce(stage1)
+			.mockRejectedValueOnce(
+				new Error("Failed after 3 attempts. Last error: Too Many Requests"),
+			);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "open sticky notes",
+				channelType: ChannelType.API,
+				source: "client_chat",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(useModelCalls(runtime)[0]?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		expect(
+			useModelCalls(runtime).map(([modelType]) => modelType),
+		).not.toContain(ModelType.ACTION_PLANNER);
+		expect(handler).toHaveBeenCalledTimes(1);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe("Opened notes.");
+		}
+	});
+
 	it("lets a registered response-handler evaluator force planner routing without another Stage 1 call", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
@@ -3084,6 +3695,10 @@ android smoke model works`,
 					addContexts: ["general"],
 					addCandidateActions: ["CHECK_RUNTIME"],
 					addParentActionHints: ["CHECK_RUNTIME"],
+					deterministicToolCall: {
+						name: "CHECK_RUNTIME",
+						params: {},
+					},
 				}),
 			} satisfies ResponseHandlerEvaluator,
 		];

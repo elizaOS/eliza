@@ -97,6 +97,42 @@ function progressStatus(received, total, startedAt) {
   return parts.join(" ");
 }
 
+function waitForWriterDrain(writer) {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      writer.off("drain", onDrain);
+      writer.off("error", onError);
+    };
+    const onDrain = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = (error) => {
+      cleanup();
+      reject(error);
+    };
+
+    writer.once("drain", onDrain);
+    writer.once("error", onError);
+  });
+}
+
+function finishWriter(writer) {
+  return new Promise((resolve, reject) => {
+    const onError = (error) => {
+      writer.off("error", onError);
+      reject(error);
+    };
+
+    writer.once("error", onError);
+    writer.end((err) => {
+      writer.off("error", onError);
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
 async function streamToFileWithProgress(response, dest, expectedBytes) {
   const headerBytes = Number(response.headers.get("content-length")) || 0;
   const totalBytes = headerBytes || expectedBytes || 0;
@@ -122,10 +158,7 @@ async function streamToFileWithProgress(response, dest, expectedBytes) {
       if (done) break;
       received += value.byteLength;
       if (!writer.write(value)) {
-        await new Promise((resolve, reject) => {
-          writer.once("drain", resolve);
-          writer.once("error", reject);
-        });
+        await waitForWriterDrain(writer);
       }
       const now = Date.now();
       if (now - lastLogAt >= PROGRESS_INTERVAL_MS) {
@@ -137,10 +170,7 @@ async function streamToFileWithProgress(response, dest, expectedBytes) {
     reader.releaseLock();
   }
 
-  await new Promise((resolve, reject) => {
-    writer.end((err) => (err ? reject(err) : resolve()));
-    writer.once("error", reject);
-  });
+  await finishWriter(writer);
   log(`download complete: ${progressStatus(received, totalBytes, startedAt)}`);
 }
 

@@ -3,6 +3,7 @@ import { parseActionParams } from "../actions";
 import type { Action, ActionResult, IAgentRuntime } from "../index";
 import {
 	actionResultsSuppressPostActionContinuation,
+	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	extractPlannerActionNames,
 	findWebLookupActionName,
 	inferDirectCurrentRequestCandidateActions,
@@ -389,6 +390,32 @@ describe("live routing regressions", () => {
 			] as ActionResult[]),
 		).toBe(false);
 	});
+
+	it("does not promote explicit tool-free turns through the simple action evaluator", () => {
+		const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(entry) => entry.name === "core.simple_registered_action_request",
+		);
+		expect(evaluator).toBeDefined();
+
+		const prompt =
+			"For a Playwright end-to-end smoke test, start your reply with exactly LIVE_BTC_PRICE_HANDLED_OK, then answer this tool-free user request in one sentence: what is the price of BTC? Do not call tools or look up live prices; say live market data is unavailable.";
+		expect(
+			evaluator?.shouldRun?.({
+				message: { content: { text: prompt } },
+				messageHandler: {
+					processMessage: "RESPOND",
+					plan: {
+						contexts: ["simple"],
+						requiresTool: false,
+						reply: "LIVE_BTC_PRICE_HANDLED_OK live market data is unavailable.",
+					},
+				},
+				runtime: { actions: [{ name: "MESSAGE_SEARCH" }] },
+				state: {},
+				availableContexts: [],
+			} as never),
+		).toBe(false);
+	});
 });
 
 // Regression fence for PR #8446: the `core.simple_registered_action_request`
@@ -406,6 +433,34 @@ describe("VIEWS request inference (PR #8446)", () => {
 		name: "VIEWS",
 		similes: [],
 		tags: [],
+	};
+	const appControlViewsAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "VIEWS",
+		similes: [
+			"CHECK_MESSAGES",
+			"OPEN_SETTINGS",
+			"REVISA_CORREO",
+			"ADD_APP_FEATURE",
+		],
+		tags: [
+			"view-capability",
+			"calendar",
+			"email",
+			"inbox",
+			"messages",
+			"settings",
+			"app-builder",
+			"wallet",
+			"portfolio",
+			"screen-time",
+			"todos",
+			"documents",
+		],
+	};
+	const codingAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "START_CODING_TASK",
+		similes: ["SPAWN_CODING_AGENT"],
+		tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
 	};
 
 	it("is inert when no VIEWS (or VIEW_CAPABILITY) action is registered", () => {
@@ -426,11 +481,37 @@ describe("VIEWS request inference (PR #8446)", () => {
 		).toContain("VIEWS");
 	});
 
-	it("does not promote a non-view request even with a VIEWS action registered", () => {
+		it("does not promote a non-view request even with a VIEWS action registered", () => {
+			expect(
+				inferDirectCurrentRequestCandidateActions(
+					[...nonViewActions, viewsAction],
+					"what is the weather today",
+				),
+			).not.toContain("VIEWS");
+		});
+
+		it.each([
+			"what is the current crypto price?",
+			"what is the price of BTC?",
+			"what is my current token balance worth?",
+		])("does not route live market-data questions to VIEWS: %j", (messageText) => {
+			expect(
+				inferDirectCurrentRequestCandidateActions(
+					[...nonViewActions, appControlViewsAction],
+					messageText,
+				),
+			).not.toContain("VIEWS");
+		});
+
+		it.each([
+		"For a Playwright end-to-end smoke test, start your reply with exactly APP_LIVE_TIME_OK, then answer this user request in one sentence: what time is it?",
+		"For a Playwright end-to-end smoke test, start your reply with exactly APP_LIVE_BTC_OK, then answer this user request in one sentence: what is the price of BTC?",
+		"For a Playwright end-to-end smoke test, start your reply with exactly APP_LIVE_WEBSITE_PLAN_OK, then give a concise two-step plan to code a simple website.",
+	])("does not treat synthetic marker identifiers as view intent %j", (messageText) => {
 		expect(
 			inferDirectCurrentRequestCandidateActions(
-				[...nonViewActions, viewsAction],
-				"what is the weather today",
+				[...nonViewActions, appControlViewsAction],
+				messageText,
 			),
 		).not.toContain("VIEWS");
 	});
@@ -447,5 +528,33 @@ describe("VIEWS request inference (PR #8446)", () => {
 				"open the dashboard window",
 			),
 		).toContain("OPEN_DASHBOARD");
+	});
+
+	it.each([
+		"open settings",
+		"check my messages",
+		"what's on my calendar this week",
+		"I want to add a new feature to my app",
+		"show my wallet",
+		"my portfolio",
+		"show my screen time",
+		"show my todos",
+		"pull up my documents",
+	])("promotes app-control view request %j", (messageText) => {
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[...nonViewActions, appControlViewsAction],
+				messageText,
+			),
+		).toContain("VIEWS");
+	});
+
+	it("routes implementation work to coding before generic app/view metadata", () => {
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[...nonViewActions, appControlViewsAction, codingAction],
+				"fix my app login bug",
+			),
+		).toEqual(["START_CODING_TASK"]);
 	});
 });

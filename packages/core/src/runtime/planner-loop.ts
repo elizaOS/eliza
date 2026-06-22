@@ -286,7 +286,7 @@ export async function runPlannerLoop(
 					message: plannerOutput.messageToUser,
 				});
 				if (trajectory.steps.some((step) => step.toolCall)) {
-					const evaluator = await evaluateTrajectory(
+					const evaluator = await evaluateTrajectoryWithToolResultFallback(
 						params,
 						trajectory,
 						iteration,
@@ -632,7 +632,11 @@ export async function runPlannerLoop(
 			};
 		}
 
-		const evaluator = await evaluateTrajectory(params, trajectory, iteration);
+		const evaluator = await evaluateTrajectoryWithToolResultFallback(
+			params,
+			trajectory,
+			iteration,
+		);
 		trajectory.evaluatorOutputs.push(evaluator);
 		appendEvaluatorContextEvent(trajectory, evaluator, iteration);
 
@@ -1634,6 +1638,69 @@ async function evaluateTrajectory(
 		parentStageId: params.parentStageId,
 		iteration,
 	});
+}
+
+async function evaluateTrajectoryWithToolResultFallback(
+	params: PlannerLoopParams,
+	trajectory: PlannerTrajectory,
+	iteration: number,
+): Promise<EvaluatorOutput> {
+	const startedAt = Date.now();
+	try {
+		return await evaluateTrajectory(params, trajectory, iteration);
+	} catch (error) {
+		const fallback = evaluatorFailureToolResultFinish(trajectory, error);
+		if (!fallback) {
+			throw error;
+		}
+		const errorMessage = formatPlannerLoopError(error);
+		params.runtime.logger?.warn?.(
+			{
+				err: errorMessage,
+				iteration,
+				messageToUser: fallback.messageToUser,
+			},
+			"Evaluator failed after a successful user-facing tool result; finishing from the tool result",
+		);
+		await recordGatedEvaluationStage({
+			recorder: params.recorder,
+			trajectoryId: params.trajectoryId,
+			parentStageId: params.parentStageId,
+			iteration,
+			startedAt,
+			endedAt: Date.now(),
+			output: fallback,
+			reason: "evaluator_failure_tool_result",
+			logger: params.runtime.logger,
+		});
+		return fallback;
+	}
+}
+
+function evaluatorFailureToolResultFinish(
+	trajectory: PlannerTrajectory,
+	error: unknown,
+): EvaluatorOutput | null {
+	if (trajectory.plannedQueue.length > 0) return null;
+	const latestStep = trajectory.steps[trajectory.steps.length - 1];
+	if (latestStep?.result?.success !== true) return null;
+	const message = preferredFinalMessageFromToolOrModel(trajectory);
+	if (!message || isUnsafeUserVisibleText(message)) return null;
+	return {
+		success: true,
+		decision: "FINISH",
+		thought:
+			"Evaluator failed after a successful tool result; using the tool's user-facing result.",
+		messageToUser: message,
+		raw: {
+			recoveredFromEvaluatorError: true,
+			error: formatPlannerLoopError(error),
+		},
+	};
+}
+
+function formatPlannerLoopError(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 function appendEvaluationEvent(args: {

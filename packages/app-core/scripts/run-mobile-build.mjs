@@ -69,6 +69,7 @@ import {
   resolvePlatformTemplateRoot as resolvePlatformTemplateRootImpl,
   syncPlatformTemplateFiles as syncPlatformTemplateFilesImpl,
 } from "./lib/capacitor-platform-templates.mjs";
+import { ensurePlistUrlScheme } from "./lib/ios-plist-url-scheme.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
   RUNTIME_PROVENANCE_FILENAME,
@@ -488,32 +489,6 @@ function insertBeforeRootPlistDictClose(content, insertion) {
   const fallbackIndex = content.lastIndexOf("</dict>");
   if (fallbackIndex < 0) return content;
   return `${content.slice(0, fallbackIndex)}${insertion}${content.slice(fallbackIndex + "</dict>".length)}`;
-}
-
-function ensurePlistUrlScheme(content, urlScheme) {
-  const escapedScheme = escapeXmlText(urlScheme);
-  const urlTypesRe =
-    /(<key>CFBundleURLTypes<\/key>\s*<array>)([\s\S]*?)(\s*<\/array>)/;
-  const entry = `
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>${escapedScheme}</string>
-			</array>
-		</dict>`;
-  const match = content.match(urlTypesRe);
-  if (!match) {
-    return insertBeforeRootPlistDictClose(
-      content,
-      `\t<key>CFBundleURLTypes</key>\n\t<array>${entry}\n\t</array>\n</dict>`,
-    );
-  }
-  if (match[2].includes(`<string>${escapedScheme}</string>`)) {
-    return content;
-  }
-  return content.replace(urlTypesRe, `$1${match[2]}${entry}$3`);
 }
 
 /**

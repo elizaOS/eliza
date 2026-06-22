@@ -111,7 +111,7 @@ import {
 import {
 	type ResponseHandlerEvaluator,
 	runResponseHandlerEvaluators,
-} from "../runtime/response-handler-evaluators";
+} from "../runtime/response-handler-evaluators.ts";
 import type {
 	ResponseHandlerFieldContext,
 	ResponseHandlerFieldEvaluator,
@@ -128,8 +128,10 @@ import {
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import {
+	captureToolStageIO,
 	createJsonFileTrajectoryRecorder,
 	isTrajectoryRecordingEnabled,
+	type RecordedStage,
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
 import { TurnAbortedError } from "../runtime/turn-controller";
@@ -261,6 +263,7 @@ const PLANNER_CONTROL_ACTIONS = new Set(
 // not a target — short replies finish exactly as fast.
 const DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 1024;
 const DIRECT_REPLY_FAST_PATH_MAX_TOKENS = 96;
+const DIRECT_REPLY_CODE_EXAMPLE_MAX_TOKENS = 384;
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
 const STAGE1_TRUNCATION_REPLY =
 	"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";
@@ -2890,6 +2893,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				if (nonSimpleContexts.length > 0) return false;
 				const text = getUserMessageText(message);
 				if (!text?.trim()) return false;
+				if (currentMessageExplicitlyForbidsToolUse(text)) return false;
 				return (
 					inferDirectCurrentRequestCandidateActions(runtime.actions ?? [], text)
 						.length > 0
@@ -3048,11 +3052,16 @@ async function generateDirectReplyModel(args: {
 	text: string;
 	raw: string | GenerateTextResult;
 	prompt: string;
+	maxTokens: number;
 }> {
 	const prompt = directReplyPromptForMessage(args);
+	const latestText = getUserMessageText(args.message) ?? "";
+	const maxTokens = looksLikeInlineCodeSnippetRequest(latestText)
+		? DIRECT_REPLY_CODE_EXAMPLE_MAX_TOKENS
+		: DIRECT_REPLY_FAST_PATH_MAX_TOKENS;
 	const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
 		prompt,
-		maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
+		maxTokens,
 		signal: args.signal,
 		providerOptions: { eliza: { thinking: "off" } },
 	})) as string | GenerateTextResult;
@@ -3061,6 +3070,7 @@ async function generateDirectReplyModel(args: {
 		text: extractExactWordsReply(getUserMessageText(args.message)) ?? modelText,
 		raw,
 		prompt,
+		maxTokens,
 	};
 }
 
@@ -3688,8 +3698,15 @@ export function messageHandlerFromFieldResult(
 		shouldPreferCompleteDirectReply({
 			replyText: replyTextRaw,
 			candidateActions: runnableCandidateActions,
+			directCandidateActions: directCurrentCandidateActions,
 			contexts: routedContexts,
 		});
+	const preferExplicitToolFreeCompleteDirectReply =
+		!preemptDirect &&
+		requestedPlanning &&
+		!stage1HonestyViolation &&
+		currentMessageExplicitlyForbidsToolUse(currentMessageText) &&
+		looksLikeCompleteDirectReply(replyTextRaw);
 	const preferInlineCodeSnippetDirectReply =
 		!preemptDirect &&
 		requestedPlanning &&
@@ -3702,9 +3719,12 @@ export function messageHandlerFromFieldResult(
 		!preemptDirect &&
 		requestedPlanningForRouting &&
 		!preferCompleteDirectReply &&
+		!preferExplicitToolFreeCompleteDirectReply &&
 		!preferInlineCodeSnippetDirectReply;
 	const finalContexts =
-		preferCompleteDirectReply || preferInlineCodeSnippetDirectReply
+		preferCompleteDirectReply ||
+		preferExplicitToolFreeCompleteDirectReply ||
+		preferInlineCodeSnippetDirectReply
 			? [SIMPLE_CONTEXT_ID]
 			: shouldPlan && initialPlanningContexts.length === 0
 				? Array.from(
@@ -3731,6 +3751,7 @@ export function messageHandlerFromFieldResult(
 	};
 	if (
 		!preferCompleteDirectReply &&
+		!preferExplicitToolFreeCompleteDirectReply &&
 		!preferInlineCodeSnippetDirectReply &&
 		planCandidateActions.length > 0
 	) {
@@ -3930,6 +3951,23 @@ function looksLikeCompleteDirectReply(replyText: string): boolean {
 	);
 }
 
+function currentMessageExplicitlyForbidsToolUse(text: string): boolean {
+	const normalized = text.trim().toLowerCase();
+	if (!normalized) return false;
+	return (
+		/\btool[-\s]?free\b/.test(normalized) ||
+		/\b(?:do not|don't|dont|never)\s+(?:call|use|run|invoke)\s+tools?\b/.test(
+			normalized,
+		) ||
+		/\bwithout\s+(?:calling|using|running|invoking)\s+tools?\b/.test(
+			normalized,
+		) ||
+		/\b(?:do not|don't|dont|never)\s+(?:look\s+up|search|browse|fetch)\b/.test(
+			normalized,
+		)
+	);
+}
+
 function _isSimpleMessageHandlerShortcut(
 	messageHandler: MessageHandlerResult,
 ): boolean {
@@ -3946,21 +3984,22 @@ function _isSimpleMessageHandlerShortcut(
 }
 
 // Prefer a complete, substantive direct reply over force-planned action when
-// the model already answered the turn. Purely STRUCTURAL — it never scans the
-// user's text to classify intent:
+// the model already answered the turn.
 //   1. the reply reads as a finished answer, not an ack/progress/refusal/empty
 //      fragment (looksLikeCompleteDirectReply), and
 //   2. the only signals pushing toward planning are weak/injectable ones — a
 //      simple/general context plus search/shell/spawn-class candidate actions,
-//      the exact shapes the Stage-1 inference backstop force-injects
+//      or a view candidate that the current-message deterministic resolver did
+//      not ground in the user's text
 //      (hasOnlyWeakDirectReplyPlanningSignals).
 // When the model defers to a tool it acks ("On it.") or returns an empty/refusal
-// reply, which fails (1) — so genuine web/shell/build turns still plan, while a
-// finished answer (e.g. a one-sentence policy explanation) wins directly even if
-// a coding-keyword heuristic would have force-injected a spawn over it.
+// reply, which fails (1) — so genuine web/shell/build/view turns still plan,
+// while a finished answer wins directly when Stage 1 attached an ungrounded
+// weak action hint.
 function shouldPreferCompleteDirectReply(args: {
 	replyText: string;
 	candidateActions: readonly string[];
+	directCandidateActions: readonly string[];
 	contexts: readonly string[];
 }): boolean {
 	if (!looksLikeCompleteDirectReply(args.replyText)) return false;
@@ -4063,8 +4102,12 @@ export function shouldPreferDirectCurrentCandidateActions(args: {
 
 function hasOnlyWeakDirectReplyPlanningSignals(args: {
 	candidateActions: readonly string[];
+	directCandidateActions?: readonly string[];
 	contexts: readonly string[];
 }): boolean {
+	const groundedDirectCandidates = new Set(
+		(args.directCandidateActions ?? []).map(normalizeActionIdentifier),
+	);
 	for (const context of args.contexts) {
 		const normalized = context.trim().toLowerCase();
 		if (
@@ -4078,6 +4121,9 @@ function hasOnlyWeakDirectReplyPlanningSignals(args: {
 	for (const actionName of args.candidateActions) {
 		const normalized = normalizeActionIdentifier(actionName);
 		if (!normalized) continue;
+		if (normalized === "VIEWS" && !groundedDirectCandidates.has(normalized)) {
+			continue;
+		}
 		if (!WEAK_DIRECT_REPLY_OVERRIDE_ACTIONS.has(normalized)) return false;
 	}
 	return true;
@@ -4159,9 +4205,10 @@ export function inferDirectCurrentRequestCandidateActions(
 		]);
 		if (shellAction) return [shellAction];
 	}
-	// Coding-work precedes web-search: a coding request mentioning a live/market
-	// term ("build a crypto price tracker") must route to coding delegation, not a
-	// web lookup. Mirrors shouldPreferDirectCurrentCandidateActions' coding guard.
+	// Coding work wins before view routing. Phrases like "fix my app" contain
+	// app-surface words, but the user is asking for implementation work, not a
+	// navigation action. Explicit navigation such as "open app builder" does not
+	// match this classifier and still reaches the VIEWS checks below.
 	if (looksLikeCodingWorkRequest(messageText)) {
 		const codingAction = findCodingDelegationActionName(actions);
 		if (codingAction) return [codingAction];
@@ -4187,6 +4234,18 @@ function shouldUseDirectReplyFastPath(args: {
 	const text = (getUserMessageText(args.message) ?? "").trim();
 	if (!text || text.length > 280) return false;
 	if (looksLikeHighStakesPersonalCrisisRequest(text)) return false;
+	if (currentMessageExplicitlyForbidsToolUse(text)) {
+		if (looksLikeContextDependentMutationRequestIgnoringDoOnly(text))
+			return false;
+		if (
+			looksLikeCodingWorkRequest(text) &&
+			!looksLikeInlineCodeSnippetRequest(text)
+		) {
+			return false;
+		}
+		if (/https?:\/\//iu.test(text)) return false;
+		return true;
+	}
 	if (
 		inferDirectCurrentRequestCandidateActions(args.actions, text).length > 0
 	) {
@@ -4204,6 +4263,64 @@ function shouldUseDirectReplyFastPath(args: {
 	return true;
 }
 
+async function registeredResponseHandlerEvaluatorWouldRun(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	availableContexts: readonly ContextDefinition[];
+}): Promise<boolean> {
+	const evaluators = Array.isArray(args.runtime.responseHandlerEvaluators)
+		? [...args.runtime.responseHandlerEvaluators]
+		: [];
+	if (evaluators.length === 0) return false;
+
+	const messageHandler: MessageHandlerResult = {
+		processMessage: "RESPOND",
+		thought: "Direct private chat fast-path candidate.",
+		plan: {
+			contexts: [SIMPLE_CONTEXT_ID],
+			reply: "",
+			simple: true,
+			requiresTool: false,
+		},
+	};
+	const context = {
+		runtime: args.runtime,
+		message: args.message,
+		state: args.state,
+		messageHandler,
+		availableContexts: args.availableContexts,
+	};
+	for (const evaluator of evaluators.sort(
+		(a, b) =>
+			(a.priority ?? 100) - (b.priority ?? 100) || a.name.localeCompare(b.name),
+	)) {
+		try {
+			if (await evaluator.shouldRun(context)) {
+				args.runtime.logger?.debug?.(
+					{
+						src: "service:message",
+						evaluator: evaluator.name,
+					},
+					"Direct reply fast path skipped for registered response-handler evaluator",
+				);
+				return true;
+			}
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			args.runtime.logger?.warn?.(
+				{
+					src: "service:message",
+					evaluator: evaluator.name,
+					err: message,
+				},
+				"Response-handler evaluator gate failed before direct reply fast path",
+			);
+		}
+	}
+	return false;
+}
+
 function looksLikeContextDependentMutationRequest(text: string): boolean {
 	const tokens = new Set(
 		tokenizeActionMetadata(text).map(normalizeSingularToken),
@@ -4212,6 +4329,41 @@ function looksLikeContextDependentMutationRequest(text: string): boolean {
 		"ADD",
 		"CREATE",
 		"DO",
+		"MAKE",
+		"PUT",
+		"SET",
+		"WRITE",
+		"EDIT",
+		"UPDATE",
+		"DELETE",
+		"REMOVE",
+	];
+	const contextReferenceTokens = [
+		"ANOTHER",
+		"IT",
+		"ONE",
+		"SAME",
+		"THAT",
+		"THEM",
+		"THESE",
+		"THIS",
+		"THOSE",
+	];
+	return (
+		mutationTokens.some((token) => tokens.has(token)) &&
+		contextReferenceTokens.some((token) => tokens.has(token))
+	);
+}
+
+function looksLikeContextDependentMutationRequestIgnoringDoOnly(
+	text: string,
+): boolean {
+	const tokens = new Set(
+		tokenizeActionMetadata(text).map(normalizeSingularToken),
+	);
+	const mutationTokens = [
+		"ADD",
+		"CREATE",
 		"MAKE",
 		"PUT",
 		"SET",
@@ -4316,10 +4468,26 @@ function findCodingDelegationActionName(
 
 const VIEW_REQUEST_OPERATION_GROUPS = {
 	create: ["ADD", "CREATE", "MAKE", "NEW"],
-	read: ["FIND", "GET", "LIST", "READ", "SHOW", "WHAT", "WHICH"],
+	read: [
+		"CHECK",
+		"FIND",
+		"GET",
+		"LIST",
+		"MY",
+		"READ",
+		"REVIEW",
+		"REVISAR",
+		"REVISA",
+		"SHOW",
+		"MOSTRAR",
+		"MUESTRA",
+		"VER",
+		"WHAT",
+		"WHICH",
+	],
 	update: ["CHANGE", "EDIT", "MODIFY", "RENAME", "UPDATE"],
 	delete: ["DELETE", "REMOVE"],
-	open: ["GO", "NAVIGATE", "OPEN", "SWITCH"],
+	open: ["ABRE", "ABRIR", "GO", "NAVIGATE", "OPEN", "PULL", "SWITCH", "TAKE"],
 	close: ["CLOSE", "DISMISS", "HIDE"],
 	layout: [
 		"ARRANGE",
@@ -4366,6 +4534,7 @@ const VIEW_REQUEST_GENERIC_TOKENS: ReadonlySet<string> = new Set<string>([
 	"PLUGINS",
 	"SCREEN",
 	"SIGNAL",
+	"TIME",
 	"UI",
 	"USE",
 	"VIEW",
@@ -4403,6 +4572,12 @@ const VIEW_PLUGIN_SURFACE_TOKENS: ReadonlySet<string> = new Set<string>([
 	"MARKETPLACE",
 ]);
 
+function stripSyntheticMarkerIdentifiersForViewRouting(
+	messageText: string,
+): string {
+	return messageText.replace(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+){2,}\b/g, " ");
+}
+
 function findViewsActionName(
 	actions: ReadonlyArray<Pick<Action, "name" | "tags">>,
 ): string | undefined {
@@ -4433,11 +4608,13 @@ function findViewShellActionName(
 	actions: ReadonlyArray<Pick<Action, "name" | "tags">>,
 	messageText: string,
 ): string | undefined {
-	if (looksLikeInstructionalViewQuestion(messageText)) return undefined;
+	const viewRoutingText =
+		stripSyntheticMarkerIdentifiersForViewRouting(messageText);
+	if (looksLikeInstructionalViewQuestion(viewRoutingText)) return undefined;
 	const viewActionName = findViewsActionName(actions);
 	if (!viewActionName) return undefined;
 
-	const messageTokens = tokenizeActionMetadata(messageText).map(
+	const messageTokens = tokenizeActionMetadata(viewRoutingText).map(
 		normalizeSingularToken,
 	);
 	const messageOperationGroups = operationGroupsForTokens(messageTokens);
@@ -4466,13 +4643,15 @@ function findViewCapabilityActionName(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
 ): string | undefined {
-	if (looksLikeInstructionalViewQuestion(messageText)) return undefined;
+	const viewRoutingText =
+		stripSyntheticMarkerIdentifiersForViewRouting(messageText);
+	if (looksLikeInstructionalViewQuestion(viewRoutingText)) return undefined;
 	const viewActionName = findViewsActionName(actions);
 	if (!viewActionName) return undefined;
 	const viewActions = collectViewActionMetadataEntries(actions, viewActionName);
 	if (viewActions.length === 0) return undefined;
 
-	const messageTokens = tokenizeActionMetadata(messageText);
+	const messageTokens = tokenizeActionMetadata(viewRoutingText);
 	const messageTokenSet = new Set(messageTokens.map(normalizeSingularToken));
 	const messageOperationGroups = operationGroupsForTokens(messageTokens);
 	if (messageOperationGroups.size === 0) return undefined;
@@ -5123,10 +5302,122 @@ function extractCalendlyAvailabilityFallbackParams(
 	};
 }
 
+function buildDeterministicViewFallbackToolCall(args: {
+	message: Memory;
+	actions: readonly Action[];
+}): PlannerToolCall | null {
+	const text = getUserMessageText(args.message) ?? "";
+	if (!looksLikeDeterministicViewRequest(text)) return null;
+	const viewAction = inferDirectCurrentRequestCandidateActions(
+		args.actions,
+		text,
+	).find((name) => normalizeActionIdentifier(name) === "VIEWS");
+	if (!viewAction) {
+		return null;
+	}
+	return {
+		id: `deterministic-views-${Date.now()}`,
+		name: viewAction,
+		params: {
+			action: deterministicViewActionForText(text),
+			intent: text,
+		},
+	};
+}
+
+function deterministicViewActionForText(messageText: string): string {
+	const tokens = tokenizeActionMetadata(messageText).map(normalizeSingularToken);
+	const tokenSet = new Set(tokens);
+	const operationGroups = operationGroupsForTokens(tokens);
+	const referencesViews =
+		tokenSet.has("VIEW") || tokenSet.has("APP") || tokenSet.has("APPLICATION");
+	if (
+		tokenSet.has("MANAGER") ||
+		(tokenSet.has("ALL") && referencesViews && operationGroups.has("read"))
+	) {
+		return "manager";
+	}
+	if (
+		referencesViews &&
+		(tokenSet.has("LIST") || tokenSet.has("WHAT") || tokenSet.has("WHICH"))
+	) {
+		return "list";
+	}
+	if (operationGroups.has("close")) return "close";
+	if (operationGroups.has("pin")) return "pin";
+	if (operationGroups.has("layout")) {
+		return tokenSet.has("SPLIT") ? "split" : "tile";
+	}
+	return "show";
+}
+
+function looksLikeDeterministicViewRequest(messageText: string): boolean {
+	const tokens = tokenizeActionMetadata(messageText);
+	const operationGroups = operationGroupsForTokens(tokens);
+	return (
+		operationGroups.has("open") ||
+		operationGroups.has("read") ||
+		operationGroups.has("layout") ||
+		operationGroups.has("pin") ||
+		operationGroups.has("close")
+	);
+}
+
+const RESPONSE_HANDLER_DETERMINISTIC_TOOL_ACTIONS: ReadonlySet<string> =
+	new Set(["VIEWS"]);
+
+function buildDeterministicViewFastPathToolCall(args: {
+	message: Memory;
+	actions: readonly Action[];
+}): PlannerToolCall | null {
+	const text = getUserMessageText(args.message) ?? "";
+	if (!looksLikeDeterministicViewRequest(text)) return null;
+	return buildDeterministicViewFallbackToolCall(args);
+}
+
+function buildResponseHandlerDeterministicToolCall(args: {
+	messageHandler: MessageHandlerResult;
+	actions: readonly Action[];
+}): PlannerToolCall | null {
+	const declared = args.messageHandler.plan.deterministicToolCall;
+	const declaredName =
+		typeof declared?.name === "string" ? declared.name.trim() : "";
+	if (!declaredName) return null;
+	if (
+		!RESPONSE_HANDLER_DETERMINISTIC_TOOL_ACTIONS.has(
+			normalizeActionIdentifier(declaredName),
+		)
+	) {
+		return null;
+	}
+
+	const action = args.actions.find(
+		(candidate) =>
+			normalizeActionIdentifier(candidate.name) ===
+			normalizeActionIdentifier(declaredName),
+	);
+	if (!action) return null;
+
+	const rawParams = declared?.params;
+	const params =
+		rawParams && typeof rawParams === "object" && !Array.isArray(rawParams)
+			? (rawParams as Record<string, unknown>)
+			: undefined;
+	return {
+		id: `deterministic-${normalizeActionIdentifier(action.name).toLowerCase()}-${Date.now()}`,
+		name: action.name,
+		...(params ? { params } : {}),
+	};
+}
+
 function buildDeterministicPlannerFallbackToolCall(args: {
 	message: Memory;
 	actions: readonly Action[];
 }): PlannerToolCall | null {
+	const viewToolCall = buildDeterministicViewFallbackToolCall(args);
+	if (viewToolCall) {
+		return viewToolCall;
+	}
 	const calendlyParams = extractCalendlyAvailabilityFallbackParams(
 		args.message,
 	);
@@ -5174,34 +5465,73 @@ async function runDeterministicPlannerFallback(args: {
 		return null;
 	}
 
+	args.runtime.logger?.warn?.(
+		{
+			src: "service:message",
+			action: toolCall.name,
+			error:
+				args.plannerError instanceof Error
+					? args.plannerError.message
+					: String(args.plannerError),
+		},
+		"Planner hit a transient model error; using deterministic tool fallback",
+	);
+
+	return runDeterministicPlannerToolCall({
+		...args,
+		toolCall,
+		reason: "deterministic_fallback_after_transient_planner_error",
+		sourceStageId: "planner:fallback",
+		thought: `Deterministic ${toolCall.name} fallback executed after transient planner error.`,
+	});
+}
+
+async function runDeterministicPlannerToolCall(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	plannerState: State;
+	selectedContexts: AgentContext[];
+	senderRole: RoleGateRole;
+	plannerContext: ContextObject;
+	plannerRuntime: PlannerRuntime;
+	actions: readonly Action[];
+	evaluatorEffects: EvaluatorEffects;
+	recorder?: TrajectoryRecorder;
+	trajectoryId?: string;
+	plannerLoopConfig?: PlannerLoopParams["config"];
+	toolCall: PlannerToolCall;
+	reason: string;
+	sourceStageId: string;
+	thought: string;
+}): Promise<PlannerLoopResult> {
 	const queuedAt = Date.now();
-	const serializedParams = JSON.stringify(toolCall.params ?? {});
+	const serializedParams = JSON.stringify(args.toolCall.params ?? {});
 	const queuedContext = appendContextEvent(
 		{
 			...args.plannerContext,
 			plannedQueue: [
 				...(args.plannerContext.plannedQueue ?? []),
 				{
-					id: toolCall.id,
-					name: toolCall.name,
+					id: args.toolCall.id,
+					name: args.toolCall.name,
 					args: serializedParams,
 					status: "queued" as const,
-					sourceStageId: "planner:fallback",
+					sourceStageId: args.sourceStageId,
 				},
 			],
 		},
 		{
-			id: `queue:${toolCall.id ?? toolCall.name}:fallback`,
+			id: `queue:${args.toolCall.id ?? args.toolCall.name}:${args.reason}`,
 			type: "planned_tool_call",
 			source: "message-service",
 			createdAt: queuedAt,
 			metadata: {
 				iteration: 1,
-				toolCallId: toolCall.id,
-				name: toolCall.name,
+				toolCallId: args.toolCall.id,
+				name: args.toolCall.name,
 				params: serializedParams,
 				status: "queued",
-				reason: "deterministic_fallback_after_transient_planner_error",
+				reason: args.reason,
 			},
 		},
 	);
@@ -5213,21 +5543,10 @@ async function runDeterministicPlannerFallback(args: {
 		evaluatorOutputs: [],
 	};
 
-	args.runtime.logger?.warn?.(
-		{
-			src: "service:message",
-			action: toolCall.name,
-			error:
-				args.plannerError instanceof Error
-					? args.plannerError.message
-					: String(args.plannerError),
-		},
-		"Planner hit a transient model error; using deterministic Calendly fallback",
-	);
-
+	const toolStartedAt = Date.now();
 	const result = await executeV5PlannedToolCall({
 		runtime: args.runtime,
-		toolCall,
+		toolCall: args.toolCall,
 		plannerContext: trajectory.context,
 		executorCtx: {
 			message: args.message,
@@ -5243,30 +5562,40 @@ async function runDeterministicPlannerFallback(args: {
 		trajectoryId: args.trajectoryId,
 		plannerLoopConfig: args.plannerLoopConfig,
 	});
+	const toolEndedAt = Date.now();
+	await recordDeterministicToolStage({
+		recorder: args.recorder,
+		trajectoryId: args.trajectoryId,
+		toolCall: args.toolCall,
+		result,
+		startedAt: toolStartedAt,
+		endedAt: toolEndedAt,
+		logger: args.runtime.logger,
+	});
 	trajectory.steps.push({
 		iteration: 1,
-		thought: "Deterministic fallback executed after transient planner error.",
-		toolCall,
+		thought: args.thought,
+		toolCall: args.toolCall,
 		result,
 	});
 	trajectory.context = appendContextEvent(
 		{
 			...trajectory.context,
 			plannedQueue: (trajectory.context.plannedQueue ?? []).map((entry) =>
-				entry.id === toolCall.id
+				entry.id === args.toolCall.id
 					? { ...entry, status: result.success ? "completed" : "failed" }
 					: entry,
 			),
 		},
 		{
-			id: `tool-result:${toolCall.id ?? toolCall.name}:fallback`,
+			id: `tool-result:${args.toolCall.id ?? args.toolCall.name}:${args.reason}`,
 			type: "tool_result",
 			source: "message-service",
 			createdAt: Date.now(),
 			metadata: {
 				iteration: 1,
-				toolCallId: toolCall.id,
-				name: toolCall.name,
+				toolCallId: args.toolCall.id,
+				name: args.toolCall.name,
 				params: serializedParams,
 				result: JSON.stringify({
 					success: result.success,
@@ -5279,25 +5608,112 @@ async function runDeterministicPlannerFallback(args: {
 		},
 	);
 	const fallbackMessage =
+		result.userFacingText ??
 		result.text ??
 		(result.success
 			? "Done."
-			: "I tried to check that Calendly availability, but the calendar action failed.");
+			: "I tried to complete that, but the action failed.");
 	const evaluator: EvaluatorOutput = {
 		success: result.success,
 		decision: "FINISH",
 		thought: result.success
-			? "Deterministic Calendly fallback completed."
-			: "Deterministic Calendly fallback failed.",
+			? `Deterministic ${args.toolCall.name} tool call completed.`
+			: `Deterministic ${args.toolCall.name} tool call failed.`,
 		messageToUser: fallbackMessage,
+		raw: {
+			reason: args.reason,
+		},
 	};
 	trajectory.evaluatorOutputs.push(evaluator);
+	await recordDeterministicEvaluationStage({
+		recorder: args.recorder,
+		trajectoryId: args.trajectoryId,
+		evaluator,
+		reason: args.reason,
+		logger: args.runtime.logger,
+	});
 	return {
 		status: "finished",
 		trajectory,
 		evaluator,
 		finalMessage: fallbackMessage,
 	};
+}
+
+async function recordDeterministicToolStage(args: {
+	recorder?: TrajectoryRecorder;
+	trajectoryId?: string;
+	toolCall: PlannerToolCall;
+	result: PlannerToolResult;
+	startedAt: number;
+	endedAt: number;
+	logger?: IAgentRuntime["logger"];
+}): Promise<void> {
+	if (!args.recorder || !args.trajectoryId) return;
+	try {
+		const inputParams = (args.toolCall.params ?? {}) as Record<string, unknown>;
+		const io = captureToolStageIO({
+			input: inputParams,
+			output: args.result,
+			error: args.result.error,
+		});
+		const stage: RecordedStage = {
+			stageId: `stage-tool-${args.toolCall.name}-${args.startedAt}`,
+			kind: "tool",
+			startedAt: args.startedAt,
+			endedAt: args.endedAt,
+			latencyMs: args.endedAt - args.startedAt,
+			tool: {
+				name: args.toolCall.name,
+				args: inputParams,
+				result: args.result,
+				success: args.result.success,
+				durationMs: args.endedAt - args.startedAt,
+				input: io.input,
+				output: io.output,
+				errorText: io.errorText,
+				truncated: io.truncated,
+			},
+		};
+		await args.recorder.recordStage(args.trajectoryId, stage);
+	} catch (err) {
+		args.logger?.warn?.(
+			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
+			"[TrajectoryRecorder] failed to record deterministic tool stage",
+		);
+	}
+}
+
+async function recordDeterministicEvaluationStage(args: {
+	recorder?: TrajectoryRecorder;
+	trajectoryId?: string;
+	evaluator: EvaluatorOutput;
+	reason: string;
+	logger?: IAgentRuntime["logger"];
+}): Promise<void> {
+	if (!args.recorder || !args.trajectoryId) return;
+	const startedAt = Date.now();
+	try {
+		const stage: RecordedStage = {
+			stageId: `stage-eval-deterministic-${startedAt}`,
+			kind: "evaluation",
+			startedAt,
+			endedAt: startedAt,
+			latencyMs: 0,
+			evaluation: {
+				...args.evaluator,
+				gated: true,
+				llmCallSkipped: true,
+				reason: args.reason,
+			},
+		};
+		await args.recorder.recordStage(args.trajectoryId, stage);
+	} catch (err) {
+		args.logger?.warn?.(
+			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
+			"[TrajectoryRecorder] failed to record deterministic evaluation stage",
+		);
+	}
 }
 
 async function executeV5PlannedToolCall(
@@ -5748,7 +6164,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			shouldUseDirectReplyFastPath({
 				message: args.message,
 				actions: args.runtime.actions,
-			})
+			}) &&
+			!(await registeredResponseHandlerEvaluatorWouldRun({
+				runtime: args.runtime,
+				message: args.message,
+				state: args.state,
+				availableContexts,
+			}))
 		) {
 			const fastStartedAt = Date.now();
 			const fastMessageHandler: MessageHandlerResult = {
@@ -5778,7 +6200,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					providerOptions: {
 						eliza: {
 							directReplyFastPath: true,
-							maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
+							maxTokens: generated.maxTokens,
 						},
 					},
 					raw: generated.raw,
@@ -5970,34 +6392,40 @@ export async function runV5MessageRuntimeStage1(args: {
 		// number of times before falling back to the planner.
 		const stage1RetryLimit = readStage1EmptyRetryLimit(args.runtime);
 		let stage1RetryCount = 0;
-		let rawMessageHandler = (await args.runtime.useModel(
-			ModelType.RESPONSE_HANDLER,
-			stage1ModelParams,
-		)) as string | GenerateTextResult;
-		let stage1RetryReason = getStage1RetryReason(rawMessageHandler);
-		while (
-			stage1RetryCount < stage1RetryLimit &&
-			shouldRetryStage1Generation(
-				stage1RetryReason,
-				rawMessageHandler,
-				stage1ModelParams.maxTokens,
-			)
-		) {
-			stage1RetryCount += 1;
-			args.runtime.logger?.warn?.(
-				{
-					src: "service:message",
-					attempt: stage1RetryCount + 1,
-					maxAttempts: stage1RetryLimit + 1,
-					reason: stage1RetryReason,
-				},
-				`[message] Stage 1 returned ${stage1RetryReason} — retrying (${stage1RetryCount}/${stage1RetryLimit})`,
-			);
+		let rawMessageHandler: string | GenerateTextResult = "";
+		let stage1ModelError: unknown = null;
+		try {
 			rawMessageHandler = (await args.runtime.useModel(
 				ModelType.RESPONSE_HANDLER,
 				stage1ModelParams,
 			)) as string | GenerateTextResult;
-			stage1RetryReason = getStage1RetryReason(rawMessageHandler);
+			let stage1RetryReason = getStage1RetryReason(rawMessageHandler);
+			while (
+				stage1RetryCount < stage1RetryLimit &&
+				shouldRetryStage1Generation(
+					stage1RetryReason,
+					rawMessageHandler,
+					stage1ModelParams.maxTokens,
+				)
+			) {
+				stage1RetryCount += 1;
+				args.runtime.logger?.warn?.(
+					{
+						src: "service:message",
+						attempt: stage1RetryCount + 1,
+						maxAttempts: stage1RetryLimit + 1,
+						reason: stage1RetryReason,
+					},
+					`[message] Stage 1 returned ${stage1RetryReason} — retrying (${stage1RetryCount}/${stage1RetryLimit})`,
+				);
+				rawMessageHandler = (await args.runtime.useModel(
+					ModelType.RESPONSE_HANDLER,
+					stage1ModelParams,
+				)) as string | GenerateTextResult;
+				stage1RetryReason = getStage1RetryReason(rawMessageHandler);
+			}
+		} catch (error) {
+			stage1ModelError = error;
 		}
 		const messageHandlerEndedAt = Date.now();
 		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
@@ -6060,7 +6488,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			shouldUseDirectReplyFastPath({
 				message: args.message,
 				actions: args.runtime.actions,
-			})
+			}) &&
+			!(await registeredResponseHandlerEvaluatorWouldRun({
+				runtime: args.runtime,
+				message: args.message,
+				state: args.state,
+				availableContexts,
+			}))
 		) {
 			const fastStartedAt = Date.now();
 			const fallbackMessageHandler: MessageHandlerResult = {
@@ -6091,7 +6525,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					providerOptions: {
 						eliza: {
 							directReplyEmptyStage1Fallback: true,
-							maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
+							maxTokens: generated.maxTokens,
 						},
 					},
 					raw: generated.raw,
@@ -6113,11 +6547,28 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 		if (
 			!messageHandler &&
+			(!stage1ModelError ||
+				plannerErrorLooksTransient(stage1ModelError) ||
+				inferDirectCurrentRequestCandidateActions(
+					args.runtime.actions ?? [],
+					getUserMessageText(args.message) ?? "",
+				).length > 0 ||
+				(await registeredResponseHandlerEvaluatorWouldRun({
+					runtime: args.runtime,
+					message: args.message,
+					state: args.state,
+					availableContexts,
+				}))) &&
 			shouldUseStage1PlannerFallback(args.runtime, args.message)
 		) {
 			const stage1FailureKind = getStage1RetryReason(rawMessageHandler);
-			const stage1FailureReason =
-				stage1FailureKind === "empty completion"
+			const stage1FailureReason = stage1ModelError
+				? `response handler model error: ${
+						stage1ModelError instanceof Error
+							? stage1ModelError.message
+							: String(stage1ModelError)
+					}`
+				: stage1FailureKind === "empty completion"
 					? `empty output after ${stage1RetryLimit + 1} attempts`
 					: stage1FailureKind === "malformed HANDLE_RESPONSE tool call"
 						? `malformed HANDLE_RESPONSE tool call after ${stage1RetryLimit + 1} attempts`
@@ -6131,6 +6582,9 @@ export async function runV5MessageRuntimeStage1(args: {
 				{
 					src: "service:message",
 					reason: stage1FailureReason,
+					transient: stage1ModelError
+						? plannerErrorLooksTransient(stage1ModelError)
+						: undefined,
 				},
 				"[message] Stage 1 did not produce a valid handler result; falling back to planner for explicitly addressed message",
 			);
@@ -6146,6 +6600,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		);
 
 		if (!messageHandler) {
+			if (stage1ModelError) {
+				throw stage1ModelError;
+			}
 			if (isEmptyStage1Result(rawMessageHandler)) {
 				throw new Error(
 					`v5 messageHandler returned empty Stage 1 result after ${stage1RetryLimit + 1} attempts`,
@@ -6528,47 +6985,30 @@ export async function runV5MessageRuntimeStage1(args: {
 			.catch(() => {});
 
 		let plannerResult: PlannerLoopResult;
-		try {
-			plannerResult = await runPlannerLoop({
-				runtime: plannerRuntime,
-				context: plannerContextAfterEarlyReply,
-				config: args.plannerLoopConfig,
-				tools: plannerTools.length > 0 ? plannerTools : undefined,
-				requireNonTerminalToolCall,
-				evaluatorEffects,
-				recorder,
-				trajectoryId,
-				executeToolCall: (toolCall, ctx) =>
-					executeV5PlannedToolCall({
-						runtime: args.runtime,
-						toolCall,
-						plannerContext: plannerContextAfterEarlyReply,
-						executorCtx: {
-							message: args.message,
-							state: plannerState,
-							activeContexts: selectedContexts,
-							userRoles: [senderRole],
-							previousResults: collectPreviousActionResults(ctx.trajectory),
-						},
-						plannerRuntime,
-						executorOptions: { actions: exposedPlannerActions },
-						evaluatorEffects,
-						recorder,
-						trajectoryId,
-						plannerLoopConfig: args.plannerLoopConfig,
-					}),
-				evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
-					runEvaluator({
-						runtime: plannerRuntimeForEval,
-						context,
-						trajectory,
-						effects: evaluatorEffects,
-						recorder,
-						trajectoryId,
-					}),
+		const responseHandlerDeterministicToolCall =
+			buildResponseHandlerDeterministicToolCall({
+				messageHandler,
+				actions: exposedPlannerActions,
 			});
-		} catch (error) {
-			const fallbackResult = await runDeterministicPlannerFallback({
+		const deterministicPlannerToolCall =
+			responseHandlerDeterministicToolCall ??
+			buildDeterministicViewFastPathToolCall({
+				message: args.message,
+				actions: exposedPlannerActions,
+			});
+		if (deterministicPlannerToolCall) {
+			const deterministicSource = responseHandlerDeterministicToolCall
+				? "response-handler"
+				: "view-fast-path";
+			args.runtime.logger?.debug?.(
+				{
+					src: "service:message",
+					action: deterministicPlannerToolCall.name,
+					deterministicSource,
+				},
+				"Executing deterministic planner tool call without planner model call",
+			);
+			plannerResult = await runDeterministicPlannerToolCall({
 				runtime: args.runtime,
 				message: args.message,
 				plannerState,
@@ -6581,12 +7021,78 @@ export async function runV5MessageRuntimeStage1(args: {
 				recorder,
 				trajectoryId,
 				plannerLoopConfig: args.plannerLoopConfig,
-				plannerError: error,
+				toolCall: deterministicPlannerToolCall,
+				reason: responseHandlerDeterministicToolCall
+					? "deterministic_response_handler_tool_call"
+					: "deterministic_view_fast_path",
+				sourceStageId: responseHandlerDeterministicToolCall
+					? "planner:deterministic-response-handler"
+					: "planner:deterministic-view-fast-path",
+				thought: responseHandlerDeterministicToolCall
+					? `Response-handler deterministic ${deterministicPlannerToolCall.name} tool call executed.`
+					: "Deterministic VIEWS fast path executed for current view-navigation request.",
 			});
-			if (!fallbackResult) {
-				throw error;
+		} else {
+			try {
+				plannerResult = await runPlannerLoop({
+					runtime: plannerRuntime,
+					context: plannerContextAfterEarlyReply,
+					config: args.plannerLoopConfig,
+					tools: plannerTools.length > 0 ? plannerTools : undefined,
+					requireNonTerminalToolCall,
+					evaluatorEffects,
+					recorder,
+					trajectoryId,
+					executeToolCall: (toolCall, ctx) =>
+						executeV5PlannedToolCall({
+							runtime: args.runtime,
+							toolCall,
+							plannerContext: plannerContextAfterEarlyReply,
+							executorCtx: {
+								message: args.message,
+								state: plannerState,
+								activeContexts: selectedContexts,
+								userRoles: [senderRole],
+								previousResults: collectPreviousActionResults(ctx.trajectory),
+							},
+							plannerRuntime,
+							executorOptions: { actions: exposedPlannerActions },
+							evaluatorEffects,
+							recorder,
+							trajectoryId,
+							plannerLoopConfig: args.plannerLoopConfig,
+						}),
+					evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
+						runEvaluator({
+							runtime: plannerRuntimeForEval,
+							context,
+							trajectory,
+							effects: evaluatorEffects,
+							recorder,
+							trajectoryId,
+						}),
+				});
+			} catch (error) {
+				const fallbackResult = await runDeterministicPlannerFallback({
+					runtime: args.runtime,
+					message: args.message,
+					plannerState,
+					selectedContexts,
+					senderRole,
+					plannerContext: plannerContextAfterEarlyReply,
+					plannerRuntime,
+					actions: exposedPlannerActions,
+					evaluatorEffects,
+					recorder,
+					trajectoryId,
+					plannerLoopConfig: args.plannerLoopConfig,
+					plannerError: error,
+				});
+				if (!fallbackResult) {
+					throw error;
+				}
+				plannerResult = fallbackResult;
 			}
-			plannerResult = fallbackResult;
 		}
 
 		// CONTEXT_AFTER (blocking): hooks fire after the planner loop, before
@@ -7920,7 +8426,7 @@ function looksLikeExplicitDelegationRequest(text: string): boolean {
 function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	if (
-		/\b(?:file|files|repo|repository|project|app|site|page|backend|frontend|deploy|build|run|execute|install|test|verify|fix|edit|modify|save|write\s+(?:to|in)\s+(?:\/|\.\/|[a-z]:\\))\b/iu.test(
+		/\b(?:file|files|repo|repository|project|app|site|page|backend|frontend|deploy|build|run|execute|install|verify|fix|edit|modify|save|write\s+(?:to|in)\s+(?:\/|\.\/|[a-z]:\\))\b/iu.test(
 			normalized,
 		)
 	) {

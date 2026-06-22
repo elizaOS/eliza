@@ -332,11 +332,15 @@ try {
 
 /**
  * File logging — lazy-initialized on first write to avoid module-init timing issues.
- * Enable with LOG_FILE=true/1 (writes output.log in cwd) or LOG_FILE=/path/to/file.log.
+ * Enable with LOG_FILE=true/1 (writes output.log, prompts.log, and chat.log in cwd)
+ * or LOG_FILE=/path/to/file.log.
  * Disabled by default.
  */
 let _fileLogState: "pending" | "active" | "disabled" = "pending";
 let _fileLogFd: number | null = null;
+let _promptLogFd: number | null = null;
+let _chatLogFd: number | null = null;
+let _promptLogCounter = 0;
 
 let _fs: typeof import("node:fs") | null = null;
 function getFs(): typeof import("node:fs") | null {
@@ -403,7 +407,11 @@ function ensureFileLog(): boolean {
     // Ensure log directory exists
     fs.mkdirSync(logDir, { recursive: true });
 
+    const promptLogPath = pathMod.join(logDir, "prompts.log");
+    const chatLogPath = pathMod.join(logDir, "chat.log");
     _fileLogFd = fs.openSync(logFilePath, "a");
+    _promptLogFd = fs.openSync(promptLogPath, "a");
+    _chatLogFd = fs.openSync(chatLogPath, "a");
     _fileLogState = "active";
 
     process.on("exit", () => {
@@ -415,6 +423,22 @@ function ensureFileLog(): boolean {
           /* ignore */
         }
         _fileLogFd = null;
+      }
+      if (fs2 && _promptLogFd !== null) {
+        try {
+          fs2.closeSync(_promptLogFd);
+        } catch {
+          /* ignore */
+        }
+        _promptLogFd = null;
+      }
+      if (fs2 && _chatLogFd !== null) {
+        try {
+          fs2.closeSync(_chatLogFd);
+        } catch {
+          /* ignore */
+        }
+        _chatLogFd = null;
       }
     });
 
@@ -442,6 +466,201 @@ function writeLogEntryToFile(entry: LogEntry): void {
   } catch {
     // Silent fail
   }
+}
+
+// ============================================================================
+// Prompts.log (companion file to output.log)
+// ============================================================================
+
+function promptSlug(counter: number, agentName: string, modelType: string) {
+  return `#${String(counter).padStart(4, "0")}/${agentName}/${modelType}`;
+}
+
+const MAX_PROMPT_LOG_CHARS = 100_000;
+
+function writeToPromptLog(
+  slug: string,
+  kind: "PROMPT" | "RESPONSE",
+  modelType: string,
+  body: string,
+  metadata?: Record<string, unknown>,
+): void {
+  if (!ensureFileLog() || !_promptLogFd) return;
+  try {
+    const fs = getFs();
+    if (!fs) return;
+    const sep = "=".repeat(80);
+    let header = `${sep}\n ${slug}  ${kind}: ${modelType} (${body.length} chars)\n`;
+    header += ` ${new Date().toISOString()}\n`;
+    if (metadata) {
+      header += ` ${JSON.stringify(metadata, null, 2)}\n`;
+    }
+    header += `${sep}\n`;
+    fs.writeSync(_promptLogFd, header);
+    if (body.length > MAX_PROMPT_LOG_CHARS) {
+      fs.writeSync(_promptLogFd, body.substring(0, MAX_PROMPT_LOG_CHARS));
+      fs.writeSync(
+        _promptLogFd,
+        `\n... [TRUNCATED - ${body.length - MAX_PROMPT_LOG_CHARS} more chars]\n`,
+      );
+    } else {
+      fs.writeSync(_promptLogFd, body);
+    }
+    fs.writeSync(_promptLogFd, `\n${sep}\n\n`);
+  } catch {
+    // Silent fail
+  }
+}
+
+/**
+ * Log a prompt to prompts.log. Returns a slug for output.log.
+ */
+export function logPrompt(
+  modelType: string,
+  prompt: string,
+  metadata?: {
+    agentName?: string;
+    agentId?: string;
+    runId?: string;
+    provider?: string;
+    caller?: string;
+    [key: string]: unknown;
+  },
+): string {
+  if (!ensureFileLog()) return "";
+  const counter = ++_promptLogCounter;
+  const agentName = metadata?.agentName ?? "unknown";
+  const slug = promptSlug(counter, agentName, modelType);
+  writeToPromptLog(slug, "PROMPT", modelType, prompt, {
+    ...metadata,
+    promptSlug: slug,
+  });
+  return slug;
+}
+
+/**
+ * Log a response to prompts.log. Returns a slug for output.log.
+ */
+export function logResponse(
+  modelType: string,
+  response: string,
+  metadata?: {
+    agentName?: string;
+    agentId?: string;
+    runId?: string;
+    provider?: string;
+    duration?: number;
+    promptSlug?: string;
+    [key: string]: unknown;
+  },
+): string {
+  if (!ensureFileLog()) return "";
+  const slug = metadata?.promptSlug;
+  if (!slug) {
+    logger.warn(
+      { src: "core:logger" },
+      "logResponse missing promptSlug - responses can't be correlated",
+    );
+    return "";
+  }
+  writeToPromptLog(slug, "RESPONSE", modelType, response, metadata);
+  return slug;
+}
+
+// ============================================================================
+// Chat instrumentation (chat.log)
+// ============================================================================
+
+const CHAT_PREVIEW_IN_MAX = 200;
+const CHAT_PREVIEW_OUT_MAX = 120;
+
+function escapeChatPreview(text: string): string {
+  const safe = text.length > 10_000 ? text.slice(0, 10_000) : text;
+  const oneLine = safe.replace(/\s+/g, " ").trim();
+  return oneLine.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function writeChatLine(line: string): void {
+  if (!ensureFileLog() || !_chatLogFd) return;
+  try {
+    const fs = getFs();
+    if (!fs) return;
+    const timestamp = new Date().toISOString();
+    fs.writeSync(_chatLogFd, `${timestamp} ${line}\n`);
+  } catch {
+    // Silent fail
+  }
+}
+
+/**
+ * Log an incoming message to chat.log. Call when a message is received.
+ */
+export function logChatIn(params: {
+  agentName: string;
+  agentId: string;
+  roomId: string;
+  messageId: string;
+  text: string;
+  source?: string;
+}): string {
+  const preview = escapeChatPreview(
+    params.text.length > CHAT_PREVIEW_IN_MAX
+      ? `${params.text.slice(0, CHAT_PREVIEW_IN_MAX)}...`
+      : params.text,
+  );
+  const roomShort = params.roomId.slice(0, 8);
+  const msgShort = params.messageId.slice(0, 8);
+  const source = params.source ?? "unknown";
+  const line = `[CHAT:IN]  #agent:${params.agentName} room=${roomShort} msg=${msgShort} source=${source} "${preview}"`;
+  writeChatLine(line);
+  return line;
+}
+
+/**
+ * Log an outgoing response to chat.log. Call when the agent sends a reply.
+ */
+export function logChatOut(params: {
+  agentName: string;
+  agentId: string;
+  roomId: string;
+  action: string;
+  text?: string;
+  emoji?: string;
+  providers?: string[];
+  reasoning?: string;
+  actions?: string[];
+}): string {
+  const roomShort = params.roomId.slice(0, 8);
+  let line = `[CHAT:OUT] #agent:${params.agentName} room=${roomShort} action=${params.action}`;
+  if (params.actions && params.actions.length > 0) {
+    line += ` actions=${params.actions.join(",")}`;
+  }
+  if (params.emoji) {
+    line += ` emoji=${params.emoji}`;
+  }
+  if (params.text !== undefined && params.text !== "") {
+    const preview = escapeChatPreview(
+      params.text.length > CHAT_PREVIEW_OUT_MAX
+        ? `${params.text.slice(0, CHAT_PREVIEW_OUT_MAX)}...`
+        : params.text,
+    );
+    line += ` len=${params.text.length} "${preview}"`;
+  } else if (params.emoji) {
+    line += " len=0";
+  }
+  if (params.providers && params.providers.length > 0) {
+    line += ` providers=${params.providers.join(",")}`;
+  }
+  if (params.reasoning !== undefined && params.reasoning !== "") {
+    const safe = escapeChatPreview(
+      params.reasoning.length > 80
+        ? `${params.reasoning.slice(0, 80)}...`
+        : params.reasoning,
+    );
+    line += ` reasoning="${safe}"`;
+  }
+  writeChatLine(line);
+  return line;
 }
 
 // ============================================================================

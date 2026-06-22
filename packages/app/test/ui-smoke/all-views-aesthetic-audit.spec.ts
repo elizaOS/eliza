@@ -55,6 +55,7 @@ const BUILTIN_TAB_PATHS: Record<string, string> = {
   automations: "/automations",
   inventory: "/wallet",
   documents: "/character/documents",
+  files: "/apps/files",
   plugins: "/apps/plugins",
   skills: "/apps/skills",
   "fine-tuning": "/apps/fine-tuning",

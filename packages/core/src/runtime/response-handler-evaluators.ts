@@ -1,5 +1,6 @@
 import type {
 	MessageHandlerAction,
+	MessageHandlerDeterministicToolCall,
 	MessageHandlerResult,
 } from "../types/components";
 import type { AgentContext, ContextDefinition } from "../types/contexts";
@@ -19,6 +20,7 @@ export interface ResponseHandlerPatch {
 	clearParentActionHints?: boolean;
 	clearReply?: boolean;
 	reply?: string;
+	deterministicToolCall?: MessageHandlerDeterministicToolCall;
 	debug?: readonly string[];
 }
 
@@ -139,6 +141,10 @@ function applyResponseHandlerPatch(
 		);
 		changed.push("contexts:add");
 	}
+	if (patch.clearCandidateActions) {
+		delete messageHandler.plan.candidateActions;
+		changed.push("candidateActions:clear");
+	}
 	if (patch.addCandidateActions) {
 		messageHandler.plan.candidateActions = mergeUniqueStrings(
 			messageHandler.plan.candidateActions,
@@ -146,9 +152,9 @@ function applyResponseHandlerPatch(
 		);
 		changed.push("candidateActions:add");
 	}
-	if (patch.clearCandidateActions) {
-		delete messageHandler.plan.candidateActions;
-		changed.push("candidateActions:clear");
+	if (patch.clearParentActionHints) {
+		delete messageHandler.plan.parentActionHints;
+		changed.push("parentActionHints:clear");
 	}
 	if (patch.addParentActionHints) {
 		messageHandler.plan.parentActionHints = mergeUniqueStrings(
@@ -156,10 +162,6 @@ function applyResponseHandlerPatch(
 			patch.addParentActionHints,
 		);
 		changed.push("parentActionHints:add");
-	}
-	if (patch.clearParentActionHints) {
-		delete messageHandler.plan.parentActionHints;
-		changed.push("parentActionHints:clear");
 	}
 	if (patch.addContextSlices) {
 		messageHandler.plan.contextSlices = mergeUniqueStrings(
@@ -175,6 +177,18 @@ function applyResponseHandlerPatch(
 	if (typeof patch.reply === "string") {
 		messageHandler.plan.reply = patch.reply;
 		changed.push("reply:set");
+	}
+	if (patch.deterministicToolCall) {
+		const name = patch.deterministicToolCall.name.trim();
+		if (name) {
+			messageHandler.plan.deterministicToolCall = {
+				name,
+				...(patch.deterministicToolCall.params
+					? { params: patch.deterministicToolCall.params }
+					: {}),
+			};
+			changed.push("deterministicToolCall:set");
+		}
 	}
 	if (changed.length === 0 && debug.length === 0) {
 		return null;

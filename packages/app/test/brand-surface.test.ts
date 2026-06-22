@@ -10,6 +10,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolveAndroidProjectPath } from "../capacitor.config";
 
 const here = import.meta.dirname;
 const root = join(here, "..");
@@ -45,6 +46,16 @@ describe("brand surfaces", () => {
     expect(src).toMatch(/SplashScreen:\s*\{[^}]*backgroundColor:\s*"#FF5800"/s);
     expect(src).toMatch(/ios:\s*\{[^}]*backgroundColor:\s*"#FF5800"/s);
     expect(src).toMatch(/android:\s*\{[^}]*backgroundColor:\s*"#FF5800"/s);
+  });
+
+  it("keeps Android cap sync aligned with the build target tree", () => {
+    expect(resolveAndroidProjectPath(undefined, "ai.elizaos.app")).toBe(
+      "../app-core/platforms/android",
+    );
+    expect(resolveAndroidProjectPath("1", "ai.elizaos.app")).toBe("android");
+    expect(resolveAndroidProjectPath(undefined, "com.example.app")).toBe(
+      "android",
+    );
   });
 
   it("Android colors.xml + styles.xml use brand orange for launch + status bar", () => {

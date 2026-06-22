@@ -1594,6 +1594,112 @@ describe("v5 planner loop — evaluator gate", () => {
 		expect(result.finalMessage).toBe("Status: ok.");
 	});
 
+	it("recovers evaluator rate-limit failures from a successful user-facing tool result", async () => {
+		const runtime = {
+			useModel: plannerNativeWith({
+				text: "",
+				toolCalls: [{ id: "call-1", name: "VIEWS", arguments: {} }],
+			}),
+			logger: { warn: vi.fn() },
+		};
+		const evaluate = vi.fn(async () => {
+			throw new Error("Too Many Requests");
+		});
+		const recordedStages: RecordedStage[] = [];
+		const recorder: TrajectoryRecorder = {
+			startTrajectory: vi.fn(() => "trajectory-evaluator-fallback"),
+			recordStage: vi.fn(
+				async (_trajectoryId: string, stage: RecordedStage) => {
+					recordedStages.push(stage);
+				},
+			),
+			endTrajectory: vi.fn(async () => undefined),
+			load: vi.fn(async () => null),
+			list: vi.fn(async () => []),
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi.fn(async () => ({
+				success: true,
+				text: "Navigated to Inbox (gui).",
+				userFacingText: "Navigated to Inbox (gui).",
+				verifiedUserFacing: true,
+			})),
+			evaluate,
+			recorder,
+			trajectoryId: "trajectory-evaluator-fallback",
+		});
+
+		expect(evaluate).toHaveBeenCalledTimes(1);
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("Navigated to Inbox (gui).");
+		expect(result.evaluator).toMatchObject({
+			success: true,
+			decision: "FINISH",
+			messageToUser: "Navigated to Inbox (gui).",
+			raw: {
+				recoveredFromEvaluatorError: true,
+				error: "Too Many Requests",
+			},
+		});
+		expect(runtime.logger.warn).toHaveBeenCalledWith(
+			expect.objectContaining({
+				err: "Too Many Requests",
+				messageToUser: "Navigated to Inbox (gui).",
+			}),
+			expect.stringContaining(
+				"Evaluator failed after a successful user-facing tool result",
+			),
+		);
+		const evalStage = recordedStages.find(
+			(stage) => stage.kind === "evaluation",
+		);
+		expect(evalStage?.evaluation).toMatchObject({
+			decision: "FINISH",
+			messageToUser: "Navigated to Inbox (gui).",
+			gated: true,
+			llmCallSkipped: true,
+			reason: "evaluator_failure_tool_result",
+		});
+	});
+
+	it("does not recover evaluator failures from diagnostic-only tool output", async () => {
+		const runtime = {
+			useModel: plannerNativeWith({
+				text: "",
+				toolCalls: [{ id: "call-1", name: "SHELL", arguments: {} }],
+			}),
+			logger: { warn: vi.fn() },
+		};
+		const evaluate = vi.fn(async () => {
+			throw new Error("Too Many Requests");
+		});
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				executeToolCall: vi.fn(async () => ({
+					success: true,
+					text: "$ command\n--- stdout ---\nraw logs",
+				})),
+				evaluate,
+			}),
+		).rejects.toThrow("Too Many Requests");
+
+		expect(evaluate).toHaveBeenCalledTimes(1);
+		expect(runtime.logger.warn).not.toHaveBeenCalledWith(
+			expect.objectContaining({
+				messageToUser: expect.any(String),
+			}),
+			expect.stringContaining(
+				"Evaluator failed after a successful user-facing tool result",
+			),
+		);
+	});
+
 	it("WITHHOLDS on tool failure — evaluator IS called", async () => {
 		const runtime = {
 			useModel: plannerJsonWith({
