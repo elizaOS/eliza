@@ -753,6 +753,30 @@ function pickStringArrayFromInputs(
 
 // ── action: spawn_agent (SPAWN_AGENT) ───────────────────────────────────────
 
+/** Minimal view of SubAgentRouter's per-origin spawn-cap surface. Read via the
+ *  ACPX_SUB_AGENT_ROUTER service id; a structural type (rather than importing
+ *  the concrete SubAgentRouter class) keeps this action module from importing
+ *  the router — the two are already wired together only by the index.ts barrel. */
+type SpawnCapRouter = {
+  spawnCountForOrigin(originKey: string): number;
+  noteSpawnForOrigin(originKey: string): void;
+  bestResultFor(
+    originKey: string,
+  ): { text: string; deliverable?: string } | undefined;
+};
+
+/** Max sub-agent spawns per root user message before the orchestrator relays
+ *  the best already-captured result instead of re-spawning — bounds the
+ *  weak-model re-spawn loop. Default 3 (a legitimate spawn + a retry or two);
+ *  override with ELIZA_MAX_SPAWNS_PER_ORIGIN. */
+function maxSpawnsPerOrigin(runtime: IAgentRuntime): number {
+  const raw =
+    runtime.getSetting?.("ELIZA_MAX_SPAWNS_PER_ORIGIN") ??
+    process.env.ELIZA_MAX_SPAWNS_PER_ORIGIN;
+  const n = Number.parseInt(String(raw ?? ""), 10);
+  return Number.isFinite(n) && n > 0 ? n : 3;
+}
+
 async function runSpawnAgent(
   runtime: IAgentRuntime,
   message: Memory,
@@ -870,6 +894,39 @@ async function runSpawnAgent(
         ? inboundOriginSource
         : content.source;
 
+    // Per-root-origin spawn cap. A weak coding model that returns a truncated or
+    // blocked completion makes the planner re-issue TASKS_SPAWN_AGENT for the
+    // SAME user request across turns (the router re-injects each completion, so
+    // `continueChain:false` below only stops intra-turn dups — observed live:
+    // 70 spawns for one request → ack+answer Discord spam). Once we've spawned
+    // the cap of sub-agents for this connector message + agent type, stop
+    // re-spawning and relay the best already-captured result instead.
+    const spawnCapRouter = runtime.getService?.(
+      "ACPX_SUB_AGENT_ROUTER",
+    ) as SpawnCapRouter | null | undefined;
+    const spawnOriginKey = originConnectorMessageId
+      ? `${originConnectorMessageId}\0${agentType}`
+      : undefined;
+    if (spawnCapRouter && spawnOriginKey) {
+      const cap = maxSpawnsPerOrigin(runtime);
+      if (spawnCapRouter.spawnCountForOrigin(spawnOriginKey) >= cap) {
+        const best = spawnCapRouter.bestResultFor(spawnOriginKey);
+        const replyText =
+          (best?.deliverable ?? best?.text ?? "").trim() ||
+          "I'm still working on that — the coding sub-agent took longer than expected.";
+        logger(runtime).warn(
+          `[TASKS:spawn_agent] per-origin spawn cap (${cap}) reached for ${spawnOriginKey}; relaying best result instead of re-spawning`,
+        );
+        await callbackText(callback, replyText);
+        return {
+          success: true,
+          text: replyText,
+          continueChain: false,
+          data: { actionName: "TASKS", spawnCapped: true },
+        };
+      }
+    }
+
     // Concurrency gate: serialise spawns past a small ceiling so parallel
     // coding sub-agents don't stampede the model provider into rate-limited,
     // tool-call-skipping degradation. See waitForSpawnSlot.
@@ -903,6 +960,9 @@ async function runSpawnAgent(
     });
 
     setCurrentSession(state, session);
+    if (spawnCapRouter && spawnOriginKey) {
+      spawnCapRouter.noteSpawnForOrigin(spawnOriginKey);
+    }
     logger(runtime).info(
       `Spawned acpx task agent: ${JSON.stringify({
         sessionId: session.sessionId,
