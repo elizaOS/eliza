@@ -145,12 +145,27 @@ function rgb(v: string): [number, number, number] | null {
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
 }
 
-/** Brand accent (orange ~#ff8a24 / #ff5800) is intentionally theme-invariant. */
+/** Brand accent (orange ~#ff8a24) is intentionally theme-invariant, in either
+ * rgb() form or the oklab() form Tailwind emits for `bg-accent/NN` (warm hue:
+ * positive a + positive b, mid lightness). Also treats the accent/danger button
+ * foregrounds (#fff7ee off-white, #ffffff white) as invariant — they sit on a
+ * colored button that is the same in both themes. */
 function isAccent(v: string): boolean {
   const c = rgb(v);
-  if (!c) return false;
-  const [r, g, b] = c;
-  return r > 200 && g >= 60 && g <= 175 && b < 90;
+  if (c) {
+    const [r, g, b] = c;
+    if (r > 200 && g >= 60 && g <= 175 && b < 90) return true; // orange
+    if (r > 248 && g > 235 && b > 225) return true; // #fff7ee / #ffffff button fg
+  }
+  const ok = v.match(/oklab\(\s*([\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)/);
+  if (ok) {
+    const l = Number(ok[1]);
+    const a = Number(ok[2]);
+    const bb = Number(ok[3]);
+    // warm orange: positive a (red) + positive b (yellow), mid lightness.
+    if (l > 0.5 && l < 0.9 && a > 0.04 && bb > 0.06) return true;
+  }
+  return false;
 }
 
 /** ok/warn/danger status tokens are also intentionally theme-invariant. */
@@ -265,15 +280,24 @@ test.describe("settings theme audit", () => {
               continue;
             }
           } else {
-            await openAppPath(page, "/settings");
+            // Soft-navigate to the hub (clear the section hash) without a full
+            // re-nav, which renders blank right after a theme reload.
+            await page.evaluate(() => {
+              window.history.replaceState(null, "", "#");
+              window.dispatchEvent(new HashChangeEvent("hashchange"));
+            });
+            await page
+              .getByTestId("settings-shell")
+              .first()
+              .waitFor({ state: "visible", timeout: 30_000 });
           }
-          await page.waitForTimeout(300);
+          await page.waitForTimeout(500);
           snaps[section.id] = await snapshotColors(page);
           await captureScreenshotWithQualityRetry(
             page,
             `${section.id} ${theme} ${viewport.name}`,
             {
-              attempts: 1,
+              attempts: 3,
               fullPage: true,
               type: "png",
               path: join(dir, `${section.id}.png`),
