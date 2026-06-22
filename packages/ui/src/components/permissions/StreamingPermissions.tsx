@@ -338,7 +338,7 @@ export function StreamingPermissionsSettingsView({
         {description ? (
           <div className="text-xs-tight text-muted mb-3">{description}</div>
         ) : null}
-        <div className="border border-border bg-card">
+        <div className="flex flex-col">
           {MEDIA_PERMISSIONS.filter((def) =>
             isStreamingPermissionVisibleForMode(def, mode),
           ).map((def) => {
@@ -351,17 +351,12 @@ export function StreamingPermissionsSettingsView({
               (status === "denied"
                 ? `${name} is blocked for this site. Allow it in browser site settings, then try again.`
                 : null);
-            const description = translateWithFallback(
-              t,
-              def.descriptionKey,
-              def.description,
-            );
 
             return (
               <div
                 key={def.id}
                 data-permission-id={def.id}
-                className="flex items-center gap-3 py-2.5 px-3"
+                className="flex items-center gap-3 py-2.5"
               >
                 <PermissionIcon icon={def.icon} />
                 <div className="flex-1 min-w-0">
@@ -381,9 +376,6 @@ export function StreamingPermissionsSettingsView({
                       withDot
                       className="rounded-full font-semibold"
                     />
-                  </div>
-                  <div className="text-xs-tight text-muted mt-0.5 truncate">
-                    {description}
                   </div>
                   {error ? (
                     <div className="mt-1 text-xs-tight text-danger">

@@ -934,14 +934,6 @@ function RemotePasswordSection({
     );
   }
 
-  const description = localAccess
-    ? t("security.password.description.local", {
-        defaultValue:
-          "Set the password used by browsers connecting from another machine.",
-      })
-    : t("security.password.description.remote", {
-        defaultValue: "Change the password for this remote browser session.",
-      });
   const buttonLabel =
     setupMode || !accessState.access.passwordConfigured
       ? t("security.password.setButton", {
@@ -958,7 +950,6 @@ function RemotePasswordSection({
         defaultValue: "Remote password",
       })}
     >
-      <p className="text-sm leading-6 text-muted">{description}</p>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3" noValidate>
         {setupMode && (
           <div className="flex flex-col gap-1.5">
