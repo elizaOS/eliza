@@ -48,11 +48,10 @@ export type UserDatabaseStatus = "none" | "provisioning" | "ready" | "error";
  *
  * NOTE: `github_repo`, `linked_character_ids`, and `monetization_enabled` are kept
  * here because they're deeply used across app-builder routes and the chat system.
- * The app_config/app_billing tables serve as read-optimized projections for
+ * The app_config table serves as a read-optimized projection for
  * less-frequently-accessed config (automation configs, promotional assets, etc.).
  *
  * Extended automation/features/assets → app_config table
- * Extended billing/rate limits → app_billing table
  * Database provisioning → app_databases table
  */
 export const apps = pgTable(

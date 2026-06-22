@@ -1,9 +1,24 @@
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import type { Content, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 import type { Cast as NeynarCast } from "@neynar/nodejs-sdk/build/api";
 import { type Cast, FARCASTER_SOURCE } from "../types";
 
 export const MAX_CAST_LENGTH = 1024;
+
+/**
+ * Extract agent-generated attachment URLs from a message {@link Content} to ride
+ * along as Farcaster cast embeds (#8876 / #8990). Neynar embeds are URL-based,
+ * so this returns each attachment's non-empty `url`. Shared by the POST connector
+ * (`handleSendPost`) and the mention-reply callback so both outbound paths attach
+ * media identically instead of one of them silently dropping it.
+ */
+export function extractCastEmbedUrls(content: Content): string[] {
+  return Array.isArray(content.attachments)
+    ? content.attachments
+        .map((m) => m?.url)
+        .filter((u): u is string => typeof u === "string" && u.trim().length > 0)
+    : [];
+}
 
 export function castId({ hash, agentId }: { hash: string; agentId: string }): string {
   return `${hash}-${agentId}`;
