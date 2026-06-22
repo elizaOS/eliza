@@ -17,6 +17,7 @@ import type { CommandDefinition } from "@elizaos/plugin-commands";
 import { compactConversationAction } from "../actions/compact-conversation.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
+import { filesAction } from "../actions/files.ts";
 import { logsAction } from "../actions/logs.ts";
 import { memoryAction } from "../actions/memories.ts";
 import { notifyAction } from "../actions/notify.ts";
@@ -239,6 +240,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       compactConversationAction,
       notifyAction,
       ...promoteSubactionsToActions(memoryAction),
+      filesAction,
       // SCHEDULE_FOLLOW_UP is now the `followup` op on contactAction.
       // ARCHIVE_CODING_TASK / REOPEN_CODING_TASK live as ops on the TASKS
       // parent in @elizaos/plugin-agent-orchestrator (also surfaced via the
