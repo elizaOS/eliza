@@ -10,7 +10,10 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
-import { getCloudAuthToken, resolveCloudAgentApiBase } from "../../api/client-cloud";
+import {
+  getCloudAuthToken,
+  resolveCloudAgentApiBase,
+} from "../../api/client-cloud";
 import type { CloudCompatAgent } from "../../api/client-types-cloud";
 import { getBootConfig } from "../../config/boot-config";
 import { useBranding } from "../../config/branding";

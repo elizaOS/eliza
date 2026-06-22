@@ -6,17 +6,27 @@
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
-    ".": {
-      "types": "./dist/index.d.ts",
-      "eliza-source": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
-    }
-  },
+		".": {
+			"types": "./dist/index.d.ts",
+			"eliza-source": {
+				"types": "./src/index.ts",
+				"import": "./src/index.ts",
+				"default": "./src/index.ts"
+			},
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./api/plugin-routes": {
+			"types": "./dist/api/plugin-routes.d.ts",
+			"eliza-source": {
+				"types": "./src/api/plugin-routes.ts",
+				"import": "./src/api/plugin-routes.ts",
+				"default": "./src/api/plugin-routes.ts"
+			},
+			"import": "./dist/api/plugin-routes.js",
+			"default": "./dist/api/plugin-routes.js"
+		}
+	},
   "scripts": {
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "vitest run",

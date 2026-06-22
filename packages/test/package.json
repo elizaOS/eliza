@@ -15,9 +15,9 @@
     "test": "vitest run --config harness/vitest.config.ts --passWithNoTests"
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
+    "@capacitor/core": "8.4.0",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*"
+    "telegraf": "^4.16.3"
   },
   "devDependencies": {
     "discord.js": "^14.26.4",

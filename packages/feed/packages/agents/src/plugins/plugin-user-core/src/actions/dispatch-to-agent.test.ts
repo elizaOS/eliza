@@ -56,6 +56,7 @@ const buildState = (
     teamMembers?: unknown;
     actionParams?: unknown;
     broadcastFn?: unknown;
+    dispatchAgentChat?: unknown;
     ownerId?: string;
     teamChatId?: string;
   } = {},
@@ -82,6 +83,10 @@ const buildState = (
         "broadcastFn" in overrides
           ? overrides.broadcastFn
           : mock(async () => undefined),
+      dispatchAgentChat:
+        "dispatchAgentChat" in overrides
+          ? overrides.dispatchAgentChat
+          : mockDispatchAgentChat,
     },
   } as unknown as State;
 };

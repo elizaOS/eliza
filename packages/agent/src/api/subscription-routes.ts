@@ -366,9 +366,8 @@ function subscriptionSelectionIdForStoredProvider(
 /**
  * Read rich `LinkedAccountConfig` rows from the AccountPool singleton.
  * The pool is the single source of truth — it joins on-disk credential
- * records with the metadata overlay file. Loaded via dynamic import
- * because `@elizaos/app-core` depends on `@elizaos/agent`, not the
- * other way around.
+ * records with the metadata overlay file. Loaded from the account-pool leaf
+ * subpath so subscription routes do not evaluate the app-core barrel.
  */
 async function readRichLinkedAccountsFromPool(): Promise<
   Record<string, LinkedAccountConfig>
@@ -377,7 +376,7 @@ async function readRichLinkedAccountsFromPool(): Promise<
     // String-literal dynamic import — see comment in
     // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue.
     const mod = (await import(
-      /* @vite-ignore */ "@elizaos/app-core"
+      /* @vite-ignore */ "@elizaos/app-core/account-pool"
     )) as unknown as {
       getDefaultAccountPool: () => {
         list(): LinkedAccountConfig[];

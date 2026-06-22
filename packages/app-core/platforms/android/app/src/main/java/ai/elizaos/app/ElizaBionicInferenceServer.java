@@ -197,6 +197,14 @@ final class ElizaBionicInferenceServer {
                 if (requestJson == null) {
                     break;
                 }
+                // op="generateStream" server-pushes one frame per decode step on
+                // this same connection (handled inline so it can write many
+                // frames); every other op is one-request/one-response.
+                if ("generateStream".equals(opOf(requestJson))) {
+                    generateStreamRequest(requestJson, out);
+                    out.flush();
+                    continue;
+                }
                 String responseJson = handleRequest(requestJson);
                 writeFrame(out, responseJson);
                 out.flush();
@@ -318,6 +326,112 @@ final class ElizaBionicInferenceServer {
                 .put("text", sb.toString())
                 .put("resident", true)
                 .toString();
+        }
+    }
+
+    /** Cheap op discriminator without fully consuming the request. */
+    private static String opOf(String requestJson) {
+        try {
+            return new JSONObject(requestJson).optString("op", "generate");
+        } catch (org.json.JSONException e) {
+            return "generate";
+        }
+    }
+
+    /** Parse an op="generateStream" request and run the streaming decode. */
+    private void generateStreamRequest(String requestJson, DataOutputStream out)
+            throws IOException {
+        String bundleDir = defaultBundleDir;
+        String prompt = "";
+        int maxTokens = 256;
+        try {
+            JSONObject req = new JSONObject(requestJson);
+            bundleDir = req.optString("bundleDir", "");
+            if (bundleDir.isEmpty()) {
+                bundleDir = defaultBundleDir;
+            }
+            prompt = req.optString("prompt", "");
+            maxTokens = req.optInt("maxTokens", 256);
+        } catch (org.json.JSONException e) {
+            writeFrame(out, errorJson(e.getMessage() == null ? e.toString() : e.getMessage()));
+            return;
+        }
+        generateStream(bundleDir, prompt, maxTokens, out);
+    }
+
+    /**
+     * Streaming variant of {@link #generateResident}: the identical warm decode,
+     * but it writes one length-prefixed {type:"token",text} frame per decode step
+     * to {@code out} as tokens are produced, then a terminal
+     * {type:"done",ok,tokens,ms,tokS,text} frame. This lets the agent render
+     * tokens as they decode (first paint at the first token instead of after the
+     * whole reply) and unblocks phrase-chunked LLM→TTS. The buffered op="generate"
+     * is unchanged for non-streaming callers (embed/tts/self-test).
+     */
+    private void generateStream(String bundleDir, String prompt, int maxTokens,
+                                DataOutputStream out) throws IOException {
+        Log.i(TAG, "GENERATE_STREAM from agent: " + prompt.length() + " prompt chars,"
+            + " maxTokens=" + maxTokens + ", bundle=" + bundleDir);
+        final StringBuilder sb = new StringBuilder();
+        try {
+            synchronized (residentLock) {
+                ensureResidentCtx(bundleDir);
+                if (residentStream == 0L) {
+                    residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
+                        residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");
+                    if (residentStream == 0L) {
+                        throw new IllegalStateException("resident streamOpen failed");
+                    }
+                }
+                if (ElizaVoiceNative.nativeLlmStreamReset(residentStream) != 1) {
+                    ElizaVoiceNative.nativeLlmStreamClose(residentStream);
+                    residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
+                        residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");
+                    if (residentStream == 0L) {
+                        throw new IllegalStateException("resident streamReopen failed");
+                    }
+                }
+                int[] toks = ElizaVoiceNative.nativeTokenize(residentCtx, prompt, true, true);
+                final long t0 = android.os.SystemClock.elapsedRealtime();
+                ElizaVoiceNative.nativeLlmStreamPrefill(residentStream, toks);
+                int produced = 0;
+                final int cap = maxTokens > 0 ? maxTokens : 32;
+                while (produced < cap) {
+                    String stepJson = ElizaVoiceNative.nativeLlmStreamNext(residentStream);
+                    if (stepJson == null) break;
+                    JSONObject step = new JSONObject(stepJson);
+                    String t = step.optString("text", "");
+                    if (!t.isEmpty()) {
+                        sb.append(t);
+                        writeFrame(out, new JSONObject()
+                            .put("type", "token").put("text", t).toString());
+                        out.flush();
+                    }
+                    int nout = step.optInt("nout", 1);
+                    produced += nout > 0 ? nout : 1;
+                    if (step.optBoolean("done", false)) break;
+                }
+                final long ms = android.os.SystemClock.elapsedRealtime() - t0;
+                final double tokS = ms > 0 ? produced * 1000.0 / ms : 0.0;
+                writeFrame(out, new JSONObject()
+                    .put("type", "done").put("ok", true)
+                    .put("tokens", produced).put("ms", ms).put("tokS", tokS)
+                    .put("text", sb.toString()).put("resident", true).toString());
+                out.flush();
+                Log.i(TAG, "GENERATE_STREAM done (resident): " + produced + " tok @ "
+                    + String.format(java.util.Locale.US, "%.2f", tokS) + " tok/s");
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "generate_stream failed", t);
+            resetResident();
+            try {
+                writeFrame(out, new JSONObject()
+                    .put("type", "done").put("ok", false)
+                    .put("error", t.getMessage() == null ? t.toString() : t.getMessage())
+                    .toString());
+                out.flush();
+            } catch (Throwable ignored) {
+            }
         }
     }
 

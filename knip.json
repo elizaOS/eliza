@@ -208,6 +208,30 @@
       "project": ["src/**/*.ts", "test/**/*.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
+    "packages/test": {
+      "entry": [
+        "harness/index.ts",
+        "harness/**/*.test.ts",
+        "mocks/**/*.test.ts",
+        "mocks/mockoon/*.mjs",
+        "scripts/**/*.mjs",
+        "scenarios/**/*.ts",
+        "soc2/**/*.test.ts",
+        "vitest/**/*.ts"
+      ],
+      "project": [
+        "eliza-package-paths.ts",
+        "harness/**/*.ts",
+        "helpers/**/*.ts",
+        "mocks/**/*.ts",
+        "mocks/**/*.mjs",
+        "scenarios/**/*.ts",
+        "scripts/**/*.mjs",
+        "soc2/**/*.ts",
+        "vitest/**/*.ts"
+      ],
+      "ignore": ["dist/**", ".turbo/**"]
+    },
     "packages/vault": {
       "entry": ["src/index.ts", "test/**/*.test.ts", "vitest.config.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],

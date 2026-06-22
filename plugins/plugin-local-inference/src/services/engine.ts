@@ -40,8 +40,8 @@ import {
 } from "./conversation-registry";
 import { desktopFusedFfiBackendRuntime } from "./desktop-fused-ffi-backend-runtime";
 import { FfiStreamingBackend } from "./ffi-streaming-backend";
-import { estimateDecodeTokens, recordDecodeThroughput } from "./live-signals";
 import { GenericGgufBackend } from "./generic-gguf-backend";
+import { estimateDecodeTokens, recordDecodeThroughput } from "./live-signals";
 import { MemoryMonitor } from "./memory-monitor";
 import { listInstalledModels } from "./registry";
 import { resolveDefaultPoolSize } from "./session-pool";

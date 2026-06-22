@@ -31,7 +31,7 @@ async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
   // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue
   // that requires Bun.build to statically follow this specifier.
   return import(
-    /* webpackIgnore: true */ "@elizaos/app-core"
+    /* webpackIgnore: true */ "@elizaos/app-core/services/vault-mirror"
   ) as unknown as Promise<AppCoreRuntimeModule>;
 }
 

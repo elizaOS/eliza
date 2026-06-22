@@ -7,9 +7,9 @@ import { useAgentElement } from "../../agent-surface";
 // grouping below reads — so the cloud sections render whenever Settings mounts.
 import { listExtraSettingsGroups } from "../../cloud/settings";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
+import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { useAppSelectorShallow } from "../../state";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import {

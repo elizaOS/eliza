@@ -1,3 +1,5 @@
+export { compressPromptDescription } from "./prompt-compression";
+
 export const addContactTemplate = `task: Extract contact information to add to relationships.
 
 context:

@@ -283,6 +283,14 @@ function isReactComponentExport(
 
 type HostExternalImporter = () => Promise<Record<string, unknown>>;
 
+function importHostExternal(
+  specifier: string,
+): Promise<Record<string, unknown>> {
+  return import(/* @vite-ignore */ specifier) as Promise<
+    Record<string, unknown>
+  >;
+}
+
 const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
   client,
   resolveAppBranding,
@@ -307,31 +315,50 @@ const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
   toneForViewerAttachment,
 };
 
+const UI_COMPONENTS_COMPAT: Record<string, unknown> = {
+  Button,
+  Input,
+  Spinner,
+  PagePanel,
+};
+
 async function importAppCoreViewCompat(): Promise<Record<string, unknown>> {
   return APP_CORE_VIEW_COMPAT;
+}
+
+async function importUiComponentsCompat(): Promise<Record<string, unknown>> {
+  return UI_COMPONENTS_COMPAT;
 }
 
 const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/app-core": importAppCoreViewCompat,
   "@elizaos/app-core/browser": importAppCoreViewCompat,
   "@elizaos/app-core/ui-compat": importAppCoreViewCompat,
-  "@elizaos/capacitor-contacts": () => import("@elizaos/capacitor-contacts"),
-  "@elizaos/capacitor-messages": () => import("@elizaos/capacitor-messages"),
+  "@elizaos/capacitor-contacts": () =>
+    importHostExternal("@elizaos/capacitor-contacts"),
+  "@elizaos/capacitor-messages": () =>
+    importHostExternal("@elizaos/capacitor-messages"),
   "@elizaos/capacitor-mobile-signals": () =>
-    import("@elizaos/capacitor-mobile-signals"),
-  "@elizaos/capacitor-phone": () => import("@elizaos/capacitor-phone"),
-  "@elizaos/capacitor-system": () => import("@elizaos/capacitor-system"),
-  "@elizaos/shared": () => import("@elizaos/shared"),
-  "@elizaos/ui": () => import("@elizaos/ui"),
-  "@elizaos/plugin-browser": () => import("@elizaos/plugin-browser"),
+    importHostExternal("@elizaos/capacitor-mobile-signals"),
+  "@elizaos/capacitor-phone": () =>
+    importHostExternal("@elizaos/capacitor-phone"),
+  "@elizaos/capacitor-system": () =>
+    importHostExternal("@elizaos/capacitor-system"),
+  "@elizaos/shared": () => importHostExternal("@elizaos/shared"),
+  "@elizaos/ui": importAppCoreViewCompat,
+  "@elizaos/plugin-browser": () =>
+    importHostExternal("@elizaos/plugin-browser"),
   "@elizaos/plugin-health/screen-time/mobile-signal-setup": () =>
-    import("@elizaos/plugin-health/screen-time/mobile-signal-setup"),
-  "@elizaos/plugin-training": () => import("@elizaos/plugin-training"),
+    importHostExternal(
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup",
+    ),
+  "@elizaos/plugin-training": () =>
+    importHostExternal("@elizaos/plugin-training"),
   "@elizaos/ui/agent-surface": async () => AgentSurfaceHost,
   "@elizaos/ui/app-navigate-view": () => import("../../app-navigate-view.ts"),
   "@elizaos/ui/api": () => import("../../api/index.ts"),
   "@elizaos/ui/bridge": () => import("../../bridge/index.ts"),
-  "@elizaos/ui/components": () => import("../index.ts"),
+  "@elizaos/ui/components": importUiComponentsCompat,
   "@elizaos/ui/config": () => import("../../config/index.ts"),
   "@elizaos/ui/events": () => import("../../events/index.ts"),
   "@elizaos/ui/hooks": () => import("../../hooks/index.ts"),

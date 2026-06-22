@@ -24,9 +24,9 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType, spawnWithTrajectoryLink } from "@elizaos/core";
 import { readStringOption } from "../params.js";
-import { isRestrictedPlatform } from "./views.js";
 import type { ViewSummary } from "./views-client.js";
 import { writeViewHeroAsset } from "./views-hero.js";
+import { isRestrictedPlatform } from "./views-platform.js";
 import { locatePluginSourceDir } from "./views-plugin-source.js";
 
 export const VIEWS_CREATE_INTENT_TAG = "views-create-intent";

@@ -1,7 +1,8 @@
 import type http from "node:http";
-import { type ElizaConfig, loadElizaConfig } from "@elizaos/agent";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type { AgentRuntime } from "@elizaos/core";
 import {
+  type ElizaConfig,
   isLoopbackRemoteAddress,
   isTrustedLocalRequest as isTrustedLocalRequestShared,
   normalizeFirstRunProviderId,

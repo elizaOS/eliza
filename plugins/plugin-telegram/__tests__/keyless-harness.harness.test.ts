@@ -14,11 +14,12 @@
  * The ONLY mocks are the external `telegraf` context objects. No bot token, no
  * api.telegram.org, no network, NO API keys: the outbound seam is captured.
  */
-import { MessageManager } from "../src/index.ts";
+
+import { type MockLlmRuntime, withMockLlmRuntime } from "@elizaos/test-harness";
 import type { Context } from "telegraf";
 import { Telegraf } from "telegraf";
 import { afterEach, describe, expect, it } from "vitest";
-import { type MockLlmRuntime, withMockLlmRuntime } from "@elizaos/test-harness";
+import { MessageManager } from "../src/index.ts";
 
 const cleanups: Array<() => Promise<void>> = [];
 

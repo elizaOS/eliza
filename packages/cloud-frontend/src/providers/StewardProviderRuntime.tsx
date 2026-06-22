@@ -16,7 +16,7 @@ import {
   readStoredToken,
   tokenIsExpired,
   tokenSecsRemaining,
-} from "./StewardProvider";
+} from "./StewardProviderShared";
 
 const REFRESH_CHECK_INTERVAL_MS = 60_000;
 const REFRESH_AHEAD_SECS = 120;

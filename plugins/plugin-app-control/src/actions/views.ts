@@ -2878,17 +2878,6 @@ export function createViewsAliasAction(
 // ---------------------------------------------------------------------------
 
 /**
- * Returns true when the agent is running on a platform that prohibits dynamic
- * code loading (iOS App Store and Google Play builds).
- */
-export function isRestrictedPlatform(): boolean {
-	const variant = (process.env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase();
-	if (variant === "store") return true;
-	const platform = (process.env.ELIZA_PLATFORM ?? "").trim().toLowerCase();
-	return platform === "ios" || platform === "android";
-}
-
-/**
  * Outcome of a shell-navigation request. `ok` is true when the shell accepted
  * the request (2xx) or genuinely does not implement the route (501/404) — the
  * latter is a soft success on shells that don't support a given capability.

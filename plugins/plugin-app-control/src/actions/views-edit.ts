@@ -21,8 +21,8 @@ import type {
 } from "@elizaos/core";
 import { logger, spawnWithTrajectoryLink } from "@elizaos/core";
 import { readStringOption } from "../params.js";
-import { isRestrictedPlatform } from "./views.js";
 import type { ViewSummary } from "./views-client.js";
+import { isRestrictedPlatform } from "./views-platform.js";
 import { locatePluginSourceDir } from "./views-plugin-source.js";
 import { scoreView } from "./views-search.js";
 

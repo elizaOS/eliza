@@ -21,6 +21,7 @@ import {
 import {
   agentRuntimeManager,
   agentService,
+  dispatchAgentChat,
   notifyTeamChatMessage,
   teamChatService,
 } from "@feed/agents";
@@ -425,6 +426,8 @@ export const POST = withErrorHandling(
         state.data = {
           ...state.data,
           actionResults: traceActionResults,
+          broadcastFn: broadcastChatMessage,
+          dispatchAgentChat,
         };
 
         // Build prompt from template
@@ -521,6 +524,8 @@ export const POST = withErrorHandling(
         state.data = {
           ...state.data,
           actionParams,
+          broadcastFn: broadcastChatMessage,
+          dispatchAgentChat,
         };
 
         // Persist actionParams to stateCache so action handlers that compose
@@ -540,7 +545,12 @@ export const POST = withErrorHandling(
         if (stateCache && elizaMessage.id) {
           const cached = stateCache.get(elizaMessage.id);
           if (cached) {
-            cached.data = { ...cached.data, actionParams };
+            cached.data = {
+              ...cached.data,
+              actionParams,
+              broadcastFn: broadcastChatMessage,
+              dispatchAgentChat,
+            };
           }
         }
 
