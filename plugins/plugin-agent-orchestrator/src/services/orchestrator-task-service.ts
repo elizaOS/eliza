@@ -41,6 +41,10 @@ import {
   verifyGoalCompletion,
 } from "./goal-llm-verifier.js";
 import {
+  buildDefaultAcceptanceCriteria,
+  shouldRequireGoalContract,
+} from "./goal-contract.js";
+import {
   buildGoalFollowUp,
   buildGoalPrompt,
   coerceGoalCapabilityProfile,
@@ -1113,7 +1117,22 @@ export class OrchestratorTaskService extends Service {
   // ---- lifecycle ---------------------------------------------------------
 
   async createTask(input: CreateTaskInput): Promise<TaskThreadDetailDto> {
-    const doc = await this.store.createTask(input);
+    // #8896: auto-fill default acceptance criteria for criteria-less tasks so
+    // automatic verification always has something concrete to check (otherwise
+    // autoVerifyCompletion returns early on an empty list and "done" is faith).
+    const effectiveInput =
+      shouldAutoVerifyGoal() &&
+      shouldRequireGoalContract() &&
+      (input.acceptanceCriteria?.length ?? 0) === 0
+        ? {
+            ...input,
+            acceptanceCriteria: buildDefaultAcceptanceCriteria(
+              input.goal,
+              input.kind,
+            ),
+          }
+        : input;
+    const doc = await this.store.createTask(effectiveInput);
     if (input.originalRequest) {
       await this.recordMessage(doc.task.id, {
         content: input.originalRequest,
