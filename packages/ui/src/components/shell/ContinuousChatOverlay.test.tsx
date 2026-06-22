@@ -68,6 +68,9 @@ function makeController(
     setTranscriptSessionSink: vi.fn(),
     setComposerHasDraft: vi.fn(),
     clearConversation: vi.fn(),
+    // A mic tap while transcribing routes through this (the mic is the master
+    // voice control); the real controller always supplies it, so the mock must.
+    stopTranscriptionAndMic: vi.fn(),
     ...overrides,
   } as unknown as ShellController;
 }
@@ -875,20 +878,21 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("a mic tap while transcribing ends transcription, never starts a conversation", () => {
-    const toggleTranscriptionMode = vi.fn();
+    const stopTranscriptionAndMic = vi.fn();
     const toggleHandsFree = vi.fn();
     render(
       <ContinuousChatOverlay
         controller={makeController({
           transcriptionMode: true,
-          toggleTranscriptionMode,
+          stopTranscriptionAndMic,
           toggleHandsFree,
         } as unknown as Partial<ShellController>)}
       />,
     );
     fireEvent.click(screen.getByTestId("chat-composer-mic"));
-    // Ends transcription (→ composer attachment); does NOT open a second capture.
-    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+    // The mic is the master voice control: a tap ends transcription AND turns
+    // the mic off (→ composer attachment); it does NOT open a second capture.
+    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
     expect(toggleHandsFree).not.toHaveBeenCalled();
   });
 
