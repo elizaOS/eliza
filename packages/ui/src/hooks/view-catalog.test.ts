@@ -49,31 +49,33 @@ describe("mergeViewCatalog", () => {
       views: [makeView("chat", { pluginName: "@elizaos/builtin" })],
       catalog: [
         makeApp({
-          name: "@elizaos/plugin-feed",
-          displayName: "Feed",
+          name: "@elizaos/plugin-arcade",
+          displayName: "Arcade",
           category: "game",
-          heroImage: "/api/apps/hero/feed",
+          heroImage: "/api/apps/hero/arcade",
         }),
       ],
     });
     const chat = entries.find((e) => e.id === "chat");
-    const claw = entries.find((e) => e.appName === "@elizaos/plugin-feed");
+    const claw = entries.find((e) => e.appName === "@elizaos/plugin-arcade");
     expect(chat?.state).toBe("loaded");
     expect(chat?.kind).toBe("view");
     expect(claw?.state).toBe("available");
     expect(claw?.kind).toBe("app");
-    expect(claw?.label).toBe("Feed");
-    expect(claw?.heroUrl).toBe("/api/apps/hero/feed");
+    expect(claw?.label).toBe("Arcade");
+    expect(claw?.heroUrl).toBe("/api/apps/hero/arcade");
     expect(claw?.hasHero).toBe(true);
   });
 
   it("dedupes: a catalog app whose plugin is already a loaded view is not shown twice", () => {
     const entries = merge({
-      views: [makeView("feed", { pluginName: "@elizaos/plugin-feed" })],
+      views: [
+        makeView("arcade", { pluginName: "@elizaos/plugin-arcade" }),
+      ],
       catalog: [
         makeApp({
-          name: "@elizaos/plugin-feed",
-          displayName: "Feed",
+          name: "@elizaos/plugin-arcade",
+          displayName: "Arcade",
         }),
       ],
     });
@@ -153,7 +155,7 @@ describe("mergeViewCatalog", () => {
         makeView("spatial", { viewType: "xr" }),
         makeView("chat", { viewType: "gui" }),
       ],
-      catalog: [makeApp({ name: "@elizaos/plugin-feed" })],
+      catalog: [makeApp({ name: "@elizaos/plugin-arcade" })],
     });
     expect(entries.map((e) => e.id)).toEqual(["spatial"]);
   });

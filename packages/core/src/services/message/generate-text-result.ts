@@ -11,7 +11,7 @@ export function getV5ModelText(raw: string | GenerateTextResult): string {
 	if (contentText.trim().length > 0) {
 		return contentText;
 	}
-	const responseText = (raw as unknown as Record<string, unknown>).response;
+	const responseText = raw.response;
 	if (typeof responseText === "string" && responseText.trim().length > 0) {
 		return responseText;
 	}
@@ -21,24 +21,19 @@ export function getV5ModelText(raw: string | GenerateTextResult): string {
 export function extractGenerateTextContentText(
 	raw: GenerateTextResult,
 ): string {
-	const content = (raw as unknown as Record<string, unknown>).content;
+	const content = raw.content;
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";
 	const parts: string[] = [];
 	for (const part of content) {
-		if (typeof part === "string") {
-			parts.push(part);
-			continue;
-		}
-		if (!part || typeof part !== "object" || Array.isArray(part)) continue;
-		const entry = part as Record<string, unknown>;
+		if (!part || typeof part !== "object") continue;
 		const type =
-			typeof entry.type === "string" ? entry.type.toLowerCase() : undefined;
+			typeof part.type === "string" ? part.type.toLowerCase() : undefined;
 		const text =
-			typeof entry.text === "string"
-				? entry.text
-				: typeof entry.content === "string"
-					? entry.content
+			typeof part.text === "string"
+				? part.text
+				: typeof part.content === "string"
+					? part.content
 					: "";
 		if (!text) continue;
 		if (!type || type === "text" || type === "output_text") {

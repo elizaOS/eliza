@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildRouteCatalog } from "../../app-core/src/api/dev-route-catalog";
+import { discoverSideEffectAppModules } from "../vite/app-side-effect-modules";
 import {
   DIRECT_ROUTE_CASES,
   MANAGER_VISIBLE_VIEW_TILE_CASES,
@@ -47,10 +48,6 @@ const INTERNAL_TOOL_APPS_SOURCE = path.resolve(
   "../../ui/src/components/apps/internal-tool-apps.ts",
 );
 const APP_MAIN_SOURCE = path.resolve(HERE, "../src/main.tsx");
-const SIDE_EFFECT_PLUGIN_SOURCE = path.resolve(
-  HERE,
-  "../src/plugin-registrations.ts",
-);
 
 type PluginViewCase = {
   manifestPath: string;
@@ -155,18 +152,17 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
     "plugins/plugin-companion/src/plugin.ts",
   "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice":
     "plugins/plugin-companion/src/plugin.ts",
-  "@elizaos/plugin-contacts/register": "plugins/plugin-contacts/src/plugin.ts",
-  "@elizaos/plugin-device-settings/register": null,
-  "@elizaos/plugin-facewear/register": "plugins/plugin-facewear/src/index.ts",
+  "@elizaos/plugin-contacts": "plugins/plugin-contacts/src/plugin.ts",
+  "@elizaos/plugin-device-settings": null,
+  "@elizaos/plugin-facewear": "plugins/plugin-facewear/src/index.ts",
   "@elizaos/plugin-feed": "plugins/plugin-feed/src/index.ts",
   "@elizaos/plugin-hyperliquid-app":
     "plugins/plugin-hyperliquid-app/src/plugin.ts",
   // PA no longer declares a view (the LifeOps overview was removed); it is a
   // boot plugin with no renderer module.
   "@elizaos/plugin-personal-assistant": null,
-  "@elizaos/plugin-messages/register": "plugins/plugin-messages/src/plugin.ts",
+  "@elizaos/plugin-messages": "plugins/plugin-messages/src/plugin.ts",
   "@elizaos/plugin-phone": "plugins/plugin-phone/src/plugin.ts",
-  "@elizaos/plugin-phone/register": "plugins/plugin-phone/src/plugin.ts",
   "@elizaos/plugin-polymarket-app":
     "plugins/plugin-polymarket-app/src/plugin.ts",
   "@elizaos/plugin-shopify-ui": "plugins/plugin-shopify-ui/src/plugin.ts",
@@ -178,16 +174,15 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-training": "plugins/plugin-training/src/setup-routes.ts",
   "@elizaos/plugin-trajectory-logger":
     "plugins/plugin-trajectory-logger/src/plugin.ts",
-  "@elizaos/plugin-vector-browser/register":
+  "@elizaos/plugin-vector-browser":
     "plugins/plugin-vector-browser/src/plugin.ts",
   "@elizaos/plugin-vincent": "plugins/plugin-vincent/src/plugin.ts",
   "@elizaos/plugin-waifu-imagegen-app":
     "plugins/plugin-waifu-imagegen-app/src/plugin.ts",
   "@elizaos/plugin-waifu-swap-app":
     "plugins/plugin-waifu-swap-app/src/plugin.ts",
-  "@elizaos/plugin-wallet-ui/register":
-    "plugins/plugin-wallet-ui/src/plugin.ts",
-  "@elizaos/plugin-wifi/register": null,
+  "@elizaos/plugin-wallet-ui": "plugins/plugin-wallet-ui/src/plugin.ts",
+  "@elizaos/plugin-wifi": null,
   "@elizaos/app-model-tester": "plugins/app-model-tester/src/plugin.ts",
 };
 
@@ -624,9 +619,15 @@ function appWindowRoutePaths(): string[] {
 }
 
 function sideEffectPluginIds(): string[] {
-  const source = readFileSync(SIDE_EFFECT_PLUGIN_SOURCE, "utf8");
+  // Manifest-driven: the side-effect loader list is generated at build time
+  // from each plugin's `elizaos.appRegister` marker (no hardcoded list in
+  // plugin-registrations.ts), so the ratchet reads the same scan the renderer
+  // build uses, keyed by canonical package name.
   return sorted(
-    [...source.matchAll(/key:\s*"([^"]+)"/g)].map((match) => match[1] ?? ""),
+    discoverSideEffectAppModules([
+      path.resolve(REPO_ROOT, "plugins"),
+      path.resolve(REPO_ROOT, "packages"),
+    ]).map((module) => module.key),
   );
 }
 

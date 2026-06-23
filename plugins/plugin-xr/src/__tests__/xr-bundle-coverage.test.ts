@@ -8,7 +8,7 @@
  * that loads inside the XR shell) is built, present, and structurally sound.
  *
  * What is tested:
- *   - bundle.js exists for all 20 source-buildable plugins
+ *   - bundle.js exists for all 18 source-buildable plugins
  *   - bundle.js is non-empty and contains built view content
  *   - bundle.js contains the componentExport name from the manifest
  *   - bundle.js is valid JavaScript (no JSON or HTML accidentally written there)
@@ -104,7 +104,7 @@ function extractXrViews(
   return results;
 }
 
-// The 21 plugin manifests → (plugin directory, manifest path)
+// The 18 plugin manifests → (plugin directory, manifest path)
 const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
   {
     pluginDir: "plugins/plugin-companion",
@@ -180,7 +180,7 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
   },
 ];
 
-describe("XR view bundle coverage — all 21 plugin bundles built and valid", () => {
+describe("XR view bundle coverage — all 18 plugin bundles built and valid", () => {
   it("declares dist/views/bundle.js for every plugin with an XR view", () => {
     const missingDeclarations: string[] = [];
     for (const { pluginDir, manifestPath } of PLUGIN_BUNDLES) {

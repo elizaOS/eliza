@@ -38,6 +38,15 @@ resource "random_password" "tenant_db_admin" {
   special = false # keep DSN URL-safe (no escaping in admin_dsn output)
 }
 
+# pgbouncer auth_user credential (#8321 P0 #2). The pooler authenticates itself
+# with this to run auth_query against the per-tenant SCRAM lookup. Stable across
+# boots so the cloud-init ALTER ROLE + userlist write are idempotent. URL-safe
+# for the same reason as the admin password (it lands in userlist.txt verbatim).
+resource "random_password" "pgbouncer_auth" {
+  length  = 40
+  special = false
+}
+
 # Operator/daemon SSH access is provisioned by cloud-init: each node's `deploy`
 # user gets `var.ssh_public_keys` in its authorized_keys (see cloud-init/*.tftpl).
 # We do NOT register an `hcloud_ssh_key` here: the apps Hetzner project is
@@ -121,9 +130,10 @@ resource "hcloud_server" "tenant_db" {
   labels       = merge(local.common_labels, { "role" = "tenant-db" })
 
   user_data = templatefile("${path.module}/cloud-init/tenant-db.yaml.tftpl", {
-    hostname          = "eliza-app-tenant"
-    admin_password    = random_password.tenant_db_admin.result
-    operator_ssh_keys = var.ssh_public_keys
+    hostname                = "eliza-app-tenant"
+    admin_password          = random_password.tenant_db_admin.result
+    pgbouncer_auth_password = random_password.pgbouncer_auth.result
+    operator_ssh_keys       = var.ssh_public_keys
   })
 
   # Same convention as control-plane / apps-data-plane: allow in-place rename

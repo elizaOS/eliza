@@ -9,6 +9,8 @@ import {
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 import { VIEW_CASES } from "./plugin-view-cases";
 
+const KNOWN_BROKEN = new Set<string>([]);
+
 // Interaction coverage ratchet signals: redundantHeadingParagraphs,
 // visualSignals, terminalCommands.
 type ViewAudit = {
@@ -46,6 +48,7 @@ async function expectNoFailedView(
 
 test.describe("registered plugin views visual coverage", () => {
   for (const view of VIEW_CASES) {
+    if (KNOWN_BROKEN.has(view.id)) continue;
     const assistantExpectation =
       view.shellPill === "expected"
         ? "renders with assistant pill"

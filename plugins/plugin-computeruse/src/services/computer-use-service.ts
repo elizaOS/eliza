@@ -5,6 +5,7 @@ import {
   ComputerUseApprovalManager,
   isApprovalMode,
 } from "../approval-manager.js";
+import { getCoordOcrProvider } from "../mobile/ocr-provider.js";
 import {
   clickBrowser,
   closeBrowser,
@@ -37,9 +38,16 @@ import {
   driverClickWithModifiers,
   driverDoubleClick,
   driverDrag,
+  driverDragPath,
+  driverGetCursorPosition,
   driverKeyCombo,
+  driverKeyDown,
   driverKeyPress,
+  driverKeyUp,
+  driverMiddleClick,
+  driverMouseDown,
   driverMouseMove,
+  driverMouseUp,
   driverRightClick,
   driverScroll,
   driverType,
@@ -119,6 +127,9 @@ const COORDINATE_BEARING_ACTIONS = new Set<DesktopActionParams["action"]>([
   "double_click",
   "right_click",
   "mouse_move",
+  "middle_click",
+  "mouse_down",
+  "mouse_up",
   "scroll",
   "drag",
 ]);
@@ -250,11 +261,17 @@ export class ComputerUseService extends Service {
       case "double_click":
       case "right_click":
       case "mouse_move":
+      case "middle_click":
+      case "mouse_down":
+      case "mouse_up":
       case "type":
       case "key_press":
       case "key_combo":
+      case "key_down":
+      case "key_up":
       case "scroll":
       case "drag":
+      case "get_cursor_position":
       case "detect_elements":
       case "ocr":
         return this.executeDesktopAction({
@@ -347,20 +364,8 @@ export class ComputerUseService extends Service {
         return this.failEntry(entry, { success: false, error: approvalError });
       }
 
-      if (params.action === "detect_elements") {
-        return this.failEntry(entry, {
-          success: false,
-          error:
-            "Element detection is not available on local machines. Use a screenshot plus model reasoning instead.",
-        });
-      }
-
-      if (params.action === "ocr") {
-        return this.failEntry(entry, {
-          success: false,
-          error:
-            "OCR is not available on local machines. Use a screenshot plus model reasoning instead.",
-        });
+      if (params.action === "ocr" || params.action === "detect_elements") {
+        return this.runOcrOrDetect(entry, params);
       }
 
       const targetDisplayId = this.resolveDisplayIdForAction(params);
@@ -405,6 +410,24 @@ export class ComputerUseService extends Service {
           await driverMouseMove(g.x, g.y);
           break;
         }
+        case "middle_click": {
+          this.requireCoordinate(params.coordinate, "middle_click");
+          const g = this.toGlobal(params, params.coordinate);
+          await driverMiddleClick(g.x, g.y);
+          break;
+        }
+        case "mouse_down": {
+          this.requireCoordinate(params.coordinate, "mouse_down");
+          const g = this.toGlobal(params, params.coordinate);
+          await driverMouseDown(g.x, g.y, params.button ?? "left");
+          break;
+        }
+        case "mouse_up": {
+          this.requireCoordinate(params.coordinate, "mouse_up");
+          const g = this.toGlobal(params, params.coordinate);
+          await driverMouseUp(g.x, g.y, params.button ?? "left");
+          break;
+        }
         case "type":
           if (!params.text) throw new Error("text is required for type action");
           await driverType(params.text);
@@ -419,6 +442,18 @@ export class ComputerUseService extends Service {
           }
           await driverKeyCombo(params.key);
           break;
+        case "key_down":
+          if (!params.key) {
+            throw new Error("key is required for key_down action");
+          }
+          await driverKeyDown(params.key);
+          break;
+        case "key_up":
+          if (!params.key) {
+            throw new Error("key is required for key_up action");
+          }
+          await driverKeyUp(params.key);
+          break;
         case "scroll": {
           this.requireCoordinate(params.coordinate, "scroll");
           const g = this.toGlobal(params, params.coordinate);
@@ -430,7 +465,24 @@ export class ComputerUseService extends Service {
           );
           break;
         }
+        case "get_cursor_position": {
+          // Read-only query — no coordinate, no post-action screenshot.
+          const pos = await driverGetCursorPosition();
+          return this.succeedEntry(entry, {
+            success: true,
+            cursorPosition: pos,
+            message: `Cursor is at (${pos.x}, ${pos.y}).`,
+          });
+        }
         case "drag": {
+          // A `path` of ≥2 points traces a real polyline (curves, corners,
+          // marquee, swipe paths); otherwise fall back to a straight
+          // startCoordinate→coordinate drag.
+          if (params.path && params.path.length >= 2) {
+            const global = params.path.map((p) => this.toGlobal(params, p));
+            await driverDragPath(global);
+            break;
+          }
           this.requireCoordinate(
             params.startCoordinate,
             "drag",
@@ -478,6 +530,71 @@ export class ComputerUseService extends Service {
           permissionType: permissionError.permissionType,
         });
       }
+      return this.failEntry(entry, {
+        success: false,
+        error: errorMessage(error),
+      });
+    }
+  }
+
+  /**
+   * `ocr` / `detect_elements` — real on-device OCR via the registered
+   * CoordOcrProvider (plugin-vision contributes native Windows.Media.Ocr / Apple
+   * Vision / docTR through `registerCoordOcrProvider`). Replaces the former
+   * "not available on local machines" stub. Read-only; coordinates are
+   * display-local so the agent can click them directly.
+   */
+  private async runOcrOrDetect(
+    entry: ActionHistoryEntry,
+    params: DesktopActionParams,
+  ): Promise<ComputerActionResult> {
+    const provider = getCoordOcrProvider();
+    if (!provider) {
+      return this.failEntry(entry, {
+        success: false,
+        error:
+          "No OCR provider is registered. Enable @elizaos/plugin-vision for on-device OCR (Windows.Media.Ocr / Apple Vision / docTR).",
+      });
+    }
+    const displayId =
+      params.displayId ?? this.resolveDisplayIdForAction(params);
+    try {
+      const cap = await captureDisplay(displayId);
+      const { blocks } = await provider.describe({
+        displayId: String(cap.display.id),
+        sourceX: 0,
+        sourceY: 0,
+        pngBytes: new Uint8Array(cap.frame),
+      });
+      if (params.action === "detect_elements") {
+        const elements = blocks.map((b, i) => ({
+          id: `e${i + 1}`,
+          kind: "text" as const,
+          text: b.text,
+          bbox: [b.bbox.x, b.bbox.y, b.bbox.width, b.bbox.height] as [
+            number,
+            number,
+            number,
+            number,
+          ],
+          semantic_position: b.semantic_position,
+          displayId: cap.display.id,
+        }));
+        return this.succeedEntry(entry, {
+          success: true,
+          displayId: cap.display.id,
+          data: { elements, count: elements.length },
+          message: `Detected ${elements.length} text element(s) on display ${cap.display.id}.`,
+        });
+      }
+      const text = blocks.map((b) => b.text).join("\n");
+      return this.succeedEntry(entry, {
+        success: true,
+        displayId: cap.display.id,
+        data: { text, blocks },
+        message: `OCR found ${blocks.length} text block(s) on display ${cap.display.id}.`,
+      });
+    } catch (error) {
       return this.failEntry(entry, {
         success: false,
         error: errorMessage(error),

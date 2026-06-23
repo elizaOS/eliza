@@ -6,6 +6,7 @@
  * Opt-in: host calls startTaskScheduler(adapter); TaskService registers when daemon is present.
  */
 
+import { logger } from "../logger";
 import type { IDatabaseAdapter } from "../types/database";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
@@ -72,7 +73,9 @@ export function startTaskScheduler(adapterInstance: IDatabaseAdapter): void {
 	adapter = adapterInstance;
 	if (timer) return;
 	timer = setInterval(() => {
-		tick().catch(() => {});
+		tick().catch((err) =>
+			logger.error({ err }, "[TaskScheduler] tick failed"),
+		);
 	}, TICK_INTERVAL_MS) as ReturnType<typeof setInterval>;
 }
 

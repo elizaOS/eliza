@@ -756,6 +756,12 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       const previousConversationId = activeConversationIdRef.current;
       const previousMessages = conversationMessagesRef.current;
       const previousCutoffTs = companionMessageCutoffTs;
+      // Snapshot the navigation epoch: if the user switches conversations while
+      // this one is still being created (e.g. taps the soft-undo toast in the
+      // gap between reset and the create resolving, #8929), we must NOT switch
+      // to the fresh conversation and clobber their choice. handleSelectConversation
+      // bumps this epoch, so a change means "navigated away during creation".
+      const creationEpoch = conversationHydrationEpochRef.current;
       const hasUserMessage = previousMessages.some(
         (message) => message.role === "user",
       );
@@ -778,6 +784,13 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           throw new Error("Conversation creation returned an invalid payload.");
         }
         const conversation = rawConversation;
+        // Bail if the user navigated away while the conversation was being
+        // created (soft-undo / manual switch): switching now would override
+        // their restored conversation with this throwaway fresh thread. The
+        // orphaned empty conversation is reaped by cleanupEmptyConversations.
+        if (conversationHydrationEpochRef.current !== creationEpoch) {
+          return;
+        }
         const nextCutoffTs = Date.now();
         setConversations((prev) => {
           const next = shouldReplacePreviousDraftConversation
@@ -890,6 +903,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       resetConversationDraftState,
       uiLanguage,
       activeConversationIdRef,
+      conversationHydrationEpochRef,
       conversationMessagesRef,
       greetingFiredRef,
       send.interruptActiveChatPipeline,
@@ -934,17 +948,20 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
   const handleSelectConversation = useCallback(
     async (id: string) => {
       conversationHydrationEpochRef.current += 1;
-      if (
-        id === activeConversationId &&
-        conversationMessagesRef.current.length > 0
-      )
+      // Read the LIVE active id from the ref, not the closure: callers can hold
+      // a stale `handleSelectConversation` (e.g. the soft-undo toast captures it
+      // at reset time, when `activeConversationId` was still the previous
+      // conversation). Using the closure here made restoring to that previous
+      // conversation hit this early-return and silently no-op (#8929).
+      const currentActiveId = activeConversationIdRef.current;
+      if (id === currentActiveId && conversationMessagesRef.current.length > 0)
         return;
 
       send.interruptActiveChatPipeline();
 
       // Clean up empty conversations: if the previous conversation has only
       // system/greeting messages and no user messages, delete it silently.
-      const prevId = activeConversationId;
+      const prevId = currentActiveId;
       if (prevId && prevId !== id) {
         const prevMessages = conversationMessagesRef.current;
         const hasUserMessage = prevMessages.some((m) => m.role === "user");
@@ -959,7 +976,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         }
       }
 
-      const previousActive = activeConversationId;
+      const previousActive = currentActiveId;
       setActiveConversationId(id);
       activeConversationIdRef.current = id;
       client.sendWsMessage({ type: "active-conversation", conversationId: id });
@@ -1028,7 +1045,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       );
     },
     [
-      activeConversationId,
       loadConversationMessages,
       loadConversations,
       setActionNotice,

@@ -16,8 +16,9 @@ File operations belong to the FILE action; shell/terminal access belongs to the 
 
 | Name | File | What it does |
 |------|------|--------------|
-| `COMPUTER_USE` | `src/actions/use-computer.ts` | Umbrella desktop action: `screenshot`, `click`, `click_with_modifiers`, `double_click`, `right_click`, `mouse_move`, `type`, `key`, `key_combo`, `scroll`, `drag`, `detect_elements`, `ocr`. Requires `OWNER` role. Subactions are promoted to virtual top-level actions (`COMPUTER_USE_CLICK`, etc.) via `promoteSubactionsToActions`. |
+| `COMPUTER_USE` | `src/actions/use-computer.ts` | Umbrella desktop action: `screenshot`, `click`, `click_with_modifiers`, `double_click`, `right_click`, `mouse_move`, `middle_click`, `mouse_down`, `mouse_up`, `type`, `key`, `key_combo`, `key_down`, `key_up`, `scroll`, `drag` (single segment or multi-point `path`), `get_cursor_position`, `detect_elements`, `ocr`. `mouse_down/up` + `key_down/up` are real press-and-hold primitives (nutjs `pressButton`/`pressKey` without release — back hold-drags, marquee, held modifiers); they require the nutjs driver. Requires `OWNER` role. Subactions are promoted to virtual top-level actions (`COMPUTER_USE_CLICK`, etc.) via `promoteSubactionsToActions`. |
 | `WINDOW` | `src/actions/window.ts` | Window management: `list`, `focus`, `switch`, `arrange`, `move`, `minimize`, `maximize`, `restore`, `close`. Also promoted to `WINDOW_FOCUS`, etc. |
+| `CLIPBOARD` | `src/actions/clipboard.ts` | Host clipboard read/write (`read`, `write`) — trycua/cua parity. Promoted to `CLIPBOARD_READ` / `CLIPBOARD_WRITE`. macOS pbcopy/pbpaste, Linux wl-clipboard/xclip, Windows PowerShell `Get-Clipboard` / `Set-Clipboard`. |
 | `COMPUTER_USE_AGENT` | `src/actions/use-computer-agent.ts` | High-level "give me a goal, click my way there" loop (WS7). Runs Brain → Cascade → dispatch up to `maxSteps` iterations, emitting trajectory events as structured log lines. |
 
 ### Providers
@@ -59,7 +60,7 @@ src/
     use-computer-agent.ts    COMPUTER_USE_AGENT (WS7 autonomous loop)
     window.ts                WINDOW parent action
     window-handlers.ts       Per-verb handlers called by window.ts
-    clipboard.ts             clipboardAction (CLIPBOARD parent action) — defined but NOT registered in index.ts
+    clipboard.ts             clipboardAction (CLIPBOARD parent action) — registered in index.ts; promoted to CLIPBOARD_READ / CLIPBOARD_WRITE
     helpers.ts               resolveActionParams, buildScreenshotAttachment, …
 
   actor/                     WS7 autonomous desktop loop
@@ -228,4 +229,4 @@ Call the module-level `registerCoordOcrProvider(provider)` exported from `src/mo
 - **Platform evidence**: `docs/ios-device-validation.json`, `docs/android-device-validation.json`, `docs/android-aosp-validation.json`, `docs/macos-desktop-validation.json`, `docs/linux-desktop-validation.json`, and `docs/windows-desktop-validation.json` are the release evidence manifests. Keep incomplete live-device checks in `requires_device_evidence`; use `validate:platform-evidence -- --require-complete` only for release gates that truly have artifacts for every required platform check.
 - **Mobile surface**: `src/mobile/` is real but constrained. Read `docs/IOS_CONSTRAINTS.md` and `docs/ANDROID_CONSTRAINTS.md` before touching mobile code.
 - **OSWorld benchmark**: `src/osworld/` adapts the plugin to the OSWorld desktop benchmark format. Not part of normal agent runtime.
-- **Further reading**: `docs/MULTI_MONITOR.md`, `docs/SCENE_BUILDER.md`, `docs/MOBILE_ASSISTANT_ROUTING.md`, `docs/AOSP_SYSTEM_APP.md`.
+- **Further reading**: `docs/MULTI_MONITOR.md`, `docs/SCENE_BUILDER.md`, `docs/MOBILE_ASSISTANT_ROUTING.md`, `docs/AOSP_SYSTEM_APP.md`, `docs/TEST_LANES_COMPUTERUSE_VISION.md` (unit vs real-driver lanes, per-OS reqs, and the Windows non-interactive-session input gotcha).

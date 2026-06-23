@@ -1,72 +1,18 @@
-type SideEffectAppModuleLoader = {
+export type SideEffectAppModuleLoader = {
   key: string;
   load: () => Promise<unknown>;
 };
 
-export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] =
-  [
-    {
-      key: "@elizaos/plugin-feed",
-      load: () => import("@elizaos/plugin-feed"),
-    },
-    {
-      key: "@elizaos/plugin-trajectory-logger",
-      load: () => import("@elizaos/plugin-trajectory-logger"),
-    },
-    {
-      key: "@elizaos/plugin-shopify-ui",
-      load: () => import("@elizaos/plugin-shopify-ui"),
-    },
-    {
-      key: "@elizaos/plugin-hyperliquid-app",
-      load: () => import("@elizaos/plugin-hyperliquid-app"),
-    },
-    {
-      key: "@elizaos/plugin-polymarket-app",
-      load: () => import("@elizaos/plugin-polymarket-app"),
-    },
-    {
-      key: "@elizaos/plugin-waifu-imagegen-app",
-      load: () => import("@elizaos/plugin-waifu-imagegen-app"),
-    },
-    {
-      key: "@elizaos/plugin-waifu-swap-app",
-      load: () => import("@elizaos/plugin-waifu-swap-app"),
-    },
-    {
-      key: "@elizaos/plugin-wallet-ui/register",
-      load: () => import("@elizaos/plugin-wallet-ui/register"),
-    },
-    {
-      key: "@elizaos/app-model-tester",
-      load: () => import("@elizaos/app-model-tester"),
-    },
-    {
-      key: "@elizaos/plugin-vector-browser/register",
-      load: () => import("@elizaos/plugin-vector-browser/register"),
-    },
-    {
-      key: "@elizaos/plugin-contacts/register",
-      load: () => import("@elizaos/plugin-contacts/register"),
-    },
-    {
-      key: "@elizaos/plugin-device-settings/register",
-      load: () => import("@elizaos/plugin-device-settings/register"),
-    },
-    {
-      key: "@elizaos/plugin-messages/register",
-      load: () => import("@elizaos/plugin-messages/register"),
-    },
-    {
-      key: "@elizaos/plugin-phone/register",
-      load: () => import("@elizaos/plugin-phone/register"),
-    },
-    {
-      key: "@elizaos/plugin-wifi/register",
-      load: () => import("@elizaos/plugin-wifi/register"),
-    },
-    {
-      key: "@elizaos/plugin-facewear/register",
-      load: () => import("@elizaos/plugin-facewear/register"),
-    },
-  ];
+/**
+ * Renderer side-effect app modules — plugins imported at app boot purely to
+ * register UI surfaces/pages (route handlers + runtime services stay
+ * server-side).
+ *
+ * The list is NOT hardcoded here. Each app plugin self-declares
+ * `"elizaos": { "appRegister": "register" | "ui" }` in its own package.json, and
+ * the renderer build scans for that marker (see
+ * `vite/app-side-effect-modules.ts`, wired in `vite.config.ts`) to generate this
+ * list. Adding or deleting a plugin directory updates the boot set
+ * automatically — there is no app-side list to keep in sync.
+ */
+export { SIDE_EFFECT_APP_MODULE_LOADERS } from "virtual:eliza-side-effect-app-modules";

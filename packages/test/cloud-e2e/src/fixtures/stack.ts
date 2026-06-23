@@ -66,6 +66,16 @@ export interface StackHandle {
     controlPlane: string;
     pglite: string;
   };
+  /**
+   * True when the frontend Vite dev was NOT booted. The apex moved from
+   * packages/cloud-frontend (deleted) to packages/app, whose vite dev can't be
+   * swapped in 1:1 yet (#9151) — so frontend-dependent specs MUST gate on this
+   * flag and skip/fail explicitly, never silently pass on an empty
+   * `urls.frontend`.
+   */
+  frontendSkipped: boolean;
+  /** Human-readable reason the frontend was skipped (when frontendSkipped). */
+  frontendSkipReason?: string;
   mocks: {
     hetzner: RunningHetznerMock;
     controlPlane: RunningControlPlaneMock;
@@ -369,12 +379,22 @@ export async function startCloudStack(
   // then, skip the frontend boot gracefully when the dir is absent instead of
   // hard-crashing on a missing cwd.
   let frontendUrl = "";
+  let frontendSkipReason: string | undefined;
   const frontendDir = join(REPO_ROOT, "packages", "cloud-frontend");
   if (opts.frontend !== false && !existsSync(frontendDir)) {
-    console.warn(
-      "[cloud-e2e] packages/cloud-frontend is gone (apex moved to packages/app); " +
-        "skipping frontend boot. Frontend-dependent specs will not run until the " +
-        "harness is repointed to packages/app's web dev.",
+    frontendSkipReason =
+      "packages/cloud-frontend is gone (apex moved to packages/app); its vite " +
+      "dev can't be booted by this harness unchanged — repointing to " +
+      "packages/app's web dev is tracked in #9151.";
+    // LOUD, unmistakable signal: a skipped frontend must NEVER read as a pass.
+    // Frontend-dependent specs gate on `stack.frontendSkipped` and skip/fail
+    // explicitly (visible in the report) rather than silently exercising nothing.
+    console.error(
+      `\n${"=".repeat(74)}\n` +
+        "[cloud-e2e] ⚠️  FRONTEND NOT BOOTED — frontend-dependent specs are\n" +
+        "             SKIPPED, NOT PASSED.\n" +
+        `             ${frontendSkipReason}\n` +
+        `${"=".repeat(74)}\n`,
     );
   } else if (opts.frontend !== false) {
     const frontendEnv = {
@@ -452,6 +472,8 @@ export async function startCloudStack(
       controlPlane: controlPlane.url,
       pglite: `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`,
     },
+    frontendSkipped: frontendSkipReason !== undefined,
+    frontendSkipReason,
     mocks: { hetzner, controlPlane },
     dataDir,
     logDir: LOG_DIR,

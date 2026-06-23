@@ -24,7 +24,9 @@ const HELP = `Usage:
 Options:
   --backend NAME       native (required)
   --dataset PATH       Path to eliza_native_v1 JSONL file (required)
-  --task NAME          should_respond | context_routing | action_planner | response | media_description | view_context
+  --task NAME          ${[...ALLOWED_TASKS].join(" | ")}
+                       (includes the LifeOps per-capability tasks, e.g.
+                       calendar_extract / schedule_plan / morning_brief)
   --optimizer NAME     instruction-search | prompt-evolution | gepa
                        | bootstrap-fewshot | dspy-bootstrap-fewshot
                        | dspy-copro | dspy-mipro

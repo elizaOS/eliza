@@ -78,7 +78,8 @@
     "plugin": {
       "displayName": "Facewear",
       "category": "hardware"
-    }
+    },
+    "appRegister": "register"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

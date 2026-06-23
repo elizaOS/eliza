@@ -34,7 +34,8 @@
     "app": {
       "displayName": "Model Tester",
       "category": "system"
-    }
+    },
+    "appRegister": "ui"
   },
   "publishConfig": {
     "access": "public"

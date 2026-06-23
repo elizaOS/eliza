@@ -4,6 +4,7 @@ import {
   bytesToMb,
   CHAT_UPLOAD_ACCEPT,
   chatUploadKind,
+  classifyComposerPaste,
   createImageThumbnail,
   isSupportedChatUpload,
   LARGE_PASTE_CHAR_THRESHOLD,
@@ -287,6 +288,45 @@ describe("pastedTextToAttachment", () => {
   it("does not include a data-URL prefix in data", () => {
     const att = pastedTextToAttachment("plain content");
     expect(att.data.startsWith("data:")).toBe(false);
+  });
+});
+
+describe("classifyComposerPaste", () => {
+  it("returns the files intent when the paste carries files", () => {
+    const f = file("image/png");
+    const intent = classifyComposerPaste({ files: [f], text: "" });
+    expect(intent.kind).toBe("files");
+    if (intent.kind !== "files") throw new Error("expected files intent");
+    expect(intent.files).toEqual([f]);
+  });
+
+  it("prefers files even when text is also present", () => {
+    const f = file("image/png");
+    const intent = classifyComposerPaste({
+      files: [f],
+      text: "x".repeat(LARGE_PASTE_CHAR_THRESHOLD + 10),
+    });
+    expect(intent.kind).toBe("files");
+  });
+
+  it("converts a large text paste into a text attachment", () => {
+    const text = "a ".repeat(LARGE_PASTE_CHAR_THRESHOLD);
+    const intent = classifyComposerPaste({ files: [], text });
+    expect(intent.kind).toBe("text-attachment");
+    if (intent.kind !== "text-attachment")
+      throw new Error("expected text-attachment intent");
+    expect(intent.attachment.mimeType).toBe("text/markdown");
+  });
+
+  it("passes through a small text paste (textarea handles it)", () => {
+    const intent = classifyComposerPaste({ files: [], text: "short" });
+    expect(intent.kind).toBe("passthrough");
+  });
+
+  it("passes through a lone long URL (it's a link, not a document)", () => {
+    const url = `https://example.com/${"a".repeat(LARGE_PASTE_CHAR_THRESHOLD)}`;
+    const intent = classifyComposerPaste({ files: [], text: url });
+    expect(intent.kind).toBe("passthrough");
   });
 });
 

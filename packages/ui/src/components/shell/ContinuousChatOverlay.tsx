@@ -1,5 +1,7 @@
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
+  Check,
+  Copy,
   FileText,
   Film,
   Home,
@@ -51,15 +53,15 @@ import { copyTextToClipboard } from "../../utils/clipboard";
 import {
   CHAT_UPLOAD_ACCEPT,
   chatUploadKind,
+  classifyComposerPaste,
   intakeAttachmentFiles,
   MAX_CHAT_IMAGES,
-  pastedTextToAttachment,
-  shouldConvertPasteToAttachment,
   summarizeDroppedAttachments,
 } from "../../utils/image-attachment";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
 import { SensitiveRequestBlock } from "../chat/MessageContent";
+import { conversationTranscriptText } from "../chat/message-parser-helpers";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
@@ -482,13 +484,12 @@ function SheetGrabber({
       <span
         aria-hidden="true"
         className={cn(
-          // 30% wider bar (w-11 → w-14), a touch taller, brighter.
-          // Visually hidden bar (opacity-0): the drag/tap-to-open gesture and the
-          // keyboard handlers live on the button wrapper, so the affordance still
-          // works — we just don't draw a faux grabber line; the iOS native home
-          // indicator is the only bottom bar. Kept in layout so the hit zone is
-          // unchanged.
-          "h-2.5 w-16 rounded-full opacity-0 transition-colors duration-300",
+          // The visible grabber line. Its show/hide is driven by the WRAPPER's
+          // `grabberOpacity` crossfade (fades in over [0.55, 0.95] of the open),
+          // strictly anti-phase with the pill bar so the two are never on screen
+          // together. The bar paints at full opacity — a prior regression pinned
+          // it to `opacity-0`, leaving the handle grabbable but invisible (#9142).
+          "h-2.5 w-16 rounded-full opacity-100 transition-colors duration-300",
           glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
@@ -552,14 +553,12 @@ function PillHandle({
       <span
         aria-hidden="true"
         className={cn(
-          // Identical to the SheetGrabber bar — the handle keeps the same white
-          // shape + color whether the chat is open or fully collapsed to the pill.
-          // Visually hidden bar (opacity-0): the drag/tap-to-open gesture and the
-          // keyboard handlers live on the button wrapper, so the affordance still
-          // works — we just don't draw a faux grabber line; the iOS native home
-          // indicator is the only bottom bar. Kept in layout so the hit zone is
-          // unchanged.
-          "h-2.5 w-16 rounded-full opacity-0 transition-colors duration-300",
+          // Identical to the SheetGrabber bar — same white shape + color whether
+          // the chat is open or collapsed to the pill. Its show/hide is driven by
+          // the WRAPPER's `pillOpacity` crossfade (anti-phase with the grabber).
+          // The bar paints at full opacity — a prior regression pinned it to
+          // `opacity-0`, leaving the pill handle grabbable but invisible (#9142).
+          "h-2.5 w-16 rounded-full opacity-100 transition-colors duration-300",
           glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
@@ -1246,6 +1245,38 @@ export function ContinuousChatOverlay({
   );
   const lastId = visibleMessages.at(-1)?.id ?? null;
   const lastContent = visibleMessages.at(-1)?.content ?? "";
+
+  // Copy the whole thread as a plain-text transcript from the full-state header
+  // — parity with the desktop ChatView header. Flashes a check on success.
+  const [conversationCopied, setConversationCopied] = React.useState(false);
+  const conversationCopiedTimerRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  React.useEffect(
+    () => () => {
+      if (conversationCopiedTimerRef.current) {
+        clearTimeout(conversationCopiedTimerRef.current);
+      }
+    },
+    [],
+  );
+  const handleCopyConversation = React.useCallback(() => {
+    const transcript = conversationTranscriptText(
+      visibleMessages.map((m) => ({ role: m.role, text: m.content })),
+      { agentName },
+    );
+    if (!transcript) return;
+    void copyTextToClipboard(transcript);
+    setConversationCopied(true);
+    if (conversationCopiedTimerRef.current) {
+      clearTimeout(conversationCopiedTimerRef.current);
+    }
+    conversationCopiedTimerRef.current = setTimeout(
+      () => setConversationCopied(false),
+      2000,
+    );
+  }, [agentName, visibleMessages]);
+
   // The last line id the scroll effect pinned to — lets it tell a NEW line
   // (always pin to bottom) from streaming growth of the current line (follow
   // only when the reader is already at the bottom).
@@ -3093,6 +3124,18 @@ export function ContinuousChatOverlay({
                     onClick={toggleMaximize}
                     testId="chat-full-maximize"
                   />
+                  {hasThread ? (
+                    <HeaderButton
+                      icon={conversationCopied ? Check : Copy}
+                      label={
+                        conversationCopied
+                          ? "conversation copied"
+                          : "copy conversation"
+                      }
+                      onClick={handleCopyConversation}
+                      testId="chat-full-copy-conversation"
+                    />
+                  ) : null}
                   <HeaderButton
                     icon={RotateCcw}
                     label="clear conversation"
@@ -3404,25 +3447,23 @@ export function ContinuousChatOverlay({
                 }}
                 onBlur={() => setComposerFocused(false)}
                 onPaste={(e) => {
-                  // Paste images/files straight into the composer (cmd/ctrl+V).
-                  const files = Array.from(e.clipboardData?.files ?? []);
-                  if (files.length > 0) {
+                  // Shared with the desktop composer: a pasted image/file
+                  // attaches, a large plain-text paste becomes a collapsed
+                  // text-attachment chip, and small text falls through to the
+                  // textarea as normal.
+                  const intent = classifyComposerPaste({
+                    files: Array.from(e.clipboardData?.files ?? []),
+                    text: e.clipboardData?.getData("text") ?? "",
+                  });
+                  if (intent.kind === "files") {
                     e.preventDefault();
-                    addImageFiles(files);
+                    addImageFiles(intent.files);
                     return;
                   }
-                  // A large plain-text paste becomes a collapsed text
-                  // attachment chip (Claude-Code style) instead of flooding the
-                  // textarea; small pastes fall through to the textarea as
-                  // normal.
-                  const text = e.clipboardData?.getData("text") ?? "";
-                  if (shouldConvertPasteToAttachment(text)) {
+                  if (intent.kind === "text-attachment") {
                     e.preventDefault();
                     setPendingImages((prev) =>
-                      [...prev, pastedTextToAttachment(text)].slice(
-                        0,
-                        MAX_CHAT_IMAGES,
-                      ),
+                      [...prev, intent.attachment].slice(0, MAX_CHAT_IMAGES),
                     );
                   }
                 }}

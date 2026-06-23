@@ -1235,8 +1235,30 @@ function pathIncludesAny(id: string, markers: string[]): boolean {
   return markers.some((marker) => id.includes(marker));
 }
 
+// Crypto / big-number graph (bn.js, elliptic, secp256k1, the hash + cipher
+// libs, and the `buffer` polyfill they call into). MUST be its own lazy chunk:
+// Rolldown's recursive dep-inclusion otherwise non-deterministically folds this
+// graph into an eagerly-initialized chunk (e.g. an i18n locale chunk), where
+// bn.js runs `Buffer.allocUnsafe` at module-init before the chunk's Buffer
+// wrapper is ready — throwing "Class constructor cannot be invoked without
+// 'new'" and killing the whole React tree on every route. `verify-chunk-safety`
+// fails the build if this graph ever leaks into a non-vendor chunk. (Ported
+// from packages/cloud-frontend in the apex→packages/app cutover, #9150.)
+const VENDOR_CRYPTO_RE =
+  /\/node_modules\/(bn\.js|elliptic|secp256k1|@noble\/[^/]+|hash-base|create-hash|create-hmac|create-ecdh|browserify-sign|browserify-aes|browserify-cipher|browserify-rsa|diffie-hellman|asn1\.js|des\.js|ripemd160|sha\.js|md5\.js|hash\.js|cipher-base|evp_bytestokey|pbkdf2|public-encrypt|randombytes|randomfill|miller-rabin|brorand|hmac-drbg|minimalistic-crypto-utils|minimalistic-assert|safe-buffer|buffer)(\/|$)/;
+const VENDOR_WALLET_RE =
+  /\/node_modules\/(wagmi|@wagmi|viem|@rainbow-me|@walletconnect|@reown|@coinbase\/wallet-sdk|mipd|eventemitter3)(\/|$)/;
+const VENDOR_SOLANA_RE = /\/node_modules\/@solana\//;
+
 function resolveManualChunk(id: string): string | undefined {
   const normalizedId = id.split(path.sep).join("/");
+
+  // Highest priority: keep the wallet/crypto/solana graph in dedicated LAZY
+  // vendor chunks so the bn.js Buffer.allocUnsafe-at-init crash can never reach
+  // an eager chunk (#9150). Order matters — crypto before wallet/solana.
+  if (VENDOR_CRYPTO_RE.test(normalizedId)) return "vendor-crypto";
+  if (VENDOR_WALLET_RE.test(normalizedId)) return "vendor-wallet";
+  if (VENDOR_SOLANA_RE.test(normalizedId)) return "vendor-solana";
 
   // The lucide-per-icon-imports plugin rewrites every `import { X } from
   // "lucide-react"` to a deep `lucide-react/dist/esm/icons/<file>.mjs` import,

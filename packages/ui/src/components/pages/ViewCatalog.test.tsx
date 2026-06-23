@@ -341,15 +341,15 @@ describe("ViewCatalog", () => {
     useViewCatalogMock.mockReturnValue({
       entries: [
         {
-          key: "app:@elizaos/plugin-feed",
-          id: "@elizaos/plugin-feed",
-          label: "Feed",
+          key: "app:@elizaos/plugin-arcade",
+          id: "@elizaos/plugin-arcade",
+          label: "Arcade",
           hasHero: true,
-          heroUrl: "/api/apps/hero/feed",
+          heroUrl: "/api/apps/hero/arcade",
           modality: "gui",
           state: "available",
           kind: "app",
-          appName: "@elizaos/plugin-feed",
+          appName: "@elizaos/plugin-arcade",
         },
       ],
       loading: false,
@@ -361,8 +361,8 @@ describe("ViewCatalog", () => {
     render(<ViewCatalog />);
 
     expect(screen.getByTestId("views-catalog-section")).toBeTruthy();
-    expect(screen.getByText("Feed")).toBeTruthy();
-    fireEvent.click(screen.getByLabelText("Get Feed"));
+    expect(screen.getByText("Arcade")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Get Arcade"));
     expect(get).toHaveBeenCalledTimes(1);
   });
 

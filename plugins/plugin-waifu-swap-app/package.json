@@ -44,7 +44,8 @@
       "displayName": "Swap",
       "category": "trading",
       "heroImage": "assets/hero.png"
-    }
+    },
+    "appRegister": "register"
   },
   "publishConfig": {
     "access": "public"

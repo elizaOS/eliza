@@ -172,6 +172,43 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		expect(useModel).not.toHaveBeenCalled();
 	});
 
+	it("falls through and logs when an explicit shortcut action validate() throws (#9153)", async () => {
+		const boom = new Error("validate exploded");
+		const validate = vi.fn(async () => {
+			throw boom;
+		});
+		const warn = vi.fn();
+		const { runtime, useModel } = makeRuntime({
+			actions: [echoAction({ validate })],
+		});
+		runtime.logger.warn = warn;
+		const result = await runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message: msg("/echo hi"),
+			state: {} as State,
+			responseId,
+			senderRole: "OWNER",
+		});
+		// A crashing validate() must still fall through to the pipeline (return null)
+		// without invoking the model — but the crash must be observable, not swallowed.
+		expect(result).toBeNull();
+		expect(validate).toHaveBeenCalledTimes(1);
+		expect(useModel).not.toHaveBeenCalled();
+		expect(warn).toHaveBeenCalledTimes(1);
+		const [context, message] = warn.mock.calls[0] as [
+			Record<string, unknown>,
+			string,
+		];
+		expect(context).toMatchObject({
+			src: "shortcut-gate",
+			shortcut: "cmd:echo",
+			action: "ECHO_COMMAND",
+			err: boom,
+		});
+		expect(message).toContain("validate");
+	});
+
 	it("fires a natural-language shortcut only when ELIZA_SHORTCUTS_NL=1 (voice/typed parity)", async () => {
 		const seenOptions: Array<Record<string, unknown> | undefined> = [];
 		const { runtime, useModel, emitEvent } = makeRuntime({

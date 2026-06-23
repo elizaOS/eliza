@@ -23,6 +23,7 @@ import {
   desktopRightClick,
   desktopScroll,
   desktopType,
+  legacyGetCursorPosition,
 } from "./desktop.js";
 import {
   loadFailureReason,
@@ -32,9 +33,16 @@ import {
   nutClickWithModifiers,
   nutDoubleClick,
   nutDrag,
+  nutDragPath,
+  nutGetCursorPosition,
   nutKeyCombo,
+  nutKeyDown,
   nutKeyPress,
+  nutKeyUp,
+  nutMiddleClick,
+  nutMouseDown,
   nutMouseMove,
+  nutMouseUp,
   nutRightClick,
   nutScroll,
   nutType,
@@ -100,9 +108,56 @@ export async function driverRightClick(x: number, y: number): Promise<void> {
   desktopRightClick(x, y);
 }
 
+/** The legacy shell drivers (cliclick/xdotool/PowerShell) do not expose the
+ * granular press/hold primitives below. Throw a clear, actionable error rather
+ * than silently no-op'ing — set `ELIZA_COMPUTERUSE_DRIVER=nutjs` to use them. */
+function requireNutForGranular(verb: string): never {
+  throw new Error(
+    `[computeruse] "${verb}" requires the nutjs driver (granular press/hold ` +
+      `is not available on the legacy shell drivers). The nutjs native module ` +
+      `is unavailable (${loadFailureReason() ?? "unknown reason"}). ` +
+      `Set ELIZA_COMPUTERUSE_DRIVER=nutjs once the native binding loads.`,
+  );
+}
+
+export async function driverMiddleClick(x: number, y: number): Promise<void> {
+  if (selectedDriver() === "nutjs") return nutMiddleClick(x, y);
+  return requireNutForGranular("middle_click");
+}
+
+export async function driverMouseDown(
+  x: number,
+  y: number,
+  button: "left" | "middle" | "right" = "left",
+): Promise<void> {
+  if (selectedDriver() === "nutjs") return nutMouseDown(x, y, button);
+  return requireNutForGranular("mouse_down");
+}
+
+export async function driverMouseUp(
+  x: number,
+  y: number,
+  button: "left" | "middle" | "right" = "left",
+): Promise<void> {
+  if (selectedDriver() === "nutjs") return nutMouseUp(x, y, button);
+  return requireNutForGranular("mouse_up");
+}
+
 export async function driverMouseMove(x: number, y: number): Promise<void> {
   if (selectedDriver() === "nutjs") return nutMouseMove(x, y);
   desktopMouseMove(x, y);
+}
+
+export async function driverGetCursorPosition(): Promise<{
+  x: number;
+  y: number;
+}> {
+  // nutjs `mouse.getPosition()` returns a stale/constant value on Windows
+  // (empirically verified), so always use the reliable OS query there
+  // (System.Windows.Forms.Cursor). Elsewhere prefer nutjs when it is active.
+  if (process.platform === "win32") return legacyGetCursorPosition();
+  if (selectedDriver() === "nutjs") return nutGetCursorPosition();
+  return legacyGetCursorPosition();
 }
 
 export async function driverDrag(
@@ -113,6 +168,19 @@ export async function driverDrag(
 ): Promise<void> {
   if (selectedDriver() === "nutjs") return nutDrag(x1, y1, x2, y2);
   desktopDrag(x1, y1, x2, y2);
+}
+
+export async function driverDragPath(
+  path: Array<{ x: number; y: number }>,
+): Promise<void> {
+  if (selectedDriver() === "nutjs") return nutDragPath(path);
+  // Legacy fallback: collapse the polyline to a straight start→end drag.
+  if (path.length < 2) {
+    throw new Error("[computeruse] drag path requires at least two points");
+  }
+  const start = path[0];
+  const end = path[path.length - 1];
+  desktopDrag(start.x, start.y, end.x, end.y);
 }
 
 export async function driverScroll(
@@ -140,6 +208,16 @@ export async function driverKeyPress(key: string): Promise<void> {
 export async function driverKeyCombo(combo: string): Promise<void> {
   if (selectedDriver() === "nutjs") return nutKeyCombo(combo);
   desktopKeyCombo(combo);
+}
+
+export async function driverKeyDown(key: string): Promise<void> {
+  if (selectedDriver() === "nutjs") return nutKeyDown(key);
+  return requireNutForGranular("key_down");
+}
+
+export async function driverKeyUp(key: string): Promise<void> {
+  if (selectedDriver() === "nutjs") return nutKeyUp(key);
+  return requireNutForGranular("key_up");
 }
 
 // ── Screenshot ──────────────────────────────────────────────────────────────

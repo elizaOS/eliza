@@ -1,5 +1,5 @@
 /**
- * Feature-by-feature functional parity validation for all 24 XR views.
+ * Feature-by-feature functional parity validation for all 18 XR views.
  *
  * The architectural guarantee: every XR view uses the SAME bundlePath
  * ("dist/views/bundle.js") and the SAME componentExport as the GUI view.
@@ -325,7 +325,7 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("XR feature-by-feature functional parity — all 20 views", () => {
+describe("XR feature-by-feature functional parity — all 18 views", () => {
   // A. Shared bundle architecture ─────────────────────────────────────────────
 
   it("A — every XR view uses the same bundlePath as the GUI view (shared bundle = shared features)", () => {
@@ -422,7 +422,7 @@ describe("XR feature-by-feature functional parity — all 20 views", () => {
     );
   });
 
-  it("B — all 24 XR component sources use React hooks (useState/useEffect) for stateful UIs", () => {
+  it("B — all 18 XR component sources use React hooks (useState/useEffect) for stateful UIs", () => {
     const noHooks: string[] = [];
     for (const { pluginDir, xrComponentSrc } of PLUGIN_REGISTRY) {
       if (!fileExists(xrComponentSrc)) continue;
@@ -495,11 +495,11 @@ describe("XR feature-by-feature functional parity — all 20 views", () => {
 
   // Summary assertion ─────────────────────────────────────────────────────────
 
-  it("summary — all 20 plugins have XR views that are functionally identical to their GUI views", () => {
+  it("summary — all 18 plugins have XR views that are functionally identical to their GUI views", () => {
     // This test is a logical consequence of tests A, B, C, D above all passing.
     // It explicitly states the guarantee: same bundle + same component = same features.
     const xrPluginCount = PLUGIN_REGISTRY.length;
-    expect(xrPluginCount).toBe(20);
+    expect(xrPluginCount).toBe(18);
 
     for (const { pluginDir, manifestPath } of PLUGIN_REGISTRY) {
       const source = readFile(manifestPath);

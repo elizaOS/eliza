@@ -94,7 +94,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     descriptionKey: "permissionssection.permission.reminders.description",
     icon: "list-todo",
     platforms: ["darwin"],
-    requiredForFeatures: ["lifeops", "reminders"],
+    requiredForFeatures: ["reminders"],
   },
   {
     id: "calendar",
@@ -104,7 +104,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     descriptionKey: "permissionssection.permission.calendar.description",
     icon: "calendar",
     platforms: ["darwin", "ios"],
-    requiredForFeatures: ["lifeops", "calendar"],
+    requiredForFeatures: ["calendar"],
   },
   {
     id: "health",
@@ -114,7 +114,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     descriptionKey: "permissionssection.permission.health.description",
     icon: "heart-pulse",
     platforms: ["darwin", "ios", "android"],
-    requiredForFeatures: ["lifeops", "health", "sleep"],
+    requiredForFeatures: ["health", "sleep"],
   },
   {
     id: "screentime",
@@ -124,7 +124,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     descriptionKey: "permissionssection.permission.screentime.description",
     icon: "hourglass",
     platforms: ["darwin", "ios", "android"],
-    requiredForFeatures: ["lifeops", "screentime"],
+    requiredForFeatures: ["screentime"],
   },
   {
     id: "contacts",
@@ -144,7 +144,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     descriptionKey: "permissionssection.permission.notes.description",
     icon: "notebook-tabs",
     platforms: ["darwin"],
-    requiredForFeatures: ["lifeops", "notes"],
+    requiredForFeatures: ["notes"],
   },
   {
     id: "notifications",
@@ -155,7 +155,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     descriptionKey: "permissionssection.permission.notifications.description",
     icon: "bell",
     platforms: ["darwin", "win32", "linux", "ios", "android", "web"],
-    requiredForFeatures: ["notifications", "lifeops"],
+    requiredForFeatures: ["notifications"],
   },
   {
     id: "full-disk",
@@ -248,7 +248,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     descriptionKey: "permissionssection.permission.appBlocking.description",
     icon: "shield-ban",
     platforms: ["ios", "android"],
-    requiredForFeatures: ["app-blocker", "lifeops"],
+    requiredForFeatures: ["app-blocker"],
   },
   {
     id: "usage-access",
@@ -300,7 +300,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
       "permissionssection.permission.batteryOptimization.description",
     icon: "battery",
     platforms: ["android"],
-    requiredForFeatures: ["lifeops", "mobile-signals"],
+    requiredForFeatures: ["mobile-signals"],
   },
 ];
 

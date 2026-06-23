@@ -73,14 +73,8 @@ const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
     secondaryContexts: ["page", "page-plugins", "plugins", "admin"],
   },
   "page-lifeops": {
-    primaryContext: "lifeops",
-    secondaryContexts: [
-      "page",
-      "page-lifeops",
-      "lifeops",
-      "automation",
-      "social_posting",
-    ],
+    primaryContext: "automation",
+    secondaryContexts: ["page", "page-lifeops", "automation", "social_posting"],
   },
   "page-settings": {
     primaryContext: "settings",
@@ -98,7 +92,7 @@ const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
  * single prompt-regime cohort instead of mixing trajectories generated under
  * different surface contracts.
  */
-export const PAGE_SCOPE_VERSION = 13;
+export const PAGE_SCOPE_VERSION = 14;
 
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */

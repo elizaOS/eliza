@@ -395,7 +395,15 @@ async function main() {
       }
     }
 
-    if (!flags.noFrontend) {
+    // packages/cloud-frontend was consolidated into packages/app (#9093); the
+    // standalone frontend no longer exists. Skip its boot gracefully when the
+    // dir is absent so the mock stack still comes up (api + control-plane).
+    const frontendDir = path.join(REPO_ROOT, "packages/cloud-frontend");
+    if (!flags.noFrontend && !existsSync(frontendDir)) {
+      process.stderr.write(
+        `${color("gray", "[stack]")} cloud-frontend removed (#9093); skipping frontend boot. The apex frontend now lives in packages/app.\n`,
+      );
+    } else if (!flags.noFrontend) {
       const proc = spawn(
         "bun",
         [
