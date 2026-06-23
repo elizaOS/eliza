@@ -31,6 +31,11 @@ export {
 	makeCloudFallbackHandler,
 } from "./cloud-fallback";
 export {
+	computeRuntimeContextFit,
+	type RuntimeContextFit,
+	type RuntimeContextFitInput,
+} from "./context-fit";
+export {
 	buildDeviceResourceMetricsDevPayload,
 	type DeviceBridgeStatus,
 	type DeviceGenerationMetrics,
