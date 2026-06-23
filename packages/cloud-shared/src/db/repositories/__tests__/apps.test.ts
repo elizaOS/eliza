@@ -22,19 +22,19 @@ process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
-import { eq } from "drizzle-orm";
 import { pushSchema } from "drizzle-kit/api";
+import { eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
+import { appConfig } from "../../schemas/app-config";
+import { appDomains } from "../../schemas/app-domains";
 import {
-  apps,
   appAnalytics,
   appDeploymentStatusEnum,
   appRequests,
+  apps,
   appUsers,
   userDatabaseStatusEnum,
 } from "../../schemas/apps";
-import { appConfig } from "../../schemas/app-config";
-import { appDomains } from "../../schemas/app-domains";
 import { organizations } from "../../schemas/organizations";
 import { users } from "../../schemas/users";
 import { type App, appsRepository } from "../apps";
@@ -397,9 +397,7 @@ describe("AppsRepository.checkNameAvailability", () => {
     });
     // Register a subdomain that matches slug("Subdomain Owned"), with no app of
     // that slug — so the only conflict is the subdomain.
-    await dbWrite
-      .insert(appDomains)
-      .values({ app_id: anchor.id, subdomain: "subdomain-owned" });
+    await dbWrite.insert(appDomains).values({ app_id: anchor.id, subdomain: "subdomain-owned" });
 
     const result = await appsRepository.checkNameAvailability("Subdomain Owned");
     expect(result.available).toBe(false);
