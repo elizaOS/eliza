@@ -2,6 +2,15 @@ import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const modeState = vi.hoisted(() => ({ mode: "local" }));
+const assignmentsState = vi.hoisted(() => ({
+	assignments: {} as Record<string, string>,
+}));
+const registryState = vi.hoisted(() => ({
+	installed: [] as Array<{ id: string; path: string }>,
+}));
+const hardwareState = vi.hoisted(() => ({
+	probe: { memory: { totalGb: 8 } },
+}));
 const engineState = vi.hoisted(() => ({
 	activeBackendId: vi.fn(() => "llama-server"),
 	available: vi.fn(async () => true),
@@ -42,7 +51,7 @@ vi.mock("../services/active-model", () => ({
 
 vi.mock("../services/assignments", () => ({
 	autoAssignAtBoot: vi.fn(async () => null),
-	readEffectiveAssignments: vi.fn(async () => ({})),
+	readEffectiveAssignments: vi.fn(async () => assignmentsState.assignments),
 }));
 
 vi.mock("../services/cache-bridge", () => ({
@@ -71,12 +80,16 @@ vi.mock("../services/handler-registry", () => ({
 	},
 }));
 
+vi.mock("../services/hardware", () => ({
+	probeHardware: vi.fn(async () => hardwareState.probe),
+}));
+
 vi.mock("../services/memory-arbiter", () => ({
 	tryGetMemoryArbiter: vi.fn(() => arbiterState),
 }));
 
 vi.mock("../services/registry", () => ({
-	listInstalledModels: vi.fn(async () => []),
+	listInstalledModels: vi.fn(async () => registryState.installed),
 }));
 
 vi.mock("../services/router-handler", () => ({
@@ -90,6 +103,8 @@ vi.mock("../services/voice", () => ({
 	})),
 }));
 
+import { resolveLocalInferenceLoadArgs } from "../services/active-model";
+import { probeHardware } from "../services/hardware";
 import { installRouterHandler } from "../services/router-handler";
 import { VoiceStartupError } from "../services/voice/errors";
 import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
@@ -151,6 +166,9 @@ function findRegisteredHandler(
 beforeEach(() => {
 	vi.clearAllMocks();
 	modeState.mode = "local";
+	assignmentsState.assignments = {};
+	registryState.installed = [];
+	hardwareState.probe = { memory: { totalGb: 8 } };
 	delete process.env.ELIZA_LOCAL_LLAMA;
 	delete process.env.ELIZA_DEVICE_BRIDGE_ENABLED;
 	delete process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
@@ -164,6 +182,9 @@ beforeEach(() => {
 		title: "A small image",
 		description: "A tiny synthetic image.",
 	});
+	vi.mocked(resolveLocalInferenceLoadArgs).mockImplementation(
+		async (target) => target,
+	);
 });
 
 describe("ensureLocalInferenceHandler", () => {
@@ -295,6 +316,40 @@ describe("ensureLocalInferenceHandler", () => {
 				topP: 0.9,
 			}),
 		);
+	});
+
+	it("passes hardware-aware load args through desktop lazy assignment loads", async () => {
+		const installed = {
+			id: "eliza-1-2b",
+			path: "/models/eliza-1-2b.gguf",
+		};
+		const resolved = {
+			...installed,
+			modelPath: installed.path,
+			contextSize: 32_768,
+		};
+		assignmentsState.assignments = { TEXT_SMALL: installed.id };
+		registryState.installed = [installed];
+		engineState.hasLoadedModel.mockReturnValue(true);
+		vi.mocked(resolveLocalInferenceLoadArgs).mockResolvedValueOnce(
+			resolved as never,
+		);
+		const { registrations, runtime } = makeRuntime();
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(registrations, ModelType.TEXT_SMALL);
+
+		await handler(runtime, {
+			messages: [{ role: "user", content: "hello" }],
+		});
+
+		expect(probeHardware).toHaveBeenCalledTimes(1);
+		expect(resolveLocalInferenceLoadArgs).toHaveBeenCalledWith(
+			installed,
+			undefined,
+			{ hardware: hardwareState.probe },
+		);
+		expect(engineState.load).toHaveBeenCalledWith(installed.path, resolved);
 	});
 
 	it.each([

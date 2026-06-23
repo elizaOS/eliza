@@ -382,6 +382,28 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime).length).toBe(1);
 	});
 
+	it("keeps requested all-caps exact-word Stage 1 replies without a second model call", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "BTC",
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Reply with exactly one word: BTC." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("BTC");
+		}
+		expect(useModelCalls(runtime).length).toBe(1);
+	});
+
 	it("does not keep known-junk Stage 1 fragments when regeneration returns empty", async () => {
 		for (const badReply of ["RPPY", "{}", "aaaaa", "::::"]) {
 			const runtime = makeRuntime([

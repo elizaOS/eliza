@@ -63,6 +63,18 @@
       "@elizaos/plugin-app-manager/*": [
         "../../plugins/plugin-app-manager/src/*"
       ],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../plugins/plugin-capacitor-bridge/src/*"
+      ],
+      "@elizaos/plugin-agent-skills": [
+        "../../plugins/plugin-agent-skills/src/index.ts"
+      ],
+      "@elizaos/plugin-agent-skills/*": [
+        "../../plugins/plugin-agent-skills/src/*"
+      ],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"

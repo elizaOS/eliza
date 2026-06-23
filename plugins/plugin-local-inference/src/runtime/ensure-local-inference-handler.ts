@@ -57,6 +57,7 @@ import {
 import { deviceBridge } from "../services/device-bridge";
 import { localInferenceEngine } from "../services/engine";
 import { handlerRegistry } from "../services/handler-registry";
+import { probeHardware } from "../services/hardware";
 import { tryGetMemoryArbiter } from "../services/memory-arbiter";
 import { listInstalledModels } from "../services/registry";
 import { installRouterHandler } from "../services/router-handler";
@@ -270,10 +271,18 @@ async function ensureAssignedModelLoaded(
 	}
 
 	if (loader) {
+		const hardware = await probeHardware();
+		const resolved = await resolveLocalInferenceLoadArgs(target, undefined, {
+			hardware,
+		});
 		await loader.unloadModel();
-		await loader.loadModel(await resolveLocalInferenceLoadArgs(target));
+		await loader.loadModel(resolved);
 	} else {
-		await localInferenceEngine.load(target.path);
+		const hardware = await probeHardware();
+		const resolved = await resolveLocalInferenceLoadArgs(target, undefined, {
+			hardware,
+		});
+		await localInferenceEngine.load(target.path, resolved);
 	}
 }
 

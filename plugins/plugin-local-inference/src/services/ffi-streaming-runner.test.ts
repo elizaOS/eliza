@@ -38,10 +38,17 @@ describe("FfiStreamingRunner prewarm", () => {
 			draftMin: 0,
 			draftMax: 0,
 			draftModelPath: null,
+			contextSize: 32_768,
 			onTextChunk,
 		});
 
 		expect(binding.llmStreamOpen).toHaveBeenCalledTimes(1);
+		expect(binding.llmStreamOpen).toHaveBeenCalledWith({
+			ctx: 1n,
+			config: expect.objectContaining({
+				contextSize: 32_768,
+			}),
+		});
 		expect(binding.llmStreamPrefill).toHaveBeenCalledWith({
 			stream,
 			tokens: promptTokens,

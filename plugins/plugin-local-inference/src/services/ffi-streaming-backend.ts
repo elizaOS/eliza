@@ -97,13 +97,14 @@ export interface FfiBackendSession {
 	readonly mmprojPath: string | null;
 	/**
 	 * Per-load runtime config the fused libelizainference path applies at its
-	 * first `llmStreamOpen` (gpuLayers + KV-cache quant types). The desktop
+	 * first `llmStreamOpen` (context size, gpuLayers + KV-cache quant types). The desktop
 	 * libllama runtime applies these at `loadModel()` instead and leaves this
 	 * `null` — the backend forwards them into the runner's per-call config only
 	 * when present, so the fused path mirrors the libllama load decision without
 	 * the libllama path double-applying them.
 	 */
 	readonly loadConfig?: {
+		contextSize?: number;
 		gpuLayers?: number;
 		cacheTypeK?: string | null;
 		cacheTypeV?: string | null;
@@ -195,6 +196,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			gpuLayers: loadConfig?.gpuLayers,
 			cacheTypeK: loadConfig?.cacheTypeK,
 			cacheTypeV: loadConfig?.cacheTypeV,
+			contextSize: loadConfig?.contextSize,
 			signal: args.signal,
 			onTextChunk: args.onTextChunk,
 			onVerifierEvent: args.onVerifierEvent,
@@ -280,8 +282,33 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			gpuLayers: loadConfig?.gpuLayers,
 			cacheTypeK: loadConfig?.cacheTypeK,
 			cacheTypeV: loadConfig?.cacheTypeV,
+			contextSize: loadConfig?.contextSize,
 		});
 		return true;
+	}
+
+	currentRuntimeLoadConfig() {
+		if (!this.session) return null;
+		const loadConfig = this.session.loadConfig;
+		return {
+			modelId: null,
+			modelPath: this.loadedPath,
+			contextSize: loadConfig?.contextSize ?? null,
+			cacheTypeK: loadConfig?.cacheTypeK ?? null,
+			cacheTypeV: loadConfig?.cacheTypeV ?? null,
+			gpuLayers:
+				typeof loadConfig?.gpuLayers === "number" ? loadConfig.gpuLayers : null,
+			parallel: this.parallelSlots(),
+			binaryPath: null,
+			backend: this.id,
+			mtp: this.session.mtp
+				? {
+						specType: "draft-mtp" as const,
+						draftMin: this.session.mtp.draftMin,
+						draftMax: this.session.mtp.draftMax,
+					}
+				: null,
+		};
 	}
 
 	/**

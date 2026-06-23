@@ -14,6 +14,7 @@
     "rewriteRelativeImportExtensions": true,
     "paths": {
       "@elizaos/plugin-groq": ["./src/provider-plugin.d.ts"],
+      "@elizaos/plugin-ollama": ["./src/provider-plugin.d.ts"],
       "@elizaos/plugin-openrouter": ["./src/provider-plugin.d.ts"]
     }
   },

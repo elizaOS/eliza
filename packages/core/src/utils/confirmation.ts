@@ -32,6 +32,7 @@
  *   // status === "confirmed" — proceed with the destructive op
  */
 
+import { extractWrappedExternalContent } from "../security/external-content.js";
 import type { HandlerCallback } from "../types/components";
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
@@ -109,7 +110,8 @@ function buildCacheKey(
 
 function readUserText(message: Memory): string {
 	const text = message.content.text;
-	return typeof text === "string" ? text.trim() : "";
+	if (typeof text !== "string") return "";
+	return extractWrappedExternalContent(text)?.trim() ?? text.trim();
 }
 
 /**

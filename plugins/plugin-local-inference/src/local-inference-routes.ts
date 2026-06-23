@@ -1231,6 +1231,12 @@ export async function handleLocalInferenceRoutes(
 		);
 		if (await handleVoiceFirstRunRoutes(req, res)) return true;
 	}
+	if (pathname === "/api/voice/native-pcm-turn") {
+		const { handleNativePcmTurnRoute } = await import(
+			"./routes/native-pcm-turn-route.js"
+		);
+		if (await handleNativePcmTurnRoute(req, res)) return true;
+	}
 	// Family-member capture route lives under /v1/voice/first-run/family-member.
 	if (pathname === "/v1/voice/first-run/family-member") {
 		const { handleFamilyMemberRoute } = await import(

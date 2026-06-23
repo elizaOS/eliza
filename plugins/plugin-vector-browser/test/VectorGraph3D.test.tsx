@@ -110,9 +110,18 @@ function translate(key: string, vars?: Record<string, unknown>): string {
   return key;
 }
 
-vi.mock("@elizaos/ui/state", () => ({
-  useApp: () => ({ t: translate }),
-}));
+type MockAppState = {
+  t: typeof translate;
+};
+
+vi.mock("@elizaos/ui/state", () => {
+  const state: MockAppState = { t: translate };
+  return {
+    useApp: () => state,
+    useAppSelector: <T,>(selector: (state: MockAppState) => T) =>
+      selector(state),
+  };
+});
 
 vi.mock("@elizaos/ui/config", () => ({
   getBootConfig: () => ({

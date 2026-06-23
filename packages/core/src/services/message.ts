@@ -2956,9 +2956,85 @@ function isUnusableStage1Reply(reply: string | undefined): boolean {
 	return false;
 }
 
-function isTerseReplyWorthKeeping(reply: string | undefined): boolean {
+const EXACT_WORD_COUNT_BY_NAME: Record<string, number> = {
+	one: 1,
+	two: 2,
+	three: 3,
+	four: 4,
+	five: 5,
+	six: 6,
+	seven: 7,
+	eight: 8,
+	nine: 9,
+	ten: 10,
+};
+
+function parseExactWordsInstruction(
+	text: string | null | undefined,
+): { literal: string; expectedCount?: number } | null {
+	const input = text?.trim();
+	if (!input) return null;
+	const match = input.match(
+		/\b(?:reply|respond|say|output|return)\s+with\s+exactly\s+(?:these\s+)?(?:(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+)?words?\s*:\s*([\s\S]+?)\s*$/i,
+	);
+	if (!match) return null;
+	const literal = (match[2] ?? "")
+		.trim()
+		.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+		.trim();
+	if (!literal) return null;
+	const countRaw = match[1]?.toLowerCase();
+	const expectedCount =
+		countRaw === undefined
+			? undefined
+			: /^\d+$/.test(countRaw)
+				? Number.parseInt(countRaw, 10)
+				: EXACT_WORD_COUNT_BY_NAME[countRaw];
+	return { literal, expectedCount };
+}
+
+function wordCount(text: string): number {
+	return text.split(/\s+/).filter(Boolean).length;
+}
+
+function stripIncidentalTerminalPeriod(text: string): string {
+	return text.endsWith(".") ? text.slice(0, -1).trimEnd() : text;
+}
+
+function isRequestedTerseLiteralReply(args: {
+	reply: string | undefined;
+	messageText: string | null | undefined;
+}): boolean {
+	const reply = typeof args.reply === "string" ? args.reply.trim() : "";
+	if (!reply) return false;
+	const instruction = parseExactWordsInstruction(args.messageText);
+	if (!instruction) return false;
+	if (
+		instruction.expectedCount !== undefined &&
+		(!Number.isFinite(instruction.expectedCount) ||
+			instruction.expectedCount <= 0 ||
+			wordCount(reply) !== instruction.expectedCount)
+	) {
+		return false;
+	}
+	const requested = instruction.literal;
+	if (reply === requested) return true;
+	return reply === stripIncidentalTerminalPeriod(requested);
+}
+
+function isTerseReplyWorthKeeping(args: {
+	reply: string | undefined;
+	messageText?: string | null;
+}): boolean {
+	const reply = args.reply;
 	const trimmed = typeof reply === "string" ? reply.trim() : "";
-	return /^\d+$/.test(trimmed);
+	return (
+		/^\d+$/.test(trimmed) ||
+		isRequestedTerseLiteralReply({
+			reply,
+			messageText: args.messageText,
+		})
+	);
 }
 
 /**
@@ -5701,7 +5777,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			let reply = route.reply;
 			if (
 				isUnusableStage1Reply(route.reply) &&
-				!isTerseReplyWorthKeeping(route.reply)
+				!isTerseReplyWorthKeeping({
+					reply: route.reply,
+					messageText: getUserMessageText(args.message),
+				})
 			) {
 				reply = "I'm not sure how to answer that.";
 			}
