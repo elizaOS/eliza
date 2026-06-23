@@ -59,6 +59,37 @@ export function reportUserViewSwitch(viewId: string, viewPath?: string): void {
   }
 }
 
+/**
+ * Report a user-fired keyboard / command-palette shortcut to the agent (#8792).
+ * Fire-and-forget, fully guarded: a failure here must never break the shortcut.
+ * The server emits SHORTCUT_FIRED for the proactive decider, which decides
+ * (governed) whether a scoped comment helps. Only meaningful, intent-bearing
+ * shortcuts should report — not every keystroke — to keep the judge cheap.
+ */
+export function reportShortcutFired(
+  shortcutId: string,
+  context?: string,
+): void {
+  try {
+    const base = getElizaApiBase();
+    if (!base || typeof fetch === "undefined") return;
+    const token = getElizaApiToken();
+    void fetch(`${base}/api/interactions/shortcut`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        shortcutId,
+        ...(context ? { context } : {}),
+      }),
+    }).catch(() => {});
+  } catch {
+    // Best-effort observability only.
+  }
+}
+
 export interface NavigateSettingsDetail {
   section?: string;
 }
