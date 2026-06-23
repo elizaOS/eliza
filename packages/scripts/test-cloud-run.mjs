@@ -1,11 +1,12 @@
 #!/usr/bin/env node
+
 // Cross-platform replacement for the previous `test:cloud` shell pipeline,
 // which used `printf '...\n'` (broken under bun's embedded shell on Windows
 // — outputs literal `n` instead of newlines) and required POSIX-shell
 // `$OLDPWD` semantics.
 
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
