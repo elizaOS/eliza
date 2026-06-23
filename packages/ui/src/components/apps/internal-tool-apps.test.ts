@@ -51,4 +51,9 @@ describe("internal tool app descriptors", () => {
 
     expect(new Set(paths).size).toBe(paths.length);
   });
+
+  it("routes nested app view paths through the dynamic view renderer", () => {
+    expect(tabFromPath("/apps/facewear/tui")).toBe("views");
+    expect(tabFromPath("/apps/smartglasses/tui")).toBe("views");
+  });
 });

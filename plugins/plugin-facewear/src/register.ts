@@ -1,10 +1,5 @@
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
-import {
-  createElement,
-  type ComponentType,
-  useEffect,
-  useState,
-} from "react";
+import { type ComponentType, createElement, useEffect, useState } from "react";
 
 type DeferredViewComponent = ComponentType<Record<string, unknown>>;
 type DeferredViewModule = { default: DeferredViewComponent };
@@ -54,8 +49,9 @@ function deferredComponent(loader: DeferredViewLoader): DeferredViewComponent {
   }
 
   return function DeferredComponent(props: Record<string, unknown>) {
-    const [Component, setComponent] =
-      useState<DeferredViewComponent | null>(cached);
+    const [Component, setComponent] = useState<DeferredViewComponent | null>(
+      cached,
+    );
 
     useEffect(() => {
       if (Component) return;
@@ -82,17 +78,6 @@ export const SmartglassesView = deferredComponent(loadSmartglassesView);
 export const SmartglassesTuiView = deferredComponent(loadSmartglassesTuiView);
 
 registerAppShellPage({
-  id: "facewear",
-  pluginId: "@elizaos/plugin-facewear",
-  label: "Facewear",
-  icon: "Glasses",
-  path: "/apps/facewear",
-  order: 80,
-  group: "hardware",
-  loader: loadFacewearView,
-});
-
-registerAppShellPage({
   id: "facewear.tui",
   pluginId: "@elizaos/plugin-facewear",
   label: "Facewear TUI",
@@ -104,14 +89,14 @@ registerAppShellPage({
 });
 
 registerAppShellPage({
-  id: "smartglasses",
+  id: "facewear",
   pluginId: "@elizaos/plugin-facewear",
-  label: "Smartglasses",
+  label: "Facewear",
   icon: "Glasses",
-  path: "/apps/smartglasses",
-  order: 81,
+  path: "/apps/facewear",
+  order: 80,
   group: "hardware",
-  loader: loadSmartglassesView,
+  loader: loadFacewearView,
 });
 
 registerAppShellPage({
@@ -123,6 +108,17 @@ registerAppShellPage({
   order: 81.1,
   group: "hardware",
   loader: loadSmartglassesTuiView,
+});
+
+registerAppShellPage({
+  id: "smartglasses",
+  pluginId: "@elizaos/plugin-facewear",
+  label: "Smartglasses",
+  icon: "Glasses",
+  path: "/apps/smartglasses",
+  order: 81,
+  group: "hardware",
+  loader: loadSmartglassesView,
 });
 
 // In a terminal host (the Node agent, no DOM), register the smartglasses view

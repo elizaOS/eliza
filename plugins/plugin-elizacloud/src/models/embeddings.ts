@@ -189,6 +189,7 @@ export async function handleBatchTextEmbedding(
       // bounded exponential backoff (see EMBED_* constants) instead of a single
       // 30s blind sleep.
       let response: Response | null = null;
+      let retriedAfterRateLimit = false;
       for (let attempt = 0; attempt < EMBED_MAX_ATTEMPTS; attempt++) {
         const resp = await timeInferenceSpan(
           "cloud.embedding",
@@ -219,6 +220,7 @@ export async function handleBatchTextEmbedding(
           resp.status === 503 ||
           resp.status === 504;
         if (transient && attempt < EMBED_MAX_ATTEMPTS - 1) {
+          retriedAfterRateLimit ||= resp.status === 429;
           const delay = embeddingBackoffMs(attempt, rateLimitInfo.retryAfter);
           logger.warn(
             `[BatchEmbeddings] ${resp.status} (attempt ${attempt + 1}/${EMBED_MAX_ATTEMPTS}) — backing off ${delay}ms`
@@ -250,6 +252,11 @@ export async function handleBatchTextEmbedding(
             `[BatchEmbeddings] Authentication failed (${response.status}). ` +
               `Check ELIZAOS_CLOUD_API_KEY or ELIZAOS_CLOUD_EMBEDDING_API_KEY — ` +
               `the current key is not authorized for the embedding endpoint.`
+          );
+        }
+        if (retriedAfterRateLimit) {
+          throw new Error(
+            `[BatchEmbeddings] Rate-limit retry failed: API error ${response.status} ${response.statusText}`
           );
         }
         throw new Error(

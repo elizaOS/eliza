@@ -121,7 +121,6 @@ import { fetchWithCsrf } from "./api/csrf-client";
 // `app-shell-components` barrel — that barrel statically re-exports every page
 // view, so importing through it folds all of them back into the main chunk.
 import {
-  type AppShellPageLoader,
   type AppShellPageRegistration,
   getAppShellPageRegistrySnapshot,
   listAppShellPages,
@@ -488,6 +487,7 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
   const { plugins } = useApp();
   const registryVersion = useAppShellPageRegistryVersion();
   return useMemo(() => {
+    void registryVersion;
     const registrations = listAppShellPages();
     const registered = registrations.find((entry) => entry.id === tab);
     if (registered) {
@@ -607,13 +607,12 @@ function visibleDynamicPage(
  */
 function useTabIsFullBleed(tab: string): boolean {
   const registryVersion = useAppShellPageRegistryVersion();
-  return useMemo(
-    () =>
-      listAppShellPages().some(
-        (entry) => entry.id === tab && entry.fullBleed === true,
-      ),
-    [registryVersion, tab],
-  );
+  return useMemo(() => {
+    void registryVersion;
+    return listAppShellPages().some(
+      (entry) => entry.id === tab && entry.fullBleed === true,
+    );
+  }, [registryVersion, tab]);
 }
 
 function trimmedNavigationPath(navigationPath: string): string {
@@ -688,6 +687,15 @@ function renderRemoteView(view: ViewRegistryEntry): ReactNode {
         viewType={view.viewType}
       />
     </TabContentView>
+  );
+}
+
+function findAppShellPageForRoute(
+  navigationPath: string,
+): AppShellPageRegistration | undefined {
+  const normalizedPath = trimmedNavigationPath(navigationPath);
+  return listAppShellPages().find(
+    (entry) => trimmedNavigationPath(entry.path) === normalizedPath,
   );
 }
 
@@ -1002,6 +1010,17 @@ function renderViewRouterContent({
     return (
       <TabContentView>
         <DynamicPluginPage resolved={dynamicAppPage} />
+      </TabContentView>
+    );
+  }
+  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
+  if (
+    appShellPageForRoute &&
+    (developerModeEnabled || appShellPageForRoute.developerOnly !== true)
+  ) {
+    return (
+      <TabContentView>
+        <RegisteredAppShellPage registration={appShellPageForRoute} />
       </TabContentView>
     );
   }

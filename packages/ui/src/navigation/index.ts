@@ -436,6 +436,7 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   // /apps/<sub> — known tool tabs resolve to their tab; everything else is an app slug
   if (normalized.startsWith("/apps/")) {
     const sub = normalized.slice("/apps/".length);
+    if (sub.includes("/")) return "views";
     return APPS_SUB_TABS[sub] ?? "apps";
   }
 

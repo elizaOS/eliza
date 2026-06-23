@@ -59,9 +59,11 @@ function getRedis(): CompatibleRedis | null {
   return buildRedisClient(env);
 }
 
-export async function checkProvisioningWorkerHealth(): Promise<ProvisioningWorkerHealth> {
+export async function checkProvisioningWorkerHealth(
+  redisOverride?: CompatibleRedis | null,
+): Promise<ProvisioningWorkerHealth> {
   const required = isProvisioningWorkerRequired();
-  const redis = getRedis();
+  const redis = redisOverride === undefined ? getRedis() : redisOverride;
 
   if (!required) {
     return { ok: true, required: false };
@@ -128,8 +130,10 @@ export function provisioningWorkerFailureBody(
  * configured. Surface failures via the returned promise — the daemon
  * decides whether to log loudly or swallow.
  */
-export async function publishProvisioningWorkerHeartbeat(): Promise<boolean> {
-  const redis = getRedis();
+export async function publishProvisioningWorkerHeartbeat(
+  redisOverride?: CompatibleRedis | null,
+): Promise<boolean> {
+  const redis = redisOverride === undefined ? getRedis() : redisOverride;
   if (!redis) return false;
   const timestamp = new Date().toISOString();
   await withTimeout(
