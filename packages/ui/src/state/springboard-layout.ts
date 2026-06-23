@@ -18,6 +18,24 @@ export const SPRINGBOARD_PAGE_SIZE = 20;
 /** Maximum icons pinned to the dock (favorites). */
 export const SPRINGBOARD_DOCK_LIMIT = 4;
 
+/**
+ * Default favorites dock for a fresh install (#9144). Capped at
+ * SPRINGBOARD_DOCK_LIMIT. These are stable built-in `system` view ids; any that
+ * are not actually available in the live catalog are dropped during
+ * `reconcileLayout` (favorites ∩ available), so an unknown id never leaves a
+ * hole. Order matches the dock left-to-right:
+ *   - chat     — default landing + primary surface
+ *   - views    — the springboard launcher itself (home)
+ *   - settings — universal, stable system view
+ *   - activity — pairs with the default activity surface
+ */
+export const DEFAULT_SPRINGBOARD_FAVORITES: readonly string[] = [
+  "chat",
+  "views",
+  "settings",
+  "activity",
+];
+
 export interface SpringboardLayout {
   /** Ordered view ids pinned to the dock. Capped at SPRINGBOARD_DOCK_LIMIT. */
   favorites: string[];
@@ -36,6 +54,15 @@ export function emptyLayout(): SpringboardLayout {
   return { favorites: [], pages: [] };
 }
 
+/**
+ * First-run layout — seeds the default favorites dock (#9144) so the dock is
+ * never empty on a fresh install. Unknown default ids are dropped during
+ * `reconcileLayout`. Returns a fresh array so callers can't mutate the constant.
+ */
+export function defaultLayout(): SpringboardLayout {
+  return { favorites: [...DEFAULT_SPRINGBOARD_FAVORITES], pages: [] };
+}
+
 function isStringArray(value: unknown): value is string[] {
   return (
     Array.isArray(value) && value.every((item) => typeof item === "string")
@@ -46,7 +73,10 @@ export function readSpringboardLayout(): SpringboardLayout {
   if (typeof window === "undefined") return emptyLayout();
   try {
     const raw = window.localStorage.getItem(SPRINGBOARD_STORAGE_KEY);
-    if (!raw) return emptyLayout();
+    // Genuine first run (no stored key) seeds the default dock; a stored
+    // `favorites: []` (user cleared the dock) is respected below and NOT
+    // re-seeded.
+    if (!raw) return defaultLayout();
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object") return emptyLayout();
     const record = parsed as Record<string, unknown>;

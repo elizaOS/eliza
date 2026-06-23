@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_SPRINGBOARD_FAVORITES,
+  defaultLayout,
   emptyLayout,
   moveIcon,
   placedIds,
@@ -104,5 +106,49 @@ describe("springboard-layout persistence", () => {
   it("returns an empty layout on malformed storage", () => {
     window.localStorage.setItem(SPRINGBOARD_STORAGE_KEY, "{not json");
     expect(readSpringboardLayout()).toEqual(emptyLayout());
+  });
+});
+
+describe("springboard-layout default dock (#9144)", () => {
+  beforeEach(() => window.localStorage.clear());
+
+  it("seeds the default favorites dock on first run (no stored layout)", () => {
+    expect(readSpringboardLayout()).toEqual(defaultLayout());
+    expect(readSpringboardLayout().favorites).toEqual([
+      ...DEFAULT_SPRINGBOARD_FAVORITES,
+    ]);
+  });
+
+  it("respects a user-cleared dock (stored favorites: []) — does NOT re-seed", () => {
+    writeSpringboardLayout({ favorites: [], pages: [["a"]] });
+    expect(readSpringboardLayout().favorites).toEqual([]);
+  });
+
+  it("does not exceed the dock limit", () => {
+    expect(defaultLayout().favorites.length).toBeLessThanOrEqual(
+      SPRINGBOARD_DOCK_LIMIT,
+    );
+  });
+
+  it("keeps available default favorites and drops unknown ones on reconcile", () => {
+    // Only `settings` + `activity` exist in this catalog; `chat`/`views` are not
+    // available here and must drop cleanly (no hole, no page placement).
+    const out = reconcileLayout(defaultLayout(), [
+      "settings",
+      "activity",
+      "files",
+    ]);
+    expect(out.favorites).toEqual(["settings", "activity"]);
+    // Dropped defaults never leak into the page grid.
+    expect(out.pages.flat()).toEqual(["files"]);
+  });
+
+  it("keeps all default favorites when every default id is available", () => {
+    const out = reconcileLayout(defaultLayout(), [
+      ...DEFAULT_SPRINGBOARD_FAVORITES,
+      "files",
+    ]);
+    expect(out.favorites).toEqual([...DEFAULT_SPRINGBOARD_FAVORITES]);
+    expect(out.pages.flat()).toEqual(["files"]);
   });
 });
