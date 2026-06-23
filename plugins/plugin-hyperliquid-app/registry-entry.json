@@ -4,7 +4,12 @@
   "description": "Native Hyperliquid market, position, and order status for wallet trading.",
   "npmName": "@elizaos/plugin-hyperliquid-app",
   "source": "bundled",
-  "tags": ["trading", "hyperliquid", "perps", "wallet"],
+  "tags": [
+    "trading",
+    "hyperliquid",
+    "perps",
+    "wallet"
+  ],
   "config": {},
   "render": {
     "visible": true,
@@ -13,19 +18,33 @@
     "icon": "ChartCandlestick",
     "group": "Curated",
     "groupOrder": 7,
-    "actions": ["launch", "configure"]
+    "actions": [
+      "launch",
+      "configure"
+    ]
   },
   "resources": {},
-  "dependsOn": ["wallet"],
+  "dependsOn": [
+    "wallet"
+  ],
   "kind": "app",
   "subtype": "trading",
   "launch": {
     "type": "server-launch",
-    "capabilities": ["hyperliquid", "trading", "wallet"],
+    "capabilities": [
+      "hyperliquid",
+      "trading",
+      "wallet"
+    ],
     "curatedSlug": "hyperliquid",
     "routePlugin": {
       "specifier": "@elizaos/plugin-hyperliquid-app/plugin",
       "exportName": "hyperliquidPlugin"
     }
+  },
+  "curatedApp": {
+    "slug": "hyperliquid",
+    "order": 6,
+    "aliases": []
   }
 }

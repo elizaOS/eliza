@@ -13,7 +13,10 @@
     "icon": "Briefcase",
     "group": "Curated",
     "groupOrder": 7,
-    "actions": ["launch", "configure"]
+    "actions": [
+      "launch",
+      "configure"
+    ]
   },
   "resources": {},
   "dependsOn": [],
@@ -27,5 +30,12 @@
       "specifier": "@elizaos/plugin-shopify-ui/plugin",
       "exportName": "shopifyPlugin"
     }
+  },
+  "curatedApp": {
+    "slug": "shopify",
+    "order": 8,
+    "aliases": [
+      "@elizaos/plugin-shopify"
+    ]
   }
 }

@@ -1,0 +1,59 @@
+[
+  {
+    "slug": "companion",
+    "canonicalName": "@elizaos/plugin-companion",
+    "aliases": []
+  },
+  {
+    "slug": "contacts",
+    "canonicalName": "@elizaos/plugin-contacts",
+    "aliases": []
+  },
+  {
+    "slug": "phone",
+    "canonicalName": "@elizaos/plugin-phone",
+    "aliases": []
+  },
+  {
+    "slug": "wifi",
+    "canonicalName": "@elizaos/plugin-wifi",
+    "aliases": []
+  },
+  {
+    "slug": "feed",
+    "canonicalName": "@elizaos/plugin-feed",
+    "aliases": []
+  },
+  {
+    "slug": "vincent",
+    "canonicalName": "@elizaos/plugin-vincent",
+    "aliases": []
+  },
+  {
+    "slug": "hyperliquid",
+    "canonicalName": "@elizaos/plugin-hyperliquid-app",
+    "aliases": []
+  },
+  {
+    "slug": "polymarket",
+    "canonicalName": "@elizaos/plugin-polymarket-app",
+    "aliases": []
+  },
+  {
+    "slug": "shopify",
+    "canonicalName": "@elizaos/plugin-shopify-ui",
+    "aliases": [
+      "@elizaos/plugin-shopify"
+    ]
+  },
+  {
+    "slug": "screenshare",
+    "canonicalName": "@elizaos/plugin-screenshare",
+    "aliases": []
+  },
+  {
+    "slug": "trajectory-logger",
+    "canonicalName": "@elizaos/plugin-trajectory-logger",
+    "aliases": []
+  }
+]

@@ -4,7 +4,12 @@
   "description": "Connect Vincent to trade on Hyperliquid and Polymarket through Vincent's agent.",
   "npmName": "@elizaos/plugin-vincent",
   "source": "bundled",
-  "tags": ["trading", "hyperliquid", "polymarket", "prediction-markets"],
+  "tags": [
+    "trading",
+    "hyperliquid",
+    "polymarket",
+    "prediction-markets"
+  ],
   "config": {},
   "render": {
     "visible": true,
@@ -13,19 +18,33 @@
     "icon": "Wallet",
     "group": "Curated",
     "groupOrder": 6,
-    "actions": ["launch", "configure"]
+    "actions": [
+      "launch",
+      "configure"
+    ]
   },
   "resources": {},
-  "dependsOn": ["wallet"],
+  "dependsOn": [
+    "wallet"
+  ],
   "kind": "app",
   "subtype": "trading",
   "launch": {
     "type": "server-launch",
-    "capabilities": ["vincent", "delegated-trading", "wallet"],
+    "capabilities": [
+      "vincent",
+      "delegated-trading",
+      "wallet"
+    ],
     "curatedSlug": "vincent",
     "routePlugin": {
       "specifier": "@elizaos/plugin-vincent/plugin",
       "exportName": "vincentPlugin"
     }
+  },
+  "curatedApp": {
+    "slug": "vincent",
+    "order": 5,
+    "aliases": []
   }
 }

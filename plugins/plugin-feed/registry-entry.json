@@ -13,7 +13,10 @@
     "icon": "Gamepad",
     "group": "Curated",
     "groupOrder": 2,
-    "actions": ["launch", "configure"]
+    "actions": [
+      "launch",
+      "configure"
+    ]
   },
   "resources": {},
   "dependsOn": [],
@@ -26,5 +29,10 @@
     "uiExtension": {
       "detailPanelId": "feed-operator-dashboard"
     }
+  },
+  "curatedApp": {
+    "slug": "feed",
+    "order": 4,
+    "aliases": []
   }
 }

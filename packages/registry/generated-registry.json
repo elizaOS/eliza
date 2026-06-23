@@ -504,6 +504,56 @@
       "kind": "plugin",
       "registryKind": "plugin",
       "directory": null
+    },
+    "plugin-x402-alpha-data": {
+      "git": {
+        "repo": "sna4an/plugin-x402-alpha-data",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-x402-alpha-data",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Paid alpha data endpoints via x402 protocol — token safety, whale tracking, yield strategies, governance, sentiment.",
+      "homepage": "https://github.com/sna4an/plugin-x402-alpha-data",
+      "topics": [
+        "x402",
+        "defi",
+        "alpha",
+        "whale-tracking",
+        "token-safety",
+        "yield",
+        "solana",
+        "base",
+        "web3",
+        "paid-api"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
     }
   }
 }

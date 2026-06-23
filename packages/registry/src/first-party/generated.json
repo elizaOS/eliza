@@ -250,6 +250,11 @@
       "dependsOn": [
         "wallet"
       ],
+      "curatedApp": {
+        "slug": "polymarket",
+        "order": 7,
+        "aliases": []
+      },
       "kind": "app",
       "subtype": "trading",
       "launch": {
@@ -717,6 +722,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -899,6 +905,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -1258,6 +1265,11 @@
       },
       "resources": {},
       "dependsOn": [],
+      "curatedApp": {
+        "slug": "companion",
+        "order": 0,
+        "aliases": []
+      },
       "kind": "app",
       "subtype": "shell",
       "launch": {
@@ -1349,6 +1361,41 @@
       "dependsOn": [],
       "kind": "plugin",
       "subtype": "devtools"
+    },
+    {
+      "id": "contacts",
+      "name": "Contacts",
+      "description": "Android Contacts overlay app — wraps the @elizaos/capacitor-contacts native plugin.",
+      "npmName": "@elizaos/plugin-contacts",
+      "version": "2.0.3-beta.2",
+      "source": "bundled",
+      "tags": [
+        "device",
+        "contacts"
+      ],
+      "config": {},
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "Contact",
+        "group": "device",
+        "actions": [
+          "enable"
+        ]
+      },
+      "resources": {
+        "homepage": "https://elizaos.ai",
+        "repository": "https://github.com/elizaos/elizaos"
+      },
+      "dependsOn": [],
+      "curatedApp": {
+        "slug": "contacts",
+        "order": 1,
+        "aliases": []
+      },
+      "kind": "plugin",
+      "subtype": "feature"
     },
     {
       "id": "copilot-proxy",
@@ -1664,6 +1711,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "oauth",
         "credentialKeys": [
@@ -2715,6 +2763,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
@@ -2744,6 +2793,11 @@
       },
       "resources": {},
       "dependsOn": [],
+      "curatedApp": {
+        "slug": "feed",
+        "order": 4,
+        "aliases": []
+      },
       "kind": "app",
       "subtype": "game",
       "launch": {
@@ -2833,6 +2887,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -3148,6 +3203,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "email",
+      "channels": [],
       "auth": {
         "kind": "oauth",
         "credentialKeys": [
@@ -3290,6 +3346,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -3595,6 +3652,11 @@
       "dependsOn": [
         "wallet"
       ],
+      "curatedApp": {
+        "slug": "hyperliquid",
+        "order": 6,
+        "aliases": []
+      },
       "kind": "app",
       "subtype": "trading",
       "launch": {
@@ -3706,6 +3768,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -3811,6 +3874,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -3907,6 +3971,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
@@ -4323,6 +4388,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
@@ -4445,6 +4511,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
@@ -5003,6 +5070,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -5418,6 +5486,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -5574,6 +5643,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -6105,6 +6175,41 @@
       "dependsOn": [],
       "kind": "plugin",
       "subtype": "documents"
+    },
+    {
+      "id": "phone",
+      "name": "Phone",
+      "description": "Phone app for Eliza — Android dialer/call-log overlay (@elizaos/capacitor-phone) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
+      "npmName": "@elizaos/plugin-phone",
+      "version": "2.0.3-beta.2",
+      "source": "bundled",
+      "tags": [
+        "device",
+        "phone"
+      ],
+      "config": {},
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "Phone",
+        "group": "device",
+        "actions": [
+          "enable"
+        ]
+      },
+      "resources": {
+        "homepage": "https://elizaos.ai",
+        "repository": "https://github.com/elizaos/elizaos"
+      },
+      "dependsOn": [],
+      "curatedApp": {
+        "slug": "phone",
+        "order": 2,
+        "aliases": []
+      },
+      "kind": "plugin",
+      "subtype": "feature"
     },
     {
       "id": "plugin-manager",
@@ -6652,6 +6757,41 @@
       "subtype": "automation"
     },
     {
+      "id": "screenshare",
+      "name": "Screenshare",
+      "description": "Screen Share app: authenticated desktop screen streaming and remote mouse/keyboard control for local, Linux, macOS, and Windows runtimes.",
+      "npmName": "@elizaos/plugin-screenshare",
+      "version": "2.0.3-beta.2",
+      "source": "bundled",
+      "tags": [
+        "device",
+        "screenshare"
+      ],
+      "config": {},
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "ScreenShare",
+        "group": "device",
+        "actions": [
+          "enable"
+        ]
+      },
+      "resources": {
+        "homepage": "https://elizaos.ai",
+        "repository": "https://github.com/elizaos/elizaos"
+      },
+      "dependsOn": [],
+      "curatedApp": {
+        "slug": "screenshare",
+        "order": 9,
+        "aliases": []
+      },
+      "kind": "plugin",
+      "subtype": "media"
+    },
+    {
       "id": "shell",
       "name": "Shell",
       "description": "A shell plugin for ElizaOS. USE AT YOUR OWN RISK. THIS GIVES AI FULL ACCESS TO THE HOST MACHINE",
@@ -6775,6 +6915,13 @@
       },
       "resources": {},
       "dependsOn": [],
+      "curatedApp": {
+        "slug": "shopify",
+        "order": 8,
+        "aliases": [
+          "@elizaos/plugin-shopify"
+        ]
+      },
       "kind": "app",
       "subtype": "marketplace",
       "launch": {
@@ -6867,6 +7014,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -7001,6 +7149,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "oauth",
         "credentialKeys": [
@@ -7356,6 +7505,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
@@ -7456,6 +7606,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -7588,6 +7739,11 @@
         "repository": "https://github.com/elizaos/elizaos"
       },
       "dependsOn": [],
+      "curatedApp": {
+        "slug": "trajectory-logger",
+        "order": 10,
+        "aliases": []
+      },
       "kind": "plugin",
       "subtype": "storage"
     },
@@ -8089,6 +8245,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
@@ -8287,6 +8444,11 @@
       "dependsOn": [
         "wallet"
       ],
+      "curatedApp": {
+        "slug": "vincent",
+        "order": 5,
+        "aliases": []
+      },
       "kind": "app",
       "subtype": "trading",
       "launch": {
@@ -8499,12 +8661,48 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
           "WHATSAPP_ACCESS_TOKEN"
         ]
       }
+    },
+    {
+      "id": "wifi",
+      "name": "Wifi",
+      "description": "Wi-Fi overlay app for the Eliza Android build — scan, inspect, and connect to nearby networks via @elizaos/capacitor-wifi.",
+      "npmName": "@elizaos/plugin-wifi",
+      "version": "2.0.3-beta.2",
+      "source": "bundled",
+      "tags": [
+        "device",
+        "wifi"
+      ],
+      "config": {},
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "Wifi",
+        "group": "device",
+        "actions": [
+          "enable"
+        ]
+      },
+      "resources": {
+        "homepage": "https://elizaos.ai",
+        "repository": "https://github.com/elizaos/elizaos"
+      },
+      "dependsOn": [],
+      "curatedApp": {
+        "slug": "wifi",
+        "order": 3,
+        "aliases": []
+      },
+      "kind": "plugin",
+      "subtype": "feature"
     },
     {
       "id": "workflow",
@@ -8752,6 +8950,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "social",
+      "channels": [],
       "auth": {
         "kind": "oauth",
         "credentialKeys": [
@@ -8986,6 +9185,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
@@ -9114,6 +9314,7 @@
       "dependsOn": [],
       "kind": "connector",
       "subtype": "messaging",
+      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []

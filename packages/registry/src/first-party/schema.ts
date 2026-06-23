@@ -236,6 +236,17 @@ const commonFields = {
   render: renderSchema,
   resources: resourcesSchema.default({}),
   dependsOn: z.array(z.string()).default([]),
+  // Curated-app marker: when present, this entry is one of the curated apps the
+  // agent can resolve by name (NL matching). `slug` is the short curated name,
+  // `order` fixes its catalog position, `aliases` are extra match terms. The
+  // canonical name is the entry's `npmName`. Drives ELIZA_CURATED_APP_DEFINITIONS.
+  curatedApp: z
+    .object({
+      slug: z.string(),
+      order: z.number(),
+      aliases: z.array(z.string()).default([]),
+    })
+    .optional(),
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -311,6 +322,9 @@ export const connectorEntrySchema = z.object({
   ...commonFields,
   kind: z.literal("connector"),
   subtype: connectorSubtype,
+  // Channel keys this connector handles (drives CHANNEL_PLUGIN_MAP). Usually
+  // `[id]`, but a connector can claim aliases (e.g. x -> ["x", "twitter"]).
+  channels: z.array(z.string()).default([]),
   auth: z
     .object({
       kind: z.enum(["token", "oauth", "credentials", "none"]),

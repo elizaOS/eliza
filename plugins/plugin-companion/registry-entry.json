@@ -13,7 +13,10 @@
     "icon": "Bot",
     "group": "Curated",
     "groupOrder": 0,
-    "actions": ["launch", "configure"]
+    "actions": [
+      "launch",
+      "configure"
+    ]
   },
   "resources": {},
   "dependsOn": [],
@@ -24,5 +27,10 @@
     "target": "companion",
     "capabilities": [],
     "curatedSlug": "companion"
+  },
+  "curatedApp": {
+    "slug": "companion",
+    "order": 0,
+    "aliases": []
   }
 }

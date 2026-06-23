@@ -26,7 +26,9 @@
       "types": "./src/first-party/index.ts",
       "import": "./src/first-party/index.ts",
       "default": "./src/first-party/index.ts"
-    }
+    },
+    "./first-party/generated.json": "./src/first-party/generated.json",
+    "./first-party/curated-app-definitions.json": "./src/first-party/curated-app-definitions.json"
   },
   "scripts": {
     "validate": "bun run src/validate-cli.ts",
