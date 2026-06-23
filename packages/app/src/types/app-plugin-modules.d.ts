@@ -211,10 +211,6 @@ declare module "@elizaos/app-feed" {
   export {};
 }
 
-declare module "@elizaos/app-clawville" {
-  export {};
-}
-
 declare module "@elizaos/app-trajectory-logger" {
   export {};
 }

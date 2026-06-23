@@ -341,15 +341,15 @@ describe("ViewCatalog", () => {
     useViewCatalogMock.mockReturnValue({
       entries: [
         {
-          key: "app:@elizaos/plugin-clawville",
-          id: "@elizaos/plugin-clawville",
-          label: "ClawVille",
+          key: "app:@elizaos/plugin-arcade",
+          id: "@elizaos/plugin-arcade",
+          label: "Arcade",
           hasHero: true,
-          heroUrl: "/api/apps/hero/clawville",
+          heroUrl: "/api/apps/hero/arcade",
           modality: "gui",
           state: "available",
           kind: "app",
-          appName: "@elizaos/plugin-clawville",
+          appName: "@elizaos/plugin-arcade",
         },
       ],
       loading: false,
@@ -361,8 +361,8 @@ describe("ViewCatalog", () => {
     render(<ViewCatalog />);
 
     expect(screen.getByTestId("views-catalog-section")).toBeTruthy();
-    expect(screen.getByText("ClawVille")).toBeTruthy();
-    fireEvent.click(screen.getByLabelText("Get ClawVille"));
+    expect(screen.getByText("Arcade")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Get Arcade"));
     expect(get).toHaveBeenCalledTimes(1);
   });
 

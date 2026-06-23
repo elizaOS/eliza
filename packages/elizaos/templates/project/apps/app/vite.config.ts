@@ -1159,10 +1159,6 @@ export default defineConfig({
         return aliases;
       })(),
       {
-        find: /^@clawville\/app-clawville$/,
-        replacement: optionalElizaAppStubEntry,
-      },
-      {
         find: /^@elizaos\/app-(?!core$)[^/]+$/,
         replacement: optionalElizaAppStubEntry,
       },

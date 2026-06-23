@@ -37,7 +37,6 @@ const PLUGINS =
         "plugin-trajectory-logger",
         "app-model-tester",
         "plugin-feed",
-        "plugin-clawville",
         "plugin-screenshare",
         "plugin-facewear",
         "plugin-companion",
