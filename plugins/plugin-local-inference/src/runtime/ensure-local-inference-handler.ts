@@ -346,6 +346,26 @@ function extractThinkingControl(
  * honours them (the forced-span / prefill / grammar / prefill-plan path is
  * local-model-only).
  */
+/**
+ * Per-step token cap for USER-VISIBLE local streaming (chat replies).
+ *
+ * Benchmarked on the fused eliza-1 model (#9174): the per-`llmStreamNext` step
+ * carries a large fixed FFI overhead, so the throughput↔smoothness curve has a
+ * knee around 8 — `8` yields ~10 UI updates per 80 tokens (clearly streaming)
+ * at a modest decode-throughput cost, whereas 1–4 fall off a throughput cliff
+ * and 16–32 look jumpy. Internal / planner / voice calls do NOT set this and
+ * keep the coarse, throughput-tuned runner default (32). Overridable via the
+ * shared `ELIZA_LOCAL_STREAM_TOKENS_PER_STEP` env knob; the runner clamps it.
+ */
+const DEFAULT_CHAT_STREAM_TOKENS_PER_STEP = 8;
+function resolveChatStreamTokensPerStep(): number {
+	const raw = process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP?.trim();
+	const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+	return Number.isFinite(parsed) && parsed > 0
+		? parsed
+		: DEFAULT_CHAT_STREAM_TOKENS_PER_STEP;
+}
+
 function engineGenerateArgsFromParams(
 	params: GenerateTextParams,
 	cacheKey: string | undefined,
@@ -365,6 +385,7 @@ function engineGenerateArgsFromParams(
 	spanSamplerPlan?: GenerateTextParams["spanSamplerPlan"];
 	thinking?: "auto" | "on" | "off";
 	onTextChunk?: (chunk: string) => void | Promise<void>;
+	maxTokensPerStep?: number;
 	voiceOutput?: "user-visible" | "internal";
 } {
 	const renderContent = (content: unknown): string => {
@@ -428,6 +449,13 @@ function engineGenerateArgsFromParams(
 		spanSamplerPlan: params.spanSamplerPlan,
 		thinking: extractThinkingControl(params.providerOptions),
 		onTextChunk,
+		// Stream user-visible replies in fine-grained steps so the dashboard
+		// renders token-by-token instead of in ~32-token jumps. Only when
+		// streaming (onTextChunk set) — internal/planner calls keep the coarse,
+		// throughput-tuned default. See resolveChatStreamTokensPerStep (#9174).
+		maxTokensPerStep: onTextChunk
+			? resolveChatStreamTokensPerStep()
+			: undefined,
 		voiceOutput:
 			params.voiceOutput ??
 			(typeof params.onStreamChunk === "function" ? "user-visible" : undefined),
