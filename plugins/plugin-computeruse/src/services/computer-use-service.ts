@@ -5,6 +5,7 @@ import {
   ComputerUseApprovalManager,
   isApprovalMode,
 } from "../approval-manager.js";
+import { getCoordOcrProvider } from "../mobile/ocr-provider.js";
 import {
   clickBrowser,
   closeBrowser,
@@ -349,20 +350,8 @@ export class ComputerUseService extends Service {
         return this.failEntry(entry, { success: false, error: approvalError });
       }
 
-      if (params.action === "detect_elements") {
-        return this.failEntry(entry, {
-          success: false,
-          error:
-            "Element detection is not available on local machines. Use a screenshot plus model reasoning instead.",
-        });
-      }
-
-      if (params.action === "ocr") {
-        return this.failEntry(entry, {
-          success: false,
-          error:
-            "OCR is not available on local machines. Use a screenshot plus model reasoning instead.",
-        });
+      if (params.action === "ocr" || params.action === "detect_elements") {
+        return this.runOcrOrDetect(entry, params);
       }
 
       const targetDisplayId = this.resolveDisplayIdForAction(params);
@@ -489,6 +478,71 @@ export class ComputerUseService extends Service {
           permissionType: permissionError.permissionType,
         });
       }
+      return this.failEntry(entry, {
+        success: false,
+        error: errorMessage(error),
+      });
+    }
+  }
+
+  /**
+   * `ocr` / `detect_elements` — real on-device OCR via the registered
+   * CoordOcrProvider (plugin-vision contributes native Windows.Media.Ocr / Apple
+   * Vision / docTR through `registerCoordOcrProvider`). Replaces the former
+   * "not available on local machines" stub. Read-only; coordinates are
+   * display-local so the agent can click them directly.
+   */
+  private async runOcrOrDetect(
+    entry: ActionHistoryEntry,
+    params: DesktopActionParams,
+  ): Promise<ComputerActionResult> {
+    const provider = getCoordOcrProvider();
+    if (!provider) {
+      return this.failEntry(entry, {
+        success: false,
+        error:
+          "No OCR provider is registered. Enable @elizaos/plugin-vision for on-device OCR (Windows.Media.Ocr / Apple Vision / docTR).",
+      });
+    }
+    const displayId =
+      params.displayId ?? this.resolveDisplayIdForAction(params);
+    try {
+      const cap = await captureDisplay(displayId);
+      const { blocks } = await provider.describe({
+        displayId: String(cap.display.id),
+        sourceX: 0,
+        sourceY: 0,
+        pngBytes: new Uint8Array(cap.frame),
+      });
+      if (params.action === "detect_elements") {
+        const elements = blocks.map((b, i) => ({
+          id: `e${i + 1}`,
+          kind: "text" as const,
+          text: b.text,
+          bbox: [b.bbox.x, b.bbox.y, b.bbox.width, b.bbox.height] as [
+            number,
+            number,
+            number,
+            number,
+          ],
+          semantic_position: b.semantic_position,
+          displayId: cap.display.id,
+        }));
+        return this.succeedEntry(entry, {
+          success: true,
+          displayId: cap.display.id,
+          data: { elements, count: elements.length },
+          message: `Detected ${elements.length} text element(s) on display ${cap.display.id}.`,
+        });
+      }
+      const text = blocks.map((b) => b.text).join("\n");
+      return this.succeedEntry(entry, {
+        success: true,
+        displayId: cap.display.id,
+        data: { text, blocks },
+        message: `OCR found ${blocks.length} text block(s) on display ${cap.display.id}.`,
+      });
+    } catch (error) {
       return this.failEntry(entry, {
         success: false,
         error: errorMessage(error),
