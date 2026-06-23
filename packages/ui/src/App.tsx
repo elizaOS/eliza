@@ -1111,7 +1111,7 @@ function renderViewRouterContent({
   const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
   if (
     appShellPageForRoute &&
-    (developerModeEnabled || appShellPageForRoute.developerOnly !== true)
+    isViewVisible(appShellPageForRoute, enabledKinds)
   ) {
     return (
       <TabContentView>

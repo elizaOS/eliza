@@ -22,6 +22,26 @@ const workflow = readFileSync(workflowPath, "utf8");
 
 const ENV_KEY = "SANDBOX_REGISTRY_REDIS_URL";
 
+// The reconcile loop runs the workflow's VERBATIM bash, which uses GNU
+// `sed -i "/^KEY=/d"` (no backup-suffix argument). BSD/macOS `sed -i` parses
+// that as a suffix and fails, so the executed cases only run where a
+// GNU-compatible sed exists. CI (Linux) has GNU sed natively; a macOS dev with
+// `brew install gnu-sed` gets coverage via the `gsed` shim injected in
+// runReconcile; otherwise the executed cases skip (the static wiring assertions
+// above still run on every platform).
+function resolveGnuSed(): string | null {
+  for (const candidate of ["sed", "gsed"]) {
+    try {
+      const out = execFileSync(candidate, ["--version"], { encoding: "utf8" });
+      if (out.includes("GNU sed")) return candidate;
+    } catch {
+      // candidate missing or not GNU — keep looking.
+    }
+  }
+  return null;
+}
+const GNU_SED = resolveGnuSed();
+
 describe("deploy-eliza-provisioning-worker.yml SANDBOX_REGISTRY_REDIS_URL wiring", () => {
   it("sources the key from the GitHub secret into the deploy job env", () => {
     expect(workflow).toContain(
@@ -63,10 +83,17 @@ function extractReconcileLoop(): string {
   // Include the "done" line itself.
   const block = tail.slice(0, doneIdx + "\n            done".length);
   // De-indent the 12-space YAML script indentation.
-  return block
+  const loop = block
     .split("\n")
     .map((line) => (line.startsWith("            ") ? line.slice(12) : line))
     .join("\n");
+  // Fail loudly if anchor drift (a renamed loop var, reindented script block, a
+  // reformatted `done`, or a swapped ssh-action) extracted a trivial/empty
+  // block — otherwise the executed cases would silently exercise nothing.
+  expect(loop).toContain("sed -i");
+  expect(loop).toContain("tee -a");
+  expect(loop).toContain(ENV_KEY);
+  return loop;
 }
 
 function runReconcile(opts: {
@@ -86,6 +113,10 @@ function runReconcile(opts: {
   const script = [
     "set -euo pipefail",
     "sudo() { \"$@\"; }",
+    // On a macOS dev box with `brew install gnu-sed`, route the loop's `sed`
+    // through `gsed` so the verbatim GNU `sed -i` invocation behaves. On Linux
+    // (GNU sed is the default) and when skipped this is a no-op.
+    GNU_SED === "gsed" ? "sed() { gsed \"$@\"; }" : "",
     `ENV_FILE='${envFile}'`,
     // The ssh-action `envs:` allowlist always exports these (possibly empty);
     // under `set -u` they must be defined or the loop aborts. Empty == skipped,
@@ -111,7 +142,10 @@ function runReconcile(opts: {
   }
 }
 
-describe("provisioning-worker .env.local reconcile loop (executed)", () => {
+// Skip the executed cases when no GNU-compatible sed is reachable (BSD/macOS
+// without gsed); CI runs on Linux with GNU sed and keeps full coverage.
+const executedDescribe = GNU_SED ? describe : describe.skip;
+executedDescribe("provisioning-worker .env.local reconcile loop (executed)", () => {
   it("writes SANDBOX_REGISTRY_REDIS_URL into .env.local when the secret is set", () => {
     const url = "redis://sandbox-registry.example.internal:6379";
     const out = runReconcile({ redisUrl: url });

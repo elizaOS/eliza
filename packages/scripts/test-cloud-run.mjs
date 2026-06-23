@@ -28,6 +28,11 @@ const env = {
 
 const cloudSharedSrc = path.join(repoRoot, "packages", "cloud-shared", "src");
 const cloudApiTests = path.join(repoRoot, "packages", "cloud-api", "__tests__");
+// cloud-tests.yml already triggers on `packages/scripts/cloud/**`, but nothing
+// here ran those tests — the daemon/admin guards (e.g. the provisioning-worker
+// env-reconcile regression test for #8756) silently never executed. Include the
+// directory so the path trigger actually exercises them.
+const cloudScriptsTests = path.join(repoRoot, "packages", "scripts", "cloud");
 
 const result = spawnSync(
   "bun",
@@ -35,6 +40,7 @@ const result = spawnSync(
     "test",
     cloudSharedSrc,
     cloudApiTests,
+    cloudScriptsTests,
     "--timeout",
     "120000",
     "--isolate",
