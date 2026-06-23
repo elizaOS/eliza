@@ -177,7 +177,8 @@ export function ChatView({
   const resetConversation = useConversationReset();
   // Per-token streaming messages come from the isolated context so token updates
   // don't ride on the giant AppContext value identity.
-  const { conversationMessages } = useConversationMessages();
+  const { conversationMessages, removeConversationMessage } =
+    useConversationMessages();
   const {
     chatInput: rawChatInput,
     chatSending,
@@ -556,8 +557,35 @@ export function ChatView({
       saving: t("common.saving", {
         defaultValue: "Saving...",
       }),
+      suggestion: t("chatmessage.suggestion", {
+        defaultValue: "Suggestion",
+      }),
+      dismiss: t("chatmessage.dismissSuggestion", {
+        defaultValue: "Dismiss suggestion",
+      }),
+      acceptSuggestion: t("chatmessage.acceptSuggestion", {
+        defaultValue: "Do it",
+      }),
     }),
     [t],
+  );
+  // Proactive suggestions (#8792) are dismissed locally — remove the bubble from
+  // the live transcript. The per-surface cooldown in the server-side gate keeps
+  // the same offer from immediately re-appearing.
+  const handleDismissSuggestion = useCallback(
+    (messageId: string) => {
+      removeConversationMessage(messageId);
+    },
+    [removeConversationMessage],
+  );
+  // Accept ("Do it") sends the implied action as a normal turn, then clears the
+  // suggestion bubble so it doesn't linger after the user acted on it.
+  const handleAcceptSuggestion = useCallback(
+    (message: ChatMessageData) => {
+      void sendChatText("Yes, let's do it.");
+      handleDismissSuggestion(message.id);
+    },
+    [sendChatText, handleDismissSuggestion],
   );
   const handleCopyMessageText = useCallback(
     (text: string) => {
@@ -593,6 +621,8 @@ export function ChatView({
         onEdit={handleEditMessage}
         onSpeak={handleSpeakMessage}
         onCopy={handleCopyMessageText}
+        onDismissSuggestion={handleDismissSuggestion}
+        onAcceptSuggestion={handleAcceptSuggestion}
         renderMessageContent={renderChatMessageContent}
         typingIndicator={
           chatSending && !chatFirstTokenReceived && !typingStalled ? (

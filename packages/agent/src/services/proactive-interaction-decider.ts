@@ -293,19 +293,19 @@ export function registerProactiveInteractionDecider(
   wiring: ProactiveDeciderWiring,
 ): void {
   const clock = wiring.now ?? Date.now;
-  // The user-facing "Proactive suggestions" control (off/subtle/chatty) is a
-  // runtime setting; it overrides the env default in the gate resolver, so
-  // "off" suppresses entirely and "chatty" relaxes the caps (#8792).
-  const userSetting = runtime.getSetting(PROACTIVE_CHATTINESS_SETTING_KEY);
-  const config = resolveProactiveGateConfig(
-    process.env,
-    typeof userSetting === "string" ? userSetting : undefined,
-  );
-  wiring.gate.setConfig(config);
-  if (config.chattiness === "off") {
-    logger.debug("[proactive-interaction] disabled by config; not subscribing");
-    return;
-  }
+
+  // Resolve the live config PER interaction, not once at boot: the user-facing
+  // "Proactive suggestions" control (off/subtle/chatty) writes
+  // ELIZA_PROACTIVE_INTERACTIONS straight to process.env (config-routes), so
+  // re-reading here lets the setting + kill-switch take effect immediately
+  // without a runtime restart. The runtime setting overrides the env default.
+  const resolveConfig = () => {
+    const userSetting = runtime.getSetting(PROACTIVE_CHATTINESS_SETTING_KEY);
+    return resolveProactiveGateConfig(
+      process.env,
+      typeof userSetting === "string" ? userSetting : undefined,
+    );
+  };
 
   const isSuppressed = (): boolean => {
     try {
@@ -332,6 +332,13 @@ export function registerProactiveInteractionDecider(
     const surface = interactionSurface(payload);
     if (!surface) return; // policy-silent (e.g. explicit slash commands)
     if (isSuppressed()) return;
+
+    const config = resolveConfig();
+    wiring.gate.setConfig(config);
+    if (config.chattiness === "off") {
+      logger.debug("[proactive-interaction] suppressed: chattiness=off");
+      return;
+    }
 
     wiring.gate.noteSwitch(surface, clock());
 

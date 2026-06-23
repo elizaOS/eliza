@@ -33,12 +33,23 @@ import {
   ModelType,
 } from "@elizaos/core";
 import type { DisplayCapture } from "../platform/capture.js";
+import { frameDhash } from "../scene/dhash.js";
 import type { Scene } from "../scene/scene-types.js";
 import { serializeSceneForPrompt } from "../scene/serialize.js";
 import type { BrainOutput, BrainRoi } from "./types.js";
 
 export const BRAIN_MAX_PIXELS = 1_310_720; // 1280 * 32 * 32 ≈ 1.3 MP cap
 export const BRAIN_MAX_ROIS = 2;
+/** Bound on the per-Brain dHash→BrainOutput cache (LRU-ish, oldest evicted). */
+export const BRAIN_DHASH_CACHE_MAX = 16;
+
+/** Token-accounting snapshot for a Brain instance (#9105 M3). */
+export interface BrainStats {
+  /** IMAGE_DESCRIPTION model calls actually issued. */
+  invocations: number;
+  /** Describe calls served from the frame-dHash cache (no model call). */
+  cacheHits: number;
+}
 
 export class BrainParseError extends Error {
   constructor(
@@ -75,10 +86,43 @@ export interface BrainInput {
  * test fixtures.
  */
 export class Brain {
+  /**
+   * Frame-dHash → BrainOutput cache. The WS2 MemoryArbiter only dedups the
+   * IMAGE_DESCRIPTION call for LOCAL backends; the remote/cloud path bypasses
+   * it, so an identical screen re-burns tokens every step. This call-site cache
+   * skips the model entirely when the same frame is observed for the same goal,
+   * cutting the dominant CUA-loop token cost regardless of backend (#9105 M3).
+   */
+  private readonly dhashCache = new Map<string, BrainOutput>();
+  private invocations = 0;
+  private cacheHits = 0;
+
   constructor(
     private readonly runtime: IAgentRuntime | null,
     private readonly deps: BrainDeps = {},
   ) {}
+
+  /** Token-accounting snapshot (model calls vs cache hits). */
+  getStats(): BrainStats {
+    return { invocations: this.invocations, cacheHits: this.cacheHits };
+  }
+
+  private cacheKey(frame: Buffer, goal: string): string | null {
+    const dh = frameDhash(frame);
+    return dh === null ? null : `${dh.toString()}::${goal}`;
+  }
+
+  private rememberOutput(key: string | null, output: BrainOutput): BrainOutput {
+    if (key) {
+      // Evict oldest to bound memory.
+      if (this.dhashCache.size >= BRAIN_DHASH_CACHE_MAX) {
+        const oldest = this.dhashCache.keys().next().value;
+        if (oldest !== undefined) this.dhashCache.delete(oldest);
+      }
+      this.dhashCache.set(key, output);
+    }
+    return output;
+  }
 
   async observeAndPlan(input: BrainInput): Promise<BrainOutput> {
     if (input.captures.size === 0) {
@@ -96,8 +140,21 @@ export class Brain {
     if (!targetCapture) {
       throw new Error("[computeruse/brain] could not pick a target capture");
     }
+
+    // Frame-dHash cache: identical screen + goal → reuse the prior plan, skip
+    // the (possibly remote) IMAGE_DESCRIPTION call.
+    const key = this.cacheKey(targetCapture.frame, input.goal);
+    if (key) {
+      const cached = this.dhashCache.get(key);
+      if (cached) {
+        this.cacheHits += 1;
+        return cached;
+      }
+    }
+
     const dataUrl = await encodeForBrain(targetCapture.frame);
     const prompt = brainPromptFor(compactScene, input.goal, /*strict*/ false);
+    this.invocations += 1;
     const first = await this.invoke({
       imageUrl: dataUrl,
       prompt,
@@ -112,13 +169,14 @@ export class Brain {
     };
     const rawFirst = extractText(first);
     const parsed = tryParse(rawFirst);
-    if (parsed) return enforceCaps(parsed);
+    if (parsed) return this.rememberOutput(key, enforceCaps(parsed));
     // Strict retry — same image, stricter prompt.
     const strictPrompt = brainPromptFor(
       compactScene,
       input.goal,
       /*strict*/ true,
     );
+    this.invocations += 1;
     const second = await this.invoke({
       imageUrl: dataUrl,
       prompt: strictPrompt,
@@ -126,7 +184,7 @@ export class Brain {
     });
     const rawSecond = extractText(second);
     const parsedRetry = tryParse(rawSecond);
-    if (parsedRetry) return enforceCaps(parsedRetry);
+    if (parsedRetry) return this.rememberOutput(key, enforceCaps(parsedRetry));
     throw new BrainParseError(
       "Brain output is not valid JSON conforming to BrainOutput after retry",
       rawSecond,
