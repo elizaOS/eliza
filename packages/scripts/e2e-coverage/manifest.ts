@@ -261,6 +261,8 @@ export const ZERO_TEST_EXEMPT: Record<string, string> = {
     "Experimental Google Meet companion surface gated behind live Google Meet credentials; no deterministic fixture exists.",
   "plugin-native-shared-types":
     "Pure shared TypeScript type/contract definitions for the native bridges; there is no runtime behavior to test.",
+  "plugin-remote-ledger":
+    "Static remote-ledger app shell package with only manifest/assets today; the deterministic PR scenario exercises the remote-ledger view route, and there is no runtime logic to unit-test in this plugin package.",
   "plugin-tee":
     "Trusted-execution (dstack TEE) attestation/key-release; requires real TEE hardware + a dstack socket, validated by the dedicated TEE smoke scripts.",
   "plugin-xmtp":
