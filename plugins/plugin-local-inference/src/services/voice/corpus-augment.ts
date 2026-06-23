@@ -78,14 +78,17 @@ export function estimateSnrDb(signalRms: number, noiseRms: number): number {
 	return 20 * Math.log10(signalRms / noiseRms);
 }
 
-export type NoiseKind = "white" | "pink";
+export type NoiseKind = "white" | "pink" | "music";
 
 /**
  * Add background noise at a target SNR (dB) relative to the signal's voiced RMS.
  * Lower `snrDb` = noisier. `pink` is a one-pole-filtered approximation of 1/f
- * room rumble; `white` is flat. The noise floor is added across the WHOLE
- * stream (including silent gaps) so silence is no longer pristine — exactly the
- * condition that makes a real VAD/EOT classifier work for its living.
+ * room rumble; `white` is flat; `music` is a seeded harmonic chord (a few
+ * detuned partials under a slow tremolo) — tonal and sustained, the kind of
+ * steady background that fools an energy-only VAD where flat hiss would not.
+ * The noise floor is added across the WHOLE stream (including silent gaps) so
+ * silence is no longer pristine — exactly the condition that makes a real
+ * VAD/EOT classifier work for its living.
  */
 export function addNoise(
 	pcm: Float32Array,
@@ -96,7 +99,8 @@ export function addNoise(
 	const targetNoiseRms = signalRms / dbToGain(opts.snrDb);
 
 	const raw = new Float32Array(pcm.length);
-	if ((opts.kind ?? "white") === "pink") {
+	const kind = opts.kind ?? "white";
+	if (kind === "pink") {
 		// One-pole low-pass of white noise ≈ pink-ish (−~6 dB/oct) room rumble.
 		let prev = 0;
 		const alpha = 0.92;
@@ -104,6 +108,33 @@ export function addNoise(
 			const w = gaussian(rng);
 			prev = alpha * prev + (1 - alpha) * w;
 			raw[i] = prev;
+		}
+	} else if (kind === "music") {
+		// A seeded harmonic chord: detuned partials (root, major third, fifth,
+		// octave) under a slow tremolo. Normalized frequencies (cycles/sample)
+		// keep it sample-rate-agnostic; the RMS scaling below still pins it to the
+		// requested SNR. Tonal + sustained, unlike flat white / pink rumble.
+		const fundamental = 0.018; // ≈ 288 Hz @ 16 kHz, ≈ 864 Hz @ 48 kHz
+		const partials = [
+			{ ratio: 1, amp: 1.0 },
+			{ ratio: 1.26, amp: 0.5 }, // ~major third (5:4)
+			{ ratio: 1.5, amp: 0.6 }, // perfect fifth (3:2)
+			{ ratio: 2, amp: 0.4 }, // octave
+		];
+		const tuned = partials.map((p) => ({
+			freq: fundamental * p.ratio * (1 + (rng() - 0.5) * 0.01), // ±0.5% detune
+			amp: p.amp,
+			phase: rng() * 2 * Math.PI,
+		}));
+		const tremRate = 0.0006; // slow amplitude modulation
+		const tremPhase = rng() * 2 * Math.PI;
+		for (let i = 0; i < raw.length; i++) {
+			let s = 0;
+			for (const t of tuned) {
+				s += t.amp * Math.sin(2 * Math.PI * t.freq * i + t.phase);
+			}
+			const trem = 0.7 + 0.3 * Math.sin(2 * Math.PI * tremRate * i + tremPhase);
+			raw[i] = s * trem;
 		}
 	} else {
 		for (let i = 0; i < raw.length; i++) raw[i] = gaussian(rng);

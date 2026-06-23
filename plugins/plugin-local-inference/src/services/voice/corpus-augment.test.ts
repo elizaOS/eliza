@@ -9,6 +9,7 @@ import {
 	estimateSnrDb,
 	measureRms,
 	mixInto,
+	type NoiseKind,
 	specIsClean,
 } from "./corpus-augment";
 
@@ -77,6 +78,54 @@ describe("addNoise", () => {
 		const tailAfter = measureRms(noisy, voicedEnd);
 		expect(tailBefore).toBeLessThan(1e-4);
 		expect(tailAfter).toBeGreaterThan(tailBefore);
+	});
+});
+
+/** Lag-1 normalized autocorrelation: ≈1 for a smooth/tonal signal, ≈0 for
+ * uncorrelated white noise. */
+function lag1Autocorr(x: Float32Array): number {
+	let num = 0;
+	let den = 0;
+	for (let i = 1; i < x.length; i++) num += x[i] * x[i - 1];
+	for (let i = 0; i < x.length; i++) den += x[i] * x[i];
+	return den > 0 ? num / den : 0;
+}
+
+describe("addNoise: music kind", () => {
+	const recoverNoise = (pcm: Float32Array, kind: NoiseKind, seed: number) => {
+		const noisy = addNoise(pcm, { snrDb: 6, kind, seed });
+		const noise = new Float32Array(pcm.length);
+		for (let i = 0; i < pcm.length; i++) noise[i] = noisy[i] - pcm[i];
+		return noise;
+	};
+
+	it("hits the target SNR like the other kinds", () => {
+		const { pcm } = makeTone(220, 1.0, 0);
+		const noise = recoverNoise(pcm, "music", 1);
+		// recoverNoise uses snrDb: 6
+		const snr = estimateSnrDb(measureRms(pcm), measureRms(noise));
+		expect(snr).toBeGreaterThan(4.5);
+		expect(snr).toBeLessThan(7.5);
+	});
+
+	it("is tonal (smooth, highly autocorrelated) unlike flat white noise", () => {
+		const { pcm } = makeTone(220, 0.5, 0);
+		const music = lag1Autocorr(recoverNoise(pcm, "music", 5));
+		const white = lag1Autocorr(recoverNoise(pcm, "white", 5));
+		expect(music).toBeGreaterThan(0.9);
+		expect(white).toBeLessThan(0.5);
+		expect(music).toBeGreaterThan(white);
+	});
+
+	it("is deterministic for a seed and differs from white/pink", () => {
+		const { pcm } = makeTone(300, 0.3, 0.1);
+		const a = addNoise(pcm, { snrDb: 8, kind: "music", seed: 42 });
+		const b = addNoise(pcm, { snrDb: 8, kind: "music", seed: 42 });
+		const white = addNoise(pcm, { snrDb: 8, kind: "white", seed: 42 });
+		const pink = addNoise(pcm, { snrDb: 8, kind: "pink", seed: 42 });
+		expect(Array.from(a)).toEqual(Array.from(b));
+		expect(Array.from(a)).not.toEqual(Array.from(white));
+		expect(Array.from(a)).not.toEqual(Array.from(pink));
 	});
 });
 
