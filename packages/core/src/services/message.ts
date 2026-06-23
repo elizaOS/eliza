@@ -111,6 +111,7 @@ import {
 } from "../runtime/response-grammar";
 import {
 	type ResponseHandlerEvaluator,
+	type ResponseHandlerEvaluationRunResult,
 	runResponseHandlerEvaluators,
 } from "../runtime/response-handler-evaluators";
 import type {
@@ -2165,6 +2166,7 @@ async function collectV5PlannerCandidateActions(args: {
 	state: State;
 	selectedContexts?: readonly AgentContext[];
 	candidateActions?: readonly string[];
+	allowViewCandidateActions?: boolean;
 	userRoles?: readonly RoleGateRole[];
 }): Promise<Action[]> {
 	// We used to filter the candidate set by `action.contexts` against the
@@ -2180,6 +2182,19 @@ async function collectV5PlannerCandidateActions(args: {
 	// could select but execution would immediately reject.
 	const allRuntimeActions = args.runtime.actions;
 	const actionLookup = buildRuntimeActionLookup(args.runtime);
+	const messageText = getUserMessageText(args.message) ?? "";
+	const viewActionName = findViewsActionName(allRuntimeActions);
+	const normalizedViewActionName = viewActionName
+		? normalizeActionIdentifier(viewActionName)
+		: "";
+	const exposeViewActionByDefault =
+		Boolean(normalizedViewActionName) &&
+		(findViewShellActionName(allRuntimeActions, messageText) ===
+			viewActionName ||
+			findViewCapabilityActionName(allRuntimeActions, messageText) ===
+				viewActionName);
+	const mayExposeViewAction =
+		exposeViewActionByDefault || args.allowViewCandidateActions === true;
 	const actionsByName = new Map(
 		allRuntimeActions.map((action) => [action.name, action]),
 	);
@@ -2254,12 +2269,26 @@ async function collectV5PlannerCandidateActions(args: {
 	};
 
 	for (const action of allRuntimeActions) {
+		if (
+			normalizedViewActionName &&
+			normalizeActionIdentifier(action.name) === normalizedViewActionName &&
+			!mayExposeViewAction
+		) {
+			continue;
+		}
 		await appendIfAllowed(action);
 	}
 
 	for (const candidateName of args.candidateActions ?? []) {
 		const action = resolveRuntimeAction(actionLookup, candidateName);
 		if (!action) continue;
+		if (
+			normalizedViewActionName &&
+			normalizeActionIdentifier(action.name) === normalizedViewActionName &&
+			!mayExposeViewAction
+		) {
+			continue;
+		}
 		await appendIfAllowed(
 			action,
 			undefined,
@@ -2357,6 +2386,12 @@ function getMessageHandlerCandidateActions(
 	);
 }
 
+function getResponseHandlerEvaluatorCandidateActions(
+	evaluation: ResponseHandlerEvaluationRunResult | null,
+): string[] {
+	return uniqueActionNames(evaluation?.candidateActionsAddedByEvaluators ?? []);
+}
+
 function getMessageHandlerParentActionHints(
 	messageHandler: MessageHandlerResult,
 ): string[] {
@@ -2381,6 +2416,34 @@ function getMessageHandlerDeterministicToolCall(
 		id: `deterministic-${normalizeActionIdentifier(name).toLowerCase() || "tool"}`,
 		name,
 		params: isRecord(toolCall?.params) ? { ...toolCall.params } : undefined,
+	};
+}
+
+function withResponseHandlerReplyForDeterministicReply(
+	toolCall: PlannerToolCall,
+	replyText: string,
+): PlannerToolCall {
+	if (normalizeActionIdentifier(toolCall.name) !== "REPLY") {
+		return toolCall;
+	}
+
+	const reply = replyText.trim();
+	if (!reply) {
+		return toolCall;
+	}
+
+	const params = isRecord(toolCall.params) ? { ...toolCall.params } : {};
+	const explicitText = params.text;
+	if (typeof explicitText === "string" && explicitText.trim().length > 0) {
+		return toolCall;
+	}
+
+	return {
+		...toolCall,
+		params: {
+			...params,
+			text: reply,
+		},
 	};
 }
 
@@ -3889,6 +3952,12 @@ function applyDirectCurrentCandidateBackstopToMessageHandler(
 		return messageHandler;
 	}
 
+	const preferredDirectReply =
+		preferCompleteDirectReplyForWeakPlanningSignals(messageHandler);
+	if (preferredDirectReply !== messageHandler) {
+		return preferredDirectReply;
+	}
+
 	const directCurrentCandidateActions =
 		inferDirectCurrentRequestCandidateActions(
 			runtimeContext.actions,
@@ -3920,6 +3989,36 @@ function applyDirectCurrentCandidateBackstopToMessageHandler(
 			requiresTool: true,
 			candidateActions: runnableCandidateActions,
 		},
+	};
+}
+
+function preferCompleteDirectReplyForWeakPlanningSignals(
+	messageHandler: MessageHandlerResult,
+): MessageHandlerResult {
+	const replyText = getMessageHandlerReply(messageHandler);
+	if (
+		!shouldPreferCompleteDirectReply({
+			replyText,
+			candidateActions: getMessageHandlerCandidateActions(messageHandler),
+			contexts: messageHandler.plan.contexts ?? [],
+		})
+	) {
+		return messageHandler;
+	}
+
+	const plan: MessageHandlerResult["plan"] = {
+		...messageHandler.plan,
+		contexts: [SIMPLE_CONTEXT_ID],
+		simple: true,
+		requiresTool: false,
+	};
+	delete (plan as { candidateActions?: unknown }).candidateActions;
+	delete (plan as { parentActionHints?: unknown }).parentActionHints;
+	delete (plan as { deterministicToolCall?: unknown }).deterministicToolCall;
+
+	return {
+		...messageHandler,
+		plan,
 	};
 }
 
@@ -4225,6 +4324,54 @@ function shouldUseDirectReplyFastPath(args: {
 	return true;
 }
 
+function looksLikeTextOnlyAnswerInstruction(args: {
+	text: string;
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
+}): boolean {
+	const { text, actions } = args;
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized) return false;
+	if (
+		looksLikeInlineCodeSnippetRequest(normalized) ||
+		/\b(?:build|deploy|commit|debug|fix|implement|edit|modify|create|generate|write)\b.*\b(?:app|site|website|code|repo|repository|plugin|file|component|script)\b/iu.test(
+			normalized,
+		) ||
+		looksLikeLocalShellRequest(normalized)
+	) {
+		return false;
+	}
+
+	const hasToolFreeInstruction =
+		/\btool[-\s]?free\b/iu.test(normalized) ||
+		/\b(?:do not|don't|dont|without)\s+(?:call|use)\s+tools?\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:do not|don't|dont|without)\s+(?:browse|search|google|look\s+up|lookup)\b/iu.test(
+			normalized,
+		);
+	const hasExplicitFormattingInstruction =
+		/\b(?:start|begin|prefix)\s+(?:your\s+)?(?:reply|response|answer)\s+with\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:reply|respond|answer)\s+with\s+exactly\b/iu.test(normalized) ||
+		/\banswer\b.*\bin\s+one\s+sentence\b/iu.test(normalized);
+	if (!hasExplicitFormattingInstruction && !hasToolFreeInstruction) {
+		return false;
+	}
+	if (!hasToolFreeInstruction) {
+		if (
+			looksLikeContextDependentMutationRequest(normalized) ||
+			/\b(?:browse|fetch|google|look\s+up|lookup|search)\b/iu.test(
+				normalized,
+			) ||
+			findViewShellActionName(actions, normalized)
+		) {
+			return false;
+		}
+	}
+	return true;
+}
+
 async function responseHandlerEvaluatorClaimsDirectFastPathTurn(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -4232,10 +4379,13 @@ async function responseHandlerEvaluatorClaimsDirectFastPathTurn(args: {
 	availableContexts: readonly ContextDefinition[];
 }): Promise<boolean> {
 	const registered = Array.isArray(args.runtime.responseHandlerEvaluators)
-		? (args.runtime.responseHandlerEvaluators as readonly ResponseHandlerEvaluator[])
+		? (args.runtime
+				.responseHandlerEvaluators as readonly ResponseHandlerEvaluator[])
 		: [];
 	const evaluators = [...BUILTIN_RESPONSE_HANDLER_EVALUATORS, ...registered]
-		.filter((evaluator) => evaluator.name !== "core.simple_registered_action_request")
+		.filter(
+			(evaluator) => evaluator.name !== "core.simple_registered_action_request",
+		)
 		.sort(
 			(a, b) =>
 				(a.priority ?? 100) - (b.priority ?? 100) ||
@@ -4394,11 +4544,22 @@ function findCodingDelegationActionName(
 }
 
 const VIEW_REQUEST_OPERATION_GROUPS = {
-	create: ["ADD", "CREATE", "MAKE", "NEW"],
-	read: ["FIND", "GET", "LIST", "READ", "SHOW", "WHAT", "WHICH"],
+	create: ["ADD", "BUILD", "CREATE", "MAKE", "NEW", "SHIP"],
+	read: [
+		"CHECK",
+		"FIND",
+		"GET",
+		"LIST",
+		"PULL",
+		"READ",
+		"SEE",
+		"SHOW",
+		"WHAT",
+		"WHICH",
+	],
 	update: ["CHANGE", "EDIT", "MODIFY", "RENAME", "UPDATE"],
 	delete: ["DELETE", "REMOVE"],
-	open: ["GO", "NAVIGATE", "OPEN", "SWITCH"],
+	open: ["ABRA", "ABRE", "BUKSAN", "GO", "NAVIGATE", "OPEN", "SWITCH"],
 	close: ["CLOSE", "DISMISS", "HIDE"],
 	layout: [
 		"ARRANGE",
@@ -4485,27 +4646,33 @@ const VIEW_PLUGIN_SURFACE_TOKENS: ReadonlySet<string> = new Set<string>([
 function findViewsActionName(
 	actions: ReadonlyArray<Pick<Action, "name" | "tags">>,
 ): string | undefined {
-	return actions.find((action) => {
-		if (normalizeActionIdentifier(action.name) === "VIEWS") return true;
-		return (action.tags ?? []).some(
-			(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
-		);
-	})?.name;
+	return (
+		actions.find((action) => normalizeActionIdentifier(action.name) === "VIEWS")
+			?.name ?? actions.find((action) => hasViewCapabilityTag(action))?.name
+	);
+}
+
+function hasViewCapabilityTag(action: Pick<Action, "tags">): boolean {
+	return (action.tags ?? []).some(
+		(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
+	);
+}
+
+function isViewsAction(
+	action: Pick<Action, "name" | "tags">,
+	viewActionName: string,
+): boolean {
+	return (
+		normalizeActionIdentifier(action.name) ===
+			normalizeActionIdentifier(viewActionName) || hasViewCapabilityTag(action)
+	);
 }
 
 function collectViewActionMetadataEntries(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	viewActionName: string,
 ): Array<Pick<Action, "name" | "similes" | "tags">> {
-	const normalizedViewActionName = normalizeActionIdentifier(viewActionName);
-	return actions.filter((action) => {
-		if (normalizeActionIdentifier(action.name) === normalizedViewActionName) {
-			return true;
-		}
-		return (action.tags ?? []).some(
-			(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
-		);
-	});
+	return actions.filter((action) => isViewsAction(action, viewActionName));
 }
 
 function findViewShellActionName(
@@ -5601,9 +5768,7 @@ function collectPreviousActionResults(
 		if (!step.result || !step.toolCall) {
 			continue;
 		}
-		results.push(
-			actionResultFromPlannerToolResult(step.toolCall, step.result),
-		);
+		results.push(actionResultFromPlannerToolResult(step.toolCall, step.result));
 	}
 	return results;
 }
@@ -6372,6 +6537,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			? {
 					activeEvaluators: [],
 					appliedPatches: [],
+					candidateActionsAddedByEvaluators: [],
 					errors: [],
 				}
 			: await runResponseHandlerEvaluators({
@@ -6382,6 +6548,8 @@ export async function runV5MessageRuntimeStage1(args: {
 					availableContexts,
 					evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 				});
+		const trustedResponseHandlerCandidateActions =
+			getResponseHandlerEvaluatorCandidateActions(responseHandlerEvaluation);
 		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
 			availableContexts,
@@ -6428,6 +6596,41 @@ export async function runV5MessageRuntimeStage1(args: {
 				})
 			) {
 				reply = LIVE_LOOKUP_UNAVAILABLE_REPLY;
+			}
+			return {
+				kind: "direct_reply",
+				messageHandler,
+				result: createV5ReplyStrategyResult({
+					...args,
+					text: reply,
+					thought: messageHandler.thought,
+				}),
+			};
+		}
+
+		if (
+			route.type === "planning_needed" &&
+			looksLikeTextOnlyAnswerInstruction({
+				text: getUserMessageText(args.message) ?? "",
+				actions: args.runtime.actions ?? [],
+			})
+		) {
+			let reply = getMessageHandlerReply(messageHandler);
+			if (
+				!reply ||
+				looksLikeProgressOnlyReply(reply) ||
+				shouldRegenerateStage1ReplyText(reply)
+			) {
+				const regenerated = await generateDirectReplyOnce({
+					runtime: args.runtime,
+					message: args.message,
+					state: args.state,
+					messageHandler,
+				});
+				reply = regenerated.trim().length > 0 ? regenerated : reply;
+			}
+			if (!reply || looksLikeProgressOnlyReply(reply)) {
+				reply = "I'm not sure how to answer that.";
 			}
 			return {
 				kind: "direct_reply",
@@ -6500,12 +6703,20 @@ export async function runV5MessageRuntimeStage1(args: {
 				...directPlannerCandidateActions,
 			]);
 		}
+		const rawDeterministicToolCall =
+			getMessageHandlerDeterministicToolCall(messageHandler);
 		const plannerCandidateActions = await collectV5PlannerCandidateActions({
 			runtime: args.runtime,
 			message: args.message,
 			state: plannerState,
 			selectedContexts,
 			candidateActions: getMessageHandlerCandidateActions(messageHandler),
+			allowViewCandidateActions:
+				normalizeActionIdentifier(rawDeterministicToolCall?.name ?? "") ===
+					"VIEWS" ||
+				trustedResponseHandlerCandidateActions.some(
+					(actionName) => normalizeActionIdentifier(actionName) === "VIEWS",
+				),
 			userRoles: [senderRole],
 		});
 		const localizedExamplesProvider = getLocalizedExamplesProvider(
@@ -6552,8 +6763,12 @@ export async function runV5MessageRuntimeStage1(args: {
 		const responseHandlerContextSlices = stringArrayProperty(
 			(messageHandler.plan as { contextSlices?: unknown }).contextSlices,
 		);
-		const deterministicToolCall =
-			getMessageHandlerDeterministicToolCall(messageHandler);
+		const deterministicToolCall = rawDeterministicToolCall
+			? withResponseHandlerReplyForDeterministicReply(
+					rawDeterministicToolCall,
+					earlyReplyText,
+				)
+			: null;
 		const plannerContextWithDecision = appendContextEvent(plannerContext, {
 			id: `message-handler:${messageHandlerEndedAt}`,
 			type: "message_handler",

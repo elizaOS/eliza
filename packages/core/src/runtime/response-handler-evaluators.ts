@@ -55,8 +55,14 @@ export interface ResponseHandlerPatchTrace {
 export interface ResponseHandlerEvaluationRunResult {
 	activeEvaluators: string[];
 	appliedPatches: ResponseHandlerPatchTrace[];
+	candidateActionsAddedByEvaluators: string[];
 	errors: Array<{ evaluatorName: string; error: string }>;
 }
+
+type AppliedResponseHandlerPatch = {
+	trace: ResponseHandlerPatchTrace;
+	candidateActionsAdded: string[];
+};
 
 function uniqueStrings(values: readonly string[] | undefined): string[] {
 	if (!Array.isArray(values) || values.length === 0) {
@@ -130,10 +136,11 @@ function applyResponseHandlerPatch(
 	messageHandler: MessageHandlerResult,
 	patch: ResponseHandlerPatch,
 	availableContexts: readonly ContextDefinition[],
-): ResponseHandlerPatchTrace | null {
+): AppliedResponseHandlerPatch | null {
 	const changed: string[] = [];
 	const debug = uniqueStrings(patch.debug);
 	const available = availableContextSet(availableContexts);
+	let candidateActionsAdded: string[] | undefined;
 
 	if (patch.processMessage) {
 		messageHandler.processMessage = patch.processMessage;
@@ -162,6 +169,7 @@ function applyResponseHandlerPatch(
 		changed.push("candidateActions:clear");
 	}
 	if (patch.addCandidateActions) {
+		candidateActionsAdded = uniqueStrings(patch.addCandidateActions);
 		messageHandler.plan.candidateActions = mergeUniqueStrings(
 			messageHandler.plan.candidateActions,
 			patch.addCandidateActions,
@@ -205,9 +213,12 @@ function applyResponseHandlerPatch(
 		return null;
 	}
 	return {
-		evaluatorName: "",
-		debug,
-		changed,
+		trace: {
+			evaluatorName: "",
+			debug,
+			changed,
+		},
+		candidateActionsAdded: candidateActionsAdded ?? [],
 	};
 }
 
@@ -230,6 +241,7 @@ export async function runResponseHandlerEvaluators(args: {
 	const result: ResponseHandlerEvaluationRunResult = {
 		activeEvaluators: [],
 		appliedPatches: [],
+		candidateActionsAddedByEvaluators: [],
 		errors: [],
 	};
 	if (candidates.length === 0) {
@@ -254,14 +266,19 @@ export async function runResponseHandlerEvaluators(args: {
 			if (!patch) {
 				continue;
 			}
-			const trace = applyResponseHandlerPatch(
+			const applied = applyResponseHandlerPatch(
 				args.messageHandler,
 				patch,
 				args.availableContexts,
 			);
-			if (trace) {
+			if (applied) {
+				const { trace } = applied;
 				trace.evaluatorName = evaluator.name;
 				result.appliedPatches.push(trace);
+				result.candidateActionsAddedByEvaluators = mergeUniqueStrings(
+					result.candidateActionsAddedByEvaluators,
+					applied.candidateActionsAdded,
+				);
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

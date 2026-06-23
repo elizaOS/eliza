@@ -2,6 +2,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { replyAction } from "../features/basic-capabilities/actions/reply";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
@@ -875,6 +876,7 @@ android smoke model works`,
 			stage1Response({
 				contexts: ["general"],
 				replyText: "Looking into it.",
+				candidateActionNames: ["VIEWS"],
 			}),
 			JSON.stringify({
 				thought: "No tool is registered in this fixture.",
@@ -1178,6 +1180,365 @@ android smoke model works`,
 		expect(useModelCalls(runtime)[0][0]).toBe(ModelType.RESPONSE_HANDLER);
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("The answer is four.");
+		}
+	});
+
+	it("keeps complete native response-handler replies direct when no tool is named", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				replyText: "LIVE_TIME_CHECK_OK The current time is available.",
+			}),
+		]);
+		const viewsHandler = vi.fn(async () => ({
+			success: true,
+			text: "available_views:",
+			data: { actionName: "VIEWS" },
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "Manage UI views.",
+				contexts: ["general"],
+				validate: vi.fn(async () => true),
+				handler: viewsHandler,
+			},
+		] as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "Start your reply with exactly LIVE_TIME_CHECK_OK, then answer: what is the current time?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(viewsHandler).not.toHaveBeenCalled();
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"LIVE_TIME_CHECK_OK The current time is available.",
+			);
+		}
+	});
+
+	it("does not expose VIEWS to generic planner turns without a view request", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				replyText: "Looking into it.",
+				candidateActionNames: ["VIEWS"],
+			}),
+			"LIVE_BTC_CHECK_OK BTC is a decentralized digital currency.",
+		]);
+		const viewsHandler = vi.fn(async () => ({
+			success: true,
+			text: "Current view: Chat (gui) - chat at /chat.",
+			data: { actionName: "VIEWS" },
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "Manage UI views.",
+				contexts: ["general"],
+				validate: vi.fn(async () => true),
+				handler: viewsHandler,
+			},
+		] as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "For a Playwright end-to-end smoke test, start your reply with exactly LIVE_BTC_CHECK_OK, then answer this tool-free user request in one sentence: in plain terms, what is BTC? Do not look up live prices.",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
+		]);
+		expect(viewsHandler).not.toHaveBeenCalled();
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"LIVE_BTC_CHECK_OK BTC is a decentralized digital currency.",
+			);
+		}
+	});
+
+	it("keeps explicit reply-format answers direct despite weak view candidate noise", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				replyText: "LIVE_TIME_CHECK_OK The current time is available.",
+				candidateActionNames: ["VIEWS"],
+			}),
+			"LIVE_TIME_CHECK_OK The current time is available.",
+		]);
+		const viewsHandler = vi.fn(async () => ({
+			success: true,
+			text: "No current view has been reported yet.",
+			data: { actionName: "VIEWS" },
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "Manage UI views.",
+				contexts: ["general"],
+				validate: vi.fn(async () => true),
+				handler: viewsHandler,
+			},
+		] as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "Start your reply with exactly LIVE_TIME_CHECK_OK, then answer this user request in one sentence: what is the current time?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime)[0]?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		expect(viewsHandler).not.toHaveBeenCalled();
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"LIVE_TIME_CHECK_OK The current time is available.",
+			);
+		}
+	});
+
+	it("preserves evaluator-added VIEWS candidates for active-view follow-ups", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user is asking for a context-dependent follow-up.",
+				contexts: ["simple"],
+				replyText: "On it.",
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "VIEWS",
+						args: { action: "create", text: "hello" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The active view handled the follow-up.",
+				messageToUser: "Created it.",
+			}),
+		]);
+		const viewsHandler = vi.fn(async () => ({
+			success: true,
+			text: "Created note.",
+			data: { actionName: "VIEWS" },
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "Manage UI views.",
+				contexts: ["general"],
+				parameters: [
+					{
+						name: "action",
+						description: "View action to perform.",
+						required: true,
+						schema: { type: "string" },
+					},
+					{
+						name: "text",
+						description: "Content for the active view.",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+				validate: vi.fn(async () => true),
+				handler: viewsHandler,
+			},
+		] as IAgentRuntime["actions"];
+		runtime.responseHandlerEvaluators = [
+			{
+				name: "test.active_view_followup",
+				priority: 5,
+				shouldRun: () => true,
+				evaluate: () => ({
+					requiresTool: true,
+					clearReply: true,
+					reply: "On it.",
+					addContexts: ["general"],
+					addCandidateActions: ["VIEWS"],
+					addParentActionHints: ["VIEWS"],
+				}),
+			} satisfies ResponseHandlerEvaluator,
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "make another one saying hello" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(3);
+		const plannerParams = useModelCalls(runtime)[1]?.[1] as {
+			tools?: Array<{ name?: string }>;
+		};
+		expect(plannerParams.tools?.map((tool) => tool.name)).toContain("VIEWS");
+		expect(viewsHandler).toHaveBeenCalledTimes(1);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe("Created it.");
+		}
+	});
+
+	it("exposes VIEWS for passive app-surface requests backed by view metadata", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user wants to see an app surface.",
+				contexts: ["general"],
+				replyText: "Opening that.",
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "VIEWS",
+						args: { action: "show", view: "calendar" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The calendar view opened.",
+				messageToUser: "Opened calendar.",
+			}),
+		]);
+		const viewsHandler = vi.fn(async () => ({
+			success: true,
+			text: "Opened calendar.",
+			data: { actionName: "VIEWS" },
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "Manage UI views.",
+				contexts: ["general"],
+				tags: ["view-capability", "calendar", "wallet"],
+				parameters: [
+					{
+						name: "action",
+						description: "View action to perform.",
+						required: true,
+						schema: { type: "string" },
+					},
+					{
+						name: "view",
+						description: "View id to open.",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+				validate: vi.fn(async () => true),
+				handler: viewsHandler,
+			},
+		] as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "what's on my calendar this week" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(viewsHandler).toHaveBeenCalledTimes(1);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe("Opened calendar.");
+		}
+	});
+
+	it("exposes VIEWS for passive app-builder requests", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user wants the app-builder surface.",
+				contexts: ["general"],
+				replyText: "Opening the app builder.",
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "VIEWS",
+						args: { action: "show", view: "task-coordinator" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The task coordinator opened.",
+				messageToUser: "Opened app builder.",
+			}),
+		]);
+		const viewsHandler = vi.fn(async () => ({
+			success: true,
+			text: "Opened app builder.",
+			data: { actionName: "VIEWS" },
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "Manage UI views.",
+				contexts: ["general"],
+				similes: ["ADD_FEATURE", "ADD_APP_FEATURE", "BUILD_APP_FEATURE"],
+				tags: ["view-capability", "app-builder", "task-coordinator", "coding"],
+				parameters: [
+					{
+						name: "action",
+						description: "View action to perform.",
+						required: true,
+						schema: { type: "string" },
+					},
+					{
+						name: "view",
+						description: "View id to open.",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+				validate: vi.fn(async () => true),
+				handler: viewsHandler,
+			},
+		] as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "I want to add a new feature to my app" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(viewsHandler).toHaveBeenCalledTimes(1);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe("Opened app builder.");
 		}
 	});
 
@@ -3363,6 +3724,53 @@ android smoke model works`,
 			expect(result.messageHandler.plan.deterministicToolCall).toEqual({
 				name: "HIDDEN_DETERMINISTIC_TOOL",
 				params: { action: "show" },
+			});
+		}
+	});
+
+	it("passes response-handler reply text into deterministic REPLY calls", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The evaluator can finish with a terminal reply.",
+				contexts: ["general"],
+				replyText: "LIVE_BTC_CHECK_OK BTC is a cryptocurrency.",
+			}),
+		]);
+		runtime.actions = [replyAction] as IAgentRuntime["actions"];
+		runtime.responseHandlerEvaluators = [
+			{
+				name: "test.deterministic_reply",
+				priority: 5,
+				shouldRun: () => true,
+				evaluate: () => ({
+					requiresTool: true,
+					addContexts: ["general"],
+					clearCandidateActions: true,
+					addCandidateActions: ["REPLY"],
+					deterministicToolCall: {
+						name: "REPLY",
+					},
+				}),
+			} satisfies ResponseHandlerEvaluator,
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "please reply with the required marker",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"LIVE_BTC_CHECK_OK BTC is a cryptocurrency.",
+			);
+			expect(result.messageHandler.plan.deterministicToolCall).toEqual({
+				name: "REPLY",
 			});
 		}
 	});

@@ -137,10 +137,7 @@ export interface MessageHandlerPlan {
 	candidateActions?: string[];
 	parentActionHints?: string[];
 	deterministicToolCall?: MessageHandlerDeterministicToolCall;
-	[key: string]:
-		| JsonValue
-		| MessageHandlerDeterministicToolCall
-		| undefined;
+	[key: string]: JsonValue | MessageHandlerDeterministicToolCall | undefined;
 }
 
 export interface MessageHandlerExtractedRelationship {
