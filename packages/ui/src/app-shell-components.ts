@@ -28,9 +28,10 @@ export { ConversationsSidebar } from "./components/conversations/ConversationsSi
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 export { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 export { AppsPageView } from "./components/pages/AppsPageView";
-// AutomationsFeed, BrowserWorkspaceView removed: App.tsx lazy-loads them and
-// re-exporting from a barrel folds the lazy boundary back into main.
-export { DatabasePageView } from "./components/pages/DatabasePageView";
+// AutomationsFeed, BrowserWorkspaceView, DatabasePageView removed: App.tsx
+// lazy-loads them and re-exporting from a barrel folds the lazy boundary back
+// into main. DatabasePageView additionally closed a barrel cycle through
+// DynamicViewLoader; App.tsx and AppWindowRenderer import it by path.
 export { DocumentsView } from "./components/pages/DocumentsView";
 // HeartbeatsView / HeartbeatsDesktopShell removed: App.tsx renders the
 // heartbeats route via the lazy-loaded AutomationsFeed, and re-exporting

@@ -216,7 +216,8 @@ export * from "./pages/AppsPageView";
 export * from "./pages/AppsView";
 // AutomationsFeed, BrowserWorkspaceView omitted — App.tsx lazy-loads them.
 export * from "./pages/ConfigPageView";
-export * from "./pages/DatabasePageView";
+// DatabasePageView omitted — App.tsx/AppWindowRenderer import it by path, and
+// re-exporting it here closes a barrel cycle through DynamicViewLoader.
 export * from "./pages/DatabaseView";
 export * from "./pages/DocumentsView";
 export * from "./pages/ElizaCloudDashboard";
