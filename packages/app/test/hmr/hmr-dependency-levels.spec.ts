@@ -131,7 +131,7 @@ const LEVELS = [
   },
   {
     name: "plugin view social alpha",
-    file: "plugins/plugin-social-alpha/src/frontend/LeaderboardView.tsx",
+    file: "plugins/plugin-social-alpha/src/frontend/SocialAlphaView.tsx",
   },
   {
     name: "plugin view task coordinator",
