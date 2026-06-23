@@ -280,6 +280,21 @@ async function runDragSuite(p, pointer, tag) {
   assert((await detent(p)) === "half", `[${pointer}] flick-up snaps COLLAPSED→HALF`);
   assert(near(await sheetHeight(p), halfH, TOL), `[${pointer}] HALF height ≈ ${halfH}px (got ${Math.round(await sheetHeight(p))})`);
   await snap(p, `${tag}-half`);
+  // #9142 regression guard: the grabber BAR (inner span) must actually PAINT
+  // once the sheet is open — a prior regression pinned the bar to `opacity-0`,
+  // leaving the handle grabbable but invisible. The wrapper's `grabberOpacity`
+  // crossfade owns show/hide; the bar's OWN opacity must be 1, never 0.
+  const grabberBarOpacity = await p.evaluate(() =>
+    getComputedStyle(
+      document
+        .querySelector('[data-testid="chat-sheet-grabber"]')
+        ?.querySelector("span") ?? document.body,
+    ).opacity,
+  );
+  assert(
+    grabberBarOpacity === "1",
+    `[${pointer}] grabber bar paints (inner-span opacity "${grabberBarOpacity}" === "1", not opacity-0) (#9142)`,
+  );
   // The sheet header (maximize/clear/home/settings) shows at HALF and up now,
   // not only at FULL.
   assert(

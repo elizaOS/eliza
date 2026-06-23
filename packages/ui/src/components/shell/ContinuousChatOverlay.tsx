@@ -482,13 +482,12 @@ function SheetGrabber({
       <span
         aria-hidden="true"
         className={cn(
-          // 30% wider bar (w-11 → w-14), a touch taller, brighter.
-          // Visually hidden bar (opacity-0): the drag/tap-to-open gesture and the
-          // keyboard handlers live on the button wrapper, so the affordance still
-          // works — we just don't draw a faux grabber line; the iOS native home
-          // indicator is the only bottom bar. Kept in layout so the hit zone is
-          // unchanged.
-          "h-2.5 w-16 rounded-full opacity-0 transition-colors duration-300",
+          // The visible grabber line. Its show/hide is driven by the WRAPPER's
+          // `grabberOpacity` crossfade (fades in over [0.55, 0.95] of the open),
+          // strictly anti-phase with the pill bar so the two are never on screen
+          // together. The bar paints at full opacity — a prior regression pinned
+          // it to `opacity-0`, leaving the handle grabbable but invisible (#9142).
+          "h-2.5 w-16 rounded-full opacity-100 transition-colors duration-300",
           glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
@@ -552,14 +551,12 @@ function PillHandle({
       <span
         aria-hidden="true"
         className={cn(
-          // Identical to the SheetGrabber bar — the handle keeps the same white
-          // shape + color whether the chat is open or fully collapsed to the pill.
-          // Visually hidden bar (opacity-0): the drag/tap-to-open gesture and the
-          // keyboard handlers live on the button wrapper, so the affordance still
-          // works — we just don't draw a faux grabber line; the iOS native home
-          // indicator is the only bottom bar. Kept in layout so the hit zone is
-          // unchanged.
-          "h-2.5 w-16 rounded-full opacity-0 transition-colors duration-300",
+          // Identical to the SheetGrabber bar — same white shape + color whether
+          // the chat is open or collapsed to the pill. Its show/hide is driven by
+          // the WRAPPER's `pillOpacity` crossfade (anti-phase with the grabber).
+          // The bar paints at full opacity — a prior regression pinned it to
+          // `opacity-0`, leaving the pill handle grabbable but invisible (#9142).
+          "h-2.5 w-16 rounded-full opacity-100 transition-colors duration-300",
           glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
