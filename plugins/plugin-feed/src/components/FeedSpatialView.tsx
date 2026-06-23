@@ -154,7 +154,12 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
           Waiting for a Feed session. Spawn the trading agent to stream live
           markets, portfolio PnL, and team coordination here.
         </Text>
-        <Button grow={1} disabled agent="spawn-agent" onPress={dispatch("spawn")}>
+        <Button
+          grow={1}
+          disabled
+          agent="spawn-agent"
+          onPress={dispatch("spawn")}
+        >
           Spawn agent
         </Button>
         {statusMessage ? (

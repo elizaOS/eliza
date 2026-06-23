@@ -29,6 +29,7 @@ export {
 	Eliza1TierEnumSchema,
 	Eliza1VerifiedBackendStatusSchema,
 	Eliza1VoiceSchema,
+	OPTIONAL_KERNELS_BY_TIER,
 	REQUIRED_KERNELS_BY_TIER,
 	RUNTIME_TO_ELIZA1_KERNEL,
 	SUPPORTED_BACKENDS_BY_TIER,

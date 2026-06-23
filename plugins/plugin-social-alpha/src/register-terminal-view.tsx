@@ -19,7 +19,9 @@ import {
 let current: SocialAlphaSnapshot = EMPTY_SOCIAL_ALPHA_SNAPSHOT;
 
 /** Update the snapshot the registered terminal view renders from. */
-export function setSocialAlphaTerminalSnapshot(next: SocialAlphaSnapshot): void {
+export function setSocialAlphaTerminalSnapshot(
+	next: SocialAlphaSnapshot,
+): void {
 	current = next;
 }
 

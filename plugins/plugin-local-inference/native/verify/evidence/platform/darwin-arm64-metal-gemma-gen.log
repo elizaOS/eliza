@@ -1,0 +1,9 @@
+llama_context: flash_attn    = auto
+sched_reserve: Flash Attention was auto, set to enabled
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_flash_attn_ext_vec_f16_dk256_dv256', name = 'kernel_flash_attn_ext_vec_f16_dk256_dv256_mask=1_sink=0_bias=0_scap=0_kvpad=0_ns10=256_ns20=256_nsg=1_nwg=32'
+ggml_metal_library_compile_pipeline: loaded kernel_flash_attn_ext_vec_f16_dk256_dv256_mask=1_sink=0_bias=0_scap=0_kvpad=0_ns10=256_ns20=256_nsg=1_nwg=32      0x104e3af70 | th_max = 1024 | th_width =   32
+ggml_metal_library_compile_pipeline: compiling pipeline: base = 'kernel_flash_attn_ext_vec_reduce', name = 'kernel_flash_attn_ext_vec_reduce_dv=256_nwg=32'
+ggml_metal_library_compile_pipeline: loaded kernel_flash_attn_ext_vec_reduce_dv=256_nwg=32      0x98740c000 | th_max = 1024 | th_width =   32
+load=424ms prompt_tokens=18 gen_tokens=26 gen=153ms decode=169.9tok/s
+OUTPUT: "Flash attention is a new attention mechanism that dramatically speeds up video processing by reducing the computational cost of traditional methods while maintaining high accuracy."
+RESULT=OK

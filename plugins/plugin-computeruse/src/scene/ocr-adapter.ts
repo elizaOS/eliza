@@ -2,31 +2,28 @@
  * OCR adapter for the WS6 scene-builder.
  *
  * The scene-builder needs text-from-image extraction on full frames and
- * (much more often) on cropped dirty blocks. There are three real sources
- * for OCR in this monorepo today:
+ * (much more often) on cropped dirty blocks. There are two registry seams it
+ * can draw from, in priority order:
  *
- *   1. `@elizaos/plugin-vision`'s `OCRService` — canonical RapidOCR
- *      (PP-OCRv5) + Apple-Vision + Tesseract chain. **Owned by WS4.** This is
- *      the one we want to use whenever it's loaded.
- *   2. The on-device iOS Apple-Vision provider — `createIosVisionOcrProvider`
- *      in `mobile/ocr-provider.ts` (WS9). Plugged into the same OcrProvider
- *      registry.
- *   3. An empty provider that returns `[]` — used in unit tests and when no
- *      provider has been registered.
+ *   1. The coord-aware `CoordOcrProvider` (`mobile/ocr-provider.ts`,
+ *      `registerCoordOcrProvider` / `getCoordOcrProvider`). This is the
+ *      canonical seam: `@elizaos/plugin-vision` registers a bridge to its
+ *      hierarchical OCR (docTR / Apple Vision) at boot, returning blocks with
+ *      bbox + words + semantic position in display-absolute coords. Preferred
+ *      whenever a provider is registered.
+ *   2. The line-only `OcrProvider` registry (`listOcrProviders()`), used by
+ *      the on-device iOS Apple-Vision provider and unit-test fakes. Fallback
+ *      when no coord provider is registered.
  *
  * **Integration choice (justified):**
  *
- * plugin-computeruse cannot take a hard `@elizaos/plugin-vision` dependency
- * — that creates a cycle (vision -> capture -> computeruse) and forces every
- * computeruse consumer to install onnxruntime-node, Sharp, and YOLO/Florence2
- * weights even when they only want desktop control.
- *
- * Instead, we re-use the existing `OcrProvider` registry that `mobile/
- * ocr-provider.ts` already publishes. A consumer (e.g. plugin-vision itself,
- * or an integrator) can call `registerOcrProvider(buildVisionOcrAdapter(
- * visionService))` at startup to wire RapidOCR in. plugin-computeruse stays
- * dep-free and the chain just degrades to "no OCR" when nothing is
- * registered. The scene-builder logs that condition once.
+ * plugin-computeruse cannot take a hard `@elizaos/plugin-vision` dependency —
+ * that creates a cycle (vision -> capture -> computeruse) and forces every
+ * computeruse consumer to install the vision OCR stack even when they only
+ * want desktop control. Instead, computeruse *publishes* both registries and
+ * a consumer (plugin-vision, or an integrator) registers a provider at
+ * startup. The chain degrades to "no OCR" when nothing is registered; the
+ * scene-builder logs that condition once.
  *
  * This module exposes:
  *   - `runOcrOnPng(png, displayId, options)` — the scene-builder calls this.
@@ -36,8 +33,16 @@
  *     module doesn't have to take a `@elizaos/core` dep itself.
  */
 
-import type { OcrLine, OcrProvider } from "../mobile/ocr-provider.js";
-import { listOcrProviders } from "../mobile/ocr-provider.js";
+import type {
+  CoordOcrBlock,
+  CoordOcrProvider,
+  OcrLine,
+  OcrProvider,
+} from "../mobile/ocr-provider.js";
+import {
+  getCoordOcrProvider,
+  listOcrProviders,
+} from "../mobile/ocr-provider.js";
 import type { SceneOcrBox } from "./scene-types.js";
 
 let logFn: (message: string) => void = () => {};
@@ -70,24 +75,49 @@ function pickProvider(): OcrProvider | null {
 
 let warnedNoProvider = false;
 
+function warnNoProviderOnce(): void {
+  if (!warnedNoProvider) {
+    warnedNoProvider = true;
+    logFn(
+      "[scene-builder] no OCR provider registered — scene.ocr will be empty until a CoordOcrProvider is registered (registerCoordOcrProvider, e.g. by plugin-vision) or an OcrProvider via registerOcrProvider().",
+    );
+  }
+}
+
 /**
- * Run OCR on a whole PNG buffer. Returns boxes tagged with `displayId` and
- * stable `t<displayId>-<seq>` ids drawn from `idState`. Empty array if no
- * provider is registered.
+ * Run OCR on a whole PNG buffer. Prefers the coord-aware provider; falls back
+ * to the line-only registry. Returns boxes tagged with `displayId` and stable
+ * `t<displayId>-<seq>` ids drawn from `idState`. Empty array if no provider is
+ * registered.
  */
 export async function runOcrOnPng(
   png: Buffer,
   displayId: number,
   idState: OcrAdapterIdState,
 ): Promise<SceneOcrBox[]> {
+  const coord = getCoordOcrProvider();
+  if (coord) {
+    try {
+      const result = await coord.describe({
+        displayId: String(displayId),
+        sourceX: 0,
+        sourceY: 0,
+        pngBytes: new Uint8Array(png.buffer, png.byteOffset, png.byteLength),
+      });
+      return result.blocks.map((block) =>
+        coordBlockToSceneBox(block, displayId, idState),
+      );
+    } catch (err) {
+      logFn(
+        `[scene-builder] CoordOcrProvider '${coord.name}' failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return [];
+    }
+  }
+
   const provider = pickProvider();
   if (!provider) {
-    if (!warnedNoProvider) {
-      warnedNoProvider = true;
-      logFn(
-        "[scene-builder] no OCR provider registered — scene.ocr will be empty until one is registered via registerOcrProvider().",
-      );
-    }
+    warnNoProviderOnce();
     return [];
   }
   try {
@@ -117,6 +147,37 @@ export async function runOcrOnRegions(
   displayId: number,
   idState: OcrAdapterIdState,
 ): Promise<SceneOcrBox[]> {
+  const coord = getCoordOcrProvider();
+  if (coord) {
+    const out: SceneOcrBox[] = [];
+    for (const crop of crops) {
+      try {
+        // The coord provider shifts block bboxes by sourceX/sourceY, so the
+        // returned coordinates are already in display-local source space.
+        const result = await coord.describe({
+          displayId: String(displayId),
+          sourceX: crop.bbox[0] ?? 0,
+          sourceY: crop.bbox[1] ?? 0,
+          pngBytes: new Uint8Array(
+            crop.png.buffer,
+            crop.png.byteOffset,
+            crop.png.byteLength,
+          ),
+        });
+        for (const block of result.blocks) {
+          out.push(coordBlockToSceneBox(block, displayId, idState));
+        }
+      } catch (err) {
+        logFn(
+          `[scene-builder] CoordOcr region failed at ${crop.bbox.join(",")}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+    return out;
+  }
+
   const provider = pickProvider();
   if (!provider) return [];
   const out: SceneOcrBox[] = [];
@@ -156,6 +217,25 @@ export async function runOcrOnRegions(
   return out;
 }
 
+/**
+ * Map a coord-aware OCR block to a SceneOcrBox. The coord seam does not carry
+ * a per-block confidence, so we default to 1 (present). The block bbox is
+ * already in display-absolute source coordinates.
+ */
+function coordBlockToSceneBox(
+  block: CoordOcrBlock,
+  displayId: number,
+  idState: OcrAdapterIdState,
+): SceneOcrBox {
+  return {
+    id: nextOcrId(idState, displayId),
+    text: block.text,
+    bbox: [block.bbox.x, block.bbox.y, block.bbox.width, block.bbox.height],
+    conf: 1,
+    displayId,
+  };
+}
+
 function toSceneBox(
   line: OcrLine,
   displayId: number,
@@ -174,3 +254,6 @@ function toSceneBox(
     displayId,
   };
 }
+
+// Re-export so the optional coord provider type is reachable for consumers.
+export type { CoordOcrProvider };

@@ -27,13 +27,13 @@ import {
 import { isNative } from "@elizaos/ui/platform";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { matchesQuery } from "./ContactsAppView.helpers.ts";
 import {
   type ContactsFormDraft,
   type ContactsMode,
   type ContactsSnapshot,
   ContactsSpatialView,
 } from "./ContactsSpatialView.tsx";
-import { matchesQuery } from "./ContactsAppView.helpers.ts";
 
 const EMPTY_FORM: ContactsFormDraft = {
   displayName: "",

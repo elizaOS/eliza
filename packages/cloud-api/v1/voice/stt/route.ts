@@ -178,6 +178,45 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       `[Voice STT API] Processing for user ${user.id}: ${audioFile.name} (${audioFile.size} bytes, verified: ${fileTypeResult.mime}, final: ${finalMimeType})`,
     );
 
+    // -------------------------------------------------------------------------
+    // Free default STT: self-hosted Whisper (OpenAI-compatible
+    // `/v1/audio/transcriptions`). When WHISPER_STT_URL is set this is the
+    // default — no credit reservation, no billing. ElevenLabs STT is the path
+    // below. Inert when WHISPER_STT_URL is unset.
+    // -------------------------------------------------------------------------
+    const whisperBaseUrl = env.WHISPER_STT_URL?.trim();
+    if (whisperBaseUrl) {
+      const whisperStart = Date.now();
+      const form = new FormData();
+      form.append(
+        "file",
+        new File([buffer], audioFile.name, { type: finalMimeType }),
+      );
+      form.append("model", "Systran/faster-whisper-tiny.en");
+      if (languageCode) form.append("language", languageCode);
+      const whisperResponse = await fetch(
+        `${whisperBaseUrl.replace(/\/+$/, "")}/v1/audio/transcriptions`,
+        { method: "POST", body: form },
+      );
+      if (!whisperResponse.ok) {
+        const detail = await whisperResponse.text().catch(() => "");
+        logger.error(
+          `[Voice STT API] Whisper failed (${whisperResponse.status}): ${detail.slice(0, 200)}`,
+        );
+        return Response.json(
+          { error: "Speech-to-text failed" },
+          { status: 502 },
+        );
+      }
+      const whisperJson = (await whisperResponse.json()) as { text?: string };
+      const transcript = (whisperJson.text ?? "").trim();
+      const whisperDuration = Date.now() - whisperStart;
+      logger.info(
+        `[Voice STT API] Whisper completed in ${whisperDuration}ms (free): "${transcript.substring(0, 100)}"`,
+      );
+      return Response.json({ transcript, duration_ms: whisperDuration });
+    }
+
     const metadata = await parseBuffer(buffer, { mimeType: finalMimeType });
     const parsedDurationSeconds = metadata.format?.duration;
     const durationSeconds = Number.isFinite(parsedDurationSeconds)

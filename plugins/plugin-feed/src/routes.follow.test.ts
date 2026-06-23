@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const proxyFeedRequest =
-  vi.fn<(...args: unknown[]) => Promise<Response>>();
+const proxyFeedRequest = vi.fn<(...args: unknown[]) => Promise<Response>>();
 
 vi.mock("./feed-auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./feed-auth")>();
@@ -47,7 +46,9 @@ beforeEach(() => {
 
 describe("handleAppRoutes — follow / friend proxy", () => {
   it("POST /users/:id/follow → POST /api/users/:id/follow", async () => {
-    const handled = await handleAppRoutes(makeCtx("POST", "/users/u123/follow"));
+    const handled = await handleAppRoutes(
+      makeCtx("POST", "/users/u123/follow"),
+    );
     expect(handled).toBe(true);
     const [, method, apiPath] = proxyFeedRequest.mock.calls[0] ?? [];
     expect(method).toBe("POST");

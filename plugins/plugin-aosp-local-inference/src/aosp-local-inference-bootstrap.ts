@@ -343,8 +343,8 @@ function normalizeChatRole(
  * and leave legacy `prompt` unset; without this bridge the native loader sees
  * an empty string and `eliza_inference_tokenize` returns zero tokens.
  *
- * The Eliza-1 bundle is a qwen3.5-family model (catalog tokenizerFamily
- * "qwen35"), so we render the qwen ChatML template
+ * The Eliza-1 bundle is a qwen3.5-family model, so we render the qwen ChatML
+ * template
  * (`<|im_start|>role\n…<|im_end|>`) with a trailing `<|im_start|>assistant`
  * generation marker. The generate path MUST tokenize this with
  * parse_special=true so the role markers become real control tokens instead of

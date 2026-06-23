@@ -8,7 +8,7 @@
  */
 
 if (typeof window === "undefined") {
-  void import("./register-terminal-view.ts")
+  void import("./register-terminal-view.tsx")
     .then((m) => m.registerFocusTerminalView())
     .catch(() => {
       // Terminal rendering is best-effort; never block plugin load.

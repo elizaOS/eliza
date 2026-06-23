@@ -8,10 +8,7 @@ import {
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { GoalItem } from "../../types.ts";
-import {
-  type GoalsSnapshot,
-  GoalsSpatialView,
-} from "./GoalsSpatialView.tsx";
+import { type GoalsSnapshot, GoalsSpatialView } from "./GoalsSpatialView.tsx";
 
 const goals: GoalItem[] = [
   {

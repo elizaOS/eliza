@@ -1103,6 +1103,13 @@ function isElizaCoreBrowserDistId(id: string | undefined): boolean {
  * HMR on the runtime, which the renderer almost never edits.
  */
 function resolveElizaCoreBundlePath(): string {
+  // Mobile builds run Vite over the Capacitor app once per smoke target; use
+  // source here so esbuild never re-transforms a minified core browser bundle.
+  if (IS_CAPACITOR_MOBILE_BUILD) {
+    const sourceBrowserEntry = resolveElizaCoreSourceBrowserPath();
+    if (sourceBrowserEntry) return sourceBrowserEntry;
+  }
+
   const pkgDir = tryResolveElizaCorePkgDir();
   if (pkgDir) {
     const browserEntry = path.join(pkgDir, "dist/browser/index.browser.js");

@@ -93,25 +93,25 @@ final class ElizaBionicInferenceServer {
     private static void applyBionicInferenceMemoryDefaults() {
         setEnvIfAbsent("ELIZA_LLM_N_BATCH", "128");
         setEnvIfAbsent("ELIZA_LLM_N_CTX", "8192");
-        // The JNI bridge defaults the KV cache to the fused QJL/TBQ quant
-        // (cache_type_k="qjl1_256"). QJL1_256 is a head_dim=128 sketch, but the
-        // active eliza-1 tiers are qwen3.5 with head_dim=256, so llama can't
-        // build that KV cache and llm_stream_open returns "failed to init llama
-        // context" (elizaOS/eliza#8848). Fall back to the f16 KV cache, which is
-        // only ~0.4 GB at 8k ctx for the 2B. Re-enable per device once a
-        // head_dim=256 QJL/TBQ path is verified.
+        // The JNI bridge can default the KV cache to a fused QJL/TBQ quant
+        // (cache_type_k="qjl1_256"), but that path is a head_dim=128 sketch and
+        // is RETIRED for the shipped tiers (elizaOS/eliza#8848 / #9033 Gemma-4
+        // cutover): eliza-1 now ships Gemma-4-arch GGUFs whose KV is already
+        // minimal (MQA + windowed SWA + shared-KV; dual head dims 512 global /
+        // 256 SWA) and which run on stock f16/q8_0 KV. The head_dim=128 QJL/TBQ
+        // kernels are dimensionally inapplicable to Gemma, so keep KV quant OFF
+        // (stock f16, only ~0.4 GB at 8k ctx for the 2B). This is the intended
+        // Gemma KV path, not a fallback.
         setEnvIfAbsent("ELIZA_BIONIC_KV_QUANT", "0");
-        // Arm same-file MTP (NextN speculative head embedded in the 2B/4B text
-        // GGUF — no separate drafter). MTP accelerates DECODE ~1.5x and is the
-        // best per-turn win available on the shipped qwen3.5 tiers: prefix-KV
-        // reuse (resetAndPrefillResident → nativeLlmStreamResetKeep) needs the KV
-        // cache to support partial sequence removal, but the qwen3.5 non-MTP F16
-        // cache returns false from llama_memory_seq_rm (only the MTP/RS context
-        // supports bounded partial removal), so prefix-reuse is a no-op fallback
-        // on this model and disabling MTP for it would be strictly worse. The
-        // resident path therefore stays MTP + full reset; reset_keep remains
-        // wired for models/caches that DO support partial removal. (Tracked:
-        // MTP-side prefix reuse via reset_engine_keep on the RS context.)
+        // Arm MTP speculative decode. Gemma-4 ships a SEPARATE drafter
+        // (mtp/drafter-<tier>.gguf, loaded via "-md … --spec-type draft-mtp") —
+        // NOT a same-file NextN head embedded in the text GGUF; the JNI threads
+        // cfg.mtp_drafter_path when the drafter is present. MTP accelerates
+        // DECODE ~1.5x and stays dormant until the trained drafter GGUF artifact
+        // ships (training-gated). The resident path uses MTP + full reset;
+        // prefix-KV reuse via reset_keep (resetAndPrefillResident →
+        // nativeLlmStreamResetKeep) stays wired for caches that support bounded
+        // partial removal (llama_memory_seq_rm).
         setEnvIfAbsent("ELIZA_BIONIC_MTP", "1");
     }
 

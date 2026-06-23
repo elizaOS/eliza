@@ -32,8 +32,15 @@ async function build() {
   // Clean dist directory
   await $`rm -rf dist`;
 
+  // Externalize plugin-computeruse even though it is NOT a package.json
+  // dependency: plugin-vision dynamically imports its OCR seam
+  // (`@elizaos/plugin-computeruse/mobile/ocr-provider`) at boot via a
+  // best-effort import. It MUST stay external so the registry singleton is the
+  // one runtime instance computeruse reads — bundling a copy would split the
+  // registry and the registration would be invisible to computeruse.
+  const OPTIONAL_PEERS = ["@elizaos/plugin-computeruse"] as const;
   const external = await externalsFromPackageJson("./package.json", {
-    extra: NODE_BUILTINS,
+    extra: [...NODE_BUILTINS, ...OPTIONAL_PEERS],
   });
 
   // Build main package

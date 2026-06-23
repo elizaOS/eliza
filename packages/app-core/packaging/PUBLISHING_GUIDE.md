@@ -110,14 +110,14 @@ The beta version (`2.0.0b0`) is fine for name reservation.
 
 A Homebrew "tap" is just a GitHub repo with a naming convention.
 
-1. **Create a GitHub repo** named `homebrew-tap` under the `eliza-ai` org:
-   - URL will be: `https://github.com/eliza-ai/homebrew-tap`
+1. **Create a GitHub repo** named `homebrew-tap` under the `elizaOS` org:
+   - URL will be: `https://github.com/elizaOS/homebrew-tap`
 
 2. **Initialize the repo**:
 
 ```bash
 # Clone and set up
-git clone https://github.com/eliza-ai/homebrew-tap.git
+git clone https://github.com/elizaOS/homebrew-tap.git
 cd homebrew-tap
 
 # Copy the formula
@@ -149,21 +149,21 @@ git push origin main
 brew install --build-from-source Formula/eliza.rb
 
 # Or after pushing to the tap repo
-brew tap eliza-ai/tap
+brew tap elizaOS/tap
 brew install eliza
 ```
 
 ### 2.3 Users Install With
 
 ```bash
-brew tap eliza-ai/tap
+brew tap elizaOS/tap
 brew install eliza
 ```
 
 Or one-liner:
 
 ```bash
-brew install eliza-ai/tap/eliza
+brew install elizaOS/tap/eliza
 ```
 
 ### 2.4 Updating for New Releases
@@ -404,10 +404,10 @@ shasum -a 256 node-arm64.tar.xz
 cd packaging/flatpak
 
 # Build
-flatpak-builder --repo=repo build-dir ai.eliza.Eliza.yml
+flatpak-builder --repo=repo build-dir ai.elizaos.App.yml
 
 # Create a bundle for testing
-flatpak build-bundle repo eliza.flatpak ai.eliza.Eliza
+flatpak build-bundle repo eliza.flatpak ai.elizaos.App
 ```
 
 ### 5.4 Test Locally
@@ -417,22 +417,22 @@ flatpak build-bundle repo eliza.flatpak ai.eliza.Eliza
 flatpak --user install eliza.flatpak
 
 # Run
-flatpak run ai.eliza.Eliza --version
-flatpak run ai.eliza.Eliza start
+flatpak run ai.elizaos.App --version
+flatpak run ai.elizaos.App start
 ```
 
 ### 5.5 Publish to Flathub
 
 1. Fork https://github.com/flathub/flathub
-2. Create a new repo: `github.com/flathub/ai.eliza.Eliza`
+2. Create a new repo: `github.com/flathub/ai.elizaos.App`
 3. Add the manifest and supporting files
 4. Submit a PR — Flathub maintainers will review
 
 ### 5.6 Users Install With
 
 ```bash
-flatpak install flathub ai.eliza.Eliza
-flatpak run ai.eliza.Eliza start
+flatpak install flathub ai.elizaos.App
+flatpak run ai.elizaos.App start
 ```
 
 ---
@@ -459,7 +459,7 @@ flatpak run ai.eliza.Eliza start
    - Generate an **upload keystore** for CI:
 
 ```bash
-keytool -genkeypair   -alias eliza-upload   -keyalg RSA -keysize 2048   -validity 10000   -keystore eliza-upload.jks   -storepass YOUR_STORE_PASSWORD   -dname "CN=Eliza AI, O=eliza-ai, L=Internet, C=US"
+keytool -genkeypair   -alias eliza-upload   -keyalg RSA -keysize 2048   -validity 10000   -keystore eliza-upload.jks   -storepass YOUR_STORE_PASSWORD   -dname "CN=Eliza AI, O=elizaOS, L=Internet, C=US"
 ```
 
 4. **Upload the upload key certificate** to Play Console:
@@ -584,7 +584,7 @@ gh workflow run release-orchestrator.yml -f version=2.0.0-beta.0
 | Secret | Where to get it | Used by |
 |---|---|---|
 | `SNAP_STORE_CREDENTIALS` | `snapcraft export-login --snaps=eliza --acls=package_push -` | Snap publishing |
-| `HOMEBREW_TAP_TOKEN` | GitHub PAT with `repo` scope for `eliza-ai/homebrew-tap` | Homebrew formula updates |
+| `HOMEBREW_TAP_TOKEN` | GitHub PAT with `repo` scope for `elizaOS/homebrew-tap` | Homebrew formula updates |
 | `PYPI_API_TOKEN` | https://pypi.org/manage/account/token/ (or use trusted publishing) | PyPI uploads |
 | `ANDROID_KEYSTORE_BASE64` | `base64 -w0 eliza-upload.jks` | Android AAB signing |
 | `ANDROID_KEYSTORE_PASSWORD` | Android upload keystore password | Android AAB signing |
@@ -600,7 +600,7 @@ gh workflow run release-orchestrator.yml -f version=2.0.0-beta.0
 Instead of API tokens, use OIDC trusted publishing:
 1. Go to https://pypi.org/manage/project/eliza/settings/publishing/
 2. Add a "GitHub Actions" publisher:
-   - Owner: `eliza-ai`
+   - Owner: `elizaOS`
    - Repository: `eliza`
    - Workflow: `publish-packages.yml`
    - Environment: (leave blank or set one)
@@ -615,7 +615,7 @@ This eliminates the need for `PYPI_API_TOKEN` — GitHub Actions authenticates d
 
 1. **Enroll** at https://developer.apple.com/programs/ ($99/year)
 2. **Create App ID**: Bundle ID `ai.eliza.app`, enable Push Notifications
-3. **Create private certificates repo** `eliza-ai/certificates` for Fastlane Match
+3. **Create private certificates repo** `elizaOS/certificates` for Fastlane Match
 4. **Create App Store Connect app**: Platform iOS, Bundle ID `ai.eliza.app`
 
 ### 8.2 Required GitHub Secrets
@@ -674,7 +674,7 @@ When releasing a new version, update these files:
 | `packaging/snap/snapcraft.yaml` | `version` |
 | `packaging/debian/changelog` | Add new entry at top |
 | `packaging/homebrew/eliza.rb` | `url` + `sha256` (after npm publish) |
-| `packaging/flatpak/ai.eliza.Eliza.metainfo.xml` | Add new `<release>` entry |
+| `packaging/flatpak/ai.elizaos.App.metainfo.xml` | Add new `<release>` entry |
 | `apps/app/android/app/build.gradle` | `versionCode` + `versionName` (via env vars in CI) |
 
 ### Version Format Mapping
@@ -696,10 +696,10 @@ When releasing a new version, update these files:
 |---|---|
 | **npm** | `npm install -g elizaai` |
 | **PyPI** | `pip install eliza` |
-| **Homebrew** | `brew install eliza-ai/tap/eliza` |
+| **Homebrew** | `brew install elizaOS/tap/eliza` |
 | **apt** | `sudo apt install eliza` (after adding repo) |
 | **Snap** | `sudo snap install eliza --classic` |
-| **Flatpak** | `flatpak install flathub ai.eliza.Eliza` |
+| **Flatpak** | `flatpak install flathub ai.elizaos.App` |
 | **Google Play** | Search "Eliza" on Play Store |
 | **iOS App Store** | Search "Eliza" on App Store |
 | **Mac App Store** | Search "Eliza" on Mac App Store |

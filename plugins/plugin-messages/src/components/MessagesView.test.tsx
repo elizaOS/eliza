@@ -110,7 +110,11 @@ beforeEach(() => {
     messageUri: "content://sms/1",
   });
   bridge.getStatus.mockResolvedValue(statusWith(false));
-  bridge.requestRole.mockResolvedValue({ role: "sms", held: true, resultCode: 0 });
+  bridge.requestRole.mockResolvedValue({
+    role: "sms",
+    held: true,
+    resultCode: 0,
+  });
 });
 
 afterEach(() => {

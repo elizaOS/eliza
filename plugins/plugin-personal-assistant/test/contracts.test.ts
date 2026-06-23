@@ -402,6 +402,44 @@ describe("decideDispatchPolicy (W1-F dispatch policy)", () => {
       message: undefined,
     });
   });
+
+  it("rate_limited on the last step still retries (does not fall through to fail)", () => {
+    // Retry-with-backoff is evaluated BEFORE the isLastStep terminal check, so a
+    // transient rate-limit on the final step reschedules the same step rather
+    // than failing the whole dispatch. Pins that ordering against a refactor.
+    const result: DispatchResult = {
+      ok: false,
+      reason: "rate_limited",
+      userActionable: false,
+    };
+    expect(
+      decideDispatchPolicy(result, {
+        currentStepIndex: 2,
+        totalSteps: 3,
+        defaultRetryAfterMinutes: 7,
+      }),
+    ).toEqual({
+      kind: "retry",
+      retryAfterMinutes: 7,
+      reason: "rate_limited",
+    });
+  });
+
+  it("explicit retryAfterMinutes on the last step still retries (beats terminal)", () => {
+    const result: DispatchResult = {
+      ok: false,
+      reason: "transport_error",
+      retryAfterMinutes: 15,
+      userActionable: false,
+    };
+    expect(
+      decideDispatchPolicy(result, { currentStepIndex: 0, totalSteps: 1 }),
+    ).toEqual({
+      kind: "retry",
+      retryAfterMinutes: 15,
+      reason: "transport_error",
+    });
+  });
 });
 
 describe("PRIORITY_TO_POSTURE", () => {

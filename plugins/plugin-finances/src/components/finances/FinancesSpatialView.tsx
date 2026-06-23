@@ -264,7 +264,10 @@ function TransactionsSection({
               <Text tone={tx.outflow ? "danger" : "primary"} wrap={false}>
                 {tx.amount}
               </Text>
-              <Button agent={`open-txn-${tx.id}`} onPress={dispatch(`txn-${tx.id}`)}>
+              <Button
+                agent={`open-txn-${tx.id}`}
+                onPress={dispatch(`txn-${tx.id}`)}
+              >
                 ›
               </Button>
             </HStack>

@@ -78,17 +78,6 @@ export const SmartglassesView = deferredComponent(loadSmartglassesView);
 export const SmartglassesTuiView = deferredComponent(loadSmartglassesTuiView);
 
 registerAppShellPage({
-  id: "facewear",
-  pluginId: "@elizaos/plugin-facewear",
-  label: "Facewear",
-  icon: "Glasses",
-  path: "/apps/facewear",
-  order: 80,
-  group: "hardware",
-  loader: loadFacewearAppView,
-});
-
-registerAppShellPage({
   id: "facewear.tui",
   pluginId: "@elizaos/plugin-facewear",
   label: "Facewear TUI",
@@ -100,14 +89,14 @@ registerAppShellPage({
 });
 
 registerAppShellPage({
-  id: "smartglasses",
+  id: "facewear",
   pluginId: "@elizaos/plugin-facewear",
-  label: "Smartglasses",
+  label: "Facewear",
   icon: "Glasses",
-  path: "/apps/smartglasses",
-  order: 81,
+  path: "/apps/facewear",
+  order: 80,
   group: "hardware",
-  loader: loadSmartglassesView,
+  loader: loadFacewearAppView,
 });
 
 registerAppShellPage({
@@ -121,10 +110,21 @@ registerAppShellPage({
   loader: loadSmartglassesTuiView,
 });
 
+registerAppShellPage({
+  id: "smartglasses",
+  pluginId: "@elizaos/plugin-facewear",
+  label: "Smartglasses",
+  icon: "Glasses",
+  path: "/apps/smartglasses",
+  order: 81,
+  group: "hardware",
+  loader: loadSmartglassesView,
+});
+
 // In a terminal host (the Node agent, no DOM), register the facewear and
 // smartglasses views so they render inline in the terminal as the unified
-// FacewearSpatialView / SmartglassesSpatialView. Lazy + DOM-guarded so the
-// terminal engine stays out of browser/mobile bundles.
+// FacewearSpatialView / SmartglassesSpatialView.
+// Lazy + DOM-guarded so the terminal engine stays out of browser/mobile bundles.
 if (typeof window === "undefined") {
   void import("./register-terminal-view.tsx")
     .then((m) => {

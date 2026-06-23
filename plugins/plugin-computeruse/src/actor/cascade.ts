@@ -45,8 +45,34 @@ export interface CascadeInput {
   captures: Map<number, DisplayCapture>;
 }
 
+/** Grounding-cache accounting (#9105 M5). */
+export interface CascadeGroundStats {
+  /** Grounding resolutions served from the per-Scene cache. */
+  hits: number;
+  /** Grounding resolutions that ran the full resolve (OCR/AX + optional actor). */
+  misses: number;
+}
+
 export class Cascade {
+  /**
+   * Per-Scene grounding cache (predict/ground split, #9105 M5). Grounding the
+   * same target (ref or rationale) on the same Scene is deterministic, so the
+   * cheap GROUND step is memoized — re-grounding within a turn skips a repeat
+   * `resolveReference` (OCR/AX) scan and a repeat (possibly model-backed)
+   * `actor.ground` call. Keyed by Scene timestamp so a new screen invalidates.
+   */
+  private readonly groundCache = new Map<
+    string,
+    { displayId: number; x: number; y: number }
+  >();
+  private groundStats: CascadeGroundStats = { hits: 0, misses: 0 };
+
   constructor(private readonly deps: CascadeDeps) {}
+
+  /** Grounding cache hit/miss snapshot for token/work accounting. */
+  getGroundStats(): CascadeGroundStats {
+    return { ...this.groundStats };
+  }
 
   async run(input: CascadeInput): Promise<CascadeResult> {
     const brainOut = await this.deps.brain.observeAndPlan({
@@ -210,6 +236,46 @@ export class Cascade {
   }
 
   private async resolveCoords(
+    input: CascadeInput,
+    brainOut: BrainOutput,
+    allowMissing: boolean,
+  ): Promise<{ displayId: number; x: number; y: number } | null> {
+    // GROUND fast-path: a target already grounded on this Scene is reused.
+    const action0 = brainOut.proposed_action;
+    const cacheKey = `${input.scene.timestamp}::${brainOut.target_display_id}::${
+      action0.ref ?? action0.rationale ?? ""
+    }`;
+    const cached = this.groundCache.get(cacheKey);
+    if (cached) {
+      this.groundStats.hits += 1;
+      return cached;
+    }
+    const resolved = await this.resolveCoordsUncached(
+      input,
+      brainOut,
+      allowMissing,
+    );
+    if (resolved) {
+      this.groundStats.misses += 1;
+      this.rememberGround(input.scene.timestamp, cacheKey, resolved);
+    }
+    return resolved;
+  }
+
+  /** Drop cache entries from any Scene other than `timestamp`, then store. */
+  private rememberGround(
+    timestamp: number,
+    key: string,
+    value: { displayId: number; x: number; y: number },
+  ): void {
+    const prefix = `${timestamp}::`;
+    for (const k of this.groundCache.keys()) {
+      if (!k.startsWith(prefix)) this.groundCache.delete(k);
+    }
+    this.groundCache.set(key, value);
+  }
+
+  private async resolveCoordsUncached(
     input: CascadeInput,
     brainOut: BrainOutput,
     allowMissing: boolean,
