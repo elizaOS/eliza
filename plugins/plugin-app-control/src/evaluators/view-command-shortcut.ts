@@ -53,7 +53,7 @@ export const viewCommandShortcutEvaluator: ResponseHandlerEvaluator = {
 			addParentActionHints: [VIEWS_ACTION_NAME],
 			deterministicToolCall: {
 				name: VIEWS_ACTION_NAME,
-				params: { action: "show" },
+				params: { action: "show", view: viewId },
 			},
 			debug: [
 				`rigid view command → ${viewId}; forcing VIEWS action (deterministic, no model)`,

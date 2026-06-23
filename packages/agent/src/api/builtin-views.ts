@@ -213,6 +213,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     description:
       "Set the app background — pick a shader color, upload an image, or generate one",
     icon: "Image",
+    heroImagePath: "assets/view-heroes/background.png",
     path: "/background",
     order: 92,
     tags: ["background", "wallpaper", "color", "theme", "appearance", "image"],

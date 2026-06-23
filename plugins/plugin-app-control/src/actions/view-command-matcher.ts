@@ -211,7 +211,6 @@ const POSSESSIVES = [
 	"của tôi",
 	"akin",
 	"aking",
-	"the",
 ] as const;
 
 // Per-view multilingual noun synonyms. Order = match priority.
@@ -275,6 +274,28 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
 		"tuy chon",
 		"setting",
 		"mga setting",
+	],
+	background: [
+		"background",
+		"app background",
+		"page background",
+		"wallpaper",
+		"wallpapers",
+		"backdrop",
+		"theme background",
+		"shader",
+		"background image",
+		"fond",
+		"fond d'écran",
+		"fond d'ecran",
+		"wallpaper",
+		"fondo",
+		"papel tapiz",
+		"壁纸",
+		"壁紙",
+		"背景",
+		"背景画像",
+		"배경",
 	],
 	calendar: [
 		"calendar",
@@ -732,6 +753,7 @@ const VIEW_PRIORITY = [
 	"documents",
 	"transcripts",
 	"settings",
+	"background",
 	"calendar",
 	"inbox",
 	"wallet",
@@ -763,6 +785,26 @@ function alt(items: readonly string[]): string {
 const VERB_ALT = alt(NAV_VERBS);
 const VW_ALT = alt(VIEW_WORDS);
 const POSS_ALT = alt(POSSESSIVES);
+const COMPANION_ACTION_VERBS = new Set([
+	"DRAW",
+	"GENERATE",
+	"MAKE",
+	"PERFORM",
+	"PLAY",
+	"RENDER",
+	"RUN",
+	"TRIGGER",
+]);
+const COMPANION_ACTION_TARGETS = new Set([
+	"ANIMATION",
+	"AVATAR",
+	"COMPANION",
+	"DANCE",
+	"EMOTE",
+	"GESTURE",
+	"POSE",
+	"WAVE",
+]);
 
 interface CompiledView {
 	viewId: string;
@@ -804,6 +846,7 @@ export function matchViewCommand(text: string | undefined): string | null {
 	const raw = (text ?? "").trim();
 	if (!raw || raw.length > 160) return null; // commands are short
 	const lower = raw.toLowerCase();
+	if (looksLikeCompanionActionRequest(lower)) return null;
 	const variants = [lower, stripDiacritics(lower)];
 	for (const { viewId, re } of COMPILED) {
 		for (const v of variants) {
@@ -811,6 +854,14 @@ export function matchViewCommand(text: string | undefined): string | null {
 		}
 	}
 	return null;
+}
+
+function looksLikeCompanionActionRequest(text: string): boolean {
+	const tokens = text.toUpperCase().match(/[A-Z0-9]+/g) ?? [];
+	return (
+		tokens.some((token) => COMPANION_ACTION_VERBS.has(token)) &&
+		tokens.some((token) => COMPANION_ACTION_TARGETS.has(token))
+	);
 }
 
 /** All view ids this matcher can resolve (for tests + callers). */

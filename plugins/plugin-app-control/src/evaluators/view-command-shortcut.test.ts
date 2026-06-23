@@ -8,16 +8,18 @@ function ctx(
 		requiresTool?: boolean;
 		processMessage?: string;
 		hasViews?: boolean;
+		extraActions?: string[];
 		candidateActions?: string[];
 		parentActionHints?: string[];
 	} = {},
 ): ResponseHandlerEvaluatorContext {
 	const hasViews = opts.hasViews ?? true;
+	const extraActions = (opts.extraActions ?? []).map((name) => ({ name }));
 	return {
 		runtime: {
 			actions: hasViews
-				? [{ name: "VIEWS" }, { name: "REPLY" }]
-				: [{ name: "REPLY" }],
+				? [{ name: "VIEWS" }, { name: "REPLY" }, ...extraActions]
+				: [{ name: "REPLY" }, ...extraActions],
 		},
 		message: { content: { text } },
 		state: {},
@@ -41,28 +43,28 @@ async function run(text: string, opts = {}) {
 }
 
 describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", () => {
-	const commands = [
-		"open settings",
-		"go to settings view",
-		"show me my calendar",
-		"muéstrame mi calendario",
-		"abra meu calendário",
-		"öffne meinen kalender",
-		"カレンダーを開いて",
-		"캘린더 열어",
-		"mở lịch",
-		"buksan ang calendar",
-		"open my inbox",
-		"check my messages",
-		"revisa mi correo",
-		"show my wallet",
-		"abre ajustes", // es
-		"打开设置", // zh
-		"설정 열어", // ko
-		"設定を開いて", // ja
-		"open app builder",
+	const commands: Array<[text: string, view: string]> = [
+		["open settings", "settings"],
+		["go to settings view", "settings"],
+		["show me my calendar", "calendar"],
+		["muéstrame mi calendario", "calendar"],
+		["abra meu calendário", "calendar"],
+		["öffne meinen kalender", "calendar"],
+		["カレンダーを開いて", "calendar"],
+		["캘린더 열어", "calendar"],
+		["mở lịch", "calendar"],
+		["buksan ang calendar", "calendar"],
+		["open my inbox", "inbox"],
+		["check my messages", "inbox"],
+		["revisa mi correo", "inbox"],
+		["show my wallet", "wallet"],
+		["abre ajustes", "settings"],
+		["打开设置", "settings"],
+		["설정 열어", "settings"],
+		["設定を開いて", "settings"],
+		["open app builder", "task-coordinator"],
 	];
-	for (const text of commands) {
+	for (const [text, view] of commands) {
 		it(`"${text}" forces VIEWS`, async () => {
 			const patch = await run(text);
 			expect(patch).toBeTruthy();
@@ -72,9 +74,10 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 			expect(patch?.addCandidateActions).toContain("VIEWS");
 			expect(patch?.clearParentActionHints).toBe(true);
 			expect(patch?.addParentActionHints).toContain("VIEWS");
-			expect(patch?.deterministicToolCall).toEqual({
-				name: "VIEWS",
-				params: { action: "show" },
+			expect(patch?.deterministicToolCall?.name).toBe("VIEWS");
+			expect(patch?.deterministicToolCall?.params).toMatchObject({
+				action: "show",
+				view,
 			});
 		});
 	}
@@ -94,7 +97,7 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 			addParentActionHints: ["VIEWS"],
 			deterministicToolCall: {
 				name: "VIEWS",
-				params: { action: "show" },
+				params: { action: "show", view: "task-coordinator" },
 			},
 		});
 	});
@@ -108,6 +111,21 @@ describe("viewCommandShortcutEvaluator — does NOT fire", () => {
 	it("on contextual intent (left to the post evaluator)", async () => {
 		expect(await run("i need to fix the login bug")).toBeNull();
 		expect(await run("I want to add a new feature to my app")).toBeNull();
+	});
+	it("on companion emote commands", async () => {
+		expect(await run("run the companion avatar wave emote action")).toBeNull();
+		expect(await run("make my avatar wave")).toBeNull();
+	});
+	it("on XR camera perception requests owned by XR_QUERY_VISION", async () => {
+		expect(
+			await run(
+				"Use XR device vision to answer: what do you see through the XR camera?",
+				{ extraActions: ["XR_QUERY_VISION"] },
+			),
+		).toBeNull();
+		expect(
+			await run("open XR camera view", { extraActions: ["XR_QUERY_VISION"] }),
+		).toBeTruthy();
 	});
 	it("when VIEWS action is not registered", async () => {
 		expect(await run("open settings", { hasViews: false })).toBeNull();
