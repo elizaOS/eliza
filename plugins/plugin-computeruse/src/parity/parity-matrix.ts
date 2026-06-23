@@ -268,6 +268,13 @@ export const PARITY_MATRIX: readonly ParityCapability[] = [
     note: "sandbox/remote-guest only (host routes through the FILE action)",
     os: ALL_PLANNED,
   },
+  {
+    id: "filesystem_bytes",
+    status: "have",
+    milestone: "M13",
+    note: "read_bytes/write_bytes (base64) + create_dir + directory_exists + get_file_size — binary-safe guest I/O in file-ops.ts + executeFileAction; windows round-trip verified",
+    os: { windows: "covered", linux: "planned", macos: "planned", aosp: "na" },
+  },
 
   // ── Explicitly N/A (don't chase) ─────────────────────────────────────────
   {

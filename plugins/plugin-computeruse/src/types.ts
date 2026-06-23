@@ -235,7 +235,12 @@ export type FileActionType =
   | "delete_directory"
   | "upload"
   | "download"
-  | "list_downloads";
+  | "list_downloads"
+  | "read_bytes"
+  | "write_bytes"
+  | "create_dir"
+  | "directory_exists"
+  | "get_file_size";
 
 export interface FileActionParams {
   action: FileActionType;
@@ -250,6 +255,11 @@ export interface FileActionParams {
   find?: string;
   replace?: string;
   encoding?: BufferEncoding;
+  /** Base64 payload for write_bytes. */
+  base64?: string;
+  /** Byte window for read_bytes (chunked binary transfer). */
+  offset?: number;
+  length?: number;
 }
 
 export interface FileEntry {
@@ -261,6 +271,8 @@ export interface FileEntry {
 export interface FileActionResult extends ComputerUseResult {
   path?: string;
   content?: string;
+  /** Base64-encoded bytes for read_bytes. */
+  bytes?: string;
   exists?: boolean;
   isFile?: boolean;
   isDirectory?: boolean;
