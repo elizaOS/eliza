@@ -57,3 +57,21 @@ $ bunx vitest run \
  Test Files  4 passed (4)
       Tests  49 passed (49)
 ```
+
+## Runs on Windows · desktop app · browser (`desktop-dashboard-windows.png`)
+
+`bun run dev` was booted on Windows and the dashboard opened in a headless
+Chromium (the desktop app renders the same web UI):
+
+- API server ready on `http://127.0.0.1:31337`; dashboard served `HTTP 200` on
+  `http://localhost:2138/`.
+- `[boot] @elizaos/plugin-agent-orchestrator loaded in 749ms` — the orchestrator
+  plugin (carrying the #8875/#8924 changes now on develop) loaded into the live
+  app; `Agent ready (129.5s)`.
+- The dashboard rendered cleanly (screenshot `desktop-dashboard-windows.png`,
+  `1440×900`, title `Eliza`, 0 page errors). `GET /api/agents` → `200`.
+
+In this dev runtime the orchestrator registers its stub surface (no terminal
+support → `/api/orchestrator/*` routes are intentionally not mounted; see the
+plugin's gating), so the orchestrator *logic* is exercised by the unit suites and
+the live-model trajectory above rather than those HTTP routes.
