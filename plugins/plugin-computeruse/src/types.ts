@@ -21,9 +21,14 @@ export type DesktopActionType =
   | "double_click"
   | "right_click"
   | "mouse_move"
+  | "middle_click"
+  | "mouse_down"
+  | "mouse_up"
   | "type"
   | "key"
   | "key_combo"
+  | "key_down"
+  | "key_up"
   | "scroll"
   | "drag"
   | "get_cursor_position"
@@ -34,6 +39,12 @@ export interface DesktopActionParams {
   action: DesktopActionType;
   coordinate?: [number, number];
   startCoordinate?: [number, number];
+  /**
+   * Multi-point polyline for `drag` (≥2 points, local to `displayId`). When
+   * present it supersedes `startCoordinate`/`coordinate` and traces every
+   * waypoint with the button held (curves, corners, marquee, swipe paths).
+   */
+  path?: Array<[number, number]>;
   /**
    * Display the coordinate is local to. Required for any coordinate-bearing
    * action (click, mouse_move, drag, scroll, key_combo, click_with_modifiers).

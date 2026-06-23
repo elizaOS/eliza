@@ -13,8 +13,14 @@ import { platform } from "node:os";
 import { describe, expect, it } from "vitest";
 import { readClipboard, writeClipboard } from "../platform/clipboard.js";
 import {
+  driverDragPath,
   driverGetCursorPosition,
+  driverKeyDown,
+  driverKeyUp,
+  driverMiddleClick,
+  driverMouseDown,
   driverMouseMove,
+  driverMouseUp,
 } from "../platform/driver.js";
 
 const RUN = platform() === "win32";
@@ -44,6 +50,64 @@ describe("cua parity input (real driver, Windows)", () => {
       await writeClipboard(token);
       const back = (await readClipboard()).trim();
       expect(back).toBe(token);
+    },
+    20000,
+  );
+
+  // ── M8 verb-parity pack (real driver) ───────────────────────────────────
+
+  it.skipIf(!RUN)(
+    "middle_click fires without throwing",
+    async () => {
+      await driverMouseMove(400, 300);
+      await expect(driverMiddleClick(400, 300)).resolves.toBeUndefined();
+    },
+    20000,
+  );
+
+  it.skipIf(!RUN)(
+    "mouse_down/mouse_up press-hold round-trips (always releases)",
+    async () => {
+      await driverMouseMove(420, 320);
+      await driverMouseDown(420, 320, "left");
+      try {
+        const pos = await driverGetCursorPosition();
+        expect(Math.abs(pos.x - 420)).toBeLessThanOrEqual(2);
+      } finally {
+        // Never leave a button held, even on assertion failure.
+        await driverMouseUp(420, 320, "left");
+      }
+    },
+    20000,
+  );
+
+  it.skipIf(!RUN)(
+    "key_down/key_up press-hold round-trips (always releases)",
+    async () => {
+      await driverKeyDown("shift");
+      try {
+        // No throw is the contract; the held modifier has no observable side
+        // effect on its own here.
+        expect(true).toBe(true);
+      } finally {
+        await driverKeyUp("shift");
+      }
+    },
+    20000,
+  );
+
+  it.skipIf(!RUN)(
+    "multi-point drag path lands the cursor on the final vertex",
+    async () => {
+      await driverDragPath([
+        { x: 300, y: 300 },
+        { x: 500, y: 300 },
+        { x: 500, y: 450 },
+      ]);
+      await new Promise((r) => setTimeout(r, 150));
+      const pos = await driverGetCursorPosition();
+      expect(Math.abs(pos.x - 500)).toBeLessThanOrEqual(3);
+      expect(Math.abs(pos.y - 450)).toBeLessThanOrEqual(3);
     },
     20000,
   );

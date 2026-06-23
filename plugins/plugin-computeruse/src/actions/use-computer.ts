@@ -42,9 +42,14 @@ const DESKTOP_ACTIONS = new Set<DesktopActionType>([
   "double_click",
   "right_click",
   "mouse_move",
+  "middle_click",
+  "mouse_down",
+  "mouse_up",
   "type",
   "key",
   "key_combo",
+  "key_down",
+  "key_up",
   "scroll",
   "drag",
   "get_cursor_position",
@@ -218,9 +223,9 @@ export const useComputerAction: Action = {
     "DENY_COMPUTER_USE",
   ],
   description:
-    "computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
+    "computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/middle_click/mouse_down/mouse_up/type/key/key_combo/key_down/key_up/scroll/drag/detect_elements/ocr. mouse_down/up + key_down/up are press-and-hold primitives (button held until released); drag accepts a multi-point `path`. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
   descriptionCompressed:
-    "Desktop: screenshot|click|double|right|move|type|key|scroll|drag|detect|ocr|approve",
+    "Desktop: screenshot|click|double|right|middle|move|down|up|type|key|scroll|drag|detect|ocr|approve",
   routingHint:
     "desktop/computer/native-app/Finder/window screenshots or control -> COMPUTER_USE; never invent takeScreenshot",
 
@@ -238,9 +243,14 @@ export const useComputerAction: Action = {
           "double_click",
           "right_click",
           "mouse_move",
+          "middle_click",
+          "mouse_down",
+          "mouse_up",
           "type",
           "key",
           "key_combo",
+          "key_down",
+          "key_up",
           "scroll",
           "drag",
           "get_cursor_position",
@@ -263,6 +273,16 @@ export const useComputerAction: Action = {
       schema: { type: "array", items: { type: "number" } },
     },
     {
+      name: "path",
+      description:
+        "Multi-point polyline [[x,y],...] (≥2 points) for drag; traces every waypoint with the button held. Supersedes startCoordinate/coordinate when present.",
+      required: false,
+      schema: {
+        type: "array",
+        items: { type: "array", items: { type: "number" } },
+      },
+    },
+    {
       name: "text",
       description: "Text to type.",
       required: false,
@@ -283,7 +303,8 @@ export const useComputerAction: Action = {
     },
     {
       name: "button",
-      description: "Mouse button for click_with_modifiers.",
+      description:
+        "Mouse button for click_with_modifiers and mouse_down/mouse_up (default left).",
       required: false,
       schema: { type: "string", enum: ["left", "middle", "right"] },
     },

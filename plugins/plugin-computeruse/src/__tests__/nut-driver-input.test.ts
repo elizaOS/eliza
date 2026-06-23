@@ -14,6 +14,7 @@
 import { describe, expect, it } from "vitest";
 import {
   clampScrollNotches,
+  densifyDragPath,
   interpolateDragSteps,
 } from "../platform/nut-driver.js";
 
@@ -49,5 +50,36 @@ describe("interpolateDragSteps", () => {
       expect(pts[i].x).toBeGreaterThanOrEqual(pts[i - 1].x);
     }
     expect(pts[pts.length - 1].x).toBe(200);
+  });
+});
+
+describe("densifyDragPath (M8 multi-point drag)", () => {
+  it("returns [] for an empty path", () => {
+    expect(densifyDragPath([])).toEqual([]);
+  });
+
+  it("keeps the first vertex and lands on every segment endpoint", () => {
+    const dense = densifyDragPath(
+      [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+      ],
+      4,
+    );
+    // First point preserved exactly.
+    expect(dense[0]).toEqual({ x: 0, y: 0 });
+    // Every vertex appears in order.
+    expect(dense).toContainEqual({ x: 100, y: 0 });
+    expect(dense[dense.length - 1]).toEqual({ x: 100, y: 100 });
+    // 2 segments × 4 steps + the start vertex.
+    expect(dense).toHaveLength(1 + 2 * 4);
+    expect(
+      dense.every((p) => Number.isInteger(p.x) && Number.isInteger(p.y)),
+    ).toBe(true);
+  });
+
+  it("handles a degenerate single-point path", () => {
+    expect(densifyDragPath([{ x: 7, y: 9 }])).toEqual([{ x: 7, y: 9 }]);
   });
 });

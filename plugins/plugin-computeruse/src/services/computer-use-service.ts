@@ -38,10 +38,16 @@ import {
   driverClickWithModifiers,
   driverDoubleClick,
   driverDrag,
+  driverDragPath,
   driverGetCursorPosition,
   driverKeyCombo,
+  driverKeyDown,
   driverKeyPress,
+  driverKeyUp,
+  driverMiddleClick,
+  driverMouseDown,
   driverMouseMove,
+  driverMouseUp,
   driverRightClick,
   driverScroll,
   driverType,
@@ -121,6 +127,9 @@ const COORDINATE_BEARING_ACTIONS = new Set<DesktopActionParams["action"]>([
   "double_click",
   "right_click",
   "mouse_move",
+  "middle_click",
+  "mouse_down",
+  "mouse_up",
   "scroll",
   "drag",
 ]);
@@ -252,9 +261,14 @@ export class ComputerUseService extends Service {
       case "double_click":
       case "right_click":
       case "mouse_move":
+      case "middle_click":
+      case "mouse_down":
+      case "mouse_up":
       case "type":
       case "key_press":
       case "key_combo":
+      case "key_down":
+      case "key_up":
       case "scroll":
       case "drag":
       case "get_cursor_position":
@@ -396,6 +410,24 @@ export class ComputerUseService extends Service {
           await driverMouseMove(g.x, g.y);
           break;
         }
+        case "middle_click": {
+          this.requireCoordinate(params.coordinate, "middle_click");
+          const g = this.toGlobal(params, params.coordinate);
+          await driverMiddleClick(g.x, g.y);
+          break;
+        }
+        case "mouse_down": {
+          this.requireCoordinate(params.coordinate, "mouse_down");
+          const g = this.toGlobal(params, params.coordinate);
+          await driverMouseDown(g.x, g.y, params.button ?? "left");
+          break;
+        }
+        case "mouse_up": {
+          this.requireCoordinate(params.coordinate, "mouse_up");
+          const g = this.toGlobal(params, params.coordinate);
+          await driverMouseUp(g.x, g.y, params.button ?? "left");
+          break;
+        }
         case "type":
           if (!params.text) throw new Error("text is required for type action");
           await driverType(params.text);
@@ -409,6 +441,18 @@ export class ComputerUseService extends Service {
             throw new Error("key is required for key_combo action");
           }
           await driverKeyCombo(params.key);
+          break;
+        case "key_down":
+          if (!params.key) {
+            throw new Error("key is required for key_down action");
+          }
+          await driverKeyDown(params.key);
+          break;
+        case "key_up":
+          if (!params.key) {
+            throw new Error("key is required for key_up action");
+          }
+          await driverKeyUp(params.key);
           break;
         case "scroll": {
           this.requireCoordinate(params.coordinate, "scroll");
@@ -431,6 +475,14 @@ export class ComputerUseService extends Service {
           });
         }
         case "drag": {
+          // A `path` of ≥2 points traces a real polyline (curves, corners,
+          // marquee, swipe paths); otherwise fall back to a straight
+          // startCoordinate→coordinate drag.
+          if (params.path && params.path.length >= 2) {
+            const global = params.path.map((p) => this.toGlobal(params, p));
+            await driverDragPath(global);
+            break;
+          }
           this.requireCoordinate(
             params.startCoordinate,
             "drag",
