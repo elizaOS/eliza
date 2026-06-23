@@ -315,6 +315,7 @@
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/plugin-wechat": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
+        "@elizaos/registry": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/skills": "workspace:*",
         "@elizaos/ui": "workspace:*",
@@ -2538,6 +2539,9 @@
     "packages/registry": {
       "name": "@elizaos/registry",
       "version": "2.0.0-beta.0",
+      "dependencies": {
+        "zod": "^4.4.3",
+      },
       "devDependencies": {
         "@types/node": "^24.0.0",
       },

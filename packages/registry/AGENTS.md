@@ -7,10 +7,22 @@ rules live in the root [AGENTS.md](../../AGENTS.md).
 
 ## Role
 
-Holds the third-party (community) plugin registry **data** plus the **tooling**
-to validate it and build the wire format the runtime fetches. `private: true` —
-it is not published to npm; it is consumed as registry data (over HTTP at
-`plugins.elizacloud.ai`) and, optionally, as a typed loader via `workspace:*`.
+Two registries live here, exported under separate subpaths — **do not conflate
+their schemas** (they model different things):
+
+- **`.` (community / third-party)** — the third-party plugin registry **data**
+  plus the **tooling** to validate it and build the wire format the runtime
+  fetches. Consumed as registry data (over HTTP at `plugins.elizacloud.ai`) and,
+  optionally, as a typed loader via `workspace:*`. Dependency-free, hand-rolled
+  validation.
+- **`./first-party` (curated, in-repo)** — the first-party curated registry of
+  bundled apps / plugins / connectors (moved here from `@elizaos/app-core`). Rich
+  Zod schema with `config` fields, `render` hints, `launch.routePlugin`, and
+  connector `accounts`. Exposes `loadRegistry()` + typed accessors and a
+  plugin-side `registerRegistryEntry()` runtime overlay. Re-exported by
+  `@elizaos/app-core/registry` for backwards compatibility.
+
+`private: true` — not published to npm.
 
 ## Layout
 
@@ -25,6 +37,12 @@ src/
   generate.ts     generateRegistry / toGeneratedEntry — entries → wire format
   validate-cli.ts `bun run validate`
   index.ts        public barrel (typed loader for programmatic consumers)
+  first-party/    @elizaos/registry/first-party — curated bundled registry
+    schema.ts     Zod entry schemas (app / plugin / connector)
+    loader.ts     loadRegistryFromRawEntries / indexEntries / typed accessors
+    index.ts      loadRegistry() + registerRegistryEntry() runtime overlay
+    app-registry.ts  registerCuratedApp curated-app name store
+    entries/{apps,plugins,connectors}/*.json   bundled curated entries
 ```
 
 ## Two formats — don't conflate

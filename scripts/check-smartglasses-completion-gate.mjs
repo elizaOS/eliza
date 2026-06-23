@@ -63,7 +63,7 @@ function softwareGateFailures() {
     "plugins/plugin-facewear/src/__tests__/smartglasses-control-action.test.ts",
     "plugins/plugin-facewear/src/transport/web-bluetooth.ts",
     "plugins/plugin-facewear/src/transport/noble.ts",
-    "packages/app-core/src/registry/entries/plugins/facewear.json",
+    "packages/registry/src/first-party/entries/plugins/facewear.json",
     "packages/app/src/plugin-registrations.ts",
     "plugins/plugin-facewear/native/android/even-realities/app/src/main/java/com/elizaos/facewear/evenrealities/G1BleService.kt",
     "plugins/plugin-facewear/native/android/even-realities/app/src/main/java/com/elizaos/facewear/evenrealities/AgentBridgeService.kt",
@@ -620,7 +620,7 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "packages/app-core/src/registry/entries/plugins/facewear.json",
+      "packages/registry/src/first-party/entries/plugins/facewear.json",
       [
         '"npmName": "@elizaos/plugin-facewear"',
         "whole-headset pairing",
@@ -1301,7 +1301,7 @@ function removedSmartglassesWorkspace() {
 
 function removedSmartglassesRegistryEntry() {
   return [
-    "packages/app-core/src/registry/entries/plugins",
+    "packages/registry/src/first-party/entries/plugins",
     "smartglasses.json",
   ].join("/");
 }

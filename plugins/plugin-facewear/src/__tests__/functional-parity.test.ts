@@ -32,7 +32,7 @@ describe("plugin-facewear functional parity", () => {
     const removedPackage = ["@elizaos/plugin", "smartglasses"].join("-");
     const removedWorkspace = ["plugins/plugin", "smartglasses"].join("-");
     const removedRegistryEntry = [
-      "packages/app-core/src/registry/entries/plugins",
+      "packages/registry/src/first-party/entries/plugins",
       "smartglasses.json",
     ].join("/");
     const packageSources = [

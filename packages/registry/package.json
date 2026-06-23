@@ -21,6 +21,11 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./first-party": {
+      "types": "./src/first-party/index.ts",
+      "import": "./src/first-party/index.ts",
+      "default": "./src/first-party/index.ts"
     }
   },
   "scripts": {
@@ -33,6 +38,9 @@
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^24.0.0"
