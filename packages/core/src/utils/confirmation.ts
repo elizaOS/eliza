@@ -32,7 +32,6 @@
  *   // status === "confirmed" — proceed with the destructive op
  */
 
-import { extractWrappedExternalContent } from "../security/external-content.js";
 import type { HandlerCallback } from "../types/components";
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
@@ -54,6 +53,10 @@ const DEFAULT_CONFIRM_REGEX =
  */
 const DEFAULT_CANCEL_REGEX =
 	/^\s*(no|nope|n|cancel|stop|abort|forget it|never mind|nevermind|nah|non|nein|否)\b/i;
+
+const EXTERNAL_CONTENT_START = "<<<EXTERNAL_UNTRUSTED_CONTENT>>>";
+const EXTERNAL_CONTENT_END = "<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>";
+const EXTERNAL_CONTENT_METADATA_SEPARATOR = "\n---\n";
 
 export type ConfirmationStatus = "pending" | "confirmed" | "cancelled";
 
@@ -111,7 +114,36 @@ function buildCacheKey(
 function readUserText(message: Memory): string {
 	const text = message.content.text;
 	if (typeof text !== "string") return "";
-	return extractWrappedExternalContent(text)?.trim() ?? text.trim();
+
+	const metadata =
+		message.content.metadata &&
+		typeof message.content.metadata === "object" &&
+		!Array.isArray(message.content.metadata)
+			? (message.content.metadata as Record<string, unknown>)
+			: null;
+
+	if (metadata?.externalContentWrapped === true) {
+		const unwrapped = extractExternalContentPayload(text);
+		if (unwrapped !== null) return unwrapped.trim();
+	}
+
+	return text.trim();
+}
+
+function extractExternalContentPayload(text: string): string | null {
+	const start = text.indexOf(EXTERNAL_CONTENT_START);
+	if (start < 0) return null;
+	const contentStart = start + EXTERNAL_CONTENT_START.length;
+	const end = text.indexOf(EXTERNAL_CONTENT_END, contentStart);
+	if (end < 0) return null;
+
+	const wrappedBody = text.slice(contentStart, end);
+	const separator = wrappedBody.indexOf(EXTERNAL_CONTENT_METADATA_SEPARATOR);
+	if (separator < 0) return null;
+
+	return wrappedBody.slice(
+		separator + EXTERNAL_CONTENT_METADATA_SEPARATOR.length,
+	);
 }
 
 /**
