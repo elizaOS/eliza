@@ -430,16 +430,19 @@ int bionic_int_env_or_default(const char* name, int fallback) {
 // Arm the eliza-1 text-model bionic config for runtime optimizations that are
 // correct for the shipped model.
 //
-// KV-quant stays OFF by default. The current shipped qwen35 Eliza-1 tiers use
-// head_dim=256, while QJL1_256/fused QJL-TBQ kernels are head_dim=128. Enabling
-// cache_type_k=qjl1_256/cache_type_v=tbq3_0 on these tiers regresses or crashes;
-// F16 KV is the correct path until a head_dim=256 QJL type or head_dim=128 model
-// variant ships. ELIZA_BIONIC_KV_QUANT=1 is left as an explicit lab override
-// for compatible test bundles only.
+// KV-quant stays OFF by default. The shipped Eliza-1 tiers are Gemma 4, whose
+// KV is already minimal by construction (MQA + windowed-SWA + shared-KV, dual
+// head dims 512 global / 256 SWA) and runs on stock f16/q8_0 KV. The legacy
+// QJL1_256 / fused QJL-TBQ kernels are head_dim=128 and dimensionally
+// inapplicable to Gemma, so cache_type_k=qjl1_256/cache_type_v=tbq3_0 is not a
+// shipping path; F16 KV is correct. ELIZA_BIONIC_KV_QUANT=1 is left as an
+// explicit lab override for head_dim=128 test bundles only.
 //
-// MTP is enabled by default for same-file NextN tiers (2B+) when a bundle path is
-// known, and remains off for 0.8B. ELIZA_BIONIC_MTP can force on/off for native
-// experiments.
+// MTP is enabled by default for same-file NextN tiers (2B+) when a bundle path
+// is known, and remains off for 0.8B. Gemma's separate-drafter MTP needs a real
+// drafter GGUF, which the base bundles do not yet ship, so on-device speculative
+// decode engages only where a same-file NextN head is present. ELIZA_BIONIC_MTP
+// can force on/off for native experiments.
 //
 // The two static names below outlive the cfg they're attached to (cfg is a
 // stack struct consumed synchronously by eliza_inference_llm_stream_open).
@@ -453,7 +456,8 @@ void arm_bionic_text_cfg(eliza_llm_stream_config_t& cfg,
         LOGI("bionic text cfg: KV-quant ON by explicit override (k=%s v=%s)",
              kKvTypeK, kKvTypeV);
     } else {
-        LOGI("bionic text cfg: KV-quant OFF (F16 KV; shipped qwen35 head_dim=256)");
+        LOGI("bionic text cfg: KV-quant OFF (stock f16/q8_0 KV; Gemma 4 KV is "
+             "already minimal)");
     }
 
     const bool default_mtp = bionic_bundle_allows_same_file_mtp(bundle_dir);
@@ -1263,8 +1267,8 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamOpen(
     cfg.repeat_penalty = 1.0f;
     cfg.n_gpu_layers = nGpuLayers;
     cfg.mtp_drafter_path = drafter.empty() ? nullptr : drafter.c_str();
-    // Arm safe runtime optimizations (F16 KV for shipped qwen35; MTP when a
-    // caller/env supplies a draft window).
+    // Arm safe runtime optimizations (stock f16/q8_0 KV for the shipped Gemma 4
+    // tiers; MTP when a caller/env supplies a draft window).
     // A caller-supplied drafter path is separate-drafter MTP and needs its own
     // draft window — only arm the same-file MTP env override when no drafter
     // was passed.
@@ -1412,8 +1416,8 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
     cfg.top_p = 1.0f;
     cfg.repeat_penalty = 1.0f;
     cfg.n_gpu_layers = -1;   // all-GPU when the vulkan lib is staged
-    // Arm safe runtime optimizations (F16 KV for shipped qwen35; same-file MTP
-    // on 2B+ bundles, or env override for lab runs).
+    // Arm safe runtime optimizations (stock f16/q8_0 KV for the shipped Gemma 4
+    // tiers; same-file MTP on 2B+ bundles, or env override for lab runs).
     arm_bionic_text_cfg(cfg, bundleDir.c_str());
     EliLlmStream* s = eliza_inference_llm_stream_open(ctx, &cfg, &outError);
     if (!s) {
