@@ -1564,6 +1564,16 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeAsrTranscribe(JNIEnv* env, jclass,
         throw_runtime(env, "asrTranscribe: null PCM", nullptr);
         return nullptr;
     }
+    // The ASR weights are a voice-only mmap region that must be armed before
+    // transcribe (VoiceLifecycle normally does this on voice-on). The agent's
+    // one-shot transcribe path has no lifecycle, so arm it here (idempotent if
+    // already acquired).
+    char* acqErr = nullptr;
+    if (eliza_inference_mmap_acquire(ctx, "asr", &acqErr) != 0) {
+        env->ReleaseFloatArrayElements(jPcm, pcm, JNI_ABORT);
+        throw_runtime(env, "asr mmap_acquire", acqErr);
+        return nullptr;
+    }
     // 64 KiB transcript cap — far longer than any single utterance.
     std::vector<char> out(65536, 0);
     char* err = nullptr;
