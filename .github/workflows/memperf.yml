@@ -37,11 +37,21 @@ jobs:
         with:
           submodules: recursive
       - uses: oven-sh/setup-bun@v2
+        with:
+          # The repo packageManager pins the exact canary used by local dev,
+          # but historical canary tags can disappear from GitHub releases.
+          # Ask setup-bun for the moving canary channel so scheduled runs do
+          # not fail before the memperf gate gets to execute.
+          bun-version: canary
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
       - name: Install workspace
         run: bun install
+      - name: Generate shared i18n assets
+        # The real-arbiter self-check imports @elizaos/core source, which
+        # expects generated keyword data to exist in a fresh checkout.
+        run: bun run --cwd packages/shared build:i18n
       - name: Metric-schema contract (shared with #8800)
         run: bun test --conditions=eliza-source packages/benchmarks/memperf/metric-schema.test.ts
       - name: Real-arbiter co-residency eviction self-check
