@@ -164,6 +164,20 @@ describe("registerProactiveInteractionDecider — runtime wiring (#8792)", () =>
     expect(routed).toEqual(["Want your balances?"]);
   });
 
+  it("never judges or comments on a control/dismiss shortcut (deny-list)", async () => {
+    const rt = makeRuntime({ chattiness: "chatty" });
+    const { routed } = wire(rt);
+
+    await emitAndSettle(rt, EventType.SHORTCUT_FIRED, {
+      shortcutId: "restart-agent",
+      initiatedBy: "user",
+    });
+
+    expect(routed).toEqual([]);
+    // Denied before the judge — no TEXT_SMALL spend on a control gesture.
+    expect(rt.useModel).not.toHaveBeenCalled();
+  });
+
   it("never comments on a slash command even when subscribed (policy-silent)", async () => {
     const rt = makeRuntime({ chattiness: "chatty" });
     const { routed } = wire(rt);

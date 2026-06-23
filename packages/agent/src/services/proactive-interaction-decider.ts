@@ -70,15 +70,39 @@ export interface DecideProactiveInput {
 }
 
 /**
+ * Control / dismiss / help shortcuts that must never trigger a proactive comment
+ * (#8792). These are gestures, not intent: commenting on them is noise, and —
+ * critically — the small-model judge runs BEFORE the governance gate, so letting
+ * them reach the judge would spend a TEXT_SMALL call per keystroke. Denying them
+ * here (a surface of `null`) skips the judge entirely. Navigation-bearing
+ * shortcuts ("open X") report `VIEW_SWITCHED` through the navigate route instead,
+ * so SHORTCUT_FIRED stays a small, high-signal channel for non-navigation
+ * capability-invokes (e.g. opening the command palette).
+ */
+export const NON_PROACTIVE_SHORTCUT_IDS: ReadonlySet<string> = new Set([
+  "close-modal",
+  "send-message",
+  "focus-composer",
+  "pause-resume-agent",
+  "restart-agent",
+  "toggle-terminal",
+  "show-keyboard-shortcuts",
+]);
+
+/**
  * The governance surface for an interaction, or `null` when policy says never
  * comment. Explicitly-typed slash commands return `null`: the user already
  * expressed intent and the command produced its own reply, so a proactive
- * comment would be double-talk (#8792 open question). View switches key on the
- * view; shortcuts key on the shortcut id.
+ * comment would be double-talk (#8792 open question). Control/dismiss shortcuts
+ * are denied (see {@link NON_PROACTIVE_SHORTCUT_IDS}). View switches key on the
+ * view; remaining (intent-bearing) shortcuts key on the shortcut id.
  */
 export function interactionSurface(payload: InteractionPayload): string | null {
   if ("command" in payload) return null; // explicit slash — stay silent
-  if ("shortcutId" in payload) return `shortcut:${payload.shortcutId}`;
+  if ("shortcutId" in payload) {
+    if (NON_PROACTIVE_SHORTCUT_IDS.has(payload.shortcutId)) return null;
+    return `shortcut:${payload.shortcutId}`;
+  }
   if ("viewId" in payload && payload.viewId) return payload.viewId;
   return null;
 }
