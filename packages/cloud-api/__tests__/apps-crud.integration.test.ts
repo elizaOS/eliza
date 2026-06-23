@@ -33,13 +33,13 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import { Hono } from "hono";
 import { secureHeaders } from "hono/secure-headers";
+import type { App } from "@/db/repositories/apps";
 import { AuthenticationError } from "@/lib/api/cloud-worker-errors";
 import * as realAuth from "@/lib/auth/workers-hono-auth";
 import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
 import * as realAppCleanup from "@/lib/services/app-cleanup";
 import * as realAppCredits from "@/lib/services/app-credits";
 import * as realAppFactory from "@/lib/services/app-factory";
-import type { App } from "@/lib/services/apps";
 // Keep the real modules so afterAll can restore them — bun's `mock.module` is
 // process-global and leaks across files otherwise.
 import * as realApps from "@/lib/services/apps";
@@ -243,7 +243,9 @@ const updateMonetizationSettings = mock(
         monetization_enabled: settings.monetizationEnabled,
       }),
       ...(settings.inferenceMarkupPercentage !== undefined && {
-        inference_markup_percentage: String(settings.inferenceMarkupPercentage),
+        // `inference_markup_percentage` is a real() (number) column, not a
+        // decimal string — store the number so the mock matches the schema.
+        inference_markup_percentage: settings.inferenceMarkupPercentage,
       }),
     } as App);
   },
@@ -534,7 +536,7 @@ describe("POST /api/v1/apps (create)", () => {
     // Returned app reflects the monetization write (route re-reads via getById).
     const returned = json.app as App;
     expect(returned.monetization_enabled).toBe(true);
-    expect(returned.inference_markup_percentage).toBe("25");
+    expect(returned.inference_markup_percentage).toBe(25);
   });
 });
 
