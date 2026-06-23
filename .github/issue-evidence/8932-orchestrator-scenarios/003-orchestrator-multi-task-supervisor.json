@@ -10,7 +10,7 @@
     "deterministic"
   ],
   "status": "passed",
-  "durationMs": 24,
+  "durationMs": 567,
   "turns": [
     {
       "name": "run concurrent tasks with isolation and digest",
@@ -26,8 +26,8 @@
             "data": {
               "summary": "two active tasks stayed isolated while supervisor emitted one room digest covering both",
               "taskIds": [
-                "3bfece91-ffd4-4de8-b290-ceea347953a3",
-                "bda60e39-f316-4166-8ecc-8af41912766c"
+                "502639d6-e462-4f67-972b-2e8f37db324e",
+                "8c5abe82-0fd5-40bb-8b59-eb6766a3edd0"
               ],
               "sessionIds": [
                 "orchestrator-scenario-session-1",
@@ -38,8 +38,8 @@
               ],
               "events": [],
               "finalStatuses": {
-                "3bfece91-ffd4-4de8-b290-ceea347953a3": "active",
-                "bda60e39-f316-4166-8ecc-8af41912766c": "active"
+                "502639d6-e462-4f67-972b-2e8f37db324e": "active",
+                "8c5abe82-0fd5-40bb-8b59-eb6766a3edd0": "active"
               },
               "digest": "📡 Task update — 2 active\n🚀 Alpha transcript parser — active (1 running) · Ada\n🚀 Beta browser callback — active (1 running) · Lin"
             },
@@ -52,8 +52,8 @@
               "data": {
                 "summary": "two active tasks stayed isolated while supervisor emitted one room digest covering both",
                 "taskIds": [
-                  "3bfece91-ffd4-4de8-b290-ceea347953a3",
-                  "bda60e39-f316-4166-8ecc-8af41912766c"
+                  "502639d6-e462-4f67-972b-2e8f37db324e",
+                  "8c5abe82-0fd5-40bb-8b59-eb6766a3edd0"
                 ],
                 "sessionIds": [
                   "orchestrator-scenario-session-1",
@@ -64,8 +64,8 @@
                 ],
                 "events": [],
                 "finalStatuses": {
-                  "3bfece91-ffd4-4de8-b290-ceea347953a3": "active",
-                  "bda60e39-f316-4166-8ecc-8af41912766c": "active"
+                  "502639d6-e462-4f67-972b-2e8f37db324e": "active",
+                  "8c5abe82-0fd5-40bb-8b59-eb6766a3edd0": "active"
                 },
                 "digest": "📡 Task update — 2 active\n🚀 Alpha transcript parser — active (1 running) · Ada\n🚀 Beta browser callback — active (1 running) · Lin"
               }
@@ -73,7 +73,7 @@
           }
         }
       ],
-      "durationMs": 2,
+      "durationMs": 232,
       "failedAssertions": []
     }
   ],
@@ -106,8 +106,8 @@
         "data": {
           "summary": "two active tasks stayed isolated while supervisor emitted one room digest covering both",
           "taskIds": [
-            "3bfece91-ffd4-4de8-b290-ceea347953a3",
-            "bda60e39-f316-4166-8ecc-8af41912766c"
+            "502639d6-e462-4f67-972b-2e8f37db324e",
+            "8c5abe82-0fd5-40bb-8b59-eb6766a3edd0"
           ],
           "sessionIds": [
             "orchestrator-scenario-session-1",
@@ -118,8 +118,8 @@
           ],
           "events": [],
           "finalStatuses": {
-            "3bfece91-ffd4-4de8-b290-ceea347953a3": "active",
-            "bda60e39-f316-4166-8ecc-8af41912766c": "active"
+            "502639d6-e462-4f67-972b-2e8f37db324e": "active",
+            "8c5abe82-0fd5-40bb-8b59-eb6766a3edd0": "active"
           },
           "digest": "📡 Task update — 2 active\n🚀 Alpha transcript parser — active (1 running) · Ada\n🚀 Beta browser callback — active (1 running) · Lin"
         },
@@ -132,8 +132,8 @@
           "data": {
             "summary": "two active tasks stayed isolated while supervisor emitted one room digest covering both",
             "taskIds": [
-              "3bfece91-ffd4-4de8-b290-ceea347953a3",
-              "bda60e39-f316-4166-8ecc-8af41912766c"
+              "502639d6-e462-4f67-972b-2e8f37db324e",
+              "8c5abe82-0fd5-40bb-8b59-eb6766a3edd0"
             ],
             "sessionIds": [
               "orchestrator-scenario-session-1",
@@ -144,8 +144,8 @@
             ],
             "events": [],
             "finalStatuses": {
-              "3bfece91-ffd4-4de8-b290-ceea347953a3": "active",
-              "bda60e39-f316-4166-8ecc-8af41912766c": "active"
+              "502639d6-e462-4f67-972b-2e8f37db324e": "active",
+              "8c5abe82-0fd5-40bb-8b59-eb6766a3edd0": "active"
             },
             "digest": "📡 Task update — 2 active\n🚀 Alpha transcript parser — active (1 running) · Ada\n🚀 Beta browser callback — active (1 running) · Lin"
           }

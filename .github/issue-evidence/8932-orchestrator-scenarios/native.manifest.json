@@ -1,22 +1,29 @@
 {
   "schema": "eliza_scenario_native_export",
   "schemaVersion": 1,
-  "generatedAt": "2026-06-22T19:21:26.259Z",
-  "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza-8892/reports/scenarios/pr-deterministic-orchestrator",
-  "trajectoriesDir": "/Users/shawwalters/eliza-workspace/milady/eliza-8892/reports/scenarios/pr-deterministic-orchestrator/trajectories",
-  "jsonlPath": "/Users/shawwalters/eliza-workspace/milady/eliza-8892/reports/scenarios/pr-deterministic-orchestrator/native.jsonl",
-  "manifestPath": "/Users/shawwalters/eliza-workspace/milady/eliza-8892/reports/scenarios/pr-deterministic-orchestrator/native.manifest.json",
+  "generatedAt": "2026-06-23T08:34:16.229Z",
+  "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator",
+  "trajectoriesDir": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/trajectories",
+  "jsonlPath": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/native.jsonl",
+  "manifestPath": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/native.manifest.json",
   "counts": {
-    "trajectoryFiles": 0,
-    "parsedTrajectories": 0,
+    "trajectoryFiles": 3,
+    "parsedTrajectories": 3,
     "skippedFiles": 0,
-    "rows": 0,
-    "passedRows": 0,
+    "rows": 3,
+    "passedRows": 3,
     "failedRows": 0,
     "skippedScenarioRows": 0,
     "unknownOutcomeRows": 0
   },
-  "runIds": [],
-  "scenarioIds": [],
-  "agentIds": []
+  "runIds": [
+    "471802ef-d3e8-4d34-8420-a5b27e75c32f"
+  ],
+  "scenarioIds": [
+    "orchestrator-evidence-bundle",
+    "orchestrator-grilling-happy-path"
+  ],
+  "agentIds": [
+    "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc"
+  ]
 }
