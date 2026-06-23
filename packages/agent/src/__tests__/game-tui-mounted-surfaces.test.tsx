@@ -100,10 +100,13 @@ const uiMock = vi.hoisted(() => ({
   toneForStatusText: () => "neutral",
   toneForViewerAttachment: () => "neutral",
   useApp: () => appState,
+  useAppSelector: <T,>(selector: (state: typeof appState) => T) =>
+    selector(appState),
 }));
 
 vi.mock("@elizaos/ui", () => uiMock);
 vi.mock("@elizaos/ui/agent-surface", () => uiMock);
+vi.mock("@elizaos/ui/state", () => uiMock);
 vi.mock("@elizaos/app-core", () => uiMock);
 vi.mock("@elizaos/app-core/ui-compat", () => uiMock);
 
