@@ -249,6 +249,28 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
+  // Regression guard for #9142: the grabber bar was hardcoded `opacity-0`
+  // unconditionally, so on desktop/web (no OS home indicator) the handle was
+  // grabbable but the bar never painted. It must be visible off-iOS.
+  it("paints a visible grabber bar off-iOS (sheet grabber + pill)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    // The test runtime resolves the Capacitor platform to "web", so isIOS is
+    // false and both bars must render visibly (opacity-100, not opacity-0).
+    const grabberBar = screen
+      .getByTestId("chat-sheet-grabber")
+      .querySelector("span[aria-hidden='true']");
+    expect(grabberBar).toBeTruthy();
+    expect(grabberBar?.className).toContain("opacity-100");
+    expect(grabberBar?.className).not.toContain("opacity-0");
+
+    const pillBar = screen
+      .getByTestId("chat-pill")
+      .querySelector("span[aria-hidden='true']");
+    expect(pillBar).toBeTruthy();
+    expect(pillBar?.className).toContain("opacity-100");
+    expect(pillBar?.className).not.toContain("opacity-0");
+  });
+
   it("steps COLLAPSED→HALF→FULL on successive pull-ups and back down again", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
