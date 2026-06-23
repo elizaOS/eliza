@@ -132,9 +132,7 @@ export class NativePcmVoiceTurnCoordinator {
 
 		return {
 			...(events ? { events } : {}),
-			...(maxGeneratedTokens !== undefined
-				? { maxGeneratedTokens }
-				: {}),
+			...(maxGeneratedTokens !== undefined ? { maxGeneratedTokens } : {}),
 			...(generation ? { generation } : {}),
 			...(preloadPredictor ? { preloadPredictor } : {}),
 		};
