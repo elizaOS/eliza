@@ -1,15 +1,14 @@
 name: cloud-e2e
 
-# Mock-stack E2E for cloud-api + cloud-frontend.
+# Mock-stack E2E for cloud-api + the cloud web app (packages/app).
 # Runs `bun run cloud:e2e`, which boots in-process PGlite + ioredis-mock + Hetzner mock +
-# control-plane mock and drives real cloud-api / cloud-frontend dev servers via Playwright.
+# control-plane mock and drives the real cloud-api / cloud web dev servers via Playwright.
 
 on:
   pull_request:
     branches: [develop, main]
     paths:
       - "packages/cloud-api/**"
-      - "packages/cloud-frontend/**"
       - "packages/cloud-shared/**"
       - "packages/cloud-services/**"
       - "packages/cloud-sdk/**"

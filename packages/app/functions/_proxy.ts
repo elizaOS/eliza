@@ -1,15 +1,16 @@
-// Same-origin reverse proxy for the hosted-web Eliza app (Topology A).
+// Same-origin reverse proxy for the hosted-web Eliza app.
 //
-// When `packages/app` is deployed to Cloudflare Pages at the `elizacloud.ai`
-// apex (the cutover that replaces the `cloud-frontend` deploy), the browser
-// talks to the Cloud API over same-origin `/api/*` and `/steward/*` paths.
-// This module forwards those paths to the Workers API so the Steward
+// `packages/app` is deployed to BOTH Cloudflare Pages projects: the
+// `elizacloud.ai` apex (`eliza-cloud`, the cloud console origin) and the
+// `app.elizacloud.ai` subdomain (`eliza-app`, the agent app). On both, the
+// browser talks to the Cloud API over same-origin `/api/*` and `/steward/*`
+// paths. This module forwards those paths to the Workers API so the Steward
 // cookie/JWT stays first-party and no CORS preflight is needed.
 //
-// It mirrors `packages/cloud-frontend/functions/_proxy.ts` 1:1 so the apex
-// behaviour is identical before and after cutover. Do NOT diverge the upstream
-// selection logic — the existing CORS/redirect/cookie allowlists on the backend
-// assume the same apex origin and same `api.elizacloud.ai` upstream.
+// packages/cloud-frontend (which previously served the apex) has been deleted;
+// the apex now serves this same proxy (see DECISIONS.md D6). Do NOT diverge the
+// upstream selection logic — the CORS/redirect/cookie allowlists on the backend
+// assume this apex origin and the `api.elizacloud.ai` upstream.
 
 const DEFAULT_UPSTREAM = "https://api.elizacloud.ai";
 const PREVIEW_UPSTREAM = "https://api-staging.elizacloud.ai";

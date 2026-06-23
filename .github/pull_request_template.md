@@ -100,7 +100,7 @@ Paste here and file under .github/issue-evidence/, or write N/A — <reason>.
 <!--
 Full-page before AND after for any UI change. A video click-through of the flow:
   bun run test:e2e:record                 (general E2E recordings)
-  bun run --cwd packages/cloud-frontend audit:cloud   (cloud-frontend — REQUIRED)
+  bun run --cwd packages/app audit:app    (app + cloud UI — REQUIRED for UI changes)
 ### Before
 ### After
 ### Walkthrough video
