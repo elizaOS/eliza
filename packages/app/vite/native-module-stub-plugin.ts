@@ -297,6 +297,23 @@ export function nativeModuleStubPlugin(
     name: "native-module-stub",
     enforce: "pre",
     resolveId(id) {
+      // `buffer` must resolve to the REAL feross buffer (a callable function),
+      // never a generated stub. generateNodeBuiltinStub emits an empty
+      // `class Buffer { constructor() {} }` for it (uppercase export whose
+      // prototype has >1 props), but the crypto/wallet graph (safe-buffer,
+      // base-x, bn.js) calls `Buffer(size)` WITHOUT `new` — which an es2022
+      // class rejects with "Class constructor … cannot be invoked without
+      // 'new'", crashing the vendor-crypto chunk at module-init and blanking
+      // the whole app. Returning null lets vite's resolve.alias map it to the
+      // real package. (#9188 fixed chunk *emission*; this fixes its *contents*.)
+      if (
+        id === "buffer" ||
+        id === "node:buffer" ||
+        id.startsWith("buffer/") ||
+        id.startsWith("node:buffer/")
+      ) {
+        return null;
+      }
       // Intercept ALL node: builtins before Vite externalizes them.
       // The @elizaos/core node entry uses many Node APIs (crypto, fs, module,
       // etc.) at the top level.  Rather than stubbing each one individually,
@@ -329,7 +346,8 @@ export function nativeModuleStubPlugin(
         "v8",
         "vm",
         "assert",
-        "buffer",
+        // "buffer" deliberately omitted — handled by the early bypass above so
+        // it resolves to the real feross buffer (callable), not an empty class.
         "constants",
         "events",
         "string_decoder",

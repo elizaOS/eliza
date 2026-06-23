@@ -189,6 +189,28 @@ const capacitorCoreEntry = path.join(
   "dist/index.js",
 );
 const patheEntry = _require.resolve("pathe");
+// The REAL feross `buffer` (a callable Buffer function), aliased below so the
+// crypto/wallet graph gets a working Buffer instead of the native-module-stub
+// plugin's empty `class Buffer {}` (which crashed vendor-crypto at module-init —
+// "Class constructor … cannot be invoked without 'new'" → blank app). `buffer`
+// is not a direct dep of packages/app (plain resolution finds only the Node
+// builtin), so we locate the highest version in the bun store directly.
+const bufferEntry: string | undefined = (() => {
+  try {
+    const bunDir = path.join(elizaRoot, "node_modules/.bun");
+    const versions = fs
+      .readdirSync(bunDir)
+      .filter((d) => /^buffer@\d/.test(d))
+      .sort();
+    for (const dir of versions.reverse()) {
+      const entry = path.join(bunDir, dir, "node_modules/buffer/index.js");
+      if (fs.existsSync(entry)) return entry;
+    }
+  } catch {
+    // fall through — alias simply not added; build behaves as before
+  }
+  return undefined;
+})();
 // Other Capacitor packages imported by eliza/packages/app-core sources.
 // Resolved here (packages/app scope) so Rollup can find them when bundling
 // files from within the eliza submodule tree where bun may not hoist them.
@@ -2100,6 +2122,12 @@ export const INVALID_TRACER_PROVIDER = {};
       "@elizaos/app-core",
       "zod",
       "@opentelemetry/api",
+      // One physical Buffer identity across bn.js / elliptic / asn1.js /
+      // @solana so the crypto graph never mixes versions. (safe-buffer is NOT
+      // deduped: it isn't directly installed at the app root, so forcing
+      // single-copy resolution there externalizes it to a bare specifier the
+      // browser can't load — it resolves + bundles fine on its own.)
+      "buffer",
     ],
     alias: [
       { find: /^react$/, replacement: reactEntry },
@@ -2124,6 +2152,14 @@ export const INVALID_TRACER_PROVIDER = {};
       // Bare Node built-in polyfills for browser — pathe provides ESM path,
       // events is pre-bundled via optimizeDeps.
       { find: /^path$/, replacement: patheEntry },
+      // Map `buffer`/`node:buffer` to the real feross buffer (the stub plugin
+      // now bypasses them) so the crypto graph gets a callable Buffer.
+      ...(bufferEntry
+        ? [
+            { find: /^buffer$/, replacement: bufferEntry },
+            { find: /^node:buffer$/, replacement: bufferEntry },
+          ]
+        : []),
       {
         find: /^fast-redact$/,
         replacement: path.resolve(here, "src/shims/fast-redact.ts"),
