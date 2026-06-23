@@ -1,7 +1,7 @@
 {
-  "runId": "897e5a58-12f2-44ba-a5d2-8132f883b983",
-  "startedAtIso": "2026-06-23T14:14:26.316Z",
-  "completedAtIso": "2026-06-23T14:14:35.803Z",
+  "runId": "9c080a03-1523-43a4-bd4b-09afa36168ae",
+  "startedAtIso": "2026-06-23T14:24:59.124Z",
+  "completedAtIso": "2026-06-23T14:25:08.037Z",
   "providerName": "deterministic-llm-proxy",
   "scenarios": [
     {
@@ -18,7 +18,7 @@
         "deterministic"
       ],
       "status": "passed",
-      "durationMs": 17,
+      "durationMs": 37,
       "turns": [
         {
           "name": "run cloud-targeted view plugin deploy guidance against mock cloud",
