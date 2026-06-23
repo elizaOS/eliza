@@ -41,7 +41,8 @@
   "elizaos": {
     "app": {
       "heroImage": "assets/hero.png"
-    }
+    },
+    "appRegister": "register"
   },
   "publishConfig": {
     "access": "public"
