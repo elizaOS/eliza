@@ -6050,34 +6050,59 @@ export async function runV5MessageRuntimeStage1(args: {
 				signal: stage1TurnSignal,
 			});
 			const fastEndedAt = Date.now();
-			fastMessageHandler.plan.reply = generated.text;
-			if (recorder && trajectoryId) {
-				await recordMessageHandlerStage({
-					recorder,
-					trajectoryId,
-					messages: [{ role: "user", content: generated.prompt }],
-					providerOptions: {
-						eliza: {
-							directReplyFastPath: true,
-							maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
+			// Ship the fast reply only if it is a complete, non-empty answer. Two
+			// failure modes fall through to the uncapped main Stage-1 path instead of
+			// delivering a bad reply: (1) a truncation at the 96-token cap — the
+			// message needed a longer answer than the fast path allows (e.g.
+			// "explain X", "write a poem"), so the cut-off text is wrong; (2) an
+			// empty/whitespace reply — the small model produced nothing usable, so a
+			// blank message bubble would ship. The main path omits the cap for direct
+			// channels and has its own empty-reply recovery. Short complete replies
+			// keep the fast path.
+			if (
+				generated.text.trim() &&
+				!stage1HitCompletionLimit(
+					generated.raw,
+					DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
+				)
+			) {
+				fastMessageHandler.plan.reply = generated.text;
+				if (recorder && trajectoryId) {
+					await recordMessageHandlerStage({
+						recorder,
+						trajectoryId,
+						messages: [{ role: "user", content: generated.prompt }],
+						providerOptions: {
+							eliza: {
+								directReplyFastPath: true,
+								maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
+							},
 						},
-					},
-					raw: generated.raw,
-					parsed: fastMessageHandler,
-					startedAt: fastStartedAt,
-					endedAt: fastEndedAt,
-					logger: args.runtime.logger,
-				});
+						raw: generated.raw,
+						parsed: fastMessageHandler,
+						startedAt: fastStartedAt,
+						endedAt: fastEndedAt,
+						logger: args.runtime.logger,
+					});
+				}
+				return {
+					kind: "direct_reply",
+					messageHandler: fastMessageHandler,
+					result: createV5ReplyStrategyResult({
+						...args,
+						text: generated.text,
+						thought: fastMessageHandler.thought,
+					}),
+				};
 			}
-			return {
-				kind: "direct_reply",
-				messageHandler: fastMessageHandler,
-				result: createV5ReplyStrategyResult({
-					...args,
-					text: generated.text,
-					thought: fastMessageHandler.thought,
-				}),
-			};
+			args.runtime.logger?.debug?.(
+				{
+					src: "service:message",
+					finishReason: getStage1FinishReason(generated.raw),
+					maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
+				},
+				"[message] Direct-reply fast path produced no usable reply (empty or truncated at the token cap); falling through to the full Stage-1 path",
+			);
 		}
 		const responseHandlerFieldContext: ResponseHandlerFieldContext = {
 			runtime: args.runtime,

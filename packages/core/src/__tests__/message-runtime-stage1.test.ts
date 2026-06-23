@@ -291,6 +291,114 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
+	it("falls through to the uncapped main Stage-1 path when the direct-reply fast path truncates at the cap", async () => {
+		const runtime = makeRuntime([
+			// The 96-token fast path is the first branch for short direct messages,
+			// and here it truncates mid-answer (the model had more to say).
+			{
+				text: "Rainbows form when sunlight enters a raindrop, refracts, reflects off the back, and",
+				finishReason: "length",
+				usage: { promptTokens: 40, completionTokens: 96, totalTokens: 136 },
+			},
+			// The full Stage-1 fall-through produces a complete reply.
+			stage1Response({
+				contexts: ["simple"],
+				replyText:
+					"Rainbows form when sunlight refracts, reflects, and disperses inside raindrops. Done.",
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.API,
+				text: "explain how rainbows form",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			// The complete fall-through reply is delivered — NOT the truncated fast text.
+			expect(result.result.responseContent?.text).toBe(
+				"Rainbows form when sunlight refracts, reflects, and disperses inside raindrops. Done.",
+			);
+			expect(result.result.responseContent?.text ?? "").not.toContain(
+				"reflects off the back, and",
+			);
+		}
+		const calls = useModelCalls(runtime);
+		// Two model calls: the truncated 96-token fast attempt, then the full path.
+		expect(calls.length).toBeGreaterThanOrEqual(2);
+		expect((calls[0]?.[1] as { maxTokens?: number })?.maxTokens).toBe(96);
+		expect(runtime.logger.debug).toHaveBeenCalledWith(
+			expect.objectContaining({
+				src: "service:message",
+				finishReason: "length",
+				maxTokens: 96,
+			}),
+			expect.stringContaining("falling through to the full Stage-1 path"),
+		);
+	});
+
+	it("returns the direct-reply fast path verbatim when it fits within the cap (no fall-through)", async () => {
+		const runtime = makeRuntime([
+			{ text: "Good morning! How can I help today?", finishReason: "stop" },
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.API,
+				text: "good morning",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Good morning! How can I help today?",
+			);
+		}
+		// A complete fast reply is delivered immediately — exactly one model call.
+		expect(useModelCalls(runtime).length).toBe(1);
+	});
+
+	it("falls through to the main path when the direct-reply fast path returns an empty reply", async () => {
+		const runtime = makeRuntime([
+			// Fast path returns nothing usable (reasoning-only / blank output).
+			{ text: "", finishReason: "stop" },
+			// The full Stage-1 fall-through produces a real reply.
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Hi! What can I do for you?",
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.API,
+				text: "good morning",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			// A real reply is delivered — not the empty fast-path text.
+			expect(result.result.responseContent?.text).toBe(
+				"Hi! What can I do for you?",
+			);
+		}
+		// Two calls: the empty fast attempt, then the full fall-through.
+		expect(useModelCalls(runtime).length).toBeGreaterThanOrEqual(2);
+	});
+
 	it("surfaces a clear reply when Stage 1 truncates before a reply can be recovered", async () => {
 		const runtime = makeRuntime([
 			{
