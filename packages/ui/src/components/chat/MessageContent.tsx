@@ -1,5 +1,6 @@
 import {
   type FormEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -25,6 +26,7 @@ import { ConfigRenderer } from "../config-ui/config-renderer";
 import { defaultRegistry } from "../config-ui/config-renderer.helpers";
 import { UiRenderer } from "../config-ui/ui-renderer";
 import { Button } from "../ui/button";
+import { CodeBlock } from "../ui/code-block";
 import { MessageAttachments } from "./MessageAttachments";
 import {
   buildInlinePluginConfigModel,
@@ -32,6 +34,7 @@ import {
   normalizePluginId,
   parseSegments,
   sensitiveRequestStatusLabel,
+  splitInlineCode,
 } from "./message-parser-helpers";
 import { ThinkingBlock } from "./ThinkingBlock";
 import type { FormResultValue } from "./widgets/form-request";
@@ -48,10 +51,40 @@ interface MessageContentProps {
 }
 
 /**
+ * Render a text run, wrapping any inline `` `code` `` spans in the CodeBlock
+ * inline primitive so they keep their place in the sentence. Returns the raw
+ * string unchanged when there is no backticked span (the common case).
+ */
+function renderInlineText(text: string): ReactNode {
+  if (!text.includes("`")) return text;
+  const parts = splitInlineCode(text);
+  if (parts.length === 1 && parts[0].kind === "text") return text;
+  // Key by the part's character offset in the source run (not the array index)
+  // so keys stay stable across re-renders and don't trip noArrayIndexKey.
+  let offset = 0;
+  return parts.map((part) => {
+    const content = part.kind === "code" ? part.code : part.text;
+    const key = `${part.kind}:${offset}`;
+    offset += content.length;
+    return part.kind === "code" ? (
+      <CodeBlock
+        key={key}
+        variant="inline"
+        value={part.code}
+        data-testid="inline-code"
+      />
+    ) : (
+      <span key={key}>{part.text}</span>
+    );
+  });
+}
+
+/**
  * Render a plain-text message body. When the message is a user-typed slash
  * command (e.g. `/imagine a cat`), the leading `/command` token is rendered in
  * bold so it reads as a command in the transcript — matching the inline
- * autocomplete the composer shows while typing.
+ * autocomplete the composer shows while typing. Inline `` `code` `` spans render
+ * in the inline code primitive while staying in the flow of the sentence.
  */
 function MessageTextBody({
   text,
@@ -71,10 +104,10 @@ function MessageTextBody({
           >
             {slash.command}
           </span>
-          {slash.rest}
+          {renderInlineText(slash.rest)}
         </>
       ) : (
-        text
+        renderInlineText(text)
       )}
     </div>
   );
@@ -1016,16 +1049,18 @@ export function MessageContent({
           const baseKey =
             seg.kind === "text"
               ? `text:${seg.text.slice(0, 80)}`
-              : seg.kind === "config"
-                ? `config:${seg.pluginId}`
-                : seg.kind === "widget"
-                  ? (getInlineWidget(seg.widgetKind)?.keyFor?.(seg.data) ??
-                    `widget:${seg.widgetKind}`)
-                  : seg.kind === "permission"
-                    ? `permission:${seg.payload.feature}`
-                    : seg.kind === "analysis-xml"
-                      ? `analysis:${seg.tag}`
-                      : `ui:${seg.raw.slice(0, 80)}`;
+              : seg.kind === "code"
+                ? `code:${seg.code.slice(0, 80)}`
+                : seg.kind === "config"
+                  ? `config:${seg.pluginId}`
+                  : seg.kind === "widget"
+                    ? (getInlineWidget(seg.widgetKind)?.keyFor?.(seg.data) ??
+                      `widget:${seg.widgetKind}`)
+                    : seg.kind === "permission"
+                      ? `permission:${seg.payload.feature}`
+                      : seg.kind === "analysis-xml"
+                        ? `analysis:${seg.tag}`
+                        : `ui:${seg.raw.slice(0, 80)}`;
           const segmentKey = nextKey(baseKey);
 
           switch (seg.kind) {
@@ -1035,6 +1070,18 @@ export function MessageContent({
                   key={segmentKey}
                   text={seg.text}
                   boldSlashCommand={message.role === "user"}
+                />
+              );
+            case "code":
+              return (
+                <CodeBlock
+                  key={segmentKey}
+                  className="my-2"
+                  value={seg.code}
+                  wrap
+                  copyable
+                  data-testid="code-block"
+                  {...(seg.lang ? { "data-lang": seg.lang } : {})}
                 />
               );
             case "analysis-xml":
