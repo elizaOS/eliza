@@ -33,19 +33,16 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import { Hono } from "hono";
 import { secureHeaders } from "hono/secure-headers";
+import { AuthenticationError } from "@/lib/api/cloud-worker-errors";
+import * as realAuth from "@/lib/auth/workers-hono-auth";
 import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
-import {
-  AuthenticationError,
-  ForbiddenError,
-} from "@/lib/api/cloud-worker-errors";
+import * as realAppCleanup from "@/lib/services/app-cleanup";
+import * as realAppCredits from "@/lib/services/app-credits";
+import * as realAppFactory from "@/lib/services/app-factory";
 import type { App } from "@/lib/services/apps";
 // Keep the real modules so afterAll can restore them — bun's `mock.module` is
 // process-global and leaks across files otherwise.
 import * as realApps from "@/lib/services/apps";
-import * as realAppFactory from "@/lib/services/app-factory";
-import * as realAppCleanup from "@/lib/services/app-cleanup";
-import * as realAppCredits from "@/lib/services/app-credits";
-import * as realAuth from "@/lib/auth/workers-hono-auth";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { authMiddleware } from "../src/middleware/auth";
 
@@ -327,7 +324,10 @@ mock.module("@/lib/services/app-factory", () => ({
 
 mock.module("@/lib/services/app-cleanup", () => ({
   ...realAppCleanup,
-  appCleanupService: { ...realAppCleanup.appCleanupService, deleteAppWithCleanup },
+  appCleanupService: {
+    ...realAppCleanup.appCleanupService,
+    deleteAppWithCleanup,
+  },
 }));
 
 mock.module("@/lib/services/app-credits", () => ({
@@ -398,7 +398,9 @@ async function req(
   path: string,
   opts: { key?: string; body?: unknown } = {},
 ): Promise<{ status: number; json: Json }> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
   if (opts.key) headers.Authorization = `Bearer ${opts.key}`;
   const res = await app.request(
     path,
@@ -507,7 +509,9 @@ describe("POST /api/v1/apps (create)", () => {
     expect(status).toBe(200);
     expect(json.success).toBe(true);
     expect(json.githubRepo).toBeUndefined();
-    expect(createApp.mock.calls[0][1]).toMatchObject({ createGitHubRepo: false });
+    expect(createApp.mock.calls[0][1]).toMatchObject({
+      createGitHubRepo: false,
+    });
   });
 
   test("200 with monetization fields persisted", async () => {
@@ -545,7 +549,11 @@ describe("GET /api/v1/apps (list)", () => {
   });
 
   test("200 array including a created app", async () => {
-    const a = seed({ organization_id: ORG_A, name: "App One", slug: "app-one" });
+    const a = seed({
+      organization_id: ORG_A,
+      name: "App One",
+      slug: "app-one",
+    });
     const { status, json } = await req("GET", "/api/v1/apps", { key: KEY_A });
     expect(status).toBe(200);
     expect(json.success).toBe(true);
@@ -600,7 +608,11 @@ describe("GET /api/v1/apps/:id (get)", () => {
   });
 
   test("200 full detail", async () => {
-    const a = seed({ organization_id: ORG_A, name: "Detail App", slug: "detail-app" });
+    const a = seed({
+      organization_id: ORG_A,
+      name: "Detail App",
+      slug: "detail-app",
+    });
     const { status, json } = await req("GET", `/api/v1/apps/${a.id}`, {
       key: KEY_A,
     });
@@ -802,7 +814,9 @@ describe("DELETE /api/v1/apps/:id (delete)", () => {
     expect(del.json.message).toBe(
       "App deleted successfully with all resources cleaned up",
     );
-    expect((del.json.cleaned as { githubRepoDeleted: boolean }).githubRepoDeleted).toBe(true);
+    expect(
+      (del.json.cleaned as { githubRepoDeleted: boolean }).githubRepoDeleted,
+    ).toBe(true);
     expect(del.json.errors).toBeUndefined();
 
     const get = await req("GET", `/api/v1/apps/${a.id}`, { key: KEY_A });
@@ -814,14 +828,20 @@ describe("DELETE /api/v1/apps/:id (delete)", () => {
       organization_id: ORG_A,
       github_repo: "elizaOS-apps/keep-repo",
     });
-    const del = await req("DELETE", `/api/v1/apps/${a.id}?deleteGitHubRepo=false`, {
-      key: KEY_A,
-    });
+    const del = await req(
+      "DELETE",
+      `/api/v1/apps/${a.id}?deleteGitHubRepo=false`,
+      {
+        key: KEY_A,
+      },
+    );
     expect(del.status).toBe(200);
     expect(deleteAppWithCleanup.mock.calls[0][1]).toMatchObject({
       deleteGitHubRepo: false,
     });
-    expect((del.json.cleaned as { githubRepoDeleted: boolean }).githubRepoDeleted).toBe(false);
+    expect(
+      (del.json.cleaned as { githubRepoDeleted: boolean }).githubRepoDeleted,
+    ).toBe(false);
   });
 
   test("200 partial-cleanup-errors shape", async () => {
