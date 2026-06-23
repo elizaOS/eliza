@@ -4,7 +4,7 @@ import type { Conversation } from "../../../api/client-types-chat";
 import { useAppSelector } from "../../../state";
 import { formatRelativeTime } from "../../../utils/format";
 import type { WidgetProps } from "../../../widgets/types";
-import { EmptyWidgetState, WidgetSection } from "./shared";
+import { WidgetSection } from "./shared";
 
 const MAX_HOME_CONVERSATIONS = 4;
 
@@ -27,35 +27,35 @@ export function MessagesWidget(_props: WidgetProps) {
     [conversations],
   );
 
+  // Render nothing until there are conversations. The always-visible home
+  // surface (#9143) must not show an empty placeholder card — empty-state hints
+  // belong on the dedicated view, not the home slot (matches the ViewCatalog
+  // "renders nothing until populated" contract).
+  if (recent.length === 0) {
+    return null;
+  }
+
   return (
     <WidgetSection
       title="Messages"
       icon={<MessageSquare />}
       testId="widget-messages"
     >
-      {recent.length === 0 ? (
-        <EmptyWidgetState
-          icon={<MessageSquare />}
-          title="No conversations yet"
-          description="Recent chats show up here."
-        />
-      ) : (
-        <ul className="flex flex-col gap-0.5">
-          {recent.map((c) => (
-            <li
-              key={c.id}
-              className="flex items-center justify-between gap-2 px-1 py-1"
-            >
-              <span className="truncate text-xs font-medium text-txt">
-                {c.title || "Untitled"}
-              </span>
-              <span className="shrink-0 text-3xs text-muted">
-                {formatRelativeTime(c.updatedAt)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul className="flex flex-col gap-0.5">
+        {recent.map((c) => (
+          <li
+            key={c.id}
+            className="flex items-center justify-between gap-2 px-1 py-1"
+          >
+            <span className="truncate text-xs font-medium text-txt">
+              {c.title || "Untitled"}
+            </span>
+            <span className="shrink-0 text-3xs text-muted">
+              {formatRelativeTime(c.updatedAt)}
+            </span>
+          </li>
+        ))}
+      </ul>
     </WidgetSection>
   );
 }
