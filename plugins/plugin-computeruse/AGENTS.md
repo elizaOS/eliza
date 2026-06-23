@@ -138,8 +138,11 @@ src/
     types.ts                 OSWorld-specific type definitions
 
   sandbox/
-    sandbox-driver.ts        Sandbox driver (Docker backend)
+    sandbox-driver.ts        Sandbox driver (backend-agnostic)
     docker-backend.ts        Docker backend
+    remote-guest.ts          Generic {command,params}→{success,result} RPC seam + RemoteGuestBackend base (#9170 M13)
+    wsb-backend.ts           Windows Sandbox provider (RemoteGuestBackend)
+    qemu-backend.ts          QEMU provider (RemoteGuestBackend)
     surface-types.ts         Shared surface type definitions
     types.ts                 Sandbox-specific types
     index.ts                 Public re-exports
@@ -187,7 +190,9 @@ All read via `runtime.getSetting()` / `process.env`. Core vars are declared in `
 | `COMPUTER_USE_BROWSER_HEADLESS` | boolean | `false` | No | Headless browser (useful in CI) |
 | `ELIZA_COMPUTERUSE_DRIVER` | enum | `"nutjs"` | No | Input driver: `nutjs` (@nut-tree-fork/nut-js) or `legacy` (cliclick/xdotool/PowerShell) |
 | `COMPUTER_USE_MODE` | enum | `"yolo"` | No | Runtime mode: `yolo` (direct desktop) or `sandbox` (Docker-isolated). Alias: `COMPUTERUSE_MODE` |
-| `COMPUTER_USE_SANDBOX_BACKEND` | string | — | No | Sandbox backend when `COMPUTER_USE_MODE=sandbox` (currently only `"docker"`). Alias: `COMPUTERUSE_SANDBOX_BACKEND` |
+| `COMPUTER_USE_SANDBOX_BACKEND` | enum | — | No | Sandbox backend when `COMPUTER_USE_MODE=sandbox`: `"docker"`, `"wsb"` (Windows Sandbox), or `"qemu"`. `docker`/`qemu` need `COMPUTER_USE_SANDBOX_IMAGE`; `wsb` is imageless. Alias: `COMPUTERUSE_SANDBOX_BACKEND` |
+| `COMPUTER_USE_SANDBOX_RPC_URL` | string | — | No | VM-provider (wsb/qemu) in-guest computer-server RPC URL (#9170 M13). Default `http://127.0.0.1:<rpcPort>/cua`. Alias: `COMPUTERUSE_SANDBOX_RPC_URL` |
+| `COMPUTER_USE_SANDBOX_RPC_PORT` | number | `8000` | No | Host-forwarded guest RPC port for wsb/qemu. Alias: `COMPUTERUSE_SANDBOX_RPC_PORT` |
 | `COMPUTER_USE_SANDBOX_IMAGE` | string | — | No | Docker image to use for sandbox mode. Alias: `COMPUTERUSE_SANDBOX_IMAGE` |
 
 `BROWSER_EXECUTE_DISABLED` is declared in `package.json#agentConfig.pluginParameters` but is **inert**: `browser_execute` is unconditionally disabled in `src/security/browser-script-policy.ts` (`isBrowserExecuteAllowed()` always returns `false`, GHSA-rcvr-766c-4phv). No setting re-enables it.
