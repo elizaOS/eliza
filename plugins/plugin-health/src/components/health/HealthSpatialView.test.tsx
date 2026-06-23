@@ -138,10 +138,7 @@ describe("HealthSpatialView one source, three modalities", () => {
       state: "error",
       error: "boom",
     };
-    const lines = renderViewToLines(
-      <HealthSpatialView snapshot={error} />,
-      54,
-    );
+    const lines = renderViewToLines(<HealthSpatialView snapshot={error} />, 54);
     for (const line of lines) expect(visibleWidth(line)).toBe(54);
     const flat = lines.join("\n");
     expect(flat).toContain("boom");

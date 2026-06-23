@@ -12,6 +12,20 @@ import {
 import { useAppSelector } from "@elizaos/ui/state";
 import { useMemo } from "react";
 
+type FeedRunEvent = {
+  eventId: string;
+  kind: string;
+  message: string;
+  createdAt: string;
+};
+
+type FeedSessionActivityEvent = {
+  id: string;
+  type: string;
+  message: string;
+  timestamp?: string | number | null;
+};
+
 export function FeedDetailExtension({ app }: AppDetailExtensionProps) {
   const appRuns = useAppSelector((s) => s.appRuns);
   const { run, matchingRuns } = useMemo(
@@ -87,14 +101,18 @@ export function FeedDetailExtension({ app }: AppDetailExtensionProps) {
 }
 
 function collectActivity(run: AppRunSummary) {
+  const recentEvents = run.recentEvents as FeedRunEvent[];
+  const sessionActivity = (run.session?.activity ??
+    []) as FeedSessionActivityEvent[];
+
   return [
-    ...(run.recentEvents ?? []).map((event) => ({
+    ...recentEvents.map((event) => ({
       id: event.eventId,
       label: event.kind,
       detail: event.message,
       timestamp: event.createdAt,
     })),
-    ...(run.session?.activity ?? []).map((event) => ({
+    ...sessionActivity.map((event) => ({
       id: event.id,
       label: event.type,
       detail: event.message,

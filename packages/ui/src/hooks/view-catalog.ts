@@ -202,9 +202,10 @@ export function collapseViewEntries(entries: ViewEntry[]): ViewEntry[] {
     ]);
     // Prefer the gui entry as the canonical base (clean label, no surface
     // suffix); otherwise keep the first-seen entry.
-    const base = entry.modality === "gui" && existing.modality !== "gui"
-      ? entry
-      : existing;
+    const base =
+      entry.modality === "gui" && existing.modality !== "gui"
+        ? entry
+        : existing;
     byId.set(entry.id, { ...base, modalities: merged });
   }
   return order.map((id) => byId.get(id) as ViewEntry);

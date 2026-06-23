@@ -80,7 +80,9 @@ export function PhoneView() {
         Phone.listRecentCalls({ limit: 50 }),
       ]);
       setCallReady(phoneStatus?.canPlaceCalls ?? true);
-      setCalls(fetched.map((entry) => toPhoneCallRow(entry, formatWhen(entry.date))));
+      setCalls(
+        fetched.map((entry) => toPhoneCallRow(entry, formatWhen(entry.date))),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setCalls([]);

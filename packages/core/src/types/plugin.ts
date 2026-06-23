@@ -475,7 +475,9 @@ export type ViewModality = ViewType;
 const MODALITY_ORDER: readonly ViewModality[] = ["gui", "xr", "tui"];
 
 /** Order + de-duplicate a modality list as gui, xr, tui. */
-export function dedupeModalities(mods: readonly ViewModality[]): ViewModality[] {
+export function dedupeModalities(
+	mods: readonly ViewModality[],
+): ViewModality[] {
 	const seen = new Set(mods);
 	return MODALITY_ORDER.filter((m) => seen.has(m));
 }

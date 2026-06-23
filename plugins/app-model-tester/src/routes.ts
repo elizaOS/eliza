@@ -76,7 +76,7 @@ async function importLocalInferenceServices() {
   return import("@elizaos/plugin-local-inference/services");
 }
 
-const MODEL_TESTER_HTML = String.raw`<!doctype html>
+const MODEL_TESTER_HTML = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />

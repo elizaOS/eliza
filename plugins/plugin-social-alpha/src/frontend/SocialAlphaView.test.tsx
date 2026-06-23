@@ -14,12 +14,7 @@
  * Open caller) route through the assistant chat — no fabricated data.
  */
 
-import {
-	cleanup,
-	fireEvent,
-	render,
-	screen,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LeaderboardEntry } from "../types";
@@ -47,7 +42,8 @@ function entry(overrides: Partial<LeaderboardEntry> = {}): LeaderboardEntry {
 	seq += 1;
 	return {
 		rank: seq,
-		userId: `00000000-0000-0000-0000-00000000000${seq}` as LeaderboardEntry["userId"],
+		userId:
+			`00000000-0000-0000-0000-00000000000${seq}` as LeaderboardEntry["userId"],
 		username: `caller-${seq}`,
 		trustScore: 0,
 		recommendations: [],
@@ -118,9 +114,7 @@ describe("SocialAlphaView — states", () => {
 	});
 
 	it("renders the populated leaderboard with the leading-caller line", async () => {
-		render(
-			React.createElement(SocialAlphaView, { fetchers: makeFetchers() }),
-		);
+		render(React.createElement(SocialAlphaView, { fetchers: makeFetchers() }));
 		await screen.findByText("alice");
 		expect(screen.getByText("bob")).toBeTruthy();
 		expect(screen.getByText("carol")).toBeTruthy();

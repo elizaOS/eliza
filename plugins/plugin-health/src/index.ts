@@ -118,7 +118,6 @@ export const healthPlugin: Plugin = {
 
 export default healthPlugin;
 
-export { HealthView } from "./components/health/HealthView.js";
 export {
   EMPTY_HEALTH_SNAPSHOT,
   type HealthSnapshot,
@@ -127,6 +126,7 @@ export {
   type StatRow as HealthStatRow,
   type WindowDays as HealthWindowDays,
 } from "./components/health/HealthSpatialView.js";
+export { HealthView } from "./components/health/HealthView.js";
 export {
   registerHealthTerminalView,
   setHealthTerminalSnapshot,
