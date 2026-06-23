@@ -7,8 +7,14 @@ vi.mock("../../lib/api-client", () => ({
   api: (...args: unknown[]) => apiMock(...args),
 }));
 
-const { checkAppNameAvailable, createApp, deleteApp, deployApp, updateApp } =
-  await import("./apps");
+const {
+  checkAppNameAvailable,
+  createApp,
+  deleteApp,
+  deployApp,
+  regenerateAppApiKey,
+  updateApp,
+} = await import("./apps");
 
 afterEach(() => {
   apiMock.mockReset();
@@ -75,5 +81,23 @@ describe("apps lib mutations (#9145)", () => {
     expect(apiMock).toHaveBeenCalledWith("/api/v1/apps/app-1", {
       method: "DELETE",
     });
+  });
+
+  it("regenerateAppApiKey returns the rotated key", async () => {
+    apiMock.mockResolvedValue({ apiKey: "eliza_new" });
+    await expect(regenerateAppApiKey("app-1")).resolves.toBe("eliza_new");
+    expect(apiMock).toHaveBeenCalledWith(
+      "/api/v1/apps/app-1/regenerate-api-key",
+      { method: "POST" },
+    );
+  });
+
+  it("regenerateAppApiKey throws when the response omits a usable key", async () => {
+    apiMock.mockResolvedValue({});
+    await expect(regenerateAppApiKey("app-1")).rejects.toThrow(
+      "did not include an API key",
+    );
+    apiMock.mockResolvedValue({ apiKey: "" });
+    await expect(regenerateAppApiKey("app-1")).rejects.toThrow();
   });
 });
