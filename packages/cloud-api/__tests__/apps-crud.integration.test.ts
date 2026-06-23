@@ -246,7 +246,7 @@ const updateMonetizationSettings = mock(
         monetization_enabled: settings.monetizationEnabled,
       }),
       ...(settings.inferenceMarkupPercentage !== undefined && {
-        inference_markup_percentage: String(settings.inferenceMarkupPercentage),
+        inference_markup_percentage: settings.inferenceMarkupPercentage,
       }),
     } as App);
   },
@@ -530,7 +530,7 @@ describe("POST /api/v1/apps (create)", () => {
     // Returned app reflects the monetization write (route re-reads via getById).
     const returned = json.app as App;
     expect(returned.monetization_enabled).toBe(true);
-    expect(returned.inference_markup_percentage).toBe("25");
+    expect(returned.inference_markup_percentage).toBe(25);
   });
 });
 
