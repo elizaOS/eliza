@@ -4,7 +4,7 @@
  * Platform mic front-ends own capture and VAD/turn segmentation. This class is
  * the TypeScript bridge they call with a completed PCM turn: it serializes the
  * turn through {@link runDeviceVoiceTurn}, which joins ASR, speaker attribution,
- * Stage-1 response handling, text generation, and TTS in the fused voice path.
+ * response policy, text generation, and TTS in the fused voice path.
  */
 
 import type { VoicePipelineEvents } from "../../services/voice/pipeline";
@@ -102,12 +102,7 @@ export class NativePcmVoiceTurnCoordinator {
 				engine: this.options.engine,
 				context: this.options.context,
 				audio: turn.audio,
-				events: turn.events ?? this.options.events,
-				maxGeneratedTokens:
-					turn.maxGeneratedTokens ?? this.options.maxGeneratedTokens,
-				generation: turn.generation ?? this.options.generation,
-				preloadPredictor:
-					turn.preloadPredictor ?? this.options.preloadPredictor,
+				...this.resolveTurnOptions(turn),
 			});
 			return {
 				...(turn.turnId ? { turnId: turn.turnId } : {}),
@@ -120,5 +115,28 @@ export class NativePcmVoiceTurnCoordinator {
 			() => undefined,
 		);
 		return run;
+	}
+
+	private resolveTurnOptions(
+		turn: NativePcmVoiceTurn,
+	): Pick<
+		Parameters<typeof runDeviceVoiceTurn>[0],
+		"events" | "generation" | "maxGeneratedTokens" | "preloadPredictor"
+	> {
+		const events = turn.events ?? this.options.events;
+		const maxGeneratedTokens =
+			turn.maxGeneratedTokens ?? this.options.maxGeneratedTokens;
+		const generation = turn.generation ?? this.options.generation;
+		const preloadPredictor =
+			turn.preloadPredictor ?? this.options.preloadPredictor;
+
+		return {
+			...(events ? { events } : {}),
+			...(maxGeneratedTokens !== undefined
+				? { maxGeneratedTokens }
+				: {}),
+			...(generation ? { generation } : {}),
+			...(preloadPredictor ? { preloadPredictor } : {}),
+		};
 	}
 }
