@@ -154,6 +154,7 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `ELIZA_LOCAL_IDLE_UNLOAD_MS` | No | Idle timeout (ms) before an inactive model is unloaded to free memory |
 | `ELIZA_LOCAL_SESSION_POOL_SIZE` | No | Number of parallel inference sessions to maintain in the session pool |
 | `ELIZA_LOCAL_MAX_SPECULATIVE_RESPONSES` | No | Maximum speculative decode responses buffered per request |
+| `ELIZA_LOCAL_STREAM_TOKENS_PER_STEP` | No | Per-step token cap for the FFI decode loop (default `32`, clamped `1`–`512`). Lower = smoother token-by-token streaming into the dashboard at the cost of more JS↔FFI round-trips |
 | `ELIZA_LOCAL_AUTO_RESIZE_PARALLEL` | No | Enable automatic parallel resize for multi-session scenarios |
 | `ELIZA_NETWORK_POLICY` | No | Network access policy override for inference routing |
 | `ELIZA_VOICE_EOT_BACKEND` | No | End-of-turn detector backend selection for voice pipeline |
