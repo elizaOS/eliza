@@ -5,13 +5,13 @@
  * This drives the REAL ContinuousChatOverlay transcript flow end-to-end with no
  * human and no microphone:
  *
- *   tap mic (hands-free) -> the transcribe button appears -> tap it (transcription
- *   mode) -> the REAL local-ASR recorder opens the (fake) device, WAV-encodes the
- *   injected audio, and POSTs it to /api/asr/local-inference -> a transcript
- *   session accumulates -> tap transcribe again to finalize -> the shell POSTs the
- *   captured audio (audioBase64) to /api/transcripts and drops a transcript chip
- *   into the composer -> send -> the message bubble shows a transcript ATTACHMENT
- *   tile -> tap it to open the editable viewer.
+ *   tap mic (hands-free) -> run /transcribe (transcription mode) -> the REAL
+ *   local-ASR recorder opens the (fake) device, WAV-encodes the injected audio,
+ *   and POSTs it to /api/asr/local-inference -> a transcript session accumulates
+ *   -> run /transcribe again to finalize -> the shell POSTs the captured audio
+ *   (audioBase64) to /api/transcripts and drops a transcript chip into the
+ *   composer -> send -> the message bubble shows a transcript ATTACHMENT tile ->
+ *   tap it to open the editable viewer.
  *
  * The ASR / transcript / media / knowledge BACKENDS are mocked (not provisioned in
  * CI); the AUDIO IN, the WAV capture, the POST bodies, and every client step are
@@ -34,6 +34,26 @@ import {
 const TRANSCRIPT_TEXT = "what time is it";
 const TRANSCRIPT_ID = "transcript-realaudio-e2e";
 const MEDIA_PATH = "/api/media/transcript-realaudio.wav";
+const TRANSCRIBE_COMMAND_CATALOG = {
+  commands: [
+    {
+      key: "transcribe",
+      nativeName: "transcribe",
+      description: "Toggle long-form transcription",
+      textAliases: ["/transcribe"],
+      scope: "both",
+      acceptsArgs: false,
+      args: [],
+      requiresAuth: false,
+      requiresElevated: false,
+      target: { kind: "client", clientAction: "toggle-transcription" },
+      source: "builtin",
+    },
+  ],
+  surface: "gui",
+  agentId: null,
+  generatedAt: "2026-01-01T00:00:00.000Z",
+};
 // A short caption typed before sending the transcript attachment. The overlay
 // thread drops empty-content turns from its `visibleMessages`, so the user turn
 // that carries the transcript tile must have text — typing a caption (a real,
@@ -156,6 +176,19 @@ async function installTranscriptBackendMocks(
   page: Page,
   probes: TranscriptProbes,
 ): Promise<void> {
+  await page.route("**/api/commands**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const surface = new URL(route.request().url()).searchParams.get("surface");
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ...TRANSCRIBE_COMMAND_CATALOG, surface }),
+    });
+  });
+
   // Conversation send path. Without a clean stream completion the optimistic
   // assistant bubble streams "thinking" dots forever and the auto-scroll keeps
   // the thread animating, so a transcript-attachment tile never settles for a
@@ -470,18 +503,53 @@ function trackAsrPosts(page: Page): { count: () => number } {
   return { count: () => posted };
 }
 
+async function toggleTranscriptionViaSlash(page: Page): Promise<void> {
+  const composer = page.getByTestId("chat-composer-textarea");
+  await composer.fill("/transcribe");
+  await expect(page.getByTestId("slash-command-menu")).toBeVisible({
+    timeout: 15_000,
+  });
+  await composer.press("Enter");
+  await expect(page.getByTestId("slash-command-menu")).toBeHidden({
+    timeout: 15_000,
+  });
+  await expect(composer).toHaveValue("", { timeout: 15_000 });
+}
+
+async function startTranscriptionViaSlash(page: Page): Promise<void> {
+  await toggleTranscriptionViaSlash(page);
+  await expect(page.getByTestId("chat-transcribing-badge")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
+    "aria-label",
+    "stop transcription",
+    { timeout: 15_000 },
+  );
+}
+
+async function finalizeTranscriptionViaSlash(page: Page): Promise<void> {
+  await toggleTranscriptionViaSlash(page);
+  await expect(page.getByTestId("chat-transcribing-badge")).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
+    "aria-label",
+    "end conversation",
+    { timeout: 15_000 },
+  );
+}
+
 /**
  * Turn voice fully OFF and wait for the chat thread to settle. While voice is on,
  * the hands-free re-listen loop continuously reopens the mic + streams interim
  * transcript text, which re-renders (and detaches) the thread bubbles — so a
  * transcript-attachment tile click races a re-mount. Tapping the mic when it is
  * the mic control (no draft/image AND not mid-recording) stops the loop; this
- * polls for that window, taps, and confirms the transcribe control is gone
- * (voice off). Idempotent: returns immediately if voice is already off.
+ * polls for that window, taps, and confirms the mic returns to "talk" (voice
+ * off). Idempotent: returns immediately if voice is already off.
  */
 async function stopVoiceAndSettle(page: Page): Promise<void> {
-  const transcribe = page.getByTestId("chat-composer-transcribe");
-  if ((await transcribe.count()) === 0) return;
   const mic = page.getByTestId("chat-composer-mic");
   await expect
     .poll(
@@ -493,12 +561,16 @@ async function stopVoiceAndSettle(page: Page): Promise<void> {
         const label = await mic.getAttribute("aria-label").catch(() => null);
         if (label === "talk") return true; // already off
         await mic.click({ timeout: 2000 }).catch(() => {});
-        return (await transcribe.count()) === 0;
+        return (
+          (await mic.getAttribute("aria-label").catch(() => null)) === "talk"
+        );
       },
       { timeout: 20_000, intervals: [300] },
     )
     .toBe(true);
-  await expect(transcribe).toHaveCount(0, { timeout: 10_000 });
+  await expect(mic).toHaveAttribute("aria-label", "talk", {
+    timeout: 10_000,
+  });
 }
 
 /**
@@ -539,9 +611,10 @@ async function openTranscriptViewer(page: Page): Promise<Locator> {
 
 /**
  * Drive the REAL transcript-capture chain from the chat overlay: tap mic ->
- * transcribe -> (real audio captured + POSTed) -> transcribe again to finalize ->
- * the transcript chip lands in the composer -> send -> the transcript ATTACHMENT
- * tile renders in the thread. Returns once the tile is visible.
+ * /transcribe -> (real audio captured + POSTed) -> /transcribe again to
+ * finalize -> the transcript chip lands in the composer -> send -> the
+ * transcript ATTACHMENT tile renders in the thread. Returns once the tile is
+ * visible.
  */
 async function captureTranscriptToAttachment(
   page: Page,
@@ -561,16 +634,11 @@ async function captureTranscriptToAttachment(
     timeout: 15_000,
   });
 
-  const transcribe = page.getByTestId("chat-composer-transcribe");
-  await expect(transcribe).toBeVisible({ timeout: 15_000 });
-  await transcribe.click();
-  await expect(page.getByTestId("chat-transcribing-badge")).toBeVisible({
-    timeout: 15_000,
-  });
+  await startTranscriptionViaSlash(page);
 
   await expect.poll(() => asr.count(), { timeout: 30_000 }).toBeGreaterThan(0);
 
-  await transcribe.click();
+  await finalizeTranscriptionViaSlash(page);
   await expect
     .poll(
       () => probes.createBodies.find((b) => b.audioBase64Length > 1000) ?? null,
@@ -621,7 +689,7 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("REAL audio: pressing transcribe records the injected WAV, POSTs it to ASR + /api/transcripts, keeps the mic active, and drops a transcript attachment", async ({
+test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/transcripts, keeps the mic active, and drops a transcript attachment", async ({
   page,
 }) => {
   const probes = freshProbes();
@@ -641,20 +709,9 @@ test("REAL audio: pressing transcribe records the injected WAV, POSTs it to ASR 
     timeout: 15_000,
   });
 
-  // The transcribe control exists only while voice is active.
-  const transcribe = page.getByTestId("chat-composer-transcribe");
-  await expect(transcribe).toBeVisible({ timeout: 15_000 });
-  await expect(transcribe).toHaveAttribute("aria-label", "transcription mode");
-
-  // (LINKAGE b) Tap transcribe -> transcription mode. The mic STAYS active
+  // (LINKAGE b) /transcribe -> transcription mode. The mic STAYS active
   // (transcript is an additive layer; the mic is the parent).
-  await transcribe.click();
-  await expect(page.getByTestId("chat-transcribing-badge")).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(transcribe).toHaveAttribute("aria-label", "stop transcription", {
-    timeout: 15_000,
-  });
+  await startTranscriptionViaSlash(page);
   // The mic button is still the active mic control while transcribing.
   await expect(mic).toHaveAttribute("aria-label", "stop transcription", {
     timeout: 15_000,
@@ -674,10 +731,10 @@ test("REAL audio: pressing transcribe records the injected WAV, POSTs it to ASR 
     "the captured WAV POSTed to ASR must be a non-trivial recording",
   ).toBeGreaterThan(1000);
 
-  // (REAL AUDIO + ATTACHMENT) Tap transcribe again to FINALIZE. The shell POSTs
+  // (REAL AUDIO + ATTACHMENT) Run /transcribe again to FINALIZE. The shell POSTs
   // the segments + the REAL captured audio (audioBase64) to /api/transcripts and
   // drops a `Transcript ….md` chip into the composer.
-  await transcribe.click();
+  await finalizeTranscriptionViaSlash(page);
   await expect
     .poll(
       () => probes.createBodies.find((b) => b.audioBase64Length > 1000) ?? null,
@@ -693,14 +750,11 @@ test("REAL audio: pressing transcribe records the injected WAV, POSTs it to ASR 
   );
   expect(realCreate?.segmentCount ?? 0).toBeGreaterThan(0);
 
-  // (LINKAGE c) Transcript OFF leaves the mic ON. The transcribe control is only
-  // rendered while voice is active (recording || handsFree || transcriptionMode);
-  // after finalize transcriptionMode is false, so its continued presence — back at
-  // the "transcription mode" label — proves the mic (hands-free) is still on.
-  await expect(transcribe).toHaveAttribute("aria-label", "transcription mode", {
+  // (LINKAGE c) Transcript OFF leaves the mic ON. After finalize,
+  // transcriptionMode is false and the hands-free parent loop resumes.
+  await expect(mic).toHaveAttribute("aria-label", "end conversation", {
     timeout: 15_000,
   });
-  await expect(transcribe).toBeVisible();
 
   // The finished transcript becomes a composer attachment chip (document kind).
   await expect(page.getByText(/^Transcript .*\.md$/).first()).toBeVisible({
@@ -715,10 +769,9 @@ test("REAL audio: pressing transcribe records the injected WAV, POSTs it to ASR 
   await page.getByTestId("chat-composer-textarea").press("Enter");
 
   // (LINKAGE d) The mic is the master voice control: tapping it turns BOTH the
-  // mic and transcript fully off. stopVoiceAndSettle taps the mic and asserts the
-  // transcribe control (only shown while voice is active) disappears — i.e. voice
-  // is off — which also stops the re-listen loop so the thread settles for the
-  // tile click below.
+  // mic and transcript fully off. stopVoiceAndSettle taps the mic and asserts
+  // the mic returns to "talk", stopping the re-listen loop so the thread
+  // settles for the tile click below.
   await stopVoiceAndSettle(page);
   // Let the turn finish (clean stream done) so the assistant bubble stops
   // animating and the thread goes static, then the persisted history (carrying
