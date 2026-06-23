@@ -33,6 +33,7 @@ import {
   generateNodeBuiltinStub,
   nativeModuleStubPlugin,
 } from "./vite/native-module-stub-plugin.ts";
+import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { resolveViteDevServerRuntime } from "./vite-dev-origin.ts";
 
 const _require = createRequire(import.meta.url);
@@ -1875,6 +1876,12 @@ export default defineConfig({
     ),
   },
   plugins: [
+    // Manifest-driven renderer side-effect plugin registration (#9178): resolves
+    // the `virtual:eliza-side-effect-app-modules` import in plugin-registrations.ts
+    // by scanning plugins/ for elizaos.appRegister markers. Without this the
+    // production web/mobile build fails to resolve the virtual module (the
+    // refactor added the import but never wired the providing plugin).
+    appSideEffectModulesPlugin([nativePluginsRoot]),
     // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), replace the
     // whole `@elizaos/ui/src/cloud` subtree with empty modules. The two lazy
     // cloud entry points are already aliased to passthrough stubs, but the main
