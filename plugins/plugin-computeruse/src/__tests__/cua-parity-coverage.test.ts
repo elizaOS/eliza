@@ -95,8 +95,7 @@ const CAPABILITIES: Capability[] = [
   {
     cua: "set_of_marks_overlay",
     domain: "vision",
-    status: "missing",
-    milestone: "M9",
+    status: "have", // M9: plugin-vision som.ts + set-of-marks-provider via registerSetOfMarksProvider seam
   },
   // ── window ────────────────────────────────────────────────────────────────
   { cua: "window_list", domain: "window", status: "have", verb: "list" },
@@ -214,6 +213,18 @@ describe("cua parity surface (all platforms)", () => {
   it("clipboard read/write are promoted CLIPBOARD actions", () => {
     expect(actionNames).toContain("CLIPBOARD_READ");
     expect(actionNames).toContain("CLIPBOARD_WRITE");
+  });
+
+  it("Set-of-Marks (M9) registry seam exists for plugin-vision to wire", () => {
+    // M9 is a grounding capability (no discrete verb): plugin-vision builds the
+    // numbered overlay (som.ts) and registers it through this seam. Assert the
+    // seam is present so the `have` status above can't silently regress.
+    const ocrProviderSrc = readFileSync(
+      join(testDir, "..", "mobile", "ocr-provider.ts"),
+      "utf8",
+    );
+    expect(ocrProviderSrc).toContain("registerSetOfMarksProvider");
+    expect(ocrProviderSrc).toContain("SetOfMarksProvider");
   });
 });
 
