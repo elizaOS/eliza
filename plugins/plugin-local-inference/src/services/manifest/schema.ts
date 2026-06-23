@@ -15,10 +15,13 @@
 //   layers map but are not the same enum.
 // - The schema URL `https://elizaos.ai/schemas/eliza-1.manifest.v1.json` is
 //   exported as a JSON Schema sibling file in this directory.
-// - Eliza-1 speculative decoding is native llama.cpp MTP. Embedded-draft-head
-//   tiers carry the draft head in the primary text GGUF, so `files.mtp` is
-//   intentionally empty for those bundles; separate-drafter tiers ship the
-//   drafter GGUF as the official Gemma 4 drafter.
+// - Eliza-1 speculative decoding is native llama.cpp MTP. Post-cutover (#9033)
+//   every Gemma 4 tier is SEPARATE-DRAFTER: it ships a dedicated drafter GGUF at
+//   `mtp/drafter-<tier>.gguf` in `files.mtp` (loaded `-md … --spec-type
+//   draft-mtp`), with its own `lineage.drafter`, and declares top-level
+//   `mtp: "separate-drafter"`. (The legacy embedded-draft-head shape carried the
+//   draft head inside the primary text GGUF with `files.mtp` empty; no shipped
+//   Gemma tier uses it.) AGENTS.md §1/§3 require MTP on every tier.
 // - Per-sub-model versioning (kokoro, omnivoice, turn-detector, voice-emotion,
 //   diarizer, speaker-encoder, vad, wakeword, embedding, asr) lives in
 //   `packages/shared/src/local-inference/voice-models.ts` and the matching
@@ -33,9 +36,21 @@ export const ELIZA_1_MANIFEST_SCHEMA_VERSION = "1" as const;
 export const ELIZA_1_MANIFEST_SCHEMA_URL =
 	"https://elizaos.ai/schemas/eliza-1.manifest.v1.json" as const;
 
-// The shared Eliza-1 BPE vocabulary exported so runtime code can assert it.
-export const ELIZA_1_TOKENIZER_FAMILY = "gemma" as const;
+// The shared Eliza-1 tokenizer (Gemma 4 SentencePiece, 262144-entry vocab),
+// exported so runtime code can assert it. The cutover (#9033) moved eliza-1 to
+// Gemma 4 bases, whose tokenizer family the bundle builder stamps as "gemma4".
+export const ELIZA_1_TOKENIZER_FAMILY = "gemma4" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 262_144 as const;
+
+// MTP (speculative-decode) bundle mode. Gemma 4 uses a SEPARATE drafter GGUF
+// (`mtp/drafter-<tier>.gguf`, loaded `-md … --spec-type draft-mtp`); the older
+// embedded-draft-head shape carried the draft head inside the primary text
+// GGUF. AGENTS.md §1/§3 require MTP on every tier.
+export const ELIZA_1_MTP_MODES = [
+	"separate-drafter",
+	"embedded-draft-head",
+] as const;
+export type Eliza1MtpMode = (typeof ELIZA_1_MTP_MODES)[number];
 
 // Tiers — size-ordered across the active Eliza-1 bundles. 2b is the
 // smallest/entry tier.
@@ -219,6 +234,24 @@ export const Eliza1FileEntrySchema = z.object({
 	ctx: z.number().int().min(131072, "must be at least 128k").optional(),
 });
 
+/**
+ * A platform-targeted native-lib file in the bundle's `lib[]` set. The fused
+ * `libelizainference` ships as a SET (the fused lib + its ggml/llama/mtmd
+ * sibling backends), one set per platform `target`. The downloader fetches ONLY
+ * the entries whose `target` matches the host (see `../lib-target.ts`
+ * `resolveHostLibTargets`) into `<bundleRoot>/lib/`, where the desktop FFI
+ * runtime resolves them with no env wiring via `resolveFusedLibraryPath`
+ * (path #2 — bundle-local lib). `target` is free-form (e.g. "win-x64-cpu",
+ * "linux-x64-cuda", "darwin-arm64-metal") so new targets need no schema bump;
+ * `name` overrides the staged filename (defaults to the basename of `path`).
+ */
+export const Eliza1LibFileEntrySchema = z.object({
+	path: z.string().min(1),
+	sha256,
+	target: z.string().min(1),
+	name: z.string().min(1).optional(),
+});
+
 export const Eliza1FilesSchema = z.object({
 	text: z.array(Eliza1FileEntrySchema).min(1),
 	voice: z.array(Eliza1FileEntrySchema).min(1),
@@ -277,6 +310,16 @@ export const Eliza1FilesSchema = z.object({
 	// dominated by the LM, not this small head); a 2b entry bundle may still
 	// choose to omit it to save the cold-start cost.
 	emotion: z.array(Eliza1FileEntrySchema).optional(),
+	// Fused libelizainference native-lib SET, per platform target (#9105 /
+	// local-inference bundle delivery). Optional — when present the downloader
+	// stages the host-matching target's files into `<bundleRoot>/lib/`, which the
+	// desktop FFI runtime resolves with no env wiring (`resolveFusedLibraryPath`
+	// path #2). CPU baseline is always safe (GGML_CPU is built into the fused
+	// lib); GPU targets (`…-cuda` / `…-metal`) are opt-in. This is the bundle
+	// path that makes local inference work in a compiled desktop app without a
+	// separate lib download; absent ⇒ the runtime falls back to a host-staged
+	// `<stateDir>/local-inference/lib` (dev) and otherwise to cloud.
+	lib: z.array(Eliza1LibFileEntrySchema).optional(),
 });
 
 export const Eliza1KernelEnumSchema = z.enum(ELIZA_1_KERNELS);
@@ -590,6 +633,15 @@ export const Eliza1ProvenanceSchema = z.object({
 	),
 });
 
+// Gemma 4 cutover (schemaVersion 2): the shared tokenizer identity the
+// publish-side builder stamps onto every bundle. The contract validator pins
+// `family` to `ELIZA_1_TOKENIZER_FAMILY` and `vocabSize` to
+// `ELIZA_1_TOKENIZER_VOCAB_SIZE` when this block is present.
+export const Eliza1TokenizerSchema = z.object({
+	family: z.string().min(1),
+	vocabSize: z.number().int().positive(),
+});
+
 export const Eliza1ManifestSchema = z
 	.object({
 		$schema: z.literal(ELIZA_1_MANIFEST_SCHEMA_URL).optional(),
@@ -640,6 +692,14 @@ export const Eliza1ManifestSchema = z
 		textQuant: z
 			.union([z.string().min(1), z.record(z.string(), z.unknown())])
 			.optional(),
+		// Gemma 4 cutover (schemaVersion 2) identity fields, stamped by the
+		// publish-side bundle builder. Optional so legacy v1 (pre-cutover)
+		// manifests still round-trip; the contract validator enforces their
+		// values when present.
+		schemaVersion: z.union([z.literal("2"), z.literal(2)]).optional(),
+		tokenizer: Eliza1TokenizerSchema.optional(),
+		kv: z.string().min(1).optional(),
+		mtp: z.enum(ELIZA_1_MTP_MODES).optional(),
 	})
 	// The id MUST encode the tier so catalogs can derive tier from id without
 	// re-reading the manifest. Example: `id: "eliza-1-9b"`.

@@ -13,7 +13,6 @@ const repoRoot = path.resolve(
 const nodeModulesDir = path.join(repoRoot, "node_modules");
 
 const optionalPackages = [
-  "@elizaos/plugin-clawville",
   "@elizaos/plugin-companion",
   "@elizaos/plugin-elizamaker",
   "@elizaos/plugin-hyperliquid-app",

@@ -234,7 +234,6 @@ const APP_PLUGIN_NAMES = new Set([
   "plugin-app-manager",
   "plugin-browser",
   "plugin-feed",
-  "plugin-clawville",
   "plugin-companion",
   "plugin-documents",
   "plugin-eliza-classic",

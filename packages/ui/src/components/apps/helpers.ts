@@ -61,12 +61,10 @@ const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(
 const FEATURED_APP_NAMES = new Set<string>([
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-companion",
-  "@elizaos/plugin-clawville",
 ]);
 
 const DEFAULT_VISIBLE_GAME_APP_NAMES = new Set<string>([
   "@elizaos/plugin-companion",
-  "@elizaos/plugin-clawville",
 ]);
 
 const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
@@ -357,8 +355,6 @@ export function getAppCatalogSectionKey(
     case "@elizaos/plugin-polymarket-app":
       return "finance";
     case "@elizaos/plugin-feed":
-      return "games";
-    case "@elizaos/plugin-clawville":
       return "games";
   }
 

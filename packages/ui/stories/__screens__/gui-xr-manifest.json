@@ -6,22 +6,12 @@
       "xr": true
     },
     {
-      "id": "clawville",
-      "gui": true,
-      "xr": true
-    },
-    {
       "id": "companion",
       "gui": true,
       "xr": true
     },
     {
       "id": "contacts",
-      "gui": true,
-      "xr": true
-    },
-    {
-      "id": "defense-of-the-agents",
       "gui": true,
       "xr": true
     },

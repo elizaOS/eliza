@@ -167,6 +167,44 @@ $.CGEventPost($.kCGHIDEventTap, scrollEvent);
   );
 }
 
+// ── Cursor query ────────────────────────────────────────────────────────────
+
+/**
+ * Read the current OS cursor position (legacy shell driver). Returns global
+ * logical pixels. Windows uses `System.Windows.Forms.Cursor` (must Add-Type the
+ * assembly first or the type is unresolved); macOS uses `cliclick p:.`; Linux
+ * uses `xdotool getmouselocation`.
+ */
+export function legacyGetCursorPosition(): { x: number; y: number } {
+  const os = currentPlatform();
+  if (os === "win32") {
+    const out = runCommand(
+      "powershell",
+      [
+        "-NoProfile",
+        "-Command",
+        'Add-Type -AssemblyName System.Windows.Forms; $p=[System.Windows.Forms.Cursor]::Position; "$($p.X),$($p.Y)"',
+      ],
+      5000,
+    );
+    const [x, y] = out.trim().split(",").map(Number);
+    return { x: validateInt(x), y: validateInt(y) };
+  }
+  if (os === "darwin") {
+    const out = runCommand("cliclick", ["p:."], 5000); // prints "x,y"
+    const [x, y] = out.trim().split(",").map(Number);
+    return { x: validateInt(x), y: validateInt(y) };
+  }
+  // Linux / X11
+  const out = runCommand("xdotool", ["getmouselocation", "--shell"], 5000);
+  const mx = /X=(-?\d+)/.exec(out);
+  const my = /Y=(-?\d+)/.exec(out);
+  return {
+    x: mx ? validateInt(Number(mx[1])) : 0,
+    y: my ? validateInt(Number(my[1])) : 0,
+  };
+}
+
 // ── Mouse Click ─────────────────────────────────────────────────────────────
 
 export function desktopClick(x: number, y: number): void {

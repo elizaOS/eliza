@@ -246,6 +246,17 @@ export async function handleSuggestionsRoutes(
   );
 }
 
+type InteractionsRoutesModule = typeof import("./interactions-routes.ts");
+export async function handleInteractionsRoutes(
+  ...args: Parameters<InteractionsRoutesModule["handleInteractionsRoutes"]>
+): ReturnType<InteractionsRoutesModule["handleInteractionsRoutes"]> {
+  const ctx = routeContext(args);
+  if (ctx?.pathname !== "/api/interactions/shortcut") return false;
+  return (await import("./interactions-routes.ts")).handleInteractionsRoutes(
+    ...args,
+  );
+}
+
 type CommandsRoutesModule = typeof import("./commands-routes.ts");
 export async function handleCommandsRoutes(
   ...args: Parameters<CommandsRoutesModule["handleCommandsRoutes"]>

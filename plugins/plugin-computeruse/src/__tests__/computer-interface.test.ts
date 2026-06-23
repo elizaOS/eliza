@@ -47,11 +47,16 @@ function makeIface(extra: Partial<ComputerInterfaceDeps> = {}): {
     doubleClick: [],
     rightClick: [],
     mouseMove: [],
+    mouseDown: [],
+    mouseUp: [],
     drag: [],
+    dragPath: [],
     scroll: [],
     type: [],
     keyPress: [],
     keyCombo: [],
+    keyDown: [],
+    keyUp: [],
   };
   const iface = new DefaultComputerInterface({
     listDisplays: () => fakeDisplays(),
@@ -68,8 +73,17 @@ function makeIface(extra: Partial<ComputerInterfaceDeps> = {}): {
       mouseMove: async (x, y) => {
         calls.mouseMove!.push([x, y]);
       },
+      mouseDown: async (x, y, button) => {
+        calls.mouseDown!.push([x, y, button]);
+      },
+      mouseUp: async (x, y, button) => {
+        calls.mouseUp!.push([x, y, button]);
+      },
       drag: async (x1, y1, x2, y2) => {
         calls.drag!.push([x1, y1, x2, y2]);
+      },
+      dragPath: async (path) => {
+        calls.dragPath!.push([path]);
       },
       scroll: async (x, y, dir, amt) => {
         calls.scroll!.push([x, y, dir, amt]);
@@ -82,6 +96,12 @@ function makeIface(extra: Partial<ComputerInterfaceDeps> = {}): {
       },
       keyCombo: async (c) => {
         calls.keyCombo!.push([c]);
+      },
+      keyDown: async (k) => {
+        calls.keyDown!.push([k]);
+      },
+      keyUp: async (k) => {
+        calls.keyUp!.push([k]);
       },
     },
     ...extra,
@@ -209,16 +229,53 @@ describe("DefaultComputerInterface — driver delegation", () => {
     ]);
   });
 
-  it("drag routes start + end through driver.drag", async () => {
+  it("drag routes the full polyline through driver.dragPath (M8)", async () => {
     const { iface, calls } = makeIface();
     await iface.drag({
       displayId: 0,
       path: [
         { x: 10, y: 10 },
         { x: 100, y: 100 },
+        { x: 100, y: 200 },
       ],
     });
+    // Every vertex is forwarded (global coords; primary origin is 0,0 here).
+    expect(calls.dragPath).toEqual([
+      [
+        [
+          { x: 10, y: 10 },
+          { x: 100, y: 100 },
+          { x: 100, y: 200 },
+        ],
+      ],
+    ]);
+    // The old start→end collapse no longer fires.
+    expect(calls.drag).toHaveLength(0);
+  });
+
+  it("dragTo still routes start + end through driver.drag", async () => {
+    const { iface, calls } = makeIface();
+    await iface.moveCursor({ displayId: 0, x: 10, y: 10 });
+    await iface.dragTo({ displayId: 0, x: 100, y: 100 });
     expect(calls.drag).toEqual([[10, 10, 100, 100]]);
+  });
+
+  it("mouseDown / mouseUp route real press-hold through the driver (M8)", async () => {
+    const { iface, calls } = makeIface();
+    await iface.mouseDown({ displayId: 0, x: 30, y: 40 });
+    await iface.mouseUp({ displayId: 0, x: 30, y: 40, button: "middle" });
+    expect(calls.mouseDown).toEqual([[30, 40, "left"]]);
+    expect(calls.mouseUp).toEqual([[30, 40, "middle"]]);
+    // Cursor state tracks the press location.
+    expect(iface.getCursorPosition()).toMatchObject({ x: 30, y: 40 });
+  });
+
+  it("keyDown / keyUp route real key press-hold through the driver (M8)", async () => {
+    const { iface, calls } = makeIface();
+    await iface.keyDown({ key: "shift" });
+    await iface.keyUp({ key: "shift" });
+    expect(calls.keyDown).toEqual([["shift"]]);
+    expect(calls.keyUp).toEqual([["shift"]]);
   });
 
   it("drag fails on cross-display dragTo", async () => {

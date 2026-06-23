@@ -110,11 +110,11 @@ describe("assistant launch payloads", () => {
     expect(window.location.hash).toContain("assistant.launchId=launch-3");
   });
 
-  it("clears stale LifeOps surface params after chat consumes a create launch", () => {
+  it("clears payload params but preserves unrelated surface params on chat", () => {
     window.history.replaceState(
       null,
       "",
-      "/#chat?text=Create%20a%20task&source=assistant-entry&action=lifeops.create&assistant.launchId=launch-4&lifeops.section=reminders",
+      "/#chat?text=Create%20a%20task&source=assistant-entry&action=lifeops.create&assistant.launchId=launch-4&surface=reminders",
     );
 
     expect(
@@ -128,7 +128,7 @@ describe("assistant launch payloads", () => {
       source: "assistant-entry",
       text: "Create a task",
     });
-    expect(window.location.hash).toBe("#chat");
+    expect(window.location.hash).toBe("#chat?surface=reminders");
   });
 
   it("leaves payload params for a different route consumer", () => {

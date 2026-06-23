@@ -17,9 +17,21 @@
 # Postgres. The systemd unit runs on every boot, every step is grep-/path-
 # guarded, so it's a no-op after first successful run.
 #
-# STAN: tune shared_buffers/max_connections for thousands of small DBs; wire
-# volume-snapshot backups; generate a server TLS cert for hostssl (until then
-# the pg_hba lines below stay 'host' and the admin DSN uses sslmode=disable).
+# Connection scaling (#8321 P0 #2): the default Postgres ceiling is 100
+# connections, which the apps data plane exhausts at ~5 apps under load. This
+# node now (a) raises max_connections + sizes shared_buffers to the box, and
+# (b) runs pgbouncer in SESSION pool_mode on :6432 so app sessions are
+# multiplexed onto a bounded set of server backends. SESSION mode (not
+# transaction) is required because plugin-sql's migrator takes SESSION-scoped
+# advisory locks (pg_advisory_lock, not the _xact_ variants) across independent
+# pool checkouts — transaction pooling would orphan those locks and wedge
+# migrations. The pooler is INERT until an operator points the cluster's
+# app-facing host at :6432 (see README + tenant_db_pooler_endpoint output);
+# admin/DDL keeps using :5432 directly.
+#
+# STAN: wire volume-snapshot backups; generate a server TLS cert for hostssl
+# (until then the pg_hba lines below stay 'host' and the admin DSN uses
+# sslmode=disable); tighten pgbouncer listen_addr to the private IP.
 
 hostname: ${hostname}
 manage_etc_hosts: true
@@ -44,6 +56,7 @@ package_upgrade: false
 packages:
   - postgresql
   - postgresql-contrib
+  - pgbouncer
   - jq
 
 bootcmd:
@@ -144,6 +157,16 @@ write_files:
       sed -i -E "s|^#?[[:space:]]*listen_addresses[[:space:]]*=.*|listen_addresses = '*'|" "$CONF"
       sed -i -E "s|^#?[[:space:]]*password_encryption[[:space:]]*=.*|password_encryption = scram-sha-256|" "$CONF"
 
+      # Connection ceiling + memory tuning for thousands of small tenant DBs
+      # (#8321 P0 #2). pgbouncer (step 10) multiplexes app sessions, but raise
+      # the backend ceiling well above the default 100 so admin/DDL + pooled
+      # server connections have headroom. shared_buffers ~= 25% of RAM (the
+      # Postgres rule of thumb), floored at 128MB. Same idempotent sed pattern.
+      sed -i -E "s|^#?[[:space:]]*max_connections[[:space:]]*=.*|max_connections = 500|" "$CONF"
+      SHARED_BUF="$(awk '/^MemTotal/ {mb=int($2/1024/4); if (mb<128) mb=128; printf "%dMB", mb}' /proc/meminfo)"
+      [ -n "$SHARED_BUF" ] || SHARED_BUF=128MB
+      sed -i -E "s|^#?[[:space:]]*shared_buffers[[:space:]]*=.*|shared_buffers = $SHARED_BUF|" "$CONF"
+
       # 7. pg_hba — grep-guard before append so reboots don't grow the file.
       if ! grep -qE "^hostssl[[:space:]]+all[[:space:]]+all[[:space:]]+10\.30\.0\.0/16" "$HBA"; then
         echo "hostssl all all 10.30.0.0/16 scram-sha-256" >> "$HBA"
@@ -167,6 +190,77 @@ write_files:
       # random_password.tenant_db_admin in TF state, stable across reboots, so
       # this ALTER is idempotent.
       runuser -u postgres -- psql -tAc "ALTER USER postgres WITH PASSWORD '${admin_password}';" >/dev/null
+
+      # 10. pgbouncer (#8321 P0 #2) — SESSION-mode pooler on :6432 in front of
+      # Postgres. Configured HERE (not via write_files) so the conffile is
+      # written AFTER apt installs the package — otherwise the noninteractive
+      # `--force-confnew` apt option would clobber a pre-seeded pgbouncer.ini.
+      # Everything below is idempotent: CREATE OR REPLACE / grep-guarded role /
+      # overwrite of the config + userlist. Deferred cleanly if the package
+      # isn't installed yet (same posture as the postgres deferral above).
+      if command -v pgbouncer >/dev/null 2>&1; then
+        mkdir -p /etc/pgbouncer
+        # Dedicated login role + SECURITY DEFINER lookup so the pooler can
+        # resolve each per-tenant role's SCRAM secret via auth_query WITHOUT
+        # being a superuser (pg_shadow is superuser-only; the function is owned
+        # by postgres and execute-granted to pgbouncer only).
+        PGB_PW='${pgbouncer_auth_password}'
+        runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='pgbouncer'" | grep -q 1 \
+          || runuser -u postgres -- psql -c "CREATE ROLE pgbouncer LOGIN"
+        runuser -u postgres -- psql -c "ALTER ROLE pgbouncer WITH PASSWORD '$PGB_PW'" >/dev/null
+        runuser -u postgres -- psql -d postgres -c "CREATE OR REPLACE FUNCTION public.pgbouncer_user_lookup(p_username text) RETURNS TABLE(usename name, passwd text) LANGUAGE sql SECURITY DEFINER AS 'SELECT usename, passwd FROM pg_catalog.pg_shadow WHERE usename = \$1'"
+        runuser -u postgres -- psql -d postgres -c "REVOKE ALL ON FUNCTION public.pgbouncer_user_lookup(text) FROM PUBLIC"
+        runuser -u postgres -- psql -d postgres -c "GRANT EXECUTE ON FUNCTION public.pgbouncer_user_lookup(text) TO pgbouncer"
+
+        # auth_file: only the auth_user itself; per-tenant roles resolve via
+        # auth_query against the lookup function. 0600, postgres-owned (the
+        # pgbouncer service runs as the postgres user on Ubuntu).
+        umask 077
+        printf '"pgbouncer" "%s"\n' "$PGB_PW" > /etc/pgbouncer/userlist.txt
+        chown postgres:postgres /etc/pgbouncer/userlist.txt
+        chmod 600 /etc/pgbouncer/userlist.txt
+
+        # Build pgbouncer.ini with printf (NOT a heredoc): inside a YAML `|`
+        # block every line is indented, but a heredoc terminator must sit at
+        # column 0 — printf string literals sidestep that entirely. Single
+        # quotes keep $1 (auth_query placeholder) literal.
+        printf '%s\n' \
+          '[databases]' \
+          '; Any requested tenant database routes to the local Postgres. The app SCRAM' \
+          '; credential (validated via auth_query) still gates CONNECT, so a tenant only' \
+          '; reaches its own REVOKE-CONNECT-isolated database.' \
+          '* = host=127.0.0.1 port=5432' \
+          '' \
+          '[pgbouncer]' \
+          'logfile = /var/log/postgresql/pgbouncer.log' \
+          'pidfile = /var/run/postgresql/pgbouncer.pid' \
+          'unix_socket_dir = /var/run/postgresql' \
+          '; Reachable only on the private apps net (the firewall opens no public 6432,' \
+          '; same posture as Postgres :5432).' \
+          'listen_addr = *' \
+          'listen_port = 6432' \
+          'auth_type = scram-sha-256' \
+          'auth_file = /etc/pgbouncer/userlist.txt' \
+          'auth_user = pgbouncer' \
+          'auth_dbname = postgres' \
+          'auth_query = SELECT usename, passwd FROM public.pgbouncer_user_lookup($1)' \
+          '; SESSION mode: required by plugin-sql session-scoped migration advisory locks.' \
+          'pool_mode = session' \
+          'max_client_conn = 5000' \
+          'default_pool_size = 25' \
+          'min_pool_size = 0' \
+          'reserve_pool_size = 5' \
+          'server_tls_sslmode = prefer' \
+          'ignore_startup_parameters = extra_float_digits,search_path' \
+          'admin_users = postgres' \
+          > /etc/pgbouncer/pgbouncer.ini
+
+        systemctl enable pgbouncer >/dev/null 2>&1 || true
+        systemctl restart pgbouncer
+        log "pgbouncer up on :6432 (session mode)."
+      else
+        log "pgbouncer not installed yet; deferring pooler setup."
+      fi
 
       log "done."
 

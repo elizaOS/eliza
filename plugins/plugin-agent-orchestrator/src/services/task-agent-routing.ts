@@ -11,9 +11,6 @@ const KNOWN_ADAPTER_TYPES = new Set([
   "claude",
   "codex",
   "opencode",
-  "gemini",
-  "aider",
-  "hermes",
 ]);
 
 export function normalizeTaskAgentAdapter(

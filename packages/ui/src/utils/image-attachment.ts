@@ -363,6 +363,38 @@ export function pastedTextToAttachment(
 }
 
 /**
+ * Classify a composer paste so both chat surfaces handle clipboard pastes
+ * identically. Returns either:
+ *  - `{ kind: "files" }` — the paste carried image/file data; the caller should
+ *    `preventDefault()` and run the files through {@link intakeAttachmentFiles}.
+ *  - `{ kind: "text-attachment", attachment }` — a large plain-text paste that
+ *    should become a collapsed text-attachment chip (`preventDefault()` first).
+ *  - `{ kind: "passthrough" }` — nothing to intercept; let the textarea handle
+ *    the paste normally (small text, or a lone URL).
+ * Pure + DOM-free so it unit-tests without a real ClipboardEvent.
+ */
+export type ComposerPasteIntent =
+  | { kind: "files"; files: File[] }
+  | { kind: "text-attachment"; attachment: ImageAttachment }
+  | { kind: "passthrough" };
+
+export function classifyComposerPaste(data: {
+  files: File[];
+  text: string;
+}): ComposerPasteIntent {
+  if (data.files.length > 0) {
+    return { kind: "files", files: data.files };
+  }
+  if (shouldConvertPasteToAttachment(data.text)) {
+    return {
+      kind: "text-attachment",
+      attachment: pastedTextToAttachment(data.text),
+    };
+  }
+  return { kind: "passthrough" };
+}
+
+/**
  * Build the translated "kept N, dropped M" notice for the composer from an
  * intake/partition result, choosing the right i18n key based on whether the
  * drops were oversized, over-count, or a mix. Returns `null` when nothing was

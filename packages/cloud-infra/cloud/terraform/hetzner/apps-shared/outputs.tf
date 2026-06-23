@@ -26,7 +26,12 @@ output "tenant_db_public_ip" {
 }
 
 output "tenant_db_admin_dsn" {
-  description = "Admin DSN for the tenant Postgres cluster (over the PRIVATE network). Encrypt this and seed it into tenant_db_clusters.admin_dsn_encrypted. SENSITIVE."
+  description = "Admin DSN for the tenant Postgres cluster (over the PRIVATE network). Encrypt this and seed it into tenant_db_clusters.admin_dsn_encrypted. Targets Postgres :5432 DIRECTLY (DDL/role creation must not go through the pooler). SENSITIVE."
   value       = "postgresql://postgres:${random_password.tenant_db_admin.result}@${cidrhost(var.subnet_cidr, 10)}:5432/postgres?sslmode=require"
   sensitive   = true
+}
+
+output "tenant_db_pooler_endpoint" {
+  description = "Host:port of the pgbouncer SESSION-mode pooler (#8321 P0 #2). To route per-tenant APP connections through the pooler, set tenant_db_clusters.host to THIS value (the app-facing per-tenant DSN host) once the tenant-db node has been (re)rolled with the pgbouncer cloud-init. The admin DSN above stays on :5432. Leaving host at :5432 keeps the pooler inert."
+  value       = "${cidrhost(var.subnet_cidr, 10)}:6432"
 }

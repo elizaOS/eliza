@@ -1,4 +1,6 @@
 export interface ShortcutDescriptor {
+  /** Stable kebab-case id reported to the agent as SHORTCUT_FIRED (#8792). */
+  id: string;
   key: string;
   ctrl?: boolean;
   shift?: boolean;
@@ -8,30 +10,61 @@ export interface ShortcutDescriptor {
   scope?: string;
 }
 
+// Stable shortcut ids that report to the agent (intent-bearing moments only —
+// see reportShortcutFired). Exported so handlers and tests share one source.
+export const SHORTCUT_OPEN_COMMAND_PALETTE = "open-command-palette";
+export const SHORTCUT_SHOW_KEYBOARD_SHORTCUTS = "show-keyboard-shortcuts";
+
 // Common shortcuts — app-specific definitions
 export const COMMON_SHORTCUTS: ShortcutDescriptor[] = [
   {
+    id: SHORTCUT_OPEN_COMMAND_PALETTE,
     key: "k",
     ctrl: true,
     description: "Open command palette",
     scope: "global",
   },
-  { key: "Enter", ctrl: true, description: "Send message", scope: "chat" },
-  { key: "Escape", description: "Close modal / Cancel", scope: "global" },
   {
+    id: "send-message",
+    key: "Enter",
+    ctrl: true,
+    description: "Send message",
+    scope: "chat",
+  },
+  {
+    id: "close-modal",
+    key: "Escape",
+    description: "Close modal / Cancel",
+    scope: "global",
+  },
+  {
+    id: SHORTCUT_SHOW_KEYBOARD_SHORTCUTS,
     key: "?",
     shift: true,
     description: "Show keyboard shortcuts",
     scope: "global",
   },
   {
+    id: "focus-composer",
     key: "/",
     description: "Focus chat composer",
     scope: "global",
   },
-  { key: "r", ctrl: true, description: "Restart agent", scope: "global" },
-  { key: " ", description: "Pause/Resume agent", scope: "global" },
   {
+    id: "restart-agent",
+    key: "r",
+    ctrl: true,
+    description: "Restart agent",
+    scope: "global",
+  },
+  {
+    id: "pause-resume-agent",
+    key: " ",
+    description: "Pause/Resume agent",
+    scope: "global",
+  },
+  {
+    id: "toggle-terminal",
     key: "t",
     ctrl: true,
     shift: true,

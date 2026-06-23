@@ -249,12 +249,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
  * tests, so they are deliberately absent here.)
  */
 export const ZERO_TEST_EXEMPT: Record<string, string> = {
-  "plugin-2004scape":
-    "Game-world client surface (RuneScape-era 3D client); no unit-testable logic, exercised through the game-apps Playwright smoke and the unified spatial view framework.",
-  "plugin-hyperscape":
-    "3D/MMO game-world client surface; rendering + world state are not unit-testable, exercised through the game-apps Playwright smoke.",
-  "plugin-scape":
-    "Game-world client surface; no headless logic to unit-test, exercised through the game-apps Playwright smoke.",
   "plugin-action-bench":
     "Benchmark/eval harness plugin used to drive scenario benchmarks; it has no shipped runtime behavior to unit-test and runs only under the benchmark lanes.",
   "plugin-google-meet-cute":

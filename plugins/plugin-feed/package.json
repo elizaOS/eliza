@@ -79,7 +79,8 @@
           "resume"
         ]
       }
-    }
+    },
+    "appRegister": "ui"
   },
   "publishConfig": {
     "access": "public"

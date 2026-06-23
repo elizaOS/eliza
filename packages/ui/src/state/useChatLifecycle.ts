@@ -42,6 +42,18 @@ import { shouldAwaitAgentReadiness } from "./types";
 
 const RESET_LOG_PREFIX = "[eliza][reset]";
 
+/**
+ * Signature of the only `AgentStatus` fields the readiness poll cares about
+ * (`state`, `port`, `canRespond`). The 1.5s poll re-applies the status snapshot
+ * every tick while "waking up…"; comparing this signature lets us skip the
+ * `setAgentStatus` write — and the re-render of every chat-surface subscriber —
+ * when nothing load-bearing changed.
+ */
+export function readinessPollSignature(status: AgentStatus | null): string {
+  if (status == null) return "∅";
+  return `${status.state}|${status.port ?? ""}|${status.canRespond ?? ""}`;
+}
+
 function logResetDebug(
   message: string,
   detail?: Record<string, unknown>,
@@ -287,6 +299,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
 
   const heartbeatNotificationKeyRef = useRef<string | null>(null);
   const restartNotificationSignatureRef = useRef<string | null>(null);
+  const readinessPollSignatureRef = useRef<string | null>(null);
 
   const handleStartDraftConversation = useCallback(async () => {
     interruptActiveChatPipeline();
@@ -544,12 +557,22 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
   useEffect(() => {
     if (!awaitingAgentReadiness) return;
     let active = true;
+    // Reset the guard for this poll instance; the first result applies, then
+    // every subsequent identical tick is skipped. The ref persists across ticks
+    // within this effect and keeps the dep array (+ interval teardown) untouched.
+    readinessPollSignatureRef.current = null;
     const refresh = async () => {
       if (!active) return;
       if (typeof document !== "undefined" && document.hidden) return;
       try {
         const next = await client.getStatus();
-        if (active) setAgentStatus(next);
+        if (!active) return;
+        // Skip the re-render of every chat-surface subscriber when nothing
+        // load-bearing (state / port / canRespond) actually changed.
+        const signature = readinessPollSignature(next);
+        if (signature === readinessPollSignatureRef.current) return;
+        readinessPollSignatureRef.current = signature;
+        setAgentStatus(next);
       } catch {
         // Transient (agent restarting / IPC hiccup) — keep polling.
       }
