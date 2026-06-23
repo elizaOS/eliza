@@ -129,32 +129,32 @@ test("swipe navigates conversations + soft-undo restores (#8929)", async ({
   const reset = page.getByTestId("chat-full-clear");
   await expect(reset).toBeVisible({ timeout: 15_000 });
   await reset.click();
-
-  // Reset cleared the thread to a fresh greeted conversation (billing gone).
-  await expect(thread).not.toContainText("BILLING", { timeout: 15_000 });
-  await dwell();
-
-  // Soft-undo toast appears, layers ABOVE the shell overlay (so it is reachable,
-  // not occluded by the composer/transcript), and its Undo control is actionable
-  // (hover pauses the 3s auto-dismiss; click dismisses it).
-  //
-  // Scope note: this full-stack spec asserts the swipe navigation + the undo
-  // *affordance* (toast visible, reachable, clickable, dismissed) on the real
-  // running app. The undo RESTORE-the-previous-conversation behavior is verified
-  // deterministically by the component gesture e2e (run-chatux-gesture-e2e:
-  // "swipe toast LEFT → restores", real components) + the undo-store unit tests.
-  // It is intentionally NOT asserted here: a conversation reset goes through the
-  // real handleNewConversation create→greeting→cleanup lifecycle, which the
-  // route-level API mocks cannot faithfully reproduce, so asserting restored
-  // content would test the mock rather than the product.
+  // Reset starts a fresh greeted conversation; the soft-undo toast appears at the
+  // app root — layered ABOVE the shell overlay so it is reachable (not occluded).
   const toast = page.getByTestId("conversation-undo-toast");
   await expect(toast).toBeVisible({ timeout: 15_000 });
   await expect(toast).toContainText(/cleared/i);
+  await dwell();
+
+  // Undo is actionable (hover pauses the 3s auto-dismiss) and RESTORES the
+  // conversation we cleared from.
   const undo = page.getByTestId("conversation-undo-button");
-  // Hover holds the toast open (pauses auto-dismiss) so it dwells in the video.
   await undo.hover();
   await expect(undo).toBeEnabled();
   await dwell();
   await undo.click();
   await expect(toast).toBeHidden({ timeout: 10_000 });
+
+  // The restored conversation is billing — proving the real reset →
+  // handleNewConversation → soft-undo → handleSelectConversation path end-to-end
+  // (it only works because the restore reads the LIVE active id, not a stale
+  // closure, and the greeting write guards against navigation-away). A grabber
+  // flick-up only opens/expands the sheet (never closes), so this is robust to
+  // whichever detent the reset left it in.
+  await pointerDrag(page, '[data-testid="chat-sheet-grabber"]', 0, -260, 8);
+  await expect(overlay).toHaveAttribute("data-open", "true", {
+    timeout: 15_000,
+  });
+  await expect(thread).toContainText("BILLING", { timeout: 15_000 });
+  await dwell();
 });
