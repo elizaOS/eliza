@@ -16,8 +16,8 @@ File operations belong to the FILE action; shell/terminal access belongs to the 
 
 | Name | File | What it does |
 |------|------|--------------|
-| `COMPUTER_USE` | `src/actions/use-computer.ts` | Umbrella desktop action: `screenshot`, `click`, `click_with_modifiers`, `double_click`, `right_click`, `mouse_move`, `middle_click`, `mouse_down`, `mouse_up`, `type`, `key`, `key_combo`, `key_down`, `key_up`, `scroll`, `drag` (single segment or multi-point `path`), `get_cursor_position`, `detect_elements`, `ocr`. `mouse_down/up` + `key_down/up` are real press-and-hold primitives (nutjs `pressButton`/`pressKey` without release — back hold-drags, marquee, held modifiers); they require the nutjs driver. Requires `OWNER` role. Subactions are promoted to virtual top-level actions (`COMPUTER_USE_CLICK`, etc.) via `promoteSubactionsToActions`. |
-| `WINDOW` | `src/actions/window.ts` | Window management: `list`, `focus`, `switch`, `arrange`, `move`, `minimize`, `maximize`, `restore`, `close`. Also promoted to `WINDOW_FOCUS`, etc. |
+| `COMPUTER_USE` | `src/actions/use-computer.ts` | Umbrella desktop action: `screenshot`, `click`, `click_with_modifiers`, `double_click`, `right_click`, `mouse_move`, `middle_click`, `mouse_down`, `mouse_up`, `type`, `key`, `key_combo`, `key_down`, `key_up`, `scroll`, `drag` (single segment or multi-point `path`), `get_cursor_position`, `detect_elements`, `ocr`, `open` (file/URL/folder via the OS default handler), `launch` (start an app → returns pid). `mouse_down/up` + `key_down/up` are real press-and-hold primitives (nutjs `pressButton`/`pressKey` without release — back hold-drags, marquee, held modifiers); they require the nutjs driver. Requires `OWNER` role. Subactions are promoted to virtual top-level actions (`COMPUTER_USE_CLICK`, etc.) via `promoteSubactionsToActions`. |
+| `WINDOW` | `src/actions/window.ts` | Window management: `list`, `focus`, `switch`, `arrange`, `move`, `minimize`, `maximize`, `restore`, `close`, `get_current_window_id`, `get_application_windows`, `set_bounds` (position + size). Also promoted to `WINDOW_FOCUS`, etc. |
 | `CLIPBOARD` | `src/actions/clipboard.ts` | Host clipboard read/write (`read`, `write`) — trycua/cua parity. Promoted to `CLIPBOARD_READ` / `CLIPBOARD_WRITE`. macOS pbcopy/pbpaste, Linux wl-clipboard/xclip, Windows PowerShell `Get-Clipboard` / `Set-Clipboard`. |
 | `COMPUTER_USE_AGENT` | `src/actions/use-computer-agent.ts` | High-level "give me a goal, click my way there" loop (WS7). Selects an agent loop by model string (#9170 M10, default `local-grounder` = Brain → Cascade) and runs predictStep → dispatch up to `maxSteps`, through a callback-middleware pipeline (#9170 M11: operator-normalizer + trajectory by default; `maxDurationMs` budget cap + `imageRetentionLast` window opt-in). Emits trajectory events as structured log lines and on `report.trajectory`. |
 
@@ -79,7 +79,8 @@ src/
     displays.ts              listDisplays / getPrimaryDisplay
     driver.ts                driverClick / driverType / … (nutjs or legacy shell)
     nut-driver.ts            @nut-tree-fork/nut-js implementation
-    windows-list.ts          listWindows / focusWindow / arrangeWindows / …
+    windows-list.ts          listWindows / focusWindow / arrangeWindows / getActiveWindow / resizeWindow / …
+    launch.ts                openTarget (open file/URL/folder) / launchApp (spawn app → pid)
     clipboard.ts             OS clipboard read/write
     a11y.ts                  Accessibility tree query
     coords.ts                localToGlobal coordinate translation

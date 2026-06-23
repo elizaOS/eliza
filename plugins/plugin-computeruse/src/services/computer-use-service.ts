@@ -66,6 +66,7 @@ import {
   writeFile,
 } from "../platform/file-ops.js";
 import { commandExists, currentPlatform } from "../platform/helpers.js";
+import { launchApp, openTarget } from "../platform/launch.js";
 import { classifyPermissionDeniedError } from "../platform/permissions.js";
 import {
   clearTerminal,
@@ -80,11 +81,14 @@ import {
   arrangeWindows,
   closeWindow,
   focusWindow,
+  getActiveWindow,
+  getApplicationWindows,
   getScreenSize,
   listWindows,
   maximizeWindow,
   minimizeWindow,
   moveWindow,
+  resizeWindow,
   restoreWindow,
   switchWindow,
 } from "../platform/windows-list.js";
@@ -277,6 +281,8 @@ export class ComputerUseService extends Service {
       case "get_cursor_position":
       case "detect_elements":
       case "ocr":
+      case "open":
+      case "launch":
         return this.executeDesktopAction({
           ...commandParameters<DesktopActionParams>(parameters),
           action: this.mapDesktopCommandToAction(command),
@@ -496,6 +502,27 @@ export class ComputerUseService extends Service {
           const end = this.toGlobal(params, params.coordinate);
           await driverDrag(start.x, start.y, end.x, end.y);
           break;
+        }
+        case "open": {
+          if (!params.target) {
+            throw new Error("target is required for open action");
+          }
+          await openTarget(params.target);
+          return this.succeedEntry(entry, {
+            success: true,
+            message: `Opened ${params.target}.`,
+          });
+        }
+        case "launch": {
+          if (!params.app) {
+            throw new Error("app is required for launch action");
+          }
+          const launched = await launchApp(params.app, params.appArgs ?? []);
+          return this.succeedEntry(entry, {
+            success: true,
+            data: { pid: launched.pid, command: launched.command },
+            message: `Launched ${params.app} (pid ${launched.pid}).`,
+          });
         }
         default:
           return this.failEntry(entry, {
@@ -1026,6 +1053,39 @@ export class ComputerUseService extends Service {
             success: true,
             message: "Window closed.",
           });
+        case "get_current_window_id": {
+          const active = getActiveWindow();
+          return this.succeedEntry(entry, {
+            success: true,
+            windowId: active?.id ?? null,
+            window: active,
+            message: active
+              ? `Focused window: [${active.id}] ${active.app} - ${active.title}`
+              : "No focused window.",
+          });
+        }
+        case "get_application_windows": {
+          const appName = params.appName ?? params.title ?? params.window;
+          if (!appName) {
+            throw new Error("appName is required for get_application_windows");
+          }
+          const windows = getApplicationWindows(appName);
+          return this.succeedEntry(entry, {
+            success: true,
+            windows,
+            count: windows.length,
+          });
+        }
+        case "set_bounds": {
+          const result = resizeWindow(
+            this.requireWindowTarget(params),
+            this.requireNumber(params.x, "x is required for set_bounds"),
+            this.requireNumber(params.y, "y is required for set_bounds"),
+            params.width,
+            params.height,
+          );
+          return this.succeedEntry(entry, result);
+        }
         default:
           return this.failEntry(entry, {
             success: false,
@@ -1451,6 +1511,12 @@ export class ComputerUseService extends Service {
         return "restore_window";
       case "close":
         return "close_window";
+      case "get_current_window_id":
+      case "get_application_windows":
+        // Read-only getters — auto-approve (mapped to the SAFE list_windows).
+        return "list_windows";
+      case "set_bounds":
+        return "move_window";
     }
   }
 

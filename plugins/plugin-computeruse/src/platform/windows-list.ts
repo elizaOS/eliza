@@ -227,6 +227,109 @@ function listWindowsWindows(): WindowInfo[] {
 
 // ── Focus Window ────────────────────────────────────────────────────────────
 
+/**
+ * The currently-focused / frontmost window (#9170 M12 — cua
+ * `get_current_window_id`). Best-effort per-OS query; returns `null` when no
+ * window is focused or the platform query is unavailable.
+ */
+export function getActiveWindow(): WindowInfo | null {
+  const os = currentPlatform();
+  try {
+    if (os === "darwin") {
+      const script = `
+        tell application "System Events"
+          set proc to first process whose frontmost is true
+          set procName to name of proc
+          try
+            set w to window 1 of proc
+            return procName & "|||" & (name of w) & "|||" & (id of w as text)
+          on error
+            return procName & "|||" & "" & "|||" & "0"
+          end try
+        end tell`;
+      const out = execSync(`osascript -e '${script}'`, {
+        encoding: "utf-8",
+        timeout: 8000,
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+      const [app, title, id] = out.split("|||");
+      if (!app) return null;
+      return { id: id || "0", title: title ?? "", app };
+    }
+    if (os === "linux") {
+      if (!commandExists("xdotool")) return null;
+      const id = runCommand("xdotool", ["getactivewindow"], 5000).trim();
+      if (!id) return null;
+      const title = runCommand("xdotool", ["getwindowname", id], 5000).trim();
+      return { id, title, app: title };
+    }
+    if (os === "win32") {
+      const ps =
+        "Add-Type 'using System;using System.Runtime.InteropServices;" +
+        'public class W{[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();}\';' +
+        "$h=[W]::GetForegroundWindow();" +
+        "$p=Get-Process | Where-Object { $_.MainWindowHandle -eq $h } | Select-Object -First 1;" +
+        'if($p){ "$($p.Id)|||$($p.MainWindowTitle)|||$($p.ProcessName)" }';
+      const out = execSync(
+        `powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`,
+        {
+          encoding: "utf-8",
+          timeout: 8000,
+          stdio: ["ignore", "pipe", "ignore"],
+        },
+      ).trim();
+      if (!out) return null;
+      const [id, title, app] = out.split("|||");
+      if (!id) return null;
+      return { id, title: title ?? "", app: app ?? "" };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Windows belonging to a given application name (#9170 M12 — cua
+ * `get_application_windows`). Pure filter over `listWindows()`; case-insensitive
+ * substring match on the window's `app` (with a `title` fallback).
+ */
+export function getApplicationWindows(appName: string): WindowInfo[] {
+  const needle = normalizeWindowQuery(appName);
+  if (!needle) return [];
+  return listWindows().filter(
+    (w) =>
+      normalizeWindowQuery(w.app).includes(needle) ||
+      normalizeWindowQuery(w.title).includes(needle),
+  );
+}
+
+/**
+ * Set a window's position AND size in one call (#9170 M12 — cua set window
+ * size+position). Position is required; width/height optional (position-only
+ * when omitted).
+ */
+export function resizeWindow(
+  windowId: string,
+  x: number,
+  y: number,
+  width?: number,
+  height?: number,
+): { success: true; message: string } {
+  if (typeof x !== "number" || typeof y !== "number") {
+    throw new Error("x and y are required for window set_bounds");
+  }
+  setWindowBounds(windowId, x, y, width, height);
+  const size =
+    width !== undefined && height !== undefined
+      ? ` size (${validateInt(width)}x${validateInt(height)})`
+      : "";
+  return {
+    success: true,
+    message: `Set window to (${validateInt(x)}, ${validateInt(y)})${size}.`,
+  };
+}
+
 export function focusWindow(windowId: string): void {
   const os = currentPlatform();
   const target = resolveWindowTarget(windowId);
