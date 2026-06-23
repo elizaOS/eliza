@@ -27,6 +27,7 @@ import {
   unregisterDynamicView,
 } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { useActivityEvents } from "../../hooks/useActivityEvents";
 import {
   useAvailableViews,
   type ViewRegistryEntry,
@@ -614,6 +615,10 @@ export function ViewCatalog() {
   // Installable catalog (apps/games not loaded yet) — surfaced as "Get" cards
   // alongside the loaded views, decoupled from plugin loading.
   const { entries: catalogAllEntries, get: getCatalogEntry } = useViewCatalog();
+  // Activity stream for the home WidgetHost (#9143), so the frontpage Activity
+  // widget shows live agent activity while the home is open.
+  const { events: homeWidgetEvents, clearEvents: clearHomeWidgetEvents } =
+    useActivityEvents();
   const [query, setQuery] = useState("");
   const [formViewId, setFormViewId] = useState("agent.quick-view");
   const [formTitle, setFormTitle] = useState("Quick View");
@@ -1174,7 +1179,12 @@ export function ViewCatalog() {
               {/* Frontpage widgets (#9143): plugins opt a widget onto the home
                   by declaring the `home` slot. Renders nothing until populated
                   (hideWhenEmpty), so the launcher grid is unaffected when empty. */}
-              <WidgetHost slot="home" className="px-1 pb-3" />
+              <WidgetHost
+                slot="home"
+                events={homeWidgetEvents}
+                clearEvents={clearHomeWidgetEvents}
+                className="px-1 pb-3"
+              />
               <Springboard
                 entries={springboardEntries}
                 onLaunch={handleSpringboardLaunch}
