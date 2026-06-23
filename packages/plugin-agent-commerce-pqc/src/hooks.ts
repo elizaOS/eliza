@@ -1,6 +1,7 @@
-import type { IPqcReputationGateHook } from './types';
+import type { IReputationGateHook } from './types';
+import { getPluginLogger } from './lib/logger';
 
-export class MockPqcReputationGate implements IPqcReputationGateHook {
+export class StubReputationGate implements IReputationGateHook {
   private reputationScores: Map<string, number> = new Map();
   private fundingLimits: Map<string, bigint> = new Map();
 
@@ -16,26 +17,27 @@ export class MockPqcReputationGate implements IPqcReputationGateHook {
   }
 
   async canFundJob(agentId: string, amount: bigint): Promise<boolean> {
+    const logger = getPluginLogger();
     const reputation = await this.getReputation(agentId);
     const limit = this.fundingLimits.get(agentId) || 0n;
 
-    console.log(
-      `[PQC Gate] Checking funding: ${agentId} (rep=${reputation}, limit=${limit.toString()})`,
+    logger.debug(
+      `Reputation gate check for ${agentId} (rep=${reputation}, limit=${limit.toString()})`,
     );
 
     if (reputation < 50) {
-      console.log(`[PQC Gate] DENIED: Reputation ${reputation} < 50`);
+      logger.info(`Funding denied for ${agentId}: reputation ${reputation} < 50`);
       return false;
     }
 
     if (amount > limit) {
-      console.log(
-        `[PQC Gate] DENIED: Amount ${amount.toString()} > limit ${limit.toString()}`,
+      logger.info(
+        `Funding denied for ${agentId}: amount ${amount.toString()} > limit ${limit.toString()}`,
       );
       return false;
     }
 
-    console.log(`[PQC Gate] APPROVED: Funding allowed`);
+    logger.debug(`Funding approved for ${agentId}`);
     return true;
   }
 

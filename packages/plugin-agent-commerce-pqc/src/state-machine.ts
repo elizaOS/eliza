@@ -1,6 +1,9 @@
 import { randomUUID, timingSafeEqual } from 'crypto';
 import type { IErc8183Job, ICommerceContext, IJobStore } from './types';
 import { EvaluationDecision, ERC8183JobState } from './types';
+import { getPluginLogger } from './lib/logger';
+
+const log = getPluginLogger();
 
 export async function clearJobStore(jobStore: IJobStore): Promise<void> {
   await jobStore.clear();
@@ -48,7 +51,7 @@ export class ERC8183StateMachine {
     };
 
     await ctx.jobStore.save(job);
-    console.log(`[ERC-8183] Created job ${jobId} (${ERC8183JobState.OPEN})`);
+    log.info(`[ERC-8183] Created job ${jobId} (${ERC8183JobState.OPEN})`);
     return job;
   }
 
@@ -87,7 +90,7 @@ export class ERC8183StateMachine {
     job.updatedAt = Date.now();
     await ctx.jobStore.save(job);
 
-    console.log(
+    log.info(
       `[ERC-8183] Funded job ${jobId} with ${fundAmount.toString()} (state: ${job.state})`,
     );
     return job;
@@ -122,7 +125,7 @@ export class ERC8183StateMachine {
     job.updatedAt = Date.now();
 
     await ctx.jobStore.save(job);
-    console.log(`[ERC-8183] Submitted deliverable for job ${jobId} (hash: ${deliverableHash})`);
+    log.info(`[ERC-8183] Submitted deliverable for job ${jobId} (hash: ${deliverableHash})`);
     return job;
   }
 
@@ -158,7 +161,7 @@ export class ERC8183StateMachine {
     job.completedAt = Date.now();
 
     await ctx.jobStore.save(job);
-    console.warn(`[ERC-8183] Refund triggered for job ${jobId}: ${job.metadata.refundReason}`);
+    log.warn(`[ERC-8183] Refund triggered for job ${jobId}: ${job.metadata.refundReason}`);
     return job;
   }
 
@@ -192,7 +195,7 @@ export class ERC8183StateMachine {
     job.completedAt = Date.now();
 
     await ctx.jobStore.save(job);
-    console.warn(`[ERC-8183] Expired job ${jobId}: ${job.metadata.expirationReason}`);
+    log.warn(`[ERC-8183] Expired job ${jobId}: ${job.metadata.expirationReason}`);
     return job;
   }
 
@@ -225,7 +228,7 @@ export class ERC8183StateMachine {
     job.completedAt = Date.now();
 
     await ctx.jobStore.save(job);
-    console.error(`[SECURITY-ALERT] Aborted job ${jobId}: ${job.metadata.securityAlert}`);
+    log.error(`[SECURITY-ALERT] Aborted job ${jobId}: ${job.metadata.securityAlert}`);
     return job;
   }
 
@@ -263,7 +266,7 @@ export class ERC8183StateMachine {
 
     job.updatedAt = Date.now();
     await ctx.jobStore.save(job);
-    console.log(`[ERC-8183] Evaluated job ${jobId}: ${decision} → ${job.state}`);
+    log.info(`[ERC-8183] Evaluated job ${jobId}: ${decision} → ${job.state}`);
     return job;
   }
 

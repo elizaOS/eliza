@@ -1,7 +1,6 @@
 /**
- * @file Stvor SDK Integration Interfaces (Plugin-local copy)
- * 
- * Type definitions for secure agent-to-agent communication.
+ * Transport and payload attestation interfaces for agent commerce.
+ * This plugin performs policy checks and SHA-256 attestation — not encryption.
  */
 
 export interface IStvorMessage {
@@ -13,9 +12,6 @@ export interface IStvorMessage {
     type: 'job_prompt' | 'job_deliverable' | 'job_evaluation' | 'handshake';
     jobId: string;
     data: unknown;
-    encrypted?: boolean;
-    pqcEncrypted?: boolean;
-    encryption?: string;
     [key: string]: unknown;
   };
   metadata?: {
@@ -23,17 +19,12 @@ export interface IStvorMessage {
     actionType?: string;
     version?: string;
   };
-  encrypted?: boolean;
-  pqcEncrypted?: boolean;
-  encryption?: string;
-  sessionId?: string;
 }
 
 export interface IStvorSession {
   sessionId: string;
   agentA: string;
   agentB: string;
-  encryptionKeyCount: number;
   createdAt: number;
   expiresAt: number;
 }
@@ -50,6 +41,7 @@ export interface IStvorTransport {
   ): Promise<string>;
   receiveSecureMessage(timeoutMs?: number): Promise<IStvorMessage | null>;
   onMessage(callback: (msg: IStvorMessage) => Promise<void>): void;
+  offMessage(callback: (msg: IStvorMessage) => Promise<void>): void;
   getSessionStatus(agentId: string): Promise<IStvorSession | null>;
   getStatus(): Promise<{
     connected: boolean;
@@ -64,43 +56,6 @@ export interface IStvorTransport {
 export interface IPayloadHasher {
   hashPayload(data: unknown): string;
   verifyHash(data: unknown, hash: string): boolean;
-}
-
-export interface PqcKeyPair {
-  ek: string;
-  dk: string;
-}
-
-export interface HybridKeyPair {
-  ik: { public_key: string; private_key: string };
-  spk: { public_key: string; private_key: string };
-  pqc: PqcKeyPair;
-}
-
-export interface EncryptedPayload {
-  mlkemCt: string;
-  aliceIkPub: string;
-  aliceSpkPub: string;
-  ciphertext: string;
-}
-
-export class PayloadTooDeepError extends Error {
-  constructor(depth: number) {
-    super(`Payload nesting exceeds maximum depth of ${depth}`);
-    this.name = 'PayloadTooDeepError';
-  }
-}
-
-export class PqcEncryptionError extends Error {
-  constructor(
-    message: string,
-    public readonly agentId: string,
-    public readonly eventId: string,
-    public readonly timestamp: number,
-  ) {
-    super(message);
-    this.name = 'PqcEncryptionError';
-  }
 }
 
 export class NotImplementedError extends Error {

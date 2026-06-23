@@ -1,5 +1,5 @@
 import { ERC8183StateMachine } from './state-machine';
-import { MockPqcReputationGate } from './hooks';
+import { StubReputationGate } from './hooks';
 import { MockReputationGate, type ReputationScore } from './reputation';
 import { MemoryJobStore, EvaluationDecision } from './types';
 import type {
@@ -7,7 +7,7 @@ import type {
   IErc8183Job,
   ICommerceContext,
   IJobStore,
-  IPqcReputationGateHook,
+  IReputationGateHook,
   EvaluatorFunction,
 } from './types';
 import type { StvorTransportManager } from './lib/pqc';
@@ -17,12 +17,12 @@ export type {
   IErc8183Job,
   ICommerceContext,
   IJobStore,
-  IPqcReputationGateHook,
+  IReputationGateHook,
   EvaluatorFunction,
 } from './types';
 export { ERC8183StateMachine } from './state-machine';
-export { MockPqcReputationGate } from './hooks';
-export { MockReputationGate, type ReputationScore } from './reputation';
+export { StubReputationGate } from './hooks';
+export { MockReputationGate } from './reputation';
 export { MemoryJobStore, EvaluationDecision } from './types';
 export {
   CommerceTransportBridge,
@@ -33,15 +33,25 @@ export {
 export {
   agentCommercePlugin,
   commerceActions,
-  commerceEvaluator,
   commerceProvider,
-  securityEvaluator,
 } from './elizaos/index';
 
 export { agentCommercePlugin as default } from './elizaos/index';
 
+export { AgentCommerceService, AGENT_COMMERCE_SERVICE_TYPE } from './service';
+export type { AgentCommerceServiceConfig } from './service';
+export type { IReputationProvider } from './reputation/index';
+export type { ReputationScore } from './reputation/index';
+export { StaticReputationProvider } from './reputation/static';
+export type { StaticReputationConfig } from './reputation/static';
+export { MemoryReputationProvider } from './reputation/memory';
+export type { MemoryReputationConfig } from './reputation/memory';
+export { CompositeReputationProvider } from './reputation/composite';
+export { ElizaJobStore } from './store/elizaos';
+
 export interface ICommercePlugin {
   registerEventListener(listener: import('./lifecycle').ICommerceEventListener): void;
+  clearEventListeners(): void;
   createJob(
     clientAgent: string,
     providerAgent: string,
@@ -69,20 +79,22 @@ export class AgentCommercePlugin implements ICommercePlugin {
   private readonly eventListeners: import('./lifecycle').ICommerceEventListener[] = [];
 
   constructor(
-    runtime: unknown,
     transport?: StvorTransportManager,
     context?: Partial<ICommerceContext>,
   ) {
     this.transport = transport ?? null;
     this.context = {
-      runtime,
       jobStore: context?.jobStore ?? new MemoryJobStore(),
-      reputationGate: context?.reputationGate ?? new MockPqcReputationGate(),
+      reputationGate: context?.reputationGate ?? new StubReputationGate(),
     };
   }
 
   registerEventListener(listener: import('./lifecycle').ICommerceEventListener): void {
     this.eventListeners.push(listener);
+  }
+
+  clearEventListeners(): void {
+    this.eventListeners.length = 0;
   }
 
   private async notifyJobCreated(job: IErc8183Job): Promise<void> {
@@ -189,9 +201,8 @@ export class AgentCommercePlugin implements ICommercePlugin {
 }
 
 export function createCommercePlugin(
-  runtime: unknown,
   transport?: StvorTransportManager,
   context?: Partial<ICommerceContext>,
 ): AgentCommercePlugin {
-  return new AgentCommercePlugin(runtime, transport, context);
+  return new AgentCommercePlugin(transport, context);
 }

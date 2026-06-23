@@ -3,6 +3,7 @@ import type { IStvorTransport, IStvorMessage } from './lib/pqc';
 import { PayloadHasher } from './lib/pqc';
 import { SecurityGuard } from './lib/security';
 import { ERC8183StateMachine } from './state-machine';
+import { getPluginLogger } from './lib/logger';
 
 export interface ICommerceEventListener {
   onJobCreated(job: IErc8183Job): Promise<void>;
@@ -14,40 +15,46 @@ export interface ICommerceEventListener {
 export class CommerceTransportBridge implements ICommerceEventListener {
   private readonly transport: IStvorTransport;
   private readonly context: ICommerceContext;
-  private readonly hasher: PayloadHasher;
+  private readonly hasher = new PayloadHasher();
   private readonly peerTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private readonly responseWindowMs: number;
+  private readonly guard: SecurityGuard;
+  private readonly log = getPluginLogger();
+  private readonly boundMessageHandler: (msg: IStvorMessage) => Promise<void>;
 
   constructor(
     transport: IStvorTransport,
     context: ICommerceContext,
     responseWindowMs = 15000,
+    guard?: SecurityGuard,
   ) {
     this.transport = transport;
     this.context = context;
-    this.hasher = new PayloadHasher();
     this.responseWindowMs = responseWindowMs;
+    this.guard = guard ?? new SecurityGuard();
 
-    this.transport.onMessage(async (msg) => {
+    this.boundMessageHandler = async (msg) => {
       await this.handleIncomingMessage(msg);
-    });
+    };
+    this.transport.onMessage(this.boundMessageHandler);
   }
 
   async onJobCreated(job: IErc8183Job): Promise<void> {
-    console.log(
+    this.log.info(
       `[CommerceTransportBridge] Job created: ${job.jobId} (state: ${job.state})`,
     );
   }
 
   async onJobFunded(job: IErc8183Job): Promise<void> {
-    const taskPayload = {
+    // Exclude metadata to avoid reference aliasing: adding taskPayloadHash to
+    // job.metadata would otherwise mutate this object after the hash is computed.
+    const taskPayload: Record<string, unknown> = {
       jobId: job.jobId,
       taskDescription: job.taskDescription,
       requiredAmount: job.requiredAmount.toString(),
       clientAgent: job.clientAgent,
       fundedAmount: job.fundedAmount.toString(),
       deadline: Date.now() + 24 * 60 * 60 * 1000,
-      metadata: job.metadata,
     };
 
     const payloadHash = this.hasher.hashPayload(taskPayload);
@@ -61,7 +68,7 @@ export class CommerceTransportBridge implements ICommerceEventListener {
       taskPayload,
     );
 
-    console.log(
+    this.log.info(
       `[CommerceTransportBridge] Sent task specification to provider (msgId: ${msgId})`,
     );
 
@@ -74,7 +81,7 @@ export class CommerceTransportBridge implements ICommerceEventListener {
 
   async onJobSubmitted(job: IErc8183Job): Promise<void> {
     if (!job.deliverableHash) {
-      console.warn(`[CommerceTransportBridge] No deliverable hash recorded`);
+      this.log.warn(`[CommerceTransportBridge] No deliverable hash recorded`);
       return;
     }
 
@@ -109,13 +116,13 @@ export class CommerceTransportBridge implements ICommerceEventListener {
 
     if (job.completedAt) {
       const duration = job.completedAt - job.createdAt;
-      console.log(`[CommerceTransportBridge] Cycle time: ${duration}ms (${decision})`);
+      this.log.info(`[CommerceTransportBridge] Cycle time: ${duration}ms (${decision})`);
     }
   }
 
   private schedulePeerTimeout(
     jobId: string,
-    peerId: string,
+    _peerId: string,
     reason: string,
   ): void {
     this.clearPeerTimeout(jobId);
@@ -131,6 +138,14 @@ export class CommerceTransportBridge implements ICommerceEventListener {
     this.peerTimeouts.set(jobId, timer);
   }
 
+  destroy(): void {
+    this.transport.offMessage(this.boundMessageHandler);
+    for (const [jobId, timer] of this.peerTimeouts) {
+      clearTimeout(timer);
+      this.peerTimeouts.delete(jobId);
+    }
+  }
+
   private clearPeerTimeout(jobId: string): void {
     const timeout = this.peerTimeouts.get(jobId);
     if (timeout) {
@@ -141,7 +156,7 @@ export class CommerceTransportBridge implements ICommerceEventListener {
 
   async handleIncomingMessage(msg: IStvorMessage): Promise<void> {
     try {
-      SecurityGuard.assertPayloadSafe(msg.content.data);
+      this.guard.assertPayloadSafe(msg.content.data);
     } catch (error) {
       const reason =
         error instanceof Error
@@ -156,7 +171,7 @@ export class CommerceTransportBridge implements ICommerceEventListener {
 
     const job = await this.context.jobStore.get(msg.content.jobId);
     if (!job) {
-      console.warn(
+      this.log.warn(
         `[CommerceTransportBridge] Received message for unknown job ${msg.content.jobId}`,
       );
       return;
@@ -164,30 +179,26 @@ export class CommerceTransportBridge implements ICommerceEventListener {
 
     this.clearPeerTimeout(msg.content.jobId);
 
-if (msg.content.type === 'job_prompt') {
-       const expectedHash = job.metadata.taskPayloadHash;
-       if (expectedHash) {
-         if (!PayloadHasher.verifyHash(msg.content.data, expectedHash as string)) {
-           await ERC8183StateMachine.abortJob(
-             this.context,
-             job.jobId,
-             `[SECURITY-ALERT] HASH_MISMATCH_ALERT for job ${job.jobId}`,
-           );
-         }
-       }
-     }
+    if (msg.content.type === 'job_prompt') {
+      const expectedHash = job.metadata.taskPayloadHash;
+      if (expectedHash && !PayloadHasher.verifyHash(msg.content.data, expectedHash as string)) {
+        await ERC8183StateMachine.abortJob(
+          this.context,
+          job.jobId,
+          `[SECURITY-ALERT] HASH_MISMATCH_ALERT for job ${job.jobId}`,
+        );
+      }
+    } else if (msg.content.type === 'job_deliverable') {
+      if (!job.deliverableHash) return;
 
-     if (msg.content.type === 'job_deliverable') {
-       if (!job.deliverableHash) return;
-
-       if (!PayloadHasher.verifyHash(msg.content.data, job.deliverableHash as string)) {
-         await ERC8183StateMachine.abortJob(
-           this.context,
-           job.jobId,
-           `[SECURITY-ALERT] HASH_MISMATCH_ALERT for job ${job.jobId}`,
-         );
-       }
-     }
+      if (!PayloadHasher.verifyHash(msg.content.data, job.deliverableHash as string)) {
+        await ERC8183StateMachine.abortJob(
+          this.context,
+          job.jobId,
+          `[SECURITY-ALERT] HASH_MISMATCH_ALERT for job ${job.jobId}`,
+        );
+      }
+    }
   }
 }
 
@@ -195,6 +206,7 @@ export function createCommerceTransportBridge(
   transport: IStvorTransport,
   context: ICommerceContext,
   responseWindowMs = 15000,
+  guard?: SecurityGuard,
 ): ICommerceEventListener {
-  return new CommerceTransportBridge(transport, context, responseWindowMs);
+  return new CommerceTransportBridge(transport, context, responseWindowMs, guard);
 }

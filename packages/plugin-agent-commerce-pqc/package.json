@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-agent-commerce",
-  "version": "0.1.0",
-  "description": "Quantum-Resistant Secure Agent Commerce & Prompt Injection Protection (Stvor AI Security)",
+  "version": "0.2.0",
+  "description": "Agent commerce policy plugin for ElizaOS: rate limiting, prompt-injection heuristics, and ERC-8183 job flow",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -11,18 +11,15 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "type-check": "tsc --noEmit -p tsconfig.json"
-  },
-  "dependencies": {
-    "@stvor/web3": "^0.3.0",
-    "ws": "^8.18.0"
+    "type-check": "tsc --noEmit -p tsconfig.json",
+    "verify": "bun run type-check"
   },
   "peerDependencies": {
     "@elizaos/core": ">=1.0.0"
   },
   "devDependencies": {
+    "@elizaos/core": "^1.0.0",
     "@types/node": "^20.10.0",
-    "@types/ws": "^8.5.10",
     "typescript": "^5.3.3"
   },
   "keywords": [
@@ -30,9 +27,9 @@
     "plugin",
     "agent-commerce",
     "erc8183",
-    "pqc",
-    "ml-kem",
-    "ai-security"
+    "ai-security",
+    "prompt-injection",
+    "rate-limiting"
   ],
   "author": "Stvor Labs",
   "license": "Apache-2.0"
