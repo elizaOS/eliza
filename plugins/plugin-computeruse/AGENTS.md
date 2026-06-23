@@ -222,6 +222,10 @@ Call the module-level `registerCoordOcrProvider(provider)` exported from `src/mo
 
 Call `registerSetOfMarksProvider(provider)` (same module, `src/mobile/ocr-provider.ts`). When registered, `detect_elements` prefers it: it returns a deduplicated, **1-indexed** set of numbered marks (GGUF YOLO icons + OCR text fused, icon-over-text suppression + NMS) plus an optional numbered-overlay PNG under `data.setOfMarks.overlay`. Each mark carries a `center` click target the VLM's chosen number resolves to. plugin-vision contributes the implementation (`som.ts` + `set-of-marks-provider.ts`); with no provider registered, `detect_elements` falls back to OCR-only text elements.
 
+### Register an agent loop (model-string → loop)
+
+`COMPUTER_USE_AGENT` selects its loop from a model string via the registry in `src/actor/agent-loop.ts` (#9170 M10) — trycua/cua parity. Every loop implements the same `predictStep` (observe + plan the next action) / `predictClick` (ground a target to a coordinate) seam. The built-in `local-grounder` wraps the existing Brain → Cascade (ScreenSeekeR) and exposes the M5 grounding cache through `predictClick`; it is the match-anything fallback. Register a provider-specific loop (Anthropic / OpenAI `computer-use-preview` / a remote grounder) with `registerAgentLoop({ name, matches: matchesModelFamily("anthropic"), create, priority })`; the runner reads the active model string from the `COMPUTER_USE_AGENT_LOOP` setting/env (default `local-grounder`).
+
 ## Conventions / gotchas
 
 - **Approval flow**: every destructive action passes through `ComputerUseApprovalManager`. The default mode is `smart_approve` — only read-only `SAFE_COMMANDS` auto-approve, and destructive verbs (terminal execute, file write/delete) require explicit human approval. Switch to `full_control` (auto-approve everything), `approve_all`, or `off` (deny all) via env or the `/api/computer-use/approval-mode` route.

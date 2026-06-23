@@ -33,17 +33,18 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { Brain } from "../actor/brain.js";
-import { Cascade } from "../actor/cascade.js";
+import {
+  AGENT_LOOP_SETTING,
+  type AgentLoop,
+  createAgentLoop,
+  DEFAULT_AGENT_LOOP_MODEL,
+} from "../actor/agent-loop.js";
+import type { Brain } from "../actor/brain.js";
 import {
   type ComputerInterface,
   makeComputerInterface,
 } from "../actor/computer-interface.js";
 import { dispatch } from "../actor/dispatch.js";
-import {
-  getRegisteredActor,
-  OcrCoordinateGroundingActor,
-} from "../actor/index.js";
 import {
   captureAllDisplays,
   type DisplayCapture,
@@ -85,6 +86,10 @@ export interface ComputerUseAgentStepProgress {
 
 interface AgentDeps {
   brain?: Brain;
+  /** Pre-built loop override (tests). Supersedes model-string selection. */
+  loop?: AgentLoop;
+  /** Loop model-string override (tests / explicit selection). */
+  loopModel?: string;
   computerInterface?: ComputerInterface;
   captureAll?: () => Promise<DisplayCapture[]>;
   /** Called after each dispatched step when `params.streamProgress` is set. */
@@ -124,6 +129,19 @@ function getService(runtime: IAgentRuntime): ComputerUseService | null {
   return (runtime.getService("computeruse") as ComputerUseService) ?? null;
 }
 
+/** Read the configured agent-loop model string (setting → env → null). */
+function resolveLoopModel(runtime: IAgentRuntime | null): string | null {
+  const fromSetting = runtime?.getSetting?.(AGENT_LOOP_SETTING);
+  if (typeof fromSetting === "string" && fromSetting.trim().length > 0) {
+    return fromSetting.trim();
+  }
+  const fromEnv = process.env[AGENT_LOOP_SETTING];
+  if (typeof fromEnv === "string" && fromEnv.trim().length > 0) {
+    return fromEnv.trim();
+  }
+  return null;
+}
+
 /**
  * Run one Brain/Cascade/Dispatch loop. Exported so tests can drive it
  * without exercising the full Action plumbing.
@@ -139,14 +157,21 @@ export async function runComputerUseAgentLoop(
     Math.min(params.maxSteps ?? DEFAULT_MAX_STEPS, 20),
   );
   const goal = params.goal;
-  const brain = deps.brain ?? new Brain(runtime);
-  const actor =
-    getRegisteredActor() ??
-    new OcrCoordinateGroundingActor(() => service.getCurrentScene());
+  // Agent-loop registry (#9170 M10): a model string selects the loop. Defaults
+  // to the local OCR/AX grounder (Brain → Cascade); provider plugins can
+  // register Anthropic / OpenAI computer-use loops keyed by model family.
+  const loopModel =
+    deps.loopModel ?? resolveLoopModel(runtime) ?? DEFAULT_AGENT_LOOP_MODEL;
+  const loop =
+    deps.loop ??
+    createAgentLoop(loopModel, {
+      runtime,
+      getScene: () => service.getCurrentScene(),
+      brain: deps.brain,
+    });
   const computer =
     deps.computerInterface ??
     makeComputerInterface({ getScene: () => service.getCurrentScene() });
-  const cascade = new Cascade({ brain, actor });
   const captureAll = deps.captureAll ?? captureAllDisplays;
 
   const report: ComputerUseAgentReport = {
@@ -171,12 +196,12 @@ export async function runComputerUseAgentLoop(
       report.error = "no displays captured";
       return report;
     }
-    let proposed: Awaited<ReturnType<typeof cascade.run>>;
+    let proposed: Awaited<ReturnType<typeof loop.predictStep>>;
     try {
-      proposed = await cascade.run({ scene, goal, captures });
+      proposed = await loop.predictStep({ scene, goal, captures });
     } catch (err) {
       report.reason = "error";
-      report.error = `cascade failed: ${errorMessage(err)}`;
+      report.error = `agent loop "${loop.name}" failed: ${errorMessage(err)}`;
       return report;
     }
     // Persist the Brain's understanding onto the scene (#9105 M3) so the next

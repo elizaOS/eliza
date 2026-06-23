@@ -296,7 +296,9 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
       { brain, captureAll },
     );
     expect(report.reason).toBe("error");
-    expect(report.error).toContain("cascade failed");
+    // The loop wraps Brain→Cascade as the default "local-grounder" loop
+    // (#9170 M10); planning/grounding failures surface under that loop name.
+    expect(report.error).toContain('agent loop "local-grounder" failed');
   });
 
   it("aborts on dispatch error (out-of-bounds)", async () => {

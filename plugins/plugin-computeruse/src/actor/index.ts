@@ -11,6 +11,23 @@ export {
   resolveReference,
 } from "./actor.js";
 export {
+  _resetAgentLoopsForTests,
+  AGENT_LOOP_SETTING,
+  type AgentLoop,
+  type AgentLoopDeps,
+  type AgentLoopRegistration,
+  type AgentStepInput,
+  createAgentLoop,
+  DEFAULT_AGENT_LOOP_MODEL,
+  LocalGrounderLoop,
+  listAgentLoops,
+  matchesModelFamily,
+  type PredictClickInput,
+  registerAgentLoop,
+  selectAgentLoopRegistration,
+  unregisterAgentLoop,
+} from "./agent-loop.js";
+export {
   BRAIN_MAX_PIXELS,
   BRAIN_MAX_ROIS,
   Brain,

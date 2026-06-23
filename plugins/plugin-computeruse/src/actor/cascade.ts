@@ -83,6 +83,44 @@ export class Cascade {
     return this.resolveBrainOutput(input, brainOut);
   }
 
+  /**
+   * Grounding-only entry (the `predict_click` half of the predict/ground split,
+   * #9105 M5 / #9170 M10). Resolves a `ref` (OCR/AX id) or free-form
+   * `instruction` to a display-local coordinate WITHOUT running the Brain —
+   * agent loops that do their own step planning (Anthropic / OpenAI
+   * computer-use) call this to reuse our deterministic OCR/AX + actor grounding
+   * and its per-Scene cache. Returns `null` when nothing can be grounded.
+   */
+  async groundTarget(args: {
+    scene: Scene;
+    captures: Map<number, DisplayCapture>;
+    targetDisplayId: number;
+    ref?: string;
+    instruction?: string;
+    /** Optional ROI to ground inside when no `ref` is available. */
+    roi?: BrainRoi;
+  }): Promise<{ displayId: number; x: number; y: number } | null> {
+    const brainOut: BrainOutput = {
+      scene_summary: "",
+      target_display_id: args.targetDisplayId,
+      roi: args.roi ? [args.roi] : [],
+      proposed_action: {
+        kind: "click",
+        ref: args.ref,
+        rationale: args.instruction ?? "",
+      },
+    };
+    return this.resolveCoords(
+      {
+        scene: args.scene,
+        goal: args.instruction ?? "",
+        captures: args.captures,
+      },
+      brainOut,
+      /*allowMissing*/ true,
+    );
+  }
+
   private async resolveBrainOutput(
     input: CascadeInput,
     brainOut: BrainOutput,
