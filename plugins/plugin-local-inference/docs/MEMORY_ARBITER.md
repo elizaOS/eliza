@@ -20,13 +20,18 @@ The arbiter exists so loading a vision model can unload the text model
 gracefully and we don't get jetsam'd on iPhone or `lmkd`-killed on
 Android.
 
-## Validation status (2026-06-21)
+## Validation status (2026-06-23)
 
 Live in this checkout:
 
 - Fit-to-budget LRU eviction uses non-zero resident estimates and evicts
   the coldest evictable non-text role before a new load would exceed the
   configured budget.
+- The arbiter counts the engine-owned resident footprint (the active
+  text/embedding bundle) via `externalFootprintMb`, wired in `service.ts` to
+  `LocalInferenceEngine.getResidentFootprintMb()`. Without this the dominant
+  resident consumer was invisible to the arbiter and `evictToFit` silently
+  no-opped; it now trips for the roles that actually dominate RAM (#8809 AC#1).
 - `MemoryArbiter.preload(capability, modelKey)` warm-loads only under
   nominal pressure and only when the budget proves the resident set fits.
   It returns `false` under `low` / `critical` pressure or when the load

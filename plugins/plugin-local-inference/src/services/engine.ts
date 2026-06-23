@@ -336,6 +336,12 @@ export class LocalInferenceEngine {
 	private idleUnloadTimer: NodeJS.Timeout | null = null;
 	/** Evictable text-target role id registered on `sharedResources`, or null. */
 	private textTargetRoleId: string | null = null;
+	/**
+	 * Ids of evictable roles THIS engine registered on `sharedResources`
+	 * (text-target today). `getResidentFootprintMb()` sums only these so the
+	 * arbiter never double-counts its own vision/image-gen registry roles.
+	 */
+	private readonly ownedEvictableRoleIds = new Set<string>();
 	/** Best-effort resident footprint for the active text bundle, in MiB. */
 	private textTargetEstimatedMb = 0;
 	/** Evictable drafter role id registered on `sharedResources`, or null. */
@@ -357,6 +363,28 @@ export class LocalInferenceEngine {
 	 */
 	getSharedResources(): SharedResourceRegistry {
 		return this.sharedResources;
+	}
+
+	/**
+	 * Resident RAM footprint (MB) of the model weights this engine owns on the
+	 * shared registry — the active text/embedding bundle today, plus any future
+	 * engine-registered role (drafter, voice). This is the term `service.ts`
+	 * feeds into the `MemoryArbiter` as `externalFootprintMb` so the arbiter's
+	 * proactive `evictToFit` path accounts for the dominant resident consumer
+	 * (the text target) instead of seeing only its own vision/image-gen handles
+	 * and never tripping (#8809 AC#1). Summed by role id so it never
+	 * double-counts the arbiter's own registry roles (vision/image-gen), which
+	 * the arbiter already counts in its resident map.
+	 */
+	getResidentFootprintMb(): number {
+		if (this.ownedEvictableRoleIds.size === 0) return 0;
+		let mb = 0;
+		for (const role of this.sharedResources.evictableRoles()) {
+			if (this.ownedEvictableRoleIds.has(role.id)) {
+				mb += role.estimatedResidentMb();
+			}
+		}
+		return mb;
 	}
 
 	/** The RAM-pressure monitor. Exposed for diagnostics / tests. */
@@ -404,6 +432,7 @@ export class LocalInferenceEngine {
 			});
 			this.sharedResources.acquire(role);
 			this.textTargetRoleId = role.id;
+			this.ownedEvictableRoleIds.add(role.id);
 		}
 	}
 
@@ -413,6 +442,7 @@ export class LocalInferenceEngine {
 		);
 		this.textTargetRoleId = null;
 		for (const id of ids) {
+			this.ownedEvictableRoleIds.delete(id);
 			try {
 				await this.sharedResources.release(id);
 			} catch {
