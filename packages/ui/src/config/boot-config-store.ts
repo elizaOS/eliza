@@ -291,6 +291,10 @@ export interface AppBootConfig {
   stewardApprovalQueue?: ComponentType<StewardApprovalQueueProps>;
   /** Steward transaction history provided by the host app. */
   stewardTransactionHistory?: ComponentType<StewardTransactionHistoryProps>;
+  /** Shortcut behavior switches. Natural-language shortcuts are off by default. */
+  shortcutFlags?: {
+    naturalLanguage?: boolean;
+  };
   /** Character catalog data — replaces cross-package import of catalog.json. */
   characterCatalog?: CharacterCatalogData;
   /**

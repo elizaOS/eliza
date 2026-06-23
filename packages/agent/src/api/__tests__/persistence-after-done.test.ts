@@ -241,6 +241,7 @@ function createState(): ConversationRouteState {
     chatUserId: adminId,
     logBuffer: [],
     conversations: new Map([[conv.id, conv]]),
+    activeChatTurnCount: 0,
     conversationRestorePromise: null,
     deletedConversationIds: new Set(),
     broadcastWs: null,

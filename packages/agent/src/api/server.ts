@@ -1834,6 +1834,7 @@ function wireProactiveInteractionDecider(
     route: (text) =>
       routeProactiveText(state, text, PROACTIVE_INTERACTION_SOURCE),
     notify: (offer) => notifyProactiveInteraction(rt, offer),
+    shouldSuppress: () => state.activeChatTurnCount > 0,
   });
 }
 
@@ -3742,6 +3743,7 @@ export async function startApiServer(opts?: {
     chatConnectionPromise: null,
     adminEntityId: null,
     conversations: new Map(),
+    activeChatTurnCount: 0,
     conversationRestorePromise: null,
     deletedConversationIds,
     cloudManager: null,

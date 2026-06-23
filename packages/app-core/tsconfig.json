@@ -27,6 +27,9 @@
       "@elizaos/plugin-registry": [
         "../../plugins/plugin-registry/src/index.ts"
       ],
+      "@elizaos/plugin-registry/*": [
+        "../../plugins/plugin-registry/src/*"
+      ],
       "@elizaos/logger": ["../logger/src/index.ts"],
       "@elizaos/app-core": ["./src/index.ts"],
       "@elizaos/app-core/*": ["./src/*"],
@@ -84,6 +87,9 @@
       ],
       "@elizaos/plugin-capacitor-bridge": [
         "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../plugins/plugin-capacitor-bridge/src/*"
       ],
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"

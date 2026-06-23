@@ -16,6 +16,7 @@ import {
   resolveSettingsSectionToken,
   SETTINGS_SECTION_SUGGESTIONS,
 } from "../components/settings/settings-section-tokens";
+import { useBootConfig } from "../config/boot-config-react.hooks";
 import { COMMAND_PALETTE_EVENT } from "../events";
 import { useAvailableViews } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
@@ -66,6 +67,8 @@ export interface SlashCommandController {
   /** The merged catalog (server commands + custom actions + saved commands). */
   commands: SlashCommandCatalogItem[];
   loading: boolean;
+  /** Whether natural-language navigate/client shortcuts may short-circuit send. */
+  naturalShortcutsEnabled: boolean;
   /** Resolve dynamic argument completions for a named source. */
   resolveChoices: (source: CommandArgSource) => string[];
   /** Map a user-typed settings token to a canonical section id. */
@@ -151,6 +154,7 @@ export function useSlashCommandController(
   options: SlashCommandControllerOptions = {},
 ): SlashCommandController {
   const { isAuthorized = true, isElevated = true } = options;
+  const bootConfig = useBootConfig();
   const { setTab, handleChatClear } = useAppSelectorShallow((s) => ({
     setTab: s.setTab,
     handleChatClear: s.handleChatClear,
@@ -202,6 +206,8 @@ export function useSlashCommandController(
       }),
     [serverCommands, customCommands, isAuthorized, isElevated],
   );
+  const naturalShortcutsEnabled =
+    bootConfig.shortcutFlags?.naturalLanguage === true;
 
   const resolveChoices = React.useCallback(
     (source: CommandArgSource): string[] => {
@@ -275,6 +281,7 @@ export function useSlashCommandController(
     () => ({
       commands,
       loading,
+      naturalShortcutsEnabled,
       resolveChoices,
       resolveSection: resolveSettingsSectionToken,
       navigateTab,
@@ -286,6 +293,7 @@ export function useSlashCommandController(
     [
       commands,
       loading,
+      naturalShortcutsEnabled,
       resolveChoices,
       navigateTab,
       navigateSettings,

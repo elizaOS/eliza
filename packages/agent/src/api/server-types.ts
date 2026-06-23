@@ -163,6 +163,8 @@ export interface ServerState {
   adminEntityId: UUID | null;
   /** Conversation metadata by conversation id. */
   conversations: Map<string, ConversationMeta>;
+  /** Active foreground chat turns; proactive interaction comments stay silent while nonzero. */
+  activeChatTurnCount: number;
   /** Pending restore of persisted conversations into the in-memory map. */
   conversationRestorePromise: Promise<void> | null;
   /** Tombstones for conversation IDs explicitly deleted by the user. */

@@ -32,6 +32,7 @@ import type {
 } from "../../api/client-types-chat";
 import {
   parseSlashDraft,
+  resolveClientShortcutExecution,
   runSlashExecution,
   type SlashExecution,
   splitLeadingSlashCommand,
@@ -74,6 +75,7 @@ import type { ConversationNav, ShellController } from "./useShellController";
 const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
   commands: [],
   loading: false,
+  naturalShortcutsEnabled: false,
   resolveChoices: () => [],
   resolveSection: () => undefined,
   navigateTab: () => {},
@@ -1487,10 +1489,6 @@ export function ContinuousChatOverlay({
     [canSend, send],
   );
 
-  const submit = React.useCallback(() => {
-    submitText(draft, pendingImages);
-  }, [submitText, draft, pendingImages]);
-
   // Tapping a suggestion sends it immediately (same path as submit), so the
   // strip is a one-tap shortcut, not just a draft pre-fill.
   const pickSuggestion = React.useCallback(
@@ -2369,6 +2367,26 @@ export function ContinuousChatOverlay({
     },
     [slash, controller, submitText, toggleMaximize, toggleTranscriptionMode],
   );
+
+  const submit = React.useCallback(() => {
+    const shortcut =
+      pendingImages.length === 0
+        ? resolveClientShortcutExecution(
+            slash.commands,
+            draft,
+            slash.resolveSection,
+            {
+              allowNatural: slash.naturalShortcutsEnabled,
+              resolveChoices: slash.resolveChoices,
+            },
+          )
+        : null;
+    if (shortcut) {
+      runExecution(shortcut);
+      return;
+    }
+    submitText(draft, pendingImages);
+  }, [draft, pendingImages, runExecution, slash, submitText]);
 
   const pickSlashItem = React.useCallback(
     (index: number) => {

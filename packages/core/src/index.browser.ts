@@ -92,6 +92,7 @@ export { looksLikeFabricatedModeration } from "./runtime/fabricated-moderation-d
 export { looksLikeRefusal } from "./runtime/refusal-detector";
 export * from "./runtime/rlm";
 export * from "./runtime/schema-compat";
+export * from "./runtime/shortcut-registry";
 export {
 	looksLikeNonRefusalStage1HonestyViolation,
 	looksLikeStage1HonestyViolation,

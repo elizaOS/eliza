@@ -13,7 +13,8 @@
     "noEmit": false,
     "rewriteRelativeImportExtensions": true,
     "paths": {
-      "@elizaos/plugin-groq": ["./src/provider-plugin.d.ts"]
+      "@elizaos/plugin-groq": ["./src/provider-plugin.d.ts"],
+      "@elizaos/plugin-openrouter": ["./src/provider-plugin.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

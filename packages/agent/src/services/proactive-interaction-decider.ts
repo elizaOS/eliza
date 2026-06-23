@@ -182,7 +182,7 @@ const JUDGE_INSTRUCTION = [
   'Examples: switched to wallet → "Want me to pull your latest balances?"; opened task-coordinator → "Want me to summarize your open tasks?".',
   'Use delivery "chat" only when the current view benefits from a visible suggestion. Use delivery "notify" for useful but low-urgency offers that should land quietly outside chat.',
   "Stay silent (return null) for ambiguous or low-value interactions, settings/config screens, or anything where an offer would be noise.",
-  'Respond as JSON: {"comment": <a short offer, or null>, "delivery": "chat" | "notify", "title": <optional notification title>}.',
+  'Respond as JSON: {"comment": <a short offer, or null>, "delivery": "chat" | "notify", "confidence": 0..1, "urgency": "low" | "medium" | "high", "title": <optional notification title>}.',
 ].join("\n");
 
 /** Describe the interaction for the judge prompt. */
@@ -221,6 +221,13 @@ function parseProactiveJudgeObject(
   return obj as Record<string, unknown>;
 }
 
+function parseOptionalNumber(raw: unknown): number | null {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw !== "string") return null;
+  const parsed = Number(raw.trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 /** Parse the judge model output into a typed offer or null. */
 export function parseProactiveJudgeDecisionOutput(
   raw: unknown,
@@ -233,9 +240,17 @@ export function parseProactiveJudgeDecisionOutput(
   if (!trimmed || trimmed.toLowerCase() === "none" || trimmed === "null") {
     return null;
   }
+  const confidence = parseOptionalNumber(obj.confidence);
+  if (confidence !== null && confidence < 0.65) {
+    return null;
+  }
   const rawDelivery = obj.delivery ?? obj.channel ?? obj.route;
+  const urgency =
+    typeof obj.urgency === "string" ? obj.urgency.trim().toLowerCase() : "";
   const delivery =
-    rawDelivery === "notify" || rawDelivery === "notification"
+    urgency === "low" ||
+    rawDelivery === "notify" ||
+    rawDelivery === "notification"
       ? "notify"
       : "chat";
   const title = typeof obj.title === "string" ? obj.title.trim() : "";
@@ -260,6 +275,8 @@ export interface ProactiveDeciderWiring {
   route: (text: string) => Promise<void>;
   /** Route an admitted low-urgency offer to the notification rail. */
   notify?: (offer: ProactiveOffer) => Promise<void>;
+  /** Suppress comments while a foreground chat turn is already speaking/typing. */
+  shouldSuppress?: () => boolean;
   gate: ProactiveInteractionGate;
   /** Override the clock (tests). */
   now?: () => number;
@@ -290,6 +307,15 @@ export function registerProactiveInteractionDecider(
     return;
   }
 
+  const isSuppressed = (): boolean => {
+    try {
+      return wiring.shouldSuppress?.() === true;
+    } catch (err) {
+      logger.debug({ err }, "[proactive-interaction] suppression guard failed");
+      return true;
+    }
+  };
+
   const judge: ProactiveJudge = async (payload) => {
     try {
       const raw = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -305,11 +331,13 @@ export function registerProactiveInteractionDecider(
   const handle = (payload: InteractionPayload) => {
     const surface = interactionSurface(payload);
     if (!surface) return; // policy-silent (e.g. explicit slash commands)
+    if (isSuppressed()) return;
 
     wiring.gate.noteSwitch(surface, clock());
 
     const run = async () => {
       try {
+        if (isSuppressed()) return;
         const decision = await decideProactiveComment({
           payload,
           gate: wiring.gate,
@@ -317,6 +345,7 @@ export function registerProactiveInteractionDecider(
           now: clock(),
         });
         if (decision.text) {
+          if (isSuppressed()) return;
           if (decision.delivery === "notify") {
             if (wiring.notify) {
               await wiring.notify({

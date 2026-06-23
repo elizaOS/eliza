@@ -11,7 +11,7 @@ import type { ShortcutDefinition } from "@elizaos/core";
 export const VIEW_NAVIGATION_SHORTCUT_ID = "app-control:nl:view-navigation";
 
 const NAVIGATION_REGEX =
-	/^(?:(?:open|show|go to|switch to|take me to|pull up|bring up|check|view)\s+(?:my\s+|the\s+)?(?<view>settings|calendar|agenda|schedule|inbox|messages|wallet|app builder|task coordinator)|what(?:s| s| is)\s+on\s+my\s+(?<calendar>calendar|agenda|schedule)|abre\s+(?<settingsEs>ajustes|configuracion|configuración)|打开(?<settingsZh>设置)|設定を開いて|설정\s*(?:열어|열어줘))$/u;
+	/^(?:(?:open|show|go to|switch to|take me to|pull up|bring up|check|view)\s+(?:me\s+)?(?:my\s+|the\s+)?(?<view>settings|calendar|agenda|schedule|inbox|messages|wallet|app builder|task coordinator)|what(?:s| s| is)\s+on\s+my\s+(?<calendar>calendar|agenda|schedule)|abre\s+(?<settingsEs>ajustes|configuracion|configuración)|打开(?<settingsZh>设置)|設定を開いて|설정\s*(?:열어|열어줘))$/u;
 
 export const viewNavigationShortcuts: ShortcutDefinition[] = [
 	{

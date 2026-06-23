@@ -20,6 +20,7 @@ describe("viewNavigationShortcuts (#8791)", () => {
 		for (const phrase of [
 			"open settings",
 			"show me my calendar",
+			"hey can you open settings please",
 			"open app builder",
 			"check my messages",
 			"what's on my calendar",

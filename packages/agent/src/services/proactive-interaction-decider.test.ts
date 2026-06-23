@@ -178,6 +178,28 @@ describe("parseProactiveJudgeDecisionOutput", () => {
       groupKey: "view:tasks",
     });
   });
+
+  it("treats low-confidence judge output as silence", () => {
+    expect(
+      parseProactiveJudgeDecisionOutput(
+        '{"comment":"Want help here?","confidence":0.42}',
+      ),
+    ).toBeNull();
+  });
+
+  it("routes low-urgency judge output to notifications", () => {
+    expect(
+      parseProactiveJudgeDecisionOutput(
+        '{"comment":"I can summarize this later.","delivery":"chat","urgency":"low"}',
+      ),
+    ).toEqual({
+      text: "I can summarize this later.",
+      delivery: "notify",
+      title: undefined,
+      deepLink: undefined,
+      groupKey: undefined,
+    });
+  });
 });
 
 describe("buildProactiveJudgePrompt", () => {
@@ -256,6 +278,34 @@ describe("decideProactiveComment — new interaction types", () => {
 });
 
 describe("registerProactiveInteractionDecider delivery routing", () => {
+  it("suppresses comments while a foreground chat turn is active", async () => {
+    const handlers = new Map<EventType, (payload: unknown) => Promise<void>>();
+    const runtime = {
+      getSetting: () => "chatty",
+      registerEvent: vi.fn((event: EventType, handler) => {
+        handlers.set(event, handler as (payload: unknown) => Promise<void>);
+      }),
+      useModel: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          comment: "Want help with this view?",
+          delivery: "chat",
+        }),
+      ),
+    } as unknown as IAgentRuntime;
+    const route = vi.fn();
+
+    registerProactiveInteractionDecider(runtime, {
+      gate: new ProactiveInteractionGate(configForChattiness("chatty")),
+      route,
+      shouldSuppress: () => true,
+    });
+
+    await handlers.get(EventType.VIEW_SWITCHED)?.(payload());
+
+    expect(runtime.useModel).not.toHaveBeenCalled();
+    expect(route).not.toHaveBeenCalled();
+  });
+
   it("routes notify delivery to notifications instead of chat", async () => {
     vi.useFakeTimers();
     let now = 0;

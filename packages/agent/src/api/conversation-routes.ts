@@ -218,6 +218,7 @@ export interface ConversationRouteState {
   chatUserId: UUID | null;
   logBuffer: LogEntry[];
   conversations: Map<string, ConversationMeta>;
+  activeChatTurnCount: number;
   conversationRestorePromise: Promise<void> | null;
   deletedConversationIds: Set<string>;
   broadcastWs: ((data: object) => void) | null;
@@ -256,6 +257,16 @@ async function resolveRuntimeForChatTurn(
     return state.runtime ?? null;
   }
   return state.awaitRuntimeReady(WARMING_TURN_HOLD_MS);
+}
+
+function beginActiveChatTurn(state: ConversationRouteState): () => void {
+  state.activeChatTurnCount = Math.max(0, state.activeChatTurnCount) + 1;
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    state.activeChatTurnCount = Math.max(0, state.activeChatTurnCount - 1);
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1915,6 +1926,7 @@ export async function handleConversationRoutes(
 
     const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
     if (walletModeGuidance) {
+      const endActiveChatTurn = beginActiveChatTurn(state);
       initSse(res);
       try {
         if (!disconnectTracker.isAborted()) {
@@ -1943,12 +1955,14 @@ export async function handleConversationRoutes(
         }
       } finally {
         finishStreamResponse();
+        endActiveChatTurn();
       }
       return true;
     }
 
     // ── Local runtime path (streaming) ───────────────────────
 
+    const endActiveChatTurn = beginActiveChatTurn(state);
     initSse(res);
     writeConversationStreamHeartbeat(res, disconnectTracker);
 
@@ -2189,6 +2203,7 @@ export async function handleConversationRoutes(
     } finally {
       clearInterval(heartbeatInterval);
       finishStreamResponse();
+      endActiveChatTurn();
       // Persistence runs after the client has already received `done` + the
       // socket is closed. Failures must still be observable — never swallow.
       if (deferredPersistence !== null) {
@@ -2275,6 +2290,7 @@ export async function handleConversationRoutes(
 
     const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
     if (walletModeGuidance) {
+      const endActiveChatTurn = beginActiveChatTurn(state);
       try {
         await persistAssistantConversationMemory(
           runtime,
@@ -2290,10 +2306,13 @@ export async function handleConversationRoutes(
         });
       } catch (persistErr) {
         error(res, getErrorMessage(persistErr), 500);
+      } finally {
+        endActiveChatTurn();
       }
       return true;
     }
 
+    const endActiveChatTurn = beginActiveChatTurn(state);
     try {
       const result = await generateChatResponse(
         runtime,
@@ -2380,6 +2399,8 @@ export async function handleConversationRoutes(
       } catch (persistErr) {
         error(res, getErrorMessage(persistErr), 500);
       }
+    } finally {
+      endActiveChatTurn();
     }
     return true;
   }
