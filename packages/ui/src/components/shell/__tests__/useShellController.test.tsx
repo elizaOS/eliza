@@ -80,6 +80,7 @@ vi.mock("../../../state", () => ({
   useApp: () => appMock.value,
   useConversationMessages: () => ({
     conversationMessages: appMock.value.conversationMessages,
+    removeConversationMessage: vi.fn(),
   }),
   useChatTurnStatus: () => ({
     serverTurnStatus: appMock.serverTurnStatus,

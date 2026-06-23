@@ -20,6 +20,8 @@ export interface ChatLabelSet {
   suggestion?: string;
   /** Dismiss control on a proactive suggestion bubble (#8792). */
   dismiss?: string;
+  /** Accept ("Do it") control on a proactive suggestion bubble (#8792). */
+  acceptSuggestion?: string;
   deleteNo?: string;
   deleteYes?: string;
   edit?: string;

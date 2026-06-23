@@ -1865,9 +1865,17 @@ function AppProviderInner({
   // streaming updates re-render only the chat surfaces (ChatView + the shell
   // controller behind ContinuousChatOverlay) instead of cascading through
   // AppContext to all ~135 useApp() subscribers.
+  const removeConversationMessage = useCallback(
+    (messageId: string) => {
+      setConversationMessages((prev) =>
+        prev.filter((message) => message.id !== messageId),
+      );
+    },
+    [setConversationMessages],
+  );
   const conversationMessagesValue = useMemo(
-    () => ({ conversationMessages }),
-    [conversationMessages],
+    () => ({ conversationMessages, removeConversationMessage }),
+    [conversationMessages, removeConversationMessage],
   );
 
   // Live assistant-turn status (rich status indicator) lives in its own context

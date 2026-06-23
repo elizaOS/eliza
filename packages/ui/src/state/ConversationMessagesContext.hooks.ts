@@ -18,11 +18,17 @@ import type { ConversationMessage } from "../api";
 
 export interface ConversationMessagesValue {
   conversationMessages: ConversationMessage[];
+  /**
+   * Remove a single message from the live transcript by id (#8792). Used to
+   * dismiss a proactive suggestion locally without a server round-trip.
+   */
+  removeConversationMessage: (messageId: string) => void;
 }
 
 export const ConversationMessagesCtx = createContext<ConversationMessagesValue>(
   {
     conversationMessages: [],
+    removeConversationMessage: () => {},
   },
 );
 

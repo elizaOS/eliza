@@ -26,7 +26,7 @@ describe("ChatMessage proactive suggestion affordance (#8792)", () => {
     render(
       <ChatMessage
         message={makeMessage({ source: "proactive-interaction" })}
-        onDelete={vi.fn()}
+        onDismissSuggestion={vi.fn()}
       />,
     );
     expect(screen.getByText("Suggestion")).toBeTruthy();
@@ -36,7 +36,9 @@ describe("ChatMessage proactive suggestion affordance (#8792)", () => {
   });
 
   it("does NOT render the suggestion affordance for a normal assistant reply", () => {
-    render(<ChatMessage message={makeMessage()} onDelete={vi.fn()} />);
+    render(
+      <ChatMessage message={makeMessage()} onDismissSuggestion={vi.fn()} />,
+    );
     expect(screen.queryByText("Suggestion")).toBeNull();
     expect(
       document.querySelector('[data-proactive-suggestion="true"]'),
@@ -44,23 +46,48 @@ describe("ChatMessage proactive suggestion affordance (#8792)", () => {
   });
 
   it("offers a one-tap dismiss that removes the suggestion by id", () => {
-    const onDelete = vi.fn();
+    const onDismissSuggestion = vi.fn();
     render(
       <ChatMessage
         message={makeMessage({ source: "proactive-interaction" })}
-        onDelete={onDelete}
+        onDismissSuggestion={onDismissSuggestion}
       />,
     );
-    const dismiss = screen.getByLabelText("Dismiss suggestion");
-    fireEvent.click(dismiss);
-    expect(onDelete).toHaveBeenCalledWith("msg-1");
+    fireEvent.click(screen.getByLabelText("Dismiss suggestion"));
+    expect(onDismissSuggestion).toHaveBeenCalledWith("msg-1");
+  });
+
+  it("offers an accept ('Do it') affordance that sends the implied action", () => {
+    const onAcceptSuggestion = vi.fn();
+    const message = makeMessage({ source: "proactive-interaction" });
+    render(
+      <ChatMessage
+        message={message}
+        onAcceptSuggestion={onAcceptSuggestion}
+        onDismissSuggestion={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Do it"));
+    expect(onAcceptSuggestion).toHaveBeenCalledWith(message);
+  });
+
+  it("does not render dismiss/accept controls without their handlers", () => {
+    render(
+      <ChatMessage
+        message={makeMessage({ source: "proactive-interaction" })}
+      />,
+    );
+    // The eyebrow still renders, but neither control appears without a handler.
+    expect(screen.getByText("Suggestion")).toBeTruthy();
+    expect(screen.queryByLabelText("Dismiss suggestion")).toBeNull();
+    expect(screen.queryByLabelText("Do it")).toBeNull();
   });
 
   it("does not treat a user message with the source as a suggestion", () => {
     render(
       <ChatMessage
         message={makeMessage({ role: "user", source: "proactive-interaction" })}
-        onDelete={vi.fn()}
+        onDismissSuggestion={vi.fn()}
       />,
     );
     expect(screen.queryByText("Suggestion")).toBeNull();

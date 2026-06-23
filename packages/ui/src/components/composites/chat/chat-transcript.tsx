@@ -18,6 +18,10 @@ export interface ChatTranscriptProps {
   messages: ChatMessageData[];
   onCopy?: (text: string) => void;
   onDelete?: (messageId: string) => void;
+  /** Dismiss a proactive suggestion bubble (#8792). */
+  onDismissSuggestion?: (messageId: string) => void;
+  /** Accept ("Do it") a proactive suggestion bubble (#8792). */
+  onAcceptSuggestion?: (message: ChatMessageData) => void;
   onEdit?: (messageId: string, text: string) => Promise<boolean> | boolean;
   onSpeak?: (messageId: string, text: string) => void;
   renderMessageContent?: (message: ChatMessageData) => React.ReactNode;
@@ -112,6 +116,8 @@ export const ChatTranscript = memo(function ChatTranscript({
   messages,
   onCopy,
   onDelete,
+  onDismissSuggestion,
+  onAcceptSuggestion,
   onEdit,
   onSpeak,
   renderMessageContent,
@@ -240,6 +246,8 @@ export const ChatTranscript = memo(function ChatTranscript({
             labels={labels}
             onCopy={onCopy}
             onDelete={onDelete}
+            onDismissSuggestion={onDismissSuggestion}
+            onAcceptSuggestion={onAcceptSuggestion}
             onEdit={onEdit}
             onSpeak={onSpeak}
             replyTarget={replyTarget}
