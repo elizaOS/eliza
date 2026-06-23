@@ -108,6 +108,7 @@ src/
     a11y-provider.ts         DarwinAccessibilityProvider / LinuxAccessibilityProvider / …
     apps.ts                  enumerateApps / joinAppsAndWindows
     dhash.ts                 Perceptual hash / dirty-block diffing for change detection
+    screen-state.ts          ScreenState + ScreenStateStore — one shared capture/turn (dHash/blockGrid + change events)
     ocr-adapter.ts           OcrProvider / CoordOcrProvider adapter seam
     serialize.ts             serializeSceneForPrompt — token-efficient JSON fence
 

@@ -179,6 +179,9 @@ export async function runComputerUseAgentLoop(
       report.error = `cascade failed: ${errorMessage(err)}`;
       return report;
     }
+    // Persist the Brain's understanding onto the scene (#9105 M3) so the next
+    // turn's `scene` provider carries `vlm_scene` instead of re-describing.
+    service.setSceneVlmAnnotations(proposed.scene_summary, null);
     const dispatchResult = await dispatch(proposed.proposed, {
       interface: computer,
       listDisplays: () => service.getDisplays(),

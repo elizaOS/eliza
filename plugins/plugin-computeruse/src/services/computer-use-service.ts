@@ -78,7 +78,12 @@ import {
   switchWindow,
 } from "../platform/windows-list.js";
 import { SceneBuilder, type SceneUpdateEvent } from "../scene/scene-builder.js";
-import type { Scene } from "../scene/scene-types.js";
+import type { Scene, SceneVlmElement } from "../scene/scene-types.js";
+import {
+  type ScreenState,
+  type ScreenStateChange,
+  ScreenStateStore,
+} from "../scene/screen-state.js";
 import type {
   ActionHistoryEntry,
   ApprovalMode,
@@ -185,6 +190,14 @@ export class ComputerUseService extends Service {
   private displayIdDeprecationWarned = false;
   private sceneBuilder: SceneBuilder = new SceneBuilder({
     log: (msg) => logger.warn(msg),
+  });
+  /**
+   * Single shared per-display capture for the turn (#9105 M3). OCR, the Brain,
+   * and the DirtyTileDescriber all read through this store so the screen is
+   * grabbed once per tick instead of once per consumer.
+   */
+  private screenStateStore: ScreenStateStore = new ScreenStateStore({
+    capture: (displayId) => captureDisplay(displayId),
   });
   private cuConfig: ComputerUseConfig = {
     screenshotAfterAction: true,
@@ -1541,6 +1554,41 @@ export class ComputerUseService extends Service {
     handler: (event: SceneUpdateEvent) => void,
   ): () => void {
     return this.sceneBuilder.subscribe(handler);
+  }
+
+  /**
+   * Shared single-capture `ScreenState` for a display (#9105 M3). Reuses the
+   * last capture inside the freshness window; pass `force` to re-capture. This
+   * is the one capture per turn that OCR, the Brain, and the DirtyTileDescriber
+   * all read instead of grabbing their own frame.
+   */
+  async getScreenState(displayId = 0, force = false): Promise<ScreenState> {
+    return this.screenStateStore.get(displayId, force);
+  }
+
+  /** Subscribe to screen-change events (dHash moved ≥ threshold). */
+  subscribeScreenChange(
+    listener: (change: ScreenStateChange) => void,
+  ): () => void {
+    return this.screenStateStore.onChange(listener);
+  }
+
+  /** Capture-accounting snapshot proving the per-turn capture saving. */
+  getScreenStateStats(): ReturnType<ScreenStateStore["getStats"]> {
+    return this.screenStateStore.getStats();
+  }
+
+  /**
+   * Populate the current scene's VLM annotations (#9105 M3). The Brain and the
+   * DirtyTileDescriber produce `vlm_scene` / `vlm_elements`; this persists them
+   * so the next `scene` provider read carries the cheap understanding instead
+   * of forcing a fresh describe.
+   */
+  setSceneVlmAnnotations(
+    vlmScene: string | null,
+    vlmElements: SceneVlmElement[] | null,
+  ): void {
+    this.sceneBuilder.setVlmAnnotations(vlmScene, vlmElements);
   }
 
   private shouldCaptureAfterDesktopAction(

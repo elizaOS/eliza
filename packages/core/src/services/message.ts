@@ -5158,7 +5158,11 @@ export async function runShortcutGate(args: {
 	let valid = false;
 	try {
 		valid = await action.validate(args.runtime, args.message, args.state);
-	} catch {
+	} catch (err) {
+		args.runtime.logger?.warn?.(
+			{ src: "shortcut-gate", shortcut: match.shortcut.id, action: action.name, err },
+			"shortcut action validate() threw; falling through to pipeline",
+		);
 		return null;
 	}
 	if (!valid) return null;
@@ -6374,7 +6378,7 @@ function getMessageHandlerResponseText(
 	if (typeof raw.text === "string" && raw.text.trim().length > 0) {
 		return raw.text;
 	}
-	const responseText = (raw as unknown as Record<string, unknown>).response;
+	const responseText = raw.response;
 	if (typeof responseText === "string" && responseText.trim().length > 0) {
 		return responseText;
 	}

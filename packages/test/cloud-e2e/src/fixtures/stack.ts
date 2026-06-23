@@ -361,9 +361,22 @@ export async function startCloudStack(
     label: "cloud-api",
   });
 
-  // 3. cloud-frontend Vite dev (skipped for API-only stacks)
+  // 3. console (apex) frontend Vite dev (skipped for API-only stacks).
+  // cloud-frontend was deleted in the apex→packages/app cutover. The apex is now
+  // packages/app, but its vite dev proxies /api via its own computed port (not
+  // VITE_API_PROXY_TARGET), so this harness can't boot it unchanged — repointing
+  // the frontend e2e to packages/app's web dev is a tracked follow-up. Until
+  // then, skip the frontend boot gracefully when the dir is absent instead of
+  // hard-crashing on a missing cwd.
   let frontendUrl = "";
-  if (opts.frontend !== false) {
+  const frontendDir = join(REPO_ROOT, "packages", "cloud-frontend");
+  if (opts.frontend !== false && !existsSync(frontendDir)) {
+    console.warn(
+      "[cloud-e2e] packages/cloud-frontend is gone (apex moved to packages/app); " +
+        "skipping frontend boot. Frontend-dependent specs will not run until the " +
+        "harness is repointed to packages/app's web dev.",
+    );
+  } else if (opts.frontend !== false) {
     const frontendEnv = {
       ...stackEnv,
       PORT: String(frontendPort),
@@ -378,7 +391,7 @@ export async function startCloudStack(
         ["run", "dev", "--", "--host", "127.0.0.1"],
         {
           env: frontendEnv,
-          cwd: join(REPO_ROOT, "packages", "cloud-frontend"),
+          cwd: frontendDir,
           logFile: join(LOG_DIR, "cloud-frontend.log"),
         },
       ),

@@ -24,7 +24,6 @@
 # Cloud / backend — billing, auth, hosted APIs.
 /packages/cloud-api/                    @elizaos/backend-leads
 /packages/cloud-shared/                 @elizaos/backend-leads
-/packages/cloud-frontend/               @elizaos/backend-leads
 /packages/cloud-services/               @elizaos/backend-leads
 /packages/cloud-infra/                  @elizaos/backend-leads @elizaos/platform-team
 /packages/cloud-routing/                @elizaos/backend-leads
