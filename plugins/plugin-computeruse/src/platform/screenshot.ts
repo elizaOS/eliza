@@ -20,6 +20,7 @@ import {
   createPermissionDeniedError,
   isPermissionDeniedError,
 } from "./permissions.js";
+import { tagScreenshotError } from "./screenshot-errors.js";
 
 const SCREEN_RECORDING_OPERATION_MESSAGE =
   "macOS Screen Recording permission is required for screenshots. Grant access in System Settings > Privacy & Security > Screen Recording, then retry.";
@@ -63,19 +64,21 @@ export function captureScreenshot(region?: ScreenRegion): Buffer {
       /* ignore */
     }
 
+    const operation = region ? "screenshot_region" : "screenshot_capture";
+
     if (isPermissionDeniedError(err)) {
-      throw err;
+      throw tagScreenshotError(err, operation);
     }
 
     const permissionError = classifyPermissionDeniedError(err, {
       permissionType: "screen_recording",
-      operation: region ? "screenshot_region" : "screenshot_capture",
+      operation,
     });
     if (permissionError) {
-      throw permissionError;
+      throw tagScreenshotError(permissionError, operation);
     }
 
-    throw err;
+    throw tagScreenshotError(err, operation);
   }
 }
 
