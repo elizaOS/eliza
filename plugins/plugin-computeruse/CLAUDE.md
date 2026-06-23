@@ -16,8 +16,9 @@ File operations belong to the FILE action; shell/terminal access belongs to the 
 
 | Name | File | What it does |
 |------|------|--------------|
-| `COMPUTER_USE` | `src/actions/use-computer.ts` | Umbrella desktop action: `screenshot`, `click`, `click_with_modifiers`, `double_click`, `right_click`, `mouse_move`, `type`, `key`, `key_combo`, `scroll`, `drag`, `detect_elements`, `ocr`. Requires `OWNER` role. Subactions are promoted to virtual top-level actions (`COMPUTER_USE_CLICK`, etc.) via `promoteSubactionsToActions`. |
+| `COMPUTER_USE` | `src/actions/use-computer.ts` | Umbrella desktop action: `screenshot`, `click`, `click_with_modifiers`, `double_click`, `right_click`, `mouse_move`, `type`, `key`, `key_combo`, `scroll`, `drag`, `get_cursor_position`, `detect_elements`, `ocr`. Requires `OWNER` role. Subactions are promoted to virtual top-level actions (`COMPUTER_USE_CLICK`, etc.) via `promoteSubactionsToActions`. |
 | `WINDOW` | `src/actions/window.ts` | Window management: `list`, `focus`, `switch`, `arrange`, `move`, `minimize`, `maximize`, `restore`, `close`. Also promoted to `WINDOW_FOCUS`, etc. |
+| `CLIPBOARD` | `src/actions/clipboard.ts` | Host clipboard read/write (`read`, `write`) — trycua/cua parity. Promoted to `CLIPBOARD_READ` / `CLIPBOARD_WRITE`. macOS pbcopy/pbpaste, Linux wl-clipboard/xclip, Windows PowerShell `Get-Clipboard` / `Set-Clipboard`. |
 | `COMPUTER_USE_AGENT` | `src/actions/use-computer-agent.ts` | High-level "give me a goal, click my way there" loop (WS7). Runs Brain → Cascade → dispatch up to `maxSteps` iterations, emitting trajectory events as structured log lines. |
 
 ### Providers
@@ -59,7 +60,7 @@ src/
     use-computer-agent.ts    COMPUTER_USE_AGENT (WS7 autonomous loop)
     window.ts                WINDOW parent action
     window-handlers.ts       Per-verb handlers called by window.ts
-    clipboard.ts             clipboardAction (CLIPBOARD parent action) — defined but NOT registered in index.ts
+    clipboard.ts             clipboardAction (CLIPBOARD parent action) — registered in index.ts; promoted to CLIPBOARD_READ / CLIPBOARD_WRITE
     helpers.ts               resolveActionParams, buildScreenshotAttachment, …
 
   actor/                     WS7 autonomous desktop loop

@@ -37,6 +37,7 @@ import {
   driverClickWithModifiers,
   driverDoubleClick,
   driverDrag,
+  driverGetCursorPosition,
   driverKeyCombo,
   driverKeyPress,
   driverMouseMove,
@@ -242,6 +243,7 @@ export class ComputerUseService extends Service {
       case "key_combo":
       case "scroll":
       case "drag":
+      case "get_cursor_position":
       case "detect_elements":
       case "ocr":
         return this.executeDesktopAction({
@@ -416,6 +418,15 @@ export class ComputerUseService extends Service {
             params.scrollAmount ?? 3,
           );
           break;
+        }
+        case "get_cursor_position": {
+          // Read-only query — no coordinate, no post-action screenshot.
+          const pos = await driverGetCursorPosition();
+          return this.succeedEntry(entry, {
+            success: true,
+            cursorPosition: pos,
+            message: `Cursor is at (${pos.x}, ${pos.y}).`,
+          });
         }
         case "drag": {
           this.requireCoordinate(

@@ -26,6 +26,7 @@ export type DesktopActionType =
   | "key_combo"
   | "scroll"
   | "drag"
+  | "get_cursor_position"
   | "detect_elements"
   | "ocr";
 
@@ -158,6 +159,8 @@ export interface ComputerActionResult extends ComputerUseResult {
   screenshot?: string;
   /** Display the screenshot belongs to (when known). */
   displayId?: number;
+  /** Current cursor position (for the `get_cursor_position` action). */
+  cursorPosition?: { x: number; y: number };
   /** Structured data payload (e.g. OCR/detect results) */
   data?: unknown;
 }
