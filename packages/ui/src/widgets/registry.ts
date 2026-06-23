@@ -128,6 +128,18 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     order: 100,
     defaultEnabled: true,
   },
+  // Agent Orchestrator — running app instances on the home (#9143). Distinct
+  // from the launcher icons (which open views): this lists live app runs.
+  // Reuses the registered AppRunsWidget component (self-contained data).
+  {
+    id: "agent-orchestrator.apps",
+    pluginId: "agent-orchestrator",
+    slot: "home",
+    label: "Apps",
+    icon: "LayoutGrid",
+    order: 70,
+    defaultEnabled: true,
+  },
   // Browser workspace status — surfaces /browser state in the right rail.
   {
     id: BROWSER_STATUS_WIDGET.id,
