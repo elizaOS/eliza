@@ -228,6 +228,63 @@ export async function nutMouseMove(x: number, y: number): Promise<void> {
   await m.mouse.setPosition(new m.Point(validateInt(x), validateInt(y)));
 }
 
+/** Inter-notch / inter-step pacing (ms) — small, just enough to defeat event
+ * coalescing in fast consumers (e.g. Chromium's MouseWheelEventQueue) without
+ * making input feel sluggish. */
+const SCROLL_NOTCH_DELAY_MS = 8;
+const DRAG_STEP_DELAY_MS = 8;
+const DRAG_STEPS = 20;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/** Clamp a requested scroll amount to a safe per-notch count (1..20). Pure. */
+export function clampScrollNotches(amount: number): number {
+  return Math.max(1, Math.min(validateInt(amount), 20));
+}
+
+/**
+ * Interpolated integer waypoints from (x1,y1) to (x2,y2) over `steps` moves
+ * (excludes the start, includes the end). Pure — exported for unit tests.
+ */
+export function interpolateDragSteps(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  steps: number = DRAG_STEPS,
+): Array<{ x: number; y: number }> {
+  const n = Math.max(1, Math.floor(steps));
+  const points: Array<{ x: number; y: number }> = [];
+  for (let i = 1; i <= n; i += 1) {
+    const t = i / n;
+    points.push({
+      x: Math.round(x1 + (x2 - x1) * t),
+      y: Math.round(y1 + (y2 - y1) * t),
+    });
+  }
+  return points;
+}
+
+async function manualDragMove(
+  m: NutModule,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): Promise<void> {
+  // Interpolated move with the button held — fallback for libnut builds whose
+  // `mouse.move(straightTo)` does not carry a real button-down on Windows.
+  const points = interpolateDragSteps(x1, y1, x2, y2);
+  for (let i = 0; i < points.length; i += 1) {
+    await m.mouse.setPosition(new m.Point(points[i].x, points[i].y));
+    if (i < points.length - 1) await sleep(DRAG_STEP_DELAY_MS);
+  }
+}
+
 export async function nutDrag(
   x1: number,
   y1: number,
@@ -242,7 +299,11 @@ export async function nutDrag(
   await m.mouse.setPosition(new m.Point(sx1, sy1));
   await m.mouse.pressButton(m.Button.LEFT);
   try {
-    await m.mouse.move(m.straightTo(new m.Point(sx2, sy2)));
+    try {
+      await m.mouse.move(m.straightTo(new m.Point(sx2, sy2)));
+    } catch {
+      await manualDragMove(m, sx1, sy1, sx2, sy2);
+    }
   } finally {
     await m.mouse.releaseButton(m.Button.LEFT);
   }
@@ -257,12 +318,16 @@ export async function nutScroll(
   const m = nut();
   const sx = validateInt(x);
   const sy = validateInt(y);
-  const clicks = Math.max(1, Math.min(validateInt(amount), 20));
+  const clicks = clampScrollNotches(amount);
   await m.mouse.setPosition(new m.Point(sx, sy));
-  if (direction === "up") await m.mouse.scrollUp(clicks);
-  else if (direction === "down") await m.mouse.scrollDown(clicks);
-  else if (direction === "left") await m.mouse.scrollLeft(clicks);
-  else await m.mouse.scrollRight(clicks);
+  // Emit one wheel notch at a time so coalescing consumers register each notch.
+  for (let i = 0; i < clicks; i += 1) {
+    if (direction === "up") await m.mouse.scrollUp(1);
+    else if (direction === "down") await m.mouse.scrollDown(1);
+    else if (direction === "left") await m.mouse.scrollLeft(1);
+    else await m.mouse.scrollRight(1);
+    if (i < clicks - 1) await sleep(SCROLL_NOTCH_DELAY_MS);
+  }
 }
 
 // ── Keyboard ────────────────────────────────────────────────────────────────
