@@ -1272,6 +1272,160 @@ android smoke model works`,
 		}
 	});
 
+	it("exposes VIEWS for explicit view-search requests", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				replyText: "Searching views.",
+				candidateActionNames: ["VIEWS"],
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "VIEWS",
+						args: { action: "search", query: "finance" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The view search completed.",
+				messageToUser: "Found finance views.",
+			}),
+		]);
+		const viewsHandler = vi.fn(async () => ({
+			success: true,
+			text: "Found finance views.",
+			data: { actionName: "VIEWS" },
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "Manage UI views.",
+				contexts: ["general"],
+				tags: ["view-capability"],
+				similes: ["LIST_VIEWS", "OPEN_VIEW"],
+				parameters: [
+					{
+						name: "action",
+						description: "View action to perform.",
+						required: true,
+						schema: { type: "string" },
+					},
+					{
+						name: "query",
+						description: "Search query.",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+				validate: vi.fn(async () => true),
+				handler: viewsHandler,
+			},
+		] as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Search views for finance" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		const plannerParams = useModelCalls(runtime)[1]?.[1] as {
+			tools?: Array<{ name?: string }>;
+		};
+		expect(plannerParams.tools?.map((tool) => tool.name)).toContain("VIEWS");
+		expect(viewsHandler).toHaveBeenCalledTimes(1);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe("Found finance views.");
+		}
+	});
+
+	it("does not expose VIEWS for avatar emote requests backed only by plain view tags", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				replyText: "Playing that.",
+				candidateActionNames: ["PLAY_EMOTE"],
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "PLAY_EMOTE",
+						args: { emote: "wave" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The emote played.",
+				messageToUser: "Playing wave emote.",
+			}),
+		]);
+		const viewsHandler = vi.fn(async () => ({
+			success: true,
+			text: "Opened companion.",
+			data: { actionName: "VIEWS" },
+		}));
+		const emoteHandler = vi.fn(async () => ({
+			success: true,
+			text: "Playing wave emote.",
+			data: { actionName: "PLAY_EMOTE" },
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "Manage UI views.",
+				contexts: ["general"],
+				tags: ["view-capability", "companion", "avatar"],
+				validate: vi.fn(async () => true),
+				handler: viewsHandler,
+			},
+			{
+				name: "PLAY_EMOTE",
+				description: "Play a companion avatar emote.",
+				contexts: ["general"],
+				parameters: [
+					{
+						name: "emote",
+						description: "Emote id.",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				validate: vi.fn(async () => true),
+				handler: emoteHandler,
+			},
+		] as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "make my avatar wave" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		const plannerParams = useModelCalls(runtime)[1]?.[1] as {
+			tools?: Array<{ name?: string }>;
+		};
+		const toolNames = plannerParams.tools?.map((tool) => tool.name) ?? [];
+		expect(toolNames).not.toContain("VIEWS");
+		expect(toolNames).toContain("PLAY_EMOTE");
+		expect(viewsHandler).not.toHaveBeenCalled();
+		expect(emoteHandler).toHaveBeenCalledTimes(1);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe("Playing wave emote.");
+		}
+	});
+
 	it("keeps explicit reply-format answers direct despite weak view candidate noise", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
@@ -1460,7 +1614,7 @@ android smoke model works`,
 
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
-			message: makeMessage({ text: "what's on my calendar this week" }),
+			message: makeMessage({ text: "what are my calendar events this week" }),
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});

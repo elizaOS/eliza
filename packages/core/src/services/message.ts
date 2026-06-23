@@ -4552,6 +4552,7 @@ const VIEW_REQUEST_OPERATION_GROUPS = {
 		"LIST",
 		"PULL",
 		"READ",
+		"SEARCH",
 		"SEE",
 		"SHOW",
 		"WHAT",
@@ -4722,6 +4723,7 @@ function findViewCapabilityActionName(
 	const messageTokenSet = new Set(messageTokens.map(normalizeSingularToken));
 	const messageOperationGroups = operationGroupsForTokens(messageTokens);
 	if (messageOperationGroups.size === 0) return undefined;
+	const messageHasCreateOperation = messageOperationGroups.has("create");
 
 	for (const viewAction of viewActions) {
 		for (const alias of [
@@ -4732,6 +4734,13 @@ function findViewCapabilityActionName(
 			const aliasTokens = tokenizeActionMetadata(String(alias));
 			if (aliasTokens.length === 0) continue;
 			const aliasOperationGroups = operationGroupsForTokens(aliasTokens);
+			// Create/build/make requests are artifact-producing verbs in many
+			// domains. Require the matched VIEWS metadata itself to declare a
+			// create-capable alias such as CREATE_NOTE or ADD_FEATURE; plain domain
+			// tags like "avatar" or "documents" are not enough.
+			if (messageHasCreateOperation && aliasOperationGroups.size === 0) {
+				continue;
+			}
 			if (
 				aliasOperationGroups.size > 0 &&
 				!setsIntersect(aliasOperationGroups, messageOperationGroups)
@@ -4755,6 +4764,16 @@ function findViewCapabilityActionName(
 }
 
 function looksLikeInstructionalViewQuestion(messageText: string): boolean {
+	const tokens = tokenizeActionMetadata(messageText).map(
+		normalizeSingularToken,
+	);
+	if (
+		tokens[0] === "WHAT" &&
+		(tokens[1] === "IS" || tokens[1] === "ARE") &&
+		tokens.includes("MY")
+	) {
+		return false;
+	}
 	return /^\s*(?:explain|describe|teach|what\s+(?:is|are)|how\s+(?:do|can|to)\b)/iu.test(
 		messageText,
 	);
