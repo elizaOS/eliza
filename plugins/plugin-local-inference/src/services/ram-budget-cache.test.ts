@@ -39,13 +39,14 @@ function validManifest(): Eliza1Manifest {
 			asr: { base: "eliza-1-asr", license: "apache-2.0" },
 			vad: { base: "eliza-1-vad", license: "apache-2.0" },
 			vision: { base: "eliza-1-vision", license: "apache-2.0" },
+			drafter: { base: "eliza-1-drafter", license: "apache-2.0" },
 		},
 		files: {
 			text: [{ path: "text/eliza-1-9b-128k.gguf", ctx: 131072, sha256: SHA }],
 			voice: [{ path: "tts/omnivoice-base-Q4_K_M.gguf", sha256: SHA }],
 			asr: [{ path: "asr/asr.gguf", sha256: SHA }],
 			vision: [{ path: "vision/mmproj-9b.gguf", sha256: SHA }],
-			mtp: [],
+			mtp: [{ path: "mtp/drafter-9b.gguf", sha256: SHA }],
 			cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
 			vad: [{ path: "vad/silero-vad-v5.gguf", sha256: SHA }],
 		},
@@ -77,6 +78,7 @@ function validManifest(): Eliza1Manifest {
 		},
 		ramBudgetMb: { min: 7000, recommended: 9500 },
 		defaultEligible: true,
+		mtp: "separate-drafter",
 	};
 	return manifest;
 }
