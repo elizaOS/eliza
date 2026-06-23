@@ -208,6 +208,19 @@ export const ChoicePicker: Story = {
   },
 };
 
+/**
+ * Fenced code block (#9148): assistant ```code``` renders via the CodeBlock
+ * primitive with a per-block copy button instead of undifferentiated prose;
+ * inline `code` spans render inline and keep their place in the sentence.
+ */
+export const CodeBlocks: Story = {
+  args: {
+    message: makeMessage({
+      text: "Run `npm install` first, then add this to `vite.config.ts`:\n```ts\nexport default defineConfig({\n  plugins: [react()],\n});\n```\nThat wires up the dev server.",
+    }),
+  },
+};
+
 /** Inline form: a `[FORM]` block becomes a structured multi-field form. */
 export const InlineForm: Story = {
   args: {

@@ -1,5 +1,7 @@
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
+  Check,
+  Copy,
   FileText,
   Film,
   Home,
@@ -51,15 +53,15 @@ import { copyTextToClipboard } from "../../utils/clipboard";
 import {
   CHAT_UPLOAD_ACCEPT,
   chatUploadKind,
+  classifyComposerPaste,
   intakeAttachmentFiles,
   MAX_CHAT_IMAGES,
-  pastedTextToAttachment,
-  shouldConvertPasteToAttachment,
   summarizeDroppedAttachments,
 } from "../../utils/image-attachment";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
 import { SensitiveRequestBlock } from "../chat/MessageContent";
+import { conversationTranscriptText } from "../chat/message-parser-helpers";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
@@ -1243,6 +1245,38 @@ export function ContinuousChatOverlay({
   );
   const lastId = visibleMessages.at(-1)?.id ?? null;
   const lastContent = visibleMessages.at(-1)?.content ?? "";
+
+  // Copy the whole thread as a plain-text transcript from the full-state header
+  // — parity with the desktop ChatView header. Flashes a check on success.
+  const [conversationCopied, setConversationCopied] = React.useState(false);
+  const conversationCopiedTimerRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  React.useEffect(
+    () => () => {
+      if (conversationCopiedTimerRef.current) {
+        clearTimeout(conversationCopiedTimerRef.current);
+      }
+    },
+    [],
+  );
+  const handleCopyConversation = React.useCallback(() => {
+    const transcript = conversationTranscriptText(
+      visibleMessages.map((m) => ({ role: m.role, text: m.content })),
+      { agentName },
+    );
+    if (!transcript) return;
+    void copyTextToClipboard(transcript);
+    setConversationCopied(true);
+    if (conversationCopiedTimerRef.current) {
+      clearTimeout(conversationCopiedTimerRef.current);
+    }
+    conversationCopiedTimerRef.current = setTimeout(
+      () => setConversationCopied(false),
+      2000,
+    );
+  }, [agentName, visibleMessages]);
+
   // The last line id the scroll effect pinned to — lets it tell a NEW line
   // (always pin to bottom) from streaming growth of the current line (follow
   // only when the reader is already at the bottom).
@@ -3090,6 +3124,18 @@ export function ContinuousChatOverlay({
                     onClick={toggleMaximize}
                     testId="chat-full-maximize"
                   />
+                  {hasThread ? (
+                    <HeaderButton
+                      icon={conversationCopied ? Check : Copy}
+                      label={
+                        conversationCopied
+                          ? "conversation copied"
+                          : "copy conversation"
+                      }
+                      onClick={handleCopyConversation}
+                      testId="chat-full-copy-conversation"
+                    />
+                  ) : null}
                   <HeaderButton
                     icon={RotateCcw}
                     label="clear conversation"
@@ -3401,25 +3447,23 @@ export function ContinuousChatOverlay({
                 }}
                 onBlur={() => setComposerFocused(false)}
                 onPaste={(e) => {
-                  // Paste images/files straight into the composer (cmd/ctrl+V).
-                  const files = Array.from(e.clipboardData?.files ?? []);
-                  if (files.length > 0) {
+                  // Shared with the desktop composer: a pasted image/file
+                  // attaches, a large plain-text paste becomes a collapsed
+                  // text-attachment chip, and small text falls through to the
+                  // textarea as normal.
+                  const intent = classifyComposerPaste({
+                    files: Array.from(e.clipboardData?.files ?? []),
+                    text: e.clipboardData?.getData("text") ?? "",
+                  });
+                  if (intent.kind === "files") {
                     e.preventDefault();
-                    addImageFiles(files);
+                    addImageFiles(intent.files);
                     return;
                   }
-                  // A large plain-text paste becomes a collapsed text
-                  // attachment chip (Claude-Code style) instead of flooding the
-                  // textarea; small pastes fall through to the textarea as
-                  // normal.
-                  const text = e.clipboardData?.getData("text") ?? "";
-                  if (shouldConvertPasteToAttachment(text)) {
+                  if (intent.kind === "text-attachment") {
                     e.preventDefault();
                     setPendingImages((prev) =>
-                      [...prev, pastedTextToAttachment(text)].slice(
-                        0,
-                        MAX_CHAT_IMAGES,
-                      ),
+                      [...prev, intent.attachment].slice(0, MAX_CHAT_IMAGES),
                     );
                   }
                 }}
