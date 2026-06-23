@@ -23,7 +23,17 @@ import {
   driverMouseUp,
 } from "../platform/driver.js";
 
-const RUN = platform() === "win32";
+// Run the real-driver lane wherever a real host driver + display session is
+// available — not just Windows. macOS runners are headful; Linux needs an X
+// display (Xvfb in CI). The previous win32-only gate silently skipped Linux/macOS
+// and let the M8 key_down("shift") bug (#9189) ship. See TRYCUA_PARITY_AUDIT.md
+// §3 — the matching CI lanes (Xvfb on Linux, headful macOS) are the remaining M14
+// step.
+const os = platform();
+const RUN =
+  os === "win32" ||
+  os === "darwin" ||
+  (os === "linux" && Boolean(process.env.DISPLAY));
 
 describe("cua parity input (real driver, Windows)", () => {
   it.skipIf(!RUN)(
