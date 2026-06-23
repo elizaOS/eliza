@@ -71,6 +71,78 @@
 			"import": "./dist/browser/index.browser.js",
 			"default": "./dist/browser/index.browser.js"
 		},
+		"./view-kind": {
+			"types": "./dist/view-kind.d.ts",
+			"eliza-source": {
+				"types": "./src/view-kind.ts",
+				"import": "./src/view-kind.ts",
+				"default": "./src/view-kind.ts"
+			},
+			"browser": {
+				"types": "./dist/view-kind.d.ts",
+				"import": "./dist/browser/view-kind.js",
+				"default": "./dist/browser/view-kind.js"
+			},
+			"node": {
+				"types": "./dist/view-kind.d.ts",
+				"import": "./dist/node/view-kind.js",
+				"default": "./dist/node/view-kind.js"
+			},
+			"bun": {
+				"types": "./dist/view-kind.d.ts",
+				"import": "./dist/node/view-kind.js",
+				"default": "./dist/node/view-kind.js"
+			},
+			"default": "./dist/node/view-kind.js"
+		},
+		"./view-modality": {
+			"types": "./dist/view-modality.d.ts",
+			"eliza-source": {
+				"types": "./src/view-modality.ts",
+				"import": "./src/view-modality.ts",
+				"default": "./src/view-modality.ts"
+			},
+			"browser": {
+				"types": "./dist/view-modality.d.ts",
+				"import": "./dist/browser/view-modality.js",
+				"default": "./dist/browser/view-modality.js"
+			},
+			"node": {
+				"types": "./dist/view-modality.d.ts",
+				"import": "./dist/node/view-modality.js",
+				"default": "./dist/node/view-modality.js"
+			},
+			"bun": {
+				"types": "./dist/view-modality.d.ts",
+				"import": "./dist/node/view-modality.js",
+				"default": "./dist/node/view-modality.js"
+			},
+			"default": "./dist/node/view-modality.js"
+		},
+		"./shortcuts": {
+			"types": "./dist/shortcuts.d.ts",
+			"eliza-source": {
+				"types": "./src/shortcuts.ts",
+				"import": "./src/shortcuts.ts",
+				"default": "./src/shortcuts.ts"
+			},
+			"browser": {
+				"types": "./dist/shortcuts.d.ts",
+				"import": "./dist/browser/shortcuts.js",
+				"default": "./dist/browser/shortcuts.js"
+			},
+			"node": {
+				"types": "./dist/shortcuts.d.ts",
+				"import": "./dist/node/shortcuts.js",
+				"default": "./dist/node/shortcuts.js"
+			},
+			"bun": {
+				"types": "./dist/shortcuts.d.ts",
+				"import": "./dist/node/shortcuts.js",
+				"default": "./dist/node/shortcuts.js"
+			},
+			"default": "./dist/node/shortcuts.js"
+		},
 		"./roles": {
 			"types": "./dist/roles.d.ts",
 			"import": "./dist/roles.js",

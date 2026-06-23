@@ -26,6 +26,30 @@ function writeChunk(name: string, contents: string): void {
   writeFileSync(join(workDir, "dist", "assets", name), contents, "utf8");
 }
 
+function writeIndexHtml(
+  entry = "index-D9yqvBmw.js",
+  preloads: string[] = [],
+): void {
+  const preloadHtml = preloads
+    .map((href) => `<link rel="modulepreload" href="${href}">`)
+    .join("\n");
+  writeFileSync(
+    join(workDir, "dist", "index.html"),
+    [
+      "<!doctype html>",
+      "<html>",
+      "<head>",
+      preloadHtml,
+      "</head>",
+      "<body>",
+      `<script type="module" src="./assets/${entry}"></script>`,
+      "</body>",
+      "</html>",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
 function runGate(): { status: number; output: string } {
   try {
     const stdout = execFileSync("node", [GATE_SCRIPT], {
@@ -61,6 +85,7 @@ describe("verify-chunk-safety gate", () => {
       `function bn(){return ${CRYPTO_MARKER}}`,
     );
     writeChunk("index-BEExhTUo.js", "export const ok = 1;");
+    writeIndexHtml("index-BEExhTUo.js");
 
     const { status, output } = runGate();
     expect(status).toBe(1);
@@ -70,10 +95,44 @@ describe("verify-chunk-safety gate", () => {
 
   it("FAILS when the crypto graph leaks into the eager entry chunk", () => {
     writeChunk("index-BEExhTUo.js", `function bn(){return ${CRYPTO_MARKER}}`);
+    writeIndexHtml("index-BEExhTUo.js");
 
     const { status, output } = runGate();
     expect(status).toBe(1);
     expect(output).toContain("index-BEExhTUo.js");
+  });
+
+  it("FAILS when index.html eagerly modulepreloads the vendor-crypto chunk", () => {
+    writeChunk(
+      "vendor-crypto-DRnRpPYP.js",
+      `function bn(){return ${CRYPTO_MARKER}}`,
+    );
+    writeChunk("index-D9yqvBmw.js", "export const app = 1;");
+    writeIndexHtml("index-D9yqvBmw.js", [
+      "./assets/vendor-crypto-DRnRpPYP.js",
+    ]);
+
+    const { status, output } = runGate();
+    expect(status).toBe(1);
+    expect(output).toContain("modulepreload");
+    expect(output).toContain("vendor-crypto-DRnRpPYP.js");
+  });
+
+  it("FAILS when the eager entry statically imports the vendor-crypto chunk", () => {
+    writeChunk(
+      "vendor-crypto-DRnRpPYP.js",
+      `function bn(){return ${CRYPTO_MARKER}}`,
+    );
+    writeChunk(
+      "index-D9yqvBmw.js",
+      'import{Buffer}from"./vendor-crypto-DRnRpPYP.js";\nexport const app = Buffer;',
+    );
+    writeIndexHtml("index-D9yqvBmw.js");
+
+    const { status, output } = runGate();
+    expect(status).toBe(1);
+    expect(output).toContain("static import");
+    expect(output).toContain("vendor-crypto-DRnRpPYP.js");
   });
 
   it("PASSES when the crypto graph is confined to a lazy vendor-crypto chunk", () => {
@@ -83,6 +142,7 @@ describe("verify-chunk-safety gate", () => {
     );
     writeChunk("en_US-SK3WV2N3-g943u0fV.js", "export const locale = {};");
     writeChunk("index-D9yqvBmw.js", "export const app = 1;");
+    writeIndexHtml("index-D9yqvBmw.js");
 
     const { status, output } = runGate();
     expect(status).toBe(0);
@@ -91,6 +151,7 @@ describe("verify-chunk-safety gate", () => {
 
   it("PASSES when the crypto marker is absent entirely", () => {
     writeChunk("index-D9yqvBmw.js", "export const app = 1;");
+    writeIndexHtml("index-D9yqvBmw.js");
 
     const { status, output } = runGate();
     expect(status).toBe(0);

@@ -1,5 +1,7 @@
-import type { OverlayApp } from "@elizaos/app-core";
-import { registerOverlayApp } from "@elizaos/app-core";
+import {
+	type OverlayApp,
+	registerOverlayApp,
+} from "@elizaos/app-core/ui-compat";
 
 export const POLYMARKET_APP_NAME = "@elizaos/plugin-polymarket-app";
 

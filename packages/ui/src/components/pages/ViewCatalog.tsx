@@ -7,7 +7,7 @@
  * or the `eliza:navigate:view` event dispatched by VIEWS actions.
  */
 
-import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
+import { type EnabledViewKinds, isViewVisible } from "@elizaos/core/view-kind";
 import {
   ArrowDownAZ,
   Clock3,

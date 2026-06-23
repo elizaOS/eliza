@@ -1,4 +1,4 @@
-import { client } from "@elizaos/app-core";
+import { client } from "@elizaos/app-core/ui-compat";
 import { ApiError } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 import "./client";

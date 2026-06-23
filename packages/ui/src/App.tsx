@@ -6,7 +6,7 @@ import {
   type EnabledViewKinds,
   isViewVisible,
   type ViewKind,
-} from "@elizaos/core";
+} from "@elizaos/core/view-kind";
 import { X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {

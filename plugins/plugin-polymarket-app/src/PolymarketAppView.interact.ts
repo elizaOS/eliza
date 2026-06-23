@@ -2,7 +2,7 @@
 // so that file exports only React components and stays Fast-Refresh-compatible
 // (Vite would full-reload a component file that also exports a plain function).
 // The view bundle re-exports `interact` via ./polymarket-view-bundle.ts.
-import { client } from "@elizaos/app-core";
+import { client } from "@elizaos/app-core/ui-compat";
 import "./client";
 import type { PolymarketClient } from "./client";
 import {

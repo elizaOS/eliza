@@ -1,4 +1,4 @@
-import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
+import { type EnabledViewKinds, isViewVisible } from "@elizaos/core/view-kind";
 import {
   getElizaCuratedAppCatalogOrder,
   isElizaCuratedAppName,

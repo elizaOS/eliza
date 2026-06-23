@@ -660,12 +660,16 @@ function resolveLocalPackageSourceExportTarget(
     return null;
   }
 
-  const sourceTarget = path.join(
+  const sourceBase = path.join(
     packageDir,
     "src",
-    `${exportTarget.slice("./dist/".length, -".js".length)}.ts`,
+    exportTarget.slice("./dist/".length, -".js".length),
   );
-  return fs.existsSync(sourceTarget) ? sourceTarget : null;
+  for (const ext of [".ts", ".tsx"]) {
+    const sourceTarget = `${sourceBase}${ext}`;
+    if (fs.existsSync(sourceTarget)) return sourceTarget;
+  }
+  return null;
 }
 
 function isAppPluginPackage(
@@ -2704,6 +2708,31 @@ export const INVALID_TRACER_PROVIDER = {};
             replacement: path.join(
               appCoreSrcRoot,
               "platform/empty-node-module.ts",
+            ),
+          },
+          // Lightweight @elizaos/core subpaths used by renderer UI code.
+          // Keep these on source so view/shortcut helpers do not pull the full
+          // core browser bundle, which includes the crypto graph, into the
+          // eager app entry.
+          {
+            find: /^@elizaos\/core\/view-kind$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/view-kind.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/core\/view-modality$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/view-modality.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/core\/shortcuts$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/shortcuts.ts",
             ),
           },
           // @elizaos/core — force ALL copies (including nested ones in plugins

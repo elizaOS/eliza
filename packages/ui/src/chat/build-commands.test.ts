@@ -1,4 +1,4 @@
-import type { EnabledViewKinds } from "@elizaos/core";
+import type { EnabledViewKinds } from "@elizaos/core/view-kind";
 import { describe, expect, it, vi } from "vitest";
 import type { ViewRegistryEntry } from "../hooks/useAvailableViews";
 import {

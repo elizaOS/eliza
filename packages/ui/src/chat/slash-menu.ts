@@ -13,7 +13,7 @@ import {
   type ShortcutDefinition,
   type ShortcutPattern,
   type ShortcutTarget,
-} from "@elizaos/core";
+} from "@elizaos/core/shortcuts";
 import type {
   ClientCommandAction,
   CommandArgSource,

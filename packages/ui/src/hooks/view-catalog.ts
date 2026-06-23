@@ -15,12 +15,8 @@
  * This module is the pure merge/dedupe so it can be unit-tested without React.
  */
 
-import {
-  dedupeModalities,
-  type EnabledViewKinds,
-  isViewVisible,
-  type ViewKind,
-} from "@elizaos/core";
+import { type EnabledViewKinds, isViewVisible, type ViewKind } from "@elizaos/core/view-kind";
+import { dedupeModalities } from "@elizaos/core/view-modality";
 import type { RegistryAppInfo } from "../api";
 import type { ViewModality } from "../platform/platform-guards";
 import type { ViewRegistryEntry } from "./useAvailableViews";

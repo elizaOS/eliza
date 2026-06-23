@@ -1,5 +1,9 @@
-import type { OverlayAppContext } from "@elizaos/app-core";
-import { Button, PagePanel, Spinner } from "@elizaos/app-core";
+import {
+	Button,
+	type OverlayAppContext,
+	PagePanel,
+	Spinner,
+} from "@elizaos/app-core/ui-compat";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { ArrowLeft, ImageIcon, Sparkles } from "lucide-react";
 import { useId } from "react";

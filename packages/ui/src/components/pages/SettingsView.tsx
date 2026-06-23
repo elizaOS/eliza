@@ -1,4 +1,4 @@
-import { isViewVisible } from "@elizaos/core";
+import { isViewVisible } from "@elizaos/core/view-kind";
 import { ArrowLeft } from "lucide-react";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";

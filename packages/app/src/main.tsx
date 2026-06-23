@@ -10,12 +10,10 @@ import { BackgroundRunner } from "@capacitor/background-runner";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
-import {
-  buildLocalizedTrayMenu,
-  DesktopSurfaceNavigationRuntime,
-  DesktopTrayRuntime,
-  DetachedShellRoot,
-} from "@elizaos/app-core";
+import { DesktopSurfaceNavigationRuntime } from "@elizaos/app-core/runtime/desktop/DesktopSurfaceNavigationRuntime";
+import { DesktopTrayRuntime } from "@elizaos/app-core/runtime/desktop/DesktopTrayRuntime";
+import { DetachedShellRoot } from "@elizaos/app-core/runtime/desktop/DetachedShellRoot";
+import { buildLocalizedTrayMenu } from "@elizaos/app-core/runtime/desktop/tray-menu";
 import {
   installIosLocalAgentFetchBridge,
   installIosLocalAgentNativeRequestBridge,

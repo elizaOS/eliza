@@ -1,4 +1,4 @@
-import { resolveAppBranding } from "@elizaos/app-core";
+import { resolveAppBranding } from "@elizaos/shared";
 import appConfig from "../app.config";
 
 export const APP_CONFIG = appConfig;

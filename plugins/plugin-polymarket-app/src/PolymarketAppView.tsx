@@ -1,5 +1,7 @@
-import type { OverlayAppContext } from "@elizaos/app-core";
-import { Button } from "@elizaos/app-core";
+import {
+	Button,
+	type OverlayAppContext,
+} from "@elizaos/app-core/ui-compat";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { ArrowLeft } from "lucide-react";
 import { useEffect } from "react";

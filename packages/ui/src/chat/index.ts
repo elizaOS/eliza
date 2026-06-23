@@ -3,7 +3,7 @@
  * and the typed command registry.
  */
 
-import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
+import { type EnabledViewKinds, isViewVisible } from "@elizaos/core/view-kind";
 import type { ViewRegistryEntry } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
 import type {

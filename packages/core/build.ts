@@ -674,6 +674,11 @@ export function createBuildRunner(options: BuildRunnerOptions) {
 
 // Source directory for TypeScript
 const TS_SRC = "src";
+const PUBLIC_CORE_SUBPATH_ENTRYPOINTS = [
+	`${TS_SRC}/view-kind.ts`,
+	`${TS_SRC}/view-modality.ts`,
+	`${TS_SRC}/shortcuts.ts`,
+];
 
 // Ensure dist directories exist
 ["dist", "dist/node", "dist/browser", "dist/edge"].forEach((dir) => {
@@ -731,7 +736,11 @@ async function buildNode() {
 	const runNode = createBuildRunner({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [`${TS_SRC}/index.node.ts`, `${TS_SRC}/roles.ts`],
+			entrypoints: [
+				`${TS_SRC}/index.node.ts`,
+				`${TS_SRC}/roles.ts`,
+				...PUBLIC_CORE_SUBPATH_ENTRYPOINTS,
+			],
 			outdir: "dist/node",
 			target: "node",
 			format: "esm",
@@ -760,7 +769,11 @@ async function buildBrowser() {
 	const runBrowser = createBuildRunner({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [`${TS_SRC}/index.browser.ts`, `${TS_SRC}/roles.ts`],
+			entrypoints: [
+				`${TS_SRC}/index.browser.ts`,
+				`${TS_SRC}/roles.ts`,
+				...PUBLIC_CORE_SUBPATH_ENTRYPOINTS,
+			],
 			outdir: "dist/browser",
 			// Use the Node target so `node:*` imports bundle without broken browser polyfills.
 			// The dashboard/Vite shell still aliases `node:*` where the bundle runs in the browser.
@@ -1084,6 +1097,12 @@ async function generateTypeScriptDeclarations() {
 		"dist/roles.js",
 		`// Roles subpath entry point (explicit)\nexport * from './node/roles.js';\n`,
 	);
+	for (const subpath of ["view-kind", "view-modality", "shortcuts"]) {
+		await fs.writeFile(
+			`dist/${subpath}.js`,
+			`// ${subpath} subpath entry point (explicit)\nexport * from './node/${subpath}.js';\n`,
+		);
+	}
 
 	// Create main index.d.ts to re-export all types from node build
 	// This ensures TypeScript resolves all exports when using moduleResolution: bundler

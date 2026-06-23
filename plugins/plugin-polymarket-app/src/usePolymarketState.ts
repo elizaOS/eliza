@@ -1,4 +1,4 @@
-import { client } from "@elizaos/app-core";
+import { client } from "@elizaos/app-core/ui-compat";
 import { useCallback, useEffect, useState } from "react";
 import "./client";
 import type { PolymarketClient } from "./client";

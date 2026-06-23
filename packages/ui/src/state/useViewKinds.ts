@@ -5,7 +5,7 @@ import {
   resolveViewKind,
   type ViewKind,
   type ViewKindBearer,
-} from "@elizaos/core";
+} from "@elizaos/core/view-kind";
 import { useMemo } from "react";
 import { useIsDeveloperMode } from "./useDeveloperMode";
 import { useIsPreviewMode } from "./usePreviewMode";
@@ -18,7 +18,8 @@ import { useIsPreviewMode } from "./usePreviewMode";
  * which ones to actually show.
  *
  * Use {@link useEnabledViewKinds} to get the toggle state and pass it to the
- * pure `isViewVisible` / `isViewKindEnabled` helpers from `@elizaos/core`.
+ * pure `isViewVisible` / `isViewKindEnabled` helpers from
+ * `@elizaos/core/view-kind`.
  */
 export function useEnabledViewKinds(): EnabledViewKinds {
   const developer = useIsDeveloperMode();

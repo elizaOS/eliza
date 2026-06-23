@@ -33,6 +33,9 @@
 		"src/index.ts",
 		"src/index.node.ts",
 		"src/index.browser.ts",
+		"src/shortcuts.ts",
+		"src/view-kind.ts",
+		"src/view-modality.ts",
 		"src/testing/**/*.ts"
 	],
 	"exclude": ["src/**/*.test.ts", "src/**/*.spec.ts", "src/__tests__/**/*"]

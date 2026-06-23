@@ -4,7 +4,7 @@
 // full-reload a component file that also exports a plain function). The view
 // bundle re-exports `interact` via ./hyperliquid-app-view-bundle.ts.
 
-import { client } from "@elizaos/app-core";
+import { client } from "@elizaos/app-core/ui-compat";
 import "./client";
 import type { HyperliquidClient } from "./client";
 import type {

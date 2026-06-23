@@ -131,6 +131,26 @@
 			"import": "./dist/first-run/first-run-config.js",
 			"default": "./dist/first-run/first-run-config.js"
 		},
+		"./runtime/desktop/DesktopSurfaceNavigationRuntime": {
+			"types": "./dist/runtime/desktop/DesktopSurfaceNavigationRuntime.d.ts",
+			"import": "./dist/runtime/desktop/DesktopSurfaceNavigationRuntime.js",
+			"default": "./dist/runtime/desktop/DesktopSurfaceNavigationRuntime.js"
+		},
+		"./runtime/desktop/DesktopTrayRuntime": {
+			"types": "./dist/runtime/desktop/DesktopTrayRuntime.d.ts",
+			"import": "./dist/runtime/desktop/DesktopTrayRuntime.js",
+			"default": "./dist/runtime/desktop/DesktopTrayRuntime.js"
+		},
+		"./runtime/desktop/DetachedShellRoot": {
+			"types": "./dist/runtime/desktop/DetachedShellRoot.d.ts",
+			"import": "./dist/runtime/desktop/DetachedShellRoot.js",
+			"default": "./dist/runtime/desktop/DetachedShellRoot.js"
+		},
+		"./runtime/desktop/tray-menu": {
+			"types": "./dist/runtime/desktop/tray-menu.d.ts",
+			"import": "./dist/runtime/desktop/tray-menu.js",
+			"default": "./dist/runtime/desktop/tray-menu.js"
+		},
 		"./registry": {
 			"types": "./dist/registry/index.d.ts",
 			"import": "./dist/registry/index.js",
