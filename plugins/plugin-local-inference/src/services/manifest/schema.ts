@@ -219,6 +219,24 @@ export const Eliza1FileEntrySchema = z.object({
 	ctx: z.number().int().min(131072, "must be at least 128k").optional(),
 });
 
+/**
+ * A platform-targeted native-lib file in the bundle's `lib[]` set. The fused
+ * `libelizainference` ships as a SET (the fused lib + its ggml/llama/mtmd
+ * sibling backends), one set per platform `target`. The downloader fetches ONLY
+ * the entries whose `target` matches the host (see `../lib-target.ts`
+ * `resolveHostLibTargets`) into `<bundleRoot>/lib/`, where the desktop FFI
+ * runtime resolves them with no env wiring via `resolveFusedLibraryPath`
+ * (path #2 — bundle-local lib). `target` is free-form (e.g. "win-x64-cpu",
+ * "linux-x64-cuda", "darwin-arm64-metal") so new targets need no schema bump;
+ * `name` overrides the staged filename (defaults to the basename of `path`).
+ */
+export const Eliza1LibFileEntrySchema = z.object({
+	path: z.string().min(1),
+	sha256,
+	target: z.string().min(1),
+	name: z.string().min(1).optional(),
+});
+
 export const Eliza1FilesSchema = z.object({
 	text: z.array(Eliza1FileEntrySchema).min(1),
 	voice: z.array(Eliza1FileEntrySchema).min(1),
@@ -277,6 +295,16 @@ export const Eliza1FilesSchema = z.object({
 	// dominated by the LM, not this small head); a 2b entry bundle may still
 	// choose to omit it to save the cold-start cost.
 	emotion: z.array(Eliza1FileEntrySchema).optional(),
+	// Fused libelizainference native-lib SET, per platform target (#9105 /
+	// local-inference bundle delivery). Optional — when present the downloader
+	// stages the host-matching target's files into `<bundleRoot>/lib/`, which the
+	// desktop FFI runtime resolves with no env wiring (`resolveFusedLibraryPath`
+	// path #2). CPU baseline is always safe (GGML_CPU is built into the fused
+	// lib); GPU targets (`…-cuda` / `…-metal`) are opt-in. This is the bundle
+	// path that makes local inference work in a compiled desktop app without a
+	// separate lib download; absent ⇒ the runtime falls back to a host-staged
+	// `<stateDir>/local-inference/lib` (dev) and otherwise to cloud.
+	lib: z.array(Eliza1LibFileEntrySchema).optional(),
 });
 
 export const Eliza1KernelEnumSchema = z.enum(ELIZA_1_KERNELS);

@@ -30,6 +30,10 @@ import {
   registerProactiveInteractionDecider,
 } from "../services/proactive-interaction-decider.ts";
 import { ProactiveInteractionGate } from "../services/proactive-interaction-gate.ts";
+import {
+  handleInteractionsRoutes,
+  type InteractionsRouteContext,
+} from "./interactions-routes.ts";
 import { routeAutonomyTextToUser } from "./server-helpers-swarm.ts";
 import type { ServerState } from "./server-types.ts";
 import { registerBuiltinViews } from "./views-registry.ts";
@@ -131,6 +135,26 @@ function navigateCtx(
   };
 }
 
+function shortcutCtx(
+  runtime: IAgentRuntime,
+  shortcutId: string,
+): InteractionsRouteContext {
+  const req = Readable.from([
+    Buffer.from(JSON.stringify({ shortcutId })),
+  ]) as unknown as http.IncomingMessage;
+  return {
+    req,
+    res: {} as http.ServerResponse,
+    method: "POST",
+    pathname: "/api/interactions/shortcut",
+    json: vi.fn(),
+    error: vi.fn(),
+    runtime: runtime as unknown as Parameters<
+      typeof handleInteractionsRoutes
+    >[0]["runtime"],
+  };
+}
+
 function proactiveFrames(frames: Frame[]): Frame[] {
   return frames.filter((f) => f.type === "proactive-message");
 }
@@ -207,5 +231,23 @@ describe("proactive interaction pipeline — navigate → comment (#8792)", () =
     await vi.advanceTimersByTimeAsync(2_000);
 
     expect(proactiveFrames(frames)).toHaveLength(0);
+  });
+
+  it("turns a reported keyboard shortcut into a broadcast proactive-message", async () => {
+    const { runtime, frames } = buildHarness(
+      '{"comment":"Want a hand finding something?"}',
+    );
+
+    // POST /api/interactions/shortcut -> SHORTCUT_FIRED -> decider -> comment.
+    await handleInteractionsRoutes(
+      shortcutCtx(runtime, "open-command-palette"),
+    );
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    const proactive = proactiveFrames(frames);
+    expect(proactive).toHaveLength(1);
+    expect((proactive[0].message as Frame).source).toBe(
+      PROACTIVE_INTERACTION_SOURCE,
+    );
   });
 });

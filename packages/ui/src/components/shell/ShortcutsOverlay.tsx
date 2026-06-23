@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { reportShortcutFired } from "../../chat/useSlashCommandController";
 import { COMMON_SHORTCUTS } from "../../hooks";
+import { SHORTCUT_SHOW_KEYBOARD_SHORTCUTS } from "../../hooks/useKeyboardShortcuts";
 import { useTranslation } from "../../state";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
@@ -37,7 +39,15 @@ export function ShortcutsOverlay() {
           return;
         }
         event.preventDefault();
-        setOpen((value) => !value);
+        setOpen((value) => {
+          if (!value) {
+            reportShortcutFired(
+              SHORTCUT_SHOW_KEYBOARD_SHORTCUTS,
+              "shortcuts-overlay",
+            );
+          }
+          return !value;
+        });
       }
       if (event.key === "Escape" && open) {
         event.preventDefault();
