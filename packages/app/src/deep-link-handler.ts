@@ -18,7 +18,7 @@ export interface DeepLinkHandlerContext {
   logPrefix: string;
   trustPolicy: UrlTrustPolicy;
   dispatchShareTarget: (payload: ShareTargetPayload) => void;
-  dispatchLifeOpsCallback: (url: string) => void;
+  dispatchDeepLinkCallback: (url: string) => void;
 }
 
 export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
@@ -70,13 +70,9 @@ export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
       case "browser":
         setHashRoute("browser", parsed.searchParams);
         break;
-      case "lifeops":
-        window.location.hash = "#lifeops";
-        ctx.dispatchLifeOpsCallback(url);
-        break;
       case "settings":
         window.location.hash = "#settings";
-        ctx.dispatchLifeOpsCallback(url);
+        ctx.dispatchDeepLinkCallback(url);
         break;
       case "connect":
         handleConnect(parsed);

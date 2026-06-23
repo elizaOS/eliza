@@ -163,6 +163,10 @@ export function buildAssistantLaunchHashRoute(
       params.set("voice", "1");
       return formatHashRoute("chat", params);
     }
+    // Personal-assistant deep links no longer target a top-level "lifeops"
+    // aggregate view (it was decomposed into independent plugins). They route
+    // into chat with the assistant-entry source + a planner action hint so the
+    // agent handles the briefing / task intent inline.
     case "daily-brief":
     case "lifeops/daily-brief": {
       const params = withDefaultSearchParam(
@@ -172,8 +176,7 @@ export function buildAssistantLaunchHashRoute(
       );
       params.set("action", params.get("action") ?? "lifeops.daily-brief");
       ensureAssistantLaunchId(params, generateLaunchId);
-      params.set("lifeops.section", "overview");
-      return formatHashRoute("lifeops", params);
+      return formatHashRoute("chat", params);
     }
     case "lifeops/tasks": {
       const params = withDefaultSearchParam(
@@ -183,8 +186,7 @@ export function buildAssistantLaunchHashRoute(
       );
       params.set("action", params.get("action") ?? "lifeops.tasks");
       ensureAssistantLaunchId(params, generateLaunchId);
-      params.set("lifeops.section", "reminders");
-      return formatHashRoute("lifeops", params);
+      return formatHashRoute("chat", params);
     }
     case "lifeops/create":
     case "lifeops/task":
@@ -197,11 +199,7 @@ export function buildAssistantLaunchHashRoute(
       );
       params.set("action", params.get("action") ?? "lifeops.create");
       ensureAssistantLaunchId(params, generateLaunchId);
-      if (hasAssistantLaunchText(params)) {
-        return formatHashRoute("chat", params);
-      }
-      params.set("lifeops.section", "reminders");
-      return formatHashRoute("lifeops", params);
+      return formatHashRoute("chat", params);
     }
     default:
       return null;
