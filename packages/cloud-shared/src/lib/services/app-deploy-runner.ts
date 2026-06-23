@@ -155,7 +155,12 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
     const createContainerRow =
       this.deps.createContainerRow ??
       (async (row: NewAppContainerRow) => {
-        const created = await containersRepository.create(toNewContainer(row));
+        // Enforce the per-org container quota atomically — the same cap
+        // (credit-balance-derived) the normal /v1/containers API uses. Without
+        // this, the apps deploy path bypassed quota entirely and one org could
+        // spin up unbounded 24/7 containers (DoS / unbounded cost). Throws
+        // QuotaExceededError when over cap; the deploy route surfaces it.
+        const created = await containersRepository.createWithQuotaCheck(toNewContainer(row));
         return { containerId: created.id };
       });
 
