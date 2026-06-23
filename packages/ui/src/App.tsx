@@ -156,7 +156,6 @@ import {
   type ViewRegistryEntry,
 } from "./hooks/useAvailableViews";
 import { useDesktopTabs } from "./hooks/useDesktopTabs";
-import { useIsDeveloperMode } from "./state/useDeveloperMode";
 import { useEnabledViewKinds } from "./state/useViewKinds";
 
 const ViewCatalog = lazyNamedView(
@@ -1083,7 +1082,6 @@ function renderViewRouterContent({
   availableViews,
   appSlug,
   androidPhoneSurfaceEnabled,
-  developerModeEnabled,
   settingsInitialSection,
 }: {
   tab: string;
@@ -1094,7 +1092,6 @@ function renderViewRouterContent({
   availableViews: ViewRegistryEntry[];
   appSlug: string | null;
   androidPhoneSurfaceEnabled: boolean;
-  developerModeEnabled: boolean;
   settingsInitialSection?: string | null;
 }): ReactNode {
   if (visibleDynamicPage(dynamicPage, enabledKinds)) {
@@ -1183,7 +1180,6 @@ function ViewRouter({
   // Available views from /api/views — used to route to DynamicViewLoader
   // when a tab ID matches a view entry that ships a remote bundle URL.
   const { views: availableViews } = useAvailableViews();
-  const developerModeEnabled = useIsDeveloperMode();
   const view = renderViewRouterContent({
     tab,
     dynamicPage,
@@ -1193,7 +1189,6 @@ function ViewRouter({
     availableViews,
     appSlug,
     androidPhoneSurfaceEnabled,
-    developerModeEnabled,
     settingsInitialSection,
   });
 
