@@ -236,9 +236,12 @@ function backendCmakeFlags(backend) {
   }
 }
 
-const { variant, outDir: outOverride, jobs: jobsArg, force } = parseArgs(
-  process.argv.slice(2),
-);
+const {
+  variant,
+  outDir: outOverride,
+  jobs: jobsArg,
+  force,
+} = parseArgs(process.argv.slice(2));
 
 if (!existsSync(path.join(forkSrc, "CMakeLists.txt"))) {
   die(
@@ -249,12 +252,13 @@ if (!have("cmake")) die("cmake not found on PATH");
 
 const backend = variant === "auto" ? detectBackend() : variant;
 log(`host: ${process.platform}/${process.arch}`);
-log(`backend: ${backend}${variant === "auto" ? " (autodetected)" : ""} (GGML_CPU always on for fallback)`);
+log(
+  `backend: ${backend}${variant === "auto" ? " (autodetected)" : ""} (GGML_CPU always on for fallback)`,
+);
 
 const buildDir = path.join(forkSrc, `build-desktop-${backend}`);
 const outDir =
-  outOverride ||
-  path.join(resolveStateDir(), "local-inference", "lib");
+  outOverride || path.join(resolveStateDir(), "local-inference", "lib");
 
 if (force && existsSync(buildDir)) {
   rmSync(buildDir, { recursive: true, force: true });
@@ -392,7 +396,10 @@ function definedSymbols(libPath) {
     process.platform === "darwin"
       ? { cmd: "nm", args: ["-gU", libPath] }
       : process.platform === "win32"
-        ? { cmd: "objdump", args: ["-T", libPath] }
+        ? // PE exports live in the export-address table shown by `objdump -p`
+          // ("[Ordinal/Name Pointer] Table"); `-T` is the ELF dynamic-symbol
+          // flag and lists nothing for a .dll, so it would false-fail the verify.
+          { cmd: "objdump", args: ["-p", libPath] }
         : { cmd: "nm", args: ["-D", "--defined-only", libPath] };
   try {
     return execFileSync(tool.cmd, tool.args, {
@@ -435,7 +442,9 @@ function verifyFusedSymbols(stagedDir) {
   if (!llamaHere) {
     die(`llama_* symbols not found in the staged lib set — incomplete build.`);
   }
-  log("symbol verify OK: eliza_inference_* + ov_* in fused lib, llama_* in set");
+  log(
+    "symbol verify OK: eliza_inference_* + ov_* in fused lib, llama_* in set",
+  );
 }
 
 log("");
