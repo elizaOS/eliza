@@ -110,7 +110,9 @@ function parseViewEntries(source: string): ViewEntry[] {
     // duplicate declaration per `viewType`. Either form yields one ViewEntry
     // per surface, sharing the same bundle + component — so the GUI=XR parity
     // checks hold trivially for the collapsed form (it IS the same declaration).
-    const modalitiesMatch = obj.match(/modalities:\s*([A-Za-z0-9_]+|\[[^\]]*\])/);
+    const modalitiesMatch = obj.match(
+      /modalities:\s*([A-Za-z0-9_]+|\[[^\]]*\])/,
+    );
     const modalityLiterals = modalitiesMatch
       ? [...modalitiesMatch[1].matchAll(/"(gui|tui|xr)"/g)].map((m) => m[1])
       : [];

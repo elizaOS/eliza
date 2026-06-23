@@ -50,7 +50,12 @@ const snapshot: FinancesSnapshot = {
   },
   transactions: [
     txn({ id: "t1", description: "Coffee Bar", meta: "Jun 16 • dining" }),
-    txn({ id: "t2", description: "Paycheck", amount: "$3,000.00", outflow: false }),
+    txn({
+      id: "t2",
+      description: "Paycheck",
+      amount: "$3,000.00",
+      outflow: false,
+    }),
   ],
   recurring: [
     bill({ id: "netflix", label: "Netflix", meta: "monthly • next Jul 1" }),

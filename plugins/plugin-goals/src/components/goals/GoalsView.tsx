@@ -33,10 +33,7 @@ import {
   type GoalReviewState,
   type GoalStatus,
 } from "../../types.ts";
-import {
-  type GoalsSnapshot,
-  GoalsSpatialView,
-} from "./GoalsSpatialView.tsx";
+import { type GoalsSnapshot, GoalsSpatialView } from "./GoalsSpatialView.tsx";
 
 // ---------------------------------------------------------------------------
 // Wire DTOs — local mirror of the JSON shape served by the PA goals route.

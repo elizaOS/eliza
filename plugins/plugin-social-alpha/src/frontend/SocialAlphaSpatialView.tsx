@@ -112,8 +112,8 @@ function WalletRequiredBody({
 			<Divider label="wallet" />
 			<Text bold>Wallet required</Text>
 			<Text tone="muted" style="caption">
-				Social Alpha tracks token calls against on-chain outcomes. Configure
-				the agent wallet to enable it.
+				Social Alpha tracks token calls against on-chain outcomes. Configure the
+				agent wallet to enable it.
 			</Text>
 			<HStack gap={1}>
 				<Button agent="connect-wallet" onPress={dispatch("connect-wallet")}>

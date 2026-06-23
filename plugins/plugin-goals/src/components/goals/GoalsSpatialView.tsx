@@ -82,10 +82,7 @@ const REVIEW_GLYPH: Record<GoalReviewState, string> = {
   needs_attention: "x",
 };
 
-const REVIEW_TONE: Record<
-  GoalReviewState,
-  "muted" | "success" | "danger"
-> = {
+const REVIEW_TONE: Record<GoalReviewState, "muted" | "success" | "danger"> = {
   idle: "muted",
   on_track: "success",
   at_risk: "danger",
@@ -116,7 +113,10 @@ function reviewNudge(goals: GoalItem[]): string | null {
     : `${flagged} goals need a review.`;
 }
 
-export function GoalsSpatialView({ snapshot, onAction }: GoalsSpatialViewProps) {
+export function GoalsSpatialView({
+  snapshot,
+  onAction,
+}: GoalsSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
   const active = new Set(snapshot.activeStatuses);
 
@@ -244,7 +244,9 @@ function GoalsStatusGroup({
 }) {
   return (
     <>
-      <Divider label={`${STATUS_LABELS[group.status]} (${group.goals.length})`} />
+      <Divider
+        label={`${STATUS_LABELS[group.status]} (${group.goals.length})`}
+      />
       <List gap={0}>
         {group.goals.map((goal) => (
           <GoalRow key={goal.id} goal={goal} />

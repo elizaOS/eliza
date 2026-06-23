@@ -393,7 +393,11 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
       return EMPTY_FINANCES_SNAPSHOT;
     }
     if (state.kind === "error") {
-      return { ...EMPTY_FINANCES_SNAPSHOT, state: "error", error: state.message };
+      return {
+        ...EMPTY_FINANCES_SNAPSHOT,
+        state: "error",
+        error: state.message,
+      };
     }
     const { hasSource, balance, transactions, recurring } = state.data;
     if (!hasSource) {
