@@ -115,3 +115,65 @@ export function launchApp(
     });
   });
 }
+
+/** Result of a kill — the resolved target and how it was addressed. */
+export interface KillResult {
+  target: string;
+  /** Numeric pid when the target was a pid; omitted for a process-name kill. */
+  pid?: number;
+  killed: true;
+}
+
+/**
+ * Terminate a running application by pid (all-digits) or process name
+ * (#9170 — trycua/cua `kill_app`). Pairs with `launchApp`. Destructive, so it
+ * routes through the approval manager like every other non-read verb. Uses
+ * `execFile` (no shell) so the target can't inject a command.
+ *
+ *   - Windows: `taskkill /F /PID <n>` or `/F /IM <name>.exe`.
+ *   - macOS / Linux: `kill -9 <pid>` or `pkill -f <name>`.
+ *
+ * Rejects when the target does not exist (non-zero exit) so the caller gets
+ * clear feedback rather than a silent no-op.
+ */
+export function killApp(target: string): Promise<KillResult> {
+  const value = String(target ?? "").trim();
+  if (!value) {
+    return Promise.reject(
+      new Error("kill_app requires a non-empty target (pid or app name)"),
+    );
+  }
+  const isPid = /^\d+$/.test(value);
+  const os = currentPlatform();
+  let command: string;
+  let args: string[];
+  if (os === "win32") {
+    command = "taskkill";
+    args = isPid
+      ? ["/F", "/PID", value]
+      : ["/F", "/IM", value.toLowerCase().endsWith(".exe") ? value : `${value}.exe`];
+  } else if (os === "darwin" || os === "linux") {
+    if (isPid) {
+      command = "kill";
+      args = ["-9", value];
+    } else {
+      command = "pkill";
+      args = ["-f", value];
+    }
+  } else {
+    return Promise.reject(new Error(`kill_app unsupported on platform "${os}"`));
+  }
+  return new Promise<KillResult>((resolve, reject) => {
+    execFile(command, args, { timeout: OPEN_TIMEOUT_MS }, (err) => {
+      if (err) {
+        reject(
+          new Error(
+            `kill_app failed for "${value}": ${err.message} (target may not be running)`,
+          ),
+        );
+      } else {
+        resolve({ target: value, ...(isPid ? { pid: Number(value) } : {}), killed: true });
+      }
+    });
+  });
+}

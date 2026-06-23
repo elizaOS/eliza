@@ -208,6 +208,14 @@ export const PARITY_MATRIX: readonly ParityCapability[] = [
     os: ALL_PLANNED,
   },
   {
+    id: "kill_app",
+    elizaVerb: "COMPUTER_USE_KILL_APP",
+    status: "have",
+    milestone: "M12",
+    note: "terminate by pid or process name (taskkill / kill / pkill)",
+    os: { windows: "covered", linux: "planned", macos: "planned", aosp: "na" },
+  },
+  {
     id: "get_current_window_id",
     elizaVerb: "WINDOW_GET_CURRENT_WINDOW_ID",
     status: "have",

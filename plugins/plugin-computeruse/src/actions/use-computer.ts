@@ -57,6 +57,7 @@ const DESKTOP_ACTIONS = new Set<DesktopActionType>([
   "ocr",
   "open",
   "launch",
+  "kill_app",
 ]);
 
 type ComputerUseActionParams = Omit<DesktopActionParams, "action"> & {
@@ -260,6 +261,7 @@ export const useComputerAction: Action = {
           "ocr",
           "open",
           "launch",
+          "kill_app",
           "resolve_approval",
         ],
       },
