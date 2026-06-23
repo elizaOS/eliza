@@ -11,8 +11,9 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import type { VisionService } from "./service";
+import { buildGetScreen, summarizeGetScreen } from "./get-screen";
 import { assertValidVisionImageBuffer } from "./image-input";
+import type { VisionService } from "./service";
 import { VisionMode } from "./types";
 
 const VISION_ACTION_TIMEOUT_MS = 10_000;
@@ -22,6 +23,7 @@ const MAX_VISION_ENTITIES = 25;
 const VISION_OPS = [
   "describe",
   "capture",
+  "get_screen",
   "set_mode",
   "enable_camera",
   "disable_camera",
@@ -41,6 +43,21 @@ const ALL_VISION_CONTEXTS = [
   "memory",
   "settings",
 ] as const;
+
+const GET_SCREEN_KEYWORDS = [
+  "get_screen",
+  "get screen",
+  "read the screen",
+  "read screen",
+  "screen text",
+  "text on screen",
+  "what's on my screen",
+  "whats on my screen",
+  "what is on my screen",
+  "screen contents",
+  "ocr",
+  "extract text",
+];
 
 const DESCRIBE_KEYWORDS = [
   "describe",
@@ -371,6 +388,9 @@ function inferOpFromMessage(text: string): VisionOp | null {
   ) {
     return "set_mode";
   }
+  if (GET_SCREEN_KEYWORDS.some((k) => lower.includes(k.toLowerCase()))) {
+    return "get_screen";
+  }
   if (CAPTURE_KEYWORDS.some((k) => lower.includes(k.toLowerCase()))) {
     return "capture";
   }
@@ -378,6 +398,114 @@ function inferOpFromMessage(text: string): VisionOp | null {
     return "describe";
   }
   return null;
+}
+
+/** Structural view of plugin-computeruse's screenshot capability (no hard dep). */
+interface ComputerUseLike {
+  executeCommand?: (
+    command: string,
+    params?: Record<string, unknown>,
+  ) => Promise<{ success?: boolean; screenshot?: string; displayId?: number }>;
+}
+
+/**
+ * Acquire a fresh screen frame for GET_SCREEN. Prefers plugin-computeruse's
+ * verified OS screenshot (which also drives the CUA loop); falls back to the
+ * vision service's own screen capture. Returns null when neither is available.
+ */
+async function acquireScreenFrame(runtime: IAgentRuntime): Promise<{
+  pngBytes: Uint8Array;
+  displayId: number;
+  capturedAt: number;
+} | null> {
+  const cu = runtime.getService("computeruse") as ComputerUseLike | null;
+  if (cu?.executeCommand) {
+    try {
+      const r = await cu.executeCommand("screenshot");
+      if (
+        r?.success !== false &&
+        typeof r?.screenshot === "string" &&
+        r.screenshot
+      ) {
+        return {
+          pngBytes: new Uint8Array(Buffer.from(r.screenshot, "base64")),
+          displayId: typeof r.displayId === "number" ? r.displayId : 0,
+          capturedAt: Date.now(),
+        };
+      }
+    } catch (err) {
+      logger.debug(
+        `[vision] computeruse screenshot unavailable for get_screen (${
+          err instanceof Error ? err.message : String(err)
+        })`,
+      );
+    }
+  }
+  const visionService = runtime.getService<VisionService>("VISION");
+  const cap = await visionService?.getScreenCapture();
+  if (cap?.data && cap.data.byteLength > 0) {
+    return {
+      pngBytes: new Uint8Array(cap.data),
+      displayId: 0,
+      capturedAt: cap.timestamp ?? Date.now(),
+    };
+  }
+  return null;
+}
+
+async function runGetScreen(
+  runtime: IAgentRuntime,
+  message: Memory,
+  options: Record<string, unknown>,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const includeImage = options.includeImage === true;
+  const includeOcr = options.includeOcr !== false;
+  const displayId =
+    typeof options.displayId === "number" ? options.displayId : undefined;
+
+  const frame = await acquireScreenFrame(runtime);
+  if (!frame) {
+    const thought = "No screen capture source is available.";
+    const text =
+      "I couldn't read the screen — neither the desktop capture (plugin-computeruse) nor screen-vision mode is available right now.";
+    await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
+    if (callback) await callback({ thought, text, actions: ["VISION"] });
+    return {
+      success: false,
+      text: "No screen capture source available for get_screen",
+      values: { success: false, visionAvailable: false },
+      data: {
+        actionName: "VISION",
+        op: "get_screen",
+        error: "no_capture_source",
+      },
+    };
+  }
+
+  const result = await buildGetScreen({
+    pngBytes: frame.pngBytes,
+    displayId: displayId ?? frame.displayId,
+    includeImage,
+    includeOcr,
+    capturedAt: frame.capturedAt,
+  });
+  const text = summarizeGetScreen(result);
+  await saveExecutionRecord(runtime, message, text, text, ["VISION"]);
+  if (callback) await callback({ thought: text, text, actions: ["VISION"] });
+  return {
+    success: true,
+    text,
+    values: {
+      success: true,
+      visionAvailable: true,
+      ocrAvailable: result.ocrAvailable,
+      elementCount: result.elementCount,
+      width: result.width,
+      height: result.height,
+    },
+    data: { actionName: "VISION", ...result },
+  };
 }
 
 async function runDescribe(
@@ -1386,11 +1514,15 @@ export const visionAction: Action = {
     "SCREENSHOT",
     "CAPTURE_FRAME",
     "TAKE_PICTURE",
+    "GET_SCREEN",
+    "READ_SCREEN",
+    "SCREEN_TEXT",
+    "OCR_SCREEN",
   ],
   description:
-    "Camera and screen vision: describe the current scene, capture an image, switch vision mode (off/camera/screen/both), name a visible entity, identify a person, or start tracking an entity. The action is inferred from the message text when not explicitly provided.",
+    "Camera and screen vision: describe the current scene, capture an image, GET_SCREEN (token-frugal structured readout — OCR text + grounded UI elements with coordinates, no image unless includeImage=true), switch vision mode (off/camera/screen/both), name a visible entity, identify a person, or start tracking an entity. The action is inferred from the message text when not explicitly provided.",
   descriptionCompressed:
-    "Vision: describe / capture / set_mode / name_entity / identify_person / track_entity.",
+    "Vision: describe / capture / get_screen (OCR+elements, no image) / set_mode / name_entity / identify_person / track_entity.",
   parameters: [
     {
       name: "action",
@@ -1415,6 +1547,13 @@ export const visionAction: Action = {
         enum: ["summary", "detailed"],
         default: "detailed",
       },
+    },
+    {
+      name: "includeImage",
+      description:
+        "For action=get_screen: when true, attach the base64 screenshot too (costs image tokens). Default false — return only OCR text + grounded elements.",
+      required: false,
+      schema: { type: "boolean", default: false },
     },
     {
       name: "mode",
@@ -1507,6 +1646,8 @@ export const visionAction: Action = {
         return runDescribe(runtime, message, params, callback);
       case "capture":
         return runCapture(runtime, message, callback);
+      case "get_screen":
+        return runGetScreen(runtime, message, params, callback);
       case "set_mode":
         return runSetMode(runtime, message, params, callback);
       case "enable_camera":
