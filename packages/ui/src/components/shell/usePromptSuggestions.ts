@@ -151,7 +151,7 @@ export function computePromptSuggestions(
 /**
  * Derive the active {@link PageScope} from the current location so the server
  * can tailor suggestions per view. The shell navigates by path or hash
- * (`/lifeops`, `#/lifeops?...`), so the first segment of whichever is present
+ * (`/browser`, `#/browser?...`), so the first segment of whichever is present
  * is the tab id; `page-<tab>` counts only when it's a registered scope. Pure
  * for unit tests; returns undefined off-DOM or on unscoped views.
  */
