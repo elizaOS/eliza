@@ -6538,11 +6538,19 @@ export async function runV5MessageRuntimeStage1(args: {
 		// can group the transcript by topic + show a topic chips bar (#8928).
 		// Additive, fire-and-forget metadata write — never blocks/breaks the turn.
 		if (topics.length > 0 && args.message.id) {
+			// args.message is always a message memory, so its metadata is
+			// MessageMetadata; force `type: "message"` so the spread result is a
+			// valid, discriminated MessageMetadata regardless of the inbound shape
+			// (never a sibling union member with an unexpected `topics` field).
 			const existingMetadata = args.message.metadata;
 			void args.runtime
 				.updateMemory({
 					id: args.message.id,
-					metadata: { ...(existingMetadata ?? { type: "message" }), topics },
+					metadata: {
+						...(existingMetadata ?? {}),
+						type: "message" as const,
+						topics,
+					},
 				})
 				.catch((error) => {
 					args.runtime.logger?.warn?.(
