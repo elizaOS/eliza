@@ -41,7 +41,10 @@ import {
   driverGetCursorPosition,
   driverKeyCombo,
   driverKeyPress,
+  driverMiddleClick,
+  driverMouseDown,
   driverMouseMove,
+  driverMouseUp,
   driverRightClick,
   driverScroll,
   driverType,
@@ -120,7 +123,9 @@ const COORDINATE_BEARING_ACTIONS = new Set<DesktopActionParams["action"]>([
   "click_with_modifiers",
   "double_click",
   "right_click",
+  "middle_click",
   "mouse_move",
+  "mouse_down",
   "scroll",
   "drag",
 ]);
@@ -251,7 +256,10 @@ export class ComputerUseService extends Service {
       case "click_with_modifiers":
       case "double_click":
       case "right_click":
+      case "middle_click":
       case "mouse_move":
+      case "mouse_down":
+      case "mouse_up":
       case "type":
       case "key_press":
       case "key_combo":
@@ -394,6 +402,29 @@ export class ComputerUseService extends Service {
           this.requireCoordinate(params.coordinate, "mouse_move");
           const g = this.toGlobal(params, params.coordinate);
           await driverMouseMove(g.x, g.y);
+          break;
+        }
+        case "middle_click": {
+          this.requireCoordinate(params.coordinate, "middle_click");
+          const g = this.toGlobal(params, params.coordinate);
+          await driverMiddleClick(g.x, g.y);
+          break;
+        }
+        case "mouse_down": {
+          this.requireCoordinate(params.coordinate, "mouse_down");
+          const g = this.toGlobal(params, params.coordinate);
+          await driverMouseDown(g.x, g.y);
+          break;
+        }
+        case "mouse_up": {
+          // Coordinate is optional: when provided, release at that point;
+          // otherwise release wherever the button is currently held.
+          if (params.coordinate) {
+            const g = this.toGlobal(params, params.coordinate);
+            await driverMouseUp(g.x, g.y);
+          } else {
+            await driverMouseUp();
+          }
           break;
         }
         case "type":

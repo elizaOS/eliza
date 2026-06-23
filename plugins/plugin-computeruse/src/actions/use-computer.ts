@@ -41,7 +41,10 @@ const DESKTOP_ACTIONS = new Set<DesktopActionType>([
   "click_with_modifiers",
   "double_click",
   "right_click",
+  "middle_click",
   "mouse_move",
+  "mouse_down",
+  "mouse_up",
   "type",
   "key",
   "key_combo",
@@ -218,7 +221,7 @@ export const useComputerAction: Action = {
     "DENY_COMPUTER_USE",
   ],
   description:
-    "computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
+    "computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/middle_click/mouse_move/mouse_down/mouse_up/type/key/key_combo/scroll/drag/detect_elements/ocr. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
   descriptionCompressed:
     "Desktop: screenshot|click|double|right|move|type|key|scroll|drag|detect|ocr|approve",
   routingHint:
@@ -237,7 +240,10 @@ export const useComputerAction: Action = {
           "click_with_modifiers",
           "double_click",
           "right_click",
+          "middle_click",
           "mouse_move",
+          "mouse_down",
+          "mouse_up",
           "type",
           "key",
           "key_combo",

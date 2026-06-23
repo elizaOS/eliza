@@ -229,6 +229,30 @@ export async function nutMouseMove(x: number, y: number): Promise<void> {
   await m.mouse.setPosition(new m.Point(validateInt(x), validateInt(y)));
 }
 
+export async function nutMiddleClick(x: number, y: number): Promise<void> {
+  const m = nut();
+  await m.mouse.setPosition(new m.Point(validateInt(x), validateInt(y)));
+  await m.mouse.click(m.Button.MIDDLE);
+}
+
+/** Press and hold the left button at (x,y) without releasing — paired with
+ * `nutMouseUp` for manual press-hold-drag gestures (trycua parity). */
+export async function nutMouseDown(x: number, y: number): Promise<void> {
+  const m = nut();
+  await m.mouse.setPosition(new m.Point(validateInt(x), validateInt(y)));
+  await m.mouse.pressButton(m.Button.LEFT);
+}
+
+/** Release the held left button. If a coordinate is given, move there first so
+ * the release lands at the gesture's end point. */
+export async function nutMouseUp(x?: number, y?: number): Promise<void> {
+  const m = nut();
+  if (typeof x === "number" && typeof y === "number") {
+    await m.mouse.setPosition(new m.Point(validateInt(x), validateInt(y)));
+  }
+  await m.mouse.releaseButton(m.Button.LEFT);
+}
+
 /** Inter-notch / inter-step pacing (ms) — small, just enough to defeat event
  * coalescing in fast consumers (e.g. Chromium's MouseWheelEventQueue) without
  * making input feel sluggish. */

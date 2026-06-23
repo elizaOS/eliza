@@ -501,6 +501,133 @@ export function desktopMouseMove(x: number, y: number): void {
   );
 }
 
+// ── Middle Click / Press-Hold ─────────────────────────────────────────────────
+
+export function desktopMiddleClick(x: number, y: number): void {
+  runWithAccessibilityPermission(
+    "desktop_middle_click",
+    () => {
+      const sx = validateInt(x);
+      const sy = validateInt(y);
+      const os = currentPlatform();
+
+      if (os === "darwin") {
+        // cliclick has no middle-button verb and AppleScript cannot synthesize
+        // one; surface a clear unsupported error rather than silently no-op.
+        throw new Error(
+          "middle_click is not supported on macOS via the legacy driver; use the nutjs driver",
+        );
+      } else if (os === "linux") {
+        requireXdotool();
+        runCommand(
+          "xdotool",
+          ["mousemove", String(sx), String(sy), "click", "2"],
+          5000,
+        );
+      } else if (os === "win32") {
+        const ps = [
+          "Add-Type -AssemblyName System.Windows.Forms",
+          `[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${sx},${sy})`,
+          `Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);' -Name Win32Mouse -Namespace Win32`,
+          // MOUSEEVENTF_MIDDLEDOWN 0x0020, MOUSEEVENTF_MIDDLEUP 0x0040
+          "[Win32.Win32Mouse]::mouse_event(0x0020, 0, 0, 0, 0); [Win32.Win32Mouse]::mouse_event(0x0040, 0, 0, 0, 0)",
+        ].join("; ");
+        runCommand("powershell", ["-Command", ps], 5000);
+      }
+    },
+    "desktop_middle_click",
+  );
+}
+
+/** Press and hold the left button at (x,y) without releasing. */
+export function desktopMouseDown(x: number, y: number): void {
+  runWithAccessibilityPermission(
+    "desktop_mouse_down",
+    () => {
+      const sx = validateInt(x);
+      const sy = validateInt(y);
+      const os = currentPlatform();
+
+      if (os === "darwin") {
+        if (commandExists("cliclick")) {
+          runCommand("cliclick", [`dd:${sx},${sy}`], 5000);
+        } else {
+          throw new Error(
+            "mouse_down requires cliclick on macOS; use the nutjs driver",
+          );
+        }
+      } else if (os === "linux") {
+        requireXdotool();
+        runCommand(
+          "xdotool",
+          ["mousemove", String(sx), String(sy), "mousedown", "1"],
+          5000,
+        );
+      } else if (os === "win32") {
+        const ps = [
+          "Add-Type -AssemblyName System.Windows.Forms",
+          `[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${sx},${sy})`,
+          `Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);' -Name Win32Mouse -Namespace Win32`,
+          // MOUSEEVENTF_LEFTDOWN 0x0002
+          "[Win32.Win32Mouse]::mouse_event(0x0002, 0, 0, 0, 0)",
+        ].join("; ");
+        runCommand("powershell", ["-Command", ps], 5000);
+      }
+    },
+    "desktop_mouse_down",
+  );
+}
+
+/** Release the held left button. Moves to (x,y) first when given. */
+export function desktopMouseUp(x?: number, y?: number): void {
+  runWithAccessibilityPermission(
+    "desktop_mouse_up",
+    () => {
+      const os = currentPlatform();
+      const hasCoord = typeof x === "number" && typeof y === "number";
+      const sx = hasCoord ? validateInt(x as number) : null;
+      const sy = hasCoord ? validateInt(y as number) : null;
+
+      if (os === "darwin") {
+        if (commandExists("cliclick")) {
+          // cliclick needs a target for du:; fall back to current position via
+          // the cursor query when no coordinate was supplied.
+          const pos =
+            sx !== null && sy !== null
+              ? { x: sx, y: sy }
+              : legacyGetCursorPosition();
+          runCommand("cliclick", [`du:${pos.x},${pos.y}`], 5000);
+        } else {
+          throw new Error(
+            "mouse_up requires cliclick on macOS; use the nutjs driver",
+          );
+        }
+      } else if (os === "linux") {
+        requireXdotool();
+        const args =
+          sx !== null && sy !== null
+            ? ["mousemove", String(sx), String(sy), "mouseup", "1"]
+            : ["mouseup", "1"];
+        runCommand("xdotool", args, 5000);
+      } else if (os === "win32") {
+        const move =
+          sx !== null && sy !== null
+            ? `[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${sx},${sy})`
+            : "";
+        const ps = [
+          "Add-Type -AssemblyName System.Windows.Forms",
+          ...(move ? [move] : []),
+          `Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);' -Name Win32Mouse -Namespace Win32`,
+          // MOUSEEVENTF_LEFTUP 0x0004
+          "[Win32.Win32Mouse]::mouse_event(0x0004, 0, 0, 0, 0)",
+        ].join("; ");
+        runCommand("powershell", ["-Command", ps], 5000);
+      }
+    },
+    "desktop_mouse_up",
+  );
+}
+
 // ── Drag ────────────────────────────────────────────────────────────────────
 
 export function desktopDrag(

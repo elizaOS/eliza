@@ -19,7 +19,10 @@ import {
   desktopDrag,
   desktopKeyCombo,
   desktopKeyPress,
+  desktopMiddleClick,
+  desktopMouseDown,
   desktopMouseMove,
+  desktopMouseUp,
   desktopRightClick,
   desktopScroll,
   desktopType,
@@ -36,7 +39,10 @@ import {
   nutGetCursorPosition,
   nutKeyCombo,
   nutKeyPress,
+  nutMiddleClick,
+  nutMouseDown,
   nutMouseMove,
+  nutMouseUp,
   nutRightClick,
   nutScroll,
   nutType,
@@ -105,6 +111,23 @@ export async function driverRightClick(x: number, y: number): Promise<void> {
 export async function driverMouseMove(x: number, y: number): Promise<void> {
   if (selectedDriver() === "nutjs") return nutMouseMove(x, y);
   desktopMouseMove(x, y);
+}
+
+export async function driverMiddleClick(x: number, y: number): Promise<void> {
+  if (selectedDriver() === "nutjs") return nutMiddleClick(x, y);
+  desktopMiddleClick(x, y);
+}
+
+/** Press and hold the left button at (x,y). Pair with `driverMouseUp`. */
+export async function driverMouseDown(x: number, y: number): Promise<void> {
+  if (selectedDriver() === "nutjs") return nutMouseDown(x, y);
+  desktopMouseDown(x, y);
+}
+
+/** Release the held left button, optionally moving to (x,y) first. */
+export async function driverMouseUp(x?: number, y?: number): Promise<void> {
+  if (selectedDriver() === "nutjs") return nutMouseUp(x, y);
+  desktopMouseUp(x, y);
 }
 
 export async function driverGetCursorPosition(): Promise<{
