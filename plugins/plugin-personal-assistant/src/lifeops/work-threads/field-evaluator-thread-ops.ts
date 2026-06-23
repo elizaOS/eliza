@@ -26,7 +26,7 @@ import type {
   ResponseHandlerFieldEvaluator,
   ResponseHandlerFieldHandleContext,
 } from "@elizaos/core";
-import { createPendingPromptsStore } from "../pending-prompts/store.js";
+import { resolvePendingPromptsStore } from "../pending-prompts/store.js";
 import { createWorkThreadStore } from "./store.js";
 import type { ThreadSourceRef } from "./types.js";
 
@@ -188,7 +188,7 @@ async function threadOpsShouldRun(
       roomId,
       limit: 1,
     }),
-    createPendingPromptsStore(ctx.runtime).list(roomId, {
+    resolvePendingPromptsStore(ctx.runtime).list(roomId, {
       lookbackMinutes: 60 * 24,
     }),
   ]);

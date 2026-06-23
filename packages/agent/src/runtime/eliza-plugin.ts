@@ -56,11 +56,14 @@ import { createUserNameProvider } from "../providers/user-name.ts";
 import { createWorkspaceProvider } from "../providers/workspace-provider.ts";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.ts";
 import { LocalFileStorageService } from "../services/file-storage.ts";
+import { GlobalPauseService } from "../services/global-pause/index.ts";
+import { HandoffService } from "../services/handoff/index.ts";
 import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
 } from "../services/knowledge-graph/index.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
+import { PendingPromptsService } from "../services/pending-prompts/index.ts";
 import { PermissionRegistry } from "../services/permissions-registry.ts";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
@@ -135,6 +138,9 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       LocalFileStorageService as ServiceClass,
       PermissionRegistry as ServiceClass,
       KnowledgeGraphService as ServiceClass,
+      PendingPromptsService as ServiceClass,
+      GlobalPauseService as ServiceClass,
+      HandoffService as ServiceClass,
     ],
 
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
