@@ -400,7 +400,6 @@ export async function handleConfigRoutes(
       delete envPatch.ELIZA_API_TOKEN;
       delete envPatch.ELIZA_WALLET_EXPORT_TOKEN;
       delete envPatch.ELIZA_TERMINAL_RUN_TOKEN;
-      delete envPatch.HYPERSCAPE_AUTH_TOKEN;
       delete envPatch.EVM_PRIVATE_KEY;
       delete envPatch.SOLANA_PRIVATE_KEY;
       delete envPatch.GITHUB_TOKEN;
@@ -413,7 +412,6 @@ export async function handleConfigRoutes(
         delete vars.ELIZA_API_TOKEN;
         delete vars.ELIZA_WALLET_EXPORT_TOKEN;
         delete vars.ELIZA_TERMINAL_RUN_TOKEN;
-        delete vars.HYPERSCAPE_AUTH_TOKEN;
         delete vars.EVM_PRIVATE_KEY;
         delete vars.SOLANA_PRIVATE_KEY;
         delete vars.GITHUB_TOKEN;

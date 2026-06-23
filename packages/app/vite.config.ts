@@ -2308,10 +2308,6 @@ export const INVALID_TRACER_PROVIDER = {};
       ...[
         ["@elizaos/plugin-feed", "plugins/plugin-feed/src/ui/index.ts"],
         [
-          "@elizaos/plugin-clawville",
-          "plugins/plugin-clawville/src/ui/index.ts",
-        ],
-        [
           "@elizaos/plugin-trajectory-logger",
           "plugins/plugin-trajectory-logger/src/register.ts",
         ],

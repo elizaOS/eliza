@@ -14,7 +14,6 @@ export const SENSITIVE_ENV_RESPONSE_KEYS = new Set([
   "ELIZA_API_TOKEN",
   "ELIZA_WALLET_EXPORT_TOKEN",
   "ELIZA_TERMINAL_RUN_TOKEN",
-  "HYPERSCAPE_AUTH_TOKEN",
   // Cloud API keys
   "ELIZAOS_CLOUD_API_KEY",
   // Third-party auth tokens

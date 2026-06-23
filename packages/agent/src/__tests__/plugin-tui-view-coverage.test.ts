@@ -339,8 +339,8 @@ function capabilitiesForDeclaration(
 }
 
 function viewDeclarations(manifestPath: string): CoveredView[] {
-  return viewObjects(readManifest(manifestPath))
-    .flatMap((object): CoveredView[] => {
+  return viewObjects(readManifest(manifestPath)).flatMap(
+    (object): CoveredView[] => {
       const id = stringField(object, "id");
       const label = stringField(object, "label");
       const path = stringField(object, "path");
@@ -358,7 +358,8 @@ function viewDeclarations(manifestPath: string): CoveredView[] {
         componentExport,
         visibleInManager: true,
       }));
-    });
+    },
+  );
 }
 
 function makeCtx(
