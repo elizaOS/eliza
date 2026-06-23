@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { DesktopActionParams } from "../types.js";
-import { fromPyAutoGUI, toOSWorldAction } from "./action-converter.js";
+import {
+  fromOSWorldAction,
+  fromPyAutoGUI,
+  toOSWorldAction,
+} from "./action-converter.js";
 
 const p = (o: Record<string, unknown>) => o as DesktopActionParams;
+const osw = (o: Record<string, unknown>) =>
+  o as Parameters<typeof fromOSWorldAction>[0];
 
 // #9170/#9105 cua parity — our DesktopActionParams must map to OSWorld actions
 // and parse back from pyautogui code. Lock both directions.
@@ -90,5 +96,43 @@ describe("fromPyAutoGUI", () => {
       action: "key_combo",
       key: "ctrl+c",
     });
+  });
+});
+
+describe("fromOSWorldAction + round-trip", () => {
+  it("maps OSWorld pointer/text actions back to DesktopActionParams", () => {
+    expect(
+      fromOSWorldAction(osw({ action_type: "CLICK", x: 10, y: 20 })),
+    ).toEqual({ action: "click", coordinate: [10, 20] });
+    expect(
+      fromOSWorldAction(osw({ action_type: "MOVE_TO", x: 5, y: 6 })),
+    ).toMatchObject({ action: "mouse_move", coordinate: [5, 6] });
+    expect(
+      fromOSWorldAction(osw({ action_type: "TYPING", text: "hi" })),
+    ).toEqual({ action: "type", text: "hi" });
+    expect(
+      fromOSWorldAction(osw({ action_type: "PRESS", key: "Return" })),
+    ).toEqual({ action: "key", key: "Return" });
+  });
+
+  it("reconstructs the drag end point from start + delta", () => {
+    expect(
+      fromOSWorldAction(
+        osw({ action_type: "DRAG_TO", x: 0, y: 0, dx: 10, dy: 5 }),
+      ),
+    ).toEqual({ action: "drag", startCoordinate: [0, 0], coordinate: [10, 5] });
+  });
+
+  it("round-trips our actions through OSWorld and back (parity)", () => {
+    const cases: DesktopActionParams[] = [
+      p({ action: "click", coordinate: [10, 20] }),
+      p({ action: "double_click", coordinate: [1, 2] }),
+      p({ action: "right_click", coordinate: [3, 4] }),
+      p({ action: "mouse_move", coordinate: [5, 6] }),
+      p({ action: "type", text: "hello" }),
+    ];
+    for (const c of cases) {
+      expect(fromOSWorldAction(toOSWorldAction(c))).toEqual(c);
+    }
   });
 });
