@@ -131,8 +131,8 @@ const CAPABILITIES: Capability[] = [
   {
     cua: "read_bytes/write_bytes (base64 binary), create_dir, directory_exists, get_file_size",
     domain: "architecture",
-    status: "missing",
-    milestone: "M12/M13 — sandbox guest binary I/O",
+    status: "have",
+    milestone: "M13 — file-ops binary I/O + executeFileAction",
   },
   // ── trycua blind spots — tracked decisions, not silent gaps (workflow audit) ──
   { cua: "set_value (a11y element value write)", domain: "architecture", status: "missing", milestone: "a11y-write" },
