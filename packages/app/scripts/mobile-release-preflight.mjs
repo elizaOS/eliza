@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { evaluateIosStoreEngineGate } from "./ios-store-engine-gate.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(scriptDir, "..");
@@ -136,9 +137,10 @@ function checkIos() {
     // web bundle bakes __ELIZA_BUILD_VARIANT__="store" (store CSP + correct
     // isNativeIosStoreBuild() at runtime). Without it the IPA ships as a
     // "direct" build with localhost CSP sources still allowed.
-    const storeVariant =
-      process.env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store" ||
-      process.env.ELIZA_RELEASE_AUTHORITY === "apple-app-store";
+    // Shared gate so this fail-the-build check can never drift from the
+    // engine-stager decision in run-mobile-build.mjs (#8861).
+    const { storeVariant, localRuntimeDisabled, engineWillEmbed } =
+      evaluateIosStoreEngineGate(process.env);
     addCheck(
       "iOS store build variant",
       storeVariant,
@@ -154,14 +156,6 @@ function checkIos() {
     // with the local runtime left enabled (the default). An operator can opt
     // into a cloud-only thin client with ELIZA_IOS_APP_STORE_LOCAL_RUNTIME=0 —
     // only then is shipping without the engine intentional.
-    const localRuntimeDisabled = /^(0|false|no|off)$/i.test(
-      (process.env.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME ?? "1").trim(),
-    );
-    const engineForced = /^(1|true|yes|on)$/i.test(
-      (process.env.ELIZA_IOS_FULL_BUN_ENGINE ?? "").trim(),
-    );
-    const engineWillEmbed =
-      engineForced || (storeVariant && !localRuntimeDisabled);
     if (localRuntimeDisabled) {
       addCheck(
         "On-device local agent runtime",
