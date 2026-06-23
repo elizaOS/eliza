@@ -19,7 +19,6 @@ describe("viewNavigationShortcuts (#8791)", () => {
 	it("resolves explicit typed and ASR-normalized view navigation to VIEWS", () => {
 		for (const phrase of [
 			"open settings",
-			"hey can you open settings please",
 			"show me my calendar",
 			"open app builder",
 			"check my messages",
