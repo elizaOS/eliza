@@ -2,6 +2,7 @@ import type { Plugin } from "@elizaos/core";
 import { logger, promoteSubactionsToActions } from "@elizaos/core";
 import { visionAction } from "./action";
 import { wireComputerUseOcrBridge } from "./computeruse-ocr-bridge";
+import { WindowsMediaOcrService } from "./ocr-service-windows";
 import {
   getOcrWithCoordsService,
   RapidOcrCoordAdapter,
@@ -48,7 +49,15 @@ export const visionPlugin: Plugin = {
     // CoordOcrProvider seam via a best-effort dynamic import (no hard dep — the
     // bridge is skipped cleanly when computeruse is not installed).
     if (!getOcrWithCoordsService()) {
-      registerOcrWithCoordsService(new RapidOcrCoordAdapter());
+      // Prefer the native OS OCR engine where available (zero LLM tokens,
+      // NPU-accelerated): Windows.Media.Ocr on Windows; otherwise the docTR /
+      // Apple-Vision chain. Native providers can override via
+      // registerOcrWithCoordsService later.
+      if (WindowsMediaOcrService.isAvailable()) {
+        registerOcrWithCoordsService(new WindowsMediaOcrService());
+      } else {
+        registerOcrWithCoordsService(new RapidOcrCoordAdapter());
+      }
     }
     try {
       const mod = (await import(
