@@ -136,6 +136,41 @@ export function createSpatialTuiComponent(
 }
 
 /**
+ * View-element thunks keyed by id, recorded by {@link registerSpatialTerminalView}.
+ *
+ * The terminal registry holds adapted `@elizaos/tui` `Component`s, not the
+ * authored React tree — exactly right for a terminal host, which never touches
+ * React. But the DOM surfaces (GUI/XR) render the *same authored React element*
+ * through `<SpatialSurface>`, so a host that proves tri-modal parity needs the
+ * element, not the terminal adapter. This map gives it: the one authored thunk
+ * each plugin registers, retrievable by id for a GUI/XR mount.
+ *
+ * Keyed by `Symbol.for` (like the terminal registry) so registrations survive
+ * module duplication across the runtime/plugin boundary.
+ */
+function getViewThunkStore(): Map<string, () => ReactNode> {
+  const globalObject = globalThis as Record<PropertyKey, unknown>;
+  const key = Symbol.for("elizaos.ui.spatial-view-thunk-registry");
+  const existing = globalObject[key] as
+    | Map<string, () => ReactNode>
+    | undefined;
+  if (existing) return existing;
+  const created = new Map<string, () => ReactNode>();
+  globalObject[key] = created;
+  return created;
+}
+
+/**
+ * The authored React-element thunk for a registered spatial view, when one was
+ * registered through {@link registerSpatialTerminalView}. Render its result with
+ * `<SpatialSurface modality="gui"|"xr">` to mount the same view a terminal host
+ * gets via `getTerminalView(id)` — the cross-modal parity handle.
+ */
+export function getSpatialViewThunk(id: string): (() => ReactNode) | undefined {
+  return getViewThunkStore().get(id);
+}
+
+/**
  * Author a terminal-rendered view once and register it so a terminal host (the
  * agent terminal) can mount it by id. This is the single call a plugin makes to
  * make a `viewType: "tui"` view render for real in the terminal:
@@ -158,9 +193,15 @@ export function registerSpatialTerminalView(
   // for. The host's `onChange`/`onActivate` win over the registration defaults.
   const factory = (mount?: TerminalViewMountOptions): Component =>
     createSpatialTuiComponent(view, { ...options, ...mount });
-  return registerTerminalView(
+  // Record the authored React thunk so the DOM surfaces can mount the same view.
+  getViewThunkStore().set(id, view);
+  const unregisterTerminal = registerTerminalView(
     id,
     createSpatialTuiComponent(view, options),
     factory,
   );
+  return () => {
+    unregisterTerminal();
+    if (getViewThunkStore().get(id) === view) getViewThunkStore().delete(id);
+  };
 }

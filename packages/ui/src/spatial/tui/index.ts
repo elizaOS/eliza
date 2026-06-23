@@ -16,6 +16,7 @@ export {
 export { measureWidth, render as renderSpatialNode } from "./engine.ts";
 export {
   createSpatialTuiComponent,
+  getSpatialViewThunk,
   registerSpatialTerminalView,
   renderSpatialToLines,
   renderViewToLines,

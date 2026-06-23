@@ -1,0 +1,65 @@
+# TUI render — clawville
+
+===== clawville @ 56 cols  (boxes=1 uniform=true issues=0) =====
+0         1         2         3         4         5     
+01234567890123456789012345678901234567890123456789012345
+╭─ ClawVille ──────────────────────────────────────────╮
+│                                                      │
+│ starting                             commands locked │
+│                                                      │
+│ ────────────────────── status ────────────────────── │
+│                                                      │
+│ run                                             none │
+│ location                                    the reef │
+│ learned                                            0 │
+│                                                      │
+│ Near the reef                                        │
+│                                                      │
+│ ───────────────────── commands ───────────────────── │
+│                                                      │
+│                No commands available                 │
+│                                                      │
+│ ───────────────────── compose ────────────────────── │
+│                                                      │
+│ ClawVille command                                    │
+│ ›                                                    │
+│                                                      │
+│ [ Send command ]                                     │
+│                                                      │
+│ ────────────────────── events ────────────────────── │
+│                                                      │
+│                    No events yet                     │
+│                                                      │
+╰──────────────────────────────────────────────────────╯
+
+===== clawville @ 40 cols  (boxes=1 uniform=true issues=0) =====
+0         1         2         3         
+0123456789012345678901234567890123456789
+╭─ ClawVille ──────────────────────────╮
+│                                      │
+│ starting             commands locked │
+│                                      │
+│ ────────────── status ────────────── │
+│                                      │
+│ run                             none │
+│ location                    the reef │
+│ learned                            0 │
+│                                      │
+│ Near the reef                        │
+│                                      │
+│ ───────────── commands ───────────── │
+│                                      │
+│        No commands available         │
+│                                      │
+│ ───────────── compose ────────────── │
+│                                      │
+│ ClawVille command                    │
+│ ›                                    │
+│                                      │
+│ [ Send command ]                     │
+│                                      │
+│ ────────────── events ────────────── │
+│                                      │
+│            No events yet             │
+│                                      │
+╰──────────────────────────────────────╯
