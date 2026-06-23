@@ -216,6 +216,14 @@ export const PARITY_MATRIX: readonly ParityCapability[] = [
     os: { windows: "covered", linux: "planned", macos: "planned", aosp: "na" },
   },
   {
+    id: "set_value",
+    elizaVerb: "COMPUTER_USE_SET_VALUE",
+    status: "have",
+    milestone: "M12",
+    note: "a11y value write: win32 UIAutomation ValuePattern fast-path + universal click→select-all→type fallback; real actuation in the interactive real lane",
+    os: ALL_PLANNED,
+  },
+  {
     id: "get_current_window_id",
     elizaVerb: "WINDOW_GET_CURRENT_WINDOW_ID",
     status: "have",
