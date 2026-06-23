@@ -6,7 +6,7 @@
  *   2. Hetzner mock (in-process, free port)
  *   3. Control-plane mock (in-process, free port, points at Hetzner mock)
  *   4. cloud-api worker subprocess (cloud-api-e2e-server.mjs)
- *   5. cloud-frontend Vite dev subprocess
+ *   5. packages/app (apex) Vite dev subprocess
  *
  * Returns a handle with URLs and a `stop()` that tears everything down.
  */
@@ -67,11 +67,10 @@ export interface StackHandle {
     pglite: string;
   };
   /**
-   * True when the frontend Vite dev was NOT booted. The apex moved from
-   * packages/cloud-frontend (deleted) to packages/app, whose vite dev can't be
-   * swapped in 1:1 yet (#9151) — so frontend-dependent specs MUST gate on this
-   * flag and skip/fail explicitly, never silently pass on an empty
-   * `urls.frontend`.
+   * True when the frontend Vite dev was NOT booted (API-only stacks started
+   * with `frontend: false`). The apex frontend is packages/app's web dev; when
+   * a stack opts out of it, frontend-dependent fixtures MUST gate on this flag
+   * and skip explicitly, never silently pass on an empty `urls.frontend`.
    */
   frontendSkipped: boolean;
   /** Human-readable reason the frontend was skipped (when frontendSkipped). */
@@ -241,9 +240,9 @@ export interface StartCloudStackOptions {
   /** Override frontend port. Default: free port. */
   frontendPort?: number;
   /**
-   * Boot the cloud-frontend Vite dev server. Defaults to true. Set to false for
-   * API-only stacks (e.g. the monetized-app loop) that never drive a browser —
-   * skips the Vite spawn + health wait, and leaves `urls.frontend` empty.
+   * Boot the packages/app (apex) Vite dev server. Defaults to true. Set to false
+   * for API-only stacks (e.g. the monetized-app loop) that never drive a browser
+   * — skips the Vite spawn + health wait, and leaves `urls.frontend` empty.
    */
   frontend?: boolean;
 }
@@ -372,47 +371,40 @@ export async function startCloudStack(
   });
 
   // 3. console (apex) frontend Vite dev (skipped for API-only stacks).
-  // cloud-frontend was deleted in the apex→packages/app cutover. The apex is now
-  // packages/app, but its vite dev proxies /api via its own computed port (not
-  // VITE_API_PROXY_TARGET), so this harness can't boot it unchanged — repointing
-  // the frontend e2e to packages/app's web dev is a tracked follow-up. Until
-  // then, skip the frontend boot gracefully when the dir is absent instead of
-  // hard-crashing on a missing cwd.
+  // The apex moved to packages/app in the cloud-frontend→packages/app cutover.
+  // packages/app's vite dev does NOT honour VITE_API_PROXY_TARGET; it computes
+  // its own ports from ELIZA_API_PORT/ELIZA_PORT (the /api + /ws proxy target)
+  // and ELIZA_UI_PORT (the dev server listen port). Inject those so the dev
+  // server listens on `frontendPort` and proxies /api at this stack's cloud-api.
   let frontendUrl = "";
   let frontendSkipReason: string | undefined;
-  const frontendDir = join(REPO_ROOT, "packages", "cloud-frontend");
-  if (opts.frontend !== false && !existsSync(frontendDir)) {
-    frontendSkipReason =
-      "packages/cloud-frontend is gone (apex moved to packages/app); its vite " +
-      "dev can't be booted by this harness unchanged — repointing to " +
-      "packages/app's web dev is tracked in #9151.";
-    // LOUD, unmistakable signal: a skipped frontend must NEVER read as a pass.
-    // Frontend-dependent specs gate on `stack.frontendSkipped` and skip/fail
-    // explicitly (visible in the report) rather than silently exercising nothing.
-    console.error(
-      `\n${"=".repeat(74)}\n` +
-        "[cloud-e2e] ⚠️  FRONTEND NOT BOOTED — frontend-dependent specs are\n" +
-        "             SKIPPED, NOT PASSED.\n" +
-        `             ${frontendSkipReason}\n` +
-        `${"=".repeat(74)}\n`,
-    );
-  } else if (opts.frontend !== false) {
+  const frontendDir = join(REPO_ROOT, "packages", "app");
+  if (opts.frontend !== false) {
+    if (!existsSync(frontendDir)) {
+      throw new Error(
+        `[stack] frontend boot requested but ${frontendDir} is missing — ` +
+          "the cloud-e2e harness expects packages/app (the apex web dev). " +
+          "Pass { frontend: false } for API-only stacks.",
+      );
+    }
     const frontendEnv = {
       ...stackEnv,
-      PORT: String(frontendPort),
+      // packages/app vite dev: UI listen port + /api proxy target.
+      ELIZA_UI_PORT: String(frontendPort),
+      ELIZA_API_PORT: String(apiPort),
+      ELIZA_PORT: String(apiPort),
       VITE_API_BASE_URL: apiUrl,
-      VITE_API_PROXY_TARGET: apiUrl,
       NEXT_PUBLIC_API_BASE_URL: apiUrl,
     };
     procs.push(
       spawnLogged(
-        "cloud-frontend",
+        "frontend",
         BUN,
         ["run", "dev", "--", "--host", "127.0.0.1"],
         {
           env: frontendEnv,
           cwd: frontendDir,
-          logFile: join(LOG_DIR, "cloud-frontend.log"),
+          logFile: join(LOG_DIR, "frontend.log"),
         },
       ),
     );
@@ -420,8 +412,15 @@ export async function startCloudStack(
     frontendUrl = `http://127.0.0.1:${frontendPort}`;
     await waitForHttpOk(frontendUrl, {
       timeoutMs: 120_000,
-      label: "cloud-frontend",
+      label: "frontend",
     });
+  } else {
+    // API-only stack: no frontend booted. Record why so the handle's
+    // frontendSkipped/frontendSkipReason stay coherent and frontend-dependent
+    // fixtures (authenticatedPage) skip explicitly rather than reading an empty
+    // `urls.frontend` as a pass.
+    frontendSkipReason =
+      "frontend boot disabled (stack started with { frontend: false }).";
   }
 
   let stopped = false;
