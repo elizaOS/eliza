@@ -78,8 +78,8 @@ interface TaskCompletionSummary {
 // ---------------------------------------------------------------------------
 
 const CHAT_SUPPRESSED_AUTONOMY_SOURCES = new Set([
-  "lifeops-reminder",
-  "lifeops-workflow",
+  "reminder",
+  "workflow",
   "proactive-gm",
   "proactive-gn",
   "proactive-nudge",

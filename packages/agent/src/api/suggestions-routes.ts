@@ -3,7 +3,7 @@
  * the continuous-chat overlay's resting composer strip (#8225).
  *
  * The client sends recent conversation context, the local hour, and the
- * active page scope ("page-lifeops", "page-browser", …). Two tiers:
+ * active page scope ("page-wallet", "page-browser", …). Two tiers:
  *
  * - `model`     — the small text model writes EXACTLY 3 short, first-person
  *                 prompts tailored to the character, the conversation, and
@@ -138,7 +138,6 @@ const SCOPE_STARTERS: Record<string, readonly string[]> = {
     "Suggest a plugin",
     "Configure a plugin",
   ],
-  "page-lifeops": ["Plan my day", "What's on my plate?", "Review my reminders"],
   "page-settings": [
     "Review my settings",
     "Switch my model",
@@ -213,7 +212,7 @@ function buildPrompt(
         .join("\n")
     : "No conversation yet.";
 
-  // "page-lifeops" → "lifeops" — a human-readable view name for the prompt.
+  // "page-wallet" → "wallet" — a human-readable view name for the prompt.
   const viewName = request.scope?.replace(/^page-/, "");
 
   return [

@@ -48,9 +48,9 @@ function summarizeAssistantActivityEvent(data: Record<string, unknown>): {
   }
 
   switch (source) {
-    case "lifeops-reminder":
+    case "reminder":
       return { eventType: "reminder", summary: text };
-    case "lifeops-workflow":
+    case "workflow":
       return { eventType: "workflow", summary: text };
     case "proactive-gm":
     case "proactive-gn":
