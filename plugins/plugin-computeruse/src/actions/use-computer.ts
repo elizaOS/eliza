@@ -47,6 +47,7 @@ const DESKTOP_ACTIONS = new Set<DesktopActionType>([
   "key_combo",
   "scroll",
   "drag",
+  "get_cursor_position",
   "detect_elements",
   "ocr",
 ]);
@@ -242,6 +243,7 @@ export const useComputerAction: Action = {
           "key_combo",
           "scroll",
           "drag",
+          "get_cursor_position",
           "detect_elements",
           "ocr",
           "resolve_approval",
@@ -365,7 +367,8 @@ export const useComputerAction: Action = {
     const approvalDecision = parseApprovalDecision(params, message);
     if (approvalDecision) {
       if (approvalDecision.ownerMismatch) {
-        const text = "Computer-use approval callback does not belong to this user.";
+        const text =
+          "Computer-use approval callback does not belong to this user.";
         if (callback) {
           await callback({ text }, "COMPUTER_USE");
         }

@@ -26,6 +26,7 @@ interface NutModule {
   mouse: {
     config: { mouseSpeed: number; autoDelayMs: number };
     setPosition: (point: { x: number; y: number }) => Promise<unknown>;
+    getPosition: () => Promise<{ x: number; y: number }>;
     move: (path: Promise<unknown> | unknown) => Promise<unknown>;
     click: (button: number) => Promise<unknown>;
     doubleClick: (button: number) => Promise<unknown>;
@@ -307,6 +308,15 @@ export async function nutDrag(
   } finally {
     await m.mouse.releaseButton(m.Button.LEFT);
   }
+}
+
+export async function nutGetCursorPosition(): Promise<{
+  x: number;
+  y: number;
+}> {
+  const m = nut();
+  const p = await m.mouse.getPosition();
+  return { x: Math.round(p.x), y: Math.round(p.y) };
 }
 
 export async function nutScroll(

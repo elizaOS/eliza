@@ -23,6 +23,7 @@ import {
   desktopRightClick,
   desktopScroll,
   desktopType,
+  legacyGetCursorPosition,
 } from "./desktop.js";
 import {
   loadFailureReason,
@@ -32,6 +33,7 @@ import {
   nutClickWithModifiers,
   nutDoubleClick,
   nutDrag,
+  nutGetCursorPosition,
   nutKeyCombo,
   nutKeyPress,
   nutMouseMove,
@@ -103,6 +105,18 @@ export async function driverRightClick(x: number, y: number): Promise<void> {
 export async function driverMouseMove(x: number, y: number): Promise<void> {
   if (selectedDriver() === "nutjs") return nutMouseMove(x, y);
   desktopMouseMove(x, y);
+}
+
+export async function driverGetCursorPosition(): Promise<{
+  x: number;
+  y: number;
+}> {
+  // nutjs `mouse.getPosition()` returns a stale/constant value on Windows
+  // (empirically verified), so always use the reliable OS query there
+  // (System.Windows.Forms.Cursor). Elsewhere prefer nutjs when it is active.
+  if (process.platform === "win32") return legacyGetCursorPosition();
+  if (selectedDriver() === "nutjs") return nutGetCursorPosition();
+  return legacyGetCursorPosition();
 }
 
 export async function driverDrag(
