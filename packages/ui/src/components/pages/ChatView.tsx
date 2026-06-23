@@ -1,6 +1,7 @@
-import { RotateCcw } from "lucide-react";
+import { Copy, RotateCcw } from "lucide-react";
 import {
   type ChangeEvent,
+  type ClipboardEvent,
   type DragEvent,
   type KeyboardEvent,
   useCallback,
@@ -39,6 +40,7 @@ import {
   chatUploadKind,
   intakeAttachmentFiles,
   MAX_CHAT_IMAGES,
+  resolveComposerPaste,
 } from "../../utils/image-attachment";
 import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { AccountRequiredCard } from "../chat/AccountRequiredCard";
@@ -51,6 +53,7 @@ import {
   mergeConnectorSendAsMetadata,
 } from "../chat/connector-send-as";
 import { MessageContent } from "../chat/MessageContent";
+import { buildConversationTranscript } from "../chat/message-parser-helpers";
 import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
@@ -537,6 +540,25 @@ export function ChatView({
     [addImageFiles],
   );
 
+  // Desktop composer paste parity with the mobile overlay (#9148): pasted
+  // screenshots/files become attachments and a large text paste collapses to a
+  // text-attachment chip; small text falls through to the textarea normally.
+  const handleComposerPaste = useCallback(
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      const action = resolveComposerPaste(e.clipboardData);
+      if (action.kind === "files") {
+        e.preventDefault();
+        addImageFiles(action.files);
+      } else if (action.kind === "text-attachment") {
+        e.preventDefault();
+        setChatPendingImages((prev) =>
+          [...prev, action.attachment].slice(0, MAX_CHAT_IMAGES),
+        );
+      }
+    },
+    [addImageFiles, setChatPendingImages],
+  );
+
   const removeImage = useCallback(
     (index: number) => {
       setChatPendingImages((prev) => prev.filter((_, i) => i !== index));
@@ -754,6 +776,25 @@ export function ChatView({
       </button>
     ) : null;
 
+  // Copy-whole-conversation control (#9148): builds the same plain-text
+  // transcript the overlay produces and routes through the shared clipboard
+  // helper. Same neutral styling as the reset button (no orange, no blue).
+  const copyConversationButton =
+    visibleMsgs.length > 0 ? (
+      <button
+        type="button"
+        data-testid="chat-view-copy-conversation-button"
+        aria-label="Copy conversation"
+        title="Copy conversation"
+        onClick={() => {
+          void copyToClipboard(buildConversationTranscript(visibleMsgs));
+        }}
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/40 text-muted transition-colors hover:bg-bg-hover hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-txt/30"
+      >
+        <Copy className="h-[18px] w-[18px]" aria-hidden />
+      </button>
+    ) : null;
+
   const composerNode = hideComposer ? null : isGameModal ? (
     <ChatComposerShell
       variant="game-modal"
@@ -763,6 +804,7 @@ export function ChatView({
           <CodingAgentControlChip />
           {continuousChatToggleVisible || resetConversationButton ? (
             <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
+              {copyConversationButton}
               {resetConversationButton}
               {continuousChatToggleVisible ? (
                 <ContinuousChatToggle
@@ -808,6 +850,7 @@ export function ChatView({
         onAttachImage={() => fileInputRef.current?.click()}
         onChatInputChange={(value) => setState("chatInput", value)}
         onKeyDown={handleKeyDown}
+        onPaste={handleComposerPaste}
         onSend={() => void handleChatSend()}
         onStop={handleChatStop}
         onStopSpeaking={stopSpeaking}
@@ -826,6 +869,7 @@ export function ChatView({
           <CodingAgentControlChip />
           {continuousChatToggleVisible || resetConversationButton ? (
             <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
+              {copyConversationButton}
               {resetConversationButton}
               {continuousChatToggleVisible ? (
                 <ContinuousChatToggle
@@ -868,6 +912,7 @@ export function ChatView({
         onAttachImage={() => fileInputRef.current?.click()}
         onChatInputChange={(value) => setState("chatInput", value)}
         onKeyDown={handleKeyDown}
+        onPaste={handleComposerPaste}
         onSend={() => void handleChatSend()}
         onStop={handleChatStop}
         onStopSpeaking={stopSpeaking}

@@ -11,6 +11,7 @@ import {
 // biome-ignore lint/correctness/noUnusedImports: Required for this package's JSX transform in tests.
 import * as React from "react";
 import {
+  type ClipboardEvent,
   type KeyboardEvent,
   type PointerEvent,
   type RefObject,
@@ -111,6 +112,12 @@ export interface ChatComposerProps {
   onAttachImage: () => void;
   onChatInputChange: (value: string) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
+  /**
+   * Paste handler for the textarea (#9148). When provided, both desktop and
+   * inline composers forward paste so screenshots/large text become attachments
+   * — paste parity with the mobile overlay.
+   */
+  onPaste?: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   onSend: () => void;
   onStop: () => void;
   onStopSpeaking: () => void;
@@ -143,6 +150,7 @@ export function ChatComposer({
   onAttachImage,
   onChatInputChange,
   onKeyDown,
+  onPaste,
   onSend,
   onStop,
   onStopSpeaking,
@@ -377,6 +385,7 @@ export function ChatComposer({
           value={chatInput}
           onChange={(event) => onChatInputChange(event.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
           data-testid="chat-composer-textarea"
           aria-label={textareaAriaLabel}
           variant={null}
@@ -613,6 +622,7 @@ export function ChatComposer({
           value={chatInput}
           onChange={(event) => onChatInputChange(event.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
           data-testid="chat-composer-textarea"
           aria-label={textareaAriaLabel}
           variant={isInline ? null : undefined}

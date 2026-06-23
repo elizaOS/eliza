@@ -53,8 +53,7 @@ import {
   chatUploadKind,
   intakeAttachmentFiles,
   MAX_CHAT_IMAGES,
-  pastedTextToAttachment,
-  shouldConvertPasteToAttachment,
+  resolveComposerPaste,
   summarizeDroppedAttachments,
 } from "../../utils/image-attachment";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
@@ -3401,25 +3400,17 @@ export function ContinuousChatOverlay({
                 }}
                 onBlur={() => setComposerFocused(false)}
                 onPaste={(e) => {
-                  // Paste images/files straight into the composer (cmd/ctrl+V).
-                  const files = Array.from(e.clipboardData?.files ?? []);
-                  if (files.length > 0) {
+                  // Shared paste contract with the desktop composer (#9148):
+                  // files → attachments, large text → collapsed chip, else the
+                  // textarea handles it normally.
+                  const action = resolveComposerPaste(e.clipboardData);
+                  if (action.kind === "files") {
                     e.preventDefault();
-                    addImageFiles(files);
-                    return;
-                  }
-                  // A large plain-text paste becomes a collapsed text
-                  // attachment chip (Claude-Code style) instead of flooding the
-                  // textarea; small pastes fall through to the textarea as
-                  // normal.
-                  const text = e.clipboardData?.getData("text") ?? "";
-                  if (shouldConvertPasteToAttachment(text)) {
+                    addImageFiles(action.files);
+                  } else if (action.kind === "text-attachment") {
                     e.preventDefault();
                     setPendingImages((prev) =>
-                      [...prev, pastedTextToAttachment(text)].slice(
-                        0,
-                        MAX_CHAT_IMAGES,
-                      ),
+                      [...prev, action.attachment].slice(0, MAX_CHAT_IMAGES),
                     );
                   }
                 }}

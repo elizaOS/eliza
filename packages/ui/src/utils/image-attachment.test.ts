@@ -12,6 +12,7 @@ import {
   MAX_CHAT_IMAGES,
   partitionAttachmentFiles,
   pastedTextToAttachment,
+  resolveComposerPaste,
   shouldConvertPasteToAttachment,
   summarizeDroppedAttachments,
 } from "./image-attachment";
@@ -342,5 +343,50 @@ describe("buildDroppedAttachmentNotice", () => {
     expect(notice).toContain("chat.attachmentsKeptDroppedMixed");
     expect(notice).toContain('"tooLarge":1');
     expect(notice).toContain('"overCount":1');
+  });
+});
+
+describe("resolveComposerPaste", () => {
+  /** Minimal DataTransfer stand-in: files list + getData("text"). */
+  const clip = (opts: { files?: File[]; text?: string }) =>
+    ({
+      files: (opts.files ?? []) as unknown as FileList,
+      getData: (type: string) => (type === "text" ? (opts.text ?? "") : ""),
+    }) as unknown as Pick<DataTransfer, "files" | "getData">;
+
+  it("routes pasted files to the files action (screenshots/attachments)", () => {
+    const png = { type: "image/png", name: "shot.png" } as File;
+    const action = resolveComposerPaste(clip({ files: [png] }));
+    expect(action.kind).toBe("files");
+    if (action.kind === "files") {
+      expect(action.files).toHaveLength(1);
+    }
+  });
+
+  it("files take precedence over any accompanying text", () => {
+    const png = { type: "image/png", name: "shot.png" } as File;
+    const action = resolveComposerPaste(
+      clip({ files: [png], text: "x".repeat(LARGE_PASTE_CHAR_THRESHOLD + 1) }),
+    );
+    expect(action.kind).toBe("files");
+  });
+
+  it("collapses a large text paste into a text attachment", () => {
+    const text = "x".repeat(LARGE_PASTE_CHAR_THRESHOLD + 1);
+    const action = resolveComposerPaste(clip({ text }));
+    expect(action.kind).toBe("text-attachment");
+    if (action.kind === "text-attachment") {
+      expect(action.attachment.mimeType).toBe("text/markdown");
+      expect(decodeAttachmentText(action.attachment.data)).toBe(text);
+    }
+  });
+
+  it("ignores a small text paste (textarea handles it)", () => {
+    expect(resolveComposerPaste(clip({ text: "hi" })).kind).toBe("ignore");
+  });
+
+  it("ignores an empty/absent clipboard", () => {
+    expect(resolveComposerPaste(null).kind).toBe("ignore");
+    expect(resolveComposerPaste(clip({})).kind).toBe("ignore");
   });
 });

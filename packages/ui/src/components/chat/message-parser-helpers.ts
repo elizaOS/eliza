@@ -50,12 +50,22 @@ export type Segment =
   // Any registry-driven inline widget (choice/followups/form/task/plugin).
   | { kind: "widget"; widgetKind: string; data: unknown }
   | { kind: "permission"; payload: PermissionCardPayload }
-  | { kind: "analysis-xml"; tag: string; content: string };
+  | { kind: "analysis-xml"; tag: string; content: string }
+  // A fenced ```code``` block in assistant prose, rendered with a copy button
+  // via the shared CodeBlock primitive (issue #9148). `lang` is the (optional)
+  // info-string after the opening fence; `code` is the block body (no fences).
+  | { kind: "code"; lang: string; code: string };
 
 // ── Detection ───────────────────────────────────────────────────────
 
 export const CONFIG_RE = /\[CONFIG:([@\w][\w@./:-]*)\]/g;
 export const FENCED_JSON_RE = /```(?:json)?\s*\n([\s\S]*?)```/g;
+// Generic fenced code block: optional info-string (language) after the opening
+// fence, then the body up to the closing fence. Captured only when it does not
+// overlap a UiSpec/patch region (those keep their richer rendering). A fence
+// left unclosed at end-of-stream (mid-stream token) still matches so partial
+// code renders incrementally rather than as raw backticks.
+export const FENCED_CODE_RE = /```([\w+#.-]*)[ \t]*\r?\n([\s\S]*?)(?:```|$)/g;
 
 export const HIDDEN_TAG_BLOCK_RE =
   /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
@@ -85,6 +95,34 @@ export function normalizeDisplayText(text: string): string {
 
   normalized = stripAssistantStageDirections(normalized);
   return normalized.trim();
+}
+
+/**
+ * Build a plain-text transcript of a conversation for copy/export (#9148),
+ * shared by the desktop ChatView and the mobile overlay so the "copy whole
+ * conversation" affordance produces identical output on both surfaces.
+ * Each turn is labelled by role and separated by a blank line; assistant text
+ * is run through {@link normalizeDisplayText} so hidden reasoning/stage blocks
+ * never leak into the copied transcript. Empty-text turns are skipped. Pure.
+ */
+export function buildConversationTranscript(
+  messages: Pick<ConversationMessage, "role" | "text">[],
+  opts: { userLabel?: string; assistantLabel?: string } = {},
+): string {
+  const userLabel = opts.userLabel ?? "User";
+  const assistantLabel = opts.assistantLabel ?? "Assistant";
+  const lines: string[] = [];
+  for (const m of messages) {
+    const body =
+      m.role === "assistant"
+        ? normalizeDisplayText(m.text ?? "")
+        : (m.text ?? "").trim();
+    if (!body) continue;
+    lines.push(
+      `${m.role === "assistant" ? assistantLabel : userLabel}: ${body}`,
+    );
+  }
+  return lines.join("\n\n");
 }
 
 export function tryParse(s: string): unknown {
@@ -370,6 +408,25 @@ export function parseSegments(text: string, analysisMode: boolean): Segment[] {
         segment: { kind: "ui-spec", spec: patch.spec, raw: patch.raw },
       });
     }
+  }
+
+  // 4. Find generic fenced code blocks. Collected last and skipped when they
+  // overlap an already-found region, so UiSpec/patch fences keep their richer
+  // rendering and only plain ```code``` becomes a copyable CodeBlock (#9148).
+  FENCED_CODE_RE.lastIndex = 0;
+  m = FENCED_CODE_RE.exec(targetText);
+  while (m !== null) {
+    const start = m.index;
+    const end = m.index + m[0].length;
+    const overlaps = regions.some((r) => start < r.end && end > r.start);
+    if (!overlaps) {
+      regions.push({
+        start,
+        end,
+        segment: { kind: "code", lang: m[1] ?? "", code: m[2] ?? "" },
+      });
+    }
+    m = FENCED_CODE_RE.exec(targetText);
   }
 
   // No special content found — return plain text

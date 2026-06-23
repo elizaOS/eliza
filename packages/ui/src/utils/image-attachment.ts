@@ -363,6 +363,38 @@ export function pastedTextToAttachment(
 }
 
 /**
+ * The composer-paste decision, shared by both chat surfaces (desktop ChatView
+ * and the mobile overlay) so paste behaves identically (#9148). Pure over the
+ * clipboard payload so it's testable without a DOM event:
+ *  - pasted files (e.g. a screenshot) → `files` (intake as attachments),
+ *  - a large plain-text paste → `text-attachment` (collapsed chip, Claude-Code
+ *    style) instead of flooding the textarea,
+ *  - anything else → `ignore` (let the textarea handle it normally).
+ * The caller calls `preventDefault()` for the non-`ignore` actions.
+ */
+export type ComposerPasteAction =
+  | { kind: "files"; files: File[] }
+  | { kind: "text-attachment"; attachment: ImageAttachment }
+  | { kind: "ignore" };
+
+export function resolveComposerPaste(
+  clipboard: Pick<DataTransfer, "files" | "getData"> | null | undefined,
+): ComposerPasteAction {
+  const files = Array.from(clipboard?.files ?? []);
+  if (files.length > 0) {
+    return { kind: "files", files };
+  }
+  const text = clipboard?.getData("text") ?? "";
+  if (shouldConvertPasteToAttachment(text)) {
+    return {
+      kind: "text-attachment",
+      attachment: pastedTextToAttachment(text),
+    };
+  }
+  return { kind: "ignore" };
+}
+
+/**
  * Build the translated "kept N, dropped M" notice for the composer from an
  * intake/partition result, choosing the right i18n key based on whether the
  * drops were oversized, over-count, or a mix. Returns `null` when nothing was

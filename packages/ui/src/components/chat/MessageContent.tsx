@@ -25,6 +25,7 @@ import { ConfigRenderer } from "../config-ui/config-renderer";
 import { defaultRegistry } from "../config-ui/config-renderer.helpers";
 import { UiRenderer } from "../config-ui/ui-renderer";
 import { Button } from "../ui/button";
+import { CodeBlock } from "../ui/code-block";
 import { MessageAttachments } from "./MessageAttachments";
 import {
   buildInlinePluginConfigModel,
@@ -1025,7 +1026,9 @@ export function MessageContent({
                     ? `permission:${seg.payload.feature}`
                     : seg.kind === "analysis-xml"
                       ? `analysis:${seg.tag}`
-                      : `ui:${seg.raw.slice(0, 80)}`;
+                      : seg.kind === "code"
+                        ? `code:${seg.code.slice(0, 80)}`
+                        : `ui:${seg.raw.slice(0, 80)}`;
           const segmentKey = nextKey(baseKey);
 
           switch (seg.kind) {
@@ -1057,6 +1060,19 @@ export function MessageContent({
               }
               return (
                 <InlinePluginConfig key={segmentKey} pluginId={seg.pluginId} />
+              );
+            case "code":
+              return (
+                <CodeBlock
+                  key={segmentKey}
+                  className="my-2"
+                  value={seg.code.replace(/\n$/, "")}
+                  wrap
+                  copyable
+                  aria-label={
+                    seg.lang ? `${seg.lang} code block` : "code block"
+                  }
+                />
               );
             case "ui-spec":
               return (
