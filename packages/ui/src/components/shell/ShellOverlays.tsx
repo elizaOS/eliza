@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { SHARE_TARGET_EVENT } from "../../events";
+import { PerfOverlay } from "../../perf/PerfOverlay";
 import type { ShareTargetPayload } from "../../platform/init";
 
 import { useAppSelector } from "../../state/app-store";
@@ -89,6 +90,9 @@ export function ShellOverlays({
 
   return (
     <>
+      {/* Dev-only FPS/long-task overlay (#9141) — self-gates on
+          window.__ELIZA_PERF__, renders null + starts no loop when off. */}
+      <PerfOverlay />
       <CommandPalette />
       <RestartBanner />
       <BugReportModal />
