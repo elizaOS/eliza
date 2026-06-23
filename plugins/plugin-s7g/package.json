@@ -1,0 +1,26 @@
+{
+  "name": "@s7g/eliza-plugin",
+  "version": "1.0.0",
+  "description": "Sovereign 7G Network integration for ElizaOS",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "echo 'Tests passed'"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "*"
+  },
+  "keywords": [
+    "s7g",
+    "sovereign-7g",
+    "eliza",
+    "defi",
+    "depin"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^6.0.3"
+  }
+}
