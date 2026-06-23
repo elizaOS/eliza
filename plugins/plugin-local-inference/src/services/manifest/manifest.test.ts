@@ -91,6 +91,16 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 	}
 	if (hasMtp) {
 		manifest.evals.mtp = { acceptanceRate: 0.72, speedup: 1.8, passed: true };
+		// Gemma 4 separate-drafter MTP: every MTP tier bundles its drafter GGUF
+		// at `mtp/drafter-<tier>.gguf` with its own lineage and declares the mode.
+		manifest.files.mtp = [
+			{ path: `mtp/drafter-${tier}.gguf`, sha256: SHA },
+		];
+		manifest.lineage.drafter = {
+			base: "eliza-1-drafter",
+			license: "apache-2.0",
+		};
+		manifest.mtp = "separate-drafter";
 	}
 	return manifest;
 }
@@ -101,7 +111,7 @@ describe("Eliza-1 manifest schema constants", () => {
 	});
 
 	it("uses Eliza-1 size-tier ids and tokenizer family", () => {
-		expect(ELIZA_1_TOKENIZER_FAMILY).toBe("gemma");
+		expect(ELIZA_1_TOKENIZER_FAMILY).toBe("gemma4");
 		expect(ELIZA_1_TIERS).toEqual(["2b", "4b", "9b", "27b", "27b-256k"]);
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
 			expect.arrayContaining(["2b", "4b"]),
@@ -389,20 +399,40 @@ describe("validateManifest — contract rejections", () => {
 		}
 	});
 
-	it("rejects separate drafter artifacts for embedded-draft-head MTP tiers", () => {
+	it("accepts a separate-drafter MTP bundle (drafter GGUF + lineage present)", () => {
 		const m = baseManifest("9b");
+		m.mtp = "separate-drafter";
 		m.lineage.drafter = {
 			base: "eliza-1-mtp-drafter",
 			license: "apache-2.0",
 		};
 		m.files.mtp = [{ path: "mtp/drafter-9b.gguf", sha256: SHA }];
 		const result = validateManifest(m);
+		expect(result.ok).toBe(true);
+	});
+
+	it("rejects a strict-release MTP tier that omits the bundled drafter", () => {
+		const m = baseManifest("9b");
+		m.files.mtp = [];
+		m.lineage.drafter = undefined;
+		const result = validateManifest(m);
 		expect(result.ok).toBe(false);
 		if (!result.ok) {
-			expect(result.errors.some((e) => e.includes("files.mtp"))).toBe(true);
-			expect(result.errors.some((e) => e.includes("lineage.drafter"))).toBe(
-				true,
-			);
+			expect(
+				result.errors.some((e) => e.includes("MTP drafter not bundled")),
+			).toBe(true);
+		}
+	});
+
+	it("rejects an MTP drafter bundled at the legacy dflash/ path", () => {
+		const m = baseManifest("9b");
+		m.files.mtp = [{ path: "dflash/drafter-9b.gguf", sha256: SHA }];
+		const result = validateManifest(m);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(
+				result.errors.some((e) => e.includes("must bundle the drafter at")),
+			).toBe(true);
 		}
 	});
 
