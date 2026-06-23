@@ -46,6 +46,7 @@ import {
 } from "../../events";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+import { isIOS } from "../../platform/init";
 import { useViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import {
@@ -483,12 +484,14 @@ function SheetGrabber({
         aria-hidden="true"
         className={cn(
           // 30% wider bar (w-11 → w-14), a touch taller, brighter.
-          // Visually hidden bar (opacity-0): the drag/tap-to-open gesture and the
-          // keyboard handlers live on the button wrapper, so the affordance still
-          // works — we just don't draw a faux grabber line; the iOS native home
-          // indicator is the only bottom bar. Kept in layout so the hit zone is
+          // On iOS the native home indicator already draws the bottom bar, so we
+          // hide our faux grabber line there (the drag/tap gesture + keyboard
+          // handlers live on the button wrapper, so the affordance still works).
+          // Everywhere else (desktop/web/Android) there is no OS bottom bar, so we
+          // must paint a visible grabber. Kept in layout so the hit zone is
           // unchanged.
-          "h-2.5 w-16 rounded-full opacity-0 transition-colors duration-300",
+          "h-2.5 w-16 rounded-full transition-colors duration-300",
+          isIOS ? "opacity-0" : "opacity-100",
           glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
@@ -554,12 +557,12 @@ function PillHandle({
         className={cn(
           // Identical to the SheetGrabber bar — the handle keeps the same white
           // shape + color whether the chat is open or fully collapsed to the pill.
-          // Visually hidden bar (opacity-0): the drag/tap-to-open gesture and the
-          // keyboard handlers live on the button wrapper, so the affordance still
-          // works — we just don't draw a faux grabber line; the iOS native home
-          // indicator is the only bottom bar. Kept in layout so the hit zone is
-          // unchanged.
-          "h-2.5 w-16 rounded-full opacity-0 transition-colors duration-300",
+          // On iOS the native home indicator is the bottom bar, so the faux grabber
+          // is hidden there; everywhere else (desktop/web/Android) we paint it so
+          // the pill has a visible grab affordance. Kept in layout so the hit zone
+          // is unchanged.
+          "h-2.5 w-16 rounded-full transition-colors duration-300",
+          isIOS ? "opacity-0" : "opacity-100",
           glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
