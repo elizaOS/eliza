@@ -1,31 +1,11 @@
-import { randomUUID } from "node:crypto";
-import { resolveApprovalService } from "@elizaos/agent";
-import { type IAgentRuntime, logger, ServiceType } from "@elizaos/core";
-import {
-  type ApprovalAction,
-  type ApprovalChannel,
-  type ApprovalEnqueueInput,
-  type ApprovalListFilter,
-  ApprovalNotFoundError,
-  type ApprovalPayload,
-  type ApprovalQueue,
-  type ApprovalRequest,
-  type ApprovalRequestState,
-  type ApprovalResolution,
-  ApprovalStateTransitionError,
-} from "./approval-queue.types.js";
-import {
-  executeRawSql,
-  parseJsonRecord,
-  sqlInteger,
-  sqlJson,
-  sqlText,
-  toText,
-} from "./sql.js";
-
 /**
- * Concrete `ApprovalQueue` backed by the `approval_requests` table from
- * `@elizaos/plugin-sql`.
+ * `PgApprovalQueue` — concrete approval queue backed by the `approval_requests`
+ * table from `@elizaos/plugin-sql` (public schema, no schema prefix).
+ *
+ * Promoted from `@elizaos/plugin-personal-assistant`'s `lifeops/approval-queue.ts`
+ * into a first-class `@elizaos/agent` runtime store (LifeOps Slice 4). The raw
+ * SQL is unchanged — it has no schema prefix, so it targets plugin-sql's public
+ * `approval_requests` table exactly as before. There is no data migration.
  *
  * Design notes:
  *  - The state-transition table below is the single source of truth for
@@ -36,6 +16,31 @@ import {
  *  - Each row is scoped to an agent via `agentId`. Cross-agent access is
  *    not supported.
  */
+
+import { randomUUID } from "node:crypto";
+import { type IAgentRuntime, logger, ServiceType } from "@elizaos/core";
+import {
+  executeRawSql,
+  parseJsonRecord,
+  sqlInteger,
+  sqlJson,
+  sqlText,
+  toText,
+} from "./sql.ts";
+import {
+  type ApprovalAction,
+  type ApprovalChannel,
+  type ApprovalEnqueueInput,
+  type ApprovalListFilter,
+  ApprovalNotFoundError,
+  type ApprovalPayload,
+  type ApprovalQueue,
+  type ApprovalQueueOptions,
+  type ApprovalRequest,
+  type ApprovalRequestState,
+  type ApprovalResolution,
+  ApprovalStateTransitionError,
+} from "./types.ts";
 
 const ALLOWED_TRANSITIONS: Readonly<
   Record<ApprovalRequestState, ReadonlyArray<ApprovalRequestState>>
@@ -561,10 +566,6 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
   return svc && typeof svc.notify === "function" ? svc : null;
 }
 
-export interface ApprovalQueueOptions {
-  readonly agentId: string;
-}
-
 export class PgApprovalQueue implements ApprovalQueue {
   private readonly runtime: IAgentRuntime;
   private readonly agentId: string;
@@ -752,27 +753,9 @@ export class PgApprovalQueue implements ApprovalQueue {
   }
 }
 
-/**
- * Resolve the approval queue for `options.agentId`.
- *
- * Promoted to the first-class `@elizaos/agent` runtime service `ApprovalService`
- * (serviceType `eliza_approval`) in LifeOps Slice 4. This factory prefers the
- * registered runtime service (first-wins dedup) and falls back to a
- * directly-constructed `PgApprovalQueue` when the service is absent. Both read
- * and write the same public-schema `approval_requests` table via identical raw
- * SQL, so the fallback is behaviorally identical.
- *
- * The runtime service is structurally the same `PgApprovalQueue`; the single
- * narrowing below re-asserts PA's travel/Duffel-precise payload contract over
- * the runtime's structurally-identical (travel-agnostic) queue interface.
- */
 export function createApprovalQueue(
   runtime: IAgentRuntime,
   options: ApprovalQueueOptions,
 ): ApprovalQueue {
-  const service = resolveApprovalService(runtime);
-  if (service) {
-    return service.getQueue(options.agentId) as unknown as ApprovalQueue;
-  }
   return new PgApprovalQueue(runtime, options);
 }

@@ -137,6 +137,11 @@ src/
     action-converter.ts      OSWorld action → ComputerInterface translation
     types.ts                 OSWorld-specific type definitions
 
+  parity/                    trycua/cua parity tooling (#9170 M14)
+    parity-matrix.ts         machine-checkable capability matrix + validateParityMatrix (guards drift vs the live action surface)
+    screenspot.ts            ScreenSpot grounding harness (point-in-bbox scorer + score fold)
+    index.ts                 Public re-exports
+
   sandbox/
     sandbox-driver.ts        Sandbox driver (backend-agnostic)
     docker-backend.ts        Docker backend
@@ -243,4 +248,5 @@ Call `registerSetOfMarksProvider(provider)` (same module, `src/mobile/ocr-provid
 - **Platform evidence**: `docs/ios-device-validation.json`, `docs/android-device-validation.json`, `docs/android-aosp-validation.json`, `docs/macos-desktop-validation.json`, `docs/linux-desktop-validation.json`, and `docs/windows-desktop-validation.json` are the release evidence manifests. Keep incomplete live-device checks in `requires_device_evidence`; use `validate:platform-evidence -- --require-complete` only for release gates that truly have artifacts for every required platform check.
 - **Mobile surface**: `src/mobile/` is real but constrained. Read `docs/IOS_CONSTRAINTS.md` and `docs/ANDROID_CONSTRAINTS.md` before touching mobile code.
 - **OSWorld benchmark**: `src/osworld/` adapts the plugin to the OSWorld desktop benchmark format. Not part of normal agent runtime.
+- **Parity matrix (#9170 M14)**: `src/parity/parity-matrix.ts` is the machine-checkable trycua/cua capability map. `validateParityMatrix(actionNames)` is asserted in the test suite — adding a verb to the matrix without registering it (or renaming a promoted action) fails CI, so the map can't silently drift. `src/parity/screenspot.ts` scores click-grounding (point-in-bbox) for any grounder.
 - **Further reading**: `docs/MULTI_MONITOR.md`, `docs/SCENE_BUILDER.md`, `docs/MOBILE_ASSISTANT_ROUTING.md`, `docs/AOSP_SYSTEM_APP.md`, `docs/TEST_LANES_COMPUTERUSE_VISION.md` (unit vs real-driver lanes, per-OS reqs, and the Windows non-interactive-session input gotcha).
