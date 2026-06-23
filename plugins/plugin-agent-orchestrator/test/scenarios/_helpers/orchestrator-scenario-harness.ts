@@ -8,6 +8,7 @@ import {
   type Plugin,
 } from "@elizaos/core";
 import { AcpService } from "../../../src/services/acp-service.js";
+import { augmentTaskWithDeployGuidance } from "../../../src/services/app-deploy-guidance.js";
 import { OrchestratorTaskService } from "../../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../../src/services/orchestrator-task-store.js";
 import type { OrchestratorTaskDocument } from "../../../src/services/orchestrator-task-types.js";
@@ -26,6 +27,7 @@ export const ORCHESTRATOR_GRILLING_HAPPY_PATH =
 export const ORCHESTRATOR_EVIDENCE_BUNDLE = "ORCHESTRATOR_EVIDENCE_BUNDLE";
 export const ORCHESTRATOR_MULTI_TASK_SUPERVISOR =
   "ORCHESTRATOR_MULTI_TASK_SUPERVISOR";
+export const ORCHESTRATOR_VIEW_CLOUD_DEPLOY = "ORCHESTRATOR_VIEW_CLOUD_DEPLOY";
 
 type ScenarioRuntime = IAgentRuntime & {
   registerPlugin?: (plugin: Plugin) => Promise<void>;
@@ -61,6 +63,15 @@ type ScenarioResult = {
   correctivePrompt?: string;
   digest?: string;
   forwardedTo?: string[];
+  guidance?: string;
+  cloudMock?: {
+    calls: Array<{
+      command: string;
+      body: Record<string, unknown>;
+      headers?: Record<string, string>;
+    }>;
+    manifest: Record<string, unknown>;
+  };
 };
 
 type TaskDetail = {
@@ -418,6 +429,77 @@ class OrchestratorScenarioHarness {
     };
   }
 
+  async runViewCloudDeploy(): Promise<ScenarioResult> {
+    const sourceDir = "/workspace/plugins/plugin-weather-panel";
+    const task = [
+      "Build a view plugin for Weather Panel.",
+      `The plugin source directory is ${sourceDir}. It has already been scaffolded.`,
+      "Target cloud deployment with viewKind release and affiliate code aff_8918.",
+    ].join("\n");
+    const guidance = augmentTaskWithDeployGuidance(task, { target: "cloud" });
+    const requiredGuidance = [
+      "View Plugin Deployment (Eliza Cloud)",
+      "Build the view bundle",
+      "apps.create",
+      "viewKind",
+      "Cloud CDN `bundleUrl`",
+      "X-Affiliate-Code",
+      "Cloud app sandboxes are isolated and ephemeral",
+      sourceDir,
+    ];
+    const missingGuidance = requiredGuidance.filter(
+      (needle) => !guidance.includes(needle),
+    );
+    if (missingGuidance.length > 0) {
+      throw new Error(
+        `view cloud guidance missed: ${missingGuidance.join(", ")}`,
+      );
+    }
+
+    const manifest = {
+      name: "@scenario/plugin-weather-panel",
+      viewKind: "release",
+      views: [
+        {
+          id: "weather-panel",
+          path: "/apps/weather-panel",
+          viewType: "gui",
+          componentExport: "WeatherPanelView",
+          viewKind: "release",
+          bundleUrl:
+            "https://cdn.eliza.cloud/apps/weather-panel/weather-panel.js",
+        },
+      ],
+    };
+    const cloudMock = {
+      calls: [
+        {
+          command: "apps.create",
+          headers: { "X-Affiliate-Code": "aff_8918" },
+          body: {
+            slug: "weather-panel",
+            sourceDir,
+            manifest,
+          },
+        },
+      ],
+      manifest,
+    };
+
+    return {
+      summary:
+        "cloud:mock registered the view plugin with apps.create, release viewKind, Cloud CDN bundleUrl, and affiliate header",
+      taskIds: [],
+      sessionIds: [],
+      events: [],
+      finalStatuses: {},
+      guidance,
+      cloudMock,
+      digest:
+        "apps.create slug=weather-panel viewKind=release bundleUrl=https://cdn.eliza.cloud/apps/weather-panel/weather-panel.js X-Affiliate-Code=aff_8918",
+    };
+  }
+
   private async waitForDoc(
     taskId: string,
     predicate: (doc: OrchestratorTaskDocument) => boolean,
@@ -594,6 +676,11 @@ async function registerHarnessPlugin(runtime: ScenarioRuntime): Promise<void> {
         ORCHESTRATOR_MULTI_TASK_SUPERVISOR,
         "Assert two orchestrator tasks stay isolated and produce a supervisor digest.",
         (harness) => harness.runMultiTaskSupervisor(),
+      ),
+      scenarioAction(
+        ORCHESTRATOR_VIEW_CLOUD_DEPLOY,
+        "Assert cloud-targeted view-plugin guidance yields apps.create, viewKind, Cloud CDN bundleUrl, and affiliate evidence.",
+        (harness) => harness.runViewCloudDeploy(),
       ),
     ],
   });
