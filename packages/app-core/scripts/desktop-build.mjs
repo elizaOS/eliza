@@ -1040,31 +1040,67 @@ function fusedLibAlreadyStaged() {
   );
 }
 
+const FUSED_LIB_FORK_DIR = path.join(
+  PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR,
+  "native",
+  "llama.cpp",
+);
+
 /**
- * Build + stage the fused `libelizainference` (CPU baseline) into the desktop
- * bundle so a COMPILED app ships with working local inference — no first-run
- * download, no manual `build:fused-desktop`. CPU is always-on in the lib so it
- * works on every host; GPU variants stay an opt-in (`--fused-lib-variant`).
+ * Ensure the native llama.cpp fork submodule is checked out (the fused build
+ * needs its CMakeLists). Release CI checks out with `submodules: false`, so the
+ * fork is absent; init just the one path on demand rather than requiring the
+ * workflow to fetch every submodule. Returns true if the fork is present after.
+ */
+function ensureFusedLibSubmodule() {
+  if (fs.existsSync(path.join(FUSED_LIB_FORK_DIR, "CMakeLists.txt")))
+    return true;
+  const rel = path.relative(ROOT, FUSED_LIB_FORK_DIR).split(path.sep).join("/");
+  console.log(
+    `[desktop-build] Native fork missing; initializing submodule ${rel}`,
+  );
+  // NB: no --depth/shallow here — a shallow submodule fetch fails with
+  // "Server does not allow request for unadvertised object <sha>" when the
+  // recorded gitlink commit isn't the remote tip, which is common. Reliability
+  // over speed: this path must actually produce the fork.
+  spawnSync(
+    "git",
+    ["-C", ROOT, "submodule", "update", "--init", "--recursive", rel],
+    { stdio: "inherit" },
+  );
+  return fs.existsSync(path.join(FUSED_LIB_FORK_DIR, "CMakeLists.txt"));
+}
+
+/**
+ * Build + stage the fused `libelizainference` into the desktop bundle so a
+ * COMPILED app ships with working local inference — no first-run download, no
+ * manual `build:fused-desktop`. The "auto" variant bakes CPU in and layers the
+ * host's best GPU backend (Metal on macOS; CUDA when nvcc is present; else CPU),
+ * so it works on every host.
  *
  * Gating:
- *   - Reuses an already-staged lib (a prior build, or a CI step that downloaded
- *     a `build-llama-ffi-*` artifact into dist/local-inference/lib).
- *   - Builds ONLY when explicitly asked: `--build-fused-lib` or
- *     ELIZA_DESKTOP_BUILD_FUSED_LIB=1. This is opt-in (not keyed on CI) so the
- *     existing release pipeline — which checks out without the native submodule
- *     — keeps its current behavior until it is wired to init the submodule and
- *     pass the flag. No silent regression either way.
- *   - When building is requested but the toolchain (cmake) or native submodule
- *     is missing, this is a HARD failure (the caller asked for it); set
- *     ELIZA_DESKTOP_FUSED_LIB_OPTIONAL=1 to downgrade to a warn-and-skip.
+ *   - Reuses an already-staged lib (a prior build, or a prebuilt artifact a CI
+ *     step dropped into dist/local-inference/lib).
+ *   - Builds when explicitly asked (`--build-fused-lib` /
+ *     ELIZA_DESKTOP_BUILD_FUSED_LIB=1) OR automatically on CI release builds
+ *     (CI=true) — initializing the native submodule on demand. Off for plain
+ *     local dev builds (keeps iteration fast).
+ *   - An EXPLICIT request hard-fails if it can't produce the lib (unless
+ *     ELIZA_DESKTOP_FUSED_LIB_OPTIONAL=1). A CI auto-build is BEST-EFFORT: a
+ *     missing toolchain or a build failure warns and ships without the lib
+ *     (cloud fallback) rather than breaking the release. Set
+ *     ELIZA_DESKTOP_FUSED_LIB_REQUIRED=1 to make CI auto-builds hard-fail too.
  */
 function stageDesktopFusedLib() {
   const explicitlyRequested =
     getBooleanArg(args, "build-fused-lib") ||
     process.env.ELIZA_DESKTOP_BUILD_FUSED_LIB === "1";
+  const ciAutoBuild = process.env.CI === "true";
+  const shouldBuild = explicitlyRequested || ciAutoBuild;
   const required =
-    explicitlyRequested && process.env.ELIZA_DESKTOP_FUSED_LIB_OPTIONAL !== "1";
-  const shouldBuild = explicitlyRequested;
+    (explicitlyRequested ||
+      process.env.ELIZA_DESKTOP_FUSED_LIB_REQUIRED === "1") &&
+    process.env.ELIZA_DESKTOP_FUSED_LIB_OPTIONAL !== "1";
 
   if (
     fusedLibAlreadyStaged() &&
@@ -1085,17 +1121,9 @@ function stageDesktopFusedLib() {
     return;
   }
 
-  const forkCmake = path.join(
-    PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR,
-    "native",
-    "llama.cpp",
-    "CMakeLists.txt",
-  );
-  const toolchainMissing = !which("cmake") || !fs.existsSync(forkCmake);
-  if (toolchainMissing) {
-    const reason = !which("cmake")
-      ? "cmake not found on PATH"
-      : `native fork not checked out (${forkCmake}); run \`git submodule update --init --recursive\``;
+  // Surface a hard failure for an explicit request that can't proceed; otherwise
+  // warn and ship without the lib so a release never breaks on the native build.
+  const giveUp = (reason) => {
     if (required) {
       fail(
         `Cannot build the fused libelizainference for the desktop bundle: ${reason}. ` +
@@ -1107,6 +1135,14 @@ function stageDesktopFusedLib() {
       `[desktop-build] Skipping fused libelizainference build — ${reason}. ` +
         "The compiled app will fall back to cloud inference.",
     );
+  };
+
+  if (!which("cmake")) {
+    giveUp("cmake not found on PATH");
+    return;
+  }
+  if (!ensureFusedLibSubmodule()) {
+    giveUp(`native fork not available at ${FUSED_LIB_FORK_DIR}`);
     return;
   }
 
@@ -1122,14 +1158,15 @@ function stageDesktopFusedLib() {
     ],
     {
       cwd: ROOT,
+      // A CI auto-build that fails must not abort the whole release; an explicit
+      // request is allowed to hard-fail.
+      allowFailure: !required,
       label: `Building + staging fused libelizainference (${FUSED_LIB_VARIANT}) into the desktop bundle`,
     },
   );
 
   if (!fusedLibAlreadyStaged()) {
-    fail(
-      `Fused libelizainference build reported success but no lib landed in ${FUSED_LIB_OUT_DIR}.`,
-    );
+    giveUp("the build produced no lib in the output dir");
   }
 }
 
@@ -1141,8 +1178,8 @@ function stageDesktopBuild() {
   ensureWorkspaceRuntimePackagesBuilt();
 
   // Build + bundle the fused local-inference native lib so the packaged app
-  // serves local AI out of the box. Gated (see stageDesktopFusedLib) so dev
-  // builds stay fast; required on CI release builds.
+  // serves local AI out of the box. Gated (see stageDesktopFusedLib) so plain
+  // dev builds stay fast; auto-built best-effort on CI release builds.
   stageDesktopFusedLib();
 
   runBun(["run", "generate:css-strings"], {
