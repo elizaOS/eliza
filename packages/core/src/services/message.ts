@@ -1578,7 +1578,7 @@ type VoiceTurnSignalMetadata = {
 	model?: string;
 };
 
-function getVoiceTurnSignalMetadata(
+export function getVoiceTurnSignalMetadata(
 	message: Pick<Memory, "content">,
 ): VoiceTurnSignalMetadata | null {
 	const content = message.content;
@@ -1627,7 +1627,7 @@ function getVoiceTurnSignalMetadata(
  * EntityId`, the in-process engine path) or nested under `content.metadata`
  * (chat clients). Returns the trimmed id, or null when the speaker is unbound.
  */
-function getVoiceSpeakerEntityId(
+export function getVoiceSpeakerEntityId(
 	message: Pick<Memory, "content">,
 ): string | null {
 	const content = message.content;

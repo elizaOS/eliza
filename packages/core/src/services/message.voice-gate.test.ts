@@ -1,8 +1,79 @@
 import { describe, expect, it } from "vitest";
 import {
+	getVoiceSpeakerEntityId,
+	getVoiceTurnSignalMetadata,
 	voiceTurnSignalConfirmsAgent,
 	voiceTurnSignalSuppressesAgent,
 } from "./message";
+
+/** Build a message with the given content (cast past the typed Content). */
+function msg(content: Record<string, unknown>) {
+	return { content } as unknown as Parameters<
+		typeof getVoiceTurnSignalMetadata
+	>[0];
+}
+
+// #9147 — the ambient signal/speaker is read from EITHER content top-level
+// (in-process voice path) OR content.metadata (chat clients). Lock both paths.
+describe("getVoiceTurnSignalMetadata — dual-path parsing (#9147)", () => {
+	it("reads a top-level voiceTurnSignal (in-process path)", () => {
+		expect(
+			getVoiceTurnSignalMetadata(
+				msg({ voiceTurnSignal: { nextSpeaker: "user" } }),
+			),
+		).toEqual({ nextSpeaker: "user" });
+	});
+
+	it("reads a nested content.metadata.voiceTurnSignal (chat-client path)", () => {
+		expect(
+			getVoiceTurnSignalMetadata(
+				msg({ metadata: { voiceTurnSignal: { agentShouldSpeak: false } } }),
+			),
+		).toEqual({ agentShouldSpeak: false });
+	});
+
+	it("returns null when absent or non-object", () => {
+		expect(getVoiceTurnSignalMetadata(msg({}))).toBeNull();
+		expect(
+			getVoiceTurnSignalMetadata(msg({ voiceTurnSignal: "nope" })),
+		).toBeNull();
+	});
+
+	it("drops invalid fields and returns null when nothing valid remains", () => {
+		expect(
+			getVoiceTurnSignalMetadata(
+				msg({ voiceTurnSignal: { nextSpeaker: "sideways" } }),
+			),
+		).toBeNull();
+	});
+
+	it("preserves an explicit agentShouldSpeak: null (unknown)", () => {
+		expect(
+			getVoiceTurnSignalMetadata(
+				msg({ voiceTurnSignal: { agentShouldSpeak: null } }),
+			),
+		).toEqual({ agentShouldSpeak: null });
+	});
+});
+
+describe("getVoiceSpeakerEntityId — dual-path parsing (#9147)", () => {
+	it("reads + trims a top-level speakerEntityId", () => {
+		expect(getVoiceSpeakerEntityId(msg({ speakerEntityId: "  ent-1  " }))).toBe(
+			"ent-1",
+		);
+	});
+
+	it("reads a nested content.metadata.speakerEntityId", () => {
+		expect(
+			getVoiceSpeakerEntityId(msg({ metadata: { speakerEntityId: "ent-2" } })),
+		).toBe("ent-2");
+	});
+
+	it("returns null when absent or blank", () => {
+		expect(getVoiceSpeakerEntityId(msg({}))).toBeNull();
+		expect(getVoiceSpeakerEntityId(msg({ speakerEntityId: "   " }))).toBeNull();
+	});
+});
 
 // #9147 — the server-side voice-turn-signal gate (decide/veto over the client's
 // VoiceTurnSignalMetadata). These were untested; lock the truth table so the
