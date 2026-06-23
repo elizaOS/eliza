@@ -23,6 +23,7 @@ import {
   CodingAgentControlChip,
   PtyConsoleBase,
 } from "../../slots/task-coordinator-slots.js";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
@@ -146,7 +147,36 @@ export function ChatView({
   onPtySessionClick,
   hideComposer = false,
 }: ChatViewProps) {
-  const app = useApp();
+  // Granular shallow selection instead of useApp() so the main chat view only
+  // re-renders when one of the fields it actually reads changes — not on every
+  // one of the ~300 app-store fields (#9141 gap 2). typecheck enforces that this
+  // list stays complete (any `app.x` not selected here is a type error).
+  const app = useAppSelectorShallow((s) => ({
+    agentStatus: s.agentStatus,
+    activeConversationId: s.activeConversationId,
+    activeInboxChat: s.activeInboxChat,
+    activeTerminalSessionId: s.activeTerminalSessionId,
+    characterData: s.characterData,
+    chatFirstTokenReceived: s.chatFirstTokenReceived,
+    companionMessageCutoffTs: s.companionMessageCutoffTs,
+    handleChatSend: s.handleChatSend,
+    handleChatStop: s.handleChatStop,
+    handleChatEdit: s.handleChatEdit,
+    elizaCloudConnected: s.elizaCloudConnected,
+    elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
+    elizaCloudHasPersistedKey: s.elizaCloudHasPersistedKey,
+    setState: s.setState,
+    copyToClipboard: s.copyToClipboard,
+    droppedFiles: s.droppedFiles,
+    analysisMode: s.analysisMode,
+    shareIngestNotice: s.shareIngestNotice,
+    chatAgentVoiceMuted: s.chatAgentVoiceMuted,
+    selectedVrmIndex: s.selectedVrmIndex,
+    uiLanguage: s.uiLanguage,
+    sendChatText: s.sendChatText,
+    t: s.t,
+    setActionNotice: s.setActionNotice,
+  }));
   const isGameModal = variant === "game-modal";
   const showComposerVoiceToggle = false;
   const {
