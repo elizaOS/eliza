@@ -22,11 +22,29 @@ const workflow = readFileSync(workflowPath, "utf8");
 
 const ENV_KEY = "SANDBOX_REGISTRY_REDIS_URL";
 
+// The reconcile loop runs the workflow's VERBATIM bash, which uses GNU
+// `sed -i "/^KEY=/d"` (no backup-suffix argument). BSD/macOS `sed -i` parses
+// that as a suffix and fails, so the executed cases only run where a
+// GNU-compatible sed exists. CI (Linux) has GNU sed natively; a macOS dev with
+// `brew install gnu-sed` gets coverage via the `gsed` shim injected in
+// runReconcile; otherwise the executed cases skip (the static wiring assertions
+// above still run on every platform).
+function resolveGnuSed(): string | null {
+  for (const candidate of ["sed", "gsed"]) {
+    try {
+      const out = execFileSync(candidate, ["--version"], { encoding: "utf8" });
+      if (out.includes("GNU sed")) return candidate;
+    } catch {
+      // candidate missing or not GNU — keep looking.
+    }
+  }
+  return null;
+}
+const GNU_SED = resolveGnuSed();
+
 describe("deploy-eliza-provisioning-worker.yml SANDBOX_REGISTRY_REDIS_URL wiring", () => {
   it("sources the key from the GitHub secret into the deploy job env", () => {
-    expect(workflow).toContain(
-      `${ENV_KEY}: \${{ secrets.${ENV_KEY} }}`,
-    );
+    expect(workflow).toContain(`${ENV_KEY}: \${{ secrets.${ENV_KEY} }}`);
   });
 
   it("forwards the key to the remote deploy script via the ssh-action envs allowlist", () => {
@@ -35,17 +53,20 @@ describe("deploy-eliza-provisioning-worker.yml SANDBOX_REGISTRY_REDIS_URL wiring
     // script and the reconcile loop below silently skips it.
     const envsLine = workflow
       .split("\n")
-      .find((line) => line.trim().startsWith("envs:") && line.includes(ENV_KEY));
+      .find(
+        (line) => line.trim().startsWith("envs:") && line.includes(ENV_KEY),
+      );
     expect(envsLine).toBeDefined();
-    const forwarded = (envsLine ?? "")
-      .slice(envsLine!.indexOf("envs:") + "envs:".length)
+    const line = envsLine ?? "";
+    const forwarded = line
+      .slice(line.indexOf("envs:") + "envs:".length)
       .split(",")
       .map((name) => name.trim());
     expect(forwarded).toContain(ENV_KEY);
   });
 
   it("includes the key in the .env.local reconcile loop targeting /opt/eliza/cloud/.env.local", () => {
-    expect(workflow).toContain('ENV_FILE=/opt/eliza/cloud/.env.local');
+    expect(workflow).toContain("ENV_FILE=/opt/eliza/cloud/.env.local");
     // The loop body iterates "KEY=$VALUE" entries; the entry for our key must
     // be present so the sed-delete + tee-append rewrites it into the file.
     expect(workflow).toContain(`"${ENV_KEY}=$${ENV_KEY}"`);
@@ -63,10 +84,17 @@ function extractReconcileLoop(): string {
   // Include the "done" line itself.
   const block = tail.slice(0, doneIdx + "\n            done".length);
   // De-indent the 12-space YAML script indentation.
-  return block
+  const loop = block
     .split("\n")
     .map((line) => (line.startsWith("            ") ? line.slice(12) : line))
     .join("\n");
+  // Fail loudly if anchor drift (a renamed loop var, reindented script block, a
+  // reformatted `done`, or a swapped ssh-action) extracted a trivial/empty
+  // block — otherwise the executed cases would silently exercise nothing.
+  expect(loop).toContain("sed -i");
+  expect(loop).toContain("tee -a");
+  expect(loop).toContain(ENV_KEY);
+  return loop;
 }
 
 function runReconcile(opts: {
@@ -85,7 +113,11 @@ function runReconcile(opts: {
   // unprivileged in the scratch dir, and bind ENV_FILE to our temp path.
   const script = [
     "set -euo pipefail",
-    "sudo() { \"$@\"; }",
+    'sudo() { "$@"; }',
+    // On a macOS dev box with `brew install gnu-sed`, route the loop's `sed`
+    // through `gsed` so the verbatim GNU `sed -i` invocation behaves. On Linux
+    // (GNU sed is the default) and when skipped this is a no-op.
+    GNU_SED === "gsed" ? 'sed() { gsed "$@"; }' : "",
     `ENV_FILE='${envFile}'`,
     // The ssh-action `envs:` allowlist always exports these (possibly empty);
     // under `set -u` they must be defined or the loop aborts. Empty == skipped,
@@ -111,37 +143,43 @@ function runReconcile(opts: {
   }
 }
 
-describe("provisioning-worker .env.local reconcile loop (executed)", () => {
-  it("writes SANDBOX_REGISTRY_REDIS_URL into .env.local when the secret is set", () => {
-    const url = "redis://sandbox-registry.example.internal:6379";
-    const out = runReconcile({ redisUrl: url });
-    expect(out).toContain(`${ENV_KEY}=${url}\n`);
-  });
-
-  it("replaces a stale hand-set value rather than appending a duplicate", () => {
-    const out = runReconcile({
-      redisUrl: "redis://new.example:6379",
-      seedEnvFile: `${ENV_KEY}=redis://stale.example:6379\nOTHER=keep\n`,
+// Skip the executed cases when no GNU-compatible sed is reachable (BSD/macOS
+// without gsed); CI runs on Linux with GNU sed and keeps full coverage.
+const executedDescribe = GNU_SED ? describe : describe.skip;
+executedDescribe(
+  "provisioning-worker .env.local reconcile loop (executed)",
+  () => {
+    it("writes SANDBOX_REGISTRY_REDIS_URL into .env.local when the secret is set", () => {
+      const url = "redis://sandbox-registry.example.internal:6379";
+      const out = runReconcile({ redisUrl: url });
+      expect(out).toContain(`${ENV_KEY}=${url}\n`);
     });
-    const matches = out
-      .split("\n")
-      .filter((line) => line.startsWith(`${ENV_KEY}=`));
-    expect(matches).toEqual([`${ENV_KEY}=redis://new.example:6379`]);
-    // Unrelated keys are preserved.
-    expect(out).toContain("OTHER=keep");
-  });
 
-  it("skips the key (preserving any hand-set value) when the secret is unset", () => {
-    const out = runReconcile({
-      redisUrl: undefined,
-      seedEnvFile: `${ENV_KEY}=redis://hand-set.example:6379\n`,
+    it("replaces a stale hand-set value rather than appending a duplicate", () => {
+      const out = runReconcile({
+        redisUrl: "redis://new.example:6379",
+        seedEnvFile: `${ENV_KEY}=redis://stale.example:6379\nOTHER=keep\n`,
+      });
+      const matches = out
+        .split("\n")
+        .filter((line) => line.startsWith(`${ENV_KEY}=`));
+      expect(matches).toEqual([`${ENV_KEY}=redis://new.example:6379`]);
+      // Unrelated keys are preserved.
+      expect(out).toContain("OTHER=keep");
     });
-    // An unset GH secret must never blank a working box.
-    expect(out).toContain(`${ENV_KEY}=redis://hand-set.example:6379`);
-  });
 
-  it("skips the key when the secret is the empty string", () => {
-    const out = runReconcile({ redisUrl: "" });
-    expect(out).not.toContain(ENV_KEY);
-  });
-});
+    it("skips the key (preserving any hand-set value) when the secret is unset", () => {
+      const out = runReconcile({
+        redisUrl: undefined,
+        seedEnvFile: `${ENV_KEY}=redis://hand-set.example:6379\n`,
+      });
+      // An unset GH secret must never blank a working box.
+      expect(out).toContain(`${ENV_KEY}=redis://hand-set.example:6379`);
+    });
+
+    it("skips the key when the secret is the empty string", () => {
+      const out = runReconcile({ redisUrl: "" });
+      expect(out).not.toContain(ENV_KEY);
+    });
+  },
+);
