@@ -500,6 +500,12 @@ export class LocalInferenceService {
 					0,
 					Math.floor(totalmem() / (1024 * 1024)) - ramHeadroomReserveMb(),
 				),
+			// The dominant resident consumer — the active text/embedding bundle —
+			// is owned by the engine, not the arbiter's resident map. Feed its
+			// footprint in so the proactive fit-to-budget `evictToFit` path
+			// actually trips before a second model overcommits RAM, instead of
+			// silently no-opping on the two roles that matter most (#8809 AC#1).
+			externalFootprintMb: () => localInferenceEngine.getResidentFootprintMb(),
 		});
 		arbiter.start();
 		setMemoryArbiter(arbiter);

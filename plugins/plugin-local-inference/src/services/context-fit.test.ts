@@ -41,4 +41,43 @@ describe("computeRuntimeContextFit", () => {
 
 		expect(fit).toBeNull();
 	});
+
+	it("scales the selected context with the device RAM class (4/8/16/24/128 GB) (#8809 AC#4)", () => {
+		// One representative tier across the five canonical device classes.
+		// `weightMb` is the resident weight; `usableMb` is the post-headroom
+		// budget the caller (active-model.ts) passes. The q8_0 KV rate comes from
+		// the tier params, so the selected window tracks free RAM.
+		const deviceClassesGb = [4, 8, 16, 24, 128];
+		const fits = deviceClassesGb.map((gb) =>
+			computeRuntimeContextFit({
+				params: "9B",
+				weightMb: 6500,
+				usableMb: gb * 1024,
+				nativeContext: 131072,
+			}),
+		);
+
+		// 4 GB can't hold the weights + a minimum KV window → no fit.
+		expect(fits[0]).toBeNull();
+
+		// Every class that fits gets a 4k-aligned window within [min, native].
+		for (const fit of fits.slice(1)) {
+			expect(fit).not.toBeNull();
+			expect((fit?.contextSize ?? 0) % 4096).toBe(0);
+			expect(fit?.contextSize).toBeGreaterThanOrEqual(8192);
+			expect(fit?.contextSize).toBeLessThanOrEqual(131072);
+		}
+
+		// Context never shrinks as RAM grows (headroom → larger KV window).
+		const sizes = fits.map((f) => f?.contextSize ?? 0);
+		for (let i = 1; i < sizes.length; i++) {
+			expect(sizes[i]).toBeGreaterThanOrEqual(sizes[i - 1]);
+		}
+
+		// Tight-but-fitting (8 GB) downscales below native; roomy (128 GB) hits it.
+		expect(fits[1]?.contextDownscaled).toBe(true);
+		expect(fits[1]?.contextSize).toBeLessThan(131072);
+		expect(fits.at(-1)?.contextSize).toBe(131072);
+		expect(fits.at(-1)?.contextDownscaled).toBe(false);
+	});
 });
