@@ -71,6 +71,30 @@
 			"import": "./dist/browser/index.browser.js",
 			"default": "./dist/browser/index.browser.js"
 		},
+		"./app-route-plugin-registry": {
+			"types": "./dist/app-route-plugin-registry.d.ts",
+			"eliza-source": {
+				"types": "./src/app-route-plugin-registry.ts",
+				"import": "./src/app-route-plugin-registry.ts",
+				"default": "./src/app-route-plugin-registry.ts"
+			},
+			"browser": {
+				"types": "./dist/app-route-plugin-registry.d.ts",
+				"import": "./dist/browser/app-route-plugin-registry.js",
+				"default": "./dist/browser/app-route-plugin-registry.js"
+			},
+			"node": {
+				"types": "./dist/app-route-plugin-registry.d.ts",
+				"import": "./dist/node/app-route-plugin-registry.js",
+				"default": "./dist/node/app-route-plugin-registry.js"
+			},
+			"bun": {
+				"types": "./dist/app-route-plugin-registry.d.ts",
+				"import": "./dist/node/app-route-plugin-registry.js",
+				"default": "./dist/node/app-route-plugin-registry.js"
+			},
+			"default": "./dist/node/app-route-plugin-registry.js"
+		},
 		"./view-kind": {
 			"types": "./dist/view-kind.d.ts",
 			"eliza-source": {

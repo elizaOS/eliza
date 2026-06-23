@@ -29,6 +29,7 @@
 		}
 	},
 	"include": [
+		"src/app-route-plugin-registry.ts",
 		"src/external-modules.ts",
 		"src/index.ts",
 		"src/index.node.ts",

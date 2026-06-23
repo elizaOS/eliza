@@ -162,13 +162,6 @@ function cachedDynamicImport<T>(
   return promise;
 }
 
-function importAppCore() {
-  return cachedDynamicImport(
-    "@elizaos/app-core",
-    () => import("@elizaos/app-core"),
-  );
-}
-
 function importCompanionAppRegistration() {
   return cachedDynamicImport(
     "@elizaos/plugin-companion/components/companion/companion-app",
@@ -611,8 +604,6 @@ function buildAppBootConfig({
 
 function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (async () => {
-    await importAppCore();
-
     const [
       companionRegistrationModule,
       companionSceneStatusModule,

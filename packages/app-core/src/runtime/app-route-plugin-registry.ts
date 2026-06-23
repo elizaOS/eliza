@@ -3,6 +3,6 @@ export type {
   AppRoutePluginRegistryEntry,
 } from "@elizaos/core";
 export {
-  listAppRoutePluginLoaders,
-  registerAppRoutePluginLoader,
-} from "@elizaos/core";
+	listAppRoutePluginLoaders,
+	registerAppRoutePluginLoader,
+} from "@elizaos/core/app-route-plugin-registry";

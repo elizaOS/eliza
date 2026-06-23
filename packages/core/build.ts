@@ -675,6 +675,7 @@ export function createBuildRunner(options: BuildRunnerOptions) {
 // Source directory for TypeScript
 const TS_SRC = "src";
 const PUBLIC_CORE_SUBPATH_ENTRYPOINTS = [
+	`${TS_SRC}/app-route-plugin-registry.ts`,
 	`${TS_SRC}/view-kind.ts`,
 	`${TS_SRC}/view-modality.ts`,
 	`${TS_SRC}/shortcuts.ts`,
@@ -1097,7 +1098,12 @@ async function generateTypeScriptDeclarations() {
 		"dist/roles.js",
 		`// Roles subpath entry point (explicit)\nexport * from './node/roles.js';\n`,
 	);
-	for (const subpath of ["view-kind", "view-modality", "shortcuts"]) {
+	for (const subpath of [
+		"app-route-plugin-registry",
+		"view-kind",
+		"view-modality",
+		"shortcuts",
+	]) {
 		await fs.writeFile(
 			`dist/${subpath}.js`,
 			`// ${subpath} subpath entry point (explicit)\nexport * from './node/${subpath}.js';\n`,

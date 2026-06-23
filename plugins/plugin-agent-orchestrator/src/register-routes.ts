@@ -20,11 +20,11 @@
  * touching the sentinel.
  */
 
-import { isLocalCodeExecutionAllowed } from "@elizaos/core";
+import { registerAppRoutePluginLoader } from "@elizaos/core/app-route-plugin-registry";
+import { isLocalCodeExecutionAllowed } from "@elizaos/core/sandbox-policy";
 
 async function registerCodingAgentRoutePluginLoader(): Promise<void> {
   if (!isLocalCodeExecutionAllowed()) return;
-  const { registerAppRoutePluginLoader } = await import("@elizaos/core");
   registerAppRoutePluginLoader(
     "@elizaos/plugin-agent-orchestrator",
     async () => {

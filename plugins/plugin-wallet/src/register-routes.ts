@@ -3,7 +3,7 @@
  * with the runtime app-route plugin registry. Imported by the API server
  * at startup so wallet HTTP routes are dispatched via Plugin.routes.
  */
-import { registerAppRoutePluginLoader } from "@elizaos/core";
+import { registerAppRoutePluginLoader } from "@elizaos/core/app-route-plugin-registry";
 
 registerAppRoutePluginLoader("@elizaos/plugin-wallet:routes", async () => {
   const { walletRoutePlugin } = await import("./routes/plugin");

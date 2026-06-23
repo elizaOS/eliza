@@ -8,7 +8,7 @@
  * actually mounted, so this registration adds no eager WebGL cost.
  */
 
-import { registerAppRoutePluginLoader } from "@elizaos/core";
+import { registerAppRoutePluginLoader } from "@elizaos/core/app-route-plugin-registry";
 import { vectorBrowserPlugin } from "./plugin.ts";
 
 registerAppRoutePluginLoader(

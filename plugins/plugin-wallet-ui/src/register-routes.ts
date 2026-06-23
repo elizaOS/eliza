@@ -6,7 +6,7 @@
  * at boot so the registry entries are seeded before the shell mounts.
  */
 
-import { registerAppRoutePluginLoader } from "@elizaos/core";
+import { registerAppRoutePluginLoader } from "@elizaos/core/app-route-plugin-registry";
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 import { registerBuiltinWidgets } from "@elizaos/ui/widgets";
 // Keep route/widget metadata eager, but load the full inventory dashboard only
