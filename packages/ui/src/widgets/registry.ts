@@ -29,6 +29,7 @@ import { MusicLibraryCharacterWidget } from "../components/character/MusicLibrar
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status.helpers";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.helpers";
+import { NotificationsWidget } from "../components/chat/widgets/notifications";
 
 // -- Seed bundled widgets into the registry ----------------------------------
 
@@ -38,6 +39,13 @@ registerWidgetComponent(
   "music-library",
   "music-library.playlists",
   MusicLibraryCharacterWidget,
+);
+// Notifications is a core feature (no separate plugin), so its frontpage widget
+// always resolves (see ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS). (#9143)
+registerWidgetComponent(
+  "notifications",
+  "notifications.recent",
+  NotificationsWidget,
 );
 
 /**
@@ -65,6 +73,16 @@ export function registerBuiltinWidgetDeclarations(
 // available client-side for zero-config rendering.
 
 export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
+  // Notifications — the first-class "default" frontpage widget (#9143).
+  {
+    id: "notifications.recent",
+    pluginId: "notifications",
+    slot: "home",
+    label: "Notifications",
+    icon: "Bell",
+    order: 50,
+    defaultEnabled: true,
+  },
   // Agent Orchestrator — app runs
   {
     id: "agent-orchestrator.apps",
@@ -148,7 +166,13 @@ const BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS = new Set([
   "browser-workspace",
 ]);
 
-const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set(["music-player"]);
+const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set([
+  "music-player",
+  // Notifications is a core runtime feature (NotificationService), not a
+  // loadable plugin, so its frontpage widget must render regardless of the
+  // plugin snapshot. (#9143)
+  "notifications",
+]);
 
 interface ResolvedWidget {
   declaration: PluginWidgetDeclaration;

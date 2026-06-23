@@ -27,4 +27,14 @@ describe("home frontpage widget slot (#9143)", () => {
     )?.declaration;
     expect(decl?.slot).toBe("chat-sidebar");
   });
+
+  it("resolves the Notifications widget on home even with NO plugins (always-visible core feature)", () => {
+    const resolved = resolveWidgetsForSlot("home", []);
+    const notif = resolved.find(
+      (r) => r.declaration.id === "notifications.recent",
+    );
+    expect(notif).toBeTruthy();
+    expect(notif?.declaration.slot).toBe("home");
+    expect(notif?.Component).toBeTruthy();
+  });
 });
