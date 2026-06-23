@@ -7,7 +7,11 @@
 // the undo store run end-to-end. Record a video with E2E_RECORD=1.
 
 import { expect, test } from "@playwright/test";
-import { installDefaultAppRoutes, openAppPath, seedAppStorage } from "./helpers";
+import {
+  installDefaultAppRoutes,
+  openAppPath,
+  seedAppStorage,
+} from "./helpers";
 
 const NOW = Date.now();
 const CONVOS = [
@@ -15,22 +19,58 @@ const CONVOS = [
   { id: "conv-billing", title: "Billing thread", roomId: "room-billing" },
   { id: "conv-deploy", title: "Deploy notes", roomId: "room-deploy" },
 ];
-const MESSAGES: Record<string, Array<{ id: string; role: string; text: string; timestamp: number }>> = {
+const MESSAGES: Record<
+  string,
+  Array<{ id: string; role: string; text: string; timestamp: number }>
+> = {
   "conv-standup": [
-    { id: "s1", role: "assistant", text: "STANDUP: what is blocking you today?", timestamp: NOW - 50_000 },
-    { id: "s2", role: "user", text: "nothing major, shipping the chat-ux work", timestamp: NOW - 49_000 },
+    {
+      id: "s1",
+      role: "assistant",
+      text: "STANDUP: what is blocking you today?",
+      timestamp: NOW - 50_000,
+    },
+    {
+      id: "s2",
+      role: "user",
+      text: "nothing major, shipping the chat-ux work",
+      timestamp: NOW - 49_000,
+    },
   ],
   "conv-billing": [
-    { id: "b1", role: "user", text: "what is my October invoice?", timestamp: NOW - 40_000 },
-    { id: "b2", role: "assistant", text: "BILLING: your October invoice total is $420.", timestamp: NOW - 39_000 },
+    {
+      id: "b1",
+      role: "user",
+      text: "what is my October invoice?",
+      timestamp: NOW - 40_000,
+    },
+    {
+      id: "b2",
+      role: "assistant",
+      text: "BILLING: your October invoice total is $420.",
+      timestamp: NOW - 39_000,
+    },
   ],
   "conv-deploy": [
-    { id: "d1", role: "user", text: "deploy the worker please", timestamp: NOW - 30_000 },
-    { id: "d2", role: "assistant", text: "DEPLOY: provisioning worker is live.", timestamp: NOW - 29_000 },
+    {
+      id: "d1",
+      role: "user",
+      text: "deploy the worker please",
+      timestamp: NOW - 30_000,
+    },
+    {
+      id: "d2",
+      role: "assistant",
+      text: "DEPLOY: provisioning worker is live.",
+      timestamp: NOW - 29_000,
+    },
   ],
 };
 
-function convRecord(c: { id: string; title: string; roomId: string }, i: number) {
+function convRecord(
+  c: { id: string; title: string; roomId: string },
+  i: number,
+) {
   const ts = new Date(NOW - i * 1000).toISOString();
   return { ...c, createdAt: ts, updatedAt: ts };
 }
