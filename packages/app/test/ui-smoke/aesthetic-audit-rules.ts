@@ -103,10 +103,6 @@ export const OVERLAY_NATIVE_OR_CANVAS_SLUGS = new Set([
   "builtin-camera",
   "plugin-phone-gui",
   "plugin-messages-gui",
-  "plugin-scape-gui",
-  "plugin-2004scape-gui",
-  "plugin-clawville-gui",
-  "plugin-hyperscape-gui",
 ]);
 
 /** Verdict precedence for a view finding. */

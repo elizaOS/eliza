@@ -59,7 +59,8 @@
     "app": {
       "displayName": "Vector Browser",
       "category": "system"
-    }
+    },
+    "appRegister": "register"
   },
   "publishConfig": {
     "access": "public"

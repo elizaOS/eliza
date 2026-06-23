@@ -44,7 +44,8 @@
       "displayName": "Image Generation",
       "category": "creative",
       "heroImage": "assets/hero.png"
-    }
+    },
+    "appRegister": "register"
   },
   "publishConfig": {
     "access": "public"

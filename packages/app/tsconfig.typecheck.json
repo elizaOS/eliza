@@ -41,10 +41,6 @@
       "@elizaos/plugin-wallet-ui": [
         "../../plugins/plugin-wallet-ui/dist/index.d.ts"
       ],
-      "@elizaos/plugin-feed": ["./src/types/side-effect-app-modules.d.ts"],
-      "@elizaos/plugin-trajectory-logger": [
-        "./src/types/side-effect-app-modules.d.ts"
-      ],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/dist/index.d.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
@@ -167,9 +163,6 @@
       ],
       "react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
       "react-dom/client": ["../../node_modules/@types/react-dom/client.d.ts"],
-      "@elizaos/plugin-clawville": [
-        "../../plugins/plugin-clawville/src/index.ts"
-      ],
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/dist/index.d.ts"
       ],
