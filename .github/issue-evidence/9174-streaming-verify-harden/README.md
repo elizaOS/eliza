@@ -45,31 +45,63 @@ Total token frames: 8 (one per model token)
 Distinct arrival times: 8 (frames arrived incrementally, NOT batched at the end)
 ```
 
-## Live-model UI video — N/A on this dev box (key + model limitation)
+## Live cloud model — VERIFIED token-by-token (real LLM)
 
-The issue itself flags the UI video as "the one piece not verifiable headless on
-a dev box." On this machine it is genuinely blocked:
+[`live-cloud-streaming-timeline.txt`](./live-cloud-streaming-timeline.txt) was
+captured against a **live OpenAI-compatible cloud model** (Together AI,
+`Qwen/Qwen2.5-7B-Instruct-Turbo`) through plugin-openai's real AI-SDK
+`streamText` path — the exact cloud code the issue references. The provider
+fired `onStreamChunk` **12 times, once per token** (`"one"`, `" two"`,
+`" three"`, … `" twelve"`) across 7 distinct arrival times, and the deltas
+reconstructed the full reply:
 
-- **Cloud:** both `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` in `.env` return
-  **401** (`authentication_error` / `invalid_api_key`) against the live APIs, so
-  a real cloud trajectory cannot be produced here.
-- **Local:** no fused model is installed (`MODELS_DIR` unset, no `.gguf` /
-  eliza-1 bundle present), so the FFI path cannot be exercised end-to-end. The
-  local FFI emission was already verified on Windows with the real fused lib
-  (issue body).
+```
+chunk  1 | t=+ 4508ms | "one"
+chunk  2 | t=+ 4613ms | " two"
+...
+chunk 12 | t=+ 4618ms | " twelve"
+Total onStreamChunk calls: 12 | distinct arrival times: 7
+Reconstructed reply: "one two three four five six seven eight nine ten eleven twelve"
+```
 
-### Manual E2E protocol (for a maintainer with working keys / a local model)
+Test: `plugins/plugin-openai/__tests__/cloud-streaming.live.test.ts` (skips with
+a warning when `OPENAI_BASE_URL`/`OPENAI_API_KEY` are unset). Reproduce:
 
-1. `bun run dev` (boots API + dashboard).
-2. **Cloud:** set a valid `ANTHROPIC_API_KEY`, select an Anthropic agent, send a
-   message that elicits a multi-sentence reply. Observe the reply rendering
-   token-by-token. **Local:** set `MODELS_DIR` + a fused model, select the local
-   agent, repeat. Optionally set `ELIZA_LOCAL_STREAM_TOKENS_PER_STEP=8` to
-   compare smoothness.
-3. Capture a full-page screen recording of each (`bun run test:e2e:record`).
-4. In devtools → Network, confirm `POST /api/conversations/:id/messages/stream`
-   is the request and that `data: {"type":"token"}` frames stream in before the
-   terminal `done` frame (matches `sse-token-timeline.txt`).
+```bash
+OPENAI_API_KEY=<together-key> \
+OPENAI_BASE_URL=https://api.together.xyz/v1 \
+OPENAI_SMALL_MODEL=Qwen/Qwen2.5-7B-Instruct-Turbo \
+bun run --cwd plugins/plugin-openai vitest run --config vitest.live.config.ts __tests__/cloud-streaming.live.test.ts
+```
+
+### The full chain, each link verified with real code
+
+1. **Cloud model → `onStreamChunk` per token** — `live-cloud-streaming-timeline.txt`
+   (real Together AI model, real plugin-openai `streamText`).
+2. **`onStreamChunk` deltas → incremental SSE `token` frames** —
+   `sse-token-timeline.txt` (real `generateChatResponse` → `writeChatTokenSse`)
+   + `conversation-streaming.test.ts` + `sse-wire-streaming.test.ts`.
+3. **Dashboard reads SSE, always via the streaming endpoint** —
+   `useChatSend.test.tsx`, with RAF-coalesced `mergeStreamingText` render.
+
+The original `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` in `.env` are dead (401), and
+no local fused model is installed here (`MODELS_DIR` unset, no `.gguf`/eliza-1
+bundle) — the local FFI emission was verified on Windows with the real fused lib
+(issue body). The Together AI route above provides the real-LLM cloud trajectory
+in their place.
+
+### Remaining: in-browser pixel capture (video)
+
+The only piece not captured headless is a screen-recording of the rendered DOM.
+Functionally it is covered by link 3 above (the SSE token frames are exactly
+what the dashboard consumes). To record the video on a workstation:
+
+1. `bun run dev` with the Together AI env above (or any working provider).
+2. Send a message that elicits a multi-sentence reply; observe token-by-token
+   rendering. Optionally `ELIZA_LOCAL_STREAM_TOKENS_PER_STEP=8` for local.
+3. `bun run test:e2e:record`; in devtools → Network confirm
+   `POST /api/conversations/:id/messages/stream` streams `data: {"type":"token"}`
+   frames before the terminal `done` frame (matches `sse-token-timeline.txt`).
 
 ## Reproduce the automated evidence
 
