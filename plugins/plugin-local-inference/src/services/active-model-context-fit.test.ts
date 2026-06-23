@@ -65,4 +65,36 @@ describe("resolveLocalInferenceLoadArgs — runtime context fit", () => {
 
 		expect(args.contextSize).toBe(32768);
 	});
+
+	it("upgrades KV to f16 on a roomy host when the headroom opt-in is set (#8809 AC#4)", async () => {
+		const prev = process.env.ELIZA_PREFER_ACCURATE_KV_WHEN_HEADROOM;
+		process.env.ELIZA_PREFER_ACCURATE_KV_WHEN_HEADROOM = "1";
+		try {
+			const args = await resolveLocalInferenceLoadArgs(
+				makeInstalledModel("eliza-1-9b", 5.4),
+				undefined,
+				{ hardware: hardware(64) },
+			);
+			expect(args.contextSize).toBe(131072);
+			expect(args.cacheTypeK).toBe("f16");
+			expect(args.cacheTypeV).toBe("f16");
+		} finally {
+			if (prev === undefined) {
+				delete process.env.ELIZA_PREFER_ACCURATE_KV_WHEN_HEADROOM;
+			} else {
+				process.env.ELIZA_PREFER_ACCURATE_KV_WHEN_HEADROOM = prev;
+			}
+		}
+	});
+
+	it("leaves KV at the q8_0 default when the headroom opt-in is off", async () => {
+		const args = await resolveLocalInferenceLoadArgs(
+			makeInstalledModel("eliza-1-9b", 5.4),
+			undefined,
+			{ hardware: hardware(64) },
+		);
+
+		expect(args.cacheTypeK).not.toBe("f16");
+		expect(args.cacheTypeV).not.toBe("f16");
+	});
 });

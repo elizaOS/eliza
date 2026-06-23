@@ -42,6 +42,44 @@ describe("computeRuntimeContextFit", () => {
 		expect(fit).toBeNull();
 	});
 
+	it("defaults to q8_0 KV", () => {
+		const fit = computeRuntimeContextFit({
+			params: "9B",
+			weightMb: 5529,
+			usableMb: 64 * 1024,
+			nativeContext: 131072,
+		});
+		expect(fit?.kvQuant).toBe("q8_0");
+	});
+
+	it("upgrades to f16 KV when there's headroom and it's opted in (#8809 AC#4)", () => {
+		const fit = computeRuntimeContextFit({
+			params: "9B",
+			weightMb: 5529,
+			usableMb: 64 * 1024,
+			nativeContext: 131072,
+			preferAccurateKvWhenHeadroom: true,
+		});
+		expect(fit?.kvQuant).toBe("f16");
+		// f16 still affords the full native window on a roomy host.
+		expect(fit?.contextSize).toBe(131072);
+		expect(fit?.contextDownscaled).toBe(false);
+	});
+
+	it("never trades context for f16 KV precision (stays q8_0 when f16 would shrink the window)", () => {
+		// kvBudget here lets q8_0 reach the full native window but f16 (≈1.88×)
+		// would not — so the opt-in must keep q8_0 rather than downscale context.
+		const fit = computeRuntimeContextFit({
+			params: "9B",
+			weightMb: 5529,
+			usableMb: 8053,
+			nativeContext: 131072,
+			preferAccurateKvWhenHeadroom: true,
+		});
+		expect(fit?.contextSize).toBe(131072);
+		expect(fit?.kvQuant).toBe("q8_0");
+	});
+
 	it("scales the selected context with the device RAM class (4/8/16/24/128 GB) (#8809 AC#4)", () => {
 		// One representative tier across the five canonical device classes.
 		// `weightMb` is the resident weight; `usableMb` is the post-headroom
