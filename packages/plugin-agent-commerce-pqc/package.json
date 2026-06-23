@@ -12,7 +12,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "type-check": "tsc --noEmit -p tsconfig.json",
-    "verify": "bun run type-check"
+    "test": "bunx vitest run --config vitest.config.ts",
+    "test:watch": "bunx vitest --config vitest.config.ts",
+    "verify": "bun run type-check && bun run test"
   },
   "peerDependencies": {
     "@elizaos/core": ">=1.0.0"
@@ -20,7 +22,8 @@
   "devDependencies": {
     "@elizaos/core": "^1.0.0",
     "@types/node": "^20.10.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.0"
   },
   "keywords": [
     "elizaos",
