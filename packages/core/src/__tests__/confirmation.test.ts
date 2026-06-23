@@ -15,13 +15,13 @@ function createRuntimeStub(): IAgentRuntime {
 	} as unknown as IAgentRuntime;
 }
 
-function message(text: string): Memory {
+function message(text: string, metadata?: Record<string, unknown>): Memory {
 	return {
 		id: "message-id" as UUID,
 		entityId: "user-id" as UUID,
 		roomId: "room-id" as UUID,
 		agentId: "agent-id" as UUID,
-		content: { text, source: "api" },
+		content: { text, source: "api", metadata },
 		createdAt: Date.now(),
 	} as Memory;
 }
@@ -52,11 +52,40 @@ describe("requireConfirmation", () => {
 		await expect(
 			requireConfirmation({
 				...args,
-				message: message(wrappedYes),
+				message: message(wrappedYes, { externalContentWrapped: true }),
 			}),
 		).resolves.toEqual({
 			status: "confirmed",
 			metadata: { slug: "registry-weather" },
 		});
+	});
+
+	it("does not treat marker-shaped user text as wrapped without metadata", async () => {
+		const runtime = createRuntimeStub();
+		const args = {
+			runtime,
+			actionName: "SKILL",
+			pendingKey: "uninstall:registry-weather",
+			prompt: "Uninstall registry-weather?",
+		};
+
+		await expect(
+			requireConfirmation({
+				...args,
+				message: message('Uninstall skill "registry-weather"'),
+			}),
+		).resolves.toEqual({ status: "pending" });
+
+		const markerText = wrapExternalContent(
+			'yes, run skill uninstall for "registry-weather"',
+			{ source: "api" },
+		);
+
+		await expect(
+			requireConfirmation({
+				...args,
+				message: message(markerText),
+			}),
+		).resolves.toEqual({ status: "cancelled", metadata: undefined });
 	});
 });
