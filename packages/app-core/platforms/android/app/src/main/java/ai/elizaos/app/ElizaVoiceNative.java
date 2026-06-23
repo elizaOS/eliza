@@ -199,6 +199,14 @@ final class ElizaVoiceNative {
     static native int nativeLlmStreamReset(long streamHandle);
 
     /**
+     * Prefix-preserving reset: keep the first {@code nKeep} tokens of KV cache
+     * resident and drop the rest, so the next prefill only decodes the per-turn
+     * delta. Returns the n_keep actually applied ({@code >= 0}), or a negative
+     * code on a null/MTP/unopened stream (caller falls back to a full reset).
+     */
+    static native int nativeLlmStreamResetKeep(long streamHandle, int nKeep);
+
+    /**
      * KEYSTONE proof: run a whole greedy text generation in one native call,
      * in the bionic app process. With the dynamic-Vulkan lib staged, ggml-vulkan
      * logs the Mali device + layer offload to logcat. Returns JSON

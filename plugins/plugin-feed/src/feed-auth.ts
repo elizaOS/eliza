@@ -47,7 +47,28 @@ export interface FeedConfig {
   apiBaseUrl: string;
   agentId: string | undefined;
   agentSecret: string | undefined;
+  /**
+   * The agent's existing Steward/Eliza-Cloud session JWT. When present, the
+   * agent auto-logs in to Feed with this token (Feed verifies the shared-secret
+   * HS256 `iss:"steward"` JWT inline) — no `FEED_AGENT_ID`/`FEED_AGENT_SECRET`
+   * exchange is required. Resolved from the agent's Steward sidecar credential.
+   */
+  stewardToken: string | undefined;
   runtime: IAgentRuntime | null;
+}
+
+/**
+ * Resolve the agent's Steward session JWT from the runtime/env. The app-core
+ * Steward sidecar persists the agent token to `STEWARD_AGENT_TOKEN`;
+ * `FEED_STEWARD_TOKEN` is an explicit per-app override.
+ */
+export function resolveStewardToken(
+  runtime: IAgentRuntime | RuntimeLike | null | undefined,
+): string | undefined {
+  return (
+    resolveSettingLike(runtime, "FEED_STEWARD_TOKEN") ??
+    resolveSettingLike(runtime, "STEWARD_AGENT_TOKEN")
+  );
 }
 
 export function resolveFeedConfig(runtime: IAgentRuntime | null): FeedConfig {
@@ -62,6 +83,7 @@ export function resolveFeedConfig(runtime: IAgentRuntime | null): FeedConfig {
     ).replace(/\/+$/, ""),
     agentId: resolveSettingLike(runtime, "FEED_AGENT_ID"),
     agentSecret: resolveSettingLike(runtime, "FEED_AGENT_SECRET"),
+    stewardToken: resolveStewardToken(runtime),
     runtime,
   };
 }
@@ -182,41 +204,46 @@ export async function proxyFeedRequest(
   apiPath: string,
   body?: unknown,
 ): Promise<Response> {
-  const token = await getSessionToken(config);
   const url = new URL(apiPath, config.apiBaseUrl);
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+  const apiKey = resolveSettingLike(config.runtime, "FEED_A2A_API_KEY");
+
+  const send = (token: string | null): Promise<Response> => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    if (apiKey) {
+      headers["X-Feed-Api-Key"] = apiKey;
+    }
+    return fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
   };
 
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-    headers.Cookie = `feed_session=${token}`;
+  // Prefer the agent's existing Steward/Eliza-Cloud session JWT. Feed verifies
+  // it inline (shared-secret HS256, iss:"steward"), so the agent auto-logs in
+  // without the FEED_AGENT_ID/SECRET → /api/agents/auth exchange. On rejection
+  // (expired token / unshared secret) we fall through to the agent-session path.
+  if (config.stewardToken) {
+    const stewardResponse = await send(config.stewardToken);
+    if (stewardResponse.status !== 401) {
+      return stewardResponse;
+    }
   }
 
-  const apiKey = resolveSettingLike(config.runtime, "FEED_A2A_API_KEY");
-  if (apiKey) {
-    headers["X-Feed-Api-Key"] = apiKey;
-  }
-
-  const response = await fetch(url, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
+  const token = await getSessionToken(config);
+  const response = await send(token);
 
   if (response.status === 401 && token) {
     clearCachedToken();
     const newToken = await getSessionToken(config);
     if (newToken && newToken !== token) {
-      headers.Authorization = `Bearer ${newToken}`;
-      headers.Cookie = `feed_session=${newToken}`;
-      return fetch(url, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
+      return send(newToken);
     }
   }
 

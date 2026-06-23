@@ -111,4 +111,24 @@ describe("shouldRetryStage1Generation", () => {
 			).toBe(false);
 		}
 	});
+
+	it("with no cap (direct channel) detects truncation by finishReason only", () => {
+		// Direct-channel Stage-1 sends no max-tokens cap, so maxTokens is undefined.
+		// A huge completion count is NOT a truncation (no cap to hit) → still retry a
+		// garbled result; only a length-style finishReason blocks the retry.
+		expect(
+			shouldRetryStage1Generation(
+				"malformed HANDLE_RESPONSE tool call",
+				rawWith({ completionTokens: 1_000_000 }),
+				undefined,
+			),
+		).toBe(true);
+		expect(
+			shouldRetryStage1Generation(
+				"malformed HANDLE_RESPONSE tool call",
+				rawWith({ finishReason: "length" }),
+				undefined,
+			),
+		).toBe(false);
+	});
 });

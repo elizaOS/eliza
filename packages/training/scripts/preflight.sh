@@ -40,10 +40,10 @@
 # costs cents to run locally and saves dollars on Vast.
 #
 # Usage:
-#   bash scripts/preflight.sh [--registry-key qwen3.5-4b] [--gpu-target b200-2x]
+#   bash scripts/preflight.sh [--registry-key gemma4-e4b] [--gpu-target b200-2x]
 #
 # Reads (env, all optional with sensible defaults):
-#   REGISTRY_KEY           — same as train_vast.sh; default qwen3.5-4b
+#   REGISTRY_KEY           — same as train_vast.sh; default gemma4-e4b
 #   VAST_GPU_TARGET        — same as train_vast.sh; default auto-picked
 #   ELIZA_PREFLIGHT_SAMPLE_LINES — schema sample size per file; default 1000
 #   ELIZA_PREFLIGHT_MAX_UTIL_PCT — memory headroom cutoff; default 85
@@ -60,7 +60,7 @@ log_ok()   { printf '[preflight] PASS  %s\n' "$*"; }
 log_err()  { printf '[preflight] FAIL  %s\n' "$*" >&2; }
 log_skip() { printf '[preflight] SKIP  %s\n' "$*"; }
 
-REGISTRY_KEY="${REGISTRY_KEY:-qwen3.5-4b}"
+REGISTRY_KEY="${REGISTRY_KEY:-gemma4-e4b}"
 SAMPLE_LINES="${ELIZA_PREFLIGHT_SAMPLE_LINES:-1000}"
 MAX_UTIL_PCT="${ELIZA_PREFLIGHT_MAX_UTIL_PCT:-85}"
 SMOKE_MAX_AGE_HOURS="${ELIZA_PREFLIGHT_SMOKE_MAX_AGE_HOURS:-24}"
@@ -69,8 +69,8 @@ MIN_CONTENT_PCT="${ELIZA_PREFLIGHT_MIN_CONTENT_PCT:-80}"
 # Mirror train_vast.sh's GPU-target auto-pick so a user who only sets
 # REGISTRY_KEY gets the same default the launcher would.
 case "$REGISTRY_KEY" in
-  qwen3.5-2b|qwen3.5-9b) DEFAULT_GPU_TARGET="blackwell6000-1x" ;;
-  qwen3.6-27b)           DEFAULT_GPU_TARGET="b200-2x" ;;
+  gemma4-e2b|gemma4-12b) DEFAULT_GPU_TARGET="blackwell6000-1x" ;;
+  gemma4-31b)           DEFAULT_GPU_TARGET="b200-2x" ;;
   *)                     DEFAULT_GPU_TARGET="blackwell6000-2x" ;;
 esac
 VAST_GPU_TARGET="${VAST_GPU_TARGET:-$DEFAULT_GPU_TARGET}"
@@ -432,8 +432,8 @@ fi
 # (checkpoints/<key>-smoke-fullstack/smoke_summary.json, schemaVersion=2).
 # That file records per-step pass/skip status and computes
 # `applicable_passed_pct` against the steps the source architecture and
-# host can actually run — fused-turboquant on hybrid linear+full attention
-# models like Qwen3.5/3.6 is correctly excluded as skipped_incompatible
+# host can actually run — fused-turboquant on Gemma 4 dense attention
+# models like Gemma 4 is correctly excluded as skipped_incompatible
 # instead of being counted as a hard failure. The pre-architecture-aware
 # gate read per-bench `content_pct` from the SFT bench, which is
 # unreachable for a 200-step smoke (exact-text match against expected

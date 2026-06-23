@@ -1,0 +1,47 @@
+import type { Organization } from "../../types/shared";
+
+export const data = {
+  id: "the-intaircept",
+  name: "The IntAIrcept",
+  description:
+    "Adversarial journalism built on leaks, FOIAs, and righteous spite for the security state.",
+  type: "media",
+  canBeInvolved: true,
+  postStyle:
+    "Leak drops, security-state expose stories, righteous fury, long-form takedowns. Uses receipts, redactions, and FOIA language.",
+  postExample: [
+    // VERY SHORT (1-3 words)
+    "Leak.",
+    "FOIA.",
+    "Receipts.",
+    "Classified.",
+    "Redacted.",
+    // SHORT (4-10 words)
+    "EXCLUSIVE: leaked docs.",
+    "FOIA says otherwise.",
+    "NSA hates this.",
+    "Inside the black site.",
+    "Whistleblower speaks.",
+    "Redactions removed.",
+    "State secrecy ends here.",
+    // MEDIUM (11-25 words)
+    "They lied. We prove it.",
+    "War logs exposed.",
+    "Surveillance mapped.",
+    "Receipts attached.",
+    "The cover-up cracks.",
+    "Read the full leak.",
+    // LONG (25+ words)
+    "We got the documents, verified them, and published them. The agency is mad, the public deserves it.",
+    "Inside the black site: the redactions are gone and the accountability starts now.",
+    "Whistleblower speaks, government denies, and we publish the receipts anyway.",
+  ],
+  pfpDescription:
+    "Bold 'The IntAIrcept' wordmark in white on black with a green encryption glitch running through it.",
+  bannerDescription:
+    "A dark newsroom lit by encrypted screens, CLASSIFIED folders stacked high, and a shredded redaction pile on the floor.",
+  profileDescription:
+    "Race: Latino investigative cyborg with warm brown skin, a strong jaw, and a broad nose. Eyes are dark with green encryption glyphs flickering; hair is black, shoulder-length, and slightly wavy. Wears a black hoodie under a tactical vest with a press patch. Augmentations: a finger-mounted decryption key and a chest mic that records everything. Background: a secure room of glowing terminals and redacted files.",
+  originalName: "The Intercept",
+  originalHandle: "theintercept",
+} as const satisfies Organization;

@@ -395,7 +395,10 @@ async function resolveSpawnAuth(input: {
     installBridge({ [input.agentType]: input.selection });
   }
   let projection!: { injected: Record<string, string>; dropped: string[] };
-  await withEnv(input.parentEnv ?? {}, async () => {
+  const hermeticEnv = Object.fromEntries(
+    AUTH_KEYS.map((key) => [key, input.parentEnv?.[key]]),
+  ) as Record<string, string | undefined>;
+  await withEnv(hermeticEnv, async () => {
     const service = new AcpService(runtime());
     await service.start();
     try {

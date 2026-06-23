@@ -14,7 +14,7 @@ Usage:
         --tier 2b \
         --text-gguf checkpoints/eliza-1-2b-apollo-<run>/eliza1-optimized/gguf/final-Q4_POLAR.gguf \
         --text-sidecar checkpoints/eliza-1-2b-apollo-<run>/eliza1-optimized/gguf/final-Q4_POLAR.gguf.eliza1.json \
-        --drafter-gguf /tmp/eliza1-eval-models/qwen3_5-mtp-drafter-2b.gguf \
+        --drafter-gguf /tmp/eliza1-eval-models/gemma4-mtp-drafter-2b.gguf \
         --drafter-source <license-reviewed drafter source> \
         --vision-gguf /tmp/eliza1-eval-models/mmproj-2b.gguf \
         --out /tmp/eliza1-stage/eliza-1-2b
@@ -47,7 +47,6 @@ REQUIRED_KERNELS_BY_TIER = {
     for tier in M.ELIZA_1_TIERS
 }
 RAM_BUDGET_MB = {
-    "0_8b": (2500, 3700),
     "2b": (4000, 5500),
     "4b": (6000, 8000),
     "9b": (12000, 18000),
@@ -55,11 +54,10 @@ RAM_BUDGET_MB = {
 }
 # Per-tier upstream text base used by lineage and README/provenance prose.
 TEXT_BASE_BY_TIER = {
-    "0_8b": "Qwen/Qwen3.5-0.8B",
-    "2b": "Qwen/Qwen3.5-2B",
-    "4b": "Qwen/Qwen3.5-4B",
-    "9b": "Qwen/Qwen3.5-9B",
-    "27b": "Qwen/Qwen3.6-27B",
+    "2b": "google/gemma-4-E2B",
+    "4b": "google/gemma-4-E4B",
+    "9b": "google/gemma-4-12B",
+    "27b": "google/gemma-4-31B",
 }
 TEXT_CONTEXT_BY_TIER = {
     tier: PP.CONTEXTS_BY_TIER[tier][0]
@@ -69,12 +67,18 @@ TEXT_CTX_BY_TIER = {
     tier: M.parse_ctx_string(ctx)
     for tier, ctx in TEXT_CONTEXT_BY_TIER.items()
 }
+# The only local 2b drafter is the Gemma-4 E4B MTP drafter extracted from
+# LiteRT (`shadowlilac/gemma-4-e4b-mtp-extraction-effort`). It shares the
+# 262144-token Gemma-4 tokenizer with the E2B text target so speculative
+# decoding is correct, but it is the E4B head (external_hidden_size 2560),
+# not an E2B-matched drafter — a tokenizer-compatible *smoke* drafter only.
+# That tier mismatch makes the bundle candidate-only (defaultEligible=False);
+# the orchestrator's `drafter.matchesTargetCheckpoint` gate is FALSE here.
 DRAFTER_SOURCE_BY_TIER = {
-    "0_8b": None,
-    "2b": None,
-    "4b": "z-lab/Qwen3.5-4B-MTP",
-    "9b": "z-lab/Qwen3.5-9B-MTP",
-    "27b": "spiritbuun/Qwen3.6-27B-MTP-GGUF",
+    "2b": "shadowlilac/gemma-4-e4b-mtp-extraction-effort",
+    "4b": "z-lab/gemma-4-E4B-MTP",
+    "9b": "z-lab/gemma-4-12B-MTP",
+    "27b": "spiritbuun/gemma-4-31B-MTP-GGUF",
 }
 
 # Frozen tier-agnostic voice/ASR/VAD/cache bytes live in the canonical model repo.
@@ -225,6 +229,30 @@ def main(argv: list[str] | None = None) -> int:
     drafter_dest = out / "mtp" / f"drafter-{tier}.gguf"
     shutil.copy2(args.drafter_gguf, drafter_dest)
     drafter_sha = sha256_file(drafter_dest)
+    # The only local 2b drafter is the E4B-extracted MTP head, staged on the
+    # E2B text target: a tokenizer-compatible *smoke* drafter, not an
+    # E2B-matched one. Record the tier mismatch so the orchestrator's
+    # `matchesTargetCheckpoint` gate stays FALSE (candidate-only).
+    drafter_is_smoke = tier == "2b"
+    drafter_note = (
+        f"MTP drafter for the {tier} Gemma 4 text target. "
+        "It must share the 262144-token Gemma 4 tokenizer with the target "
+        "so speculative decoding is correct. "
+    )
+    if drafter_is_smoke:
+        drafter_note += (
+            "This is the E4B-extracted MTP drafter "
+            f"({drafter_source}, external_hidden_size 2560) staged on the E2B "
+            "text target as a tokenizer-compatible SMOKE drafter — a tier "
+            "mismatch, NOT an E2B-matched release drafter. The bundle is "
+            "candidate-only (defaultEligible=false); a real release needs an "
+            "E2B-matched drafter."
+        )
+    else:
+        drafter_note += (
+            "See the drafter source repo for whether this candidate is distilled "
+            "or a tokenizer-compatible smoke artifact."
+        )
     (out / "mtp" / "target-meta.json").write_text(json.dumps({
         "schemaVersion": 2,
         "tier": tier,
@@ -240,13 +268,9 @@ def main(argv: list[str] | None = None) -> int:
             "path": f"mtp/drafter-{tier}.gguf",
             "sha256": drafter_sha,
             "source": drafter_source,
-            "note": (
-                f"MTP drafter for the {tier} Qwen3.5/Qwen3.6 text target. "
-                "It must share the 248320-token Qwen3.5/Qwen3.6-family tokenizer with the target "
-                "so speculative decoding is correct. See the drafter source repo "
-                "for whether this candidate is distilled or a tokenizer-compatible "
-                "smoke artifact."
-            ),
+            "matchesTargetCheckpoint": not drafter_is_smoke,
+            "tokenizerVocabSize": 262144,
+            "note": drafter_note,
         },
         "acceptanceWindow": None,
         "acceptanceRate": None,
@@ -442,7 +466,7 @@ def main(argv: list[str] | None = None) -> int:
             "vad": {"repo": A.VAD_NATIVE_REPO, "note": "frozen native Silero v5 GGUF"},
             "drafter": {
                 "repo": drafter_source,
-                "note": "MTP drafter must share the Qwen3.5/Qwen3.6-family tokenizer with the target; record whether this exact artifact is distilled or a smoke stand-in in mtp/target-meta.json.",
+                "note": "MTP drafter must share the Gemma 4 tokenizer with the target; record whether this exact artifact is distilled or a smoke stand-in in mtp/target-meta.json.",
             },
             "vision": {
                 "repo": TEXT_BASE_BY_TIER[tier],
@@ -596,7 +620,7 @@ release bar (every supported backend kernel-verified, every eval green) is met.
   Silero-VAD v5.1.2, and the default speaker preset. Not fine-tuned.
   Licenses in `licenses/`.
 - **MTP drafter** (`mtp/drafter-{tier}.gguf`): the **upstream
-  `{drafter_source}` artifact** — it must share the Qwen3.5/Qwen3.6-family tokenizer with the
+  `{drafter_source}` artifact** — it must share the Gemma 4 tokenizer with the
   text target so speculative decoding is correct. The exact distilled-vs-standin
   status is recorded in `mtp/target-meta.json` and
   `provenance.sourceModels.drafter`.

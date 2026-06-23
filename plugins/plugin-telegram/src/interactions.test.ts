@@ -53,4 +53,23 @@ describe("renderTelegramInteractions", () => {
     expect(out.text).toContain("Ship it");
     expect(out.keyboardRows).toHaveLength(0);
   });
+
+  it("renders a navigate followup as a URL button via resolveNavigateUrl (#8908)", () => {
+    const content: Content = {
+      text: "Done.\n[FOLLOWUPS id=f1]\nnavigate:/orchestrator=Open tasks\nreply:thanks=Thanks\n[/FOLLOWUPS]",
+    };
+    const out = renderTelegramInteractions(content, {
+      resolveNavigateUrl: (p) => `https://app.test${p}`,
+    });
+    const buttons = out.keyboardRows.flat() as Array<{
+      text: string;
+      url?: string;
+      callback_data?: string;
+    }>;
+    const nav = buttons.find((b) => b.text === "Open tasks");
+    const reply = buttons.find((b) => b.text === "Thanks");
+    expect(nav?.url).toBe("https://app.test/orchestrator");
+    expect(reply?.url).toBeUndefined();
+    expect(reply?.callback_data).toBeTruthy();
+  });
 });

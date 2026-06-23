@@ -1,3 +1,4 @@
+import type { HandlerCallback } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { BROWSER_SERVICE_TYPE } from "../browser-service.js";
 import { browserAction } from "./browser.js";
@@ -24,6 +25,7 @@ async function runBrowserAction(args: {
   parameters?: Record<string, unknown>;
   messageText?: string;
   service?: ReturnType<typeof browserService> | null;
+  callback?: HandlerCallback;
 }) {
   const service = args.service === undefined ? browserService() : args.service;
   const runtime = runtimeWithService(service);
@@ -32,6 +34,7 @@ async function runBrowserAction(args: {
     { content: { text: args.messageText ?? "" } } as never,
     undefined,
     { parameters: args.parameters ?? {} } as never,
+    args.callback,
   );
   return { result, runtime, service };
 }
@@ -99,6 +102,77 @@ describe("BROWSER action", () => {
     expect(result?.text).toBe(
       "open completed in workspace mode.\nExample\nhttps://example.com/path",
     );
+  });
+
+  it("emits compact progress when streamProgress is true", async () => {
+    const service = browserService({
+      tab: { title: "Example", url: "https://example.com" },
+    });
+    const callback = vi.fn(async () => []);
+
+    await runBrowserAction({
+      service,
+      callback,
+      parameters: {
+        action: "open",
+        url: "https://example.com",
+        streamProgress: true,
+        rationale: "checking example",
+      },
+    });
+
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Step 1: open — checking example",
+        source: "action_progress",
+        merge: "replace",
+        metadata: {
+          transient: true,
+          compactProgress: true,
+          progress: {
+            source: "browser",
+            actionName: "BROWSER",
+            step: 1,
+            kind: "open",
+            rationale: "checking example",
+            success: true,
+            error: undefined,
+          },
+        },
+      }),
+      "BROWSER",
+    );
+  });
+
+  it("does not fail the browser action when compact progress delivery fails", async () => {
+    const callback = vi.fn(async () => {
+      throw new Error("telegram edit failed");
+    });
+
+    const { result } = await runBrowserAction({
+      callback,
+      parameters: {
+        action: "state",
+        streamProgress: true,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps compact progress behind the streamProgress flag", async () => {
+    const callback = vi.fn(async () => []);
+
+    await runBrowserAction({
+      callback,
+      parameters: {
+        action: "state",
+      },
+    });
+
+    expect(callback).not.toHaveBeenCalled();
   });
 
   it("uses navigate instead of open when a URL and tab id are present", async () => {
@@ -215,6 +289,101 @@ describe("BROWSER action", () => {
         text: "Cursor moved to (10, 21) in workspace mode.",
       },
     });
+  });
+
+  it("wait_for_url opens the url, streams a watch status, and resolves on match", async () => {
+    // open → tab; get url → matching url on the first poll.
+    const service = {
+      execute: vi.fn(async (command: { subaction: string }) => {
+        if (command.subaction === "open") {
+          return {
+            mode: "workspace",
+            subaction: "open",
+            tab: {
+              id: "tab-9",
+              title: "OAuth",
+              url: "https://gh.example/oauth",
+            },
+          };
+        }
+        if (command.subaction === "get") {
+          return {
+            mode: "workspace",
+            subaction: "get",
+            value: "https://gh.example/callback?code=abc",
+          };
+        }
+        return { mode: "workspace", subaction: command.subaction };
+      }),
+    };
+    const runtime = runtimeWithService(service);
+    const callback = vi.fn(async () => []);
+
+    const result = await browserAction.handler?.(
+      runtime as never,
+      { content: { text: "" } } as never,
+      undefined,
+      {
+        parameters: {
+          action: "wait_for_url",
+          url: "https://gh.example/oauth",
+          pattern: "callback?code=",
+          timeoutMs: 5_000,
+          pollIntervalMs: 100,
+        },
+      } as never,
+      callback as never,
+    );
+
+    // Opened the starting url, then polled the current url.
+    expect(service.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subaction: "open",
+        url: "https://gh.example/oauth",
+      }),
+      undefined,
+    );
+    // First callback is the "I opened X, watching" message.
+    expect(callback.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        text: expect.stringContaining("watching"),
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        values: expect.objectContaining({
+          success: true,
+          subaction: "wait_for_url",
+          status: "matched",
+          matched: true,
+        }),
+      }),
+    );
+    expect(result?.text).toContain("callback?code=abc");
+  });
+
+  it("wait_for_url fails fast when no pattern is supplied", async () => {
+    const service = browserService();
+    const runtime = runtimeWithService(service);
+
+    const result = await browserAction.handler?.(
+      runtime as never,
+      { content: { text: "" } } as never,
+      undefined,
+      { parameters: { action: "wait_for_url" } } as never,
+      (async () => []) as never,
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: false,
+        values: expect.objectContaining({
+          error: "BROWSER_WAIT_FOR_URL_NO_PATTERN",
+        }),
+      }),
+    );
+    expect(service.execute).not.toHaveBeenCalled();
   });
 
   it("returns a structured failure when no service or workspace backend can execute", async () => {

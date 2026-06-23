@@ -1417,7 +1417,6 @@ public class ElizaAgentService extends Service {
             File abiFusedInference = new File(abiDir, "libelizainference.so");
             File abiLibllama = new File(abiDir, "libllama.so");
             File abiLlamaShim = new File(abiDir, "libeliza-llama-shim.so");
-            File abiSpeculativeShim = new File(abiDir, "libeliza-llama-speculative-shim.so");
             File abiGgmlVulkan = new File(abiDir, "libggml-vulkan.so");
             boolean fusedInferenceBundled = abiFusedInference.isFile();
             boolean legacyLibllamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
@@ -1501,33 +1500,12 @@ public class ElizaAgentService extends Service {
                     // cache priming.
                     agentEnv.put("ELIZA_KOKORO_PREWARM_DELAY_MS", "60000");
                 }
-                if (abiSpeculativeShim.isFile()
-                        && !env.containsKey("ELIZA_SPEC_TYPE")
-                        && !env.containsKey("ELIZA_SPECULATIVE_TYPE")) {
-                    // Prefer the in-process MTP path when the bundled
-                    // llama.cpp fork supports it. This is intentionally not
-                    // required: current mobile Eliza-1 bundles ship MTP
-                    // drafter GGUFs, and the adapter falls back to MTP when
-                    // the target model lacks NextN/MTP tensors.
-                    agentEnv.put("ELIZA_SPEC_TYPE", "mtp");
-                    Log.i(TAG, "agent/" + abiDir.getName()
-                        + "/libeliza-llama-speculative-shim.so present; preferring MTP speculative decode with MTP fallback");
-                }
-                if (abiSpeculativeShim.isFile() && brandedAospBuild && !env.containsKey("ELIZA_MTP")) {
-                    agentEnv.put("ELIZA_MTP", "1");
-                    Log.i(TAG, "agent/" + abiDir.getName()
-                        + "/libeliza-llama-speculative-shim.so present on branded AOSP build; enabling in-process MTP (ELIZA_MTP=1)");
-                } else if (abiSpeculativeShim.isFile() && !brandedAospBuild) {
-                    // Ship the speculative shim in stock APKs so explicit
-                    // ELIZA_MTP diagnostics still work, but do not make
-                    // MTP the default merely because the .so is present.
-                    // Pixel APK validation showed the current 2B drafter path
-                    // is functional but slower than target-only decode for
-                    // short chat turns, so stock Android stays target-only
-                    // until benchmark gating or a faster drafter path lands.
-                    Log.i(TAG, "agent/" + abiDir.getName()
-                        + "/libeliza-llama-speculative-shim.so present; leaving MTP opt-in for stock APK");
-                }
+                // MTP (multi-token / speculative decode) is compiled into the
+                // single fused libelizainference.so (the eliza_mtp::Engine over
+                // common/speculative.cpp, exported as eliza_inference_llm_mtp_supported).
+                // It is controlled in-process by ELIZA_BIONIC_MTP and the FFI
+                // capability probe — NOT by a separate speculative-shim .so (that
+                // shim is retired and never staged). No env wiring needed here.
                 if (BuildConfig.DEBUG && !env.containsKey("ELIZA_AOSP_LLAMA_DEBUG_LOG")) {
                     File debugLog = new File(agentStateDir(), "aosp-llama-debug.log");
                     agentEnv.put("ELIZA_AOSP_LLAMA_DEBUG_LOG", debugLog.getAbsolutePath());

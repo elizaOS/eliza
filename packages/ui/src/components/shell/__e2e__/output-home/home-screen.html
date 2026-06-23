@@ -12759,37 +12759,50 @@
   // packages/ui/src/components/shell/__e2e__/home-screen-fixture.tsx
   var import_client = __toESM(require_client(), 1);
 
-  // packages/ui/src/components/shell/ChatAmbientBackground.tsx
+  // packages/ui/src/state/ui-preferences.ts
+  var DEFAULT_BACKGROUND_COLOR = "#ef5a1f";
+
+  // packages/ui/src/backgrounds/ShaderBackground.tsx
   var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
   var EDGE_CSS = `
-@keyframes chat-ambient-edge {
-  0%   { box-shadow: inset 0 0 160px 8px rgba(255, 248, 240, 0.34); } /* white */
-  25%  { box-shadow: inset 0 0 150px 6px rgba(255, 130, 56, 0.30); }  /* orange */
-  50%  { box-shadow: inset 0 0 170px 10px rgba(46, 96, 210, 0.34); }  /* blue */
-  75%  { box-shadow: inset 0 0 180px 14px rgba(6, 5, 10, 0.46); }     /* black */
-  100% { box-shadow: inset 0 0 160px 8px rgba(255, 248, 240, 0.34); }
+@keyframes app-bg-shader-0 { 0%{opacity:1} 50%{opacity:0} 100%{opacity:1} }
+@keyframes app-bg-shader-1 { 0%{opacity:0} 50%{opacity:1} 100%{opacity:0} }
+.app-bg-shader-layer {
+  position: absolute;
+  inset: 0;
+  animation-duration: 30s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
 }
-.chat-ambient-edge {
-  animation: chat-ambient-edge 30s ease-in-out infinite;
-}
+.app-bg-shader-0 { box-shadow: inset 0 0 170px 10px rgba(255, 250, 244, 0.42); animation-name: app-bg-shader-0; }
+.app-bg-shader-1 { animation-name: app-bg-shader-1; }
 @media (prefers-reduced-motion: reduce) {
-  .chat-ambient-edge {
-    animation: none;
-    box-shadow: inset 0 0 150px 6px rgba(255, 130, 56, 0.22);
-  }
+  .app-bg-shader-layer { animation: none; opacity: 0; }
+  .app-bg-shader-1 { opacity: 1; }
 }
 `;
-  function ChatAmbientBackground() {
+  function ShaderBackground({
+    color = DEFAULT_BACKGROUND_COLOR
+  } = {}) {
+    const rim = `${color}4d`;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "div",
       {
         "aria-hidden": "true",
-        "data-testid": "chat-ambient-background",
+        "data-testid": "app-background-shader",
+        "data-eliza-bg": "shader",
         className: "pointer-events-none fixed inset-0 overflow-hidden",
-        style: { zIndex: 0, backgroundColor: "#ef5a1f" },
+        style: { zIndex: 0, backgroundColor: color },
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: EDGE_CSS }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "chat-ambient-edge absolute inset-0" })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "app-bg-shader-layer app-bg-shader-0" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "div",
+            {
+              className: "app-bg-shader-layer app-bg-shader-1",
+              style: { boxShadow: `inset 0 0 150px 6px ${rim}` }
+            }
+          )
         ]
       }
     );
@@ -12972,22 +12985,8 @@
   ];
   var Contact = createLucideIcon("contact", __iconNode7);
 
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/graduation-cap.mjs
-  var __iconNode8 = [
-    [
-      "path",
-      {
-        d: "M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z",
-        key: "j76jl0"
-      }
-    ],
-    ["path", { d: "M22 10v6", key: "1lu8f3" }],
-    ["path", { d: "M6 12.5V16a6 3 0 0 0 12 0v-3.5", key: "1r8lef" }]
-  ];
-  var GraduationCap = createLucideIcon("graduation-cap", __iconNode8);
-
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/hand.mjs
-  var __iconNode9 = [
+  var __iconNode8 = [
     ["path", { d: "M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2", key: "1fvzgz" }],
     ["path", { d: "M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2", key: "1kc0my" }],
     ["path", { d: "M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8", key: "10h0bg" }],
@@ -12999,34 +12998,14 @@
       }
     ]
   ];
-  var Hand = createLucideIcon("hand", __iconNode9);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/layout-grid.mjs
-  var __iconNode10 = [
-    ["rect", { width: "7", height: "7", x: "3", y: "3", rx: "1", key: "1g98yp" }],
-    ["rect", { width: "7", height: "7", x: "14", y: "3", rx: "1", key: "6d4xhi" }],
-    ["rect", { width: "7", height: "7", x: "14", y: "14", rx: "1", key: "nxv5o0" }],
-    ["rect", { width: "7", height: "7", x: "3", y: "14", rx: "1", key: "1bb6yr" }]
-  ];
-  var LayoutGrid = createLucideIcon("layout-grid", __iconNode10);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/life-buoy.mjs
-  var __iconNode11 = [
-    ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
-    ["path", { d: "m4.93 4.93 4.24 4.24", key: "1ymg45" }],
-    ["path", { d: "m14.83 9.17 4.24-4.24", key: "1cb5xl" }],
-    ["path", { d: "m14.83 14.83 4.24 4.24", key: "q42g0n" }],
-    ["path", { d: "m9.17 14.83-4.24 4.24", key: "bqpfvv" }],
-    ["circle", { cx: "12", cy: "12", r: "4", key: "4exip2" }]
-  ];
-  var LifeBuoy = createLucideIcon("life-buoy", __iconNode11);
+  var Hand = createLucideIcon("hand", __iconNode8);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/loader-circle.mjs
-  var __iconNode12 = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
-  var LoaderCircle = createLucideIcon("loader-circle", __iconNode12);
+  var __iconNode9 = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
+  var LoaderCircle = createLucideIcon("loader-circle", __iconNode9);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/message-circle.mjs
-  var __iconNode13 = [
+  var __iconNode10 = [
     [
       "path",
       {
@@ -13035,10 +13014,10 @@
       }
     ]
   ];
-  var MessageCircle = createLucideIcon("message-circle", __iconNode13);
+  var MessageCircle = createLucideIcon("message-circle", __iconNode10);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/message-square.mjs
-  var __iconNode14 = [
+  var __iconNode11 = [
     [
       "path",
       {
@@ -13047,10 +13026,10 @@
       }
     ]
   ];
-  var MessageSquare = createLucideIcon("message-square", __iconNode14);
+  var MessageSquare = createLucideIcon("message-square", __iconNode11);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/octagon-alert.mjs
-  var __iconNode15 = [
+  var __iconNode12 = [
     ["path", { d: "M12 16h.01", key: "1drbdi" }],
     ["path", { d: "M12 8v4", key: "1got3b" }],
     [
@@ -13061,10 +13040,10 @@
       }
     ]
   ];
-  var OctagonAlert = createLucideIcon("octagon-alert", __iconNode15);
+  var OctagonAlert = createLucideIcon("octagon-alert", __iconNode12);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/phone.mjs
-  var __iconNode16 = [
+  var __iconNode13 = [
     [
       "path",
       {
@@ -13073,36 +13052,23 @@
       }
     ]
   ];
-  var Phone = createLucideIcon("phone", __iconNode16);
+  var Phone = createLucideIcon("phone", __iconNode13);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/plus.mjs
-  var __iconNode17 = [
+  var __iconNode14 = [
     ["path", { d: "M5 12h14", key: "1ays0h" }],
     ["path", { d: "M12 5v14", key: "s699le" }]
   ];
-  var Plus = createLucideIcon("plus", __iconNode17);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/settings.mjs
-  var __iconNode18 = [
-    [
-      "path",
-      {
-        d: "M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915",
-        key: "1i5ecw"
-      }
-    ],
-    ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
-  ];
-  var Settings = createLucideIcon("settings", __iconNode18);
+  var Plus = createLucideIcon("plus", __iconNode14);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/square.mjs
-  var __iconNode19 = [
+  var __iconNode15 = [
     ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }]
   ];
-  var Square = createLucideIcon("square", __iconNode19);
+  var Square = createLucideIcon("square", __iconNode15);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/triangle-alert.mjs
-  var __iconNode20 = [
+  var __iconNode16 = [
     [
       "path",
       {
@@ -13113,15 +13079,15 @@
     ["path", { d: "M12 9v4", key: "juzpu7" }],
     ["path", { d: "M12 17h.01", key: "p32p05" }]
   ];
-  var TriangleAlert = createLucideIcon("triangle-alert", __iconNode20);
+  var TriangleAlert = createLucideIcon("triangle-alert", __iconNode16);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/workflow.mjs
-  var __iconNode21 = [
+  var __iconNode17 = [
     ["rect", { width: "8", height: "8", x: "3", y: "3", rx: "2", key: "by2w9f" }],
     ["path", { d: "M7 11v4a2 2 0 0 0 2 2h4", key: "xkn7yn" }],
     ["rect", { width: "8", height: "8", x: "13", y: "13", rx: "2", key: "1cgmvn" }]
   ];
-  var Workflow = createLucideIcon("workflow", __iconNode21);
+  var Workflow = createLucideIcon("workflow", __iconNode17);
 
   // packages/ui/src/components/shell/HomeScreen.tsx
   var React = __toESM(require_react(), 1);
@@ -13149,18 +13115,6 @@
       ],
       clearEvents() {
       }
-    };
-  }
-
-  // packages/ui/src/components/shell/__e2e__/home-screen-fixture.views-stub.ts
-  function useAvailableViews() {
-    return {
-      views: [
-        { id: "orchestrator", path: "/orchestrator" },
-        { id: "automations", path: "/automations" },
-        { id: "inbox", path: "/inbox" }
-      ],
-      loading: false
     };
   }
 
@@ -16211,32 +16165,6 @@
 `;
   var HOME_TILES = [
     {
-      // Pinned first: the interactive tour that teaches the whole UI. Opens a
-      // launcher view that kicks off the global tutorial overlay.
-      id: "tutorial",
-      label: "Tutorial",
-      icon: GraduationCap,
-      target: { kind: "tab", tab: "tutorial" }
-    },
-    {
-      id: "help",
-      label: "Help",
-      icon: LifeBuoy,
-      target: { kind: "tab", tab: "help" }
-    },
-    {
-      id: "settings",
-      label: "Settings",
-      icon: Settings,
-      target: { kind: "tab", tab: "settings" }
-    },
-    {
-      id: "views",
-      label: "Views",
-      icon: LayoutGrid,
-      target: { kind: "tab", tab: "views" }
-    },
-    {
       // The only "messages" surface is the AOSP SMS view (MessagesPageView), which
       // falls back to the apps catalog off-Android — so gate it like phone/contacts.
       id: "messages",
@@ -16268,13 +16196,15 @@
     }
   ];
   var ACTIVITY_ICONS = {
+    // Status palette only: green = ok, orange = busy/attention, red = error,
+    // white/gray = neutral. No off-brand sky/cyan or amber accents.
     task_registered: { icon: Plus, tone: "text-white/70" },
     task_complete: { icon: CircleCheck, tone: "text-emerald-300/90" },
     stopped: { icon: Square, tone: "text-white/60" },
-    tool_running: { icon: LoaderCircle, tone: "text-sky-300/90" },
-    blocked: { icon: OctagonAlert, tone: "text-amber-300/90" },
+    tool_running: { icon: LoaderCircle, tone: "text-orange-300/90" },
+    blocked: { icon: OctagonAlert, tone: "text-orange-300/90" },
     blocked_auto_resolved: { icon: CircleCheck, tone: "text-emerald-300/90" },
-    escalation: { icon: TriangleAlert, tone: "text-amber-300/90" },
+    escalation: { icon: TriangleAlert, tone: "text-red-300/90" },
     error: { icon: CircleX, tone: "text-red-300/90" },
     "proactive-message": { icon: MessageCircle, tone: "text-white/80" },
     reminder: { icon: Bell, tone: "text-white/80" },
@@ -16314,29 +16244,12 @@
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("header", { className: "mb-2.5 flex items-center gap-2", children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Icon2, { className: "h-4 w-4 text-white/70", "aria-hidden": true }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("h2", { className: "text-[13px] font-semibold uppercase tracking-wide text-white/70", children: title })
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("h2", { className: "text-[13px] font-semibold text-white/70", children: title })
           ] }),
           children
         ]
       }
     );
-  }
-  function ClockBlock() {
-    const [now, setNow] = React.useState(() => /* @__PURE__ */ new Date());
-    useIntervalWhenDocumentVisible(() => setNow(/* @__PURE__ */ new Date()), 1e3);
-    const time = now.toLocaleTimeString(void 0, {
-      hour: "numeric",
-      minute: "2-digit"
-    });
-    const date = now.toLocaleDateString(void 0, {
-      weekday: "long",
-      month: "long",
-      day: "numeric"
-    });
-    return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { "data-testid": "home-clock", className: "px-1 pt-1", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "text-5xl font-semibold leading-none tracking-tight text-white tabular-nums [text-shadow:0_2px_12px_rgba(0,0,0,0.4)]", children: time }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "mt-1.5 text-sm font-medium text-white/75", children: date })
-    ] });
   }
   function ActivityRows({
     events
@@ -16383,16 +16296,10 @@
   }
   function HomeScreen({
     onOpenTile,
-    showNativeOsTiles: showNativeOsTiles2 = false
+    showNativeOsTiles: showNativeOsTiles2 = false,
+    clockAccessory
   }) {
-    const { views } = useAvailableViews();
-    const registeredPaths = React.useMemo(
-      () => new Set(views.map((v) => v.path).filter((p) => !!p)),
-      [views]
-    );
-    const tiles = HOME_TILES.filter(
-      (t) => (!t.nativeOs || showNativeOsTiles2) && (!t.requiresViewPath || registeredPaths.has(t.requiresViewPath))
-    );
+    const tiles = HOME_TILES.filter((t) => !t.nativeOs || showNativeOsTiles2);
     const { events } = useActivityEvents();
     const recentActivity = events.slice(0, 5);
     const recentChats = useRecentChats();
@@ -16402,7 +16309,7 @@
         "data-testid": "home-screen",
         className: cn(
           "eliza-continuous-chat-scroll absolute inset-0 z-[1] overflow-y-auto",
-          // Sit right under the status bar — no empty band above the clock.
+          // Sit right under the status bar — no empty band above the content.
           "px-4 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]",
           // Clear the floating chat composer at the bottom.
           "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]"
@@ -16410,7 +16317,7 @@
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("style", { children: HOME_ENTER_CSS }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "mx-auto flex w-full max-w-2xl flex-col gap-4", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "home-enter", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ClockBlock, {}) }),
+            clockAccessory ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "home-enter flex justify-end", children: clockAccessory }) : null,
             recentActivity.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "home-enter", style: { animationDelay: "70ms" }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
               HomeCard,
               {
@@ -16429,10 +16336,10 @@
                 children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(MessagesRows, { chats: recentChats })
               }
             ) }) : null,
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            tiles.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
               "nav",
               {
-                "aria-label": "Pinned views",
+                "aria-label": "Apps",
                 "data-testid": "home-tiles",
                 className: "home-enter mt-2",
                 style: { animationDelay: "150ms" },
@@ -16469,7 +16376,7 @@
                   );
                 }) })
               }
-            )
+            ) : null
           ] })
         ]
       }
@@ -16487,7 +16394,7 @@
         "data-testid": "home-fixture-root",
         style: { position: "fixed", inset: 0, overflow: "hidden" },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ChatAmbientBackground, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ShaderBackground, {}),
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
             HomeScreen,
             {
@@ -16575,17 +16482,13 @@ lucide-react/dist/esm/icons/camera.mjs:
 lucide-react/dist/esm/icons/circle-check.mjs:
 lucide-react/dist/esm/icons/circle-x.mjs:
 lucide-react/dist/esm/icons/contact.mjs:
-lucide-react/dist/esm/icons/graduation-cap.mjs:
 lucide-react/dist/esm/icons/hand.mjs:
-lucide-react/dist/esm/icons/layout-grid.mjs:
-lucide-react/dist/esm/icons/life-buoy.mjs:
 lucide-react/dist/esm/icons/loader-circle.mjs:
 lucide-react/dist/esm/icons/message-circle.mjs:
 lucide-react/dist/esm/icons/message-square.mjs:
 lucide-react/dist/esm/icons/octagon-alert.mjs:
 lucide-react/dist/esm/icons/phone.mjs:
 lucide-react/dist/esm/icons/plus.mjs:
-lucide-react/dist/esm/icons/settings.mjs:
 lucide-react/dist/esm/icons/square.mjs:
 lucide-react/dist/esm/icons/triangle-alert.mjs:
 lucide-react/dist/esm/icons/workflow.mjs:

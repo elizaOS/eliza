@@ -26,7 +26,12 @@ import {
   readPersistedMobileRuntimeMode,
 } from "../first-run/mobile-runtime-mode";
 import type { UiLanguage } from "../i18n";
-import { isAndroid, isForceFreshFirstRunEnabled, isIOS } from "../platform";
+import {
+  clearForceFreshFirstRun,
+  isAndroid,
+  isForceFreshFirstRunEnabled,
+  isIOS,
+} from "../platform";
 import type { ExistingElizaInstallInfo } from "../types";
 import {
   buildCloudSharedAgentApiBase,
@@ -331,6 +336,19 @@ export function canRestoreActiveServer(args: {
     return args.forceLocal || args.isDesktop || args.clientApiAvailable;
   }
 
+  if (args.server.kind === "cloud") {
+    // A persisted cloud agent without a concrete apiBase is still restorable
+    // when its id carries a real agent id: applyRestoredConnection →
+    // backfillCloudApiBase recovers the base from `cloud:<agentId>` (or the
+    // live Steward session). Only an id-less / URL-as-id session (which the
+    // backfill cannot recover) falls through to agent selection. Keep this in
+    // sync with backfillCloudApiBase's recoverability check.
+    const rawId = args.server.id?.startsWith("cloud:")
+      ? args.server.id.slice("cloud:".length).trim()
+      : "";
+    return Boolean(rawId && !rawId.includes("/"));
+  }
+
   return false;
 }
 
@@ -373,6 +391,14 @@ export async function runRestoringSession(
   let hadPrior = loadPersistedFirstRunComplete();
   const forceFreshFirstRun = isForceFreshFirstRunEnabled();
   if (forceFreshFirstRun) {
+    // force-fresh is a ONE-SHOT directive: it forces exactly one fresh
+    // onboarding after an escape hatch (unreachable backend, pairing dead-end,
+    // ?reset). Clear it the moment restore consumes it so the *next* launch is
+    // back to normal server-authoritative behavior. Previously it was only
+    // cleared by the submitFirstRun client patch, so any completion path that
+    // doesn't POST first-run (cloud shared-agent's swallowed 404, pairing
+    // early-return) left the flag set — re-onboarding the user on every launch.
+    clearForceFreshFirstRun();
     clearPersistedActiveServer();
     savePersistedFirstRunComplete(false);
     persistedActiveServer = null;

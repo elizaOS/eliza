@@ -21,6 +21,7 @@ export { TranslationProvider } from "./TranslationProvider";
 export * from "./types";
 export * from "./ui-preferences";
 export * from "./useApp";
+export * from "./useBackgroundConfig";
 export * from "./useContentPack";
 export * from "./useDeveloperMode";
 export * from "./usePreviewMode";

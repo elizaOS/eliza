@@ -60,6 +60,7 @@ export type BuiltinTab =
   | "character-select"
   | "inventory"
   | "documents"
+  | "files"
   | "triggers"
   | "plugins"
   | "skills"
@@ -77,7 +78,8 @@ export type BuiltinTab =
   | "settings"
   | "tutorial"
   | "help"
-  | "logs";
+  | "logs"
+  | "background";
 
 /**
  * Tab identifier — includes all built-in tabs plus arbitrary strings
@@ -93,6 +95,7 @@ export const APPS_TOOL_TABS = [
   "transcripts",
   "relationships",
   "memories",
+  "files",
   "runtime",
   "database",
   "logs",
@@ -294,6 +297,7 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   triggers: "/automations",
   inventory: "/wallet",
   documents: "/character/documents",
+  files: "/apps/files",
   plugins: "/apps/plugins",
   skills: "/apps/skills",
   advanced: "/apps/fine-tuning",
@@ -311,6 +315,7 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   tutorial: "/tutorial",
   help: "/help",
   logs: "/apps/logs",
+  background: "/background",
 };
 
 const PATH_TO_TAB = new Map(
@@ -373,6 +378,7 @@ const APPS_SUB_TABS: Record<string, Tab> = {
   transcripts: "transcripts",
   relationships: "relationships",
   memories: "memories",
+  files: "files",
   runtime: "runtime",
   database: "database",
   logs: "logs",
@@ -425,6 +431,14 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     return "views";
   }
 
+  // /character/<sub> — resolve nested character paths
+  if (normalized.startsWith("/character/")) {
+    const sub = normalized.slice("/character/".length);
+    if (sub === "documents") return "documents";
+    if (sub === "select") return "character-select";
+    return "character";
+  }
+
   const appShellAlias = APP_SHELL_PATH_TAB_ALIASES[normalized];
   if (appShellAlias) return appShellAlias;
   const registeredAppShellPage = listAppShellPages().find(
@@ -441,14 +455,6 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   if (normalized.startsWith("/apps/")) {
     const sub = normalized.slice("/apps/".length);
     return APPS_SUB_TABS[sub] ?? "apps";
-  }
-
-  // /character/<sub> — resolve nested character paths
-  if (normalized.startsWith("/character/")) {
-    const sub = normalized.slice("/character/".length);
-    if (sub === "documents") return "documents";
-    if (sub === "select") return "character-select";
-    return "character";
   }
 
   // /settings/<sub> — resolve nested settings paths
@@ -554,6 +560,8 @@ export function titleForTab(tab: Tab): string {
       return "Relationships";
     case "memories":
       return "Memories";
+    case "files":
+      return "Files";
     case "rolodex":
       return "Rolodex";
     case "voice":
@@ -566,6 +574,8 @@ export function titleForTab(tab: Tab): string {
       return "Settings";
     case "logs":
       return "Logs";
+    case "background":
+      return "Background";
     case "stream":
       return "Stream";
     default:

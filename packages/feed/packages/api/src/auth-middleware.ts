@@ -51,6 +51,24 @@ function getStewardJwtSecret(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
+/**
+ * Accepted JWT issuers. The Steward host signs user-session tokens with
+ * `steward` and agent tokens with its `AGENT_JWT_ISSUER` (e.g. `eliza-cloud`
+ * on the shared Eliza Cloud Steward). Configure `STEWARD_JWT_ISSUER` as a
+ * comma-separated list to accept all of them; defaults to `steward`.
+ */
+export function getStewardJwtIssuers(): string[] {
+  const configured = process.env.STEWARD_JWT_ISSUER;
+  if (configured && configured.trim().length > 0) {
+    const issuers = configured
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (issuers.length > 0) return issuers;
+  }
+  return ["steward"];
+}
+
 interface StewardJwtPayload {
   userId: string;
   tenantId?: string;
@@ -63,7 +81,7 @@ interface StewardJwtPayload {
 
 async function verifyStewardToken(token: string): Promise<StewardJwtPayload> {
   const { payload } = await jwtVerify(token, getStewardJwtSecret(), {
-    issuer: "steward",
+    issuer: getStewardJwtIssuers(),
     algorithms: ["HS256"],
   });
   if (!payload.userId || typeof payload.userId !== "string") {

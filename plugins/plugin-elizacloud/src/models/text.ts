@@ -675,8 +675,13 @@ function buildNativeRequestBody(
   const requestBody: Record<string, unknown> = {
     model: modelName,
     messages: buildNativeMessages(params, promptText, systemPrompt),
-    max_tokens: params.maxTokens ?? 8192,
   };
+  // Omit the cap entirely when the caller opted out (direct-channel Stage-1):
+  // a hardcoded max_tokens 400s on a model whose real limit differs. Every other
+  // caller keeps the 8192 default so it stays bounded.
+  if (!params.omitMaxTokens) {
+    requestBody.max_tokens = params.maxTokens ?? 8192;
+  }
 
   if (!isReasoningModel(modelName) && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
@@ -942,8 +947,10 @@ async function generateTextWithModel(
   const requestBody: Record<string, unknown> = {
     model: modelName,
     input,
-    max_output_tokens: params.maxTokens ?? 8192,
   };
+  if (!params.omitMaxTokens) {
+    requestBody.max_output_tokens = params.maxTokens ?? 8192;
+  }
   if (!reasoning && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
   }

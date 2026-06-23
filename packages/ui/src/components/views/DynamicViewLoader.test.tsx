@@ -8,7 +8,10 @@ import {
   type ModuleCacheTelemetryEvent,
 } from "../../cache-telemetry";
 import { APP_PAUSE_EVENT } from "../../events";
-import { DynamicViewLoader } from "./DynamicViewLoader";
+import {
+  __resetDynamicViewLoaderCacheForTests,
+  DynamicViewLoader,
+} from "./DynamicViewLoader";
 
 const { sendWsMessage } = vi.hoisted(() => ({
   sendWsMessage: vi.fn(),
@@ -38,6 +41,7 @@ describe("DynamicViewLoader", () => {
     delete window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__;
     sendWsMessage.mockClear();
     cleanup();
+    __resetDynamicViewLoaderCacheForTests();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.clearAllTimers();
@@ -815,6 +819,55 @@ describe("DynamicViewLoader", () => {
           key: `${bundleUrl}::default`,
         }),
       ]),
+    );
+  });
+
+  it("removes global lifecycle listeners when the dynamic-view cache is reset", async () => {
+    const bundleUrl = "https://capability.example.test/assets/listeners.js";
+    const addWindowListener = vi.spyOn(window, "addEventListener");
+    const removeWindowListener = vi.spyOn(window, "removeEventListener");
+    const addDocumentListener = vi.spyOn(document, "addEventListener");
+    const removeDocumentListener = vi.spyOn(document, "removeEventListener");
+
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
+      default: function ListenerPanel() {
+        return <div>Listener panel</div>;
+      },
+    }));
+
+    const rendered = render(
+      <DynamicViewLoader bundleUrl={bundleUrl} viewId="listener.view" />,
+    );
+    await screen.findByText("Listener panel");
+    rendered.unmount();
+
+    const memoryPressureHandler = addWindowListener.mock.calls.find(
+      ([name]) => name === "memorypressure",
+    )?.[1];
+    const visibilityHandler = addDocumentListener.mock.calls.find(
+      ([name]) => name === "visibilitychange",
+    )?.[1];
+    const appPauseHandler = addDocumentListener.mock.calls.find(
+      ([name]) => name === APP_PAUSE_EVENT,
+    )?.[1];
+
+    expect(memoryPressureHandler).toEqual(expect.any(Function));
+    expect(visibilityHandler).toEqual(expect.any(Function));
+    expect(appPauseHandler).toEqual(expect.any(Function));
+
+    __resetDynamicViewLoaderCacheForTests();
+
+    expect(removeWindowListener).toHaveBeenCalledWith(
+      "memorypressure",
+      memoryPressureHandler,
+    );
+    expect(removeDocumentListener).toHaveBeenCalledWith(
+      "visibilitychange",
+      visibilityHandler,
+    );
+    expect(removeDocumentListener).toHaveBeenCalledWith(
+      APP_PAUSE_EVENT,
+      appPauseHandler,
     );
   });
 });

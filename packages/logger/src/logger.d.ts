@@ -59,6 +59,56 @@ export declare function addLogListener(listener: LogListener): () => void;
  */
 export declare function removeLogListener(listener: LogListener): void;
 export declare const customLevels: Record<string, number>;
+export interface PromptLogMetadata {
+    agentName?: string;
+    agentId?: string;
+    runId?: string;
+    provider?: string;
+    caller?: string;
+    [key: string]: unknown;
+}
+export interface ResponseLogMetadata {
+    agentName?: string;
+    agentId?: string;
+    runId?: string;
+    provider?: string;
+    duration?: number;
+    promptSlug?: string;
+    [key: string]: unknown;
+}
+/**
+ * Log a prompt to prompts.log. Returns the slug callers can pass as
+ * `metadata.promptSlug` when logging the matching response.
+ */
+export declare function logPrompt(modelType: string, prompt: string, metadata?: PromptLogMetadata): string;
+/**
+ * Log a response to prompts.log. Returns the correlated prompt slug, or an
+ * empty string when no prompt slug is available.
+ */
+export declare function logResponse(modelType: string, response: string, metadata?: ResponseLogMetadata): string;
+export interface ChatInLogParams {
+    agentName: string;
+    agentId: string;
+    roomId: string;
+    messageId: string;
+    text: string;
+    source?: string;
+}
+export interface ChatOutLogParams {
+    agentName: string;
+    agentId: string;
+    roomId: string;
+    action: string;
+    text?: string;
+    emoji?: string;
+    providers?: string[];
+    reasoning?: string;
+    actions?: string[];
+}
+/** Log an incoming message to chat.log. */
+export declare function logChatIn(params: ChatInLogParams): string;
+/** Log an outgoing response to chat.log. */
+export declare function logChatOut(params: ChatOutLogParams): string;
 /**
  * Creates a logger instance using Adze
  * @param bindings - Logger configuration or boolean flag

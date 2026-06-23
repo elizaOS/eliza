@@ -21,6 +21,7 @@
       "@elizaos/plugin-personal-assistant": [
         "./src/types/app-plugin-modules.d.ts"
       ],
+      "@elizaos/plugin-blocker": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-messages/register": [
         "../../plugins/plugin-messages/src/register.ts"
       ],
@@ -69,9 +70,7 @@
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/src/index.ts"
-      ],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
@@ -82,8 +81,9 @@
       "@elizaos/plugin-registry": [
         "../../plugins/plugin-registry/dist/index.d.ts"
       ],
-      "@elizaos/plugin-registry/*": [
-        "../../plugins/plugin-registry/dist/*"
+      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/dist/*"],
+      "@elizaos/plugin-commands": [
+        "../../plugins/plugin-commands/src/index.ts"
       ],
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/dist/src/index.d.ts"

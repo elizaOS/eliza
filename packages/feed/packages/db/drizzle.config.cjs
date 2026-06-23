@@ -1,5 +1,32 @@
+const fs = require("node:fs");
 const path = require("node:path");
-require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
+
+// Load the root .env without depending on the (undeclared) `dotenv` package, so
+// migrations work both locally (with a .env file) and in deploy environments
+// where env vars come from the platform (Railway) and no .env file exists.
+// Mirrors the loader in drizzle.config.ts. Existing process.env wins.
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+  for (const line of fs.readFileSync(filePath, "utf8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match) {
+      continue;
+    }
+    const [, key, rawValue] = match;
+    if (process.env[key] !== undefined) {
+      continue;
+    }
+    process.env[key] = rawValue.replace(/^(['"])(.*)\1$/, "$2");
+  }
+}
+
+loadEnvFile(path.resolve(__dirname, "../../.env"));
 
 const isLocalDev =
   process.env.DEPLOYMENT_ENV === "localnet" ||

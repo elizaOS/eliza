@@ -97,6 +97,29 @@ const DEDICATED_TOOL: Readonly<Record<string, string>> = {
     "it measures per-section safe-area/spacing, writes a JSON verdict report plus " +
     "notch-simulated screenshots to reports/settings-spacing, so it is a deliberate " +
     "layout-audit harness rather than a narrow keyless PR assertion.",
+  "settings-theme-audit.spec.ts":
+    "runs on demand via `ELIZA_SETTINGS_THEME=1 node scripts/run-ui-playwright.mjs " +
+    "--config playwright.ui-smoke.config.ts test/ui-smoke/settings-theme-audit.spec.ts`; " +
+    "it flips every settings section through light and dark themes, captures " +
+    "screenshots, and writes theme response findings to reports/settings-theme, " +
+    "so it is a deliberate visual audit rather than default smoke.",
+  "all-views-interaction.spec.ts":
+    "generic per-control interaction harness (#8796); for every built-in view " +
+    "it fills inputs and clicks every control asserting no uncaught pageerror. " +
+    "Run on demand via `E2E_RECORD=1 bun run --cwd packages/app test:e2e " +
+    "test/ui-smoke/all-views-interaction.spec.ts`; it exercises destructive " +
+    "controls broadly so it is a coverage tool, not a narrow keyless PR gate.",
+  "plugin-views-interaction.spec.ts":
+    "generic per-control interaction harness for dynamically-loaded plugin GUI " +
+    "views (#8796). Run on demand via `bun run --cwd packages/app test:e2e " +
+    "test/ui-smoke/plugin-views-interaction.spec.ts`, not default smoke.",
+  "springboard-interaction.spec.ts":
+    "drives the Springboard view-catalog controls (edit mode, favorite dock, " +
+    "paging, tap-to-launch) (#8796). Run on demand via `bun run --cwd " +
+    "packages/app test:e2e test/ui-smoke/springboard-interaction.spec.ts`.",
+  "chat-view-memory-stability.spec.ts":
+    "chat-view re-render / memory-stability harness (#9048). Run on demand via " +
+    "`bun run --cwd packages/app test:e2e test/ui-smoke/chat-view-memory-stability.spec.ts`.",
 };
 
 /**

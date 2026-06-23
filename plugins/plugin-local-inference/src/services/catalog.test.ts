@@ -124,7 +124,7 @@ describe("local inference catalog", () => {
 		expect(offenders).toEqual([]);
 	});
 
-	it("declares native MTP only on Eliza-1 tiers with embedded NextN heads", () => {
+	it("declares native MTP only on Eliza-1 tiers with embedded draft heads", () => {
 		const mtpTiers = new Set(ELIZA_1_MTP_TIER_IDS);
 		for (const id of ELIZA_1_MTP_TIER_IDS) {
 			const model = findCatalogModel(id);

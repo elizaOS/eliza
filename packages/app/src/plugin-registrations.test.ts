@@ -19,9 +19,12 @@ const EXPECTED_SIDE_EFFECT_MODULES = [
   "@elizaos/plugin-device-settings/register",
   "@elizaos/plugin-messages/register",
   "@elizaos/plugin-phone/register",
-  "@elizaos/plugin-task-coordinator/register",
   "@elizaos/plugin-wifi/register",
   "@elizaos/plugin-facewear/register",
+] as const;
+
+const FIRST_RENDER_REGISTRATION_MODULES = [
+  "@elizaos/plugin-task-coordinator/register",
 ] as const;
 
 describe("side-effect app module registrations", () => {
@@ -63,6 +66,18 @@ describe("side-effect app module registrations", () => {
       id.endsWith("/register"),
     )) {
       expect(declarations).toContain(`declare module "${moduleId}";`);
+    }
+  });
+
+  it("loads chat inline-widget registrations before first render", () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, "main.tsx"),
+      "utf8",
+    );
+
+    for (const moduleId of FIRST_RENDER_REGISTRATION_MODULES) {
+      expect(source).toContain(`cachedDynamicImport(\n    "${moduleId}"`);
+      expect(source).toContain(`import("${moduleId}")`);
     }
   });
 });

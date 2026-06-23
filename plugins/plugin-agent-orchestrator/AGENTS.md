@@ -208,6 +208,7 @@ All are optional unless noted. Read by `src/services/config-env.ts` and
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command |
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command |
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap |
+| `ELIZA_MAX_SPAWNS_PER_ORIGIN` | `3` | Max sub-agent spawns per root user message before relaying the best captured result instead of re-spawning (bounds the weak-model re-spawn loop) |
 | `ELIZA_ACP_STATE_DIR` | `~/.eliza/plugin-acp` | Session state persistence dir when no runtime DB |
 | `ELIZA_ACP_SESSION_STORE_BACKEND` | unset | Override session store backend (`db`, `file`, or `memory`) |
 | `ELIZA_ACP_MCP_SERVERS` | unset | JSON list of MCP servers to pass to spawned sub-agents |
@@ -218,6 +219,7 @@ All are optional unless noted. Read by `src/services/config-env.ts` and
 | `TASK_AGENT_WORKDIR_ROUTES` | unset | JSON routing rules mapping task labels to workdirs |
 | `ELIZA_ORCHESTRATOR_SMITHERS` | `1` (enabled) | Set to `0` to disable the smithers task execution path and fall back to direct prompt |
 | `ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY` | unset | Enable LLM-based goal verification on task completion |
+| `ELIZA_REQUIRE_GOAL_CONTRACT` | `1` (enabled) | Auto-generate 3-5 measurable default acceptance criteria for a criteria-free, non-trivial task so the verifier always fires. Set to `0` to keep criteria-free tasks criteria-free (prior behavior). |
 | `SMITHERS_DB_PROVIDER` | unset | Database provider for smithers task storage |
 | `SMITHERS_DB_URL` | unset | Database URL for smithers task storage |
 | `SMITHERS_DB_DATA_DIR` | unset | Data directory for smithers file-backed storage |

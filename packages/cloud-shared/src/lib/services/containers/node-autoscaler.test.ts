@@ -44,15 +44,18 @@ const mocks = {
   buildUserData: mock(),
   countAllocated: mock(),
   countRetained: mock(),
+  findByNodeId: mock(),
+  updateNode: mock(),
+  deleteNode: mock(),
 };
 
 mock.module("../../../db/repositories/docker-nodes", () => ({
   dockerNodesRepository: {
     findAll: mocks.findAllNodes,
-    findByNodeId: mock(),
+    findByNodeId: mocks.findByNodeId,
     create: mocks.createNode,
-    update: mock(),
-    delete: mock(),
+    update: mocks.updateNode,
+    delete: mocks.deleteNode,
   },
 }));
 
@@ -89,6 +92,7 @@ afterAll(() => {
   mock.module("./node-bootstrap", () => realNodeBootstrap);
 });
 
+import { InMemoryComputeProvider } from "./compute-provider-fake";
 import { type AutoscalePolicy, NodeAutoscaler } from "./node-autoscaler";
 
 const policy: AutoscalePolicy = {
@@ -133,6 +137,9 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       server: {
         id: 4242,
         name: "node-test",
+        // The Hetzner client now collapses public_net onto the canonical seam
+        // field; the autoscaler reads publicIpv4 (not provider-specific shapes).
+        publicIpv4: "203.0.113.10",
         public_net: {
           ipv4: { ip: "203.0.113.10" },
           ipv6: null,
@@ -327,5 +334,150 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       shouldScaleUp: true,
       reason: "available 0 < hot floor 1",
     });
+  });
+
+  // #8919: the autoscaler resolves its provider via the ComputeProvider seam, so
+  // a fake can be injected directly — no monkey-patching of getHetznerCloudClient.
+  test("provisions through an injected ComputeProvider without monkey-patching (#8919)", async () => {
+    const fake = new InMemoryComputeProvider({ serverActivateAfterTicks: 0 });
+    const autoscaler = new NodeAutoscaler(policy, () => Date.parse("2026-05-15T12:00:00Z"), fake);
+
+    const result = await autoscaler.provisionNode(
+      { nodeId: "seam-node", capacity: 4, prePullImages: [] },
+      {
+        controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+        registrationUrl: "https://cloud.example.test/register",
+        registrationSecret: "secret",
+      },
+    );
+
+    // The injected fake handled createServer — the module-mocked Hetzner client
+    // was bypassed entirely.
+    expect(mocks.createServer).not.toHaveBeenCalled();
+    const servers = await fake.listServers();
+    expect(servers.some((s) => s.name === "seam-node")).toBe(true);
+
+    // The docker node is registered with the seam's canonical publicIpv4
+    // (the fake assigns 10.0.0.<id> once active), not a provider-specific shape.
+    expect(result.nodeId).toBe("seam-node");
+    expect(result.hostname).toMatch(/^10\.0\.0\./);
+    expect(mocks.createNode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        node_id: "seam-node",
+        hostname: result.hostname,
+      }),
+    );
+  });
+});
+
+describe("NodeAutoscaler full provision\u2192healthy\u2192drain loop (#8920)", () => {
+  const CREATED_AT = Date.parse("2026-05-15T12:00:00Z");
+  // 1h after creation \u2192 safely past scaleUpCooldownMs (5m) and idleNodeMinAgeMs (30m).
+  const NOW = CREATED_AT + 60 * 60 * 1000;
+  let store: DockerNode[];
+  let idSeq: number;
+  let originalAgentImage: string | undefined;
+  let originalAgentImagePlatform: string | undefined;
+
+  beforeEach(() => {
+    originalAgentImage = process.env[AGENT_IMAGE];
+    originalAgentImagePlatform = process.env[AGENT_IMAGE_PLATFORM];
+    process.env[AGENT_IMAGE] = "ghcr.io/elizaos/eliza:latest";
+    process.env[AGENT_IMAGE_PLATFORM] = "linux/arm64";
+    store = [];
+    idSeq = 1;
+    mocks.buildUserData.mockReturnValue("#cloud-config\n");
+    mocks.countAllocated.mockResolvedValue(0);
+    mocks.countRetained.mockResolvedValue(0);
+    mocks.isConfigured.mockReturnValue(true);
+    mocks.findAllNodes.mockImplementation(() => Promise.resolve(store.slice()));
+    mocks.findByNodeId.mockImplementation((nodeId: string) =>
+      Promise.resolve(store.find((n) => n.node_id === nodeId) ?? null),
+    );
+    mocks.createNode.mockImplementation((row: Partial<DockerNode>) => {
+      const node = {
+        id: `db-${idSeq++}`,
+        created_at: new Date(CREATED_AT),
+        updated_at: new Date(CREATED_AT),
+        ...row,
+      } as DockerNode;
+      store.push(node);
+      return Promise.resolve(node);
+    });
+    mocks.updateNode.mockImplementation((id: string, patch: Partial<DockerNode>) => {
+      const node = store.find((n) => n.id === id);
+      if (node) Object.assign(node, patch);
+      return Promise.resolve(true);
+    });
+    mocks.deleteNode.mockImplementation((id: string) => {
+      const idx = store.findIndex((n) => n.id === id);
+      if (idx >= 0) store.splice(idx, 1);
+      return Promise.resolve(true);
+    });
+  });
+
+  afterEach(() => {
+    restoreEnv(AGENT_IMAGE, originalAgentImage);
+    restoreEnv(AGENT_IMAGE_PLATFORM, originalAgentImagePlatform);
+    mocks.createNode.mockReset();
+    mocks.findAllNodes.mockReset();
+    mocks.findByNodeId.mockReset();
+    mocks.updateNode.mockReset();
+    mocks.deleteNode.mockReset();
+  });
+
+  test("drives provision \u2192 healthy \u2192 drain against an injected ComputeProvider + stateful docker_nodes", async () => {
+    const fake = new InMemoryComputeProvider({ serverActivateAfterTicks: 1 });
+    const autoscaler = new NodeAutoscaler(policy, () => NOW, fake);
+
+    // 1. Empty pool \u2192 the loop wants to scale up.
+    const empty = await autoscaler.evaluateCapacity();
+    expect(empty.healthyNodeCount).toBe(0);
+    expect(empty.shouldScaleUp).toBe(true);
+
+    // 2. Provision. The injected fake handles createServer (the module-mocked
+    //    Hetzner client stays untouched); the row lands in `unknown` status.
+    const provisioned = await autoscaler.provisionNode(
+      { nodeId: "loop-node", capacity: 8, prePullImages: [] },
+      {
+        controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+        registrationUrl: "https://cloud.example.test/register",
+        registrationSecret: "secret",
+      },
+    );
+    expect(mocks.createServer).not.toHaveBeenCalled();
+    expect(store).toHaveLength(1);
+    expect(store[0].status).toBe("unknown");
+    const serverId = provisioned.hcloudServerId as number;
+    expect(serverId).toBeGreaterThan(0);
+    expect((await fake.getServer(serverId))?.status).toBe("new");
+
+    // 3. An `unknown` node contributes no healthy capacity yet \u2192 still scaling up.
+    const booting = await autoscaler.evaluateCapacity();
+    expect(booting.healthyNodeCount).toBe(0);
+    expect(booting.shouldScaleUp).toBe(true);
+
+    // 4. The server boots (tick advances the action clock) and the periodic
+    //    health check flips the docker_nodes row to `healthy`.
+    fake.tick(1);
+    expect((await fake.getServer(serverId))?.status).toBe("active");
+    store[0].status = "healthy";
+
+    // 5. The node now serves its full capacity \u2192 no more scale-up.
+    const healthy = await autoscaler.evaluateCapacity();
+    expect(healthy.healthyNodeCount).toBe(1);
+    expect(healthy.totalCapacity).toBe(8);
+    expect(healthy.shouldScaleUp).toBe(false);
+
+    // 6. Drain + deprovision: the node leaves the pool and the underlying server
+    //    is destroyed through the same seam.
+    await autoscaler.drainNode("loop-node", { deprovision: true });
+    expect(store).toHaveLength(0);
+    expect(await fake.getServer(serverId)).toBeNull();
+
+    // 7. Back to an empty pool \u2192 the loop is ready to scale up again.
+    const drained = await autoscaler.evaluateCapacity();
+    expect(drained.healthyNodeCount).toBe(0);
+    expect(drained.shouldScaleUp).toBe(true);
   });
 });

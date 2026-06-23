@@ -3,7 +3,12 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetResourceCache } from "./resource-cache";
-import { useAvailableViews, type ViewRegistryEntry } from "./useAvailableViews";
+import {
+  useAvailableViews,
+  useRoutableViews,
+  type ViewRegistryEntry,
+  withBuiltinShellViews,
+} from "./useAvailableViews";
 
 const { fetchWithCsrf, getFrontendPlatform } = vi.hoisted(() => ({
   fetchWithCsrf: vi.fn(),
@@ -167,6 +172,47 @@ describe("useAvailableViews", () => {
 
     expect(result.current.views).toEqual([]);
     expect(result.current.error).toBeNull();
+  });
+
+  it("adds built-in shell entries only for routable consumers", async () => {
+    fetchWithCsrf.mockResolvedValue(response(200, { views: [] }));
+
+    const available = renderHook(() => useAvailableViews());
+    await waitFor(() => expect(available.result.current.loading).toBe(false));
+    expect(
+      available.result.current.views.find((v) => v.id === "documents"),
+    ).toBe(undefined);
+    available.unmount();
+
+    const routable = renderHook(() => useRoutableViews());
+    await waitFor(() => expect(routable.result.current.loading).toBe(false));
+
+    expect(routable.result.current.views).toContainEqual(
+      expect.objectContaining({
+        id: "documents",
+        path: "/character/documents",
+        builtin: true,
+        visibleInManager: false,
+        desktopTabEnabled: true,
+      }),
+    );
+  });
+
+  it("does not let built-in shell fallbacks override real registry entries", () => {
+    const routable = withBuiltinShellViews([
+      view("documents", {
+        label: "Registered Documents",
+        path: "/apps/registered-documents",
+        pluginName: "@elizaos/plugin-documents",
+      }),
+    ]);
+
+    expect(routable.find((v) => v.id === "documents")).toMatchObject({
+      id: "documents",
+      label: "Registered Documents",
+      path: "/apps/registered-documents",
+      pluginName: "@elizaos/plugin-documents",
+    });
   });
 
   it("silences 404s and clears views without surfacing an error", async () => {

@@ -1141,6 +1141,19 @@ async function runQuickJsCode(jsCode: string, inputItems: INodeExecutionData[]):
   });
 }
 
+/**
+ * Evaluate a snippet of JavaScript in the same isolated QuickJS sandbox the
+ * Code node uses (5s deadline, 32 MiB cap, no host/network/fs access). Optional
+ * `inputJson` is exposed to the snippet as `$json` / `item.json` / `$input[0]`.
+ * The snippet body runs inside an IIFE, so `return <value>` yields the result.
+ * Public entry point for the EVAL_CODE action (#8914).
+ */
+export async function evalQuickJsCode(jsCode: string, inputJson?: unknown): Promise<unknown> {
+  const items: INodeExecutionData[] =
+    inputJson === undefined ? [] : [{ json: (inputJson ?? {}) as Record<string, unknown> }];
+  return runQuickJsCode(jsCode, items);
+}
+
 type AutonomyServiceLike = Service & {
   getAutonomousRoomId?(): UUID | undefined;
   getTargetRoomId?(): UUID | undefined;

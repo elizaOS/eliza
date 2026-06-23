@@ -112,6 +112,9 @@ const DEFAULT_BUNDLE_CACHE_MAX_ENTRIES = 6;
 const LOW_MEMORY_BUNDLE_CACHE_MAX_ENTRIES = 2;
 
 let bundleCacheLifecycleInstalled = false;
+let pruneBundleCacheOnPressure: (() => void) | null = null;
+let pruneBundleCacheOnVisibilityHidden: (() => void) | null = null;
+let pruneBundleCacheOnAppPause: (() => void) | null = null;
 
 function bundleCacheStats(): {
   activeCount: number;
@@ -252,24 +255,58 @@ function pruneBundleModuleCache(
 function installBundleCacheLifecycle(): void {
   if (bundleCacheLifecycleInstalled || typeof window === "undefined") return;
   bundleCacheLifecycleInstalled = true;
-  const pruneOnPressure = () => {
+  pruneBundleCacheOnPressure = () => {
     scheduleIdleWork(() =>
       pruneBundleModuleCache({ force: true, reason: "memorypressure" }),
     );
   };
-  window.addEventListener("memorypressure", pruneOnPressure);
-  document.addEventListener("visibilitychange", () => {
+  pruneBundleCacheOnVisibilityHidden = () => {
     if (document.visibilityState === "hidden") {
       scheduleIdleWork(() =>
         pruneBundleModuleCache({ reason: "visibility-hidden" }),
       );
     }
-  });
-  document.addEventListener(APP_PAUSE_EVENT, () => {
+  };
+  pruneBundleCacheOnAppPause = () => {
     scheduleIdleWork(() =>
       pruneBundleModuleCache({ force: true, reason: "app-pause" }),
     );
-  });
+  };
+  window.addEventListener("memorypressure", pruneBundleCacheOnPressure);
+  document.addEventListener(
+    "visibilitychange",
+    pruneBundleCacheOnVisibilityHidden,
+  );
+  document.addEventListener(APP_PAUSE_EVENT, pruneBundleCacheOnAppPause);
+}
+
+export function __resetDynamicViewLoaderCacheForTests(): void {
+  for (const entry of bundleModuleCache.values()) {
+    if (entry.retentionTimer) {
+      clearTimeout(entry.retentionTimer);
+      entry.retentionTimer = null;
+    }
+    const cleanup = entry.module?.cleanup;
+    entry.module = null;
+    runBundleCleanup(cleanup);
+  }
+  bundleModuleCache.clear();
+  if (typeof window !== "undefined" && pruneBundleCacheOnPressure) {
+    window.removeEventListener("memorypressure", pruneBundleCacheOnPressure);
+  }
+  if (typeof document !== "undefined" && pruneBundleCacheOnVisibilityHidden) {
+    document.removeEventListener(
+      "visibilitychange",
+      pruneBundleCacheOnVisibilityHidden,
+    );
+  }
+  if (typeof document !== "undefined" && pruneBundleCacheOnAppPause) {
+    document.removeEventListener(APP_PAUSE_EVENT, pruneBundleCacheOnAppPause);
+  }
+  pruneBundleCacheOnPressure = null;
+  pruneBundleCacheOnVisibilityHidden = null;
+  pruneBundleCacheOnAppPause = null;
+  bundleCacheLifecycleInstalled = false;
 }
 
 function isReactComponentExport(
@@ -315,19 +352,16 @@ const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
   toneForViewerAttachment,
 };
 
-const UI_COMPONENTS_COMPAT: Record<string, unknown> = {
-  Button,
-  Input,
-  Spinner,
-  PagePanel,
-};
-
 async function importAppCoreViewCompat(): Promise<Record<string, unknown>> {
   return APP_CORE_VIEW_COMPAT;
 }
 
 async function importUiComponentsCompat(): Promise<Record<string, unknown>> {
-  return UI_COMPONENTS_COMPAT;
+  return import("../index.ts");
+}
+
+async function importUiRootCompat(): Promise<Record<string, unknown>> {
+  return import("../../index.ts");
 }
 
 const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
@@ -345,7 +379,7 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/capacitor-system": () =>
     importHostExternal("@elizaos/capacitor-system"),
   "@elizaos/shared": () => importHostExternal("@elizaos/shared"),
-  "@elizaos/ui": importAppCoreViewCompat,
+  "@elizaos/ui": importUiRootCompat,
   "@elizaos/plugin-browser": () =>
     importHostExternal("@elizaos/plugin-browser"),
   "@elizaos/plugin-health/screen-time/mobile-signal-setup": () =>

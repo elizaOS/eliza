@@ -804,7 +804,15 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           }
         }
 
-        if (greetingText) {
+        // The greeting may have been fetched across an `await`; if the user
+        // navigated away meanwhile (e.g. the soft-undo toast restored the
+        // previous conversation, #8929), do NOT clobber their current thread
+        // with this fresh conversation's greeting.
+        const stillOnNewConversation =
+          activeConversationIdRef.current === conversation.id;
+        if (!stillOnNewConversation) {
+          // Navigated away during creation/greeting — leave the active thread as-is.
+        } else if (greetingText) {
           greetingFiredRef.current = true;
           const initMessages: ConversationMessage[] = [
             {

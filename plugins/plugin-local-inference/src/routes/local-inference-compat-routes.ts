@@ -18,7 +18,7 @@ import {
 	type LocalInferenceLoadOverrides,
 	validateLocalInferenceLoadArgs,
 } from "../services/active-model";
-import { AssignmentNotServableError } from "../services/assignments";
+import { AssignmentRejectedError } from "../services/assignments";
 import { deviceBridge } from "../services/device-bridge";
 import { classifyDeviceTier } from "../services/device-tier";
 import {
@@ -564,13 +564,11 @@ export async function handleLocalInferenceCompatRoutes(
 			);
 			sendJsonResponse(res, 200, { assignments });
 		} catch (err) {
-			if (err instanceof AssignmentNotServableError) {
-				// The pick cannot run on this platform — a typed, user-visible
-				// reason (422) instead of a silent deferred load failure.
-				sendJsonErrorResponse(res, 422, err.message, {
-					code: err.code,
-					runtimeClass: err.runtimeClass,
-				});
+			if (err instanceof AssignmentRejectedError) {
+				// Eliza-1-only stack: the only assignable models are the curated
+				// tiers. A rejected pick is a typed, user-visible 422 rather than a
+				// silent deferred load failure.
+				sendJsonErrorResponse(res, 422, err.message, { code: err.code });
 				return true;
 			}
 			sendJsonErrorResponse(

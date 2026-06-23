@@ -10,11 +10,11 @@
  * linked, otherwise the local dashboard URL). This adapter just renders whatever
  * URL it is handed; it does not decide cloud-vs-local.
  *
- * NOTE: the dispatch registry holds one adapter per target ("dm"). In a
- * Telegram-only deployment this adapter is the DM adapter; if both Discord and
- * Telegram are loaded, registration order currently decides which claims "dm".
- * Proper per-source resolution is a registry follow-up (see the interaction
- * protocol README).
+ * Both this adapter and the Discord DM adapter register under the "dm" target;
+ * the dispatch registry keeps every adapter per target and selects the right one
+ * per request via `resolve(target, channelId, runtime)` + this adapter's
+ * `supportsChannel`, so loading both connectors no longer collides on "dm"
+ * (registration order is irrelevant). See `dispatch-registry.ts`.
  */
 
 import {

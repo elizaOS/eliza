@@ -25,6 +25,7 @@ import {
   type ActiveViewLayout,
   createNavigateViewHandler,
 } from "./app-navigate-view";
+import { AppBackground } from "./backgrounds/AppBackground";
 import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
@@ -48,12 +49,12 @@ import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSec
 import { ActionBanner } from "./components/shell/ActionBanner";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
-import { ChatAmbientBackground } from "./components/shell/ChatAmbientBackground";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { CloudHandoffBanner } from "./components/shell/CloudHandoffBanner";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
+import { ConversationUndoToast } from "./components/shell/ConversationUndoToast";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
@@ -84,7 +85,10 @@ import {
   isAndroidPhoneSurfaceEnabled,
   isAospShellEnabled,
   isRouteRootPath,
+  pathForTab,
   shouldUseHashNavigation,
+  TAB_PATHS,
+  tabFromPath,
 } from "./navigation";
 import { isIOS, isNative } from "./platform/init";
 import { RetainedLazyComponent } from "./retained-lazy";
@@ -148,6 +152,7 @@ import { FineTuningView } from "./components/training/injected";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import {
   useAvailableViews,
+  useRoutableViews,
   type ViewRegistryEntry,
 } from "./hooks/useAvailableViews";
 import { useDesktopTabs } from "./hooks/useDesktopTabs";
@@ -156,6 +161,10 @@ import { useEnabledViewKinds } from "./state/useViewKinds";
 const ViewCatalog = lazyNamedView(
   () => import("./components/pages/ViewCatalog"),
   "ViewCatalog",
+);
+const BackgroundView = lazyNamedView(
+  () => import("./components/pages/BackgroundView"),
+  "BackgroundView",
 );
 const AutomationsFeed = lazyNamedView(
   () => import("./components/pages/AutomationsFeed"),
@@ -211,6 +220,10 @@ const StreamView = lazyNamedView(
 const DatabasePageView = lazyNamedView(
   () => import("./components/pages/DatabasePageView"),
   "DatabasePageView",
+);
+const FilesView = lazyNamedView(
+  () => import("./components/pages/FilesView"),
+  "FilesView",
 );
 const LogsView = lazyNamedView(
   () => import("./components/pages/LogsView"),
@@ -694,6 +707,7 @@ function remoteViewMatchesTab(
 const SHELL_RESERVED_PATHS = new Set([
   "/views",
   "/apps",
+  "/character/documents",
   "/apps/plugins",
   "/apps/skills",
   "/apps/trajectories",
@@ -705,6 +719,8 @@ const SHELL_RESERVED_PATHS = new Set([
   "/apps/tasks",
 ]);
 
+const SHELL_RESERVED_TABS = new Set(Object.keys(TAB_PATHS));
+
 function findRemoteViewForRoute(
   views: ViewRegistryEntry[],
   navigationPath: string,
@@ -713,6 +729,9 @@ function findRemoteViewForRoute(
 ): ViewRegistryEntry | undefined {
   const normalizedPath = trimmedNavigationPath(navigationPath);
   if (SHELL_RESERVED_PATHS.has(normalizedPath)) return undefined;
+  if (tab !== "views" && tab !== "apps" && SHELL_RESERVED_TABS.has(tab)) {
+    return undefined;
+  }
   return (
     views.find(
       (view) => remoteViewAvailable(view) && view.path === normalizedPath,
@@ -772,6 +791,19 @@ function ViewLayoutSurface({
     .filter((view): view is ViewRegistryEntry => Boolean(view));
   const paneClassName =
     "flex min-h-[18rem] min-w-0 flex-col overflow-hidden border border-border/45 bg-bg";
+  const routeOverrideForView = (
+    view: ViewRegistryEntry,
+  ): ViewRouterRouteOverride => {
+    const navigationPath =
+      view.path ??
+      (SHELL_RESERVED_TABS.has(view.id)
+        ? pathForTab(view.id)
+        : `/apps/${view.id}`);
+    return {
+      navigationPath,
+      tab: tabFromPath(navigationPath) ?? view.id,
+    };
+  };
 
   return (
     <TabContentView>
@@ -826,9 +858,7 @@ function ViewLayoutSurface({
                       viewType={view.viewType}
                     />
                   ) : (
-                    <div className="flex h-full min-h-0 items-center justify-center px-4 text-center text-sm text-muted">
-                      {view.label} is not available as a dynamic view.
-                    </div>
+                    <ViewRouter routeOverride={routeOverrideForView(view)} />
                   )}
                 </div>
               </section>
@@ -961,6 +991,11 @@ function renderStaticViewRouterTab({
         <MemoryViewerView />
       </TabContentView>
     ),
+    files: (
+      <TabScrollView>
+        <FilesView />
+      </TabScrollView>
+    ),
     runtime: (
       <TabContentView>
         <RuntimeView />
@@ -994,6 +1029,11 @@ function renderStaticViewRouterTab({
   if (tab === "views" || tab === "apps") {
     return renderAppsSurface(navigationPath);
   }
+  if (tab === "background") {
+    // Rendered directly (no opaque TabContentView chrome) so the live app
+    // background shows through behind the controls.
+    return <BackgroundView />;
+  }
   if (
     tab === "character" ||
     tab === "character-select" ||
@@ -1001,7 +1041,9 @@ function renderStaticViewRouterTab({
   ) {
     return (
       <TabContentView>
-        <CharacterEditor />
+        <CharacterEditor
+          initialPage={tab === "documents" ? "documents" : undefined}
+        />
       </TabContentView>
     );
   }
@@ -1072,17 +1114,28 @@ function renderViewRouterContent({
   });
 }
 
+type ViewRouterRouteOverride = {
+  tab: string;
+  navigationPath: string;
+};
+
 function ViewRouter({
+  routeOverride,
   settingsInitialSection,
 }: {
+  routeOverride?: ViewRouterRouteOverride;
   settingsInitialSection?: string | null;
 }) {
-  const tab = useAppSelector((s) => s.tab);
+  const activeTab = useAppSelector((s) => s.tab);
+  const tab = routeOverride?.tab ?? activeTab;
   const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
   const dynamicPage = useResolvedDynamicPage(tab);
-  const [navigationPath, setNavigationPath] = useState(() =>
-    typeof window === "undefined" ? "/" : getWindowNavigationPath(),
+  const [navigationPath, setNavigationPath] = useState(
+    () =>
+      routeOverride?.navigationPath ??
+      (typeof window === "undefined" ? "/" : getWindowNavigationPath()),
   );
+  const routeOverridePath = routeOverride?.navigationPath;
   const appSlug =
     tab === "apps" || tab === "views"
       ? getAppSlugFromPath(navigationPath)
@@ -1091,6 +1144,10 @@ function ViewRouter({
   const enabledKinds = useEnabledViewKinds();
 
   useEffect(() => {
+    if (routeOverridePath) {
+      setNavigationPath(routeOverridePath);
+      return;
+    }
     if (typeof window === "undefined") return;
     const navEvt = shouldUseHashNavigation() ? "hashchange" : "popstate";
     const handleNavigationChange = () => {
@@ -1098,7 +1155,7 @@ function ViewRouter({
     };
     window.addEventListener(navEvt, handleNavigationChange);
     return () => window.removeEventListener(navEvt, handleNavigationChange);
-  }, []);
+  }, [routeOverridePath]);
 
   // Available views from /api/views — used to route to DynamicViewLoader
   // when a tab ID matches a view entry that ships a remote bundle URL.
@@ -1131,6 +1188,12 @@ function greetingForTimeOfDay(): string {
 
 const APP_SHELL_CLASS =
   "flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg";
+
+// The home and the Views catalog opt into the unified app background (mounted
+// once at the shell root), so their shell is transparent — no `bg-bg` to paint
+// over it. Every other view keeps the opaque shell (its own background).
+const APP_SHELL_CLASS_TRANSPARENT =
+  "flex flex-col flex-1 min-h-0 w-full font-body text-txt";
 
 type ShellContentProps = {
   CompanionShell: ComponentType<CompanionShellComponentProps> | undefined;
@@ -1168,12 +1231,12 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   // The /chat route is the ambient conversational home: open space behind the
   // always-present ContinuousChatOverlay (mounted at the shell root), which is
   // the whole chat experience. Ask it anything, or ask it to open a view ("show
-  // me the coding view") which surfaces over this base. The home is wordless —
-  // a warm, gently pulsing orange field, no greeting text.
+  // me the coding view") which surfaces over this base. The home is wordless,
+  // sitting directly on the unified app background (mounted once at the shell
+  // root) — its shell is transparent so that background shows through.
   return (
-    <div key="chat-shell" className={APP_SHELL_CLASS}>
+    <div key="chat-shell" className={APP_SHELL_CLASS_TRANSPARENT}>
       <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
-        <ChatAmbientBackground />
         <HomeScreenMount />
         <CustomActionsPanel
           open={props.customActionsPanelOpen}
@@ -1191,9 +1254,12 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
 function routedShellMainClass(tab: string): string {
   // One tight page gutter for every routed view: minimal top so headers sit
   // right under the chrome, a small side gutter, modest bottom. Views that own
-  // their full surface (browser/apps/views) still get zero padding.
+  // their full surface (browser/apps/views/background) still get zero padding.
   const pagePadding =
-    tab === "browser" || tab === "apps" || tab === "views"
+    tab === "browser" ||
+    tab === "apps" ||
+    tab === "views" ||
+    tab === "background"
       ? ""
       : "px-2 sm:px-3 pt-2 pb-4";
   const mobilePadding = tab === "browser" ? "" : MOBILE_NAV_PADDING_CLASS;
@@ -1208,8 +1274,14 @@ function routedShellMainClass(tab: string): string {
  * per-view.
  */
 function RoutedShellContent(props: ShellContentProps): ReactNode {
+  // The Views catalog and the Background view share the unified app background;
+  // every other routed view keeps its own opaque shell.
+  const shellClass =
+    props.tab === "views" || props.tab === "background"
+      ? APP_SHELL_CLASS_TRANSPARENT
+      : APP_SHELL_CLASS;
   return (
-    <div key={`tab-shell-${props.tab}`} className={APP_SHELL_CLASS}>
+    <div key={`tab-shell-${props.tab}`} className={shellClass}>
       {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
         {props.viewLayout ? (
@@ -1500,7 +1572,7 @@ export function App() {
   const [activeDesktopTabId, setActiveDesktopTabId] = useState<string | null>(
     null,
   );
-  const { views: availableViewsForDesktopTabs } = useAvailableViews();
+  const { views: availableViewsForDesktopTabs } = useRoutableViews();
   const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(null);
 
   const [editingAction, setEditingAction] = useState<
@@ -1864,17 +1936,25 @@ export function App() {
     <BugReportProvider value={bugReport}>
       <ShellControllerProvider>
         <div
-          className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
+          className="relative flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
           // Reserve the status-bar safe area so view headers + back buttons sit
           // below the status bar. Top banners bleed their bg back up through it
           // via `.mobile-top-banner:first-child` (see styles.css). No-op on web.
           style={{ paddingTop: "var(--safe-area-top, 0px)" }}
         >
-          <ConnectionFailedBanner />
-          <SystemWarningBanner />
-          <ActionBanner />
-          <CloudHandoffBanner />
-          {shellContent}
+          {/* The unified app background, mounted once here so it persists
+              seamlessly across the home and every view (never remounts on
+              navigation). It is fixed + z-0; the content layer below sits at
+              z-10 so opaque views paint over it and transparent ones (home,
+              Views) let it show through. */}
+          <AppBackground />
+          <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
+            <ConnectionFailedBanner />
+            <SystemWarningBanner />
+            <ActionBanner />
+            <CloudHandoffBanner />
+            {shellContent}
+          </div>
         </div>
         {/* Full-screen overlay app — renders whichever overlay app is active */}
         {resolvedOverlayApp &&
@@ -1912,6 +1992,11 @@ export function App() {
           behind stays live.
         */}
         <ContinuousChatOverlayMount />
+        {/* Soft-undo affordance after a conversation reset (#8929): a brief
+            glassmorphic toast that restores the previous conversation. Mounted
+            once here so it is available from both the ChatView reset button and
+            the overlay header reset. */}
+        <ConversationUndoToast />
         {/* Interactive tutorial: a persistent spotlight overlay that survives
             navigation (it sends the user to Settings, back home, …). Renders
             only when the tutorial is active (launched from the home Tutorial

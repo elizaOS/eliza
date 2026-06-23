@@ -42,7 +42,6 @@ export interface DevRouteEntry {
   requiresAuth: boolean;
   platformGate: DevRoutePlatformGate;
 }
-
 export interface DevRouteSettingsSection {
   id: string;
   label: string;
@@ -278,6 +277,16 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
+    tabId: "files",
+    path: "/apps/files",
+    label: "Files",
+    group: "Apps",
+    visibility: "all",
+    featureFlag: "VITE_ENABLE_APPS",
+    requiresAuth: true,
+    platformGate: null,
+  },
+  {
     tabId: "logs",
     path: "/apps/logs",
     label: "Logs",
@@ -426,6 +435,16 @@ const ROUTES: DevRouteEntry[] = [
     featureFlag: null,
     requiresAuth: true,
     platformGate: "desktop",
+  },
+  {
+    tabId: "background",
+    path: "/background",
+    label: "Background",
+    group: "Hidden",
+    visibility: "all",
+    featureFlag: null,
+    requiresAuth: true,
+    platformGate: null,
   },
 ];
 

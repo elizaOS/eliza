@@ -615,6 +615,34 @@ interface LifecycleJobOptions<TData extends object> {
  */
 const PER_JOB_TIMEOUT_MS = 120_000;
 
+/**
+ * Stale-job recovery thresholds, by job type. `recoverStaleJobs` resets a job
+ * stuck `in_progress` past this window back to `pending` — the backstop for a
+ * crashed worker. The threshold MUST exceed the job's real worst-case
+ * wall-clock, or it false-positives a still-running job and re-claims it.
+ *
+ * The cold-boot job types (provision / resume / wake / restart / upgrade) run
+ * the full image-pull + agent-boot path, which legitimately takes up to ~11 min
+ * (docker-sandbox-provider `PULL_TIMEOUT_MS` 5m + `HEALTH_CHECK_TIMEOUT_MS` 6m)
+ * before `/api/health` answers. At the old flat 5-min threshold a slow cold
+ * provision was reset mid-flight, re-claimed, and the second provision collided
+ * on the deterministic container name (`agent-<id>`) and force-removed the
+ * still-booting container — provision flapping + orphaned containers on the
+ * exact cold-start path every new user hits. 15 min clears the worst case with
+ * margin; fast ops keep the tight 5-min backstop. (`trySetProvisioning`
+ * deliberately admits a `provisioning` row and defers to this as the time gate,
+ * so this threshold is the single source of truth for "provision is stuck".)
+ */
+const DEFAULT_STALE_JOB_THRESHOLD_MS = 5 * 60 * 1000;
+const COLD_BOOT_STALE_JOB_THRESHOLD_MS = 15 * 60 * 1000;
+const COLD_BOOT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set([
+  JOB_TYPES.AGENT_PROVISION,
+  JOB_TYPES.AGENT_RESUME,
+  JOB_TYPES.AGENT_WAKE,
+  JOB_TYPES.AGENT_RESTART,
+  JOB_TYPES.AGENT_UPGRADE,
+]);
+
 export class ProvisioningJobService {
   /**
    * Common path for the seven `enqueueAgent*Once` methods. Acquires the
@@ -2587,7 +2615,9 @@ export class ProvisioningJobService {
     for (const jobType of jobTypes) {
       const recovered = await jobsRepository.recoverStaleJobs({
         type: jobType,
-        staleThresholdMs: 5 * 60 * 1000, // 5 minutes
+        staleThresholdMs: COLD_BOOT_JOB_TYPES.has(jobType)
+          ? COLD_BOOT_STALE_JOB_THRESHOLD_MS
+          : DEFAULT_STALE_JOB_THRESHOLD_MS,
         maxAttempts: 3,
       });
       totalRecovered += recovered;

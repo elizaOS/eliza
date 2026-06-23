@@ -5,7 +5,7 @@ Output: ``packages/training/datasets/eliza1-sft-0_8b/{train,val,test}.jsonl`` �
 ChatML ``{"messages": [...]}`` rows that ``train_local.py`` ingests directly via
 ``--train-file`` / ``--val-file`` (the ``chat_messages`` shape understood by
 ``scripts/format_for_training.py::_format_messages_record``). The 0.8b base is
-upstream ``Qwen/Qwen3.5-0.8B`` (Qwen3.5 ChatML template, vocab 248,320); rows
+upstream ``google/gemma-4-E2B`` (Gemma 4 chat template, vocab 262,144); rows
 are length-filtered against its 4096-token training window.
 
 Task mix (benchmark-aligned with ``scripts/eval/eliza1_eval_suite.py`` text gate
@@ -80,7 +80,7 @@ OUT_DIR = TRAINING_ROOT / "datasets" / "eliza1-sft-0_8b"
 ACTION_CASES_TS = REPO_ROOT / "packages" / "app-core" / "test" / "benchmarks" / "action-selection-cases.ts"
 PERSONALITY_DIR = REPO_ROOT / "packages" / "benchmarks" / "personality-bench" / "tests" / "calibration"
 
-# Qwen3.5-0.8B trains at seq 4096. Reserve a little headroom; a char≈4 tokens
+# gemma-4-E2B trains at seq 4096. Reserve a little headroom; a char≈4 tokens
 # heuristic keeps us conservative without a tokenizer dependency at build time.
 MAX_SEQ_LEN = 4096
 CHARS_PER_TOKEN = 3.5
@@ -753,7 +753,7 @@ def _valid_row(row: dict[str, Any]) -> bool:
             return False
     # Disallow accidental ChatML control tokens leaking into content.
     for m in msgs:
-        if "<|im_start|>" in m["content"] or "<|im_end|>" in m["content"]:
+        if "<start_of_turn>" in m["content"] or "<end_of_turn>" in m["content"]:
             return False
     n = _row_text_len(row)
     return MIN_RECORD_CHARS <= n <= MAX_RECORD_CHARS
@@ -903,9 +903,9 @@ def main() -> int:
     all_rows = train + val + test
     manifest = {
         "schema": "eliza.eliza1_sft_0_8b_manifest.v1",
-        "base_model": "Qwen/Qwen3.5-0.8B",
+        "base_model": "google/gemma-4-E2B",
         "published_name": "eliza-1-0_8b",
-        "chat_template": "qwen3.5 chatml",
+        "chat_template": "gemma 4 chat",
         "format": "chat_messages — {\"messages\":[...]} rows (train_local.py --train-file compatible)",
         "max_seq_len": MAX_SEQ_LEN,
         "max_record_chars": MAX_RECORD_CHARS,

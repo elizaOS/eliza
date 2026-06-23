@@ -31,6 +31,11 @@ export {
 	makeCloudFallbackHandler,
 } from "./cloud-fallback";
 export {
+	computeRuntimeContextFit,
+	type RuntimeContextFit,
+	type RuntimeContextFitInput,
+} from "./context-fit";
+export {
 	buildDeviceResourceMetricsDevPayload,
 	type DeviceBridgeStatus,
 	type DeviceGenerationMetrics,
@@ -132,6 +137,16 @@ export {
 	setMemoryArbiter,
 	tryGetMemoryArbiter,
 } from "./memory-arbiter";
+export {
+	buildMemoryBenchmarkPlan,
+	buildMemoryBenchmarkReport,
+	type MemoryBenchmarkLoadResult,
+	type MemoryBenchmarkModelPlan,
+	type MemoryBenchmarkOptions,
+	type MemoryBenchmarkReport,
+	runMemoryBenchmark,
+	summarizeMemoryBenchmark,
+} from "./memory-benchmark";
 export {
 	type CapacitorPressureSource,
 	capacitorPressureSource,

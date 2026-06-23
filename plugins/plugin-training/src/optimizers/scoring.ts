@@ -277,6 +277,147 @@ function tokenize(text: string): Set<string> {
   return new Set(tokens);
 }
 
+// -----------------------------------------------------------------------------
+// LifeOps per-capability scorers (#8795 item 4).
+//
+// The LifeOps optimization tasks split into two scoring shapes:
+//   - Extraction tasks emit a structured JSON object (calendar event fields,
+//     a triage classification, a reminder dispatch decision, ...). These are
+//     graded on structured-field exact-match — the fraction of expected fields
+//     the model reproduced. Date/time/recurrence/recipient are exactly the
+//     fields that must be right, so partial-credit-by-field is the right signal.
+//   - Chat-shaped tasks emit free text (the morning brief). These fall back to
+//     token agreement here; the real optimization loop gates them on the
+//     `responseJudge` rubric instead of this cheap proxy.
+// Both shapes are deterministic and allocation-light, matching the optimizer's
+// hundreds-of-completions-per-round budget.
+// -----------------------------------------------------------------------------
+
+/** LifeOps tasks whose output is a structured JSON object (exact-field match). */
+const LIFEOPS_EXTRACTION_TASKS: ReadonlySet<string> = new Set([
+  "calendar_extract",
+  "schedule_plan",
+  "reminder_dispatch",
+  "inbox_triage",
+  "meeting_prep",
+  "health_checkin",
+  "screentime_recap",
+]);
+
+/** Parse a JSON object out of a completion, tolerating ```json fences/prose. */
+function parseJsonLoose(text: string): Record<string, unknown> | null {
+  const trimmed = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "");
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    const parsed = JSON.parse(trimmed.slice(start, end + 1)) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeScalar(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value).trim().toLowerCase();
+}
+
+/**
+ * Structured-field exact-match score in `[0, 1]`: the fraction of expected
+ * fields whose value the actual output reproduced. Both inputs are parsed as
+ * JSON (tolerating fences/prose). When `fields` is supplied only those keys are
+ * scored; otherwise every key in `expected` is scored. Returns 0 when expected
+ * is unparseable (nothing to credit) and 1 when both parse to empty objects.
+ */
+export function scoreStructuredFields(
+  actual: string,
+  expected: string,
+  fields?: readonly string[],
+): number {
+  const expectedObj = parseJsonLoose(expected);
+  if (!expectedObj) return 0;
+  const actualObj = parseJsonLoose(actual) ?? {};
+  const keys =
+    fields && fields.length > 0 ? [...fields] : Object.keys(expectedObj);
+  if (keys.length === 0) {
+    return Object.keys(actualObj).length === 0 ? 1 : 0;
+  }
+  let matched = 0;
+  for (const key of keys) {
+    if (normalizeScalar(actualObj[key]) === normalizeScalar(expectedObj[key])) {
+      matched += 1;
+    }
+  }
+  return matched / keys.length;
+}
+
+/** Tokenize an output into an action/label set (JSON fields or raw words). */
+function actionTokens(text: string): Set<string> {
+  const obj = parseJsonLoose(text);
+  const source = obj
+    ? [
+        obj.action,
+        obj.subaction,
+        obj.category,
+        obj.priority,
+        obj.channel,
+        obj.suggestion,
+      ]
+        .map(normalizeScalar)
+        .filter(Boolean)
+        .join(" ")
+    : text;
+  return new Set(
+    source
+      .toLowerCase()
+      .split(/[\s,|]+/)
+      .map((token) => token.trim())
+      .filter(Boolean),
+  );
+}
+
+/**
+ * Action/label set-overlap (Jaccard) in `[0, 1]`. For tasks whose target is
+ * "did the agent pick the right action/category set" rather than exact text.
+ * Two empty sets score 1.0 (both correctly produced nothing actionable).
+ */
+export function scoreActionSet(actual: string, expected: string): number {
+  const actualSet = actionTokens(actual);
+  const expectedSet = actionTokens(expected);
+  if (actualSet.size === 0 && expectedSet.size === 0) return 1;
+  if (actualSet.size === 0 || expectedSet.size === 0) return 0;
+  let intersection = 0;
+  for (const token of actualSet) {
+    if (expectedSet.has(token)) intersection += 1;
+  }
+  const union = actualSet.size + expectedSet.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+/**
+ * Authoritative per-task comparator for the LifeOps optimization tasks (the
+ * GEPA Pareto scorer dispatches through here). Extraction tasks →
+ * structured-field exact-match; the chat-shaped morning brief → token
+ * agreement (proxy for the judge rubric); anything else → token agreement.
+ */
+export function scoreLifeOpsTask(
+  task: string,
+  actual: string,
+  expected: string,
+): number {
+  if (LIFEOPS_EXTRACTION_TASKS.has(task)) {
+    return scoreStructuredFields(actual, expected);
+  }
+  return scoreAgreement(actual, expected);
+}
+
 /**
  * Random-without-replacement subsample, used by optimizer rounds to keep
  * scoring cheap on large datasets without sacrificing comparability across

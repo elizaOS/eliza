@@ -245,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
         "--output",
         type=Path,
         required=True,
-        help="Output GGUF file path (e.g. .../qwen3.5-0.8b-eliza-Q4_POLAR.gguf).",
+        help="Output GGUF file path (e.g. .../gemma4-e2b-eliza-Q4_POLAR.gguf).",
     )
     ap.add_argument(
         "--llama-cpp-dir",
@@ -323,7 +323,7 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=(
             "Upstream HF repo the base weights come from (e.g. "
-            "Qwen/Qwen3.5-4B). Recorded in the provenance JSON for "
+            "google/gemma-4-E4B). Recorded in the provenance JSON for "
             "--release-state base-v1. Defaults to the source_model field in "
             "the polarquant/qjl sidecar."
         ),
@@ -344,7 +344,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         default=True,
         help=(
-            "Preserve Qwen3.5/3.6 built-in MTP/NextN heads in the target GGUF "
+            "Preserve Gemma 4 built-in MTP/NextN heads in the target GGUF "
             "when the source checkpoint has them. This is the default and "
             "enables llama.cpp --spec-type draft-mtp without a separate "
             "MTP drafter artifact."

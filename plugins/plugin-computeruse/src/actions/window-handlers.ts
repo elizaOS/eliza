@@ -8,6 +8,7 @@ import type { ActionResult, HandlerCallback } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 import type { WindowActionParams, WindowActionResult } from "../types.js";
 import { toComputerUseActionResult } from "./helpers.js";
+import { type ApprovalRelayOptions, withApprovalRelay } from "./progress.js";
 
 const MAX_WINDOW_ROWS = 50;
 const MAX_WINDOW_ROW_BYTES = 120;
@@ -37,10 +38,16 @@ export async function handleWindowOp(
   service: ComputerUseService,
   params: WindowActionParams,
   callback?: HandlerCallback,
+  approvalOptions: ApprovalRelayOptions = {},
 ): Promise<ActionResult> {
   params.action ??= "list";
 
-  const result = await service.executeWindowAction(params);
+  const result = await withApprovalRelay(
+    service,
+    callback,
+    () => service.executeWindowAction(params),
+    approvalOptions,
+  );
   const text = formatWindowResultText(params, result).slice(
     0,
     MAX_WINDOW_ROWS * MAX_WINDOW_ROW_BYTES,

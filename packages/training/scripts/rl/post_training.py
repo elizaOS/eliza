@@ -72,7 +72,7 @@ class PostTrainingConfig:
     final_reward: float
     final_metrics: dict[str, Any] | None = None
     wandb_run_id: str | None = None
-    base_model: str = "Qwen/Qwen3.5-4B"
+    base_model: str = "google/gemma-4-E4B"
     dataset_id: str | None = None
     report_path: str | None = None
 
@@ -100,7 +100,7 @@ class PostTrainingConfig:
             final_reward=final_reward,
             final_metrics=kwargs.get("final_metrics"),
             wandb_run_id=kwargs.get("wandb_run_id") or os.environ.get("WANDB_RUN_ID"),
-            base_model=kwargs.get("base_model", "Qwen/Qwen3.5-4B"),
+            base_model=kwargs.get("base_model", "google/gemma-4-E4B"),
             dataset_id=kwargs.get("dataset_id") or os.environ.get("HF_TRAJECTORY_DATASET"),
             report_path=report_path,
             hf_push_repo=os.environ.get("HF_PUSH_REPO", ""),
@@ -386,7 +386,7 @@ def run_post_training(
     final_reward: float,
     final_metrics: dict[str, Any] | None = None,
     wandb_run_id: str | None = None,
-    base_model: str = "Qwen/Qwen3.5-4B",
+    base_model: str = "google/gemma-4-E4B",
     dataset_id: str | None = None,
 ) -> bool:
     """
@@ -457,7 +457,7 @@ def main():
     )
     parser.add_argument("--final-reward", type=float, required=True, help="Final training reward")
     parser.add_argument("--wandb-run-id", help="W&B run ID")
-    parser.add_argument("--base-model", default="Qwen/Qwen3.5-4B", help="Base model name")
+    parser.add_argument("--base-model", default="google/gemma-4-E4B", help="Base model name")
     parser.add_argument("--dataset-id", help="HuggingFace dataset ID")
 
     args = parser.parse_args()

@@ -34,6 +34,10 @@ import {
 } from "../client/api.js";
 import { readStringOption } from "../params.js";
 import type { InstalledAppInfo } from "../types.js";
+import {
+	createPreEditSnapshot,
+	persistSnapshotRecord,
+} from "./views-snapshot.js";
 
 export const APP_CREATE_INTENT_TAG = "app-create-intent";
 
@@ -351,6 +355,42 @@ function readTaskAgents(result: ActionResult | undefined): TaskAgentStatus[] {
 	});
 }
 
+/**
+ * Take a pre-edit git snapshot of an app workdir and persist its SHA so the
+ * VIEWS `rollback` sub-mode can later restore it (#8915). Best-effort: snapshot
+ * failures only disable rollback and never abort the create/edit dispatch.
+ */
+async function snapshotAppWorkdir(
+	runtime: IAgentRuntime,
+	workdir: string,
+	appName: string,
+	created: boolean,
+	roomId: string,
+): Promise<void> {
+	const snapshot = await createPreEditSnapshot(workdir).catch((err) => ({
+		ok: false as const,
+		reason: err instanceof Error ? err.message : String(err),
+	}));
+	if (!snapshot.ok) {
+		logger.warn(
+			`[plugin-app-control] APP/create pre-edit snapshot skipped for ${appName}: ${snapshot.reason}`,
+		);
+		return;
+	}
+	await persistSnapshotRecord(runtime, {
+		sha: snapshot.sha,
+		workdir,
+		pluginName: appName,
+		created,
+		roomId,
+		snapshotCreatedAt: new Date().toISOString(),
+	}).catch((err) => {
+		logger.warn(
+			`[plugin-app-control] APP/create failed to persist snapshot record for ${appName}: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	});
+}
+
 async function dispatchCodingAgent({
 	runtime,
 	prompt,
@@ -653,6 +693,11 @@ async function createNewApp({
 		[DISPLAY_NAME_PLACEHOLDER]: displayName,
 	});
 
+	// Pre-edit snapshot so the creation can be rolled back via VIEWS rollback
+	// (#8915). Best-effort: a failed snapshot only disables rollback, never blocks
+	// the create dispatch.
+	await snapshotAppWorkdir(runtime, workdir, name, true, originRoomId);
+
 	const prompt = buildCreatePrompt(intent, name, displayName, workdir);
 	const dispatch = await dispatchCodingAgent({
 		runtime,
@@ -725,6 +770,9 @@ async function editExistingApp({
 		await callback?.({ text });
 		return { success: false, text };
 	}
+
+	// Pre-edit snapshot so the edit can be rolled back via VIEWS rollback (#8915).
+	await snapshotAppWorkdir(runtime, workdir, app.name, false, originRoomId);
 
 	const prompt = buildEditPrompt(intent, app, workdir);
 	const dispatch = await dispatchCodingAgent({

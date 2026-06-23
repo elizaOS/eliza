@@ -125,7 +125,7 @@ def test_text_context_prefers_gguf_metadata_over_filename(
     tmp_path: Path,
     monkeypatch,
 ):
-    text_path = tmp_path / "text" / "eliza-1-0_8b-32k.gguf"
+    text_path = tmp_path / "text" / "eliza-1-2b-32k.gguf"
     text_path.parent.mkdir(parents=True)
     text_path.write_bytes(b"stand-in")
     monkeypatch.setattr(
@@ -139,32 +139,21 @@ def test_text_context_prefers_gguf_metadata_over_filename(
 
 def test_eliza1_tier_ids_are_canonical():
     assert ELIZA_1_TIERS == (
-        "0_8b",
         "2b",
         "4b",
         "9b",
         "27b",
         "27b-256k",
     )
-    assert REQUIRED_KERNELS_BY_TIER["0_8b"] == (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "turbo3_tcq",
-    )
+    # Gemma 4 drops QJL/Polar (stock-q8_0 KV); only TurboQuant + TCQ remain.
     assert REQUIRED_KERNELS_BY_TIER["2b"] == (
         "turboquant_q4",
-        "qjl",
-        "polarquant",
         "turbo3_tcq",
     )
     assert REQUIRED_KERNELS_BY_TIER["4b"] == (
         "turboquant_q4",
-        "qjl",
-        "polarquant",
         "turbo3_tcq",
     )
-    assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("omnivoice", "kokoro")
     assert VOICE_BACKENDS_BY_TIER["2b"] == ("omnivoice", "kokoro")
     assert VOICE_BACKENDS_BY_TIER["4b"] == ("omnivoice", "kokoro")
     assert VOICE_BACKENDS_BY_TIER["9b"] == ("omnivoice", "kokoro")
@@ -236,12 +225,12 @@ def test_build_manifest_accepts_optional_component_slots_and_voice_caps():
 
 
 def test_optional_eagle3_fields_do_not_change_required_tiers():
-    kwargs = base_kwargs("0_8b")
+    kwargs = base_kwargs("2b")
     kwargs["eagle3_kernel"] = {
         "enabled": True,
         "capability": "eagle3",
         "specType": "draft-eagle3",
-        "model": "RedHatAI/Qwen3.5-0.8B-EAGLE3-head",
+        "model": "RedHatAI/gemma-4-E2B-EAGLE3-head",
         "maxDraftTokens": 3,
     }
     kwargs["eagle3_eval"] = True
@@ -251,7 +240,7 @@ def test_optional_eagle3_fields_do_not_change_required_tiers():
 
     manifest = build_manifest(**kwargs)
 
-    assert "eagle3" not in REQUIRED_KERNELS_BY_TIER["0_8b"]
+    assert "eagle3" not in REQUIRED_KERNELS_BY_TIER["2b"]
     assert manifest["kernels"]["eagle3"]["capability"] == "eagle3"
     assert manifest["evals"]["eagle3"] == {
         "acceptanceRate": 0.64,
@@ -309,7 +298,7 @@ def test_every_tier_validates(tier: str):
 def test_missing_required_kernel_rejected():
     kwargs = base_kwargs("4b")
     # turbo3_tcq is required for every tier; dropping it must be rejected.
-    kwargs["kernels_required"] = ["turboquant_q4", "qjl", "polarquant"]
+    kwargs["kernels_required"] = ["turboquant_q4"]
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
     assert any("turbo3_tcq" in e for e in exc.value.errors)
@@ -322,8 +311,7 @@ def test_default_eligible_requires_recipe_manifest_for_quant_kernels():
         build_manifest(**kwargs)
     assert any("kernels.recipeManifest" in e for e in exc.value.errors)
     assert any("turboquant_q4->turbo4" in e for e in exc.value.errors)
-    assert any("qjl->qjl1_256" in e for e in exc.value.errors)
-    assert any("polarquant->polar_q4" in e for e in exc.value.errors)
+    assert any("turbo3_tcq->turbo3_tcq" in e for e in exc.value.errors)
 
 
 def test_default_eligible_with_failing_eval_rejected():
@@ -481,7 +469,7 @@ def test_lite_tier_does_not_require_cuda_or_rocm_pass():
     """Lite tier ships on metal/vulkan/cpu — failing cuda/rocm backends
     must not block lite publishing."""
 
-    kwargs = base_kwargs("0_8b")
+    kwargs = base_kwargs("2b")
     backends = passing_backends()
     backends["cuda"] = KernelVerification(
         status="fail", at_commit="abc1234", report="cuda.txt"
@@ -555,9 +543,9 @@ def test_text_context_below_128k_is_rejected():
 
 
 def test_32k_release_path_is_rejected_even_when_gguf_metadata_is_long():
-    kwargs = base_kwargs("0_8b")
+    kwargs = base_kwargs("2b")
     kwargs["files"]["text"] = [
-        FileEntry(path="text/eliza-1-0_8b-32k.gguf", sha256=SHA, ctx=262144)
+        FileEntry(path="text/eliza-1-2b-32k.gguf", sha256=SHA, ctx=262144)
     ]
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
@@ -711,14 +699,14 @@ def _base_v1_provenance() -> dict:
         "finetuned": False,
         "sourceModels": {
             "text": {
-                "repo": "unsloth/Qwen3.5-4B-GGUF",
-                "file": "Qwen3.5-4B-Q4_K_M.gguf",
+                "repo": "unsloth/gemma-4-E4B-GGUF",
+                "file": "gemma-4-E4B-Q4_K_M.gguf",
                 "convertedVia": "<fork>/convert_hf_to_gguf.py",
             },
             "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
             "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
             "vad": {"repo": "ggml-org/whisper-vad"},
-            "vision": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "mmproj-F16.gguf"},
+            "vision": {"repo": "unsloth/gemma-4-E4B-GGUF", "file": "mmproj-F16.gguf"},
             "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/4b/mtp/drafter-4b.gguf"},
         },
     }
@@ -734,7 +722,7 @@ def test_base_v1_manifest_validates_and_is_default_eligible():
     assert manifest["provenance"]["releaseState"] == "base-v1"
     assert manifest["provenance"]["finetuned"] is False
     assert manifest["provenance"]["sourceModels"]["text"]["repo"].endswith(
-        "Qwen3.5-4B-GGUF"
+        "gemma-4-E4B-GGUF"
     )
     assert validate_manifest(manifest) == ()
 
@@ -742,7 +730,7 @@ def test_base_v1_manifest_validates_and_is_default_eligible():
 def test_base_v1_27b_provenance_requires_qwen36_text_source():
     kwargs = base_kwargs("27b")
     prov = _base_v1_provenance()
-    prov["sourceModels"]["text"] = {"repo": "Qwen/Qwen3.6-27B"}
+    prov["sourceModels"]["text"] = {"repo": "google/gemma-4-31B"}
     kwargs["provenance"] = prov
     assert validate_manifest(build_manifest(**kwargs)) == ()
 
@@ -839,7 +827,7 @@ def test_voice_quant_ladder_covers_every_tier():
 def test_voice_quant_ladder_mobile_tiers_publish_narrow_omnivoice_ladder():
     """OmniVoice-capable mobile tiers publish the narrow quant ladder."""
     expected = ("Q3_K_M", "Q4_K_M", "Q5_K_M")
-    for tier in ("0_8b", "2b", "4b"):
+    for tier in ("2b", "4b"):
         assert VOICE_QUANT_LADDER_BY_TIER[tier] == expected
         assert VOICE_BACKENDS_BY_TIER[tier] == ("omnivoice", "kokoro")
 

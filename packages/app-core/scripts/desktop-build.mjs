@@ -488,6 +488,26 @@ function runPackageBinary(binary, binaryArgs, options = {}) {
   fail(`Could not find bunx or npx to run ${binary}.`);
 }
 
+function resolveLocalPackageBinary(binary, cwdCandidates = []) {
+  const executableNames =
+    process.platform === "win32"
+      ? [`${binary}.cmd`, `${binary}.exe`, binary]
+      : [binary];
+  const candidates = [];
+
+  for (const cwd of cwdCandidates) {
+    for (const executableName of executableNames) {
+      candidates.push(path.join(cwd, "node_modules", ".bin", executableName));
+    }
+  }
+
+  for (const executableName of executableNames) {
+    candidates.push(path.join(ROOT, "node_modules", ".bin", executableName));
+  }
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+}
+
 function runBunPackageBinary(binary, binaryArgs, options = {}) {
   const bunx = which("bunx");
   if (bunx) {
@@ -499,6 +519,15 @@ function runBunPackageBinary(binary, binaryArgs, options = {}) {
 }
 
 function runElectrobun(commandArgs, options = {}) {
+  const local = resolveLocalPackageBinary(
+    "electrobun",
+    [options.cwd, ELECTROBUN_DIR].filter(Boolean),
+  );
+  if (local) {
+    run(local, commandArgs, options);
+    return;
+  }
+
   const direct = which("electrobun");
   if (direct) {
     run(direct, commandArgs, options);
@@ -982,12 +1011,176 @@ function copyRuntimeNodeModulesWithRetry() {
   }
 }
 
+const FUSED_LIB_STAGE_SCRIPT = path.join(
+  SCRIPT_DIR,
+  "stage-desktop-fused-lib.mjs",
+);
+// "auto" → the stager picks the host's best backend (Metal on macOS, CUDA when
+// nvcc is present, else CPU) with the CPU fallback always baked in, so a local
+// `--build-fused-lib` produces "CPU + platform GPU" for the build host.
+const FUSED_LIB_VARIANT =
+  getArgValue(args, "fused-lib-variant") ??
+  process.env.ELIZA_DESKTOP_FUSED_LIB_VARIANT ??
+  "auto";
+// Where the fused lib is staged so the Electrobun copy (dist -> eliza-dist)
+// carries it; app-core's runtime probe (ensureBundledFusedLibDir) then finds
+// `<eliza-dist>/local-inference/lib` with no env wiring.
+const FUSED_LIB_OUT_DIR = path.join(ROOT, "dist", "local-inference", "lib");
+
+function fusedLibFilenames() {
+  if (process.platform === "darwin") return ["libelizainference.dylib"];
+  if (process.platform === "win32")
+    return ["elizainference.dll", "libelizainference.dll"];
+  return ["libelizainference.so"];
+}
+
+function fusedLibAlreadyStaged() {
+  return fusedLibFilenames().some((name) =>
+    fs.existsSync(path.join(FUSED_LIB_OUT_DIR, name)),
+  );
+}
+
+const FUSED_LIB_FORK_DIR = path.join(
+  PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR,
+  "native",
+  "llama.cpp",
+);
+
+/**
+ * Ensure the native llama.cpp fork submodule is checked out (the fused build
+ * needs its CMakeLists). Release CI checks out with `submodules: false`, so the
+ * fork is absent; init just the one path on demand rather than requiring the
+ * workflow to fetch every submodule. Returns true if the fork is present after.
+ */
+function ensureFusedLibSubmodule() {
+  if (fs.existsSync(path.join(FUSED_LIB_FORK_DIR, "CMakeLists.txt")))
+    return true;
+  const rel = path.relative(ROOT, FUSED_LIB_FORK_DIR).split(path.sep).join("/");
+  console.log(
+    `[desktop-build] Native fork missing; initializing submodule ${rel}`,
+  );
+  // NB: no --depth/shallow here — a shallow submodule fetch fails with
+  // "Server does not allow request for unadvertised object <sha>" when the
+  // recorded gitlink commit isn't the remote tip, which is common. Reliability
+  // over speed: this path must actually produce the fork.
+  spawnSync(
+    "git",
+    ["-C", ROOT, "submodule", "update", "--init", "--recursive", rel],
+    { stdio: "inherit" },
+  );
+  return fs.existsSync(path.join(FUSED_LIB_FORK_DIR, "CMakeLists.txt"));
+}
+
+/**
+ * Build + stage the fused `libelizainference` into the desktop bundle so a
+ * COMPILED app ships with working local inference — no first-run download, no
+ * manual `build:fused-desktop`. The "auto" variant bakes CPU in and layers the
+ * host's best GPU backend (Metal on macOS; CUDA when nvcc is present; else CPU),
+ * so it works on every host.
+ *
+ * Gating:
+ *   - Reuses an already-staged lib (a prior build, or a prebuilt artifact a CI
+ *     step dropped into dist/local-inference/lib).
+ *   - Builds when explicitly asked (`--build-fused-lib` /
+ *     ELIZA_DESKTOP_BUILD_FUSED_LIB=1) OR automatically on CI release builds
+ *     (CI=true) — initializing the native submodule on demand. Off for plain
+ *     local dev builds (keeps iteration fast).
+ *   - An EXPLICIT request hard-fails if it can't produce the lib (unless
+ *     ELIZA_DESKTOP_FUSED_LIB_OPTIONAL=1). A CI auto-build is BEST-EFFORT: a
+ *     missing toolchain or a build failure warns and ships without the lib
+ *     (cloud fallback) rather than breaking the release. Set
+ *     ELIZA_DESKTOP_FUSED_LIB_REQUIRED=1 to make CI auto-builds hard-fail too.
+ */
+function stageDesktopFusedLib() {
+  const explicitlyRequested =
+    getBooleanArg(args, "build-fused-lib") ||
+    process.env.ELIZA_DESKTOP_BUILD_FUSED_LIB === "1";
+  const ciAutoBuild = process.env.CI === "true";
+  const shouldBuild = explicitlyRequested || ciAutoBuild;
+  const required =
+    (explicitlyRequested ||
+      process.env.ELIZA_DESKTOP_FUSED_LIB_REQUIRED === "1") &&
+    process.env.ELIZA_DESKTOP_FUSED_LIB_OPTIONAL !== "1";
+
+  if (
+    fusedLibAlreadyStaged() &&
+    process.env.ELIZA_DESKTOP_REBUILD_FUSED_LIB !== "1"
+  ) {
+    console.log(
+      `[desktop-build] Reusing already-staged fused lib in ${FUSED_LIB_OUT_DIR}`,
+    );
+    return;
+  }
+
+  if (!shouldBuild) {
+    console.log(
+      "[desktop-build] Skipping fused libelizainference build (local-inference will be " +
+        "unavailable in this build). Enable with --build-fused-lib or " +
+        "ELIZA_DESKTOP_BUILD_FUSED_LIB=1 (CI release builds enable it automatically).",
+    );
+    return;
+  }
+
+  // Surface a hard failure for an explicit request that can't proceed; otherwise
+  // warn and ship without the lib so a release never breaks on the native build.
+  const giveUp = (reason) => {
+    if (required) {
+      fail(
+        `Cannot build the fused libelizainference for the desktop bundle: ${reason}. ` +
+          "Install the toolchain / init submodules, or set " +
+          "ELIZA_DESKTOP_FUSED_LIB_OPTIONAL=1 to ship without local inference.",
+      );
+    }
+    console.warn(
+      `[desktop-build] Skipping fused libelizainference build — ${reason}. ` +
+        "The compiled app will fall back to cloud inference.",
+    );
+  };
+
+  if (!which("cmake")) {
+    giveUp("cmake not found on PATH");
+    return;
+  }
+  if (!ensureFusedLibSubmodule()) {
+    giveUp(`native fork not available at ${FUSED_LIB_FORK_DIR}`);
+    return;
+  }
+
+  fs.mkdirSync(FUSED_LIB_OUT_DIR, { recursive: true });
+  run(
+    "node",
+    [
+      FUSED_LIB_STAGE_SCRIPT,
+      "--variant",
+      FUSED_LIB_VARIANT,
+      "--out",
+      FUSED_LIB_OUT_DIR,
+    ],
+    {
+      cwd: ROOT,
+      // A CI auto-build that fails must not abort the whole release; an explicit
+      // request is allowed to hard-fail.
+      allowFailure: !required,
+      label: `Building + staging fused libelizainference (${FUSED_LIB_VARIANT}) into the desktop bundle`,
+    },
+  );
+
+  if (!fusedLibAlreadyStaged()) {
+    giveUp("the build produced no lib in the output dir");
+  }
+}
+
 function stageDesktopBuild() {
   ensureWorkspaceCheckoutPresent();
   ensureAppDirs();
 
   ensureRootRuntimeBundle();
   ensureWorkspaceRuntimePackagesBuilt();
+
+  // Build + bundle the fused local-inference native lib so the packaged app
+  // serves local AI out of the box. Gated (see stageDesktopFusedLib) so plain
+  // dev builds stay fast; auto-built best-effort on CI release builds.
+  stageDesktopFusedLib();
 
   runBun(["run", "generate:css-strings"], {
     cwd: UI_PACKAGE_DIR,

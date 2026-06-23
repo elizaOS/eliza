@@ -76,6 +76,7 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 			"candidateActionNames",
 			"facts",
 			"relationships",
+			"topics",
 			"addressedTo",
 			"emotion",
 		]);
@@ -115,6 +116,7 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		expect(responseSkeleton.spans.some((s) => s.key === "relationships")).toBe(
 			false,
 		);
+		expect(responseSkeleton.spans.some((s) => s.key === "topics")).toBe(false);
 		expect(responseSkeleton.spans.some((s) => s.key === "addressedTo")).toBe(
 			false,
 		);

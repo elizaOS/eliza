@@ -16,9 +16,10 @@ afterAll(() => {
 });
 
 const { persistMediaBytes } = await import("./media-store.ts");
-const { mediaFileRoute, registerMediaPipelineHook } = await import(
-  "./media-runtime.ts"
-);
+const { collectReferencedMedia, mediaFileRoute, registerMediaPipelineHook } =
+  await import("./media-runtime.ts");
+
+type Memory = import("@elizaos/core").Memory;
 
 type CapturedHook = { handler: (rt: unknown, ctx: unknown) => unknown };
 
@@ -72,6 +73,64 @@ describe("registerMediaPipelineHook", () => {
     );
   });
 
+  it("rehosts a remote media URL, marking it ephemeral when the host is blocked", async () => {
+    const { runtime, getHook } = captureHookRuntime();
+    registerMediaPipelineHook(runtime);
+    const hook = getHook();
+
+    const ctx = {
+      phase: "outgoing_before_deliver" as const,
+      content: {
+        attachments: [
+          {
+            id: "gen",
+            // Link-local host → SSRF guard blocks before any network I/O.
+            url: "http://169.254.169.254/secret.png",
+            contentType: "image",
+          },
+        ],
+      },
+    };
+    await hook.handler(runtime, ctx);
+
+    // Blocked rehost → keep the original URL and flag it for a UI retry.
+    expect(ctx.content.attachments[0].url).toBe(
+      "http://169.254.169.254/secret.png",
+    );
+    expect(
+      (ctx.content.attachments[0] as { ephemeral?: boolean }).ephemeral,
+    ).toBe(true);
+  });
+
+  it("does not rehost remote link attachments or already-stored media", async () => {
+    const { runtime, getHook } = captureHookRuntime();
+    registerMediaPipelineHook(runtime);
+    const hook = getHook();
+
+    const storedUrl = `/api/media/${"a".repeat(64)}.png`;
+    const ctx = {
+      phase: "outgoing_before_deliver" as const,
+      content: {
+        attachments: [
+          {
+            id: "link",
+            url: "https://example.com/article",
+            contentType: "link",
+          },
+          { id: "stored", url: storedUrl, contentType: "image" },
+        ],
+      },
+    };
+    await hook.handler(runtime, ctx);
+
+    // Links are not media; stored URLs are already durable — both untouched.
+    expect(ctx.content.attachments[0].url).toBe("https://example.com/article");
+    expect(
+      (ctx.content.attachments[0] as { ephemeral?: boolean }).ephemeral,
+    ).toBeUndefined();
+    expect(ctx.content.attachments[1].url).toBe(storedUrl);
+  });
+
   it("ignores non-outgoing phases and empty attachments", async () => {
     const { runtime, getHook } = captureHookRuntime();
     registerMediaPipelineHook(runtime);
@@ -86,6 +145,57 @@ describe("registerMediaPipelineHook", () => {
     expect(wrongPhase.content.attachments[0].url).toBe(
       "data:image/png;base64,AA",
     );
+  });
+});
+
+describe("collectReferencedMedia", () => {
+  const HASH_A = "a".repeat(64);
+  const HASH_B = "b".repeat(64);
+
+  it("collects a file referenced only via memory.metadata.mediaUrl", () => {
+    const memories = [
+      {
+        // Document-linked original-bytes file: no content.attachments entry.
+        content: { text: "a knowledge doc" },
+        metadata: { type: "document", mediaUrl: `/api/media/${HASH_A}.pdf` },
+      },
+    ] as unknown as Memory[];
+
+    const referenced = collectReferencedMedia(memories);
+
+    expect(referenced.has(`${HASH_A}.pdf`)).toBe(true);
+  });
+
+  it("collects from both content.attachments and metadata.mediaUrl", () => {
+    const memories = [
+      {
+        content: {
+          text: "msg",
+          attachments: [{ url: `/api/media/${HASH_B}.png` }],
+        },
+        metadata: { type: "document", mediaUrl: `/api/media/${HASH_A}.pdf` },
+      },
+    ] as unknown as Memory[];
+
+    const referenced = collectReferencedMedia(memories);
+
+    expect(referenced.has(`${HASH_A}.pdf`)).toBe(true);
+    expect(referenced.has(`${HASH_B}.png`)).toBe(true);
+    expect(referenced.size).toBe(2);
+  });
+
+  it("ignores non-media metadata.mediaUrl values", () => {
+    const memories = [
+      {
+        content: { text: "x" },
+        metadata: { type: "document", mediaUrl: "https://example.com/x.pdf" },
+      },
+      { content: { text: "y" }, metadata: { type: "document" } },
+    ] as unknown as Memory[];
+
+    const referenced = collectReferencedMedia(memories);
+
+    expect(referenced.size).toBe(0);
   });
 });
 

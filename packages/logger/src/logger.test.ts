@@ -4,6 +4,10 @@ import {
   addLogListener,
   createLogger,
   type LogEntry,
+  logChatIn,
+  logChatOut,
+  logPrompt,
+  logResponse,
   recentLogs,
   removeLogListener,
 } from "./logger";
@@ -63,5 +67,34 @@ describe("logger", () => {
       .info({ src: "browser-test" }, "child message");
 
     expect(consoleInfo).toHaveBeenCalledWith("[BROWSER-TEST] child message");
+  });
+
+  it("keeps the public prompt/chat instrumentation helpers available", () => {
+    expect(logPrompt("text", "hello")).toBe("");
+    expect(logResponse("text", "world")).toBe("");
+    expect(
+      logChatIn({
+        agentName: "Eliza",
+        agentId: "agent-1",
+        roomId: "room-123456789",
+        messageId: "message-123456789",
+        text: 'hello "there"',
+        source: "test",
+      }),
+    ).toContain(
+      '[CHAT:IN]  #agent:Eliza room=room-123 msg=message- source=test "hello \\"there\\""',
+    );
+    expect(
+      logChatOut({
+        agentName: "Eliza",
+        agentId: "agent-1",
+        roomId: "room-123456789",
+        action: "reply",
+        text: "done",
+        providers: ["test-provider"],
+      }),
+    ).toContain(
+      '[CHAT:OUT] #agent:Eliza room=room-123 action=reply len=4 "done" providers=test-provider',
+    );
   });
 });

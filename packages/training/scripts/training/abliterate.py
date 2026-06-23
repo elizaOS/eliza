@@ -15,15 +15,12 @@ Reference: Arditi et al., "Refusal in Language Models Is Mediated by a Single
 Direction", arXiv:2406.11717. Implementation: heretic-llm v1.2 (AGPL-3.0,
 runtime dependency only).
 
-NOTE on Qwen3.5 hybrid attention: Qwen3.5 MoE blocks are a 4-layer period
-of 3x Gated DeltaNet (linear attention, recurrent state) + 1x Gated Attention
-(full softmax). The refusal direction lives in the residual stream that is
-shared across both, but only the GA `self_attn.o_proj` and the dense
-`mlp.down_proj` may be orthogonalized. Touching `linear_attn.out_proj`
-corrupts the GDN recurrent state (the SSM-style hidden vector flows through
-the same residual write but participates in a different update rule). Heretic
-v1.2's `Model.get_layer_modules` registers BOTH writers under the same
-component key — we monkey-patch it to drop the GDN ones.
+Gemma 4 is a standard DENSE transformer — every layer is a real attention
+layer (alternating local SWA + periodic global full-attention), with no
+Gated-DeltaNet / linear-attention / SSM write path. The refusal direction is
+read from the residual stream and orthogonalized out of the attention
+`self_attn.o_proj` and the MLP `mlp.down_proj` on every layer; there is no
+GA-only filtering and no recurrent-state writer to skip.
 """
 
 from __future__ import annotations
@@ -45,8 +42,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("abliterate")
 
 
-# Eval gate thresholds from Arditi et al. + Heretic's published runs on the
-# Qwen3.5 line (KL ~0.06 typical, refusal <1% on 100-prompt probes). We hold
+# Eval gate thresholds from Arditi et al. + Heretic's published dense-model
+# runs (KL ~0.06 typical, refusal <1% on 100-prompt probes). We hold
 # 0.5 / 5% as the "publish" floor — looser than Heretic's typical and tight
 # enough to block degraded variants from entering the active Eliza-1 line.
 KL_GATE_MAX = 0.5
@@ -112,31 +109,6 @@ def _build_settings(cfg: AblitConfig):
         sys.argv = saved_argv
 
 
-def _patch_skip_gdn_writers(model_cls) -> None:
-    """Drop GDN `linear_attn.out_proj` from the abliterable module list.
-
-    Heretic v1.2 registers GA `self_attn.o_proj` and GDN `linear_attn.out_proj`
-    under the same `attn.o_proj` key. Iterating layer.linear_attn raises on a
-    GA layer and vice versa, so the per-layer module list contains exactly one
-    of the two — we identify GDN layers by the absence of `self_attn` and drop
-    that layer's `attn.o_proj` entry entirely.
-    """
-    original = model_cls.get_layer_modules
-
-    def patched(self, layer_index: int):
-        modules = original(self, layer_index)
-        layer = self.get_layers()[layer_index]
-        # GDN layer = no self_attn (linear_attn lives there instead). On those
-        # layers, the only `attn.o_proj` entry is the linear_attn.out_proj —
-        # discard the whole bucket so the abliteration loop skips this layer
-        # for that component.
-        if not hasattr(layer, "self_attn") and "attn.o_proj" in modules:
-            del modules["attn.o_proj"]
-        return modules
-
-    model_cls.get_layer_modules = patched
-
-
 def _layer_index(n_layers: int, pct: float) -> int:
     # Clamp to the valid range so callers can't accidentally index past the
     # last layer (Heretic adds +1 internally for the embedding-row direction).
@@ -160,11 +132,11 @@ def _flat_parameters(components: list[str], layer_index: int, strength: float):
 _MODEL_CARD_TEMPLATE = """---
 base_model: {source_repo}
 library_name: transformers
-license: apache-2.0
+license: gemma
 tags:
   - eliza
   - elizaos
-  - {qwen_tag}
+  - {base_tag}
   - abliterated
   - uncensored
   - heretic
@@ -183,8 +155,8 @@ safety: uncensored
 [`{source_repo}`](https://huggingface.co/{source_repo}). The refusal direction
 was computed per Arditi et al. ([arXiv:2406.11717](https://arxiv.org/abs/2406.11717))
 and baked into the weights with [Heretic v1.2](https://github.com/p-e-w/heretic).
-Hybrid Qwen3.5/3.6 GDN write paths (`linear_attn.out_proj`) were left
-untouched to preserve the recurrent state.
+The base is a dense Gemma 4 transformer, so the direction was orthogonalized
+out of `self_attn.o_proj` and `mlp.down_proj` on every layer.
 
 ## Procedure
 
@@ -209,8 +181,9 @@ untouched to preserve the recurrent state.
 
 ## License
 
-Inherits Apache-2.0 from `{source_repo}`. Use is governed by the upstream
-[Qwen Acceptable Use Policy](https://github.com/QwenLM/Qwen3/blob/main/LICENSE);
+Derived from the dense Gemma 4 base via `{source_repo}`. Use is governed by
+the upstream [Gemma Terms of Use](https://ai.google.dev/gemma/terms) and the
+[Gemma Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy);
 prohibited categories (CSAM, election interference, etc.) remain prohibited
 regardless of the lifted refusal behavior.
 
@@ -221,11 +194,11 @@ distribution of it, so the AGPL terms do not propagate.
 
 def _render_card(cfg: AblitConfig, meta: dict) -> str:
     entry = registry_get(cfg.registry_key)
-    qwen_tag = "qwen3.5"
+    base_tag = "gemma4"
     return _MODEL_CARD_TEMPLATE.format(
         source_repo=entry.eliza_repo_id or entry.hf_id,
         short_name=entry.eliza_short_name or entry.short_name,
-        qwen_tag=qwen_tag,
+        base_tag=base_tag,
         date=meta["date"],
         harmful_dataset=cfg.harmful_dataset,
         harmless_dataset=cfg.harmless_dataset,
@@ -251,23 +224,21 @@ def run(cfg: AblitConfig) -> int:
     log.info("strength=%.2f target_layer_pct=%.2f", cfg.strength, cfg.target_layer_pct)
 
     if cfg.dry_run:
-        # Dry-run inspects the registry + Qwen3.5 layer counts without
-        # touching CUDA. The hybrid period is 4 (3xGDN + 1xGA), and the
-        # configured direction-layer percentage selects a layer index that
-        # may itself be GDN — we surface that so the operator can sanity
-        # check before burning a long bake.
-        n_layers = {"qwen3.5-0.8b": 24, "qwen3.5-2b": 24, "qwen3.5-4b": 32}.get(
+        # Dry-run inspects the registry + Gemma 4 layer counts without
+        # touching CUDA. Gemma 4 is a dense transformer (every layer is a
+        # real attention layer), so the direction is orthogonalized out of
+        # every layer — no GA-only filtering, no GDN writer to skip.
+        n_layers = {"gemma4-e2b": 35, "gemma4-e4b": 35,
+                    "gemma4-12b": 48, "gemma4-31b": 64}.get(
             cfg.registry_key, 0,
         )
         layer_index = _layer_index(n_layers, cfg.target_layer_pct) if n_layers else -1
-        ga_layers = list(range(3, n_layers, 4)) if n_layers else []
-        log.info("[dry-run] %s: %d layers, GA at %s",
-                 cfg.registry_key, n_layers, ga_layers)
-        log.info("[dry-run] direction layer = %d (will %s GDN)", layer_index,
-                 "be on" if layer_index not in ga_layers else "skip")
+        log.info("[dry-run] %s: %d layers (dense Gemma 4)",
+                 cfg.registry_key, n_layers)
+        log.info("[dry-run] direction layer = %d", layer_index)
         log.info("[dry-run] would orthogonalize: embed_tokens, "
-                 "mlp.down_proj on all %d layers, self_attn.o_proj on %d GA layers",
-                 n_layers, len(ga_layers))
+                 "mlp.down_proj and self_attn.o_proj on all %d layers",
+                 n_layers)
         log.info("[dry-run] would bake to %s and write abliteration_metadata.json",
                  cfg.out_checkpoint)
         log.info("[dry-run] no weights modified, no files written.")
@@ -280,10 +251,6 @@ def run(cfg: AblitConfig) -> int:
     from heretic.evaluator import Evaluator
 
     settings = _build_settings(cfg)
-
-    # Patch BEFORE Model() runs — `_apply_lora` consults get_layer_modules to
-    # decide which leaf modules to wrap with LoRA adapters.
-    _patch_skip_gdn_writers(Model)
 
     torch.set_grad_enabled(False)
     model = Model(settings)

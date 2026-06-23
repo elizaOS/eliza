@@ -40,16 +40,11 @@ import {
 } from "./conversation-registry";
 import { desktopFusedFfiBackendRuntime } from "./desktop-fused-ffi-backend-runtime";
 import { FfiStreamingBackend } from "./ffi-streaming-backend";
-import { GenericGgufBackend } from "./generic-gguf-backend";
 import { estimateDecodeTokens, recordDecodeThroughput } from "./live-signals";
 import { MemoryMonitor } from "./memory-monitor";
 import { listInstalledModels } from "./registry";
 import { resolveDefaultPoolSize } from "./session-pool";
-import {
-	classifyCatalogModelRuntimeClass,
-	classifyInstalledModelRuntimeClass,
-	type InstalledModel,
-} from "./types";
+import type { InstalledModel } from "./types";
 import type { CoordinatorRuntime } from "./voice/cancellation-coordinator";
 import {
 	createKokoroSpeakerPreset,
@@ -281,7 +276,7 @@ export class LocalInferenceEngine {
 	/**
 	 * In-process FFI backend — the sole text runtime, served by the FUSED
 	 * `libelizainference` (`desktop-fused-ffi-backend-runtime.ts`). Text gen,
-	 * same-file MTP speculative decoding, KV-cache quant, native tokenization,
+	 * MTP speculative decoding, KV-cache quant, native tokenization,
 	 * and vision-describe all run through the one fused lib the voice subsystem
 	 * already loads (ABI v9). libllama has been retired: a fused lib that is
 	 * absent or lacks the v9 capabilities is a loud `LocalInferenceUnavailable`
@@ -290,19 +285,10 @@ export class LocalInferenceEngine {
 	private readonly ffiBackend = new FfiStreamingBackend(
 		desktopFusedFfiBackendRuntime,
 	);
-	/**
-	 * Generic single-file GGUF runtime — the explicit-`modelPath` path for a
-	 * non-Eliza-1 model the user downloaded/scanned. Serves text on platforms
-	 * with the explicit-path binding (mobile capacitor); on desktop it reports
-	 * unavailable and the dispatcher raises a typed error rather than
-	 * mis-loading an arbitrary GGUF through the bundle-locked fused path.
-	 */
-	private readonly genericBackend = new GenericGgufBackend();
 	private readonly dispatcher = new BackendDispatcher(
 		this.ffiBackend,
 		() => desktopFusedFfiBackendRuntime.supported(),
 		() => null,
-		this.genericBackend,
 	);
 	/**
 	 * Active voice-streaming bridge (`EngineVoiceBridge`). Only set when an
@@ -517,7 +503,7 @@ export class LocalInferenceEngine {
 		return this.dispatcher.hasLoadedModel();
 	}
 
-	activeBackendId(): "capacitor-llama" | "llama-cpp" | "generic-gguf" | null {
+	activeBackendId(): "llama-cpp" | null {
 		return this.dispatcher.activeBackendId();
 	}
 
@@ -575,29 +561,15 @@ export class LocalInferenceEngine {
 		// behaviour of trusting catalog defaults inside the backend.
 		const overrides = resolved ? toBackendLoadOverrides(resolved) : undefined;
 
-		// Resolve the model class so the dispatcher routes to the fused Eliza-1
-		// runtime or the generic single-file GGUF runtime. The installed-model
-		// `runtimeClass` field is authoritative (an external GGUF has no catalog
-		// entry); fall back to classifying the catalog entry for direct bundle
-		// loads not present in the registry.
-		const runtimeClass = target
-			? classifyInstalledModelRuntimeClass(target)
-			: catalog
-				? classifyCatalogModelRuntimeClass(catalog)
-				: undefined;
-
 		const plan: BackendPlan = {
 			modelPath,
 			modelId,
 			catalog,
-			...(runtimeClass ? { runtimeClass } : {}),
 			overrides,
 		};
 
-		// The dispatcher routes by `runtimeClass`: fused libelizainference for an
-		// Eliza-1 bundle, the explicit-`modelPath` generic runtime for a single
-		// downloaded/scanned GGUF. A load failure surfaces directly — there is no
-		// silent fall-through between the two classes.
+		// The local stack is Eliza-1 only: the dispatcher routes every load to the
+		// fused libelizainference runtime. A load failure surfaces directly.
 		await this.dispatcher.load(plan);
 		this.startBackgroundManagement();
 	}
@@ -1158,7 +1130,7 @@ export class LocalInferenceEngine {
 		/**
 		 * Use the already-loaded eliza-1 text model as the EOT classifier — see
 		 * `voice/eliza1-eot-scorer.ts`. When set, the runtime skips the
-		 * separate LiveKit/Turnsense ONNX and reads P(`<|im_end|>`) directly
+		 * separate LiveKit/Turnsense ONNX and reads P(`<end_of_turn>`) directly
 		 * off the live model.
 		 *
 		 * `"auto"` (default): use eliza-1 EOT when `ELIZA_VOICE_EOT_BACKEND=eliza-1`
@@ -1297,7 +1269,7 @@ export class LocalInferenceEngine {
 		}
 		// Fused end-of-turn scorer (ABI v11): the model-based turn detector now
 		// runs in-process through libelizainference — a composite of the fused
-		// semantic scorer (P(<|im_end|>) over the loaded text model) and the
+		// semantic scorer (P(<end_of_turn>) over the loaded text model) and the
 		// heuristic syntactic co-signal. Built only when the loaded fused build
 		// wires the v11 EOT symbol; null on a pre-v11 library, in which case the
 		// resolver falls through to the heuristic-only classifier.

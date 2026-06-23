@@ -416,7 +416,7 @@ def fix_historical_masks(
     assistant_markers = [
         tokenizer.encode("assistant", add_special_tokens=False),
         tokenizer.encode("<|assistant|>", add_special_tokens=False),
-        tokenizer.encode("<|im_start|>assistant", add_special_tokens=False),
+        tokenizer.encode("<start_of_turn>model", add_special_tokens=False),
     ]
 
     for marker_tokens in assistant_markers:

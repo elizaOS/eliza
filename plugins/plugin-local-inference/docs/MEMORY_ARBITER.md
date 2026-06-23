@@ -34,11 +34,20 @@ Live in this checkout:
 - The active text target registers a catalog/file-size-derived resident
   estimate with the shared registry, so pressure telemetry no longer
   reports the dominant text role as `0 MB`.
+- `bun run --cwd plugins/plugin-local-inference memory:benchmark` emits a
+  desktop/server memory report with host RAM, the device-fit Eliza-1 pick,
+  per-tier resident estimates, installed bundle footprints, and arbiter
+  load/eviction/pressure telemetry. Add `--load` to exercise every
+  installed Eliza-owned bundle with a short decode and RSS delta sample.
+- The `memperf` harness (`packages/benchmarks/memperf/run-all.mjs`) is wired
+  into CI as a budget / eviction-telemetry regression gate
+  (`.github/workflows/memperf.yml`): exit `1` — a real `budgets.json` peak-RSS
+  or co-residency eviction-count regression — fails the build; a model-absent
+  runner exits `2` (skip) after the real-arbiter co-residency self-check still
+  runs.
 
 Still deferred:
 
-- The desktop/server memory benchmark harness and CI `budgets.json`
-  regression gate.
 - Voice next-stage predictors that call `preload()` during ASR / LM /
   TTS transitions.
 - Dedicated embedding-sidecar residency registration for the larger

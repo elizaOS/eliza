@@ -13,8 +13,9 @@ import {
   uploadTrajectoryJsonlToHuggingFace,
 } from "./trajectory-hf-upload.js";
 import {
-  exportTrajectoryTaskDatasets,
+  buildTaskRecord,
   type ElizaNativeTrainingExample,
+  exportTrajectoryTaskDatasets,
   type TrajectoryTaskDatasetExport,
   type TrajectoryTrainingTask,
 } from "./trajectory-task-datasets.js";
@@ -127,6 +128,14 @@ function taskPathMap(
     response: paths.responsePath,
     media_description: paths.mediaDescriptionPath,
     view_context: paths.viewContextPath,
+    calendar_extract: paths.calendarExtractPath,
+    schedule_plan: paths.schedulePlanPath,
+    reminder_dispatch: paths.reminderDispatchPath,
+    inbox_triage: paths.inboxTriagePath,
+    meeting_prep: paths.meetingPrepPath,
+    morning_brief: paths.morningBriefPath,
+    health_checkin: paths.healthCheckinPath,
+    screentime_recap: paths.screentimeRecapPath,
   };
 }
 
@@ -495,28 +504,14 @@ function buildTaskFiles(
 }
 
 function emptyTaskCounts(): Record<TrajectoryTrainingTask, number> {
-  return {
-    should_respond: 0,
-    context_routing: 0,
-    action_planner: 0,
-    response: 0,
-    media_description: 0,
-    view_context: 0,
-  };
+  return buildTaskRecord<number>(() => 0);
 }
 
 function emptyTaskExamples(): Record<
   TrajectoryTrainingTask,
   ElizaNativeTrainingExample[]
 > {
-  return {
-    should_respond: [],
-    context_routing: [],
-    action_planner: [],
-    response: [],
-    media_description: [],
-    view_context: [],
-  };
+  return buildTaskRecord<ElizaNativeTrainingExample[]>(() => []);
 }
 
 function normalizeRunId(value: unknown): string | null {

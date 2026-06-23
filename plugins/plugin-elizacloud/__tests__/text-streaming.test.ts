@@ -477,8 +477,12 @@ describe("cloud streaming gate decision (wantsStream)", () => {
     );
   }
 
-  function lastJson(): { stream?: unknown } {
-    const call = requestRaw.mock.calls.at(-1) as [string, string, { json?: { stream?: unknown } }];
+  function lastJson(): Record<string, unknown> {
+    const call = requestRaw.mock.calls.at(-1) as [
+      string,
+      string,
+      { json?: Record<string, unknown> },
+    ];
     return call[2].json ?? {};
   }
 
@@ -539,6 +543,38 @@ describe("cloud streaming gate decision (wantsStream)", () => {
       streamStructured: true,
     } as never);
     expect(lastJson().stream).not.toBe(true);
+  });
+
+  it("omits native max_tokens only when omitMaxTokens is set", async () => {
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+      omitMaxTokens: true,
+    } as never);
+    expect(lastJson()).not.toHaveProperty("max_tokens");
+
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+    } as never);
+    expect(lastJson().max_tokens).toBe(8192);
+  });
+
+  it("omits responses max_output_tokens only when omitMaxTokens is set", async () => {
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      omitMaxTokens: true,
+    } as never);
+    expect(lastJson()).not.toHaveProperty("max_output_tokens");
+
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+    } as never);
+    expect(lastJson().max_output_tokens).toBe(8192);
   });
 });
 

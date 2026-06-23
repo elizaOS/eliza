@@ -230,7 +230,7 @@ describe("WS2 cross-modality eviction — vision-describe ↔ image-gen (same `v
 	});
 
 	it("vision keyed by different modelKey on the same slot still evicts and reloads", async () => {
-		// 0_8b → 2b within the vision-describe capability is the on-device
+		// 4b → 2b within the vision-describe capability is the on-device
 		// scenario of a user switching tiers mid-session.
 		const arbiter = newArbiter();
 		arbiter.start();
@@ -249,7 +249,7 @@ describe("WS2 cross-modality eviction — vision-describe ↔ image-gen (same `v
 			VisionDescribeRequest,
 			VisionDescribeResult
 		>({
-			modelKey: "qwen3-vl-0_8b",
+			modelKey: "qwen3-vl-4b",
 			payload: { image: { kind: "bytes", bytes: tinyPngBytes() } },
 		});
 		await arbiter.requestVisionDescribe<

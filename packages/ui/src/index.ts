@@ -174,6 +174,26 @@ export * from "./components/apps/surfaces/GameOperatorShell";
 export * from "./components/apps/surfaces/registry";
 export * from "./components/apps/surfaces/types";
 export { resolveCharacterGreetingAnimation } from "./components/character/character-greeting";
+// Vision-critical chat widgets (#8933) — presentational only, exported with
+// their public prop/value types for stories + host wiring.
+export {
+  type BrowserLaunchStatus,
+  BrowserLaunchWidget,
+  type BrowserLaunchWidgetProps,
+} from "./components/chat/widgets/browser-launch-widget";
+export {
+  ChatHistorySwiper,
+  type ChatHistorySwiperProps,
+  type HistoryCard,
+} from "./components/chat/widgets/chat-history-swiper";
+export {
+  type CredentialRequestVariant,
+  CredentialRequestWidget,
+  type CredentialRequestWidgetProps,
+  type ImageUploadVariant,
+  type OAuthLinkVariant,
+  type PasteSecretVariant,
+} from "./components/chat/widgets/credential-request-widget";
 export {
   getInlineWidget,
   getInlineWidgets,
@@ -183,10 +203,27 @@ export {
   registerInlineWidget,
 } from "./components/chat/widgets/inline-registry";
 export {
+  type GrillingCriterion,
+  type GrillingCriterionState,
+  type GrillingStatus,
+  OrchestratorGrillingCard,
+  type OrchestratorGrillingCardProps,
+} from "./components/chat/widgets/orchestrator-grilling-card";
+export {
   EmptyWidgetState,
   WidgetSection,
 } from "./components/chat/widgets/shared";
 export { registerTaskWidget } from "./components/chat/widgets/task-widget";
+export {
+  type TopicChip,
+  TopicChipsBar,
+  type TopicChipsBarProps,
+} from "./components/chat/widgets/topic-chips-bar";
+export {
+  type TopicGroup,
+  TopicGroupedTranscript,
+  type TopicGroupedTranscriptProps,
+} from "./components/chat/widgets/topic-grouped-transcript";
 export type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
@@ -474,6 +511,8 @@ export {
   getVrmPreviewUrl,
   getVrmUrl,
   mergeStreamingText,
+  useAppSelector,
+  useAppSelectorShallow,
   useCompanionSceneConfig,
   usePtySessions,
   useTranslation,

@@ -13,14 +13,14 @@ uniform across SFT and DPO.
 Usage:
     # Smoke
     uv run --extra train python scripts/train_dpo.py \
-        --registry-key qwen3.5-2b \
-        --sft-checkpoint checkpoints/qwen3.5-0.8b-eliza-payload-v3/final \
-        --output-dir checkpoints/qwen3.5-0.8b-dpo-smoke \
+        --registry-key gemma4-e2b \
+        --sft-checkpoint checkpoints/gemma4-e2b-eliza-payload-v3/final \
+        --output-dir checkpoints/gemma4-e2b-dpo-smoke \
         --max-steps 5
 
     # Real run
     uv run --extra train python scripts/train_dpo.py \
-        --registry-key qwen3.5-4b \
+        --registry-key gemma4-e4b \
         --sft-checkpoint checkpoints/eliza-1-4b-sft/final \
         --output-dir checkpoints/eliza-1-4b-dpo
 """
@@ -174,7 +174,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--registry-key", required=True,
                     help="Pull defaults from training/model_registry.py "
-                         "(e.g. qwen3.5-2b).")
+                         "(e.g. gemma4-e2b).")
     ap.add_argument("--sft-checkpoint", required=True,
                     help="Path to the SFT checkpoint (final/ subdir).")
     ap.add_argument("--pairs-dir", default=str(ROOT / "data" / "synthesized" / "action_pairs"))

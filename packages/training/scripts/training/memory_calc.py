@@ -18,7 +18,8 @@ Formula references:
   Activations    : O(B * S * H * L)  with full caching;
                    O(B * sqrt(S) * H * L) with gradient checkpointing.
   Logits transient: B * S * V * 4   (fp32 for HF loss); ÷ chunk_count with Liger.
-  KV cache (full attn only):
+  KV cache (KV-bearing layers only; Gemma 4 is dense — no SSM layers — but
+            most layers are windowed SWA with shared KV, so this overestimates):
     bf16 K/V     : 2 * heads_kv * head_dim * S * full_attn_layers * 2  bytes
     QJL K (1-bit): heads_kv * head_dim * S * full_attn_layers * 0.125  bytes
                    + projection_seed (negligible)
@@ -80,13 +81,17 @@ class ModelShape:
     intermediate_size: int = 0
     num_layers: int = 0
     full_attn_layers: int = 0
-    """KV-bearing full-attention layers (rest are linear-attention)."""
+    """KV-bearing layers. On Gemma 4 (dense, no linear attention) this is the
+    global full-attention layers plus the non-shared SWA layers — well below
+    num_layers because most layers are windowed SWA with shared KV. This
+    simple count treats every KV-bearing layer as full-context at one head
+    dim, so the derived KV memory overestimates Gemma's windowed/shared KV."""
 
     kv_heads: int = 0
     kv_head_dim: int = 0
-    vocab_size: int = 248_320
-    """Qwen3.5/3.6 vocab (HF config.json `vocab_size`; verified against
-    the active 0.8B/2B/4B Eliza-1 line)."""
+    vocab_size: int = 262_144
+    """Gemma 4 vocab (SentencePiece-BPE; HF config.json `vocab_size`,
+    `tokenizer.ggml.model = "gemma4"`)."""
 
     embedding_params: int = 0
     """Token embedding + lm_head — these stay in APOLLO's unprojected group.
@@ -185,11 +190,12 @@ def _kv_k_bytes_per_elem(quant: KvKQuant) -> float:
     but the actual stored payload is `(projection_dim / 8) + 2` bytes per
     head per token — packed sign sketch + bf16 norm — vs `head_dim * 2`
     bytes for the bf16 baseline. At the canonical `projection_dim=256` and
-    `head_dim=128` (Qwen3 / Llama-3 / Qwen3.5 small models) the realized
-    ratio is `head_dim*2 / (proj_dim/8 + 2) = 256/34 = 7.53×`, validated by
-    the QJL agent's calibration probe on real K activations from
-    Qwen/Qwen3.5-0.8B. We use 0.272 bytes/elem (= 2/7.53) here so the
-    published budgets reflect reality, not the marketing number.
+    `head_dim=128` the realized ratio is
+    `head_dim*2 / (proj_dim/8 + 2) = 256/34 = 7.53×`. We use 0.272 bytes/elem
+    (= 2/7.53) here so the published budgets reflect reality, not the
+    marketing number. Note that on Gemma 4 the KV is already minimal (MQA +
+    windowed SWA + shared KV), so QJL is low-ROI there and this column is only
+    relevant to architectures with large unshared full-attention KV.
     """
     return {KvKQuant.BF16: 2.0, KvKQuant.QJL_1BIT: 2.0 / 7.53}[quant]
 
@@ -205,9 +211,12 @@ def _kv_v_bytes_per_elem(quant: KvVQuant) -> float:
 def kv_cache_bytes(shape: ModelShape, *, seq_total: int, batch: int = 1,
                    k_quant: KvKQuant = KvKQuant.BF16,
                    v_quant: KvVQuant = KvVQuant.BF16) -> int:
-    """KV cache bytes at the given context length. Only full-attn layers
-    contribute; linear-attention (Gated DeltaNet) layers carry constant SSM
-    state independent of seq_len."""
+    """KV cache bytes at the given context length. Only KV-bearing layers
+    contribute. Gemma 4 is a dense transformer (no linear-attention/SSM
+    layers), but most layers are windowed SWA whose KV is bounded by the
+    window and a block of upper layers share a lower layer's KV — so passing
+    `full_attn_layers` (KV-bearing count) at the global head_dim treats every
+    such layer as full-context and overestimates the true Gemma KV cache."""
     elems_per_token_per_layer = shape.kv_heads * shape.kv_head_dim
     total_elems = elems_per_token_per_layer * shape.full_attn_layers * seq_total * batch
     return int(total_elems * (_kv_k_bytes_per_elem(k_quant)
@@ -225,9 +234,10 @@ def optimizer_state_bytes(shape: ModelShape, *, opt: TrainOpt,
     full_state = unprojected_params * 8
     if opt == TrainOpt.APOLLO:
         # 2-D weight grads project to rank-r before m/v storage.
-        # Approximate per-tensor ratio: rank / mean(in_features). For Qwen
-        # the projection MLPs/attention are roughly rank/H. Use rank/2048 as
-        # a representative value for 2B and scale up for larger hidden sizes.
+        # Approximate per-tensor ratio: rank / mean(in_features). The
+        # projection MLPs/attention are roughly rank/H. Use rank/2048 as
+        # a representative value for the small tiers and scale up for larger
+        # hidden sizes.
         ratio = rank / max(shape.hidden_size, 2048)
         twod_state = int(twod * 8 * ratio)
     elif opt == TrainOpt.APOLLO_MINI:
@@ -369,35 +379,42 @@ def estimate_infer(shape: ModelShape, cfg: InferConfig) -> MemoryBreakdown:
 
 # ─────────────────── shape catalog ───────────────────
 
-# Architectural facts pulled directly from the Qwen HF
-# `config.json` (`text_config` block — these are multimodal image-text
-# checkpoints whose LM-side hyperparameters live nested). The eliza-1
-# active line ships three sizes: 0.8B/2B/4B.
+# Architectural facts pulled directly from the Gemma 4 HF `config.json`.
+# Gemma 4 is a dense transformer with alternating local SWA + periodic global
+# full-attention, MQA (kv_heads=1), dual head dims (512 global / 256 SWA), a
+# shared-KV block, and Per-Layer Embeddings. `full_attn_layers` here is the
+# KV-bearing count (global + non-shared SWA); `kv_head_dim=512` is the global
+# dim, so the derived KV overestimates the windowed-SWA portion. The eliza-1
+# active line ships four sizes: E2B/E4B/12B/31B. Geometry beyond E2B is
+# proportionate — verify against each tier's config.json.
 SHAPES: dict[str, ModelShape] = {
-    # qwen3.5-0.8b is the smoke-only base (`smoke_full_stack.sh`); not part of
-    # the eliza-1 production lineup but the preflight checker resolves it
-    # when an operator provisions with `REGISTRY_KEY=qwen3.5-0.8b`. Numbers
-    # from Qwen/Qwen3.5-0.8B config.json (vanilla full-attention transformer,
-    # no hybrid GDN — full_attn_layers == num_layers).
-    "qwen3.5-0.8b": ModelShape(
-        name="qwen3.5-0.8b", params_total=596_049_920,
-        hidden_size=1024, intermediate_size=3072, num_layers=28,
-        full_attn_layers=28, kv_heads=8, kv_head_dim=128,
+    # E2B geometry verified from the real GGUF: n_layer=35, hidden=1536,
+    # n_head=8, n_head_kv=1 (MQA), head_dim_global=512, head_dim_swa=256,
+    # sliding_window=512, 7 global layers, shared_kv_layers=20 → ~15 KV-bearing.
+    "gemma4-e2b": ModelShape(
+        name="gemma4-e2b", params_total=4_650_000_000,
+        hidden_size=1536, intermediate_size=8192, num_layers=35,
+        full_attn_layers=15, kv_heads=1, kv_head_dim=512,
     ),
-    "qwen3.5-2b": ModelShape(
-        name="qwen3.5-2b", params_total=2_274_069_824,
-        hidden_size=2048, intermediate_size=6144, num_layers=24,
-        full_attn_layers=6, kv_heads=2, kv_head_dim=256,
+    "gemma4-e4b": ModelShape(
+        name="gemma4-e4b", params_total=4_500_000_000,
+        hidden_size=2048, intermediate_size=8192, num_layers=35,
+        full_attn_layers=18, kv_heads=1, kv_head_dim=512,
     ),
-    "qwen3.5-4b": ModelShape(
-        name="qwen3.5-4b", params_total=4_000_000_000,
-        hidden_size=4096, intermediate_size=12288, num_layers=32,
-        full_attn_layers=8, kv_heads=4, kv_head_dim=256,
+    "gemma4-12b": ModelShape(
+        name="gemma4-12b", params_total=12_000_000_000,
+        hidden_size=3840, intermediate_size=15360, num_layers=48,
+        full_attn_layers=20, kv_heads=1, kv_head_dim=512,
+    ),
+    "gemma4-31b": ModelShape(
+        name="gemma4-31b", params_total=31_000_000_000,
+        hidden_size=5376, intermediate_size=21504, num_layers=64,
+        full_attn_layers=28, kv_heads=1, kv_head_dim=512,
     ),
 }
 
 
-def print_train_table(shape_name: str = "qwen3.5-4b") -> None:
+def print_train_table(shape_name: str = "gemma4-e4b") -> None:
     """Compare APOLLO variants across seq_len for the named shape."""
     s = SHAPES[shape_name]
     print(f"\n=== TRAINING memory — {shape_name} ===")
@@ -415,7 +432,7 @@ def print_train_table(shape_name: str = "qwen3.5-4b") -> None:
         print()
 
 
-def print_infer_table(shape_name: str = "qwen3.5-4b") -> None:
+def print_infer_table(shape_name: str = "gemma4-e4b") -> None:
     """Sweep seq + quantization combos for inference."""
     s = SHAPES[shape_name]
     print(f"\n=== INFERENCE memory — {shape_name} ===")
@@ -495,7 +512,7 @@ def fits_on(breakdown: MemoryBreakdown, *, hw: str,
     return breakdown.total_gb <= ceiling, 100.0 * breakdown.total_gb / cap
 
 
-def print_train_target_matrix(shape_name: str = "qwen3.5-4b") -> None:
+def print_train_target_matrix(shape_name: str = "gemma4-e4b") -> None:
     """For each (seq_len, cluster) tuple, print per-GPU fit (the metric that
     actually decides whether the run OOMs). Both the per-GPU and the world-
     aggregate numbers are shown so it's clear what's sharded vs replicated.
@@ -521,7 +538,7 @@ def print_train_target_matrix(shape_name: str = "qwen3.5-4b") -> None:
     print()
 
 
-def print_infer_target_matrix(shape_name: str = "qwen3.5-4b") -> None:
+def print_infer_target_matrix(shape_name: str = "gemma4-e4b") -> None:
     """For each (context, hardware) tuple with full quant stack, print fit."""
     s = SHAPES[shape_name]
     targets = ["rtx-pro-5000-blackwell-48", "rtx-5090", "rtx-pro-6000-blackwell",
@@ -632,7 +649,7 @@ def estimate_train_seconds(
 
 
 def print_train_time_matrix(
-    shape_names: tuple[str, ...] = ("qwen3.5-2b", "qwen3.5-4b"),
+    shape_names: tuple[str, ...] = ("gemma4-e2b", "gemma4-e4b"),
     n_tokens: int = 1_000_000_000,
     mfu_pct: float = 30.0,
 ) -> None:
@@ -673,7 +690,7 @@ def print_train_time_matrix(
                   f"${cost:>8.0f} {sec_fp8/3600:>8.1f}h ${cost_fp8:>8.0f}")
 
 
-def print_max_context_matrix(shape_names: tuple[str, ...] = ("qwen3.5-2b", "qwen3.5-4b")) -> None:
+def print_max_context_matrix(shape_names: tuple[str, ...] = ("gemma4-e2b", "gemma4-e4b")) -> None:
     """For each (model, hardware) tuple, the largest context that fits with
     the full quant stack."""
     targets = [
@@ -707,7 +724,7 @@ def print_max_context_matrix(shape_names: tuple[str, ...] = ("qwen3.5-2b", "qwen
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--shape", default="qwen3.5-4b",
+    ap.add_argument("--shape", default="gemma4-e4b",
                     choices=sorted(SHAPES))
     ap.add_argument("--mode", default="all",
                     choices=("train", "infer", "fit", "time", "all"))

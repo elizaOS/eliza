@@ -413,12 +413,11 @@ function DialpadButton({
 const RecentCallButton = memo(function RecentCallButton({
   call,
   onSelect,
-  children,
 }: {
   call: CallLogEntry;
   onSelect: (call: CallLogEntry) => void;
-  children: ReactNode;
 }) {
+  const { t } = useTranslation();
   const handleSelect = useCallback(() => onSelect(call), [onSelect, call]);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `recent-call-${call.id}`,
@@ -427,6 +426,8 @@ const RecentCallButton = memo(function RecentCallButton({
     group: "recent-calls",
     onActivate: handleSelect,
   });
+  const summary =
+    call.agentSummary || call.agentTranscript || call.transcription;
   return (
     <button
       ref={ref}
@@ -435,7 +436,24 @@ const RecentCallButton = memo(function RecentCallButton({
       className="rounded-sm border border-border bg-bg p-3 text-left text-sm hover:border-primary"
       {...agentProps}
     >
-      {children}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium text-txt">{callDisplayName(call)}</span>
+        <span className="text-xs text-muted">
+          {callTypeLabel(call.type)} · {durationLabel(call.durationSeconds)}
+        </span>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+        <span>
+          {call.number ||
+            t("elizaosapps.phone.unknownNumber", {
+              defaultValue: "unknown number",
+            })}
+        </span>
+        <span>{formatTimestamp(call.date)}</span>
+      </div>
+      {summary ? (
+        <div className="mt-2 line-clamp-2 text-xs text-muted">{summary}</div>
+      ) : null}
     </button>
   );
 });
@@ -931,33 +949,7 @@ export function PhonePageView() {
                   key={call.id}
                   call={call}
                   onSelect={handleSelectCall}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium text-txt">
-                      {callDisplayName(call)}
-                    </span>
-                    <span className="text-xs text-muted">
-                      {callTypeLabel(call.type)} ·{" "}
-                      {durationLabel(call.durationSeconds)}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-                    <span>
-                      {call.number ||
-                        t("elizaosapps.phone.unknownNumber", {
-                          defaultValue: "unknown number",
-                        })}
-                    </span>
-                    <span>{formatTimestamp(call.date)}</span>
-                  </div>
-                  {call.agentTranscript || call.transcription ? (
-                    <div className="mt-2 line-clamp-2 text-xs text-muted">
-                      {call.agentSummary ||
-                        call.agentTranscript ||
-                        call.transcription}
-                    </div>
-                  ) : null}
-                </RecentCallButton>
+                />
               ))
             ) : (
               <EmptyState>

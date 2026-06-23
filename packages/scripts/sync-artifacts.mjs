@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { once } from "node:events";
 /**
  * sync-artifacts.mjs
  *
@@ -105,6 +106,13 @@ async function streamToFileWithProgress(response, dest, expectedBytes) {
   const startedAt = Date.now();
   let received = 0;
   let lastLogAt = startedAt;
+  let writerError;
+  const streamError = new Promise((resolve) => {
+    writer.once("error", (err) => {
+      writerError = err;
+      resolve();
+    });
+  });
 
   if (totalBytes > 0) {
     log(
@@ -122,10 +130,8 @@ async function streamToFileWithProgress(response, dest, expectedBytes) {
       if (done) break;
       received += value.byteLength;
       if (!writer.write(value)) {
-        await new Promise((resolve, reject) => {
-          writer.once("drain", resolve);
-          writer.once("error", reject);
-        });
+        await Promise.race([once(writer, "drain"), streamError]);
+        if (writerError) throw writerError;
       }
       const now = Date.now();
       if (now - lastLogAt >= PROGRESS_INTERVAL_MS) {
@@ -137,10 +143,13 @@ async function streamToFileWithProgress(response, dest, expectedBytes) {
     reader.releaseLock();
   }
 
-  await new Promise((resolve, reject) => {
-    writer.end((err) => (err ? reject(err) : resolve()));
-    writer.once("error", reject);
-  });
+  await Promise.race([
+    new Promise((resolve, reject) => {
+      writer.end((err) => (err ? reject(err) : resolve()));
+    }),
+    streamError,
+  ]);
+  if (writerError) throw writerError;
   log(`download complete: ${progressStatus(received, totalBytes, startedAt)}`);
 }
 

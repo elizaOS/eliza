@@ -16,7 +16,7 @@ uptime_hours``.
 The module also exposes the pipeline name and GPU SKU so ``train_vast.sh
 status`` can render a single readable line:
 
-  pipeline=qwen3.5-4b-apollo gpu=RTX_PRO_6000_Sx1 runtime=2:14:08 $/hr=$1.07 total=$2.39
+  pipeline=gemma4-e4b-apollo gpu=RTX_PRO_6000_Sx1 runtime=2:14:08 $/hr=$1.07 total=$2.39
 
 Use::
 

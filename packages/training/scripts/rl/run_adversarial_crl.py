@@ -10,7 +10,7 @@ REINFORCE with Kondo gating — only the most "delightful" interactions
 
 Usage:
     python scripts/run_adversarial_crl.py \
-        --model Qwen/Qwen3.5-27B \
+        --model google/gemma-4-31B \
         --defender-api-key $OPENAI_API_KEY \
         --episodes 1000 \
         --output-dir ./adversarial-crl-results
@@ -290,7 +290,7 @@ async def run_episode(
 
 async def main():
     parser = argparse.ArgumentParser(description="Adversarial CRL with APOLLO + Kondo Gate + TurboQuant")
-    parser.add_argument("--model", default="Qwen/Qwen3.5-27B")
+    parser.add_argument("--model", default="google/gemma-4-31B")
     parser.add_argument("--defender-model", default="gpt-5.4-mini")
     parser.add_argument("--defender-endpoint", default="https://api.openai.com/v1")
     parser.add_argument("--defender-api-key", default=os.environ.get("OPENAI_API_KEY", ""))

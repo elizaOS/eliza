@@ -69,33 +69,42 @@ async function resolvePluginPackageDir(
 ): Promise<string | undefined> {
   const { createRequire } = await import("node:module");
   const req = createRequire(import.meta.url);
+  const packageNames = pluginName.startsWith("@")
+    ? [pluginName]
+    : [pluginName, `@elizaos/plugin-${pluginName}`];
 
-  // Preferred: resolve the package's own package.json directly. Requires the
-  // package to expose "./package.json" in its exports map.
-  try {
-    return path.dirname(req.resolve(`${pluginName}/package.json`));
-  } catch {
-    // Fall through to resolving the package entry instead.
+  for (const packageName of packageNames) {
+    // Preferred: resolve the package's own package.json directly. Requires the
+    // package to expose "./package.json" in its exports map.
+    try {
+      return path.dirname(req.resolve(`${packageName}/package.json`));
+    } catch {
+      // Fall through to resolving the package entry instead.
+    }
   }
 
   // Fallback: resolve the package main entry (the "." export always exists for
   // a loadable plugin) and walk up to the directory that owns its package.json.
   // This keeps view bundles resolvable for plugins that don't export
   // "./package.json".
-  try {
-    let dir = path.dirname(req.resolve(pluginName));
-    for (let depth = 0; depth < 8; depth++) {
-      if (await fileExists(path.join(dir, "package.json"))) return dir;
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
+  for (const packageName of packageNames) {
+    try {
+      let dir = path.dirname(req.resolve(packageName));
+      for (let depth = 0; depth < 8; depth++) {
+        if (await fileExists(path.join(dir, "package.json"))) return dir;
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+      }
+    } catch {
+      // Package is not reachable from this module under this name.
     }
-  } catch {
-    // Package is not reachable from this module at all.
   }
 
-  const workspaceDir = await resolveWorkspacePluginPackageDir(pluginName);
-  if (workspaceDir) return workspaceDir;
+  for (const packageName of packageNames) {
+    const workspaceDir = await resolveWorkspacePluginPackageDir(packageName);
+    if (workspaceDir) return workspaceDir;
+  }
 
   logger.warn(
     { src: "ViewRegistry", pluginName },

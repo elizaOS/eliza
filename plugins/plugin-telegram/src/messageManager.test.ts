@@ -17,7 +17,7 @@ function createManager() {
       sendMessage,
     },
   };
-  const runtime = { agentId: "agent-1" };
+  const runtime = { agentId: "agent-1", getSetting: () => undefined };
 
   return {
     manager: new MessageManager(bot as never, runtime as never),
@@ -468,7 +468,7 @@ describe("MessageManager send resilience (sendWithRetry)", () => {
     };
     const manager = new MessageManager(
       { telegram } as never,
-      { agentId: "agent-1" } as never,
+      { agentId: "agent-1", getSetting: () => undefined } as never,
     );
     const ctx = { chat: { id: 123 }, telegram } as never;
     return { manager, ctx };
@@ -561,7 +561,7 @@ describe("MessageManager typing-indicator resilience", () => {
     });
     const manager = new MessageManager(
       { telegram: { sendMessage, sendChatAction } } as never,
-      { agentId: "agent-1" } as never,
+      { agentId: "agent-1", getSetting: () => undefined } as never,
     );
     const sent = await manager.sendMessageInChunks(
       { chat: { id: 123 }, telegram: { sendMessage, sendChatAction } } as never,

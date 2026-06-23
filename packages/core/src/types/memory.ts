@@ -50,6 +50,12 @@ export interface BaseMetadata {
 export interface DocumentMetadata {
 	base?: BaseMetadata;
 	type?: "document";
+	/** Served original-bytes file (content-addressed) linked to this document. */
+	mediaUrl?: string;
+	/** Served original-bytes file (content-addressed) linked to this document. */
+	mediaHash?: string;
+	/** Served original-bytes file (content-addressed) linked to this document. */
+	mediaFileName?: string;
 }
 
 export interface FragmentMetadata {
@@ -371,6 +377,14 @@ export interface MessageMetadata {
 	fromBot?: boolean;
 	fromId?: string | number;
 	sourceId?: string;
+
+	/**
+	 * Short topic labels extracted for this turn at Stage-1 (the `topics`
+	 * field-evaluator). Stamped onto the inbound message so the dashboard can
+	 * group the transcript by topic and surface a topic chips bar (#8928).
+	 * Mirrors the per-room LRU in `ChannelTopicsService`.
+	 */
+	topics?: string[];
 
 	[key: string]: unknown;
 }

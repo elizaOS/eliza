@@ -197,7 +197,6 @@ REQUIRED_GRAPH_CACHE_FAMILIES: tuple[str, ...] = (
 )
 # Tier matrix — tagline + lineage taken from inference/AGENTS.md §2.
 TIER_TAGLINES: Mapping[str, str] = {
-    "0_8b": "low-RAM phones, CPU fallback",
     "2b": "modern phones",
     "4b": "flagship phones, small desktops",
     "9b": "workstations, tablets, and high-memory local hosts",
@@ -214,7 +213,6 @@ EXPRESSIVE_GATE_NAMES: tuple[str, ...] = (
 # Default RAM budgets (MB). Tightened pre-publish from real measurements
 # on reference hardware; the bundle's sidecar can override.
 DEFAULT_RAM_BUDGET_MB: Mapping[str, tuple[int, int]] = {
-    "0_8b": (2500, 3700),
     "2b": (4000, 5500),
     "4b": (10000, 12000),
     "9b": (12000, 16000),

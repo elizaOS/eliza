@@ -948,7 +948,7 @@ function makeImageDescriptionHandler(): ImageDescriptionHandler {
 		const modelKey =
 			typeof modelKeyCandidate === "string" && modelKeyCandidate
 				? modelKeyCandidate
-				: "qwen3-vl";
+				: "gemma-vl";
 		const request = paramsToVisionRequest(params);
 		const result = await arbiter.requestVisionDescribe<
 			typeof request,

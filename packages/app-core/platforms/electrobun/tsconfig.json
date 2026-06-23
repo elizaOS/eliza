@@ -67,6 +67,12 @@
       "@elizaos/plugin-coding-tools/*": [
         "../../../../plugins/plugin-coding-tools/src/*"
       ],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../../../plugins/plugin-capacitor-bridge/src/*"
+      ],
       "@elizaos/plugin-local-inference": [
         "../../../../plugins/plugin-local-inference/src/index.ts"
       ],
@@ -126,7 +132,13 @@
       "@elizaos/plugin-sql": [
         "../../../../plugins/plugin-sql/src/index.node.ts"
       ],
-      "@elizaos/plugin-sql/*": ["../../../../plugins/plugin-sql/src/*"]
+      "@elizaos/plugin-sql/*": ["../../../../plugins/plugin-sql/src/*"],
+      "@elizaos/plugin-streaming": [
+        "../../../../plugins/plugin-streaming/src/index.ts"
+      ],
+      "@elizaos/plugin-streaming/*": [
+        "../../../../plugins/plugin-streaming/src/*"
+      ]
     }
   },
   "include": [

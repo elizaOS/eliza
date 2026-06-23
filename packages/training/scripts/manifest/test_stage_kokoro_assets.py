@@ -39,11 +39,11 @@ def _write_bundle(root: Path) -> Path:
         "version": "1.0.0",
         "publishedAt": "2026-05-12T00:00:00Z",
         "lineage": {
-            "text": {"base": "Qwen/Qwen3.5-2B", "license": "apache-2.0"},
+            "text": {"base": "google/gemma-4-E2B", "license": "apache-2.0"},
             "voice": {"base": "Serveurperso/OmniVoice-GGUF", "license": "apache-2.0"},
-            "drafter": {"base": "Qwen/Qwen3.5-0.8B", "license": "apache-2.0"},
+            "drafter": {"base": "google/gemma-4-E2B", "license": "apache-2.0"},
             "vision": {
-                "base": "unsloth/Qwen3.5-2B-GGUF/mmproj-F16.gguf",
+                "base": "unsloth/gemma-4-E2B-GGUF/mmproj-F16.gguf",
                 "license": "apache-2.0",
             },
         },

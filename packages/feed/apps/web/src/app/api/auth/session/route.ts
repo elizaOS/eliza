@@ -11,7 +11,10 @@ import { withErrorHandling } from "@feed/api";
 import { jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
-import { getStewardJwtSecret } from "@/lib/auth/steward-server";
+import {
+  getStewardJwtIssuers,
+  getStewardJwtSecret,
+} from "@/lib/auth/steward-server";
 
 const THIRTY_DAYS = 60 * 60 * 24 * 30;
 
@@ -35,7 +38,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   let userId: string;
   try {
     const { payload } = await jwtVerify(token, getStewardJwtSecret(), {
-      issuer: "steward",
+      issuer: getStewardJwtIssuers(),
       algorithms: ["HS256"],
     });
     userId = String(payload.userId ?? "");

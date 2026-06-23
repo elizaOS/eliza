@@ -17,7 +17,7 @@ applies to everything under `packages/training/`.
   `${ELIZA_STATE_DIR:-~/.eliza/state}/trajectories/`, written by the
   eliza native trajectory recorder. No database dependency.
 
-Do not edit configs to point at Qwen base names or OpenAI judges —
+Do not edit configs to point at non-Gemma base names or OpenAI judges —
 the lock above is the product contract.
 
 
@@ -31,7 +31,7 @@ This file describes what training has to *do* to satisfy that contract.
 
 ## 1. What this package owns
 
-- Text fine-tuning of the Qwen3.5 2B / 4B / 9B / 27B
+- Text fine-tuning of the Gemma 4 (E2B / E4B / 12B / 31B)
   backbones used by the current Eliza-1 release line.
 - Drafter training for MTP speculative decoding.
 - Voice handling (freeze, cache, evaluate — see §4; we do not retrain
@@ -59,7 +59,7 @@ unchanged for now):
 
 | Component       | Status                                        | Why                                  |
 | --------------- | --------------------------------------------- | ------------------------------------ |
-| Text backbone   | **Fine-tune** (Qwen3.5 2B / 4B)               | This is the primary product loop.    |
+| Text backbone   | **Fine-tune** (Gemma 4 E2B / E4B)             | This is the primary product loop.    |
 | MTP drafter  | **Fine-tune to match the text checkpoint**    | Acceptance rate depends on alignment.|
 | OmniVoice TTS   | **Frozen**                                    | No license to retrain; no eval lift. |
 | ASR             | **Frozen**                                    | Same.                                |
@@ -112,6 +112,10 @@ Hard rules:
 - If a recipe is asked to run on weights that do not satisfy its
   preconditions (wrong layer count, wrong dtype, missing rotation), it
   MUST fail loudly. No silent passes, no skip-and-continue.
+
+Gemma note: QJL/PolarQuant are low-ROI on Gemma 4's already-minimal KV
+(MQA + windowed-SWA + shared-KV), so TurboQuant weight-quant remains the
+primary recipe; the KV-cache QJL/Polar passes are optional for Gemma tiers.
 
 The reference implementations and on-device kernels live in
 `packages/native/plugins/{qjl-cpu,polarquant-cpu}`. The Python recipes here

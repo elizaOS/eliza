@@ -85,6 +85,10 @@ const allowedCallsites = new Map<string, string>([
 		"plugins/plugin-app-control/src/actions/views.ts",
 		"VIEWS close-alias dispatcher (CLOSE_VIEW / CLOSE_ALL_VIEWS); forwards to the underlying VIEWS handler",
 	],
+	[
+		"packages/core/src/services/message.ts",
+		"shortcut-gate (runShortcutGate, #8792): fires a slash-command action; its callback only captures content.text (emits nothing) and the captured text is returned as a Stage1 direct_reply, so the normal message-service voice rewrite still applies",
+	],
 ]);
 
 const actionHandlerCallPattern = new RegExp(

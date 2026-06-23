@@ -231,5 +231,14 @@ This package mostly reads config injected by the host, not raw env vars:
   barrel to avoid the collision (see comment in `index.ts`).
 - Type root `src/types/index.ts` re-exports from `@elizaos/shared/types`; keep
   shared transport/domain types there rather than redefining them here.
+- **Files / attachments.** The "Files" tab (`components/pages/FilesView.tsx`,
+  routed at `/apps/files`) lists stored files via `ElizaClient.listFiles()` /
+  `deleteFile()` (`api/client-files.ts`) and reuses `utils/download-share.ts`
+  (transport-aware download/share — web `<a download>`/`showSaveFilePicker`,
+  native Capacitor bridge) + `utils/attachment-url.ts` (scheme allowlist) +
+  `attachmentPreviewKind` in `components/chat/MessageAttachments.tsx` (image /
+  PDF / text-code preview kinds derived from mime at read time). Large pasted
+  text becomes a text attachment via `utils/image-attachment.ts`. Don't add a
+  second download path or attachment-URL guard — reuse these. See issue #8876.
 - Build/test conventions and the repo-wide architecture rules live in the root
   AGENTS.md — don't restate them; follow them.

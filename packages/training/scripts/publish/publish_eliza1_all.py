@@ -20,7 +20,7 @@ Gated (this script reports the blocker, never bypasses it):
     fork-built GGUFs + per-backend dispatch/verify evidence + the runnable-on-
     base evals + the released license review (orchestrator stage 2/3/4).
   - the fine-tuned ``recommended``-channel weights — gated on the full-corpus
-    SFT clearing ``format_ok`` and beating the matching Qwen3.5 baseline.
+    SFT clearing ``format_ok`` and beating the matching Gemma 4 baseline.
 
 Usage::
 
@@ -282,7 +282,7 @@ def _bundle_status(bundles_root: Path) -> list[Outcome]:
     return out
 
 
-def _sft_weights_status(tier: str = "0_8b") -> Outcome:
+def _sft_weights_status(tier: str = "2b") -> Outcome:
     """Report whether a full-corpus active-tier SFT is done + cleared its gate."""
     ckpt_root = TRAINING_ROOT / "checkpoints"
     repo = MODEL_REPO_ID
@@ -296,7 +296,7 @@ def _sft_weights_status(tier: str = "0_8b") -> Outcome:
             repo,
             "model-weights",
             "pending",
-            f"{tier} full-corpus Qwen3.5 SFT run not found in checkpoints/",
+            f"{tier} full-corpus Gemma 4 SFT run not found in checkpoints/",
         )
     run = runs[-1]
     final = run / "final"

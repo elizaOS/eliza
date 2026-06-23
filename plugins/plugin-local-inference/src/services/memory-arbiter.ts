@@ -56,13 +56,13 @@
  *
  *   ```ts
  *   const result = await arbiter.requestVisionDescribe({
- *     modelKey: "qwen3-vl-4b",
+ *     modelKey: "gemma-vl-4b",
  *     imageBytes: pixels,
  *   });
  *   ```
  *
  * The arbiter handles:
- *   1. Acquiring (or reusing) the handle for `qwen3-vl-4b`.
+ *   1. Acquiring (or reusing) the handle for `gemma-vl-4b`.
  *   2. If a different capability holds the active model and we need to
  *      swap, evicting it first.
  *   3. Running the request.
@@ -257,6 +257,20 @@ export interface MemoryArbiterOptions {
 	 * Production wiring passes `os.totalmem()/MB - ramHeadroomReserveMb()`.
 	 */
 	budgetMb?: () => number | null;
+	/**
+	 * Resident footprint (MB) the arbiter does NOT own in its `resident` map
+	 * but which still consumes the host budget — the text-target and embedding
+	 * weights loaded by `LocalInferenceEngine` on its own
+	 * `SharedResourceRegistry` (#8809 M10b). Without this hook the arbiter's
+	 * `residentFootprintMb()` sees only vision/image-gen and the proactive
+	 * `evictToFit` path never trips (the two dominant resident consumers are
+	 * invisible to it). Production wiring (service.ts) reads the engine's
+	 * `text-target` + `embedding` resident estimates. These weights are owned by
+	 * the engine and are never the arbiter's eviction target — they are pure
+	 * budget accounting, exactly like the pinned text-target in the resident map.
+	 * Defaults to 0 (no external footprint known).
+	 */
+	externalFootprintMb?: () => number;
 }
 
 /**
@@ -271,6 +285,7 @@ export class MemoryArbiter {
 	private readonly log?: MemoryArbiterOptions["logger"];
 	private readonly now: () => number;
 	private readonly budgetMb: () => number | null;
+	private readonly externalFootprintMb: () => number;
 
 	private readonly capabilities = new Map<
 		ArbiterCapability,
@@ -311,6 +326,7 @@ export class MemoryArbiter {
 		this.log = opts.logger;
 		this.now = opts.now ?? (() => Date.now());
 		this.budgetMb = opts.budgetMb ?? (() => null);
+		this.externalFootprintMb = opts.externalFootprintMb ?? (() => 0);
 	}
 
 	/** Begin observing memory pressure. Idempotent. */
@@ -734,9 +750,18 @@ export class MemoryArbiter {
 		}
 	}
 
+	/**
+	 * Total resident footprint counted against the budget: the arbiter's own
+	 * resident handles PLUS the engine-owned text-target + embedding weights
+	 * reported via `externalFootprintMb` (#8809 M10b). The external term is what
+	 * makes `evictToFit` actually fire — without it the two dominant resident
+	 * consumers (text, embedding) are invisible and the fit path is dead.
+	 */
 	private residentFootprintMb(): number {
 		let sum = 0;
 		for (const e of this.resident.values()) sum += e.estimatedMb;
+		const external = this.externalFootprintMb();
+		if (Number.isFinite(external) && external > 0) sum += external;
 		return sum;
 	}
 

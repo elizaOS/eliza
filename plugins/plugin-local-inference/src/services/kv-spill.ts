@@ -96,11 +96,12 @@ export interface KvGeometry {
 
 /**
  * Fallback per-token KV estimate when the manifest doesn't carry an explicit
- * figure. Order-of-magnitude only: QJL K-cache is ~1 bit/coord + a bf16 norm,
- * Polar V-cache is ~4 bits/coord + per-block norms, summed over the
- * full-attention layers. For Qwen3.5-class geometry that lands roughly at
- * the table below (bytes/token across the whole cache). These are the figures
- * the catalog's per-tier `ramBudgetMb` was sized against.
+ * figure. Order-of-magnitude only. Gemma 4 E2B uses stock q8_0 KV over an MQA
+ * geometry (n_head_kv=1) with dual head dims — 512 global / 256 SWA — summed
+ * over the global + sliding-window attention layers. For Gemma-4-class
+ * geometry that lands roughly at the table below (bytes/token across the whole
+ * cache). These are the figures the catalog's per-tier `ramBudgetMb` was sized
+ * against.
  */
 const QUANTIZED_KV_BYTES_PER_TOKEN_BY_PARAMS: Readonly<Record<string, number>> =
 	{

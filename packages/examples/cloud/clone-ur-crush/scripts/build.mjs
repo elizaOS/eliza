@@ -46,7 +46,11 @@ async function writeTempTypesInclude() {
   const parsed = JSON.parse(originalTsconfig);
   const include = Array.isArray(parsed.include) ? parsed.include : [];
   const tempTypesGlob = `${tempDistDirName}/types/**/*.ts`;
-  if (!include.includes(tempTypesGlob)) {
+  const tempTypesWildcard = ".next-build-*/types/**/*.ts";
+  if (
+    !include.includes(tempTypesGlob) &&
+    !include.includes(tempTypesWildcard)
+  ) {
     parsed.include = [...include, tempTypesGlob];
     await writeFile(
       `${tsconfigPath}.tmp`,

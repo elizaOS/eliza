@@ -18,6 +18,7 @@ import { getSwabbleManager } from "./swabble";
 import { getTalkModeManager } from "./talkmode";
 
 const NATIVE_DISPOSE_TIMEOUT_MS = 10_000;
+let nativeDisposePromise: Promise<void> | null = null;
 
 export function initializeNativeModules(
   mainWindow: BrowserWindow,
@@ -43,6 +44,11 @@ export function initializeNativeModules(
 }
 
 export async function disposeNativeModules(): Promise<void> {
+  nativeDisposePromise ??= disposeNativeModulesOnce();
+  return nativeDisposePromise;
+}
+
+async function disposeNativeModulesOnce(): Promise<void> {
   const managers = [
     ["agent", getAgentManager()],
     ["browser-workspace", getBrowserWorkspaceManager()],

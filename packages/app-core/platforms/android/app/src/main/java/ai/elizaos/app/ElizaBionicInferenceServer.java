@@ -61,6 +61,11 @@ final class ElizaBionicInferenceServer {
     private long residentCtx = 0L;
     private long residentStream = 0L;
     private String residentBundle = null;
+    /** The previous turn's prompt tokens — used to find the longest common prefix
+     *  with the next turn's prompt so its KV can be reused (only the delta is
+     *  re-prefilled). null when the stream has no reusable KV (first turn / after
+     *  a reset/reopen). */
+    private int[] residentPrevTokens = null;
     private final Object residentLock = new Object();
     /** Hard decode ceiling for the resident stream (per-call cap is applied below). */
     private static final int RESIDENT_STREAM_MAX_TOKENS = 2048;
@@ -96,12 +101,17 @@ final class ElizaBionicInferenceServer {
         // only ~0.4 GB at 8k ctx for the 2B. Re-enable per device once a
         // head_dim=256 QJL/TBQ path is verified.
         setEnvIfAbsent("ELIZA_BIONIC_KV_QUANT", "0");
-        // Arm same-file MTP (NextN speculative head embedded in the 2B/4B/9B
-        // text GGUF — no separate drafter). arm_bionic_text_cfg() reads
-        // ELIZA_BIONIC_MTP; the resident stream-open passes no bundle dir so its
-        // auto-detect stays off, so force it on here. generateResident() handles
-        // the resulting MTP stream (the fused per-turn reset rejects MTP streams,
-        // so it close+reopens instead).
+        // Arm same-file MTP (NextN speculative head embedded in the 2B/4B text
+        // GGUF — no separate drafter). MTP accelerates DECODE ~1.5x and is the
+        // best per-turn win available on the shipped qwen3.5 tiers: prefix-KV
+        // reuse (resetAndPrefillResident → nativeLlmStreamResetKeep) needs the KV
+        // cache to support partial sequence removal, but the qwen3.5 non-MTP F16
+        // cache returns false from llama_memory_seq_rm (only the MTP/RS context
+        // supports bounded partial removal), so prefix-reuse is a no-op fallback
+        // on this model and disabling MTP for it would be strictly worse. The
+        // resident path therefore stays MTP + full reset; reset_keep remains
+        // wired for models/caches that DO support partial removal. (Tracked:
+        // MTP-side prefix reuse via reset_engine_keep on the RS context.)
         setEnvIfAbsent("ELIZA_BIONIC_MTP", "1");
     }
 
@@ -277,33 +287,8 @@ final class ElizaBionicInferenceServer {
             throws org.json.JSONException {
         synchronized (residentLock) {
             ensureResidentCtx(bundleDir);
-            if (residentStream == 0L) {
-                residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
-                    residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");
-                if (residentStream == 0L) {
-                    throw new IllegalStateException("resident streamOpen failed");
-                }
-            }
-            // Drop the previous turn's KV + sampler state for a clean re-prefill.
-            // The fused nativeLlmStreamReset now handles speculative (MTP)
-            // streams too (it clears the engine's target+draft KV and the
-            // committed-token accumulator), so the fast in-place reset is the
-            // primary path. nativeLlmStreamReset returns 1 on success, 0 on
-            // failure; only on an actual failure do we close + reopen the
-            // stream as a fallback. The resident model/context stay loaded
-            // either way (only the lightweight stream is recreated), so the
-            // fallback re-prefill cost is identical to a reset.
-            if (ElizaVoiceNative.nativeLlmStreamReset(residentStream) != 1) {
-                ElizaVoiceNative.nativeLlmStreamClose(residentStream);
-                residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
-                    residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");
-                if (residentStream == 0L) {
-                    throw new IllegalStateException("resident streamReopen failed");
-                }
-            }
-            int[] toks = ElizaVoiceNative.nativeTokenize(residentCtx, prompt, true, true);
             final long t0 = android.os.SystemClock.elapsedRealtime();
-            ElizaVoiceNative.nativeLlmStreamPrefill(residentStream, toks);
+            resetAndPrefillResident(prompt);
             final StringBuilder sb = new StringBuilder();
             int produced = 0;
             final int cap = maxTokens > 0 ? maxTokens : 32;
@@ -376,24 +361,8 @@ final class ElizaBionicInferenceServer {
         try {
             synchronized (residentLock) {
                 ensureResidentCtx(bundleDir);
-                if (residentStream == 0L) {
-                    residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
-                        residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");
-                    if (residentStream == 0L) {
-                        throw new IllegalStateException("resident streamOpen failed");
-                    }
-                }
-                if (ElizaVoiceNative.nativeLlmStreamReset(residentStream) != 1) {
-                    ElizaVoiceNative.nativeLlmStreamClose(residentStream);
-                    residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
-                        residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");
-                    if (residentStream == 0L) {
-                        throw new IllegalStateException("resident streamReopen failed");
-                    }
-                }
-                int[] toks = ElizaVoiceNative.nativeTokenize(residentCtx, prompt, true, true);
                 final long t0 = android.os.SystemClock.elapsedRealtime();
-                ElizaVoiceNative.nativeLlmStreamPrefill(residentStream, toks);
+                resetAndPrefillResident(prompt);
                 int produced = 0;
                 final int cap = maxTokens > 0 ? maxTokens : 32;
                 while (produced < cap) {
@@ -466,6 +435,67 @@ final class ElizaBionicInferenceServer {
                 residentCtx = 0L;
             }
             residentBundle = null;
+            residentPrevTokens = null;
+        }
+    }
+
+    /**
+     * Reset the resident stream for a new turn and prefill the prompt, REUSING
+     * the KV of the longest common token prefix with the previous turn (the
+     * system + tool-schema block is identical turn-to-turn) so only the per-turn
+     * delta is decoded. On Mali's scalar-matmul prefill the prefix is the
+     * dominant per-turn cost, so this is the single biggest latency win. Falls
+     * back to a full reset (close+reopen on failure) when there is no reusable
+     * prefix or the stream can't be trimmed (e.g. an MTP stream). Caller holds
+     * residentLock.
+     */
+    private void resetAndPrefillResident(String prompt) {
+        if (residentStream == 0L) {
+            residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
+                residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");
+            if (residentStream == 0L) {
+                throw new IllegalStateException("resident streamOpen failed");
+            }
+            residentPrevTokens = null;
+        }
+        final int[] toks = ElizaVoiceNative.nativeTokenize(residentCtx, prompt, true, true);
+        // Longest common token prefix with the previous turn, capped so at least
+        // one new token is prefilled (the decode samples from the last prefilled
+        // position's logits, so the suffix must be non-empty).
+        int lcp = 0;
+        if (residentPrevTokens != null) {
+            final int max = Math.min(residentPrevTokens.length, toks.length);
+            while (lcp < max && residentPrevTokens[lcp] == toks[lcp]) {
+                lcp++;
+            }
+            if (lcp >= toks.length) {
+                lcp = toks.length - 1;
+            }
+        }
+        int applied = lcp > 0
+            ? ElizaVoiceNative.nativeLlmStreamResetKeep(residentStream, lcp)
+            : -1;
+        if (applied < 0) {
+            // No reusable prefix (first turn / MTP / trim failure): full reset,
+            // close+reopen on failure.
+            if (ElizaVoiceNative.nativeLlmStreamReset(residentStream) != 1) {
+                ElizaVoiceNative.nativeLlmStreamClose(residentStream);
+                residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
+                    residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");
+                if (residentStream == 0L) {
+                    throw new IllegalStateException("resident streamReopen failed");
+                }
+            }
+            applied = 0;
+        }
+        final int[] suffix = (applied <= 0)
+            ? toks
+            : java.util.Arrays.copyOfRange(toks, applied, toks.length);
+        ElizaVoiceNative.nativeLlmStreamPrefill(residentStream, suffix);
+        residentPrevTokens = toks;
+        if (applied > 0) {
+            Log.i(TAG, "resident prefill reuse: kept " + applied + "/" + toks.length
+                + " prefix tokens, prefilled " + suffix.length + " delta");
         }
     }
 
@@ -521,30 +551,37 @@ final class ElizaBionicInferenceServer {
         if (gguf == null || voiceBin == null) {
             return errorJson("tts: Kokoro GGUF + voice .bin not found under " + kokoroDir);
         }
-        long ctx = ElizaVoiceNative.nativeContextCreate(bundleDir);
-        if (ctx == 0L) {
-            return errorJson("tts: failed to create context for " + bundleDir);
-        }
-        try {
-            float[] pcm = ElizaVoiceNative.nativeKokoroSynthesize(
-                ctx, gguf, voiceBin, text, speed <= 0f ? 1.0f : speed);
-            int sampleRate = ElizaVoiceNative.nativeKokoroSampleRate(ctx);
-            // Pack fp32 PCM little-endian and base64 it for the JSON frame.
-            ByteBuffer buf = ByteBuffer.allocate(pcm.length * 4).order(ByteOrder.LITTLE_ENDIAN);
-            for (float v : pcm) {
-                buf.putFloat(v);
+        // Reuse the ONE resident context (the 1.27 GB model is already loaded for
+        // generation/embeddings) instead of contextCreate/Destroy per call — a
+        // fresh context reloaded the whole model every utterance. Kokoro itself
+        // is loaded once and cached on the ctx (idempotent kokoro_load), so a
+        // multi-clause reply synthesizes each clause without any reload.
+        synchronized (residentLock) {
+            final long ctx = ensureResidentCtx(bundleDir);
+            try {
+                float[] pcm = ElizaVoiceNative.nativeKokoroSynthesize(
+                    ctx, gguf, voiceBin, text, speed <= 0f ? 1.0f : speed);
+                int sampleRate = ElizaVoiceNative.nativeKokoroSampleRate(ctx);
+                // Pack fp32 PCM little-endian and base64 it for the JSON frame.
+                ByteBuffer buf = ByteBuffer.allocate(pcm.length * 4).order(ByteOrder.LITTLE_ENDIAN);
+                for (float v : pcm) {
+                    buf.putFloat(v);
+                }
+                String b64 = Base64.encodeToString(buf.array(), Base64.NO_WRAP);
+                Log.i(TAG, "TTS (kokoro) from agent: " + text.length() + " chars -> "
+                    + pcm.length + " samples @ " + sampleRate + " Hz");
+                return new JSONObject()
+                    .put("ok", true)
+                    .put("sampleRate", sampleRate)
+                    .put("samples", pcm.length)
+                    .put("pcmBase64", b64)
+                    .toString();
+            } catch (Throwable t) {
+                // A failed synth may leave the shared ctx in an unknown state;
+                // drop it so the next generate/embed/tts rebuilds cleanly.
+                resetResident();
+                throw t;
             }
-            String b64 = Base64.encodeToString(buf.array(), Base64.NO_WRAP);
-            Log.i(TAG, "TTS (kokoro) from agent: " + text.length() + " chars -> "
-                + pcm.length + " samples @ " + sampleRate + " Hz");
-            return new JSONObject()
-                .put("ok", true)
-                .put("sampleRate", sampleRate)
-                .put("samples", pcm.length)
-                .put("pcmBase64", b64)
-                .toString();
-        } finally {
-            ElizaVoiceNative.nativeContextDestroy(ctx);
         }
     }
 

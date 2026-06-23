@@ -90,7 +90,7 @@ def test_build_artifact_marks_dry_run_comparisons() -> None:
                 "raw": {"dry_run": True},
             },
             {
-                "modelId": "Qwen/Qwen3.5-0.8B-Base",
+                "modelId": "google/gemma-4-E2B-Base",
                 "variant": "base",
                 "tier": "0_8b",
                 "benchmark": "eliza_harness_action_selection",

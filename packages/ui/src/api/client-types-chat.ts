@@ -204,8 +204,12 @@ export interface SensitiveRequestDelivery {
 export interface SensitiveRequestFormField {
   name: string;
   label?: string;
-  input?: "secret" | "text";
+  input?: "secret" | "text" | "image" | "file";
   required?: boolean;
+  /** For `input: "image" | "file"` — accepted MIME types (the `accept` attr). */
+  mimeTypes?: string[];
+  /** For `input: "image" | "file"` — max upload size in bytes. */
+  maxBytes?: number;
 }
 
 /**
@@ -260,6 +264,12 @@ export interface ConversationMessage {
   attachments?: MessageAttachment[];
   /** Source channel when forwarded from another channel (e.g. "autonomy"). */
   source?: string;
+  /**
+   * Short topic labels extracted for this turn (Stage-1 `topics`). Drives the
+   * transcript topic grouping + chips bar (#8928). Absent when the turn had no
+   * salient topic.
+   */
+  topics?: string[];
   /** Concrete action name that produced this assistant turn, when applicable. */
   actionName?: string;
   /** Callback/status lines emitted while the action was running. */

@@ -36,11 +36,11 @@
 #                                  "0_8b 2b 4b 9b 27b"
 #                                  Each token maps to a registry key + optional
 #                                  --max-seq-len override:
-#                                    0_8b      → qwen3.5-0.8b   (registry seq_len)
-#                                    2b        → qwen3.5-2b
-#                                    4b        → qwen3.5-4b
-#                                    9b        → qwen3.5-9b
-#                                    27b       → qwen3.6-27b
+#                                    0_8b      → gemma4-e2b   (registry seq_len)
+#                                    2b        → gemma4-e2b
+#                                    4b        → gemma4-e4b
+#                                    9b        → gemma4-12b
+#                                    27b       → gemma4-31b
 #                                  Use a smaller list to test a subset:
 #                                    TIERS="0_8b 2b" bash ... smoke-all
 #   SMOKE_MAX_STEPS              hard step cap per tier. Default 50 (smoke).
@@ -117,17 +117,17 @@ export REUSE_EXISTING_VM
 # string + nonzero rc if unknown). Keep this list and the env-var doc above in
 # sync with packages/training/scripts/training/model_registry.py.
 _tier_args() {
-  # Active Eliza-1 policy: 0_8b/2b/4b/9b use Qwen3.5, while the 27B release
-  # tier uses Qwen3.6. The 27b SFT smoke is still memory-tight on a single
+  # Active Eliza-1 policy: every tier (2b/4b/9b/27b) uses Gemma 4
+  # (E2B/E4B/12B/31B). The 27b SFT smoke is still memory-tight on a single
   # H200 (190 GB train budget vs 141 GB H200 RAM) so SKIP_FINETUNE_TIERS below
   # carves out the 27B tier by default — the smoke still exercises
   # base-bench + quant + bundle + publish for that tier.
   case "$1" in
-    0_8b)     echo "qwen3.5-0.8b" ;;
-    2b)       echo "qwen3.5-2b" ;;
-    4b)       echo "qwen3.5-4b" ;;
-    9b)       echo "qwen3.5-9b" ;;
-    27b)      echo "qwen3.6-27b" ;;
+    0_8b)     echo "gemma4-e2b" ;;
+    2b)       echo "gemma4-e2b" ;;
+    4b)       echo "gemma4-e4b" ;;
+    9b)       echo "gemma4-12b" ;;
+    27b)      echo "gemma4-31b" ;;
     *) return 1 ;;
   esac
 }

@@ -1,6 +1,12 @@
 """
 Fused TurboQuant cache with compressed KV storage and fused attention.
 
+FLAGGED DEAD CODE (Gemma 4 cutover): the Qwen3_5/Qwen3_6 architecture entries in
+_SUPPORTED_ARCHITECTURES below are for the old hybrid-attention base. Gemma 4 is
+dense and uses stock q8_0 KV (its MQA + dual-head-dim 512/256 geometry does not
+match the head_dim=128 fused path). This vendored hybrid path no longer fires
+for the active base; owner to retire. Vendored arch list left byte-for-byte.
+
 Stores keys in compressed form (uint8 indices + fp32 norms) and computes
 Q @ K^T directly from compressed keys using our Triton fused attention kernel.
 Values are also compressed (packed indices + fp32 norms) and decompressed on

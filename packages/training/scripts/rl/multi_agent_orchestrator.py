@@ -42,7 +42,7 @@ class OrchestratorConfig:
 
     # Agent setup
     num_agents: int = 4
-    model_name: str = "Qwen/Qwen3.5-4B"
+    model_name: str = "google/gemma-4-E4B"
     agent_archetypes: list[str] = field(
         default_factory=lambda: ["trader", "analyst", "degen", "influencer"]
     )

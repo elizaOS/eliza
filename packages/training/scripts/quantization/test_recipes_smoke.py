@@ -7,10 +7,10 @@ than at training-rig invocation time. The end-to-end correctness tests
 that require a real model live in:
 
     test_abliteration.py          -- runs vs sshleifer/tiny-gpt2
-    test_polarquant.py            -- CLI runner; needs a real Qwen3.5 GPU run
-    test_turboquant.py            -- CLI runner; needs a real Qwen3.5 GPU run
-    test_qjl.py                   -- CLI runner; needs a real Qwen3.5 GPU run
-    test_fused_turboquant.py      -- CLI runner; needs a real Qwen3.5 GPU run
+    test_polarquant.py            -- CLI runner; needs a real Gemma 4 GPU run
+    test_turboquant.py            -- CLI runner; needs a real Gemma 4 GPU run
+    test_qjl.py                   -- CLI runner; needs a real Gemma 4 GPU run
+    test_fused_turboquant.py      -- CLI runner; needs a real Gemma 4 GPU run
 
 They are NOT pytest-collectable on purpose: they download multi-GB
 checkpoints and require a fixed val.jsonl shipped with the training
@@ -45,11 +45,11 @@ def test_polarquant_recipe_serializes_with_paper_metadata():
 def test_polarquant_dry_run_emits_recipe_json(capsys):
     from polarquant_apply import main
 
-    rc = main(["--model", "Qwen/Qwen3.5-0.8B", "--output", "/tmp/_polarquant_unused", "--dry-run"])
+    rc = main(["--model", "google/gemma-4-E2B", "--output", "/tmp/_polarquant_unused", "--dry-run"])
     assert rc == 0
     out = capsys.readouterr().out
     payload = json.loads(out)
-    assert payload["model"] == "Qwen/Qwen3.5-0.8B"
+    assert payload["model"] == "google/gemma-4-E2B"
     assert payload["recipe"]["bits"] == 4
 
 
@@ -59,7 +59,7 @@ def test_polarquant_dry_run_rejects_missing_calibration(tmp_path):
     bogus = tmp_path / "does-not-exist.jsonl"
     with pytest.raises(FileNotFoundError):
         main([
-            "--model", "Qwen/Qwen3.5-0.8B",
+            "--model", "google/gemma-4-E2B",
             "--output", str(tmp_path / "out"),
             "--calibration", str(bogus),
             "--dry-run",
@@ -83,7 +83,7 @@ def test_fused_turboquant_dry_run_rejects_missing_calibration(tmp_path):
     bogus = tmp_path / "does-not-exist.jsonl"
     with pytest.raises(FileNotFoundError):
         main([
-            "--model", "Qwen/Qwen3.5-0.8B",
+            "--model", "google/gemma-4-E2B",
             "--output", str(tmp_path / "out"),
             "--calibration", str(bogus),
             "--dry-run",
@@ -98,7 +98,7 @@ def test_fp8_apply_dry_run_emits_capability_json(capsys):
     JSON output."""
     from fp8_apply import main
 
-    rc = main(["--model", "Qwen/Qwen3.5-0.8B", "--output", "/tmp/_fp8_unused", "--dry-run"])
+    rc = main(["--model", "google/gemma-4-E2B", "--output", "/tmp/_fp8_unused", "--dry-run"])
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert "fp8_ok" in payload
@@ -106,7 +106,7 @@ def test_fp8_apply_dry_run_emits_capability_json(capsys):
 
 
 def test_qjl_apply_kv_bytes_per_token_analytic_qwen():
-    """Sanity-check the analytic KV-bytes formula on a real Qwen3.5-0.8B config.
+    """Sanity-check the analytic KV-bytes formula on a real gemma-4-E2B config.
 
     No model download — just metadata via AutoConfig.
     """
@@ -115,7 +115,13 @@ def test_qjl_apply_kv_bytes_per_token_analytic_qwen():
 
     from qjl_apply import kv_bytes_per_token_analytic
 
-    cfg = AutoConfig.from_pretrained("Qwen/Qwen3.5-0.8B", trust_remote_code=True)
+    try:
+        cfg = AutoConfig.from_pretrained("google/gemma-4-E2B", trust_remote_code=True)
+    except (OSError, KeyError, ValueError) as exc:
+        # google/gemma-4-E2B not cached locally, or the installed transformers
+        # does not yet register the `gemma4` model_type. Either way there is no
+        # real config to exercise the analytic formula against here.
+        pytest.skip(f"gemma-4-E2B config unavailable in this environment: {exc}")
     base_bpt, quant_bpt = kv_bytes_per_token_analytic(
         cfg,
         key_quantization_bits=256,
@@ -834,7 +840,7 @@ def test_kquant_sibling_dry_run_prints_quant_level(
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     rc = mod.main([
-        "--model", "Qwen/Qwen3.5-0.8B",
+        "--model", "google/gemma-4-E2B",
         "--output", str(tmp_path),
         "--dry-run",
     ])

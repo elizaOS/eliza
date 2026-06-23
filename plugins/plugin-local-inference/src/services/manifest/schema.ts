@@ -15,9 +15,10 @@
 //   layers map but are not the same enum.
 // - The schema URL `https://elizaos.ai/schemas/eliza-1.manifest.v1.json` is
 //   exported as a JSON Schema sibling file in this directory.
-// - Eliza-1 speculative decoding is native llama.cpp same-file MTP. MTP-enabled
-//   tiers carry the NextN head in the primary text GGUF, so `files.mtp` is
-//   intentionally empty for current bundles.
+// - Eliza-1 speculative decoding is native llama.cpp MTP. Embedded-draft-head
+//   tiers carry the draft head in the primary text GGUF, so `files.mtp` is
+//   intentionally empty for those bundles; separate-drafter tiers ship the
+//   drafter GGUF as the official Gemma 4 drafter.
 // - Per-sub-model versioning (kokoro, omnivoice, turn-detector, voice-emotion,
 //   diarizer, speaker-encoder, vad, wakeword, embedding, asr) lives in
 //   `packages/shared/src/local-inference/voice-models.ts` and the matching
@@ -33,8 +34,8 @@ export const ELIZA_1_MANIFEST_SCHEMA_URL =
 	"https://elizaos.ai/schemas/eliza-1.manifest.v1.json" as const;
 
 // The shared Eliza-1 BPE vocabulary exported so runtime code can assert it.
-export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
-export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
+export const ELIZA_1_TOKENIZER_FAMILY = "gemma" as const;
+export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 262_144 as const;
 
 // Tiers — size-ordered across the active Eliza-1 bundles. 2b is the
 // smallest/entry tier.
@@ -115,28 +116,41 @@ export const ELIZA_1_BACKENDS = [
 ] as const;
 export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
-// Required-kernel set per tier. Mirrors the active Eliza-1 release policy:
-// - All tiers require the TurboQuant text-weight kernels.
-// - All current text GGUFs ship at the 128k half-context floor or the 262k
-//   native tier, so every tier requires `turbo3_tcq`. The validator also
-//   enforces the same requirement dynamically for any bundle that declares
-//   a >64k text file, so additional tiers cannot publish long-context text
-//   without TCQ.
-// - QJL/Polar KV-cache kernels are intentionally not required for the shipped
-//   qwen35 tiers: the available QJL1_256/fused route is head_dim=128 while
-//   these models are head_dim=256. Keep F16 KV until a compatible kernel or
-//   model variant lands.
-//
-// Q4 is the release text quant baseline. TCQ is part of the release contract
-// for the full text ladder, including the smallest 2B bundle.
+// Required-kernel set per tier. Mirrors the active Gemma 4 Eliza-1 release
+// policy:
+// - Every tier requires only the geometry-agnostic GGUF weight-quant
+//   (`turboquant_q4`). Weight quant operates on (out_features, in_features)
+//   matmul tensors and is independent of attention head geometry, so it
+//   applies to Gemma's dense MQA backbone unchanged.
+// - The KV-cache kernels (`qjl`, `polarquant`, `turbo3_tcq`, and the
+//   `turbo3`/`turbo4` runtime handles) are 128-element FWHT-group kernels
+//   that are head_dim-coupled. They do NOT match Gemma's MQA geometry
+//   (n_head_kv=1) with dual head dims (512 global / 256 SWA), so Gemma 4
+//   ships stock q8_0 KV and these kernels are OPTIONAL, never required.
+//   They stay compiled into the shared lib for the legacy Qwen tiers and the
+//   shared OmniVoice/ASR FFI symbols, but no Gemma tier declares them
+//   required.
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-	"2b": ["turboquant_q4", "turbo3_tcq"],
-	"4b": ["turboquant_q4", "turbo3_tcq"],
-	"9b": ["turboquant_q4", "turbo3_tcq"],
-	"27b": ["turboquant_q4", "turbo3_tcq"],
-	"27b-256k": ["turboquant_q4", "turbo3_tcq"],
+	"2b": ["turboquant_q4"],
+	"4b": ["turboquant_q4"],
+	"9b": ["turboquant_q4"],
+	"27b": ["turboquant_q4"],
+	"27b-256k": ["turboquant_q4"],
+};
+
+// KV-cache kernels that remain available but are NOT required for any Gemma 4
+// tier (head_dim=128/FWHT-group coupled; Gemma uses stock q8_0 KV). Surfaced
+// as the optional kernel set for every tier.
+export const OPTIONAL_KERNELS_BY_TIER: Readonly<
+	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
+> = {
+	"2b": ["qjl", "polarquant", "turbo3_tcq"],
+	"4b": ["qjl", "polarquant", "turbo3_tcq"],
+	"9b": ["qjl", "polarquant", "turbo3_tcq"],
+	"27b": ["qjl", "polarquant", "turbo3_tcq"],
+	"27b-256k": ["qjl", "polarquant", "turbo3_tcq"],
 };
 
 // Backends each tier is expected to support on shipped hardware.
@@ -246,7 +260,7 @@ export const Eliza1FilesSchema = z.object({
 	// Eliza-1 EOT LoRA adapter — optional, complements `turn`. When
 	// present, the runtime layers this adapter onto the in-process
 	// drafter at voice-session start (`voice/eliza1-eot-scorer.ts`) so
-	// P(`<|im_end|>`) calibration matches a fine-tuned EOT head without
+	// P(`<end_of_turn>`) calibration matches a fine-tuned EOT head without
 	// shipping a second base model. When both `turn` and `eotLoraAdapter`
 	// are present the operator picks via `ELIZA_VOICE_EOT_BACKEND` or
 	// `startVoiceSession({ useEliza1Eot })`. Training recipe:

@@ -526,10 +526,10 @@ def _make_eliza1_bundle(
     manifest = {
         "version": 1,
         "kind": kind,
-        "modelId": "qwen3.5-4b",
+        "modelId": "gemma4-e4b",
         "base": {
-            "name": "qwen3.5-4b",
-            "displayName": "Qwen3.5 4B",
+            "name": "gemma4-e4b",
+            "displayName": "Gemma 4 E4B",
             "params": "4B",
             "tokenizerFamily": "qwen3",
             "contextLength": 131072,
@@ -550,7 +550,7 @@ def _make_eliza1_bundle(
         },
         "pipeline": {
             "publishedAt": "2026-05-10T00:00:00Z",
-            "trainedFrom": "Qwen/Qwen3.5-4B",
+            "trainedFrom": "google/gemma-4-E4B",
             "trainingPipeline": "elizaos/eliza-1-training",
             "buildScript": "packages/training/scripts/publish_eliza1_model.py",
         },
@@ -564,7 +564,7 @@ def _make_eliza1_bundle(
 def test_eliza1_dry_run_accepts_fused_gguf(publish_eliza1, tmp_path, monkeypatch):
     monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
-    bundle = tmp_path / "qwen3.5-4b-optimized"
+    bundle = tmp_path / "gemma4-e4b-optimized"
     _make_eliza1_bundle(bundle, fused=True)
 
     rc = publish_eliza1.main(
@@ -581,7 +581,7 @@ def test_eliza1_dry_run_accepts_fused_gguf(publish_eliza1, tmp_path, monkeypatch
 
 def test_eliza1_refuses_stock_gguf(publish_eliza1, tmp_path, monkeypatch):
     monkeypatch.delenv("HF_TOKEN", raising=False)
-    bundle = tmp_path / "qwen3.5-4b-optimized"
+    bundle = tmp_path / "gemma4-e4b-optimized"
     _make_eliza1_bundle(bundle, fused=False)
 
     with pytest.raises(SystemExit) as excinfo:
@@ -602,7 +602,7 @@ def test_eliza1_refuses_missing_turboquant_marker(
     publish_eliza1, tmp_path, monkeypatch
 ):
     monkeypatch.delenv("HF_TOKEN", raising=False)
-    bundle = tmp_path / "qwen3.5-4b-optimized"
+    bundle = tmp_path / "gemma4-e4b-optimized"
     _make_eliza1_bundle(bundle, fused=True)
     _make_missing_tbq_gguf(bundle / f"{bundle.name}.gguf")
 
@@ -620,7 +620,7 @@ def test_eliza1_refuses_missing_turboquant_marker(
 
 
 def test_eliza1_refuses_non_elizaos_org(publish_eliza1, tmp_path):
-    bundle = tmp_path / "qwen3.5-4b-optimized"
+    bundle = tmp_path / "gemma4-e4b-optimized"
     _make_eliza1_bundle(bundle, fused=True)
 
     with pytest.raises(SystemExit) as excinfo:
@@ -629,7 +629,7 @@ def test_eliza1_refuses_non_elizaos_org(publish_eliza1, tmp_path):
                 "--model-dir",
                 str(bundle),
                 "--repo-id",
-                "someoneelse/qwen3.5-4b",
+                "someoneelse/gemma4-e4b",
                 "--dry-run",
             ]
         )
@@ -637,9 +637,9 @@ def test_eliza1_refuses_non_elizaos_org(publish_eliza1, tmp_path):
 
 
 def test_eliza1_refuses_zero_byte_gguf(publish_eliza1, tmp_path):
-    bundle = tmp_path / "qwen3.5-4b-optimized"
+    bundle = tmp_path / "gemma4-e4b-optimized"
     bundle.mkdir()
-    (bundle / "qwen3.5-4b-optimized.gguf").touch()  # zero bytes
+    (bundle / "gemma4-e4b-optimized.gguf").touch()  # zero bytes
     (bundle / "manifest.json").write_text(
         '{"version":1,"kind":"eliza-1-optimized","modelId":"x","base":{},"gguf":{},"optimization":{}}'
     )
@@ -662,7 +662,7 @@ def test_eliza1_publish_writes_published_sidecar(publish_eliza1, tmp_path, monke
     """End-to-end: HfApi mocked, publisher writes published.json idempotency
     sidecar with the canonical resolve URL + sha256."""
     monkeypatch.setenv("HF_TOKEN", "hf_fake_token")
-    bundle = tmp_path / "qwen3.5-4b-optimized"
+    bundle = tmp_path / "gemma4-e4b-optimized"
     _make_eliza1_bundle(bundle, fused=True)
 
     fake_api = MagicMock()
@@ -688,7 +688,7 @@ def test_eliza1_publish_writes_published_sidecar(publish_eliza1, tmp_path, monke
     assert data["resolveUrl"].startswith(
         "https://huggingface.co/elizaos/eliza-1/resolve/main/"
     )
-    assert data["ggufFile"] == "qwen3.5-4b-optimized.gguf"
+    assert data["ggufFile"] == "gemma4-e4b-optimized.gguf"
     assert isinstance(data["sha256"], str) and len(data["sha256"]) == 64
     assert data["sizeBytes"] > 0
 
@@ -699,7 +699,7 @@ def test_eliza1_publish_writes_published_sidecar(publish_eliza1, tmp_path, monke
     assert op_paths == [
         "README.md",
         "manifest.json",
-        "qwen3.5-4b-optimized.gguf",
+        "gemma4-e4b-optimized.gguf",
     ]
 
 
@@ -709,13 +709,13 @@ def test_eliza1_publish_skips_when_remote_sha_matches(
     """If the remote LFS pointer's sha256 matches the local GGUF, the GGUF
     upload is skipped and only README + manifest get refreshed."""
     monkeypatch.setenv("HF_TOKEN", "hf_fake_token")
-    bundle = tmp_path / "qwen3.5-4b-optimized"
+    bundle = tmp_path / "gemma4-e4b-optimized"
     _make_eliza1_bundle(bundle, fused=True)
-    gguf_path = bundle / "qwen3.5-4b-optimized.gguf"
+    gguf_path = bundle / "gemma4-e4b-optimized.gguf"
     expected_sha = publish_eliza1._sha256_file(gguf_path)
 
     sibling = SimpleNamespace(
-        rfilename="qwen3.5-4b-optimized.gguf",
+        rfilename="gemma4-e4b-optimized.gguf",
         lfs={"sha256": expected_sha},
     )
     fake_api = MagicMock()
@@ -756,9 +756,9 @@ def test_sync_catalog_writes_diff(sync_catalog, tmp_path, monkeypatch):
     out = tmp_path / "diff.json"
     entries = [
         sync_catalog.CatalogEntry(
-            id="qwen3.5-4b-optimized",
+            id="gemma4-e4b-optimized",
             hf_repo="elizaos/eliza-1",
-            gguf_file="qwen3.5-4b-optimized.gguf",
+            gguf_file="gemma4-e4b-optimized.gguf",
             sha256="a" * 64,
             size_bytes=1234567,
             manifest={"version": 1, "kind": "eliza-1-optimized"},
@@ -775,7 +775,7 @@ def test_sync_catalog_writes_diff(sync_catalog, tmp_path, monkeypatch):
     assert payload["org"] == "elizaos"
     assert len(payload["entries"]) == 1
     e = payload["entries"][0]
-    assert e["id"] == "qwen3.5-4b-optimized"
+    assert e["id"] == "gemma4-e4b-optimized"
     assert e["hfRepo"] == "elizaos/eliza-1"
     assert e["sha256"] == "a" * 64
     assert e["sizeBytes"] == 1234567

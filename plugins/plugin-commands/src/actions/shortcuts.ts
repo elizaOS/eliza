@@ -38,4 +38,54 @@ export function createCommandShortcuts(
 }
 
 /** The explicit slash-command shortcuts for the built-in gate-safe commands. */
-export const commandShortcuts: ShortcutDefinition[] = createCommandShortcuts();
+export const explicitCommandShortcuts: ShortcutDefinition[] =
+	createCommandShortcuts();
+
+/**
+ * Natural-language shortcuts (#8791 C6).
+ *
+ * These are flag-gated (the server gate enables them only when
+ * `ELIZA_SHORTCUTS_NL === "1"`) and confidence-floored, so the DEFAULT behavior
+ * is byte-identical with them off. Each one targets an UNAMBIGUOUS deterministic
+ * intent that maps onto a gate-safe `*_COMMAND` action, so the pre-LLM gate can
+ * fire it with zero inference.
+ *
+ * The sole production shortcut here is "what commands can I use" / "show me the
+ * commands" / "list the available commands" → `COMMANDS_COMMAND`. The patterns
+ * are anchored (`^…$`) over ASR-normalized text and require both a list/show
+ * verb and the literal word "commands", so a conversational message like "can
+ * you help me with this command line" never matches — it lacks the anchored
+ * verb+"commands" shape and falls through to the LLM.
+ */
+export const naturalShortcuts: ShortcutDefinition[] = [
+	{
+		id: "nl:commands",
+		kind: "natural",
+		patterns: [
+			// "what commands can i use", "what commands are available", "what commands do you have"
+			{
+				regex:
+					/^what commands (?:can i (?:use|run)|are (?:there|available)|do you (?:have|support))$/u,
+			},
+			// "show/list/give me the commands", "show me a list of commands",
+			// "list available commands", "list all the commands", "what are the commands"
+			{
+				regex:
+					/^(?:show|list|give|tell)(?: me)?(?: a list of| the list of| all(?: of)?| the| your| available)* commands$/u,
+			},
+			{ regex: /^what are(?: all)?(?: the| your| available)* commands$/u },
+		],
+		target: { kind: "action", name: "COMMANDS_COMMAND" },
+		requiresAction: "COMMANDS_COMMAND",
+		confidence: 0.95,
+	},
+];
+
+/**
+ * All command shortcuts the plugin registers: the always-on explicit
+ * slash-command shortcuts plus the flag-gated natural-language shortcuts.
+ */
+export const commandShortcuts: ShortcutDefinition[] = [
+	...explicitCommandShortcuts,
+	...naturalShortcuts,
+];

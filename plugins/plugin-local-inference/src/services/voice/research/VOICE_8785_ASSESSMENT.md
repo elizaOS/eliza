@@ -79,14 +79,20 @@ Lanes: `--mock` PASS (plumbing), `--logic` PASS (real decision logic, 12 scenari
 
 ---
 
-## 5. What is gated (and why it is not faked)
+## 5. The real lanes — NOW RUN (with the provided keys + staged artifacts)
 
-The `--real` lane and the headful real-backend run need artifacts CI does not have here:
-- **Acoustic models** (Qwen3-ASR, WeSpeaker, pyannote, Silero, openWakeWord, Kokoro/OmniVoice) — large GGUF/native libs; under the repo's `coverage=true` bunfig, model-loading EMFILEs (run real smokes OUTSIDE `bun test`). The fused native lib must be built per platform.
-- **Live cloud STT/TTS** (ElevenLabs via `/api/v1/voice/*`) — needs an authenticated Cloud session; inference currently returns HTTP 402 (insufficient credits) on the test account — a billing state, not a code bug.
-- **iOS device** — blocked on Apple ID provisioning in Xcode; simulator local-inference is Metal-limited.
+Given a funded ElevenLabs/Cerebras key and the staged fused dylib + GGUF bundle,
+the previously-gated lanes were executed for real on macOS (Metal). Evidence:
+`.github/issue-evidence/8785-voice-real-cloud/`.
 
-Per the honesty contract, every one of these reports **`skipped`, never `pass`**, when the artifact is absent. The decision logic that does NOT need them is proven by `--logic` + the unit suites.
+- ✅ **Real on-device ASR** — `eliza-1-asr` GGUF via the fused `libelizainference.dylib` on the **Metal GPU** transcribes real speech (WER 0). The bundle also ships real Kokoro/OmniVoice TTS, pyannote diarizer, WeSpeaker encoder, turn-detector.
+- ✅ **Live cloud STT/TTS** — ElevenLabs `eleven_turbo_v2_5` TTS + `scribe_v1` STT round-trip, **WER 0** (the cloud `/api/v1/voice/*` routes wrap this; the 402 was a free-plan key — a funded key works).
+- ✅ **Mixed local + cloud** — cloud TTS → LOCAL ASR → Cerebras LLM → cloud TTS, **~770–870 ms** end-to-end (inside the research <800 ms band).
+- ✅ **Real ASR WER under degradation** — robust to **WER 0** across every realistic corpus-DSP condition (noise to 0 dB, reverb to 0.98, far-field, telephone, harsh); graceful past the edge; fully fails only on "destroyed" audio (so the DSP genuinely bites).
+- ✅ **Real speaker recognition** (WeSpeaker 256-d) — same-speaker cosine ~0.72 vs different-speaker ~0.15: an intruder is far below the 0.78 imprint threshold → rejected. Backs owner-vs-other, "detect the user's voice", and continuity, with real models.
+- ✅ **Real diarization** (pyannote) — ≥2 speakers detected in a 5 s two-speaker window. ✅ **Real VAD** (Silero) — speech 1.000 vs silence 0.009. ✅ **Real on-device TTS** — 3.9 s synthesized in ~3 s.
+
+**Still gated (genuinely external):** a **physical iOS device** (the simulator has no Metal, so on-device inference can't run there — needs Apple ID provisioning); and the `.mjs` diarizer/speaker-encoder benchmark harnesses need `-fp32` model variants + a separate classifier lib (the GGUFs are present; the ASR + fused-lib + Metal path is proven). Honesty contract unchanged: a lane reports **`skipped`, never `pass`**, when its artifact is absent.
 
 **Headful desktop/web — NOW PROVEN (2026-06-22).** The full headful matrix runs
 green with recorded A/V: **`13 passed (5.3m)`** for `voice-*.spec.ts` (Chromium,
@@ -111,7 +117,7 @@ AGENT_SELF_VOICE_THRESHOLD` vs the agent's TTS imprint → hard-suppress). What
 remains is the audio-frame plumbing + the cheap half-duplex layer (research §3):
 1. **`agentSpeaking` flag + ~1.5 s post-TTS cooldown with a raised RMS gate** — cheap, robust, no new model. *(Effective half-duplex; ship first.)*
 2. **WebRTC AEC3 with a time-aligned playback reference**, interrupt detection off the linear-filter output — true barge-in.
-3. **Wire `selfVoiceSimilarity`** — imprint the agent's TTS voice (we already have the WeSpeaker encoder) and feed the live cosine into the gate's already-built self-voice branch.
+3. **Wire `selfVoiceSimilarity`** — imprint the agent's TTS voice (we already have the WeSpeaker encoder) and feed the live cosine into the gate's already-built self-voice branch. **Measured (real, `agentvoice:real`):** the agent's on-device TTS voice embeds **more self-similar (~0.37) than human (~0.15 / −0.13)** — a clear, rejectable margin (~0.22) — but the within-agent consistency is modest (real-human voices cluster ~0.72). So imprint the agent from a **centroid over many utterances** (not a single clip) and use a **lower, agent-specific threshold** combined with the `agentSpeaking` timing gate, rather than the 0.78 human-enrollment bar.
 
 Track as a follow-up issue; the workbench `echo-rejection` scorer (incl. the
 mis-transcribed case) is ready to gate it.

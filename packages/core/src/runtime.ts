@@ -4860,10 +4860,21 @@ export class AgentRuntime implements IAgentRuntime {
 				if (ctxChunk) await ctxChunk(chunk, msgId, undefined);
 			});
 		};
+		// Wire the handler-facing stream callback for local providers AND for the
+		// prefer-local router ("eliza-router"): the router resolves to itself as
+		// the top-priority handler but invokes the underlying provider's handler
+		// directly and forwards `onStreamChunk` transparently, so on mobile (where
+		// the router is always the resolved provider, dispatching to the on-device
+		// capacitor-llama / bionic host) streaming is only wired if we recognize
+		// it here. Scoped to the streaming gate only — it intentionally does NOT
+		// change validation/pricing semantics keyed on isLocalProvider().
+		const resolvedIsStreamableLocal =
+			!!resolvedProviderName &&
+			(isLocalProvider(resolvedProviderName) ||
+				resolvedProviderName === "eliza-router");
 		const handlerStreamChunk: StreamChunkCallback | undefined =
 			shouldStream &&
-			resolvedProviderName &&
-			isLocalProvider(resolvedProviderName) &&
+			resolvedIsStreamableLocal &&
 			(paramsChunk || ctxChunk || structuredExtractor)
 				? async (chunk) => {
 						handlerDeliveredStream = true;

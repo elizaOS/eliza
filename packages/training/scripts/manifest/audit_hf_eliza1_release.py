@@ -1355,7 +1355,7 @@ def _active_text_sft_blockers(
         blockers.append("validation.blockers: non-empty")
     if manifest.get("published_name") != f"eliza-1-{ACTIVE_TEXT_SFT_TIER}":
         blockers.append(f"manifest.published_name: {manifest.get('published_name')!r}")
-    if manifest.get("base_model") != "Qwen/Qwen3.5-0.8B":
+    if manifest.get("base_model") != "google/gemma-4-E2B":
         blockers.append(f"manifest.base_model: {manifest.get('base_model')!r}")
 
     counts = manifest.get("counts")

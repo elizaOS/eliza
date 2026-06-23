@@ -1,12 +1,33 @@
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import dotenv from "dotenv";
 import { defineConfig } from "drizzle-kit";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+function loadEnvFile(filePath: string): void {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+  for (const line of fs.readFileSync(filePath, "utf8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match) {
+      continue;
+    }
+    const [, key, rawValue] = match;
+    if (process.env[key] !== undefined) {
+      continue;
+    }
+    process.env[key] = rawValue.replace(/^(['"])(.*)\1$/, "$2");
+  }
+}
+
 // Load root .env file
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+loadEnvFile(path.resolve(__dirname, "../../.env"));
 
 // Determine if we're in local development mode
 const isLocalDev =

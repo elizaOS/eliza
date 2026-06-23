@@ -56,6 +56,7 @@ export interface LLMCall {
 	// Parameters
 	temperature: number;
 	maxTokens: number;
+	maxTokensOmitted?: boolean;
 	topP?: number;
 
 	// Metrics

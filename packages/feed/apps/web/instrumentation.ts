@@ -30,6 +30,7 @@ export async function register() {
       ReputationService,
       createNotification,
       logDevCredentials,
+      configureAgentSessionStore,
     } = await import("@feed/api");
     const { createSentryApiRouteCapture } = await import(
       "./src/lib/sentry/api-route-capture"
@@ -44,6 +45,11 @@ export async function register() {
     // This makes it easy for developers to authenticate with admin APIs
     logDevCredentials();
 
+    // Back agent sessions with Redis when available so they are shared across
+    // web replicas (an agent authenticated on one instance is recognized on any
+    // other). Non-blocking; falls back to the in-memory store if Redis is down.
+    void configureAgentSessionStore();
+
     // Initialize agent service container with required services
     // Uses globalThis to persist across module instances
     const { setServiceContainer, agentRegistry, npcBootstrapService } =
@@ -56,6 +62,12 @@ export async function register() {
     // Note: Runs asynchronously and is non-critical; failures do not block server startup
     // Individual NPC failures are handled internally by npcBootstrapService
     void npcBootstrapService.bootstrapAllNpcs();
+
+    // Start the in-process game loop when running as a single always-on service
+    // (e.g. Railway) — no external cron needed. No-op unless
+    // ENABLE_INTERNAL_CRON_SCHEDULER === "true".
+    const { startInternalCronLoop } = await import("./src/lib/cron-scheduler");
+    startInternalCronLoop();
 
     // Initialize shared moderation services with web app implementations
     setReputationService({

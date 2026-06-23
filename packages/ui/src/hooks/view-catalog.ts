@@ -76,7 +76,7 @@ export interface InstalledAppLike {
   name: string;
 }
 
-function viewToEntry(view: ViewRegistryEntry): ViewEntry {
+export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
   const hasHero = Boolean(view.hasHeroImage && view.heroImageUrl);
   return {
     key: `view:${view.id}`,

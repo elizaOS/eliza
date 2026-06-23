@@ -101,13 +101,18 @@ describe("Eliza-1 manifest schema constants", () => {
 	});
 
 	it("uses Eliza-1 size-tier ids and tokenizer family", () => {
-		expect(ELIZA_1_TOKENIZER_FAMILY).toBe("qwen35");
+		expect(ELIZA_1_TOKENIZER_FAMILY).toBe("gemma");
 		expect(ELIZA_1_TIERS).toEqual(["2b", "4b", "9b", "27b", "27b-256k"]);
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
 			expect.arrayContaining(["2b", "4b"]),
 		);
+		// Gemma 4 cutover: the only REQUIRED kernel is the geometry-agnostic
+		// turboquant_q4 weight-quant. The KV-cache kernels (qjl/polarquant/
+		// turbo3_tcq) are head_dim=128-coupled and OPTIONAL for Gemma's stock
+		// q8_0 KV path.
 		for (const tier of ELIZA_1_TIERS) {
-			expect(REQUIRED_KERNELS_BY_TIER[tier]).toContain("turbo3_tcq");
+			expect(REQUIRED_KERNELS_BY_TIER[tier]).toEqual(["turboquant_q4"]);
+			expect(REQUIRED_KERNELS_BY_TIER[tier]).not.toContain("turbo3_tcq");
 		}
 	});
 });
@@ -176,7 +181,7 @@ describe("validateManifest — valid input", () => {
 			enabled: true,
 			capability: "eagle3",
 			specType: "draft-eagle3",
-			model: "RedHatAI/Qwen3.5-2B-EAGLE3-head",
+			model: "RedHatAI/gemma-4-E2B-EAGLE3-head",
 			maxDraftTokens: 3,
 		};
 		m.evals.eagle3 = {
@@ -323,11 +328,13 @@ describe("validateManifest — schema-level rejections", () => {
 describe("validateManifest — contract rejections", () => {
 	it("rejects a manifest missing a required kernel for its tier", () => {
 		const m = baseManifest("9b");
-		m.kernels.required = ["turboquant_q4", "qjl", "polarquant"];
+		// Gemma required set is turboquant_q4; drop it (leaving only optional
+		// KV kernels) to trip the missing-required-kernel check.
+		m.kernels.required = ["qjl", "polarquant"];
 		const result = validateManifest(m);
 		expect(result.ok).toBe(false);
 		if (!result.ok) {
-			expect(result.errors.some((e) => e.includes("turbo3_tcq"))).toBe(true);
+			expect(result.errors.some((e) => e.includes("turboquant_q4"))).toBe(true);
 		}
 	});
 
@@ -382,7 +389,7 @@ describe("validateManifest — contract rejections", () => {
 		}
 	});
 
-	it("rejects separate drafter artifacts for same-file MTP tiers", () => {
+	it("rejects separate drafter artifacts for embedded-draft-head MTP tiers", () => {
 		const m = baseManifest("9b");
 		m.lineage.drafter = {
 			base: "eliza-1-mtp-drafter",
@@ -492,16 +499,9 @@ describe("validateManifest — contract rejections", () => {
 		}
 	});
 
-	it("requires turbo3_tcq when text ctx > 64k", () => {
-		const m = baseManifest("9b");
-		m.files.text[0].ctx = 131072;
-		m.kernels.required = m.kernels.required.filter((k) => k !== "turbo3_tcq");
-		const result = validateManifest(m);
-		expect(result.ok).toBe(false);
-		if (!result.ok) {
-			expect(result.errors.some((e) => e.includes("turbo3_tcq"))).toBe(true);
-		}
-	});
+	// (Removed: "requires turbo3_tcq when text ctx > 64k" — Gemma 4 handles
+	// long context with native windowed-SWA + shared-KV at stock q8_0, so
+	// turbo3_tcq is no longer a required long-context kernel.)
 
 	it("rejects text GGUFs below the 128k floor", () => {
 		const m = baseManifest("2b");
@@ -515,16 +515,21 @@ describe("validateManifest — contract rejections", () => {
 		}
 	});
 
-	it("rejects turbo3_tcq as optional-only when ctx > 64k", () => {
+	it("accepts turbo3_tcq as optional-only when ctx > 64k", () => {
 		const m = baseManifest("9b");
 		m.files.text[0].ctx = 131072;
+		// Gemma 4: turbo3_tcq is an optional KV accelerator, not required for
+		// long context — a 128k bundle that lists it only under `optional`
+		// (stock q8_0 KV) is contract-valid.
 		m.kernels.required = m.kernels.required.filter((k) => k !== "turbo3_tcq");
 		m.kernels.optional = ["turbo3_tcq"];
 		const result = validateManifest(m);
-		expect(result.ok).toBe(false);
-		if (!result.ok) {
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.errors ?? []).toEqual([]);
+		} else {
 			expect(result.errors.some((e) => e.includes("kernels.required"))).toBe(
-				true,
+				false,
 			);
 		}
 	});
@@ -579,13 +584,13 @@ describe("canSetAsDefault", () => {
 			releaseState: "base-v1-candidate",
 			finetuned: false,
 			sourceModels: {
-				text: { repo: "Qwen/Qwen3.5-9B" },
+				text: { repo: "google/gemma-4-12B-base" },
 				voice: { repo: "Serveurperso/OmniVoice-GGUF" },
 				drafter: { repo: "elizaos/eliza-1" },
 				asr: { repo: "ggml-org/Qwen3-ASR-GGUF" },
 				embedding: { repo: "Qwen/Qwen3-Embedding-GGUF" },
 				vad: { repo: "onnx-community/silero-vad" },
-				vision: { repo: "unsloth/Qwen3.5-9B-GGUF" },
+				vision: { repo: "unsloth/gemma-4-12B-GGUF" },
 			},
 		};
 		expect(canSetAsDefault(m, device)).toBe(true);
@@ -610,7 +615,8 @@ describe("canSetAsDefault", () => {
 
 	it("returns false when the manifest fails contract checks even if defaultEligible=true", () => {
 		const m = baseManifest("9b");
-		m.kernels.required = ["turboquant_q4"];
+		// Drop the required Gemma weight-quant kernel to fail the contract.
+		m.kernels.required = ["qjl", "polarquant"];
 		expect(canSetAsDefault(m, device)).toBe(false);
 	});
 

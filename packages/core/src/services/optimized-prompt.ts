@@ -70,7 +70,20 @@ export type OptimizedPromptTask =
 	| "media_description"
 	| "action_descriptions"
 	| "autonomy"
-	| "view_context";
+	| "view_context"
+	// LifeOps (personal-assistant / health) per-capability optimization tasks.
+	// Each names a concrete LifeOps LLM call site (extraction or chat-shaped)
+	// whose inline prompt template is a GEPA optimization target. The call site
+	// consults OptimizedPromptService.getPrompt(task) with its inline template as
+	// the fallback baseline, so an absent artifact is a no-op (never a failure).
+	| "calendar_extract"
+	| "schedule_plan"
+	| "reminder_dispatch"
+	| "inbox_triage"
+	| "meeting_prep"
+	| "morning_brief"
+	| "health_checkin"
+	| "screentime_recap";
 
 export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"should_respond",
@@ -82,6 +95,32 @@ export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	// Contextual view-switching evaluator (plugin-app-control viewContextEvaluator):
 	// the situation→view judgment prompt is a GEPA optimization target.
 	"view_context",
+	// LifeOps per-capability tasks (see OptimizedPromptTask union above).
+	"calendar_extract",
+	"schedule_plan",
+	"reminder_dispatch",
+	"inbox_triage",
+	"meeting_prep",
+	"morning_brief",
+	"health_checkin",
+	"screentime_recap",
+] as const;
+
+/**
+ * The LifeOps subset of {@link OPTIMIZED_PROMPT_TASKS}. Exposed so LifeOps
+ * plugins and the training optimizer can iterate the per-capability tasks
+ * without re-declaring the list — keeps `@elizaos/core` the single source of
+ * truth for the LifeOps optimization taxonomy.
+ */
+export const LIFEOPS_OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
+	"calendar_extract",
+	"schedule_plan",
+	"reminder_dispatch",
+	"inbox_triage",
+	"meeting_prep",
+	"morning_brief",
+	"health_checkin",
+	"screentime_recap",
 ] as const;
 
 export type OptimizerName =

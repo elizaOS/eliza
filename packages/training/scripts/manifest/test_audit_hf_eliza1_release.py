@@ -534,7 +534,7 @@ def _passing_active_sft_manifest() -> str:
     return __import__("json").dumps(
         {
             "schema": "eliza.eliza1_sft_0_8b_manifest.v1",
-            "base_model": "Qwen/Qwen3.5-0.8B",
+            "base_model": "google/gemma-4-E2B",
             "published_name": "eliza-1-0_8b",
             "counts": {"train": 116, "val": 6, "test": 3, "total": 125},
             "privacy_filter": {
@@ -1953,7 +1953,7 @@ def test_hf_release_audit_requires_active_sft_package() -> None:
 def test_hf_release_audit_blocks_dirty_active_sft_validation() -> None:
     manifest = __import__("json").loads(_passing_active_sft_manifest())
     validation = __import__("json").loads(_passing_active_sft_validation())
-    manifest["base_model"] = "Qwen/Qwen3.5-0.8B-legacy"
+    manifest["base_model"] = "google/gemma-4-E2B-legacy"
     manifest["privacy_filter"]["real_user_trajectories_consumed"] = 1
     validation["passed"] = False
     validation["splits"]["train"]["rows"] = 115
@@ -1970,7 +1970,7 @@ def test_hf_release_audit_blocks_dirty_active_sft_validation() -> None:
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
         check["name"] == "dataset active 0_8b SFT validation passed"
-        and "manifest.base_model: 'Qwen/Qwen3.5-0.8B-legacy'" in check["detail"]
+        and "manifest.base_model: 'google/gemma-4-E2B-legacy'" in check["detail"]
         and "validation.passed: False" in check["detail"]
         and "validation.splits.train.rows: 115 != 116" in check["detail"]
         for check in failed

@@ -236,9 +236,12 @@ function backendCmakeFlags(backend) {
   }
 }
 
-const { variant, outDir: outOverride, jobs: jobsArg, force } = parseArgs(
-  process.argv.slice(2),
-);
+const {
+  variant,
+  outDir: outOverride,
+  jobs: jobsArg,
+  force,
+} = parseArgs(process.argv.slice(2));
 
 if (!existsSync(path.join(forkSrc, "CMakeLists.txt"))) {
   die(
@@ -249,12 +252,13 @@ if (!have("cmake")) die("cmake not found on PATH");
 
 const backend = variant === "auto" ? detectBackend() : variant;
 log(`host: ${process.platform}/${process.arch}`);
-log(`backend: ${backend}${variant === "auto" ? " (autodetected)" : ""} (GGML_CPU always on for fallback)`);
+log(
+  `backend: ${backend}${variant === "auto" ? " (autodetected)" : ""} (GGML_CPU always on for fallback)`,
+);
 
 const buildDir = path.join(forkSrc, `build-desktop-${backend}`);
 const outDir =
-  outOverride ||
-  path.join(resolveStateDir(), "local-inference", "lib");
+  outOverride || path.join(resolveStateDir(), "local-inference", "lib");
 
 if (force && existsSync(buildDir)) {
   rmSync(buildDir, { recursive: true, force: true });
@@ -310,6 +314,11 @@ run("cmake", [
   buildDir,
   "--target",
   "elizainference",
+  // Multi-config generators (MSVC, Xcode) ignore -DCMAKE_BUILD_TYPE and pick
+  // Debug unless the build step names the config; single-config generators
+  // (Make, Ninja) silently ignore --config, so this is safe everywhere.
+  "--config",
+  "Release",
   "-j",
   String(jobs),
 ]);
@@ -317,14 +326,23 @@ run("cmake", [
 // Collect the produced shared libs (the fused lib + its ggml/llama/mtmd
 // backends) and stage them as one consistent set. Sweep the out dir first so a
 // backend switch never leaves a stale sibling the loader could pick up.
-const binDir = path.join(buildDir, "bin");
+// Multi-config generators (MSVC, Xcode) nest the artifacts under bin/<Config>;
+// single-config generators (Make, Ninja) emit straight into bin/.
+let binDir = path.join(buildDir, "bin");
+const releaseBinDir = path.join(binDir, "Release");
+if (existsSync(releaseBinDir)) binDir = releaseBinDir;
 const libExt =
   process.platform === "darwin"
     ? ".dylib"
     : process.platform === "win32"
       ? ".dll"
       : ".so";
-const fusedName = `libelizainference${libExt}`;
+// CMake prepends the `lib` prefix to shared libs on Unix only; MSVC/Windows
+// emits the bare target name (elizainference.dll).
+const fusedName =
+  process.platform === "win32"
+    ? `elizainference${libExt}`
+    : `libelizainference${libExt}`;
 if (!existsSync(path.join(binDir, fusedName))) {
   die(`build did not produce ${fusedName} in ${binDir}`);
 }
@@ -378,7 +396,10 @@ function definedSymbols(libPath) {
     process.platform === "darwin"
       ? { cmd: "nm", args: ["-gU", libPath] }
       : process.platform === "win32"
-        ? { cmd: "objdump", args: ["-T", libPath] }
+        ? // PE exports live in the export-address table shown by `objdump -p`
+          // ("[Ordinal/Name Pointer] Table"); `-T` is the ELF dynamic-symbol
+          // flag and lists nothing for a .dll, so it would false-fail the verify.
+          { cmd: "objdump", args: ["-p", libPath] }
         : { cmd: "nm", args: ["-D", "--defined-only", libPath] };
   try {
     return execFileSync(tool.cmd, tool.args, {
@@ -421,7 +442,9 @@ function verifyFusedSymbols(stagedDir) {
   if (!llamaHere) {
     die(`llama_* symbols not found in the staged lib set — incomplete build.`);
   }
-  log("symbol verify OK: eliza_inference_* + ov_* in fused lib, llama_* in set");
+  log(
+    "symbol verify OK: eliza_inference_* + ov_* in fused lib, llama_* in set",
+  );
 }
 
 log("");

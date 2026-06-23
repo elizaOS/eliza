@@ -1,7 +1,10 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runParentAgentBroker } from "../services/parent-agent-broker.js";
-import { resetSessionSpendUsd } from "../services/spend-allowance.js";
+import {
+  configureSpendLedger,
+  resetSessionSpendUsd,
+} from "../services/spend-allowance.js";
 
 function createRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
   const cache = new Map<string, unknown>();
@@ -37,6 +40,7 @@ describe("runParentAgentBroker", () => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     resetSessionSpendUsd();
+    configureSpendLedger(null);
   });
 
   it("lists matching parent actions", async () => {
@@ -361,6 +365,42 @@ describe("runParentAgentBroker", () => {
 
       expect(result.text).toContain("Reply yes");
       expect(result.text).toContain("allowance");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("enforces the cap from the DURABLE total after a restart (#8924)", async () => {
+      stubAllowance("10");
+      // A durable ledger holding $9 already spent by a PRIOR process for this
+      // session (persisted on the session record's metadata.spendUsd).
+      const persisted = new Map<string, number>([["spend-restart", 9]]);
+      configureSpendLedger({
+        load: async (sid) => persisted.get(sid) ?? 0,
+        save: async (sid, total) => {
+          persisted.set(sid, total);
+        },
+      });
+      // Simulate a restart: the in-memory ledger is empty, only the durable
+      // record survives. Without rehydration the cap check would see $0.
+      resetSessionSpendUsd();
+
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await runParentAgentBroker({
+        runtime: createRuntime(),
+        sessionId: "spend-restart",
+        message: brokerMessage(),
+        args: {
+          mode: "cloud-command",
+          command: "domains.buy",
+          params: { id: "app-1", domain: "myapp.com", spendEstimateUsd: 2 },
+        },
+      });
+
+      // $9 persisted + $2 now = $11 > $10 cap → must fall back to a human
+      // confirmation, proving the broker rehydrated the persisted total before
+      // enforcing the cap (the durable record survived the "restart").
+      expect(result.text).toContain("Reply yes");
       expect(fetchMock).not.toHaveBeenCalled();
     });
 

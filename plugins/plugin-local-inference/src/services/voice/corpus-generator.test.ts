@@ -1,8 +1,9 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+	CORPUS_SCHEMA_VERSION,
 	type CorpusTtsSynthesizer,
 	generateVoiceCorpus,
 	readVoiceCorpusGroundTruth,
@@ -176,5 +177,25 @@ describe("writeVoiceCorpus / readVoiceCorpusGroundTruth", () => {
 
 	it("returns null ground truth when the corpus is absent (honesty contract)", () => {
 		expect(readVoiceCorpusGroundTruth(path.join(dir, "missing"))).toBeNull();
+	});
+
+	it("stamps + round-trips the corpus schema version", async () => {
+		const corpus = await generateVoiceCorpus(scenario());
+		expect(corpus.groundTruth.schemaVersion).toBe(CORPUS_SCHEMA_VERSION);
+		writeVoiceCorpus(corpus, dir);
+		expect(readVoiceCorpusGroundTruth(dir)?.schemaVersion).toBe(
+			CORPUS_SCHEMA_VERSION,
+		);
+	});
+
+	it("treats a corpus written by an incompatible schema version as absent", async () => {
+		const corpus = await generateVoiceCorpus(scenario());
+		writeVoiceCorpus(corpus, dir);
+		writeFileSync(
+			path.join(dir, "ground-truth.json"),
+			JSON.stringify({ ...corpus.groundTruth, schemaVersion: 999 }),
+		);
+		// Drifted-schema corpus reads as absent, not as a stale pass.
+		expect(readVoiceCorpusGroundTruth(dir)).toBeNull();
 	});
 });

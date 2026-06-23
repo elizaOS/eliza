@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { findCatalogModel, MODEL_CATALOG } from "./catalog.js";
+import { MODEL_CATALOG } from "./catalog.js";
 import {
   classifyCatalogModelRuntimeClass,
   classifyInstalledModelRuntimeClass,
   withRuntimeClass,
 } from "./runtime-class.js";
 import type { InstalledModel } from "./types.js";
+
+// Eliza-1-only stack: the local runtime serves exactly the curated Eliza-1
+// (Gemma 4) tiers through the fused libelizainference. There is no generic-GGUF
+// path (removed in the #8808 cutover), so every model classifies as
+// "fused-eliza1".
 
 describe("classifyCatalogModelRuntimeClass", () => {
   it("classes every curated Eliza-1 tier as fused-eliza1", () => {
@@ -17,14 +22,14 @@ describe("classifyCatalogModelRuntimeClass", () => {
     }
   });
 
-  it("classes a synthetic Hugging Face GGUF result as generic-gguf", () => {
+  it("classes any model as fused-eliza1 (no generic-gguf path)", () => {
     expect(
       classifyCatalogModelRuntimeClass({
-        id: "hf:meta-llama/Llama-3.2-3B-Instruct-GGUF::Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+        id: "anything",
         bundleManifestFile: undefined,
         runtimeRole: undefined,
       }),
-    ).toBe("generic-gguf");
+    ).toBe("fused-eliza1");
   });
 });
 
@@ -50,32 +55,18 @@ describe("classifyInstalledModelRuntimeClass", () => {
     ).toBe("fused-eliza1");
   });
 
-  it("classes a single downloaded GGUF (no bundleRoot) as generic-gguf", () => {
+  it("classes any installed model as fused-eliza1", () => {
     expect(
-      classifyInstalledModelRuntimeClass(
-        installed({
-          id: "hf:org/model::model.Q4_K_M.gguf",
-          source: "external-scan",
-          externalOrigin: "lm-studio",
-        }),
-      ),
-    ).toBe("generic-gguf");
-  });
-
-  it("trusts an explicit runtimeClass field verbatim", () => {
-    expect(
-      classifyInstalledModelRuntimeClass(
-        installed({ id: "eliza-1-4b", runtimeClass: "generic-gguf" }),
-      ),
-    ).toBe("generic-gguf");
+      classifyInstalledModelRuntimeClass(installed({ id: "some-gguf" })),
+    ).toBe("fused-eliza1");
   });
 });
 
 describe("withRuntimeClass backfill", () => {
-  it("backfills a legacy row that has no runtimeClass", () => {
+  it("backfills a legacy row to fused-eliza1", () => {
     const row = installed({ id: "some-gguf" });
     expect(row.runtimeClass).toBeUndefined();
-    expect(withRuntimeClass(row).runtimeClass).toBe("generic-gguf");
+    expect(withRuntimeClass(row).runtimeClass).toBe("fused-eliza1");
   });
 
   it("returns the same reference when the field is already present", () => {

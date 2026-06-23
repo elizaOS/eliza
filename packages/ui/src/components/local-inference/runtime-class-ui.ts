@@ -65,3 +65,16 @@ export function canServeRuntimeClassOnPlatform(
   const platform = getFrontendPlatform();
   return platform === "ios" || platform === "android";
 }
+
+/**
+ * Human-readable reason a runtime class can't run on the current platform, or
+ * `null` when it is servable. Drives the disabled annotation in the model
+ * pickers so a generic GGUF pick on desktop/web is visibly flagged instead of
+ * silently failing at activation.
+ */
+export function runtimeClassUnavailableReason(
+  runtimeClass: RuntimeClass,
+): string | null {
+  if (canServeRuntimeClassOnPlatform(runtimeClass)) return null;
+  return "Not runnable on this platform — generic GGUF needs a mobile build";
+}

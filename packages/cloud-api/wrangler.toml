@@ -191,6 +191,8 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   CEREBRAS_API_KEY                   Cerebras — ultra-fast inference for provisioning chat agent
 #   FAL_KEY                            Fal.ai video gen
 #   ELEVENLABS_API_KEY                 ElevenLabs TTS
+#   HF_TOKEN                           HuggingFace token for the /api/v1/hf-proxy/* route
+#       (gated eliza-1 bundle downloads; clients never hold an HF key)
 #   VAST_API_KEY                       Vast.ai Serverless endpoint API token (Bearer)
 #   VAST_BASE_URL                      Vast.ai Serverless endpoint URL (e.g.
 #       https://run.vast.ai/route/abc123). Provider strips trailing slash and

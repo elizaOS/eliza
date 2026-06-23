@@ -2,7 +2,7 @@
 
 What this asserts (per the AGENTS.md mandate that we don't LARP results):
 
-1. The script downloads/loads the ``--model`` (default ``Qwen/Qwen3.5-0.8B``),
+1. The script downloads/loads the ``--model`` (default ``google/gemma-4-E2B``),
    quantizes it via
    ``polarquant_apply.quantize_checkpoint``, and serializes the result.
 2. On-disk size of the PolarQuant model is meaningfully smaller than the
@@ -53,7 +53,7 @@ logger = logging.getLogger("test_polarquant")
 
 REPO_ROOT = _HERE.parent.parent
 DEFAULT_VAL = REPO_ROOT / "data" / "final" / "val.jsonl"
-DEFAULT_MODEL = "Qwen/Qwen3.5-0.8B"
+DEFAULT_MODEL = "google/gemma-4-E2B"
 DEFAULT_WORK = REPO_ROOT / "scripts" / "quantization" / ".test_polarquant_work"
 
 
@@ -245,7 +245,7 @@ def _is_non_degenerate(text: str) -> bool:
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Validate PolarQuant on Qwen3.5-0.8B")
+    p = argparse.ArgumentParser(description="Validate PolarQuant on gemma-4-E2B")
     p.add_argument("--model", default=DEFAULT_MODEL)
     p.add_argument("--val", type=Path, default=DEFAULT_VAL)
     p.add_argument("--samples", type=int, default=5)

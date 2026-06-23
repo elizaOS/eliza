@@ -44,6 +44,12 @@ export interface Bindings {
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
   ANTHROPIC_API_KEY?: string;
+  /**
+   * Cloud-side HuggingFace token attached by the `/api/v1/hf-proxy/*` route so
+   * gated eliza-1 bundles resolve without any local HF key on the device.
+   * Deploy as a `wrangler secret`; never returned to clients.
+   */
+  HF_TOKEN?: string;
   AI_GATEWAY_API_KEY?: string;
   AIGATEWAY_API_KEY?: string;
   AI_GATEWAY_BASE_URL?: string;

@@ -40,11 +40,11 @@ def test_lite_tiers_are_source_only_and_keep_mtp_missing(
     kinds = [f["kind"] for f in report["files"]]
     assert "text" in kinds
     assert "mtp" not in kinds
-    assert "unsloth/Qwen3.5-0.8B-GGUF" in report["sources"]
+    assert "unsloth/gemma-4-E2B-GGUF" in report["sources"]
     assert any("No upstream MTP drafter" in b for b in report["blockers"])
 
 
-def test_mobile_tier_uses_qwen35_2b_source(
+def test_mobile_tier_uses_gemma4_e2b_source(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -52,7 +52,7 @@ def test_mobile_tier_uses_qwen35_2b_source(
 
     report = stage.stage_sources(_args(tmp_path, "2b"))
 
-    assert "unsloth/Qwen3.5-2B-GGUF" in report["sources"]
+    assert "unsloth/gemma-4-E2B-GGUF" in report["sources"]
     assert stage.DRAFTER_SOURCES["2b"] is None
     assert any("No upstream MTP drafter" in b for b in report["blockers"])
 
@@ -66,8 +66,8 @@ def test_4b_tier_records_text_mtp_and_vision_sources(
     report = stage.stage_sources(_args(tmp_path, "4b"))
 
     assert [f["kind"] for f in report["files"]] == ["text", "mtp", "vision"]
-    assert "unsloth/Qwen3.5-4B-GGUF" in report["sources"]
-    assert "z-lab/Qwen3.5-4B-MTP" in report["sources"]
+    assert "unsloth/gemma-4-E4B-GGUF" in report["sources"]
+    assert "z-lab/gemma-4-E4B-MTP" in report["sources"]
     assert any("not a final GGUF" in b for b in report["blockers"])
     assert all("final Eliza-1" not in f["destination"] for f in report["files"])
 
@@ -80,11 +80,11 @@ def test_stage_sources_accepts_large_active_tier(
 
     report = stage.stage_sources(_args(tmp_path, "27b"))
 
-    assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]
-    assert "spiritbuun/Qwen3.6-27B-MTP-GGUF" in report["sources"]
+    assert "unsloth/gemma-4-31B-GGUF" in report["sources"]
+    assert "spiritbuun/gemma-4-31B-MTP-GGUF" in report["sources"]
 
 
-def test_27b_class_tiers_use_qwen36_source(
+def test_27b_class_tiers_use_gemma4_31b_source(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -93,10 +93,14 @@ def test_27b_class_tiers_use_qwen36_source(
     tier = "27b"
     report = stage.stage_sources(_args(tmp_path, tier))
 
-    assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]
-    assert "spiritbuun/Qwen3.6-27B-MTP-GGUF" in report["sources"]
+    assert "unsloth/gemma-4-31B-GGUF" in report["sources"]
+    assert "spiritbuun/gemma-4-31B-MTP-GGUF" in report["sources"]
+    # The 27b tier must use the 31B Gemma 4 source, never a smaller-tier base.
     assert all(
-        "Qwen3.5-27B" not in f["repo"]
+        not any(
+            small in f["repo"]
+            for small in ("gemma-4-E2B", "gemma-4-E4B", "gemma-4-12B")
+        )
         for f in report["files"]
         if f["kind"] in {"text", "mtp", "vision"}
     )
@@ -104,17 +108,17 @@ def test_27b_class_tiers_use_qwen36_source(
     assert drafter_files == [
         {
             "kind": "mtp",
-            "repo": "spiritbuun/Qwen3.6-27B-MTP-GGUF",
+            "repo": "spiritbuun/gemma-4-31B-MTP-GGUF",
             "filename": "mtp-draft-3.6-q8_0.gguf",
-            "destination": f"source/mtp/qwen3.6-{tier}-mtp-q8_0.gguf",
+            "destination": f"source/mtp/gemma4-31b-mtp-q8_0.gguf",
             "license": "mit",
             "status": "source-gguf",
             "notes": tuple(stage.DRAFTER_SOURCES[tier].notes),
-            "revision": "sha-spiritbuun/Qwen3.6-27B-MTP-GGUF",
+            "revision": "sha-spiritbuun/gemma-4-31B-MTP-GGUF",
             "path": str(
                 tmp_path
                 / f"eliza-1-{tier}.bundle"
-                / f"source/mtp/qwen3.6-{tier}-mtp-q8_0.gguf"
+                / f"source/mtp/gemma4-31b-mtp-q8_0.gguf"
             ),
             "dryRun": True,
         }
@@ -126,18 +130,18 @@ def test_known_mtp_sources_are_wired_without_faking_small_tiers() -> None:
     assert stage.DRAFTER_SOURCES["0_8b"] is None
     assert stage.DRAFTER_SOURCES["2b"] is None
 
-    assert stage.DRAFTER_SOURCES["4b"].repo == "z-lab/Qwen3.5-4B-MTP"
+    assert stage.DRAFTER_SOURCES["4b"].repo == "z-lab/gemma-4-E4B-MTP"
     assert stage.DRAFTER_SOURCES["4b"].filename == "model.safetensors"
     assert stage.DRAFTER_SOURCES["4b"].license == "mit"
 
-    assert stage.DRAFTER_SOURCES["9b"].repo == "z-lab/Qwen3.5-9B-MTP"
+    assert stage.DRAFTER_SOURCES["9b"].repo == "z-lab/gemma-4-12B-MTP"
     assert stage.DRAFTER_SOURCES["9b"].filename == "model.safetensors"
     assert stage.DRAFTER_SOURCES["9b"].license == "mit"
 
     for tier in ("27b",):
         artifact = stage.DRAFTER_SOURCES[tier]
         assert artifact is not None
-        assert artifact.repo == "spiritbuun/Qwen3.6-27B-MTP-GGUF"
+        assert artifact.repo == "spiritbuun/gemma-4-31B-MTP-GGUF"
         assert artifact.filename == "mtp-draft-3.6-q8_0.gguf"
         assert artifact.status == "source-gguf"
 
@@ -145,8 +149,8 @@ def test_known_mtp_sources_are_wired_without_faking_small_tiers() -> None:
 def test_every_active_tier_has_vision_source() -> None:
     """Every active release tier must source its own mmproj-F16.gguf.
 
-    The 27b tier uses the `unsloth/Qwen3.6-27B-GGUF` projector. The
-    0_8b/2b/4b/9b tiers each source the matching Qwen3.5 projector. The
+    The 27b tier uses the `unsloth/gemma-4-31B-GGUF` projector. The
+    0_8b/2b/4b/9b tiers each source the matching Gemma 4 projector. The
     0_8b tier ships Q4_K_M; every other tier ships Q8_0.
     """
     for tier in ("0_8b", "2b", "4b", "9b", "27b"):
@@ -155,9 +159,9 @@ def test_every_active_tier_has_vision_source() -> None:
         assert artifact.kind == "vision"
         assert artifact.filename == "mmproj-F16.gguf"
         if tier.startswith("27b"):
-            assert artifact.repo == "unsloth/Qwen3.6-27B-GGUF"
+            assert artifact.repo == "unsloth/gemma-4-31B-GGUF"
         else:
-            assert artifact.repo.startswith("unsloth/Qwen3.5-")
+            assert artifact.repo.startswith("unsloth/gemma-4-")
         assert tier in stage.MMPROJ_QUANT_BY_TIER
         assert tier in stage.MMPROJ_QUANT_TENSOR_OVERRIDES
         assert stage.MMPROJ_QUANT_BY_TIER["0_8b"] == "Q4_K_M"

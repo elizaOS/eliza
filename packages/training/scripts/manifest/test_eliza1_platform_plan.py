@@ -123,9 +123,9 @@ def test_readiness_mentions_vad_native_gguf_caveat() -> None:
     assert "VAD is a native silero-vad-cpp GGUF artifact" in text
     assert "vad/silero-vad-v5.gguf" in text
     assert "vad/silero-vad-int8.onnx" in text
-    assert "Qwen3.5 0.8B (`0_8b`)" in text
-    assert "Qwen3.5 2B (`2b`)" in text
-    assert "Qwen3.5 4B (`4b`)" in text
+    assert "Gemma 4 E2B (`2b`)" in text
+    assert "Gemma 4 E4B (`4b`)" in text
+    assert "Gemma 4 12B (`9b`)" in text
     assert "published Qwen3-ASR 0.6B / 1.7B GGUF repos" in text
     assert "Qwen3-Embedding 0.6B / 4B / 8B GGUF repos" in text
     assert "not evaluated in plan-only mode" in text
@@ -207,7 +207,7 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                 "publishEligible": True,
                 "finetuned": False,
                 "sourceModels": {
-                    "text": {"repo": "Qwen/Qwen3.5-2B-Base"},
+                    "text": {"repo": "google/gemma-4-E2B-Base"},
                     "voice": {"repo": "onnx-community/Kokoro-82M-v1.0-ONNX"},
                     "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
                     "vad": {"repo": "ggml-org/whisper-vad"},
@@ -269,7 +269,7 @@ def test_release_status_blockers_rejects_incomplete_uploaded_paths(
                 "publishEligible": True,
                 "finetuned": False,
                 "sourceModels": {
-                    "text": {"repo": "Qwen/Qwen3.5-2B-Base"},
+                    "text": {"repo": "google/gemma-4-E2B-Base"},
                     "voice": {"repo": "onnx-community/Kokoro-82M-v1.0-ONNX"},
                     "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
                     "vad": {"repo": "ggml-org/whisper-vad"},
@@ -338,7 +338,7 @@ def test_release_status_blockers_base_v1_blocks_pending_upload(
                 "releaseState": "base-v1",
                 "publishEligible": True,
                 "finetuned": False,
-                "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-2B-Base"}},
+                "sourceModels": {"text": {"repo": "google/gemma-4-E2B-Base"}},
                 "final": {
                     "weights": False,
                     "hashes": True,
@@ -376,7 +376,7 @@ def test_release_status_blockers_base_v1_rejects_fake_qwen_component_repos(
                 "publishEligible": True,
                 "finetuned": False,
                 "sourceModels": {
-                    "text": {"repo": "Qwen/Qwen3.5-2B-Base"},
+                    "text": {"repo": "google/gemma-4-E2B-Base"},
                     "asr": {"repo": "ggml-org/Qwen3-ASR-2B-GGUF"},
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-2B-GGUF"},
                 },
@@ -417,7 +417,7 @@ def test_release_status_blockers_base_v1_requires_finetuned_false(
                 "releaseState": "base-v1",
                 "publishEligible": True,
                 "finetuned": True,  # contradicts base-v1
-                "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-2B-Base"}},
+                "sourceModels": {"text": {"repo": "google/gemma-4-E2B-Base"}},
                 "final": {
                     "weights": False,
                     "hashes": True,

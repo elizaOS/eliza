@@ -23,9 +23,9 @@ ROOT = Path(__file__).resolve().parent.parent
 # exists wins. Any of these is sufficient for a smoke run — the test only
 # verifies that the trainer wires up and writes a final dir.
 CANDIDATE_CKPTS = [
-    ROOT / "checkpoints" / "qwen3.5-0.8b-eliza-payload-v3" / "final",
-    ROOT / "checkpoints" / "qwen3.5-0.8b-eliza-payload-v1" / "final",
-    ROOT / "checkpoints" / "qwen3.5-0.8b-smoke-v3" / "final",
+    ROOT / "checkpoints" / "gemma4-e2b-eliza-payload-v3" / "final",
+    ROOT / "checkpoints" / "gemma4-e2b-eliza-payload-v1" / "final",
+    ROOT / "checkpoints" / "gemma4-e2b-smoke-v3" / "final",
 ]
 
 
@@ -79,7 +79,7 @@ def test_dpo_smoke_5_steps(tmp_path: Path) -> None:
     cmd = [
         sys.executable,
         str(ROOT / "scripts" / "train_dpo.py"),
-        "--registry-key", "qwen3.5-2b",
+        "--registry-key", "gemma4-e2b",
         "--sft-checkpoint", str(ckpt),
         "--output-dir", str(out_dir),
         "--max-steps", "5",

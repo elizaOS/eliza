@@ -23,13 +23,13 @@ Usage:
 
     # Only Eliza harness action selection, skip cerebras, cap at 100 samples
     uv run --extra train python scripts/benchmark_vs_cerebras.py \
-        --tiers qwen3.5-2b,qwen3.5-4b \
+        --tiers gemma4-e2b,gemma4-e4b \
         --benchmark eliza_harness_action_selection \
         --max-samples 100 \
         --output-dir reports/eliza-harness-action-selection
 
     # Dry run (no inference)
-    uv run python scripts/benchmark_vs_cerebras.py --tiers qwen3.5-0.8b --dry-run
+    uv run python scripts/benchmark_vs_cerebras.py --tiers gemma4-e2b --dry-run
 """
 
 from __future__ import annotations
@@ -57,11 +57,10 @@ logging.basicConfig(
 log = logging.getLogger("benchmark_vs_cerebras")
 
 ALL_TIERS: list[str] = [
-    "qwen3.5-0.8b",
-    "qwen3.5-2b",
-    "qwen3.5-4b",
-    "qwen3.5-9b",
-    "qwen3.6-27b",
+    "gemma4-e2b",
+    "gemma4-e4b",
+    "gemma4-12b",
+    "gemma4-31b",
 ]
 
 ELIZA_HARNESS_ACTION_SELECTION = "eliza_harness_action_selection"

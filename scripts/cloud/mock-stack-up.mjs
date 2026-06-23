@@ -35,6 +35,10 @@ Flags:
   --no-hetzner          skip hetzner mock
   --no-migrations       skip cloud-shared db:migrate
   --reset               wipe PGlite data dir before booting
+  --with-daemon         run the autoscale / hot-pool / pool-replenish cron
+                        loops on real intervals against the mock stack, so the
+                        pool is maintained by the daemon (not test-driven ticks).
+                        Interval (ms) overridable via DAEMON_TICK_MS (default 15000).
   --port-frontend N     override frontend port
   --port-api N          override cloud-api port
   --port-cp N           override control-plane port
@@ -49,6 +53,7 @@ function parseFlags(argv) {
     noHetzner: false,
     noMigrations: false,
     reset: false,
+    withDaemon: false,
     help: false,
     portFrontend: undefined,
     portApi: undefined,
@@ -72,6 +77,9 @@ function parseFlags(argv) {
         break;
       case "--reset":
         flags.reset = true;
+        break;
+      case "--with-daemon":
+        flags.withDaemon = true;
         break;
       case "--help":
       case "-h":
@@ -138,6 +146,54 @@ async function waitForHttp(url, { timeoutMs = 60_000, intervalMs = 500 } = {}) {
 }
 
 const services = [];
+/** Active --with-daemon interval timers, cleared on shutdown. */
+const daemonTimers = [];
+
+/**
+ * The cron loops that, in production, a long-running daemon ticks on its own
+ * schedule. `--with-daemon` drives them here so the mock stack maintains its
+ * pool over time without test-enqueued provision jobs (#8921).
+ */
+const DAEMON_CRONS = [
+  { name: "node-autoscale", path: "/v1/cron/node-autoscale" },
+  { name: "agent-hot-pool", path: "/v1/cron/agent-hot-pool" },
+  { name: "pool-replenish", path: "/v1/cron/pool-replenish" },
+];
+
+/**
+ * Start the autoscale/hot-pool daemon loops against the running mock cloud-api.
+ * Each cron is POSTed on `tickMs` intervals with the CRON_SECRET bearer the
+ * routes expect (`verifyCronSecret`). Returns nothing; timers live in
+ * `daemonTimers` and are cleared by `shutdown`.
+ */
+function startDaemons(apiBase, cronSecret) {
+  const tickMs = Number(process.env.DAEMON_TICK_MS) || 15_000;
+  const headers = { authorization: `Bearer ${cronSecret}` };
+  for (const cron of DAEMON_CRONS) {
+    const tick = async () => {
+      try {
+        const res = await fetch(`${apiBase}${cron.path}`, {
+          method: "POST",
+          headers,
+        });
+        process.stdout.write(
+          `${color("gray", "[daemon]")} ${cron.name} → ${res.status}\n`,
+        );
+      } catch (e) {
+        process.stdout.write(
+          `${color("red", "[daemon]")} ${cron.name} tick failed: ${e?.message ?? e}\n`,
+        );
+      }
+    };
+    void tick(); // fire once immediately so the pool warms without waiting a full interval
+    const timer = setInterval(tick, tickMs);
+    timer.unref?.();
+    daemonTimers.push(timer);
+  }
+  process.stdout.write(
+    `${color("gray", "[stack]")} --with-daemon: ticking ${DAEMON_CRONS.length} cron loop(s) every ${tickMs}ms\n`,
+  );
+}
 
 function streamProcess(name, colorName, proc) {
   const logPath = path.join(LOG_DIR, `${name}.log`);
@@ -169,6 +225,8 @@ function streamProcess(name, colorName, proc) {
 
 async function shutdown(code = 0) {
   process.stdout.write(`${color("gray", "[stack]")} shutting down...\n`);
+  for (const timer of daemonTimers) clearInterval(timer);
+  daemonTimers.length = 0;
   for (const svc of [...services].reverse()) {
     if (svc.proc.exitCode === null && svc.proc.signalCode === null) {
       try {
@@ -392,6 +450,10 @@ async function main() {
     "Ctrl+C to stop all.",
   ];
   process.stdout.write(`\n${lines.join("\n")}\n`);
+
+  if (flags.withDaemon) {
+    startDaemons(tApi, baseEnv.CRON_SECRET);
+  }
 }
 
 main().catch((e) => {

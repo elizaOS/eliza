@@ -19,6 +19,15 @@ import {
 	postCreationTemplate,
 } from "../../prompts.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes";
+import {
+	bridgeActionCompletedToStreams,
+	bridgeActionStartedToStreams,
+	bridgeEvaluatorCompletedToStreams,
+	bridgeEvaluatorStartedToStreams,
+	bridgeRunEndedToStreams,
+	bridgeRunStartedToStreams,
+} from "../../services/agent-event-bridge.ts";
+import { ChannelTopicsService } from "../../services/channel-topics.ts";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
@@ -34,6 +43,7 @@ import type {
 	Content,
 	ControlMessagePayload,
 	EntityPayload,
+	EvaluatorEventPayload,
 	IAgentRuntime,
 	IMessageBusService,
 	InvokePayload,
@@ -109,14 +119,17 @@ import { readAttachmentAction } from "../working-memory/readAttachmentAction.ts"
 // Direct leaf imports — see comment in
 // ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
 // requires bypassing barrels here too.
+import { channelTopicSearchAction } from "./actions/channel-topic-search.ts";
 import { choiceAction } from "./actions/choice.ts";
 import { ignoreAction } from "./actions/ignore.ts";
 import { noneAction } from "./actions/none.ts";
 import { replyAction } from "./actions/reply.ts";
+import { CHANNEL_TOPICS_ROUTES } from "./channel-topics-routes.ts";
 import { linkExtractionEvaluator } from "./evaluators/link-extraction.ts";
 import { actionStateProvider } from "./providers/actionState.ts";
 import { actionsProvider } from "./providers/actions.ts";
 import { attachmentsProvider } from "./providers/attachments.ts";
+import { channelTopicsProvider } from "./providers/channelTopics.ts";
 import { characterProvider } from "./providers/character.ts";
 import { choiceProvider } from "./providers/choice.ts";
 import { contextBenchProvider } from "./providers/contextBench.ts";
@@ -1046,6 +1059,11 @@ const events: PluginEvents = {
 
 	[EventType.ACTION_STARTED]: [
 		async (payload: ActionEventPayload) => {
+			// Bridge to the AgentEventService action/lifecycle streams so the WS
+			// `agent_event` channel carries real per-turn phase data (#8813 AC#3).
+			bridgeActionStartedToStreams(payload);
+		},
+		async (payload: ActionEventPayload) => {
 			// Only notify for client_chat messages
 			const payloadContent = payload.content;
 			if (payloadContent && payloadContent.source === "client_chat") {
@@ -1096,6 +1114,10 @@ const events: PluginEvents = {
 
 	[EventType.ACTION_COMPLETED]: [
 		async (payload: ActionEventPayload) => {
+			// Bridge to the AgentEventService action/lifecycle streams (#8813 AC#3).
+			bridgeActionCompletedToStreams(payload);
+		},
+		async (payload: ActionEventPayload) => {
 			// Only notify for client_chat messages
 			const payloadContent = payload.content;
 			if (payloadContent && payloadContent.source === "client_chat") {
@@ -1114,6 +1136,10 @@ const events: PluginEvents = {
 	],
 
 	[EventType.RUN_STARTED]: [
+		async (payload: RunEventPayload) => {
+			// Bridge to the AgentEventService lifecycle stream (#8813 AC#3).
+			bridgeRunStartedToStreams(payload);
+		},
 		async (payload: RunEventPayload) => {
 			await payload.runtime.createLogs([
 				{
@@ -1143,6 +1169,10 @@ const events: PluginEvents = {
 	],
 
 	[EventType.RUN_ENDED]: [
+		async (payload: RunEventPayload) => {
+			// Bridge to the AgentEventService lifecycle stream (#8813 AC#3).
+			bridgeRunEndedToStreams(payload);
+		},
 		async (payload: RunEventPayload) => {
 			await payload.runtime.createLogs([
 				{
@@ -1207,6 +1237,20 @@ const events: PluginEvents = {
 		},
 	],
 
+	[EventType.EVALUATOR_STARTED]: [
+		async (payload: EvaluatorEventPayload) => {
+			// Bridge to the AgentEventService evaluator stream (#8813 AC#3).
+			bridgeEvaluatorStartedToStreams(payload);
+		},
+	],
+
+	[EventType.EVALUATOR_COMPLETED]: [
+		async (payload: EvaluatorEventPayload) => {
+			// Bridge to the AgentEventService evaluator stream (#8813 AC#3).
+			bridgeEvaluatorCompletedToStreams(payload);
+		},
+	],
+
 	[EventType.CONTROL_MESSAGE]: [
 		async (payload: ControlMessagePayload) => {
 			if (!payload.message) {
@@ -1232,6 +1276,7 @@ export const basicProviders = [
 	actionsProvider,
 	actionStateProvider,
 	attachmentsProvider,
+	channelTopicsProvider,
 	characterProvider,
 	choiceProvider,
 	contextBenchProvider,
@@ -1257,6 +1302,7 @@ export const basicActions = [
 	withCanonicalActionDocs(replyAction),
 	withCanonicalActionDocs(ignoreAction),
 	withCanonicalActionDocs(noneAction),
+	withCanonicalActionDocs(channelTopicSearchAction),
 ];
 
 /**
@@ -1288,6 +1334,9 @@ export const basicServices: ServiceClass[] = [
 	// in-memory cache; registering it on every runtime so the planner-loop
 	// can pick up artifacts produced by `bun run train -- --backend native`.
 	OptimizedPromptService,
+	// Per-channel topic LRU. Records Stage-1-extracted topics per room and
+	// surfaces them back into routing via the CHANNEL_TOPICS provider.
+	ChannelTopicsService,
 ];
 
 /**
@@ -1400,6 +1449,7 @@ export function createBasicCapabilitiesPlugin(
 		],
 		routes: [
 			...TURN_CONTROL_ROUTES,
+			...CHANNEL_TOPICS_ROUTES,
 			...(config.enableAutonomy ? autonomyCapabilities.routes : []),
 		],
 		events,
@@ -1422,6 +1472,7 @@ export function createBasicCapabilitiesPlugin(
 			await runtime.getService(EmbeddingGenerationService.serviceType)?.stop();
 			await runtime.getService(EvaluatorService.serviceType)?.stop();
 			await runtime.getService(OptimizedPromptService.serviceType)?.stop();
+			await runtime.getService(ChannelTopicsService.serviceType)?.stop();
 			if (config.enableAutonomy) {
 				await runtime.getService(AutonomyService.serviceType)?.stop();
 			}

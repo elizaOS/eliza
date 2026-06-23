@@ -1030,6 +1030,20 @@
       "when": 1779754800000,
       "tag": "0148_drop_legacy_neon_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1779841200000,
+      "tag": "0149_drop_app_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1779927600000,
+      "tag": "0150_stripe_connect_accounts",
+      "breakpoints": true
     }
   ]
 }

@@ -72,7 +72,7 @@ def format_messages_as_text(
 
 
 def clean_generated_text(text: str) -> str:
-    cleaned = str(text or "").replace("<|im_end|>", "").strip()
+    cleaned = str(text or "").replace("<end_of_turn>", "").strip()
     if not cleaned:
         return ""
 

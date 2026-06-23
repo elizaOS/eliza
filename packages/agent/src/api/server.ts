@@ -489,6 +489,7 @@ import {
   parseEventCursor,
   selectReplayEvents,
 } from "./ws-event-replay.ts";
+import { runtimeRoutesNeedX402Validation } from "./x402-route-validation.ts";
 
 export {
   executeFallbackParsedActions,
@@ -5112,7 +5113,7 @@ export async function startApiServer(opts?: {
   const assertX402RoutesValid = async (
     rt: AgentRuntime | null | undefined,
   ): Promise<void> => {
-    if (!rt?.routes?.length) return;
+    if (!rt || !runtimeRoutesNeedX402Validation(rt.routes)) return;
     const agentId =
       rt.agentId != null && String(rt.agentId).length > 0
         ? String(rt.agentId)

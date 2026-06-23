@@ -9,14 +9,17 @@ import { useCallback, useEffect, useState } from "react";
 import {
   applyUiTheme,
   getSystemTheme,
+  loadBackgroundConfig,
   loadCompanionAnimateWhenHidden,
   loadCompanionHalfFramerateMode,
   loadCompanionVrmPowerMode,
   loadUiThemeMode,
+  normalizeBackgroundConfig,
   normalizeCompanionHalfFramerateMode,
   normalizeCompanionVrmPowerMode,
   normalizeUiThemeMode,
   resolveUiTheme,
+  saveBackgroundConfig,
   saveCompanionAnimateWhenHidden,
   saveCompanionHalfFramerateMode,
   saveCompanionVrmPowerMode,
@@ -27,7 +30,7 @@ import type {
   CompanionHalfFramerateMode,
   CompanionVrmPowerMode,
 } from "./types";
-import type { UiTheme, UiThemeMode } from "./ui-preferences";
+import type { BackgroundConfig, UiTheme, UiThemeMode } from "./ui-preferences";
 
 export function useDisplayPreferences() {
   const [uiThemeMode, setUiThemeModeState] =
@@ -41,6 +44,8 @@ export function useDisplayPreferences() {
     useState<boolean>(loadCompanionAnimateWhenHidden);
   const [companionHalfFramerateMode, setCompanionHalfFramerateModeState] =
     useState<CompanionHalfFramerateMode>(loadCompanionHalfFramerateMode);
+  const [backgroundConfig, setBackgroundConfigState] =
+    useState<BackgroundConfig>(loadBackgroundConfig);
 
   // Normalize + persist wrappers
   const setUiThemeMode = useCallback((mode: UiThemeMode) => {
@@ -74,6 +79,10 @@ export function useDisplayPreferences() {
     },
     [],
   );
+
+  const setBackgroundConfig = useCallback((config: BackgroundConfig) => {
+    setBackgroundConfigState(normalizeBackgroundConfig(config));
+  }, []);
 
   // Resolve mode -> concrete theme. When following the system, track OS
   // color-scheme changes live.
@@ -112,6 +121,10 @@ export function useDisplayPreferences() {
     saveCompanionHalfFramerateMode(companionHalfFramerateMode);
   }, [companionHalfFramerateMode]);
 
+  useEffect(() => {
+    saveBackgroundConfig(backgroundConfig);
+  }, [backgroundConfig]);
+
   return {
     state: {
       uiTheme,
@@ -119,11 +132,13 @@ export function useDisplayPreferences() {
       companionVrmPowerMode,
       companionAnimateWhenHidden,
       companionHalfFramerateMode,
+      backgroundConfig,
     },
     setUiTheme,
     setUiThemeMode,
     setCompanionVrmPowerMode,
     setCompanionAnimateWhenHidden,
     setCompanionHalfFramerateMode,
+    setBackgroundConfig,
   };
 }

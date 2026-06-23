@@ -10,18 +10,12 @@
 
 import { parseArgs } from "node:util";
 import { NATIVE_OPTIMIZERS, runNativeBackend } from "../backends/native.js";
+import { ALL_TRAINING_TASKS } from "../core/training-config.js";
 import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js";
 import type { OptimizerName } from "../optimizers/index.js";
 
 const ALLOWED_BACKENDS = new Set(["native"]);
-const ALLOWED_TASKS = new Set([
-  "should_respond",
-  "context_routing",
-  "action_planner",
-  "response",
-  "media_description",
-  "view_context",
-]);
+const ALLOWED_TASKS = new Set<string>(ALL_TRAINING_TASKS);
 const ALLOWED_OPTIMIZERS = new Set<string>(NATIVE_OPTIMIZERS);
 
 const HELP = `Usage:

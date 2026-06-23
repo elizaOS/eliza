@@ -43,6 +43,7 @@ import type {
   AutomationListResponse,
 } from "../../api/client-types-config";
 import { isApiError } from "../../api/client-types-core";
+import { dispatchChatPrefill } from "../../events";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
 import { useFetchData } from "../../hooks/useFetchData";
@@ -105,7 +106,6 @@ const FILTER_ICONS: Record<FeedFilter, ReactNode> = {
   inactive: <CircleSlash className="h-3.5 w-3.5" aria-hidden />,
 };
 const NEW_AUTOMATION_LINK_ID = "__new__";
-const CHAT_PREFILL_EVENT = "eliza:chat:prefill";
 const NEW_AUTOMATION_PROMPT = "Create an automation that ";
 
 // On mobile the workflow runtime (and its `GET /api/automations` route) is
@@ -201,12 +201,7 @@ export function AutomationsFeed({
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
 
   const focusAutomationChat = useCallback(() => {
-    if (typeof window === "undefined") return;
-    window.dispatchEvent(
-      new CustomEvent(CHAT_PREFILL_EVENT, {
-        detail: { text: NEW_AUTOMATION_PROMPT, select: false },
-      }),
-    );
+    dispatchChatPrefill({ text: NEW_AUTOMATION_PROMPT, select: false });
   }, []);
 
   const newAgent = useAgentElement<HTMLButtonElement>({

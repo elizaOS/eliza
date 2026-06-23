@@ -325,6 +325,12 @@ tasks/
 # tarot, iching, and astrology all import their data tables from those JSONs.
 !plugins/plugin-mysticism/src/engines/*/data/
 !plugins/plugin-mysticism/src/engines/*/data/**
+# The Feed engine ships content/grounding modules as TS source under src/data/
+# (reality-grounding, world-facts, world-event-examples, question-examples, and
+# the actors/organizations/correlations re-export shims). These are real source,
+# not generated data — track them.
+!packages/feed/packages/engine/src/data/
+!packages/feed/packages/engine/src/data/**
 # Benchmark fixture data is vendored, not generated.
 !packages/benchmarks/qwen-claw-bench/data/
 !packages/benchmarks/qwen-claw-bench/data/**
@@ -1487,3 +1493,10 @@ waifu.fun/
 /packages/benchmarks/solana/solana-gym-env/docs/trajectory-viewer/public/assets/program_discovery.png
 /packages/os-homepage/tests/visual.spec.ts-snapshots/hardware-usb-desktop-desktop-linux.png
 /packages/os-homepage/tests/visual.spec.ts-snapshots/hardware-usb-desktop-mobile-linux.png
+.worktrees/
+
+# chat-ux gesture e2e generated artifacts (video + screenshots)
+/packages/ui/src/components/shell/__e2e__/output-chatux/
+railway.json
+.railwayignore
+.dockerignore

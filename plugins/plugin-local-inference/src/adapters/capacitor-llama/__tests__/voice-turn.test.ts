@@ -146,6 +146,60 @@ describe("runDeviceVoiceTurn", () => {
 		expect(ctx.completion).toHaveBeenCalledTimes(1);
 	});
 
+	it("fires the next-stage preload predictor from the pipeline's onAsrComplete (#8809 C5)", async () => {
+		const ctx = fakeContext();
+		const callerOnAsrComplete = vi.fn();
+		const onAsrStageComplete = vi.fn(async () => "eliza-1-4b" as string | null);
+		// Structural stand-in for VoicePreloadPredictor — only onAsrStageComplete
+		// is consumed by the wiring; type-cast keeps the test free of the arbiter.
+		const predictor = { onAsrStageComplete } as unknown as Parameters<
+			typeof runDeviceVoiceTurn
+		>[0]["preloadPredictor"];
+
+		const engine: DeviceVoiceEngine = {
+			runVoiceTurn: vi.fn(async (): Promise<VoiceTurnExitReason> => "done"),
+		};
+
+		await runDeviceVoiceTurn({
+			engine,
+			context: ctx,
+			audio: AUDIO,
+			events: { onAsrComplete: callerOnAsrComplete },
+			preloadPredictor: predictor,
+		});
+
+		const [, optsArg] = (
+			engine.runVoiceTurn as unknown as { mock: { calls: unknown[][] } }
+		).mock.calls[0] as [TranscriptionAudio, Record<string, unknown>];
+		const wiredEvents = optsArg.events as {
+			onAsrComplete?: (tokens: ReadonlyArray<unknown>) => void;
+		};
+
+		// The engine drives onAsrComplete the instant ASR finishes; the composed
+		// hook must fire BOTH the caller's hook and the predictor's prediction.
+		expect(onAsrStageComplete).not.toHaveBeenCalled();
+		wiredEvents.onAsrComplete?.([]);
+		expect(callerOnAsrComplete).toHaveBeenCalledTimes(1);
+		expect(onAsrStageComplete).toHaveBeenCalledTimes(1);
+	});
+
+	it("leaves events untouched when no predictor is supplied", async () => {
+		const events = { onComplete: vi.fn() };
+		const engine: DeviceVoiceEngine = {
+			runVoiceTurn: vi.fn(async (): Promise<VoiceTurnExitReason> => "done"),
+		};
+		await runDeviceVoiceTurn({
+			engine,
+			context: fakeContext(),
+			audio: AUDIO,
+			events,
+		});
+		const [, optsArg] = (
+			engine.runVoiceTurn as unknown as { mock: { calls: unknown[][] } }
+		).mock.calls[0] as [TranscriptionAudio, Record<string, unknown>];
+		expect(optsArg.events).toBe(events);
+	});
+
 	it("propagates the engine's exit reason (token-cap / cancelled)", async () => {
 		const engine: DeviceVoiceEngine = {
 			runVoiceTurn: vi.fn(

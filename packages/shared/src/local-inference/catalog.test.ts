@@ -108,7 +108,7 @@ describe("Eliza-1 runtime quant metadata", () => {
     }
   });
 
-  it("advertises only safe runtime optimizations for the shipped qwen35 tiers", () => {
+  it("advertises only safe runtime optimizations for the shipped gemma4 tiers", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.runtime?.kvCache).toBeUndefined();
@@ -128,19 +128,23 @@ describe("Eliza-1 runtime quant metadata", () => {
     }
   });
 
-  it("enables same-file native MTP metadata (no separate drafter) for MTP tiers", () => {
+  it("enables separate-drafter MTP metadata for MTP tiers", () => {
     expect(ELIZA_1_MTP_TIER_IDS).not.toContain("eliza-1-0_8b");
     for (const id of ELIZA_1_MTP_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
+      const slug = id.slice("eliza-1-".length);
       expect(entry?.runtime?.mtp?.specType).toBe("draft-mtp");
-      // Same-file MTP: the NextN head is embedded in the text GGUF, so the
-      // catalog carries no separate drafter file or component.
-      expect(entry?.runtime?.mtp?.drafterFile).toBeUndefined();
-      expect(entry?.sourceModel?.components.mtp).toBeUndefined();
-      // Single NextN head ⇒ draft window pinned at the measured throughput
-      // peak (n-max 2), not scaled with context length.
+      // Separate-drafter MTP: Gemma 4 ships an official standalone drafter
+      // GGUF companion, so the catalog carries an explicit drafter file and a
+      // matching source-model component.
+      expect(entry?.runtime?.mtp?.drafterFile).toBe(`mtp/drafter-${slug}.gguf`);
+      expect(entry?.sourceModel?.components.mtp?.file).toBe(
+        `bundles/${slug}/mtp/drafter-${slug}.gguf`,
+      );
+      // Conservative default draft window; the runtime widens it under the
+      // acceptance schedule.
       expect(entry?.runtime?.mtp?.draftMin).toBe(1);
-      expect(entry?.runtime?.mtp?.draftMax).toBe(2);
+      expect(entry?.runtime?.mtp?.draftMax).toBe(4);
     }
   });
 

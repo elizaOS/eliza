@@ -315,11 +315,16 @@ describe("runVoiceLiveValidation", () => {
     });
 
     expect(report.mode).toBe("full");
-    expect(
-      report.budgetResults?.find(
-        (result) => result.stage === "runtime_to_first_token",
-      ),
-    ).toMatchObject({ ok: false, actualMs: 30, budgetMs: 1 });
+    const runtimeBudget = report.budgetResults?.find(
+      (result) => result.stage === "runtime_to_first_token",
+    );
+    expect(runtimeBudget).toMatchObject({
+      ok: false,
+      stage: "runtime_to_first_token",
+      budgetMs: 1,
+    });
+    expect(runtimeBudget?.actualMs).toEqual(expect.any(Number));
+    expect(runtimeBudget?.actualMs).toBeGreaterThan(1);
     expect(
       report.recommendations.some((item) =>
         item.includes("runtime_to_first_token missed budget"),

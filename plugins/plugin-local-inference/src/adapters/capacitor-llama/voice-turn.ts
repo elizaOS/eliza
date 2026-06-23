@@ -22,6 +22,7 @@ import type {
 	TranscriptionAudio,
 	VerifierStreamEvent,
 } from "../../services/voice/types";
+import type { VoicePreloadPredictor } from "../../services/voice/voice-preload-predictor";
 import type { CapacitorLlamaContext } from "./types";
 
 /** Turn exit reason, mirroring `LocalInferenceEngine.runVoiceTurn`. */
@@ -115,6 +116,16 @@ export interface RunDeviceVoiceTurnArgs {
 	maxGeneratedTokens?: number;
 	/** Default sampling overrides forwarded to the on-device text runner. */
 	generation?: CapacitorTextRunnerOptions;
+	/**
+	 * Next-stage preload predictor (#8809 C5). On the mobile / Capacitor path the
+	 * text-response model is owned by the {@link MemoryArbiter}; this turn's
+	 * stages run sequentially (ASR → text → TTS), so the predictor warms the
+	 * arbiter-managed text model the instant ASR finishes — during the ASR-stage
+	 * page-trim window — collapsing the cold load off the post-ASR critical path.
+	 * Wired to the pipeline's `onAsrComplete` event below. Omit to keep the turn
+	 * unpredicted (the arbiter still loads the text model on first request).
+	 */
+	preloadPredictor?: VoicePreloadPredictor;
 }
 
 /**
@@ -131,11 +142,37 @@ export function runDeviceVoiceTurn(
 		args.context,
 		args.generation ?? {},
 	);
+	const events = composeAsrCompletePreload(args.events, args.preloadPredictor);
 	return args.engine.runVoiceTurn(args.audio, {
 		textRunner,
-		...(args.events ? { events: args.events } : {}),
+		...(events ? { events } : {}),
 		...(args.maxGeneratedTokens !== undefined
 			? { maxGeneratedTokens: args.maxGeneratedTokens }
 			: {}),
 	});
+}
+
+/**
+ * Compose the caller's pipeline events with the next-stage preload prediction.
+ *
+ * When a predictor is supplied, its `onAsrStageComplete()` is invoked from the
+ * pipeline's `onAsrComplete` hook — the instant ASR emits its final token — so
+ * the arbiter-managed text model is warmed before the verifier issues its first
+ * request. The prediction is fire-and-forget: it must never delay the
+ * drafter/verifier kick-off, and a declined preload (pressure / no headroom) is
+ * a no-op, not an error. The caller's own `onAsrComplete` (if any) still runs.
+ */
+function composeAsrCompletePreload(
+	events: VoicePipelineEvents | undefined,
+	predictor: VoicePreloadPredictor | undefined,
+): VoicePipelineEvents | undefined {
+	if (!predictor) return events;
+	const callerOnAsrComplete = events?.onAsrComplete;
+	return {
+		...events,
+		onAsrComplete(tokens) {
+			callerOnAsrComplete?.(tokens);
+			void predictor.onAsrStageComplete();
+		},
+	};
 }

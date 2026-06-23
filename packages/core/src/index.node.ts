@@ -24,6 +24,7 @@ export * from "./cloud-routing";
 export * from "./connection";
 export * from "./connectors";
 export * from "./connectors/account-manager";
+export * from "./connectors/attachments";
 export * from "./connectors/connector-config";
 export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
@@ -123,6 +124,13 @@ export {
 	triageMessagesAction,
 	WhatsappMessageAdapter,
 } from "./features/messaging/triage";
+// OAuth provider contract (the canonical provider identifiers the atomic OAuth
+// actions accept). Exported so cloud-shared can enforce core ⊆ cloud-registry.
+export {
+	CONNECTOR_NATIVE_OAUTH_PROVIDERS,
+	OAUTH_PROVIDERS,
+	type OAuthProvider,
+} from "./features/oauth/types.ts";
 export { paymentsPlugin } from "./features/payments/index.ts";
 export { PluginManagerService } from "./features/plugin-manager/services/pluginManagerService.ts";
 export {
@@ -249,8 +257,10 @@ export * from "./security";
 export * from "./sensitive-request-policy";
 export * from "./sensitive-requests";
 export * from "./services";
+export * from "./services/agent-event-bridge";
 export * from "./services/agentEvent";
 export * from "./services/approval";
+export * from "./services/channel-topics";
 export * from "./services/evaluator";
 export * from "./services/evaluator-priorities";
 export * from "./services/hook";

@@ -1,4 +1,5 @@
 import {
+  Box,
   Code2,
   Download,
   ExternalLink,
@@ -136,7 +137,10 @@ const CODE_EXT = new RegExp(
  *   - `"code"` → inline {@link CodeBlock} when `att.text` exists, else a card
  *   - `"file"` → generic download/open card (the previous default)
  */
-export type AttachmentPreviewKind = "pdf" | "code" | "file";
+export type AttachmentPreviewKind = "pdf" | "model3d" | "code" | "file";
+
+/** glTF binary/text 3D model extensions. */
+const MODEL3D_EXT = /\.(?:glb|gltf)(?:[?#]|$)/i;
 
 /** The lower-cased path of an attachment URL (no query/hash), or "" for data: URLs. */
 function attachmentPath(url: string): string {
@@ -170,6 +174,17 @@ export function attachmentPreviewKind(
     url.trim().toLowerCase().startsWith("data:application/pdf")
   ) {
     return "pdf";
+  }
+
+  // 3D model: a model/* MIME, a .glb/.gltf URL, or a data:model/* payload.
+  // Checked before text/code so a .gltf (JSON) with extracted text still
+  // previews as a model, not as code.
+  if (
+    mime.startsWith("model/") ||
+    MODEL3D_EXT.test(path) ||
+    url.trim().toLowerCase().startsWith("data:model/")
+  ) {
+    return "model3d";
   }
 
   // Text/code: a text-* MIME, a known code/text extension, an inline
@@ -239,7 +254,9 @@ function downloadName(att: MessageAttachment, kind: string): string {
             ? "pdf"
             : kind === "code"
               ? "txt"
-              : "bin";
+              : kind === "model3d"
+                ? "glb"
+                : "bin";
   return `${att.id || "attachment"}.${ext}`;
 }
 
@@ -321,7 +338,9 @@ function ImageTile({
           // Reserve a stable box via aspect-ratio so the row height is fixed
           // before the image loads — avoids layout shift / scroll-anchor yank.
           // The type carries no intrinsic dimensions, so a 4:3 default is used.
-          className="block aspect-[4/3] max-h-80 w-full object-cover"
+          // `object-contain` letterboxes the full image inside that reserved box
+          // (mirrors the video branch + lightbox) so non-4:3 content isn't cropped.
+          className="block aspect-[4/3] max-h-80 w-full object-contain"
         />
       </button>
       <div className="pointer-events-none absolute right-1.5 top-1.5 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
@@ -482,6 +501,188 @@ function PdfTile({
         sandbox="allow-same-origin"
         className="block h-[28rem] w-full border-0 bg-white"
       />
+    </figure>
+  );
+}
+
+/** Whether a (scheme-safe) model URL can be inlined in the WebGL viewer. */
+function isInlineableModelUrl(rawUrl: string): boolean {
+  const u = rawUrl.trim().toLowerCase();
+  if (!u) return false;
+  // data: URLs are not inlined (can be huge; keep parity with the PDF tile) —
+  // they degrade to a download card.
+  if (u.startsWith("data:")) return false;
+  return true;
+}
+
+type Model3dStatus = "loading" | "ready" | "error" | "unsupported";
+
+/**
+ * Inline 3D model preview (#8876). For an inlinable, scheme-safe `.glb`/`.gltf`
+ * URL, lazily loads three.js + GLTFLoader, auto-frames the model to its bounding
+ * box, and renders it in an auto-rotating WebGL canvas. Every failure mode —
+ * no WebGL (jsdom / headless without GL), a `data:` URL, a load/parse error —
+ * degrades to the same download card, so the bytes are never walled off. three
+ * is imported on demand so it never ships in the always-loaded chat bundle.
+ */
+function Model3dTile({
+  att,
+  src,
+  t,
+}: {
+  att: MessageAttachment;
+  src: string;
+  t: (key: string, values?: Record<string, unknown>) => string;
+}): React.JSX.Element {
+  const label = attachmentLabel(att);
+  const inlineable = isInlineableModelUrl(att.url);
+  const mountRef = React.useRef<HTMLDivElement | null>(null);
+  const [status, setStatus] = React.useState<Model3dStatus>(
+    inlineable ? "loading" : "unsupported",
+  );
+
+  React.useEffect(() => {
+    if (!inlineable) return;
+    const mount = mountRef.current;
+    if (!mount) return;
+
+    // WebGL capability probe — bail to the download fallback when unavailable
+    // (jsdom, headless without GL) rather than throwing.
+    const probe = document.createElement("canvas");
+    const gl = probe.getContext("webgl2") ?? probe.getContext("webgl") ?? null;
+    if (!gl) {
+      setStatus("unsupported");
+      return;
+    }
+
+    let disposed = false;
+    let frame = 0;
+    // biome-ignore lint/suspicious/noExplicitAny: three is loaded dynamically.
+    let renderer: any = null;
+
+    (async () => {
+      try {
+        const THREE = await import("three");
+        const { GLTFLoader } = await import(
+          "three/addons/loaders/GLTFLoader.js"
+        );
+        if (disposed || !mountRef.current) return;
+        const host = mountRef.current;
+        const width = host.clientWidth || 320;
+        const height = 288;
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(
+          45,
+          width / height,
+          0.1,
+          1000,
+        );
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, 2));
+        host.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+        const key = new THREE.DirectionalLight(0xffffff, 1.1);
+        key.position.set(3, 5, 4);
+        scene.add(key);
+
+        const gltf = await new GLTFLoader().loadAsync(src);
+        if (disposed) {
+          renderer.dispose?.();
+          return;
+        }
+        const model = gltf.scene;
+
+        // Auto-frame: center the model and pull the camera back to fit it.
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        model.position.sub(center);
+        const radius = Math.max(size.x, size.y, size.z, 0.001) / 2;
+        const dist = radius / Math.sin((camera.fov * Math.PI) / 360);
+        camera.position.set(0, radius * 0.4, dist * 1.5);
+        camera.lookAt(0, 0, 0);
+        scene.add(model);
+
+        const animate = () => {
+          if (disposed) return;
+          model.rotation.y += 0.01;
+          renderer.render(scene, camera);
+          frame = requestAnimationFrame(animate);
+        };
+        setStatus("ready");
+        animate();
+      } catch {
+        if (!disposed) setStatus("error");
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      if (frame) cancelAnimationFrame(frame);
+      try {
+        renderer?.domElement?.remove();
+        renderer?.dispose?.();
+      } catch {
+        // best-effort teardown
+      }
+    };
+  }, [inlineable, src]);
+
+  const downloadLabel = t("messageattachments.download");
+  const showFallbackBody = status === "unsupported" || status === "error";
+
+  return (
+    <figure
+      data-testid="model3d-attachment"
+      aria-label={label}
+      className="m-0 w-full max-w-[min(28rem,100%)] overflow-hidden rounded-xl border border-white/12 bg-white/[0.04]"
+    >
+      <figcaption className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
+        <Box className="h-4 w-4 shrink-0 text-white/70" />
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-white/90">
+          {label}
+        </span>
+        <span className="flex shrink-0 gap-1.5">
+          <TileButton
+            label={downloadLabel}
+            href={src}
+            download={downloadName(att, "model3d")}
+          >
+            <Download className="h-3.5 w-3.5" />
+          </TileButton>
+        </span>
+      </figcaption>
+      {showFallbackBody ? (
+        <a
+          href={src}
+          target="_blank"
+          rel="noreferrer"
+          download={downloadName(att, "model3d")}
+          data-testid="model3d-attachment-fallback"
+          className="flex items-center gap-2.5 px-3 py-3 text-white/85 transition-colors hover:bg-white/[0.08]"
+        >
+          <Box className="h-5 w-5 shrink-0 text-white/60" />
+          <span className="min-w-0 flex-1 text-[12px] text-white/60">
+            {t("messageattachments.model3dDownloadToView")}
+          </span>
+          <Download className="h-4 w-4 shrink-0 text-white/55" />
+        </a>
+      ) : (
+        <div
+          ref={mountRef}
+          data-testid="model3d-canvas"
+          className="relative h-72 w-full bg-black/40"
+        >
+          {status === "loading" ? (
+            <span className="absolute inset-0 flex items-center justify-center text-[12px] text-white/60">
+              {t("messageattachments.model3dLoading")}
+            </span>
+          ) : null}
+        </div>
+      )}
     </figure>
   );
 }
@@ -770,6 +971,7 @@ export function MessageAttachments({
             return (
               <div
                 key={att.id}
+                data-testid="audio-attachment"
                 className="max-w-[min(22rem,100%)] rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5"
               >
                 {att.title?.trim() ? (
@@ -777,7 +979,13 @@ export function MessageAttachments({
                     {att.title.trim()}
                   </div>
                 ) : null}
-                <audio src={src} controls preload="metadata" className="w-full">
+                <audio
+                  src={src}
+                  controls
+                  preload="metadata"
+                  className="w-full"
+                  data-testid="audio-attachment-player"
+                >
                   <track kind="captions" />
                 </audio>
               </div>
@@ -805,6 +1013,9 @@ export function MessageAttachments({
               const previewKind = attachmentPreviewKind(att);
               if (previewKind === "pdf") {
                 return <PdfTile key={att.id} att={att} src={src} t={t} />;
+              }
+              if (previewKind === "model3d") {
+                return <Model3dTile key={att.id} att={att} src={src} t={t} />;
               }
               if (previewKind === "code") {
                 return <CodeTile key={att.id} att={att} src={src} t={t} />;

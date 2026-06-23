@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+	buildInteractionUrlResolver,
 	ChannelType,
 	type Content,
 	ContentType,
@@ -922,7 +923,15 @@ export class MessageManager {
 
 					// Project embedded interaction blocks (choices, task cards, …) onto
 					// native Discord components, and strip their markers from the prose.
-					const rendered = renderDiscordInteractions(content);
+					const rawAppUrl =
+						this.runtime.getSetting("ELIZA_APP_URL") ||
+						this.runtime.getSetting("ELIZA_CLOUD_URL");
+					const appBaseUrl =
+						typeof rawAppUrl === "string" ? rawAppUrl : undefined;
+					const rendered = renderDiscordInteractions(
+						content,
+						buildInteractionUrlResolver(appBaseUrl),
+					);
 					const hasComponents = rendered.components.length > 0;
 					let textContent = normalizeDiscordMessageText(rendered.text);
 					if (textContent.trim().length === 0 && hasComponents) {

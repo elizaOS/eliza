@@ -23,7 +23,36 @@
  * the UI.
  */
 
+import path from "node:path";
+
 import { VoiceLifecycleError } from "./lifecycle";
+
+/**
+ * Make a directory discoverable by the Win32 DLL loader for this process by
+ * prepending it to PATH (step 6 of the standard DLL search order).
+ *
+ * The fused lib's sibling backends (`ggml*.dll`, `llama*.dll`, `mtmd.dll`) are
+ * staged NEXT TO `elizainference.dll`, but when a DLL is opened by absolute
+ * path the Win32 loader does NOT search that DLL's own directory for its
+ * dependencies — it searches the host EXE's dir, the system dirs, and PATH. So
+ * `dlopen` fails with "error code 126" (a dependent DLL could not be found)
+ * even though the siblings are right there. Linux/macOS don't need this:
+ * `stage-desktop-fused-lib.mjs` bakes a relative rpath (`$ORIGIN` /
+ * `@loader_path`) at link time so the loader resolves siblings from the lib's
+ * own dir. Idempotent; a no-op off win32 and when `dir` is already on PATH.
+ */
+function ensureWin32DllSearchDir(dir: string): void {
+	if (process.platform !== "win32" || !dir) return;
+	const current = process.env.PATH ?? "";
+	const resolved = path.resolve(dir);
+	const already = current
+		.split(path.delimiter)
+		.some((seg) => seg && path.resolve(seg) === resolved);
+	if (already) return;
+	process.env.PATH = current
+		? `${resolved}${path.delimiter}${current}`
+		: resolved;
+}
 
 /**
  * ABI version the JS binding was authored against. Must match the value
@@ -688,7 +717,7 @@ export interface ElizaInferenceFfi {
 	/**
 	 * Single causal forward pass over `tokens` (a tokenized partial transcript)
 	 * returning the next-token softmax probability of `targetTokenId` (the
-	 * end-of-turn marker, e.g. `<|im_end|>`), plus the argmax next token and its
+	 * end-of-turn marker, e.g. `<end_of_turn>`), plus the argmax next token and its
 	 * probability. Runs on a dedicated scoring context over the loaded text
 	 * model; KV is cleared per call so scores are independent.
 	 */
@@ -1133,6 +1162,11 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		);
 	}
 	const T = ffi.FFIType;
+
+	// Windows-only: make the fused lib's co-located backends (ggml*/llama*/mtmd
+	// .dll) resolvable before dlopen, which otherwise fails with error 126. See
+	// ensureWin32DllSearchDir for the full rationale.
+	ensureWin32DllSearchDir(path.dirname(dylibPath));
 
 	// All `char *` arguments are typed as T.ptr — Bun's `T.cstring` is a
 	// RETURN-only type for "library hands back a NUL-terminated string".

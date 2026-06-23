@@ -43,10 +43,26 @@ import {
   runGepa,
   runInstructionSearch,
   runPromptEvolution,
+  scoreLifeOpsTask,
   scorePlannerAction,
   scoreViewSelection,
   type UseModelHandler,
 } from "../optimizers/index.js";
+
+/**
+ * LifeOps tasks (#8795) routed to the per-capability {@link scoreLifeOpsTask}
+ * scorer instead of the default token-overlap comparator.
+ */
+const LIFEOPS_TASKS = new Set<TrajectoryTrainingTask>([
+  "calendar_extract",
+  "schedule_plan",
+  "reminder_dispatch",
+  "inbox_triage",
+  "meeting_prep",
+  "morning_brief",
+  "health_checkin",
+  "screentime_recap",
+]);
 
 export interface NativeBackendOptions {
   /**
@@ -437,7 +453,10 @@ export async function runNativeBackend(
         ? scorePlannerAction
         : options.task === "view_context"
           ? scoreViewSelection
-          : undefined,
+          : LIFEOPS_TASKS.has(options.task)
+            ? (actual: string, expected: string): number =>
+                scoreLifeOpsTask(options.task, actual, expected)
+            : undefined,
   });
 
   if (dataset.length === 0) {

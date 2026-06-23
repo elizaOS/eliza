@@ -70,10 +70,6 @@ export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[
       load: () => import("@elizaos/plugin-phone/register"),
     },
     {
-      key: "@elizaos/plugin-task-coordinator/register",
-      load: () => import("@elizaos/plugin-task-coordinator/register"),
-    },
-    {
       key: "@elizaos/plugin-wifi/register",
       load: () => import("@elizaos/plugin-wifi/register"),
     },

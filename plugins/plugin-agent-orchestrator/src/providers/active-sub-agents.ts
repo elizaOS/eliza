@@ -1,9 +1,31 @@
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  Service,
+  State,
+} from "@elizaos/core";
 import { getAcpService } from "../actions/common.js";
+import { TASK_WATCHDOG_SERVICE_TYPE } from "../services/task-watchdog-service.js";
 import {
   type SessionInfo,
   TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
+
+/** Read the watchdog's current stalled-session set (empty when unavailable). */
+function stalledSessionIds(runtime: IAgentRuntime): Set<string> {
+  const watchdog = runtime.getService<
+    Service & { getStalledSessionIds?: () => string[] }
+  >(TASK_WATCHDOG_SERVICE_TYPE);
+  if (!watchdog || typeof watchdog.getStalledSessionIds !== "function") {
+    return new Set();
+  }
+  try {
+    return new Set(watchdog.getStalledSessionIds());
+  } catch {
+    return new Set();
+  }
+}
 
 // Transient statuses that bucket together as "active" for the planner-visible
 // view. We do NOT distinguish ready vs busy vs tool_running vs running vs
@@ -73,6 +95,10 @@ export const activeSubAgentsProvider: Provider = {
 
     routed.sort((a, b) => a.id.localeCompare(b.id));
 
+    // Surface the watchdog's stalled set (#8901) so the planner can see which
+    // sessions have gone quiet and decide whether to prod or stop them.
+    const stalled = stalledSessionIds(runtime);
+
     // Pull live activity (tail of session output) for each session so the
     // planner can answer "where are you" with concrete detail instead of
     // just `status=busy`. The buffer mixes message chunks and captured
@@ -100,7 +126,13 @@ export const activeSubAgentsProvider: Provider = {
       "The sub-agent's task_complete event is the ground truth for outcomes. For history about past sub-agents, call TASKS_HISTORY explicitly.",
     ];
     for (const session of routed) {
-      lines.push(formatLine(session, liveByName.get(session.id)));
+      lines.push(
+        formatLine(
+          session,
+          liveByName.get(session.id),
+          stalled.has(session.id),
+        ),
+      );
     }
     const text = lines.join("\n");
 
@@ -113,6 +145,7 @@ export const activeSubAgentsProvider: Provider = {
           label: labelOf(s),
           agentType: s.agentType,
           status: s.status,
+          stalled: stalled.has(s.id),
           workdirTail: workdirTail(s.workdir),
           originRoomId: (s.metadata as Record<string, unknown> | undefined)
             ?.roomId,
@@ -139,10 +172,14 @@ function hasOrigin(session: SessionInfo): boolean {
   return typeof roomId === "string" && roomId.length > 0;
 }
 
-function formatLine(session: SessionInfo, live?: string): string {
+function formatLine(
+  session: SessionInfo,
+  live?: string,
+  stalled?: boolean,
+): string {
   const label = labelOf(session);
   const tail = workdirTail(session.workdir);
-  const bucket = bucketStatus(session.status);
+  const bucket = stalled ? "stalled" : bucketStatus(session.status);
   const base = `- [${label}] sessionId=${session.id} agentType=${session.agentType} status=${bucket} workdir=…${tail}`;
   return live ? `${base} live="${live}"` : base;
 }

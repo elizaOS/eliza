@@ -225,7 +225,7 @@ describe("App navigate-view shell handler", () => {
       placement: "right",
     });
     expect(fixture.setTab).toHaveBeenCalledWith("views");
-    expect(fixture.navigatePath).toHaveBeenCalledWith("/notes");
+    expect(fixture.navigatePath).toHaveBeenCalledWith("/views");
   });
 
   it("opens a managed app window through the desktop bridge", async () => {

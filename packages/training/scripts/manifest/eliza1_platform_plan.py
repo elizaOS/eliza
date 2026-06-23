@@ -534,12 +534,12 @@ def render_readiness(
         "Legacy bundles may additionally carry the ONNX fallback "
         "`vad/silero-vad-int8.onnx`, but the fallback is not the release "
         "readiness path.",
-        "- Canonical active text tiers are Qwen3.5 0.8B (`0_8b`), "
-        "Qwen3.5 2B (`2b`), Qwen3.5 4B (`4b`), Qwen3.5 9B (`9b`), "
-        "and Qwen3.6 27B (`27b`). ASR and embedding are real Qwen3 upstream "
+        "- Canonical active text tiers are Gemma 4 E2B (`2b`), "
+        "Gemma 4 E4B (`4b`), Gemma 4 12B (`9b`), "
+        "and Gemma 4 31B (`27b`). ASR and embedding are real Qwen3 upstream "
         "exceptions: use the published Qwen3-ASR "
         "0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF "
-        "repos; do not invent Qwen3.5-ASR, Qwen3.5-Embedding, "
+        "repos; do not invent gemma-4-ASR, gemma-4-Embedding, "
         "Qwen3-ASR-0.8B/2B, or Qwen3-Embedding-0.8B/2B repo IDs.",
         "- v1 release shape (`releaseState=base-v1`): the upstream BASE models "
         "— GGUF-converted via the elizaOS/llama.cpp fork and fully "

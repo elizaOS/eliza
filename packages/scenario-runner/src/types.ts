@@ -4,6 +4,7 @@
  * execution & report state.
  */
 
+import type { VoiceAudioArtifact } from "@elizaos/plugin-local-inference/voice-workbench";
 import type {
   CapturedAction,
   CapturedApprovalRequest,
@@ -37,6 +38,8 @@ export interface TurnReport {
   actionsCalled: CapturedAction[];
   durationMs: number;
   failedAssertions: string[];
+  /** `.wav` artifacts a `voice` turn wrote when run under `--run-dir`. */
+  audioArtifacts?: VoiceAudioArtifact[];
 }
 
 export interface ScenarioReport {

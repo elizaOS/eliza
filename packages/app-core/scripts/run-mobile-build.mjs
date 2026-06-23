@@ -69,6 +69,7 @@ import {
   resolvePlatformTemplateRoot as resolvePlatformTemplateRootImpl,
   syncPlatformTemplateFiles as syncPlatformTemplateFilesImpl,
 } from "./lib/capacitor-platform-templates.mjs";
+import { ensurePlistUrlScheme } from "./lib/ios-plist-url-scheme.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
   RUNTIME_PROVENANCE_FILENAME,
@@ -405,15 +406,55 @@ function resolveViteCli() {
   return viteCli;
 }
 
+function javaMajorVersion(javaHome) {
+  if (!javaHome || !fs.existsSync(javaHome)) return null;
+  // `release` is the cheapest, most reliable source (no JVM spawn).
+  const releaseFile = path.join(javaHome, "release");
+  if (fs.existsSync(releaseFile)) {
+    const m = fs
+      .readFileSync(releaseFile, "utf8")
+      .match(/JAVA_VERSION="?(\d+)/);
+    if (m) return Number.parseInt(m[1], 10);
+  }
+  const javaBin = path.join(
+    javaHome,
+    "bin",
+    process.platform === "win32" ? "java.exe" : "java",
+  );
+  if (fs.existsSync(javaBin)) {
+    const r = spawnSync(javaBin, ["-version"], { encoding: "utf8" });
+    const m = `${r.stderr ?? ""}${r.stdout ?? ""}`.match(/version "?(\d+)/);
+    if (m) return Number.parseInt(m[1], 10);
+  }
+  return null;
+}
+
+// Auto-select a JDK >= 21 so a plain `build:android` "just works" with no
+// JAVA_HOME juggling. JAVA_HOME is honored ONLY when it actually is >= 21;
+// otherwise we fall through to the well-known JDK 21 install paths and finally
+// scan /usr/lib/jvm. (AGP 9 + the Android toolchain require 21.)
 function resolveJavaHome() {
-  return firstExisting([
+  const candidates = [
     process.env.JAVA_HOME,
     "/opt/homebrew/opt/openjdk@21",
     "/usr/local/opt/openjdk@21",
     "/usr/lib/jvm/temurin-21-jdk-amd64",
     "/usr/lib/jvm/java-21-openjdk-amd64",
     "/usr/lib/jvm/java-21-openjdk",
-  ]);
+  ];
+  for (const candidate of candidates) {
+    if (candidate && (javaMajorVersion(candidate) ?? 0) >= 21) return candidate;
+  }
+  const jvmRoot = "/usr/lib/jvm";
+  if (fs.existsSync(jvmRoot)) {
+    for (const name of fs.readdirSync(jvmRoot)) {
+      const full = path.join(jvmRoot, name);
+      if ((javaMajorVersion(full) ?? 0) >= 21) return full;
+    }
+  }
+  // Nothing >= 21 found — return the first path that exists so the caller's
+  // "JDK 21 not found" error fires with a concrete (if wrong-version) hint.
+  return firstExisting(candidates);
 }
 
 function prependPath(env, entries) {
@@ -488,32 +529,6 @@ function insertBeforeRootPlistDictClose(content, insertion) {
   const fallbackIndex = content.lastIndexOf("</dict>");
   if (fallbackIndex < 0) return content;
   return `${content.slice(0, fallbackIndex)}${insertion}${content.slice(fallbackIndex + "</dict>".length)}`;
-}
-
-function ensurePlistUrlScheme(content, urlScheme) {
-  const escapedScheme = escapeXmlText(urlScheme);
-  const urlTypesRe =
-    /(<key>CFBundleURLTypes<\/key>\s*<array>)([\s\S]*?)(\s*<\/array>)/;
-  const entry = `
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>${escapedScheme}</string>
-			</array>
-		</dict>`;
-  const match = content.match(urlTypesRe);
-  if (!match) {
-    return insertBeforeRootPlistDictClose(
-      content,
-      `\t<key>CFBundleURLTypes</key>\n\t<array>${entry}\n\t</array>\n</dict>`,
-    );
-  }
-  if (match[2].includes(`<string>${escapedScheme}</string>`)) {
-    return content;
-  }
-  return content.replace(urlTypesRe, `$1${match[2]}${entry}$3`);
 }
 
 /**
@@ -1358,9 +1373,18 @@ function reconcilePluginManifestWithGradle(targetAssets) {
   // via bun:ffi) does NOT use this Capacitor plugin, so the device-bridge import
   // failing as a catchable "LlamaCpp plugin not implemented" JS error costs
   // nothing and keeps the JS↔native surface honest.
+  // The llama-cpp-capacitor plugin is RETIRED: agent inference runs entirely
+  // through the single fused libelizainference.so, and nothing loads this
+  // plugin's separate libllama-cpp-arm64.so (its JS adapter is retired). Drop it
+  // from the manifest BY DEFAULT so the LlamaCpp class never registers / its
+  // static System.loadLibrary never runs — libelizainference is the only
+  // inference library loaded in-process. Opt back in (full second lib) only with
+  // ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR=1. (The old
+  // ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB flag also stubbed it; that is now the
+  // default and the flag is no longer required for this.)
   const stubLlamaCpp =
-    process.env.ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB === "1" ||
-    process.env.elizaSkipForkLlamaLib === "true";
+    process.env.ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR !== "1" &&
+    process.env.elizaIncludeLlamaCppCapacitor !== "true";
   // Third-party Capacitor plugins that `cap sync` includes (they ship an
   // android/ dir, so they ARE in capacitor.settings.gradle) but whose Kotlin
   // plugin class never lands in the app dex on AGP 8.x: both rely on AGP's
@@ -1673,7 +1697,7 @@ export function injectNativeLibLegacyPackaging(content) {
  *
  * Fails local builds when no path is configured or the dir doesn't exist. The
  * Android Capacitor JNI wrapper links against these MTP libraries and cannot
- * honestly support Eliza-1/Qwen3.5 without them. Cloud builds skip the task.
+ * honestly support Eliza-1/Gemma 4 without them. Cloud builds skip the task.
  * CI smoke builds that intentionally install no native deps can opt out with
  * -PelizaSkipForkLlamaLib=true or ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1.
  *
@@ -1713,7 +1737,7 @@ export function injectCopyForkLlamaLibTask(content) {
   }
   const block =
     `\n// Bundle the MTP Android llama.cpp stack into the APK so mobile\n` +
-    `// gets Eliza-1/Qwen3.5 support across every supported Android ABI\n` +
+    `// gets Eliza-1/Gemma 4 support across every supported Android ABI\n` +
     `// (arm64-v8a, x86_64, riscv64). The arm64-v8a slice is mandatory for\n` +
     `// local-agent capable builds; x86_64 and riscv64 ship when their\n` +
     `// per-ABI artifacts exist (Wave 2 cross-compiles land them\n` +
@@ -1786,6 +1810,11 @@ export function injectCopyForkLlamaLibTask(content) {
     `    return null\n` +
     `}\n` +
     `\n` +
+    `// NOTE: despite the legacy "ForkLlama" name, this stages the SINGLE canonical\n` +
+    `// fused inference lib — libelizainference.so — with its own DT_NEEDED runtime\n` +
+    `// siblings (libggml*, libllama.so, libllama-common.so, libmtmd.so, libomp.so),\n` +
+    `// which ARE libelizainference's GPU/CPU backends, NOT a separate llama.cpp fork.\n` +
+    `// There is no second inference library; do NOT delete this task or its siblings.\n` +
     `task copyForkLlamaLib {\n` +
     `    doLast {\n` +
     `        if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
@@ -1802,9 +1831,18 @@ export function injectCopyForkLlamaLibTask(content) {
     `        project.ext.elizaForkLlamaAbis.each { abi ->\n` +
     `            def libDir = resolveForkLlamaLibDir(abi)\n` +
     `            if (!libDir) {\n` +
+    `                // No fresh source configured. If the fused lib set is already\n` +
+    `                // staged in jniLibs (a prior build, the common dev case), use it\n` +
+    `                // as-is so a plain build:android "just works" without any flag.\n` +
+    `                def alreadyStaged = new File(file("src/main/jniLibs/\${abi}"), 'libelizainference.so')\n` +
+    `                if (alreadyStaged.isFile()) {\n` +
+    `                    logger.lifecycle("[copyForkLlamaLib] no source dir for \${abi}; libelizainference.so already staged in jniLibs — using the pre-staged fused lib set")\n` +
+    `                    if (abi == 'arm64-v8a') stagedArm64 = true\n` +
+    `                    return\n` +
+    `                }\n` +
     `                if (abi == 'arm64-v8a') {\n` +
-    `                    // arm64-v8a is the mandatory baseline ABI; missing it is a hard error.\n` +
-    `                    throw new GradleException("[copyForkLlamaLib] no MTP Android lib dir configured for arm64-v8a. Run packages/app-core/scripts/aosp/compile-libllama.mjs --target android-arm64-vulkan-fused (the Android cross-compiler; build-llama-cpp-mtp.mjs has no Android targets) or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")\n` +
+    `                    // arm64-v8a is the mandatory baseline ABI; missing it (and no pre-staged lib) is a hard error.\n` +
+    `                    throw new GradleException("[copyForkLlamaLib] no fused inference lib for arm64-v8a (not configured, not pre-staged). Run packages/app-core/scripts/aosp/compile-libllama.mjs --target android-arm64-vulkan-fused (the Android cross-compiler; build-llama-cpp-mtp.mjs has no Android targets) or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")\n` +
     `                }\n` +
     `                logger.lifecycle("[copyForkLlamaLib] no fork lib dir for ABI \${abi}; skipping")\n` +
     `                return\n` +
@@ -7204,6 +7242,8 @@ async function buildAndroidSystem() {
     androidDir,
     spikeDir: androidAgentSpikeDir,
     bunChannel: "canary",
+    // Objective AOSP/chip image: riscv64 bun stays fail-closed (it ships it).
+    objective: true,
   });
   auditAndroidSystemSource("pre-gradle");
 

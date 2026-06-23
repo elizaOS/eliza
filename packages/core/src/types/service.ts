@@ -38,6 +38,7 @@ export interface ServiceTypeRegistry {
 	CONNECTOR_ACCOUNT_STORAGE: "connector_account_storage";
 	AGENT_EVENT: "agent_event";
 	OPTIMIZED_PROMPT: "optimized_prompt";
+	CHANNEL_TOPICS: "channel_topics";
 	UNKNOWN: "unknown";
 }
 
@@ -132,6 +133,7 @@ export const ServiceType = {
 	MEDIA_GENERATION: "media_generation",
 	VOICE_CACHE: "voice_cache",
 	OPTIMIZED_PROMPT: "optimized_prompt",
+	CHANNEL_TOPICS: "channel_topics",
 	UNKNOWN: "unknown",
 } as const;
 

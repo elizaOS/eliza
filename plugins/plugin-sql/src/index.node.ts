@@ -145,7 +145,10 @@ export function createDatabaseAdapter(
 
   const dataDir = resolvePgliteDir(config.dataDir);
 
-  if (dataDir && !dataDir.includes("://")) {
+  // `:memory:` is PGlite's in-memory sentinel, not a real path. On Windows the
+  // reserved `:` makes mkdirSync throw (on POSIX it silently creates a junk
+  // `:memory:` directory), so skip directory creation for it and for URLs.
+  if (dataDir && !dataDir.includes("://") && dataDir !== ":memory:") {
     mkdirSync(dataDir, { recursive: true });
   }
 

@@ -227,6 +227,13 @@ function importAppTaskCoordinator() {
   );
 }
 
+function importAppTaskCoordinatorRegister() {
+  return cachedDynamicImport(
+    "@elizaos/plugin-task-coordinator/register",
+    () => import("@elizaos/plugin-task-coordinator/register"),
+  );
+}
+
 function importAppTraining() {
   return cachedDynamicImport(
     "@elizaos/plugin-training",
@@ -621,6 +628,7 @@ function initializeAppModules(): Promise<void> {
       // Imported for its self-registration side effect (Vincent overlay app).
       importAppVincent(),
       importAppTaskCoordinator(),
+      importAppTaskCoordinatorRegister(),
       importAppPhone(),
       importAppSteward(),
       importAppTraining(),

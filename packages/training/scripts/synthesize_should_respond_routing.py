@@ -24,7 +24,7 @@ Inputs (mined; whichever exist):
     packed into one CSV cell per row. We split on "\\n" and parse
     ``"<handle#tag>: <message>"`` lines.
   - ``data/raw/discord-dialogues/data/train.parquet`` — text column with
-    ``<|im_start|>user|>`` / ``<|im_start|>assistant|>`` segments.
+    ``<start_of_turn>user|>`` / ``<start_of_turn>model|>`` segments.
   - ``data/raw/telegram-filtered-messages/data/*.parquet`` — single
     sentences plus ``channel_id``; we hash-derive a pseudo-handle.
 
@@ -133,8 +133,8 @@ def iter_discord_chat() -> Iterator[dict[str, Any]]:
 def iter_discord_dialogues() -> Iterator[dict[str, Any]]:
     """Yield turns from data/raw/discord-dialogues/data/train.parquet.
 
-    Each parquet row packs a multi-turn dialogue using ``<|im_start|>user|>``
-    / ``<|im_start|>assistant|>`` markers; we split into individual turns
+    Each parquet row packs a multi-turn dialogue using ``<start_of_turn>user|>``
+    / ``<start_of_turn>model|>`` markers; we split into individual turns
     with synthetic ``user_X`` / ``asst_X`` speakers (unique per dialogue so
     they look like distinct users in chat).
     """

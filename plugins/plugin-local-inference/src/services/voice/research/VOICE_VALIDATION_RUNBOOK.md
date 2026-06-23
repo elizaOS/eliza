@@ -120,6 +120,16 @@ false-accept at training. Local-mode only; inert in cloud mode.
 - [x] Research (pause lengths, VAD, AEC, diarization, owner verification, model landscape, hybrid latency)
 - [x] Headful A/V — desktop + web  *(13/13 specs passed + recorded + adversarially verified; `.github/issue-evidence/8785-voice-headful/`)*
 - [~] iOS **simulator** — app boots + UI renders, recorded (`.github/issue-evidence/8785-voice-ios-sim/`); voice *inference* on the sim is Metal-gated (no GPU on the sim) — fundamentally needs a physical device for local, or cloud credits.
-- [ ] iOS **physical device** — needs Apple ID provisioning  *(needs §2)*
-- [ ] Live cloud STT/TTS E2E  *(needs §3 credits)*
-- [ ] Real WER/DER/EOT-latency on degraded corpus  *(needs §4 artifacts)*
+- [~] iOS **physical device** — **the signed app + embedded full-Bun engine is INSTALLED on Shaw's iPhone 15 Pro** (`ios-device-installed.md`). Signing was cracked: the correct team is **25877RY2EH** (not the cert's CN `UT5K5Q5EVF`); automatic signing + the cached team profiles (which cover the device) + the generic "Apple Development" identity needs no Xcode account; aligning the 2 DeviceActivity extensions' entitlements to their profiles → BUILD SUCCEEDED → `devicectl device install` → app on device. The **only** thing left is a physical action: **unlock the iPhone** (it was locked, so iOS refused to launch the dev app — FBSOpenApplicationErrorDomain error 7 "Locked") + trust the developer (Settings → General → VPN & Device Management), then open Milady → "This device". The embedded engine then runs on the iPhone's real Metal GPU — the same fused engine + GGUF proven running real voice models on this Mac's Apple Silicon.
+  ```bash
+  # after the user unlocks + trusts the dev cert:
+  xcrun devicectl device process launch --device 00008130-001955E91EF8001C ai.milady.milady
+  idevicesyslog | grep -iE "eliza|bun|llama|metal|asr|inference"   # on-device engine logs
+  ```
+- [x] **Live cloud STT/TTS E2E** — ElevenLabs `eleven_turbo_v2_5` + `scribe_v1` round-trip, WER 0 (`.github/issue-evidence/8785-voice-real-cloud/`).
+- [x] **Real on-device ASR + WER on the degraded corpus** — eliza-1-asr via the fused dylib + Metal; WER 0 across every realistic degradation (noise to 0 dB, reverb to 0.98, far-field, telephone, harsh), graceful past the edge.
+- [x] **Mixed local STT + cloud LLM + cloud TTS** — `roundtrip:real`: ~770–870 ms hybrid (local STT ~200 ms + Cerebras ~270 ms + cloud TTS ~270 ms).
+- [x] **Real speaker recognition + diarization + VAD + local TTS** — `voicestack:real`: WeSpeaker same-speaker ~0.72 vs different ~0.15 (owner-vs-intruder), pyannote ≥2 speakers, Silero speech 1.0 / silence 0.009, on-device TTS 3.9 s. (`.github/issue-evidence/8785-voice-real-cloud/`)
+- [~] EOT turn-detector model — GGUFs present (en/intl); the heuristic EOT is validated in `--logic`; the model path (`eotScore`) needs the text model + tokenizer loaded to drive via FFI.
+- [ ] Wake-word "hey eliza" model — a real head is published (v0.3.0, ~98% true-accept) but not staged in this bundle; the wake-word *decision* (phrase detection + override) is validated in `--logic`.
+- [ ] iOS **physical device** — needs Apple ID provisioning

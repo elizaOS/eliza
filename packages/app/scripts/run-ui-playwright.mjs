@@ -9,6 +9,12 @@ const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(appDir, "..", "..");
 const workspaceRoot = path.resolve(repoRoot, "..");
 const playwrightArgs = process.argv.slice(2);
+const uiSmokeViewLockDir = path.join(
+  repoRoot,
+  ".turbo",
+  "ui-smoke-view-bundles.lock",
+);
+const uiSmokeTempPrefixes = ["eliza-ui-smoke-stub-", "eliza-ui-smoke-live-"];
 
 function resolvePlaywrightCommand() {
   // On Windows the bin shim differs by package manager: bun emits
@@ -83,6 +89,142 @@ const bunBinDir = path.dirname(env.BUN);
 const pathDelimiter = process.platform === "win32" ? ";" : ":";
 env.PATH = env.PATH ? `${bunBinDir}${pathDelimiter}${env.PATH}` : bunBinDir;
 
+function hasPlaywrightConfig(configName) {
+  return (
+    playwrightArgs.includes("--config") &&
+    playwrightArgs.some((value) => value.includes(configName))
+  );
+}
+
+function appendNodeOption(value, option) {
+  const options =
+    typeof value === "string" && value.trim().length > 0
+      ? value.trim().split(/\s+/)
+      : [];
+  if (!options.includes(option)) {
+    options.push(option);
+  }
+  return options.join(" ");
+}
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function readLockOwnerPid(lockDir) {
+  try {
+    const owner = fs.readFileSync(path.join(lockDir, "owner"), "utf8");
+    const pid = Number.parseInt(owner.split(/\r?\n/, 1)[0] ?? "", 10);
+    return Number.isFinite(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error?.code === "ESRCH") return false;
+    return true;
+  }
+}
+
+function acquireUiSmokeViewLock() {
+  const staleAfterMs = 30 * 60 * 1000;
+  let announcedWait = false;
+
+  fs.mkdirSync(path.dirname(uiSmokeViewLockDir), { recursive: true });
+
+  for (;;) {
+    try {
+      fs.mkdirSync(uiSmokeViewLockDir);
+      fs.writeFileSync(
+        path.join(uiSmokeViewLockDir, "owner"),
+        `${process.pid}\n${new Date().toISOString()}\n`,
+      );
+      break;
+    } catch (error) {
+      if (error?.code !== "EEXIST") {
+        throw error;
+      }
+
+      let stat = null;
+      try {
+        stat = fs.statSync(uiSmokeViewLockDir);
+      } catch {
+        continue;
+      }
+
+      const ownerPid = readLockOwnerPid(uiSmokeViewLockDir);
+      if (
+        (ownerPid !== null && !isProcessAlive(ownerPid)) ||
+        Date.now() - stat.mtimeMs > staleAfterMs
+      ) {
+        fs.rmSync(uiSmokeViewLockDir, { recursive: true, force: true });
+        continue;
+      }
+
+      if (!announcedWait) {
+        console.log("[ui-smoke] Waiting for another UI smoke run to finish...");
+        announcedWait = true;
+      }
+      sleepSync(250);
+    }
+  }
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    fs.rmSync(uiSmokeViewLockDir, { recursive: true, force: true });
+  };
+}
+
+let releaseUiSmokeViewLock = null;
+
+function releaseLocks() {
+  if (releaseUiSmokeViewLock) {
+    releaseUiSmokeViewLock();
+    releaseUiSmokeViewLock = null;
+  }
+}
+
+process.once("exit", releaseLocks);
+
+function cleanupUiSmokeStateDirsForRun() {
+  const runId = env.ELIZA_UI_SMOKE_RUN_ID?.trim();
+  if (!runId) return;
+
+  let entries = [];
+  try {
+    entries = fs.readdirSync(os.tmpdir(), { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (
+      !entry.isDirectory() ||
+      !uiSmokeTempPrefixes.some((prefix) => entry.name.startsWith(prefix))
+    ) {
+      continue;
+    }
+    const stateDir = path.join(os.tmpdir(), entry.name);
+    try {
+      const owner = fs
+        .readFileSync(path.join(stateDir, ".eliza-ui-smoke-run-id"), "utf8")
+        .trim();
+      if (owner === runId) {
+        fs.rmSync(stateDir, { recursive: true, force: true });
+      }
+    } catch {
+      // Only remove dirs explicitly stamped with this runner's id.
+    }
+  }
+}
+
 async function getDistinctFreePort(excludedPorts = new Set()) {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const port = Number(await getFreePort());
@@ -93,12 +235,16 @@ async function getDistinctFreePort(excludedPorts = new Set()) {
   throw new Error("Could not allocate a distinct free port for UI smoke.");
 }
 
-if (
-  playwrightArgs.includes("--config") &&
-  playwrightArgs.some((value) =>
-    value.includes("playwright.ui-smoke.config.ts"),
-  )
-) {
+if (hasPlaywrightConfig("playwright.electrobun.packaged.config.ts")) {
+  env.NODE_OPTIONS = appendNodeOption(
+    env.NODE_OPTIONS,
+    "--conditions=eliza-source",
+  );
+}
+
+if (hasPlaywrightConfig("playwright.ui-smoke.config.ts")) {
+  env.ELIZA_UI_SMOKE_RUN_ID =
+    env.ELIZA_UI_SMOKE_RUN_ID || `${process.pid}-${Date.now().toString(36)}`;
   if (env.ELIZA_UI_SMOKE_LIVE_STACK !== "1") {
     env.ELIZA_UI_SMOKE_FORCE_STUB = env.ELIZA_UI_SMOKE_FORCE_STUB || "1";
   }
@@ -119,12 +265,10 @@ if (
 }
 
 if (
-  playwrightArgs.includes("--config") &&
-  playwrightArgs.some((value) =>
-    value.includes("playwright.ui-smoke.config.ts"),
-  ) &&
+  hasPlaywrightConfig("playwright.ui-smoke.config.ts") &&
   env.ELIZA_UI_SMOKE_SKIP_VIEW_BUILD !== "1"
 ) {
+  releaseUiSmokeViewLock = acquireUiSmokeViewLock();
   const result = spawnSync(
     process.execPath,
     [path.join(repoRoot, "packages", "scripts", "build-views.mjs")],
@@ -134,17 +278,48 @@ if (
       stdio: "inherit",
     },
   );
-  if ((result.status ?? 1) !== 0) {
-    process.exit(result.status ?? 1);
+  const status = result.status ?? 1;
+  if (status !== 0) {
+    releaseLocks();
+    process.exit(status);
   }
 }
 
+// The ui-smoke web server builds the renderer (`packages/app build:web`) whenever
+// the dist is stale — in BOTH stub and live mode (see playwright-ui-live-stack.ts
+// `viteRendererBuildNeeded` → `build:web`). That vite build BUNDLES @elizaos/core
+// (resolved via its `browser` export condition → dist/browser/index.browser.js).
+// On a fresh CI checkout (e.g. the scenario-pr `Zero-Key app browser *` jobs,
+// which run stub mode and never build core) that dist isn't built, so the build
+// aborts with `Failed to resolve entry for package "@elizaos/core"` and the whole
+// stack fails to start. Build core first — gated only on the ui-smoke config (NOT
+// on live mode), mirroring the view-build step above. Turbo-cached → a fast no-op
+// when already up to date; skip with ELIZA_UI_SMOKE_SKIP_CORE_BUILD=1.
 if (
-  playwrightArgs.includes("--config") &&
-  playwrightArgs.some((value) =>
-    value.includes("playwright.dev-smoke.config.ts"),
-  )
+  hasPlaywrightConfig("playwright.ui-smoke.config.ts") &&
+  env.ELIZA_UI_SMOKE_SKIP_CORE_BUILD !== "1"
 ) {
+  const coreBuild = spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "packages", "scripts", "run-turbo.mjs"),
+      "run",
+      "build",
+      "--filter=@elizaos/core",
+    ],
+    {
+      cwd: repoRoot,
+      env,
+      stdio: "inherit",
+    },
+  );
+  if ((coreBuild.status ?? 1) !== 0) {
+    releaseLocks();
+    process.exit(coreBuild.status ?? 1);
+  }
+}
+
+if (hasPlaywrightConfig("playwright.dev-smoke.config.ts")) {
   const reservedPorts = new Set();
 
   if (!env.ELIZA_DEV_SMOKE_API_PORT) {
@@ -165,10 +340,7 @@ if (
     fs.mkdtempSync(path.join(os.tmpdir(), "eliza-dev-smoke-"));
 }
 
-if (
-  playwrightArgs.includes("--config") &&
-  playwrightArgs.some((value) => value.includes("playwright.hmr.config.ts"))
-) {
+if (hasPlaywrightConfig("playwright.hmr.config.ts")) {
   const reservedPorts = new Set();
 
   if (!env.ELIZA_HMR_API_PORT) {
@@ -202,6 +374,10 @@ const child = spawn(playwrightCommand, ["test", ...playwrightArgs], {
 });
 
 child.on("exit", (code, signal) => {
+  if (hasPlaywrightConfig("playwright.ui-smoke.config.ts")) {
+    cleanupUiSmokeStateDirsForRun();
+  }
+  releaseLocks();
   if (signal) {
     process.kill(process.pid, signal);
     return;

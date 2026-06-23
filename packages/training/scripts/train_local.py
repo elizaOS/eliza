@@ -1,22 +1,22 @@
-"""Local SFT on a Qwen3 dense base model using TRL + APOLLO.
+"""Local SFT on a Gemma 4 dense base model using TRL + APOLLO.
 
 Single-GPU, bf16, completion-only loss (only the assistant turn contributes
 to the loss). Checkpoints land under `training/checkpoints/<run_name>/`.
 
 The base model is resolved from `--registry-key` (see
 `training/model_registry.py`); pass `--model <hf-id>` to override. With no
-registry key the default is `Qwen/Qwen3.5-0.8B` — the smallest published
+registry key the default is `google/gemma-4-E2B` — the smallest published
 eliza-1 target.
 
 Usage:
     # Smoke test on the smallest eliza-1 tier
     uv run --extra train python scripts/train_local.py \
-        --registry-key qwen3.5-0.8b \
+        --registry-key gemma4-e2b \
         --max-samples 256 --epochs 1 --run-name eliza-1-0_8b-smoke
 
     # Real run
     uv run --extra train python scripts/train_local.py \
-        --registry-key qwen3.5-0.8b \
+        --registry-key gemma4-e2b \
         --epochs 3 --batch-size 4 --grad-accum 8 \
         --run-name eliza-1-0_8b-eliza-native-v1
 """
@@ -151,7 +151,7 @@ def build_dataset(
     from datasets import Dataset
 
     def _coerce_tool_call_arguments(messages):
-        # The Qwen3.5 chat template (and Qwen3.6) iterates
+        # The Gemma 4 chat template iterates
         # `tool_call.arguments | items`, which requires a mapping (dict).
         # OpenAI-ChatML ToolCalls (what format_for_training.py emits, what
         # eliza-1-sft-0_6b carries) store `arguments` as a JSON-encoded
@@ -209,7 +209,7 @@ def build_dataset(
     # immediately after `formatted train 314/314 records` with this error.
     # Fix: pre-render to {"text": str} so the only column is a string column;
     # arrow has no trouble with that. The render() call also surfaces rows
-    # whose content shape Qwen's chat template can't apply (e.g. assistant
+    # whose content shape Gemma 4's chat template can't apply (e.g. assistant
     # content as a list of tool-call blocks instead of string + tool_calls
     # field) — we log + skip those rather than fail the whole split, since
     # format_record's translation layer is the real long-term fix.
@@ -260,7 +260,7 @@ _TRACKED_DESTS = (
 )
 
 _FALLBACK_DEFAULTS: dict[str, Any] = {
-    "model": "Qwen/Qwen3.5-0.8B",
+    "model": "google/gemma-4-E2B",
     "batch_size": 4,
     "grad_accum": 8,
     "max_seq_len": 4096,
@@ -284,7 +284,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--train-file", default=str(ROOT / "data" / "final" / "train.jsonl"))
     ap.add_argument("--val-file", default=str(ROOT / "data" / "final" / "val.jsonl"))
     ap.add_argument("--out-dir", default=str(ROOT / "checkpoints"))
-    ap.add_argument("--run-name", default="qwen35-eliza-native")
+    ap.add_argument("--run-name", default="gemma4-eliza-native")
     ap.add_argument(
         "--max-samples", type=int, default=None,
         help="Cap the number of training records loaded. 0 = no cap. Default "
@@ -326,7 +326,7 @@ def build_parser() -> argparse.ArgumentParser:
              "Default None falls back to 4096 when no registry key is set. "
              "Pass `--max-seq-len <N>` to override the registry default for "
              "a single run — useful for long-context experiments "
-             "(validate VRAM with `memory_calc.py --shape qwen3.5-4b` first)."
+             "(validate VRAM with `memory_calc.py --shape gemma4-e4b` first)."
     )
     ap.add_argument("--full-finetune", action="store_true",
                     help="Compatibility flag; this entrypoint is always full-parameter APOLLO SFT.")
@@ -356,14 +356,14 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--use-liger", default="auto", choices=("auto", "on", "off"),
         help="Apply Liger fused chunked-CE + RMSNorm/SwiGLU/RoPE kernels. "
-             "Cuts the fp32-logits transient ~4–8× (Qwen vocab=248k makes "
+             "Cuts the fp32-logits transient ~4–8× (Gemma 4 vocab=262k makes "
              "this dominant) so we can train at 8k–16k seq_len on the same "
              "VRAM. Default `auto` = on when the registry entry says so or "
              "when no registry key is set.",
     )
     ap.add_argument(
         "--registry-key", default=None,
-        help="Pull defaults from training/model_registry.py (e.g. qwen3.5-2b). "
+        help="Pull defaults from training/model_registry.py (e.g. gemma4-e2b). "
              "CLI flags override registry values."
     )
     ap.add_argument(
@@ -417,7 +417,7 @@ def apply_resolved_defaults(args: argparse.Namespace) -> None:
                 f"--registry-key {args.registry_key!r} → hf_id {entry.hf_id!r} "
                 "is an UNVERIFIED registry entry with no published checkpoint as of "
                 "2026-05; loading it will fail. Use a real key "
-                "(qwen3.5-0.8b / qwen3.5-2b / qwen3.5-4b → eliza-1-0_8b / eliza-1-2b / "
+                "(gemma4-e2b / gemma4-e2b / gemma4-e4b → eliza-1-0_8b / eliza-1-2b / "
                 "eliza-1-4b), pass an explicit --model <real-hf-id>, or set "
                 "ELIZA_ALLOW_UNVERIFIED_BASE=1 to override."
             )
@@ -641,7 +641,7 @@ def main() -> int:
             )
         else:
             _apply_liger_kernel_to_instance(model=model)
-            # FLCE chunk_size = 2^ceil(log2(B*T / (V/H))). For Qwen3.5/3.6
+            # FLCE chunk_size = 2^ceil(log2(B*T / (V/H))). For Gemma 4
             # H≈2048-5120 / V=248k → V/H≈48-120; B=1, T=16k -> chunk≈512.
             # Liger paper §5.3 reports +25% throughput + 20% lower peak mem
             # on the FLCE step vs the default auto-pick at our shape.

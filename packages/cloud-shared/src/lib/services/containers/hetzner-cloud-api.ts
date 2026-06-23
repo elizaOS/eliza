@@ -94,6 +94,8 @@ export interface HetznerServer {
     ipv4: { ip: string; blocked: boolean } | null;
     ipv6: { ip: string; blocked: boolean } | null;
   };
+  /** Canonical public address mapped from `public_net` (satisfies the seam). */
+  publicIpv4?: string | null;
   server_type: { id: number; name: string };
   datacenter: { id: number; name: string; location: HetznerLocation };
   labels: Record<string, string>;
@@ -219,7 +221,15 @@ export class HetznerCloudClient implements ComputeProvider {
       location: input.location,
     });
 
-    return { server: data.server, rootPassword: data.root_password };
+    return {
+      server: {
+        ...data.server,
+        // Map Hetzner's public_net onto the canonical seam field (ipv4 first,
+        // then ipv6) so consumers don't depend on the provider-specific shape.
+        publicIpv4: data.server.public_net?.ipv4?.ip ?? data.server.public_net?.ipv6?.ip ?? null,
+      },
+      rootPassword: data.root_password,
+    };
   }
 
   async deleteServer(serverId: number): Promise<void> {

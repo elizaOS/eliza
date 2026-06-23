@@ -161,6 +161,18 @@ export async function startDesktopTestBridgeServer(): Promise<
         return;
       }
 
+      if (pathname === "/main-window/show" && method === "POST") {
+        await getDesktopManager().showWindow();
+        json(res, 200, { ok: true });
+        return;
+      }
+
+      if (pathname === "/main-window/focus" && method === "POST") {
+        await getDesktopManager().focusWindow();
+        json(res, 200, { ok: true });
+        return;
+      }
+
       if (pathname === "/main-window/bounds") {
         const snapshot = getCurrentMainWindowSnapshot();
         if (!snapshot.present) {
@@ -221,6 +233,22 @@ export async function startDesktopTestBridgeServer(): Promise<
             ? { ok: true }
             : { error: "application menu handler unavailable" },
         );
+        return;
+      }
+
+      if (pathname === "/app/quit" && method === "POST") {
+        json(res, 202, { ok: true });
+        setTimeout(() => {
+          void getDesktopManager()
+            .quit()
+            .catch((error: unknown) => {
+              console.warn(
+                `[DesktopTestBridge] Graceful quit failed: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            });
+        }, 0);
         return;
       }
 

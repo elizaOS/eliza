@@ -110,18 +110,17 @@ gpu_to_train_vast_token() {
 }
 tier_to_registry_key() {
   # Keys must match scripts/training/model_registry.py REGISTRY. The canonical
-  # eliza-1 fused-model line uses Qwen3.5 for 0_8b/2b/4b/9b and Qwen3.6 for
-  # 27B. Qwen3 doesn't work with mtp — the mtp kernels are validated
-  # against the Qwen3.5/3.6 architecture + 248320 tokenizer; a Qwen3 base has
-  # the wrong vocab + attention shape for the fused QJL/Polar paths. The
-  # 0_6b/1_7b legacy tier ids in the runtime
+  # eliza-1 fused-model line uses Gemma 4 for every tier (E2B/E4B/12B/31B).
+  # The mtp kernels are validated against the Gemma 4 architecture + 262144
+  # tokenizer; a non-Gemma base has the wrong vocab + attention shape for the
+  # fused paths. The 0_6b/1_7b legacy tier ids in the runtime
   # manifest stay addressable but no longer route to a registry key.
   case "$1" in
-    0_8b) echo qwen3.5-0.8b ;;
-    2b)   echo qwen3.5-2b ;;
-    4b)   echo qwen3.5-4b ;;
-    9b)   echo qwen3.5-9b ;;
-    27b) echo qwen3.6-27b ;;
+    0_8b) echo gemma4-e2b ;;
+    2b)   echo gemma4-e2b ;;
+    4b)   echo gemma4-e4b ;;
+    9b)   echo gemma4-12b ;;
+    27b) echo gemma4-31b ;;
   esac
 }
 

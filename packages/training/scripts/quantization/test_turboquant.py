@@ -13,7 +13,7 @@ This script therefore measures the things TurboQuant actually changes:
   * Output sanity (the quantized model still produces a non-empty native JSON-
     looking response on each of 5 sampled prompts)
 
-Default model is ``Qwen/Qwen3.5-0.8B``. This is a hybrid
+Default model is ``google/gemma-4-E2B``. This is a hybrid
 linear-attention + Gated Attention model; the cache machinery applies to
 the full-attention layers and bypasses linear-attention layers. The
 assertions are correspondingly looser than old dense-Qwen3 smoke runs.
@@ -146,7 +146,7 @@ def kv_bytes_per_token_analytic(
     num_kv_heads = getattr(text_cfg, "num_key_value_heads", None) or text_cfg.num_attention_heads
 
     # Number of *full attention* layers (where a KV cache materializes).
-    # Hybrid Qwen3.5/3.6 specify layer_types; fall back to "all are full".
+    # Hybrid Gemma 4 specify layer_types; fall back to "all are full".
     layer_types = getattr(text_cfg, "layer_types", None)
     if layer_types:
         full_idx = [i for i, t in enumerate(layer_types) if t == "full_attention"]
@@ -256,7 +256,7 @@ def directory_size_bytes(path: Path) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
-    ap.add_argument("--model", default="Qwen/Qwen3.5-0.8B")
+    ap.add_argument("--model", default="google/gemma-4-E2B")
     ap.add_argument("--num-prompts", type=int, default=5)
     ap.add_argument("--max-new-tokens", type=int, default=128)
     ap.add_argument("--calibration-samples", type=int, default=32)

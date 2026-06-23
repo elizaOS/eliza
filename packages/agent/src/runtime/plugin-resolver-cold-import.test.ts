@@ -8,10 +8,12 @@ import { importPluginModuleFromPath } from "./plugin-resolver.ts";
 // The cold-import-in-place fast-path (F4) imports a plugin directly from its
 // real package root on the FIRST import of a name in this process — skipping
 // the `fs.cp` staging copy — when:
-//   1. ELIZA_PLUGIN_COLD_IMPORT_IN_PLACE is enabled, AND
-//   2. it is the first import of this package name in the process, AND
-//   3. a built `dist/` directory exists.
-// Otherwise it falls back to staging (byte-identical to prior behavior).
+//   1. it is the first import of this package name in the process, AND
+//   2. a built `dist/` directory exists.
+// Otherwise it falls back to staging (busts the ESM module graph on re-import).
+//
+// This is a single, unconditional behavior — local dev and the container
+// resolve plugins identically; there is no env flag.
 //
 // Staging lands under `<ELIZA_STATE_DIR>/plugins/.runtime-imports/<sanitized
 // package name>/`. We point ELIZA_STATE_DIR at a controlled temp dir so we can
@@ -30,9 +32,7 @@ beforeEach(async () => {
   stateDir = path.join(tmpDir, "state");
   await fsp.mkdir(stateDir, { recursive: true });
   rememberEnv("ELIZA_STATE_DIR");
-  rememberEnv("ELIZA_PLUGIN_COLD_IMPORT_IN_PLACE");
   process.env.ELIZA_STATE_DIR = stateDir;
-  delete process.env.ELIZA_PLUGIN_COLD_IMPORT_IN_PLACE;
 });
 
 afterEach(async () => {
@@ -108,8 +108,7 @@ async function createFixture(
 }
 
 describe("importPluginModuleFromPath cold-import-in-place fast-path (F4)", () => {
-  it("cold fast-path: flag on + dist + first import loads in place WITHOUT staging", async () => {
-    process.env.ELIZA_PLUGIN_COLD_IMPORT_IN_PLACE = "1";
+  it("cold fast-path: dist + first import loads in place WITHOUT staging", async () => {
     const name = "cold-fastpath-fixture-a";
     const installPath = await createFixture(name, "cold-a", true);
 
@@ -122,8 +121,7 @@ describe("importPluginModuleFromPath cold-import-in-place fast-path (F4)", () =>
     expect(await stagingHappened(name)).toBe(false);
   });
 
-  it("re-import stages: flag on + same name imported twice → 2nd import goes through staging", async () => {
-    process.env.ELIZA_PLUGIN_COLD_IMPORT_IN_PLACE = "1";
+  it("re-import stages: same name imported twice → 2nd import goes through staging", async () => {
     const name = "cold-reimport-fixture-b";
     const installPath = await createFixture(name, "reimport-b", true);
 
@@ -142,21 +140,7 @@ describe("importPluginModuleFromPath cold-import-in-place fast-path (F4)", () =>
     expect(await stagingHappened(name)).toBe(true);
   });
 
-  it("flag off = unchanged: first import still stages (current behavior preserved)", async () => {
-    delete process.env.ELIZA_PLUGIN_COLD_IMPORT_IN_PLACE;
-    const name = "cold-flagoff-fixture-c";
-    const installPath = await createFixture(name, "flagoff-c", true);
-
-    const mod = (await importPluginModuleFromPath(installPath, name)) as {
-      marker: string;
-    };
-
-    expect(mod.marker).toBe("flagoff-c");
-    expect(await stagingHappened(name)).toBe(true);
-  });
-
-  it("no dist → stages: flag on but package has no dist/ → falls back to staging", async () => {
-    process.env.ELIZA_PLUGIN_COLD_IMPORT_IN_PLACE = "1";
+  it("no dist → stages: package has no dist/ → falls back to staging", async () => {
     const name = "cold-nodist-fixture-d";
     const installPath = await createFixture(name, "nodist-d", false);
 
@@ -169,7 +153,6 @@ describe("importPluginModuleFromPath cold-import-in-place fast-path (F4)", () =>
   });
 
   it("per-name keying: a cold import of one name does NOT make a different name stage", async () => {
-    process.env.ELIZA_PLUGIN_COLD_IMPORT_IN_PLACE = "1";
     const nameX = "cold-keying-fixture-e1";
     const nameY = "cold-keying-fixture-e2";
     const installX = await createFixture(nameX, "keying-e1", true);

@@ -17,13 +17,15 @@
  *
  * Trajectory events are emitted as structured `logger.info` lines with a
  * `evt: "computeruse.agent.step"` payload, which the trajectory-logger app
- * picks up via standard log capture. We don't take a hard dependency on the
- * trajectory-logger plugin from here.
+ * picks up via standard log capture. When `streamProgress` is enabled, the
+ * same step boundary also emits a `HandlerCallback` status to the origin chat.
+ * We don't take a hard dependency on the trajectory-logger plugin from here.
  */
 
 import {
   type Action,
   type ActionResult,
+  type Content,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -50,18 +52,47 @@ import { listDisplays } from "../platform/displays.js";
 import type { Scene } from "../scene/scene-types.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 import { resolveActionParams } from "./helpers.js";
+import {
+  buildStepProgressContent,
+  isStreamProgressEnabled,
+} from "./progress.js";
 
 const DEFAULT_MAX_STEPS = 5;
 
 export interface ComputerUseAgentParams {
   goal: string;
   maxSteps?: number;
+  /**
+   * When true, emit a chat message after each dispatched step so a long-running
+   * goal does not leave the origin chat silent for minutes (#8912). The action
+   * handler wires this to the runtime HandlerCallback; the loop itself calls
+   * per-step progress hooks.
+   */
+  streamProgress?: boolean;
+}
+
+/** One per-step progress event, surfaced when `streamProgress` is set. */
+export interface ComputerUseAgentStepProgress {
+  goal: string;
+  step: number;
+  maxSteps: number;
+  sceneSummary: string;
+  actionKind: string;
+  rationale: string;
+  rois: number;
+  result: { success: boolean; error?: string };
 }
 
 interface AgentDeps {
   brain?: Brain;
   computerInterface?: ComputerInterface;
   captureAll?: () => Promise<DisplayCapture[]>;
+  /** Called after each dispatched step when `params.streamProgress` is set. */
+  onStepProgress?: (
+    progress: ComputerUseAgentStepProgress,
+  ) => Promise<void> | void;
+  /** Called with compact Content after each dispatched step when enabled. */
+  onCompactStepProgress?: (content: Content) => Promise<void> | void;
 }
 
 export interface ComputerUseAgentReport {
@@ -77,6 +108,16 @@ export interface ComputerUseAgentReport {
   finished: boolean;
   reason: "finish" | "max_steps" | "error";
   error?: string;
+}
+
+export function formatComputerUseAgentProgress(
+  progress: ComputerUseAgentStepProgress,
+): string {
+  const rationale = truncateForStatus(progress.rationale || "no rationale");
+  const failure = progress.result.success
+    ? ""
+    : ` (failed: ${truncateForStatus(progress.result.error ?? "unknown")})`;
+  return `Step ${progress.step}/${progress.maxSteps}: ${progress.actionKind} - ${rationale}${failure}`;
 }
 
 function getService(runtime: IAgentRuntime): ComputerUseService | null {
@@ -156,7 +197,7 @@ export async function runComputerUseAgentLoop(
       },
       `[computeruse/agent] step ${step}: ${proposed.proposed.kind}`,
     );
-    report.steps.push({
+    const reportStep = {
       step,
       sceneSummary: proposed.scene_summary,
       actionKind: proposed.proposed.kind,
@@ -166,7 +207,17 @@ export async function runComputerUseAgentLoop(
         success: dispatchResult.success,
         error: dispatchResult.error?.message,
       },
-    });
+    };
+    report.steps.push(reportStep);
+    if (isStreamProgressEnabled(params.streamProgress)) {
+      const progress: ComputerUseAgentStepProgress = {
+        goal,
+        maxSteps,
+        ...reportStep,
+      };
+      await emitStepProgress(deps.onStepProgress, progress);
+      await emitCompactStepProgress(deps.onCompactStepProgress, progress);
+    }
     if (!dispatchResult.success) {
       report.reason = "error";
       report.error = dispatchResult.error?.message;
@@ -181,6 +232,59 @@ export async function runComputerUseAgentLoop(
     }
   }
   return report;
+}
+
+async function emitStepProgress(
+  onStepProgress: AgentDeps["onStepProgress"],
+  progress: ComputerUseAgentStepProgress,
+): Promise<void> {
+  if (!onStepProgress) {
+    return;
+  }
+  try {
+    await onStepProgress(progress);
+  } catch (err) {
+    logger.warn(
+      {
+        evt: "computeruse.agent.progress_callback_failed",
+        step: progress.step,
+        goal: progress.goal,
+        error: errorMessage(err),
+      },
+      "[computeruse/agent] progress callback failed",
+    );
+  }
+}
+
+async function emitCompactStepProgress(
+  onCompactStepProgress: AgentDeps["onCompactStepProgress"],
+  progress: ComputerUseAgentStepProgress,
+): Promise<void> {
+  if (!onCompactStepProgress) {
+    return;
+  }
+  try {
+    await onCompactStepProgress(
+      buildStepProgressContent({
+        actionName: "COMPUTER_USE_AGENT",
+        step: progress.step,
+        kind: progress.actionKind,
+        rationale: progress.rationale,
+        success: progress.result.success,
+        error: progress.result.error,
+      }),
+    );
+  } catch (err) {
+    logger.warn(
+      {
+        evt: "computeruse.agent.compact_progress_callback_failed",
+        step: progress.step,
+        goal: progress.goal,
+        error: errorMessage(err),
+      },
+      "[computeruse/agent] compact progress callback failed",
+    );
+  }
 }
 
 async function safeCapture(
@@ -205,6 +309,14 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function truncateForStatus(value: string, maxLength = 180): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxLength) {
+    return compact;
+  }
+  return `${compact.slice(0, maxLength - 3)}...`;
+}
+
 export const computerUseAgentAction: Action = {
   name: "COMPUTER_USE_AGENT",
   contexts: ["automation", "admin"],
@@ -212,9 +324,9 @@ export const computerUseAgentAction: Action = {
   roleGate: { minRole: "OWNER" },
   similes: ["AUTOMATE_SCREEN", "RUN_COMPUTER_AGENT", "SCREEN_AGENT"],
   description:
-    "computer_use_agent: autonomous desktop loop for a goal until done or maxSteps. Uses WS6 scene-builder, WS7 Brain+Actor cascade, WS5 multi-monitor coords. Prefer COMPUTER_USE for named single steps; use COMPUTER_USE_AGENT for goal-level screen tasks.",
+    "computer_use_agent: autonomous desktop loop for a goal until done or maxSteps. Uses WS6 scene-builder, WS7 Brain+Actor cascade, WS5 multi-monitor coords. Prefer COMPUTER_USE for named single steps; use COMPUTER_USE_AGENT for goal-level screen tasks. Set streamProgress=true to send per-step progress updates to the originating chat.",
   descriptionCompressed:
-    "Autonomous desktop loop: scene → Brain → cascade → click. Pass {goal, maxSteps?}.",
+    "Autonomous desktop loop: scene -> Brain -> cascade -> click. Pass {goal, maxSteps?, streamProgress?}.",
   routingHint:
     "free-form 'do X on screen' goal -> COMPUTER_USE_AGENT; single explicit step -> COMPUTER_USE",
   parameters: [
@@ -234,6 +346,13 @@ export const computerUseAgentAction: Action = {
         maximum: 20,
         default: DEFAULT_MAX_STEPS,
       },
+    },
+    {
+      name: "streamProgress",
+      description:
+        "When true, emit a chat callback after each dispatched step with compact progress and the step kind/rationale.",
+      required: false,
+      schema: { type: "boolean", default: false },
     },
   ],
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -263,7 +382,13 @@ export const computerUseAgentAction: Action = {
         error: "ComputerUseService not available",
       };
     }
-    const report = await runComputerUseAgentLoop(runtime, params, service);
+    const report = await runComputerUseAgentLoop(runtime, params, service, {
+      onCompactStepProgress: callback
+        ? async (content) => {
+            await callback(content, "COMPUTER_USE_AGENT");
+          }
+        : undefined,
+    });
     const text =
       report.reason === "finish"
         ? `Computer-use agent finished after ${report.steps.length} step(s): goal="${report.goal}"`

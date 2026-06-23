@@ -50,7 +50,7 @@ log = logging.getLogger("deprecate_legacy_qwen3_repos")
 
 ORG: Final[str] = "elizaos"
 
-DEPRECATED_BUNDLE_TIERS: Final[tuple[str, ...]] = ("0_6b", "1_7b", "4b")
+DEPRECATED_BUNDLE_TIERS: Final[tuple[str, ...]] = ("0_6b", "0_8b", "1_7b")
 DEPRECATED_COMPANION_SUFFIXES: Final[tuple[str, ...]] = ("optimized", "drafter", "sft")
 
 # Cards for the model-bundle repos (manifest + GGUF parent repo for the tier).
@@ -68,15 +68,15 @@ tags:
 **This tier is deprecated.** It shipped against the Qwen3 base model
 (`Qwen/Qwen3-{legacy_size}`), which does not work with the eliza-1 mtp
 spec-decode path — the mtp kernels are validated against the Qwen3.5
-architecture and 248320 tokenizer; a Qwen3 base has the wrong vocab
+architecture and 262144 tokenizer; a Qwen3 base has the wrong vocab
 (151936) and the wrong attention shape for the fused QJL / PolarQuant /
 TurboQuant paths.
 
 Superseded by the active Eliza-1 line:
 
-- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/0_8b/` (Qwen3.5-0.8B-Base — new smallest tier)
-- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/2b/` (Qwen3.5-2B-Base — new mid local tier)
-- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/4b/` (Qwen3.5-4B-Base — local/workstation tier; same tier id, new backbone)
+- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/0_8b/` (gemma-4-E2B-Base — new smallest tier)
+- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/2b/` (gemma-4-E2B-Base — new mid local tier)
+- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/4b/` (gemma-4-E4B-Base — local/workstation tier; same tier id, new backbone)
 
 Existing downloads still work; no new releases will land here.
 

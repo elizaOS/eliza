@@ -1,41 +1,59 @@
-"""Qwen3.5/Qwen3.6 model registry for the eliza training pipeline.
+"""Gemma 4 model registry for the eliza training pipeline.
 
-Single source of truth for which Qwen variant trains where, with what
+Single source of truth for which Gemma 4 variant trains where, with what
 optimizer + quantization combination, and what its memory budget looks like.
 
-The eliza-1 line trains against Qwen3.5 for 0.8B/2B/4B/9B and Qwen3.6 for
-the active 27B-class releases.
-The legacy Qwen3 base models (``Qwen/Qwen3-0.6B`` / ``Qwen/Qwen3-1.7B`` /
-``Qwen/Qwen3-4B``) were dropped on 2026-05-12 per operator directive — the
-Qwen3 dense bases do not work with the eliza-1 mtp spec-decode path
-(the mtp kernels are validated against the Qwen3.5 architecture +
-248320 tokenizer; a Qwen3 base has the wrong vocab and the wrong attention
-shape for the fused QJL/Polar paths). Historical per-tier repos remain public
-for existing downloads, but their model cards are marked DEPRECATED and no new
-SFT runs target them. New raw and fine-tuned bundles publish into the single
-``elizaos/eliza-1`` repo under ``bundles/<tier>/``.
+The eliza-1 line trains against the Gemma 4 dense bases for every active tier
+(2B/4B/9B/27B). The prior Qwen3.5/3.6 backbones were dropped — eliza-1 v1 is
+the un-fine-tuned Gemma 4 base.
+
+Gemma 4 architecture (relevant to memory + KV budgets):
+
+  - DENSE transformer. No Gated-DeltaNet / SSM / linear attention, and no
+    3:1 hybrid linear:full ratio — every layer is a real attention layer.
+  - Attention alternates local sliding-window (SWA, window 512/1024) with
+    periodic global full-attention (pattern: 4× SWA then 1× global). Most
+    layers are windowed SWA, so their KV is bounded by the window, not the
+    full context.
+  - MQA: a single KV head (`n_head_kv=1`) shared across query heads.
+  - Dual RoPE + dual head dims: 512 for global layers, 256 for SWA layers.
+  - Shared KV cache: a block of upper layers reuse a lower layer's KV
+    (E2B shares 20 layers), so only ~15 of 35 layers carry their own KV.
+  - Per-Layer Embeddings (PLE): a per-layer embedding table (dim 256 on E2B)
+    that is pinned to CPU on GPU backends.
+  - Tokenizer: Gemma 4 SentencePiece-BPE, vocab_size=262144,
+    `tokenizer.ggml.model = "gemma4"`. Chat turns use
+    ``<start_of_turn>role\\n … <end_of_turn>`` with ``<bos>`` / ``<eos>``.
 
 The active entries map onto the size-first ``eliza-1-*`` tier ids used
 by the runtime model catalog (``packages/shared/src/local-inference/catalog.ts``
-— ``ELIZA_1_TIER_IDS`` / ``MODEL_CATALOG``):
+— ``ELIZA_1_TIER_IDS`` / ``MODEL_CATALOG``). The registry keys are the Gemma 4
+base names; the user-facing ``eliza_short_name`` stays size-first:
 
-  - ``qwen3.5-0.8b`` → ``Qwen/Qwen3.5-0.8B-Base`` → ``eliza-1-0_8b``  (local tier; new "smallest" tier; full-param SFT on one consumer GPU; trains from the Base pretrain checkpoint, not the instruct release)
-  - ``qwen3.5-2b``   → ``Qwen/Qwen3.5-2B-Base``   → ``eliza-1-2b``    (mid local tier; full-param SFT on a 16-24 GB GPU)
-  - ``qwen3.5-4b``   → ``Qwen/Qwen3.5-4B-Base``   → ``eliza-1-4b``    (local/workstation tier; full-param SFT on a 24-28 GB GPU)
-  - ``qwen3.5-9b``   → ``Qwen/Qwen3.5-9B``        → ``eliza-1-9b``    (workstation tier; 80 GB-class GPU)
-  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2)
+  - ``gemma4-e2b`` → ``google/gemma-4-E2B`` → ``eliza-1-2b``   (mobile/entry; E2B ~2.3B effective, 4.65B with PLE+embeddings; 128k ctx)
+  - ``gemma4-e4b`` → ``google/gemma-4-E4B`` → ``eliza-1-4b``   (local; E4B ~4.5B effective; 128k ctx)
+  - ``gemma4-12b`` → ``google/gemma-4-12B`` → ``eliza-1-9b``   (workstation; 12B unified dense, encoder-free; 256k ctx)
+  - ``gemma4-31b`` → ``google/gemma-4-31B`` → ``eliza-1-27b``  (cloud; 31B dense; 256k ctx; gpu-h200x2)
+
+The 0.8B tier was retired — it no longer exists in the runtime catalog and
+has no Gemma 4 base.
 
 All active bases are published on the Hub. The 9b/27b tiers need workstation /
-cloud-class GPUs (or FSDP). Every Qwen3.5/Qwen3.6 target's MTP
-speculative-decode drafter uses the Qwen3.5 tokenizer (vocab 248320). The
-small 0_8b/2b drafters are compact 0.1B/0.3B configs distilled from their
-targets; larger tiers use ``Qwen/Qwen3.5-0.8B-Base``. See
-``MTP_DRAFTER_BASE`` below and ``scripts/distill_mtp_drafter.py``.
+cloud-class GPUs (or FSDP). MTP speculative decode now uses Gemma 4's official
+*separate* drafter models (a distinct GGUF), not a same-file NextN head. See
+``MTP_DRAFTER_BASE`` below.
 
 The numbers below are observed-or-projected memory budgets for full-parameter
 SFT with APOLLO at the listed sequence length. They are *budgets* — the
 actual training script logs real memory through ``instrumentation.py`` and
 will fail loud if reality exceeds the budget by more than 10%.
+
+The ``infer_mem_gb_*`` inference budgets here are APPROXIMATE for Gemma 4:
+the simple per-token KV formula (heads × head_dim × kv_layers × ctx) assumes
+every KV-bearing layer holds the full context at the global head_dim (512).
+On Gemma most KV-bearing layers are windowed SWA (bounded, head_dim 256), so
+the simple formula OVERESTIMATES KV memory. These numbers are marked
+approximate-pending a Gemma-aware (windowed-SWA + dual-head-dim) KV model.
 """
 
 from __future__ import annotations
@@ -60,8 +78,8 @@ class ModelEntry:
     # ─── training budgets ───
     seq_len: int
     """Default training sequence length. Bounded by the fp32 logits transient
-    (B*S*V*4 bytes; Qwen vocab=248k makes this dominant). With Liger kernel
-    fused chunked CE we can roughly 4× this on the same VRAM budget.
+    (B*S*V*4 bytes; Gemma 4 vocab=262144 makes this dominant). With Liger
+    kernel fused chunked CE we can roughly 4× this on the same VRAM budget.
 
     This is a *default* — `scripts/train_local.py` and `scripts/run_pipeline.py`
     both accept ``--max-seq-len <int>`` to override per run. CLI flags always
@@ -70,7 +88,7 @@ class ModelEntry:
     is intentionally conservative (64k) so the registry's memory budget
     leaves real headroom on a 2× H200 / 2× B200 cluster; bump it via
     ``--max-seq-len`` for long-context runs when you've validated capacity
-    with ``scripts/training/memory_calc.py --shape qwen3.6-27b``."""
+    with ``scripts/training/memory_calc.py --shape gemma4-31b``."""
 
     optimizer: str
     """One of: apollo, apollo_mini."""
@@ -116,8 +134,8 @@ class ModelEntry:
     # ─── inference budgets (PolarQuant weights + TurboQuant 4-bit KV) ───
     infer_max_in: int = 131072
     """Maximum *input* prompt token budget for inference. 128k is our
-    standard target across the local/workstation/cloud tiers; the model's
-    native 256k context allows pushing higher when the KV-cache budget
+    standard target on the entry/local tiers; the 9b/27b Gemma 4 bases run a
+    256k native context, so those tiers push higher when the KV-cache budget
     permits."""
 
     infer_max_out: int = 16384
@@ -125,15 +143,23 @@ class ModelEntry:
     long agent traces + reasoning chains."""
 
     infer_kv_layers: int = 0
-    """Number of full-attention (KV-bearing) layers. The rest are
-    Gated-DeltaNet linear-attention layers with constant SSM state. Set
-    automatically below per the published 3:1 ratio for Qwen3.5/3.6."""
+    """Number of KV-bearing layers — global full-attention layers plus the
+    SWA layers that carry their own (non-shared) KV. Gemma 4 shares a block
+    of upper layers' KV with a lower layer, so this is well below the total
+    layer count (E2B: ~15 of 35). NOTE: this simple count treats every
+    KV-bearing layer as full-context at the global head_dim, but most are
+    windowed SWA, so the derived memory OVERESTIMATES — see the module
+    docstring. Verify per-tier against config.json."""
 
-    infer_kv_heads: int = 4
-    """KV head count (GQA) for full-attention layers."""
+    infer_kv_heads: int = 1
+    """KV head count. Gemma 4 uses MQA — a single KV head shared across the
+    query heads."""
 
-    infer_kv_head_dim: int = 128
-    """Head dimension for the KV cache."""
+    infer_kv_head_dim: int = 512
+    """Head dimension for the KV cache. Gemma 4 has DUAL head dims: 512 on the
+    global full-attention layers, 256 on the windowed SWA layers. We use the
+    global 512 here, which inflates the SWA contribution — another reason the
+    derived KV memory is approximate-pending a Gemma-aware KV model."""
 
     infer_mem_gb_bf16_fullkv: float = 0.0
     """Total inference VRAM (weights + bf16 KV cache) at infer_max_in +
@@ -150,6 +176,11 @@ class ModelEntry:
     small on commodity GPUs. Do not swap this registry to AdamW/Muon-style
     training recipes; the release flow expects APOLLO plus GGUF q4/q6/q8
     outputs and the Eliza-specific runtime optimization sidecars.
+
+    TurboQuant weight-quant + the GGUF flavors apply to Gemma 4. The KV
+    compressors (QJL / PolarQuant) are LOW ROI on Gemma — its KV is already
+    minimal (MQA + windowed SWA + shared KV) — so they are not part of the
+    required set for these entries.
     """
 
     unverified_base: bool = False
@@ -202,6 +233,12 @@ def _compute_inference_mem(
     Full quant stack = PolarQuant 4-bit weights + QJL 1-bit K (realized
         7.53× from per-token norm overhead, not the marketing 16×) +
         TurboQuant 4-bit V.
+
+    On Gemma 4 the KV compressors are low ROI (already-minimal MQA + windowed
+    SWA + shared KV), and this formula treats every KV-bearing layer as
+    full-context at the global head_dim, so both columns OVERESTIMATE Gemma
+    KV memory. Treat the resulting ``infer_mem_gb_*`` fields as approximate
+    until a Gemma-aware (windowed-SWA + dual-head-dim) KV model lands.
     """
     weight_bytes_bf16 = params_billion * 1e9 * 2.0
     weight_bytes_q4 = params_billion * 1e9 * 0.5
@@ -233,113 +270,53 @@ def _entry(**kw) -> ModelEntry:
 
 
 # Layer counts / head shapes come straight from the HF `config.json` of each
-# base model. Active entries are Qwen3.5/Qwen3.6 hybrid linear-attn VLMs
-# (`model_type: qwen3_5`/`qwen3_6`, `full_attention_interval=4` → 3:1
-# linear:full), so the KV-bearing layer count is total_layers // 4.
-#   total layers   q_heads  kv_heads  head_dim   vocab    (HF base id)
-#   24 (6 full)    8         2         256        248320   Qwen/Qwen3.5-0.8B → eliza-1-0_8b   (qwen3_5, hidden 1024, max_pos 262144)
-#   24 (6 full)    8         2         256        248320   Qwen/Qwen3.5-2B   → eliza-1-2b     (qwen3_5, hidden 2048, max_pos 262144)
+# base model. Active entries are Gemma 4 DENSE transformers with alternating
+# local SWA + periodic global full-attention (pattern: 4× SWA then 1× global),
+# MQA (n_head_kv=1), dual head dims (512 global / 256 SWA), and a shared-KV
+# block. The KV-bearing layer count is (global layers) + (non-shared SWA
+# layers), well below the total layer count.
+#   total layers   q_heads  kv_heads  head_dim(global/swa)  vocab    (HF base id)
+#   35 (7 global)  8        1 (MQA)   512 / 256             262144   google/gemma-4-E2B → eliza-1-2b  (sliding_window=512, shared_kv_layers=20 → ~15 KV-bearing)
 #
-# MTP speculative-decode drafter base, per eliza tier id. The drafter
-# must share the target's tokenizer/vocab: every active Qwen3.5/Qwen3.6 target
-# drafts from the Qwen3.5 tokenizer family. The 0_8b and 2b targets now use
-# compact 0.1B / 0.3B Qwen3.5-arch student configs distilled directly from
-# their target checkpoints; larger tiers keep the 0.8B pretrain base. All
-# active tiers ship a MTP companion so the app can exercise the same
-# optimized runtime path end to end. Mirrors `DEFAULT_STUDENT_BASE` in
-# `scripts/distill_mtp_drafter.py` — keep the two in sync.
+# MTP speculative-decode drafter, per eliza tier id. Gemma 4 ships OFFICIAL
+# SEPARATE drafter models (a distinct GGUF), not a same-file NextN head, so
+# each target drafts from its own Gemma 4 drafter. Mirrors `DEFAULT_STUDENT_BASE`
+# in `scripts/distill_mtp_drafter.py` — keep the two in sync.
 MTP_DRAFTER_BASE: dict[str, str] = {
-    # Qwen3.5 targets — small-tier drafters use compact configs; larger
-    # tiers keep Qwen3.5-0.8B-Base as their distillation base.
-    "eliza-1-0_8b": "Qwen/Qwen3.5-0.8B-Base",
-    "eliza-1-2b": "Qwen/Qwen3.5-0.8B-Base",
-    "eliza-1-4b": "Qwen/Qwen3.5-0.8B-Base",
-    "eliza-1-9b": "Qwen/Qwen3.5-0.8B-Base",
-    "eliza-1-27b": "Qwen/Qwen3.5-0.8B-Base",
+    # Gemma 4 official separate drafters (distinct GGUF per target tier).
+    "eliza-1-2b": "google/gemma-4-E2B-mtp",
+    "eliza-1-4b": "google/gemma-4-E4B-mtp",
+    "eliza-1-9b": "google/gemma-4-12B-mtp",
+    "eliza-1-27b": "google/gemma-4-31B-mtp",
 }
 
 REGISTRY: dict[str, ModelEntry] = {
     # ─────────────────────────── REAL ENTRIES ───────────────────────────
-    # Buildable Qwen3.5 dense base models, mapped onto the size-first
+    # Buildable Gemma 4 dense base models, mapped onto the size-first
     # eliza-1 tier ids in packages/shared/src/local-inference/catalog.ts.
-    # Full-parameter SFT with APOLLO + Liger; the small-tier budgets target a
-    # single consumer GPU (0.8B/2B: 12-16 GB; 4B: 24-28 GB on an H100-class
-    # slice).
+    # Full-parameter SFT with APOLLO + Liger; the entry/local-tier budgets
+    # target a single consumer GPU, the 9b/27b tiers use workstation/cloud
+    # GPUs (or FSDP).
     #
-    # The Qwen3.5 bases all carry the 248320 tokenizer; the HF
+    # All Gemma 4 bases carry the 262144 SentencePiece-BPE tokenizer; the HF
     # causal-LM loss upcasts logits to fp32 (B*S*V*4 bytes), so Liger fused
-    # chunked CE is what keeps the listed seq_len inside the budget (the
-    # 248k vocab makes this transient ~1.6× heavier than the older 152k
-    # Qwen3 vocab; the seq_len defaults reflect that). Inference budgets
-    # here are modest local-tier windows; the runtime catalog ships a
-    # 128k release floor for these tiers and applies its own KV quantization.
+    # chunked CE is what keeps the listed seq_len inside the budget (the 262k
+    # vocab makes this transient the dominant long-seq term). Inference
+    # budgets here are approximate — Gemma's windowed-SWA + shared-KV + MQA
+    # KV is much smaller than the simple per-token formula implies (see the
+    # module docstring); the runtime catalog applies its own KV handling.
     #
-    # The legacy Qwen3 bases (Qwen/Qwen3-0.6B / Qwen/Qwen3-1.7B /
-    # Qwen/Qwen3-4B) were dropped on 2026-05-12 — those models do not work
-    # with the eliza-1 mtp spec-decode path (the mtp kernels are
-    # validated against the Qwen3.5 architecture). The HuggingFace tier
-    # per-tier repos remain public for existing downloads; the cards are marked
-    # DEPRECATED and are not current release targets.
+    # The 0.8B tier was retired (no Gemma 4 base, dropped from the catalog).
     #
-    # New "smallest" tier on the Qwen3.5 backbone. Shares the 248k Qwen3.5
-    # tokenizer with the 2b/4b/9b/27b targets — which is also why it is the
-    # MTP drafter base for those tiers (see MTP_DRAFTER_BASE above).
-    # Hybrid linear-attn VLM (`qwen3_5`, `full_attention_interval=4` → 6 of
-    # 24 layers are full-attention / KV-bearing). Geometry from
-    # Qwen/Qwen3.5-0.8B `config.json`. SFT trains from the *Base* pretrain
-    # checkpoint (`Qwen/Qwen3.5-0.8B-Base`), not the instruct release —
-    # same architecture/tokenizer, no chat-SFT pre-baked in.
-    "qwen3.5-0.8b": _entry(
-        hf_id="Qwen/Qwen3.5-0.8B-Base",
-        short_name="qwen3.5-0.8b",
-        eliza_short_name="eliza-1-0_8b",
-        eliza_repo_id="elizaos/eliza-1",
-        abliteration_repo_id="",
-        params_billion=0.8,
-        tier=Tier.LOCAL,
-        seq_len=4096,
-        optimizer="apollo_mini",
-        optimizer_rank=1,
-        micro_batch=1,
-        grad_accum=8,
-        train_mem_gb_budget=12.0,
-        train_dtype="bf16",
-        infer_max_in=28672,
-        infer_max_out=4096,
-        infer_kv_layers=6,
-        infer_kv_heads=2,
-        infer_kv_head_dim=256,
-        quantization_after=(
-            "polarquant",
-            "turboquant",
-            "qjl",
-            "gguf-q3_k_m",
-            "gguf-q4_k_m",
-            "gguf-q5_k_m",
-            "gguf-q6_k",
-            "gguf-q8_0",
-        ),
-        notes="New smallest published eliza-1 tier, on the Qwen3.5-0.8B-Base "
-        "backbone. "
-        "Full-param APOLLO SFT fits a 16 GB consumer GPU; runs the "
-        "whole train→quant→bench stack end-to-end in well under an "
-        "hour. Runtime catalog id: eliza-1-0_8b (128k release floor). Shares "
-        "the 248k Qwen3.5 tokenizer with the 2b/9b/27b targets — also "
-        "the MTP tokenizer with the compact 0.1B drafter config.",
-    ),
-    # ──────────────────── LARGER-TIER BASE CHECKPOINTS ────────────────────
-    # The eliza-1 line's mid/workstation/cloud tiers train against the
-    # next-gen Qwen3.5/3.6 dense checkpoints. All three are published on the
-    # Hub (verified via HfApi().model_info — millions of downloads each).
-    # Referenced by scripts (train_vast.sh, train_nebius.sh, push_*), docs,
-    # and tests.
-    "qwen3.5-2b": _entry(
-        hf_id="Qwen/Qwen3.5-2B-Base",
-        short_name="qwen3.5-2b",
+    # params_billion uses EFFECTIVE sizes for budget realism (E2B ~2.3B,
+    # E4B ~4.5B); E2B's with-PLE/embeddings footprint is ~4.65B (noted below).
+    "gemma4-e2b": _entry(
+        hf_id="google/gemma-4-E2B",
+        short_name="gemma4-e2b",
         eliza_short_name="eliza-1-2b",
         eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
-        params_billion=2.27,
+        params_billion=2.3,
         tier=Tier.LOCAL,
         seq_len=8192,
         optimizer="apollo_mini",
@@ -350,29 +327,32 @@ REGISTRY: dict[str, ModelEntry] = {
         train_dtype="bf16",
         infer_max_in=131072,
         infer_max_out=16384,
-        infer_kv_layers=6,
-        infer_kv_heads=2,
-        infer_kv_head_dim=256,
+        # ~15 KV-bearing of 35 layers (7 global + non-shared SWA; 20 shared).
+        # Verify against google/gemma-4-E2B config.json.
+        infer_kv_layers=15,
+        infer_kv_heads=1,
+        infer_kv_head_dim=512,
         quantization_after=(
-            "polarquant",
             "turboquant",
-            "qjl",
             "gguf-q3_k_m",
             "gguf-q4_k_m",
             "gguf-q5_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
-        notes="Mid local tier (eliza-1-2b). Trains from Qwen/Qwen3.5-2B-Base "
-        "(pretrain checkpoint, not the instruct release).",
+        notes="Mobile/entry tier (eliza-1-2b) on google/gemma-4-E2B (E2B; "
+        "~2.3B effective, ~4.65B with Per-Layer-Embeddings + token "
+        "embeddings). Dense transformer, alternating SWA + global attention, "
+        "MQA, 128k ctx. KV compressors (QJL/PolarQuant) are low-ROI on "
+        "Gemma's already-minimal KV.",
     ),
-    "qwen3.5-4b": _entry(
-        hf_id="Qwen/Qwen3.5-4B-Base",
-        short_name="qwen3.5-4b",
+    "gemma4-e4b": _entry(
+        hf_id="google/gemma-4-E4B",
+        short_name="gemma4-e4b",
         eliza_short_name="eliza-1-4b",
         eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
-        params_billion=4.0,
+        params_billion=4.5,
         tier=Tier.LOCAL,
         seq_len=8192,
         optimizer="apollo_mini",
@@ -383,31 +363,29 @@ REGISTRY: dict[str, ModelEntry] = {
         train_dtype="bf16",
         infer_max_in=131072,
         infer_max_out=16384,
-        infer_kv_layers=7,
-        infer_kv_heads=2,
-        infer_kv_head_dim=256,
+        # Proportionate to E2B's ~15/35; verify against gemma-4-E4B config.json.
+        infer_kv_layers=18,
+        infer_kv_heads=1,
+        infer_kv_head_dim=512,
         quantization_after=(
-            "polarquant",
             "turboquant",
-            "qjl",
             "gguf-q3_k_m",
             "gguf-q4_k_m",
             "gguf-q5_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
-        notes="Local/workstation tier (eliza-1-4b) on the Qwen3.5-4B-Base "
-        "backbone. Full-param APOLLO SFT fits a single H200 easily. "
-        "Replaces the legacy qwen3-4b for the Qwen3.5 fused-model line "
-        "(shares the 248k tokenizer + mtp drafter base).",
+        notes="Local tier (eliza-1-4b) on google/gemma-4-E4B (E4B; ~4.5B "
+        "effective). Full-param APOLLO SFT fits a single H200 easily. Dense "
+        "Gemma 4 (SWA + global, MQA, PLE), 128k ctx.",
     ),
-    "qwen3.5-9b": _entry(
-        hf_id="Qwen/Qwen3.5-9B",
-        short_name="qwen3.5-9b",
+    "gemma4-12b": _entry(
+        hf_id="google/gemma-4-12B",
+        short_name="gemma4-12b",
         eliza_short_name="eliza-1-9b",
         eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
-        params_billion=9.0,
+        params_billion=12.0,
         tier=Tier.WORKSTATION,
         seq_len=16384,
         optimizer="apollo",
@@ -416,90 +394,80 @@ REGISTRY: dict[str, ModelEntry] = {
         grad_accum=8,
         train_mem_gb_budget=80.0,
         train_dtype="bf16",
-        infer_max_in=131072,
+        infer_max_in=262144,
         infer_max_out=16384,
-        infer_kv_layers=8,
-        infer_kv_heads=4,
-        infer_kv_head_dim=256,
+        # Proportionate KV-bearing count; verify against gemma-4-12B config.json.
+        infer_kv_layers=20,
+        infer_kv_heads=1,
+        infer_kv_head_dim=512,
         quantization_after=(
-            "polarquant",
             "turboquant",
-            "qjl",
             "gguf-q3_k_m",
             "gguf-q4_k_m",
             "gguf-q5_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
-        notes="Workstation/cloud tier. Full-param APOLLO SFT uses Vast/FSDP "
-        "and the 9B Qwen3.5 checkpoint.",
+        notes="Workstation tier (eliza-1-9b) on google/gemma-4-12B (12B "
+        "unified dense, encoder-free; 256k ctx). Full-param APOLLO SFT uses "
+        "Vast/FSDP.",
     ),
-    "qwen3.6-27b": _entry(
-        hf_id="Qwen/Qwen3.6-27B",
-        short_name="qwen3.6-27b",
+    "gemma4-31b": _entry(
+        hf_id="google/gemma-4-31B",
+        short_name="gemma4-31b",
         eliza_short_name="eliza-1-27b",
         eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
-        params_billion=27.0,
+        params_billion=31.0,
         tier=Tier.CLOUD,
         seq_len=65536,
         optimizer="apollo_mini",
         optimizer_rank=512,
         micro_batch=1,
         grad_accum=8,
-        train_mem_gb_budget=190.0,
+        train_mem_gb_budget=210.0,
         train_dtype="bf16",
-        infer_max_in=131072,
+        infer_max_in=262144,
         infer_max_out=16384,
-        infer_kv_layers=16,
-        infer_kv_heads=4,
-        infer_kv_head_dim=256,
+        # Proportionate KV-bearing count; verify against gemma-4-31B config.json.
+        infer_kv_layers=28,
+        infer_kv_heads=1,
+        infer_kv_head_dim=512,
         quantization_after=(
-            "polarquant",
             "turboquant",
-            "qjl",
             "gguf-q3_k_m",
             "gguf-q4_k_m",
             "gguf-q5_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
-        notes="Canonical cloud tier for eliza-1-27b on the Qwen3.6 dense "
-        "27B backbone. Use this for the 27B release family.",
+        notes="Canonical cloud tier for eliza-1-27b on google/gemma-4-31B "
+        "(31B dense; 256k ctx). Use this for the 27B release family.",
         extra={"vast_gpu_target": "h200-2x", "fsdp_world_size": "2"},
     ),
 }
 
 
 ELIZA_1_27B_VARIANT_ALIASES: dict[str, str] = {
-    "27b": "qwen3.6-27b",
+    "27b": "gemma4-31b",
 }
 
-QWEN36_LOWER_TIER_FALLBACK_ALIASES: dict[str, str] = {
-    # No lower-tier Qwen3.6 checkpoints are release-supported for eliza-1.
-    # Resolve these common operator spellings to the Qwen3.5 bases rather
-    # than letting ad hoc scripts invent unsupported registry keys.
-    "qwen3.6-0.8b": "qwen3.5-0.8b",
-    "qwen3.6-0.8b-base": "qwen3.5-0.8b",
-    "qwen-qwen3.6-0.8b": "qwen3.5-0.8b",
-    "qwen-qwen3.6-0.8b-base": "qwen3.5-0.8b",
-    "qwen/qwen3.6-0.8b": "qwen3.5-0.8b",
-    "qwen/qwen3.6-0.8b-base": "qwen3.5-0.8b",
-    "qwen3.6-2b": "qwen3.5-2b",
-    "qwen3.6-2b-base": "qwen3.5-2b",
-    "qwen-qwen3.6-2b": "qwen3.5-2b",
-    "qwen-qwen3.6-2b-base": "qwen3.5-2b",
-    "qwen/qwen3.6-2b": "qwen3.5-2b",
-    "qwen/qwen3.6-2b-base": "qwen3.5-2b",
-    "qwen3.6-4b": "qwen3.5-4b",
-    "qwen3.6-4b-base": "qwen3.5-4b",
-    "qwen-qwen3.6-4b": "qwen3.5-4b",
-    "qwen-qwen3.6-4b-base": "qwen3.5-4b",
-    "qwen/qwen3.6-4b": "qwen3.5-4b",
-    "qwen/qwen3.6-4b-base": "qwen3.5-4b",
-    "qwen3.6-9b": "qwen3.5-9b",
-    "qwen-qwen3.6-9b": "qwen3.5-9b",
-    "qwen/qwen3.6-9b": "qwen3.5-9b",
+# Map the size-first eliza-1 tier ids (and common Gemma 4 base spellings) onto
+# the canonical registry keys, so ad hoc scripts can resolve a tier without
+# inventing unsupported keys.
+GEMMA4_TIER_ALIASES: dict[str, str] = {
+    "eliza-1-2b": "gemma4-e2b",
+    "eliza-1-4b": "gemma4-e4b",
+    "eliza-1-9b": "gemma4-12b",
+    "eliza-1-27b": "gemma4-31b",
+    "gemma-4-e2b": "gemma4-e2b",
+    "gemma-4-e4b": "gemma4-e4b",
+    "gemma-4-12b": "gemma4-12b",
+    "gemma-4-31b": "gemma4-31b",
+    "google-gemma-4-e2b": "gemma4-e2b",
+    "google-gemma-4-e4b": "gemma4-e4b",
+    "google-gemma-4-12b": "gemma4-12b",
+    "google-gemma-4-31b": "gemma4-31b",
 }
 
 
@@ -508,16 +476,11 @@ def get(name: str) -> ModelEntry:
     lowered = raw.lower()
     key = lowered.replace("/", "-").replace("_", "-")
     aliases = {
-        "qwen3-4b": "qwen3.5-4b",
-        "qwen-qwen3-4b": "qwen3.5-4b",
-        "qwen/qwen3-4b": "qwen3.5-4b",
-        "qwen/qwen3.5-0.8b": "qwen3.5-0.8b",
-        "qwen-qwen3.5-0.8b": "qwen3.5-0.8b",
-        "qwen/qwen3.5-2b": "qwen3.5-2b",
-        "qwen-qwen3.5-2b": "qwen3.5-2b",
-        "qwen/qwen3.5-4b": "qwen3.5-4b",
-        "qwen-qwen3.5-4b": "qwen3.5-4b",
-        **QWEN36_LOWER_TIER_FALLBACK_ALIASES,
+        "google/gemma-4-e2b": "gemma4-e2b",
+        "google/gemma-4-e4b": "gemma4-e4b",
+        "google/gemma-4-12b": "gemma4-12b",
+        "google/gemma-4-31b": "gemma4-31b",
+        **GEMMA4_TIER_ALIASES,
         **ELIZA_1_27B_VARIANT_ALIASES,
     }
     key = aliases.get(lowered, aliases.get(key, key))

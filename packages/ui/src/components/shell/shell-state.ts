@@ -1,4 +1,8 @@
-import type { ChatFailureKind, MessageAttachment } from "../../api";
+import type {
+  ChatFailureKind,
+  ConversationSecretRequest,
+  MessageAttachment,
+} from "../../api";
 
 /**
  * Shell phase for the device-shell foundation (HomePill + AssistantOverlay +
@@ -28,4 +32,11 @@ export interface ShellMessage {
   reasoning?: string;
   /** Media attached to this turn — user uploads and agent-generated media. */
   attachments?: MessageAttachment[];
+  /** Pending secret / OAuth request (rendered as an actionable block). */
+  secretRequest?: ConversationSecretRequest;
+  /**
+   * Short topic labels for this turn (Stage-1 `topics`). Drives the transcript
+   * topic grouping + chips bar (#8928). Absent when the turn had no topic.
+   */
+  topics?: string[];
 }

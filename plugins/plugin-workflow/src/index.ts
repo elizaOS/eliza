@@ -1,5 +1,5 @@
 import { type IAgentRuntime, logger, type Plugin } from '@elizaos/core';
-import { workflowAction } from './actions/index';
+import { evalCodeAction, workflowAction } from './actions/index';
 import * as dbSchema from './db/index';
 import {
   activeWorkflowsProvider,
@@ -61,7 +61,7 @@ export const workflowPlugin: Plugin = {
 
   schema: dbSchema,
 
-  actions: [workflowAction],
+  actions: [workflowAction, evalCodeAction],
 
   providers: [workflowStatusProvider, activeWorkflowsProvider, pendingDraftProvider],
 

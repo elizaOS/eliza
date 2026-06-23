@@ -53,6 +53,7 @@ const WORKFLOW_ACTION = 'WORKFLOW';
 
 const WORKFLOW_OPS = [
   'list',
+  'search',
   'get',
   'create',
   'modify',
@@ -69,7 +70,12 @@ const WORKFLOW_OPS = [
 ] as const;
 type WorkflowOp = (typeof WORKFLOW_OPS)[number];
 
-const WORKFLOW_CONTEXTS = ['automation', 'tasks', 'agent_internal'] as const;
+// `general` (the active context a plain chat/Telegram turn actually seeds) is
+// included so a message like "find my Slack workflow" routes to WORKFLOW search,
+// not just automation/agent-internal turns (#8913). The gate matches active
+// contexts literally; `chat` is only an alias of the `general` *definition* and is
+// NOT expanded by normalizeContextList, so listing `chat` here would be inert.
+const WORKFLOW_CONTEXTS = ['general', 'automation', 'tasks', 'agent_internal'] as const;
 
 interface WorkflowActionParameters {
   action?: unknown;
@@ -82,6 +88,8 @@ interface WorkflowActionParameters {
   active?: unknown;
   limit?: unknown;
   versionId?: unknown;
+  query?: unknown;
+  q?: unknown;
 }
 
 function readString(value: unknown): string | undefined {
@@ -176,6 +184,47 @@ async function handleListWorkflows(
     const message = err instanceof Error ? err.message : String(err);
     logger.warn({ src: 'plugin:workflow:action:list' }, message);
     return { success: false, text: message };
+  }
+}
+
+async function handleSearchWorkflows(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  message: Memory,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const query = readString(params.query) ?? readString(params.q);
+  if (!query) {
+    return {
+      success: false,
+      text: 'A search `query` is required (free text to match workflow name / node type / description).',
+    };
+  }
+  const limit = Math.min(Math.max(1, readNumber(params.limit) ?? 20), 50);
+  try {
+    const matches = await service.searchWorkflows(query, String(message.entityId));
+    const summaries = matches.slice(0, limit).map(summarizeWorkflow);
+    const text =
+      summaries.length === 0
+        ? `No workflows match "${query}".`
+        : `Found ${summaries.length} workflow${summaries.length === 1 ? '' : 's'} matching "${query}".`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: { count: summaries.length, query },
+      });
+    }
+    return {
+      success: true,
+      text,
+      values: { count: summaries.length },
+      data: { workflows: summaries, total: matches.length, query },
+    };
+  } catch (err) {
+    const errMessage = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:search' }, errMessage);
+    return { success: false, text: errMessage };
   }
 }
 
@@ -725,9 +774,15 @@ export const workflowAction: Action = {
     {
       name: 'action',
       description:
-        'Operation: list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.',
+        'Operation: list, get, search, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.',
       required: true,
       schema: { type: 'string' as const, enum: [...WORKFLOW_OPS] },
+    },
+    {
+      name: 'query',
+      description: 'Free text to match a workflow by name / node type for action=search.',
+      required: false,
+      schema: { type: 'string' as const },
     },
     {
       name: 'workflowId',
@@ -803,6 +858,8 @@ export const workflowAction: Action = {
     switch (op) {
       case 'list':
         return handleListWorkflows(service, params, message, callback);
+      case 'search':
+        return handleSearchWorkflows(service, params, message, callback);
       case 'get':
         return handleGetWorkflow(service, params, callback);
       case 'create':

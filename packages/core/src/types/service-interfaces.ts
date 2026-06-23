@@ -424,6 +424,67 @@ export abstract class IPdfService extends Service {
 }
 
 // ============================================================================
+// File Storage Interfaces
+// ============================================================================
+
+/** A stored file's identity + served handle. */
+export interface StoredFile {
+	/** Served URL for the bytes (e.g. `/api/media/<sha256>.<ext>`). */
+	url: string;
+	/** Lowercase hex sha256 of the bytes (the content-address). */
+	hash: string;
+	/** Stored filename (`<sha256>.<ext>`). */
+	fileName: string;
+	/** Authoritative MIME type. */
+	mimeType: string;
+	/** Byte size. */
+	size: number;
+}
+
+/** A stored file as listed by the Files surface. */
+export interface StoredFileListItem extends StoredFile {
+	/** Creation/last-served timestamp (ms since epoch). */
+	createdAt: number;
+}
+
+/**
+ * Content-addressed file storage: the single contract the rest of the system
+ * codes against for storing, serving, listing, and deleting attachment bytes.
+ * The default implementation is local-disk + content addressing (free dedup);
+ * a cloud-backed implementation can fill the same slot later. Fills the
+ * `ServiceType.REMOTE_FILES` slot — resolve via
+ * `runtime.getService(ServiceType.REMOTE_FILES)`.
+ */
+export abstract class IFileStorageService extends Service {
+	static override readonly serviceType = ServiceType.REMOTE_FILES;
+
+	// Typed as `string` (not the literal) so implementations can override it.
+	public readonly capabilityDescription: string =
+		"Content-addressed file storage: store, serve, list, and delete attachment bytes";
+
+	/** Persist bytes (idempotent by content) and return the served handle. */
+	abstract store(
+		bytes: Buffer | Uint8Array,
+		mimeType: string,
+	): Promise<StoredFile>;
+
+	/** Persist a `data:` URL's bytes; returns null for non-data URLs. */
+	abstract storeDataUrl(dataUrl: string): Promise<StoredFile | null>;
+
+	/** Resolve a served URL for a stored filename, or null if invalid/missing. */
+	abstract getUrl(fileName: string): string | null;
+
+	/** True when a stored file with this filename exists. */
+	abstract exists(fileName: string): Promise<boolean>;
+
+	/** List all stored files (for the Files surface). */
+	abstract list(): Promise<StoredFileListItem[]>;
+
+	/** Delete a stored file by filename. Returns true when removed. */
+	abstract delete(fileName: string): Promise<boolean>;
+}
+
+// ============================================================================
 // Web Search Interfaces
 // ============================================================================
 

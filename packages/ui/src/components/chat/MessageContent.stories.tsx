@@ -124,6 +124,45 @@ export const SecretRequest: Story = {
   },
 };
 
+/**
+ * #8910 — a sensitive request can collect an image (e.g. photograph a 2FA seed
+ * or QR). Renders a file input with camera capture on mobile; the upload is
+ * delivered as a data URL through the existing submit path.
+ */
+export const SecretRequestImageField: Story = {
+  args: {
+    message: makeMessage({
+      text: "",
+      secretRequest: {
+        key: "TOTP_SEED_PHOTO",
+        reason: "Photograph the 2FA seed shown on the other device.",
+        status: "pending",
+        delivery: {
+          mode: "inline_owner_app",
+          instruction: "Upload a clear photo of the seed.",
+          canCollectValueInCurrentChannel: true,
+        },
+        form: {
+          type: "sensitive_request_form",
+          kind: "secret",
+          mode: "inline_owner_app",
+          submitLabel: "Upload",
+          fields: [
+            {
+              name: "seed_photo",
+              label: "Seed photo",
+              input: "image",
+              required: true,
+              mimeTypes: ["image/png", "image/jpeg"],
+              maxBytes: 5_000_000,
+            },
+          ],
+        },
+      },
+    }),
+  },
+};
+
 /** Analysis mode surfaces XML reasoning blocks + action-name footer. */
 export const AnalysisMode: Story = {
   args: {
@@ -135,6 +174,52 @@ export const AnalysisMode: Story = {
         "[CALENDAR_LOOKUP] querying primary calendar",
         "[CALENDAR_LOOKUP] 1 free window found",
       ],
+    }),
+  },
+};
+
+/** Thinking details: the agent's reasoning rendered as a collapsed-by-default
+ * ThinkingBlock, separate from the visible reply. */
+export const ThinkingDetails: Story = {
+  args: {
+    message: makeMessage({
+      reasoning:
+        "Cross-referencing the calendar with the requested window, then checking flight options under the loyalty program before committing to a recommendation.",
+      text: "You're free after 3pm — want me to hold the 4:10pm flight?",
+    }),
+  },
+};
+
+/** Suggestion chips: a `[FOLLOWUPS]` block becomes a dismissible chip row. */
+export const Followups: Story = {
+  args: {
+    message: makeMessage({
+      text: "Here's your itinerary.\n[FOLLOWUPS]\nrerun=Run again\nexport=Export to calendar\n[/FOLLOWUPS]",
+    }),
+  },
+};
+
+/** Choice picker: a `[CHOICE:...]` block becomes an inline button row. */
+export const ChoicePicker: Story = {
+  args: {
+    message: makeMessage({
+      text: "Approve this booking?\n[CHOICE:approval id=c1]\nyes=Approve\nno=Reject\n[/CHOICE]",
+    }),
+  },
+};
+
+/** Inline form: a `[FORM]` block becomes a structured multi-field form. */
+export const InlineForm: Story = {
+  args: {
+    message: makeMessage({
+      text: `Fill this out and I'll book it:\n[FORM]\n${JSON.stringify({
+        title: "Trip details",
+        submitLabel: "Book",
+        fields: [
+          { name: "destination", type: "text", label: "Destination" },
+          { name: "date", type: "text", label: "Departure date" },
+        ],
+      })}\n[/FORM]`,
     }),
   },
 };

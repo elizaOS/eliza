@@ -22,6 +22,9 @@
   "launch": {
     "type": "server-launch",
     "capabilities": [],
-    "curatedSlug": "feed"
+    "curatedSlug": "feed",
+    "uiExtension": {
+      "detailPanelId": "feed-operator-dashboard"
+    }
   }
 }

@@ -14,13 +14,30 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
 import type {
   CreateTaskInput,
   OrchestratorTaskSession,
 } from "../../src/services/orchestrator-task-types.js";
+
+// This suite pins the status state machine and the ACP→task event bridge — NOT
+// the #8896 default-criteria feature. createTask now auto-populates acceptance
+// criteria for criteria-free, non-trivial goals (which would make these tasks
+// auto-verify on `task_complete` instead of parking in `validating`). Disable
+// the goal contract here so these tests exercise the original criteria-free
+// behavior; the default-criteria feature has its own dedicated suites
+// (acceptance-criteria.test.ts, create-task-default-criteria.test.ts).
+const PREV_GOAL_CONTRACT = process.env.ELIZA_REQUIRE_GOAL_CONTRACT;
+beforeAll(() => {
+  process.env.ELIZA_REQUIRE_GOAL_CONTRACT = "0";
+});
+afterAll(() => {
+  if (PREV_GOAL_CONTRACT === undefined)
+    delete process.env.ELIZA_REQUIRE_GOAL_CONTRACT;
+  else process.env.ELIZA_REQUIRE_GOAL_CONTRACT = PREV_GOAL_CONTRACT;
+});
 
 interface SpawnResult {
   sessionId: string;

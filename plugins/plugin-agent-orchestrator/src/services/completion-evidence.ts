@@ -68,6 +68,49 @@ export interface EvidenceArtifactRef {
   ref?: string;
 }
 
+/**
+ * Captured stdout from the sub-agent's tool runs, split by tool class. Each
+ * field is the raw (already-bounded) output of a `vitest`/`tsc`/`biome`-style
+ * run mined from the recorded ACP tool events, so the verifier can read the
+ * actual run result rather than the agent's narration of it. `raw` is a
+ * catch-all for tool output that matched a build/test marker but couldn't be
+ * confidently classed as test/build/lint.
+ */
+export interface ToolOutputEvidence {
+  test?: string;
+  build?: string;
+  lint?: string;
+  raw?: string;
+}
+
+/**
+ * The TYPED completion-evidence bundle (issue #8894). This is the formalized,
+ * collect-once shape the orchestrator assembles BEFORE verification: every
+ * evidence source resolves to a named field instead of being threaded through
+ * the prompt as loose strings. {@link buildCompletionEvidenceString} serializes
+ * it into the same clearly-sectioned string the verifier already grills
+ * against, emitting exactly one section per POPULATED field and omitting empty
+ * ones.
+ *
+ * `verifiedUrls` and `screenshots` are required (default to `[]`); everything
+ * else is optional and contributes a section only when present.
+ */
+export interface CompletionEvidenceBundle {
+  /** The sub-agent's reported result — the fallback/final-reply text. */
+  summary: string;
+  /** Human-readable git diff summary (diffstat + changed files + capped diff)
+   *  captured at completion, if any. */
+  diffSummary?: string;
+  /** Captured tool stdout split by class (test/build/lint) plus a raw bucket. */
+  toolOutput?: ToolOutputEvidence;
+  /** URLs the router probed/verified at completion (loopback-flagged on render). */
+  verifiedUrls: string[];
+  /** Screenshot artifact paths found on the task/session. */
+  screenshots: string[];
+  /** Path to the persisted trajectory JSONL artifact for this completion. */
+  trajectoryPath?: string;
+}
+
 /** Total cap for the assembled evidence string. Sits under the verifier's own
  *  {@link trimEvidence} budget so the section structure survives intact. */
 const MAX_EVIDENCE_CHARS = 8_000;
@@ -78,6 +121,8 @@ const MAX_SIGNAL_LINES = 40;
 const MAX_SIGNAL_CHARS = 2_000;
 const MAX_URLS = 12;
 const MAX_ARTIFACTS = 20;
+/** Per-tool-output-field cap (test/build/lint/raw each). */
+const MAX_TOOL_OUTPUT_CHARS = 2_000;
 
 /**
  * Lines that look like the output of a build / test / typecheck / lint run.
@@ -104,6 +149,68 @@ function clamp(text: string, max: number): string {
   return `${trimmed.slice(0, max)}\n… [truncated]`;
 }
 
+/** Markers that class a signal as TEST output (vitest/jest run, suite result). */
+const TEST_MARKER_RE =
+  /\b(?:vitest|jest|pytest|test\s+files?|tests?\s+(?:passed|failed|run)|✓|✗|✔|✖|specs?|suites?|coverage|PASS|FAIL)\b/;
+/** Markers that class a signal as BUILD/TYPECHECK output (tsc/tsgo/compile). */
+const BUILD_MARKER_RE =
+  /\b(?:tsc|tsgo|typecheck|type-check|type\s+error|compiled|compilation|build\s+(?:succeeded|failed|complete)|cargo\s+build|go\s+build)\b/;
+/** Markers that class a signal as LINT output (biome/eslint). */
+const LINT_MARKER_RE = /\b(?:biome|eslint|\blint\b)\b/;
+
+/** Extract just the build/test-looking lines from one signal body, deduped and
+ *  bounded, so a noisy tool transcript collapses to its run-result lines. */
+function extractToolLines(text: string, seen: Set<string>): string[] {
+  const out: string[] = [];
+  for (const rawLine of text.replace(/\r\n/g, "\n").split("\n")) {
+    const line = rawLine.trim();
+    if (line.length === 0 || line.length > 400) continue;
+    if (!BUILD_TEST_LINE_RE.test(line)) continue;
+    if (seen.has(line)) continue;
+    seen.add(line);
+    out.push(line);
+    if (out.length >= MAX_SIGNAL_LINES) break;
+  }
+  return out;
+}
+
+/**
+ * Classify the build/test/typecheck/lint output mined from recorded tool
+ * signals into a {@link ToolOutputEvidence} bucket per tool class, so the
+ * verifier can read the actual test/build stdout under named headers. A signal
+ * is routed by the markers in its body (and source label): test markers →
+ * `test`, build/typecheck → `build`, lint → `lint`; build-test-looking lines
+ * that match none fall into `raw`. Returns undefined when nothing matched.
+ */
+export function classifyToolOutput(
+  signals: readonly EvidenceSignal[],
+): ToolOutputEvidence | undefined {
+  const buckets: Record<keyof ToolOutputEvidence, string[]> = {
+    test: [],
+    build: [],
+    lint: [],
+    raw: [],
+  };
+  const seen = new Set<string>();
+  for (const signal of signals) {
+    const lines = extractToolLines(signal.text, seen);
+    if (lines.length === 0) continue;
+    const haystack = `${signal.source ?? ""}\n${signal.text}`;
+    let bucket: keyof ToolOutputEvidence;
+    if (TEST_MARKER_RE.test(haystack)) bucket = "test";
+    else if (BUILD_MARKER_RE.test(haystack)) bucket = "build";
+    else if (LINT_MARKER_RE.test(haystack)) bucket = "lint";
+    else bucket = "raw";
+    buckets[bucket].push(...lines);
+  }
+  const out: ToolOutputEvidence = {};
+  if (buckets.test.length > 0) out.test = buckets.test.join("\n");
+  if (buckets.build.length > 0) out.build = buckets.build.join("\n");
+  if (buckets.lint.length > 0) out.lint = buckets.lint.join("\n");
+  if (buckets.raw.length > 0) out.raw = buckets.raw.join("\n");
+  return hasToolOutput(out) ? out : undefined;
+}
+
 /** Pull the lines from a signal body that read like build/test/typecheck
  *  output, so the verifier sees the actual run output rather than narration. */
 function extractBuildTestLines(signals: readonly EvidenceSignal[]): string[] {
@@ -124,13 +231,18 @@ function extractBuildTestLines(signals: readonly EvidenceSignal[]): string[] {
   return out;
 }
 
-function renderChangeSetSection(changeSet: WorkspaceChangeSet): string {
+/**
+ * Render the human-readable body of a {@link WorkspaceChangeSet} (diffstat +
+ * changed files + a capped diff) WITHOUT the section header. Used as the
+ * `diffSummary` field of a {@link CompletionEvidenceBundle}, so the bundle and
+ * the legacy assembler produce byte-identical changeset text.
+ */
+export function renderChangeSetBody(changeSet: WorkspaceChangeSet): string {
   const files =
     changeSet.changedFiles.length > 0
       ? changeSet.changedFiles.join(", ")
       : "(none)";
   const lines = [
-    "## CHANGESET (real git diff captured at completion)",
     `diffstat: ${changeSet.diffStat || "(none)"}`,
     `changedFiles (${changeSet.changedFiles.length}): ${files}`,
   ];
@@ -140,6 +252,13 @@ function renderChangeSetSection(changeSet: WorkspaceChangeSet): string {
   }
   if (changeSet.truncated) lines.push("(changeset truncated)");
   return lines.join("\n");
+}
+
+function renderChangeSetSection(changeSet: WorkspaceChangeSet): string {
+  return [
+    "## CHANGESET (real git diff captured at completion)",
+    renderChangeSetBody(changeSet),
+  ].join("\n");
 }
 
 function renderUrlsSection(urls: readonly string[]): string {
@@ -168,13 +287,114 @@ function renderArtifactsSection(
   return lines.join("\n");
 }
 
+function renderToolOutputSection(toolOutput: ToolOutputEvidence): string {
+  const lines = ["## TEST / BUILD / TYPECHECK OUTPUT (captured tool stdout)"];
+  const labelled: [string, string | undefined][] = [
+    ["test", toolOutput.test],
+    ["build", toolOutput.build],
+    ["lint", toolOutput.lint],
+    ["raw", toolOutput.raw],
+  ];
+  for (const [label, value] of labelled) {
+    const text = value?.trim();
+    if (!text) continue;
+    lines.push(`### ${label}`);
+    lines.push(clamp(text, MAX_TOOL_OUTPUT_CHARS));
+  }
+  return lines.join("\n");
+}
+
+function hasToolOutput(toolOutput: ToolOutputEvidence | undefined): boolean {
+  if (!toolOutput) return false;
+  return Boolean(
+    toolOutput.test?.trim() ||
+      toolOutput.build?.trim() ||
+      toolOutput.lint?.trim() ||
+      toolOutput.raw?.trim(),
+  );
+}
+
 /**
- * Assemble the sectioned completion-evidence string from the signals the
+ * Serialize the TYPED {@link CompletionEvidenceBundle} into the clearly-
+ * sectioned evidence string the verifier grills against — one section per
+ * POPULATED field, empty fields omitted. When nothing richer than the bare
+ * summary is present, returns the bare summary (prior thin-completion
+ * behavior). This is the issue #8894 entry point; the legacy signal-mining
+ * assembler lives in {@link buildEvidenceStringFromInput} and remains exported.
+ */
+export function buildCompletionEvidenceString(
+  bundle: CompletionEvidenceBundle,
+): string {
+  const sections: string[] = [];
+  let hasRicherSection = false;
+
+  const diff = bundle.diffSummary?.trim();
+  if (diff) {
+    sections.push(
+      ["## CHANGESET (real git diff captured at completion)", diff].join("\n"),
+    );
+    hasRicherSection = true;
+  }
+
+  const reply = bundle.summary.trim();
+  if (reply) {
+    sections.push(
+      [
+        "## FINAL REPLY (sub-agent's reported result)",
+        clamp(reply, MAX_REPLY_CHARS),
+      ].join("\n"),
+    );
+  }
+
+  if (bundle.verifiedUrls.length > 0) {
+    sections.push(renderUrlsSection(bundle.verifiedUrls));
+    hasRicherSection = true;
+  }
+
+  if (bundle.toolOutput && hasToolOutput(bundle.toolOutput)) {
+    sections.push(renderToolOutputSection(bundle.toolOutput));
+    hasRicherSection = true;
+  }
+
+  const artifacts: EvidenceArtifactRef[] = bundle.screenshots
+    .map((ref) => ref.trim())
+    .filter(Boolean)
+    .map((ref) => ({ artifactType: "screenshot", title: "screenshot", ref }));
+  const trajectory = bundle.trajectoryPath?.trim();
+  if (trajectory) {
+    artifacts.push({
+      artifactType: "trajectory",
+      title: "completion trajectory",
+      ref: trajectory,
+    });
+  }
+  if (artifacts.length > 0) {
+    sections.push(renderArtifactsSection(artifacts));
+    hasRicherSection = true;
+  }
+
+  if (!hasRicherSection) {
+    return reply;
+  }
+
+  const assembled = sections.join("\n\n");
+  return assembled.length > MAX_EVIDENCE_CHARS
+    ? `${assembled.slice(0, MAX_EVIDENCE_CHARS)}\n… [evidence truncated]`
+    : assembled;
+}
+
+/**
+ * Assemble the sectioned completion-evidence string from the loose signals the
  * orchestrator already has. Always returns a non-empty string: when nothing
  * richer than the fallback summary is available it still returns the summary,
  * so the verifier behaves exactly as before for thin completions.
+ *
+ * Retained for backward compatibility and as the signal-mining helper the
+ * bundle collector reuses to extract build/test lines; new callers should
+ * assemble a {@link CompletionEvidenceBundle} and use
+ * {@link buildCompletionEvidenceString}.
  */
-export function buildCompletionEvidenceString(
+export function buildEvidenceStringFromInput(
   input: CompletionEvidenceInput,
 ): string {
   const sections: string[] = [];

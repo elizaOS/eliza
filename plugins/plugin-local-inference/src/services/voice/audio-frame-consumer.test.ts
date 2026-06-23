@@ -23,6 +23,7 @@ import {
 	type AudioFrameEvent,
 	decodeAudioFramePcm,
 	type RuntimeEventSink,
+	type TurnTranscriber,
 } from "./audio-frame-consumer";
 import type { VoiceAttributionOutput } from "./speaker/attribution-pipeline";
 import { VadDetector } from "./vad";
@@ -119,6 +120,7 @@ function makeFrame(opts: {
 function buildHarness(
 	probs: readonly number[],
 	entityId: string | null = "entity-x",
+	transcribe?: TurnTranscriber,
 ) {
 	const silero = new ScriptedSilero(probs);
 	const vad = new VadDetector(silero, {
@@ -131,7 +133,7 @@ function buildHarness(
 	const pipeline = new FakePipeline(entityId);
 	const runtime = new FakeRuntime();
 	const consumer = new AudioFrameConsumer(
-		{ vad, pipeline, runtime },
+		{ vad, pipeline, runtime, ...(transcribe ? { transcribe } : {}) },
 		{
 			source: { kind: "device", deviceId: "pixel" },
 			attributionOptions: {
@@ -144,6 +146,26 @@ function buildHarness(
 		},
 	);
 	return { consumer, pipeline, runtime, vad };
+}
+
+/** Feed one loud turn (speech then silence) and flush, so exactly one turn
+ *  finalizes. Shared by the transcript-join tests. */
+async function driveOneTurn(consumer: AudioFrameConsumer): Promise<void> {
+	let ts = 1000;
+	let idx = 0;
+	for (let i = 0; i < 40; i++) {
+		await consumer.onAudioFrame(
+			makeFrame({ amplitude: 0.6, timestamp: ts, frameIndex: idx++ }),
+		);
+		ts += 20;
+	}
+	for (let i = 0; i < 24; i++) {
+		await consumer.onAudioFrame(
+			makeFrame({ amplitude: 0.0, timestamp: ts, frameIndex: idx++ }),
+		);
+		ts += 20;
+	}
+	await consumer.flush();
 }
 
 describe("decodeAudioFramePcm", () => {
@@ -339,5 +361,66 @@ describe("AudioFrameConsumer", () => {
 		for (const call of pl.calls) {
 			expect(call.pcm.length).toBeLessThanOrEqual(SR * 1 + 512);
 		}
+	});
+});
+
+describe("AudioFrameConsumer — ASR transcript join (#8786)", () => {
+	const TURN_PROBS = [...Array(24).fill(0.9), ...Array(12).fill(0.0)];
+
+	it("joins the per-turn ASR transcript onto VOICE_TURN_OBSERVED", async () => {
+		const seen: Array<{ length: number; sampleRate: number }> = [];
+		const transcribe: TurnTranscriber = (pcm, sampleRate) => {
+			seen.push({ length: pcm.length, sampleRate });
+			return "  I'm Jill  ";
+		};
+		const { consumer, runtime } = buildHarness(
+			TURN_PROBS,
+			"entity-x",
+			transcribe,
+		);
+		await driveOneTurn(consumer);
+
+		// The transcriber saw the real buffered turn PCM at 16 kHz.
+		expect(seen.length).toBe(1);
+		expect(seen[0].sampleRate).toBe(16_000);
+		expect(seen[0].length).toBeGreaterThan(SR * 0.4);
+		// VOICE_TURN_OBSERVED now carries the trimmed transcript (was "" before).
+		expect(runtime.emitted.length).toBe(1);
+		expect(runtime.emitted[0].payload.text).toBe("I'm Jill");
+	});
+
+	it("stays diarization-only (empty text) when no transcriber is wired", async () => {
+		const { consumer, runtime } = buildHarness(TURN_PROBS, "entity-x");
+		await driveOneTurn(consumer);
+		expect(runtime.emitted.length).toBe(1);
+		expect(runtime.emitted[0].payload.text).toBe("");
+	});
+
+	it("degrades to a transcript-less turn when ASR throws (turn kept)", async () => {
+		const transcribe: TurnTranscriber = () => {
+			throw new Error("asr decode failed");
+		};
+		const { consumer, runtime } = buildHarness(
+			TURN_PROBS,
+			"entity-x",
+			transcribe,
+		);
+		await driveOneTurn(consumer);
+		// The diarized turn still emits; only the transcript is dropped, counted.
+		expect(runtime.emitted.length).toBe(1);
+		expect(runtime.emitted[0].payload.text).toBe("");
+		expect(consumer.transcriptionErrors).toBe(1);
+	});
+
+	it("ignores an empty/whitespace transcript (no text stamped)", async () => {
+		const transcribe: TurnTranscriber = () => "   ";
+		const { consumer, runtime } = buildHarness(
+			TURN_PROBS,
+			"entity-x",
+			transcribe,
+		);
+		await driveOneTurn(consumer);
+		expect(runtime.emitted.length).toBe(1);
+		expect(runtime.emitted[0].payload.text).toBe("");
 	});
 });

@@ -248,8 +248,16 @@ function buildFailMessage(payload: BridgeEventPayload): string {
 			? `${payload.retryCount}${typeof payload.maxRetries === "number" ? `/${payload.maxRetries}` : ""}`
 			: "the maximum";
 	const summary = payload.summary ?? "no further details available";
-	const reply = "Reply 'retry' to keep going or 'cancel' to stop.";
-	return `${payload.targetName} hit verification failure ${retries} time(s). Last failure: ${summary}. ${reply}`;
+
+	// Offer a rollback so the user is never left with a broken create/edit. A
+	// pre-edit git snapshot was taken before the coding agent ran (#8915); naming
+	// the VIEWS rollback action lets them restore the source in one reply. Apps
+	// don't yet take snapshots, so they keep the retry/cancel offer.
+	const offer =
+		payload.method === VERIFY_PLUGIN_METHOD
+			? `Reply 'retry' to keep going, 'rollback' to undo the changes and restore ${payload.targetName} to its pre-edit snapshot (VIEWS action=rollback view=${payload.targetName}), or 'cancel' to stop.`
+			: "Reply 'retry' to keep going or 'cancel' to stop.";
+	return `${payload.targetName} hit verification failure ${retries} time(s). Last failure: ${summary}. ${offer}`;
 }
 
 export class VerificationRoomBridgeService extends Service {

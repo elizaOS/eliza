@@ -100,13 +100,12 @@ export interface InstalledModel {
   runtimeRole?: "chat" | "mtp-drafter";
   companionFor?: string;
   /**
-   * Which desktop text runtime serves this model. `"fused-eliza1"` for an
-   * Eliza-1 bundle (full pipeline: same-file MTP, fork KV kernels, fused
-   * voice/vision); `"generic-gguf"` for a single downloaded/scanned GGUF
-   * served from an explicit `path` with stock f16 KV and reduced
-   * optimizations. Backfilled at the registry-read boundary for legacy rows
-   * via `classifyInstalledModelRuntimeClass`; consumers read the field rather
-   * than re-deriving it from the id.
+   * Which desktop text runtime serves this model. Always `"fused-eliza1"` — an
+   * Eliza-1 bundle served by the full pipeline (same-file MTP, fork KV kernels,
+   * fused voice/vision). The local stack is Eliza-1 only (#8808). Backfilled at
+   * the registry-read boundary for legacy rows via
+   * `classifyInstalledModelRuntimeClass`; consumers read the field rather than
+   * re-deriving it from the id.
    */
   runtimeClass?: import("./runtime-class.js").RuntimeClass;
 }
@@ -270,10 +269,10 @@ export interface LocalRuntimeAcceleration {
     /** Native llama.cpp MTP speculative mode. */
     specType: "draft-mtp";
     /**
-     * Bundle-relative path to a separate MTP drafter GGUF. Omitted for
-     * same-file MTP, where the NextN head is embedded in the main text
-     * GGUF (`qwen35.nextn_predict_layers > 0` + `blk.N.nextn.*` tensors)
-     * and no separate drafter download exists.
+     * Bundle-relative path to a separate MTP drafter GGUF. Gemma 4 ships an
+     * official standalone drafter, loaded via `-md <drafterFile>
+     * --spec-type draft-mtp`. (Omitting it selects same-file MTP, where a
+     * NextN head is embedded in the text GGUF — the retired Qwen3.5 path.)
      */
     drafterFile?: string;
     /** Default draft range passed to the native MTP runner. */
@@ -298,9 +297,10 @@ export interface LocalRuntimeAcceleration {
  * families here as the catalog grows.
  */
 export type TokenizerFamily =
-  | "qwen35"
+  | "gemma4"
   | "eliza1"
   | "sentencepiece"
+  | "qwen35"
   | (string & {});
 
 export type CatalogHub = "huggingface" | "modelscope";
@@ -435,11 +435,10 @@ export interface CatalogModel {
   /** Runtime-specific acceleration metadata. */
   runtime?: LocalRuntimeAcceleration;
   /**
-   * Which desktop text runtime serves this catalog model. `"fused-eliza1"`
-   * for the curated Eliza-1 tiers (full pipeline); `"generic-gguf"` for
-   * synthetic Hugging Face / ModelScope search results (reduced
-   * optimizations). Populated by the catalog factory and the hub-search
-   * synthesizers; consumers read the field rather than matching the id prefix.
+   * Which desktop text runtime serves this catalog model. Always
+   * `"fused-eliza1"` — the curated Eliza-1 tiers, served by the full pipeline.
+   * The local stack is Eliza-1 only (#8808). Populated by the catalog factory;
+   * consumers read the field rather than matching the id prefix.
    */
   runtimeClass?: import("./runtime-class.js").RuntimeClass;
   /**

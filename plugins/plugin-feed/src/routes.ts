@@ -87,6 +87,25 @@ async function proxyPost(
   return true;
 }
 
+async function proxyDelete(
+  config: FeedConfig,
+  apiPath: string,
+  ctx: RouteContext,
+): Promise<boolean> {
+  try {
+    const response = await proxyFeedRequest(config, "DELETE", apiPath);
+    const data = await response.json();
+    ctx.json(ctx.res, data, response.ok ? 200 : response.status);
+  } catch (err) {
+    ctx.error(
+      ctx.res,
+      err instanceof Error ? err.message : "Feed API request failed.",
+      502,
+    );
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // SSE proxy — streams Feed's SSE endpoint through to the client
 // ---------------------------------------------------------------------------
@@ -812,6 +831,45 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   }
 
   // =========================================================================
+  // Social — follows (friend / follow / unfollow)
+  // =========================================================================
+
+  // Follow status with a user (am I following them?)
+  if (ctx.method === "GET" && path.match(/^\/users\/[^/]+\/follow$/)) {
+    const userId = readPathSegment(path, 2);
+    if (!userId) return false;
+    return proxyGet(
+      config,
+      `/api/users/${encodeURIComponent(userId)}/follow`,
+      ctx,
+    );
+  }
+
+  // Follow / befriend a user (or NPC actor)
+  if (ctx.method === "POST" && path.match(/^\/users\/[^/]+\/follow$/)) {
+    const userId = readPathSegment(path, 2);
+    if (!userId) return false;
+    const body = await ctx.readJsonBody().catch(() => ({}));
+    return proxyPost(
+      config,
+      `/api/users/${encodeURIComponent(userId)}/follow`,
+      body ?? {},
+      ctx,
+    );
+  }
+
+  // Unfollow a user
+  if (ctx.method === "DELETE" && path.match(/^\/users\/[^/]+\/follow$/)) {
+    const userId = readPathSegment(path, 2);
+    if (!userId) return false;
+    return proxyDelete(
+      config,
+      `/api/users/${encodeURIComponent(userId)}/follow`,
+      ctx,
+    );
+  }
+
+  // =========================================================================
   // Messaging — chats & DMs
   // =========================================================================
 
@@ -824,6 +882,12 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   if (ctx.method === "POST" && path === "/chats") {
     const body = await ctx.readJsonBody();
     return proxyPost(config, "/api/chats", body, ctx);
+  }
+
+  // Create (or fetch existing) DM chat with a specific user
+  if (ctx.method === "POST" && path === "/chats/dm") {
+    const body = await ctx.readJsonBody();
+    return proxyPost(config, "/api/chats/dm", body, ctx);
   }
 
   // Get DM with specific user

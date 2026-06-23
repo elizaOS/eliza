@@ -208,7 +208,7 @@ describe("vision/capability registration", () => {
 		// Synthesize a pre-projected token tensor and stash it under the
 		// hash the wrapper will compute. The backend's `describe` should
 		// receive `projectedTokens` in its options on the next call.
-		const hash = hashImageBytes(bytes, "qwen3-vl");
+		const hash = hashImageBytes(bytes, "gemma-vl");
 		arbiter.setCachedVisionEmbedding(hash, {
 			tokens: new Float32Array(8),
 			tokenCount: 4,
@@ -337,7 +337,7 @@ describe("vision/capability registration", () => {
 		// Simulate the projector stashing tokens. In production this
 		// happens inside the backend (after the real mtmd encode); the
 		// test simulates it because we have no real projector.
-		const hash = hashImageBytes(bytes, "qwen3-vl");
+		const hash = hashImageBytes(bytes, "gemma-vl");
 		arbiter.setCachedVisionEmbedding(hash, {
 			tokens: new Float32Array(8),
 			tokenCount: 4,
