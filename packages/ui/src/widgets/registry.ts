@@ -28,6 +28,7 @@ export {
 import { MusicLibraryCharacterWidget } from "../components/character/MusicLibraryCharacterWidget";
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status.helpers";
+import { MessagesWidget } from "../components/chat/widgets/messages";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.helpers";
 import { NotificationsWidget } from "../components/chat/widgets/notifications";
 
@@ -47,6 +48,8 @@ registerWidgetComponent(
   "notifications.recent",
   NotificationsWidget,
 );
+// Messages (recent conversations) is likewise a core surface — always-visible.
+registerWidgetComponent("messages", "messages.recent", MessagesWidget);
 
 /**
  * Public API for plugins outside app-core to append widget declarations to the
@@ -81,6 +84,16 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     label: "Notifications",
     icon: "Bell",
     order: 50,
+    defaultEnabled: true,
+  },
+  // Messages (recent conversations) — the shared "messages" home widget (#9143).
+  {
+    id: "messages.recent",
+    pluginId: "messages",
+    slot: "home",
+    label: "Messages",
+    icon: "MessageSquare",
+    order: 60,
     defaultEnabled: true,
   },
   // Agent Orchestrator — app runs
@@ -172,6 +185,8 @@ const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set([
   // loadable plugin, so its frontpage widget must render regardless of the
   // plugin snapshot. (#9143)
   "notifications",
+  // Messages (recent conversations) is likewise a core surface. (#9143)
+  "messages",
 ]);
 
 interface ResolvedWidget {

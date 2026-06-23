@@ -37,4 +37,11 @@ describe("home frontpage widget slot (#9143)", () => {
     expect(notif?.declaration.slot).toBe("home");
     expect(notif?.Component).toBeTruthy();
   });
+
+  it("resolves the Messages widget on home even with NO plugins (always-visible)", () => {
+    const resolved = resolveWidgetsForSlot("home", []);
+    const msgs = resolved.find((r) => r.declaration.id === "messages.recent");
+    expect(msgs?.declaration.slot).toBe("home");
+    expect(msgs?.Component).toBeTruthy();
+  });
 });
