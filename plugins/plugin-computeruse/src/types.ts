@@ -33,7 +33,9 @@ export type DesktopActionType =
   | "drag"
   | "get_cursor_position"
   | "detect_elements"
-  | "ocr";
+  | "ocr"
+  | "open"
+  | "launch";
 
 export interface DesktopActionParams {
   action: DesktopActionType;
@@ -71,6 +73,12 @@ export interface DesktopActionParams {
   y1?: number;
   x2?: number;
   y2?: number;
+  /** Target file / URL / folder for the `open` action. */
+  target?: string;
+  /** Application name or executable path for the `launch` action. */
+  app?: string;
+  /** Arguments passed to the launched application (`launch`). */
+  appArgs?: string[];
 }
 
 // ── Browser Actions ───────────────────────────────────────────────────────
@@ -133,7 +141,10 @@ export type WindowActionType =
   | "minimize"
   | "maximize"
   | "restore"
-  | "close";
+  | "close"
+  | "get_current_window_id"
+  | "get_application_windows"
+  | "set_bounds";
 
 export interface WindowActionParams {
   action: WindowActionType;
@@ -148,9 +159,12 @@ export interface WindowActionParams {
   window?: string;
   /** Layout hint for arrange action */
   arrangement?: string;
-  /** Coordinates for move action */
+  /** Coordinates for move / set_bounds action */
   x?: number;
   y?: number;
+  /** Window size for set_bounds action */
+  width?: number;
+  height?: number;
 }
 
 // ── File Actions ──────────────────────────────────────────────────────────
@@ -195,9 +209,13 @@ export interface BrowserActionResult extends ComputerUseResult {
 }
 
 export interface WindowActionResult extends ComputerUseResult {
-  /** Window list for "list" action */
+  /** Window list for "list" / "get_application_windows" actions */
   windows?: WindowInfo[];
   count?: number;
+  /** Focused window id for "get_current_window_id" (null when none focused). */
+  windowId?: string | null;
+  /** Focused window descriptor for "get_current_window_id". */
+  window?: WindowInfo | null;
 }
 
 export type FileActionType =
