@@ -123,9 +123,6 @@
         "./plugins/plugin-computeruse/src/mobile/*"
       ],
       "@elizaos/plugin-contacts": ["./plugins/plugin-contacts/src/index.ts"],
-      "@elizaos/plugin-defense-of-the-agents": [
-        "./plugins/plugin-defense-of-the-agents/src/index.ts"
-      ],
       "@elizaos/plugin-device-settings": [
         "./plugins/plugin-device-settings/src/index.ts"
       ],

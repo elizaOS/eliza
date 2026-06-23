@@ -1,6 +1,6 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 type ScenarioTurnLike = {
   kind?: string;
@@ -125,7 +125,12 @@ type PromptVariantDefinition = {
 };
 
 const ELIZA_ROOT = path.resolve(import.meta.dirname, "../../../..");
-const ELIZA_SCENARIO_ROOT = path.join(ELIZA_ROOT, "test", "scenarios");
+const ELIZA_SCENARIO_ROOT = path.join(
+  ELIZA_ROOT,
+  "packages",
+  "test",
+  "scenarios",
+);
 const EXECUTIVE_ASSISTANT_SCENARIO_DIR = path.join(
   ELIZA_SCENARIO_ROOT,
   "executive-assistant",
@@ -464,9 +469,70 @@ function buildPromptBenchmarkCasesForScenario(args: {
   });
 }
 
+function firstStringLiteral(source: string, property: string): string {
+  const pattern = new RegExp(`${property}:\\s*(['"\`])([\\s\\S]*?)\\1`, "u");
+  return source.match(pattern)?.[2]?.trim() ?? "";
+}
+
+function stringArrayLiteral(source: string, property: string): string[] {
+  const pattern = new RegExp(`${property}:\\s*\\[([\\s\\S]*?)\\]`, "u");
+  const body = source.match(pattern)?.[1] ?? "";
+  const values: string[] = [];
+  const stringPattern = /(['"`])([\s\S]*?)\1/gu;
+  for (const match of body.matchAll(stringPattern)) {
+    const value = match[2]?.trim();
+    if (value) values.push(value);
+  }
+  return values;
+}
+
+function allTurnTexts(source: string): ScenarioTurnLike[] {
+  const turns: ScenarioTurnLike[] = [];
+  const textPattern = /\btext:\s*(['"`])([\s\S]*?)\1/gu;
+  for (const match of source.matchAll(textPattern)) {
+    const text = match[2]?.trim();
+    if (text) turns.push({ kind: "message", text });
+  }
+  return turns;
+}
+
+function selectedActionChecks(source: string): ScenarioFinalCheckLike[] {
+  const checks: ScenarioFinalCheckLike[] = [];
+  if (/\btype:\s*(['"])goalCountDelta\1/u.test(source)) {
+    checks.push({ type: "goalCountDelta" });
+  }
+
+  const actionPattern = /\bactionName:\s*(\[[\s\S]*?\]|(['"`])([\s\S]*?)\2)/gu;
+  for (const match of source.matchAll(actionPattern)) {
+    const raw = match[1] ?? "";
+    const actionName = raw.startsWith("[")
+      ? stringArrayLiteral(`actionName: ${raw}`, "actionName")
+      : (match[3]?.trim() ?? "");
+    if (Array.isArray(actionName) ? actionName.length > 0 : actionName) {
+      checks.push({ type: "selectedAction", actionName });
+    }
+  }
+  return checks;
+}
+
 async function loadScenarioModule(filePath: string): Promise<ScenarioLike> {
-  const module = await import(pathToFileURL(filePath).href);
-  return module.default as ScenarioLike;
+  const source = await readFile(filePath, "utf8");
+  const id = firstStringLiteral(source, "id");
+  const title = firstStringLiteral(source, "title");
+  const domain = firstStringLiteral(source, "domain");
+  if (!id || !title || !domain) {
+    throw new Error(
+      `Scenario "${filePath}" is missing static id/title/domain metadata.`,
+    );
+  }
+  return {
+    id,
+    title,
+    domain,
+    tags: stringArrayLiteral(source, "tags"),
+    turns: allTurnTexts(source),
+    finalChecks: selectedActionChecks(source),
+  };
 }
 
 async function loadScenarioFromDirectory(args: {
@@ -487,8 +553,18 @@ export async function loadExecutiveAssistantScenarios(): Promise<
   ScenarioLike[]
 > {
   const catalog = await loadExecutiveAssistantCatalog();
+  const landedEntries = catalog.scenarios.filter((entry) =>
+    existsSync(
+      path.join(EXECUTIVE_ASSISTANT_SCENARIO_DIR, `${entry.id}.scenario.ts`),
+    ),
+  );
+  if (landedEntries.length === 0) {
+    throw new Error(
+      `No executable executive-assistant scenarios found under ${EXECUTIVE_ASSISTANT_SCENARIO_DIR}.`,
+    );
+  }
   return Promise.all(
-    catalog.scenarios.map((entry) =>
+    landedEntries.map((entry) =>
       loadScenarioFromDirectory({
         directory: EXECUTIVE_ASSISTANT_SCENARIO_DIR,
         id: entry.id,

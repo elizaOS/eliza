@@ -138,6 +138,10 @@ const LIFEOPS_NATIVE_TASKS = [
 
 const LIFEOPS_NATIVE_TASK_SET = new Set<string>(LIFEOPS_NATIVE_TASKS);
 
+const ORCHESTRATOR_NATIVE_TASKS = ["goal_verification"] as const;
+
+const ORCHESTRATOR_NATIVE_TASK_SET = new Set<string>(ORCHESTRATOR_NATIVE_TASKS);
+
 function isRecordedTrajectory(value: unknown): value is RecordedTrajectory {
   const record = toRecord(value);
   return (
@@ -169,7 +173,9 @@ function recordedModelSearchText(model: RecordedModelCall | undefined): string {
     model.modelName,
     model.provider,
   ];
-  return parts.filter((part): part is string => typeof part === "string").join("\n");
+  return parts
+    .filter((part): part is string => typeof part === "string")
+    .join("\n");
 }
 
 function inferLifeOpsTaskType(
@@ -190,13 +196,12 @@ function inferLifeOpsTaskType(
   ) {
     return "calendar_extract";
   }
-  if (text.includes("plan the scheduling negotiation action for this request")) {
+  if (
+    text.includes("plan the scheduling negotiation action for this request")
+  ) {
     return "schedule_plan";
   }
-  if (
-    text.includes("current reminder:") &&
-    text.includes("reminder text:")
-  ) {
+  if (text.includes("current reminder:") && text.includes("reminder text:")) {
     return "reminder_dispatch";
   }
   if (text.includes("owner's morning briefing")) {
@@ -217,6 +222,30 @@ function inferLifeOpsTaskType(
   return null;
 }
 
+function inferOrchestratorTaskType(
+  kind: string | undefined,
+  model: RecordedModelCall | undefined,
+): string | null {
+  const normalized = normalizeTaskToken(
+    `${kind ?? ""}\n${recordedModelSearchText(model)}`,
+  );
+  for (const task of ORCHESTRATOR_NATIVE_TASKS) {
+    if (normalized.includes(task)) return task;
+  }
+
+  const text = recordedModelSearchText(model).toLowerCase();
+  if (
+    text.includes(
+      "final sign-off on a coding sub-agent's work before the parent agent marks the task done",
+    ) &&
+    text.includes("acceptance criteria") &&
+    text.includes("completion evidence collected for the sub-agent")
+  ) {
+    return "goal_verification";
+  }
+  return null;
+}
+
 function lifeOpsDomainForTask(taskType: string): string | undefined {
   if (!LIFEOPS_NATIVE_TASK_SET.has(taskType)) return undefined;
   return taskType === "health_checkin" || taskType === "screentime_recap"
@@ -224,11 +253,21 @@ function lifeOpsDomainForTask(taskType: string): string | undefined {
     : "lifeops";
 }
 
+function domainForTask(taskType: string): string | undefined {
+  const lifeOpsDomain = lifeOpsDomainForTask(taskType);
+  if (lifeOpsDomain) return lifeOpsDomain;
+  if (ORCHESTRATOR_NATIVE_TASK_SET.has(taskType)) return "agent-orchestrator";
+  return undefined;
+}
+
 function stageKindToTaskType(
   kind: string | undefined,
   modelType: string | undefined,
   model?: RecordedModelCall,
 ): string {
+  const orchestratorTask = inferOrchestratorTaskType(kind, model);
+  if (orchestratorTask) return orchestratorTask;
+
   const lifeOpsTask = inferLifeOpsTaskType(kind, model);
   if (lifeOpsTask) return lifeOpsTask;
 
@@ -352,7 +391,7 @@ export function recordedTrajectoryToNativeRows(
         ? trajectory.scenarioId
         : null;
     const taskType = stageKindToTaskType(stage.kind, model.modelType, model);
-    const taskDomain = lifeOpsDomainForTask(taskType);
+    const taskDomain = domainForTask(taskType);
     rows.push({
       format: NATIVE_FORMAT,
       schemaVersion: NATIVE_SCHEMA_VERSION,

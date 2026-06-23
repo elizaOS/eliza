@@ -133,15 +133,14 @@ describe("registerTelegramCommandHandlers", () => {
     const { ctx, reply } = makeCtx("/think high");
     await thinkHandler?.(ctx);
 
-    // Deterministic commands answer locally — no pipeline round-trip.
     expect(handleMessage).not.toHaveBeenCalled();
     expect(reply).toHaveBeenCalledTimes(1);
-    expect(reply.mock.calls[0]?.[0]).toContain("high");
+    expect(reply.mock.calls[0]?.[0]).toContain("Thinking set to high.");
   });
 
-  it("agent (non-gate-safe): routes the command message and forces a reply", async () => {
+  it("agent (pipeline-owned): routes the command message and forces a reply", async () => {
     // `stop` is an agent command whose side effects are owned by the pipeline,
-    // so it is NOT gate-safe and must route through the agent.
+    // so it must route through the agent.
     const { manager, handleMessage } = makeMessageManager();
     const { handlers } = registerHandlers(makeRuntime(), manager);
 
@@ -175,7 +174,7 @@ describe("auth gating", () => {
     const { manager, handleMessage } = makeMessageManager();
     const { handlers } = registerHandlers(makeRuntime(), manager);
 
-    // `restart` requires auth and is not gate-safe.
+    // `restart` requires auth and is pipeline-owned.
     const restartHandler = handlers.get("restart");
     expect(restartHandler).toBeDefined();
     const { ctx, reply } = makeCtx("/restart");

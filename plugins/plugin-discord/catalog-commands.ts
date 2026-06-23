@@ -19,10 +19,11 @@
  * plugins, …) without touching the tested built-in command surface.
  *
  * Per-target dispatch:
- *   - `agent`    → deterministic commands (help/status/think/model/…) resolve
- *                  to a local reply via `resolveCommand`; other agent commands
- *                  route the reconstructed command text through the runtime's
- *                  message pipeline and reply with the agent's answer.
+ *   - `agent`    → deterministic commands
+ *                  (help/status/think/model/reset/…) resolve to a local reply
+ *                  via `resolveCommand`; pipeline-owned agent commands route
+ *                  the reconstructed command text through the runtime's message
+ *                  pipeline and reply with the agent's answer.
  *   - `navigate` → reply (ephemeral) describing the destination, resolving the
  *                  `/settings <section>` argument when present.
  *   - `client`   → GUI/TUI-only behaviors are filtered out of the discord
@@ -219,10 +220,10 @@ async function routeCommandToAgent(
 }
 
 /**
- * Run an agent-target command. Gate-safe commands (help/status/whoami/…) are
- * resolved deterministically via `resolveCommand` and answered locally — no
- * round-trip through the LLM pipeline. Everything else falls back to routing
- * the reconstructed command text through the agent.
+ * Run an agent-target command. Deterministic commands
+ * (help/status/think/model/reset/…) are resolved via `resolveCommand` and
+ * answered locally. Pipeline-owned commands fall back to routing the
+ * reconstructed command text through the agent.
  */
 async function dispatchAgentCommand(
 	interaction: ChatInputCommandInteraction,

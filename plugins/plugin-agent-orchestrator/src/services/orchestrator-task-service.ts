@@ -1628,11 +1628,21 @@ export class OrchestratorTaskService extends Service {
       // human/manual caller, no surprise model spend.
       if (acceptanceCriteria.length === 0) return;
 
-      const verdict = await verifyGoalCompletion(this.runtime, {
-        goal: doc.task.goal,
-        acceptanceCriteria,
-        completionEvidence,
-      });
+      const verdict = await verifyGoalCompletion(
+        this.runtime,
+        {
+          goal: doc.task.goal,
+          acceptanceCriteria,
+          completionEvidence,
+        },
+        {
+          recordTrajectory: {
+            roomId: doc.task.roomId,
+            taskId,
+            sessionId,
+          },
+        },
+      );
 
       if (verdict.passed) {
         await this.validateTask(taskId, {

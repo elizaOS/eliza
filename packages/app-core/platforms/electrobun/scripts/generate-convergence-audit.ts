@@ -236,7 +236,6 @@ const APP_PLUGIN_NAMES = new Set([
   "plugin-feed",
   "plugin-clawville",
   "plugin-companion",
-  "plugin-defense-of-the-agents",
   "plugin-documents",
   "plugin-eliza-classic",
   "plugin-elizacloud",

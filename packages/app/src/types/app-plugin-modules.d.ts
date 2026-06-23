@@ -211,10 +211,6 @@ declare module "@elizaos/app-feed" {
   export {};
 }
 
-declare module "@elizaos/app-defense-of-the-agents" {
-  export {};
-}
-
 declare module "@elizaos/app-clawville" {
   export {};
 }

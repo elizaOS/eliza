@@ -38,7 +38,6 @@ const PLUGINS =
         "app-model-tester",
         "plugin-feed",
         "plugin-clawville",
-        "plugin-defense-of-the-agents",
         "plugin-screenshare",
         "plugin-facewear",
         "plugin-companion",

@@ -1,10 +1,10 @@
 /**
  * Proactive-interaction decider (#8792).
  *
- * Consumes UI interaction events (view switches today; slash/shortcut wireable
- * the same way) and decides whether to surface a single scoped, helpful comment
- * through the existing `routeAutonomyTextToUser` → `proactive-message` pipeline
- * with `source: "proactive-interaction"`.
+ * Consumes UI interaction events (view switches, slash commands, shortcuts) and
+ * decides whether to surface a single scoped, helpful offer through either the
+ * existing `routeAutonomyTextToUser` → `proactive-message` pipeline with
+ * `source: "proactive-interaction"` or the low-priority notification rail.
  *
  * Two layers, both testable in isolation:
  *  - {@link decideProactiveComment} — the pure policy + governance decision
@@ -43,10 +43,24 @@ export type InteractionPayload =
  */
 export const PROACTIVE_CHATTINESS_SETTING_KEY = "ELIZA_PROACTIVE_INTERACTIONS";
 
+/** Where an admitted proactive offer should be delivered. */
+export type ProactiveDelivery = "chat" | "notify";
+
+/** A scoped offer from the judge, normalized before governance/admission. */
+export interface ProactiveOffer {
+  text: string;
+  delivery: ProactiveDelivery;
+  title?: string;
+  deepLink?: string;
+  groupKey?: string;
+}
+
 /** A model judge: given an interaction context, return an offer or null. */
+export type ProactiveJudgeResult = string | ProactiveOffer | null;
+
 export type ProactiveJudge = (
   payload: InteractionPayload,
-) => Promise<string | null>;
+) => Promise<ProactiveJudgeResult>;
 
 export interface DecideProactiveInput {
   payload: InteractionPayload;
@@ -72,7 +86,33 @@ export function interactionSurface(payload: InteractionPayload): string | null {
 export interface DecideProactiveResult {
   /** The comment to surface, or null when none should be sent. */
   text: string | null;
+  /** Delivery rail for the admitted text. Null when no text is admitted. */
+  delivery: ProactiveDelivery | null;
+  /** Optional notification headline when delivery is notify. */
+  title?: string;
+  deepLink?: string;
+  groupKey?: string;
   reason: string;
+}
+
+function normalizeProactiveOffer(
+  result: ProactiveJudgeResult,
+): ProactiveOffer | null {
+  if (typeof result === "string") {
+    const text = result.trim();
+    if (!text || text.toLowerCase() === "none" || text === "null") return null;
+    return { text, delivery: "chat" };
+  }
+  if (!result || typeof result !== "object") return null;
+  const text = result.text.trim();
+  if (!text || text.toLowerCase() === "none" || text === "null") return null;
+  return {
+    text,
+    delivery: result.delivery === "notify" ? "notify" : "chat",
+    title: result.title?.trim() || undefined,
+    deepLink: result.deepLink?.trim() || undefined,
+    groupKey: result.groupKey?.trim() || undefined,
+  };
 }
 
 /**
@@ -90,33 +130,59 @@ export async function decideProactiveComment(
 ): Promise<DecideProactiveResult> {
   const { payload, gate, judge, now } = input;
   const surface = interactionSurface(payload);
-  if (!surface) return { text: null, reason: "no surface (policy-silent)" };
+  if (!surface) {
+    return {
+      text: null,
+      delivery: null,
+      reason: "no surface (policy-silent)",
+    };
+  }
 
   if (payload.initiatedBy === "agent") {
-    return { text: null, reason: "agent-initiated (already acknowledged)" };
+    return {
+      text: null,
+      delivery: null,
+      reason: "agent-initiated (already acknowledged)",
+    };
   }
 
   if (!gate.isSettled(surface, now)) {
-    return { text: null, reason: "debounce: surface not settled" };
+    return {
+      text: null,
+      delivery: null,
+      reason: "debounce: surface not settled",
+    };
   }
 
-  const candidate = (await judge(payload))?.trim();
+  const candidate = normalizeProactiveOffer(await judge(payload));
   if (!candidate) {
-    return { text: null, reason: "judge: nothing helpful to offer" };
+    return {
+      text: null,
+      delivery: null,
+      reason: "judge: nothing helpful to offer",
+    };
   }
 
-  const admit = gate.tryAdmit({ surface, text: candidate, now });
+  const admit = gate.tryAdmit({ surface, text: candidate.text, now });
   if (!admit.admitted) {
-    return { text: null, reason: admit.reason };
+    return { text: null, delivery: null, reason: admit.reason };
   }
-  return { text: candidate, reason: "admitted" };
+  return {
+    text: candidate.text,
+    delivery: candidate.delivery,
+    title: candidate.title,
+    deepLink: candidate.deepLink,
+    groupKey: candidate.groupKey,
+    reason: "admitted",
+  };
 }
 
 const JUDGE_INSTRUCTION = [
   "The user just took an action in the app. Decide if there is ONE specific, helpful thing you can proactively offer right now.",
   'Examples: switched to wallet → "Want me to pull your latest balances?"; opened task-coordinator → "Want me to summarize your open tasks?".',
-  "Stay silent (return none) for ambiguous or low-value interactions, settings/config screens, or anything where a comment would be noise.",
-  'Respond as JSON: {"comment": <a short offer, or null>}.',
+  'Use delivery "chat" only when the current view benefits from a visible suggestion. Use delivery "notify" for useful but low-urgency offers that should land quietly outside chat.',
+  "Stay silent (return null) for ambiguous or low-value interactions, settings/config screens, or anything where an offer would be noise.",
+  'Respond as JSON: {"comment": <a short offer, or null>, "delivery": "chat" | "notify", "title": <optional notification title>}.',
 ].join("\n");
 
 /** Describe the interaction for the judge prompt. */
@@ -136,8 +202,9 @@ export function buildProactiveJudgePrompt(payload: InteractionPayload): string {
   return `${JUDGE_INSTRUCTION}\n${describeInteraction(payload)}`;
 }
 
-/** Parse the judge model output into an offer string or null. */
-export function parseProactiveJudgeOutput(raw: unknown): string | null {
+function parseProactiveJudgeObject(
+  raw: unknown,
+): Record<string, unknown> | null {
   let obj: unknown = raw;
   if (typeof raw === "string") {
     const trimmed = raw
@@ -151,18 +218,48 @@ export function parseProactiveJudgeOutput(raw: unknown): string | null {
     }
   }
   if (!obj || typeof obj !== "object") return null;
-  const comment = (obj as Record<string, unknown>).comment;
+  return obj as Record<string, unknown>;
+}
+
+/** Parse the judge model output into a typed offer or null. */
+export function parseProactiveJudgeDecisionOutput(
+  raw: unknown,
+): ProactiveOffer | null {
+  const obj = parseProactiveJudgeObject(raw);
+  if (!obj) return null;
+  const comment = obj.comment;
   if (typeof comment !== "string") return null;
   const trimmed = comment.trim();
   if (!trimmed || trimmed.toLowerCase() === "none" || trimmed === "null") {
     return null;
   }
-  return trimmed;
+  const rawDelivery = obj.delivery ?? obj.channel ?? obj.route;
+  const delivery =
+    rawDelivery === "notify" || rawDelivery === "notification"
+      ? "notify"
+      : "chat";
+  const title = typeof obj.title === "string" ? obj.title.trim() : "";
+  const deepLink = typeof obj.deepLink === "string" ? obj.deepLink.trim() : "";
+  const groupKey = typeof obj.groupKey === "string" ? obj.groupKey.trim() : "";
+  return {
+    text: trimmed,
+    delivery,
+    title: title || undefined,
+    deepLink: deepLink || undefined,
+    groupKey: groupKey || undefined,
+  };
+}
+
+/** Parse the judge model output into an offer string or null. */
+export function parseProactiveJudgeOutput(raw: unknown): string | null {
+  return parseProactiveJudgeDecisionOutput(raw)?.text ?? null;
 }
 
 export interface ProactiveDeciderWiring {
   /** Route an admitted comment to the user (proactive-message pipeline). */
   route: (text: string) => Promise<void>;
+  /** Route an admitted low-urgency offer to the notification rail. */
+  notify?: (offer: ProactiveOffer) => Promise<void>;
   gate: ProactiveInteractionGate;
   /** Override the clock (tests). */
   now?: () => number;
@@ -198,7 +295,7 @@ export function registerProactiveInteractionDecider(
       const raw = await runtime.useModel(ModelType.TEXT_SMALL, {
         prompt: buildProactiveJudgePrompt(payload),
       });
-      return parseProactiveJudgeOutput(raw);
+      return parseProactiveJudgeDecisionOutput(raw);
     } catch (err) {
       logger.debug({ err }, "[proactive-interaction] judge failed");
       return null;
@@ -220,7 +317,23 @@ export function registerProactiveInteractionDecider(
           now: clock(),
         });
         if (decision.text) {
-          await wiring.route(decision.text);
+          if (decision.delivery === "notify") {
+            if (wiring.notify) {
+              await wiring.notify({
+                text: decision.text,
+                delivery: "notify",
+                title: decision.title,
+                deepLink: decision.deepLink,
+                groupKey: decision.groupKey,
+              });
+            } else {
+              logger.debug(
+                "[proactive-interaction] notify delivery requested without notification route",
+              );
+            }
+          } else {
+            await wiring.route(decision.text);
+          }
         }
       } catch (err) {
         logger.debug({ err }, "[proactive-interaction] decider failed");

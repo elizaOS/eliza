@@ -20,7 +20,6 @@ const CONVERTED_PLUGINS = [
   "plugin-clawville",
   "plugin-companion",
   "plugin-contacts",
-  "plugin-defense-of-the-agents",
   "plugin-facewear",
   "plugin-feed",
   "plugin-hyperliquid-app",

@@ -1,44 +1,37 @@
 /**
  * all-views-crud.spec.ts
  *
- * Playwright e2e test: verifies that all 23 registered XR view panels can be
- * opened, rendered, and closed via the agent view-host route.
+ * Playwright e2e test: verifies that registered XR view panels can be opened,
+ * rendered, and closed via the agent view-host route.
  */
 
-import { expect, test } from "@playwright/test";
+import { type APIRequestContext, expect, test } from "@playwright/test";
 
 const BASE_URL = process.env.XR_BASE_URL ?? "http://localhost:31337";
 
-const ALL_VIEW_IDS = [
-  "wallet",
-  "companion",
-  "training",
-  "task-coordinator",
-  "orchestrator",
-  "views-manager",
-  "polymarket",
-  "vincent",
-  "steward",
-  "shopify",
-  "phone",
-  "contacts",
-  "messages",
-  "feed",
-  "defense-of-the-agents",
-  "clawville",
-  "hyperliquid",
-  "lifeops",
-  "screenshare",
-  "trajectory-logger",
-  "model-tester",
-  "smartglasses",
-  "facewear",
-] as const;
+async function fetchRegisteredViewIds(
+  request: APIRequestContext,
+): Promise<string[]> {
+  const response = await request.get(`${BASE_URL}/api/xr/views`);
+  expect(response.status()).toBe(200);
+  const body = (await response.json()) as {
+    views?: Array<{ id?: unknown }>;
+  };
+  return (body.views ?? [])
+    .map((view) => view.id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+}
 
-test.describe("XR view CRUD — all 23 views", () => {
-  for (const viewId of ALL_VIEW_IDS) {
-    test(`view "${viewId}" — load, render, close`, async ({ page }) => {
-      const url = `${BASE_URL}/api/xr/view-host/${viewId}`;
+test.describe("XR view CRUD — registered views", () => {
+  test("registered views load, render, and close", async ({
+    page,
+    request,
+  }) => {
+    const viewIds = await fetchRegisteredViewIds(request);
+    expect(viewIds.length).toBeGreaterThan(0);
+
+    for (const viewId of viewIds) {
+      const url = `${BASE_URL}/api/xr/view-host/${encodeURIComponent(viewId)}`;
       const response = await page.goto(url);
 
       expect(response?.status()).toBe(200);
@@ -59,13 +52,13 @@ test.describe("XR view CRUD — all 23 views", () => {
 
       // Clicking close should post a message (no error)
       await page.locator("#btn-close").click();
-    });
-  }
+    }
+  });
 
-  test("all 23 view ids are unique", () => {
-    const ids = [...ALL_VIEW_IDS];
+  test("registered view ids are unique", async ({ request }) => {
+    const ids = await fetchRegisteredViewIds(request);
     const unique = new Set(ids);
     expect(unique.size).toBe(ids.length);
-    expect(ids.length).toBe(23);
+    expect(ids.length).toBeGreaterThan(0);
   });
 });

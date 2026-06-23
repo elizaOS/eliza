@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect } from "react";
 import { client } from "../../api";
+import { useFetchData } from "../../hooks";
 import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
@@ -31,30 +32,22 @@ function resolveWebhookTarget(status: BlueBubblesStatus | null): string | null {
 
 export function BlueBubblesStatusPanel() {
   const t = useAppSelector((s) => s.t);
-  const [status, setStatus] = useState<BlueBubblesStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const fetchState = useFetchData<BlueBubblesStatus>(
+    (_signal) => client.getBlueBubblesStatus(),
+    [],
+  );
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setStatus(await client.getBlueBubblesStatus());
-    } catch (nextError) {
-      setError(
-        nextError instanceof Error ? nextError.message : String(nextError),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const status = fetchState.status === "success" ? fetchState.data : null;
+  const loading = fetchState.status === "loading";
+  const error = fetchState.status === "error" ? fetchState.error.message : null;
+  const refresh = fetchState.refetch;
 
   useEffect(() => {
-    void refresh();
     return client.onWsEvent("ws-reconnected", () => {
-      void refresh();
+      refresh();
     });
   }, [refresh]);
+
   const webhookTarget = resolveWebhookTarget(status);
 
   return (
@@ -66,9 +59,7 @@ export function BlueBubblesStatusPanel() {
           variant="outline"
           size="sm"
           className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
-          onClick={() => {
-            void refresh();
-          }}
+          onClick={refresh}
           disabled={loading}
         >
           {loading

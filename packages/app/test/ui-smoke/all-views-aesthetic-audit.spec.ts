@@ -314,7 +314,6 @@ const OVERLAY_NATIVE_OR_CANVAS_SLUGS = new Set([
   "plugin-2004scape-gui",
   "plugin-clawville-gui",
   "plugin-hyperscape-gui",
-  "plugin-defense-of-the-agents-gui",
 ]);
 
 function computeVerdict(

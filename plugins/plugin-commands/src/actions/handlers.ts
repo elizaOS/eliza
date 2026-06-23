@@ -5,8 +5,7 @@
  * does. It reads real runtime/registry state, persists option settings, invokes
  * owned runtime actions when needed, and returns a deterministic
  * `CommandResult`. No LLM improvisation: the same command path runs on web,
- * TUI, Discord, and Telegram. This is the agent-target action layer #8790 asks
- * for.
+ * TUI, Discord, and Telegram.
  */
 
 import type {
@@ -29,8 +28,8 @@ import type {
 	ParsedCommand,
 } from "../types";
 import {
-	clearCommandSettings,
 	type CommandSettings,
+	clearCommandSettings,
 	getCommandSettings,
 	setCommandSetting,
 } from "./command-settings";
@@ -60,10 +59,7 @@ export const DETERMINISTIC_COMMAND_KEYS: readonly string[] = [
 	"tts",
 ];
 
-/**
- * Back-compat export for callers compiled against the original name. It now
- * means the deterministic command set.
- */
+/** Back-compat export for callers compiled against the original name. */
 export const GATE_SAFE_COMMAND_KEYS = DETERMINISTIC_COMMAND_KEYS;
 
 const DETERMINISTIC_KEYS: ReadonlySet<string> = new Set(
@@ -183,7 +179,6 @@ async function runCompactAction(
 	if (!action || !message) {
 		return reply("Conversation compaction is not available in this runtime.");
 	}
-
 	const result = await action.handler(
 		runtime,
 		message,
@@ -191,9 +186,7 @@ async function runCompactAction(
 		undefined,
 		callback,
 	);
-	if (result?.text && result.text.trim().length > 0) {
-		return reply(result.text);
-	}
+	if (result?.text && result.text.trim().length > 0) return reply(result.text);
 	return reply("Conversation compaction completed.");
 }
 
@@ -208,8 +201,8 @@ async function setOptionCommand(
 		const settings = await getCommandSettings(runtime, roomId);
 		const current =
 			option.key === "model"
-				? settings.model ?? resolveModelLabel(runtime)
-				: settings[option.key] ?? "default";
+				? (settings.model ?? resolveModelLabel(runtime))
+				: (settings[option.key] ?? "default");
 		return reply(`${option.label} is ${current}.`);
 	}
 
@@ -331,7 +324,6 @@ export async function runCommand(
 			return runCompactAction(runtime, context.message, context.callback);
 
 		default:
-			// Not a deterministic command this layer owns — let it flow onward.
 			return { handled: false, shouldContinue: true };
 	}
 }

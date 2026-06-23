@@ -19,12 +19,14 @@
  *
  *   startAudioFrames() → `audioFrame` events → batch (~1 s) →
  *     ElizaVoice.pipelineProcess (native VAD + segmentation + speaker + diariz)
- *       → onTurn(JniAttributedTurn) → buildVoiceTurnSignal → VOICE_DM
+ *       → onCompletedPcmTurn? (ASR/text/TTS) + onTurn(JniAttributedTurn)
+ *       → buildVoiceTurnSignal → VOICE_DM
  *
  * It is native-only: construction throws off Android (no `ElizaVoice` plugin),
  * and the caller gates it behind `isPlatform("android") && isNativePlatform()`.
  */
 
+import { logger } from "@elizaos/logger";
 import type {
   ElizaVoicePluginLike,
   ElizaVoiceTurn,
@@ -67,6 +69,19 @@ export interface JniAttributedTurn {
 
 export type JniTurnListener = (turn: JniAttributedTurn) => void;
 
+export interface JniCompletedPcmTurn {
+  turnId: string;
+  audio: {
+    pcm: Float32Array;
+    sampleRate: number;
+  };
+  signal: VoiceTurnSignal;
+}
+
+export type JniCompletedPcmTurnListener = (
+  turn: JniCompletedPcmTurn,
+) => void | Promise<void>;
+
 /**
  * Resolves the enrolled-entity attribution for a turn's speaker embedding. The
  * caller injects this so the embedding→entity match (and the enrolled-speaker
@@ -85,6 +100,12 @@ export interface JniVoicePipelineOptions {
   resolveSpeaker?: SpeakerResolver;
   /** Entity ids the agent answers to without a wake word (owner + enrolled). */
   knownSpeakerEntityIds?: readonly string[];
+  /**
+   * Optional handoff for the segmented PCM turn. When present, the native
+   * bridge requests the completed turn PCM and dispatches it here so the host
+   * can queue it through the fused ASR → text → TTS device voice path.
+   */
+  onCompletedPcmTurn?: JniCompletedPcmTurnListener;
 }
 
 function base64ToFloat32(b64: string): Float32Array {
@@ -242,6 +263,7 @@ export class JniVoicePipeline {
     if (this.pipelineHandle) {
       const flushed = await this.voice.pipelineFlush({
         handle: this.pipelineHandle,
+        includePcm: Boolean(this.options.onCompletedPcmTurn),
       });
       await this.emitTurns(flushed.turns);
     }
@@ -281,6 +303,7 @@ export class JniVoicePipeline {
     const res = await this.voice.pipelineProcess({
       handle: this.pipelineHandle,
       pcm16,
+      includePcm: Boolean(this.options.onCompletedPcmTurn),
     });
     await this.emitTurns(res.turns);
   }
@@ -313,7 +336,34 @@ export class JniVoicePipeline {
         diarizDistinctClasses: raw.diarizDistinctClasses,
         signal,
       };
+      this.dispatchCompletedPcmTurn(raw, signal);
       for (const listener of this.turnListeners) listener(turn);
     }
+  }
+
+  private dispatchCompletedPcmTurn(
+    raw: ElizaVoiceTurn,
+    signal: VoiceTurnSignal,
+  ): void {
+    const listener = this.options.onCompletedPcmTurn;
+    if (!listener) return;
+    const pcm = base64ToFloat32(raw.pcm ?? "");
+    if (pcm.length === 0) return;
+    void Promise.resolve(
+      listener({
+        turnId: raw.turnId,
+        audio: {
+          pcm,
+          sampleRate:
+            typeof raw.pcmSampleRate === "number" ? raw.pcmSampleRate : 16_000,
+        },
+        signal,
+      }),
+    ).catch((error) => {
+      logger.warn(
+        { error, turnId: raw.turnId },
+        "[JniVoicePipeline] completed PCM turn listener failed",
+      );
+    });
   }
 }

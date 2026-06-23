@@ -2279,10 +2279,6 @@ export const INVALID_TRACER_PROVIDER = {};
       ...[
         ["@elizaos/plugin-feed", "plugins/plugin-feed/src/ui/index.ts"],
         [
-          "@elizaos/plugin-defense-of-the-agents",
-          "plugins/plugin-defense-of-the-agents/src/ui/index.ts",
-        ],
-        [
           "@elizaos/plugin-clawville",
           "plugins/plugin-clawville/src/ui/index.ts",
         ],

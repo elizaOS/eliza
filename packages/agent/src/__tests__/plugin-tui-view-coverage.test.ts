@@ -44,7 +44,6 @@ const VIEW_MANIFESTS = [
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
   "plugins/plugin-clawville/src/index.ts",
-  "plugins/plugin-defense-of-the-agents/src/index.ts",
   "plugins/plugin-screenshare/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/index.ts",
@@ -139,8 +138,6 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-clawville-state",
     "terminal-clawville-command",
   ],
-  "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx":
-    ["terminal-defense-state", "terminal-defense-command"],
   "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx": [
     "terminal-screenshare-state",
     "terminal-screenshare-start",

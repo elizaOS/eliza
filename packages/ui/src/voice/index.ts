@@ -17,6 +17,8 @@ export {
 } from "./jni-voice-harness";
 export {
   type JniAttributedTurn,
+  type JniCompletedPcmTurn,
+  type JniCompletedPcmTurnListener,
   type JniTurnListener,
   JniVoicePipeline,
   type JniVoicePipelineOptions,

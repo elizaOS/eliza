@@ -1,4 +1,17 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const elizaRoot = path.resolve(here, "../..");
+const groundedActionReply = path.join(
+  elizaRoot,
+  "packages",
+  "agent",
+  "src",
+  "actions",
+  "grounded-action-reply.ts",
+);
 
 /**
  * Unit-test config. UI / service suites that need inlined core/agent/ui or
@@ -8,7 +21,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.{test,spec}.{ts,tsx}", "test/**/*.{test,spec}.{ts,tsx}"],
+    include: [
+      "src/**/*.{test,spec}.{ts,tsx}",
+      "test/**/*.{test,spec}.{ts,tsx}",
+    ],
     exclude: [
       "node_modules/**",
       "dist/**",
@@ -31,5 +47,13 @@ export default defineConfig({
         external: [/@elizaos\/agent/],
       },
     },
+  },
+  resolve: {
+    alias: [
+      {
+        find: /^@elizaos\/agent$/,
+        replacement: groundedActionReply,
+      },
+    ],
   },
 });

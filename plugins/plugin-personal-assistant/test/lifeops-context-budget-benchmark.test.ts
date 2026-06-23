@@ -11,7 +11,8 @@ const SCENARIOS: LifeOpsContextBudgetScenario[] = [
     tokenBudget: 240,
     requiredProviders: ["lifeops", "inboxTriage", "health"],
     providerPayloads: {
-      lifeops: "calendar: board call at 9, dentist at 15:00; tasks: review deck",
+      lifeops:
+        "calendar: board call at 9, dentist at 15:00; tasks: review deck",
       inboxTriage: "urgent: CFO asks for runway numbers before noon",
       health: "sleep recap: 6h 20m, wake drift +35m",
       roomPolicy: "owner room, approvals required before external sends",
@@ -40,7 +41,9 @@ describe("LifeOps context budget benchmark", () => {
     for (const scenario of report.scenarios) {
       expect(scenario.totalTokens).toBeLessThanOrEqual(scenario.tokenBudget);
       expect(scenario.overBudget).toBe(false);
-      expect(scenario.providers).toHaveLength(LIFEOPS_CONTEXT_PROVIDER_IDS.length);
+      expect(scenario.providers).toHaveLength(
+        LIFEOPS_CONTEXT_PROVIDER_IDS.length,
+      );
     }
 
     const morning = report.scenarios.find(

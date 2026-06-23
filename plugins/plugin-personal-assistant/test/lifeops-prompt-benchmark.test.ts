@@ -42,33 +42,29 @@ describe("LifeOps prompt benchmark catalog", () => {
 });
 
 describe.skipIf(!LIVE)("LifeOps prompt benchmark live gate", () => {
-  it(
-    "drives runLifeOpsPromptBenchmark and emits optimization rows",
-    async () => {
-      const allCases = await buildLifeOpsPromptBenchmarkCases();
-      const directCases = allCases.filter(
-        (testCase) => testCase.variantId === "direct",
-      );
-      const cases = directCases.slice(0, liveCaseLimit());
-      expect(cases.length).toBeGreaterThan(0);
+  it("drives runLifeOpsPromptBenchmark and emits optimization rows", async () => {
+    const allCases = await buildLifeOpsPromptBenchmarkCases();
+    const directCases = allCases.filter(
+      (testCase) => testCase.variantId === "direct",
+    );
+    const cases = directCases.slice(0, liveCaseLimit());
+    expect(cases.length).toBeGreaterThan(0);
 
-      const report = await runLifeOpsPromptBenchmark({
-        cases,
-        isolate: "shared",
-      });
-      expect(report.total).toBe(cases.length);
-      expect(report.accuracy).toBeGreaterThanOrEqual(
-        Number(process.env.LIFEOPS_PROMPT_BENCHMARK_MIN_ACCURACY ?? 0),
-      );
+    const report = await runLifeOpsPromptBenchmark({
+      cases,
+      isolate: "shared",
+    });
+    expect(report.total).toBe(cases.length);
+    expect(report.accuracy).toBeGreaterThanOrEqual(
+      Number(process.env.LIFEOPS_PROMPT_BENCHMARK_MIN_ACCURACY ?? 0),
+    );
 
-      const markdown = formatPromptBenchmarkReportMarkdown(report);
-      const axRows = buildAxOptimizationRows(report);
-      const serializedAxRows = serializeAxOptimizationRows(axRows);
+    const markdown = formatPromptBenchmarkReportMarkdown(report);
+    const axRows = buildAxOptimizationRows(report);
+    const serializedAxRows = serializeAxOptimizationRows(axRows);
 
-      expect(markdown).toContain("# LifeOps Prompt Benchmark");
-      expect(axRows).toHaveLength(report.total);
-      expect(serializedAxRows.trim().split("\n")).toHaveLength(report.total);
-    },
-    300_000,
-  );
+    expect(markdown).toContain("# LifeOps Prompt Benchmark");
+    expect(axRows).toHaveLength(report.total);
+    expect(serializedAxRows.trim().split("\n")).toHaveLength(report.total);
+  }, 300_000);
 });

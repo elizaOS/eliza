@@ -90,7 +90,6 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
   "plugins/plugin-clawville/src/index.ts",
-  "plugins/plugin-defense-of-the-agents/src/index.ts",
   "plugins/plugin-screenshare/src/index.ts",
   "plugins/plugin-social-alpha/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
@@ -149,8 +148,6 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice":
     "plugins/plugin-companion/src/plugin.ts",
   "@elizaos/plugin-contacts/register": "plugins/plugin-contacts/src/plugin.ts",
-  "@elizaos/plugin-defense-of-the-agents":
-    "plugins/plugin-defense-of-the-agents/src/index.ts",
   "@elizaos/plugin-device-settings/register": null,
   "@elizaos/plugin-facewear/register": "plugins/plugin-facewear/src/index.ts",
   "@elizaos/plugin-feed": "plugins/plugin-feed/src/index.ts",
@@ -284,12 +281,6 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     path: "/clawville",
   },
   {
-    manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
-    id: "defense-of-the-agents",
-    viewType: "xr",
-    path: "/defense-of-the-agents",
-  },
-  {
     manifestPath: "plugins/plugin-screenshare/src/index.ts",
     id: "screenshare",
     viewType: "xr",
@@ -355,27 +346,6 @@ const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
       viewType: "tui",
       path: "/clawville/tui",
       componentExport: "ClawvilleTuiView",
-    },
-    {
-      manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
-      id: "defense-of-the-agents",
-      viewType: "gui",
-      path: "/defense-of-the-agents",
-      componentExport: "DefenseAgentsOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
-      id: "defense-of-the-agents",
-      viewType: "xr",
-      path: "/defense-of-the-agents",
-      componentExport: "DefenseAgentsOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
-      id: "defense-of-the-agents",
-      viewType: "tui",
-      path: "/defense-of-the-agents/tui",
-      componentExport: "DefenseAgentsTuiView",
     },
     {
       manifestPath: "plugins/plugin-feed/src/index.ts",

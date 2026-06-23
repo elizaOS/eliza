@@ -226,6 +226,7 @@ struct PipelineSession {
     // read them without re-parsing big JSON.
     std::vector<std::vector<float>> turnEmbeddings;
     std::vector<std::vector<int8_t>> turnLabels;
+    std::vector<std::vector<float>> turnPcms;
 };
 
 // Append `n` samples to a bounded pre-roll ring, dropping oldest beyond cap.
@@ -321,6 +322,7 @@ bool finalize_turn(PipelineSession* s, char** outError) {
                                               : std::vector<float>{});
     s->turnLabels.push_back(haveLabels ? std::move(labels)
                                        : std::vector<int8_t>{});
+    s->turnPcms.push_back(std::move(s->turnPcm));
     s->turnPcm.clear();
     return true;
 }
@@ -813,6 +815,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineProcess(JNIEnv* env, jclass,
     s->turns.clear();
     s->turnEmbeddings.clear();
     s->turnLabels.clear();
+    s->turnPcms.clear();
 
     const std::vector<float> pcm = read_float_array(env, jPcm);
     s->pending.insert(s->pending.end(), pcm.begin(), pcm.end());
@@ -841,6 +844,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineFlush(JNIEnv* env, jclass,
     s->turns.clear();
     s->turnEmbeddings.clear();
     s->turnLabels.clear();
+    s->turnPcms.clear();
     if (s->seg.forceEnd()) {
         s->capturing = false;
         char* outError = nullptr;
@@ -896,6 +900,26 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineTurnLabels(JNIEnv* env,
     return out;
 }
 
+// Read the segmented turn PCM for the i-th turn. Empty array when unavailable.
+JNIEXPORT jfloatArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineTurnPcm(JNIEnv* env,
+                                                           jclass,
+                                                           jlong handle,
+                                                           jint index) {
+    auto* s = reinterpret_cast<PipelineSession*>(handle);
+    if (!s || index < 0 ||
+        static_cast<size_t>(index) >= s->turnPcms.size()) {
+        return env->NewFloatArray(0);
+    }
+    const auto& pcm = s->turnPcms[static_cast<size_t>(index)];
+    jfloatArray out = env->NewFloatArray(static_cast<jsize>(pcm.size()));
+    if (out && !pcm.empty()) {
+        env->SetFloatArrayRegion(out, 0, static_cast<jsize>(pcm.size()),
+                                 pcm.data());
+    }
+    return out;
+}
+
 JNIEXPORT void JNICALL
 Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineReset(JNIEnv*, jclass,
                                                          jlong handle) {
@@ -904,6 +928,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineReset(JNIEnv*, jclass,
     s->seg.reset();
     s->pending.clear();
     s->turnPcm.clear();
+    s->turnPcms.clear();
     s->preRoll.clear();
     s->capturing = false;
     char* outError = nullptr;

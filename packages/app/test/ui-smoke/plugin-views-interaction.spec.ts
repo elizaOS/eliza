@@ -16,15 +16,7 @@ import { VIEW_CASES } from "./plugin-view-cases";
  * per-view video.
  */
 
-// Known pre-existing failure unrelated to the catalog work: the
-// defense-of-the-agents game bundle throws "TypeError: n is not a function"
-// (three-vrm host-external resolution) on load. Tracked separately; skipped
-// here so it doesn't mask regressions in the other plugin views.
-const KNOWN_BROKEN = new Set(["defense-of-the-agents"]);
-
-const GUI_CASES = VIEW_CASES.filter(
-  (c) => c.viewType === "gui" && !KNOWN_BROKEN.has(c.id),
-);
+const GUI_CASES = VIEW_CASES.filter((c) => c.viewType === "gui");
 
 const MAX_CLICKS = 20;
 const MAX_INPUTS = 6;

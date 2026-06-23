@@ -56,8 +56,6 @@ export const VIEW_CASES: ViewCase[] = (
     ["views-manager", "tui", "/views/tui"],
     ["clawville", "gui", "/clawville"],
     ["clawville", "tui", "/clawville/tui"],
-    ["defense-of-the-agents", "gui", "/defense-of-the-agents"],
-    ["defense-of-the-agents", "tui", "/defense-of-the-agents/tui"],
     ["screenshare", "gui", "/screenshare"],
     ["screenshare", "tui", "/screenshare/tui"],
     ["social-alpha", "gui", "/social-alpha"],

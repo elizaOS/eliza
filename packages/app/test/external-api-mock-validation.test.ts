@@ -66,8 +66,6 @@ const VALIDATED: Readonly<
  */
 const CONTRACT_TESTED: Readonly<Record<string, string>> = {
   clawville: "plugins/plugin-clawville/src/routes.test.ts",
-  "defense-of-the-agents":
-    "plugins/plugin-defense-of-the-agents/src/routes.contract.test.ts",
   shopify: "plugins/plugin-shopify-ui/src/routes.contract.test.ts",
   steward: "plugins/plugin-steward-app/src/steward-bridge.contract.test.ts",
   vincent: "plugins/plugin-vincent/src/vincent-oauth-parser.contract.test.ts",

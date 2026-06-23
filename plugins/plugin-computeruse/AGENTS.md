@@ -153,6 +153,20 @@ Only scripts that exist in `package.json`:
 bun run --cwd plugins/plugin-computeruse build       # Bun.build (build.ts) → dist/
 bun run --cwd plugins/plugin-computeruse test        # vitest run
 bun run --cwd plugins/plugin-computeruse typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-computeruse validate:platform-evidence
+                                                     # validate all platform evidence manifests
+bun run --cwd plugins/plugin-computeruse validate:ios-device-evidence
+                                                     # validate iOS device evidence manifest
+bun run --cwd plugins/plugin-computeruse validate:android-device-evidence
+                                                     # validate Android consumer evidence manifest
+bun run --cwd plugins/plugin-computeruse validate:android-aosp-evidence
+                                                     # validate Android AOSP/system evidence manifest
+bun run --cwd plugins/plugin-computeruse validate:macos-desktop-evidence
+                                                     # validate macOS desktop evidence manifest
+bun run --cwd plugins/plugin-computeruse validate:linux-desktop-evidence
+                                                     # validate Linux desktop evidence manifest
+bun run --cwd plugins/plugin-computeruse validate:windows-desktop-evidence
+                                                     # validate Windows desktop evidence manifest
 ```
 
 `postinstall` runs `scripts/ensure-platform-deps.mjs` to check native dep availability (nutjs binaries, cliclick, xdotool).
@@ -210,6 +224,7 @@ Call the module-level `registerCoordOcrProvider(provider)` exported from `src/mo
 - **nutjs native bindings**: `@nut-tree-fork/nut-js` requires native compilation. If the build fails, set `ELIZA_COMPUTERUSE_DRIVER=legacy` to fall back to shell tools.
 - **Scene is per-turn**: `sceneProvider` calls `SceneBuilder.onAgentTurn()` once per turn. Code that needs the scene outside a provider turn should call `ComputerUseService.getCurrentScene()` or `refreshScene("active")`.
 - **WS7 trajectory events**: `COMPUTER_USE_AGENT` emits `logger.info` lines with `evt: "computeruse.agent.step"`. These are picked up by plugin-trajectory-logger via log capture — no direct dependency.
+- **Platform evidence**: `docs/ios-device-validation.json`, `docs/android-device-validation.json`, `docs/android-aosp-validation.json`, `docs/macos-desktop-validation.json`, `docs/linux-desktop-validation.json`, and `docs/windows-desktop-validation.json` are the release evidence manifests. Keep incomplete live-device checks in `requires_device_evidence`; use `validate:platform-evidence -- --require-complete` only for release gates that truly have artifacts for every required platform check.
 - **Mobile surface**: `src/mobile/` is real but constrained. Read `docs/IOS_CONSTRAINTS.md` and `docs/ANDROID_CONSTRAINTS.md` before touching mobile code.
 - **OSWorld benchmark**: `src/osworld/` adapts the plugin to the OSWorld desktop benchmark format. Not part of normal agent runtime.
 - **Further reading**: `docs/MULTI_MONITOR.md`, `docs/SCENE_BUILDER.md`, `docs/MOBILE_ASSISTANT_ROUTING.md`, `docs/AOSP_SYSTEM_APP.md`.

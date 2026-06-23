@@ -42,8 +42,6 @@ function normalizedHmrViewId(name: string): string {
     case "view-manager":
     case "manager":
       return "views-manager";
-    case "defense":
-      return "defense-of-the-agents";
     default:
       return id;
   }

@@ -67,15 +67,23 @@ export function makeGrillingRuntime(
   acp: ReturnType<typeof makeScriptedAcp>["service"],
   modelOverride: (...args: unknown[]) => Promise<unknown>,
 ): IAgentRuntime {
-  return new Proxy(base, {
+  const target =
+    base && typeof base === "object" ? base : ({} as IAgentRuntime);
+  return new Proxy(target, {
     get(target, prop, receiver) {
       if (prop === "getService") {
-        return (type: string) =>
-          type === AcpService.serviceType
-            ? acp
-            : (target as IAgentRuntime).getService(type as never);
+        return (type: string) => {
+          if (type === AcpService.serviceType) return acp;
+          const getService = (target as Partial<IAgentRuntime>).getService;
+          return typeof getService === "function"
+            ? getService.call(target, type as never)
+            : undefined;
+        };
       }
       if (prop === "useModel") return modelOverride;
+      if (prop === "agentId") {
+        return Reflect.get(target, prop, receiver) ?? "scenario-agent";
+      }
       const value = Reflect.get(target, prop, receiver);
       return typeof value === "function" ? value.bind(target) : value;
     },
@@ -94,6 +102,9 @@ export async function seedActiveTask(acceptanceCriteria: string[]): Promise<{
     title: "Implement the widget",
     goal: "implement the widget and prove it works",
     acceptanceCriteria,
+    roomId: "scenario-room-grill",
+    taskRoomId: "scenario-task-room-grill",
+    worldId: "scenario-world",
   });
   const taskId = detail.task.id;
   const sessionId = "scenario-sess-1";

@@ -109,8 +109,6 @@ vi.mock("@elizaos/app-core/ui-compat", () => uiMock);
 
 import { ClawvilleTuiView } from "../../../../plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface";
 import { interact as interactClawville } from "../../../../plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.interact";
-import { DefenseAgentsTuiView } from "../../../../plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface";
-import { interact as interactDefense } from "../../../../plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.interact";
 
 const baseRun = {
   runId: "run-1",
@@ -168,7 +166,7 @@ afterEach(() => {
 });
 
 describe("game TUI mounted surfaces", () => {
-  it("mounts app-run-aware TUI state for the remaining game operators", () => {
+  it("mounts app-run-aware TUI state for the remaining game operator", () => {
     appState.appRuns = [
       {
         ...baseRun,
@@ -179,15 +177,6 @@ describe("game TUI mounted surfaces", () => {
           telemetry: { nearestBuildingLabel: "Tools", knowledgeCount: 7 },
         },
       },
-      {
-        ...baseRun,
-        appName: "@elizaos/plugin-defense-of-the-agents",
-        session: {
-          canSendCommands: true,
-          suggestedPrompts: ["review strategy"],
-          telemetry: { heroClass: "mage", heroLane: "mid", heroLevel: 2 },
-        },
-      },
     ];
 
     expect(renderState(React.createElement(ClawvilleTuiView))).toMatchObject({
@@ -195,15 +184,6 @@ describe("game TUI mounted surfaces", () => {
       viewId: "clawville",
       nearestBuilding: "Tools",
       knowledgeCount: 7,
-      canSend: true,
-    });
-    cleanupSurfaces();
-
-    expect(
-      renderState(React.createElement(DefenseAgentsTuiView)),
-    ).toMatchObject({
-      viewId: "defense-of-the-agents",
-      heroLane: "mid",
       canSend: true,
     });
   });
@@ -231,7 +211,7 @@ describe("game TUI mounted surfaces", () => {
     );
   });
 
-  it("exposes terminal command capabilities for game operators", async () => {
+  it("exposes terminal command capabilities for the remaining game operator", async () => {
     sendAppRunMessage.mockResolvedValue({ success: true, message: "queued" });
     controlAppRun.mockResolvedValue({ success: true, message: "paused" });
     vi.stubGlobal(
@@ -249,11 +229,5 @@ describe("game TUI mounted surfaces", () => {
       viewType: "tui",
       appName: "@elizaos/plugin-clawville",
     });
-    await expect(
-      interactDefense("terminal-defense-command", {
-        runId: "run-1",
-        content: "review strategy",
-      }),
-    ).resolves.toMatchObject({ viewType: "tui" });
   });
 });

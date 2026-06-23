@@ -144,6 +144,9 @@ final class ElizaVoiceNative {
     /** Read the diariz int8 frame labels for the i-th turn of the last call. */
     static native byte[] nativePipelineTurnLabels(long handle, int index);
 
+    /** Read the segmented fp32 PCM for the i-th turn of the last call. */
+    static native float[] nativePipelineTurnPcm(long handle, int index);
+
     static native void nativePipelineReset(long handle);
 
     static native void nativePipelineClose(long handle);

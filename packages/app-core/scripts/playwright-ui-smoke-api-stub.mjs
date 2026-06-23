@@ -248,21 +248,6 @@ const smokeViewDeclarations = [
     "tui",
   ],
   [
-    "defense-of-the-agents",
-    "Defense of the Agents",
-    "plugin-defense-of-the-agents",
-    "/defense-of-the-agents",
-    "DefenseAgentsOperatorSurface",
-  ],
-  [
-    "defense-of-the-agents",
-    "Defense of the Agents TUI",
-    "plugin-defense-of-the-agents",
-    "/defense-of-the-agents/tui",
-    "DefenseAgentsTuiView",
-    "tui",
-  ],
-  [
     "screenshare",
     "Screenshare",
     "plugin-screenshare",

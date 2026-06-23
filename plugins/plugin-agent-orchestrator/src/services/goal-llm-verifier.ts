@@ -439,27 +439,7 @@ export async function verifyGoalCompletion(
     };
   }
   const prompt = buildVerificationPrompt(input);
-  // Record the grill model boundary so the scenario native-export and
-  // production observability capture this supervision call. The recorder is
-  // internally defensive (every I/O is try/caught + logged) and honors
-  // `ELIZA_TRAJECTORY_RECORDING`, so this never affects the returned verdict.
-  const record = options?.recordTrajectory;
-  const recorder =
-    record && isTrajectoryRecordingEnabled()
-      ? createJsonFileTrajectoryRecorder()
-      : null;
   const startedAt = Date.now();
-  const trajectoryId = recorder
-    ? recorder.startTrajectory({
-        agentId: runtime.agentId,
-        roomId: record?.roomId,
-        rootMessage: {
-          id: record?.sessionId ?? record?.taskId ?? `goal-verify-${startedAt}`,
-          text: input.goal.trim() || "(goal verification)",
-          sender: "orchestrator-goal-verifier",
-        },
-      })
-    : null;
   let raw: string;
   try {
     const result = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -468,9 +448,6 @@ export async function verifyGoalCompletion(
     });
     raw = typeof result === "string" ? result : String(result);
   } catch (err) {
-    if (recorder && trajectoryId) {
-      await recorder.endTrajectory(trajectoryId, "errored");
-    }
     const detail = err instanceof Error ? err.message : String(err);
     return {
       passed: false,
@@ -479,19 +456,70 @@ export async function verifyGoalCompletion(
       rawResponse: "",
     };
   }
-  if (recorder && trajectoryId) {
-    const endedAt = Date.now();
+  // Record the grill model boundary (prompt + verdict) so the scenario
+  // native-export and production observability capture this supervision call.
+  // Pure observability: a recorder fault must never block or alter the verdict,
+  // so the whole thing is guarded and only logs on failure.
+  await recordVerifierBoundary(runtime, options?.recordTrajectory, {
+    goal: input.goal,
+    prompt,
+    response: raw,
+    startedAt,
+    endedAt: Date.now(),
+  });
+  const parsed = parseJudgeResponse(raw, input.acceptanceCriteria);
+  return { ...parsed, rawResponse: raw };
+}
+
+/** Agent/sender labels used when the runtime has no agentId (e.g. a partial
+ *  test runtime); a non-empty string keeps the trajectory file path valid. */
+const GOAL_VERIFIER_TRAJECTORY_AGENT = "orchestrator-goal-verifier";
+
+/**
+ * Write the verifier's single model call as a one-stage trajectory under the
+ * active trajectory dir, so the scenario native-export converts it to an
+ * `eliza_native_v1` row and the observability stack can read the grill
+ * boundary. No-op unless a recording context is supplied and
+ * `ELIZA_TRAJECTORY_RECORDING` is on. Fully guarded: this is observability, and
+ * a recorder fault must never break {@link verifyGoalCompletion}'s verdict.
+ */
+async function recordVerifierBoundary(
+  runtime: IAgentRuntime,
+  context: GoalVerificationOptions["recordTrajectory"],
+  call: {
+    goal: string;
+    prompt: string;
+    response: string;
+    startedAt: number;
+    endedAt: number;
+  },
+): Promise<void> {
+  if (!context || !isTrajectoryRecordingEnabled()) return;
+  try {
+    const recorder = createJsonFileTrajectoryRecorder();
+    const trajectoryId = recorder.startTrajectory({
+      agentId: runtime.agentId || GOAL_VERIFIER_TRAJECTORY_AGENT,
+      roomId: context.roomId,
+      rootMessage: {
+        id:
+          context.sessionId ??
+          context.taskId ??
+          `goal-verify-${call.startedAt}`,
+        text: call.goal.trim() || "(goal verification)",
+        sender: GOAL_VERIFIER_TRAJECTORY_AGENT,
+      },
+    });
     const stage: RecordedStage = {
       stageId: `${trajectoryId}:goal-verify`,
       kind: "evaluation",
-      startedAt,
-      endedAt,
-      latencyMs: endedAt - startedAt,
+      startedAt: call.startedAt,
+      endedAt: call.endedAt,
+      latencyMs: call.endedAt - call.startedAt,
       model: {
         modelType: ModelType.TEXT_SMALL,
         provider: "default",
-        prompt,
-        response: raw,
+        prompt: call.prompt,
+        response: call.response,
         // We only get the verdict text back from `useModel`, not token usage,
         // so cost is recorded as 0 (and the price-table lookup short-circuits)
         // rather than emitting a misleading missing-price warning per call.
@@ -500,7 +528,10 @@ export async function verifyGoalCompletion(
     };
     await recorder.recordStage(trajectoryId, stage);
     await recorder.endTrajectory(trajectoryId, "finished");
+  } catch (err) {
+    runtime.logger?.warn?.(
+      { err: err instanceof Error ? err.message : String(err) },
+      "[goal-llm-verifier] failed to record verifier trajectory (non-fatal)",
+    );
   }
-  const parsed = parseJudgeResponse(raw, input.acceptanceCriteria);
-  return { ...parsed, rawResponse: raw };
 }

@@ -235,7 +235,6 @@
         "@elizaos/plugin-clawville": "workspace:*",
         "@elizaos/plugin-companion": "workspace:*",
         "@elizaos/plugin-contacts": "workspace:*",
-        "@elizaos/plugin-defense-of-the-agents": "workspace:*",
         "@elizaos/plugin-device-settings": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-facewear": "workspace:*",
@@ -3474,21 +3473,6 @@
         "react-dom": "^19.0.0",
       },
     },
-    "plugins/plugin-defense-of-the-agents": {
-      "name": "@elizaos/plugin-defense-of-the-agents",
-      "version": "2.0.3-beta.2",
-      "dependencies": {
-        "@elizaos/app-core": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-        "react": "^19.0.0",
-      },
-      "devDependencies": {
-        "tsup": "^8.5.1",
-        "vite": "^8.0.0",
-      },
-    },
     "plugins/plugin-device-filesystem": {
       "name": "@elizaos/plugin-device-filesystem",
       "version": "2.0.3-beta.2",
@@ -6719,8 +6703,6 @@
     "@elizaos/plugin-computeruse": ["@elizaos/plugin-computeruse@workspace:plugins/plugin-computeruse"],
 
     "@elizaos/plugin-contacts": ["@elizaos/plugin-contacts@workspace:plugins/plugin-contacts"],
-
-    "@elizaos/plugin-defense-of-the-agents": ["@elizaos/plugin-defense-of-the-agents@workspace:plugins/plugin-defense-of-the-agents"],
 
     "@elizaos/plugin-device-filesystem": ["@elizaos/plugin-device-filesystem@workspace:plugins/plugin-device-filesystem"],
 

@@ -136,10 +136,11 @@ export function gateConnectorCommandByName(
  *
  * The three target kinds behave consistently across connectors:
  *
- *   - `agent`    → run the command. Gate-safe commands (help/status/…) resolve
- *                  to a deterministic local reply via `resolveCommand`; other
- *                  agent commands route the reconstructed command text through
- *                  the connector's message pipeline and surface the agent reply.
+ *   - `agent`    → run the command. Gate-safe deterministic commands
+ *                  (help/status/models/usage/…) resolve to a local reply via
+ *                  `resolveCommand`; option/lifecycle commands route the
+ *                  reconstructed command text through the connector's message
+ *                  pipeline and surface the agent reply.
  *   - `navigate` → reply with a description of the in-app destination (a deep
  *                  link); the connector cannot open the Eliza app itself.
  *   - `client`   → a GUI/TUI-only behavior with no remote surface; the catalog

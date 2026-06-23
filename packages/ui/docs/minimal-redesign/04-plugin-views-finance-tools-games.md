@@ -391,8 +391,8 @@ Spatial views are the lightest already (trajectory-logger, facewear both ship a 
 - **States:** no-run "empty" (`:507-546`), live (`:561`); status→live/attention/idle (`:62-66`); sending-command in flight.
 - **Chrome/HUD:** hand-rolled `HeroHeader` (34vh + blur status chip + accent CTA `:185-273`) → 3 `StatusStripCard`s (Location/Relay/Goal) → `GameOperatorShell` (own title + statusLabel + objective + detailItems + actions + feed + composer); empty state adds a 🦀 waiting-zone (`:379-414`).
 
-  **Heaviest offending JSX** — the `HeroHeader` (`:196-272`, ~80 inline-styled lines, **byte-identical to hyperscape + defense** except accent/emoji).
-- **Heaviness / slop critique:** **Double-HUD** — bespoke hero+strip AND `GameOperatorShell` (which has its own status/objective/location), so status/objective/location render **twice**. 34vh marketing banner eats a third of the panel before any operational info. ~250 lines duplicated verbatim across this + hyperscape + defense. Emoji icons (🦀🏘💬⚡📍🎯) clash with the orange/blue/flat brand.
+  **Heaviest offending JSX** — the `HeroHeader` (`:196-272`, ~80 inline-styled lines, **byte-identical to hyperscape** except accent/emoji).
+- **Heaviness / slop critique:** **Double-HUD** — bespoke hero+strip AND `GameOperatorShell` (which has its own status/objective/location), so status/objective/location render **twice**. 34vh marketing banner eats a third of the panel before any operational info. ~250 lines duplicated verbatim across this + hyperscape. Emoji icons (🦀🏘💬⚡📍🎯) clash with the orange/blue/flat brand.
 - **Minimization recommendations:** Delete the bespoke `HeroHeader`/`StatusStripCard`/`HeroFrame`; let `GameOperatorShell` be the sole chrome. If a banner stays, shrink to a thin title bar + status dot. Extract the one shared shell (stop triplicating). Replace emoji with brand icons + orange/blue.
 
 ## 4. plugin-hyperscape — `hyperscape` — `plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.tsx`
@@ -406,25 +406,14 @@ Spatial views are the lightest already (trajectory-logger, facewear both ship a 
 - **Heaviness / slop critique:** Triple status restatement (hero pill + 4 chips + badge row + Health card). The whole Host section is connection plumbing surfaced as game HUD — nothing a spectator needs. Mixes both visual systems in one file. Same ~250 duplicated hero lines.
 - **Minimization recommendations:** Delete the Host section + badge row. Keep Follow target + Goal + a single connection dot; route steering to the floating chat. Drop "N active runs". Pick one visual system. De-duplicate the hero/strip.
 
-## 5. plugin-defense-of-the-agents — `defense-of-the-agents` — `plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx`
-
-- **Purpose:** Spectator + tactical operator shell for a MOBA; agent auto-plays a lane heuristic. ViewDecl `index.ts:24-65`.
-- **Real or stub?** **REAL.** Live telemetry (heroClass/heroLane/heroLevel/heroHp/autoPlay), `sendAppRunMessage`, optimistic event log, `GameOperatorShell`, tactical actions. Game = real proxied iframe (defenseoftheagents.com).
-- **States:** no-run "empty" (`:543-576`), live (`:614`); status→live/attention/idle/respawning (`:343-354`); sending-command; rate-limit/unavailable cleaned (`cleanDefenseMessage` `:367-378`).
-- **Chrome/HUD:** same copy-pasted `HeroHeader` (34vh) + 3 `StatusStripCard`s (Hero/Mode/Relay) + `GameOperatorShell` (title "Defense command" + statusLabel + objective + 2 detailItems + actions + feed + composer); empty state adds 🛡 waiting-zone.
-
-  **Heaviest offending JSX** — the `HeroHeader` (`:74-150`, identical to clawville/hyperscape modulo accent `#ff5800` + emoji 🛡).
-- **Heaviness / slop critique:** Same double-HUD as clawville (Hero line/Mode/status appear in both the strip AND the shell's detailItems). 34vh banner before tactical info. ~250 duplicated hero lines. Emoji HUD (🛡⚔▶⚡).
-- **Minimization recommendations:** Delete bespoke `HeroHeader`/`StatusStripCard`/`HeroFrame`; let `GameOperatorShell` be the only chrome. Replace 34vh banner with a thin status bar. Extract the shared shell across the three clones. Brand icons + orange/blue over emoji.
-
 ### Part E cross-cutting (highest leverage)
 
-1. **~250 lines of `HeroHeader`+`StatusStripCard`+`HeroFrame` copy-pasted byte-for-byte** across clawville/hyperscape/defense (only accent + emoji differ) — extract once / fold into `GameOperatorShell`.
-2. **Double-HUD** (clawville & defense) — bespoke hero+strip on top of `GameOperatorShell` which already shows status/objective/detail.
+1. **~250 lines of `HeroHeader`+`StatusStripCard`+`HeroFrame` copy-pasted byte-for-byte** across clawville/hyperscape (only accent + emoji differ) — extract once / fold into `GameOperatorShell`.
+2. **Double-HUD** (clawville) — bespoke hero+strip on top of `GameOperatorShell` which already shows status/objective/detail.
 3. **Triple status restatement** (scape/2004scape/hyperscape) — hero pill + 4-chip strip + `SurfaceBadge` row + often a Health card.
 4. **34vh marketing hero banner** pushes operational HUD below the fold — a thin title + status-dot bar is enough.
 5. **Card sprawl** surfaces connection/auth plumbing ("Viewer does not need app auth", "Waiting for the command bridge") as game HUD.
 6. **Per-view Steering/suggested-prompt/Pause-Resume blocks** duplicate what the primary floating chat overlay should own.
-7. **Emoji icon language + hardcoded `#ff5800`** (clawville/hyperscape/defense) conflict with brand orange `#ff8a24` / blue `#1d91e8`.
+7. **Emoji icon language + hardcoded `#ff5800`** (clawville/hyperscape) conflict with brand orange `#ff8a24` / blue `#1d91e8`.
 </content>
 </invoke>

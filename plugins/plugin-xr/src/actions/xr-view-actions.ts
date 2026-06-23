@@ -1,9 +1,11 @@
+import { listViews } from "@elizaos/agent/api/views-registry";
 import type {
   Action,
   HandlerCallback,
   IAgentRuntime,
   Memory,
   State,
+  ViewDeclaration,
 } from "@elizaos/core";
 import {
   XR_SERVICE_TYPE,
@@ -73,7 +75,7 @@ export const xrOpenViewAction: Action = {
 
     const viewId =
       (options?.viewId as string | undefined) ??
-      extractViewId(message.content.text ?? "");
+      extractViewId(runtime, message.content.text ?? "");
     if (!viewId) {
       const text =
         "Please specify which view to open. Try XR_LIST_VIEWS to see available views.";
@@ -128,7 +130,7 @@ export const xrCloseViewAction: Action = {
 
     const viewId =
       (options?.viewId as string | undefined) ??
-      extractViewId(message.content.text ?? "");
+      extractViewId(runtime, message.content.text ?? "");
     const connId = firstConnectionId(svc);
     if (!connId) {
       const text = "No XR device connected.";
@@ -142,17 +144,12 @@ export const xrCloseViewAction: Action = {
       text = `Closed ${viewId}.`;
       await callback?.({ text });
     } else {
-      // Close all
-      for (const view of [
-        "wallet",
-        "training",
-        "companion",
-        "task-coordinator",
-        "views-manager",
-      ]) {
-        svc.closeView(connId, view);
+      const views = collectXRViews(runtime);
+      for (const view of views) {
+        svc.closeView(connId, view.id);
       }
-      text = "Closed all XR panels.";
+      text =
+        views.length > 0 ? "Closed all XR panels." : "No XR panels to close.";
       await callback?.({ text });
     }
     return { success: true, text };
@@ -193,7 +190,7 @@ export const xrSwitchViewAction: Action = {
     }
     const viewId =
       (options?.viewId as string | undefined) ??
-      extractViewId(message.content.text ?? "");
+      extractViewId(runtime, message.content.text ?? "");
     const connId = firstConnectionId(svc);
     if (!connId || !viewId) {
       const text = "Specify a view id.";
@@ -220,7 +217,7 @@ export const xrListViewsAction: Action = {
       {
         name: "agent",
         content: {
-          text: "Available XR views: wallet, training, companion, task-coordinator.",
+          text: "Available XR views are registered by the loaded plugins.",
           action: "XR_LIST_VIEWS",
         },
       },
@@ -345,72 +342,55 @@ export const xrResizeViewAction: Action = {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /** Extract a likely view id from natural language */
-function extractViewId(text: string): string {
+export function extractViewId(runtime: IAgentRuntime, text: string): string {
   const lower = text.toLowerCase();
-  const known = [
-    "wallet",
-    "companion",
-    "training",
-    "task-coordinator",
-    "orchestrator",
-    "views-manager",
-    "polymarket",
-    "vincent",
-    "steward",
-    "shopify",
-    "phone",
-    "contacts",
-    "messages",
-    "feed",
-    "clawville",
-    "hyperliquid",
-    "lifeops",
-    "screenshare",
-    "trajectory-logger",
-    "model-tester",
-    "smartglasses",
-    "facewear",
-    "defense-of-the-agents",
-  ];
-  for (const id of known) {
-    if (lower.includes(id.replace("-", " ")) || lower.includes(id)) return id;
+  for (const view of collectXRViews(runtime)) {
+    const terms = [view.id, view.id.replace(/-/g, " "), view.label].map(
+      (term) => term.toLowerCase(),
+    );
+    if (terms.some((term) => term && lower.includes(term))) {
+      return view.id;
+    }
   }
-  // Try to extract quoted word
   const quoted = text.match(/["']([^"']+)["']/);
   if (quoted?.[1]) return quoted[1];
   return "";
 }
 
+type XRViewSummary = {
+  id: string;
+  label: string;
+  icon?: string;
+  description?: string;
+};
+
+type RuntimePluginWithViews = {
+  views?: ViewDeclaration[];
+};
+
 /** Collect all XR-typed views from registered plugins */
-function collectXRViews(
-  runtime: IAgentRuntime,
-): Array<{ id: string; label: string; icon?: string; description?: string }> {
+export function collectXRViews(runtime: IAgentRuntime): XRViewSummary[] {
+  const byId = new Map<string, XRViewSummary>();
+  for (const view of listViews({ developerMode: true, viewType: "xr" })) {
+    if (view.viewType !== "xr") continue;
+    byId.set(view.id, {
+      id: view.id,
+      label: view.label,
+      icon: view.icon,
+      description: view.description,
+    });
+  }
+
   const plugins =
     (
       runtime as unknown as {
-        plugins?: Array<{
-          views?: Array<{
-            id: string;
-            label: string;
-            viewType?: string;
-            icon?: string;
-            description?: string;
-          }>;
-        }>;
+        plugins?: RuntimePluginWithViews[];
       }
     ).plugins ?? [];
-  const seen = new Set<string>();
-  const result: Array<{
-    id: string;
-    label: string;
-    icon?: string;
-    description?: string;
-  }> = [];
   for (const plugin of plugins) {
     for (const view of plugin.views ?? []) {
-      if (view.viewType === "xr" && !seen.has(view.id)) {
-        seen.add(view.id);
-        result.push({
+      if (view.viewType === "xr" && !byId.has(view.id)) {
+        byId.set(view.id, {
           id: view.id,
           label: view.label,
           icon: view.icon,
@@ -419,5 +399,7 @@ function collectXRViews(
       }
     }
   }
-  return result;
+  return [...byId.values()].sort(
+    (a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id),
+  );
 }

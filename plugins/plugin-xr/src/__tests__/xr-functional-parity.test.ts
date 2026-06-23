@@ -220,13 +220,6 @@ const PLUGIN_REGISTRY: Array<{
     requiredTerms: ["ClawvilleOperatorSurface", "useState"],
   },
   {
-    pluginDir: "plugins/plugin-defense-of-the-agents",
-    manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
-    xrComponentSrc:
-      "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx",
-    requiredTerms: ["DefenseAgentsOperatorSurface", "useState"],
-  },
-  {
     pluginDir: "plugins/plugin-screenshare",
     manifestPath: "plugins/plugin-screenshare/src/index.ts",
     xrComponentSrc:
@@ -305,11 +298,6 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
     srcFile:
       "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.interact.ts",
     capabilities: ["terminal-clawville-state", "terminal-clawville-command"],
-  },
-  "plugins/plugin-defense-of-the-agents": {
-    srcFile:
-      "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.interact.ts",
-    capabilities: ["terminal-defense-state", "terminal-defense-command"],
   },
   "plugins/plugin-screenshare": {
     srcFile:

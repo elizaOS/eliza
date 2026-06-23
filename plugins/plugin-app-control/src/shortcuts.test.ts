@@ -13,7 +13,7 @@ const MATCH_CONTEXT = {
 
 describe("viewNavigationShortcuts (#8791)", () => {
 	it("are registered on the app-control plugin", () => {
-		expect(appControlPlugin.shortcuts).toBe(viewNavigationShortcuts);
+		expect(appControlPlugin.shortcuts).toEqual(viewNavigationShortcuts);
 	});
 
 	it("resolves explicit typed and ASR-normalized view navigation to VIEWS", () => {

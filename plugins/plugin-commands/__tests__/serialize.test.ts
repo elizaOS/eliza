@@ -105,9 +105,16 @@ describe("getCatalogCommands (the route's projection)", () => {
 		const restart = gui.find((c) => c.key === "restart");
 		expect(restart?.requiresAuth).toBe(true);
 		expect(restart?.target.kind).toBe("agent");
+		const compact = gui.find((c) => c.key === "compact");
+		expect(compact?.requiresAuth).toBe(true);
 		const status = gui.find((c) => c.key === "status");
 		expect(status?.category).toBe("status");
 		expect(status?.source).toBe("builtin");
+	});
+
+	it("emits model dynamic choices from the registry definition", () => {
+		const model = getCatalogCommands("gui").find((c) => c.key === "model");
+		expect(model?.args[0]?.dynamicChoices).toBe("models");
 	});
 
 	it("emits navigation commands with a navigate target + deep link", () => {

@@ -42,9 +42,6 @@
         "../../plugins/plugin-wallet-ui/dist/index.d.ts"
       ],
       "@elizaos/plugin-feed": ["./src/types/side-effect-app-modules.d.ts"],
-      "@elizaos/plugin-defense-of-the-agents": [
-        "./src/types/side-effect-app-modules.d.ts"
-      ],
       "@elizaos/plugin-trajectory-logger": [
         "./src/types/side-effect-app-modules.d.ts"
       ],

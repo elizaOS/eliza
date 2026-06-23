@@ -106,6 +106,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		scope: "both",
 		category: "session",
 		acceptsArgs: true,
+		requiresAuth: true,
 		args: [
 			{ name: "instructions", description: "Optional compaction instructions" },
 		],

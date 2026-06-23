@@ -242,6 +242,42 @@ describe("recordedTrajectoryToNativeRows", () => {
     expect(row.metadata.domain).toBe("lifeops");
   });
 
+  it("preserves orchestrator goal-verification task/domain buckets", () => {
+    const traj = syntheticTrajectory() as Record<string, unknown> & {
+      stages: Array<Record<string, unknown>>;
+    };
+    traj.scenarioId = "orchestrator.grilling-happy-path";
+    traj.stages = [
+      {
+        stageId: "stage-goal-verify",
+        kind: "evaluation",
+        startedAt: 1_700_000_000_300,
+        endedAt: 1_700_000_000_800,
+        latencyMs: 500,
+        model: {
+          modelType: "TEXT_SMALL",
+          modelName: "test-model",
+          provider: "test",
+          prompt: [
+            "You are a demanding engineering manager doing final sign-off on a coding sub-agent's work before the parent agent marks the task done.",
+            "Acceptance criteria (each must hold for the task to pass):",
+            "Completion evidence collected for the sub-agent (git diffstat/changeset, deliverable + final reply, verified URLs, test/build/typecheck output, artifact references):",
+          ].join("\n"),
+          response:
+            '{"passed":false,"summary":"Need proof.","missing":["tests pass with pasted output"]}',
+          usage: { promptTokens: 80, completionTokens: 12, totalTokens: 92 },
+          finishReason: "stop",
+        },
+      },
+    ];
+
+    const row = expectSingleNativeRow(
+      recordedTrajectoryToNativeRows(traj as never),
+    );
+    expect(row.metadata.task_type).toBe("goal_verification");
+    expect(row.metadata.domain).toBe("agent-orchestrator");
+  });
+
   it("skips stages without a usable request/response", () => {
     const traj = syntheticTrajectory() as Record<string, unknown> & {
       stages: unknown[];

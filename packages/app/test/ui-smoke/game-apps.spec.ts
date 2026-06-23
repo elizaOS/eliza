@@ -18,19 +18,6 @@ type GameFixture = {
 
 const FIXTURES: GameFixture[] = [
   {
-    appName: "@elizaos/plugin-defense-of-the-agents",
-    displayName: "Defense of the Agents",
-    slug: "defense-of-the-agents",
-    viewerPath: "/api/apps/defense-of-the-agents/viewer",
-    surfaceTestId: "defense-live-operator-surface",
-    commandSignal: "defense-command",
-    commandChecks: [
-      { label: "Move to top lane", content: "Move to top lane" },
-      { label: "Recall to base", content: "Recall to base" },
-      { label: "Autoplay on", content: "Auto-play OFF" },
-    ],
-  },
-  {
     appName: "@elizaos/plugin-clawville",
     displayName: "ClawVille",
     slug: "clawville",
@@ -59,34 +46,6 @@ function nowIso(): string {
 }
 
 function makeSession(fixture: GameFixture) {
-  if (fixture.slug === "defense-of-the-agents") {
-    return {
-      sessionId: "defense-session",
-      appName: fixture.appName,
-      mode: "spectate-and-steer",
-      status: "running",
-      displayName: fixture.displayName,
-      agentId: "agent-smoke",
-      canSendCommands: true,
-      controls: [],
-      summary: "Mage level 3 in mid lane, 80/100 HP.",
-      goalLabel: "Holding mid lane",
-      suggestedPrompts: [
-        "Move to top lane",
-        "Recall to base",
-        "Review strategy",
-      ],
-      telemetry: {
-        heroClass: "mage",
-        heroLane: "mid",
-        heroLevel: 3,
-        heroHp: 80,
-        heroMaxHp: 100,
-        autoPlay: true,
-      },
-    };
-  }
-
   return {
     sessionId: "clawville-session",
     appName: fixture.appName,

@@ -348,9 +348,6 @@
       ],
       "@elizaos/plugin-contacts": ["./plugins/plugin-contacts/dist/index.d.ts"],
       "@elizaos/plugin-form": ["./plugins/plugin-form/dist/index.d.ts"],
-      "@elizaos/plugin-defense-of-the-agents": [
-        "./plugins/plugin-defense-of-the-agents/dist/index.d.ts"
-      ],
       "@elizaos/plugin-wallet": ["./plugins/plugin-wallet/dist/index.d.ts"],
       "@elizaos/plugin-agent-orchestrator": [
         "./plugins/plugin-agent-orchestrator/dist/index.d.ts"

@@ -1,7 +1,7 @@
 /**
  * Command actions — the registered elizaOS `Action`s for agent-target commands.
  *
- * One action per deterministic command (`/help`, `/status`, `/think`, …).
+ * One action per deterministic command (`/help`, `/status`, `/models`, …).
  * Each action's `validate()` is strictly slash-only (it matches just its own
  * command key) and its `similes` are the slash aliases only — no natural
  * language — so the LLM never misroutes a conversational message to a command.

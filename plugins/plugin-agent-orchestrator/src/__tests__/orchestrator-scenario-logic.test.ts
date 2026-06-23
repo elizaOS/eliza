@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   contentAwareVerifierModel,
   runGrillingEvidenceBundleCheck,
@@ -15,6 +15,7 @@ import { runMultiTaskSupervisorCheck } from "../../test/scenarios/_helpers/super
  */
 function makeBaseRuntime() {
   return {
+    agentId: "00000000-0000-4000-8000-000000000001",
     character: { name: "Tester" },
     databaseAdapter: undefined,
     logger: {
@@ -30,6 +31,29 @@ function makeBaseRuntime() {
   } as never;
 }
 
+let savedAutoVerify: string | undefined;
+let savedTrajectoryRecording: string | undefined;
+
+beforeEach(() => {
+  savedAutoVerify = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+  savedTrajectoryRecording = process.env.ELIZA_TRAJECTORY_RECORDING;
+  process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = "1";
+  process.env.ELIZA_TRAJECTORY_RECORDING = "0";
+});
+
+afterEach(() => {
+  if (savedAutoVerify === undefined) {
+    delete process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+  } else {
+    process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = savedAutoVerify;
+  }
+  if (savedTrajectoryRecording === undefined) {
+    delete process.env.ELIZA_TRAJECTORY_RECORDING;
+  } else {
+    process.env.ELIZA_TRAJECTORY_RECORDING = savedTrajectoryRecording;
+  }
+});
+
 describe("orchestrator scenario logic (#8932)", () => {
   it("multi-task supervisor: per-room isolation + change-driven digest", async () => {
     expect(await runMultiTaskSupervisorCheck()).toBeUndefined();
@@ -42,7 +66,7 @@ describe("orchestrator scenario logic (#8932)", () => {
         contentAwareVerifierModel,
       ),
     ).toBeUndefined();
-  });
+  }, 20_000);
 
   it("grilling evidence-bundle: the git diff + test stdout reach the verifier prompt", async () => {
     expect(

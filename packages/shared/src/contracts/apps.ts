@@ -715,11 +715,6 @@ export const ELIZA_CURATED_APP_DEFINITIONS: readonly ElizaCuratedAppDefinition[]
       aliases: [],
     },
     {
-      slug: "defense-of-the-agents",
-      canonicalName: "@elizaos/plugin-defense-of-the-agents",
-      aliases: [],
-    },
-    {
       slug: "vincent",
       canonicalName: "@elizaos/plugin-vincent",
       aliases: [],
