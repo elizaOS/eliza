@@ -8,16 +8,18 @@ function ctx(
 		requiresTool?: boolean;
 		processMessage?: string;
 		hasViews?: boolean;
+		extraActions?: string[];
 		candidateActions?: string[];
 		parentActionHints?: string[];
 	} = {},
 ): ResponseHandlerEvaluatorContext {
 	const hasViews = opts.hasViews ?? true;
+	const extraActions = (opts.extraActions ?? []).map((name) => ({ name }));
 	return {
 		runtime: {
 			actions: hasViews
-				? [{ name: "VIEWS" }, { name: "REPLY" }]
-				: [{ name: "REPLY" }],
+				? [{ name: "VIEWS" }, { name: "REPLY" }, ...extraActions]
+				: [{ name: "REPLY" }, ...extraActions],
 		},
 		message: { content: { text } },
 		state: {},
@@ -113,6 +115,17 @@ describe("viewCommandShortcutEvaluator — does NOT fire", () => {
 	it("on companion emote commands", async () => {
 		expect(await run("run the companion avatar wave emote action")).toBeNull();
 		expect(await run("make my avatar wave")).toBeNull();
+	});
+	it("on XR camera perception requests owned by XR_QUERY_VISION", async () => {
+		expect(
+			await run(
+				"Use XR device vision to answer: what do you see through the XR camera?",
+				{ extraActions: ["XR_QUERY_VISION"] },
+			),
+		).toBeNull();
+		expect(
+			await run("open XR camera view", { extraActions: ["XR_QUERY_VISION"] }),
+		).toBeTruthy();
 	});
 	it("when VIEWS action is not registered", async () => {
 		expect(await run("open settings", { hasViews: false })).toBeNull();
