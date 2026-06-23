@@ -29,7 +29,6 @@ import { syncElizaEnvAliases } from "../shared/src/utils/env.ts";
 import appConfig from "./app.config";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
-import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import {
   generateNodeBuiltinStub,
   nativeModuleStubPlugin,
@@ -1236,8 +1235,30 @@ function pathIncludesAny(id: string, markers: string[]): boolean {
   return markers.some((marker) => id.includes(marker));
 }
 
+// Crypto / big-number graph (bn.js, elliptic, secp256k1, the hash + cipher
+// libs, and the `buffer` polyfill they call into). MUST be its own lazy chunk:
+// Rolldown's recursive dep-inclusion otherwise non-deterministically folds this
+// graph into an eagerly-initialized chunk (e.g. an i18n locale chunk), where
+// bn.js runs `Buffer.allocUnsafe` at module-init before the chunk's Buffer
+// wrapper is ready — throwing "Class constructor cannot be invoked without
+// 'new'" and killing the whole React tree on every route. `verify-chunk-safety`
+// fails the build if this graph ever leaks into a non-vendor chunk. (Ported
+// from packages/cloud-frontend in the apex→packages/app cutover, #9150.)
+const VENDOR_CRYPTO_RE =
+  /\/node_modules\/(bn\.js|elliptic|secp256k1|@noble\/[^/]+|hash-base|create-hash|create-hmac|create-ecdh|browserify-sign|browserify-aes|browserify-cipher|browserify-rsa|diffie-hellman|asn1\.js|des\.js|ripemd160|sha\.js|md5\.js|hash\.js|cipher-base|evp_bytestokey|pbkdf2|public-encrypt|randombytes|randomfill|miller-rabin|brorand|hmac-drbg|minimalistic-crypto-utils|minimalistic-assert|safe-buffer|buffer)(\/|$)/;
+const VENDOR_WALLET_RE =
+  /\/node_modules\/(wagmi|@wagmi|viem|@rainbow-me|@walletconnect|@reown|@coinbase\/wallet-sdk|mipd|eventemitter3)(\/|$)/;
+const VENDOR_SOLANA_RE = /\/node_modules\/@solana\//;
+
 function resolveManualChunk(id: string): string | undefined {
   const normalizedId = id.split(path.sep).join("/");
+
+  // Highest priority: keep the wallet/crypto/solana graph in dedicated LAZY
+  // vendor chunks so the bn.js Buffer.allocUnsafe-at-init crash can never reach
+  // an eager chunk (#9150). Order matters — crypto before wallet/solana.
+  if (VENDOR_CRYPTO_RE.test(normalizedId)) return "vendor-crypto";
+  if (VENDOR_WALLET_RE.test(normalizedId)) return "vendor-wallet";
+  if (VENDOR_SOLANA_RE.test(normalizedId)) return "vendor-solana";
 
   // The lucide-per-icon-imports plugin rewrites every `import { X } from
   // "lucide-react"` to a deep `lucide-react/dist/esm/icons/<file>.mjs` import,
@@ -1271,46 +1292,6 @@ function resolveManualChunk(id: string): string | undefined {
   }
 
   if (normalizedId.includes("/node_modules/")) {
-    // Crypto / big-number graph (bn.js, elliptic, secp256k1, the hash + cipher
-    // libs, and the `buffer` polyfill they call into). Tested FIRST so it wins
-    // over the generic vendor groups below. This graph MUST stay in its own
-    // lazily-loaded chunk: Rolldown's recursive dep-inclusion otherwise
-    // non-deterministically folds it into an eagerly-initialized app chunk
-    // (e.g. an i18n locale chunk or the entry), where bn.js runs
-    // `Buffer.allocUnsafe` at module-init before the chunk's CJS Buffer wrapper
-    // is hoisted — throwing "Class constructor cannot be invoked without 'new'"
-    // and blanking the whole React tree on every route. `scripts/verify-chunk-
-    // safety.mjs` gates the deploy against any regression of this pin.
-    if (
-      /\/node_modules\/(bn\.js|elliptic|secp256k1|@noble\/[^/]+|hash-base|create-hash|create-hmac|create-ecdh|browserify-sign|browserify-aes|browserify-cipher|browserify-rsa|diffie-hellman|asn1\.js|des\.js|ripemd160|sha\.js|md5\.js|hash\.js|cipher-base|evp_bytestokey|pbkdf2|public-encrypt|randombytes|randomfill|miller-rabin|brorand|hmac-drbg|minimalistic-crypto-utils|minimalistic-assert|safe-buffer|buffer)(\/|$)/.test(
-        normalizedId,
-      )
-    ) {
-      return "vendor-crypto";
-    }
-
-    // EVM wallet stack (wagmi/viem/RainbowKit/WalletConnect/Reown/Coinbase).
-    // Kept in one chunk so Rolldown can't auto-derive multiple cross-importing
-    // wallet chunks that form an init-order cycle (the wagmi 3.x `connect` /
-    // `ConnectorUnavailableReconnectingError` TDZ crash).
-    if (
-      // Scoped prefixes (their own trailing slash consumes the package
-      // boundary, so they match every module under the scope), plus bare
-      // package names anchored with a (\/|$) boundary so `wagmi` doesn't also
-      // catch e.g. `wagmi-something`.
-      /\/node_modules\/(@wagmi\/|viem\/|@rainbow-me\/|@walletconnect\/|@reown\/|@coinbase\/wallet)/.test(
-        normalizedId,
-      ) ||
-      /\/node_modules\/(wagmi|mipd|eventemitter3)(\/|$)/.test(normalizedId)
-    ) {
-      return "vendor-wallet";
-    }
-
-    // Solana wallet/web3 stack.
-    if (normalizedId.includes("/node_modules/@solana/")) {
-      return "vendor-solana";
-    }
-
     if (
       pathIncludesAny(normalizedId, [
         "/@react-spring/",
@@ -1880,13 +1861,6 @@ export default defineConfig({
     ),
   },
   plugins: [
-    // Manifest-driven renderer side-effect app modules: scans plugins/ + packages/
-    // for `elizaos.appRegister` and serves the generated loader list as a virtual
-    // module (re-exported by src/plugin-registrations.ts). No hardcoded list.
-    appSideEffectModulesPlugin([
-      path.join(elizaRoot, "plugins"),
-      path.join(elizaRoot, "packages"),
-    ]),
     // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), replace the
     // whole `@elizaos/ui/src/cloud` subtree with empty modules. The two lazy
     // cloud entry points are already aliased to passthrough stubs, but the main
@@ -2329,24 +2303,69 @@ export const INVALID_TRACER_PROVIDER = {};
         find: new RegExp(`^${escapeRegExp(pkgName)}$`),
         replacement: path.resolve(elizaRoot, relativeEntry),
       })),
-      // Renderer resolution overrides for specific cross-plugin imports. The
-      // side-effect app-module loader list itself is manifest-driven (each
-      // plugin's `elizaos.appRegister`; see appSideEffectModulesPlugin) and
-      // imports its registration entry by absolute path, so it needs no alias
-      // here — only the few packages imported by *bare specifier* from other
-      // renderer code remain.
+      // Side-effect app modules are loaded by the renderer only to register
+      // UI surfaces/pages. Route handlers and runtime services stay server-side.
       ...[
-        // wallet-ui's bare specifier re-exports its register surface (e.g.
-        // `isBscChainName`), imported directly by plugin-companion (walletUtils).
+        ["@elizaos/plugin-feed", "plugins/plugin-feed/src/ui/index.ts"],
+        [
+          "@elizaos/plugin-clawville",
+          "plugins/plugin-clawville/src/ui/index.ts",
+        ],
+        [
+          "@elizaos/plugin-trajectory-logger",
+          "plugins/plugin-trajectory-logger/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-shopify-ui",
+          "plugins/plugin-shopify-ui/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-hyperliquid-app",
+          "plugins/plugin-hyperliquid-app/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-polymarket-app",
+          "plugins/plugin-polymarket-app/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-waifu-imagegen-app",
+          "plugins/plugin-waifu-imagegen-app/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-waifu-swap-app",
+          "plugins/plugin-waifu-swap-app/src/register.ts",
+        ],
         [
           "@elizaos/plugin-wallet-ui",
           "plugins/plugin-wallet-ui/src/register.ts",
         ],
-        // task-coordinator chat inline-widget registration, imported by the app
-        // shell (main.tsx) before first render rather than via the loader scan.
+        [
+          "@elizaos/plugin-contacts/register",
+          "plugins/plugin-contacts/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-device-settings/register",
+          "plugins/plugin-device-settings/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-messages/register",
+          "plugins/plugin-messages/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-phone/register",
+          "plugins/plugin-phone/src/register.ts",
+        ],
         [
           "@elizaos/plugin-task-coordinator/register",
           "plugins/plugin-task-coordinator/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-wifi/register",
+          "plugins/plugin-wifi/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-facewear/register",
+          "plugins/plugin-facewear/src/register.ts",
         ],
         // plugin-calendar subpaths consumed by plugin-personal-assistant in the renderer
         // bundle. Resolve from source so the app build does not require
