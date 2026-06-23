@@ -8,7 +8,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import {
   resetSelfControlStatusCache,
   setSelfControlPluginConfig,
-} from "@elizaos/plugin-blocker";
+} from "@elizaos/plugin-blocker/services/website-blocker/index";
 
 export interface BlockRuleTestHarness {
   runtime: IAgentRuntime;

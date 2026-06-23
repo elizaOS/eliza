@@ -8,4 +8,4 @@
 export {
   evaluateGoalProgressWithLlm,
   type GoalSemanticEvaluationResult,
-} from "@elizaos/plugin-goals";
+} from "@elizaos/plugin-goals/goal-semantic-evaluator";

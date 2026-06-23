@@ -13,14 +13,18 @@
  */
 
 import {
-  type LifeOpsSubscriptionAuditSummary,
-  type LifeOpsSubscriptionCancellationRequest,
-  type LifeOpsSubscriptionCancellationSummary,
-  type LifeOpsSubscriptionDiscoveryRequest,
-  type LifeOpsSubscriptionExecutor,
   type LifeOpsSubscriptionPlaybook,
+} from "@elizaos/plugin-finances/subscriptions-playbooks";
+import type {
+  LifeOpsSubscriptionAuditSummary,
+  LifeOpsSubscriptionCancellationRequest,
+  LifeOpsSubscriptionCancellationSummary,
+  LifeOpsSubscriptionDiscoveryRequest,
+  LifeOpsSubscriptionExecutor,
+} from "@elizaos/plugin-finances/subscriptions-types";
+import {
   SubscriptionsService,
-} from "@elizaos/plugin-finances";
+} from "@elizaos/plugin-finances/services/subscriptions-service";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 function subscriptionsServiceFor(

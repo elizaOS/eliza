@@ -21,25 +21,28 @@ const { defaultSelfControlStatus } = vi.hoisted(() => ({
   },
 }));
 
-// The website-blocker engine + access surface now lives in
-// `@elizaos/plugin-blocker`. Override `getSelfControlStatus` (engine) and bypass
-// the OWNER access gate so the test exercises the subaction handlers without
-// seeding world/role tables.
-vi.mock("@elizaos/plugin-blocker", async (importOriginal) => {
+// Override `getSelfControlStatus` (engine) and bypass the OWNER access gate so
+// the test exercises the subaction handlers without seeding world/role tables.
+vi.mock(
+  "@elizaos/plugin-blocker/services/website-blocker/index",
+  async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@elizaos/plugin-blocker")>();
+    await importOriginal<
+      typeof import("@elizaos/plugin-blocker/services/website-blocker/index")
+    >();
   return {
     ...actual,
     getSelfControlStatus: vi.fn(async () => defaultSelfControlStatus),
     SELFCONTROL_ACCESS_ERROR: "Website blocking is restricted to OWNER users.",
     getSelfControlAccess: vi.fn(async () => ({ allowed: true, role: "OWNER" })),
   };
-});
+  },
+);
 
 // Audit B Defer #1 folded `WEBSITE_BLOCK` into the `BLOCK` umbrella; exercise
 // the website-target handler directly so this test covers the reader/writer
 // dispatch without re-registering the retired standalone action.
-import * as websiteBlockerEngine from "@elizaos/plugin-blocker";
+import * as websiteBlockerEngine from "@elizaos/plugin-blocker/services/website-blocker/index";
 import { runWebsiteBlockHandler } from "../../../actions/website-block.js";
 import { BlockRuleReader, BlockRuleWriter } from "../block-rule-service.js";
 import {

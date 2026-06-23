@@ -249,7 +249,7 @@ class OrchestratorScenarioHarness {
 
     return {
       summary:
-        "grill round fired after proofless completion, sent an evidence checklist, then accepted the re-report with pasted test output",
+        "proofless sub-agent completion failed verification, the corrective evidence checklist was sent, then the re-report with pasted Tests 4 passed (4) output passed validation",
       taskIds: [task.id],
       sessionIds: [sessionId],
       correctivePrompt,
@@ -317,14 +317,14 @@ class OrchestratorScenarioHarness {
 
     return {
       summary:
-        "diff, test stdout, and verified URL reached the automatic verifier prompt before validation passed",
+        "diff, test stdout, and verified URL reached the automatic verifier prompt before validation passed: ## CHANGESET src/cache.ts (1 file changed, 20 insertions(+)); ## TEST / BUILD / TYPECHECK OUTPUT Tests 8 passed (8); ## VERIFIED URLS https://app.example.com/cache",
       taskIds: [task.id],
       sessionIds: [sessionId],
       verifierPrompts: [...this.verifierPrompts],
       events: eventTypes(finalDoc),
       finalStatuses: { [task.id]: finalDoc.task.status },
       digest:
-        "prompt included ## CHANGESET, Tests 8 passed (8), and https://app.example.com/cache",
+        "prompt included ## CHANGESET src/cache.ts, 1 file changed, 20 insertions(+), ## TEST / BUILD / TYPECHECK OUTPUT, Tests 8 passed (8), ## VERIFIED URLS, and https://app.example.com/cache",
     };
   }
 
@@ -416,8 +416,7 @@ class OrchestratorScenarioHarness {
     }
 
     return {
-      summary:
-        "two active tasks stayed isolated while supervisor emitted one room digest covering both",
+      summary: `two concurrent orchestrator tasks stayed isolated, user message forwarded only to ${post.forwardedTo.join(", ")}, and supervisor emitted one room digest covering both active tasks: ${digest}`,
       taskIds: [alpha.id, beta.id],
       sessionIds: [alphaSession, betaSession],
       forwardedTo: post.forwardedTo,

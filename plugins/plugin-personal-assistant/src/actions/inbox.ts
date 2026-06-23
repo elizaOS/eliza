@@ -16,6 +16,6 @@ export {
   type InboxPlatform,
   inboxAction,
   setInboxFetchers,
-} from "@elizaos/plugin-inbox";
+} from "@elizaos/plugin-inbox/actions/inbox";
 
-export { inboxAction as default } from "@elizaos/plugin-inbox";
+export { inboxAction as default } from "@elizaos/plugin-inbox/actions/inbox";

@@ -12,7 +12,7 @@ import type {
   InstalledApp,
   SelectAppsResult,
   UnblockAppsResult,
-} from "@elizaos/plugin-blocker";
+} from "@elizaos/plugin-blocker/services/app-blocker/index";
 
 function requireAppBlockerPlugin(): AppBlockerPluginLike {
   const plugin = getAppBlockerPlugin();

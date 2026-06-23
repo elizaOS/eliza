@@ -20,7 +20,7 @@ import {
   startSelfControlBlock,
   stopSelfControlBlock,
   syncWebsiteBlockerExpiryTask,
-} from "@elizaos/plugin-blocker";
+} from "@elizaos/plugin-blocker/services/website-blocker/index";
 
 export interface ActivateBlockRequest {
   runtime: IAgentRuntime;

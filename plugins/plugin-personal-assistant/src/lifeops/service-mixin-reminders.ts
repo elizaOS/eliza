@@ -18,7 +18,7 @@ import {
   getSelfControlStatus,
   startSelfControlBlock,
   stopSelfControlBlock,
-} from "@elizaos/plugin-blocker";
+} from "@elizaos/plugin-blocker/services/website-blocker/engine";
 import type {
   SyncLifeOpsScheduleObservationInput,
   SyncLifeOpsScheduleObservationsRequest,
