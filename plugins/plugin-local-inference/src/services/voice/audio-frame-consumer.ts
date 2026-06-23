@@ -178,6 +178,22 @@ export interface RuntimeEventSink {
 	emitEvent(type: unknown, payload: Record<string, unknown>): Promise<void>;
 }
 
+/**
+ * Transcribe a finalized turn's buffered PCM to text (#8786). When injected, the
+ * consumer joins the ASR transcript into the diarization attribution so
+ * `VOICE_TURN_OBSERVED` carries the real text — previously the live audio-frame
+ * path attributed *who* spoke but always emitted `text: ""`, so name/partner
+ * extraction (`VoiceObserver.ingestTurn`) could never fire from live audio.
+ *
+ * Returns the transcript, or `null`/empty for silence / no decode. Best-effort:
+ * the consumer swallows a rejection (counted in `transcriptionErrors`) and falls
+ * back to a transcript-less turn rather than dropping the diarized turn.
+ */
+export type TurnTranscriber = (
+	pcm: Float32Array,
+	sampleRate: number,
+) => Promise<string | null> | string | null;
+
 // ---------------------------------------------------------------------------
 // Consumer
 // ---------------------------------------------------------------------------
@@ -189,6 +205,12 @@ export interface AudioFrameConsumerDeps {
 	pipeline: AttributionPipelineLike;
 	/** Runtime event sink for VOICE_TURN_OBSERVED. */
 	runtime: RuntimeEventSink;
+	/**
+	 * Optional ASR for the finalized turn's PCM (#8786). When present, its text
+	 * rides on `VOICE_TURN_OBSERVED` so live name/entity extraction runs. When
+	 * absent the path stays diarization-only (transcript `""`, as before).
+	 */
+	transcribe?: TurnTranscriber;
 }
 
 export interface AudioFrameConsumerConfig {
@@ -237,6 +259,7 @@ export class AudioFrameConsumer {
 	private readonly vad: VadSegmenter;
 	private readonly pipeline: AttributionPipelineLike;
 	private readonly runtime: RuntimeEventSink;
+	private readonly transcribe: TurnTranscriber | null;
 	private readonly source: VoiceInputSource | undefined;
 	private readonly attributionOptions: HandleLiveVoiceAttributionOptions;
 	private readonly maxTurnSamples: number;
@@ -261,6 +284,10 @@ export class AudioFrameConsumer {
 	/** Count of frames that failed to decode (surfaced via getters, not thrown). */
 	droppedFrames = 0;
 
+	/** Count of turns whose ASR transcribe threw (degraded to a transcript-less
+	 *  turn rather than dropping the diarized turn). */
+	transcriptionErrors = 0;
+
 	constructor(
 		deps: AudioFrameConsumerDeps,
 		config: AudioFrameConsumerConfig = {},
@@ -268,6 +295,7 @@ export class AudioFrameConsumer {
 		this.vad = deps.vad;
 		this.pipeline = deps.pipeline;
 		this.runtime = deps.runtime;
+		this.transcribe = deps.transcribe ?? null;
 		this.source = config.source;
 		this.attributionOptions = config.attributionOptions ?? {};
 		const sr = AUDIO_FRAME_PIPELINE_SAMPLE_RATE;
@@ -426,10 +454,15 @@ export class AudioFrameConsumer {
 			endedAtMs: args.endedAtMs,
 			...(this.source ? { source: this.source } : {}),
 		});
+		// Join the ASR transcript for this turn (#8786) so VOICE_TURN_OBSERVED
+		// carries the real text and live name/entity extraction can fire. ASR is
+		// best-effort: a decode failure degrades to a transcript-less turn (the
+		// diarized speaker is still emitted), never a dropped turn.
+		const opts = await this.resolveTurnOptions(args.pcm);
 		const signal = await handleLiveVoiceAttribution(
 			this.runtime as Parameters<typeof handleLiveVoiceAttribution>[0],
 			output,
-			this.attributionOptions,
+			opts,
 		);
 		const turn: AttributedTurn = {
 			turnId: args.turnId,
@@ -440,6 +473,31 @@ export class AudioFrameConsumer {
 			samples: args.pcm.length,
 		};
 		for (const listener of this.turnListeners) listener(turn);
+	}
+
+	/**
+	 * Merge the per-turn ASR transcript into the attribution options. Returns the
+	 * base options unchanged when no transcriber is wired or the decode yields no
+	 * text; a thrown decode is swallowed (counted in `transcriptionErrors`) so a
+	 * diarized turn is never dropped over an ASR failure.
+	 */
+	private async resolveTurnOptions(
+		pcm: Float32Array,
+	): Promise<HandleLiveVoiceAttributionOptions> {
+		if (!this.transcribe) return this.attributionOptions;
+		try {
+			const transcript = await this.transcribe(
+				pcm,
+				AUDIO_FRAME_PIPELINE_SAMPLE_RATE,
+			);
+			const trimmed = transcript?.trim();
+			if (trimmed) {
+				return { ...this.attributionOptions, transcript: trimmed };
+			}
+		} catch {
+			this.transcriptionErrors += 1;
+		}
+		return this.attributionOptions;
 	}
 
 	// ---- buffering ---------------------------------------------------------
