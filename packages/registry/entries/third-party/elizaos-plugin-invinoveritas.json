@@ -1,0 +1,9 @@
+{
+  "package": "elizaos-plugin-invinoveritas",
+  "repository": "github:babyblueviper1/invinoveritas",
+  "kind": "plugin",
+  "description": "Independent, capital/risk-aware verdict before an irreversible action (review of a trade / on-chain action / plan), plus free recomputable proof verification (schnorr vs a published key) — the verification gate an agent can't self-issue. Advisory and degrades safely; pay in sats, USDC (x402), or card.",
+  "homepage": "https://api.babyblueviper.com/install",
+  "version": "0.1.0",
+  "tags": ["verification", "guardian", "review", "onchain", "trading", "x402"]
+}
