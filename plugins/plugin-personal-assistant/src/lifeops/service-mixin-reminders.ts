@@ -1039,7 +1039,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       scheduledFor: string;
       dueAt: string | null;
     }): void {
-      this.emitAssistantEvent(args.text, "lifeops-reminder", {
+      this.emitAssistantEvent(args.text, "reminder", {
         ownerType: args.ownerType,
         ownerId: args.ownerId,
         subjectType: args.subjectType,
@@ -1499,7 +1499,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         urgency: run.status === "success" ? "medium" : "high",
         now: new Date(),
       });
-      this.emitAssistantEvent(message, "lifeops-workflow", {
+      this.emitAssistantEvent(message, "workflow", {
         workflowId: workflow.id,
         workflowTitle: workflow.title,
         workflowRunId: run.id,

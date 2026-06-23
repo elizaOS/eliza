@@ -37,7 +37,6 @@ const VALID_CONVERSATION_SCOPES = new Set([
   "page-connectors",
   "page-phone",
   "page-plugins",
-  "page-lifeops",
   "page-settings",
   "page-wallet",
   "page-browser",
