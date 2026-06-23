@@ -35,7 +35,8 @@ export type DesktopActionType =
   | "detect_elements"
   | "ocr"
   | "open"
-  | "launch";
+  | "launch"
+  | "kill_app";
 
 export interface DesktopActionParams {
   action: DesktopActionType;
