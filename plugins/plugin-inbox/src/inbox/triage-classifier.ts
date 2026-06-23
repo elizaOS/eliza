@@ -3,6 +3,7 @@ import {
   logger,
   ModelType,
   parseJsonModelRecord,
+  resolveOptimizedPromptForRuntime,
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import type {
@@ -72,12 +73,12 @@ async function classifyBatch(
     ownerContext?: string;
   },
 ): Promise<TriageResult[]> {
-  const prompt = buildTriagePrompt(messages, opts);
+  const prompt = buildTriagePrompt(messages, { ...opts, runtime });
 
   let rawResponse = "";
   try {
     const result = await runWithTrajectoryContext(
-      { purpose: "lifeops-inbox-triage" },
+      { purpose: "inbox_triage" },
       () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
     rawResponse = typeof result === "string" ? result : "";
@@ -97,31 +98,47 @@ async function classifyBatch(
   return parseTriageResults(rawResponse, messages.length);
 }
 
-function buildTriagePrompt(
+/**
+ * Static classification instructions for the inbox-triage task. Exposed as the
+ * optimizable baseline so {@link resolveOptimizedPromptForRuntime} can swap in a
+ * GEPA-optimized `inbox_triage` artifact when one is registered (#8795). The
+ * dynamic owner context / examples / messages are scaffolded around it below.
+ */
+export const INBOX_TRIAGE_INSTRUCTIONS = [
+  "Classify each message into one of these categories:",
+  "",
+  "- ignore: spam, irrelevant, automated notifications, bot messages, or general chat that needs no attention",
+  "- info: informational updates the owner might want to see but doesn't need to act on",
+  "- notify: important information the owner should see, but no response is needed",
+  "- needs_reply: someone is asking a question or expects a response from the owner",
+  "- urgent: time-sensitive, critical, or from a priority contact — needs immediate attention",
+  "",
+  "For each message, also provide:",
+  "- urgency: low / medium / high",
+  "- confidence: 0.0 to 1.0 (how sure you are about this classification)",
+  "- reasoning: brief explanation",
+  "- suggestedResponse: (optional) a brief draft response if classification is needs_reply or urgent",
+].join("\n");
+
+export function buildTriagePrompt(
   messages: InboundMessage[],
   opts: {
     config?: InboxTriageConfig;
     examples?: TriageExample[];
     ownerContext?: string;
+    runtime?: IAgentRuntime;
   },
 ): string {
   const sections: string[] = [];
 
-  sections.push(
-    "Classify each message into one of these categories:",
-    "",
-    "- ignore: spam, irrelevant, automated notifications, bot messages, or general chat that needs no attention",
-    "- info: informational updates the owner might want to see but doesn't need to act on",
-    "- notify: important information the owner should see, but no response is needed",
-    "- needs_reply: someone is asking a question or expects a response from the owner",
-    "- urgent: time-sensitive, critical, or from a priority contact — needs immediate attention",
-    "",
-    "For each message, also provide:",
-    "- urgency: low / medium / high",
-    "- confidence: 0.0 to 1.0 (how sure you are about this classification)",
-    "- reasoning: brief explanation",
-    "- suggestedResponse: (optional) a brief draft response if classification is needs_reply or urgent",
-  );
+  const instructions = opts.runtime
+    ? resolveOptimizedPromptForRuntime(
+        opts.runtime,
+        "inbox_triage",
+        INBOX_TRIAGE_INSTRUCTIONS,
+      )
+    : INBOX_TRIAGE_INSTRUCTIONS;
+  sections.push(instructions);
 
   // Owner context
   if (opts.ownerContext) {
