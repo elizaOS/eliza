@@ -356,7 +356,21 @@ async function requestWithPinnedAddress(
       method,
       path: `${url.pathname}${url.search}`,
       headers: toRequestHeaders(headers),
-      lookup: (_hostname, _options, callback) => {
+      // Honor the `all` option: Node 20+ defaults autoSelectFamily=true and, for
+      // dual-stack hosts, calls lookup with `{ all: true }` expecting an ARRAY
+      // of `{ address, family }`. Returning the single-arg form there makes Node
+      // read the address string as an array (`addr[0].address` -> undefined) and
+      // throw "Invalid IP address: undefined", failing every pinned fetch to a
+      // dual-stack host (e.g. coingecko). Branch on the option to satisfy both.
+      lookup: (_hostname, options, callback) => {
+        const wantsAll =
+          typeof options === "object" &&
+          options !== null &&
+          options.all === true;
+        if (wantsAll) {
+          callback(null, [{ address: target.pinnedAddress, family }]);
+          return;
+        }
         callback(null, target.pinnedAddress, family);
       },
       ...(url.protocol === "https:"
