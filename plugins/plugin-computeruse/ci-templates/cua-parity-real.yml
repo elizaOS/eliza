@@ -1,0 +1,125 @@
+# cua-parity-real.yml — 3-OS real-driver lane for the cua-parity input verbs.
+#
+# ADOPT-ME: the committing bot token lacks `workflow` scope, so this file is
+# parked at a non-.github path (plugins/plugin-computeruse/ci-templates/).
+# A human must move it to .github/workflows/cua-parity-real.yml to enable it:
+#     git mv plugins/plugin-computeruse/ci-templates/cua-parity-real.yml \
+#            .github/workflows/cua-parity-real.yml
+#
+# Runs ONLY:
+#   plugins/plugin-computeruse/src/__tests__/cua-parity-input.real.test.ts
+# through the shared real config (packages/test/vitest/real.config.ts) on
+# Linux (Xvfb), macOS (headful), and Windows (interactive desktop). This is the
+# one remaining step to satisfy "tested on windows, linux, mac os" for the
+# trycua/cua parity verbs (#9170): today only Windows real-driver actuation is
+# CI-exercised; this lane adds Linux + macOS.
+#
+# Verified facts baked in (see #9170 / the parity PRs' evidence):
+#   - codegen MUST run before building core (bun does NOT auto-run prebuild)
+#   - core MUST be built to dist (the eliza-source export condition otherwise
+#     resolves @elizaos/core to src and trips an @opentelemetry extensionless
+#     ESM error under vitest)
+#   - the granular verbs are nutjs-only; the @nut-tree-fork/libnut-* prebuilt
+#     .node ships in the npm package, so --ignore-scripts installs are fine
+#   - Linux needs DISPLAY (Xvfb) or the lane is skipped by the test gate
+#     (win32 || darwin || (linux && DISPLAY)); the real config's
+#     fail-on-silent-skip guard turns an unexpected skip into a failure
+#   - Windows input-effect tests need an interactive desktop (GH-hosted = OK)
+
+name: CUA Parity Real Driver (3-OS)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: cua-parity-real-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+  NODE_NO_WARNINGS: "1"
+  NODE_OPTIONS: "--max-old-space-size=8192"
+  ELIZA_CI_REAL: "1"
+  ELIZA_COMPUTERUSE_DRIVER: "nutjs"
+  TEST_FILE: "plugins/plugin-computeruse/src/__tests__/cua-parity-input.real.test.ts"
+  REAL_CONFIG: "packages/test/vitest/real.config.ts"
+
+jobs:
+  cua-parity-real:
+    name: cua-parity-real (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      # ---- OS-specific real-driver host deps -----------------------------
+      - name: Install Linux desktop deps (Xvfb + nutjs/clipboard runtime)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          # xvfb -> DISPLAY for the linux gate; xclip -> clipboard test;
+          # xdotool -> legacy safety net; libxtst6/libxkbcommon0 -> libnut runtime.
+          sudo apt-get install -y --no-install-recommends \
+            xvfb xdotool xclip libxtst6 libxkbcommon0
+
+      - name: Install macOS legacy safety-net (cliclick)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: brew install cliclick || echo "cliclick install best-effort; nutjs is the driver"
+
+      # ---- Toolchain ------------------------------------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      # ---- Install (prebuilt libnut ships in the package; scripts not needed) ----
+      - name: Install dependencies
+        shell: bash
+        run: bun install --frozen-lockfile --ignore-scripts || bun install --ignore-scripts
+
+      # ---- REQUIRED: codegen before core build (bun does not run prebuild) ----
+      - name: Generate core i18n keyword data
+        shell: bash
+        run: node packages/shared/scripts/generate-keywords.mjs --target ts
+
+      # ---- REQUIRED: build core to dist (fixes eliza-source/@opentelemetry ESM) ----
+      - name: Build @elizaos/core (Node target)
+        shell: bash
+        run: bun run --cwd packages/core build:node
+
+      # ---- Run the single real test through the real config ---------------
+      - name: Run cua-parity real test (Linux / Xvfb)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run -a bunx vitest run "$TEST_FILE" --config "$REAL_CONFIG"
+
+      - name: Run cua-parity real test (macOS / headful)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          bunx vitest run "$TEST_FILE" --config "$REAL_CONFIG"
+
+      - name: Run cua-parity real test (Windows / interactive desktop)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          bunx vitest run "$TEST_FILE" --config "$REAL_CONFIG"
