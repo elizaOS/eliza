@@ -6374,7 +6374,7 @@ function getMessageHandlerResponseText(
 	if (typeof raw.text === "string" && raw.text.trim().length > 0) {
 		return raw.text;
 	}
-	const responseText = (raw as unknown as Record<string, unknown>).response;
+	const responseText = raw.response;
 	if (typeof responseText === "string" && responseText.trim().length > 0) {
 		return responseText;
 	}

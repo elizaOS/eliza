@@ -793,6 +793,17 @@ export interface GenerateTextResult {
 	finishReason?: string;
 	toolCalls?: ToolCall[];
 	providerMetadata?: Record<string, JsonValue | object | undefined>;
+	/**
+	 * Some provider adapters return the assistant message body as `content`
+	 * (a string or a parts array) rather than (or in addition to) `text`. The
+	 * normalizer in `services/message/generate-text-result.ts` reads this.
+	 */
+	content?: string | Array<{ type?: string; text?: string; content?: string }>;
+	/**
+	 * Some provider adapters surface the generated text under `response`.
+	 * Used as the final fallback by the text normalizer.
+	 */
+	response?: string;
 }
 
 /**
