@@ -440,10 +440,14 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       `vision/mmproj-${tierSlug(id)}.gguf`,
     );
   }
-  // Embedded-draft-head MTP (#9033 cutover): the Gemma 4 MTP draft head is
-  // baked into the main text GGUF, so there is no separate `mtp/drafter-<tier>.gguf`
-  // bundle companion to download. The manifest validator enforces this — separate
-  // drafter artifacts are rejected for embedded-draft-head MTP tiers.
+  // Separate-drafter MTP: Gemma 4 ships an official standalone drafter
+  // (speculative decoding), so each MTP tier downloads a `mtp/drafter-<tier>.gguf`
+  // companion alongside the text GGUF — unlike the retired Qwen3.5 same-file
+  // NextN head.
+  if (mtpSupportedForTier(id)) {
+    components.mtp = bundleComponent(id, `mtp/drafter-${tierSlug(id)}.gguf`);
+  }
+
   return { finetuned: false, components };
 }
 
@@ -471,14 +475,14 @@ function runtimeForTier(
   };
 
   if (mtpSupportedForTier(id)) {
-    // Embedded-draft-head MTP (#9033 cutover): the draft head ships inside the
-    // main text GGUF, so MTP is driven by the embedded head — there is no
-    // separate `-md drafter.gguf` companion. A conservative default draft window
-    // is kept; the runtime widens it under a `heuristic` acceptance schedule.
+    // Separate-drafter MTP: Gemma 4 ships an official standalone drafter
+    // GGUF, loaded via `-md mtp/drafter-<tier>.gguf --spec-type draft-mtp`.
+    // Google reports up to ~3x decode with no quality loss; we keep a
+    // conservative default draft window and let the runtime widen it under
+    // a `heuristic` acceptance schedule.
     runtime.mtp = {
       specType: "draft-mtp",
-      // No `drafterFile`: same-file/embedded MTP — the NextN draft head ships
-      // inside the main text GGUF, so there is no separate drafter companion.
+      drafterFile: `mtp/drafter-${tierSlug(id)}.gguf`,
       draftMin: 1,
       draftMax: 4,
       gpuLayers: "auto",

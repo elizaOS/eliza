@@ -21,7 +21,6 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { Readable, type Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { logger } from "@elizaos/core";
 import { ensureDefaultAssignment } from "./assignments";
 import {
 	buildHuggingFaceResolveUrl,
@@ -65,83 +64,6 @@ interface ActiveJob {
 
 type DownloadListener = (event: DownloadEvent) => void;
 type BundleFileKind = keyof Eliza1Files;
-
-/**
- * Embedded-draft-head MTP cutover (#9033). The published 2b/4b stand-in bundles
- * still ship a legacy *separate* MTP drafter (`files.mtp` + `lineage.drafter`),
- * which the current manifest validator rejects for these embedded-draft-head
- * tiers. Normalize such a fetched manifest in place to embedded-draft-head: drop
- * the separate drafter so the bundle validates and installs (MTP runs via the
- * head embedded in the text GGUF; the drafter companion is simply not
- * downloaded). Returns true if it changed anything. No-op for already-embedded
- * manifests.
- */
-function normalizeEmbeddedDraftHeadManifest(raw: unknown): boolean {
-	if (!raw || typeof raw !== "object") return false;
-	const m = raw as {
-		files?: Record<string, unknown>;
-		lineage?: Record<string, unknown>;
-	};
-	let changed = false;
-	if (m.files && Array.isArray(m.files.mtp) && m.files.mtp.length > 0) {
-		m.files.mtp = [];
-		changed = true;
-	}
-	if (m.lineage && m.lineage.drafter != null) {
-		delete m.lineage.drafter;
-		changed = true;
-	}
-	// GGUF/ggml only inside eliza — strip any ONNX artifact from the bundle. The
-	// fused FFI runtime never loads ONNX; published bundles sometimes list an
-	// alternate `.onnx` variant (e.g. `vad/silero-vad-int8.onnx`) alongside the
-	// canonical `.gguf`. Drop them so the bundle is GGUF-only.
-	if (m.files) {
-		for (const kind of Object.keys(m.files)) {
-			const arr = m.files[kind];
-			if (!Array.isArray(arr)) continue;
-			const filtered = arr.filter(
-				(e) =>
-					!(
-						e &&
-						typeof e === "object" &&
-						typeof (e as { path?: unknown }).path === "string" &&
-						(e as { path: string }).path.toLowerCase().endsWith(".onnx")
-					),
-			);
-			if (filtered.length !== arr.length) {
-				m.files[kind] = filtered;
-				changed = true;
-			}
-		}
-	}
-	return changed;
-}
-
-/**
- * Remove the given bundle-relative paths from every `files.<kind>` array of a
- * raw manifest object. Used to keep the persisted manifest consistent with what
- * actually installed when a published stand-in bundle lists secondary artifacts
- * (e.g. an alternate ONNX VAD variant) that 404 on the hub.
- */
-function pruneManifestFiles(raw: unknown, removePaths: string[]): void {
-	if (!raw || typeof raw !== "object") return;
-	const files = (raw as { files?: Record<string, unknown> }).files;
-	if (!files) return;
-	const remove = new Set(removePaths);
-	for (const kind of Object.keys(files)) {
-		const arr = files[kind];
-		if (Array.isArray(arr)) {
-			files[kind] = arr.filter(
-				(e) =>
-					!(
-						e &&
-						typeof e === "object" &&
-						remove.has((e as { path?: string }).path ?? "")
-					),
-			);
-		}
-	}
-}
 
 /**
  * Thrown before any weight byte is fetched when an Eliza-1 bundle's manifest
@@ -814,19 +736,10 @@ export class Downloader {
 			catalogEntry.bundleManifestSha256,
 		);
 
-		const rawManifest = JSON.parse(await fsp.readFile(manifestPath, "utf8"));
-		if (normalizeEmbeddedDraftHeadManifest(rawManifest)) {
-			// Persist the normalized manifest so the installed bundle is internally
-			// consistent (no dangling reference to an un-downloaded drafter).
-			await fsp.writeFile(
-				manifestPath,
-				`${JSON.stringify(rawManifest, null, 2)}\n`,
-			);
-			logger.warn(
-				`[local-inference] ${catalogEntry.id}: normalized a legacy separate-drafter manifest to embedded-draft-head MTP (#9033) — dropped files.mtp + lineage.drafter; the separate drafter companion is not downloaded`,
-			);
-		}
-		const manifest = parseBundleManifestOrThrow(rawManifest, catalogEntry);
+		const manifest = parseBundleManifestOrThrow(
+			JSON.parse(await fsp.readFile(manifestPath, "utf8")),
+			catalogEntry,
+		);
 
 		// §7: schema version, RAM budget, and kernel-backend availability are
 		// checked against this device BEFORE any weight byte is fetched. An
@@ -835,52 +748,25 @@ export class Downloader {
 
 		let completedBytes = manifestDownloaded.sizeBytes;
 		const downloaded = new Map<string, DownloadedFile>();
-		const skippedMissing: string[] = [];
 		for (const { entry } of collectBundleFiles(manifest)) {
 			const finalPath = bundleTargetPath(bundleRoot, entry.path);
-			let result: DownloadedFile;
-			try {
-				result = await this.downloadRemotePath(
-					catalogEntry,
-					entry.path,
-					path.join(
-						downloadsStagingDir(),
-						bundleStagingFilename(catalogEntry.id, entry.path),
-					),
-					finalPath,
-					record,
-					completedBytes,
-					entry.sha256,
-				);
-			} catch (err) {
-				// Tolerate a missing (404) NON-PRIMARY bundle file. The published 2b/4b
-				// stand-in bundles list secondary artifacts (e.g. an alternate ONNX VAD
-				// variant) that were never uploaded to the hub; skip them so the bundle
-				// still installs. The fused desktop runtime uses the GGUF variants; the
-				// primary text GGUF is still required (verified below).
-				const msg = err instanceof Error ? err.message : String(err);
-				if (msg.includes("HTTP 404") && entry.path !== catalogEntry.ggufFile) {
-					skippedMissing.push(entry.path);
-					logger.warn(
-						`[local-inference] ${catalogEntry.id}: skipping missing bundle file ${entry.path} (404 on hub)`,
-					);
-					continue;
-				}
-				throw err;
-			}
+			const result = await this.downloadRemotePath(
+				catalogEntry,
+				entry.path,
+				path.join(
+					downloadsStagingDir(),
+					bundleStagingFilename(catalogEntry.id, entry.path),
+				),
+				finalPath,
+				record,
+				completedBytes,
+				entry.sha256,
+			);
 			downloaded.set(entry.path, result);
 			completedBytes += result.sizeBytes;
 			record.job.received = completedBytes;
 			record.job.total = Math.max(record.job.total, completedBytes);
 			this.throttleEmit(record);
-		}
-		if (skippedMissing.length > 0) {
-			// Keep the installed manifest consistent with what is on disk.
-			pruneManifestFiles(rawManifest, skippedMissing);
-			await fsp.writeFile(
-				manifestPath,
-				`${JSON.stringify(rawManifest, null, 2)}\n`,
-			);
 		}
 
 		const textEntry = manifest.files.text.find(
