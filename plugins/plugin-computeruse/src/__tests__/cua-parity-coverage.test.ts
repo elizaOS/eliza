@@ -1,0 +1,238 @@
+/**
+ * trycua/cua parity COVERAGE GUARD (#9170, M14).
+ *
+ * A single machine-checkable registry of every trycua/cua capability, each tagged
+ * `have` | `partial` | `missing` | `na`. This is the executable form of
+ * `docs/TRYCUA_PARITY_AUDIT.md`: it fails CI when a `have` verb is dropped from the
+ * live action surface, when a host input verb loses its test coverage, or when an
+ * `na` decision is silently reverted (e.g. browser_execute re-enabled).
+ *
+ * Crucially this runs in the DEFAULT lane — i.e. on Windows, Linux, macOS and the
+ * AOSP/Node test runner alike — so "we have parity, and every verb is tested" is
+ * verified on ALL platforms, not just the win32-gated real-driver lane. The real
+ * actuation of each verb on a live desktop is the `*.real.test.ts` lane (Windows
+ * today; Linux/macOS once their headful CI lanes exist — see audit §3/§5).
+ */
+
+import { readFileSync, readdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import { computerUsePlugin } from "../index.js";
+import { isBrowserExecuteAllowed } from "../security/browser-script-policy.js";
+
+type Domain =
+  | "input" // host pointer/keyboard/screen verb on COMPUTER_USE
+  | "vision" // OCR / detect / get_screen (computeruse enum or plugin-vision)
+  | "window" // WINDOW action verb
+  | "clipboard" // CLIPBOARD action verb
+  | "architecture" // loop/provider/RPC/MCP/eval — not a single verb
+  | "mobile";
+
+type Status = "have" | "partial" | "missing" | "na";
+
+interface Capability {
+  /** trycua/cua capability name. */
+  cua: string;
+  domain: Domain;
+  status: Status;
+  /** elizaOS COMPUTER_USE/WINDOW/CLIPBOARD verb that satisfies it, when applicable. */
+  verb?: string;
+  /** Required when status === "na": why we deliberately don't chase it. */
+  na?: string;
+  /** Milestone tracking the remaining work, when partial/missing. */
+  milestone?: string;
+}
+
+// The full surface. Keep in sync with docs/TRYCUA_PARITY_AUDIT.md.
+const CAPABILITIES: Capability[] = [
+  // ── host input ────────────────────────────────────────────────────────────
+  { cua: "screenshot", domain: "input", status: "have", verb: "screenshot" },
+  { cua: "left_click", domain: "input", status: "have", verb: "click" },
+  { cua: "right_click", domain: "input", status: "have", verb: "right_click" },
+  { cua: "double_click", domain: "input", status: "have", verb: "double_click" },
+  { cua: "middle_click", domain: "input", status: "have", verb: "middle_click" },
+  {
+    cua: "click_with_modifiers",
+    domain: "input",
+    status: "have",
+    verb: "click_with_modifiers",
+  },
+  { cua: "move_cursor", domain: "input", status: "have", verb: "mouse_move" },
+  {
+    cua: "left_mouse_down",
+    domain: "input",
+    status: "have",
+    verb: "mouse_down",
+  },
+  { cua: "left_mouse_up", domain: "input", status: "have", verb: "mouse_up" },
+  { cua: "type_text", domain: "input", status: "have", verb: "type" },
+  { cua: "press_key", domain: "input", status: "have", verb: "key" },
+  { cua: "hotkey", domain: "input", status: "have", verb: "key_combo" },
+  { cua: "key_down", domain: "input", status: "have", verb: "key_down" },
+  { cua: "key_up", domain: "input", status: "have", verb: "key_up" },
+  { cua: "scroll", domain: "input", status: "have", verb: "scroll" },
+  { cua: "drag", domain: "input", status: "have", verb: "drag" },
+  {
+    cua: "get_cursor_position",
+    domain: "input",
+    status: "have",
+    verb: "get_cursor_position",
+  },
+  // ── vision ────────────────────────────────────────────────────────────────
+  { cua: "ocr", domain: "vision", status: "have", verb: "ocr" },
+  {
+    cua: "detect_elements",
+    domain: "vision",
+    status: "have",
+    verb: "detect_elements",
+  },
+  {
+    cua: "get_screen (typed image + elements, token-frugal)",
+    domain: "vision",
+    status: "have", // plugin-vision GET_SCREEN / GET_SCREEN_ELEMENTS (M2)
+  },
+  {
+    cua: "set_of_marks_overlay",
+    domain: "vision",
+    status: "missing",
+    milestone: "M9",
+  },
+  // ── window ────────────────────────────────────────────────────────────────
+  { cua: "window_list", domain: "window", status: "have", verb: "list" },
+  { cua: "activate_window", domain: "window", status: "have", verb: "focus" },
+  { cua: "minimize_window", domain: "window", status: "have", verb: "minimize" },
+  { cua: "maximize_window", domain: "window", status: "have", verb: "maximize" },
+  { cua: "restore_window", domain: "window", status: "have", verb: "restore" },
+  { cua: "close_window", domain: "window", status: "have", verb: "close" },
+  { cua: "set_window_position", domain: "window", status: "have", verb: "move" },
+  {
+    cua: "get_window_size/position + set_window_size + get_current_window_id + get_application_windows",
+    domain: "window",
+    status: "missing",
+    milestone: "M12",
+  },
+  { cua: "open(target) / launch(app,args)", domain: "window", status: "missing", milestone: "M12" },
+  // ── clipboard ───────────────────────────────────────────────────────────────
+  { cua: "copy_to_clipboard", domain: "clipboard", status: "have", verb: "read" },
+  { cua: "set_clipboard", domain: "clipboard", status: "have", verb: "write" },
+  // ── filesystem / shell (gated/internal today) ───────────────────────────────
+  {
+    cua: "filesystem verbs (exists/list/read/write/delete/mkdir/size)",
+    domain: "architecture",
+    status: "partial",
+    milestone: "M12",
+  },
+  { cua: "run_command (CommandResult)", domain: "architecture", status: "partial", milestone: "M12" },
+  // ── architecture ────────────────────────────────────────────────────────────
+  { cua: "agent_loop_registry", domain: "architecture", status: "partial", milestone: "M10" },
+  { cua: "predict_step/predict_click split", domain: "architecture", status: "partial", milestone: "M10" },
+  { cua: "callback_middleware (budget/retention/trajectory)", domain: "architecture", status: "partial", milestone: "M11" },
+  { cua: "vm/sandbox provider matrix", domain: "architecture", status: "partial", milestone: "M13" },
+  { cua: "daemon/RPC seam", domain: "architecture", status: "missing", milestone: "M13" },
+  { cua: "MCP server seam", domain: "architecture", status: "missing" },
+  { cua: "eval harness (ScreenSpot/OSWorld/per-OS scenarios)", domain: "architecture", status: "partial", milestone: "M14" },
+  { cua: "low-token continuous screen description", domain: "architecture", status: "have" },
+  { cua: "accessibility tree grounding", domain: "architecture", status: "have" },
+  // ── mobile / AOSP ─────────────────────────────────────────────────────────────
+  { cua: "android tap/swipe + hardware keys", domain: "mobile", status: "have" },
+  { cua: "android multitouch_gesture", domain: "mobile", status: "missing" },
+  // ── deliberately not chased ──────────────────────────────────────────────────
+  {
+    cua: "browser_execute / playwright_exec",
+    domain: "architecture",
+    status: "na",
+    na: "Unconditionally disabled by security policy (GHSA-rcvr-766c-4phv).",
+  },
+  {
+    cua: "set_wallpaper",
+    domain: "architecture",
+    status: "na",
+    na: "Niche; no agent value.",
+  },
+  {
+    cua: "cloud managed sandbox",
+    domain: "architecture",
+    status: "na",
+    na: "We control the local machine in-process; cloud VM fleet out of scope.",
+  },
+];
+
+const INPUT_VERBS = CAPABILITIES.filter(
+  (c) => (c.domain === "input" || (c.domain === "vision" && c.verb)) && c.status === "have" && c.verb,
+).map((c) => c.verb as string);
+
+// Live action surface.
+const actions = computerUsePlugin.actions ?? [];
+const actionNames = actions.map((a) => a.name);
+const computerUse = actions.find((a) => a.name === "COMPUTER_USE") as
+  | { parameters?: Array<{ name: string; schema?: { enum?: string[] } }> }
+  | undefined;
+const enumVerbs =
+  computerUse?.parameters?.find((p) => p.name === "action")?.schema?.enum ?? [];
+
+// Test corpus (every *.test.ts under __tests__, minus this file).
+const testDir = dirname(fileURLToPath(import.meta.url));
+const SELF = "cua-parity-coverage.test.ts";
+const corpus = readdirSync(testDir)
+  .filter((f) => f.endsWith(".test.ts") && f !== SELF)
+  .map((f) => readFileSync(join(testDir, f), "utf8"))
+  .join("\n");
+
+describe("cua parity registry integrity", () => {
+  it("every capability has a known status; na entries justify themselves", () => {
+    for (const c of CAPABILITIES) {
+      expect(["have", "partial", "missing", "na"]).toContain(c.status);
+      if (c.status === "na") {
+        expect(c.na, `na capability "${c.cua}" needs a reason`).toBeTruthy();
+      }
+    }
+  });
+
+  it("has no duplicate verb mappings", () => {
+    const verbs = CAPABILITIES.map((c) => c.verb).filter(Boolean) as string[];
+    expect(new Set(verbs).size).toBe(verbs.length);
+  });
+});
+
+describe("cua parity surface (all platforms)", () => {
+  it("every have/input + ocr/detect verb is in the COMPUTER_USE action enum", () => {
+    for (const v of INPUT_VERBS) {
+      expect(enumVerbs, `enum: ${enumVerbs.join(", ")}`).toContain(v);
+    }
+  });
+
+  it("every have/window verb is a promoted WINDOW action", () => {
+    for (const c of CAPABILITIES.filter(
+      (c) => c.domain === "window" && c.status === "have" && c.verb,
+    )) {
+      const promoted = `WINDOW_${(c.verb as string).toUpperCase()}`;
+      expect(actionNames, actionNames.join(", ")).toContain(promoted);
+    }
+  });
+
+  it("clipboard read/write are promoted CLIPBOARD actions", () => {
+    expect(actionNames).toContain("CLIPBOARD_READ");
+    expect(actionNames).toContain("CLIPBOARD_WRITE");
+  });
+});
+
+describe("cua parity test-coverage (every input/vision verb is tested)", () => {
+  it.each(INPUT_VERBS)("verb %s is referenced by at least one test", (verb) => {
+    const upper = `COMPUTER_USE_${verb.toUpperCase()}`;
+    const referenced =
+      corpus.includes(`"${verb}"`) ||
+      corpus.includes(`'${verb}'`) ||
+      corpus.includes(upper);
+    expect(
+      referenced,
+      `no test references verb "${verb}" (snake or ${upper})`,
+    ).toBe(true);
+  });
+});
+
+describe("cua parity N/A decisions are honored", () => {
+  it("browser_execute stays disabled (GHSA-rcvr-766c-4phv)", () => {
+    expect(isBrowserExecuteAllowed()).toBe(false);
+  });
+});
