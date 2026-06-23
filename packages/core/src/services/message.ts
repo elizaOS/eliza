@@ -1645,7 +1645,7 @@ function getVoiceSpeakerEntityId(
 	return trimmed.length > 0 ? trimmed : null;
 }
 
-function voiceTurnSignalSuppressesAgent(
+export function voiceTurnSignalSuppressesAgent(
 	signal: VoiceTurnSignalMetadata | null,
 ): boolean {
 	if (!signal) return false;
@@ -1665,7 +1665,7 @@ function voiceTurnSignalSuppressesAgent(
  * the user still talking. Used to PROMOTE an IGNORE to RESPOND; it never
  * overrides an explicit STOP or an already-RESPOND decision.
  */
-function voiceTurnSignalConfirmsAgent(
+export function voiceTurnSignalConfirmsAgent(
 	signal: VoiceTurnSignalMetadata | null,
 ): boolean {
 	if (!signal) return false;
