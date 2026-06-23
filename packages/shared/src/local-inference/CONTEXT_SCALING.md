@@ -23,8 +23,9 @@ positional range is huge, KV-cache memory is what
 gates you, and that is where the stock q8_0 cache and (past 64k) KV spill
 do the heavy lifting. The catalog's job is to ship the largest *native* window
 per tier and then have the runtime pick a context within it that fits the
-device. That second half — a memory-aware context selector — is the gap; see
-"Wins" below.
+device. That second half — a memory-aware context selector — now lives in
+`context-fit.ts` (`computeRuntimeContextFit`), wired through `active-model.ts`;
+see "Wins" below.
 
 ---
 
@@ -307,8 +308,11 @@ error) stays — a slow voice session is worse than a clear "this device can't d
   runtime `contextSize` toward
   `min(tier.contextLength, baseNativeContext, maxFittingContext)` using
   `estimateQuantizedKvBytesPerToken`.
-- **Deferred:** an opt-in `preferAccurateKvWhenHeadroom` branch that picks f16
-  KV on hosts with abundant VRAM relative to the chosen model+context; stock
-  q8_0 remains the default and only shipped Gemma KV path.
+- **Resolved (opt-in):** `preferAccurateKvWhenHeadroom` picks f16 KV when the
+  host has the headroom to run it at (at least) the q8_0-selected window — it
+  only ever upgrades precision, never trades away context. Gated behind
+  `ELIZA_PREFER_ACCURATE_KV_WHEN_HEADROOM`; stock q8_0 remains the default and
+  only shipped Gemma KV path. Implemented in `context-fit.ts` +
+  `active-model.ts` (`resolveRuntimeContextFit`).
 - **Still gated:** only add a named long-context 27B tier after the artifact and
   spill-latency gate pass.

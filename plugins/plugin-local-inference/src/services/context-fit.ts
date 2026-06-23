@@ -5,6 +5,10 @@ const BYTES_PER_MIB = 1024 * 1024;
 const CONTEXT_STEP = 4096;
 const DEFAULT_WORKING_SET_MB = 1024;
 
+// q8_0 stores the KV cache at 34 bytes / 32 elements; f16 at 2 bytes / element.
+// f16 KV therefore costs ~1.88× the q8_0 per-token rate the estimate is keyed to.
+const F16_OVER_Q8_0_KV_RATIO = 2 / (34 / 32);
+
 export interface RuntimeContextFitInput {
 	params: string;
 	weightMb: number;
@@ -13,6 +17,14 @@ export interface RuntimeContextFitInput {
 	minContext?: number;
 	workingSetMb?: number;
 	contextStep?: number;
+	/**
+	 * When the host has enough headroom to run the more accurate f16 KV cache at
+	 * (at least) the same window q8_0 would give, prefer f16 instead of leaving
+	 * precision on the table. Opt-in — q8_0 stays the default per the device-fit
+	 * contract; this only ever *upgrades* precision and never trades away context
+	 * (#8809 AC#4). See CONTEXT_SCALING.md §5.
+	 */
+	preferAccurateKvWhenHeadroom?: boolean;
 }
 
 export interface RuntimeContextFit {
@@ -21,6 +33,8 @@ export interface RuntimeContextFit {
 	maxFittingContext: number;
 	kvBytesPerToken: number;
 	workingSetMb: number;
+	/** The KV cache precision the chosen window was sized against. */
+	kvQuant: "q8_0" | "f16";
 }
 
 function roundDownToStep(value: number, step: number): number {
@@ -58,19 +72,42 @@ export function computeRuntimeContextFit(
 
 	const kvBudgetMb = input.usableMb - input.weightMb - workingSetMb;
 	if (kvBudgetMb <= 0) return null;
+	const kvBudgetBytes = kvBudgetMb * BYTES_PER_MIB;
 
-	const maxFittingContext = roundDownToStep(
-		(kvBudgetMb * BYTES_PER_MIB) / kvBytesPerToken,
+	const q8MaxFittingContext = roundDownToStep(
+		kvBudgetBytes / kvBytesPerToken,
 		step,
 	);
-	if (maxFittingContext < minContext) return null;
+	if (q8MaxFittingContext < minContext) return null;
+	const q8ContextSize = Math.min(input.nativeContext, q8MaxFittingContext);
 
-	const contextSize = Math.min(input.nativeContext, maxFittingContext);
+	// Default: q8_0 KV, sized to the host. Opt-in headroom upgrade: if f16 KV
+	// still affords at least the q8_0-selected window, use it — more precise, and
+	// never at the cost of context.
+	let kvQuant: "q8_0" | "f16" = "q8_0";
+	let kvBytesPerTokenChosen = kvBytesPerToken;
+	let maxFittingContext = q8MaxFittingContext;
+	let contextSize = q8ContextSize;
+	if (input.preferAccurateKvWhenHeadroom) {
+		const f16BytesPerToken = kvBytesPerToken * F16_OVER_Q8_0_KV_RATIO;
+		const f16MaxFittingContext = roundDownToStep(
+			kvBudgetBytes / f16BytesPerToken,
+			step,
+		);
+		if (f16MaxFittingContext >= q8ContextSize) {
+			kvQuant = "f16";
+			kvBytesPerTokenChosen = f16BytesPerToken;
+			maxFittingContext = f16MaxFittingContext;
+			contextSize = Math.min(input.nativeContext, f16MaxFittingContext);
+		}
+	}
+
 	return {
 		contextSize,
 		contextDownscaled: contextSize < input.nativeContext,
 		maxFittingContext,
-		kvBytesPerToken,
+		kvBytesPerToken: kvBytesPerTokenChosen,
 		workingSetMb,
+		kvQuant,
 	};
 }

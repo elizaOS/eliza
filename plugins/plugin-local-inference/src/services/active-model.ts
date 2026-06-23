@@ -22,7 +22,10 @@ import {
 	FIRST_RUN_DEFAULT_MODEL_ID,
 	findCatalogModel,
 } from "./catalog";
-import { computeRuntimeContextFit } from "./context-fit";
+import {
+	computeRuntimeContextFit,
+	type RuntimeContextFit,
+} from "./context-fit";
 import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
 import type { Eliza1Manifest } from "./manifest";
@@ -389,12 +392,25 @@ function applyCatalogDefaults(
 		const nativeContext =
 			installedBundleContextSize(installed, manifestLoader) ??
 			catalog?.contextLength;
-		args.contextSize = dynamicRuntimeContextSize(
+		const fit = resolveRuntimeContextFit(
 			installed,
 			catalog,
 			nativeContext,
 			hardware,
 		);
+		args.contextSize = fit?.contextSize ?? nativeContext;
+		// Headroom KV-precision upgrade: when the selector chose f16 (opt-in via
+		// ELIZA_PREFER_ACCURATE_KV_WHEN_HEADROOM) and the caller/catalog left KV at
+		// the default q8_0, raise both cache types to f16. Only ever upgrades, and
+		// only when f16 still affords the selected window (#8809 AC#4).
+		if (
+			fit?.kvQuant === "f16" &&
+			(args.cacheTypeK === undefined || args.cacheTypeK === "q8_0") &&
+			(args.cacheTypeV === undefined || args.cacheTypeV === "q8_0")
+		) {
+			args.cacheTypeK = "f16";
+			args.cacheTypeV = "f16";
+		}
 	}
 
 	// Catalog-declared GPU offload default — only apply when the caller
@@ -450,16 +466,23 @@ function installedWeightMb(
 	return 0;
 }
 
-function dynamicRuntimeContextSize(
+/** ELIZA_PREFER_ACCURATE_KV_WHEN_HEADROOM=1 opts into the f16-KV-on-headroom path. */
+function preferAccurateKvWhenHeadroom(): boolean {
+	const v =
+		process.env.ELIZA_PREFER_ACCURATE_KV_WHEN_HEADROOM?.trim().toLowerCase();
+	return v === "1" || v === "true" || v === "yes";
+}
+
+function resolveRuntimeContextFit(
 	installed: InstalledModel,
 	catalog: CatalogModel | undefined,
 	nativeContext: number | undefined,
 	hardware: HardwareProbe | undefined,
-): number | undefined {
-	if (!catalog || nativeContext === undefined) return nativeContext;
-	if (!hardware) return nativeContext;
+): RuntimeContextFit | null {
+	if (!catalog || nativeContext === undefined) return null;
+	if (!hardware) return null;
 
-	const fit = computeRuntimeContextFit({
+	return computeRuntimeContextFit({
 		params: catalog.params,
 		weightMb: installedWeightMb(installed, catalog),
 		usableMb: Math.max(
@@ -467,8 +490,8 @@ function dynamicRuntimeContextSize(
 			hostRamMbFromProbe(hardware) - ramHeadroomReserveMb(),
 		),
 		nativeContext,
+		preferAccurateKvWhenHeadroom: preferAccurateKvWhenHeadroom(),
 	});
-	return fit?.contextSize ?? nativeContext;
 }
 
 function mergeOverrides(
