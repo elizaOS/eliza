@@ -877,7 +877,7 @@ async function runCapture(
 
 async function runToggleSubMode(
   runtime: IAgentRuntime,
-  message: Memory,
+  _message: Memory,
   op: "enable_camera" | "disable_camera" | "enable_screen" | "disable_screen",
   options: Record<string, unknown>,
   callback?: HandlerCallback,
