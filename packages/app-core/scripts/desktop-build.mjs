@@ -1059,19 +1059,13 @@ function ensureFusedLibSubmodule() {
   console.log(
     `[desktop-build] Native fork missing; initializing submodule ${rel}`,
   );
+  // NB: no --depth/shallow here — a shallow submodule fetch fails with
+  // "Server does not allow request for unadvertised object <sha>" when the
+  // recorded gitlink commit isn't the remote tip, which is common. Reliability
+  // over speed: this path must actually produce the fork.
   spawnSync(
     "git",
-    [
-      "-C",
-      ROOT,
-      "submodule",
-      "update",
-      "--init",
-      "--recursive",
-      "--depth",
-      "1",
-      rel,
-    ],
+    ["-C", ROOT, "submodule", "update", "--init", "--recursive", rel],
     { stdio: "inherit" },
   );
   return fs.existsSync(path.join(FUSED_LIB_FORK_DIR, "CMakeLists.txt"));
