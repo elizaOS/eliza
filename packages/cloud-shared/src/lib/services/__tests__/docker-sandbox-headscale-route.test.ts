@@ -5,6 +5,7 @@ import {
   requiresHeadscaleRoute,
   resolveContainerPort,
   resolveDockerSandboxImage,
+  resolveSandboxRegistryEnv,
   shouldCleanupHeadscaleVpn,
 } from "../docker-sandbox-provider";
 
@@ -200,5 +201,93 @@ describe("DockerSandboxProvider Headscale route guard", () => {
         environmentVars: {},
       }),
     ).rejects.toThrow("HEADSCALE_API_KEY is not configured");
+  });
+});
+
+describe("resolveSandboxRegistryEnv (#8756)", () => {
+  const env = (overrides: Record<string, string | undefined> = {}) =>
+    ({
+      SANDBOX_REGISTRY_REDIS_URL: undefined,
+      SANDBOX_REGISTRY_REDIS_TOKEN: undefined,
+      KV_REST_API_URL: undefined,
+      KV_REST_API_TOKEN: undefined,
+      ...overrides,
+    }) as NodeJS.ProcessEnv;
+
+  test("no backend configured → cannot self-register, no warning", () => {
+    const r = resolveSandboxRegistryEnv(env());
+    expect(r.url).toBe("");
+    expect(r.canSelfRegister).toBe(false);
+    expect(r.schemeWarning).toBeNull();
+  });
+
+  test("a redis:// URL self-registers without a token (TCP carries auth)", () => {
+    const r = resolveSandboxRegistryEnv(
+      env({ SANDBOX_REGISTRY_REDIS_URL: "redis://user:pw@proxy.example:6379" }),
+    );
+    expect(r.url).toBe("redis://user:pw@proxy.example:6379");
+    expect(r.isTcp).toBe(true);
+    expect(r.canSelfRegister).toBe(true);
+    expect(r.schemeWarning).toBeNull();
+  });
+
+  test("rediss:// (TLS) is also TCP", () => {
+    expect(
+      resolveSandboxRegistryEnv(env({ SANDBOX_REGISTRY_REDIS_URL: "rediss://h:6379" })).isTcp,
+    ).toBe(true);
+  });
+
+  test("an https Upstash URL needs a token to self-register", () => {
+    expect(
+      resolveSandboxRegistryEnv(env({ SANDBOX_REGISTRY_REDIS_URL: "https://up.example" }))
+        .canSelfRegister,
+    ).toBe(false);
+    const withToken = resolveSandboxRegistryEnv(
+      env({
+        SANDBOX_REGISTRY_REDIS_URL: "https://up.example",
+        SANDBOX_REGISTRY_REDIS_TOKEN: "tok",
+      }),
+    );
+    expect(withToken.canSelfRegister).toBe(true);
+    expect(withToken.token).toBe("tok");
+    expect(withToken.schemeWarning).toBeNull();
+  });
+
+  test("explicit SANDBOX_REGISTRY_* wins over legacy KV_REST_API_*, and does NOT borrow the legacy token", () => {
+    const r = resolveSandboxRegistryEnv(
+      env({
+        SANDBOX_REGISTRY_REDIS_URL: "redis://explicit:6379",
+        KV_REST_API_URL: "https://legacy.example",
+        KV_REST_API_TOKEN: "legacy-tok",
+      }),
+    );
+    expect(r.url).toBe("redis://explicit:6379");
+    expect(r.token).toBe("");
+  });
+
+  test("legacy KV_REST_API_URL + token self-registers", () => {
+    const r = resolveSandboxRegistryEnv(
+      env({ KV_REST_API_URL: "https://kv.example", KV_REST_API_TOKEN: "kv-tok" }),
+    );
+    expect(r.url).toBe("https://kv.example");
+    expect(r.token).toBe("kv-tok");
+    expect(r.canSelfRegister).toBe(true);
+  });
+
+  test("an unexpected scheme that still self-registers surfaces a warning", () => {
+    const r = resolveSandboxRegistryEnv(
+      env({
+        SANDBOX_REGISTRY_REDIS_URL: "ws://weird.example",
+        SANDBOX_REGISTRY_REDIS_TOKEN: "t",
+      }),
+    );
+    expect(r.canSelfRegister).toBe(true);
+    expect(r.schemeWarning).toContain("unexpected scheme (ws:)");
+  });
+
+  test("trims whitespace around the URL", () => {
+    expect(
+      resolveSandboxRegistryEnv(env({ SANDBOX_REGISTRY_REDIS_URL: "  redis://h:6379  " })).url,
+    ).toBe("redis://h:6379");
   });
 });
