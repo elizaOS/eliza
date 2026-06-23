@@ -95,8 +95,8 @@ but that is not yet evidence.
 
 | backend | reference fixtures | status for Gemma |
 |---|---|---|
-| CPU | head_dim=128 (Qwen-shaped) | **runnable here**; Gemma forward proven via llama-bench (text) + FA engages for 512. Kernel-parity fixtures still head_dim=128 → need Gemma-geometry re-gen. |
-| Vulkan-desktop (RTX 5080) | head_dim=128 | **Gemma forward PROVEN on GPU** — gemma-4-E2B/E4B + gemma3n run via Vulkan (pp512 1486 / tg128 123 for E2B, 26×/8× over CPU), FA engages for 512, output correct. Built with the NDK glslc (no coopmat → scalar path, not tensor-core-optimal). Kernel-parity fixtures still head_dim=128 → re-gen pending. |
+| CPU | head_dim=128 (Qwen-shaped) | **`reference-test` clean** (turbo3/turbo4/turbo3_tcq/qjl/polar/polar_qjl all finite, fused-attn + TBQ V-cache parity OK); Gemma forward proven via llama-bench (text) + FA engages for 512. Fixtures still head_dim=128 → Gemma-geometry re-gen pending. |
+| Vulkan-desktop (RTX 5080) | head_dim=128 | **8/8 kernel verify PASS on the 5080** — `make vulkan-verify` → turbo3/turbo4/turbo3_tcq/qjl/polar (incl. pre-Hadamard + both residual modes) all PASS, max diff ≤ 7.6e-6, Vulkan api 1.4.329 (§8 gate satisfied for the shipped kernels). **Gemma forward also PROVEN on GPU** — gemma-4-E2B/E4B + gemma3n run via Vulkan (pp512 1486 / tg128 123 for E2B, 26×/8× over CPU), FA engages for 512, output correct. Built with the NDK glslc (no coopmat → scalar path). Fixtures still head_dim=128 → Gemma-geometry re-gen pending. |
 | CUDA | head_dim=128 | **blocked** — sm_120 needs CUDA 13.x (not installed); GPU not enumerable by the CUDA runtime on this host (NVML sees it, CUDA runtime doesn't). |
 | Vulkan-Mali (Android) | — | FA off by policy (race); QJL/Polar is the on-device attention path (#8848) — but it is head_dim=128 → re-param needed before it applies to Gemma. |
 | Metal | — | needs Apple Silicon. |
