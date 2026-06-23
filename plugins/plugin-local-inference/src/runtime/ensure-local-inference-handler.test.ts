@@ -318,6 +318,54 @@ describe("ensureLocalInferenceHandler", () => {
 		);
 	});
 
+	it("uses a fine-grained maxTokensPerStep for user-visible streaming, coarse for internal calls", async () => {
+		const prior = process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
+		delete process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
+		try {
+			const { registrations, runtime } = makeRuntime();
+			engineState.hasLoadedModel.mockReturnValue(true);
+
+			await ensureLocalInferenceHandler(runtime);
+			const handler = findRegisteredHandler(
+				registrations,
+				ModelType.TEXT_LARGE,
+			);
+
+			// Streaming reply (onStreamChunk wired) → tuned fine-grained step (8).
+			await handler(runtime, {
+				prompt: "hi",
+				stream: true,
+				onStreamChunk: () => {},
+			});
+			expect(engineState.generate).toHaveBeenLastCalledWith(
+				expect.objectContaining({ maxTokensPerStep: 8 }),
+			);
+
+			// Internal / non-streamed call → no override (runner keeps coarse 32).
+			await handler(runtime, { prompt: "hi" });
+			expect(engineState.generate).toHaveBeenLastCalledWith(
+				expect.objectContaining({ maxTokensPerStep: undefined }),
+			);
+
+			// The shared env knob overrides the tuned streaming default.
+			process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP = "4";
+			await handler(runtime, {
+				prompt: "hi",
+				stream: true,
+				onStreamChunk: () => {},
+			});
+			expect(engineState.generate).toHaveBeenLastCalledWith(
+				expect.objectContaining({ maxTokensPerStep: 4 }),
+			);
+		} finally {
+			if (prior === undefined) {
+				delete process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
+			} else {
+				process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP = prior;
+			}
+		}
+	});
+
 	it("passes hardware-aware load args through desktop lazy assignment loads", async () => {
 		const installed = {
 			id: "eliza-1-2b",
