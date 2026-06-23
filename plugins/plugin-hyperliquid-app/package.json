@@ -58,6 +58,7 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [
+    "registry-entry.json",
     "assets",
     "dist"
   ],

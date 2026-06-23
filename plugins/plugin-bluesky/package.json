@@ -37,6 +37,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist"
   ],
   "keywords": [],

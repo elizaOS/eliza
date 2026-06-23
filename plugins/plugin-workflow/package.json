@@ -30,6 +30,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist",
     "src",
     "auto-enable.ts"
