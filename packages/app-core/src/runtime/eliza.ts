@@ -54,6 +54,7 @@ import {
   type AppRoutePluginRegistryEntry,
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
+import { ensureBundledFusedLibDir } from "./bundled-fused-lib.js";
 import { shouldWarmupVoice, warmVoiceModels } from "./voice-warmup";
 
 type EmbeddingProgressCallback = (
@@ -706,6 +707,12 @@ async function repairRuntimeAfterBoot(
   runtime: AgentRuntime,
 ): Promise<AgentRuntime> {
   await ensureRuntimeSqlCompatibility(runtime);
+
+  // Make the app-bundled fused libelizainference (staged into the desktop
+  // package) discoverable before any local-inference handler probes
+  // `supported()`. No-op in dev / on mobile and when an explicit override is
+  // set. Must run before the ensureLocalInferenceHandler calls below.
+  ensureBundledFusedLibDir();
 
   // Invariant guard: the mobile voice backend selector pins phones to the
   // Kokoro-exclusive TTS path via `mobile: isMobilePlatform()`, which keys off
