@@ -16,9 +16,13 @@ import { UiRenderer } from "../components/config-ui/ui-renderer";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 import { useAppSelectorShallow } from "../state";
 import { useEnabledViewKinds } from "../state/useViewKinds";
+import { homeWidgetKey, rankHomeWidgets } from "./home-priority";
 import { resolveWidgetsForSlot } from "./registry";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
+
+/** The home surface only ever shows the top few highest-priority widgets. */
+const HOME_MAX_VISIBLE = 6;
 
 export interface WidgetUiActionEventDetail {
   pluginId: string;
@@ -130,13 +134,37 @@ export function WidgetHost({
     return filter ? gated.filter((entry) => filter(entry.declaration)) : gated;
   }, [slot, plugins, filter, enabledKinds]);
 
+  // The home surface must not render every declared widget — rank by current
+  // importance and show only the top-N (#9143). Live attention/decay signals
+  // aren't yet attributable to a specific widget from the activity stream, so
+  // ranking runs with no signals and reduces to deterministic base ordering
+  // (no reshuffle between renders). With an empty signal set `now` never feeds
+  // the decay math, so a fixed epoch keeps this render path deterministic (the
+  // UI-determinism gate forbids `Date.now()` in render) — when signal wiring
+  // lands, `now` will be threaded in off the render path. Other slots render
+  // every resolved widget unchanged.
+  const displayed = useMemo(() => {
+    if (slot !== "home") return resolved;
+    const byKey = new Map(
+      resolved.map((entry) => [homeWidgetKey(entry.declaration), entry]),
+    );
+    return rankHomeWidgets(
+      resolved.map((entry) => entry.declaration),
+      [],
+      { now: 0, maxVisible: HOME_MAX_VISIBLE },
+    ).flatMap((ranked) => {
+      const entry = byKey.get(homeWidgetKey(ranked.declaration));
+      return entry ? [entry] : [];
+    });
+  }, [slot, resolved]);
+
   const pluginById = useMemo(() => {
     const map = new Map<string, (typeof plugins)[number]>();
     for (const p of plugins ?? []) map.set(p.id, p);
     return map;
   }, [plugins]);
 
-  if (resolved.length === 0 && hideWhenEmpty) return null;
+  if (displayed.length === 0 && hideWhenEmpty) return null;
 
   const layoutClass =
     layout === "grid"
@@ -150,7 +178,7 @@ export function WidgetHost({
       data-layout={layout}
       data-slot={slot}
     >
-      {resolved.map(({ declaration, Component }) => {
+      {displayed.map(({ declaration, Component }) => {
         const widgetKey = `${declaration.pluginId}/${declaration.id}`;
         const pluginState = pluginById.get(declaration.pluginId);
 
