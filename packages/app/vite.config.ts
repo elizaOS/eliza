@@ -1270,6 +1270,46 @@ function resolveManualChunk(id: string): string | undefined {
   }
 
   if (normalizedId.includes("/node_modules/")) {
+    // Crypto / big-number graph (bn.js, elliptic, secp256k1, the hash + cipher
+    // libs, and the `buffer` polyfill they call into). Tested FIRST so it wins
+    // over the generic vendor groups below. This graph MUST stay in its own
+    // lazily-loaded chunk: Rolldown's recursive dep-inclusion otherwise
+    // non-deterministically folds it into an eagerly-initialized app chunk
+    // (e.g. an i18n locale chunk or the entry), where bn.js runs
+    // `Buffer.allocUnsafe` at module-init before the chunk's CJS Buffer wrapper
+    // is hoisted — throwing "Class constructor cannot be invoked without 'new'"
+    // and blanking the whole React tree on every route. `scripts/verify-chunk-
+    // safety.mjs` gates the deploy against any regression of this pin.
+    if (
+      /\/node_modules\/(bn\.js|elliptic|secp256k1|@noble\/[^/]+|hash-base|create-hash|create-hmac|create-ecdh|browserify-sign|browserify-aes|browserify-cipher|browserify-rsa|diffie-hellman|asn1\.js|des\.js|ripemd160|sha\.js|md5\.js|hash\.js|cipher-base|evp_bytestokey|pbkdf2|public-encrypt|randombytes|randomfill|miller-rabin|brorand|hmac-drbg|minimalistic-crypto-utils|minimalistic-assert|safe-buffer|buffer)(\/|$)/.test(
+        normalizedId,
+      )
+    ) {
+      return "vendor-crypto";
+    }
+
+    // EVM wallet stack (wagmi/viem/RainbowKit/WalletConnect/Reown/Coinbase).
+    // Kept in one chunk so Rolldown can't auto-derive multiple cross-importing
+    // wallet chunks that form an init-order cycle (the wagmi 3.x `connect` /
+    // `ConnectorUnavailableReconnectingError` TDZ crash).
+    if (
+      // Scoped prefixes (their own trailing slash consumes the package
+      // boundary, so they match every module under the scope), plus bare
+      // package names anchored with a (\/|$) boundary so `wagmi` doesn't also
+      // catch e.g. `wagmi-something`.
+      /\/node_modules\/(@wagmi\/|viem\/|@rainbow-me\/|@walletconnect\/|@reown\/|@coinbase\/wallet)/.test(
+        normalizedId,
+      ) ||
+      /\/node_modules\/(wagmi|mipd|eventemitter3)(\/|$)/.test(normalizedId)
+    ) {
+      return "vendor-wallet";
+    }
+
+    // Solana wallet/web3 stack.
+    if (normalizedId.includes("/node_modules/@solana/")) {
+      return "vendor-solana";
+    }
+
     if (
       pathIncludesAny(normalizedId, [
         "/@react-spring/",

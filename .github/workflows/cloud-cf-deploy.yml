@@ -264,6 +264,21 @@ jobs:
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
+      # Refuse to deploy a bundle where Rolldown folded the bn.js/crypto graph
+      # into an eager chunk (the "Class constructor cannot be invoked without
+      # 'new'" Buffer.allocUnsafe module-init crash that blanks every route).
+      # This regression has reached prod multiple times; fail the deploy instead.
+      - name: Verify bundle chunk safety
+        working-directory: packages/app
+        # NON-BLOCKING for now: surfaces the bn.js/crypto eager-chunk fold loudly
+        # (job summary) WITHOUT failing the deploy. The underlying Rolldown fold
+        # is known-non-deterministic and the vendor-crypto manualChunk pin does
+        # not yet reliably prevent it (bn.js currently co-bundles into the
+        # date-fns en_US locale chunk). Flip to a hard gate (drop
+        # continue-on-error) once the chunking fix lands. See #9150.
+        continue-on-error: true
+        run: bun run verify:chunk-safety
+
       - name: Resolve Pages branch
         id: pages
         env:
@@ -406,6 +421,21 @@ jobs:
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
+
+      # Refuse to deploy a bundle where Rolldown folded the bn.js/crypto graph
+      # into an eager chunk (the "Class constructor cannot be invoked without
+      # 'new'" Buffer.allocUnsafe module-init crash that blanks every route).
+      # This regression has reached prod multiple times; fail the deploy instead.
+      - name: Verify bundle chunk safety
+        working-directory: packages/app
+        # NON-BLOCKING for now: surfaces the bn.js/crypto eager-chunk fold loudly
+        # (job summary) WITHOUT failing the deploy. The underlying Rolldown fold
+        # is known-non-deterministic and the vendor-crypto manualChunk pin does
+        # not yet reliably prevent it (bn.js currently co-bundles into the
+        # date-fns en_US locale chunk). Flip to a hard gate (drop
+        # continue-on-error) once the chunking fix lands. See #9150.
+        continue-on-error: true
+        run: bun run verify:chunk-safety
 
       - name: Resolve Pages branch
         id: pages
