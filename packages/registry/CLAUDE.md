@@ -40,10 +40,31 @@ src/
   first-party/    @elizaos/registry/first-party — curated bundled registry
     schema.ts     Zod entry schemas (app / plugin / connector)
     loader.ts     loadRegistryFromRawEntries / indexEntries / typed accessors
-    index.ts      loadRegistry() + registerRegistryEntry() runtime overlay
+    index.ts      loadRegistry() (reads generated.json) + registerRegistryEntry()
     app-registry.ts  registerCuratedApp curated-app name store
-    entries/{apps,plugins,connectors}/*.json   bundled curated entries
+    generate.ts   aggregator: plugin-owned + curated/ -> generated.json
+    generated.json   built aggregate the runtime reads (one file; commit it)
+    curated/{apps,plugins,connectors}/*.json   entries with no vendored package
 ```
+
+## First-party registration is plugin-side
+
+Each in-repo plugin/package **owns its registry entry** as a `registry-entry.json`
+in its own directory (a single entry object, or an array). Curated entries with
+no vendored package — built-in app-viewers and entries for plugins not checked
+out here — live under `first-party/curated/`. The aggregator gathers both into a
+single committed `generated.json` that the runtime reads, so on-device staging is
+one file. Plugins may also contribute or override an entry **at runtime** via
+`registerRegistryEntry()` (deduped by `id`; runtime entries win).
+
+```bash
+bun run --cwd packages/registry generate:first-party         # rewrite generated.json
+bun run --cwd packages/registry generate:first-party:check   # CI drift gate
+```
+
+- **Add/change a first-party entry:** edit the plugin's `registry-entry.json`
+  (or a file under `first-party/curated/`), then `generate:first-party` and
+  commit the regenerated `generated.json`.
 
 ## Two formats — don't conflate
 

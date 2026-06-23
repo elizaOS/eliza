@@ -9,7 +9,7 @@
 // and any plugin can contribute or override an entry at runtime via
 // `registerRegistryEntry()` (deduped by `id`; runtime entries win).
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -35,15 +35,19 @@ export {
 } from "./loader";
 export * from "./schema";
 
-// Bun.build collapses these top-level `const` declarations into `var`s inside
-// an `__esm` wrapper, and `import.meta.url` inside that wrapper can resolve to
+// Entries are aggregated at build time (see generate.ts) from plugin-owned
+// `registry-entry.json` files plus the `curated/` set into a single committed
+// `generated.json`. The runtime reads that one file — a single artifact that is
+// trivial to stage alongside an on-device bundle.
+//
+// Bun.build collapses top-level `const` declarations into `var`s inside an
+// `__esm` wrapper, and `import.meta.url` inside that wrapper can resolve to
 // `undefined` on the on-device runtime when the module is initialised through
 // the `Promise.resolve().then(() => init_xxx())` adapter the bundler emits for
 // dynamic-import re-exports. The fallback to `process.argv[1]` matches the
 // bundle's own entrypoint (e.g. `/data/data/.../agent-bundle.js`) so the
-// registry sits at `<bundle-dir>/entries/`. On-device asset staging places the
-// `entries/` payload alongside the bundle.
-function resolveEntriesDir(): string {
+// registry sits at `<bundle-dir>/generated.json`.
+function resolveGeneratedPath(): string {
   const url =
     typeof import.meta.url === "string" && import.meta.url
       ? import.meta.url
@@ -58,7 +62,7 @@ function resolveEntriesDir(): string {
   } else {
     moduleDir = dirname(process.argv[1] ?? process.cwd());
   }
-  return join(moduleDir, "entries");
+  return join(moduleDir, "generated.json");
 }
 
 // Plugin-side registration overlay. Symbol-keyed global so every consumer —
@@ -117,22 +121,20 @@ export function registerRegistryEntry(entry: RegistryEntry): void {
 var cacheSlot: { value: LoadedRegistry | null } = { value: null };
 
 function readEntriesFromDisk(): RegistryEntry[] {
-  const entriesDir = resolveEntriesDir();
-  const raws: { file: string; data: unknown }[] = [];
-  for (const kind of ["apps", "plugins", "connectors"] as const) {
-    const kindDir = join(entriesDir, kind);
-    if (!existsSync(kindDir)) {
-      // In packaged builds the registry entries may not be bundled. Log and
-      // continue rather than crashing the agent subprocess.
-      console.warn(`[registry] ${kind} directory missing: ${kindDir}`);
-      continue;
-    }
-    for (const filename of readdirSync(kindDir)) {
-      if (!filename.endsWith(".json")) continue;
-      const file = join(kindDir, filename);
-      raws.push({ file, data: JSON.parse(readFileSync(file, "utf-8")) });
-    }
+  const generatedPath = resolveGeneratedPath();
+  if (!existsSync(generatedPath)) {
+    // In packaged builds the aggregated registry may not be bundled. Log and
+    // continue rather than crashing the agent subprocess.
+    console.warn(`[registry] generated.json missing: ${generatedPath}`);
+    return [];
   }
+  const parsed = JSON.parse(readFileSync(generatedPath, "utf-8")) as {
+    entries?: unknown[];
+  };
+  const raws = (parsed.entries ?? []).map((data, i) => ({
+    file: `${generatedPath}#${i}`,
+    data,
+  }));
   return loadRegistryFromRawEntries(raws).all;
 }
 

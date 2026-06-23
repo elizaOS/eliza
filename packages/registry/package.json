@@ -31,7 +31,9 @@
   "scripts": {
     "validate": "bun run src/validate-cli.ts",
     "generate": "bun run src/generate.ts",
-    "build": "bun run src/generate.ts",
+    "generate:first-party": "bun run src/first-party/generate.ts",
+    "generate:first-party:check": "bun run src/first-party/generate.ts --check",
+    "build": "bun run src/generate.ts && bun run src/first-party/generate.ts",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check src",
