@@ -1,11 +1,17 @@
 #!/usr/bin/env node
-// Build-time gate against the recurring Rolldown crypto-chunk crash
+// Build-time gate against the recurring crypto-chunk crash
 // ("Class constructor u cannot be invoked without 'new'" at Buffer.allocUnsafe).
 //
-// History: the apex (elizacloud.ai) moved from packages/cloud-frontend to
-// packages/app (#9093). cloud-frontend shipped this gate + a `vendor-crypto`
-// chunk group; the cutover dropped both, leaving packages/app — which ships the
-// same wallet/crypto/bn.js graph — with no protection (#9150). This restores it.
+// Root cause (see resolveManualChunk in vite.config.ts): when the bn.js/crypto
+// graph is not pinned to its own chunk, Rollup folds it into an EAGERLY-
+// initialized chunk (the date-fns `en_US` i18n locale chunk, or the entry).
+// bn.js runs `Buffer.allocUnsafe` at module-init, which throws before the
+// bundled Buffer wrapper is ready and kills the whole React tree on every
+// route. The #9150 instance of this was a placement bug: the `manualChunks`
+// pin sat under `build.rolldownOptions.output` — a key Vite never reads — so it
+// was silently ignored and NO vendor chunks emitted. The fix moves the pin to
+// `build.rollupOptions.output` (the key Vite + classic Rollup read) and folds
+// the crypto/wallet/solana graph into one lazy `vendor-crypto` chunk.
 //
 // Root cause (see resolveManualChunk's vendor-crypto group in vite.config.ts):
 // Rolldown can non-deterministically fold the bn.js / crypto graph into an
@@ -65,10 +71,11 @@ if (offenders.length > 0) {
   );
   for (const f of offenders) console.error(`  - ${f}`);
   console.error(
-    "\nThis is the Rolldown crypto-chunk crash (Buffer.allocUnsafe at module-init).\n" +
-      "The `vendor-crypto` group in vite.config.ts's resolveManualChunk must keep the\n" +
-      "bn.js graph in a lazy vendor chunk. Do NOT deploy this bundle — it crashes\n" +
-      "the whole React tree on every route. Re-check the resolveManualChunk groups.",
+    "\nThis is the crypto-chunk crash (Buffer.allocUnsafe at module-init).\n" +
+      "The `vendor-crypto` branch in vite.config.ts's resolveManualChunk must keep\n" +
+      "the bn.js graph in a lazy vendor chunk, and that manualChunks fn must stay\n" +
+      "wired under `build.rollupOptions.output` (the key Vite reads). Do NOT deploy\n" +
+      "this bundle — it crashes the whole React tree on every route.",
   );
   process.exit(1);
 }
