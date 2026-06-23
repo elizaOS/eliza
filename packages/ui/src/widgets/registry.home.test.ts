@@ -53,4 +53,11 @@ describe("home frontpage widget slot (#9143)", () => {
     expect(apps?.declaration.slot).toBe("home");
     expect(apps?.Component).toBeTruthy();
   });
+
+  it("resolves the Todos widget on home (per-plugin breadth opt-in)", () => {
+    const resolved = resolveWidgetsForSlot("home", []);
+    const todos = resolved.find((r) => r.declaration.id === "todo.items");
+    expect(todos?.declaration.slot).toBe("home");
+    expect(todos?.Component).toBeTruthy();
+  });
 });
