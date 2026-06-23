@@ -74,7 +74,7 @@ export { default, financesPlugin } from "./plugin.ts";
 export {
   registerFinancesTerminalView,
   setFinancesTerminalSnapshot,
-} from "./register-terminal-view.ts";
+} from "./register-terminal-view.js";
 export {
   createSubscriptionsBrowserGateway,
   type SubscriptionsBrowserGateway,

@@ -452,6 +452,7 @@ import {
   handleFirstRunRoutes,
   handleHealthRoutes,
   handleInboxAndCloudRelayRouteGroup,
+  handleInteractionsRoutes,
   handleLifeOpsRuntimePluginRoute,
   handleMemoryRoutes,
   handleMiscRoutes,
@@ -3340,6 +3341,21 @@ async function handleRequest(
   // ── Prompt suggestions (/api/suggestions) ─────────────────────────────────
   if (
     await handleSuggestionsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      json,
+      error,
+      runtime: state.runtime,
+    })
+  ) {
+    return;
+  }
+
+  // ── Interaction reporting (/api/interactions/shortcut) ────────────────────
+  if (
+    await handleInteractionsRoutes({
       req,
       res,
       method,

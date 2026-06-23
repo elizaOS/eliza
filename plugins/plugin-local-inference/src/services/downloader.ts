@@ -750,7 +750,8 @@ export class Downloader {
 		// §7: schema version, RAM budget, and kernel-backend availability are
 		// checked against this device BEFORE any weight byte is fetched. An
 		// incompatible bundle aborts here — there is no "download anyway" path.
-		assertBundleInstallable(manifest, await this.probeDeviceCaps());
+		const deviceCaps = await this.probeDeviceCaps();
+		assertBundleInstallable(manifest, deviceCaps);
 
 		let completedBytes = manifestDownloaded.sizeBytes;
 		const downloaded = new Map<string, DownloadedFile>();
@@ -781,7 +782,15 @@ export class Downloader {
 		// whose `target` matches the host are fetched; no `lib[]` / no host match
 		// ⇒ skipped (the runtime falls back to a host-staged lib dir, else cloud).
 		// Mobile resolves to no targets — phones ship the lib natively.
-		const selectedLib = selectBundleLibFiles(manifest, resolveHostLibTargets());
+		// Prefer the GPU lib target when this device actually has a CUDA backend
+		// (NVIDIA), so a CUDA-capable host pulls the accelerated set when the
+		// bundle hosts one; everything else takes the CPU baseline. macOS arm64
+		// already resolves to the metal set (which carries the CPU fallback).
+		const preferGpu = deviceCaps.availableBackends.includes("cuda");
+		const selectedLib = selectBundleLibFiles(
+			manifest,
+			resolveHostLibTargets({ preferGpu }),
+		);
 		if (selectedLib) {
 			for (const libEntry of selectedLib.files) {
 				const relPath = `lib/${libStagedName(libEntry)}`;

@@ -10,8 +10,10 @@ import {
   buildCommands as buildCommandPaletteCommands,
   type CommandItem,
 } from "../../chat";
+import { reportShortcutFired } from "../../chat/useSlashCommandController";
 import { COMMAND_PALETTE_EVENT } from "../../events";
 import { useBugReport } from "../../hooks";
+import { SHORTCUT_OPEN_COMMAND_PALETTE } from "../../hooks/useKeyboardShortcuts";
 import { useAppSelectorShallow } from "../../state";
 import {
   openDesktopSettingsWindow,
@@ -138,6 +140,7 @@ export function CommandPalette() {
       if (!commandPaletteOpen) {
         setState("commandQuery", "");
         setState("commandActiveIndex", 0);
+        reportShortcutFired(SHORTCUT_OPEN_COMMAND_PALETTE, "command-palette");
       }
     };
     document.addEventListener(COMMAND_PALETTE_EVENT, toggle);
@@ -153,6 +156,7 @@ export function CommandPalette() {
         if (!commandPaletteOpen) {
           setState("commandQuery", "");
           setState("commandActiveIndex", 0);
+          reportShortcutFired(SHORTCUT_OPEN_COMMAND_PALETTE, "command-palette");
         }
       }
     };
