@@ -4,13 +4,21 @@ Coding-agent task coordinator and session control surface for elizaOS agents.
 
 ## Purpose / role
 
-This plugin adds a UI workbench for managing coding-agent task threads and PTY sessions. It registers view panels (standard, XR, and TUI variants) into the elizaOS app shell for both the task coordinator and the multi-agent orchestrator surfaces. It has no server-side runtime component (no actions, providers, services, or evaluators); all agent/task state is owned by `@elizaos/plugin-agent-orchestrator` — this plugin is the display and control layer only.
+This plugin adds a UI workbench for managing coding-agent task threads and PTY sessions. It registers view panels (standard, XR, and TUI variants) into the elizaOS app shell for both the task coordinator and the multi-agent orchestrator surfaces. All agent/task state is owned by `@elizaos/plugin-agent-orchestrator` — this plugin is the display and control layer only. Its sole server-side runtime contribution is a single view-scoped slash command for the orchestrator view (`/orchestrator-status`), registered through `@elizaos/plugin-commands`, plus its deterministic handler action (no providers, services, or evaluators).
 
 The plugin is opt-in: it must be listed in the agent's plugin configuration. Once loaded, it registers its views into the app shell and fills the slot registry entries (`CodingAgentControlChip`, `CodingAgentSettingsSection`, `CodingAgentTasksPanel`, `PtyConsoleBase`) that `@elizaos/ui` leaves empty without this plugin.
 
 ## Plugin surface
 
-No actions, providers, services, or evaluators are registered. The plugin surface is entirely views and slot-registry fills.
+The plugin surface is primarily views and slot-registry fills, plus one slash command + handler action (no providers, services, or evaluators).
+
+### Slash command (`src/orchestrator-command.ts`)
+
+| command | view scope | target | handler action |
+|---|---|---|---|
+| `/orchestrator-status` | `orchestrator` (#8798) | `agent` | `ORCHESTRATOR_STATUS_COMMAND` |
+
+The plugin's `init()` calls `registerOrchestratorCommands(runtime.agentId)`, which registers the command into the per-runtime `@elizaos/plugin-commands` registry. Being `views`-scoped, it appears in `GET /api/commands` only while the orchestrator view is the active surface; the registered `orchestratorStatusCommandAction` is its deterministic, slash-only handler. This proves a non-core, view-owning plugin can light up the universal slash-command surface end to end (#8790).
 
 ### Views registered (`src/index.ts`)
 
@@ -49,7 +57,8 @@ Registers two pages in the `developer` group via `registerAppShellPage` from `@e
 
 ```
 src/
-  index.ts                         Plugin definition — views + capabilities declared here
+  index.ts                         Plugin definition — views + capabilities, init() command registration, handler action
+  orchestrator-command.ts          /orchestrator-status slash command def + deterministic handler action (#8790)
   register.ts                      App-shell page registration (/orchestrator, /orchestrator/tui)
   register-slots.ts                Slot registry fills for ui empty-slot defaults
   register-terminal-view.tsx       Registers OrchestratorSpatialView in the @elizaos/tui terminal registry
@@ -145,7 +154,7 @@ These prefixes are used to build preference keys sent to the agent prefs API; th
 - **Two build steps.** The plugin has both a tsup JS build (`build:js`) and a Vite view-bundle build (`build:views`). The view bundle entry is `src/task-coordinator-view-bundle.ts` and outputs `dist/views/bundle.js`. Both must be built; `build` runs them in sequence.
 - **View bundle re-exports.** `task-coordinator-view-bundle.ts` re-exports all view components (`CodingAgentTasksPanel`, `TaskCoordinatorTuiView`, `OrchestratorWorkbench`, `OrchestratorTuiView`) plus the shared `interact` capability handler so the built bundle serves all `componentExport` names the view manifest declares.
 - **Slot registry is a side-effect import.** `register-slots.ts` must be imported by the host app to activate the slot fills. Without it, the UI renders empty slot defaults in place of the coding-agent components.
-- **No server runtime.** This plugin registers zero actions, providers, services, or evaluators. All task/session state lives in `@elizaos/plugin-agent-orchestrator`. API boundary helpers in `src/api/` are utilities for route handlers in app-core, not plugin-registered routes.
+- **Minimal server runtime.** This plugin registers no providers, services, or evaluators, and its only action is the `/orchestrator-status` slash-command handler (`src/orchestrator-command.ts`). All task/session state lives in `@elizaos/plugin-agent-orchestrator`. API boundary helpers in `src/api/` are utilities for route handlers in app-core, not plugin-registered routes.
 - **PTY console buffer cap.** `PtyConsoleBase` caps displayed output at 200,000 characters (`MAX_BUFFER_CHARS`). Older output is silently trimmed from the head.
 - **Live e2e test requires real Codex CLI.** `test:e2e:manual` (`test/coding-agent-codex-artifact.live.e2e.test.ts`) is skipped unless the `codex` binary is in PATH and `~/.codex/auth.json` exists.
 - **Spatial view.** `src/components/OrchestratorSpatialView.tsx` is authored once using the spatial vocabulary and renders in both GUI/XR and terminal (TUI) contexts via `register-terminal-view.tsx`. It is purely presentational (typed snapshot + action callback in, primitives out).
