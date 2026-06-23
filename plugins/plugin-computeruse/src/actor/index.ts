@@ -11,6 +11,23 @@ export {
   resolveReference,
 } from "./actor.js";
 export {
+  type AgentDispatchContext,
+  type AgentMiddleware,
+  type AgentRunContext,
+  type AgentRunSummary,
+  type AgentStepContext,
+  type AgentStepDecision,
+  type BudgetCapOptions,
+  createBudgetCapMiddleware,
+  createImageRetentionMiddleware,
+  createOperatorNormalizerMiddleware,
+  createTrajectoryMiddleware,
+  type ImageRetentionMiddleware,
+  normalizeProposedAction,
+  type TrajectoryEntry,
+  type TrajectoryMiddleware,
+} from "./agent-callbacks.js";
+export {
   _resetAgentLoopsForTests,
   AGENT_LOOP_SETTING,
   type AgentLoop,
