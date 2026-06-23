@@ -1,0 +1,17 @@
+{
+  "name": "@s7g-network/s7g-plugin-v1",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {},
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@elizaos/core": "workspace:*",
+    "@types/node": "^25.0.3",
+    "bun-types": "^1.3.14",
+    "typescript": "^6.0.3"
+  }
+}
