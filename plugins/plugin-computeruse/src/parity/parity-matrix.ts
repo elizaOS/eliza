@@ -228,6 +228,22 @@ export const PARITY_MATRIX: readonly ParityCapability[] = [
     milestone: "M12",
     os: DESKTOP_COVERED_AOSP_NA_PLANNED(),
   },
+  {
+    id: "get_window_size",
+    elizaVerb: "WINDOW_GET_WINDOW_SIZE",
+    status: "have",
+    milestone: "M12",
+    note: "GetWindowRect (win32) / AppleScript size / xdotool geometry",
+    os: { windows: "covered", linux: "planned", macos: "planned", aosp: "na" },
+  },
+  {
+    id: "get_window_position",
+    elizaVerb: "WINDOW_GET_WINDOW_POSITION",
+    status: "have",
+    milestone: "M12",
+    note: "GetWindowRect (win32) / AppleScript position / xdotool geometry",
+    os: { windows: "covered", linux: "planned", macos: "planned", aosp: "na" },
+  },
 
   // ── M13: provider matrix (sandbox-only / RPC) ────────────────────────────
   {
