@@ -173,6 +173,58 @@ describe("generateChatResponse token streaming", () => {
     expect(result.text).toBe("alpha beta gamma");
   });
 
+  it("routes a clean extension to onChunk but an in-place revision to onSnapshot", async () => {
+    // chat-routes' appendIncomingText() runs every onStreamChunk value through
+    // resolveStreamingUpdate(responseText, incoming):
+    //   - a clean extension of the buffer => append => onChunk(delta)
+    //   - an in-place revision that does NOT extend the buffer => replace =>
+    //     onSnapshot(full text)
+    // This locks that the route does not garble a corrected snapshot into the
+    // delta stream. "helo world" -> "hello world" is the canonical revision
+    // (fixes a typo in an already-streamed word) classified as a replacement.
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, _callback, options) {
+        await Promise.resolve();
+        await options?.onStreamChunk?.("helo world");
+        await Promise.resolve();
+        await options?.onStreamChunk?.("hello world");
+        return {
+          didRespond: true,
+          responseContent: { text: "hello world" },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "streaming-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+
+    const runtime = createRuntime({ messageService: service });
+
+    const chunks: string[] = [];
+    const snapshots: string[] = [];
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("typo"),
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+        onChunk: (chunk) => chunks.push(chunk),
+        onSnapshot: (text) => snapshots.push(text),
+      },
+    );
+
+    // First emission appended as a delta; the revision replaced via snapshot.
+    expect(chunks).toEqual(["helo world"]);
+    expect(snapshots).toEqual(["hello world"]);
+    // The corrected text is what the caller ends up with — no "helo" garble.
+    expect(result.text).toBe("hello world");
+  });
+
   it("returns sanitized action result summaries for UI handoffs", async () => {
     const message = createChatMessage("create a workflow");
     const getActionResults = vi.fn(() => [

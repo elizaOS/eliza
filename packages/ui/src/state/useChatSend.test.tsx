@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
     sendConversationMessageStream: vi.fn(),
     sendWsMessage: vi.fn(),
     stopCodingAgent: vi.fn(),
+    renameConversation: vi.fn(() => Promise.resolve()),
     getBaseUrl: vi.fn(() => ""),
   },
 }));
@@ -379,6 +380,51 @@ describe("useChatSend 404 recovery", () => {
     expect(
       remaining.some((m) => m.role === "assistant" && !m.text.trim()),
     ).toBe(false);
+  });
+});
+
+describe("useChatSend always streams (#9174)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+    mocks.client.renameConversation.mockResolvedValue(undefined);
+  });
+
+  it("uses the streaming endpoint on the happy path and never the non-streaming one", async () => {
+    const tokens: Array<[string, string]> = [];
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+      ) => {
+        // Cloud + local both drive the UI through this same callback.
+        onToken("Hello", "Hello");
+        onToken(" world", "Hello world");
+        tokens.push(["Hello", " world"]);
+        return { text: "Hello world", completed: true };
+      },
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    // Happy path streams.
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    // The non-streaming endpoint is reserved for 404 recovery only.
+    expect(mocks.client.sendConversationMessage).not.toHaveBeenCalled();
+    // Streaming context is active by default — the first-token signal fired as
+    // tokens arrived through onToken.
+    expect(deps.setChatFirstTokenReceived).toHaveBeenCalledWith(true);
+    // The streaming callback actually received incremental tokens.
+    expect(tokens).toEqual([["Hello", " world"]]);
   });
 });
 

@@ -133,6 +133,51 @@ describe("StructuredFieldStreamExtractor per-field events", () => {
 	});
 });
 
+describe("StructuredFieldStreamExtractor emits the clean text-field delta (#9174)", () => {
+	// The default dynamic-prompt stream field is `text` (the clean reply). This
+	// locks that a structured response streams only the decoded `text` value —
+	// never the surrounding `thought:`/`actions:` markup — and that the third
+	// onChunk arg (`accumulated`) is the clean reply text, not raw markup.
+	const replySchema: SchemaRow[] = [
+		{ field: "thought", description: "internal reasoning" },
+		{ field: "text", description: "user-facing reply", streamField: true },
+		{ field: "actions", description: "actions to run", type: "array" },
+	];
+
+	it("streams only the decoded text field, never the markup around it", () => {
+		const chunks: Array<[string | undefined, string, string | undefined]> = [];
+		const extractor = new StructuredFieldStreamExtractor({
+			level: 0,
+			schema: replySchema,
+			streamFields: ["text"],
+			onChunk: (chunk, field, accumulated) =>
+				chunks.push([field, chunk, accumulated]),
+		});
+
+		feed(
+			extractor,
+			[
+				"thought: the user greeted me, respond warmly",
+				"text: Hey! Good to see you again.",
+				'actions: ["REPLY"]',
+			].join("\n"),
+		);
+		extractor.flush();
+
+		// Every emitted chunk belongs to the `text` field — no control-field leak.
+		expect(chunks.every(([field]) => field === "text")).toBe(true);
+		const joined = chunks.map(([, chunk]) => chunk).join("");
+		expect(joined).toBe("Hey! Good to see you again.");
+		// Raw field markup never reaches the user-visible token stream.
+		expect(joined).not.toContain("thought:");
+		expect(joined).not.toContain("actions:");
+		expect(joined).not.toContain("the user greeted me");
+		// `accumulated` is the clean reply text, ending at the full reply.
+		const accumulated = chunks.map(([, , acc]) => acc);
+		expect(accumulated.at(-1)).toBe("Hey! Good to see you again.");
+	});
+});
+
 describe("ResponseSkeletonStreamExtractor", () => {
 	const skeleton = {
 		spans: [
