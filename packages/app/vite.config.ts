@@ -2289,69 +2289,24 @@ export const INVALID_TRACER_PROVIDER = {};
         find: new RegExp(`^${escapeRegExp(pkgName)}$`),
         replacement: path.resolve(elizaRoot, relativeEntry),
       })),
-      // Side-effect app modules are loaded by the renderer only to register
-      // UI surfaces/pages. Route handlers and runtime services stay server-side.
+      // Renderer resolution overrides for specific cross-plugin imports. The
+      // side-effect app-module loader list itself is manifest-driven (each
+      // plugin's `elizaos.appRegister`; see appSideEffectModulesPlugin) and
+      // imports its registration entry by absolute path, so it needs no alias
+      // here — only the few packages imported by *bare specifier* from other
+      // renderer code remain.
       ...[
-        ["@elizaos/plugin-feed", "plugins/plugin-feed/src/ui/index.ts"],
-        [
-          "@elizaos/plugin-clawville",
-          "plugins/plugin-clawville/src/ui/index.ts",
-        ],
-        [
-          "@elizaos/plugin-trajectory-logger",
-          "plugins/plugin-trajectory-logger/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-shopify-ui",
-          "plugins/plugin-shopify-ui/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-hyperliquid-app",
-          "plugins/plugin-hyperliquid-app/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-polymarket-app",
-          "plugins/plugin-polymarket-app/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-waifu-imagegen-app",
-          "plugins/plugin-waifu-imagegen-app/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-waifu-swap-app",
-          "plugins/plugin-waifu-swap-app/src/register.ts",
-        ],
+        // wallet-ui's bare specifier re-exports its register surface (e.g.
+        // `isBscChainName`), imported directly by plugin-companion (walletUtils).
         [
           "@elizaos/plugin-wallet-ui",
           "plugins/plugin-wallet-ui/src/register.ts",
         ],
-        [
-          "@elizaos/plugin-contacts/register",
-          "plugins/plugin-contacts/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-device-settings/register",
-          "plugins/plugin-device-settings/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-messages/register",
-          "plugins/plugin-messages/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-phone/register",
-          "plugins/plugin-phone/src/register.ts",
-        ],
+        // task-coordinator chat inline-widget registration, imported by the app
+        // shell (main.tsx) before first render rather than via the loader scan.
         [
           "@elizaos/plugin-task-coordinator/register",
           "plugins/plugin-task-coordinator/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-wifi/register",
-          "plugins/plugin-wifi/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-facewear/register",
-          "plugins/plugin-facewear/src/register.ts",
         ],
         // plugin-calendar subpaths consumed by plugin-personal-assistant in the renderer
         // bundle. Resolve from source so the app build does not require
