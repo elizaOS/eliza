@@ -54,6 +54,7 @@ import { createOngoingTasksProvider } from "../providers/tasks.ts";
 import { uiCatalogProvider } from "../providers/ui-catalog.ts";
 import { createUserNameProvider } from "../providers/user-name.ts";
 import { createWorkspaceProvider } from "../providers/workspace-provider.ts";
+import { ApprovalService } from "../services/approval/index.ts";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.ts";
 import { LocalFileStorageService } from "../services/file-storage.ts";
 import { GlobalPauseService } from "../services/global-pause/index.ts";
@@ -141,6 +142,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       PendingPromptsService as ServiceClass,
       GlobalPauseService as ServiceClass,
       HandoffService as ServiceClass,
+      ApprovalService as ServiceClass,
     ],
 
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
