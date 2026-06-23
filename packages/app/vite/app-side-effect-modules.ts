@@ -91,23 +91,30 @@ export function discoverSideEffectAppModules(
   return discovered;
 }
 
-export const VIRTUAL_SIDE_EFFECT_APP_MODULES_ID =
-  "virtual:eliza-side-effect-app-modules";
+// Marker in src/plugin-registrations.ts whose array literal the build rewrites
+// with the manifest-scanned loaders. A `transform` hook (works identically under
+// Rollup and the vite 8 / Rolldown production build) is used instead of a
+// `virtual:` module — Rolldown does not resolve a static `export … from
+// "virtual:…"` the way Rollup does.
+const LOADERS_MARKER = "/* @__ELIZA_APP_REGISTER_LOADERS__ */ []";
+
+function stripQuery(id: string): string {
+  const q = id.indexOf("?");
+  return q === -1 ? id : id.slice(0, q);
+}
 
 /**
- * Vite plugin that resolves the manifest-driven side-effect loader list. The
- * app shell re-exports `SIDE_EFFECT_APP_MODULE_LOADERS` from the virtual module
- * (see `src/plugin-registrations.ts`).
+ * Vite plugin that injects the manifest-driven side-effect loader list into
+ * `src/plugin-registrations.ts` at build time.
  */
 export function appSideEffectModulesPlugin(packageRoots: readonly string[]) {
-  const resolvedId = `\0${VIRTUAL_SIDE_EFFECT_APP_MODULES_ID}`;
   return {
     name: "eliza-side-effect-app-modules",
-    resolveId(id: string) {
-      return id === VIRTUAL_SIDE_EFFECT_APP_MODULES_ID ? resolvedId : null;
-    },
-    load(id: string) {
-      if (id !== resolvedId) return null;
+    // Run on the raw source before vite's TS transform so the marker is intact.
+    enforce: "pre" as const,
+    transform(code: string, id: string) {
+      if (!stripQuery(id).endsWith("/src/plugin-registrations.ts")) return null;
+      if (!code.includes(LOADERS_MARKER)) return null;
       const modules = discoverSideEffectAppModules(packageRoots);
       const entries = modules
         .map(
@@ -115,7 +122,10 @@ export function appSideEffectModulesPlugin(packageRoots: readonly string[]) {
             `  { key: ${JSON.stringify(module.key)}, load: () => import(${JSON.stringify(module.entry)}) },`,
         )
         .join("\n");
-      return `export const SIDE_EFFECT_APP_MODULE_LOADERS = [\n${entries}\n];\n`;
+      return {
+        code: code.replace(LOADERS_MARKER, `[\n${entries}\n]`),
+        map: null,
+      };
     },
   };
 }

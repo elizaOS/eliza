@@ -8,11 +8,17 @@ export type SideEffectAppModuleLoader = {
  * register UI surfaces/pages (route handlers + runtime services stay
  * server-side).
  *
- * The list is NOT hardcoded here. Each app plugin self-declares
- * `"elizaos": { "appRegister": "register" | "ui" }` in its own package.json, and
- * the renderer build scans for that marker (see
- * `vite/app-side-effect-modules.ts`, wired in `vite.config.ts`) to generate this
- * list. Adding or deleting a plugin directory updates the boot set
- * automatically — there is no app-side list to keep in sync.
+ * The list is NOT hardcoded. Each app plugin self-declares
+ * `"elizaos": { "appRegister": "register" | "ui" }` in its own package.json; the
+ * renderer build scans for that marker and rewrites the array literal below with
+ * the discovered loaders (see `appSideEffectModulesPlugin` in
+ * `vite/app-side-effect-modules.ts`, wired in `vite.config.ts`). Adding or
+ * deleting a plugin directory updates the boot set automatically — there is no
+ * app-side list to keep in sync.
+ *
+ * The empty default is the fallback when the build transform has not run (e.g. a
+ * raw, non-vite import). The app shell always loads through vite, so the array
+ * is populated at boot.
  */
-export { SIDE_EFFECT_APP_MODULE_LOADERS } from "virtual:eliza-side-effect-app-modules";
+export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] =
+  /* @__ELIZA_APP_REGISTER_LOADERS__ */ [];
