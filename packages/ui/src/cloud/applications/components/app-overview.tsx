@@ -5,6 +5,7 @@
  * helpers so the Steward Bearer token is attached on every target.
  */
 
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   Check,
@@ -53,6 +54,7 @@ interface AppOverviewProps {
 export function AppOverview({ app, showApiKey }: AppOverviewProps) {
   const t = useCloudT();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
   const [displayApiKey, setDisplayApiKey] = useState(showApiKey || "");
   const [showKey, setShowKey] = useState(!!showApiKey);
@@ -150,6 +152,9 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
     setIsDeploying(true);
     try {
       await deployApp(app.id);
+      // Refresh the app record so the Deployment status flips to "building"
+      // without a manual reload (the key is a prefix of the auth-scoped key).
+      await queryClient.invalidateQueries({ queryKey: ["app", app.id] });
       toast.success(
         t("cloud.apps.overview.deployStarted", {
           defaultValue: "Deployment started",
