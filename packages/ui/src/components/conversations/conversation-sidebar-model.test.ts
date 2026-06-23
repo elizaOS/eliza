@@ -1,144 +1,205 @@
 import { describe, expect, it } from "vitest";
 import type { Conversation } from "../../api/client-types-chat";
+import type { TranslateFn } from "../../types";
 import {
+  ALL_CONNECTORS_SOURCE_SCOPE,
   ALL_WORLDS_SCOPE,
   buildConversationsSidebarModel,
   ELIZA_SOURCE_SCOPE,
   type InboxChatSidebarRow,
+  TERMINAL_SOURCE_SCOPE,
 } from "./conversation-sidebar-model";
 
-// Passthrough translate fn: return the provided defaultValue (or the key) so the
-// model's labels are deterministic without an i18n catalog.
-const t = ((key: string, opts?: { defaultValue?: string }) =>
-  opts?.defaultValue ?? key) as Parameters<
-  typeof buildConversationsSidebarModel
->[0]["t"];
+// Translate stub: return the supplied defaultValue (or the key) so section
+// labels and scope options are assertable without the i18n catalog.
+const t: TranslateFn = (key, options) =>
+  (options?.defaultValue as string | undefined) ?? key;
 
-function conversation(over: Partial<Conversation>): Conversation {
+const DAY_MS = 86_400_000;
+
+function conv(overrides: Partial<Conversation> & { id: string }): Conversation {
+  const updatedAt = overrides.updatedAt ?? new Date().toISOString();
   return {
-    id: "c1",
-    title: "Hello world",
-    roomId: "r1",
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-    ...over,
+    title: overrides.id,
+    roomId: `room-${overrides.id}`,
+    createdAt: updatedAt,
+    updatedAt,
+    ...overrides,
   };
 }
 
-function inboxChat(over: Partial<InboxChatSidebarRow>): InboxChatSidebarRow {
+function inbox(
+  overrides: Partial<InboxChatSidebarRow> & { id: string; source: string },
+): InboxChatSidebarRow {
   return {
-    id: "i1",
-    title: "Inbox chat",
-    source: "discord",
-    lastMessageAt: 1_700_000_000_000,
-    worldLabel: "DMs",
-    ...over,
+    lastMessageAt: Date.now(),
+    title: overrides.id,
+    worldLabel: "",
+    ...overrides,
   };
 }
 
-function build(args: {
-  conversations?: Conversation[];
-  inboxChats?: InboxChatSidebarRow[];
-  searchQuery?: string;
-  sourceScope?: string;
-  worldScope?: string;
-}) {
+function buildApp(conversations: Conversation[]) {
   return buildConversationsSidebarModel({
-    conversations: args.conversations ?? [],
-    inboxChats: args.inboxChats ?? [],
-    searchQuery: args.searchQuery ?? "",
-    sourceScope: args.sourceScope ?? ELIZA_SOURCE_SCOPE,
-    worldScope: args.worldScope ?? ALL_WORLDS_SCOPE,
+    conversations,
+    inboxChats: [],
+    searchQuery: "",
+    sourceScope: ELIZA_SOURCE_SCOPE,
     t,
+    worldScope: ALL_WORLDS_SCOPE,
   });
 }
 
-describe("buildConversationsSidebarModel", () => {
-  it("returns an empty, well-formed model for empty inputs", () => {
-    const model = build({});
-    expect(model.rows).toHaveLength(0);
-    expect(model.sections).toHaveLength(0);
-    expect(model.sourceScope).toBe(ELIZA_SOURCE_SCOPE);
-    expect(model.worldScope).toBe(ALL_WORLDS_SCOPE);
-    expect(model.showWorldFilter).toBe(false);
-  });
-
-  it("lists app conversations newest-first under the eliza scope", () => {
-    const model = build({
-      conversations: [
-        conversation({ id: "old", title: "Older", updatedAt: "2026-01-01T00:00:00.000Z" }),
-        conversation({ id: "new", title: "Newer", updatedAt: "2026-02-01T00:00:00.000Z" }),
-      ],
-    });
-    expect(model.rows.map((r) => r.id)).toEqual(["new", "old"]);
-    expect(model.rows.every((r) => r.kind === "conversation")).toBe(true);
-  });
-
-  it("filters rows by a case-insensitive title search", () => {
-    const model = build({
-      conversations: [
-        conversation({ id: "a", title: "Budget review" }),
-        conversation({ id: "b", title: "Dentist" }),
-      ],
-      searchQuery: "BUDGET",
-    });
-    expect(model.rows.map((r) => r.id)).toEqual(["a"]);
-  });
-
-  it("falls back to the eliza scope when the requested source is unavailable", () => {
-    const model = build({
-      conversations: [conversation({ id: "a" })],
-      sourceScope: "__not_a_real_source__",
-    });
-    expect(model.sourceScope).toBe(ELIZA_SOURCE_SCOPE);
-  });
-
-  it("surfaces connector inbox chats as their own source option", () => {
-    const model = build({
-      inboxChats: [
-        inboxChat({ id: "d1", source: "discord", title: "Discord DM" }),
-      ],
-    });
-    const values = model.sourceOptions.map((o) => o.value);
-    // The eliza scope is always present; the connector source is added.
-    expect(values).toContain(ELIZA_SOURCE_SCOPE);
-    const connector = model.sourceOptions.find(
-      (o) => o.value !== ELIZA_SOURCE_SCOPE && o.value.length > 0,
-    );
-    expect(connector).toBeDefined();
-  });
-
-  it("shows the world filter for a connector source with a named world", () => {
-    const chats = [
-      inboxChat({
-        id: "g1",
-        source: "discord",
-        title: "Guild chat",
-        roomType: "GROUP",
-        worldId: "w1",
-        worldLabel: "Acme Guild",
+describe("buildConversationsSidebarModel — app (eliza) scope", () => {
+  it("buckets conversations into Today / Yesterday / older time sections, newest-first", () => {
+    const now = Date.now();
+    const model = buildApp([
+      conv({ id: "today", updatedAt: new Date(now).toISOString() }),
+      conv({
+        id: "yesterday",
+        updatedAt: new Date(now - DAY_MS).toISOString(),
       }),
-    ];
-    // Discover the connector source key the model assigned, then scope to it.
-    const scoped = build({ inboxChats: chats, sourceScope: "__all_connectors__" });
-    const connectorRow = scoped.rows.find((r) => r.kind === "inbox");
-    expect(connectorRow).toBeDefined();
-    const sourceKey = connectorRow?.sourceKey ?? "";
+      conv({
+        id: "lastweek",
+        updatedAt: new Date(now - 9 * DAY_MS).toISOString(),
+      }),
+    ]);
 
-    const model = build({ inboxChats: chats, sourceScope: sourceKey });
-    expect(model.showWorldFilter).toBe(true);
-    expect(model.worldOptions.some((o) => o.label === "Acme Guild")).toBe(true);
+    const labels = model.sections.map((s) => s.label);
+    expect(labels).toEqual(["Today", "Yesterday", "Last week"]);
+    // Flattened rows are ordered newest-first across sections.
+    expect(model.rows.map((r) => r.id)).toEqual([
+      "today",
+      "yesterday",
+      "lastweek",
+    ]);
+    expect(model.sections[0].count).toBe(1);
   });
 
-  it("treats a DM-like connector chat as not contributing a world filter", () => {
-    const model = build({
-      inboxChats: [
-        inboxChat({ id: "dm1", source: "discord", roomType: "DM", worldLabel: "DMs" }),
+  it("sorts conversations within a section newest-first", () => {
+    const now = Date.now();
+    const model = buildApp([
+      conv({ id: "older", updatedAt: new Date(now - 1000).toISOString() }),
+      conv({ id: "newer", updatedAt: new Date(now).toISOString() }),
+    ]);
+    expect(model.sections).toHaveLength(1);
+    expect(model.sections[0].rows.map((r) => r.id)).toEqual(["newer", "older"]);
+  });
+
+  it("hides page-scoped / automation conversations (non-main chats)", () => {
+    const model = buildApp([
+      conv({ id: "real" }),
+      conv({ id: "settings-page", metadata: { scope: "page-settings" } }),
+      conv({
+        id: "automation",
+        metadata: { scope: "automation-coordinator" },
+      }),
+    ]);
+    expect(model.rows.map((r) => r.id)).toEqual(["real"]);
+  });
+
+  it("filters rows by the search query (case-insensitive, title substring)", () => {
+    const model = buildConversationsSidebarModel({
+      conversations: [
+        conv({ id: "deploy", title: "Deploy incident" }),
+        conv({ id: "billing", title: "Billing thread" }),
       ],
-      sourceScope: "__all_connectors__",
+      inboxChats: [],
+      searchQuery: "DEPLOY",
+      sourceScope: ELIZA_SOURCE_SCOPE,
+      t,
+      worldScope: ALL_WORLDS_SCOPE,
     });
-    // A DM has no real world, so no world filter is offered.
-    expect(model.showWorldFilter).toBe(false);
-    expect(model.worldScope).toBe(ALL_WORLDS_SCOPE);
+    expect(model.rows.map((r) => r.id)).toEqual(["deploy"]);
+  });
+
+  it("exposes Messages + Terminal source options and falls back to eliza scope when unknown", () => {
+    const model = buildConversationsSidebarModel({
+      conversations: [conv({ id: "a" })],
+      inboxChats: [],
+      searchQuery: "",
+      sourceScope: "no-such-scope",
+      t,
+      worldScope: ALL_WORLDS_SCOPE,
+    });
+    const optionValues = model.sourceOptions.map((o) => o.value);
+    expect(optionValues).toContain(ELIZA_SOURCE_SCOPE);
+    expect(optionValues).toContain(TERMINAL_SOURCE_SCOPE);
+    // Unknown requested scope is normalized back to the app (eliza) scope.
+    expect(model.sourceScope).toBe(ELIZA_SOURCE_SCOPE);
+  });
+});
+
+describe("buildConversationsSidebarModel — connector scope", () => {
+  it("includes the All-connectors option once connector rows exist", () => {
+    const model = buildConversationsSidebarModel({
+      conversations: [],
+      inboxChats: [
+        inbox({
+          id: "d1",
+          source: "discord",
+          worldId: "guild-1",
+          worldLabel: "Acme Guild",
+        }),
+      ],
+      searchQuery: "",
+      sourceScope: ELIZA_SOURCE_SCOPE,
+      t,
+      worldScope: ALL_WORLDS_SCOPE,
+    });
+    expect(model.sourceOptions.map((o) => o.value)).toContain(
+      ALL_CONNECTORS_SOURCE_SCOPE,
+    );
+  });
+
+  it("scopes rows to the requested connector source and surfaces world options", () => {
+    const model = buildConversationsSidebarModel({
+      conversations: [],
+      inboxChats: [
+        inbox({
+          id: "d1",
+          source: "discord",
+          worldId: "guild-1",
+          worldLabel: "Acme Guild",
+        }),
+        inbox({
+          id: "t1",
+          source: "telegram",
+          worldId: "chat-1",
+          worldLabel: "Friends",
+        }),
+      ],
+      searchQuery: "",
+      sourceScope: "discord",
+      t,
+      worldScope: ALL_WORLDS_SCOPE,
+    });
+    // Only the discord chat is in scope.
+    expect(model.rows.map((r) => r.id)).toEqual(["d1"]);
+    expect(model.showWorldFilter).toBe(true);
+    // World options include the "All" pseudo-option plus the named world.
+    const worldLabels = model.worldOptions.map((o) => o.label);
+    expect(worldLabels).toContain("Acme Guild");
+  });
+
+  it("treats DM-like rooms (no world / DM roomType) as the DMs world", () => {
+    const model = buildConversationsSidebarModel({
+      conversations: [],
+      inboxChats: [
+        inbox({ id: "dm1", source: "discord", roomType: "DM" }),
+        inbox({
+          id: "guild1",
+          source: "discord",
+          worldId: "guild-1",
+          worldLabel: "Acme Guild",
+        }),
+      ],
+      searchQuery: "",
+      sourceScope: ALL_CONNECTORS_SOURCE_SCOPE,
+      t,
+      worldScope: ALL_WORLDS_SCOPE,
+    });
+    const dmRow = model.rows.find((r) => r.id === "dm1");
+    expect(dmRow?.worldLabel).toBe("DMs");
   });
 });

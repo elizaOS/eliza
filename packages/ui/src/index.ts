@@ -182,11 +182,6 @@ export {
   type BrowserLaunchWidgetProps,
 } from "./components/chat/widgets/browser-launch-widget";
 export {
-  ChatHistorySwiper,
-  type ChatHistorySwiperProps,
-  type HistoryCard,
-} from "./components/chat/widgets/chat-history-swiper";
-export {
   type CredentialRequestVariant,
   CredentialRequestWidget,
   type CredentialRequestWidgetProps,

@@ -29,10 +29,14 @@ vi.mock("../../utils/clipboard", () => ({
   copyTextToClipboard: vi.fn().mockResolvedValue(undefined),
 }));
 
+import type { Conversation } from "../../api/client-types-chat";
 import { CHAT_PREFILL_EVENT } from "../../events";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
-import type { ShellController } from "./useShellController";
+import {
+  buildConversationNav,
+  type ShellController,
+} from "./useShellController";
 
 beforeAll(() => {
   // jsdom has no scrollIntoView; the overlay calls it when the thread grows.
@@ -1354,5 +1358,131 @@ describe("ContinuousChatOverlay", () => {
         vi.useRealTimers();
       }
     });
+  });
+});
+
+/**
+ * Swipe-between-conversations integration (#8929). Drives the REAL overlay with
+ * the REAL `usePullGesture` binding and a REAL `conversationNav` (built via the
+ * production `buildConversationNav` helper) — not the isolated `__e2e__` fixture
+ * mock. A committed horizontal swipe on the thread must (a) light the edge hint
+ * with the live drag offset and (b) select the adjacent conversation through
+ * `handleSelectConversation`, proving the active conversation actually changes.
+ */
+describe("ContinuousChatOverlay swipe-nav", () => {
+  function conv(id: string): Conversation {
+    return {
+      id,
+      title: id,
+      roomId: `room-${id}`,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+  }
+
+  // The list is most-recent-first: [newest "a", "b", oldest "c"]. Active "b" is
+  // in the middle so both directions are navigable.
+  const CONVERSATIONS = [conv("a"), conv("b"), conv("c")];
+
+  function makeSwipeController() {
+    const onSelect = vi.fn<(id: string) => void>();
+    const conversationNav = buildConversationNav(CONVERSATIONS, "b", onSelect);
+    const controller = makeController({
+      conversationNav,
+    } as unknown as Partial<ShellController>);
+    return { controller, onSelect };
+  }
+
+  function openSheet() {
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
+  }
+
+  function thread(): HTMLElement {
+    const el = document.getElementById("continuous-thread");
+    if (!el) throw new Error("thread region not mounted");
+    return el;
+  }
+
+  it("a committed LEFT swipe selects the next (older) conversation", () => {
+    const { controller, onSelect } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    openSheet();
+
+    const el = thread();
+    // Drag LEFT: clientX decreases. The first move commits the X axis (>8px);
+    // total travel of 120px clears the 64px horizontal distance threshold.
+    fireEvent.pointerDown(el, { clientX: 300, clientY: 300, pointerId: 2 });
+    fireEvent.pointerMove(el, { clientX: 280, clientY: 302, pointerId: 2 });
+    fireEvent.pointerUp(el, { clientX: 180, clientY: 302, pointerId: 2 });
+
+    // "b" → next/older is "c".
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith("c");
+  });
+
+  it("a committed RIGHT swipe selects the previous (newer) conversation", () => {
+    const { controller, onSelect } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    openSheet();
+
+    const el = thread();
+    // Drag RIGHT: clientX increases.
+    fireEvent.pointerDown(el, { clientX: 180, clientY: 300, pointerId: 2 });
+    fireEvent.pointerMove(el, { clientX: 200, clientY: 302, pointerId: 2 });
+    fireEvent.pointerUp(el, { clientX: 300, clientY: 302, pointerId: 2 });
+
+    // "b" → prev/newer is "a".
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith("a");
+  });
+
+  it("lights an edge hint with the live drag offset while swiping", () => {
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    openSheet();
+
+    const el = thread();
+    // Hold mid-drag (no pointerUp) so swipeDx is live and the hint is mounted.
+    // Dragging LEFT (clientX decreases) drives swipeDx > 0 — the next/older
+    // conversation slides in from the RIGHT edge, so the RIGHT hint lights.
+    fireEvent.pointerDown(el, { clientX: 300, clientY: 300, pointerId: 3 });
+    fireEvent.pointerMove(el, { clientX: 240, clientY: 302, pointerId: 3 });
+
+    const hint = screen.getByTestId("conversation-swipe-hint-right");
+    expect(hint).toBeTruthy();
+    // Opacity scales with the drag distance (60px of 96px ≈ 0.625).
+    expect(Number.parseFloat(hint.style.opacity)).toBeGreaterThan(0);
+    // The opposite (left) hint stays inert while dragging left.
+    expect(screen.queryByTestId("conversation-swipe-hint-left")).toBeNull();
+  });
+
+  it("does NOT switch conversations on a mostly-vertical drag (axis lock)", () => {
+    const { controller, onSelect } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    openSheet();
+
+    const el = thread();
+    // Vertical travel dominates → the gesture commits to the Y axis and never
+    // fires a swipe, so the active conversation is unchanged.
+    fireEvent.pointerDown(el, { clientX: 300, clientY: 300, pointerId: 4 });
+    fireEvent.pointerMove(el, { clientX: 290, clientY: 220, pointerId: 4 });
+    fireEvent.pointerUp(el, { clientX: 285, clientY: 140, pointerId: 4 });
+
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("does not bind the swipe gesture while the sheet is collapsed", () => {
+    const { controller, onSelect } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+
+    // No openSheet(): the thread region exists but the gesture is unbound, so a
+    // swipe is a no-op (the conversation only changes via the sheet-open swipe).
+    const el = thread();
+    fireEvent.pointerDown(el, { clientX: 300, clientY: 300, pointerId: 5 });
+    fireEvent.pointerMove(el, { clientX: 280, clientY: 302, pointerId: 5 });
+    fireEvent.pointerUp(el, { clientX: 180, clientY: 302, pointerId: 5 });
+
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });
