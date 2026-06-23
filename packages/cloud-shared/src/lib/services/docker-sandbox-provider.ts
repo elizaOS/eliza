@@ -449,6 +449,47 @@ export function resolveContainerPort(config: SandboxCreateConfig): string {
   return requested;
 }
 
+/** Resolved sandbox self-registration backend (the provider-side mirror of the
+ * sandbox-side `buildSandboxRegistryFromEnv`). */
+export interface SandboxRegistryResolution {
+  /** Registry URL the sandbox should register into (empty = none). */
+  url: string;
+  /** Bearer token (REST endpoints only; redis:// URLs carry their own auth). */
+  token: string;
+  /** True when `url` is a `redis(s)://` TCP URL. */
+  isTcp: boolean;
+  /** Whether the sandbox can register: a URL plus either TCP or a token. */
+  canSelfRegister: boolean;
+  /** Non-null when `url` has an unexpected scheme (registration may fail). */
+  schemeWarning: string | null;
+}
+
+/**
+ * Resolve the sandbox registry backend from the provider environment. Pure
+ * mirror of the inline logic the provisioner used to carry, exported so the
+ * security-relevant self-registration decision (#8621 inbound routing) is
+ * unit-testable and can't silently drift (#8756). Resolution order:
+ *   1. `SANDBOX_REGISTRY_REDIS_URL` (+ optional `_TOKEN`) — explicit override.
+ *   2. `KV_REST_API_URL` + `KV_REST_API_TOKEN` — legacy Upstash REST.
+ */
+export function resolveSandboxRegistryEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): SandboxRegistryResolution {
+  const explicitRegistryUrl = env.SANDBOX_REGISTRY_REDIS_URL?.trim() ?? "";
+  const explicitRegistryToken = env.SANDBOX_REGISTRY_REDIS_TOKEN?.trim() ?? "";
+  const kvRestUrl = env.KV_REST_API_URL?.trim() ?? "";
+  const kvRestToken = env.KV_REST_API_TOKEN?.trim() ?? "";
+  const url = explicitRegistryUrl || kvRestUrl;
+  const token = explicitRegistryUrl ? explicitRegistryToken : kvRestToken;
+  const isTcp = /^rediss?:\/\//i.test(url);
+  const canSelfRegister = url !== "" && (isTcp || token !== "");
+  const schemeWarning =
+    canSelfRegister && !isTcp && !/^https?:\/\//i.test(url)
+      ? `Sandbox registry URL has an unexpected scheme (${url.split(":")[0]}:) — expected redis(s):// or http(s)://. Registration may fail`
+      : null;
+  return { url, token, isTcp, canSelfRegister, schemeWarning };
+}
+
 function extractStewardToken(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -1066,24 +1107,18 @@ export class DockerSandboxProvider implements SandboxProvider {
       //      no token is needed; an `https://` Upstash URL needs the token.
       //   2. KV_REST_API_URL + KV_REST_API_TOKEN: legacy Upstash REST.
       // Omit when neither is configured — the sandbox skips registration.
-      const explicitRegistryUrl = process.env.SANDBOX_REGISTRY_REDIS_URL?.trim() ?? "";
-      const explicitRegistryToken = process.env.SANDBOX_REGISTRY_REDIS_TOKEN?.trim() ?? "";
-      const kvRestUrl = process.env.KV_REST_API_URL?.trim() ?? "";
-      const kvRestToken = process.env.KV_REST_API_TOKEN?.trim() ?? "";
-      const registryRedisUrl = explicitRegistryUrl || kvRestUrl;
-      const registryRedisToken = explicitRegistryUrl ? explicitRegistryToken : kvRestToken;
-      const registryIsTcp = /^rediss?:\/\//i.test(registryRedisUrl);
-      // TCP URLs carry auth inline; REST endpoints require a bearer token.
-      const canSelfRegister =
-        registryRedisUrl !== "" && (registryIsTcp || registryRedisToken !== "");
+      const {
+        url: registryRedisUrl,
+        token: registryRedisToken,
+        canSelfRegister,
+        schemeWarning,
+      } = resolveSandboxRegistryEnv(process.env);
       if (!canSelfRegister) {
         logger.warn(
           "[docker-sandbox] No sandbox registry backend configured — set SANDBOX_REGISTRY_REDIS_URL to a sandbox-reachable redis:// proxy, or KV_REST_API_URL/KV_REST_API_TOKEN to an Upstash REST endpoint. Sandbox will not register in Redis and gateways will not route inbound platform (Discord/Telegram) messages to it",
         );
-      } else if (!registryIsTcp && !/^https?:\/\//i.test(registryRedisUrl)) {
-        logger.warn(
-          `[docker-sandbox] Sandbox registry URL has an unexpected scheme (${registryRedisUrl.split(":")[0]}:) — expected redis(s):// or http(s)://. Registration may fail`,
-        );
+      } else if (schemeWarning) {
+        logger.warn(`[docker-sandbox] ${schemeWarning}`);
       }
 
       const stewardJwt = isAgentTokenSigningConfigured()
