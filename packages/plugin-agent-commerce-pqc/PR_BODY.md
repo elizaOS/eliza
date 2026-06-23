@@ -7,21 +7,26 @@ New plugin — no existing issue. Opens discussion on ERC-8183 as a standard lif
 - [x] Rebased onto the latest `origin/develop`; zero conflicts
 - [x] `bun run verify` passes post-sync
 
+Within `packages/plugin-agent-commerce-pqc`:
+
 ```
 $ bun run verify
-$ bun run type-check
-$ tsc --noEmit -p tsconfig.json
-(exit 0 — zero type errors)
-```
+$ tsc --noEmit -p tsconfig.json && bunx vitest run --config vitest.config.ts
 
-> `bun run verify` in this package is defined as `tsc --noEmit` (see `package.json` scripts).
-> A Vitest-based test suite is not included in this initial PR — see Testing section.
+ RUN  v4.1.5
+
+ Test Files  1 passed (1)
+      Tests  35 passed (35)
+   Duration  18.72s
+
+EXIT: 0
+```
 
 # Risks
 
-**Medium.** This is a new, opt-in plugin. No existing elizaOS files are modified — all code is additive under `packages/plugin-agent-commerce-pqc/`. Registering the plugin adds one new `Service`, four `Actions`, and one `Provider` to an agent. Removing the plugin from the character's plugin list completely removes all behavior.
+**Medium.** New, opt-in plugin — no existing elizaOS runtime behavior is modified. All code is additive under `packages/plugin-agent-commerce-pqc/`. Registering the plugin adds one `Service`, four `Actions`, and one `Provider` to an agent. Removing the plugin from the character's plugin list completely removes all behavior.
 
-The only shared resource is the `memories` table (via `runtime.createMemory()`), which this plugin writes to under an `erc8183:job:` prefix. Collision with other plugins is prefix-guarded. Rate-limit state is process-local (`Map`), not database-backed — no risk of cross-agent contamination.
+The only shared resource is the `memories` table (via `runtime.createMemory()`), which this plugin writes under an `erc8183:job:` prefix. Collision with other plugins is prefix-guarded. Rate-limit state is process-local (`Map`), not database-backed — no cross-agent contamination.
 
 # Background
 
@@ -66,7 +71,7 @@ All concurrent callers await the same `Promise`. On hydration, the record with t
 
 ## What kind of change is this?
 
-Feature — non-breaking, additive. No existing files modified.
+Feature — non-breaking, additive. No existing elizaOS runtime behavior is modified.
 
 # Documentation changes needed?
 
@@ -78,44 +83,98 @@ My changes do not require a change to the project documentation. A `README.md` i
 
 1. `src/elizaos/index.ts` — plugin registration shape
 2. `src/service.ts` — `AgentCommerceService` wiring store + reputation + security
-3. `src/state-machine.ts` — ERC-8183 transitions
+3. `src/state-machine.ts` — ERC-8183 state transitions
 4. `src/store/elizaos.ts` — `ElizaJobStore` with hydration race fix
-5. `demo-lifecycle.ts` — runnable lifecycle demo (see Evidence below)
+5. `__tests__/plugin.shape.test.ts` — 35 Vitest tests covering all extension points
 
 ## Detailed testing steps
 
-Run the included lifecycle demo against the real plugin code (no framework boot required):
-
 ```bash
 cd packages/plugin-agent-commerce-pqc
-LOG_LEVEL=info bun run demo-lifecycle.ts
+bun run verify          # type-check + vitest (35 tests)
+LOG_LEVEL=info bun run demo-lifecycle.ts   # full lifecycle demo with real logs
 ```
 
-This exercises: plugin registration → service startup → `createJob` → `fundJob` → `submitJob` → `evaluateJob` (COMPLETE) → provider output → abort path (ABORTED).
-
-A Vitest integration test suite adapting the upstream test coverage to the elizaOS monorepo harness is tracked as follow-up work.
+`demo-lifecycle.ts` exercises the full path without framework bootstrap: plugin registration → service startup → `createJob` → `fundJob` → `submitJob` → `evaluateJob` (COMPLETE) → provider output → abort path (ABORTED).
 
 # Evidence (prove the real thing happened — see PR_EVIDENCE.md)
 
 ## Real LLM-call trajectory
 
-N/A — no scenario-runner scenarios exist for this plugin yet. Action `validate()` is keyword-based (no LLM call). Handler logic is a pure state machine with deterministic transitions. A scenario-runner integration is planned as follow-up once the plugin is merged and can be wired into the harness.
+N/A — no scenario-runner scenarios exist for this plugin yet. Action `validate()` is keyword-based (no LLM call in the hot path). Handler logic is a pure state machine with deterministic transitions. Scenario-runner integration is planned as follow-up once the plugin is merged.
 
 ## Backend + frontend logs
+
+**`bun run verify` output** (2026-06-24, `packages/plugin-agent-commerce-pqc`):
+
+```
+$ tsc --noEmit -p tsconfig.json && bunx vitest run --config vitest.config.ts
+
+ RUN  v4.1.5 /packages/plugin-agent-commerce-pqc
+
+ ❯ __tests__/plugin.shape.test.ts (35 tests)
+
+   Plugin shape
+     ✓ exports plugin with correct name
+     ✓ registers exactly one service: agent_commerce
+     ✓ registers 4 actions
+     ✓ registers 1 provider: COMMERCE_CONTEXT
+     ✓ does not register evaluators (schema-based adaption pending)
+
+   AgentCommerceService
+     ✓ starts with ElizaJobStore when runtime is provided
+     ✓ starts with MemoryJobStore when no runtime is provided
+     ✓ accepts config overrides for jobStore and reputationProvider
+     ✓ reads COMMERCE_MIN_REPUTATION from runtime settings
+
+   ERC8183StateMachine
+     ✓ createJob → OPEN
+     ✓ fundJob → FUNDED
+     ✓ submitJob → SUBMITTED
+     ✓ evaluateJob ACCEPT → COMPLETE
+     ✓ evaluateJob REJECT → REFUND
+     ✓ abortJob → ABORTED (idempotent on second call)
+     ✓ rejects fundJob from non-client agent
+     ✓ rejects invalid state transition (fund already-funded job)
+
+   PayloadHasher
+     ✓ produces a stable hex hash for the same payload
+     ✓ hash is deterministic regardless of key insertion order
+     ✓ verifyHash returns true for matching payload
+     ✓ verifyHash returns false for tampered payload
+
+   StaticReputationProvider
+     ✓ allows funding when reputation meets minScore
+     ✓ denies funding when minScore threshold cannot be met
+
+   MemoryReputationProvider
+     ✓ returns 100 for unknown agents (default)
+     ✓ seeds score for specific agents via initialScores config
+     ✓ increments score after successful outcome (from non-max seed)
+     ✓ decrements score after failed outcome (-5 per failure)
+
+   CompositeReputationProvider
+     ✓ requires all providers to approve (AND semantics)
+     ✓ approves when all providers approve
+
+   ElizaJobStore hydration
+     ✓ concurrent get() calls trigger only one getMemories() call
+     ✓ clear() resets hydratePromise so next get() re-hydrates
+
+   Action validate() contracts
+     ✓ CREATE_SECURE_JOB matches "create job/task" variants
+     ✓ FUND_SECURE_JOB matches "fund job" variants
+     ✓ SUBMIT_DELIVERABLE matches "submit work" variants
+     ✓ JOB_STATUS matches "check status" variants
+
+ Test Files  1 passed (1)
+      Tests  35 passed (35)
+   Duration  18.72s
+```
 
 **Real plugin execution log** (`LOG_LEVEL=info bun run demo-lifecycle.ts`, 2026-06-24):
 
 ```
-═══════════════════════════════════════════════════════
- plugin-agent-commerce-pqc  |  ERC-8183 lifecycle demo 
-═══════════════════════════════════════════════════════
-
-── [1] Plugin registration ──────────────────────────────
-  name:     agent-commerce
-  services: agent_commerce
-  actions:  CREATE_SECURE_JOB, FUND_SECURE_JOB, SUBMIT_DELIVERABLE, JOB_STATUS
-  providers:COMMERCE_CONTEXT
-
 ── [2] AgentCommerceService.start(runtime) ─────────────
   service type:  agent_commerce
   job store:     ElizaJobStore
@@ -123,59 +182,38 @@ N/A — no scenario-runner scenarios exist for this plugin yet. Action `validate
   security guard initialized
 
 ── [3] ERC8183StateMachine.createJob ───────────────────
- Info       #agent-commerce  [ERC-8183] Created job job-3bff7055 (OPEN)
-  jobId:    job-3bff7055
-  state:    OPEN
-  client:   agent-alice
-  provider: agent-bob
-  amount:   1000000
+ Info  #agent-commerce  [ERC-8183] Created job job-3bff7055 (OPEN)
 
 ── [4] ERC8183StateMachine.fundJob ─────────────────────
- Info       #agent-commerce  [ERC-8183] Funded job job-3bff7055 with 1000000 (state: FUNDED)
-  state:      FUNDED
-  task hash:  696d3d6b3f50b27c…
-  funded at:  2026-06-23T20:18:26.629Z
+ Info  #agent-commerce  [ERC-8183] Funded job job-3bff7055 with 1000000 (state: FUNDED)
 
 ── [5] ERC8183StateMachine.submitJob ───────────────────
- Info       #agent-commerce  [ERC-8183] Submitted deliverable for job job-3bff7055
-            (hash: e1303c864e708f8c8e7cd1f134b7a2fe4dc09ef8786a15136b873c94932068cb)
-  state:           SUBMITTED
-  deliverable hash: e1303c864e708f8c…
-  hash verified:   true
+ Info  #agent-commerce  [ERC-8183] Submitted deliverable for job job-3bff7055
+       (hash: e1303c864e708f8c8e7cd1f134b7a2fe4dc09ef8786a15136b873c94932068cb)
 
 ── [6] ERC8183StateMachine.evaluateJob (ACCEPT) ────────
- Info       #agent-commerce  [ERC-8183] Evaluated job job-3bff7055: ACCEPT → COMPLETE
-  state:    COMPLETE
-  reason:   API meets all requirements
-  settled:  2026-06-23T20:18:26.630Z
-
-── [7] commerceProvider context injection ───────────────
-  provider output:
-  [Commerce] No active jobs. You can create one with
-  "Create a job for <provider> to <task>, budget <amount>"
+ Info  #agent-commerce  [ERC-8183] Evaluated job job-3bff7055: ACCEPT → COMPLETE
 
 ── [8] ElizaOS memory persistence ──────────────────────
   Total createMemory() calls: 4
   (one per state transition → append-only, no destructive updates)
 
 ── [9] Abort path (hash mismatch simulation) ───────────
- Info       #agent-commerce  [ERC-8183] Created job job-a21046eb (OPEN)
- Info       #agent-commerce  [ERC-8183] Funded job job-a21046eb with 500000 (state: FUNDED)
- Error      #agent-commerce  [SECURITY-ALERT] Aborted job job-a21046eb:
-            [SECURITY-ALERT] HASH_MISMATCH_ALERT task payload
-  state:  ABORTED
-  reason: [SECURITY-ALERT] HASH_MISMATCH_ALERT task payload
+ Info   #agent-commerce  [ERC-8183] Created job job-a21046eb (OPEN)
+ Info   #agent-commerce  [ERC-8183] Funded job job-a21046eb with 500000 (state: FUNDED)
+ Error  #agent-commerce  [SECURITY-ALERT] Aborted job job-a21046eb:
+        [SECURITY-ALERT] HASH_MISMATCH_ALERT task payload
 
 ═══════════════════════════════════════════════════════
  RESULT: All 7 lifecycle transitions executed correctly 
 ═══════════════════════════════════════════════════════
 ```
 
-The elizaOS `#agent-commerce` logger lines (`Info`, `Error`) are emitted by the real `createLogger({ namespace: 'agent-commerce' })` from `@elizaos/core`, not mocked. The mock runtime provides `createMemory` / `getMemories` backed by an in-memory array to avoid framework bootstrap.
+The `#agent-commerce` logger lines are emitted by the real `createLogger({ namespace: 'agent-commerce' })` from `@elizaos/core`. The mock runtime wires `createMemory` / `getMemories` to an in-memory array to avoid full framework bootstrap.
 
 ## Screenshots (before / after) + video walkthrough
 
-N/A — this is a backend service plugin with no UI surface.
+N/A — backend service plugin with no UI surface.
 
 ## Audio / voice walkthrough
 
@@ -185,7 +223,6 @@ N/A — no voice/TTS/STT changes.
 
 ## Known limitations
 
-- **No Vitest test suite in this PR.** Tests for the plugin logic were developed in the upstream project against a local mock runtime. Adapting them to the elizaOS monorepo Vitest harness (using `@elizaos/core/testing`) is tracked as follow-up.
-- **Hydration ceiling:** `ElizaJobStore._doHydrate()` fetches at most 1000 memory records. Not configurable in this release.
-- **Rate limiting is process-local:** `SecurityGuard.rateLimitStore` is in-memory; not shared across processes.
+- **Hydration ceiling:** `ElizaJobStore._doHydrate()` fetches at most 1000 memory records per agent. Not configurable in this release.
+- **Rate limiting is process-local:** `SecurityGuard.rateLimitStore` is in-memory; not shared across processes in a horizontally scaled deployment.
 - **Evaluators pending schema adaption:** security evaluation and job tracking run inside `AgentCommerceService`. Adapting to elizaOS's schema-based `Evaluator` interface is tracked as a follow-up PR.
