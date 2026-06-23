@@ -22,6 +22,7 @@ import {
 	FIRST_RUN_DEFAULT_MODEL_ID,
 	findCatalogModel,
 } from "./catalog";
+import { computeRuntimeContextFit } from "./context-fit";
 import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
 import type { Eliza1Manifest } from "./manifest";
@@ -31,6 +32,7 @@ import {
 	type ManifestLoader,
 	pickFittingContextVariant,
 	type RamFitOptions,
+	ramHeadroomReserveMb,
 } from "./ram-budget";
 import { recommendForFirstRun } from "./recommendation";
 import { touchElizaModel } from "./registry";
@@ -262,6 +264,7 @@ export interface LocalInferenceLoadOverrides {
 
 interface ResolveLocalInferenceLoadArgsOptions {
 	manifestLoader?: ManifestLoader;
+	hardware?: HardwareProbe;
 }
 
 function bundleRootForInstalledModel(installed: InstalledModel): string {
@@ -368,6 +371,7 @@ function applyCatalogDefaults(
 	installed: InstalledModel,
 	catalog: CatalogModel | undefined,
 	manifestLoader: ManifestLoader,
+	hardware: HardwareProbe | undefined,
 ): void {
 	const runtime = catalog?.runtime;
 
@@ -382,9 +386,15 @@ function applyCatalogDefaults(
 	// happens to use ("auto" → smallest fitting, which historically meant
 	// 4k or 8k even for 128k-trained models).
 	if (args.contextSize === undefined) {
-		args.contextSize =
+		const nativeContext =
 			installedBundleContextSize(installed, manifestLoader) ??
 			catalog?.contextLength;
+		args.contextSize = dynamicRuntimeContextSize(
+			installed,
+			catalog,
+			nativeContext,
+			hardware,
+		);
 	}
 
 	// Catalog-declared GPU offload default — only apply when the caller
@@ -416,6 +426,49 @@ function applyCatalogDefaults(
 	if (runtime?.optimizations?.mlock !== undefined && args.mlock === undefined) {
 		args.mlock = runtime.optimizations.mlock;
 	}
+}
+
+function installedWeightMb(
+	installed: InstalledModel,
+	catalog: CatalogModel | undefined,
+): number {
+	if (
+		typeof installed.sizeBytes === "number" &&
+		Number.isFinite(installed.sizeBytes) &&
+		installed.sizeBytes > 0
+	) {
+		return installed.sizeBytes / (1024 * 1024);
+	}
+	if (
+		catalog &&
+		typeof catalog.sizeGb === "number" &&
+		Number.isFinite(catalog.sizeGb) &&
+		catalog.sizeGb > 0
+	) {
+		return catalog.sizeGb * 1024;
+	}
+	return 0;
+}
+
+function dynamicRuntimeContextSize(
+	installed: InstalledModel,
+	catalog: CatalogModel | undefined,
+	nativeContext: number | undefined,
+	hardware: HardwareProbe | undefined,
+): number | undefined {
+	if (!catalog || nativeContext === undefined) return nativeContext;
+	if (!hardware) return nativeContext;
+
+	const fit = computeRuntimeContextFit({
+		params: catalog.params,
+		weightMb: installedWeightMb(installed, catalog),
+		usableMb: Math.max(
+			0,
+			hostRamMbFromProbe(hardware) - ramHeadroomReserveMb(),
+		),
+		nativeContext,
+	});
+	return fit?.contextSize ?? nativeContext;
 }
 
 function mergeOverrides(
@@ -557,7 +610,13 @@ export async function resolveLocalInferenceLoadArgs(
 	const runtime = catalog?.runtime;
 	const manifestLoader = options.manifestLoader ?? defaultManifestLoader;
 
-	applyCatalogDefaults(args, installed, catalog, manifestLoader);
+	applyCatalogDefaults(
+		args,
+		installed,
+		catalog,
+		manifestLoader,
+		options.hardware,
+	);
 
 	// WS2: when the tier declares vision and the per-tier mmproj GGUF is
 	// already on disk, plumb the path. The text load is never gated on
@@ -1131,7 +1190,9 @@ export class ActiveModelCoordinator {
 				`[local-inference] Loading "${installed.id}" with tight RAM headroom (~${admission.minMb} MB floor, ${admission.recommendedMb} MB recommended; ${hostRamMbFromProbe(probe)} MB host). Expect swapping under sustained load.`,
 			);
 		}
-		const resolved = await resolveLocalInferenceLoadArgs(installed, overrides);
+		const resolved = await resolveLocalInferenceLoadArgs(installed, overrides, {
+			hardware: probe,
+		});
 		// WS2: warn one-shot when the tier declares vision but the
 		// per-tier mmproj GGUF isn't on disk yet. The text load still
 		// proceeds; vision capability is degraded for this session
