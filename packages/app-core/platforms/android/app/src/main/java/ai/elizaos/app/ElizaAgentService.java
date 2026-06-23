@@ -1393,10 +1393,11 @@ public class ElizaAgentService extends Service {
             // (tryBuildAospFusedTextLoader) and aosp-llama-paths.ts
             // (isAospEnabled reads ELIZA_LOCAL_LLAMA).
             // This is required, not optional: the eliza-1 model tiers are
-            // qwen35-arch + QJL/PolarQuant/TBQ-quantized, and the stock
-            // llama-cpp-capacitor JNI lib cannot load those GGUFs at all
-            // (`context->loadModel() returned false`). The fused
-            // libelizainference.so carries the kernels + qwen35 arch and is
+            // Gemma-4-arch GGUFs (TurboQuant-quantized; stock f16/q8_0 KV — the
+            // legacy QJL/PolarQuant/TBQ KV kernels are retired post-#9033), and
+            // the stock llama-cpp-capacitor JNI lib cannot load those GGUFs at
+            // all (`context->loadModel() returned false`). The fused
+            // libelizainference.so carries the kernels + Gemma arch and is
             // the SOLE text/voice native library the bun agent loads.
             //
             // This was previously gated on `BuildConfig.AOSP_BUILD &&
