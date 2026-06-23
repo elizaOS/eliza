@@ -186,7 +186,9 @@ function primeClient() {
   feedClient.getFeedTeamConversations.mockResolvedValue(conversationsPayload);
   feedClient.getFeedAgentChat.mockResolvedValue(chatPayload);
   feedClient.getFeedAgentWallet.mockResolvedValue(walletPayload);
-  feedClient.getFeedAgentTradingBalance.mockResolvedValue(tradingBalancePayload);
+  feedClient.getFeedAgentTradingBalance.mockResolvedValue(
+    tradingBalancePayload,
+  );
   controlAppRun.mockResolvedValue({
     success: true,
     message: "Feed autonomy paused.",
@@ -305,7 +307,10 @@ describe("FeedView — unified GUI/XR operator surface", () => {
 
     fireEvent.click(button("prompt-0"));
     await waitFor(() =>
-      expect(sendAppRunMessage).toHaveBeenCalledWith("run-alice", "Rebalance now"),
+      expect(sendAppRunMessage).toHaveBeenCalledWith(
+        "run-alice",
+        "Rebalance now",
+      ),
     );
   });
 

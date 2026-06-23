@@ -18,7 +18,7 @@ import type {
   FeedActivityItem,
   FeedChatMessagesResponse,
   FeedTeamAgent,
-} from "@elizaos/app-core";
+} from "@elizaos/ui/api";
 import { describe, expect, it } from "vitest";
 import {
   extractAgentSummary,

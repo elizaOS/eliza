@@ -16,14 +16,7 @@
  * or computes — it displays label/value rows and dispatches actions.
  */
 
-import {
-  Button,
-  Card,
-  Divider,
-  HStack,
-  List,
-  Text,
-} from "@elizaos/ui/spatial";
+import { Button, Card, Divider, HStack, List, Text } from "@elizaos/ui/spatial";
 
 /** A single label/value summary row, already projected to display strings. */
 export interface StatRow {
@@ -201,7 +194,12 @@ function Section({ label, rows }: { label: string; rows: StatRow[] }) {
       ) : (
         <List gap={0}>
           {rows.map((row) => (
-            <HStack key={row.label} gap={1} align="center" agent={`row-${row.label}`}>
+            <HStack
+              key={row.label}
+              gap={1}
+              align="center"
+              agent={`row-${row.label}`}
+            >
               <Text tone="muted" grow={1}>
                 {row.label}
               </Text>

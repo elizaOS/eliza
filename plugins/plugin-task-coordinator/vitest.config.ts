@@ -5,6 +5,7 @@ import { defineConfig } from "vitest/config";
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const toVitePath = (value: string): string => value.replaceAll("\\", "/");
 const pluginBrowserSrc = resolve(rootDir, "../plugin-browser/src");
+const pluginCommandsSrc = resolve(rootDir, "../plugin-commands/src");
 const pluginTrainingSrc = resolve(rootDir, "../plugin-training/src");
 const tuiSrc = resolve(rootDir, "../../packages/tui/src");
 const sharedSrc = resolve(rootDir, "../../packages/shared/src");
@@ -53,6 +54,17 @@ export default defineConfig({
             "../plugin-health/src/screen-time/mobile-signal-setup.ts",
           ),
         ),
+      },
+      {
+        // `src/index.ts` now contributes a slash command via
+        // `@elizaos/plugin-commands`. Resolve it to source (it ships no prebuilt
+        // dist when the suite runs standalone), mirroring the redirects above.
+        find: /^@elizaos\/plugin-commands$/,
+        replacement: toVitePath(resolve(pluginCommandsSrc, "index.ts")),
+      },
+      {
+        find: /^@elizaos\/plugin-commands\/(.+)$/,
+        replacement: `${toVitePath(pluginCommandsSrc)}/$1`,
       },
       {
         find: /^@elizaos\/plugin-browser$/,

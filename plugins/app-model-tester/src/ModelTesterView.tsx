@@ -16,8 +16,8 @@
  * presentational view stays modality-portable.
  */
 
-import { SpatialSurface } from "@elizaos/ui/spatial";
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
+import { SpatialSurface } from "@elizaos/ui/spatial";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type ModelTesterProbeId,

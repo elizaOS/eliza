@@ -20,7 +20,7 @@ registerAppRoutePluginLoader(
 // spatial fallback so the `tui` modality renders inline in the terminal. Lazy +
 // DOM-guarded so the terminal engine stays out of browser/mobile bundles.
 if (typeof window === "undefined") {
-  void import("./register-terminal-view.ts")
+  void import("./register-terminal-view.tsx")
     .then((m) => m.registerVectorBrowserTerminalView())
     .catch(() => {
       // Terminal rendering is best-effort; never block plugin load.

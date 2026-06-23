@@ -11,14 +11,7 @@
  * in the Node agent process where the terminal lives (no DOM/runtime imports).
  */
 
-import {
-  Button,
-  Card,
-  Divider,
-  HStack,
-  List,
-  Text,
-} from "@elizaos/ui/spatial";
+import { Button, Card, Divider, HStack, List, Text } from "@elizaos/ui/spatial";
 
 /** Which screen of the website-blocking state machine to draw. */
 export type FocusPhase =

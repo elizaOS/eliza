@@ -164,9 +164,9 @@ function sendChatPrompt(prompt: string): void {
   // `client` is the shared ElizaClient; its published type does not surface
   // `sendChatMessage`, so read it through a narrow optional-method view (the
   // floating chat injects it at runtime) rather than widening the client type.
-  (
-    client as { sendChatMessage?: (text: string) => void }
-  ).sendChatMessage?.(prompt);
+  (client as { sendChatMessage?: (text: string) => void }).sendChatMessage?.(
+    prompt,
+  );
 }
 
 function requestConnect(): void {

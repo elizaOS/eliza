@@ -3046,25 +3046,6 @@ export function ContinuousChatOverlay({
               aria-hidden="true"
               className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
             />
-            {/* Soft live-state glow at the base — bright warm while listening, a
-            dimmer warm while replying. Orange is the only accent (no blue).
-            Two FIXED-color blurred layers crossfaded by opacity ONLY (the old
-            single layer tweened backgroundColor, a per-frame paint on a blurred
-            element); opacity is compositor-cheap. */}
-            <motion.div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-xl bg-[rgba(255,180,120,0.30)]"
-              initial={false}
-              animate={{ opacity: listening ? 1 : 0 }}
-              transition={{ duration: reduce ? 0 : 1.1, ease: "easeInOut" }}
-            />
-            <motion.div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-xl bg-[rgba(255,140,80,0.18)]"
-              initial={false}
-              animate={{ opacity: responding ? 1 : 0 }}
-              transition={{ duration: reduce ? 0 : 1.1, ease: "easeInOut" }}
-            />
 
             {/* Sheet header — shown at the HALF detent and up (not just FULL).
               Left: Maximize (toggle edge-to-edge full-screen) + Clear (reset to

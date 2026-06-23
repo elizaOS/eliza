@@ -29,18 +29,18 @@ import { SpatialSurface } from "@elizaos/ui/spatial";
 import { useAppSelector } from "@elizaos/ui/state";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  type FeedConversationSnapshot,
-  type FeedSnapshot,
-  FeedSpatialView,
-  type FeedTeamSnapshot,
-} from "./FeedSpatialView.tsx";
-import {
   extractAgentSummary,
   extractChatMessages,
   extractTeamConversations,
   extractTeamDashboard,
   extractTradingBalance,
 } from "../ui/feed-data.ts";
+import {
+  type FeedConversationSnapshot,
+  type FeedSnapshot,
+  FeedSpatialView,
+  type FeedTeamSnapshot,
+} from "./FeedSpatialView.tsx";
 
 const FEED_APP_NAME = "@elizaos/plugin-feed";
 
@@ -66,8 +66,7 @@ export function FeedView() {
   );
 
   const [agentStatus, setAgentStatus] = useState<FeedAgentStatus | null>(null);
-  const [portfolio, setPortfolio] =
-    useState<FeedSnapshot["portfolio"]>(null);
+  const [portfolio, setPortfolio] = useState<FeedSnapshot["portfolio"]>(null);
   const [goal, setGoal] = useState<FeedAgentGoal | null>(null);
   const [recentTrades, setRecentTrades] = useState<FeedActivityItem[]>([]);
   const [predictionMarkets, setPredictionMarkets] = useState<

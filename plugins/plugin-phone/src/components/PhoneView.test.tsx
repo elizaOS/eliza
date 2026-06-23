@@ -83,13 +83,6 @@ function button(agentId: string): HTMLButtonElement {
   return el as HTMLButtonElement;
 }
 
-function dialed(): string {
-  // The dialer display is the subheading text node above the keypad.
-  return (
-    document.querySelector('[data-spatial-kind="text"]')?.textContent ?? ""
-  );
-}
-
 beforeEach(() => {
   phoneBridge.getStatus.mockResolvedValue({
     hasTelecom: true,

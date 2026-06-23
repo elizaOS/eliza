@@ -20,7 +20,6 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // `@elizaos/ui` is the giant renderer barrel; HealthView only touches

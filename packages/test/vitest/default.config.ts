@@ -191,6 +191,7 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-phone",
   "plugin-signal",
   "plugin-streaming",
+  "plugin-task-coordinator",
   "plugin-whatsapp",
   "plugin-workflow",
   "plugin-x402",

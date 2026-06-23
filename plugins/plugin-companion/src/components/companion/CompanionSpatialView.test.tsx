@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 
 import { visibleWidth } from "@elizaos/tui";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {
   getTerminalView,
   registerSpatialTerminalView,
   renderViewToLines,
 } from "@elizaos/ui/spatial/tui";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AGENT_EMOTE_CATALOG, EMOTE_CATALOG } from "../../emotes/catalog";
