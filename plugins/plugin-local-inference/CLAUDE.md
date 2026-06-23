@@ -108,7 +108,6 @@ src/
     cloud-fallback.ts             makeCloudFallbackHandler() — local → cloud fallback on error
     paths.ts                      localInferenceRoot(), elizaModelsDir(), registryPath()
     registry.ts                   listInstalledModels(), upsertElizaModel(), removeElizaModel()
-    hf-search.ts                  legacy custom-search compatibility shim (disabled in setup)
     imagegen/                     Image generation backends (sd.cpp, CoreML, mflux, AOSP, TensorRT)
     tts/                          TTS pipeline helpers and audio cache
     asr/                          ASR backend interface and capability registration
