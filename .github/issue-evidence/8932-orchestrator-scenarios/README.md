@@ -70,6 +70,9 @@ Chromium (the desktop app renders the same web UI):
   app; `Agent ready (129.5s)`.
 - The dashboard rendered cleanly (screenshot `desktop-dashboard-windows.png`,
   `1440×900`, title `Eliza`, 0 page errors). `GET /api/agents` → `200`.
+- Screen recording `desktop-dashboard-windows.webm` captures the live UI being
+  interactive: load → hover the run-mode options → open **Advanced**, which
+  navigates to the "Connect your own agent" setup (server address / access token).
 
 In this dev runtime the orchestrator registers its stub surface (no terminal
 support → `/api/orchestrator/*` routes are intentionally not mounted; see the
