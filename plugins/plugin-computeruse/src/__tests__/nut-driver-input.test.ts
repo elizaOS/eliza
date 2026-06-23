@@ -11,12 +11,25 @@
  * would mis-place clicks. See #9105.
  */
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   clampScrollNotches,
   densifyDragPath,
   interpolateDragSteps,
 } from "../platform/nut-driver.js";
+
+const nutDriverSrc = readFileSync(
+  join(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "platform",
+    "nut-driver.ts",
+  ),
+  "utf8",
+);
 
 describe("clampScrollNotches", () => {
   it("clamps to the 1..20 notch range and rounds", () => {
@@ -81,5 +94,29 @@ describe("densifyDragPath (M8 multi-point drag)", () => {
 
   it("handles a degenerate single-point path", () => {
     expect(densifyDragPath([{ x: 7, y: 9 }])).toEqual([{ x: 7, y: 9 }]);
+  });
+});
+
+describe("resolveKeyCode modifier support (M8 key_down/key_up regression)", () => {
+  // key_down("shift") / key_up("shift") are the primary use of the press-hold
+  // key primitives, but `resolveKeyCode` originally only mapped function keys,
+  // named keys, and single chars — so a bare modifier threw "Unsupported key".
+  // It now must consult MODIFIER_KEYS so holding shift/ctrl/alt/cmd works.
+  // (Verified live on Windows: driverKeyDown("shift") no longer throws.) The
+  // resolver loads the native nut module, so this is a static source guard that
+  // runs on every OS in the default lane — same convention as
+  // windows-powershell-safety.test.ts.
+  it("resolveKeyCode falls back to MODIFIER_KEYS for bare modifiers", () => {
+    const start = nutDriverSrc.indexOf("function resolveKeyCode(");
+    expect(start, "resolveKeyCode not found").toBeGreaterThan(-1);
+    const body = nutDriverSrc.slice(start, start + 1200);
+    expect(body).toContain("MODIFIER_KEYS[");
+  });
+
+  it("MODIFIER_KEYS maps shift/ctrl/alt/cmd to nutjs Key names", () => {
+    expect(nutDriverSrc).toContain('shift: ["LeftShift"]');
+    expect(nutDriverSrc).toContain('ctrl: ["LeftControl"]');
+    expect(nutDriverSrc).toContain('alt: ["LeftAlt"]');
+    expect(nutDriverSrc).toContain('cmd: ["LeftSuper"]');
   });
 });
