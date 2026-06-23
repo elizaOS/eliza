@@ -111,7 +111,6 @@ import {
 } from "../runtime/response-grammar";
 import {
 	type ResponseHandlerEvaluator,
-	type ResponseHandlerEvaluationRunResult,
 	runResponseHandlerEvaluators,
 } from "../runtime/response-handler-evaluators";
 import type {
@@ -151,7 +150,6 @@ import type {
 	ActionResult,
 	AgentContext,
 	HandlerCallback,
-	MessageHandlerDeterministicToolCall,
 	MessageHandlerResult,
 	Provider,
 	StreamChunkCallback,
@@ -255,7 +253,6 @@ import {
 const PLANNER_CONTROL_ACTIONS = new Set(
 	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
 );
-const DIRECT_REPLY_FAST_PATH_MAX_TOKENS = 96;
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
 const STAGE1_TRUNCATION_REPLY =
 	"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";
@@ -2166,7 +2163,6 @@ async function collectV5PlannerCandidateActions(args: {
 	state: State;
 	selectedContexts?: readonly AgentContext[];
 	candidateActions?: readonly string[];
-	allowViewCandidateActions?: boolean;
 	userRoles?: readonly RoleGateRole[];
 }): Promise<Action[]> {
 	// We used to filter the candidate set by `action.contexts` against the
@@ -2182,19 +2178,6 @@ async function collectV5PlannerCandidateActions(args: {
 	// could select but execution would immediately reject.
 	const allRuntimeActions = args.runtime.actions;
 	const actionLookup = buildRuntimeActionLookup(args.runtime);
-	const messageText = getUserMessageText(args.message) ?? "";
-	const viewActionName = findViewsActionName(allRuntimeActions);
-	const normalizedViewActionName = viewActionName
-		? normalizeActionIdentifier(viewActionName)
-		: "";
-	const exposeViewActionByDefault =
-		Boolean(normalizedViewActionName) &&
-		(findViewShellActionName(allRuntimeActions, messageText) ===
-			viewActionName ||
-			findViewCapabilityActionName(allRuntimeActions, messageText) ===
-				viewActionName);
-	const mayExposeViewAction =
-		exposeViewActionByDefault || args.allowViewCandidateActions === true;
 	const actionsByName = new Map(
 		allRuntimeActions.map((action) => [action.name, action]),
 	);
@@ -2269,26 +2252,12 @@ async function collectV5PlannerCandidateActions(args: {
 	};
 
 	for (const action of allRuntimeActions) {
-		if (
-			normalizedViewActionName &&
-			normalizeActionIdentifier(action.name) === normalizedViewActionName &&
-			!mayExposeViewAction
-		) {
-			continue;
-		}
 		await appendIfAllowed(action);
 	}
 
 	for (const candidateName of args.candidateActions ?? []) {
 		const action = resolveRuntimeAction(actionLookup, candidateName);
 		if (!action) continue;
-		if (
-			normalizedViewActionName &&
-			normalizeActionIdentifier(action.name) === normalizedViewActionName &&
-			!mayExposeViewAction
-		) {
-			continue;
-		}
 		await appendIfAllowed(
 			action,
 			undefined,
@@ -2386,65 +2355,12 @@ function getMessageHandlerCandidateActions(
 	);
 }
 
-function getResponseHandlerEvaluatorCandidateActions(
-	evaluation: ResponseHandlerEvaluationRunResult | null,
-): string[] {
-	return uniqueActionNames(evaluation?.candidateActionsAddedByEvaluators ?? []);
-}
-
 function getMessageHandlerParentActionHints(
 	messageHandler: MessageHandlerResult,
 ): string[] {
 	return stringArrayProperty(
 		(messageHandler.plan as { parentActionHints?: unknown }).parentActionHints,
 	);
-}
-
-function getMessageHandlerDeterministicToolCall(
-	messageHandler: MessageHandlerResult,
-): PlannerToolCall | null {
-	const toolCall = (
-		messageHandler.plan as {
-			deterministicToolCall?: MessageHandlerDeterministicToolCall;
-		}
-	).deterministicToolCall;
-	const name = String(toolCall?.name ?? "").trim();
-	if (!name) {
-		return null;
-	}
-	return {
-		id: `deterministic-${normalizeActionIdentifier(name).toLowerCase() || "tool"}`,
-		name,
-		params: isRecord(toolCall?.params) ? { ...toolCall.params } : undefined,
-	};
-}
-
-function withResponseHandlerReplyForDeterministicReply(
-	toolCall: PlannerToolCall,
-	replyText: string,
-): PlannerToolCall {
-	if (normalizeActionIdentifier(toolCall.name) !== "REPLY") {
-		return toolCall;
-	}
-
-	const reply = replyText.trim();
-	if (!reply) {
-		return toolCall;
-	}
-
-	const params = isRecord(toolCall.params) ? { ...toolCall.params } : {};
-	const explicitText = params.text;
-	if (typeof explicitText === "string" && explicitText.trim().length > 0) {
-		return toolCall;
-	}
-
-	return {
-		...toolCall,
-		params: {
-			...params,
-			text: reply,
-		},
-	};
 }
 
 function buildFullV5PlannerActionSurface(params: {
@@ -2992,41 +2908,6 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 		},
 	];
 
-/**
- * Baseline instruction prefix for the `response` task. When an optimized
- * artifact exists for `response`, the resolver substitutes this string with
- * the optimizer's prompt before the per-turn context is appended.
- *
- * Kept as a single string so the operator can train against the exact
- * baseline by exporting `RESPONSE_TASK_BASELINE_INSTRUCTIONS` from this
- * module if needed.
- */
-const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
-	"task: Write one direct reply to the user.",
-	"",
-	"rules:",
-	"- answer directly in the agent's voice",
-	"- reply to the final user_message only; recent_context shows earlier turns that are already answered — never reply to an earlier message again",
-	"- when the user asks for exact words, output only those exact words",
-	`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
-	"- do not select actions or tools",
-	"- do not include internal reasoning",
-	"- high-stakes personal crisis/legal/medical/self-harm/police/CPS: no tactical concealment/evasion/testimony/contraband advice; direct to qualified help, and for imminent danger prioritize emergency services, poison control, or a crisis hotline",
-].join("\n");
-
-const EXACT_WORD_COUNT_BY_NAME: Record<string, number> = {
-	one: 1,
-	two: 2,
-	three: 3,
-	four: 4,
-	five: 5,
-	six: 6,
-	seven: 7,
-	eight: 8,
-	nine: 9,
-	ten: 10,
-};
-
 const DIRECT_MESSAGE_HANDLER_TEMPLATE = `task: Plan this direct message.
 
 available_contexts:
@@ -3046,111 +2927,7 @@ direct/private rules:
 Return exactly one JSON object for {{handleResponseToolName}}. No prose, markdown, or thinking.
 `;
 
-export function directReplyPromptForMessage(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	state: State;
-	messageHandler: MessageHandlerResult;
-}): string {
-	const latestText = getUserMessageText(args.message) ?? "";
-	const contextText = truncateToCompleteSentence(
-		(args.state.text ?? "").trim(),
-		1000,
-	);
-	const instructions = resolveOptimizedPromptForRuntime(
-		args.runtime,
-		"response",
-		RESPONSE_TASK_BASELINE_INSTRUCTIONS,
-	);
-	// The current message must win against `recent_context` (the composed state,
-	// which carries conversation history and frequently ends on the previous
-	// user turn). With the fast path's tiny token budget a single `user_message:`
-	// line is easy for a small model to lose against a large context block — it
-	// would intermittently re-answer the prior turn (the off-by-one in #8877).
-	// Label the context as already-handled reference and give the current message
-	// an unambiguous directive lead-in so it stays the reply target.
-	return [
-		instructions,
-		"",
-		contextText
-			? `recent_context (earlier turns, already answered — reference only, do not reply to these):\n${contextText}`
-			: "",
-		"Now write your reply to this new message, and only this message:",
-		`user_message: ${latestText}`,
-		`routing_thought: ${args.messageHandler.thought}`,
-	]
-		.filter((line) => line.length > 0)
-		.join("\n");
-}
-
-function extractExactWordsReply(
-	text: string | null | undefined,
-): string | null {
-	const input = text?.trim();
-	if (!input) return null;
-	const match = input.match(
-		/\b(?:reply|respond|say|output|return)\s+with\s+exactly\s+(?:these\s+)?(?:(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+)?words?\s*:\s*([\s\S]+?)\s*$/i,
-	);
-	if (!match) return null;
-	const expectedCountRaw = match[1]?.toLowerCase();
-	let reply = match[2]?.trim() ?? "";
-	reply = reply.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "").trim();
-	if (reply.endsWith(".") && !/[.!?]\s*["'“”‘’]$/.test(match[2] ?? "")) {
-		reply = reply.slice(0, -1).trim();
-	}
-	if (!reply) return null;
-	if (expectedCountRaw) {
-		const expectedCount = /^\d+$/.test(expectedCountRaw)
-			? Number.parseInt(expectedCountRaw, 10)
-			: EXACT_WORD_COUNT_BY_NAME[expectedCountRaw];
-		const actualCount = reply.split(/\s+/).filter(Boolean).length;
-		if (
-			Number.isFinite(expectedCount) &&
-			expectedCount > 0 &&
-			actualCount !== expectedCount
-		) {
-			return null;
-		}
-	}
-	return reply;
-}
-
-async function generateDirectReplyModel(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	state: State;
-	messageHandler: MessageHandlerResult;
-	signal?: AbortSignal;
-}): Promise<{
-	text: string;
-	raw: string | GenerateTextResult;
-	prompt: string;
-}> {
-	const prompt = directReplyPromptForMessage(args);
-	const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
-		prompt,
-		maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
-		signal: args.signal,
-		providerOptions: { eliza: { thinking: "off" } },
-	})) as string | GenerateTextResult;
-	const modelText = stripReasoningBlocks(getV5ModelText(raw)).trim();
-	return {
-		text: extractExactWordsReply(getUserMessageText(args.message)) ?? modelText,
-		raw,
-		prompt,
-	};
-}
-
-async function generateDirectReplyOnce(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	state: State;
-	messageHandler: MessageHandlerResult;
-}): Promise<string> {
-	return (await generateDirectReplyModel(args)).text;
-}
-
-function shouldRegenerateStage1ReplyText(reply: string | undefined): boolean {
+function isUnusableStage1Reply(reply: string | undefined): boolean {
 	const trimmed = typeof reply === "string" ? reply.trim() : "";
 	if (!trimmed) return true;
 	if (/^```[a-z0-9_-]*\s+/iu.test(trimmed)) return false;
@@ -3164,9 +2941,7 @@ function shouldRegenerateStage1ReplyText(reply: string | undefined): boolean {
 	return false;
 }
 
-function canKeepStage1ReplyWhenRegenerationIsEmpty(
-	reply: string | undefined,
-): boolean {
+function isTerseReplyWorthKeeping(reply: string | undefined): boolean {
 	const trimmed = typeof reply === "string" ? reply.trim() : "";
 	return /^\d+$/.test(trimmed);
 }
@@ -3952,12 +3727,6 @@ function applyDirectCurrentCandidateBackstopToMessageHandler(
 		return messageHandler;
 	}
 
-	const preferredDirectReply =
-		preferCompleteDirectReplyForWeakPlanningSignals(messageHandler);
-	if (preferredDirectReply !== messageHandler) {
-		return preferredDirectReply;
-	}
-
 	const directCurrentCandidateActions =
 		inferDirectCurrentRequestCandidateActions(
 			runtimeContext.actions,
@@ -3989,36 +3758,6 @@ function applyDirectCurrentCandidateBackstopToMessageHandler(
 			requiresTool: true,
 			candidateActions: runnableCandidateActions,
 		},
-	};
-}
-
-function preferCompleteDirectReplyForWeakPlanningSignals(
-	messageHandler: MessageHandlerResult,
-): MessageHandlerResult {
-	const replyText = getMessageHandlerReply(messageHandler);
-	if (
-		!shouldPreferCompleteDirectReply({
-			replyText,
-			candidateActions: getMessageHandlerCandidateActions(messageHandler),
-			contexts: messageHandler.plan.contexts ?? [],
-		})
-	) {
-		return messageHandler;
-	}
-
-	const plan: MessageHandlerResult["plan"] = {
-		...messageHandler.plan,
-		contexts: [SIMPLE_CONTEXT_ID],
-		simple: true,
-		requiresTool: false,
-	};
-	delete (plan as { candidateActions?: unknown }).candidateActions;
-	delete (plan as { parentActionHints?: unknown }).parentActionHints;
-	delete (plan as { deterministicToolCall?: unknown }).deterministicToolCall;
-
-	return {
-		...messageHandler,
-		plan,
 	};
 }
 
@@ -4300,186 +4039,6 @@ export function inferDirectCurrentRequestCandidateActions(
 	return [];
 }
 
-function shouldUseDirectReplyFastPath(args: {
-	message: Memory;
-	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
-}): boolean {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text || text.length > 280) return false;
-	if (looksLikeHighStakesPersonalCrisisRequest(text)) return false;
-	if (
-		inferDirectCurrentRequestCandidateActions(args.actions, text).length > 0
-	) {
-		return false;
-	}
-	if (looksLikeContextDependentMutationRequest(text)) return false;
-	if (/https?:\/\//iu.test(text)) return false;
-	if (
-		/\b(?:search|browse|lookup|look\s+up|find|fetch|download|install|run|execute|build|deploy|commit|push|pull\s+request|pr\b|issue|debug|inspect|logs?|repo|github|terminal|shell|file|folder|save|send|create|edit|modify|fix|improve|rewrite|update|delete|remove|uninstall|schedule|remind|todo|task|calendar|email|contact|message|dm|call|wallet|balance|price|weather|news|latest|current|today|tomorrow|yesterday|remember|forget|settings?|password|secret|key|token|screen|screenshot|browser|click|open|close|app|view|plugin|window|device|workflow|automation|draw|sketch|paint|illustrate|render|picture|photo|photograph|image|speak|read\s+aloud|read\s+out|narrate|text\s*to\s*speech|tts|voice\s+this|voice\s+over|audio|video|animate|animation)\b/iu.test(
-			text,
-		)
-	) {
-		return false;
-	}
-	return true;
-}
-
-function looksLikeTextOnlyAnswerInstruction(args: {
-	text: string;
-	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
-}): boolean {
-	const { text, actions } = args;
-	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
-	if (!normalized) return false;
-	if (
-		looksLikeInlineCodeSnippetRequest(normalized) ||
-		/\b(?:build|deploy|commit|debug|fix|implement|edit|modify|create|generate|write)\b.*\b(?:app|site|website|code|repo|repository|plugin|file|component|script)\b/iu.test(
-			normalized,
-		) ||
-		looksLikeLocalShellRequest(normalized)
-	) {
-		return false;
-	}
-
-	const hasToolFreeInstruction =
-		/\btool[-\s]?free\b/iu.test(normalized) ||
-		/\b(?:do not|don't|dont|without)\s+(?:call|use)\s+tools?\b/iu.test(
-			normalized,
-		) ||
-		/\b(?:do not|don't|dont|without)\s+(?:browse|search|google|look\s+up|lookup)\b/iu.test(
-			normalized,
-		);
-	const hasExplicitFormattingInstruction =
-		/\b(?:start|begin|prefix)\s+(?:your\s+)?(?:reply|response|answer)\s+with\b/iu.test(
-			normalized,
-		) ||
-		/\b(?:reply|respond|answer)\s+with\s+exactly\b/iu.test(normalized) ||
-		/\banswer\b.*\bin\s+one\s+sentence\b/iu.test(normalized);
-	if (!hasExplicitFormattingInstruction && !hasToolFreeInstruction) {
-		return false;
-	}
-	if (!hasToolFreeInstruction) {
-		if (
-			looksLikeContextDependentMutationRequest(normalized) ||
-			/\b(?:browse|fetch|google|look\s+up|lookup|search)\b/iu.test(
-				normalized,
-			) ||
-			findViewShellActionName(actions, normalized)
-		) {
-			return false;
-		}
-	}
-	return true;
-}
-
-async function responseHandlerEvaluatorClaimsDirectFastPathTurn(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	state: State;
-	availableContexts: readonly ContextDefinition[];
-}): Promise<boolean> {
-	const registered = Array.isArray(args.runtime.responseHandlerEvaluators)
-		? (args.runtime
-				.responseHandlerEvaluators as readonly ResponseHandlerEvaluator[])
-		: [];
-	const evaluators = [...BUILTIN_RESPONSE_HANDLER_EVALUATORS, ...registered]
-		.filter(
-			(evaluator) => evaluator.name !== "core.simple_registered_action_request",
-		)
-		.sort(
-			(a, b) =>
-				(a.priority ?? 100) - (b.priority ?? 100) ||
-				a.name.localeCompare(b.name),
-		);
-	if (evaluators.length === 0) return false;
-
-	const probeHandler: MessageHandlerResult = {
-		processMessage: "RESPOND",
-		thought: "Direct private chat fast path probe.",
-		plan: {
-			contexts: [SIMPLE_CONTEXT_ID],
-			reply: "",
-			simple: true,
-			requiresTool: false,
-		},
-	};
-
-	for (const evaluator of evaluators) {
-		try {
-			if (
-				await evaluator.shouldRun({
-					runtime: args.runtime,
-					message: args.message,
-					state: args.state,
-					messageHandler: probeHandler,
-					availableContexts: args.availableContexts,
-				})
-			) {
-				return true;
-			}
-		} catch (error) {
-			args.runtime.logger.warn(
-				{
-					src: "service:message",
-					evaluator: evaluator.name,
-					error: error instanceof Error ? error.message : String(error),
-				},
-				"Skipping direct reply fast path after response-handler evaluator probe failed",
-			);
-			return true;
-		}
-	}
-
-	return false;
-}
-
-function looksLikeContextDependentMutationRequest(text: string): boolean {
-	const tokens = new Set(
-		tokenizeActionMetadata(text).map(normalizeSingularToken),
-	);
-	const mutationTokens = [
-		"ADD",
-		"CREATE",
-		"DO",
-		"MAKE",
-		"PUT",
-		"SET",
-		"WRITE",
-		"EDIT",
-		"UPDATE",
-		"DELETE",
-		"REMOVE",
-	];
-	const contextReferenceTokens = [
-		"ANOTHER",
-		"IT",
-		"ONE",
-		"SAME",
-		"THAT",
-		"THEM",
-		"THESE",
-		"THIS",
-		"THOSE",
-	];
-	return (
-		mutationTokens.some((token) => tokens.has(token)) &&
-		contextReferenceTokens.some((token) => tokens.has(token))
-	);
-}
-
-function looksLikeHighStakesPersonalCrisisRequest(text: string): boolean {
-	if (
-		!/\b(?:what\s+should|what\s+do|should\s+i|should\s+he|should\s+she|should\s+they|help|advice|urgent|emergency|crisis)\b/iu.test(
-			text,
-		)
-	) {
-		return false;
-	}
-	return /\b(?:lawyer|attorney|police|cop|cops|court|criminal|felony|arrest|charged|custody|cps|child\s+protective|landlord|grow|plants|contraband|evidence|overdose|too\s+many\s+pills|poison|suicide|self[-\s]?harm|kill\s+(?:myself|himself|herself|themselves)|medical\s+emergency|psychiatric\s+emergency|domestic\s+violence|abuse)\b/iu.test(
-		text,
-	);
-}
-
 /**
  * Resolve the action that satisfies a web / live-info lookup, or undefined when
  * the runtime has no real search backend registered.
@@ -4544,23 +4103,11 @@ function findCodingDelegationActionName(
 }
 
 const VIEW_REQUEST_OPERATION_GROUPS = {
-	create: ["ADD", "BUILD", "CREATE", "MAKE", "NEW", "SHIP"],
-	read: [
-		"CHECK",
-		"FIND",
-		"GET",
-		"LIST",
-		"PULL",
-		"READ",
-		"SEARCH",
-		"SEE",
-		"SHOW",
-		"WHAT",
-		"WHICH",
-	],
+	create: ["ADD", "CREATE", "MAKE", "NEW"],
+	read: ["FIND", "GET", "LIST", "READ", "SHOW", "WHAT", "WHICH"],
 	update: ["CHANGE", "EDIT", "MODIFY", "RENAME", "UPDATE"],
 	delete: ["DELETE", "REMOVE"],
-	open: ["ABRA", "ABRE", "BUKSAN", "GO", "NAVIGATE", "OPEN", "SWITCH"],
+	open: ["GO", "NAVIGATE", "OPEN", "SWITCH"],
 	close: ["CLOSE", "DISMISS", "HIDE"],
 	layout: [
 		"ARRANGE",
@@ -4647,33 +4194,27 @@ const VIEW_PLUGIN_SURFACE_TOKENS: ReadonlySet<string> = new Set<string>([
 function findViewsActionName(
 	actions: ReadonlyArray<Pick<Action, "name" | "tags">>,
 ): string | undefined {
-	return (
-		actions.find((action) => normalizeActionIdentifier(action.name) === "VIEWS")
-			?.name ?? actions.find((action) => hasViewCapabilityTag(action))?.name
-	);
-}
-
-function hasViewCapabilityTag(action: Pick<Action, "tags">): boolean {
-	return (action.tags ?? []).some(
-		(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
-	);
-}
-
-function isViewsAction(
-	action: Pick<Action, "name" | "tags">,
-	viewActionName: string,
-): boolean {
-	return (
-		normalizeActionIdentifier(action.name) ===
-			normalizeActionIdentifier(viewActionName) || hasViewCapabilityTag(action)
-	);
+	return actions.find((action) => {
+		if (normalizeActionIdentifier(action.name) === "VIEWS") return true;
+		return (action.tags ?? []).some(
+			(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
+		);
+	})?.name;
 }
 
 function collectViewActionMetadataEntries(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	viewActionName: string,
 ): Array<Pick<Action, "name" | "similes" | "tags">> {
-	return actions.filter((action) => isViewsAction(action, viewActionName));
+	const normalizedViewActionName = normalizeActionIdentifier(viewActionName);
+	return actions.filter((action) => {
+		if (normalizeActionIdentifier(action.name) === normalizedViewActionName) {
+			return true;
+		}
+		return (action.tags ?? []).some(
+			(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
+		);
+	});
 }
 
 function findViewShellActionName(
@@ -4723,7 +4264,6 @@ function findViewCapabilityActionName(
 	const messageTokenSet = new Set(messageTokens.map(normalizeSingularToken));
 	const messageOperationGroups = operationGroupsForTokens(messageTokens);
 	if (messageOperationGroups.size === 0) return undefined;
-	const messageHasCreateOperation = messageOperationGroups.has("create");
 
 	for (const viewAction of viewActions) {
 		for (const alias of [
@@ -4734,13 +4274,6 @@ function findViewCapabilityActionName(
 			const aliasTokens = tokenizeActionMetadata(String(alias));
 			if (aliasTokens.length === 0) continue;
 			const aliasOperationGroups = operationGroupsForTokens(aliasTokens);
-			// Create/build/make requests are artifact-producing verbs in many
-			// domains. Require the matched VIEWS metadata itself to declare a
-			// create-capable alias such as CREATE_NOTE or ADD_FEATURE; plain domain
-			// tags like "avatar" or "documents" are not enough.
-			if (messageHasCreateOperation && aliasOperationGroups.size === 0) {
-				continue;
-			}
 			if (
 				aliasOperationGroups.size > 0 &&
 				!setsIntersect(aliasOperationGroups, messageOperationGroups)
@@ -4764,16 +4297,6 @@ function findViewCapabilityActionName(
 }
 
 function looksLikeInstructionalViewQuestion(messageText: string): boolean {
-	const tokens = tokenizeActionMetadata(messageText).map(
-		normalizeSingularToken,
-	);
-	if (
-		tokens[0] === "WHAT" &&
-		(tokens[1] === "IS" || tokens[1] === "ARE") &&
-		tokens.includes("MY")
-	) {
-		return false;
-	}
 	return /^\s*(?:explain|describe|teach|what\s+(?:is|are)|how\s+(?:do|can|to)\b)/iu.test(
 		messageText,
 	);
@@ -5787,30 +5310,23 @@ function collectPreviousActionResults(
 		if (!step.result || !step.toolCall) {
 			continue;
 		}
-		results.push(actionResultFromPlannerToolResult(step.toolCall, step.result));
+		results.push({
+			success: step.result.success,
+			text: step.result.text,
+			data: {
+				actionName: step.toolCall.name,
+				...(step.result.data ?? {}),
+			},
+			error:
+				typeof step.result.error === "string"
+					? step.result.error
+					: step.result.error instanceof Error
+						? step.result.error.message
+						: undefined,
+			continueChain: step.result.continueChain,
+		});
 	}
 	return results;
-}
-
-function actionResultFromPlannerToolResult(
-	toolCall: PlannerToolCall,
-	result: PlannerToolResult,
-): ActionResult {
-	return {
-		success: result.success,
-		text: result.text,
-		data: {
-			actionName: toolCall.name,
-			...(result.data ?? {}),
-		},
-		error:
-			typeof result.error === "string"
-				? result.error
-				: result.error instanceof Error
-					? result.error.message
-					: undefined,
-		continueChain: result.continueChain,
-	};
 }
 
 /**
@@ -6018,67 +5534,6 @@ export async function runV5MessageRuntimeStage1(args: {
 		const stage1TurnSignal =
 			getStreamingContext()?.abortSignal ?? new AbortController().signal;
 
-		if (
-			directMessageChannel &&
-			shouldUseDirectReplyFastPath({
-				message: args.message,
-				actions: args.runtime.actions,
-			}) &&
-			!(await responseHandlerEvaluatorClaimsDirectFastPathTurn({
-				runtime: args.runtime,
-				message: args.message,
-				state: args.state,
-				availableContexts,
-			}))
-		) {
-			const fastStartedAt = Date.now();
-			const fastMessageHandler: MessageHandlerResult = {
-				processMessage: "RESPOND",
-				thought: "Direct private chat fast path.",
-				plan: {
-					contexts: [SIMPLE_CONTEXT_ID],
-					reply: "",
-					simple: true,
-					requiresTool: false,
-				},
-			};
-			const generated = await generateDirectReplyModel({
-				runtime: args.runtime,
-				message: args.message,
-				state: args.state,
-				messageHandler: fastMessageHandler,
-				signal: stage1TurnSignal,
-			});
-			const fastEndedAt = Date.now();
-			fastMessageHandler.plan.reply = generated.text;
-			if (recorder && trajectoryId) {
-				await recordMessageHandlerStage({
-					recorder,
-					trajectoryId,
-					messages: [{ role: "user", content: generated.prompt }],
-					providerOptions: {
-						eliza: {
-							directReplyFastPath: true,
-							maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
-						},
-					},
-					raw: generated.raw,
-					parsed: fastMessageHandler,
-					startedAt: fastStartedAt,
-					endedAt: fastEndedAt,
-					logger: args.runtime.logger,
-				});
-			}
-			return {
-				kind: "direct_reply",
-				messageHandler: fastMessageHandler,
-				result: createV5ReplyStrategyResult({
-					...args,
-					text: generated.text,
-					thought: fastMessageHandler.thought,
-				}),
-			};
-		}
 		const responseHandlerFieldContext: ResponseHandlerFieldContext = {
 			runtime: args.runtime,
 			message: args.message,
@@ -6340,64 +5795,6 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 		if (
 			!messageHandler &&
-			isEmptyStage1Result(rawMessageHandler) &&
-			shouldUseStage1PlannerFallback(args.runtime, args.message) &&
-			shouldUseDirectReplyFastPath({
-				message: args.message,
-				actions: args.runtime.actions,
-			})
-		) {
-			const fastStartedAt = Date.now();
-			const fallbackMessageHandler: MessageHandlerResult = {
-				processMessage: "RESPOND",
-				thought:
-					"Stage 1 returned empty output for a simple addressed message; using direct reply fallback.",
-				plan: {
-					contexts: [SIMPLE_CONTEXT_ID],
-					reply: "",
-					simple: true,
-					requiresTool: false,
-				},
-			};
-			const generated = await generateDirectReplyModel({
-				runtime: args.runtime,
-				message: args.message,
-				state: args.state,
-				messageHandler: fallbackMessageHandler,
-				signal: stage1TurnSignal,
-			});
-			const fastEndedAt = Date.now();
-			fallbackMessageHandler.plan.reply = generated.text;
-			if (recorder && trajectoryId) {
-				await recordMessageHandlerStage({
-					recorder,
-					trajectoryId,
-					messages: [{ role: "user", content: generated.prompt }],
-					providerOptions: {
-						eliza: {
-							directReplyEmptyStage1Fallback: true,
-							maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
-						},
-					},
-					raw: generated.raw,
-					parsed: fallbackMessageHandler,
-					startedAt: fastStartedAt,
-					endedAt: fastEndedAt,
-					logger: args.runtime.logger,
-				});
-			}
-			return {
-				kind: "direct_reply",
-				messageHandler: fallbackMessageHandler,
-				result: createV5ReplyStrategyResult({
-					...args,
-					text: generated.text,
-					thought: fallbackMessageHandler.thought,
-				}),
-			};
-		}
-		if (
-			!messageHandler &&
 			shouldUseStage1PlannerFallback(args.runtime, args.message)
 		) {
 			const stage1FailureKind = getStage1RetryReason(rawMessageHandler);
@@ -6564,7 +5961,6 @@ export async function runV5MessageRuntimeStage1(args: {
 			? {
 					activeEvaluators: [],
 					appliedPatches: [],
-					candidateActionsAddedByEvaluators: [],
 					errors: [],
 				}
 			: await runResponseHandlerEvaluators({
@@ -6575,8 +5971,6 @@ export async function runV5MessageRuntimeStage1(args: {
 					availableContexts,
 					evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 				});
-		const trustedResponseHandlerCandidateActions =
-			getResponseHandlerEvaluatorCandidateActions(responseHandlerEvaluation);
 		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
 			availableContexts,
@@ -6592,28 +5986,19 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 
 		if (route.type === "final_reply") {
-			// `replyText` (→ `route.reply`) is part of the HANDLE_RESPONSE envelope
-			// and is `required` in the schema, so the direct-reply path normally
-			// emits it inline with no extra model call. `generateDirectReplyOnce`
-			// runs when Stage-1 produced no usable reply text or a known
-			// low-quality scaffold/fragment pattern from strict JSON generation.
+			// The simple-context reply IS the answer: Stage 1 emits `replyText` (→
+			// `route.reply`) inline as part of the required HANDLE_RESPONSE envelope,
+			// uncapped for direct channels. There is no separate fast-path model
+			// call. When that text is unusable — empty, or a known low-quality
+			// scaffold/fragment from strict-JSON generation — ship a clear deferral
+			// instead of a blank/garbled bubble, but keep a valid-but-terse answer
+			// (e.g. "144" to a math question).
 			let reply = route.reply;
-			if (shouldRegenerateStage1ReplyText(route.reply)) {
-				const regenerated = await generateDirectReplyOnce({
-					runtime: args.runtime,
-					message: args.message,
-					state: args.state,
-					messageHandler,
-				});
-				// Regeneration is an enhancement (terse fragment -> fuller reply).
-				// If it yields nothing usable, keep the original Stage-1 reply so a
-				// valid-but-terse answer (e.g. "144" to a math question) is never
-				// dropped to an empty message.
-				if (regenerated.trim().length > 0) {
-					reply = regenerated;
-				} else if (!canKeepStage1ReplyWhenRegenerationIsEmpty(route.reply)) {
-					reply = "I'm not sure how to answer that.";
-				}
+			if (
+				isUnusableStage1Reply(route.reply) &&
+				!isTerseReplyWorthKeeping(route.reply)
+			) {
+				reply = "I'm not sure how to answer that.";
 			}
 			if (
 				shouldReplaceUnavailableLiveLookupAck({
@@ -6623,41 +6008,6 @@ export async function runV5MessageRuntimeStage1(args: {
 				})
 			) {
 				reply = LIVE_LOOKUP_UNAVAILABLE_REPLY;
-			}
-			return {
-				kind: "direct_reply",
-				messageHandler,
-				result: createV5ReplyStrategyResult({
-					...args,
-					text: reply,
-					thought: messageHandler.thought,
-				}),
-			};
-		}
-
-		if (
-			route.type === "planning_needed" &&
-			looksLikeTextOnlyAnswerInstruction({
-				text: getUserMessageText(args.message) ?? "",
-				actions: args.runtime.actions ?? [],
-			})
-		) {
-			let reply = getMessageHandlerReply(messageHandler);
-			if (
-				!reply ||
-				looksLikeProgressOnlyReply(reply) ||
-				shouldRegenerateStage1ReplyText(reply)
-			) {
-				const regenerated = await generateDirectReplyOnce({
-					runtime: args.runtime,
-					message: args.message,
-					state: args.state,
-					messageHandler,
-				});
-				reply = regenerated.trim().length > 0 ? regenerated : reply;
-			}
-			if (!reply || looksLikeProgressOnlyReply(reply)) {
-				reply = "I'm not sure how to answer that.";
 			}
 			return {
 				kind: "direct_reply",
@@ -6730,20 +6080,12 @@ export async function runV5MessageRuntimeStage1(args: {
 				...directPlannerCandidateActions,
 			]);
 		}
-		const rawDeterministicToolCall =
-			getMessageHandlerDeterministicToolCall(messageHandler);
 		const plannerCandidateActions = await collectV5PlannerCandidateActions({
 			runtime: args.runtime,
 			message: args.message,
 			state: plannerState,
 			selectedContexts,
 			candidateActions: getMessageHandlerCandidateActions(messageHandler),
-			allowViewCandidateActions:
-				normalizeActionIdentifier(rawDeterministicToolCall?.name ?? "") ===
-					"VIEWS" ||
-				trustedResponseHandlerCandidateActions.some(
-					(actionName) => normalizeActionIdentifier(actionName) === "VIEWS",
-				),
 			userRoles: [senderRole],
 		});
 		const localizedExamplesProvider = getLocalizedExamplesProvider(
@@ -6790,12 +6132,6 @@ export async function runV5MessageRuntimeStage1(args: {
 		const responseHandlerContextSlices = stringArrayProperty(
 			(messageHandler.plan as { contextSlices?: unknown }).contextSlices,
 		);
-		const deterministicToolCall = rawDeterministicToolCall
-			? withResponseHandlerReplyForDeterministicReply(
-					rawDeterministicToolCall,
-					earlyReplyText,
-				)
-			: null;
 		const plannerContextWithDecision = appendContextEvent(plannerContext, {
 			id: `message-handler:${messageHandlerEndedAt}`,
 			type: "message_handler",
@@ -6813,14 +6149,6 @@ export async function runV5MessageRuntimeStage1(args: {
 						: {}),
 					candidateActions: getMessageHandlerCandidateActions(messageHandler),
 					parentActionHints: getMessageHandlerParentActionHints(messageHandler),
-					...(deterministicToolCall
-						? {
-								deterministicToolCall: {
-									name: deterministicToolCall.name,
-									params: (deterministicToolCall.params ?? {}) as JsonValue,
-								},
-							}
-						: {}),
 					...(responseHandlerContextSlices.length > 0
 						? { contextSlices: responseHandlerContextSlices }
 						: {}),
@@ -6908,7 +6236,6 @@ export async function runV5MessageRuntimeStage1(args: {
 			copyToClipboard: () => undefined,
 			messageToUser: () => undefined,
 		};
-		const deterministicActionResults: ActionResult[] = [];
 
 		// CONTEXT_BEFORE (blocking): hooks tagged with one of the selected
 		// contexts run after Stage 1 routes, before the planner loop begins.
@@ -6924,83 +6251,6 @@ export async function runV5MessageRuntimeStage1(args: {
 				selectedContexts,
 			})
 			.catch(() => {});
-
-		if (deterministicToolCall) {
-			const deterministicToolResult = await executeV5PlannedToolCall({
-				runtime: args.runtime,
-				toolCall: deterministicToolCall,
-				plannerContext: plannerContextAfterEarlyReply,
-				executorCtx: {
-					message: args.message,
-					state: plannerState,
-					activeContexts: selectedContexts,
-					userRoles: [senderRole],
-					previousResults: [],
-				},
-				plannerRuntime,
-				executorOptions: { actions: plannerCandidateActions },
-				evaluatorEffects,
-				recorder,
-				trajectoryId,
-				plannerLoopConfig: args.plannerLoopConfig,
-			});
-			const deterministicActionResult = actionResultFromPlannerToolResult(
-				deterministicToolCall,
-				deterministicToolResult,
-			);
-			deterministicActionResults.push(deterministicActionResult);
-			if (deterministicToolResult.success) {
-				await args.runtime.runActionsByMode(
-					"CONTEXT_AFTER",
-					args.message,
-					plannerState,
-					{ selectedContexts },
-				);
-				const finalPlannerState = withActionResultsForPrompt(
-					plannerState,
-					deterministicActionResults,
-				);
-				const plannedText = String(
-					deterministicToolResult.userFacingText ??
-						deterministicToolResult.text ??
-						"",
-				).trim();
-				const plannedTextRepeatsEarlyReply =
-					earlyReplySent &&
-					normalizeVisibleTextForDuplicateCheck(plannedText) ===
-						normalizeVisibleTextForDuplicateCheck(earlyReplyText);
-
-				return {
-					kind: "planned_reply",
-					messageHandler,
-					result:
-						plannedText && !plannedTextRepeatsEarlyReply
-							? createV5ReplyStrategyResult({
-									...args,
-									state: finalPlannerState,
-									text: plannedText,
-									thought: `Executed deterministic tool call ${deterministicToolCall.name}.`,
-								})
-							: {
-									responseContent: null,
-									responseMessages: [],
-									state: finalPlannerState,
-									mode: "none",
-								},
-				};
-			}
-			args.runtime.logger.warn?.(
-				{
-					src: "service:message",
-					action: deterministicToolCall.name,
-					error:
-						deterministicToolResult.error instanceof Error
-							? deterministicToolResult.error.message
-							: deterministicToolResult.error,
-				},
-				"Deterministic response-handler tool call failed; falling back to planner",
-			);
-		}
 
 		let plannerResult: PlannerLoopResult;
 		try {
@@ -7023,10 +6273,7 @@ export async function runV5MessageRuntimeStage1(args: {
 							state: plannerState,
 							activeContexts: selectedContexts,
 							userRoles: [senderRole],
-							previousResults: [
-								...deterministicActionResults,
-								...collectPreviousActionResults(ctx.trajectory),
-							],
+							previousResults: collectPreviousActionResults(ctx.trajectory),
 						},
 						plannerRuntime,
 						executorOptions: { actions: exposedPlannerActions },
@@ -7080,13 +6327,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		const actionResults = collectPreviousActionResults(
 			plannerResult.trajectory,
 		);
-		const allActionResults =
-			deterministicActionResults.length > 0
-				? [...deterministicActionResults, ...actionResults]
-				: actionResults;
 		const finalPlannerState =
-			allActionResults.length > 0
-				? withActionResultsForPrompt(plannerState, allActionResults)
+			actionResults.length > 0
+				? withActionResultsForPrompt(plannerState, actionResults)
 				: plannerState;
 		const plannedText = String(plannerResult.finalMessage ?? "").trim();
 		const plannedTextRepeatsEarlyReply =
