@@ -136,7 +136,7 @@ const CAPABILITIES: Capability[] = [
   },
   // ── trycua blind spots — tracked decisions, not silent gaps (workflow audit) ──
   { cua: "set_value (a11y element value write)", domain: "architecture", status: "missing", milestone: "a11y-write" },
-  { cua: "kill_app (process terminate)", domain: "architecture", status: "missing", milestone: "process-lifecycle" },
+  { cua: "kill_app (process terminate)", domain: "input", status: "have", verb: "kill_app", milestone: "M12" },
   {
     cua: "zoom (region magnify for grounding)",
     domain: "architecture",

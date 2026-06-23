@@ -66,7 +66,7 @@ import {
   writeFile,
 } from "../platform/file-ops.js";
 import { commandExists, currentPlatform } from "../platform/helpers.js";
-import { launchApp, openTarget } from "../platform/launch.js";
+import { killApp, launchApp, openTarget } from "../platform/launch.js";
 import { classifyPermissionDeniedError } from "../platform/permissions.js";
 import {
   clearTerminal,
@@ -284,6 +284,7 @@ export class ComputerUseService extends Service {
       case "ocr":
       case "open":
       case "launch":
+      case "kill_app":
         return this.executeDesktopAction({
           ...commandParameters<DesktopActionParams>(parameters),
           action: this.mapDesktopCommandToAction(command),
@@ -523,6 +524,21 @@ export class ComputerUseService extends Service {
             success: true,
             data: { pid: launched.pid, command: launched.command },
             message: `Launched ${params.app} (pid ${launched.pid}).`,
+          });
+        }
+        case "kill_app": {
+          // Accepts a pid or an app/process name via `target` (pairs with launch).
+          const target = params.target ?? params.app;
+          if (!target) {
+            throw new Error(
+              "target (pid or app name) is required for kill_app action",
+            );
+          }
+          const killed = await killApp(String(target));
+          return this.succeedEntry(entry, {
+            success: true,
+            data: killed,
+            message: `Terminated ${killed.target}.`,
           });
         }
         default:
