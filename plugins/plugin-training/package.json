@@ -35,6 +35,7 @@
   "scripts": {
     "train": "bun run src/cli/train.ts",
     "collect": "bun run src/core/cli.ts run-collection",
+    "lifeops:gepa": "bun run scripts/lifeops-gepa-loop.ts",
     "verify:view-switching": "bun run scripts/verify-view-switching.ts",
     "gepa:view-context": "bun run scripts/gepa-view-context.ts",
     "test": "vitest run",

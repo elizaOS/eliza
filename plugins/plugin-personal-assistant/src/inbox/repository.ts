@@ -8,4 +8,4 @@
  * `InboxTriageRepository` from here.
  */
 
-export { InboxRepository as InboxTriageRepository } from "@elizaos/plugin-inbox";
+export { InboxRepository as InboxTriageRepository } from "@elizaos/plugin-inbox/inbox/repository";

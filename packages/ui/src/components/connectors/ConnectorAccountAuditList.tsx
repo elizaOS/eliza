@@ -1,7 +1,8 @@
 import { RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { client } from "../../api";
 import type { ConnectorAccountAuditEventRecord } from "../../api/client-agent";
+import { useFetchData } from "../../hooks";
 import { cn } from "../../lib/utils";
 import {
   type TranslationContextValue,
@@ -51,9 +52,6 @@ export function ConnectorAccountAuditList({
   className,
 }: ConnectorAccountAuditListProps) {
   const { t } = useTranslation();
-  const [events, setEvents] = useState<ConnectorAccountAuditEventRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const query = useMemo(
     () => ({
@@ -63,37 +61,29 @@ export function ConnectorAccountAuditList({
     [accountId, limit],
   );
 
-  const refresh = useCallback(async () => {
-    if (!provider.trim()) {
-      setEvents([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
+  const fetchState = useFetchData<ConnectorAccountAuditEventRecord[]>(
+    async (_signal) => {
+      if (!provider.trim()) return [];
       const response = await client.listConnectorAccountAuditEvents(
         provider,
         query,
       );
-      setEvents(response.events);
-      setError(null);
-    } catch (err) {
-      setEvents([]);
-      setError(
-        err instanceof Error && err.message.trim()
-          ? err.message
-          : t("connectoraudit.loadError", {
-              defaultValue: "Failed to load audit events",
-            }),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [provider, query, t]);
+      return response.events;
+    },
+    [provider, query],
+  );
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const events = fetchState.status === "success" ? fetchState.data : [];
+  const loading = fetchState.status === "loading";
+  const error =
+    fetchState.status === "error"
+      ? fetchState.error.message.trim()
+        ? fetchState.error.message
+        : t("connectoraudit.loadError", {
+            defaultValue: "Failed to load audit events",
+          })
+      : null;
+  const refresh = fetchState.refetch;
 
   return (
     <div
@@ -117,7 +107,7 @@ export function ConnectorAccountAuditList({
           variant="outline"
           size="sm"
           disabled={loading}
-          onClick={() => void refresh()}
+          onClick={refresh}
           aria-label={t("connectoraudit.refreshAria", {
             defaultValue: "Refresh connector audit events",
           })}

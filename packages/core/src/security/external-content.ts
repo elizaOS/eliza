@@ -231,6 +231,28 @@ export function wrapExternalContent(
 }
 
 /**
+ * Returns the original payload from a string produced by
+ * {@link wrapExternalContent}, or null when the text is not wrapped.
+ */
+export function extractWrappedExternalContent(content: string): string | null {
+	const start = content.indexOf(EXTERNAL_CONTENT_START);
+	if (start < 0) return null;
+
+	const payloadStart = start + EXTERNAL_CONTENT_START.length;
+	const end = content.indexOf(EXTERNAL_CONTENT_END, payloadStart);
+	if (end < 0) return null;
+
+	const inner = content.slice(payloadStart, end);
+	const metadataSeparator = "\n---\n";
+	const separatorIndex = inner.indexOf(metadataSeparator);
+	const payload =
+		separatorIndex >= 0
+			? inner.slice(separatorIndex + metadataSeparator.length)
+			: inner;
+	return payload.trim();
+}
+
+/**
  * Builds a safe prompt for handling external content.
  * Combines the security-wrapped content with contextual information.
  *

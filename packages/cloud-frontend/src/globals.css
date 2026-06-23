@@ -1647,9 +1647,13 @@ button:not(:disabled),
   *,
   *::before,
   *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion accessibility override must win the cascade. */
     animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion accessibility override must win the cascade. */
     animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion accessibility override must win the cascade. */
     transition-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion accessibility override must win the cascade. */
     scroll-behavior: auto !important;
   }
 }

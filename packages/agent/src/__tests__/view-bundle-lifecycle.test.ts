@@ -39,7 +39,6 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
   "plugins/plugin-clawville/src/index.ts",
-  "plugins/plugin-defense-of-the-agents/src/index.ts",
   "plugins/plugin-screenshare/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/index.ts",

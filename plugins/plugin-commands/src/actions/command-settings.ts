@@ -38,6 +38,14 @@ function cacheKey(roomId: string): string {
 	return `command-settings:${roomId}`;
 }
 
+/** Clear the persisted command settings for a room. */
+export async function clearCommandSettings(
+	runtime: IAgentRuntime,
+	roomId: string,
+): Promise<boolean> {
+	return runtime.deleteCache(cacheKey(roomId));
+}
+
 /** Read the persisted command settings for a room (empty object if none). */
 export async function getCommandSettings(
 	runtime: IAgentRuntime,

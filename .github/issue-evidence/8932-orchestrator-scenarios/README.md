@@ -8,17 +8,33 @@ bun run --cwd packages/scenario-runner test:orchestrator:pr:e2e
 
 Result:
 
-- Run id: `5aefb799-3234-457a-a022-8d699a9215e2`
+- Run id: `471802ef-d3e8-4d34-8420-a5b27e75c32f`
 - Provider: `deterministic-llm-proxy`
-- Scenarios: 3 passed, 0 failed, 0 skipped
+- Scenarios: 3 passed, 0 failed, 0 skipped (the lane also runs the unrelated
+  `orchestrator-view-cloud-deploy` scenario; the three #8932 scenarios are the
+  evidence here)
 - Viewer: `viewer/index.html`
 - Matrix report: `matrix.json`
-- Native export: `native.jsonl` plus `native.manifest.json`
+- Native export: `native.jsonl` (**3 `eliza_native_v1` rows**) plus
+  `native.manifest.json` (`counts.rows: 3`, `passedRows: 3`)
 
-Note: the PR lane uses deterministic orchestrator action fixtures so it can run
-in CI without live model secrets. The runner still executes the official
-`--export-native` path; the manifest records zero trajectory rows for this lane
-because no trajectory DB files are produced by the deterministic action harness.
+Note: the PR lane uses the deterministic LLM proxy so it can run in CI without
+live model secrets. It executes the official `--export-native` path, and the
+manifest now records **3 non-empty trajectory rows** (previously zero). The
+orchestrator's grill is a real `runtime.useModel(TEXT_SMALL)` call inside
+`verifyGoalCompletion`; that call is now recorded as a one-stage trajectory
+(`recordVerifierBoundary`), which the native-export classifier tags as
+`task_type: goal_verification`, `domain: agent-orchestrator`. The three rows are:
+
+- `orchestrator-evidence-bundle` — 1 row: the verifier prompt carries the git
+  diff + test stdout + verified URL, verdict `passed: true`.
+- `orchestrator-grilling-happy-path` — 2 rows: round 1 verdict `passed: false`
+  ("did not paste the required test output" → the grill fires), round 2 verdict
+  `passed: true` after pasted proof.
+
+Each row carries `scenarioStatus: passed` so the training-prep scorer treats it
+as a gold row, not a repair row. This is the keyless, reproducible resolution of
+the original "native JSONL is empty" gap.
 
 ## Live-model trajectory (`live-grilling-trajectory.json`)
 

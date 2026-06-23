@@ -9,6 +9,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import type { TranscriptionAudio } from "../../../services/voice/types";
+import { NativePcmVoiceTurnCoordinator } from "../native-voice-capture";
 import type { CapacitorLlamaContext } from "../types";
 import {
 	createCapacitorMtpTextRunner,
@@ -212,5 +213,81 @@ describe("runDeviceVoiceTurn", () => {
 			audio: AUDIO,
 		});
 		expect(exit).toBe("cancelled");
+	});
+});
+
+describe("NativePcmVoiceTurnCoordinator", () => {
+	it("rejects native turns before the capture lifecycle is started", async () => {
+		const coordinator = new NativePcmVoiceTurnCoordinator({
+			engine: {
+				runVoiceTurn: vi.fn(async (): Promise<VoiceTurnExitReason> => "done"),
+			},
+			context: fakeContext(),
+		});
+
+		await expect(coordinator.acceptTurn({ audio: AUDIO })).rejects.toThrow(
+			/start\(\)/,
+		);
+	});
+
+	it("serializes completed native PCM turns through runDeviceVoiceTurn", async () => {
+		const ctx = fakeContext();
+		let releaseFirst: ((reason: VoiceTurnExitReason) => void) | null = null;
+		const engine: DeviceVoiceEngine = {
+			runVoiceTurn: vi.fn(
+				() =>
+					new Promise<VoiceTurnExitReason>((resolve) => {
+						if (!releaseFirst) {
+							releaseFirst = resolve;
+							return;
+						}
+						resolve("token-cap");
+					}),
+			),
+		};
+		const coordinator = new NativePcmVoiceTurnCoordinator({
+			engine,
+			context: ctx,
+			maxGeneratedTokens: 128,
+		});
+
+		coordinator.start();
+		const first = coordinator.acceptTurn({ turnId: "turn-a", audio: AUDIO });
+		const secondAudio: TranscriptionAudio = {
+			pcm: new Float32Array([0.4, 0.5]),
+			sampleRate: 16_000,
+		};
+		const second = coordinator.acceptTurn({
+			turnId: "turn-b",
+			audio: secondAudio,
+			maxGeneratedTokens: 64,
+		});
+
+		await Promise.resolve();
+		expect(engine.runVoiceTurn).toHaveBeenCalledTimes(1);
+		releaseFirst?.("done");
+		await expect(first).resolves.toEqual({
+			turnId: "turn-a",
+			exitReason: "done",
+		});
+		await expect(second).resolves.toEqual({
+			turnId: "turn-b",
+			exitReason: "token-cap",
+		});
+		expect(engine.runVoiceTurn).toHaveBeenCalledTimes(2);
+
+		const firstCall = (
+			engine.runVoiceTurn as unknown as { mock: { calls: unknown[][] } }
+		).mock.calls[0] as [TranscriptionAudio, Record<string, unknown>];
+		const secondCall = (
+			engine.runVoiceTurn as unknown as { mock: { calls: unknown[][] } }
+		).mock.calls[1] as [TranscriptionAudio, Record<string, unknown>];
+		expect(firstCall[0]).toBe(AUDIO);
+		expect(firstCall[1].maxGeneratedTokens).toBe(128);
+		expect(secondCall[0]).toBe(secondAudio);
+		expect(secondCall[1].maxGeneratedTokens).toBe(64);
+
+		await coordinator.stop();
+		expect(coordinator.isRunning).toBe(false);
 	});
 });

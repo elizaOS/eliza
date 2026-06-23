@@ -7,6 +7,8 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { buildNarrativePrompt } from "../src/actions/brief.js";
+import { buildSchedulingPlanPrompt } from "../src/actions/lib/scheduling-handler.js";
+import { buildReminderDispatchPrompt } from "../src/lifeops/service-mixin-reminders.js";
 
 const SECTIONS = {
   calendar: [],
@@ -71,5 +73,56 @@ describe("BRIEF narrative — OptimizedPromptService routing", () => {
     // The dynamic header + data scaffold is preserved around the instructions.
     expect(prompt).toContain("composing the owner's morning briefing");
     expect(prompt).toContain("Data:");
+  });
+});
+
+describe("LifeOps action prompts — OptimizedPromptService routing", () => {
+  it("swaps in the optimized schedule_plan instructions and preserves request data", () => {
+    const runtime = runtimeWithOptimizedPrompt({
+      schedule_plan: "OPTIMIZED: choose the safest scheduling subaction.",
+    });
+    const prompt = buildSchedulingPlanPrompt({
+      runtime,
+      currentMessage: "Start a scheduling thread with Sam for next week.",
+      intent: "schedule with Sam",
+      params: { intent: "schedule with Sam", durationMinutes: 30 },
+      recentConversation: "User: next week is better",
+    });
+
+    expect(prompt).toContain(
+      "OPTIMIZED: choose the safest scheduling subaction.",
+    );
+    expect(prompt).not.toContain("Plan the scheduling negotiation action");
+    expect(prompt).toContain(
+      "Current request:\nStart a scheduling thread with Sam for next week.",
+    );
+    expect(prompt).toContain("durationMinutes: 30");
+  });
+
+  it("swaps in the optimized reminder_dispatch instructions and preserves reminder data", () => {
+    const runtime = {
+      ...runtimeWithOptimizedPrompt({
+        reminder_dispatch: "OPTIMIZED: dispatch concise reminder copy.",
+      }),
+      character: { name: "Eliza", bio: "Direct but warm." },
+    } as unknown as IAgentRuntime;
+
+    const prompt = buildReminderDispatchPrompt({
+      runtime,
+      title: "Take medication",
+      reminderAt: "2026-06-23T14:00:00.000Z",
+      channel: "push",
+      lifecycle: "plan",
+      urgency: "high",
+      recentConversation: ["User: I'm between meetings."],
+      nearbyReminderTitles: ["Call pharmacy"],
+    });
+
+    expect(prompt).toContain("OPTIMIZED: dispatch concise reminder copy.");
+    expect(prompt).not.toContain("Write a short reminder nudge");
+    expect(prompt).toContain("- title: Take medication");
+    expect(prompt).toContain("- channel: push");
+    expect(prompt).toContain("User: I'm between meetings.");
+    expect(prompt).toContain("- Call pharmacy");
   });
 });

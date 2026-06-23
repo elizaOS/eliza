@@ -16,9 +16,6 @@
       "@elizaos/plugin-feed": [
         "../../../../../../plugins/plugin-feed/src/index.ts"
       ],
-      "@elizaos/plugin-defense-of-the-agents": [
-        "../../../../../../plugins/plugin-defense-of-the-agents/src/index.ts"
-      ],
       "@elizaos/plugin-task-coordinator": [
         "../../../../../../plugins/plugin-task-coordinator/src/index.ts"
       ]

@@ -24,6 +24,10 @@ import {
   unregisterPluginViews,
 } from "@elizaos/agent/api/views-registry";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  xrListViewsAction,
+  xrOpenViewAction,
+} from "../actions/xr-view-actions.ts";
 import { xrViewHostRoute } from "../routes/xr-view-host.ts";
 import { xrViewsRoute } from "../routes/xr-views.ts";
 
@@ -107,33 +111,19 @@ function stringField(source: string, field: string): string | null {
   return source.match(new RegExp(`${field}:\\s*"([^"]+)"`))?.[1] ?? null;
 }
 
-// All 22 registered XR view IDs
-const ALL_XR_VIEW_IDS = [
-  "wallet",
-  "companion",
-  "training",
-  "task-coordinator",
-  "orchestrator",
-  "views-manager",
-  "polymarket",
-  "vincent",
-  "steward",
-  "shopify",
-  "phone",
-  "contacts",
-  "messages",
-  "feed",
-  "defense-of-the-agents",
-  "clawville",
-  "hyperliquid",
-  "screenshare",
-  "trajectory-logger",
-  "model-tester",
-  "smartglasses",
-  "facewear",
+const VIEW_HOST_SMOKE_IDS = [
+  "xr-route-smoke",
+  "hyphenated-view",
+  "space-panel",
 ] as const;
 
-// The 19 plugin manifest paths (same as plugin-tui-view-coverage.test.ts)
+const VOICE_ROUTE_SAMPLE_IDS = [
+  "xr-route-smoke",
+  "hyphenated-view",
+  "space-panel",
+] as const;
+
+// The plugin manifest paths (same as plugin-tui-view-coverage.test.ts)
 const VIEW_MANIFESTS = [
   "plugins/plugin-companion/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
@@ -149,7 +139,6 @@ const VIEW_MANIFESTS = [
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
   "plugins/plugin-clawville/src/index.ts",
-  "plugins/plugin-defense-of-the-agents/src/index.ts",
   "plugins/plugin-screenshare/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/index.ts",
@@ -190,9 +179,9 @@ describe("XR feature parity audit", () => {
 
   // 2. Route infrastructure ───────────────────────────────────────────────────
 
-  it("axis 2 — the xrViewHostRoute returns valid HTML for every registered xr view id", async () => {
+  it("axis 2 — the xrViewHostRoute returns valid HTML for arbitrary xr view ids", async () => {
     const failures: string[] = [];
-    for (const id of ALL_XR_VIEW_IDS) {
+    for (const id of VIEW_HOST_SMOKE_IDS) {
       const result = await xrViewHostRoute.routeHandler({
         params: { id },
         runtime: { port: 31337 },
@@ -294,14 +283,74 @@ describe("XR feature parity audit", () => {
     expect(missing, "missing agent actions").toEqual([]);
   });
 
-  it("axis 3 — extractViewId() knows all 22 view ids for natural-language routing", () => {
+  it("axis 3 — view actions route dynamically registered XR views", async () => {
+    await registerPluginViews({
+      name: XR_ROUTE_TEST_PLUGIN,
+      views: [
+        {
+          id: "xr-dynamic-action-panel",
+          label: "Dynamic Action Panel",
+          viewType: "xr",
+          path: "/apps/xr-dynamic-action-panel/xr",
+          icon: "Glasses",
+          description: "Dynamically registered action target",
+          bundleUrl: "https://views.example.test/xr-dynamic-action-panel.js",
+        },
+      ],
+    } as never);
+
+    const calls = {
+      opened: [] as Array<{ connectionId: string; viewId: string }>,
+      catalogs: [] as Array<Array<{ id: string; label: string }>>,
+    };
+    const runtime = {
+      port: 31337,
+      getService: () => ({
+        getConnections: () => [{ id: "headset-1", deviceType: "webxr" }],
+        hasActiveConnections: () => true,
+        openView: (connectionId: string, viewId: string) => {
+          calls.opened.push({ connectionId, viewId });
+        },
+        sendViewsCatalog: (
+          _connectionId: string,
+          views: Array<{ id: string; label: string }>,
+        ) => {
+          calls.catalogs.push(views);
+        },
+      }),
+    };
+
+    await xrOpenViewAction.handler?.(
+      runtime as never,
+      { content: { text: "open the dynamic action panel in xr" } } as never,
+      undefined,
+      {},
+    );
+    await xrListViewsAction.handler?.(
+      runtime as never,
+      { content: { text: "what can i open in xr?" } } as never,
+      undefined,
+      {},
+    );
+
+    expect(calls.opened).toContainEqual({
+      connectionId: "headset-1",
+      viewId: "xr-dynamic-action-panel",
+    });
+    expect(calls.catalogs.at(-1)).toContainEqual(
+      expect.objectContaining({
+        id: "xr-dynamic-action-panel",
+        label: "Dynamic Action Panel",
+      }),
+    );
     const actionsSource = readFile(
       "plugins/plugin-xr/src/actions/xr-view-actions.ts",
     );
-    const missing = ALL_XR_VIEW_IDS.filter(
-      (id) => !actionsSource.includes(`"${id}"`),
-    );
-    expect(missing, "view IDs missing from extractViewId()").toEqual([]);
+    expect(actionsSource).toContain("@elizaos/agent/api/views-registry");
+    expect(actionsSource).not.toContain("const known = [");
+    expect(actionsSource).not.toContain("runtime.plugins");
+    expect(actionsSource).not.toContain("RuntimePluginWithViews");
+    expect(actionsSource).not.toContain("plugin.views");
   });
 
   // 4. Connection modes ───────────────────────────────────────────────────────
@@ -332,14 +381,7 @@ describe("XR feature parity audit", () => {
   // 5. Voice input ────────────────────────────────────────────────────────────
 
   it("axis 5 — view-host pages have voice transcript routing for INPUT, TEXTAREA, SELECT, and ARIA widgets", async () => {
-    // All 22 view-host pages share the same template — test a representative sample
-    const sampleIds: (typeof ALL_XR_VIEW_IDS)[number][] = [
-      "wallet",
-      "phone",
-      "messages",
-      "training",
-    ];
-    for (const id of sampleIds) {
+    for (const id of VOICE_ROUTE_SAMPLE_IDS) {
       const result = await xrViewHostRoute.routeHandler({
         params: { id },
         runtime: { port: 31337 },
@@ -445,13 +487,11 @@ describe("XR feature parity audit", () => {
 
   // Cross-cutting: simulator test coverage ────────────────────────────────────
 
-  it("cross-cut — all 22 view ids are present in the all-views-crud Playwright spec", () => {
+  it("cross-cut — all-views-crud Playwright spec discovers XR views from the route", () => {
     if (!hasAppXr()) return;
     const specSrc = readAppXr("e2e/all-views-crud.spec.ts");
-    const missing = ALL_XR_VIEW_IDS.filter(
-      (id) => !specSrc.includes(`"${id}"`),
-    );
-    expect(missing, "view IDs missing from simulator test").toEqual([]);
+    expect(specSrc).toContain("/api/xr/views");
+    expect(specSrc).not.toContain("ALL_VIEW_IDS");
   });
 
   it("cross-cut — voice-forms Playwright spec is present (voice-into-forms routing tested)", () => {

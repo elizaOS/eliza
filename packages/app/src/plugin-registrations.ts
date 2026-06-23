@@ -10,10 +10,6 @@ export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[
       load: () => import("@elizaos/plugin-feed"),
     },
     {
-      key: "@elizaos/plugin-defense-of-the-agents",
-      load: () => import("@elizaos/plugin-defense-of-the-agents"),
-    },
-    {
       key: "@elizaos/plugin-clawville",
       load: () => import("@elizaos/plugin-clawville"),
     },

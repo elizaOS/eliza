@@ -25,10 +25,12 @@ import type {
 import type {
   LifeOpsPaymentSource,
   LifeOpsPaymentTransaction,
+} from "@elizaos/plugin-finances/payment-types";
+import type {
   LifeOpsSubscriptionAudit,
   LifeOpsSubscriptionCancellation,
   LifeOpsSubscriptionCandidate,
-} from "@elizaos/plugin-finances";
+} from "@elizaos/plugin-finances/subscriptions-types";
 import { FinancesRepository } from "@elizaos/plugin-finances/db/finances-repository";
 import { inboxDbSchema } from "@elizaos/plugin-inbox/db/schema";
 import type {

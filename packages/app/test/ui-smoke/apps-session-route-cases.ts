@@ -254,7 +254,6 @@ const managerVisibleViewTileCases = [
   { viewId: "clawville", path: "/clawville" },
   { viewId: "companion", path: "/companion" },
   { viewId: "contacts", path: "/contacts" },
-  { viewId: "defense-of-the-agents", path: "/defense-of-the-agents" },
   { viewId: "documents", path: "/documents" },
   { viewId: "facewear", path: "/apps/facewear" },
   { viewId: "feed", path: "/feed" },

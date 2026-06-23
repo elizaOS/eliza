@@ -68,6 +68,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts",
+    "test:scenarios": "cd ../.. && bun packages/scenario-runner/src/cli.ts list plugins/plugin-health/test/scenarios",
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",

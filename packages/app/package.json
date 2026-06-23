@@ -113,7 +113,6 @@
     "@elizaos/plugin-clawville": "workspace:*",
     "@elizaos/plugin-companion": "workspace:*",
     "@elizaos/plugin-contacts": "workspace:*",
-    "@elizaos/plugin-defense-of-the-agents": "workspace:*",
     "@elizaos/plugin-device-settings": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-facewear": "workspace:*",

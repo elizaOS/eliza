@@ -163,10 +163,6 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
     manifestPath: "plugins/plugin-clawville/src/index.ts",
   },
   {
-    pluginDir: "plugins/plugin-defense-of-the-agents",
-    manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
-  },
-  {
     pluginDir: "plugins/plugin-screenshare",
     manifestPath: "plugins/plugin-screenshare/src/index.ts",
   },

@@ -130,10 +130,6 @@ const LEVELS = [
     file: "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx",
   },
   {
-    name: "plugin view defense",
-    file: "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx",
-  },
-  {
     name: "plugin view screenshare",
     file: "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx",
   },

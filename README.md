@@ -117,7 +117,7 @@ bun install
 OPENAI_API_KEY=your_key bun run packages/examples/chat/chat.ts
 ```
 
-Nearly every surface has a working example in [`packages/examples/`](packages/examples) — 30+ in total. Each one has its own README and runs independently. They are the fastest way to see the framework standing on its own. See [Examples](#examples) below for the highlights.
+Nearly every surface has a working example in [`packages/examples/`](packages/examples) — 30+ and growing. Most examples run independently and include their own README. They are the fastest way to see the framework standing on its own. See [Examples](#examples) below for the highlights.
 
 > **About the partial clone.** `--filter=blob:none` gives you the full history but fetches file contents on demand — about 10× smaller. `git log`, branches, and `git checkout` work normally; `git blame` and `git log -p` will fetch on first use. To upgrade later: `git config --unset remote.origin.partialclonefilter && git fetch --refetch`. For one-off CI, `--depth=1 --single-branch` is even smaller.
 

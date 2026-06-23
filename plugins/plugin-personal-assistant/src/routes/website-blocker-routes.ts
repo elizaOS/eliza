@@ -11,7 +11,7 @@ import {
   startSelfControlBlock,
   stopSelfControlBlock,
   syncWebsiteBlockerExpiryTask,
-} from "@elizaos/plugin-blocker";
+} from "@elizaos/plugin-blocker/services/website-blocker/index";
 
 type WebsiteBlockerRequestBody = {
   websites?: string[] | string;

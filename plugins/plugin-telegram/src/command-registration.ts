@@ -12,14 +12,14 @@
  * decision Discord uses, so both connectors behave consistently.
  *
  * Per-target dispatch:
- *   - `agent`    → gate-safe commands (help/status/…) resolve to a deterministic
- *                  local reply via `resolveCommand`; other agent commands route
+ *   - `agent`    → deterministic commands
+ *                  (help/status/think/model/reset/…) resolve to a local reply
+ *                  via `resolveCommand`; pipeline-owned agent commands route
  *                  the reconstructed command text (the user's `/command args`
  *                  message) through the agent's message pipeline via
- *                  `MessageManager.handleMessage(ctx, { forceReply: true })`,
- *                  the same path inbound messages take. `forceReply` bypasses
- *                  the `TELEGRAM_AUTO_REPLY` gate because an explicit slash
- *                  command is an explicit request for a response.
+ *                  `MessageManager.handleMessage(ctx, { forceReply: true })`.
+ *                  `forceReply` bypasses the `TELEGRAM_AUTO_REPLY` gate because
+ *                  an explicit slash command is an explicit request for a response.
  *   - `navigate` → replies describing the in-app destination, resolving the
  *                  `/settings <section>` argument when present.
  *   - `client`   → GUI/TUI-only behaviors have no Telegram surface; handled
@@ -213,10 +213,10 @@ export async function resolveTelegramSenderAuth(
 }
 
 /**
- * Run an agent-target command. Gate-safe commands (help/status/whoami/…) are
- * resolved deterministically via `resolveCommand` and answered locally — no
- * round-trip through the LLM pipeline. Everything else routes the command
- * message through the agent pipeline, forcing a reply.
+ * Run an agent-target command. Deterministic commands
+ * (help/status/think/model/reset/…) resolve via `resolveCommand` and answer
+ * locally. Pipeline-owned commands route the command message through the agent
+ * pipeline, forcing a reply.
  */
 async function dispatchAgentCommand(
   ctx: Context,

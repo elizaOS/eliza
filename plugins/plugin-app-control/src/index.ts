@@ -34,6 +34,7 @@ import { AppRegistryService } from "./services/app-registry-service.js";
 import { AppVerificationService } from "./services/app-verification.js";
 import { AppWorkerHostService } from "./services/app-worker-host-service.js";
 import { VerificationRoomBridgeService } from "./services/verification-room-bridge.js";
+import { viewNavigationShortcuts } from "./shortcuts.js";
 
 export type { AppMode } from "./actions/app.js";
 export type {
@@ -91,6 +92,10 @@ export {
 	VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE,
 	VerificationRoomBridgeService,
 } from "./services/verification-room-bridge.js";
+export {
+	VIEW_NAVIGATION_SHORTCUT_ID,
+	viewNavigationShortcuts,
+} from "./shortcuts.js";
 export type {
 	AppLaunchResult,
 	AppRunSummary,
@@ -121,6 +126,7 @@ export const appControlPlugin: Plugin = {
 		closeAllViewsAction,
 		homescreenAction,
 	],
+	shortcuts: viewNavigationShortcuts,
 	// Three-stage view-switch cascade:
 	//  1. EARLY  — viewCommandShortcutEvaluator (responseHandlerEvaluator, no
 	//     model): on an explicit multilingual command ("open settings"), FORCES

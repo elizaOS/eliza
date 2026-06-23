@@ -42,9 +42,6 @@
         "../../plugins/plugin-wallet-ui/dist/index.d.ts"
       ],
       "@elizaos/plugin-feed": ["./src/types/side-effect-app-modules.d.ts"],
-      "@elizaos/plugin-defense-of-the-agents": [
-        "./src/types/side-effect-app-modules.d.ts"
-      ],
       "@elizaos/plugin-trajectory-logger": [
         "./src/types/side-effect-app-modules.d.ts"
       ],
@@ -65,6 +62,18 @@
       ],
       "@elizaos/plugin-app-manager/*": [
         "../../plugins/plugin-app-manager/src/*"
+      ],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../plugins/plugin-capacitor-bridge/src/*"
+      ],
+      "@elizaos/plugin-agent-skills": [
+        "../../plugins/plugin-agent-skills/src/index.ts"
+      ],
+      "@elizaos/plugin-agent-skills/*": [
+        "../../plugins/plugin-agent-skills/src/*"
       ],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [

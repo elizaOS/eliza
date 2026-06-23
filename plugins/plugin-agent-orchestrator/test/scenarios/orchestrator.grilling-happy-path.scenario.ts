@@ -2,6 +2,8 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { runGrillingHappyPathCheck } from "./_helpers/grilling-scenario";
 
+let capturedRuntime: IAgentRuntime | undefined;
+
 // Grilling happy path (#8932): a sub-agent claims done with NO test output →
 // the verifier grills (corrective re-prompt citing the unmet criterion) → the
 // sub-agent re-reports WITH pasted passing test output → the task is verified
@@ -17,15 +19,27 @@ export default scenario({
   tags: ["orchestrator", "grilling", "verification", "live"],
   description:
     "Drives the OrchestratorTaskService verification loop: round 1 claims complete with no evidence and must be grilled (not accepted); round 2 re-reports with pasted passing test output and is verified done. The verifier judgement uses the live model.",
+  seed: [
+    {
+      type: "custom",
+      name: "capture live runtime for verifier",
+      apply: async (ctx) => {
+        capturedRuntime = ctx.runtime as IAgentRuntime;
+        return undefined;
+      },
+    },
+  ],
   turns: [],
   finalChecks: [
     {
       type: "custom",
       name: "grilling-happy-path",
       predicate: (ctx) => {
-        const runtime = ctx.runtime as IAgentRuntime;
+        const runtime =
+          (ctx.runtime as IAgentRuntime | undefined) ?? capturedRuntime;
+        if (!runtime) return "scenario runtime unavailable";
         return runGrillingHappyPathCheck(runtime, (...args: unknown[]) =>
-          (runtime.useModel as (...a: unknown[]) => Promise<unknown>)(...args),
+          runtime.useModel(...(args as Parameters<typeof runtime.useModel>)),
         );
       },
     },

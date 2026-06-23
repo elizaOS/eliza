@@ -497,11 +497,15 @@ async function dispatchOrchestratorRoutes(
         );
         return true;
       }
-      const verdict = await verifyGoalCompletion(ctx.runtime, {
-        goal: doc.goal,
-        acceptanceCriteria: doc.acceptanceCriteria,
-        completionEvidence,
-      });
+      const verdict = await verifyGoalCompletion(
+        ctx.runtime,
+        {
+          goal: doc.goal,
+          acceptanceCriteria: doc.acceptanceCriteria,
+          completionEvidence,
+        },
+        { recordTrajectory: { roomId: doc.roomId ?? undefined, taskId } },
+      );
       const task = await service
         .validateTask(taskId, {
           passed: verdict.passed,

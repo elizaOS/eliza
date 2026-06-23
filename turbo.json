@@ -467,6 +467,14 @@
       "dependsOn": ["@elizaos/plugin-sql#build"],
       "outputs": []
     },
+    "@elizaos/gcp-examples#typecheck": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/plugin-openai#build",
+        "@elizaos/plugin-sql#build"
+      ],
+      "outputs": []
+    },
     "@elizaos/scenario-runner#typecheck": {
       "dependsOn": ["@elizaos/plugin-browser#build", "^build"],
       "outputs": []

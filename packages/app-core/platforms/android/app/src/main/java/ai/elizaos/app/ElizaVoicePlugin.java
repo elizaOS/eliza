@@ -41,8 +41,8 @@ import java.nio.ByteOrder;
  *   contextCreate({ bundleDir })               -> { handle }
  *   contextDestroy({ handle })
  *   pipelineOpen({ ctx })                      -> { handle }
- *   pipelineProcess({ handle, pcm16 })         -> { turns: [{turnId,samples,...,embedding?,labels?}] }
- *   pipelineFlush({ handle })                  -> { turns: [...] }
+ *   pipelineProcess({ handle, pcm16, includePcm? }) -> { turns: [{turnId,samples,...,embedding?,labels?,pcm?}] }
+ *   pipelineFlush({ handle, includePcm? })     -> { turns: [...] }
  *   pipelineReset({ handle }) / pipelineClose({ handle })
  *   wakewordOpen({ ctx, headName })            -> { handle }
  *   wakewordScore({ handle, pcm16 })           -> { scores: number[] }
@@ -273,10 +273,11 @@ public class ElizaVoicePlugin extends Plugin {
         if (!ensureLoadedOrReject(call)) return;
         long handle = longArg(call, "handle");
         String pcm16 = call.getString("pcm16", "");
+        boolean includePcm = Boolean.TRUE.equals(call.getBoolean("includePcm", false));
         try {
             float[] pcm = decodePcm16(pcm16);
             String turnsJson = ElizaVoiceNative.nativePipelineProcess(handle, pcm);
-            call.resolve(buildTurns(handle, turnsJson));
+            call.resolve(buildTurns(handle, turnsJson, includePcm));
         } catch (Throwable e) {
             call.reject("pipelineProcess failed: " + e.getMessage());
         }
@@ -286,16 +287,17 @@ public class ElizaVoicePlugin extends Plugin {
     public void pipelineFlush(PluginCall call) {
         if (!ensureLoadedOrReject(call)) return;
         long handle = longArg(call, "handle");
+        boolean includePcm = Boolean.TRUE.equals(call.getBoolean("includePcm", false));
         try {
             String turnsJson = ElizaVoiceNative.nativePipelineFlush(handle);
-            call.resolve(buildTurns(handle, turnsJson));
+            call.resolve(buildTurns(handle, turnsJson, includePcm));
         } catch (Throwable e) {
             call.reject("pipelineFlush failed: " + e.getMessage());
         }
     }
 
-    /** Attach per-turn embedding/labels payloads to the native turn JSON. */
-    private JSObject buildTurns(long handle, String turnsJson) throws JSONException {
+    /** Attach per-turn native payloads to the native turn JSON. */
+    private JSObject buildTurns(long handle, String turnsJson, boolean includePcm) throws JSONException {
         JSONArray native_ = new JSONArray(turnsJson);
         JSArray turns = new JSArray();
         for (int i = 0; i < native_.length(); i++) {
@@ -306,6 +308,11 @@ public class ElizaVoicePlugin extends Plugin {
             turn.put("embeddingDim", emb != null ? emb.length : 0);
             turn.put("labels", encodeBytes(labels));
             turn.put("labelCount", labels != null ? labels.length : 0);
+            if (includePcm) {
+                float[] pcm = ElizaVoiceNative.nativePipelineTurnPcm(handle, i);
+                turn.put("pcm", encodeFloats(pcm));
+                turn.put("pcmSampleRate", 16000);
+            }
             turns.put(turn);
         }
         JSObject r = new JSObject();

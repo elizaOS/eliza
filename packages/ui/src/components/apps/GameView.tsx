@@ -46,10 +46,10 @@ import {
 } from "./viewer-auth";
 
 /**
- * Optional self-learning telemetry fields the "Defense of the Agents" game loop
- * may push into {@link AppSessionState.telemetry}. Every field is optional: the
- * loop only emits the keys it currently tracks, so absent fields must render an
- * explicit empty state rather than a fabricated default.
+ * Optional self-learning telemetry fields a game loop may push into
+ * {@link AppSessionState.telemetry}. Every field is optional: the loop only
+ * emits the keys it currently tracks, so absent fields must render an explicit
+ * empty state rather than a fabricated default.
  */
 interface GameLearningTelemetry {
   abilityPriority?: string[];
@@ -1517,7 +1517,7 @@ export function GameView() {
             {activeSessionState.goalLabel}
           </div>
         ) : null}
-        {/* Defense of the Agents telemetry dashboard */}
+        {/* Optional hero telemetry dashboard */}
         {activeSessionState?.telemetry?.heroClass != null ? (
           <div className="px-2 py-2 text-2xs space-y-1.5">
             <div className="flex items-center gap-2">

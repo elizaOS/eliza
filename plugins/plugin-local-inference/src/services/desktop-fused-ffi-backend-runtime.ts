@@ -237,8 +237,13 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 			draftModelPath: overrides?.draftModelPath ?? null,
 			mmprojPath: overrides?.mmprojPath ?? null,
 			// The fused path applies these at its first `llmStreamOpen`:
-			// gpuLayers + KV-cache quant types from the session config.
+			// context size, gpuLayers, and KV-cache quant types from the
+			// session config.
 			loadConfig: {
+				contextSize:
+					typeof overrides?.contextSize === "number"
+						? overrides.contextSize
+						: undefined,
 				gpuLayers:
 					typeof overrides?.gpuLayers === "number"
 						? overrides.gpuLayers

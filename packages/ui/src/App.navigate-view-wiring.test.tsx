@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,6 +18,16 @@ const appState = vi.hoisted(() => ({
 const desktopTabsMock = vi.hoisted(() => ({
   closeTab: vi.fn(),
   openTab: vi.fn(),
+}));
+
+const desktopTabsState = vi.hoisted(() => ({
+  tabs: [] as Array<{
+    viewId: string;
+    label: string;
+    path: string;
+    icon?: string;
+    pinned: boolean;
+  }>,
 }));
 
 const desktopBridgeMock = vi.hoisted(() => ({
@@ -112,6 +128,10 @@ vi.mock("@capacitor/keyboard", () => ({
 
 vi.mock("./bridge/electrobun-rpc", () => desktopBridgeMock);
 
+vi.mock("./bridge/electrobun-runtime", () => ({
+  isElectrobunRuntime: () => true,
+}));
+
 vi.mock("./platform/init", () => ({
   isDesktopPlatform: () => false,
   isIOS: false,
@@ -121,7 +141,7 @@ vi.mock("./platform/init", () => ({
 
 vi.mock("./hooks/useDesktopTabs", () => ({
   useDesktopTabs: () => ({
-    tabs: [],
+    tabs: desktopTabsState.tabs,
     closeTab: desktopTabsMock.closeTab,
     openTab: desktopTabsMock.openTab,
   }),
@@ -327,7 +347,12 @@ function navigateView(detail: Record<string, unknown>) {
 describe("App navigate-view event wiring", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/?shellMode=chat-overlay");
+    Reflect.deleteProperty(window, "__ELIZA_API_BASE__");
+    Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
+    Reflect.deleteProperty(window, "__ELIZA_API_TOKEN__");
+    Reflect.deleteProperty(window, "__ELIZAOS_API_TOKEN__");
     appState.tab = "chat";
+    desktopTabsState.tabs = [];
     appState.setTab.mockClear();
     desktopTabsMock.openTab.mockClear();
     desktopTabsMock.closeTab.mockClear();
@@ -338,6 +363,7 @@ describe("App navigate-view event wiring", () => {
 
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
   });
 
   it("routes view-manager events through the mounted App listener", async () => {
@@ -402,6 +428,7 @@ describe("App navigate-view event wiring", () => {
         undefined,
       );
     });
+
     const loader = getByTestId("dynamic-view-loader");
     expect(loader.getAttribute("data-bundle-url")).toBe(
       "/api/views/remote-ledger/bundle.js",
@@ -413,6 +440,62 @@ describe("App navigate-view event wiring", () => {
         .querySelector('[data-shell-content-region="true"]')
         ?.className.includes("pb-[var(--eliza-continuous-chat-clearance"),
     ).toBe(true);
+  });
+
+  it("reports user desktop-tab clicks to the agent without a navigation echo", async () => {
+    appState.tab = "apps";
+    window.history.replaceState(null, "", "/apps");
+    desktopTabsState.tabs = [
+      {
+        viewId: "remote-ledger",
+        label: "Remote Ledger",
+        path: "/apps/remote-ledger",
+        pinned: true,
+      },
+    ];
+    (
+      window as Window & {
+        __ELIZA_API_BASE__?: string;
+        __ELIZAOS_API_BASE__?: string;
+      }
+    ).__ELIZA_API_BASE__ = "http://agent.local";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/commands")) {
+          return new Response(JSON.stringify({ commands: [] }), {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          });
+        }
+        if (url.includes("/api/custom-actions")) {
+          return new Response(JSON.stringify({ actions: [] }), {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          });
+        }
+        return new Response("{}", { status: 200 });
+      }),
+    );
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Remote Ledger" }));
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "http://agent.local/api/views/remote-ledger/navigate",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            source: "user",
+            path: "/apps/remote-ledger",
+          }),
+        }),
+      );
+    });
+    expect(window.location.pathname).toBe("/apps/remote-ledger");
   });
 
   it("renders split-view events as a live dynamic view layout", async () => {

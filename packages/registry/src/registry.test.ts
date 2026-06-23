@@ -1,8 +1,16 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { generateRegistry, toGeneratedEntry } from "./generate.ts";
 import { loadThirdPartyEntries } from "./loader.ts";
 import { validateRegistryEntry } from "./schema.ts";
 import type { RegistryEntry } from "./types.ts";
+
+const packageRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 
 const VALID: RegistryEntry = {
   package: "elizaos-plugin-echo",
@@ -68,5 +76,11 @@ describe("on-disk entries", () => {
     expect(entries.some((e) => e.package === "elizaos-plugin-echo")).toBe(true);
     const { registry } = generateRegistry(entries);
     expect(registry["elizaos-plugin-echo"]).toBeDefined();
+  });
+
+  it("keeps generated-registry.json in sync with source entries", () => {
+    const generatedPath = path.join(packageRoot, "generated-registry.json");
+    const generated = JSON.parse(fs.readFileSync(generatedPath, "utf8"));
+    expect(generated).toEqual(generateRegistry(loadThirdPartyEntries()));
   });
 });

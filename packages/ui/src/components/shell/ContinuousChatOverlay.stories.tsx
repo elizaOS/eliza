@@ -185,6 +185,7 @@ const SLASH_COMMANDS: SlashCommandCatalogItem[] = [
 const SLASH_CONTROLLER: SlashCommandController = {
   commands: SLASH_COMMANDS,
   loading: false,
+  naturalShortcutsEnabled: false,
   resolveChoices: () => [],
   resolveSection: (t: string) =>
     ({ model: "ai-model", voice: "voice", connectors: "connectors" })[t],

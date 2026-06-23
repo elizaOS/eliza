@@ -17,8 +17,8 @@ import {
 import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
 import { calendarPlugin } from "@elizaos/plugin-calendar";
 import { CalendlyAdapter } from "@elizaos/plugin-calendly";
-import { financesPlugin } from "@elizaos/plugin-finances";
-import { goalsPlugin } from "@elizaos/plugin-goals";
+import { financesPlugin } from "@elizaos/plugin-finances/plugin";
+import { goalsPlugin } from "@elizaos/plugin-goals/plugin";
 import { GoogleGmailAdapter } from "@elizaos/plugin-google";
 import {
   createDefaultCircadianInsightContract,
@@ -30,7 +30,7 @@ import {
   registerHealthDefaultPacks,
 } from "@elizaos/plugin-health";
 import { remindersPlugin } from "@elizaos/plugin-reminders";
-import { inboxPlugin } from "@elizaos/plugin-inbox";
+import { inboxPlugin } from "@elizaos/plugin-inbox/plugin";
 import { remoteDesktopPlugin } from "@elizaos/plugin-remote-desktop";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import { blockAction } from "./actions/block.js";
@@ -1109,6 +1109,8 @@ export const personalAssistantPlugin: Plugin = rawPersonalAssistantPlugin;
 
 export {
   appBlockerProvider,
+} from "@elizaos/plugin-blocker/providers/app-blocker";
+export {
   getAppBlockerPermissionState,
   getAppBlockerStatus,
   getCachedAppBlockerStatus,
@@ -1117,7 +1119,7 @@ export {
   selectAppsForBlocking,
   startAppBlock,
   stopAppBlock,
-} from "@elizaos/plugin-blocker";
+} from "@elizaos/plugin-blocker/services/app-blocker/index";
 export { workThreadAction } from "./actions/work-thread.js";
 export type {
   OverdueDigest,

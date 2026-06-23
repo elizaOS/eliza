@@ -109,6 +109,7 @@ function makeSlash(
   return {
     commands: COMMANDS,
     loading: false,
+    naturalShortcutsEnabled: false,
     resolveChoices: () => [],
     resolveSection: (t: string) =>
       ({ model: "ai-model", voice: "voice", connectors: "connectors" })[t],
@@ -189,6 +190,25 @@ describe("ContinuousChatOverlay slash commands", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(slash.clearChat).toHaveBeenCalled();
     expect(controller.send).not.toHaveBeenCalled();
+  });
+
+  it("natural navigation stays inert when the feature flag is off", () => {
+    const slash = makeSlash();
+    const { input, controller } = renderOverlay(slash);
+    fireEvent.change(input, { target: { value: "open settings" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(controller.send).toHaveBeenCalledWith("open settings");
+    expect(slash.navigateSettings).not.toHaveBeenCalled();
+  });
+
+  it("feature-flagged natural navigation runs through the client command path", () => {
+    const slash = makeSlash({ naturalShortcutsEnabled: true });
+    const { input, controller } = renderOverlay(slash);
+    fireEvent.change(input, { target: { value: "open settings" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(slash.navigateSettings).toHaveBeenCalledWith(undefined);
+    expect(controller.send).not.toHaveBeenCalled();
+    expect(input.value).toBe("");
   });
 
   it("Enter on an agent command sends the slash text", () => {

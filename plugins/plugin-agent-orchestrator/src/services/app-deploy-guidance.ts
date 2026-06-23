@@ -17,6 +17,11 @@
 
 import { readConfigEnvKey } from "./config-env.js";
 import { APP_DEPLOY_TASK_RE } from "./skill-recommender.js";
+import {
+  buildLocalViewPluginPrompt,
+  buildViewPluginDeployPrompt,
+  type ViewPluginDeployPromptOptions,
+} from "./view-deploy-guidance.js";
 
 /**
  * Whether a task builds a HOSTED web surface that should get the deploy
@@ -31,10 +36,9 @@ export function isAppBuildTask(taskText: string | undefined | null): boolean {
 }
 
 /**
- * Whether a task builds an elizaOS VIEW or PLUGIN. These get the cloud-vs-local
- * sandbox contract (#8918) rather than the hosted-app deploy contract: a view
- * usually runs in the agent's LOCAL sandbox (registered via Plugin.views) and
- * only goes to Cloud when it must be hosted/shared beyond this agent.
+ * Whether a task builds an elizaOS VIEW or PLUGIN. These get view-specific
+ * cloud/local sandbox guidance (#8918) rather than the generic hosted-app
+ * deploy contract.
  */
 const VIEW_PLUGIN_TASK_RE =
   /\b(view[-\s]?plugin|plugin[-\s]?view|(creat|build|add|mak)(e|ing)?\s+(?:(?:a|an|new)\s+)*(view|plugin)|register[-\s]?(?:a\s+)?view|viewKind)\b/i;
@@ -46,7 +50,7 @@ export function isViewPluginTask(taskText: string | undefined | null): boolean {
   return VIEW_PLUGIN_TASK_RE.test(taskText);
 }
 
-export type AppDeployTarget = "eliza-cloud" | "agent-home";
+export type AppDeployTarget = "eliza-cloud" | "cloud" | "agent-home";
 
 export interface AppDeployConfig {
   target: AppDeployTarget;
@@ -74,6 +78,9 @@ export function resolveAppDeployConfig(): AppDeployConfig {
 
   if (requested === "agent-home" && agentHomeAppsDir && agentHomeBaseUrl) {
     return { target: "agent-home", agentHomeAppsDir, agentHomeBaseUrl };
+  }
+  if (requested === "cloud" || requested === "eliza-cloud") {
+    return { target: "eliza-cloud" };
   }
   return { target: "eliza-cloud" };
 }
@@ -105,16 +112,17 @@ function agentHomeGuidance(config: AppDeployConfig): string {
 
 /**
  * Cloud-vs-local-sandbox contract for a view/plugin task (#8918). A view-plugin
- * defaults to running in the agent's LOCAL sandbox; Cloud is opt-in (hosted).
+ * follows the configured target: Eliza Cloud gets the full publish/register
+ * contract, while non-cloud targets stay local-sandbox only.
  */
-export function viewPluginGuidance(): string {
-  return [
-    "--- View/Plugin Deployment (cloud vs local sandbox) ---",
-    "This task builds an elizaOS view or plugin. Choose the deploy target deliberately:",
-    "- LOCAL SANDBOX (default): register the view via `Plugin.views` with an explicit `viewKind`; it loads in this agent's runtime with no Cloud deploy. Verify it appears in `/api/views` and renders before reporting done.",
-    "- ELIZA CLOUD: only when the view/plugin must be hosted or shared beyond this agent — deploy via the Cloud app/container flow (register for an `appId`), as in the app-build contract. Report the verified live Cloud URL.",
-    "Do NOT push a local-only view to Cloud, and do NOT leave a Cloud-intended view as un-deployed local files. State which path you took and the matching verification (local: present in `/api/views`; cloud: verified live URL).",
-  ].join("\n");
+export function viewPluginGuidance(
+  config?: AppDeployConfig,
+  options?: ViewPluginDeployPromptOptions,
+): string {
+  const resolved = config ?? resolveAppDeployConfig();
+  return isCloudDeployTarget(resolved)
+    ? buildViewPluginDeployPrompt(options)
+    : buildLocalViewPluginPrompt();
 }
 
 /** Build the deploy-guidance block for the configured target. */
@@ -123,6 +131,18 @@ export function buildAppDeployGuidance(config?: AppDeployConfig): string {
   return resolved.target === "agent-home"
     ? agentHomeGuidance(resolved)
     : elizaCloudGuidance();
+}
+
+function isCloudDeployTarget(config: AppDeployConfig): boolean {
+  return config.target === "eliza-cloud" || config.target === "cloud";
+}
+
+function extractViewPluginSourceDir(task: string): string | undefined {
+  return (
+    task
+      .match(/plugin source directory is\s+(.+?)(?:\. It|\n|$)/i)?.[1]
+      ?.trim() ?? task.match(/source lives in\s+(.+?)(?:\.|\n|$)/i)?.[1]?.trim()
+  );
 }
 
 /**
@@ -138,6 +158,7 @@ export function augmentTaskWithDeployGuidance(
   // otherwise re-trigger detection on a second pass.
   if (
     task.includes("--- View/Plugin Deployment") ||
+    task.includes("--- View Plugin Deployment") ||
     task.includes("--- App Deployment")
   ) {
     return task;
@@ -146,7 +167,9 @@ export function augmentTaskWithDeployGuidance(
   // before the hosted-app contract so a "build a view plugin" task isn't
   // mis-routed to "deploy + report a live URL".
   if (isViewPluginTask(task) && !isAppBuildTask(task)) {
-    return `${task.trimEnd()}\n\n${viewPluginGuidance()}`;
+    return `${task.trimEnd()}\n\n${viewPluginGuidance(config, {
+      sourceDir: extractViewPluginSourceDir(task),
+    })}`;
   }
   if (!isAppBuildTask(task)) {
     return task;

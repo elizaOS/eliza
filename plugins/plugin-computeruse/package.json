@@ -40,7 +40,13 @@
     "build": "bun run build.ts",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsgo --noEmit",
-    "validate:ios-device-evidence": "node scripts/validate-ios-device-evidence.mjs"
+    "validate:ios-device-evidence": "node scripts/validate-ios-device-evidence.mjs",
+    "validate:platform-evidence": "node scripts/validate-platform-evidence.mjs",
+    "validate:android-device-evidence": "node scripts/validate-platform-evidence.mjs docs/android-device-validation.json",
+    "validate:android-aosp-evidence": "node scripts/validate-platform-evidence.mjs docs/android-aosp-validation.json",
+    "validate:macos-desktop-evidence": "node scripts/validate-platform-evidence.mjs docs/macos-desktop-validation.json",
+    "validate:linux-desktop-evidence": "node scripts/validate-platform-evidence.mjs docs/linux-desktop-validation.json",
+    "validate:windows-desktop-evidence": "node scripts/validate-platform-evidence.mjs docs/windows-desktop-validation.json"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

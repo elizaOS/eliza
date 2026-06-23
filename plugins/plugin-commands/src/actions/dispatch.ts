@@ -11,11 +11,11 @@
  * pipeline when it didn't.
  */
 
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
 import { detectCommand, hasCommand } from "../parser";
 import { findCommandByKeyForRuntime } from "../registry";
 import type { CommandContext, ParsedCommand } from "../types";
-import { isGateSafeCommand, runCommand } from "./handlers";
+import { isDeterministicCommand, runCommand } from "./handlers";
 
 export interface CommandDispatchOptions {
 	/**
@@ -27,11 +27,14 @@ export interface CommandDispatchOptions {
 	isAuthorized?: boolean;
 	isElevated?: boolean;
 	senderName?: string;
+	callback?: HandlerCallback;
 	/**
-	 * When true (the default), only commands whose entire effect is their reply
-	 * are dispatched; lifecycle/management commands fall through to the pipeline
-	 * that owns their side effects.
+	 * When true (the default), only commands owned by the deterministic command
+	 * layer are dispatched; broader management commands fall through to the
+	 * pipeline that owns their side effects.
 	 */
+	deterministicOnly?: boolean;
+	/** @deprecated Use `deterministicOnly`. */
 	gateSafeOnly?: boolean;
 }
 
@@ -55,8 +58,10 @@ function buildContext(
 		isAuthorized: options.isAuthorized ?? false,
 		isElevated: options.isElevated ?? false,
 		roomId: message.roomId,
+		message,
 	};
 	if (options.senderName) context.senderName = options.senderName;
+	if (options.callback) context.callback = options.callback;
 	const channelId = content.channelId ?? content.source;
 	if (channelId) context.channelId = channelId;
 	return context;
@@ -84,8 +89,9 @@ export async function resolveCommand(
 	if (definition?.target && definition.target.kind !== "agent") {
 		return { handled: false, command: parsed };
 	}
-	const gateSafeOnly = options.gateSafeOnly ?? true;
-	if (gateSafeOnly && !isGateSafeCommand(parsed.key)) {
+	const deterministicOnly =
+		options.deterministicOnly ?? options.gateSafeOnly ?? true;
+	if (deterministicOnly && !isDeterministicCommand(parsed.key)) {
 		return { handled: false, command: parsed };
 	}
 

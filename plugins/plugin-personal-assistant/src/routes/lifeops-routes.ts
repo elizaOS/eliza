@@ -77,11 +77,11 @@ import {
   saveLifeOpsAppState,
 } from "../lifeops/app-state.js";
 import {
-  type AddPaymentSourceRequest,
   FinancesService,
-  FinancesServiceError,
   sanitizePaymentSourceForClient,
-} from "@elizaos/plugin-finances";
+} from "@elizaos/plugin-finances/finances-service";
+import { FinancesServiceError } from "@elizaos/plugin-finances/finance-normalize";
+import type { AddPaymentSourceRequest } from "@elizaos/plugin-finances/payment-types";
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";

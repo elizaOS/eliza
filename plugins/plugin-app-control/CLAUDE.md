@@ -4,7 +4,7 @@ Gives an Eliza agent the ability to launch, close, list, scaffold, and verify El
 
 ## Purpose / role
 
-This plugin registers three actions, two evaluators, one provider, and four services. It exposes those capabilities to any Eliza agent that loads it; it is opt-in (not default-enabled). All runtime communication with the Eliza dashboard happens over loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered via `resolveServerOnlyPort`.
+This plugin registers three actions, one natural-language shortcut set, two evaluators, one provider, and four services. It exposes those capabilities to any Eliza agent that loads it; it is opt-in (not default-enabled). All runtime communication with the Eliza dashboard happens over loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered via `resolveServerOnlyPort`.
 
 ## Plugin surface
 
@@ -22,6 +22,12 @@ This plugin registers three actions, two evaluators, one provider, and four serv
 |---|---|---|
 | `viewNavigationRoutingEvaluator` | `src/evaluators/view-navigation-routing.ts` | `responseHandlerEvaluator` that inspects agent responses and automatically routes to the appropriate view via the VIEWS action. |
 | `viewFollowupRoutingEvaluator` | `src/evaluators/view-followup-routing.ts` | `responseHandlerEvaluator` that detects follow-up intent (create/delete/update) from agent output and dispatches the VIEWS action accordingly. |
+
+### Shortcuts
+
+| Name | File | Description |
+|---|---|---|
+| `viewNavigationShortcuts` | `src/shortcuts.ts` | Natural-language pre-LLM shortcuts for explicit view navigation phrases such as "open settings"; target the existing `VIEWS` action with `action=show` and are gated by `ELIZA_SHORTCUTS_NL=1`. |
 
 ### Provider
 
@@ -54,6 +60,7 @@ View source lives in `src/views/ViewManagerView.tsx` (exports both `ViewManagerV
 src/
   index.ts                        Plugin entry; exports appControlPlugin
   types.ts                        API response shapes (InstalledAppInfo, AppRunSummary, AppLaunchResult, AppStopResult)
+  shortcuts.ts                    Pre-LLM natural-language shortcuts for explicit view navigation
   params.ts                       Option normalisation + verb/noun extraction helpers
   resolve.ts                      App/run name resolution (exact + substring match)
   protected-apps.ts               List of built-in apps that cannot be deleted

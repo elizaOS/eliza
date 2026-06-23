@@ -61,13 +61,11 @@ const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(
 const FEATURED_APP_NAMES = new Set<string>([
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-companion",
-  "@elizaos/plugin-defense-of-the-agents",
   "@elizaos/plugin-clawville",
 ]);
 
 const DEFAULT_VISIBLE_GAME_APP_NAMES = new Set<string>([
   "@elizaos/plugin-companion",
-  "@elizaos/plugin-defense-of-the-agents",
   "@elizaos/plugin-clawville",
 ]);
 
@@ -360,7 +358,6 @@ export function getAppCatalogSectionKey(
       return "finance";
     case "@elizaos/plugin-feed":
       return "games";
-    case "@elizaos/plugin-defense-of-the-agents":
     case "@elizaos/plugin-clawville":
       return "games";
   }

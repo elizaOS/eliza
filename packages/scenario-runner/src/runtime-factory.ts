@@ -5,6 +5,7 @@
  * proxy when mock mode is explicitly enabled.
  */
 
+import "./react-runtime-stubs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

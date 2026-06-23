@@ -42,6 +42,10 @@ function translate(key: string, vars?: TVars): string {
   return key;
 }
 
+type MockAppState = {
+  t: typeof translate;
+};
+
 // ── Query backend driven by SQL pattern ─────────────────────────────────────
 type QueryResult = {
   columns: string[];
@@ -163,9 +167,14 @@ vi.mock("@elizaos/ui/api", () => ({
   client: { getDatabaseTables, executeDatabaseQuery },
 }));
 
-vi.mock("@elizaos/ui/state", () => ({
-  useApp: () => ({ t: translate }),
-}));
+vi.mock("@elizaos/ui/state", () => {
+  const state: MockAppState = { t: translate };
+  return {
+    useApp: () => state,
+    useAppSelector: <T,>(selector: (state: MockAppState) => T) =>
+      selector(state),
+  };
+});
 
 vi.mock("@elizaos/ui/hooks", () => ({
   useRenderGuard: () => {},

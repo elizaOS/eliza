@@ -32,6 +32,7 @@ import type {
 } from "../../api/client-types-chat";
 import {
   parseSlashDraft,
+  resolveClientShortcutExecution,
   runSlashExecution,
   type SlashExecution,
   splitLeadingSlashCommand,
@@ -74,6 +75,7 @@ import type { ConversationNav, ShellController } from "./useShellController";
 const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
   commands: [],
   loading: false,
+  naturalShortcutsEnabled: false,
   resolveChoices: () => [],
   resolveSection: () => undefined,
   navigateTab: () => {},
@@ -1040,15 +1042,6 @@ export function ContinuousChatOverlay({
   // the swipe-nav surface still renders without crashing.
   const conversationNav = controller.conversationNav ?? EMPTY_CONVERSATION_NAV;
 
-  // The transcribe control is a voice feature, so it only belongs in the header
-  // while voice is actually on — a hands-free conversation, the mic open, or an
-  // in-progress transcription. When voice is off it's hidden (the `/transcribe`
-  // command still starts transcription from cold). `transcriptionMode` is part
-  // of the predicate so the button (then "stop transcription") and its badge
-  // stay put across the re-listen gaps where `recording` momentarily drops
-  // between utterances.
-  const voiceActive = Boolean(recording || handsFree || transcriptionMode);
-
   // Horizontal swipe between conversations (#8929). `swipeDx` is the live
   // horizontal drag (+left toward the next/older chat, -right toward the
   // newer/previous chat) and drives the edge hint. The gesture defers pointer
@@ -1495,10 +1488,6 @@ export function ContinuousChatOverlay({
     },
     [canSend, send],
   );
-
-  const submit = React.useCallback(() => {
-    submitText(draft, pendingImages);
-  }, [submitText, draft, pendingImages]);
 
   // Tapping a suggestion sends it immediately (same path as submit), so the
   // strip is a one-tap shortcut, not just a draft pre-fill.
@@ -2378,6 +2367,26 @@ export function ContinuousChatOverlay({
     },
     [slash, controller, submitText, toggleMaximize, toggleTranscriptionMode],
   );
+
+  const submit = React.useCallback(() => {
+    const shortcut =
+      pendingImages.length === 0
+        ? resolveClientShortcutExecution(
+            slash.commands,
+            draft,
+            slash.resolveSection,
+            {
+              allowNatural: slash.naturalShortcutsEnabled,
+              resolveChoices: slash.resolveChoices,
+            },
+          )
+        : null;
+    if (shortcut) {
+      runExecution(shortcut);
+      return;
+    }
+    submitText(draft, pendingImages);
+  }, [draft, pendingImages, runExecution, slash, submitText]);
 
   const pickSlashItem = React.useCallback(
     (index: number) => {

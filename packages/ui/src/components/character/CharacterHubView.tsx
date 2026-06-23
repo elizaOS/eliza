@@ -11,10 +11,8 @@ import {
 import { client } from "../../api/client";
 import type {
   CharacterData,
-  CharacterHistoryEntry,
   DocumentRecord,
   ExperienceRecord,
-  RelationshipsActivityItem,
 } from "../../api/client-types";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
@@ -46,19 +44,9 @@ import {
   getCharacterHubSectionLabel,
   mapExperienceRecordToHubRecord,
 } from "./character-hub-helpers";
+import { useCharacterHubData } from "./useCharacterHubData";
 
 type CharacterStyleSection = "all" | "chat" | "post";
-
-type LearnedSkillSummary = {
-  description?: string | null;
-  name: string;
-  source?: string | null;
-  status?: "active" | "proposed" | "disabled" | string;
-};
-
-type LearnedSkillsResponse = {
-  skills?: LearnedSkillSummary[];
-};
 
 const CHARACTER_SECTION_PATHS: Record<CharacterHubSection, string> = {
   overview: "/character",
@@ -132,33 +120,6 @@ function latestTimestamp(value: string | number | null | undefined): number {
   return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 }
 
-const HUB_CACHE_PREFIX = "character-hub-cache";
-
-function hubCacheKey(suffix: string): string {
-  return `${HUB_CACHE_PREFIX}:${suffix}`;
-}
-
-function readHubCache<T>(suffix: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = window.localStorage.getItem(hubCacheKey(suffix));
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw) as T;
-    return parsed ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function writeHubCache<T>(suffix: string, value: T): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(hubCacheKey(suffix), JSON.stringify(value));
-  } catch {
-    /* ignore quota / serialization errors */
-  }
-}
-
 export function CharacterHubView({
   initialSection,
   d,
@@ -208,40 +169,31 @@ export function CharacterHubView({
   const [activeSection, setActiveSection] = useState<CharacterHubSection>(
     () => initialSection ?? getSectionFromLocation(tab),
   );
-  const [documentRecords, setDocumentRecords] = useState<DocumentRecord[]>(() =>
-    readHubCache<DocumentRecord[]>("documents", []),
-  );
-  const [documentsLoading, setDocumentsLoading] = useState(true);
+  const hubData = useCharacterHubData();
+  const documentRecords = hubData.documents.data;
+  const documentsLoading = hubData.documents.loading;
+  const historyEntries = hubData.history.data;
+  const historyLoading = hubData.history.loading;
+  const relationshipActivity = hubData.relationshipActivity.data;
+  const relationshipActivityLoading = hubData.relationshipActivity.loading;
+  const relationshipActivityError = hubData.relationshipActivity.error
+    ? hubData.relationshipActivity.error.message
+    : null;
+  const learnedSkills = hubData.learnedSkills.data;
+  const learnedSkillsLoading = hubData.learnedSkills.loading;
+  const experienceRecords = hubData.experiences.data;
+  const experienceLoading = hubData.experiences.loading;
+  const experienceError = hubData.experiences.error
+    ? hubData.experiences.error.message
+    : null;
+  const setDocumentRecords = hubData.documents.mutate;
+  const setExperienceRecords = hubData.experiences.mutate;
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(
     null,
   );
-  const [historyEntries, setHistoryEntries] = useState<CharacterHistoryEntry[]>(
-    () => readHubCache<CharacterHistoryEntry[]>("history", []),
-  );
-  const [historyLoading, setHistoryLoading] = useState(true);
-  const [, setHistoryError] = useState<string | null>(null);
-  const [relationshipActivity, setRelationshipActivity] = useState<
-    RelationshipsActivityItem[]
-  >(() =>
-    readHubCache<RelationshipsActivityItem[]>("relationship-activity", []),
-  );
-  const [relationshipActivityLoading, setRelationshipActivityLoading] =
-    useState(true);
-  const [relationshipActivityError, setRelationshipActivityError] = useState<
-    string | null
-  >(null);
-  const [learnedSkills, setLearnedSkills] = useState<LearnedSkillSummary[]>(
-    () => readHubCache<LearnedSkillSummary[]>("learned-skills", []),
-  );
-  const [learnedSkillsLoading, setLearnedSkillsLoading] = useState(true);
-  const [experienceRecords, setExperienceRecords] = useState<
-    ExperienceRecord[]
-  >(() => readHubCache<ExperienceRecord[]>("experience-records", []));
   const [selectedExperienceId, setSelectedExperienceId] = useState<
     string | null
   >(null);
-  const [experienceLoading, setExperienceLoading] = useState(true);
-  const [experienceError, setExperienceError] = useState<string | null>(null);
   const [savingExperienceId, setSavingExperienceId] = useState<string | null>(
     null,
   );
@@ -322,182 +274,22 @@ export function CharacterHubView({
     };
   }, [initialSection, tab]);
 
+  // Seed `selectedExperienceId` / `selectedDocumentId` from the first loaded
+  // record once data lands. The hook owns the fetch; this just mirrors the
+  // pre-refactor "first record wins" default.
   useEffect(() => {
-    let cancelled = false;
-    setHistoryLoading(true);
-    setHistoryError(null);
-
-    void client
-      .listCharacterHistory({ limit: 100 })
-      .then((response) => {
-        if (!cancelled) {
-          setHistoryEntries(response.history);
-          writeHubCache("history", response.history);
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setHistoryError(
-            error instanceof Error
-              ? error.message
-              : "Failed to load personality history.",
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setHistoryLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (experienceRecords.length === 0) return;
+    setSelectedExperienceId(
+      (current) => current ?? experienceRecords[0]?.id ?? null,
+    );
+  }, [experienceRecords]);
 
   useEffect(() => {
-    let cancelled = false;
-    setExperienceLoading(true);
-    setExperienceError(null);
-
-    void client
-      .listExperiences({ limit: 100 })
-      .then((response) => {
-        if (!cancelled) {
-          setExperienceRecords(response.experiences);
-          writeHubCache("experience-records", response.experiences);
-          setSelectedExperienceId(
-            (current) => current ?? response.experiences[0]?.id ?? null,
-          );
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setExperienceError(
-            error instanceof Error
-              ? error.message
-              : "Failed to load experiences.",
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setExperienceLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void client
-      .getRelationshipsActivity(50)
-      .then((response) => {
-        if (!cancelled) {
-          const activity = response.activity ?? [];
-          setRelationshipActivity(activity);
-          writeHubCache("relationship-activity", activity);
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setRelationshipActivityError(
-            error instanceof Error
-              ? error.message
-              : "Failed to load relationship activity.",
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setRelationshipActivityLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void client
-      .listDocuments({ limit: 100 })
-      .then((response) => {
-        if (cancelled) return;
-        const docs = response.documents ?? [];
-        setDocumentRecords(docs);
-        writeHubCache("documents", docs);
-      })
-      .catch(() => {
-        /* ignored — DocumentsView shows its own error when active */
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setDocumentsLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void client
-      .fetch<LearnedSkillsResponse>("/api/skills/curated")
-      .then((data) => {
-        if (cancelled) return;
-        const filtered = (data.skills ?? []).filter(
-          (skill) => skill.source !== "human",
-        );
-        setLearnedSkills(filtered);
-        writeHubCache("learned-skills", filtered);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLearnedSkills([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLearnedSkillsLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void client
-      .listDocuments({ limit: 100 })
-      .then((response) => {
-        if (!cancelled) {
-          setDocumentRecords(response.documents);
-          setSelectedDocumentId(
-            (current) => current ?? response.documents[0]?.id ?? null,
-          );
-        }
-      })
-      .catch(() => {
-        // The embedded documents view owns the richer error UI.
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (documentRecords.length === 0) return;
+    setSelectedDocumentId(
+      (current) => current ?? documentRecords[0]?.id ?? null,
+    );
+  }, [documentRecords]);
 
   const customDocumentRecords = useMemo(
     () =>
@@ -508,11 +300,14 @@ export function CharacterHubView({
   // Stable identity: DocumentsView's loadData effect depends on this callback,
   // so an inline closure would re-trigger fetch → setState → render → new
   // closure, looping the hub (render-guard trips on /character/documents).
-  const handleDocumentsChange = useCallback((docs: DocumentRecord[]) => {
-    setDocumentRecords(docs);
-    writeHubCache("documents", docs);
-    setDocumentsLoading(false);
-  }, []);
+  // `setDocumentRecords` is the hook's mutate fn — it flips state to
+  // "success" so the loading flag derived from it also goes false.
+  const handleDocumentsChange = useCallback(
+    (docs: DocumentRecord[]) => {
+      setDocumentRecords(docs);
+    },
+    [setDocumentRecords],
+  );
 
   const overviewWidgets = useMemo<CharacterOverviewWidget[]>(() => {
     const styleItems = Object.values(d.style ?? {}).reduce(

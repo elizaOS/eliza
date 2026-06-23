@@ -261,14 +261,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["clawville", "clawville-command", "chatContent"],
     },
   ],
-  "defense-of-the-agents": [
-    {
-      spec: "packages/app/test/ui-smoke/game-apps.spec.ts",
-      proves:
-        "Launches the game app, validates viewer load, command buttons, and chat message flow.",
-      signals: ["defense-of-the-agents", "defense-command", "chatContent"],
-    },
-  ],
   orchestrator: [
     {
       spec: "packages/app/test/ui-smoke/orchestrator-gui-workbench.spec.ts",
@@ -431,7 +423,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(57);
+    expect(visualCases.length).toBe(55);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

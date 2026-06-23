@@ -1,4 +1,4 @@
-import { InboxUnsubscribeService } from "@elizaos/plugin-inbox";
+import { InboxUnsubscribeService } from "@elizaos/plugin-inbox/inbox/unsubscribe-service";
 import type {
   EmailSubscriptionScanResult,
   EmailUnsubscribeRecord,

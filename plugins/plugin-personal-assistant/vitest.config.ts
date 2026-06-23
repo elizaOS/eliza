@@ -30,6 +30,14 @@ const appCoreNativeLibraryPolicy = path.join(
   "platform",
   "native-library-policy.ts",
 );
+const appCoreTaskHostCapabilities = path.join(
+  elizaRoot,
+  "packages",
+  "app-core",
+  "src",
+  "services",
+  "task-host-capabilities.ts",
+);
 const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
 const corePackageRequire = createRequire(
   path.join(elizaRoot, "packages", "core", "package.json"),
@@ -191,6 +199,10 @@ export default defineConfig({
       {
         find: /^@elizaos\/app-core\/platform\/native-library-policy$/,
         replacement: appCoreNativeLibraryPolicy,
+      },
+      {
+        find: /^@elizaos\/app-core\/services\/task-host-capabilities$/,
+        replacement: appCoreTaskHostCapabilities,
       },
       {
         find: /^@elizaos\/core\/node$/,

@@ -218,7 +218,7 @@ export type LlmStreamHandle = bigint;
 /**
  * Per-session config handed to `llmStreamOpen`. Mirrors
  * `eliza_llm_stream_config_t` in
- * `native/llama.cpp/tools/omnivoice/include/eliza-inference-ffi.h` (ABI v8).
+ * `native/llama.cpp/tools/omnivoice/include/eliza-inference-ffi.h` (ABI v9).
  */
 export interface LlmStreamConfig {
 	maxTokens: number;
@@ -258,6 +258,8 @@ export interface LlmStreamConfig {
 	cacheTypeK?: string | null;
 	/** KV-cache V quant type name (ABI v8); see `cacheTypeK`. */
 	cacheTypeV?: string | null;
+	/** Runtime context window in tokens (ABI v9). `undefined`/0 uses native fallback. */
+	contextSize?: number;
 }
 
 /**
@@ -2601,7 +2603,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			const err = makeOutErr();
 			// Marshal the config struct into a Buffer. Layout matches
 			// `eliza_llm_stream_config_t` in `eliza-inference-ffi.h`
-			// (8-byte aligned, ABI v8):
+			// (8-byte aligned, ABI v9):
 			//   off  0 : i32  max_tokens
 			//   off  4 : f32  temperature
 			//   off  8 : f32  top_p
@@ -2617,8 +2619,9 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			//   off 60 : i32  n_gpu_layers          (ABI v8 — fills old tail pad)
 			//   off 64 : ptr  cache_type_k          (ABI v8)
 			//   off 72 : ptr  cache_type_v          (ABI v8)
-			//   sizeof = 80
-			const buf = Buffer.alloc(80);
+			//   off 80 : i32  context_size          (ABI v9)
+			//   sizeof = 88
+			const buf = Buffer.alloc(88);
 			buf.writeInt32LE(config.maxTokens, 0);
 			buf.writeFloatLE(config.temperature, 4);
 			buf.writeFloatLE(config.topP, 8);
@@ -2655,6 +2658,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			);
 			buf.writeBigUInt64LE(toPtrBigInt(cacheKArg.ptr), 64);
 			buf.writeBigUInt64LE(toPtrBigInt(cacheVArg.ptr), 72);
+			buf.writeInt32LE(config.contextSize ?? 0, 80);
 			const handle = open(ctx, ffi.ptr(buf), err.ptr);
 			if (isNullPointer(handle)) {
 				const message =

@@ -8,6 +8,7 @@ import {
   filterCommands,
   matchCommand,
   parseSlashDraft,
+  resolveClientShortcutExecution,
   resolveSlashExecution,
   runSlashExecution,
   type SlashExecutionDeps,
@@ -225,6 +226,113 @@ describe("resolveSlashExecution", () => {
       kind: "send",
       text: "/model gpt-5",
     });
+  });
+});
+
+describe("resolveClientShortcutExecution", () => {
+  const resolveSection = (t: string) =>
+    ({
+      model: "ai-model",
+      "ai-model": "ai-model",
+      voice: "voice",
+      connectors: "connectors",
+    })[t];
+  const viewsCommand = cmd({
+    key: "views",
+    textAliases: ["/views"],
+    description: "Open views",
+    acceptsArgs: true,
+    args: [{ name: "view", description: "view", dynamicChoices: "views" }],
+    target: { kind: "navigate", tab: "views", path: "/views" },
+  });
+  const commands = [...CATALOG, viewsCommand];
+
+  it("is inert until natural shortcuts are explicitly enabled", () => {
+    expect(
+      resolveClientShortcutExecution(commands, "open settings", resolveSection),
+    ).toBeNull();
+  });
+
+  it("resolves natural navigation commands through slash execution", () => {
+    expect(
+      resolveClientShortcutExecution(
+        commands,
+        "open settings",
+        resolveSection,
+        {
+          allowNatural: true,
+          resolveChoices: () => ["calendar"],
+        },
+      ),
+    ).toEqual({ kind: "navigate-settings" });
+
+    expect(
+      resolveClientShortcutExecution(
+        commands,
+        "hey can you open model settings please",
+        resolveSection,
+        {
+          allowNatural: true,
+          resolveChoices: () => ["calendar"],
+        },
+      ),
+    ).toEqual({ kind: "navigate-settings", section: "ai-model" });
+
+    expect(
+      resolveClientShortcutExecution(
+        commands,
+        "open orchestrator",
+        resolveSection,
+        {
+          allowNatural: true,
+          resolveChoices: () => ["calendar"],
+        },
+      ),
+    ).toEqual({
+      kind: "navigate-view",
+      viewId: "orchestrator",
+      viewPath: "/orchestrator",
+    });
+  });
+
+  it("resolves dynamic view navigation only when the view is loaded", () => {
+    expect(
+      resolveClientShortcutExecution(
+        commands,
+        "show me my calendar",
+        resolveSection,
+        {
+          allowNatural: true,
+          resolveChoices: () => ["calendar"],
+        },
+      ),
+    ).toEqual({ kind: "navigate-view", viewId: "calendar" });
+
+    expect(
+      resolveClientShortcutExecution(
+        commands,
+        "show me my unknown panel",
+        resolveSection,
+        {
+          allowNatural: true,
+          resolveChoices: () => ["calendar"],
+        },
+      ),
+    ).toBeNull();
+  });
+
+  it("resolves client actions and leaves agent commands to chat", () => {
+    expect(
+      resolveClientShortcutExecution(commands, "clear chat", resolveSection, {
+        allowNatural: true,
+      }),
+    ).toEqual({ kind: "client", clientAction: "clear-chat" });
+
+    expect(
+      resolveClientShortcutExecution(commands, "show help", resolveSection, {
+        allowNatural: true,
+      }),
+    ).toBeNull();
   });
 });
 

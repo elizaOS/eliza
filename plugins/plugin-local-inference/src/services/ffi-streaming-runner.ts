@@ -62,6 +62,12 @@ export interface FfiStreamingGenerateArgs {
 	cacheTypeK?: string | null;
 	cacheTypeV?: string | null;
 	/**
+	 * Runtime context window in tokens (ABI v9). Forwarded into the fused
+	 * session config on `llmStreamOpen`; `undefined` keeps the native
+	 * ELIZA_LLM_N_CTX/default fallback.
+	 */
+	contextSize?: number;
+	/**
 	 * GBNF grammar source forcing the structured-reply envelope. Passed to
 	 * the native session's `llmStreamOpen` config so sampling is
 	 * grammar-constrained. `null` disables the constraint (free generation).
@@ -285,6 +291,7 @@ export class FfiStreamingRunner {
 				gpuLayers: args.gpuLayers,
 				cacheTypeK: args.cacheTypeK,
 				cacheTypeV: args.cacheTypeV,
+				contextSize: args.contextSize,
 			},
 		});
 

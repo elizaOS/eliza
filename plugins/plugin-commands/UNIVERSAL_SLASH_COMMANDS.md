@@ -105,8 +105,8 @@ registry, so all three target kinds flow through one serializer.
 `/tts` · `/bash` (and `/config` `/debug`, gated off by default) · plus
 `skill-<slug>` commands registered from loaded skills and any custom actions the
 user has defined. These flow to the agent and reply in-channel. Auth-gated
-commands (`/restart` `/reset` `/elevated` `/allowlist` `/approve` `/subagents`
-`/bash` `/config` `/debug`) carry `requiresAuth: true`, which survives
+commands (`/restart` `/reset` `/compact` `/elevated` `/allowlist` `/approve`
+`/subagents` `/bash` `/config` `/debug`) carry `requiresAuth: true`, which survives
 serialization onto the wire.
 
 ### Design decisions — what is *not* a command
@@ -138,10 +138,11 @@ autocomplete menu (`SlashCommandMenu` + `useSlashMenu`):
 - `/settings ` shows the section choices (model · voice · connectors · …);
   `/settings model` → Enter navigates to the `ai-model` settings sub-view.
 - Navigation runs client-side (`setTab` / `eliza:navigate:settings` /
-  `eliza:navigate:view`); client commands run overlay/app effects; agent
-  commands flow through the normal send pipeline (so `/model gpt-5` reaches the
-  agent). Combobox a11y (`role=combobox`, `aria-expanded`,
-  `aria-activedescendant`).
+  `eliza:navigate:view`); client commands run overlay/app effects; deterministic
+  agent commands (`/status`, `/model gpt-5`, `/think high`, `/reset`, …) resolve
+  through registered `*_COMMAND` actions before inference; pipeline-owned agent
+  commands still route through the normal send pipeline. Combobox a11y
+  (`role=combobox`, `aria-expanded`, `aria-activedescendant`).
 
 Catalog source: `GET /api/commands?surface=gui` (merged client-side with saved
 custom commands + custom actions). See `packages/ui/src/chat/slash-menu.ts`
@@ -154,27 +155,33 @@ custom commands + custom actions). See `packages/ui/src/chat/slash-menu.ts`
 `DISCORD_REGISTER_COMMANDS` → `client.application.commands.set(...)` path,
 *alongside* the existing built-ins (built-ins win on name collisions, so the
 role-gated `/help`/`/status`/`/model`/`/settings` keep their behavior). The
-`section` arg becomes a string option with choices. On invocation: `agent`
-commands route through the message pipeline and reply (deferReply→editReply);
-`navigate` commands reply (ephemeral) with the destination + deep link.
+`section` arg becomes a string option with choices. On invocation: deterministic
+`agent` commands answer locally through `resolveCommand`;
+pipeline-owned `agent` commands route through the message pipeline and reply
+(deferReply→editReply); `navigate` commands reply (ephemeral) with the
+destination + deep link.
 
 ### Telegram — `setMyCommands` + handlers
 
 `plugins/plugin-telegram` calls `bot.telegram.setMyCommands(getTelegramBotCommands())`
 after launch (so commands appear in Telegram's `/` menu) and registers
-`bot.command(name, handler)` per catalog entry. `agent` commands force a reply
-through the message pipeline even when `TELEGRAM_AUTO_REPLY` is off (an explicit
-command is explicit intent); `navigate` commands reply with the destination +
-optional deep link. Command names are sanitized to Telegram's `[a-z0-9_]{1,32}`.
+`bot.command(name, handler)` per catalog entry. Deterministic `agent` commands
+answer locally through `resolveCommand`; pipeline-owned `agent`
+commands force a reply through the message pipeline even when
+`TELEGRAM_AUTO_REPLY` is off (an explicit command is explicit intent);
+`navigate` commands reply with the destination + optional deep link. Command
+names are sanitized to Telegram's `[a-z0-9_]{1,32}`.
 
 ### TUI — the Editor autocomplete
 
 `packages/agent/src/tui` fetches `GET /api/commands?surface=tui`, maps to the
 `@elizaos/tui` `SlashCommand[]`, and feeds the rich `Editor`'s
 `CombinedAutocompleteProvider` (dropdown via `SelectList`, `/`-at-line-start
-trigger, Tab/Enter completion, arg completions). On submit: `agent` → send to
-agent; `navigate` (view) → `POST /api/views/:id/navigate?viewType=tui`;
-`client` → local `/clear` / `/new`.
+trigger, Tab/Enter completion, arg completions). On submit: deterministic
+`agent` commands resolve via registered actions, pipeline-owned `agent` commands
+send to the agent; `navigate` (view) →
+`POST /api/views/:id/navigate?viewType=tui`; `client` → local `/clear`,
+`/fullscreen`, and `/transcribe`.
 
 ## Verification status
 

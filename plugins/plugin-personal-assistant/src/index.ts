@@ -1,7 +1,9 @@
 export {
+  getAppBlockerStatus,
+} from "@elizaos/plugin-blocker/services/app-blocker/index";
+export {
   buildSelfControlBlockPolicy,
   formatWebsiteList,
-  getAppBlockerStatus,
   getCachedSelfControlStatus,
   getSelfControlPluginConfig,
   isWebsiteBlockedByPolicy,
@@ -13,7 +15,7 @@ export {
   type SelfControlBlockMatchMode,
   type SelfControlBlockMetadata,
   type SelfControlBlockPolicy,
-} from "@elizaos/plugin-blocker";
+} from "@elizaos/plugin-blocker/services/website-blocker/index";
 export {
   handleTravelProviderRelayRoute,
   type TravelProviderRelayRouteState,

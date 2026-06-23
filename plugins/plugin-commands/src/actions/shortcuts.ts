@@ -1,10 +1,10 @@
 /**
  * Slash-command shortcuts (#8790 × #8791).
  *
- * Each gate-safe agent-target command is registered as an *explicit* shortcut
+ * Each deterministic agent-target command is registered as an *explicit* shortcut
  * into the runtime's `ShortcutRegistry`. The pre-LLM gate matches the slash/`!`
  * alias and fires the command's `*_COMMAND` action directly — so `/help`,
- * `/status`, `/whoami`, … resolve deterministically before any model call,
+ * `/status`, `/models`, … resolve deterministically before any model call,
  * identically on every surface. Explicit shortcuts are always-on (a slash is an
  * unambiguous invocation); they carry no auth flag here because the command
  * action re-checks sender trust itself.
@@ -12,15 +12,15 @@
 
 import type { ShortcutDefinition } from "@elizaos/core";
 import { findCommandByKey } from "../registry";
-import { GATE_SAFE_COMMAND_KEYS } from "./handlers";
+import { DETERMINISTIC_COMMAND_KEYS } from "./handlers";
 
 /**
- * Build the explicit slash-command shortcuts for the built-in gate-safe
+ * Build the explicit slash-command shortcuts for the built-in deterministic
  * commands, from the default registry. Built once at module load; each
  * shortcut targets the matching `<KEY>_COMMAND` action.
  */
 export function createCommandShortcuts(
-	commandKeys: readonly string[] = GATE_SAFE_COMMAND_KEYS,
+	commandKeys: readonly string[] = DETERMINISTIC_COMMAND_KEYS,
 ): ShortcutDefinition[] {
 	const shortcuts: ShortcutDefinition[] = [];
 	for (const key of commandKeys) {
@@ -37,7 +37,7 @@ export function createCommandShortcuts(
 	return shortcuts;
 }
 
-/** The explicit slash-command shortcuts for the built-in gate-safe commands. */
+/** The explicit slash-command shortcuts for built-in deterministic commands. */
 export const explicitCommandShortcuts: ShortcutDefinition[] =
 	createCommandShortcuts();
 
@@ -47,7 +47,7 @@ export const explicitCommandShortcuts: ShortcutDefinition[] =
  * These are flag-gated (the server gate enables them only when
  * `ELIZA_SHORTCUTS_NL === "1"`) and confidence-floored, so the DEFAULT behavior
  * is byte-identical with them off. Each one targets an UNAMBIGUOUS deterministic
- * intent that maps onto a gate-safe `*_COMMAND` action, so the pre-LLM gate can
+ * intent that maps onto a deterministic `*_COMMAND` action, so the pre-LLM gate can
  * fire it with zero inference.
  *
  * The sole production shortcut here is "what commands can I use" / "show me the

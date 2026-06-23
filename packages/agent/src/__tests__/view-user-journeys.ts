@@ -82,16 +82,6 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   { id: "views-manager", viewType: "tui", path: "/views" },
   { id: "clawville", viewType: "gui", path: "/clawville" },
   { id: "clawville", viewType: "tui", path: "/clawville" },
-  {
-    id: "defense-of-the-agents",
-    viewType: "gui",
-    path: "/defense-of-the-agents",
-  },
-  {
-    id: "defense-of-the-agents",
-    viewType: "tui",
-    path: "/defense-of-the-agents",
-  },
   { id: "screenshare", viewType: "gui", path: "/screenshare" },
   { id: "screenshare", viewType: "tui", path: "/screenshare" },
   { id: "social-alpha", viewType: "gui", path: "/social-alpha" },
@@ -123,11 +113,6 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   { id: "feed", viewType: "xr", path: "/feed" },
   { id: "views-manager", viewType: "xr", path: "/views" },
   { id: "clawville", viewType: "xr", path: "/clawville" },
-  {
-    id: "defense-of-the-agents",
-    viewType: "xr",
-    path: "/defense-of-the-agents",
-  },
   { id: "screenshare", viewType: "xr", path: "/screenshare" },
   { id: "task-coordinator", viewType: "xr", path: "/task-coordinator" },
   { id: "orchestrator", viewType: "xr", path: "/orchestrator" },

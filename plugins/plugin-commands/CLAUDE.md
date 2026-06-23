@@ -12,7 +12,7 @@ Adds a structured slash-command system to any Eliza agent. Commands are detected
 
 | Name | Description |
 |---|---|
-| `*_COMMAND` (one per gate-safe key, e.g. `HELP_COMMAND`, `RESTART_COMMAND`) | Deterministic handlers for the built-in agent-target commands, built from `GATE_SAFE_COMMAND_KEYS` via `createCommandActions()`. Each `validate()` is strictly slash-only (never intercepts conversational text) and re-scopes to the per-runtime store. The pre-LLM shortcut gate dispatches these before inference; they are also registered so the planner can route to them as a fallback. |
+| `*_COMMAND` (one per deterministic key, e.g. `HELP_COMMAND`, `THINK_COMMAND`, `RESET_COMMAND`) | Deterministic handlers for the built-in agent-target commands owned by this plugin, built from `DETERMINISTIC_COMMAND_KEYS` via `createCommandActions()`. Each `validate()` is strictly slash-only (never intercepts conversational text) and re-scopes to the per-runtime store. The pre-LLM shortcut gate dispatches these before inference; they are also registered so the planner can route to them as a fallback. |
 
 **Providers**
 
@@ -51,7 +51,7 @@ src/
                         and getCatalogCommands(surface) (→ SerializedCommand[]); unions the agent
                         registry with navigation/client commands, filters by surface + active view.
   actions/              Deterministic command action layer: command-actions.ts (createCommandActions,
-                        commandActions), handlers.ts (GATE_SAFE_COMMAND_KEYS + handlers),
+                        commandActions), handlers.ts (DETERMINISTIC_COMMAND_KEYS + handlers),
                         dispatch.ts (dispatch helper for the pre-LLM gate / connectors),
                         command-settings.ts (per-conversation settings store)
   settings-sections.ts  Settings section registry: SETTINGS_SECTIONS, resolveSettingsSection(),
@@ -104,7 +104,7 @@ Defined in `src/registry.ts` as `DEFAULT_COMMANDS`. Each agent runtime receives 
 
 ## How to extend
 
-**Add a command definition** (registers it in the registry; built-in gate-safe keys get a `*_COMMAND` action automatically — see `actions/`; a custom command still needs a handler):
+**Add a command definition** (registers it in the registry; built-in deterministic keys get a `*_COMMAND` action automatically — see `actions/`; a custom command still needs a handler):
 
 ```ts
 import { registerCommand } from "@elizaos/plugin-commands";
@@ -127,7 +127,7 @@ registerCommand({
 ## Conventions / gotchas
 
 - **Registry is per-agent.** `initForRuntime(agentId)` must be called in `plugin.init()` before any registry access; otherwise all agents share the fallback store. The plugin's own `init()` already does this.
-- **Built-in actions live here now.** The plugin registers `*_COMMAND` actions for the gate-safe built-in keys (`commandActions`, built from `GATE_SAFE_COMMAND_KEYS` via `createCommandActions()` in `actions/`). Plugin-specific or skill commands still register their own Action objects elsewhere.
+- **Built-in deterministic actions live here.** The plugin registers `*_COMMAND` actions for deterministic built-in keys (`commandActions`, built from `DETERMINISTIC_COMMAND_KEYS` via `createCommandActions()` in `actions/`): status/help-style commands, option-setting commands owned by the command-settings store, and the reset/new/compact session commands. Broader management commands whose side effects live outside this package (`stop`, `restart`, `allowlist`, `approve`, etc.) still flow through the normal pipeline. Plugin-specific or skill commands still register their own Action objects elsewhere.
 - **Similes must be slash-only.** Never add natural-language similes to command actions — the LLM will misroute conversational messages.
 - **`bash` command is elevated + disabled by default.** `requiresElevated: true` in the definition; `enabled` is set to `false` during `init()` because `COMMANDS_BASH_ENABLED` defaults to `"false"`. Set `COMMANDS_BASH_ENABLED=true` to enable it.
 - **Provider context-gates itself.** For non-command messages the provider returns an empty string to keep the prompt clean.

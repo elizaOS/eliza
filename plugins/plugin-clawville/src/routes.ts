@@ -38,7 +38,7 @@ const SESSION_ACTIVITY_LIMIT = 12;
  * CSP frame-ancestors directive we send on the viewer HTML response so that
  * Host shells (desktop Electrobun, mobile Capacitor, plus
  * the dev http://localhost and https://localhost cases) can embed us in an
- * iframe. Mirrors the value used by app-defense-of-the-agents.
+ * iframe.
  */
 const VIEWER_FRAME_ANCESTORS_DIRECTIVE =
   "frame-ancestors 'self' http://localhost:* http://127.0.0.1:* " +

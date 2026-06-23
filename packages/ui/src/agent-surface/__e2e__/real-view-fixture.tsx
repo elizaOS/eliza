@@ -17,7 +17,7 @@ import {
   BackChip,
   TaskCard,
   TaskSearchInput,
-} from "@elizaos/plugin-task-coordinator/TaskCardList";
+} from "../../../../../plugins/plugin-task-coordinator/src/TaskCardList";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AgentElementOverlay } from "../AgentElementOverlay";

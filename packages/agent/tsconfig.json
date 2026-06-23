@@ -64,6 +64,9 @@
       "@elizaos/plugin-registry": [
         "../../plugins/plugin-registry/src/index.ts"
       ],
+      "@elizaos/plugin-registry/*": [
+        "../../plugins/plugin-registry/src/*"
+      ],
       "@elizaos/plugin-remote-manifest": [
         "../plugin-remote-manifest/src/index.ts"
       ],

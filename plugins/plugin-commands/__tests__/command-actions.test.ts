@@ -19,11 +19,14 @@ import {
 function makeRuntime(
 	agentId = "agent-1",
 	onGetCache?: (key: string) => void | Promise<void>,
+	overrides: Partial<IAgentRuntime> = {},
 ): IAgentRuntime {
 	const cache = new Map<string, unknown>();
+	let messages: Memory[] = [msg("first"), msg("second")];
 	return {
 		agentId,
 		character: { name: "Eliza", settings: {} },
+		actions: [],
 		getSetting: () => null,
 		setSetting: () => undefined,
 		getCache: async (key: string) => {
@@ -35,7 +38,12 @@ function makeRuntime(
 			return true;
 		},
 		deleteCache: async (key: string) => cache.delete(key),
+		countMemories: async () => messages.length,
+		deleteAllMemories: async () => {
+			messages = [];
+		},
 		useModel: async () => "",
+		...overrides,
 	} as unknown as IAgentRuntime;
 }
 
@@ -105,32 +113,77 @@ describe("runCommand / resolveCommand — deterministic handlers (#8790)", () =>
 		expect(r.reply).toContain("Authorized: yes");
 	});
 
-	it("does NOT short-circuit runtime option commands", async () => {
-		for (const text of [
-			"/think high",
-			"/verbose on",
-			"/reasoning stream",
-			"/queue steer",
-			"/elevated on",
-			"/model Anthropic/Claude-Opus",
-			"/tts off",
-		]) {
+	it("deterministically persists runtime option commands", async () => {
+		const cases = [
+			["/think high", "Thinking set to high."],
+			["/verbose on", "Verbose set to on."],
+			["/reasoning stream", "Reasoning set to stream."],
+			["/queue steer", "Queue mode set to steer."],
+			["/elevated on", "Elevated mode set to on."],
+			["/model Anthropic/Claude-Opus", "Model set to Anthropic/Claude-Opus."],
+			["/tts off", "TTS set to off."],
+		] as const;
+		for (const [text, expectedReply] of cases) {
 			const r = await resolveCommand(runtime, msg(text), {
 				isAuthorized: true,
 				isElevated: true,
 			});
-			expect(r.handled, text).toBe(false);
+			expect(r.handled, text).toBe(true);
+			expect(r.reply).toBe(expectedReply);
 		}
-		expect(await getCommandSettings(runtime, "room-1")).toEqual({});
+		expect(await getCommandSettings(runtime, "room-1")).toEqual({
+			thinking: "high",
+			verbose: "on",
+			reasoning: "stream",
+			queue: "steer",
+			elevated: "on",
+			model: "Anthropic/Claude-Opus",
+			tts: "off",
+		});
 	});
 
-	it("does NOT short-circuit lifecycle commands (reset/new/compact)", async () => {
-		for (const text of ["/reset", "/new", "/compact"]) {
-			const r = await resolveCommand(runtime, msg(text), {
-				isAuthorized: true,
-			});
-			expect(r.handled).toBe(false);
-		}
+	it("rejects invalid option values deterministically", async () => {
+		const r = await resolveCommand(runtime, msg("/think enormous"));
+		expect(r.handled).toBe(true);
+		expect(r.reply).toContain("Invalid thinking value");
+	});
+
+	it("deterministically handles lifecycle commands (reset/new/compact)", async () => {
+		await resolveCommand(runtime, msg("/think high"));
+		const reset = await resolveCommand(runtime, msg("/reset"), {
+			isAuthorized: true,
+		});
+		expect(reset.handled).toBe(true);
+		expect(reset.reply).toContain("cleared command settings");
+		expect(reset.reply).toContain("2 message(s)");
+		expect(await getCommandSettings(runtime, "room-1")).toEqual({});
+
+		await resolveCommand(runtime, msg("/model gpt-5"));
+		const next = await resolveCommand(runtime, msg("/new"));
+		expect(next.handled).toBe(true);
+		expect(next.reply).toBe(
+			"Started a new conversation context for this room.",
+		);
+		expect(await getCommandSettings(runtime, "room-1")).toEqual({});
+
+		const compactRuntime = makeRuntime("agent-1", undefined, {
+			actions: [
+				{
+					name: "COMPACT_CONVERSATION",
+					description: "Compact",
+					validate: async () => true,
+					handler: async () => ({
+						success: true,
+						text: "Compacted 4 older message(s); preserved the latest 2.",
+					}),
+				},
+			],
+		});
+		const compact = await resolveCommand(compactRuntime, msg("/compact"), {
+			isAuthorized: true,
+		});
+		expect(compact.handled).toBe(true);
+		expect(compact.reply).toContain("Compacted 4 older message(s)");
 	});
 
 	it("ignores non-command messages", async () => {
@@ -162,15 +215,18 @@ describe("command actions — slash-only validate (#8790)", () => {
 		runtime = makeRuntime();
 	});
 
-	it("registers one action per gate-safe command", () => {
+	it("registers one action per deterministic command", () => {
 		const names = new Set(commandActions.map((a) => a.name));
 		expect(names.has("HELP_COMMAND")).toBe(true);
 		expect(names.has("STATUS_COMMAND")).toBe(true);
-		expect(names.has("THINK_COMMAND")).toBe(false);
-		expect(names.has("MODEL_COMMAND")).toBe(false);
-		expect(names.has("TTS_COMMAND")).toBe(false);
-		// Lifecycle commands are NOT gate-safe actions.
-		expect(names.has("RESET_COMMAND")).toBe(false);
+		expect(names.has("THINK_COMMAND")).toBe(true);
+		expect(names.has("MODEL_COMMAND")).toBe(true);
+		expect(names.has("TTS_COMMAND")).toBe(true);
+		expect(names.has("RESET_COMMAND")).toBe(true);
+		expect(names.has("NEW_COMMAND")).toBe(true);
+		expect(names.has("COMPACT_COMMAND")).toBe(true);
+		expect(names.has("STOP_COMMAND")).toBe(false);
+		expect(names.has("RESTART_COMMAND")).toBe(false);
 	});
 
 	it("validate() matches only its own slash command, never plain text", async () => {
@@ -261,15 +317,33 @@ describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
 		expect(signatures).toEqual([
 			"cmd:commands:/cmds->COMMANDS_COMMAND",
 			"cmd:commands:/commands->COMMANDS_COMMAND",
+			"cmd:compact:/compact->COMPACT_COMMAND",
 			"cmd:context:/context->CONTEXT_COMMAND",
 			"cmd:context:/ctx->CONTEXT_COMMAND",
+			"cmd:elevated:/elev->ELEVATED_COMMAND",
+			"cmd:elevated:/elevated->ELEVATED_COMMAND",
 			"cmd:help:/?->HELP_COMMAND",
 			"cmd:help:/h->HELP_COMMAND",
 			"cmd:help:/help->HELP_COMMAND",
+			"cmd:model:/m->MODEL_COMMAND",
+			"cmd:model:/model->MODEL_COMMAND",
 			"cmd:models:/models->MODELS_COMMAND",
+			"cmd:new:/new->NEW_COMMAND",
+			"cmd:queue:/q->QUEUE_COMMAND",
+			"cmd:queue:/queue->QUEUE_COMMAND",
+			"cmd:reasoning:/reason->REASONING_COMMAND",
+			"cmd:reasoning:/reasoning->REASONING_COMMAND",
+			"cmd:reset:/reset->RESET_COMMAND",
 			"cmd:status:/s->STATUS_COMMAND",
 			"cmd:status:/status->STATUS_COMMAND",
+			"cmd:think:/t->THINK_COMMAND",
+			"cmd:think:/think->THINK_COMMAND",
+			"cmd:think:/thinking->THINK_COMMAND",
+			"cmd:tts:/tts->TTS_COMMAND",
+			"cmd:tts:/voice->TTS_COMMAND",
 			"cmd:usage:/usage->USAGE_COMMAND",
+			"cmd:verbose:/v->VERBOSE_COMMAND",
+			"cmd:verbose:/verbose->VERBOSE_COMMAND",
 			"cmd:whoami:/who->WHOAMI_COMMAND",
 			"cmd:whoami:/whoami->WHOAMI_COMMAND",
 		]);

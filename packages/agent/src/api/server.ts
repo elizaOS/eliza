@@ -29,10 +29,12 @@ import {
   type IAgentRuntime,
   isStreamingDestinationConfigured,
   logger,
+  NotificationService,
   readJsonBody as parseJsonBody,
   type ReadJsonBodyOptions,
   type Route,
   readRequestBody,
+  ServiceType,
   sendJson,
   sendJsonError,
   stringToUuid,
@@ -390,6 +392,7 @@ import {
 } from "../services/plugin-manager-types.ts";
 import {
   PROACTIVE_INTERACTION_SOURCE,
+  type ProactiveOffer,
   registerProactiveInteractionDecider,
 } from "../services/proactive-interaction-decider.ts";
 import { ProactiveInteractionGate } from "../services/proactive-interaction-gate.ts";
@@ -1782,10 +1785,45 @@ export {
 // restart doesn't reset the proactive-comment cooldowns/caps (#8792).
 const proactiveInteractionGate = new ProactiveInteractionGate();
 
+function proactiveNotificationGroupKey(offer: ProactiveOffer): string {
+  if (offer.groupKey) return offer.groupKey;
+  const basis = (offer.deepLink || offer.title || offer.text)
+    .toLowerCase()
+    .replace(/[^a-z0-9:/._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 72);
+  return `proactive-interaction:${basis || "general"}`;
+}
+
+async function notifyProactiveInteraction(
+  rt: IAgentRuntime,
+  offer: ProactiveOffer,
+): Promise<void> {
+  const service = rt.getService(ServiceType.NOTIFICATION);
+  if (!(service instanceof NotificationService)) {
+    logger.debug(
+      "[proactive-interaction] notification service unavailable; suppressing notify-lane offer",
+    );
+    return;
+  }
+
+  const title = offer.title?.trim() || offer.text;
+  await service.notify({
+    title,
+    body: title === offer.text ? undefined : offer.text,
+    category: "agent",
+    priority: "low",
+    source: PROACTIVE_INTERACTION_SOURCE,
+    deepLink: offer.deepLink,
+    groupKey: proactiveNotificationGroupKey(offer),
+    data: { kind: "proactive-interaction" },
+  });
+}
+
 /**
  * Wire the proactive-interaction decider (#8792): subscribe to VIEW_SWITCHED and
- * route an admitted, model-judged comment into the chat via the existing
- * proactive-message pipeline. No-ops when disabled by config/kill-switch.
+ * route an admitted, model-judged offer into chat suggestions or low-priority
+ * notifications. No-ops when disabled by config/kill-switch.
  */
 function wireProactiveInteractionDecider(
   rt: IAgentRuntime,
@@ -1795,6 +1833,8 @@ function wireProactiveInteractionDecider(
     gate: proactiveInteractionGate,
     route: (text) =>
       routeProactiveText(state, text, PROACTIVE_INTERACTION_SOURCE),
+    notify: (offer) => notifyProactiveInteraction(rt, offer),
+    shouldSuppress: () => state.activeChatTurnCount > 0,
   });
 }
 
@@ -3703,6 +3743,7 @@ export async function startApiServer(opts?: {
     chatConnectionPromise: null,
     adminEntityId: null,
     conversations: new Map(),
+    activeChatTurnCount: 0,
     conversationRestorePromise: null,
     deletedConversationIds,
     cloudManager: null,

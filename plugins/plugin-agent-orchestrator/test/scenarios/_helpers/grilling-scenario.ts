@@ -16,6 +16,18 @@ import {
 
 type VerifierModel = (...args: unknown[]) => Promise<unknown>;
 
+function summarizeEvents(
+  events: Array<{ eventType?: string; summary?: string; data?: unknown }>,
+): string {
+  return events
+    .map((event) => {
+      const data = event.data ? ` data=${JSON.stringify(event.data)}` : "";
+      return `${event.eventType ?? "event"}: ${event.summary ?? ""}${data}`;
+    })
+    .join("\n")
+    .slice(0, 3000);
+}
+
 /** A deterministic stand-in for the verifier model: PASS only when the prompt
  * (which embeds the completion evidence) carries a pasted passing-test line —
  * exactly the discrimination a real judge makes. Mirrors the live model's
@@ -76,8 +88,8 @@ export async function runGrillingHappyPathCheck(
       async () => (await store.getTask(taskId))?.task.status === "done",
     );
     if (!done) {
-      const status = (await store.getTask(taskId))?.task.status;
-      return `task was not verified done after pasted evidence; status=${status}`;
+      const doc = await store.getTask(taskId);
+      return `task was not verified done after pasted evidence; status=${doc?.task.status}\n${summarizeEvents(doc?.events ?? [])}`;
     }
     return undefined;
   } finally {

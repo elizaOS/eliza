@@ -48,7 +48,6 @@ Total: **32**
 
 - `plugins/app-feed`
 - `plugins/app-clawville`
-- `plugins/app-defense-of-the-agents`
 - `plugins/app-elizamaker`
 - `plugins/app-hyperliquid`
 - `plugins/app-hyperscape`

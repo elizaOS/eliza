@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "platform": "windows-desktop",
+  "status": "requires_device_evidence",
+  "target": {
+    "minimumWindows": "Windows 10 or newer",
+    "driver": "nutjs preferred; legacy PowerShell/user32 fallback allowed",
+    "shell": "PowerShell -NoProfile"
+  },
+  "evidence": {
+    "machineModel": null,
+    "windowsVersion": null,
+    "buildId": null,
+    "validatedAt": null,
+    "validator": null,
+    "artifacts": []
+  },
+  "checks": [
+    {
+      "id": "capabilityProbe",
+      "method": "detectPlatformCapabilities/getCapabilities",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "platform is win32",
+        "screenshot, computerUse, windowList, browser, terminal, fileSystem, and clipboard capabilities are reported",
+        "PowerShell-backed tools are identified"
+      ]
+    },
+    {
+      "id": "screenshotCapture",
+      "method": "captureDisplay/capturePrimaryDisplay",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "primary display capture returns non-empty PNG bytes",
+        "captured dimensions match display metadata",
+        "screenshot artifact is attached"
+      ]
+    },
+    {
+      "id": "mouseKeyboardInput",
+      "method": "ComputerUseService desktop actions",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "mouse_move succeeds",
+        "click or double_click succeeds on a harmless target",
+        "type and key actions succeed in a controlled text field",
+        "post-action screenshot is captured when configured"
+      ]
+    },
+    {
+      "id": "windowListFocus",
+      "method": "listWindows/focusWindow",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "listWindows returns visible windows with app/process metadata",
+        "focusWindow focuses a safe target window",
+        "window operation failures include actionable diagnostics"
+      ]
+    },
+    {
+      "id": "browserAutomation",
+      "method": "browser open/navigate/get/screenshot/close",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "browser target opens or attaches to a supported Chromium browser",
+        "navigate/get/screenshot succeed",
+        "browser cleanup closes the test tab"
+      ]
+    },
+    {
+      "id": "clipboardRoundTrip",
+      "method": "readClipboard/writeClipboard",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "Set-Clipboard writes a test token",
+        "Get-Clipboard -Raw reads the same test token",
+        "large payload cap and command failures remain guarded by unit tests"
+      ]
+    },
+    {
+      "id": "terminalSafety",
+      "method": "PowerShell terminal execution safety",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "allowed harmless PowerShell command succeeds",
+        "dangerous or blocked command is rejected",
+        "timeout behavior is recorded"
+      ]
+    },
+    {
+      "id": "approvalMode",
+      "method": "ComputerUseApprovalManager",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "smart_approve auto-approves read-only actions",
+        "destructive actions require approval",
+        "full_control/approve_all/off modes behave as configured"
+      ]
+    },
+    {
+      "id": "windowsHardeningRegression",
+      "method": "Windows hardening evidence replay",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "PowerShell System.Windows.Forms calls load required assemblies",
+        "degenerate screenshot regions are rejected with clear errors",
+        "Windows path security assertions pass",
+        "existing real-driver screenshot evidence is linked or refreshed"
+      ]
+    }
+  ]
+}

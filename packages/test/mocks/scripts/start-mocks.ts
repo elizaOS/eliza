@@ -4072,6 +4072,71 @@ async function dynamicProviderFixture(args: {
   }
 }
 
+const FALLBACK_MOCK_PORT_BASE = 19_000;
+const FALLBACK_MOCK_PORT_ATTEMPTS = 2_000;
+let nextFallbackMockPort =
+  Number.parseInt(process.env.ELIZA_MOCK_PORT_BASE ?? "", 10) ||
+  FALLBACK_MOCK_PORT_BASE + (process.pid % 1_000);
+
+function listenErrorCode(err: unknown): string | undefined {
+  return typeof err === "object" && err !== null && "code" in err
+    ? String((err as { code?: unknown }).code)
+    : undefined;
+}
+
+function canRetryListenError(err: unknown): boolean {
+  const code = listenErrorCode(err);
+  if (code === "EADDRINUSE" || code === "EACCES") return true;
+  const message = err instanceof Error ? err.message : String(err);
+  return /port \d+ in use|address already in use|EADDRINUSE/i.test(message);
+}
+
+async function listenOnLoopback(
+  server: http.Server,
+  port: number,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const onError = (err: Error) => {
+      server.off("error", onError);
+      reject(err);
+    };
+    server.once("error", onError);
+    try {
+      server.listen(port, "127.0.0.1", () => {
+        server.off("error", onError);
+        resolve();
+      });
+    } catch (err) {
+      server.off("error", onError);
+      reject(err);
+    }
+  });
+}
+
+async function listenFixtureServer(server: http.Server): Promise<void> {
+  try {
+    await listenOnLoopback(server, 0);
+    return;
+  } catch (err) {
+    if (!process.versions.bun || !canRetryListenError(err)) throw err;
+  }
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt < FALLBACK_MOCK_PORT_ATTEMPTS; attempt += 1) {
+    const port = nextFallbackMockPort++;
+    try {
+      await listenOnLoopback(server, port);
+      return;
+    } catch (err) {
+      if (!canRetryListenError(err)) throw err;
+      lastError = err;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Failed to bind mock fixture server to a fallback port");
+}
+
 async function startFixtureServer(
   dataPath: string,
   opts?: MockFixtureOptions,
@@ -4382,10 +4447,7 @@ async function startFixtureServer(
     }
   });
 
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => resolve());
-  });
+  await listenFixtureServer(server);
 
   server.unref();
 

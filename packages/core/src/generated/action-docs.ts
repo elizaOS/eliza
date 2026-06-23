@@ -4053,6 +4053,23 @@ export const allActionsSpec = {
 			descriptionCompressed: "List all commands",
 		},
 		{
+			name: "COMPACT_COMMAND",
+			description: "Compact conversation history",
+			parameters: [
+				{
+					name: "instructions",
+					description: "Optional compaction instructions",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional compaction instructions",
+				},
+			],
+			similes: ["/compact"],
+			descriptionCompressed: "Compact convo history",
+		},
+		{
 			name: "COMPUTER_USE",
 			description:
 				"computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
@@ -4701,6 +4718,23 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "ELEVATED_COMMAND",
+			description: "Set elevated permission mode",
+			parameters: [
+				{
+					name: "level",
+					description: "off, on, ask, full",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "off, on, ask, full",
+				},
+			],
+			similes: ["/elevated", "/elev"],
+			descriptionCompressed: "Set elevated permission mode",
 		},
 		{
 			name: "ELIZAOS",
@@ -5993,6 +6027,23 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "MODEL_COMMAND",
+			description: "Set or show current model",
+			parameters: [
+				{
+					name: "model",
+					description: "provider/model or alias",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "provider/model or alias",
+				},
+			],
+			similes: ["/model", "/m"],
+			descriptionCompressed: "Set or show current model",
+		},
+		{
 			name: "MODELS_COMMAND",
 			description: "List available models",
 			parameters: [],
@@ -6337,6 +6388,13 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "NEW_COMMAND",
+			description: "Start a new conversation",
+			parameters: [],
+			similes: ["/new"],
+			descriptionCompressed: "Start a new convo",
 		},
 		{
 			name: "OSWORLD",
@@ -7135,6 +7193,48 @@ export const allActionsSpec = {
 				"CLAUDE_MAX_PROXY_STATUS",
 				"CHECK_PROXY",
 			],
+		},
+		{
+			name: "QUEUE_COMMAND",
+			description: "Set queue mode",
+			parameters: [
+				{
+					name: "mode",
+					description: "steer, followup, collect, interrupt, or options",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"steer, followup, collect, interrupt, or options",
+				},
+			],
+			similes: ["/queue", "/q"],
+			descriptionCompressed: "Set queue mode",
+		},
+		{
+			name: "REASONING_COMMAND",
+			description: "Set reasoning visibility",
+			parameters: [
+				{
+					name: "level",
+					description: "off, on, stream",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "off, on, stream",
+				},
+			],
+			similes: ["/reasoning", "/reason"],
+			descriptionCompressed: "Set reasoning visibility",
+		},
+		{
+			name: "RESET_COMMAND",
+			description: "Reset session state",
+			parameters: [],
+			similes: ["/reset"],
+			descriptionCompressed: "Reset session state",
 		},
 		{
 			name: "RESOLVE_REQUEST",
@@ -8756,6 +8856,23 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "THINK_COMMAND",
+			description: "Set thinking level",
+			parameters: [
+				{
+					name: "level",
+					description: "off, minimal, low, medium, high, xhigh",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "off, minimal, low, medium, high, xhigh",
+				},
+			],
+			similes: ["/think", "/thinking", "/t"],
+			descriptionCompressed: "Set thinking level",
+		},
+		{
 			name: "TODO",
 			description:
 				"Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
@@ -8915,6 +9032,23 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "TTS_COMMAND",
+			description: "Text-to-speech settings",
+			parameters: [
+				{
+					name: "action",
+					description: "on, off, status, provider, limit, audio",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "on, off, status, provider, limit, audio",
+				},
+			],
+			similes: ["/tts", "/voice"],
+			descriptionCompressed: "Text-to-speech settings",
 		},
 		{
 			name: "TUNNEL",
@@ -9168,6 +9302,23 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "VERBOSE_COMMAND",
+			description: "Set verbose output level",
+			parameters: [
+				{
+					name: "level",
+					description: "off, on, full",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "off, on, full",
+				},
+			],
+			similes: ["/verbose", "/v"],
+			descriptionCompressed: "Set verbose output level",
 		},
 		{
 			name: "VISUALWEBBENCH_TASK",

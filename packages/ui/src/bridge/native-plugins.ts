@@ -740,7 +740,8 @@ export interface TalkModePluginLike extends NativePlugin {
  * returns turn-level results (speaker embedding + diariz labels) to JS.
  *
  * PCM and the float/int8 payloads are base64-encoded (LE-s16 for PCM, LE-fp32
- * for the embedding, raw int8 for the labels) — see the JNI host.
+ * for segmented turn PCM + embedding, raw int8 for the labels) — see the JNI
+ * host.
  */
 export interface ElizaVoiceTurn {
   turnId: string;
@@ -756,6 +757,10 @@ export interface ElizaVoiceTurn {
   /** base64 int8 per-frame pyannote powerset labels ("" when none). */
   labels: string;
   labelCount: number;
+  /** Optional base64 LE-fp32 segmented turn PCM, present only when requested. */
+  pcm?: string;
+  /** Sample rate for `pcm` (currently 16000). */
+  pcmSampleRate?: number;
 }
 
 export interface ElizaVoicePluginLike extends NativePlugin {
@@ -780,10 +785,12 @@ export interface ElizaVoicePluginLike extends NativePlugin {
   pipelineProcess(options: {
     handle: string;
     pcm16: string;
+    includePcm?: boolean;
   }): Promise<{ turns: ElizaVoiceTurn[] }>;
   /** Force-finalize an open turn; returns any flushed turn. */
   pipelineFlush(options: {
     handle: string;
+    includePcm?: boolean;
   }): Promise<{ turns: ElizaVoiceTurn[] }>;
   pipelineReset(options: { handle: string }): Promise<void>;
   pipelineClose(options: { handle: string }): Promise<void>;
