@@ -47,6 +47,7 @@ import {
   recordRecentViewId,
   TOP_VIEW_LIMIT,
 } from "../../view-recents";
+import { WidgetHost } from "../../widgets/WidgetHost";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { ViewIcon } from "../views/ViewIcon";
@@ -1170,6 +1171,10 @@ export function ViewCatalog() {
             // paged, favorites dock = desktop tabs), with the install catalog
             // ("Get more") underneath.
             <>
+              {/* Frontpage widgets (#9143): plugins opt a widget onto the home
+                  by declaring the `home` slot. Renders nothing until populated
+                  (hideWhenEmpty), so the launcher grid is unaffected when empty. */}
+              <WidgetHost slot="home" className="px-1 pb-3" />
               <Springboard
                 entries={springboardEntries}
                 onLaunch={handleSpringboardLaunch}

@@ -43,6 +43,13 @@ vi.mock("../../state/useDeveloperMode", () => ({
   useIsDeveloperMode: vi.fn(),
 }));
 
+// The frontpage WidgetHost (#9143) reads the plugin store; these tests cover the
+// launcher grid, not widgets, so stub it to a no-op. Its real behavior is covered
+// by WidgetHost.test.tsx + registry.home.test.ts.
+vi.mock("../../widgets/WidgetHost", () => ({
+  WidgetHost: () => null,
+}));
+
 vi.mock("../../bridge/electrobun-runtime", () => ({
   isElectrobunRuntime: vi.fn(() => true),
 }));

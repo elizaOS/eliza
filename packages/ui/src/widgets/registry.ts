@@ -85,6 +85,18 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     order: 300,
     defaultEnabled: true,
   },
+  // Agent Orchestrator — activity surfaced on the home/frontpage too (#9143).
+  // Same pluginId+id reuses the registered component; the `home` slot is a
+  // separate resolveWidgetsForSlot pass, so this doesn't disturb the sidebar.
+  {
+    id: "agent-orchestrator.activity",
+    pluginId: "agent-orchestrator",
+    slot: "home",
+    label: "Activity",
+    icon: "Activity",
+    order: 100,
+    defaultEnabled: true,
+  },
   // Browser workspace status — surfaces /browser state in the right rail.
   {
     id: BROWSER_STATUS_WIDGET.id,

@@ -420,7 +420,8 @@ export interface PluginWidgetDeclaration {
 		| "character"
 		| "settings"
 		| "nav-page"
-		| "automations";
+		| "automations"
+		| "home";
 	/** Human-readable label. */
 	label: string;
 	/** Lucide icon name. */

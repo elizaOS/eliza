@@ -14,7 +14,10 @@ export type WidgetSlot =
   | "character"
   | "settings"
   | "nav-page"
-  | "automations";
+  | "automations"
+  // Frontpage / Springboard home surface (#9143). Plugins opt a widget into the
+  // home screen by declaring this slot; the ViewCatalog mounts a host for it.
+  | "home";
 
 /**
  * Serializable widget metadata declared by a plugin.
