@@ -7,6 +7,7 @@ export * from "./useCloudHandoffPhase";
 export * from "./useConnectorAccounts";
 export * from "./useConnectorReconnect";
 export * from "./useConnectorSendAsAccount";
+export * from "./useFrameBudget";
 export * from "./useContextMenu";
 export * from "./useDesktopBridgeEvent";
 export * from "./useDocumentVisibility";
