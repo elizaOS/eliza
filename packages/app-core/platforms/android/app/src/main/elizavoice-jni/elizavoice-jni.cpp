@@ -1540,4 +1540,92 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesize(JNIEnv* env, jclass,
     return out;
 }
 
+// ── Batch ASR (synchronous, VAD-free) ────────────────────────────────────
+//
+// The streaming pipeline (nativePipelineProcess) is VAD-gated and needs the
+// VAD/diariz/speaker GGUFs staged; this is the DIRECT audio-in/text-out
+// transcribe the fused lib exposes (eliza_inference_asr_transcribe), which
+// only mmap-acquires the `asr/` weights on the resident context. The bionic
+// host's op="asr" calls this so the agent's TRANSCRIPTION delegate gets a
+// real on-device transcript without the full attribution pipeline.
+JNIEXPORT jstring JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeAsrTranscribe(JNIEnv* env, jclass,
+                                                         jlong ctxHandle,
+                                                         jfloatArray jPcm,
+                                                         jint sampleRate) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    if (!ctx) {
+        throw_runtime(env, "asrTranscribe: null context", nullptr);
+        return nullptr;
+    }
+    const jsize n = env->GetArrayLength(jPcm);
+    jfloat* pcm = env->GetFloatArrayElements(jPcm, nullptr);
+    if (!pcm) {
+        throw_runtime(env, "asrTranscribe: null PCM", nullptr);
+        return nullptr;
+    }
+    // 64 KiB transcript cap — far longer than any single utterance.
+    std::vector<char> out(65536, 0);
+    char* err = nullptr;
+    const int rc = eliza_inference_asr_transcribe(
+        ctx, reinterpret_cast<const float*>(pcm), static_cast<size_t>(n),
+        sampleRate > 0 ? sampleRate : kSampleRate, out.data(), out.size(),
+        &err);
+    env->ReleaseFloatArrayElements(jPcm, pcm, JNI_ABORT);
+    if (rc < 0) {
+        throw_runtime(env, "asr_transcribe", err);
+        return nullptr;
+    }
+    LOGI("nativeAsrTranscribe: %d samples @ %d Hz -> %d transcript bytes",
+         (int)n, (int)sampleRate, rc);
+    return to_jstring(env, std::string(out.data()));
+}
+
+// ── mmproj vision (ABI v9) ───────────────────────────────────────────────
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeVisionSupported(JNIEnv*, jclass) {
+    return static_cast<jint>(eliza_inference_vision_supported());
+}
+
+// Describe a raw PNG/JPEG/WebP image with the resident TEXT model + an mmproj
+// projector (eliza_inference_describe_image). The bionic host's op="image"
+// calls this so the agent's IMAGE_DESCRIPTION delegate runs screen/vision
+// recognition fully on-device.
+JNIEXPORT jstring JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeDescribeImage(JNIEnv* env, jclass,
+                                                         jlong ctxHandle,
+                                                         jbyteArray jImage,
+                                                         jstring jMmproj,
+                                                         jstring jPrompt) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    if (!ctx) {
+        throw_runtime(env, "describeImage: null context", nullptr);
+        return nullptr;
+    }
+    const std::string mmproj = from_jstring(env, jMmproj);
+    const std::string prompt = from_jstring(env, jPrompt);
+    const jsize n = env->GetArrayLength(jImage);
+    jbyte* img = env->GetByteArrayElements(jImage, nullptr);
+    if (!img) {
+        throw_runtime(env, "describeImage: null image bytes", nullptr);
+        return nullptr;
+    }
+    std::vector<char> out(16384, 0);
+    char* err = nullptr;
+    const int rc = eliza_inference_describe_image(
+        ctx, reinterpret_cast<const unsigned char*>(img),
+        static_cast<size_t>(n),
+        mmproj.empty() ? nullptr : mmproj.c_str(),
+        prompt.empty() ? nullptr : prompt.c_str(), out.data(), out.size(),
+        &err);
+    env->ReleaseByteArrayElements(jImage, img, JNI_ABORT);
+    if (rc < 0) {
+        throw_runtime(env, "describe_image", err);
+        return nullptr;
+    }
+    LOGI("nativeDescribeImage: %d image bytes -> %d description bytes", (int)n,
+         rc);
+    return to_jstring(env, std::string(out.data()));
+}
+
 }  // extern "C"
