@@ -67,6 +67,7 @@
     "test:e2e:manual": "vitest run --config ../../vitest.config.ts test/*.live.e2e.test.ts"
   },
   "files": [
+    "registry-entry.json",
     "dist"
   ],
   "devDependencies": {

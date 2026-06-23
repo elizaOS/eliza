@@ -4,11 +4,17 @@ import { describe, expect, it } from "vitest";
 import { loadRegistryFromRawEntries } from "./loader";
 import { registryEntrySchema } from "./schema";
 
+// The facewear entry is plugin-owned: it lives next to its plugin and is
+// aggregated into generated.json at build time (see generate.ts).
 const FACEWEAR_ENTRY_PATH = join(
   import.meta.dirname,
-  "entries",
+  "..",
+  "..",
+  "..",
+  "..",
   "plugins",
-  "facewear.json",
+  "plugin-facewear",
+  "registry-entry.json",
 );
 
 describe("facewear registry entry", () => {

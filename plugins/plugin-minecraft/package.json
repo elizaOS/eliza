@@ -45,6 +45,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist",
     "README.md",
     "package.json"

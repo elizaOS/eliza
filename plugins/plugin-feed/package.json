@@ -97,6 +97,7 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "files": [
+    "registry-entry.json",
     "dist"
   ],
   "peerDependencies": {

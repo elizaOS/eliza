@@ -36,12 +36,10 @@ src/
     desktop/                Electrobun tray/window React runtimes (AppWindowRenderer, DesktopTrayRuntime, …)
     mode/                   runtime-mode (local vs remote), route-mode-guard, remote-forwarder
     build-character-from-config.ts, channel-plugin-map.ts, autonomy-policy.ts, sandbox-policy.ts
-  registry/                 Static app/plugin/connector registry (SoT)
-    index.ts                loadRegistry(), getApps/getPlugins/getConnectors/getEntry
-    schema.ts               zod schemas (configFieldSchema, entry schemas)
-    loader.ts               raw-entry validation + merge
-    app-registry.ts         runtime curated-app registration (registerCuratedApp)
-    entries/{apps,plugins,connectors}/*.json   the registry data
+  registry/index.ts         Back-compat shim: re-exports `@elizaos/registry/first-party`.
+                            The curated app/plugin/connector registry (schema,
+                            loader, entries, registerCuratedApp, registerRegistryEntry)
+                            now lives in `packages/registry/src/first-party/`.
   config/app-config.ts      AppConfig types + DEFAULT_APP_CONFIG (re-exported from @elizaos/shared)
   first-run/                first-run-config + runtime-target resolution
   security/                 agent-vault-id, platform-secure-store (+ -node), wallet key hydration
@@ -86,14 +84,14 @@ Run from repo root with `--cwd packages/app-core`:
 
 - **Add a CLI command:** create `src/cli/program/register.<name>.ts` exporting `register<Name>Command(program)`, then wire it into `src/cli/program/command-registry.ts`.
 - **Add an API route:** add a handler module under `src/api/` and dispatch it from `src/api/server.ts` (or the relevant `*-routes.ts`). Use `sendJson` from `api/response.ts`; authorize via `api/auth.ts`.
-- **Add a registry app/plugin/connector:** drop a JSON file in `src/registry/entries/{apps,plugins,connectors}/` conforming to `src/registry/schema.ts`. The build copies `src/registry/entries` into `dist`. For runtime-registered curated apps, call `registerCuratedApp` (`registry/app-registry.ts`).
+- **Add a registry app/plugin/connector:** the curated registry moved to `@elizaos/registry/first-party`. Drop a JSON file in `packages/registry/src/first-party/entries/{apps,plugins,connectors}/` conforming to `packages/registry/src/first-party/schema.ts`, or have the plugin self-register at runtime via `registerRegistryEntry()`. For curated-app name matching, call `registerCuratedApp`. `@elizaos/app-core/registry` re-exports all of these for back-compat.
 - **Add a subpath export:** add the `exports` map entry in `package.json` AND export it from the right barrel; the build emits the matching `dist/*.d.ts`/`.js`.
 
 ## Conventions / gotchas
 
 - `src/platform/empty-node-module.ts` is a tsconfig-paths alias target for browser builds — it is intentionally NOT re-exported from `index.ts` (re-exporting would shadow the real Node `api/server` / `runtime/eliza` exports with noops). Browser bundlers alias it in; Node imports the originals.
 - `index.ts` re-exports `./services/steward-sidecar.ts` with an explicit `.ts` extension to disambiguate from the sibling `steward-sidecar/` directory after `tsc --rewriteRelativeImportExtensions`.
-- `registry/index.ts` uses a hoisted `var cacheSlot` (not `let`/`const`) to survive circular-import re-entry on Bun's strict ESM runtime (TDZ-hardening); `resolveEntriesDir()` falls back to `src/registry/entries` when `dist/registry/entries` is absent.
+- The registry's `var cacheSlot` TDZ-hardening + `resolveEntriesDir()` now live in `@elizaos/registry/first-party` (`packages/registry/src/first-party/index.ts`); `packages/app-core/src/registry/index.ts` is a one-line re-export shim.
 - `entry.ts` builds to `dist/entry.js` and is imported by the generated app launcher (desktop/Electrobun bundling emits a tiny ESM file that `import`s `dist/entry.js`) — there is no `bin` field; do not add one assuming a downstream installer.
 - `plugin-local-inference` is imported lazily in `runtime/eliza.ts` to avoid static plugin-boundary violations.
 - Peer deps `react`, `react-dom`, `three`; Capacitor mobile bridges are `optionalDependencies` (`@elizaos/capacitor-*`). Node `>=24`.
