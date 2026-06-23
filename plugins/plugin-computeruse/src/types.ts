@@ -411,7 +411,7 @@ export interface ComputerUseConfig {
 export type ComputerUseMode = "yolo" | "sandbox";
 
 /** Implemented sandbox backend identifier. */
-export type SandboxBackendName = "docker";
+export type SandboxBackendName = "docker" | "wsb" | "qemu";
 
 export interface SandboxConfig {
   backend: SandboxBackendName;
@@ -431,6 +431,15 @@ export interface SandboxBackendOptions {
   mounts?: Array<{ host: string; container: string; readOnly?: boolean }>;
   /** Resource limits passed through to the backend. */
   resources?: { cpus?: number; memoryMb?: number };
+  /**
+   * Remote-guest RPC endpoint for the VM backends (WSB / QEMU, #9170 M13). The
+   * in-guest computer-server listens here; the host POSTs
+   * `{command, params}` → `{success, result}`. Defaults to
+   * `http://127.0.0.1:<rpcPort>/cua`.
+   */
+  rpcUrl?: string;
+  /** Host-forwarded guest RPC port (WSB / QEMU). Default 8000. */
+  rpcPort?: number;
 }
 
 // ── Browser Models ────────────────────────────────────────────────────────

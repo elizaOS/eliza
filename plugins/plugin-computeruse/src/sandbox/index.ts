@@ -23,12 +23,14 @@ import type {
   SandboxConfig,
 } from "../types.js";
 import { DockerBackend, type DockerBackendOptions } from "./docker-backend.js";
+import { QEMUBackend } from "./qemu-backend.js";
 import { SandboxDriver } from "./sandbox-driver.js";
 import {
   type Driver,
   type SandboxBackend,
   SandboxBackendUnavailableError,
 } from "./types.js";
+import { WSBBackend } from "./wsb-backend.js";
 
 export interface CreateSandboxDriverOptions {
   backend: SandboxBackendName;
@@ -63,6 +65,26 @@ export function createSandboxDriver(
       image: opts.image,
       env: opts.options?.env,
       ...(opts.dockerOverrides ?? {}),
+    });
+    return new SandboxDriver(backend);
+  }
+
+  // VM providers (#9170 M13) drive an in-guest computer-server over the generic
+  // remote-guest RPC. They throw SandboxBackendUnavailableError at construction
+  // when the hypervisor/feature is absent — never a silent host fallback.
+  if (opts.backend === "wsb") {
+    const backend = new WSBBackend({
+      rpcUrl: opts.options?.rpcUrl,
+      rpcPort: opts.options?.rpcPort,
+    });
+    return new SandboxDriver(backend);
+  }
+
+  if (opts.backend === "qemu") {
+    const backend = new QEMUBackend({
+      image: opts.image,
+      rpcUrl: opts.options?.rpcUrl,
+      rpcPort: opts.options?.rpcPort,
     });
     return new SandboxDriver(backend);
   }
@@ -113,6 +135,20 @@ export function resolveModeFromEnv(raw: string | undefined): ComputerUseMode {
 
 export type { DockerBackendOptions } from "./docker-backend.js";
 export { DockerBackend } from "./docker-backend.js";
+export {
+  QEMUBackend,
+  type QemuBackendOptions,
+  type QemuLauncher,
+} from "./qemu-backend.js";
+export {
+  type GuestRpcRequest,
+  type GuestRpcResponse,
+  HttpGuestTransport,
+  RemoteGuestBackend,
+  type RemoteGuestTransport,
+  resolveGuestRpcUrl,
+  sandboxOpToRpc,
+} from "./remote-guest.js";
 export { SandboxDriver } from "./sandbox-driver.js";
 export type {
   FileActionResult,
@@ -129,4 +165,10 @@ export {
   type SandboxOp,
   type ScrollDirection,
 } from "./types.js";
+export {
+  isWindowsSandboxAvailable,
+  WSBBackend,
+  type WsbBackendOptions,
+  type WsbLauncher,
+} from "./wsb-backend.js";
 export type { SandboxConfig };

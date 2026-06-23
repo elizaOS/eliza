@@ -2048,10 +2048,44 @@ export class ComputerUseService extends Service {
       const image =
         getSetting("COMPUTERUSE_SANDBOX_IMAGE") ??
         getSetting("COMPUTER_USE_SANDBOX_IMAGE");
-      if (backend === "docker" && image && image.trim().length > 0) {
+      const trimmedImage = image?.trim();
+      // Remote-guest RPC options for the VM providers (#9170 M13).
+      const rpcUrl = (
+        getSetting("COMPUTERUSE_SANDBOX_RPC_URL") ??
+        getSetting("COMPUTER_USE_SANDBOX_RPC_URL")
+      )?.trim();
+      const rpcPortRaw =
+        getSetting("COMPUTERUSE_SANDBOX_RPC_PORT") ??
+        getSetting("COMPUTER_USE_SANDBOX_RPC_PORT");
+      const rpcPort = rpcPortRaw ? Number(rpcPortRaw) : undefined;
+      const options =
+        rpcUrl || (rpcPort !== undefined && Number.isFinite(rpcPort))
+          ? {
+              ...(rpcUrl ? { rpcUrl } : {}),
+              ...(rpcPort !== undefined && Number.isFinite(rpcPort)
+                ? { rpcPort }
+                : {}),
+            }
+          : undefined;
+      // docker + qemu require an image; wsb (Windows Sandbox) is imageless.
+      if (
+        (backend === "docker" || backend === "qemu") &&
+        trimmedImage &&
+        trimmedImage.length > 0
+      ) {
         this.cuConfig.sandbox = {
           backend,
-          image: image.trim(),
+          image: trimmedImage,
+          ...(options ? { options } : {}),
+        };
+      } else if (backend === "wsb") {
+        this.cuConfig.sandbox = {
+          backend,
+          image:
+            trimmedImage && trimmedImage.length > 0
+              ? trimmedImage
+              : "windows-sandbox",
+          ...(options ? { options } : {}),
         };
       } else {
         this.cuConfig.sandbox = undefined;
