@@ -4,7 +4,7 @@
  * Single source of truth for hardware SKUs, copy, pricing, and color options
  * shared across:
  *   - `@elizaos/os-homepage` (marketing site product tiles + checkout)
- *   - `@elizaos/cloud-frontend` (signed-in checkout page)
+ *   - `@elizaos/app` (signed-in checkout page)
  *   - `@elizaos/cloud-api` (Stripe checkout-session creation)
  *
  * Adding a product here automatically:
@@ -47,9 +47,9 @@ export type Product = {
   summary: string;
   /** Longer marketing detail (one sentence). */
   detail: string;
-  /** Short subtitle used by cloud-frontend's checkout panel. */
+  /** Short subtitle used by the cloud checkout panel. */
   subtitle: string;
-  /** UI hint used by cloud-frontend to pick an icon and visual layout. */
+  /** UI hint used by the cloud checkout to pick an icon and visual layout. */
   kind: ProductKind;
   /** Selectable colors. */
   colors: ProductColor[];
