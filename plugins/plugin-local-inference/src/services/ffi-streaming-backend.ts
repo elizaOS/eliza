@@ -198,6 +198,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			cacheTypeV: loadConfig?.cacheTypeV,
 			contextSize: loadConfig?.contextSize,
 			signal: args.signal,
+			maxTokensPerStep: args.maxTokensPerStep,
 			onTextChunk: args.onTextChunk,
 			onVerifierEvent: args.onVerifierEvent,
 		});
