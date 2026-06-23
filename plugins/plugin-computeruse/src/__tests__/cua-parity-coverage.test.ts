@@ -135,7 +135,7 @@ const CAPABILITIES: Capability[] = [
     milestone: "M13 — file-ops binary I/O + executeFileAction",
   },
   // ── trycua blind spots — tracked decisions, not silent gaps (workflow audit) ──
-  { cua: "set_value (a11y element value write)", domain: "architecture", status: "missing", milestone: "a11y-write" },
+  { cua: "set_value (a11y element value write)", domain: "input", status: "have", verb: "set_value", milestone: "M12" },
   { cua: "kill_app (process terminate)", domain: "input", status: "have", verb: "kill_app", milestone: "M12" },
   {
     cua: "zoom (region magnify for grounding)",

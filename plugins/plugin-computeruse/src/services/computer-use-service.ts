@@ -53,6 +53,7 @@ import {
   driverMouseUp,
   driverRightClick,
   driverScroll,
+  driverSetValue,
   driverType,
 } from "../platform/driver.js";
 import {
@@ -145,6 +146,7 @@ const COORDINATE_BEARING_ACTIONS = new Set<DesktopActionParams["action"]>([
   "mouse_up",
   "scroll",
   "drag",
+  "set_value",
 ]);
 
 function errorMessage(error: unknown): string {
@@ -290,6 +292,7 @@ export class ComputerUseService extends Service {
       case "open":
       case "launch":
       case "kill_app":
+      case "set_value":
         return this.executeDesktopAction({
           ...commandParameters<DesktopActionParams>(parameters),
           action: this.mapDesktopCommandToAction(command),
@@ -550,6 +553,15 @@ export class ComputerUseService extends Service {
             data: killed,
             message: `Terminated ${killed.target}.`,
           });
+        }
+        case "set_value": {
+          this.requireCoordinate(params.coordinate, "set_value");
+          if (typeof params.text !== "string") {
+            throw new Error("text (the value) is required for set_value action");
+          }
+          const g = this.toGlobal(params, params.coordinate);
+          await driverSetValue(g.x, g.y, params.text);
+          break;
         }
         default:
           return this.failEntry(entry, {
