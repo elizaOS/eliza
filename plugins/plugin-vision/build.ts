@@ -46,7 +46,10 @@ async function build() {
   // Build main package
   console.log("📦 Building main package...");
   const mainResult = await Bun.build({
-    entrypoints: ["./src/index.ts"],
+    // index.ts is the package entry; som.ts is also a published subpath
+    // (`@elizaos/plugin-vision/som`, #9170 M9) consumed by computeruse's
+    // detect_elements/grounding, so emit it as its own dist entrypoint.
+    entrypoints: ["./src/index.ts", "./src/som.ts"],
     outdir: "./dist",
     target: "node",
     format: "esm",

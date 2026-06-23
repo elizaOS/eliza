@@ -5,7 +5,10 @@ import {
   ComputerUseApprovalManager,
   isApprovalMode,
 } from "../approval-manager.js";
-import { getCoordOcrProvider } from "../mobile/ocr-provider.js";
+import {
+  getCoordOcrProvider,
+  getSetOfMarksProvider,
+} from "../mobile/ocr-provider.js";
 import {
   clickBrowser,
   closeBrowser,
@@ -548,6 +551,17 @@ export class ComputerUseService extends Service {
     entry: ActionHistoryEntry,
     params: DesktopActionParams,
   ): Promise<ComputerActionResult> {
+    const displayId =
+      params.displayId ?? this.resolveDisplayIdForAction(params);
+
+    // detect_elements prefers Set-of-Marks grounding when a provider is
+    // registered (GGUF YOLO icons + OCR text fused into 1-indexed numbered
+    // marks + overlay, #9170 M9). Falls back to OCR-only text elements.
+    if (params.action === "detect_elements") {
+      const somResult = await this.runSetOfMarksDetect(entry, displayId);
+      if (somResult) return somResult;
+    }
+
     const provider = getCoordOcrProvider();
     if (!provider) {
       return this.failEntry(entry, {
@@ -556,8 +570,6 @@ export class ComputerUseService extends Service {
           "No OCR provider is registered. Enable @elizaos/plugin-vision for on-device OCR (Windows.Media.Ocr / Apple Vision / docTR).",
       });
     }
-    const displayId =
-      params.displayId ?? this.resolveDisplayIdForAction(params);
     try {
       const cap = await captureDisplay(displayId);
       const { blocks } = await provider.describe({
@@ -598,6 +610,66 @@ export class ComputerUseService extends Service {
       return this.failEntry(entry, {
         success: false,
         error: errorMessage(error),
+      });
+    }
+  }
+
+  /**
+   * Set-of-Marks `detect_elements` path (#9170 M9). Returns `null` when no SoM
+   * provider is registered so the caller falls back to OCR-only detection.
+   * Each numbered mark becomes an element whose `center` is the click target
+   * the VLM's chosen number resolves to; the numbered-overlay PNG is returned
+   * for the prompt under `data.setOfMarks.overlay`.
+   */
+  private async runSetOfMarksDetect(
+    entry: ActionHistoryEntry,
+    displayId: number,
+  ): Promise<ComputerActionResult | null> {
+    const som = getSetOfMarksProvider();
+    if (!som) return null;
+    try {
+      const cap = await captureDisplay(displayId);
+      const { marks, overlayPngBase64 } = await som.describe({
+        displayId: String(cap.display.id),
+        sourceX: 0,
+        sourceY: 0,
+        pngBytes: new Uint8Array(cap.frame),
+        renderOverlay: true,
+      });
+      const elements = marks.map((m) => ({
+        id: `m${m.index}`,
+        mark: m.index,
+        kind: m.source,
+        text: m.label ?? "",
+        bbox: [m.bbox[0], m.bbox[1], m.bbox[2], m.bbox[3]] as [
+          number,
+          number,
+          number,
+          number,
+        ],
+        center: [m.center[0], m.center[1]] as [number, number],
+        score: m.score,
+        displayId: cap.display.id,
+      }));
+      return this.succeedEntry(entry, {
+        success: true,
+        displayId: cap.display.id,
+        data: {
+          elements,
+          count: elements.length,
+          setOfMarks: {
+            marks,
+            ...(overlayPngBase64 ? { overlay: overlayPngBase64 } : {}),
+          },
+        },
+        message: `Set-of-Marks detected ${elements.length} numbered element(s) on display ${cap.display.id}.`,
+      });
+    } catch (error) {
+      // SoM is best-effort; surface a clear failure rather than silently
+      // dropping to OCR (the caller already chose SoM by registering it).
+      return this.failEntry(entry, {
+        success: false,
+        error: `Set-of-Marks detection failed: ${errorMessage(error)}`,
       });
     }
   }

@@ -218,6 +218,10 @@ Add a `Route` object to `computerUseRoutes` in `src/index.ts`, implement the han
 
 Call the module-level `registerCoordOcrProvider(provider)` exported from `src/mobile/ocr-provider.ts` (not a method on `ComputerUseService`). plugin-vision does this at boot to contribute its hierarchical OCR adapter.
 
+### Register a Set-of-Marks provider (from another plugin)
+
+Call `registerSetOfMarksProvider(provider)` (same module, `src/mobile/ocr-provider.ts`). When registered, `detect_elements` prefers it: it returns a deduplicated, **1-indexed** set of numbered marks (GGUF YOLO icons + OCR text fused, icon-over-text suppression + NMS) plus an optional numbered-overlay PNG under `data.setOfMarks.overlay`. Each mark carries a `center` click target the VLM's chosen number resolves to. plugin-vision contributes the implementation (`som.ts` + `set-of-marks-provider.ts`); with no provider registered, `detect_elements` falls back to OCR-only text elements.
+
 ## Conventions / gotchas
 
 - **Approval flow**: every destructive action passes through `ComputerUseApprovalManager`. The default mode is `smart_approve` — only read-only `SAFE_COMMANDS` auto-approve, and destructive verbs (terminal execute, file write/delete) require explicit human approval. Switch to `full_control` (auto-approve everything), `approve_all`, or `off` (deny all) via env or the `/api/computer-use/approval-mode` route.

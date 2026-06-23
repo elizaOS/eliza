@@ -95,6 +95,7 @@ The plugin registers a single `VISION` action that routes to one of these sub-op
 | Object detection | YOLOv8n ggml via `native/yolo.cpp` (`src/yolo-detector.ts`); build with `bun run build:native` + `bun run build:weights`. Service degrades to motion/heuristic + VLM when the lib/GGUF are absent. | — (TensorFlow.js path removed) |
 | Pose detection | Heuristic person detection (motion-derived) | Planned ggml MoveNet port |
 | OCR | Apple Vision (darwin, when a provider is registered) → doCTR ggml (`native/doctr.cpp`) | No ONNX or Tesseract path |
+| Set-of-Marks grounding | `src/som.ts` fuses GGUF YOLO icon boxes + OCR text boxes into a deduplicated, 1-indexed numbered set (icon-over-text suppression + NMS) and renders a numbered-overlay PNG via `sharp`. `src/set-of-marks-provider.ts` registers it into plugin-computeruse's `detect_elements` seam at boot (best-effort; degrades to text-only marks when the GGUF detector is absent). | trycua/cua OmniParser parity (#9170 M9) |
 | Face recognition | Native ggml BlazeFace + 128-d embed (`face-detector-ggml.ts`, `face-recognition-ggml.ts`, `native/face-cpp`); disabled until the lib/GGUF artifacts land. No tfjs/face-api.js path. | MediaPipe BlazeFace migration shim is deprecated. |
 
 ## Platform notes
