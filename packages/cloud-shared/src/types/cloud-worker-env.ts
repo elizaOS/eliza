@@ -34,6 +34,21 @@ export interface Bindings {
   // ---- ElevenLabs ----
   ELEVENLABS_API_KEY?: string;
 
+  // ---- Free self-hosted voice (default) ----
+  /**
+   * Base URL of the self-hosted Kokoro TTS service (e.g. the Railway deploy).
+   * When set, the cloud TTS endpoint serves Kokoro for free (no billing) as the
+   * default voice; ElevenLabs remains the opt-in / custom-voice path. Unset →
+   * ElevenLabs behavior is unchanged.
+   */
+  KOKORO_TTS_URL?: string;
+  /**
+   * Base URL of the self-hosted Whisper STT service (OpenAI-compatible
+   * `/v1/audio/transcriptions`, e.g. the Railway deploy). When set, the cloud
+   * STT endpoint serves Whisper for free; ElevenLabs STT is the fallback.
+   */
+  WHISPER_STT_URL?: string;
+
   // ---- AI providers ----
   CEREBRAS_API_KEY?: string;
   /** BYOK OpenRouter key — the backup for models we have no native key for. */

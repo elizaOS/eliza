@@ -88,6 +88,27 @@ const TtsBody = z.object({
  * @param request - Request body with text, voiceId, and optional modelId.
  * @returns Streaming audio response (audio/mpeg).
  */
+/**
+ * The Kokoro voice ids the self-hosted service ships. Map an incoming voiceId to
+ * a Kokoro voice when it matches; otherwise fall back to the default `af_heart`.
+ */
+const KOKORO_VOICE_IDS = new Set([
+  "af_heart",
+  "af_bella",
+  "af_sarah",
+  "af_nicole",
+  "af_sky",
+  "am_michael",
+  "am_adam",
+  "bf_emma",
+  "bf_isabella",
+  "bm_george",
+  "bm_lewis",
+]);
+function resolveKokoroVoice(voiceId?: string): string {
+  return voiceId && KOKORO_VOICE_IDS.has(voiceId) ? voiceId : "af_heart";
+}
+
 async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
   let reservation: CreditReservation | undefined;
 
@@ -132,6 +153,47 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     logger.info(
       `[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`,
     );
+
+    // -------------------------------------------------------------------------
+    // Free default voice: self-hosted Kokoro TTS. When KOKORO_TTS_URL is set this
+    // is the product default — no credit reservation, no billing. ElevenLabs
+    // (custom voices / opt-in) is the path below. Inert when KOKORO_TTS_URL is
+    // unset, so existing ElevenLabs behavior is unchanged.
+    // -------------------------------------------------------------------------
+    const kokoroBaseUrl = env.KOKORO_TTS_URL?.trim();
+    if (kokoroBaseUrl) {
+      const kokoroVoice = resolveKokoroVoice(voiceId);
+      const kokoroStart = Date.now();
+      const kokoroResponse = await fetch(
+        `${kokoroBaseUrl.replace(/\/+$/, "")}/api/tts`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, voice: kokoroVoice, speed: 1 }),
+        },
+      );
+      if (!kokoroResponse.ok || !kokoroResponse.body) {
+        const detail = await kokoroResponse.text().catch(() => "");
+        logger.error(
+          `[Voice TTS API] Kokoro synthesis failed (${kokoroResponse.status}): ${detail.slice(0, 200)}`,
+        );
+        return Response.json(
+          { error: "TTS synthesis failed" },
+          { status: 502 },
+        );
+      }
+      logger.info(
+        `[Voice TTS API] Kokoro stream started in ${Date.now() - kokoroStart}ms (voice=${kokoroVoice}, free)`,
+      );
+      return new Response(kokoroResponse.body, {
+        status: 200,
+        headers: {
+          "Content-Type":
+            kokoroResponse.headers.get("Content-Type") ?? "audio/wav",
+          "Cache-Control": "no-store",
+        },
+      });
+    }
 
     let userVoiceId: string | null = null;
     let voiceName: string | null = null;
