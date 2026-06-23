@@ -61,6 +61,17 @@ export const test = base.extend<CloudTestFixtures, CloudStackFixtures>({
       seededUser.userId,
       seededUser.organizationId,
     );
+    if (stack.frontendSkipped || !stack.urls.frontend) {
+      // Explicit, actionable failure instead of a silent pass or a cryptic
+      // `new URL("")` "Invalid URL" crash when the frontend was never booted
+      // (#9151). A frontend-dependent spec cannot meaningfully run here.
+      throw new Error(
+        "[cloud-e2e] authenticatedPage requires a running frontend, but it was " +
+          `not booted: ${stack.frontendSkipReason ?? "no frontend URL"} ` +
+          "Repoint the harness to packages/app's web dev (#9151), or run this " +
+          "spec only when the frontend is available.",
+      );
+    }
     const frontendUrl = new URL(stack.urls.frontend);
     await page.context().addCookies([
       {

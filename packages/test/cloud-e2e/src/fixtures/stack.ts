@@ -66,6 +66,16 @@ export interface StackHandle {
     controlPlane: string;
     pglite: string;
   };
+  /**
+   * True when the frontend Vite dev was NOT booted. The apex moved from
+   * packages/cloud-frontend (deleted) to packages/app, whose vite dev can't be
+   * swapped in 1:1 yet (#9151) — so frontend-dependent specs MUST gate on this
+   * flag and skip/fail explicitly, never silently pass on an empty
+   * `urls.frontend`.
+   */
+  frontendSkipped: boolean;
+  /** Human-readable reason the frontend was skipped (when frontendSkipped). */
+  frontendSkipReason?: string;
   mocks: {
     hetzner: RunningHetznerMock;
     controlPlane: RunningControlPlaneMock;
@@ -362,35 +372,55 @@ export async function startCloudStack(
   });
 
   // 3. console (apex) frontend Vite dev (skipped for API-only stacks).
-  // The apex moved from packages/cloud-frontend to packages/app in the cutover
-  // (#9093). packages/app's vite dev proxies /api to the branded ELIZA_API_PORT
-  // (`resolveDesktopApiPort`), NOT VITE_API_PROXY_TARGET, and serves on
-  // ELIZA_UI_PORT (`resolveDesktopUiPort`) — so we inject the harness's cloud-api
-  // port + the picked frontend port and boot `packages/app`'s vite (#9151).
+  // cloud-frontend was deleted in the apex→packages/app cutover. The apex is now
+  // packages/app, but its vite dev proxies /api via its own computed port (not
+  // VITE_API_PROXY_TARGET), so this harness can't boot it unchanged — repointing
+  // the frontend e2e to packages/app's web dev is a tracked follow-up. Until
+  // then, skip the frontend boot gracefully when the dir is absent instead of
+  // hard-crashing on a missing cwd.
   let frontendUrl = "";
-  if (opts.frontend !== false) {
-    const appDir = join(REPO_ROOT, "packages", "app");
+  let frontendSkipReason: string | undefined;
+  const frontendDir = join(REPO_ROOT, "packages", "cloud-frontend");
+  if (opts.frontend !== false && !existsSync(frontendDir)) {
+    frontendSkipReason =
+      "packages/cloud-frontend is gone (apex moved to packages/app); its vite " +
+      "dev can't be booted by this harness unchanged — repointing to " +
+      "packages/app's web dev is tracked in #9151.";
+    // LOUD, unmistakable signal: a skipped frontend must NEVER read as a pass.
+    // Frontend-dependent specs gate on `stack.frontendSkipped` and skip/fail
+    // explicitly (visible in the report) rather than silently exercising nothing.
+    console.error(
+      `\n${"=".repeat(74)}\n` +
+        "[cloud-e2e] ⚠️  FRONTEND NOT BOOTED — frontend-dependent specs are\n" +
+        "             SKIPPED, NOT PASSED.\n" +
+        `             ${frontendSkipReason}\n` +
+        `${"=".repeat(74)}\n`,
+    );
+  } else if (opts.frontend !== false) {
     const frontendEnv = {
       ...stackEnv,
-      // packages/app vite proxies /api here (the cloud-api wrangler dev port).
-      ELIZA_API_PORT: String(apiPort),
-      // packages/app vite serves the dashboard on this (pre-picked free) port.
-      ELIZA_UI_PORT: String(frontendPort),
+      PORT: String(frontendPort),
       VITE_API_BASE_URL: apiUrl,
+      VITE_API_PROXY_TARGET: apiUrl,
       NEXT_PUBLIC_API_BASE_URL: apiUrl,
     };
     procs.push(
-      spawnLogged("app-web", BUN, ["--bun", "vite", "--host", "127.0.0.1"], {
-        env: frontendEnv,
-        cwd: appDir,
-        logFile: join(LOG_DIR, "app-web.log"),
-      }),
+      spawnLogged(
+        "cloud-frontend",
+        BUN,
+        ["run", "dev", "--", "--host", "127.0.0.1"],
+        {
+          env: frontendEnv,
+          cwd: frontendDir,
+          logFile: join(LOG_DIR, "cloud-frontend.log"),
+        },
+      ),
     );
 
     frontendUrl = `http://127.0.0.1:${frontendPort}`;
     await waitForHttpOk(frontendUrl, {
-      timeoutMs: 180_000,
-      label: "app-web",
+      timeoutMs: 120_000,
+      label: "cloud-frontend",
     });
   }
 
@@ -442,6 +472,8 @@ export async function startCloudStack(
       controlPlane: controlPlane.url,
       pglite: `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`,
     },
+    frontendSkipped: frontendSkipReason !== undefined,
+    frontendSkipReason,
     mocks: { hetzner, controlPlane },
     dataDir,
     logDir: LOG_DIR,
