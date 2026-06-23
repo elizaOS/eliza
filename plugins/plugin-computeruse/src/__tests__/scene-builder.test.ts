@@ -344,6 +344,52 @@ describe("SceneBuilder — subscribers + onAgentTurn", () => {
   });
 });
 
+describe("SceneBuilder — VLM annotations (M3)", () => {
+  it("populates vlm_scene / vlm_elements on the current scene", async () => {
+    const { builder } = makeBuilder({});
+    const scene = await builder.tick("active");
+    // Default: nothing wrote them yet.
+    expect(scene.vlm_scene).toBeNull();
+    expect(scene.vlm_elements).toBeNull();
+
+    builder.setVlmAnnotations("a save dialog is open", [
+      {
+        id: "tile-0-0",
+        kind: "tile",
+        desc: "Save button bottom-right",
+        bbox: [0, 0, 100, 50],
+        displayId: 0,
+      },
+    ]);
+    const after = builder.getCurrentScene();
+    expect(after?.vlm_scene).toBe("a save dialog is open");
+    expect(after?.vlm_elements).toHaveLength(1);
+    expect(after?.vlm_elements?.[0]?.desc).toBe("Save button bottom-right");
+  });
+
+  it("carries the VLM annotations forward to the next tick", async () => {
+    const samePng = makePng(11);
+    const cap: DisplayCapture[] = [
+      {
+        display: {
+          id: 0,
+          bounds: [0, 0, 1920, 1080],
+          scaleFactor: 1,
+          primary: true,
+          name: "fake-1",
+        },
+        frame: samePng,
+      },
+    ];
+    const { builder } = makeBuilder({ captures: [cap, cap] });
+    await builder.tick("active");
+    builder.setVlmAnnotations("scene paragraph", null);
+    // The next tick re-uses latestScene?.vlm_scene pass-through.
+    const next = await builder.tick("active");
+    expect(next.vlm_scene).toBe("scene paragraph");
+  });
+});
+
 describe("SceneBuilder — display-local coords", () => {
   it("OCR bboxes are display-local (not OS-global)", async () => {
     const { builder } = makeBuilder({

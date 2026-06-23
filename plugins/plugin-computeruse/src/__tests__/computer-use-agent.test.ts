@@ -67,6 +67,7 @@ function fakeService(refresh?: () => Promise<Scene>): ComputerUseService {
     getCurrentScene: () => syntheticScene(),
     refreshScene: refresh ?? (async () => syntheticScene()),
     getDisplays: () => [display()],
+    setSceneVlmAnnotations: () => {},
   } as unknown as ComputerUseService;
 }
 

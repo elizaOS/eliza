@@ -62,6 +62,7 @@ import type {
   SceneAxNode,
   SceneFocusedWindow,
   SceneOcrBox,
+  SceneVlmElement,
 } from "./scene-types.js";
 
 const IDLE_THRESHOLD_MS = 2000;
@@ -185,6 +186,26 @@ export class SceneBuilder extends EventEmitter {
   /** Returns the most recently emitted Scene, or null before first tick. */
   getCurrentScene(): Scene | null {
     return this.latestScene;
+  }
+
+  /**
+   * Populate the VLM annotations on the current scene (#9105 M3). The Brain /
+   * DirtyTileDescriber produce `vlm_scene` (a one-paragraph description) and
+   * `vlm_elements` (described tiles); these were previously always `null`
+   * because nothing ever wrote them. Persisting them here lets the next
+   * provider read carry the cheap understanding instead of re-describing, and
+   * they survive subsequent ticks via the `latestScene?.vlm_*` pass-through.
+   */
+  setVlmAnnotations(
+    vlmScene: string | null,
+    vlmElements: SceneVlmElement[] | null,
+  ): void {
+    if (!this.latestScene) return;
+    this.latestScene = {
+      ...this.latestScene,
+      vlm_scene: vlmScene,
+      vlm_elements: vlmElements,
+    };
   }
 
   /** Subscribe to scene updates. Returns an unsubscribe function. */
