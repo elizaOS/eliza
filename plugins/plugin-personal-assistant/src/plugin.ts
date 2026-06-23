@@ -29,8 +29,8 @@ import {
   registerHealthConnectors,
   registerHealthDefaultPacks,
 } from "@elizaos/plugin-health";
-import { remindersPlugin } from "@elizaos/plugin-reminders";
 import { inboxPlugin } from "@elizaos/plugin-inbox/plugin";
+import { remindersPlugin } from "@elizaos/plugin-reminders";
 import { remoteDesktopPlugin } from "@elizaos/plugin-remote-desktop";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import { blockAction } from "./actions/block.js";
@@ -1107,9 +1107,7 @@ const rawPersonalAssistantPlugin: Plugin = {
 
 export const personalAssistantPlugin: Plugin = rawPersonalAssistantPlugin;
 
-export {
-  appBlockerProvider,
-} from "@elizaos/plugin-blocker/providers/app-blocker";
+export { appBlockerProvider } from "@elizaos/plugin-blocker/providers/app-blocker";
 export {
   getAppBlockerPermissionState,
   getAppBlockerStatus,
@@ -1172,6 +1170,7 @@ export {
   type GlobalPauseStatus,
   type GlobalPauseStore,
   type GlobalPauseWindow,
+  resolveGlobalPauseStore,
 } from "./lifeops/global-pause/store.js";
 export {
   createHandoffStore,
@@ -1183,6 +1182,7 @@ export {
   type ResumeCondition,
   type ResumeEvaluation,
   type ResumeEvaluationInput,
+  resolveHandoffStore,
 } from "./lifeops/handoff/store.js";
 export {
   createMultilingualPromptRegistry,
@@ -1217,6 +1217,7 @@ export {
   createPendingPromptsStore,
   type PendingPromptRecordInput,
   type PendingPromptsStore,
+  resolvePendingPromptsStore,
 } from "./lifeops/pending-prompts/store.js";
 // LifeOps runtime exports
 export {

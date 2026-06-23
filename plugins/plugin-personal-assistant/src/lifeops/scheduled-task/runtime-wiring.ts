@@ -10,60 +10,47 @@
 import crypto from "node:crypto";
 import { getAgentEventService } from "@elizaos/agent";
 import { getHostExecutionCapabilities } from "@elizaos/app-core/services/task-host-capabilities";
-import { type IAgentRuntime, ServiceType, logger } from "@elizaos/core";
-import { getChannelRegistry } from "../channels/index.js";
-import type { DispatchResult } from "../connectors/contract.js";
-
-import { createGlobalPauseStore } from "../global-pause/store.js";
-import {
-  ownerFactsToView,
-  resolveOwnerFactStore,
-} from "../owner/fact-store.js";
-import {
-  createAnchorRegistry,
-  getAnchorRegistry,
-  registerAnchorRegistry,
-  registerAppLifeOpsAnchors,
-} from "@elizaos/plugin-scheduling";
-import { LifeOpsRepository } from "../repository.js";
-import { getSendPolicyRegistry } from "../send-policy/index.js";
-import { getActivitySignalBus } from "../signals/bus.js";
-import {
-  createCompletionCheckRegistry,
-  registerBuiltInCompletionChecks,
-} from "@elizaos/plugin-scheduling";
-import {
-  createConsolidationRegistry,
-  registerFallbackAnchors,
-} from "@elizaos/plugin-scheduling";
-import {
-  createEscalationLadderRegistry,
-  registerDefaultEscalationLadders,
-} from "@elizaos/plugin-scheduling";
-import {
-  createTaskGateRegistry,
-  registerBuiltInGates,
-} from "@elizaos/plugin-scheduling";
-import type {
-  ScheduledTaskDispatcher,
-  ScheduledTaskDispatchRecord,
-} from "@elizaos/plugin-scheduling";
-import {
-  createScheduledTaskRunner,
-  type ScheduledTaskRunnerHandle,
-  type ScheduledTaskStore,
-} from "@elizaos/plugin-scheduling";
-import type { ScheduledTaskLogStore } from "@elizaos/plugin-scheduling";
+import { type IAgentRuntime, logger, ServiceType } from "@elizaos/core";
 import type {
   ActivitySignalBusView,
   GlobalPauseView,
   OwnerFactsView,
   ScheduledTask,
+  ScheduledTaskDispatcher,
+  ScheduledTaskDispatchRecord,
   ScheduledTaskFilter,
   ScheduledTaskLogEntry,
+  ScheduledTaskLogStore,
   SubjectStoreView,
   TaskExecutionProfile,
 } from "@elizaos/plugin-scheduling";
+import {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  getAnchorRegistry,
+  registerAnchorRegistry,
+  registerAppLifeOpsAnchors,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+  registerFallbackAnchors,
+  type ScheduledTaskRunnerHandle,
+  type ScheduledTaskStore,
+} from "@elizaos/plugin-scheduling";
+import { getChannelRegistry } from "../channels/index.js";
+import type { DispatchResult } from "../connectors/contract.js";
+import { resolveGlobalPauseStore } from "../global-pause/store.js";
+import {
+  ownerFactsToView,
+  resolveOwnerFactStore,
+} from "../owner/fact-store.js";
+import { LifeOpsRepository } from "../repository.js";
+import { getSendPolicyRegistry } from "../send-policy/index.js";
+import { getActivitySignalBus } from "../signals/bus.js";
 
 interface RepositoryBackedStores {
   store: ScheduledTaskStore;
@@ -426,7 +413,7 @@ export function createRuntimeScheduledTaskRunner(
   // still inject overrides via the options bag. The diagnostic shims warn-once
   // on missing wiring so silent always-allow / always-false defaults are gone.
   const globalPause: GlobalPauseView =
-    opts.globalPause ?? createGlobalPauseStore(opts.runtime);
+    opts.globalPause ?? resolveGlobalPauseStore(opts.runtime);
   const activity: ActivitySignalBusView =
     opts.activity ??
     getActivitySignalBus(opts.runtime) ??

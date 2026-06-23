@@ -234,6 +234,30 @@ export {
   isStewardEvmBridgeActive,
   setStewardEvmBridgeActive,
 } from "./services/external-bridge-state.ts";
+export {
+  createGlobalPauseStore,
+  GLOBAL_PAUSE_CACHE_KEY,
+  GLOBAL_PAUSE_SERVICE,
+  GlobalPauseService,
+  type GlobalPauseStatus,
+  type GlobalPauseStore,
+  type GlobalPauseWindow,
+  resolveGlobalPauseService,
+} from "./services/global-pause/index.ts";
+export {
+  createHandoffStore,
+  describeResumeCondition,
+  evaluateResume,
+  HANDOFF_SERVICE,
+  type HandoffEnterOpts,
+  HandoffService,
+  type HandoffStatus,
+  type HandoffStore,
+  type ResumeCondition,
+  type ResumeEvaluation,
+  type ResumeEvaluationInput,
+  resolveHandoffService,
+} from "./services/handoff/index.ts";
 export * from "./services/index.ts";
 export {
   type JsRuntimeBridge,
@@ -256,6 +280,20 @@ export {
   RelationshipStore,
   resolveKnowledgeGraphService,
 } from "./services/knowledge-graph/index.ts";
+// Cache-backed runtime stores promoted from LifeOps (pending-prompts /
+// global-pause / handoff). Named re-exports — same rationale as the knowledge
+// graph above: keep them out of the broad services barrel to avoid TS2308.
+export {
+  createPendingPromptsStore,
+  type ExpectedReplyKind,
+  PENDING_PROMPTS_SERVICE,
+  type PendingPrompt,
+  type PendingPromptRecordInput,
+  PendingPromptsService,
+  type PendingPromptsStore,
+  type RecordedPendingPrompt,
+  resolvePendingPromptsService,
+} from "./services/pending-prompts/index.ts";
 export * from "./services/plugin-installer";
 export type {
   CoreManagerLike,

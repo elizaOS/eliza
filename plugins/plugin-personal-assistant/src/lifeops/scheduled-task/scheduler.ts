@@ -1,25 +1,24 @@
 import { type IAgentRuntime, logger } from "@elizaos/core";
-
-import {
-  ownerFactsToView,
-  resolveOwnerFactStore,
-} from "../owner/fact-store.js";
-import {
-  createPendingPromptsStore,
-  type RecordedPendingPrompt,
-} from "../pending-prompts/store.js";
-import { getAnchorRegistry } from "@elizaos/plugin-scheduling";
-import { LifeOpsRepository } from "../repository.js";
+import type { ScheduledTask } from "@elizaos/plugin-scheduling";
 import {
   expectedReplyKindForTask,
+  getAnchorRegistry,
   isCompletionTimeoutDue,
   isRecurringTrigger,
   isScheduledTaskDue,
   markWindowFireIfNeeded,
   pendingPromptRoomIdForTask,
 } from "@elizaos/plugin-scheduling";
+import {
+  ownerFactsToView,
+  resolveOwnerFactStore,
+} from "../owner/fact-store.js";
+import {
+  type RecordedPendingPrompt,
+  resolvePendingPromptsStore,
+} from "../pending-prompts/store.js";
+import { LifeOpsRepository } from "../repository.js";
 import { getScheduledTaskRunner } from "./service.js";
-import type { ScheduledTask } from "@elizaos/plugin-scheduling";
 
 export interface ProcessDueScheduledTasksRequest {
   runtime: IAgentRuntime;
@@ -68,7 +67,7 @@ async function recordPendingPromptIfNeeded(args: {
   if (!shouldRecordPendingPrompt(args.result)) return null;
   const roomId = pendingPromptRoomIdForTask(args.result);
   if (!roomId || !args.result.state.firedAt) return null;
-  const store = createPendingPromptsStore(args.runtime);
+  const store = resolvePendingPromptsStore(args.runtime);
   return store.record({
     roomId,
     taskId: args.result.taskId,
