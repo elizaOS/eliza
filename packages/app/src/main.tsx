@@ -199,7 +199,7 @@ function importCompanionInferenceNotice() {
   );
 }
 
-function importAppLifeOps() {
+function importPersonalAssistant() {
   return cachedDynamicImport(
     "@elizaos/plugin-personal-assistant",
     () => import("@elizaos/plugin-personal-assistant"),
@@ -298,11 +298,11 @@ const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
-  async () => (await importAppLifeOps()).AppBlockerSettingsCard,
+  async () => (await importPersonalAssistant()).AppBlockerSettingsCard,
 );
 const WebsiteBlockerSettingsCard =
   lazyNamedComponent<WebsiteBlockerSettingsCardProps>(
-    async () => (await importAppLifeOps()).WebsiteBlockerSettingsCard,
+    async () => (await importPersonalAssistant()).WebsiteBlockerSettingsCard,
   );
 const StewardLogo = lazyNamedComponent<StewardLogoProps>(
   async () => (await importAppSteward()).StewardLogo,
@@ -624,7 +624,7 @@ function initializeAppModules(): Promise<void> {
       importCompanionSceneStatusContext(),
       importCompanionInferenceNotice(),
       // Side-effect import for the PA HTTP client + Blocker settings cards.
-      importAppLifeOps(),
+      importPersonalAssistant(),
       // Imported for its self-registration side effect (Vincent overlay app).
       importAppVincent(),
       importAppTaskCoordinator(),
@@ -1582,9 +1582,6 @@ function handleDeepLink(url: string): void {
       break;
     case "browser":
       setHashRoute("browser", parsed.searchParams);
-      break;
-    case "lifeops":
-      window.location.hash = "#lifeops";
       break;
     case "settings":
       window.location.hash = "#settings";

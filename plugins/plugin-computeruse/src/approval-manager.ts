@@ -17,6 +17,7 @@ const VALID_APPROVAL_MODES: ApprovalMode[] = [
 
 const SAFE_COMMANDS = new Set<string>([
   "screenshot",
+  "get_cursor_position",
   "browser_screenshot",
   "browser_state",
   "browser_info",

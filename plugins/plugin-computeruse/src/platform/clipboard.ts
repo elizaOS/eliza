@@ -63,8 +63,14 @@ function pickPlan(): ClipboardPlan {
         args: ["-NoProfile", "-Command", "Get-Clipboard -Raw"],
       },
       write: {
+        // `$input | Set-Clipboard` does NOT reliably consume piped stdin under
+        // -Command (it hangs → ETIMEDOUT). Read stdin to EOF explicitly.
         command: "powershell",
-        args: ["-NoProfile", "-Command", "$input | Set-Clipboard"],
+        args: [
+          "-NoProfile",
+          "-Command",
+          "Set-Clipboard -Value ([Console]::In.ReadToEnd())",
+        ],
       },
     };
   }

@@ -197,13 +197,6 @@ function resolveChatViewRouting(
         secondaryContexts: ["documents"],
         capabilities: ["wallet", "portfolio", "transactions"],
       };
-    case "lifeops":
-      return {
-        view: "apps",
-        primaryContext: "automation",
-        secondaryContexts: ["social_posting", "documents"],
-        capabilities: ["lifeops", "tasks", "calendar"],
-      };
     case "plugins":
     case "runtime":
     case "database":
