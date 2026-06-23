@@ -73,33 +73,45 @@ except Android (where the Mali Vulkan `flash_attn.comp` scalar kernel is a
 device-verified race → disabled, perf-neutral there, overridable via
 `ELIZA_LLM_FLASH_ATTN`).
 
-### ⚠ Open M6 verification gap: does AUTO *engage* FA for the 512 global dim per backend?
+### M6 verification gap — does AUTO *engage* FA for the 512 global dim per backend? (CPU + Vulkan-desktop: RESOLVED)
 
 `AUTO` only turns FA on where the backend's FA kernel supports the head dim.
-**Proven: CPU engages FA for Gemma's 512 global dim** (padding eliminated). But
-CUDA/Metal FA kernels historically cap near head_dim 256 — if a backend's FA
-kernel does not support 512, `AUTO` **silently falls back to non-FA on the 7
-global layers** and the V-padding cost returns *on that backend only*. This must
-be checked on each GPU backend; it could not be checked here (CUDA is
-toolkit-blocked — see the M7 report). **Action:** on CUDA 13.x / Apple, run
-`llama-bench -m gemma-4-E2B … -fa 1 -v` and confirm no `padding V cache` line.
+**Proven on CPU AND desktop-Vulkan: FA engages for Gemma's 512 global dim** — on
+both backends `-fa 1` reports `flash_attn = enabled` with **no `padding V cache`
+line**, so the dual-head-dim V-cache padding is eliminated and the 7 global
+layers run fused (not the silent-non-FA fallback that was the concern). On the
+RTX 5080 (Vulkan) this was confirmed with a correct generation (coherent output,
+no garbage) — see the GPU section of the M7 report. FA on Vulkan also *helps
+prefill* (gemma-4-E2B pp512 1353→1546 t/s, +14%; decode flat within noise on the
+no-coopmat path).
+
+**Still unverified:** CUDA (toolkit-blocked on this host — sm_120 needs CUDA
+13.x) and Metal (needs Apple Silicon). On those, re-run
+`llama-bench -m gemma-4-E2B … -ngl 99 -fa 1 -v` and confirm no `padding V cache`
+line. Given CPU + Vulkan both engage cleanly, CUDA/Metal are expected to as well,
+but that is not yet evidence.
 
 ## 4. 8/8 kernel verify matrix — status for the Gemma geometry
 
 | backend | reference fixtures | status for Gemma |
 |---|---|---|
-| CPU | head_dim=128 (Qwen-shaped) | **runnable here**; Gemma forward proven via llama-bench (text). Kernel-parity fixtures still head_dim=128 → need Gemma-geometry re-gen. |
-| CUDA | head_dim=128 | **blocked** — sm_120 needs CUDA 13.x (not installed); GPU not enumerable by the CUDA runtime on this host. |
-| Vulkan-Mali | — | FA off by policy (race); QJL/Polar is the on-device attention path (#8848) — but it is head_dim=128 → re-param needed before it applies to Gemma. |
+| CPU | head_dim=128 (Qwen-shaped) | **runnable here**; Gemma forward proven via llama-bench (text) + FA engages for 512. Kernel-parity fixtures still head_dim=128 → need Gemma-geometry re-gen. |
+| Vulkan-desktop (RTX 5080) | head_dim=128 | **Gemma forward PROVEN on GPU** — gemma-4-E2B/E4B + gemma3n run via Vulkan (pp512 1486 / tg128 123 for E2B, 26×/8× over CPU), FA engages for 512, output correct. Built with the NDK glslc (no coopmat → scalar path, not tensor-core-optimal). Kernel-parity fixtures still head_dim=128 → re-gen pending. |
+| CUDA | head_dim=128 | **blocked** — sm_120 needs CUDA 13.x (not installed); GPU not enumerable by the CUDA runtime on this host (NVML sees it, CUDA runtime doesn't). |
+| Vulkan-Mali (Android) | — | FA off by policy (race); QJL/Polar is the on-device attention path (#8848) — but it is head_dim=128 → re-param needed before it applies to Gemma. |
 | Metal | — | needs Apple Silicon. |
 
-**The 8/8 matrix cannot be honestly closed for Gemma yet:** the parity fixtures
-are head_dim=128 and must be regenerated against Gemma-geometry GGUFs, and the
-GPU backends are hardware/toolkit-blocked on this host. This is scoped, not done.
+**The 8/8 *kernel-parity* matrix cannot be honestly closed for Gemma yet:** the
+parity fixtures are head_dim=128 and must be regenerated against Gemma-geometry
+GGUFs. But the *Gemma forward path itself* is now proven on CPU **and a real GPU
+(Vulkan/RTX 5080)** with FA engaged and correct output — only CUDA and Metal
+remain hardware/toolkit-blocked on this host.
 
 ## 5. M6 work remaining (owners)
 
-- **[needs GPU]** FA-engage check for the 512 global dim on CUDA/Metal (§3 gap).
+- **[done on CPU + Vulkan]** FA-engage check for the 512 global dim — confirmed
+  on CPU and desktop-Vulkan (RTX 5080). Remaining: CUDA (toolkit-blocked) + Metal
+  (needs Apple Silicon).
 - **[needs GPU + fixture re-gen]** Regenerate kernel-parity fixtures at Gemma
   dual dims (512/256) and re-run the 8/8 matrix per buildable backend.
 - **[M1/M2 agent — `src/services/` is dirty]** Wire the Gemma-aware RAM defaults
