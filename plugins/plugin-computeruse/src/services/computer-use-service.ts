@@ -57,12 +57,17 @@ import {
 } from "../platform/driver.js";
 import {
   appendFile,
+  createDirectory,
   deleteDirectory,
   deleteFile,
+  directoryExists,
   editFile,
   fileExists,
+  getFileSize,
   listDirectory,
+  readBytes,
   readFile,
+  writeBytes,
   writeFile,
 } from "../platform/file-ops.js";
 import { commandExists, currentPlatform } from "../platform/helpers.js";
@@ -337,6 +342,11 @@ export class ComputerUseService extends Service {
       case "file_upload":
       case "file_download":
       case "file_list_downloads":
+      case "file_read_bytes":
+      case "file_write_bytes":
+      case "file_create_dir":
+      case "file_directory_exists":
+      case "file_get_file_size":
         return this.executeFileAction({
           ...commandParameters<FileActionParams>(parameters),
           action: this.mapFileCommandToAction(command),
@@ -1212,6 +1222,31 @@ export class ComputerUseService extends Service {
           return this.finishFileEntry(entry, await listDirectory(targetPath));
         case "delete_directory":
           return this.finishFileEntry(entry, await deleteDirectory(targetPath));
+        case "read_bytes":
+          return this.finishFileEntry(
+            entry,
+            await readBytes(targetPath, params.offset, params.length),
+          );
+        case "write_bytes":
+          if (typeof params.base64 !== "string") {
+            throw new Error("base64 is required for file write_bytes");
+          }
+          return this.finishFileEntry(
+            entry,
+            await writeBytes(targetPath, params.base64),
+          );
+        case "create_dir":
+          return this.finishFileEntry(
+            entry,
+            await createDirectory(targetPath),
+          );
+        case "directory_exists":
+          return this.finishFileEntry(
+            entry,
+            await directoryExists(targetPath),
+          );
+        case "get_file_size":
+          return this.finishFileEntry(entry, await getFileSize(targetPath));
         default:
           return this.failEntry(entry, {
             success: false,
@@ -1680,6 +1715,16 @@ export class ComputerUseService extends Service {
         return "download";
       case "file_list_downloads":
         return "list_downloads";
+      case "file_read_bytes":
+        return "read_bytes";
+      case "file_write_bytes":
+        return "write_bytes";
+      case "file_create_dir":
+        return "create_dir";
+      case "file_directory_exists":
+        return "directory_exists";
+      case "file_get_file_size":
+        return "get_file_size";
       default:
         return "read";
     }
