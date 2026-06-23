@@ -228,4 +228,28 @@ final class ElizaVoiceNative {
      */
     static native float[] nativeKokoroSynthesize(
             long ctxHandle, String ggufPath, String voiceBinPath, String text, float speed);
+
+    // ── Batch ASR + mmproj vision (the agent's STT / screen-recognition path) ──
+
+    /**
+     * Transcribe {@code pcm} (16 kHz mono fp32) → UTF-8 transcript via the fused
+     * Qwen3-ASR head ({@code eliza_inference_asr_transcribe}). VAD-free: the
+     * resident context mmap-acquires the {@code asr/} weights on first use. The
+     * bionic host's op="asr" calls this so the agent TRANSCRIPTION delegate gets
+     * a real on-device transcript without the full attribution pipeline.
+     */
+    static native String nativeAsrTranscribe(long ctxHandle, float[] pcm, int sampleRate);
+
+    /** {@code eliza_inference_vision_supported()} (ABI v9): 1 if mmproj vision is built. */
+    static native int nativeVisionSupported();
+
+    /**
+     * Describe a raw PNG/JPEG/WebP image with the resident TEXT model + the
+     * mmproj projector at {@code mmprojPath} ({@code eliza_inference_describe_image}).
+     * {@code prompt} may be empty (a default describe prompt is used). The bionic
+     * host's op="image" calls this so the agent IMAGE_DESCRIPTION delegate runs
+     * screen/vision recognition fully on-device.
+     */
+    static native String nativeDescribeImage(
+            long ctxHandle, byte[] imageBytes, String mmprojPath, String prompt);
 }

@@ -130,4 +130,62 @@ describe("BionicHostLoader (real abstract-UDS)", () => {
 		await loader.loadModel({ modelPath: "/m/text/x.gguf" });
 		await expect(loader.generate({ prompt: "x" })).rejects.toThrow();
 	});
+
+	it("transcribe forwards op=asr with pcm + sampleRate and returns the transcript", async () => {
+		let seen: Record<string, unknown> | null = null;
+		host = startHost(SOCK, (req) => {
+			seen = req;
+			return JSON.stringify({ ok: true, text: "the quick brown fox" });
+		});
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({
+			modelPath: "/data/x/eliza-1/bundle/text/model.gguf",
+		});
+		const out = await loader.transcribe({
+			pcmBase64: "AAAA",
+			sampleRate: 16000,
+		});
+		expect(out).toBe("the quick brown fox");
+		expect(seen).toMatchObject({
+			op: "asr",
+			pcmBase64: "AAAA",
+			sampleRate: 16000,
+			bundleDir: "/data/x/eliza-1/bundle",
+		});
+	});
+
+	it("describeImage forwards op=image with bytes + prompt and returns the description", async () => {
+		let seen: Record<string, unknown> | null = null;
+		host = startHost(SOCK, (req) => {
+			seen = req;
+			return JSON.stringify({ ok: true, text: "a cat on a desk" });
+		});
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({
+			modelPath: "/data/x/eliza-1/bundle/text/model.gguf",
+		});
+		const out = await loader.describeImage({
+			imageBase64: "iVBORw0K",
+			prompt: "what is this?",
+		});
+		expect(out).toBe("a cat on a desk");
+		expect(seen).toMatchObject({
+			op: "image",
+			imageBase64: "iVBORw0K",
+			prompt: "what is this?",
+			mmprojPath: "",
+			bundleDir: "/data/x/eliza-1/bundle",
+		});
+	});
+
+	it("transcribe throws on host ok:false", async () => {
+		host = startHost(SOCK, () =>
+			JSON.stringify({ ok: false, error: "no asr weights staged" }),
+		);
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: "/m/text/x.gguf" });
+		await expect(
+			loader.transcribe({ pcmBase64: "AAAA", sampleRate: 16000 }),
+		).rejects.toThrow(/no asr weights staged/);
+	});
 });
