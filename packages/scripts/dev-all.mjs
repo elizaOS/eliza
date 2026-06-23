@@ -67,9 +67,9 @@ const serviceStartupTimeoutMs = Number.parseInt(
   10,
 );
 
-const packagedCloudAvailable =
-  existsSync(`${repoRoot}/packages/cloud-api/package.json`) &&
-  existsSync(`${repoRoot}/packages/cloud-frontend/package.json`);
+const packagedCloudAvailable = existsSync(
+  `${repoRoot}/packages/cloud-api/package.json`,
+);
 const cloudMode = packagedCloudAvailable ? "packages" : "legacy";
 const commonEnv = {
   ...process.env,
@@ -192,7 +192,7 @@ const cloudApiService = packagedCloudAvailable
   : { cwd: "cloud", command: [bunBin, "run", "dev:api"] };
 const cloudWebService = packagedCloudAvailable
   ? {
-      cwd: "packages/cloud-frontend",
+      cwd: "packages/app",
       command: [
         bunBin,
         "run",

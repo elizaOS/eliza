@@ -96,51 +96,6 @@
       "ignore": ["dist/**", ".turbo/**"],
       "ignoreDependencies": ["@types/bun", "esbuild", "prettier", "uuid"]
     },
-    "packages/cloud-frontend": {
-      "entry": [
-        "index.html",
-        "src/main.tsx",
-        "src/entry-server.tsx",
-        "src/**/*.test.{ts,tsx}",
-        "tests/**/*.spec.ts",
-        "functions/**/*.ts",
-        "scripts/**/*.mjs",
-        "content/**/*.{mdx,ts}",
-        "src/shims/*.{ts,cjs}",
-        "vite.config.ts",
-        "vitest.config.ts",
-        "vitest.setup.ts",
-        "playwright.config.ts"
-      ],
-      "project": [
-        "src/**/*.{ts,tsx,d.ts}",
-        "tests/**/*.ts",
-        "functions/**/*.ts",
-        "scripts/**/*.mjs",
-        "content/**/*.{mdx,ts}",
-        "src/shims/*.{ts,cjs}",
-        "vite.config.ts",
-        "vitest.config.ts",
-        "vitest.setup.ts",
-        "playwright.config.ts"
-      ],
-      "ignore": ["dist/**", "dist-ssr/**", ".turbo/**"],
-      "ignoreDependencies": [
-        "@fontsource-variable/inter",
-        "@fontsource-variable/open-sans",
-        "@fontsource/dm-mono",
-        "@tailwindcss/typography",
-        "@types/mdx",
-        "buffer",
-        "browserify-sign",
-        "create-hash",
-        "create-hmac",
-        "hash-base",
-        "secp256k1",
-        "tailwind-scrollbar",
-        "tw-animate-css"
-      ]
-    },
     "packages/cloud-shared": {
       "entry": [
         "src/index.ts",

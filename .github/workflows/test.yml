@@ -496,9 +496,6 @@ jobs:
       - name: App-core screenshot quality diagnostics coverage
         run: bun run --cwd packages/app-core test -- test/app/screenshot-quality.test.ts
 
-      - name: Cloud screenshot quality diagnostics coverage
-        run: bun run --cwd packages/cloud-frontend test -- tests/e2e/screenshot-quality.test.ts
-
   zero-key-scenario-runner:
     name: Zero-Key scenario runner
     needs: changes

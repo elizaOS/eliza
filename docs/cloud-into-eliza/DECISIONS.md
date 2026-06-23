@@ -88,7 +88,12 @@ These have sensible defaults and do not block starting Phase 0.
 
 ---
 
-## D5 — Topology split: console at apex, app on its own subdomain ✅ (supersedes D1)
+## D5 — Topology split: console at apex, app on its own subdomain ✅ (supersedes D1) — ⚠️ SUPERSEDED by D6
+
+> **SUPERSEDED 2026-06-23 by [D6](#d6--re-consolidate-one-codebase-packagesapp-serves-both-apex-and-subdomain).**
+> `packages/cloud-frontend` has been deleted; the apex (`eliza-cloud` project)
+> now builds `packages/app`, which mounts the whole cloud UI via
+> `@elizaos/ui/cloud`. Read D6.
 
 Recorded 2026-06-19. Reverses the single-project reuse in D1 after the Topology-A
 cutover buried the lander + dashboard under the agent app's onboarding.
@@ -132,3 +137,51 @@ app deploy and vice-versa.
 
 **Status: D5 split implemented in-repo (workflow + wrangler + allowlists + console
 CTA). Cloudflare `eliza-app` project + `app.*` domains pending (CUTOVER-RUNBOOK).**
+
+---
+
+## D6 — Re-consolidate: one codebase (`packages/app`) serves both apex and subdomain ✅ (supersedes D5)
+
+Recorded 2026-06-23. Reverses the D5 split. `packages/app` already mounts the
+**entire** cloud UI in-process (`CloudRouterShell` + `registerAllCloudSurfaces`
+via `@elizaos/ui/cloud`) and already carries the apex deploy infra
+(`wrangler.toml`, `functions/{_middleware,_proxy}.ts` same-origin `/api` proxy,
+`build:web`). Maintaining a **second** dashboard codebase (`packages/cloud-frontend`)
+in parallel was pure duplication.
+
+**Decision: delete `packages/cloud-frontend`; the apex builds `packages/app`.**
+
+| Domain | Pages project | Builds | Is |
+|---|---|---|---|
+| `elizacloud.ai` / `staging.elizacloud.ai` | `eliza-cloud` (unchanged) | `packages/app` (`build:web`) | the cloud console origin (lander + dashboard) — same `@elizaos/ui/cloud` surfaces. |
+| `app.elizacloud.ai` / `app-staging.elizacloud.ai` | `eliza-app` | `packages/app` (`build:web`) | the Eliza agent app — the same web UI as `bun run dev`. |
+
+Both Pages projects now build the **same** `packages/app` target. The **only**
+difference between the two deploys is the canonical-origin env baked into each
+bundle: the apex (`deploy-console`) sets `VITE_APP_URL`/`NEXT_PUBLIC_APP_URL` to
+`https://elizacloud.ai` (staging: `https://staging.elizacloud.ai`); the subdomain
+(`deploy-app`) sets them to `https://app.elizacloud.ai`. `VITE_ELIZA_APP_URL`
+still points the apex's "open the agent app" CTA at `app.elizacloud.ai`.
+
+**Deploy:** `.github/workflows/cloud-cf-deploy.yml` keeps both Pages jobs, but
+`deploy-console` now runs `bun run --cwd packages/app build:web` (was
+`cloud-frontend build`) and deploys it to `--project-name=eliza-cloud` (apex
+domain unchanged). The `cloud-frontend`-specific "Verify bundle chunk safety"
+step was removed (`packages/app` has no equivalent script; its rolldown config
+is independent).
+
+**Dropped on purpose:** the cloud-frontend-only surfaces — the **chat playground**,
+**canvas**, and **assistant-concepts** pages — die with `cloud-frontend`. They
+were never ported into `@elizaos/ui/cloud` and are not part of the app's cloud
+surface set.
+
+**Why this is safe:** nothing imports `@elizaos/cloud-frontend` (it is an app,
+not a library — no package exports), so the deletion is import-safe. The apex
+domain, Pages project, Worker API, Steward auth, and the parent-zone cookie are
+all unchanged.
+
+---
+
+**Status: D6 applied in-repo — `cloud-frontend` deleted, `deploy-console` repointed
+to `packages/app`, CI/config references cleaned. Apex domain + `eliza-cloud`
+Pages project unchanged (no Cloudflare-side action needed for the re-point).**

@@ -44,8 +44,8 @@ packages/scenario-runner/bin/eliza-scenarios run <scenario.ts> --report <out.jso
 # E2E UI recordings (video + contact sheets + viewer)
 bun run test:e2e:record
 
-# Cloud-frontend per-route screenshots (REQUIRED for cloud-frontend UI changes)
-bun run --cwd packages/cloud-frontend audit:cloud
+# App + cloud-UI per-route screenshots (REQUIRED for UI changes)
+bun run --cwd packages/app audit:app
 ```
 
 Reference the file(s) from the PR body so the proof travels with the change.

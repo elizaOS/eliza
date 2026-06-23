@@ -6,10 +6,6 @@ const workflowPath = resolve(
   import.meta.dirname,
   "../../../.github/workflows/scenario-pr.yml",
 );
-const cloudWorkflowPath = resolve(
-  import.meta.dirname,
-  "../../../.github/workflows/cloud-tests.yml",
-);
 const rootPackagePath = resolve(import.meta.dirname, "../../../package.json");
 const scenarioRunnerPackagePath = resolve(
   import.meta.dirname,
@@ -310,9 +306,6 @@ describe("scenario PR workflow contract", () => {
       "bun run --cwd packages/app-core test -- test/app/screenshot-quality.test.ts",
     );
     expect(workflow).toContain(
-      "bun run --cwd packages/cloud-frontend test -- tests/e2e/screenshot-quality.test.ts",
-    );
-    expect(workflow).toContain(
       "bun run --cwd packages/app-core/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts",
     );
     expect(llmProxy).toContain("failOnUnhandledAction");
@@ -609,34 +602,22 @@ describe("scenario PR workflow contract", () => {
   });
 
   it("keeps cloud Playwright CI wired to real Playwright, including visual screenshot checks", () => {
-    const workflow = readFileSync(cloudWorkflowPath, "utf8");
+    // The cloud frontend was consolidated into packages/app (the apex cutover):
+    // the cloud Playwright + visual-screenshot e2e now runs against packages/app
+    // in the scenario PR workflow, and test:cloud:playwright points at packages/app.
+    const prWorkflow = readFileSync(workflowPath, "utf8");
     const rootPackage = JSON.parse(readFileSync(rootPackagePath, "utf8")) as {
       scripts?: Record<string, string>;
     };
 
-    expect(workflow).toContain("pull_request:");
-    expect(workflow).toContain("Run Playwright tests");
-    expect(workflow).toContain("github.event_name == 'workflow_dispatch'");
-    expect(workflow).toContain("project: [chromium-desktop, chromium-mobile]");
-    expect(workflow).toContain('shard: ["1/2", "2/2"]');
-    const matrixProjectExpression = ["$", "{{ matrix.project }}"].join("");
-    const matrixShardExpression = ["$", "{{ matrix.shard }}"].join("");
-    expect(workflow).toContain(
-      "bun run --cwd packages/cloud-frontend test:e2e -- --project=" +
-        matrixProjectExpression +
-        " --shard=" +
-        matrixShardExpression,
-    );
-    expect(workflow).toContain("playwright-smoke:");
-    expect(workflow).toContain("Run Playwright route smoke");
-    expect(workflow).toContain(
-      'tests/e2e/cloud-routes.spec.ts --project=chromium-desktop -g "public route renders:"',
-    );
+    expect(prWorkflow).toContain("pull_request:");
+    expect(prWorkflow).toContain("playwright install --with-deps chromium");
+    expect(prWorkflow).toContain("bun run --cwd packages/app test:e2e");
     expect(rootPackage.scripts?.["test:cloud:playwright"]).toBe(
-      "bun run --cwd packages/cloud-frontend test:e2e",
+      "bun run --cwd packages/app test:e2e",
     );
     expect(rootPackage.scripts?.["test:cloud:playwright"]).not.toBe(
-      "bun run --cwd packages/cloud-frontend test",
+      "bun run --cwd packages/cloud-frontend test:e2e",
     );
   });
 
