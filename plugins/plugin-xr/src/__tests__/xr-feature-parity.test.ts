@@ -348,6 +348,9 @@ describe("XR feature parity audit", () => {
     );
     expect(actionsSource).toContain("@elizaos/agent/api/views-registry");
     expect(actionsSource).not.toContain("const known = [");
+    expect(actionsSource).not.toContain("runtime.plugins");
+    expect(actionsSource).not.toContain("RuntimePluginWithViews");
+    expect(actionsSource).not.toContain("plugin.views");
   });
 
   // 4. Connection modes ───────────────────────────────────────────────────────

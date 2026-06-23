@@ -5,7 +5,6 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-  ViewDeclaration,
 } from "@elizaos/core";
 import {
   XR_SERVICE_TYPE,
@@ -75,7 +74,7 @@ export const xrOpenViewAction: Action = {
 
     const viewId =
       (options?.viewId as string | undefined) ??
-      extractViewId(runtime, message.content.text ?? "");
+      extractViewId(message.content.text ?? "");
     if (!viewId) {
       const text =
         "Please specify which view to open. Try XR_LIST_VIEWS to see available views.";
@@ -130,7 +129,7 @@ export const xrCloseViewAction: Action = {
 
     const viewId =
       (options?.viewId as string | undefined) ??
-      extractViewId(runtime, message.content.text ?? "");
+      extractViewId(message.content.text ?? "");
     const connId = firstConnectionId(svc);
     if (!connId) {
       const text = "No XR device connected.";
@@ -144,7 +143,7 @@ export const xrCloseViewAction: Action = {
       text = `Closed ${viewId}.`;
       await callback?.({ text });
     } else {
-      const views = collectXRViews(runtime);
+      const views = collectXRViews();
       for (const view of views) {
         svc.closeView(connId, view.id);
       }
@@ -190,7 +189,7 @@ export const xrSwitchViewAction: Action = {
     }
     const viewId =
       (options?.viewId as string | undefined) ??
-      extractViewId(runtime, message.content.text ?? "");
+      extractViewId(message.content.text ?? "");
     const connId = firstConnectionId(svc);
     if (!connId || !viewId) {
       const text = "Specify a view id.";
@@ -238,7 +237,7 @@ export const xrListViewsAction: Action = {
     }
 
     // Collect XR view declarations from all registered plugins
-    const xrViews = collectXRViews(runtime);
+    const xrViews = collectXRViews();
 
     const connId = firstConnectionId(svc);
     if (connId && (options?.sendCatalog as boolean | undefined) !== false) {
@@ -350,9 +349,9 @@ export const facewearResizeViewAction = xrResizeViewAction;
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /** Extract a likely view id from natural language */
-export function extractViewId(runtime: IAgentRuntime, text: string): string {
+export function extractViewId(text: string): string {
   const lower = text.toLowerCase();
-  for (const view of collectXRViews(runtime)) {
+  for (const view of collectXRViews()) {
     const terms = [view.id, view.id.replace(/-/g, " "), view.label].map(
       (term) => term.toLowerCase(),
     );
@@ -372,12 +371,8 @@ type XRViewSummary = {
   description?: string;
 };
 
-type RuntimePluginWithViews = {
-  views?: ViewDeclaration[];
-};
-
 /** Collect all XR-typed views from registered plugins */
-export function collectXRViews(runtime: IAgentRuntime): XRViewSummary[] {
+export function collectXRViews(): XRViewSummary[] {
   const byId = new Map<string, XRViewSummary>();
   for (const view of listViews({ developerMode: true, viewType: "xr" })) {
     if (view.viewType !== "xr") continue;
@@ -387,25 +382,6 @@ export function collectXRViews(runtime: IAgentRuntime): XRViewSummary[] {
       icon: view.icon,
       description: view.description,
     });
-  }
-
-  const plugins =
-    (
-      runtime as unknown as {
-        plugins?: RuntimePluginWithViews[];
-      }
-    ).plugins ?? [];
-  for (const plugin of plugins) {
-    for (const view of plugin.views ?? []) {
-      if (view.viewType === "xr" && !byId.has(view.id)) {
-        byId.set(view.id, {
-          id: view.id,
-          label: view.label,
-          icon: view.icon,
-          description: view.description,
-        });
-      }
-    }
   }
   return [...byId.values()].sort(
     (a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id),
