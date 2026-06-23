@@ -49,6 +49,7 @@ export function installJsdomUiPolyfills(): void {
   }
   const proto = Element.prototype as unknown as Record<string, unknown>;
   proto.scrollIntoView ??= () => {};
+  proto.scrollTo ??= () => {};
   proto.hasPointerCapture ??= () => false;
   proto.setPointerCapture ??= () => {};
   proto.releasePointerCapture ??= () => {};
@@ -76,7 +77,8 @@ export function smokeStoryModules(
   } = {},
 ): void {
   const wrap =
-    options.wrap ?? ((node: ReactNode) => <TooltipProvider>{node}</TooltipProvider>);
+    options.wrap ??
+    ((node: ReactNode) => <TooltipProvider>{node}</TooltipProvider>);
   const skip = new Set(options.skip ?? []);
 
   beforeAll(installJsdomUiPolyfills);
@@ -114,7 +116,9 @@ export function smokeStoryModules(
           // per-component test to wire up.
           const play = (
             Story as {
-              play?: (ctx: { canvasElement: HTMLElement }) => void | Promise<void>;
+              play?: (ctx: {
+                canvasElement: HTMLElement;
+              }) => void | Promise<void>;
             }
           ).play;
           if (typeof play === "function") {

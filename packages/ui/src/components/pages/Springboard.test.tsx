@@ -56,15 +56,18 @@ describe("Springboard", () => {
   });
 
   it("favorites a view into the dock and persists the layout", () => {
-    render(<Springboard entries={FEW} onLaunch={() => {}} />);
+    // `notes` is not in DEFAULT_SPRINGBOARD_FAVORITES (#9144), so favoriting it
+    // genuinely adds it to the dock rather than toggling off a pre-seeded id.
+    const entries = [entry("notes", "Notes"), entry("settings", "Settings")];
+    render(<Springboard entries={entries} onLaunch={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    fireEvent.click(screen.getByTestId("springboard-fav-chat"));
-    // The dock now contains a Chat tile (keyed dock-chat).
-    expect(screen.getByTestId("springboard-tile-chat")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("springboard-fav-notes"));
+    // The dock now contains a Notes tile (keyed dock-notes).
+    expect(screen.getByTestId("springboard-tile-notes")).toBeTruthy();
     const stored = JSON.parse(
       window.localStorage.getItem(SPRINGBOARD_STORAGE_KEY) ?? "{}",
     );
-    expect(stored.favorites).toContain("chat");
+    expect(stored.favorites).toContain("notes");
   });
 
   it("shows page dots when there is more than one page", () => {
