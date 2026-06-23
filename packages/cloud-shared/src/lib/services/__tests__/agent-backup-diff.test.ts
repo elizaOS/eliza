@@ -2,10 +2,13 @@ import { describe, expect, test } from "bun:test";
 import type { AgentBackupStateData } from "../../../db/schemas/agent-sandboxes";
 import {
   applyBackupDelta,
+  type BackupChainNode,
   computeStateHash,
   diffBackupState,
   emptyBackupState,
   isEmptyDelta,
+  reconstructFromChain,
+  resolveBackupChain,
 } from "../agent-backup-diff";
 
 type Mem = AgentBackupStateData["memories"][number];
@@ -83,5 +86,51 @@ describe("agent-backup-diff helpers", () => {
       config: {},
       workspaceFiles: {},
     });
+  });
+});
+
+describe("agent-backup-diff chain reconstruction (restore path)", () => {
+  test("reconstructFromChain replays deltas to restore the final state", () => {
+    const base = emptyBackupState();
+    const s1 = state({ config: { a: 1 }, memories: [mem("x")] });
+    const s2 = state({
+      config: { a: 1, b: 2 },
+      memories: [mem("x"), mem("y")],
+      workspaceFiles: { "f.txt": "v" },
+    });
+    const deltas = [diffBackupState(base, s1), diffBackupState(s1, s2)];
+    expect(reconstructFromChain(base, deltas)).toEqual(s2);
+  });
+
+  test("resolveBackupChain walks parents from the full backup to the target", () => {
+    const nodes: BackupChainNode[] = [
+      { id: "full", backupKind: "full", parentBackupId: null, createdAtMs: 1 },
+      {
+        id: "inc1",
+        backupKind: "incremental",
+        parentBackupId: "full",
+        createdAtMs: 2,
+      },
+      {
+        id: "inc2",
+        backupKind: "incremental",
+        parentBackupId: "inc1",
+        createdAtMs: 3,
+      },
+    ];
+    expect(resolveBackupChain(nodes, "inc2")).toEqual(["full", "inc1", "inc2"]);
+    expect(resolveBackupChain(nodes, "full")).toEqual(["full"]);
+  });
+
+  test("resolveBackupChain throws on a broken chain (missing parent)", () => {
+    const nodes: BackupChainNode[] = [
+      {
+        id: "inc1",
+        backupKind: "incremental",
+        parentBackupId: "missing",
+        createdAtMs: 2,
+      },
+    ];
+    expect(() => resolveBackupChain(nodes, "inc1")).toThrow();
   });
 });
