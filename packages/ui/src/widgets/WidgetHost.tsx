@@ -95,6 +95,12 @@ export interface WidgetHostProps {
   clearEvents?: () => void;
   /** Additional CSS class on the host container. */
   className?: string;
+  /**
+   * Container layout. "stack" (default) is a vertical column (the chat rail);
+   * "grid" is a responsive 1→2 column grid for surfaces that show several
+   * widgets side by side (the frontpage home). (#9143)
+   */
+  layout?: "stack" | "grid";
   /** When true, render nothing if no widgets resolve (default: true). */
   hideWhenEmpty?: boolean;
   /**
@@ -109,6 +115,7 @@ export function WidgetHost({
   events,
   clearEvents,
   className,
+  layout = "stack",
   hideWhenEmpty = true,
   filter,
 }: WidgetHostProps) {
@@ -131,10 +138,16 @@ export function WidgetHost({
 
   if (resolved.length === 0 && hideWhenEmpty) return null;
 
+  const layoutClass =
+    layout === "grid"
+      ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
+      : "flex flex-col gap-3";
+
   return (
     <div
-      className={`flex flex-col gap-3 ${className ?? ""}`}
+      className={`${layoutClass} ${className ?? ""}`}
       data-testid={`widget-host-${slot}`}
+      data-layout={layout}
       data-slot={slot}
     >
       {resolved.map(({ declaration, Component }) => {

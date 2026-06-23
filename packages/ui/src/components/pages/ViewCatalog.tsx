@@ -1181,6 +1181,7 @@ export function ViewCatalog() {
                   (hideWhenEmpty), so the launcher grid is unaffected when empty. */}
               <WidgetHost
                 slot="home"
+                layout="grid"
                 events={homeWidgetEvents}
                 clearEvents={clearHomeWidgetEvents}
                 className="px-1 pb-3"
