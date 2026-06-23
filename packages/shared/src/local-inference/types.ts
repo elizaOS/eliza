@@ -300,7 +300,6 @@ export type TokenizerFamily =
   | "gemma4"
   | "eliza1"
   | "sentencepiece"
-  | "qwen35"
   | (string & {});
 
 export type CatalogHub = "huggingface" | "modelscope";

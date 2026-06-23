@@ -22,10 +22,21 @@ import {
 	FIRST_RUN_DEFAULT_MODEL_ID,
 	findCatalogModel,
 } from "./catalog";
-import { computeRuntimeContextFit } from "./context-fit";
+import {
+	computeRuntimeContextFit,
+	type RuntimeContextFit,
+} from "./context-fit";
 import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
-import type { Eliza1Manifest } from "./manifest";
+import {
+	type Eliza1Kernel,
+	type Eliza1Manifest,
+	type Eliza1Tier,
+	missingRequiredKernels,
+	OPTIONAL_KERNELS_BY_TIER,
+	REQUIRED_KERNELS_BY_TIER,
+	RUNTIME_TO_ELIZA1_KERNEL,
+} from "./manifest";
 import {
 	assessRamFit,
 	defaultManifestLoader,
@@ -389,12 +400,25 @@ function applyCatalogDefaults(
 		const nativeContext =
 			installedBundleContextSize(installed, manifestLoader) ??
 			catalog?.contextLength;
-		args.contextSize = dynamicRuntimeContextSize(
+		const fit = resolveRuntimeContextFit(
 			installed,
 			catalog,
 			nativeContext,
 			hardware,
 		);
+		args.contextSize = fit?.contextSize ?? nativeContext;
+		// Headroom KV-precision upgrade: when the selector chose f16 (opt-in via
+		// ELIZA_PREFER_ACCURATE_KV_WHEN_HEADROOM) and the caller/catalog left KV at
+		// the default q8_0, raise both cache types to f16. Only ever upgrades, and
+		// only when f16 still affords the selected window (#8809 AC#4).
+		if (
+			fit?.kvQuant === "f16" &&
+			(args.cacheTypeK === undefined || args.cacheTypeK === "q8_0") &&
+			(args.cacheTypeV === undefined || args.cacheTypeV === "q8_0")
+		) {
+			args.cacheTypeK = "f16";
+			args.cacheTypeV = "f16";
+		}
 	}
 
 	// Catalog-declared GPU offload default — only apply when the caller
@@ -450,16 +474,23 @@ function installedWeightMb(
 	return 0;
 }
 
-function dynamicRuntimeContextSize(
+/** ELIZA_PREFER_ACCURATE_KV_WHEN_HEADROOM=1 opts into the f16-KV-on-headroom path. */
+function preferAccurateKvWhenHeadroom(): boolean {
+	const v =
+		process.env.ELIZA_PREFER_ACCURATE_KV_WHEN_HEADROOM?.trim().toLowerCase();
+	return v === "1" || v === "true" || v === "yes";
+}
+
+function resolveRuntimeContextFit(
 	installed: InstalledModel,
 	catalog: CatalogModel | undefined,
 	nativeContext: number | undefined,
 	hardware: HardwareProbe | undefined,
-): number | undefined {
-	if (!catalog || nativeContext === undefined) return nativeContext;
-	if (!hardware) return nativeContext;
+): RuntimeContextFit | null {
+	if (!catalog || nativeContext === undefined) return null;
+	if (!hardware) return null;
 
-	const fit = computeRuntimeContextFit({
+	return computeRuntimeContextFit({
 		params: catalog.params,
 		weightMb: installedWeightMb(installed, catalog),
 		usableMb: Math.max(
@@ -467,8 +498,8 @@ function dynamicRuntimeContextSize(
 			hostRamMbFromProbe(hardware) - ramHeadroomReserveMb(),
 		),
 		nativeContext,
+		preferAccurateKvWhenHeadroom: preferAccurateKvWhenHeadroom(),
 	});
-	return fit?.contextSize ?? nativeContext;
 }
 
 function mergeOverrides(
@@ -954,6 +985,102 @@ function collectFailedEvalNames(manifest: Eliza1Manifest): string[] {
 	return failed;
 }
 
+/**
+ * Refusal raised when activation is asked for a manifest-shipping bundle whose
+ * declared `kernels.required` is missing one of the kernels its tier requires
+ * (`REQUIRED_KERNELS_BY_TIER`). native/CLAUDE.md §3#5 makes this a hard error:
+ * a bundle that doesn't declare its required quant/attention kernels would emit
+ * garbage (or silently fall back to an un-optimized path), so we refuse to
+ * activate it rather than run a broken model.
+ */
+export class MissingRequiredKernelsError extends Error {
+	readonly modelId: string;
+	readonly tier: Eliza1Tier;
+	readonly missing: ReadonlyArray<Eliza1Kernel>;
+
+	constructor(args: {
+		modelId: string;
+		tier: Eliza1Tier;
+		missing: ReadonlyArray<Eliza1Kernel>;
+	}) {
+		super(
+			`Model "${args.modelId}" (tier ${args.tier}) is missing required kernel(s): ${args.missing.join(", ")}. Its manifest declares kernels.required without the tier's mandatory set (${REQUIRED_KERNELS_BY_TIER[args.tier].join(", ")}). Refusing to activate — re-fetch a correctly-built bundle.`,
+		);
+		this.name = "MissingRequiredKernelsError";
+		this.modelId = args.modelId;
+		this.tier = args.tier;
+		this.missing = args.missing;
+	}
+}
+
+/**
+ * Activation kernel gate (native/CLAUDE.md §3#5). When the installed bundle
+ * ships a manifest, verify it declares every kernel its tier requires; throw
+ * `MissingRequiredKernelsError` otherwise. A bundle with no manifest (bare
+ * GGUF, external scan, dev path) is NOT gated — there is no kernel contract to
+ * check, so it is a no-op.
+ */
+export function assertRequiredKernelsPresent(
+	installed: InstalledModel,
+	manifestLoader: ManifestLoader = defaultManifestLoader,
+): void {
+	const manifest = manifestLoader(installed.id, installed);
+	if (!manifest) return;
+	const missing = missingRequiredKernels(
+		manifest.tier,
+		manifest.kernels.required,
+	);
+	if (missing.length === 0) return;
+	throw new MissingRequiredKernelsError({
+		modelId: installed.id,
+		tier: manifest.tier,
+		missing,
+	});
+}
+
+/**
+ * native/CLAUDE.md §3#5: "The runtime MUST log the kernel set on startup."
+ * Emits one structured line per activation naming the resolved required +
+ * optional kernel set and the compute backend. Required is the union of the
+ * tier's mandatory manifest kernels and any catalog-declared `requiresKernel`
+ * (mapped runtime→manifest); optional is the tier's optional set. Best-effort:
+ * never throws — a bad probe or unknown tier degrades the line, never the load.
+ */
+function logResolvedKernelSet(
+	installed: InstalledModel,
+	catalog: CatalogModel | undefined,
+	manifest: Eliza1Manifest | undefined,
+	probe: HardwareProbe,
+): void {
+	const tier: Eliza1Tier | undefined =
+		manifest?.tier ??
+		(installed.id.startsWith("eliza-1-")
+			? (installed.id.slice("eliza-1-".length) as Eliza1Tier)
+			: undefined);
+	if (!tier || !REQUIRED_KERNELS_BY_TIER[tier]) return;
+
+	const required = new Set<Eliza1Kernel>(REQUIRED_KERNELS_BY_TIER[tier]);
+	for (const runtimeKernel of catalog?.runtime?.optimizations?.requiresKernel ??
+		[]) {
+		const mapped = RUNTIME_TO_ELIZA1_KERNEL[runtimeKernel as never];
+		if (mapped) required.add(mapped);
+	}
+	const optional = OPTIONAL_KERNELS_BY_TIER[tier];
+	const backend = resolveComputeBackendLabel(probe);
+	console.info(
+		`[LocalInferenceEngine] kernel set: required=[${[...required].join(", ")}] optional=[${optional.join(", ")}] backend=${backend}`,
+	);
+}
+
+/**
+ * Best-effort label for the compute backend the fused lib will autoselect.
+ * The actual CPU/GPU pick happens inside the FFI runtime; this reports the
+ * host probe's detected GPU backend (or `cpu`) for the startup log only.
+ */
+function resolveComputeBackendLabel(probe: HardwareProbe): string {
+	return probe.gpu ? probe.gpu.backend : "cpu";
+}
+
 function isLoader(value: unknown): value is LocalInferenceLoader {
 	if (!value || typeof value !== "object") return false;
 	const candidate = value as Partial<LocalInferenceLoader>;
@@ -1060,6 +1187,12 @@ export class ActiveModelCoordinator {
 		// the UI never shows "loading → error" for a known-bad bundle;
 		// it sees the 422 from the route layer directly.
 		assertManifestEvalsPassed(installed, opts.manifestLoader);
+
+		// Activation kernel gate (native/CLAUDE.md §3#5). A manifest-shipping
+		// bundle that doesn't declare its tier's required kernels would run an
+		// un-optimized/broken path — refuse it here, before the loading state,
+		// same as the eval gate. No-op for bare-GGUF/dev bundles (no manifest).
+		assertRequiredKernelsPresent(installed, opts.manifestLoader);
 
 		this.state = {
 			modelId: installed.id,
@@ -1205,6 +1338,15 @@ export class ActiveModelCoordinator {
 		} else {
 			await localInferenceEngine.load(installed.path, resolved);
 		}
+		// native/CLAUDE.md §3#5: log the resolved kernel set once per activation,
+		// after the load lands. Best-effort — never throws.
+		const manifestLoader = opts.manifestLoader ?? defaultManifestLoader;
+		logResolvedKernelSet(
+			installed,
+			findCatalogModel(installed.id),
+			manifestLoader(installed.id, installed) ?? undefined,
+			probe,
+		);
 		const runtimeLoad = loader
 			? null
 			: localInferenceEngine.currentRuntimeLoadConfig();

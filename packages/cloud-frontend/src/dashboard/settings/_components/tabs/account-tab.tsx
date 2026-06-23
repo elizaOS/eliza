@@ -249,13 +249,19 @@ export function AccountTab({ user, onTabChange }: AccountTabProps) {
 
           {/* Delete account */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 w-full">
-            <p className="text-sm md:text-base font-mono text-white">
-              Delete account
-            </p>
+            <div className="flex flex-col gap-0.5">
+              <p className="text-sm md:text-base font-mono text-white">
+                Delete account
+              </p>
+              <p className="text-xs text-white/50 font-mono">
+                Permanently removes your account and all data. Contact support
+                to begin the process.
+              </p>
+            </div>
             <button
               type="button"
               onClick={handleContactSupport}
-              className="text-sm md:text-base font-mono text-white underline hover:text-white/80 transition-colors"
+              className="text-sm md:text-base font-mono text-white underline hover:text-white/80 transition-colors whitespace-nowrap"
             >
               Contact Support
             </button>

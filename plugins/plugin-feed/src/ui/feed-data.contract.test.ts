@@ -14,8 +14,11 @@
 // so future divergence is caught here rather than silently dropping data in the
 // operator surface.
 
-import type { FeedActivityItem, FeedTeamAgent } from "@elizaos/app-core";
-import type { FeedChatMessagesResponse } from "@elizaos/ui/api";
+import type {
+  FeedActivityItem,
+  FeedChatMessagesResponse,
+  FeedTeamAgent,
+} from "@elizaos/ui/api";
 import { describe, expect, it } from "vitest";
 import {
   extractAgentSummary,

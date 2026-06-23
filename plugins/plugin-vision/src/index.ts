@@ -1,6 +1,12 @@
 import type { Plugin } from "@elizaos/core";
-import { promoteSubactionsToActions } from "@elizaos/core";
+import { logger, promoteSubactionsToActions } from "@elizaos/core";
 import { visionAction } from "./action";
+import { wireComputerUseOcrBridge } from "./computeruse-ocr-bridge";
+import {
+  getOcrWithCoordsService,
+  RapidOcrCoordAdapter,
+  registerOcrWithCoordsService,
+} from "./ocr-with-coords";
 import { visionProvider } from "./provider";
 import { VisionService } from "./service";
 
@@ -35,7 +41,35 @@ export const visionPlugin: Plugin = {
       );
     },
   },
-  init: async (_config, _runtime) => {},
+  init: async (_config, _runtime) => {
+    // Wire full-screen OCR-with-coords so plugin-computeruse's scene-builder
+    // and GET_SCREEN can consume it. plugin-vision owns the OCR engines; it
+    // registers a coord-OCR service locally and bridges it into computeruse's
+    // CoordOcrProvider seam via a best-effort dynamic import (no hard dep — the
+    // bridge is skipped cleanly when computeruse is not installed).
+    if (!getOcrWithCoordsService()) {
+      registerOcrWithCoordsService(new RapidOcrCoordAdapter());
+    }
+    try {
+      const mod = (await import(
+        "@elizaos/plugin-computeruse/mobile/ocr-provider"
+      )) as { registerCoordOcrProvider?: (provider: unknown) => void };
+      if (typeof mod.registerCoordOcrProvider === "function") {
+        wireComputerUseOcrBridge(
+          mod.registerCoordOcrProvider as (provider: unknown) => void,
+        );
+        logger.info(
+          "[vision] registered coord-OCR bridge into plugin-computeruse scene seam",
+        );
+      }
+    } catch (err) {
+      logger.debug(
+        `[vision] plugin-computeruse OCR seam not available; running standalone (${
+          err instanceof Error ? err.message : String(err)
+        })`,
+      );
+    }
+  },
   async dispose(runtime) {
     const svc = runtime.getService<VisionService>(VisionService.serviceType);
     await svc?.stop();

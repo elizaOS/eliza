@@ -20,7 +20,7 @@ const DOWNLOAD_MODEL = {
   category: "chat",
   bucket: "medium",
   contextLength: 131_072,
-  tokenizerFamily: "qwen35",
+  tokenizerFamily: "eliza1",
   publishStatus: "published",
   blurb: "Smoke-test downloadable local tier.",
 };

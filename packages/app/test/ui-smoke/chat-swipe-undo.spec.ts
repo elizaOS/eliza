@@ -130,13 +130,23 @@ test("swipe navigates conversations + soft-undo restores (#8929)", async ({
   await expect(reset).toBeVisible({ timeout: 15_000 });
   await reset.click();
 
+  // Reset cleared the thread to a fresh greeted conversation (billing gone).
+  await expect(thread).not.toContainText("BILLING", { timeout: 15_000 });
+  await dwell();
+
   // Soft-undo toast appears, layers ABOVE the shell overlay (so it is reachable,
   // not occluded by the composer/transcript), and its Undo control is actionable
-  // (hover pauses the 3s auto-dismiss; click dismisses it). The full
-  // restore-the-previous-conversation behavior is verified deterministically by
-  // the component gesture e2e (run-chatux-gesture-e2e: "swipe toast LEFT →
-  // restores") + the undo-store unit tests; here we exercise the affordance on
-  // the real running app.
+  // (hover pauses the 3s auto-dismiss; click dismisses it).
+  //
+  // Scope note: this full-stack spec asserts the swipe navigation + the undo
+  // *affordance* (toast visible, reachable, clickable, dismissed) on the real
+  // running app. The undo RESTORE-the-previous-conversation behavior is verified
+  // deterministically by the component gesture e2e (run-chatux-gesture-e2e:
+  // "swipe toast LEFT → restores", real components) + the undo-store unit tests.
+  // It is intentionally NOT asserted here: a conversation reset goes through the
+  // real handleNewConversation create→greeting→cleanup lifecycle, which the
+  // route-level API mocks cannot faithfully reproduce, so asserting restored
+  // content would test the mock rather than the product.
   const toast = page.getByTestId("conversation-undo-toast");
   await expect(toast).toBeVisible({ timeout: 15_000 });
   await expect(toast).toContainText(/cleared/i);
