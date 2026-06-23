@@ -1,0 +1,77 @@
+# LifeOps prompt benchmark harness (#8795)
+#
+# PR runs execute the hermetic catalog-shape test so the TS benchmark runner is
+# not orphaned. Manual dispatch can enable the live LLM benchmark by setting
+# live=true and providing the usual provider secret(s).
+
+name: LifeOps Prompt Benchmark
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "plugins/plugin-personal-assistant/test/helpers/lifeops-prompt-benchmark-*.ts"
+      - "plugins/plugin-personal-assistant/test/lifeops-prompt-benchmark.test.ts"
+      - "plugins/plugin-personal-assistant/src/actions/**"
+      - "plugins/plugin-personal-assistant/src/lifeops/**"
+      - "plugins/plugin-calendar/src/actions/**"
+      - "plugins/plugin-training/src/**"
+      - ".github/workflows/lifeops-prompt-benchmark.yml"
+  workflow_dispatch:
+    inputs:
+      live:
+        description: "Run the live LLM benchmark slice"
+        required: false
+        type: boolean
+        default: false
+      case_limit:
+        description: "Live direct-case limit"
+        required: false
+        type: string
+        default: "15"
+
+concurrency:
+  group: lifeops-prompt-benchmark-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+
+jobs:
+  prompt-benchmark:
+    name: prompt-benchmark
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+
+      - name: Run LifeOps prompt benchmark test
+        env:
+          LIFEOPS_PROMPT_BENCHMARK_LIVE: ${{ github.event_name == 'workflow_dispatch' && inputs.live == true && '1' || '0' }}
+          LIFEOPS_PROMPT_BENCHMARK_CASE_LIMIT: ${{ inputs.case_limit || '15' }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          LOCAL_LLAMA_CPP_API_KEY: ${{ secrets.LOCAL_LLAMA_CPP_API_KEY }}
+        run: |
+          bun run --cwd plugins/plugin-personal-assistant test -- test/lifeops-prompt-benchmark.test.ts

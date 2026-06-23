@@ -12,10 +12,10 @@
  * decision Discord uses, so both connectors behave consistently.
  *
  * Per-target dispatch:
- *   - `agent`    → gate-safe commands (help/status/…) resolve to a deterministic
- *                  local reply via `resolveCommand`; other agent commands route
- *                  the reconstructed command text (the user's `/command args`
- *                  message) through the agent's message pipeline via
+ *   - `agent`    → deterministic commands (help/status/think/model/…) resolve
+ *                  to a local reply via `resolveCommand`; other agent commands
+ *                  route the reconstructed command text (the user's `/command
+ *                  args` message) through the agent's message pipeline via
  *                  `MessageManager.handleMessage(ctx, { forceReply: true })`,
  *                  the same path inbound messages take. `forceReply` bypasses
  *                  the `TELEGRAM_AUTO_REPLY` gate because an explicit slash

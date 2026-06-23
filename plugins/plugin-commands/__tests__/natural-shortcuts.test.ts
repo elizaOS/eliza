@@ -19,7 +19,7 @@ const COMMANDS_ACTIONS = ["COMMANDS_COMMAND", "HELP_COMMAND"];
 const NL = { allowNatural: true, actions: COMMANDS_ACTIONS } as const;
 
 describe("naturalShortcuts (#8791 C6)", () => {
-	it("declares exactly the COMMANDS natural shortcut, gate-safe", () => {
+	it("declares exactly the gate-safe COMMANDS natural shortcut", () => {
 		expect(naturalShortcuts).toHaveLength(1);
 		const def = naturalShortcuts[0];
 		expect(def?.kind).toBe("natural");

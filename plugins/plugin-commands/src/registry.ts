@@ -163,7 +163,13 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		scope: "both",
 		category: "options",
 		acceptsArgs: true,
-		args: [{ name: "model", description: "provider/model or alias" }],
+		args: [
+			{
+				name: "model",
+				description: "provider/model or alias",
+				dynamicChoices: "models",
+			},
+		],
 	},
 	{
 		key: "models",

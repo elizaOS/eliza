@@ -19,11 +19,10 @@
  * plugins, …) without touching the tested built-in command surface.
  *
  * Per-target dispatch:
- *   - `agent`    → gate-safe commands (help/status/…) resolve to a deterministic
- *                  local reply via `resolveCommand`; other agent commands route
- *                  the reconstructed command text (e.g. `/think high`) through
- *                  the runtime's message pipeline and reply with the agent's
- *                  answer.
+ *   - `agent`    → deterministic commands (help/status/think/model/…) resolve
+ *                  to a local reply via `resolveCommand`; other agent commands
+ *                  route the reconstructed command text through the runtime's
+ *                  message pipeline and reply with the agent's answer.
  *   - `navigate` → reply (ephemeral) describing the destination, resolving the
  *                  `/settings <section>` argument when present.
  *   - `client`   → GUI/TUI-only behaviors are filtered out of the discord

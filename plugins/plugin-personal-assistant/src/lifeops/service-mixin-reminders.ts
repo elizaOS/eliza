@@ -10,6 +10,7 @@ import {
   type IAgentRuntime,
   ModelType,
   parseJsonModelRecord,
+  resolveOptimizedPromptForRuntime,
   runWithTrajectoryContext,
   ServiceType,
 } from "@elizaos/core";
@@ -546,6 +547,21 @@ function normalizeOptionalScheduleObservationSnapshot(
  *  hammering a flaky connector while still retrying within the same turn. */
 const REMINDER_DELIVERY_RETRY_DELAY_MS = 2_000;
 
+const REMINDER_DISPATCH_INSTRUCTIONS = [
+  "Write a short reminder nudge in the assistant's voice.",
+  "This is a real follow-up or reminder delivery, not a system log.",
+  "",
+  "Rules:",
+  "- Return only the reminder text.",
+  "- Sound natural and in character.",
+  "- Do not start with 'Reminder' or 'Follow-up reminder'.",
+  "- Do not use ISO timestamps.",
+  "- Keep it concise: one or two short sentences.",
+  "- You may mention nearby reminders briefly if it helps.",
+  "- For escalation, sound a little firmer but still human.",
+  "- No markdown, bullets, quotes, labels, or emoji.",
+].join("\n");
+
 function isDeliveredReminderOutcome(
   outcome: LifeOpsReminderAttemptOutcome,
 ): boolean {
@@ -787,6 +803,46 @@ function formatNearbyReminderTitlesForPrompt(titles: string[]): string {
     return "None.";
   }
   return titles.map((title) => `- ${title}`).join("\n");
+}
+
+export function buildReminderDispatchPrompt(args: {
+  runtime: IAgentRuntime;
+  title: string;
+  reminderAt: string;
+  channel: LifeOpsReminderStep["channel"];
+  lifecycle: ReminderAttemptLifecycle;
+  urgency: LifeOpsReminderUrgency;
+  recentConversation: readonly string[];
+  nearbyReminderTitles?: string[];
+}): string {
+  const instructions = resolveOptimizedPromptForRuntime(
+    args.runtime,
+    "reminder_dispatch",
+    REMINDER_DISPATCH_INSTRUCTIONS,
+  );
+  return [
+    instructions,
+    "",
+    "Character voice:",
+    buildReminderVoiceContext(args.runtime) || "No extra character context.",
+    "",
+    "Current reminder:",
+    `- title: ${args.title}`,
+    `- due: ${new Date(args.reminderAt).toLocaleString()}`,
+    `- channel: ${args.channel}`,
+    `- urgency: ${args.urgency}`,
+    `- lifecycle: ${args.lifecycle}`,
+    "",
+    "Recent conversation:",
+    args.recentConversation.length > 0
+      ? args.recentConversation.join("\n")
+      : "No recent conversation available.",
+    "",
+    "Other reminders around this time:",
+    formatNearbyReminderTitlesForPrompt(args.nearbyReminderTitles ?? []),
+    "",
+    "Reminder text:",
+  ].join("\n");
 }
 
 function normalizeScreenContextFocus(
@@ -1333,45 +1389,20 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         limit: 6,
       });
       const reminderAt = args.dueAt ?? args.scheduledFor;
-      const prompt = [
-        `Write a short reminder nudge in the voice of ${this.runtime.character.name ?? "the assistant"}.`,
-        "This is a real follow-up or reminder delivery, not a system log.",
-        "",
-        "Character voice:",
-        buildReminderVoiceContext(this.runtime) ||
-          "No extra character context.",
-        "",
-        "Current reminder:",
-        `- title: ${args.title}`,
-        `- due: ${new Date(reminderAt).toLocaleString()}`,
-        `- channel: ${args.channel}`,
-        `- urgency: ${args.urgency}`,
-        `- lifecycle: ${args.lifecycle}`,
-        "",
-        "Recent conversation:",
-        recentConversation.length > 0
-          ? recentConversation.join("\n")
-          : "No recent conversation available.",
-        "",
-        "Other reminders around this time:",
-        formatNearbyReminderTitlesForPrompt(args.nearbyReminderTitles ?? []),
-        "",
-        "Rules:",
-        "- Return only the reminder text.",
-        "- Sound natural and in character.",
-        "- Do not start with 'Reminder' or 'Follow-up reminder'.",
-        "- Do not use ISO timestamps.",
-        "- Keep it concise: one or two short sentences.",
-        "- You may mention nearby reminders briefly if it helps.",
-        "- For escalation, sound a little firmer but still human.",
-        "- No markdown, bullets, quotes, labels, or emoji.",
-        "",
-        "Reminder text:",
-      ].join("\n");
+      const prompt = buildReminderDispatchPrompt({
+        runtime: this.runtime,
+        title: args.title,
+        reminderAt,
+        channel: args.channel,
+        lifecycle: args.lifecycle,
+        urgency: args.urgency,
+        recentConversation,
+        nearbyReminderTitles: args.nearbyReminderTitles,
+      });
 
       try {
         const response = await runWithTrajectoryContext(
-          { purpose: "lifeops-reminders-render-body" },
+          { purpose: "reminder_dispatch" },
           () =>
             this.runtime.useModel(ModelType.TEXT_SMALL, {
               prompt,

@@ -1717,6 +1717,7 @@ export function App() {
       } catch {
         // sandboxed — ignore
       }
+      reportUserViewSwitch(viewId, dtab.path);
     },
     [desktopTabs],
   );

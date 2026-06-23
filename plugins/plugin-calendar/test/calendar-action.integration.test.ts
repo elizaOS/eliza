@@ -5,10 +5,12 @@
  * returns a usable Action object.
  */
 
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,
   createCalendarActionRunner,
+  extractCalendarPlanWithLlm,
 } from "../src/index.js";
 
 function fakeDeps(): CalendarActionDeps {
@@ -17,6 +19,29 @@ function fakeDeps(): CalendarActionDeps {
     runJsonModel: vi.fn(async () => null),
     recentConversationTexts: vi.fn(async () => []),
   };
+}
+
+function message(text: string): Memory {
+  return {
+    id: "00000000-0000-0000-0000-000000000101",
+    entityId: "00000000-0000-0000-0000-000000000102",
+    roomId: "00000000-0000-0000-0000-000000000103",
+    content: { text },
+  } as unknown as Memory;
+}
+
+function runtimeWithOptimizedPrompt(promptByTask: Record<string, string>) {
+  return {
+    getService: (name: string) =>
+      name === "optimized_prompt"
+        ? {
+            getPrompt: (task: string) =>
+              promptByTask[task]
+                ? { prompt: promptByTask[task], optimizerSource: "gepa" }
+                : null,
+          }
+        : null,
+  } as unknown as IAgentRuntime;
 }
 
 describe("createCalendarActionRunner", () => {
@@ -51,5 +76,48 @@ describe("createCalendarActionRunner", () => {
     expect(deps.travelBuffer).toBeUndefined();
     const action = createCalendarActionRunner(deps);
     expect(action.name).toBe("CALENDAR");
+  });
+
+  it("routes calendar_extract planner instructions through OptimizedPromptService", async () => {
+    let capturedPrompt = "";
+    const deps: CalendarActionDeps = {
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async (args) => {
+        capturedPrompt = args.prompt;
+        return {
+          rawResponse:
+            '{"subaction":null,"shouldAct":false,"response":"clarify","queries":[]}',
+          parsed: {
+            subaction: null,
+            shouldAct: false,
+            response: "clarify",
+            queries: [],
+          },
+        };
+      }),
+      recentConversationTexts: vi.fn(async () => []),
+    };
+    createCalendarActionRunner(deps);
+
+    await extractCalendarPlanWithLlm(
+      runtimeWithOptimizedPrompt({
+        calendar_extract: "OPTIMIZED CALENDAR EXTRACTION INSTRUCTIONS",
+      }),
+      message("Schedule lunch with Maya tomorrow at noon."),
+      undefined,
+      "calendar",
+      "America/New_York",
+    );
+
+    expect(capturedPrompt).toContain(
+      "OPTIMIZED CALENDAR EXTRACTION INSTRUCTIONS",
+    );
+    expect(capturedPrompt).not.toContain(
+      "Plan the calendar action for this request.",
+    );
+    expect(capturedPrompt).toContain("Current timezone: America/New_York");
+    expect(capturedPrompt).toContain(
+      "Current request:\nSchedule lunch with Maya tomorrow at noon.",
+    );
   });
 });

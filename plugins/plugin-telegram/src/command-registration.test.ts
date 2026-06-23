@@ -124,7 +124,7 @@ describe("registerTelegramCommandHandlers", () => {
     }
   });
 
-  it("agent (gate-safe): resolves a deterministic local reply without the pipeline", async () => {
+  it("agent option command: resolves a deterministic local reply without the pipeline", async () => {
     const { manager, handleMessage } = makeMessageManager();
     const { handlers } = registerHandlers(makeRuntime(), manager);
 
@@ -133,7 +133,7 @@ describe("registerTelegramCommandHandlers", () => {
     const { ctx, reply } = makeCtx("/think high");
     await thinkHandler?.(ctx);
 
-    // Gate-safe commands answer locally — no pipeline round-trip.
+    // Deterministic commands answer locally — no pipeline round-trip.
     expect(handleMessage).not.toHaveBeenCalled();
     expect(reply).toHaveBeenCalledTimes(1);
     expect(reply.mock.calls[0]?.[0]).toContain("high");

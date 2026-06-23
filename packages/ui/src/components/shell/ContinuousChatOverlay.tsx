@@ -1040,15 +1040,6 @@ export function ContinuousChatOverlay({
   // the swipe-nav surface still renders without crashing.
   const conversationNav = controller.conversationNav ?? EMPTY_CONVERSATION_NAV;
 
-  // The transcribe control is a voice feature, so it only belongs in the header
-  // while voice is actually on — a hands-free conversation, the mic open, or an
-  // in-progress transcription. When voice is off it's hidden (the `/transcribe`
-  // command still starts transcription from cold). `transcriptionMode` is part
-  // of the predicate so the button (then "stop transcription") and its badge
-  // stay put across the re-listen gaps where `recording` momentarily drops
-  // between utterances.
-  const voiceActive = Boolean(recording || handsFree || transcriptionMode);
-
   // Horizontal swipe between conversations (#8929). `swipeDx` is the live
   // horizontal drag (+left toward the next/older chat, -right toward the
   // newer/previous chat) and drives the edge hint. The gesture defers pointer

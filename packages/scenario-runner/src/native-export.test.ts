@@ -209,6 +209,39 @@ describe("recordedTrajectoryToNativeRows", () => {
     expect(row.metadata.source_run_id).toBe("run-1");
   });
 
+  it("preserves LifeOps task/domain buckets for scenario model-call prompts", () => {
+    const traj = syntheticTrajectory() as Record<string, unknown> & {
+      stages: Array<Record<string, unknown>>;
+    };
+    traj.scenarioId = "lifeops.calendar-extract";
+    traj.stages = [
+      {
+        stageId: "stage-calendar-extract",
+        kind: "planner",
+        startedAt: 1_700_000_000_300,
+        endedAt: 1_700_000_000_800,
+        latencyMs: 500,
+        model: {
+          modelType: "TEXT_SMALL",
+          modelName: "test-model",
+          provider: "test",
+          prompt:
+            "Plan the calendar action for this request.\nCurrent request:\nSchedule lunch tomorrow.",
+          response:
+            '{"subaction":"create_event","shouldAct":true,"queries":[],"title":"Lunch"}',
+          usage: { promptTokens: 42, completionTokens: 8, totalTokens: 50 },
+          finishReason: "stop",
+        },
+      },
+    ];
+
+    const row = expectSingleNativeRow(
+      recordedTrajectoryToNativeRows(traj as never),
+    );
+    expect(row.metadata.task_type).toBe("calendar_extract");
+    expect(row.metadata.domain).toBe("lifeops");
+  });
+
   it("skips stages without a usable request/response", () => {
     const traj = syntheticTrajectory() as Record<string, unknown> & {
       stages: unknown[];

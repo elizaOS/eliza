@@ -176,9 +176,9 @@ describe("per-target execute branching", () => {
 	});
 
 	it("agent (non-gate-safe option): routes the reconstructed command text through the pipeline", async () => {
-		// `think` carries an option (`/think high`). Option commands own
-		// side effects in the pipeline, so they are NOT gate-safe and must route
-		// the reconstructed command text through the message service rather than
+		// `think` carries an option (`/think high`). Option commands own side
+		// effects in the pipeline, so they are NOT gate-safe and must route the
+		// reconstructed command text through the message service rather than
 		// resolving to a deterministic local reply.
 		const think = findCatalog("think");
 		const interaction = makeInteraction({ level: "high" });
