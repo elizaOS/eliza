@@ -5,7 +5,14 @@
   "npmName": "@elizaos/plugin-x",
   "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["connector", "social", "social-chat", "twitter", "x", "dm"],
+  "tags": [
+    "connector",
+    "social",
+    "social-chat",
+    "twitter",
+    "x",
+    "dm"
+  ],
   "config": {
     "TWITTER_AUTH_MODE": {
       "type": "select",
@@ -192,7 +199,11 @@
     "icon": "Twitter",
     "group": "connector",
     "groupOrder": 1,
-    "actions": ["enable", "configure", "setup-guide"]
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-x#readme",
@@ -218,14 +229,24 @@
     "owner": {
       "supported": true,
       "authKind": "oauth-cloud",
-      "credentialKeys": ["TWITTER_BROKER_URL", "TWITTER_BROKER_TOKEN"],
+      "credentialKeys": [
+        "TWITTER_BROKER_URL",
+        "TWITTER_BROKER_TOKEN"
+      ],
       "notes": "The user's own X account, connected via Eliza Cloud OAuth so the agent can post / reply / DM on the user's behalf."
     },
     "agent": {
       "supported": true,
       "authKind": "oauth-cloud",
-      "credentialKeys": ["TWITTER_BROKER_URL", "TWITTER_BROKER_TOKEN"],
+      "credentialKeys": [
+        "TWITTER_BROKER_URL",
+        "TWITTER_BROKER_TOKEN"
+      ],
       "notes": "A separate X account that represents the agent's own identity. Same OAuth flow, different X account at the OAuth screen."
     }
-  }
+  },
+  "channels": [
+    "x",
+    "twitter"
+  ]
 }

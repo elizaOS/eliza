@@ -5,7 +5,13 @@
   "npmName": "@elizaos/plugin-msteams",
   "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["connector", "social", "social-chat", "messaging", "msteams"],
+  "tags": [
+    "connector",
+    "social",
+    "social-chat",
+    "messaging",
+    "msteams"
+  ],
   "config": {
     "MSTEAMS_APP_ID": {
       "type": "string",
@@ -89,7 +95,11 @@
     "icon": "Square",
     "group": "connector",
     "groupOrder": 1,
-    "actions": ["enable", "configure", "setup-guide"]
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
   },
   "resources": {
     "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#microsoft-teams"
@@ -100,5 +110,8 @@
   "auth": {
     "kind": "token",
     "credentialKeys": []
-  }
+  },
+  "channels": [
+    "msteams"
+  ]
 }

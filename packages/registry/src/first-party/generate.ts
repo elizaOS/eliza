@@ -32,6 +32,9 @@ const GENERATED_PATH = join(HERE, "generated.json");
 // fs) to materialize ELIZA_CURATED_APP_DEFINITIONS without bundling the full
 // registry. Regenerated alongside generated.json.
 const CURATED_DEFS_PATH = join(HERE, "curated-app-definitions.json");
+// Derived channel -> plugin-package map. agent + app-core statically import this
+// (browser-safe, no fs) instead of hand-maintaining duplicate CHANNEL_PLUGIN_MAPs.
+const CHANNEL_MAP_PATH = join(HERE, "channel-plugin-map.json");
 
 interface CuratedAppDefinition {
   slug: string;
@@ -51,6 +54,31 @@ export function collectCuratedAppDefinitions(
       canonicalName: e.npmName ?? "",
       aliases: e.curatedApp?.aliases ?? [],
     }));
+}
+
+// Derive the channel -> plugin-package map from connector entries' `channels`.
+// This replaces the hand-maintained CHANNEL_PLUGIN_MAP duplicated in agent +
+// app-core. Keys are sorted for a stable artifact; consumers read by key.
+export function collectChannelPluginMap(
+  entries: RegistryEntry[],
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const e of entries) {
+    if (!e.npmName) continue;
+    for (const channel of e.channels ?? []) {
+      if (map[channel] && map[channel] !== e.npmName) {
+        throw new Error(
+          `[registry/generate] channel "${channel}" claimed by both ${map[channel]} and ${e.npmName}`,
+        );
+      }
+      map[channel] = e.npmName;
+    }
+  }
+  return Object.fromEntries(
+    Object.keys(map)
+      .sort()
+      .map((k) => [k, map[k]]),
+  );
 }
 
 interface SourcedEntry {
@@ -121,11 +149,13 @@ export function collectFirstPartyEntries(): RegistryEntry[] {
 export function generateFirstPartyRegistry(): {
   full: string;
   curated: string;
+  channels: string;
 } {
   const entries = collectFirstPartyEntries();
   return {
     full: `${JSON.stringify({ entries }, null, 2)}\n`,
     curated: `${JSON.stringify(collectCuratedAppDefinitions(entries), null, 2)}\n`,
+    channels: `${JSON.stringify(collectChannelPluginMap(entries), null, 2)}\n`,
   };
 }
 
@@ -135,6 +165,7 @@ function main(): void {
   const artifacts: [string, string][] = [
     [GENERATED_PATH, next.full],
     [CURATED_DEFS_PATH, next.curated],
+    [CHANNEL_MAP_PATH, next.channels],
   ];
   if (check) {
     for (const [path, expected] of artifacts) {

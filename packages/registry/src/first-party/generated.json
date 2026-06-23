@@ -33,6 +33,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "agents"
     },
@@ -108,6 +109,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "agents"
     },
@@ -189,6 +191,7 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#anthropic"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "ai-provider"
     },
@@ -218,6 +221,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "automation"
     },
@@ -250,6 +254,7 @@
       "dependsOn": [
         "wallet"
       ],
+      "channels": [],
       "curatedApp": {
         "slug": "polymarket",
         "order": 7,
@@ -475,6 +480,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "blockchain"
     },
@@ -510,6 +516,7 @@
         "repository": "https://github.com/eliza-ai/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "automation"
     },
@@ -615,6 +622,9 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#blooio-sms-via-api"
       },
       "dependsOn": [],
+      "channels": [
+        "blooio"
+      ],
       "kind": "plugin",
       "subtype": "other"
     },
@@ -720,9 +730,11 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [
+        "bluebubbles"
+      ],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -903,9 +915,9 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#bluesky"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -992,6 +1004,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "devtools"
     },
@@ -1039,6 +1052,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "devtools"
     },
@@ -1091,6 +1105,7 @@
         "repository": "https://github.com/elizaos-plugins/plugin-clipboard"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "documents"
     },
@@ -1172,6 +1187,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "devtools"
     },
@@ -1240,6 +1256,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "automation"
     },
@@ -1265,6 +1282,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "curatedApp": {
         "slug": "companion",
         "order": 0,
@@ -1359,6 +1377,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "devtools"
     },
@@ -1389,6 +1408,7 @@
         "repository": "https://github.com/elizaos/elizaos"
       },
       "dependsOn": [],
+      "channels": [],
       "curatedApp": {
         "slug": "contacts",
         "order": 1,
@@ -1494,6 +1514,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "agents"
     },
@@ -1522,6 +1543,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "app",
       "subtype": "tool",
       "launch": {
@@ -1599,6 +1621,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "agents"
     },
@@ -1709,9 +1732,11 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#discord"
       },
       "dependsOn": [],
+      "channels": [
+        "discord"
+      ],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "oauth",
         "credentialKeys": [
@@ -1740,6 +1765,41 @@
       }
     },
     {
+      "id": "discord-local",
+      "name": "Discord (Local)",
+      "description": "Discord (Local) connector for elizaOS.",
+      "npmName": "@elizaos/plugin-discord-local",
+      "version": "2.0.0-beta.0",
+      "source": "bundled",
+      "tags": [
+        "connector",
+        "social",
+        "messaging",
+        "discord-local"
+      ],
+      "config": {},
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "group": "connectors",
+        "actions": [
+          "enable",
+          "configure"
+        ]
+      },
+      "resources": {
+        "homepage": "https://elizaos.ai",
+        "repository": "https://github.com/elizaos/elizaos"
+      },
+      "dependsOn": [],
+      "channels": [
+        "discordLocal"
+      ],
+      "kind": "connector",
+      "subtype": "social"
+    },
+    {
       "id": "documents",
       "name": "Knowledge",
       "description": "Character Knowledge documents, fragments, and search routes for the agent.",
@@ -1761,6 +1821,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "app",
       "subtype": "tool",
       "launch": {
@@ -1875,6 +1936,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "voice"
     },
@@ -2052,6 +2114,7 @@
         "repository": "https://github.com/elizaos-plugins/plugin-elevenlabs"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "voice"
     },
@@ -2265,6 +2328,7 @@
         "repository": "https://github.com/eliza-ai/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "other"
     },
@@ -2405,6 +2469,7 @@
         "repository": "https://github.com/elizaOS/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "blockchain"
     },
@@ -2446,6 +2511,7 @@
         "repository": "https://github.com/elizaos/elizaos"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "storage"
     },
@@ -2566,6 +2632,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "media",
       "launch": {
@@ -2761,9 +2828,11 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#farcaster"
       },
       "dependsOn": [],
+      "channels": [
+        "farcaster"
+      ],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
@@ -2793,6 +2862,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "curatedApp": {
         "slug": "feed",
         "order": 4,
@@ -2885,9 +2955,11 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#feishu-lark"
       },
       "dependsOn": [],
+      "channels": [
+        "feishu"
+      ],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -2923,6 +2995,7 @@
         "repository": "https://github.com/elizaos/elizaos"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "media"
     },
@@ -3021,6 +3094,7 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#github"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "devtools"
     },
@@ -3053,6 +3127,7 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#gmail-watch"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "media"
     },
@@ -3137,6 +3212,7 @@
         "repository": "https://github.com/elizaos/elizaos"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "agents"
     },
@@ -3201,9 +3277,9 @@
         "setupGuideUrl": "https://github.com/elizaos-plugins/plugin-google#readme"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "connector",
       "subtype": "email",
-      "channels": [],
       "auth": {
         "kind": "oauth",
         "credentialKeys": [
@@ -3344,9 +3420,11 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#google-chat"
       },
       "dependsOn": [],
+      "channels": [
+        "googlechat"
+      ],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -3464,6 +3542,7 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#google-gemini"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "ai-provider"
     },
@@ -3565,6 +3644,7 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#groq"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "ai-provider"
     },
@@ -3620,6 +3700,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "other"
     },
@@ -3652,6 +3733,7 @@
       "dependsOn": [
         "wallet"
       ],
+      "channels": [],
       "curatedApp": {
         "slug": "hyperliquid",
         "order": 6,
@@ -3766,9 +3848,11 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#imessage-macos-only"
       },
       "dependsOn": [],
+      "channels": [
+        "imessage"
+      ],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -3803,6 +3887,7 @@
         "repository": "https://github.com/elizaos-plugins/plugin-inmemorydb"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "database"
     },
@@ -3872,13 +3957,48 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#instagram"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
       }
+    },
+    {
+      "id": "lens",
+      "name": "Lens",
+      "description": "Lens connector for elizaOS.",
+      "npmName": "@elizaos/plugin-lens",
+      "version": "2.0.0-beta.0",
+      "source": "bundled",
+      "tags": [
+        "connector",
+        "social",
+        "messaging",
+        "lens"
+      ],
+      "config": {},
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "group": "connectors",
+        "actions": [
+          "enable",
+          "configure"
+        ]
+      },
+      "resources": {
+        "homepage": "https://elizaos.ai",
+        "repository": "https://github.com/elizaos/elizaos"
+      },
+      "dependsOn": [],
+      "channels": [
+        "lens"
+      ],
+      "kind": "connector",
+      "subtype": "social"
     },
     {
       "id": "line",
@@ -3969,9 +4089,9 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#line"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
@@ -4034,6 +4154,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "devtools"
     },
@@ -4174,6 +4295,7 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#local-inference"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "ai-provider"
     },
@@ -4216,6 +4338,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "storage"
     },
@@ -4248,6 +4371,7 @@
         "repository": "https://github.com/elizaos-plugins/plugin-localdb"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "database"
     },
@@ -4276,6 +4400,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "app",
       "subtype": "tool",
       "launch": {
@@ -4386,9 +4511,11 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#matrix"
       },
       "dependsOn": [],
+      "channels": [
+        "matrix"
+      ],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
@@ -4509,9 +4636,11 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#mattermost"
       },
       "dependsOn": [],
+      "channels": [
+        "mattermost"
+      ],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
@@ -4565,6 +4694,7 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#mcp-model-context-protocol"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "devtools"
     },
@@ -4695,6 +4825,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "documents"
     },
@@ -4723,6 +4854,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "app",
       "subtype": "tool",
       "launch": {
@@ -4820,6 +4952,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "gaming"
     },
@@ -4851,6 +4984,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "app",
       "subtype": "tool",
       "launch": {
@@ -4958,6 +5092,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "gaming"
     },
@@ -5068,9 +5203,11 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#microsoft-teams"
       },
       "dependsOn": [],
+      "channels": [
+        "msteams"
+      ],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -5231,6 +5368,7 @@
         "repository": "https://github.com/elizaos-plugins/plugin-music"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "other"
     },
@@ -5288,6 +5426,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "gaming"
     },
@@ -5380,6 +5519,7 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#near-ai"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "ai-provider"
     },
@@ -5484,9 +5624,9 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#nextcloud-talk"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -5565,6 +5705,7 @@
         "repository": "https://github.com/eliza-ai/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "devtools"
     },
@@ -5641,9 +5782,11 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#nostr"
       },
       "dependsOn": [],
+      "channels": [
+        "nostr"
+      ],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -5750,6 +5893,7 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#ollama-local-models"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "ai-provider"
     },
@@ -5946,6 +6090,7 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#openai"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "ai-provider"
     },
@@ -6142,6 +6287,7 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#openrouter"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "ai-provider"
     },
@@ -6173,6 +6319,7 @@
         "repository": "https://github.com/elizaos-plugins/plugin-pdf"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "documents"
     },
@@ -6203,6 +6350,7 @@
         "repository": "https://github.com/elizaos/elizaos"
       },
       "dependsOn": [],
+      "channels": [],
       "curatedApp": {
         "slug": "phone",
         "order": 2,
@@ -6240,6 +6388,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "agents"
     },
@@ -6268,6 +6417,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "app",
       "subtype": "tool",
       "launch": {
@@ -6335,6 +6485,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "media"
     },
@@ -6363,6 +6514,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "app",
       "subtype": "tool",
       "launch": {
@@ -6407,6 +6559,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "documents"
     },
@@ -6503,6 +6656,7 @@
         "repository": "https://github.com/elizaos-plugins/plugin-roblox"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "gaming"
     },
@@ -6576,6 +6730,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "media"
     },
@@ -6604,6 +6759,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "app",
       "subtype": "tool",
       "launch": {
@@ -6712,6 +6868,7 @@
         "repository": "https://github.com/elizaos-plugins/plugin-storage-s3"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "storage"
     },
@@ -6753,6 +6910,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "automation"
     },
@@ -6783,6 +6941,7 @@
         "repository": "https://github.com/elizaos/elizaos"
       },
       "dependsOn": [],
+      "channels": [],
       "curatedApp": {
         "slug": "screenshare",
         "order": 9,
@@ -6890,6 +7049,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "devtools"
     },
@@ -6915,6 +7075,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "curatedApp": {
         "slug": "shopify",
         "order": 8,
@@ -7012,9 +7173,11 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#signal"
       },
       "dependsOn": [],
+      "channels": [
+        "signal"
+      ],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -7044,6 +7207,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "app",
       "subtype": "tool",
       "launch": {
@@ -7147,9 +7311,11 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#slack"
       },
       "dependsOn": [],
+      "channels": [
+        "slack"
+      ],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "oauth",
         "credentialKeys": [
@@ -7249,6 +7415,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "blockchain"
     },
@@ -7274,6 +7441,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "app",
       "subtype": "trading",
       "launch": {
@@ -7373,6 +7541,7 @@
         "repository": "https://github.com/eliza-ai/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "devtools"
     },
@@ -7432,6 +7601,7 @@
         "repository": "https://github.com/elizaos-plugins/plugin-tee"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "other"
     },
@@ -7503,9 +7673,11 @@
         "setupGuideUrl": "https://docs.eliza.ai/guides/tutorial-telegram-bot"
       },
       "dependsOn": [],
+      "channels": [
+        "telegram"
+      ],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
@@ -7604,9 +7776,9 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#tlon-urbit"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []
@@ -7646,6 +7818,7 @@
       "dependsOn": [
         "sql"
       ],
+      "channels": [],
       "kind": "plugin",
       "subtype": "devtools"
     },
@@ -7681,6 +7854,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "app",
       "subtype": "tool",
       "launch": {
@@ -7739,6 +7913,7 @@
         "repository": "https://github.com/elizaos/elizaos"
       },
       "dependsOn": [],
+      "channels": [],
       "curatedApp": {
         "slug": "trajectory-logger",
         "order": 10,
@@ -7772,6 +7947,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "app",
       "subtype": "tool",
       "launch": {
@@ -7828,6 +8004,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "blockchain"
     },
@@ -7905,6 +8082,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "voice"
     },
@@ -7957,6 +8135,7 @@
         "repository": "https://github.com/eliza-ai/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "devtools"
     },
@@ -8133,6 +8312,7 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#twilio-sms--voice"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "other"
     },
@@ -8243,9 +8423,11 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#twitch"
       },
       "dependsOn": [],
+      "channels": [
+        "twitch"
+      ],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
@@ -8381,6 +8563,7 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#vercel-ai-gateway"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "ai-provider"
     },
@@ -8412,6 +8595,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "media"
     },
@@ -8444,6 +8628,7 @@
       "dependsOn": [
         "wallet"
       ],
+      "channels": [],
       "curatedApp": {
         "slug": "vincent",
         "order": 5,
@@ -8512,6 +8697,7 @@
         "repository": "https://github.com/elizaos/elizaos"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "media"
     },
@@ -8540,6 +8726,7 @@
       },
       "resources": {},
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "devtools"
     },
@@ -8659,9 +8846,11 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#whatsapp"
       },
       "dependsOn": [],
+      "channels": [
+        "whatsapp"
+      ],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
@@ -8696,6 +8885,7 @@
         "repository": "https://github.com/elizaos/elizaos"
       },
       "dependsOn": [],
+      "channels": [],
       "curatedApp": {
         "slug": "wifi",
         "order": 3,
@@ -8732,6 +8922,7 @@
         "repository": "https://github.com/elizaos/eliza"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "other"
     },
@@ -8948,9 +9139,12 @@
         "setupGuideUrl": "https://github.com/elizaos-plugins/plugin-x#readme"
       },
       "dependsOn": [],
+      "channels": [
+        "x",
+        "twitter"
+      ],
       "kind": "connector",
       "subtype": "social",
-      "channels": [],
       "auth": {
         "kind": "oauth",
         "credentialKeys": [
@@ -9064,6 +9258,7 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#xai-grok"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "plugin",
       "subtype": "ai-provider"
     },
@@ -9183,9 +9378,9 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#zalo-vietnam-messaging"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": [
@@ -9312,9 +9507,9 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#zalo-user-personal"
       },
       "dependsOn": [],
+      "channels": [],
       "kind": "connector",
       "subtype": "messaging",
-      "channels": [],
       "auth": {
         "kind": "token",
         "credentialKeys": []

@@ -64,7 +64,11 @@
     "icon": "Lock",
     "group": "connector",
     "groupOrder": 1,
-    "actions": ["enable", "configure", "setup-guide"]
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-signal#readme",
@@ -77,5 +81,8 @@
   "auth": {
     "kind": "token",
     "credentialKeys": []
-  }
+  },
+  "channels": [
+    "signal"
+  ]
 }

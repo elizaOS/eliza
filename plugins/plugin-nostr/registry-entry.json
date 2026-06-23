@@ -5,7 +5,13 @@
   "npmName": "@elizaos/plugin-nostr",
   "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["connector", "social", "nostr", "relays", "social-feed"],
+  "tags": [
+    "connector",
+    "social",
+    "nostr",
+    "relays",
+    "social-feed"
+  ],
   "config": {
     "NOSTR_RELAYS": {
       "type": "string",
@@ -55,7 +61,11 @@
     "icon": "Fingerprint",
     "group": "connector",
     "groupOrder": 1,
-    "actions": ["enable", "configure", "setup-guide"]
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
   },
   "resources": {
     "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#nostr"
@@ -66,5 +76,8 @@
   "auth": {
     "kind": "token",
     "credentialKeys": []
-  }
+  },
+  "channels": [
+    "nostr"
+  ]
 }
