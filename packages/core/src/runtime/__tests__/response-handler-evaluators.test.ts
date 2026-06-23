@@ -35,6 +35,8 @@ function handler(): MessageHandlerResult {
 describe("response-handler evaluators", () => {
 	it("applies deterministic patches after Stage 1 parse", async () => {
 		const messageHandler = handler();
+		messageHandler.plan.candidateActions = ["old_action"];
+		messageHandler.plan.parentActionHints = ["OLD_ACTION"];
 		const result = await runResponseHandlerEvaluators({
 			runtime: runtimeWith([
 				{
@@ -46,9 +48,15 @@ describe("response-handler evaluators", () => {
 						clearReply: true,
 						setContexts: ["tasks", "missing-context"],
 						addContexts: ["messaging"],
+						clearCandidateActions: true,
 						addCandidateActions: ["lifeops_thread_control"],
+						clearParentActionHints: true,
 						addParentActionHints: ["LIFEOPS_THREAD_CONTROL"],
 						addContextSlices: ["active thread available"],
+						deterministicToolCall: {
+							name: "lifeops_thread_control",
+							params: { action: "show" },
+						},
 						debug: ["patched"],
 					}),
 				},
@@ -75,8 +83,15 @@ describe("response-handler evaluators", () => {
 		expect(messageHandler.plan.contextSlices).toEqual([
 			"active thread available",
 		]);
+		expect(messageHandler.plan.deterministicToolCall).toEqual({
+			name: "lifeops_thread_control",
+			params: { action: "show" },
+		});
 		expect(result.activeEvaluators).toEqual(["threads"]);
 		expect(result.appliedPatches[0]?.changed).toContain("contexts:set");
+		expect(result.appliedPatches[0]?.changed).toContain(
+			"deterministicToolCall:set",
+		);
 	});
 
 	it("orders patchers and isolates failures", async () => {

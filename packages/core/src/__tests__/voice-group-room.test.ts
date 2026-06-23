@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { parseMessageHandlerOutput } from "../runtime/message-handler";
 import type { ResponseHandlerEvaluatorContext } from "../runtime/response-handler-evaluators";
 import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../services/message";
 import type { Memory } from "../types/memory";
@@ -112,5 +113,81 @@ describe("core.voice_group_address (multi-agent voice room)", () => {
 			},
 		} as unknown as ResponseHandlerEvaluatorContext;
 		expect(await gate.shouldRun(ctx)).toBe(false);
+	});
+});
+
+/**
+ * Integration: drive the REAL Stage-1 parser (`parseMessageHandlerOutput`) so
+ * `addressedTo` is *derived* from a model HANDLE_RESPONSE envelope rather than
+ * hand-fed, then feed the parsed extract to the gate across ≥3 agents. This
+ * closes the parse→decision chain the unit tests above bypass; the only step
+ * not exercised here is the live model producing the envelope (gated, real-model
+ * lane). The runtime builds `messageHandler.{processMessage,extract}` from
+ * exactly this parser output, so the context mapping mirrors production.
+ */
+describe("core.voice_group_address — parse→gate integration (#8786)", () => {
+	/** The model's Stage-1 envelope for "Eliza, what's the time" in a 3-agent
+	 *  room: RESPOND, with the address resolved to Eliza. */
+	const ADDRESSED_ENVELOPE = JSON.stringify({
+		shouldRespond: "RESPOND",
+		replyText: "It is noon.",
+		contexts: ["simple"],
+		addressedTo: ["Eliza"],
+	});
+
+	function ctxFromEnvelope(
+		agentName: string,
+		envelope: string,
+	): ResponseHandlerEvaluatorContext {
+		const parsed = parseMessageHandlerOutput(envelope);
+		if (!parsed) throw new Error("envelope failed to parse");
+		return {
+			runtime: {
+				agentId: `agent-${agentName.toLowerCase()}` as UUID,
+				character: { name: agentName },
+			},
+			message: voiceGroupMsg(),
+			messageHandler: {
+				processMessage: parsed.processMessage,
+				extract: parsed.extract ?? {},
+			},
+		} as unknown as ResponseHandlerEvaluatorContext;
+	}
+
+	it("derives addressedTo from the real parse, then only the addressed agent replies (≥3 agents)", async () => {
+		if (!gate) throw new Error("missing");
+		// The parser actually produced the addressedTo the gate consumes.
+		const parsed = parseMessageHandlerOutput(ADDRESSED_ENVELOPE);
+		expect(parsed?.processMessage).toBe("RESPOND");
+		expect(parsed?.extract?.addressedTo).toEqual(["Eliza"]);
+
+		// Eliza (addressed) is not suppressed; Claude + Aria defer.
+		expect(
+			await gate.shouldRun(ctxFromEnvelope("Eliza", ADDRESSED_ENVELOPE)),
+		).toBe(false);
+		for (const other of ["Claude", "Aria"]) {
+			const ctx = ctxFromEnvelope(other, ADDRESSED_ENVELOPE);
+			expect(await gate.shouldRun(ctx)).toBe(true);
+			expect((await gate.evaluate(ctx)).processMessage).toBe("IGNORE");
+		}
+	});
+
+	it("an undirected envelope (no addressedTo) leaves every agent to normal shouldRespond", async () => {
+		if (!gate) throw new Error("missing");
+		const undirected = JSON.stringify({
+			shouldRespond: "RESPOND",
+			replyText: "sure",
+			contexts: ["simple"],
+		});
+		// No addressedTo in the envelope → parser omits it → gate fails open.
+		expect(parseMessageHandlerOutput(undirected)?.extract?.addressedTo).toBe(
+			undefined,
+		);
+		expect(await gate.shouldRun(ctxFromEnvelope("Eliza", undirected))).toBe(
+			false,
+		);
+		expect(await gate.shouldRun(ctxFromEnvelope("Aria", undirected))).toBe(
+			false,
+		);
 	});
 });

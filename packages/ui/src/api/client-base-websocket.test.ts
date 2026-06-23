@@ -1,5 +1,8 @@
+// @vitest-environment jsdom
+
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ElizaClient } from "./client-base";
+import { NETWORK_STATUS_CHANGE_EVENT } from "../events";
+import { __resetNetworkStatusForTests, ElizaClient } from "./client-base";
 
 function stubWebSocket(): string[] {
   const createdUrls: string[] = [];
@@ -48,9 +51,14 @@ function stubWebSocketWithInstances(): FakeWs[] {
   return instances;
 }
 
+async function flushMicrotasks(): Promise<void> {
+  await new Promise<void>((resolve) => queueMicrotask(resolve));
+}
+
 describe("ElizaClient websocket connection policy", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    __resetNetworkStatusForTests();
   });
 
   it("treats shared-runtime REST adapter bases as connected without opening a websocket", () => {
@@ -129,5 +137,137 @@ describe("ElizaClient websocket connection policy", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("replays an early shell navigation frame when the handler attaches after the frame arrives", async () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://agent.example.test", "agent-token");
+    client.connectWs();
+
+    instances[0].onmessage?.({
+      data: JSON.stringify({
+        type: "shell:navigate:view",
+        viewId: "settings",
+        viewPath: "/settings",
+      }),
+    });
+
+    const received: Record<string, unknown>[] = [];
+    client.onWsEvent("shell:navigate:view", (data) => received.push(data));
+    await flushMicrotasks();
+
+    expect(received).toEqual([
+      {
+        type: "shell:navigate:view",
+        viewId: "settings",
+        viewPath: "/settings",
+      },
+    ]);
+  });
+
+  it("keeps an early shell navigation frame if the first handler unsubscribes before replay", async () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://agent.example.test", "agent-token");
+    client.connectWs();
+
+    instances[0].onmessage?.({
+      data: JSON.stringify({
+        type: "shell:navigate:view",
+        viewId: "settings",
+        viewPath: "/settings",
+      }),
+    });
+
+    const firstHandler = vi.fn();
+    const unsubscribeFirst = client.onWsEvent(
+      "shell:navigate:view",
+      firstHandler,
+    );
+    unsubscribeFirst();
+    await flushMicrotasks();
+
+    const received: Record<string, unknown>[] = [];
+    client.onWsEvent("shell:navigate:view", (data) => received.push(data));
+    await flushMicrotasks();
+
+    expect(firstHandler).not.toHaveBeenCalled();
+    expect(received).toEqual([
+      {
+        type: "shell:navigate:view",
+        viewId: "settings",
+        viewPath: "/settings",
+      },
+    ]);
+  });
+
+  it("does not replay an early shell navigation frame after it has been delivered", async () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://agent.example.test", "agent-token");
+    client.connectWs();
+
+    instances[0].onmessage?.({
+      data: JSON.stringify({
+        type: "shell:navigate:view",
+        viewId: "settings",
+        viewPath: "/settings",
+      }),
+    });
+
+    const firstReceived: Record<string, unknown>[] = [];
+    client.onWsEvent("shell:navigate:view", (data) => firstReceived.push(data));
+    await flushMicrotasks();
+
+    const secondReceived: Record<string, unknown>[] = [];
+    client.onWsEvent("shell:navigate:view", (data) =>
+      secondReceived.push(data),
+    );
+    await flushMicrotasks();
+
+    expect(firstReceived).toHaveLength(1);
+    expect(secondReceived).toEqual([]);
+  });
+
+  it("does not replay ordinary websocket frames that arrived before a handler attached", async () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://agent.example.test", "agent-token");
+    client.connectWs();
+
+    instances[0].onmessage?.({
+      data: JSON.stringify({
+        type: "status",
+        state: "running",
+      }),
+    });
+
+    const received: Record<string, unknown>[] = [];
+    client.onWsEvent("status", (data) => received.push(data));
+    await flushMicrotasks();
+
+    expect(received).toEqual([]);
+  });
+
+  it("removes a parked network-status reconnect wake on intentional disconnect", () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://agent.example.test", "agent-token");
+
+    client.connectWs();
+    expect(instances).toHaveLength(1);
+
+    document.dispatchEvent(
+      new CustomEvent(NETWORK_STATUS_CHANGE_EVENT, {
+        detail: { connected: false },
+      }),
+    );
+    instances[0].onclose?.();
+
+    client.disconnectWs();
+    document.dispatchEvent(
+      new CustomEvent(NETWORK_STATUS_CHANGE_EVENT, {
+        detail: { connected: true },
+      }),
+    );
+
+    expect(instances).toHaveLength(1);
+    expect(client.getConnectionState().state).toBe("disconnected");
   });
 });

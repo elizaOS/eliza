@@ -1,6 +1,11 @@
 import type { Page } from "@playwright/test";
 import sharp from "sharp";
 
+// Keep packaged Playwright workers deterministic and avoid retaining native
+// libvips caches after the screenshot quality checks finish.
+sharp.cache(false);
+sharp.concurrency(1);
+
 export interface ScreenshotQuality {
   width: number;
   height: number;

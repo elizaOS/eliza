@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const runtimeMock = vi.hoisted(() => ({
   isElectrobunRuntime: vi.fn(),
@@ -14,6 +14,10 @@ vi.mock("../bridge/electrobun-rpc", () => bridgeMock);
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 
 describe("desktopHttpTransportForUrl", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("uses the desktop RPC bridge for external plain HTTP URLs", async () => {
     runtimeMock.isElectrobunRuntime.mockReturnValue(true);
     const desktopHttpRequest = vi.fn().mockResolvedValue({
@@ -44,7 +48,39 @@ describe("desktopHttpTransportForUrl", () => {
     await expect(response?.json()).resolves.toEqual({ ok: true });
   });
 
-  it("leaves local HTTP and HTTPS URLs on the regular fetch path", () => {
+  it("uses the desktop RPC bridge for the configured external desktop API base even when it is loopback", async () => {
+    runtimeMock.isElectrobunRuntime.mockReturnValue(true);
+    vi.stubGlobal("window", {
+      __ELIZA_DESKTOP_EXTERNAL_API_BASE__: "http://127.0.0.1:2138",
+    });
+    const desktopHttpRequest = vi.fn().mockResolvedValue({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: '{"ok":true}',
+    });
+    const request = { desktopHttpRequest };
+    bridgeMock.getElectrobunRendererRpc.mockReturnValue({ request });
+
+    const transport = desktopHttpTransportForUrl("http://127.0.0.1:2138");
+    expect(transport).not.toBeNull();
+
+    const response = await transport?.request(
+      "http://127.0.0.1:2138/api/config",
+      {},
+      { timeoutMs: 1234 },
+    );
+
+    expect(desktopHttpRequest).toHaveBeenCalledWith({
+      url: "http://127.0.0.1:2138/api/config",
+      method: "GET",
+      headers: {},
+      body: null,
+      timeoutMs: 1234,
+    });
+    expect(response?.status).toBe(200);
+  });
+
+  it("leaves unconfigured local HTTP and HTTPS URLs on the regular fetch path", () => {
     runtimeMock.isElectrobunRuntime.mockReturnValue(true);
 
     expect(desktopHttpTransportForUrl("http://127.0.0.1:2138")).toBeNull();

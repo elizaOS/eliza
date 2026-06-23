@@ -20,17 +20,45 @@ import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality"
  * mounts, renders readable content, and does not throw an UNCAUGHT page error
  * (a real crash — e.g. an undefined reference), at either viewport.
  */
+// Every distinct built-in view route from `TAB_PATHS`
+// (packages/ui/src/navigation/index.ts), deduped by path. This is the live-run
+// + screenshot gate for ALL built-in views (not just a subset) so no built-in
+// surface ships without crash coverage at desktop + mobile.
 const BUILTIN_VIEW_CASES: Array<{ id: string; path: string }> = [
-  { id: "views", path: "/views" },
-  { id: "settings", path: "/settings" },
-  { id: "plugins", path: "/apps/plugins" },
-  { id: "character", path: "/character" },
-  { id: "automations", path: "/automations" },
-  { id: "memories", path: "/apps/memories" },
-  { id: "database", path: "/apps/database" },
-  { id: "logs", path: "/apps/logs" },
+  { id: "chat", path: "/chat" },
+  { id: "phone", path: "/phone" },
+  { id: "messages", path: "/messages" },
+  { id: "contacts", path: "/contacts" },
   { id: "camera", path: "/camera" },
+  { id: "tasks", path: "/apps/tasks" },
+  { id: "browser", path: "/browser" },
+  { id: "companion", path: "/companion" },
+  { id: "stream", path: "/stream" },
+  { id: "apps", path: "/apps" },
+  { id: "views", path: "/views" },
+  { id: "character", path: "/character" },
+  { id: "character-select", path: "/character/select" },
+  { id: "automations", path: "/automations" },
+  { id: "inventory", path: "/wallet" },
+  { id: "documents", path: "/character/documents" },
+  { id: "files", path: "/apps/files" },
+  { id: "plugins", path: "/apps/plugins" },
+  { id: "skills", path: "/apps/skills" },
+  { id: "fine-tuning", path: "/apps/fine-tuning" },
+  { id: "trajectories", path: "/apps/trajectories" },
+  { id: "transcripts", path: "/apps/transcripts" },
+  { id: "relationships", path: "/apps/relationships" },
+  { id: "memories", path: "/apps/memories" },
+  { id: "rolodex", path: "/rolodex" },
+  { id: "voice", path: "/settings/voice" },
+  { id: "runtime", path: "/apps/runtime" },
+  { id: "database", path: "/apps/database" },
+  { id: "desktop", path: "/desktop" },
+  { id: "settings", path: "/settings" },
+  { id: "tutorial", path: "/tutorial" },
   { id: "help", path: "/help" },
+  { id: "logs", path: "/apps/logs" },
+  { id: "background", path: "/background" },
 ];
 
 const VIEWPORTS = [
@@ -57,30 +85,45 @@ test.describe("builtin views visual coverage (desktop + mobile)", () => {
         await installDefaultAppRoutes(page);
         await openAppPath(page, view.path);
 
-        const viewRoot = page.locator("main").first();
+        // Most views render inside <main>; a few full-screen surfaces (e.g.
+        // /chat, which is the floating chat composer itself) have no <main> —
+        // fall back to <body> so those are still covered.
+        const hasMain = await page
+          .locator("main")
+          .first()
+          .waitFor({ state: "attached", timeout: 15_000 })
+          .then(() => true)
+          .catch(() => false);
+        const viewRoot = hasMain
+          ? page.locator("main").first()
+          : page.locator("body");
         await expect(viewRoot).toBeVisible({ timeout: 60_000 });
+        // A view is "rendered" if it shows readable text OR interactive/visual
+        // content — input/canvas-heavy views (chat composer, the background
+        // color picker) are legitimately light on static prose. A truly blank
+        // or crashed view has neither.
         await expect
           .poll(
             async () =>
-              viewRoot.evaluate(
-                (root) => root.innerText.trim().replace(/\s+/g, " ").length,
-              ),
+              viewRoot.evaluate((root) => {
+                const text = root.innerText.trim().replace(/\s+/g, " ").length;
+                const interactive = root.querySelectorAll(
+                  "button, a, input, textarea, select, canvas, img, svg, [role='button']",
+                ).length;
+                return text + interactive * 5;
+              }),
             {
-              message: `${view.id} ${vp.name} should render readable content`,
+              message: `${view.id} ${vp.name} should render readable or interactive content`,
               timeout: 30_000,
             },
           )
           .toBeGreaterThan(10);
 
-        await captureScreenshotWithQualityRetry(
-          page,
-          `${view.id} ${vp.name}`,
-          {
-            fullPage: false,
-            path: path.join(screenshotDir, `${view.id}-${vp.name}.png`),
-            attempts: 3,
-          },
-        );
+        await captureScreenshotWithQualityRetry(page, `${view.id} ${vp.name}`, {
+          fullPage: false,
+          path: path.join(screenshotDir, `${view.id}-${vp.name}.png`),
+          attempts: 3,
+        });
 
         expect(
           pageErrors,

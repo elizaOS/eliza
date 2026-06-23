@@ -55,6 +55,7 @@ const BUILTIN_TAB_PATHS: Record<string, string> = {
   automations: "/automations",
   inventory: "/wallet",
   documents: "/character/documents",
+  files: "/apps/files",
   plugins: "/apps/plugins",
   skills: "/apps/skills",
   "fine-tuning": "/apps/fine-tuning",
@@ -71,6 +72,7 @@ const BUILTIN_TAB_PATHS: Record<string, string> = {
   tutorial: "/tutorial",
   help: "/help",
   logs: "/apps/logs",
+  background: "/background",
 };
 
 // ── navigation TAB_PATHS coverage guard (#8796) ──────────────────────────────
@@ -397,9 +399,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       `audit BUILTIN_TAB_PATHS path drift vs navigation: ${mismatched.join(", ")}`,
     ).toEqual([]);
 
-    const uncovered = [...navDistinctPaths].filter(
-      (p) => !inlinedPaths.has(p),
-    );
+    const uncovered = [...navDistinctPaths].filter((p) => !inlinedPaths.has(p));
     expect(
       uncovered,
       `navigation TAB_PATHS adds routes the audit does not cover: ${uncovered.join(", ")}`,

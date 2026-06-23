@@ -20,9 +20,9 @@
  * + run viewer + native JSONL that PR_EVIDENCE.md requires.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { AcpService } from "../../../src/services/acp-service.ts";
-import { OrchestratorTaskService } from "../../../src/services/orchestrator-task-service.ts";
-import { OrchestratorTaskStore } from "../../../src/services/orchestrator-task-store.ts";
+import { AcpService } from "../../../src/services/acp-service";
+import { OrchestratorTaskService } from "../../../src/services/orchestrator-task-service";
+import { OrchestratorTaskStore } from "../../../src/services/orchestrator-task-store";
 
 export type EventHandler = (
   sessionId: string,

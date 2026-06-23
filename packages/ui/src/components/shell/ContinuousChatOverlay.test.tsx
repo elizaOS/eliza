@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -28,8 +29,8 @@ vi.mock("../../utils/clipboard", () => ({
   copyTextToClipboard: vi.fn().mockResolvedValue(undefined),
 }));
 
+import { CHAT_PREFILL_EVENT } from "../../events";
 import { copyTextToClipboard } from "../../utils/clipboard";
-
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import type { ShellController } from "./useShellController";
 
@@ -56,21 +57,24 @@ function makeController(
     turnStatus: null,
     recording: false,
     transcript: "",
+    transcriptionMode: false,
     // Required ShellController surface the overlay reads unconditionally — the
     // real controller always supplies these, so the mock must too.
     modelStatus: { kind: "ready" },
     send: vi.fn(),
     stop: vi.fn(),
+    startRecording: vi.fn(),
+    stopRecording: vi.fn(),
     toggleRecording: vi.fn(),
     handsFree: false,
     toggleHandsFree: vi.fn(),
+    toggleTranscriptionMode: vi.fn(),
+    // A mic tap while transcribing routes through this master voice control.
+    stopTranscriptionAndMic: vi.fn(),
     setDictationSink: vi.fn(),
     setTranscriptSessionSink: vi.fn(),
     setComposerHasDraft: vi.fn(),
     clearConversation: vi.fn(),
-    // A mic tap while transcribing routes through this (the mic is the master
-    // voice control); the real controller always supplies it, so the mock must.
-    stopTranscriptionAndMic: vi.fn(),
     ...overrides,
   } as unknown as ShellController;
 }
@@ -123,6 +127,56 @@ describe("ContinuousChatOverlay", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("ping");
     expect(input.value).toBe("");
+  });
+
+  it("prefills and focuses the composer from the shared chat prefill event", async () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const input = screen.getByLabelText("message") as HTMLInputElement;
+
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent(CHAT_PREFILL_EVENT, {
+          detail: { text: "Show my agent workspace status.", select: true },
+        }),
+      );
+    });
+
+    expect(input.value).toBe("Show my agent workspace status.");
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    expect(input.selectionStart).toBe(0);
+    expect(input.selectionEnd).toBe(input.value.length);
+  });
+
+  it("cancels pending prefill focus work on unmount", () => {
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation(() => 42);
+    const cancelFrame = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation(() => undefined);
+    try {
+      const { unmount } = render(
+        <ContinuousChatOverlay controller={makeController()} />,
+      );
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent(CHAT_PREFILL_EVENT, {
+            detail: {
+              text: "Show my agent workspace status.",
+              select: true,
+            },
+          }),
+        );
+      });
+
+      expect(requestFrame).toHaveBeenCalledTimes(1);
+      unmount();
+      expect(cancelFrame).toHaveBeenCalledWith(42);
+    } finally {
+      requestFrame.mockRestore();
+      cancelFrame.mockRestore();
+    }
   });
 
   it("opens the sheet when the composer input is focused (type-to-open)", () => {
@@ -213,6 +267,39 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("half");
     pull(280, 420); // down → COLLAPSED
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+  });
+
+  it("cancels delayed header navigation when unmounted before the close animation finishes", () => {
+    vi.useFakeTimers();
+    try {
+      const navigateHome = vi.fn();
+      const { unmount } = render(
+        <ContinuousChatOverlay
+          controller={makeController({
+            currentTab: "settings",
+            navigateHome,
+          } as unknown as Partial<ShellController>)}
+        />,
+      );
+      const grabber = screen.getByTestId("chat-sheet-grabber");
+      const pull = (fromY: number, toY: number) => {
+        fireEvent.pointerDown(grabber, { clientY: fromY, pointerId: 1 });
+        fireEvent.pointerMove(grabber, { clientY: toY, pointerId: 1 });
+        fireEvent.pointerUp(grabber, { clientY: toY, pointerId: 1 });
+      };
+      pull(420, 280); // collapsed → half
+      expect(screen.getByTestId("chat-full-home")).toBeTruthy();
+      fireEvent.click(screen.getByTestId("chat-full-home"));
+      unmount();
+
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+
+      expect(navigateHome).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("opens on a fast flick even below the distance threshold (velocity)", () => {
@@ -639,6 +726,40 @@ describe("ContinuousChatOverlay", () => {
     }
   });
 
+  it("keeps chat message text selectable for normal highlight/copy", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [
+            {
+              id: "u",
+              role: "user",
+              content: "copy my question",
+              createdAt: 1,
+            },
+            {
+              id: "a",
+              role: "assistant",
+              content: "copy my answer",
+              createdAt: 2,
+            },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+
+    for (const text of ["copy my question", "copy my answer"]) {
+      const textNode = screen.getByText(text);
+      const bubble = screen
+        .getByText(text)
+        .closest('[data-testid="thread-line"]')
+        ?.querySelector("div") as HTMLElement;
+      expect(bubble.className).toContain("select-text");
+      expect(bubble.className).not.toContain("select-none");
+      expect(textNode.closest('[data-chat-selectable="true"]')).toBeTruthy();
+    }
+  });
+
   it("a quick tap (released before the hold threshold) does NOT copy", () => {
     vi.useFakeTimers();
     try {
@@ -804,63 +925,36 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
   });
 
-  // ── Transcribe button lives in the composer beside the mic, gated on voice
-  // being on (#8789). It's part of the always-present composer trailing cluster,
-  // so it shows at any detent (no need to open the sheet header).
-  it("hides the transcribe button while voice is off", () => {
+  it("does not render a separate transcribe button in the composer", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    // The mic is present, but with no active voice session the transcribe
-    // control is not offered next to it.
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
     expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
-    expect(screen.queryByTestId("chat-transcribing-badge")).toBeNull();
   });
 
-  it("reveals the transcribe button beside the mic while a hands-free voice session is active", () => {
+  it("keeps the composer transcribe button hidden during voice capture", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
           handsFree: true,
-          transcriptionMode: false,
-          toggleTranscriptionMode: vi.fn(),
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    const btn = screen.getByTestId("chat-composer-transcribe");
-    expect(btn.getAttribute("aria-label")).toBe("transcription mode");
-    expect(btn.getAttribute("aria-pressed")).toBe("false");
-    // It sits next to the mic (both in the composer trailing cluster).
-    expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
-  });
-
-  it("reveals the transcribe button while the mic is open (push-to-talk recording)", () => {
-    render(
-      <ContinuousChatOverlay
-        controller={makeController({
           phase: "listening",
           recording: true,
-          toggleTranscriptionMode: vi.fn(),
         } as unknown as Partial<ShellController>)}
       />,
     );
-    expect(screen.getByTestId("chat-composer-transcribe")).toBeTruthy();
+    expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
+    expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
   });
 
-  it("shows the transcribe button as Stop (pressed) while transcribing, and wires the toggle", () => {
-    const toggleTranscriptionMode = vi.fn();
+  it("shows transcription status without adding a composer transcribe button", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
           transcriptionMode: true,
-          toggleTranscriptionMode,
         } as unknown as Partial<ShellController>)}
       />,
     );
-    const btn = screen.getByTestId("chat-composer-transcribe");
-    expect(btn.getAttribute("aria-label")).toBe("stop transcription");
-    expect(btn.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(btn);
-    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("chat-transcribing-badge")).toBeTruthy();
+    expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
   });
 
   it("keeps the mic button ON while transcribing (additive, not a takeover)", () => {
@@ -895,6 +989,36 @@ describe("ContinuousChatOverlay", () => {
     // it must NOT open a hands-free conversation.
     expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
     expect(toggleHandsFree).not.toHaveBeenCalled();
+  });
+
+  it("does not enter push-to-talk on a long press while transcribing", () => {
+    vi.useFakeTimers();
+    try {
+      const stopTranscriptionAndMic = vi.fn();
+      const startRecording = vi.fn();
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({
+            transcriptionMode: true,
+            stopTranscriptionAndMic,
+            startRecording,
+          } as unknown as Partial<ShellController>)}
+        />,
+      );
+
+      const mic = screen.getByTestId("chat-composer-mic");
+      fireEvent.pointerDown(mic, { button: 0, pointerId: 1 });
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+      fireEvent.pointerUp(mic, { button: 0, pointerId: 1 });
+      fireEvent.click(mic);
+
+      expect(startRecording).not.toHaveBeenCalled();
+      expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("drops the finished transcript into the composer as an attachment, not an auto-sent message", () => {

@@ -9,66 +9,52 @@
  * its own — the rigid matcher decides, not the model.
  *
  * The VIEWS action then resolves the exact target deterministically
- * (resolveIntentView → matchViewCommand → the same view) and navigates.
+ * (matchViewCommand → the same view) and navigates.
  *
  * Contextual / implicit intent ("fix the login bug" → task-coordinator) is NOT
  * handled here — that is the post-response `viewContextEvaluator` (small model).
- * The two are disjoint: this fires only on a rigid `matchViewCommand` hit; the
- * contextual evaluator's gate defers whenever `resolveIntentView` (which now
- * wraps `matchViewCommand`) returns non-null.
+ * The two are disjoint: this fires only on a rigid `matchViewCommand` hit.
  */
 import type {
 	ResponseHandlerEvaluator,
 	ResponseHandlerEvaluatorContext,
 } from "@elizaos/core";
-import { resolveIntentView } from "../actions/views-show.js";
-
-const VIEWS_ACTION_NAME = "VIEWS";
-
-function messageText(context: ResponseHandlerEvaluatorContext): string {
-	const text = context.message?.content?.text;
-	return typeof text === "string" ? text : "";
-}
-
-function hasRegisteredViewsAction(
-	context: ResponseHandlerEvaluatorContext,
-): boolean {
-	return (context.runtime.actions ?? []).some(
-		(action) => action.name?.toUpperCase() === VIEWS_ACTION_NAME,
-	);
-}
+import {
+	resolveViewCommandShortcut,
+	VIEWS_ACTION_NAME,
+} from "./view-command-routing.js";
 
 function shouldShortcut(
 	context: ResponseHandlerEvaluatorContext,
 ): string | null {
 	if (context.messageHandler.processMessage === "STOP") return null;
-	// Already committed to a tool — don't fight an existing plan.
-	if (context.messageHandler.plan.requiresTool === true) return null;
-	if (!hasRegisteredViewsAction(context)) return null;
-	// resolveIntentView = the unified deterministic resolver: the rigid
-	// multilingual matchViewCommand for explicit commands PLUS the legacy
-	// passive-intent rules ("how much did i spend" → finances). Both are
-	// deterministic and safe to force up-front; only truly contextual intent
-	// with no keyword (handled by the post-response viewContextEvaluator)
-	// returns null here.
-	return resolveIntentView(messageText(context));
+	// This shortcut is only for explicit navigation commands. Passive/domain
+	// intent ("fix my app", "how much did I spend") belongs to the contextual
+	// evaluator or planner so it cannot preempt coding/content actions.
+	return resolveViewCommandShortcut(context);
 }
 
 export const viewCommandShortcutEvaluator: ResponseHandlerEvaluator = {
 	name: "app-control.view-command-shortcut",
 	description:
 		"Deterministic multilingual fast-path: forces the VIEWS action when the message is an explicit view-navigation command, so view switching never depends on weak-model action selection.",
-	// Higher than view-followup-routing (20) so the explicit-command shortcut is
-	// considered first.
-	priority: 30,
+	// Run before core.simple_registered_action_request (20) so deterministic view
+	// intents never get captured by a broader coding/domain action first.
+	priority: 10,
 	shouldRun: (context) => shouldShortcut(context) !== null,
 	evaluate: (context) => {
 		const viewId = shouldShortcut(context);
 		if (!viewId) return undefined;
 		return {
 			requiresTool: true,
+			clearCandidateActions: true,
 			addCandidateActions: [VIEWS_ACTION_NAME],
+			clearParentActionHints: true,
 			addParentActionHints: [VIEWS_ACTION_NAME],
+			deterministicToolCall: {
+				name: VIEWS_ACTION_NAME,
+				params: { action: "show", view: viewId },
+			},
 			debug: [
 				`rigid view command → ${viewId}; forcing VIEWS action (deterministic, no model)`,
 			],

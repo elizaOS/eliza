@@ -18,7 +18,7 @@
  */
 
 import { trackExternalShare } from "@feed/shared";
-import { Check, Link as LinkIcon, Share2, Twitter } from "lucide-react";
+import { Check, Link as LinkIcon, Share2, X as XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { getAuthToken } from "@/lib/auth";
@@ -28,7 +28,12 @@ import { ShareVerificationModal } from "./ShareVerificationModal";
 // Farcaster icon component
 function FarcasterIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 1000 1000" fill="currentColor">
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="currentColor"
+      viewBox="0 0 1000 1000"
+    >
       <path d="M257.778 155.556H742.222V844.444H671.111V528.889H670.414C662.554 441.677 589.258 373.333 500 373.333C410.742 373.333 337.446 441.677 329.586 528.889H328.889V844.444H257.778V155.556Z" />
       <path d="M128.889 253.333L157.778 351.111H182.222V844.444H128.889V253.333Z" />
       <path d="M871.111 253.333L842.222 351.111H817.778V844.444H871.111V253.333Z" />
@@ -220,13 +225,15 @@ export function ExternalShareButton({
     return (
       <div className={`flex flex-col gap-2 sm:flex-row ${className}`}>
         <button
+          type="button"
           onClick={handleShareToTwitter}
           className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-foreground transition-colors hover:bg-muted/50"
         >
-          <Twitter className="h-4 w-4 text-blue-400" />
+          <XIcon className="h-4 w-4 text-blue-400" />
           <span className="font-medium text-sm">Share to X</span>
         </button>
         <button
+          type="button"
           onClick={handleShareToFarcaster}
           className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-foreground transition-colors hover:bg-muted/50"
         >
@@ -254,6 +261,7 @@ export function ExternalShareButton({
   return (
     <div className="relative">
       <button
+        type="button"
         onClick={() => setShowMenu(!showMenu)}
         className={`flex items-center gap-2 rounded-lg bg-sidebar-accent px-3 py-2 text-foreground transition-colors hover:bg-sidebar-accent/80 ${className}`}
         aria-label="Share"
@@ -275,7 +283,9 @@ export function ExternalShareButton({
       {showMenu && (
         <>
           {/* Backdrop */}
-          <div
+          <button
+            type="button"
+            aria-label="Close share menu"
             className="fixed inset-0 z-40"
             onClick={() => setShowMenu(false)}
           />
@@ -283,14 +293,16 @@ export function ExternalShareButton({
           {/* Menu */}
           <div className="absolute right-0 z-50 mt-2 w-48 overflow-hidden rounded-lg border border-border bg-sidebar shadow-lg">
             <button
+              type="button"
               onClick={handleShareToTwitter}
               className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-sidebar-accent"
             >
-              <Twitter className="h-4 w-4 text-blue-400" />
+              <XIcon className="h-4 w-4 text-blue-400" />
               <span className="text-foreground text-sm">Share to X</span>
             </button>
 
             <button
+              type="button"
               onClick={handleShareToFarcaster}
               className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-sidebar-accent"
             >
@@ -301,6 +313,7 @@ export function ExternalShareButton({
             </button>
 
             <button
+              type="button"
               onClick={handleCopyLink}
               className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-sidebar-accent"
             >

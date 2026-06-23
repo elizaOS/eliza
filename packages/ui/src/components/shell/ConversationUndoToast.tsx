@@ -1,6 +1,7 @@
 import { RotateCcw } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import * as React from "react";
+import { Z_SYSTEM_BANNER } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import {
   type ConversationUndoRequest,
@@ -30,7 +31,12 @@ export function ConversationUndoToast(): React.JSX.Element {
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-[120] flex justify-center px-4"
+      // Sit ABOVE the bottom composer/input bar (always present in the chat
+      // surfaces) so the toast never visually overlaps it, AND layer above the
+      // shell overlay (z 9000) so its thread-lines/composer don't intercept the
+      // pointer — otherwise "Undo" can't be reached.
+      className="pointer-events-none fixed inset-x-0 bottom-[max(6rem,calc(env(safe-area-inset-bottom,0px)+5.5rem))] flex justify-center px-4"
+      style={{ zIndex: Z_SYSTEM_BANNER }}
       aria-live="polite"
     >
       <AnimatePresence>
@@ -50,14 +56,27 @@ function UndoToastCard({
     dismissConversationUndo(request.id);
   }, [request]);
 
-  // Auto-dismiss after the grace window; re-armed per request id.
-  React.useEffect(() => {
-    const timer = setTimeout(
+  // Auto-dismiss after the grace window, but PAUSE while the pointer is over the
+  // toast or it holds focus — so reaching for "Undo" never makes it vanish
+  // mid-reach (standard toast UX; also keeps the affordance interactable).
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearTimer = React.useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+  const startTimer = React.useCallback(() => {
+    clearTimer();
+    timerRef.current = setTimeout(
       () => dismissConversationUndo(request.id),
       UNDO_DURATION_MS,
     );
-    return () => clearTimeout(timer);
-  }, [request.id]);
+  }, [clearTimer, request.id]);
+  React.useEffect(() => {
+    startTimer();
+    return clearTimer;
+  }, [startTimer, clearTimer]);
 
   // Swipe the toast LEFT to restore (mirrors the conversation swipe gesture).
   const swipe = usePullGesture({
@@ -77,6 +96,10 @@ function UndoToastCard({
         "border border-white/15 bg-black/70 text-white/90 shadow-2xl backdrop-blur-xl",
         "touch-pan-y select-none",
       )}
+      onPointerEnter={clearTimer}
+      onPointerLeave={startTimer}
+      onFocusCapture={clearTimer}
+      onBlurCapture={startTimer}
       {...swipe}
     >
       <RotateCcw className="h-4 w-4 shrink-0 text-white/55" aria-hidden />

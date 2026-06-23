@@ -23,6 +23,13 @@ export interface SpringboardLayout {
   favorites: string[];
   /** Ordered pages; each page is an ordered list of view ids. */
   pages: string[][];
+  /**
+   * True once the user has manually reordered icons (drag). Until then the
+   * springboard follows the incoming catalog order, so sort-mode changes and
+   * newly-installed views reflow naturally; after a manual drag the user's
+   * arrangement is preserved.
+   */
+  manual?: boolean;
 }
 
 export function emptyLayout(): SpringboardLayout {
@@ -48,7 +55,8 @@ export function readSpringboardLayout(): SpringboardLayout {
       Array.isArray(record.pages) && record.pages.every(isStringArray)
         ? (record.pages as string[][])
         : [];
-    return { favorites, pages };
+    const manual = record.manual === true ? true : undefined;
+    return { favorites, pages, manual };
   } catch {
     return emptyLayout();
   }
@@ -107,16 +115,19 @@ export function reconcileLayout(
 
   const seen = new Set<string>(favorites);
   const ordered: string[] = [];
-  // Preserve the user's existing page ordering first.
-  for (const page of layout.pages) {
-    for (const id of page) {
-      if (available.has(id) && !favoriteSet.has(id) && !seen.has(id)) {
-        seen.add(id);
-        ordered.push(id);
+  // A manually-arranged layout preserves the user's page ordering first; an
+  // automatic one follows the incoming catalog order so sort/install reflows.
+  if (layout.manual) {
+    for (const page of layout.pages) {
+      for (const id of page) {
+        if (available.has(id) && !favoriteSet.has(id) && !seen.has(id)) {
+          seen.add(id);
+          ordered.push(id);
+        }
       }
     }
   }
-  // Append any brand-new available ids in catalog order.
+  // Append remaining available ids in catalog order (all of them when auto).
   for (const id of availableIds) {
     if (!seen.has(id)) {
       seen.add(id);
@@ -124,7 +135,7 @@ export function reconcileLayout(
     }
   }
 
-  return { favorites, pages: chunk(ordered, pageSize) };
+  return { favorites, pages: chunk(ordered, pageSize), manual: layout.manual };
 }
 
 /** Toggle an id in/out of the dock. Adding evicts the oldest when full. */
@@ -158,5 +169,6 @@ export function moveIcon(
   const index = Math.max(0, Math.min(targetIndex, page.length));
   page.splice(index, 0, id);
   const flat = pages.flat();
-  return { favorites, pages: chunk(flat, pageSize) };
+  // A drag is an explicit manual arrangement — lock the order from now on.
+  return { favorites, pages: chunk(flat, pageSize), manual: true };
 }

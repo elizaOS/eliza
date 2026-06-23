@@ -42,7 +42,6 @@ export interface DevRouteEntry {
   requiresAuth: boolean;
   platformGate: DevRoutePlatformGate;
 }
-
 export interface DevRouteSettingsSection {
   id: string;
   label: string;
@@ -531,4 +530,3 @@ export function buildRouteCatalog(
     modals: MODALS.map((m) => ({ ...m })),
   };
 }
-

@@ -84,6 +84,19 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     desktopTabEnabled: true,
   },
   {
+    id: "documents",
+    viewKind: "system",
+    label: "Knowledge",
+    description: "Agent knowledge documents, uploads, and retrieval sources",
+    icon: "FileText",
+    heroImagePath: "assets/view-heroes/character.png",
+    path: "/character/documents",
+    order: 51,
+    tags: ["documents", "notes", "knowledge", "files", "uploads", "retrieval"],
+    visibleInManager: true,
+    desktopTabEnabled: true,
+  },
+  {
     id: "automations",
     viewKind: "release",
     label: "Automations",
@@ -200,6 +213,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     description:
       "Set the app background — pick a shader color, upload an image, or generate one",
     icon: "Image",
+    heroImagePath: "assets/view-heroes/background.png",
     path: "/background",
     order: 92,
     tags: ["background", "wallpaper", "color", "theme", "appearance", "image"],

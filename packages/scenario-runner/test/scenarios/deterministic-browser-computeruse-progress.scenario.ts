@@ -149,7 +149,7 @@ const computerUseAgentScenarioAction: Action = {
       {
         brain,
         captureAll,
-        onStepProgress: callback
+        onCompactStepProgress: callback
           ? async (content) => {
               await callback(content, "COMPUTER_USE_AGENT");
             }

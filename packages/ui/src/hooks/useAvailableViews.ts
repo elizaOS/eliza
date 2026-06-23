@@ -19,6 +19,7 @@ import {
   listAppShellPages,
   subscribeAppShellPages,
 } from "../app-shell-registry";
+import { type BuiltinTab, TAB_PATHS, titleForTab } from "../navigation";
 import { getFrontendPlatform } from "../platform/platform-guards";
 import { startPolling } from "./resource-cache";
 import { useCachedResource } from "./useCachedResource";
@@ -155,6 +156,21 @@ const VIEWS_CACHE_KEY = "views:available";
 
 const EMPTY_VIEWS: ViewRegistryEntry[] = [];
 
+const BUILTIN_SHELL_VIEW_ENTRIES: ViewRegistryEntry[] = Object.entries(
+  TAB_PATHS,
+).map(([id, path]) => ({
+  id,
+  label: titleForTab(id as BuiltinTab),
+  viewType: "gui",
+  path,
+  available: true,
+  pluginName: "@elizaos/builtin",
+  tags: [id],
+  builtin: true,
+  visibleInManager: false,
+  desktopTabEnabled: true,
+}));
+
 /**
  * Map an in-process app-shell page (registered by a plugin via
  * `registerAppShellPage`) to a view-registry entry. On iOS/Android the agent's
@@ -209,20 +225,37 @@ function getAppShellViewEntriesSnapshot(): ViewRegistryEntry[] {
  * — app-shell pages only fill ids the network didn't return, which on mobile is
  * every dynamically-bundled plugin view the route filtered out.
  */
+function mergeViewRegistryEntries(
+  primaryViews: ViewRegistryEntry[],
+  fallbackGroups: ViewRegistryEntry[][],
+): ViewRegistryEntry[] {
+  if (fallbackGroups.every((group) => group.length === 0)) {
+    return primaryViews;
+  }
+  const byKey = new Map<string, ViewRegistryEntry>();
+  for (const view of primaryViews) {
+    byKey.set(`${view.viewType ?? "gui"}:${view.id}`, view);
+  }
+  for (const group of fallbackGroups) {
+    for (const entry of group) {
+      const key = `${entry.viewType ?? "gui"}:${entry.id}`;
+      if (!byKey.has(key)) byKey.set(key, entry);
+    }
+  }
+  return [...byKey.values()];
+}
+
 function mergeWithAppShellViews(
   networkViews: ViewRegistryEntry[],
   appShellViews: ViewRegistryEntry[],
 ): ViewRegistryEntry[] {
-  if (appShellViews.length === 0) return networkViews;
-  const byKey = new Map<string, ViewRegistryEntry>();
-  for (const view of networkViews) {
-    byKey.set(`${view.viewType ?? "gui"}:${view.id}`, view);
-  }
-  for (const entry of appShellViews) {
-    const key = `${entry.viewType ?? "gui"}:${entry.id}`;
-    if (!byKey.has(key)) byKey.set(key, entry);
-  }
-  return [...byKey.values()];
+  return mergeViewRegistryEntries(networkViews, [appShellViews]);
+}
+
+export function withBuiltinShellViews(
+  views: ViewRegistryEntry[],
+): ViewRegistryEntry[] {
+  return mergeViewRegistryEntries(views, [BUILTIN_SHELL_VIEW_ENTRIES]);
 }
 
 export function useAvailableViews(): UseAvailableViewsResult {
@@ -266,4 +299,19 @@ export function useAvailableViews(): UseAvailableViewsResult {
     error: resource.status === "error" ? resource.error : null,
     refresh: refetch,
   };
+}
+
+export function useRoutableViews(): UseAvailableViewsResult {
+  const { views, loading, error, refresh } = useAvailableViews();
+  const routableViews = useMemo(() => withBuiltinShellViews(views), [views]);
+
+  return useMemo(
+    () => ({
+      views: routableViews,
+      loading,
+      error,
+      refresh,
+    }),
+    [routableViews, loading, error, refresh],
+  );
 }

@@ -12,7 +12,7 @@ import {
   OrchestratorTaskService,
   seedActiveTask,
   waitFor,
-} from "./orchestrator-grilling-harness.ts";
+} from "./orchestrator-grilling-harness";
 
 type VerifierModel = (...args: unknown[]) => Promise<unknown>;
 

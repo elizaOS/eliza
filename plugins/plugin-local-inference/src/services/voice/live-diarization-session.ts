@@ -33,6 +33,7 @@ import {
 	type AudioFrameConsumerConfig,
 	type AudioFrameEvent,
 	type RuntimeEventSink,
+	type TurnTranscriber,
 } from "./audio-frame-consumer.js";
 import type {
 	ElizaInferenceContextHandle,
@@ -139,6 +140,8 @@ export class LiveDiarizationSession {
 	private readonly recentTurns: LiveDiarizationTurnSummary[] = [];
 	private resolvedLibPath: string | null = null;
 	private buildError: string | null = null;
+	/** True once the fused ASR region is mmap-acquired for per-turn transcribe. */
+	private asrRegionAcquired = false;
 
 	constructor(private readonly runtime: RuntimeEventSink) {}
 
@@ -212,12 +215,47 @@ export class LiveDiarizationSession {
 			preRollSeconds: 0.3,
 			maxTurnSeconds: 30,
 		};
+		// Join the fused batch ASR so the live path carries the real transcript
+		// on VOICE_TURN_OBSERVED (#8786). Null when the fused build has no ASR
+		// decoder — the path then stays diarization-only, as before.
+		const transcribe = this.buildTurnTranscriber(ffi, ctx);
 		const consumer = new AudioFrameConsumer(
-			{ vad: detector, pipeline, runtime: this.runtime },
+			{
+				vad: detector,
+				pipeline,
+				runtime: this.runtime,
+				...(transcribe ? { transcribe } : {}),
+			},
 			config,
 		);
 		consumer.onTurn((turn) => this.recordTurn(turn));
 		this.consumer = consumer;
+	}
+
+	/**
+	 * Build a per-turn ASR transcriber over the fused batch decoder
+	 * (`eliza_inference_asr_transcribe`). Returns null when the fused build
+	 * exposes no ASR decoder; acquiring the ASR mmap region is best-effort (a
+	 * missing bundled ASR model leaves the path diarization-only rather than
+	 * failing the whole session). One batch decode per finalized turn — the turn
+	 * is already fully buffered for attribution, so no streaming state is needed.
+	 */
+	private buildTurnTranscriber(
+		ffi: ElizaInferenceFfi,
+		ctx: ElizaInferenceContextHandle,
+	): TurnTranscriber | null {
+		if (typeof ffi.asrTranscribe !== "function") return null;
+		try {
+			ffi.mmapAcquire(ctx, "asr");
+		} catch {
+			return null;
+		}
+		this.asrRegionAcquired = true;
+		return (pcm) => {
+			const text = ffi.asrTranscribe({ ctx, pcm, sampleRateHz: 16_000 });
+			const trimmed = text.trim();
+			return trimmed.length > 0 ? trimmed : null;
+		};
 	}
 
 	private recordTurn(turn: AttributedTurn): void {
@@ -277,6 +315,14 @@ export class LiveDiarizationSession {
 	/** Release native handles + listeners. */
 	async close(): Promise<void> {
 		await this.consumer?.close();
+		if (this.asrRegionAcquired && this.ffi && this.ctx !== null) {
+			try {
+				this.ffi.mmapEvict(this.ctx, "asr");
+			} catch {
+				// Best-effort release; the context is destroyed below regardless.
+			}
+			this.asrRegionAcquired = false;
+		}
 		await this.encoder?.dispose();
 		await this.diarizer?.dispose();
 		this.vad?.close();

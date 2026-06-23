@@ -85,7 +85,10 @@ import {
   isAndroidPhoneSurfaceEnabled,
   isAospShellEnabled,
   isRouteRootPath,
+  pathForTab,
   shouldUseHashNavigation,
+  TAB_PATHS,
+  tabFromPath,
 } from "./navigation";
 import { isIOS, isNative } from "./platform/init";
 import { RetainedLazyComponent } from "./retained-lazy";
@@ -149,6 +152,7 @@ import { FineTuningView } from "./components/training/injected";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import {
   useAvailableViews,
+  useRoutableViews,
   type ViewRegistryEntry,
 } from "./hooks/useAvailableViews";
 import { useDesktopTabs } from "./hooks/useDesktopTabs";
@@ -703,6 +707,7 @@ function remoteViewMatchesTab(
 const SHELL_RESERVED_PATHS = new Set([
   "/views",
   "/apps",
+  "/character/documents",
   "/apps/plugins",
   "/apps/skills",
   "/apps/trajectories",
@@ -714,6 +719,8 @@ const SHELL_RESERVED_PATHS = new Set([
   "/apps/tasks",
 ]);
 
+const SHELL_RESERVED_TABS = new Set(Object.keys(TAB_PATHS));
+
 function findRemoteViewForRoute(
   views: ViewRegistryEntry[],
   navigationPath: string,
@@ -722,6 +729,9 @@ function findRemoteViewForRoute(
 ): ViewRegistryEntry | undefined {
   const normalizedPath = trimmedNavigationPath(navigationPath);
   if (SHELL_RESERVED_PATHS.has(normalizedPath)) return undefined;
+  if (tab !== "views" && tab !== "apps" && SHELL_RESERVED_TABS.has(tab)) {
+    return undefined;
+  }
   return (
     views.find(
       (view) => remoteViewAvailable(view) && view.path === normalizedPath,
@@ -781,6 +791,19 @@ function ViewLayoutSurface({
     .filter((view): view is ViewRegistryEntry => Boolean(view));
   const paneClassName =
     "flex min-h-[18rem] min-w-0 flex-col overflow-hidden border border-border/45 bg-bg";
+  const routeOverrideForView = (
+    view: ViewRegistryEntry,
+  ): ViewRouterRouteOverride => {
+    const navigationPath =
+      view.path ??
+      (SHELL_RESERVED_TABS.has(view.id)
+        ? pathForTab(view.id)
+        : `/apps/${view.id}`);
+    return {
+      navigationPath,
+      tab: tabFromPath(navigationPath) ?? view.id,
+    };
+  };
 
   return (
     <TabContentView>
@@ -835,9 +858,7 @@ function ViewLayoutSurface({
                       viewType={view.viewType}
                     />
                   ) : (
-                    <div className="flex h-full min-h-0 items-center justify-center px-4 text-center text-sm text-muted">
-                      {view.label} is not available as a dynamic view.
-                    </div>
+                    <ViewRouter routeOverride={routeOverrideForView(view)} />
                   )}
                 </div>
               </section>
@@ -1020,7 +1041,9 @@ function renderStaticViewRouterTab({
   ) {
     return (
       <TabContentView>
-        <CharacterEditor />
+        <CharacterEditor
+          initialPage={tab === "documents" ? "documents" : undefined}
+        />
       </TabContentView>
     );
   }
@@ -1091,17 +1114,28 @@ function renderViewRouterContent({
   });
 }
 
+type ViewRouterRouteOverride = {
+  tab: string;
+  navigationPath: string;
+};
+
 function ViewRouter({
+  routeOverride,
   settingsInitialSection,
 }: {
+  routeOverride?: ViewRouterRouteOverride;
   settingsInitialSection?: string | null;
 }) {
-  const tab = useAppSelector((s) => s.tab);
+  const activeTab = useAppSelector((s) => s.tab);
+  const tab = routeOverride?.tab ?? activeTab;
   const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
   const dynamicPage = useResolvedDynamicPage(tab);
-  const [navigationPath, setNavigationPath] = useState(() =>
-    typeof window === "undefined" ? "/" : getWindowNavigationPath(),
+  const [navigationPath, setNavigationPath] = useState(
+    () =>
+      routeOverride?.navigationPath ??
+      (typeof window === "undefined" ? "/" : getWindowNavigationPath()),
   );
+  const routeOverridePath = routeOverride?.navigationPath;
   const appSlug =
     tab === "apps" || tab === "views"
       ? getAppSlugFromPath(navigationPath)
@@ -1110,6 +1144,10 @@ function ViewRouter({
   const enabledKinds = useEnabledViewKinds();
 
   useEffect(() => {
+    if (routeOverridePath) {
+      setNavigationPath(routeOverridePath);
+      return;
+    }
     if (typeof window === "undefined") return;
     const navEvt = shouldUseHashNavigation() ? "hashchange" : "popstate";
     const handleNavigationChange = () => {
@@ -1117,7 +1155,7 @@ function ViewRouter({
     };
     window.addEventListener(navEvt, handleNavigationChange);
     return () => window.removeEventListener(navEvt, handleNavigationChange);
-  }, []);
+  }, [routeOverridePath]);
 
   // Available views from /api/views — used to route to DynamicViewLoader
   // when a tab ID matches a view entry that ships a remote bundle URL.
@@ -1534,7 +1572,7 @@ export function App() {
   const [activeDesktopTabId, setActiveDesktopTabId] = useState<string | null>(
     null,
   );
-  const { views: availableViewsForDesktopTabs } = useAvailableViews();
+  const { views: availableViewsForDesktopTabs } = useRoutableViews();
   const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(null);
 
   const [editingAction, setEditingAction] = useState<

@@ -73,3 +73,39 @@ test("chat overlay: the attach control opens an image picker", async ({
   ]);
   expect(chooser).toBeTruthy();
 });
+
+test("chat overlay: transcript text is selectable and the old transcribe toggle is absent", async ({
+  page,
+}) => {
+  await openAppPath(page, "/chat");
+  const overlay = page.getByTestId("continuous-chat-overlay");
+  await expect(overlay).toBeVisible({ timeout: 60_000 });
+
+  await expect(page.getByTestId("chat-composer-transcribe")).toHaveCount(0);
+
+  const prompt = "show selectable transcript text";
+  const composer = page.getByTestId("chat-composer-textarea");
+  await composer.fill(prompt);
+  await page.getByTestId("chat-composer-action").click();
+
+  await expect(overlay).toHaveAttribute("data-open", "true", {
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("thread-line").first()).toBeVisible({
+    timeout: 15_000,
+  });
+
+  const selectable = page.locator('[data-chat-selectable="true"]').first();
+  await expect(selectable).toBeVisible();
+  await expect(selectable).toHaveCSS("user-select", "text");
+
+  const selectedText = await selectable.evaluate((node) => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    return selection?.toString() ?? "";
+  });
+  expect(selectedText.trim().length).toBeGreaterThan(0);
+});

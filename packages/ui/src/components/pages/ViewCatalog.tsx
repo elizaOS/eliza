@@ -33,7 +33,7 @@ import {
 } from "../../hooks/useAvailableViews";
 import { useDesktopTabs } from "../../hooks/useDesktopTabs";
 import { useViewCatalog } from "../../hooks/useViewCatalog";
-import type { ViewEntry } from "../../hooks/view-catalog";
+import { type ViewEntry, viewToEntry } from "../../hooks/view-catalog";
 import {
   getActiveViewModality,
   type ViewModality,
@@ -50,6 +50,7 @@ import {
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { ViewIcon } from "../views/ViewIcon";
+import { Springboard } from "./Springboard";
 
 const VIEW_LOADING_SKELETON_KEYS = [
   "view-skeleton-1",
@@ -597,10 +598,15 @@ async function fetchSearchResults(
 export function ViewCatalog() {
   const { t } = useTranslation();
   const { views, loading, error, refresh } = useAvailableViews();
-  const { tabs: desktopTabs } = useDesktopTabs();
+  const {
+    tabs: desktopTabs,
+    openTab: openDesktopTab,
+    closeTab: closeDesktopTab,
+  } = useDesktopTabs();
   const isDeveloperMode = useIsDeveloperMode();
   const enabledKinds = useEnabledViewKinds();
-  const canManageDynamicViews = isDeveloperMode && isElectrobunRuntime();
+  const isDesktop = isElectrobunRuntime();
+  const canManageDynamicViews = isDeveloperMode && isDesktop;
   // Views are scoped to the surface modality: a GUI surface lists only GUI
   // views (TUI/XR hidden entirely); an XR surface lists only XR views.
   const activeModality = useMemo(() => getActiveViewModality(), []);
@@ -820,6 +826,48 @@ export function ViewCatalog() {
 
   function handleGet(entry: ViewEntry) {
     void getCatalogEntry(entry);
+  }
+
+  // --- Springboard (default, no-query catalog face) ---------------------------
+  // Driven off the same visible-view set as the sectioned list so gating stays
+  // identical. Favorites are unified with desktop tabs: favoriting pins the
+  // view as a tab. Dynamic-view edit/delete is exposed on tiles in edit mode.
+  const springboardEntries = useMemo(
+    () => sortedAllViews.map(viewToEntry),
+    [sortedAllViews],
+  );
+  const favoriteViewIds = useMemo(
+    () => desktopTabs.filter((t) => t.pinned).map((t) => t.viewId),
+    [desktopTabs],
+  );
+  const viewById = useMemo(
+    () => new Map(visibleViews.map((v) => [v.id, v])),
+    [visibleViews],
+  );
+
+  function handleSpringboardLaunch(entry: ViewEntry) {
+    const view = viewById.get(entry.id);
+    if (view) handleViewClick(view);
+  }
+
+  function handleToggleFavorite(id: string) {
+    const view = viewById.get(id);
+    if (!view) return;
+    if (favoriteViewIds.includes(id)) {
+      closeDesktopTab(id);
+    } else {
+      openDesktopTab(view, { pinned: true });
+    }
+  }
+
+  function handleSpringboardEdit(id: string) {
+    const view = viewById.get(id);
+    if (view) fillManagementForm(view);
+  }
+
+  function handleSpringboardDelete(id: string) {
+    const view = viewById.get(id);
+    if (view) void handleDeleteView(view);
   }
 
   function handleViewClick(view: ViewRegistryEntry) {
@@ -1072,7 +1120,9 @@ export function ViewCatalog() {
             <ViewsLoadingSkeleton />
           ) : totalVisible === 0 && availableEntries.length === 0 ? (
             <ViewsEmptyState hasQuery={query.trim().length > 0} />
-          ) : (
+          ) : hasQuery ? (
+            // Searching: keep the sectioned, semantic-search result list with
+            // pin/edit/delete card affordances.
             <>
               <ViewSection
                 testId="views-top-section"
@@ -1107,6 +1157,36 @@ export function ViewCatalog() {
                 }
                 onViewDelete={
                   canManageDynamicViews ? handleDeleteView : undefined
+                }
+              />
+              <CatalogSection
+                title={t("viewmanager.section.getMore", {
+                  defaultValue: "Get more",
+                })}
+                entries={availableEntries}
+                onGet={handleGet}
+              />
+            </>
+          ) : (
+            // Default: the iOS-like springboard of loaded views (names-only,
+            // paged, favorites dock = desktop tabs), with the install catalog
+            // ("Get more") underneath.
+            <>
+              <Springboard
+                entries={springboardEntries}
+                onLaunch={handleSpringboardLaunch}
+                // Favorites are unified with desktop tabs only on the Electrobun
+                // shell (useDesktopTabs is inert off-desktop). On web/mobile,
+                // omit the controlled props so Springboard uses its own local
+                // favorites state instead of a permanently empty, no-op dock.
+                favoriteIds={isDesktop ? favoriteViewIds : undefined}
+                onToggleFavorite={isDesktop ? handleToggleFavorite : undefined}
+                canManageView={canManageDynamicViews ? () => true : undefined}
+                onEditView={
+                  canManageDynamicViews ? handleSpringboardEdit : undefined
+                }
+                onDeleteView={
+                  canManageDynamicViews ? handleSpringboardDelete : undefined
                 }
               />
               <CatalogSection

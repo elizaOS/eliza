@@ -1,5 +1,6 @@
 import type {
 	MessageHandlerAction,
+	MessageHandlerDeterministicToolCall,
 	MessageHandlerResult,
 } from "../types/components";
 import type { AgentContext, ContextDefinition } from "../types/contexts";
@@ -17,6 +18,7 @@ export interface ResponseHandlerPatch {
 	addContextSlices?: readonly string[];
 	clearCandidateActions?: boolean;
 	clearParentActionHints?: boolean;
+	deterministicToolCall?: MessageHandlerDeterministicToolCall;
 	clearReply?: boolean;
 	reply?: string;
 	debug?: readonly string[];
@@ -53,8 +55,14 @@ export interface ResponseHandlerPatchTrace {
 export interface ResponseHandlerEvaluationRunResult {
 	activeEvaluators: string[];
 	appliedPatches: ResponseHandlerPatchTrace[];
+	candidateActionsAddedByEvaluators: string[];
 	errors: Array<{ evaluatorName: string; error: string }>;
 }
+
+type AppliedResponseHandlerPatch = {
+	trace: ResponseHandlerPatchTrace;
+	candidateActionsAdded: string[];
+};
 
 function uniqueStrings(values: readonly string[] | undefined): string[] {
 	if (!Array.isArray(values) || values.length === 0) {
@@ -78,6 +86,22 @@ function mergeUniqueStrings(
 	additions: readonly string[] | undefined,
 ): string[] {
 	return uniqueStrings([...(current ?? []), ...(additions ?? [])]);
+}
+
+function normalizeDeterministicToolCall(
+	toolCall: MessageHandlerDeterministicToolCall | undefined,
+): MessageHandlerDeterministicToolCall | null {
+	const name = String(toolCall?.name ?? "").trim();
+	if (!name) {
+		return null;
+	}
+	const params =
+		toolCall?.params &&
+		typeof toolCall.params === "object" &&
+		!Array.isArray(toolCall.params)
+			? { ...toolCall.params }
+			: undefined;
+	return params ? { name, params } : { name };
 }
 
 function availableContextSet(
@@ -112,10 +136,11 @@ function applyResponseHandlerPatch(
 	messageHandler: MessageHandlerResult,
 	patch: ResponseHandlerPatch,
 	availableContexts: readonly ContextDefinition[],
-): ResponseHandlerPatchTrace | null {
+): AppliedResponseHandlerPatch | null {
 	const changed: string[] = [];
 	const debug = uniqueStrings(patch.debug);
 	const available = availableContextSet(availableContexts);
+	let candidateActionsAdded: string[] | undefined;
 
 	if (patch.processMessage) {
 		messageHandler.processMessage = patch.processMessage;
@@ -139,16 +164,21 @@ function applyResponseHandlerPatch(
 		);
 		changed.push("contexts:add");
 	}
+	if (patch.clearCandidateActions) {
+		delete messageHandler.plan.candidateActions;
+		changed.push("candidateActions:clear");
+	}
 	if (patch.addCandidateActions) {
+		candidateActionsAdded = uniqueStrings(patch.addCandidateActions);
 		messageHandler.plan.candidateActions = mergeUniqueStrings(
 			messageHandler.plan.candidateActions,
 			patch.addCandidateActions,
 		);
 		changed.push("candidateActions:add");
 	}
-	if (patch.clearCandidateActions) {
-		delete messageHandler.plan.candidateActions;
-		changed.push("candidateActions:clear");
+	if (patch.clearParentActionHints) {
+		delete messageHandler.plan.parentActionHints;
+		changed.push("parentActionHints:clear");
 	}
 	if (patch.addParentActionHints) {
 		messageHandler.plan.parentActionHints = mergeUniqueStrings(
@@ -157,16 +187,19 @@ function applyResponseHandlerPatch(
 		);
 		changed.push("parentActionHints:add");
 	}
-	if (patch.clearParentActionHints) {
-		delete messageHandler.plan.parentActionHints;
-		changed.push("parentActionHints:clear");
-	}
 	if (patch.addContextSlices) {
 		messageHandler.plan.contextSlices = mergeUniqueStrings(
 			messageHandler.plan.contextSlices,
 			patch.addContextSlices,
 		);
 		changed.push("contextSlices:add");
+	}
+	const deterministicToolCall = normalizeDeterministicToolCall(
+		patch.deterministicToolCall,
+	);
+	if (deterministicToolCall) {
+		messageHandler.plan.deterministicToolCall = deterministicToolCall;
+		changed.push("deterministicToolCall:set");
 	}
 	if (patch.clearReply) {
 		delete messageHandler.plan.reply;
@@ -180,9 +213,12 @@ function applyResponseHandlerPatch(
 		return null;
 	}
 	return {
-		evaluatorName: "",
-		debug,
-		changed,
+		trace: {
+			evaluatorName: "",
+			debug,
+			changed,
+		},
+		candidateActionsAdded: candidateActionsAdded ?? [],
 	};
 }
 
@@ -205,6 +241,7 @@ export async function runResponseHandlerEvaluators(args: {
 	const result: ResponseHandlerEvaluationRunResult = {
 		activeEvaluators: [],
 		appliedPatches: [],
+		candidateActionsAddedByEvaluators: [],
 		errors: [],
 	};
 	if (candidates.length === 0) {
@@ -229,14 +266,19 @@ export async function runResponseHandlerEvaluators(args: {
 			if (!patch) {
 				continue;
 			}
-			const trace = applyResponseHandlerPatch(
+			const applied = applyResponseHandlerPatch(
 				args.messageHandler,
 				patch,
 				args.availableContexts,
 			);
-			if (trace) {
+			if (applied) {
+				const { trace } = applied;
 				trace.evaluatorName = evaluator.name;
 				result.appliedPatches.push(trace);
+				result.candidateActionsAddedByEvaluators = mergeUniqueStrings(
+					result.candidateActionsAddedByEvaluators,
+					applied.candidateActionsAdded,
+				);
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

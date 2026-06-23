@@ -156,7 +156,12 @@ const config: CapacitorConfig = {
     },
   },
   ios: {
-    contentInset: "automatic",
+    // "never": the WKWebView extends edge-to-edge under the home indicator
+    // instead of being inset (which revealed the native background as an orange
+    // band at the bottom safe-area). The web layer owns safe-area insets via
+    // viewport-fit=cover + env(safe-area-inset-*); the chat composer adds its
+    // own bottom inset so it stays clear of the home indicator.
+    contentInset: "never",
     preferredContentMode: "mobile",
     backgroundColor: "#FF5800",
     allowsLinkPreview: false,

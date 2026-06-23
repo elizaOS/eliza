@@ -1740,21 +1740,33 @@ export class AcpService extends Service {
           asRecord(params?.toolCall)?.kind ??
           "permission required",
       );
-      this.emitSessionEvent(sessionId, "blocked", {
-        message: description,
-        request: params,
-      });
-      if (isAuthText(description))
-        this.emitSessionEvent(sessionId, "login_required", {
+      // The native transport auto-responds to permission requests per the
+      // session's preset; surfacing "blocked" for a request it immediately
+      // approves is a phantom block that derails the planner (re-spawns + a
+      // user-facing "agent is blocked"). Only surface a genuine wait-for-user:
+      // an auth challenge (always), or an op the transport won't approve (a
+      // restrictive preset, or the legacy CLI transport with no native client).
+      const autoApproved =
+        this.nativeClients.get(sessionId)?.approvesPermissionRequest(params) ??
+        false;
+      const isAuthChallenge = isAuthText(description);
+      if (isAuthChallenge || !autoApproved) {
+        this.emitSessionEvent(sessionId, "blocked", {
           message: description,
           request: params,
         });
-      void this.store.updateStatus(sessionId, "blocked").catch((err) =>
-        this.log("warn", "failed to persist blocked status", {
-          sessionId,
-          err,
-        }),
-      );
+        if (isAuthChallenge)
+          this.emitSessionEvent(sessionId, "login_required", {
+            message: description,
+            request: params,
+          });
+        void this.store.updateStatus(sessionId, "blocked").catch((err) =>
+          this.log("warn", "failed to persist blocked status", {
+            sessionId,
+            err,
+          }),
+        );
+      }
     }
 
     if (sessionId && method === "session/update") {

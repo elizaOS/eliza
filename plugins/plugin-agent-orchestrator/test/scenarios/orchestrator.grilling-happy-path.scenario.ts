@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { runGrillingHappyPathCheck } from "./_helpers/grilling-scenario.ts";
+import { runGrillingHappyPathCheck } from "./_helpers/grilling-scenario";
 
 // Grilling happy path (#8932): a sub-agent claims done with NO test output →
 // the verifier grills (corrective re-prompt citing the unmet criterion) → the
