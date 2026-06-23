@@ -21,6 +21,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { Readable, type Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { logger } from "@elizaos/core";
 import { ensureDefaultAssignment } from "./assignments";
 import {
 	buildHuggingFaceResolveUrl,
@@ -30,6 +31,11 @@ import {
 	resolveHfDownloadBase,
 } from "./catalog";
 import { deviceCapsFromProbe, probeHardware } from "./hardware";
+import {
+	libStagedName,
+	resolveHostLibTargets,
+	selectBundleLibFiles,
+} from "./lib-target";
 import {
 	type Eliza1DeviceCaps,
 	type Eliza1FileEntry,
@@ -767,6 +773,39 @@ export class Downloader {
 			record.job.received = completedBytes;
 			record.job.total = Math.max(record.job.total, completedBytes);
 			this.throttleEmit(record);
+		}
+
+		// Fused-lib bundle delivery (#9105): fetch the host-matching native-lib
+		// SET into `<bundleRoot>/lib/`, which the desktop FFI runtime resolves
+		// with no env wiring (`resolveFusedLibraryPath` path #2). Only entries
+		// whose `target` matches the host are fetched; no `lib[]` / no host match
+		// ⇒ skipped (the runtime falls back to a host-staged lib dir, else cloud).
+		// Mobile resolves to no targets — phones ship the lib natively.
+		const selectedLib = selectBundleLibFiles(manifest, resolveHostLibTargets());
+		if (selectedLib) {
+			for (const libEntry of selectedLib.files) {
+				const relPath = `lib/${libStagedName(libEntry)}`;
+				const result = await this.downloadRemotePath(
+					catalogEntry,
+					libEntry.path,
+					path.join(
+						downloadsStagingDir(),
+						bundleStagingFilename(catalogEntry.id, relPath),
+					),
+					bundleTargetPath(bundleRoot, relPath),
+					record,
+					completedBytes,
+					libEntry.sha256,
+				);
+				completedBytes += result.sizeBytes;
+				record.job.received = completedBytes;
+				record.job.total = Math.max(record.job.total, completedBytes);
+				this.throttleEmit(record);
+			}
+			logger.info(
+				`[local-inference] staged fused lib set for ${catalogEntry.id} ` +
+					`(target=${selectedLib.target}, ${selectedLib.files.length} file(s)) → ${bundleRoot}/lib`,
+			);
 		}
 
 		const textEntry = manifest.files.text.find(
