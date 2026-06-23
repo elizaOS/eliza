@@ -229,7 +229,10 @@ export { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "./utils.js";
 // Terminal view registry (host mounts plugin-registered views by id)
 export {
   getTerminalView,
+  getTerminalViewFactory,
   hasTerminalView,
   listTerminalViewIds,
   registerTerminalView,
+  type TerminalViewFactory,
+  type TerminalViewMountOptions,
 } from "./view-registry.js";
