@@ -54,19 +54,23 @@ mock.module("../../../db/repositories/users", () => ({
 
 const addCredits = mock();
 const reserveAndDeductCredits = mock();
+const refundCredits = mock();
 
 mock.module("../credits", () => ({
   creditsService: {
     addCredits,
     reserveAndDeductCredits,
+    refundCredits,
   },
 }));
 
 const addEarnings = mock();
+const reduceEarnings = mock();
 
 mock.module("../redeemable-earnings", () => ({
   redeemableEarningsService: {
     addEarnings,
+    reduceEarnings,
   },
 }));
 
@@ -117,7 +121,9 @@ beforeEach(() => {
   findUserById.mockReset();
   addCredits.mockReset();
   reserveAndDeductCredits.mockReset();
+  refundCredits.mockReset();
   addEarnings.mockReset();
+  reduceEarnings.mockReset();
   updateMock.mockClear();
 
   findAppById.mockResolvedValue(monetizedApp);
@@ -130,7 +136,9 @@ beforeEach(() => {
     newBalance: 41.4,
     transaction: { id: "tx-2" },
   });
+  refundCredits.mockResolvedValue({ newBalance: 43.6 });
   addEarnings.mockResolvedValue({ success: true });
+  reduceEarnings.mockResolvedValue({ success: true });
   trackAppUserActivity.mockResolvedValue(undefined);
   createTransaction.mockResolvedValue(undefined);
   addPurchaseEarnings.mockResolvedValue(undefined);
@@ -230,6 +238,82 @@ describe("deductCredits — debits the same org ledger", () => {
 
     expect(spend.success).toBe(false);
     expect(spend.message).toContain("Insufficient cloud credits");
+  });
+});
+
+describe("reconcileCredits — charges/refunds the estimate↔actual delta (#9145)", () => {
+  test("no-ops when the difference is below the reconciliation threshold", async () => {
+    const result = await freshService().reconcileCredits({
+      appId: APP_ID,
+      userId: USER_ID,
+      estimatedBaseCost: 1,
+      actualBaseCost: 1,
+      description: "recon",
+    });
+    expect(result.reconciled).toBe(false);
+    expect(result.action).toBe("none");
+    expect(reserveAndDeductCredits).not.toHaveBeenCalled();
+    expect(refundCredits).not.toHaveBeenCalled();
+  });
+
+  test("charges the markup'd delta to the org when actual exceeds estimated", async () => {
+    const result = await freshService().reconcileCredits({
+      appId: APP_ID,
+      userId: USER_ID,
+      estimatedBaseCost: 1,
+      actualBaseCost: 2,
+      description: "recon",
+    });
+    expect(result.reconciled).toBe(true);
+    expect(result.action).toBe("charge");
+    expect(reserveAndDeductCredits).toHaveBeenCalledTimes(1);
+    // $1 base delta × 1.10 markup, against the org ledger.
+    expect(reserveAndDeductCredits.mock.calls[0][0].organizationId).toBe(ORG_ID);
+    expect(reserveAndDeductCredits.mock.calls[0][0].amount).toBeCloseTo(1.1, 10);
+    expect(refundCredits).not.toHaveBeenCalled();
+  });
+
+  test("refunds the markup'd overcharge to the org when actual is below estimated", async () => {
+    const result = await freshService().reconcileCredits({
+      appId: APP_ID,
+      userId: USER_ID,
+      estimatedBaseCost: 2,
+      actualBaseCost: 1,
+      description: "recon",
+    });
+    expect(result.reconciled).toBe(true);
+    expect(result.action).toBe("refund");
+    expect(result.adjustedAmount).toBeCloseTo(1.1, 10);
+    expect(refundCredits).toHaveBeenCalledTimes(1);
+    expect(refundCredits.mock.calls[0][0].organizationId).toBe(ORG_ID);
+    expect(reserveAndDeductCredits).not.toHaveBeenCalled();
+  });
+
+  test("does not reconcile when the user has no organization", async () => {
+    findUserById.mockResolvedValue({ id: USER_ID, organization_id: null });
+    const result = await freshService().reconcileCredits({
+      appId: APP_ID,
+      userId: USER_ID,
+      estimatedBaseCost: 1,
+      actualBaseCost: 5,
+      description: "recon",
+    });
+    expect(result.reconciled).toBe(false);
+    expect(reserveAndDeductCredits).not.toHaveBeenCalled();
+    expect(refundCredits).not.toHaveBeenCalled();
+  });
+
+  test("does not reconcile when the app is missing", async () => {
+    findAppById.mockResolvedValue(null);
+    const result = await freshService().reconcileCredits({
+      appId: APP_ID,
+      userId: USER_ID,
+      estimatedBaseCost: 1,
+      actualBaseCost: 5,
+      description: "recon",
+    });
+    expect(result.reconciled).toBe(false);
+    expect(result.action).toBe("none");
   });
 });
 
