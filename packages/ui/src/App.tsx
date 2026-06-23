@@ -757,6 +757,15 @@ function renderRemoteView(view: ViewRegistryEntry): ReactNode {
   );
 }
 
+function findAppShellPageForRoute(
+  navigationPath: string,
+): AppShellPageRegistration | undefined {
+  const normalizedPath = trimmedNavigationPath(navigationPath);
+  return listAppShellPages().find(
+    (entry) => trimmedNavigationPath(entry.path) === normalizedPath,
+  );
+}
+
 function viewLayoutLabel(layout: ActiveViewLayout): string {
   return layout.mode === "split" ? "Split view" : "Tiled views";
 }
@@ -1096,6 +1105,17 @@ function renderViewRouterContent({
     return (
       <TabContentView>
         <DynamicPluginPage resolved={dynamicAppPage} />
+      </TabContentView>
+    );
+  }
+  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
+  if (
+    appShellPageForRoute &&
+    (developerModeEnabled || appShellPageForRoute.developerOnly !== true)
+  ) {
+    return (
+      <TabContentView>
+        <RegisteredAppShellPage registration={appShellPageForRoute} />
       </TabContentView>
     );
   }
