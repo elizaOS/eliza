@@ -274,7 +274,7 @@ jobs:
       # clean build passes and any future eager-chunk regression fails the deploy.
       - name: Verify bundle chunk safety
         working-directory: packages/app
-        run: bun run verify:chunk-safety
+        run: bun run verify:chunks
 
       - name: Resolve Pages branch
         id: pages
@@ -429,7 +429,7 @@ jobs:
       # clean build passes and any future eager-chunk regression fails the deploy.
       - name: Verify bundle chunk safety
         working-directory: packages/app
-        run: bun run verify:chunk-safety
+        run: bun run verify:chunks
 
       - name: Resolve Pages branch
         id: pages
