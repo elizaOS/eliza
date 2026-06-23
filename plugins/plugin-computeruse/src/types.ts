@@ -144,7 +144,9 @@ export type WindowActionType =
   | "close"
   | "get_current_window_id"
   | "get_application_windows"
-  | "set_bounds";
+  | "set_bounds"
+  | "get_window_size"
+  | "get_window_position";
 
 export interface WindowActionParams {
   action: WindowActionType;
@@ -216,6 +218,8 @@ export interface WindowActionResult extends ComputerUseResult {
   windowId?: string | null;
   /** Focused window descriptor for "get_current_window_id". */
   window?: WindowInfo | null;
+  /** Window bounds for "get_window_size" / "get_window_position". */
+  bounds?: ScreenRegion;
 }
 
 export type FileActionType =

@@ -84,6 +84,7 @@ import {
   getActiveWindow,
   getApplicationWindows,
   getScreenSize,
+  getWindowBounds,
   listWindows,
   maximizeWindow,
   minimizeWindow,
@@ -1086,6 +1087,19 @@ export class ComputerUseService extends Service {
           );
           return this.succeedEntry(entry, result);
         }
+        case "get_window_size":
+        case "get_window_position": {
+          // windowId is optional — defaults to the focused/foreground window.
+          const bounds = getWindowBounds(params.windowId);
+          return this.succeedEntry(entry, {
+            success: true,
+            bounds,
+            message:
+              params.action === "get_window_size"
+                ? `Window size: ${bounds.width}x${bounds.height}.`
+                : `Window position: (${bounds.x}, ${bounds.y}).`,
+          });
+        }
         default:
           return this.failEntry(entry, {
             success: false,
@@ -1513,6 +1527,8 @@ export class ComputerUseService extends Service {
         return "close_window";
       case "get_current_window_id":
       case "get_application_windows":
+      case "get_window_size":
+      case "get_window_position":
         // Read-only getters — auto-approve (mapped to the SAFE list_windows).
         return "list_windows";
       case "set_bounds":

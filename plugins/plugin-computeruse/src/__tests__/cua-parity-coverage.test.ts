@@ -105,24 +105,56 @@ const CAPABILITIES: Capability[] = [
   { cua: "restore_window", domain: "window", status: "have", verb: "restore" },
   { cua: "close_window", domain: "window", status: "have", verb: "close" },
   { cua: "set_window_position", domain: "window", status: "have", verb: "move" },
-  {
-    cua: "get_window_size/position + set_window_size + get_current_window_id + get_application_windows",
-    domain: "window",
-    status: "missing",
-    milestone: "M12",
-  },
-  { cua: "open(target) / launch(app,args)", domain: "window", status: "missing", milestone: "M12" },
+  // M12 window getters/setters — all landed.
+  { cua: "get_current_window_id", domain: "window", status: "have", verb: "get_current_window_id", milestone: "M12" },
+  { cua: "get_application_windows", domain: "window", status: "have", verb: "get_application_windows", milestone: "M12" },
+  { cua: "set_window_size (set_bounds)", domain: "window", status: "have", verb: "set_bounds", milestone: "M12" },
+  { cua: "get_window_size", domain: "window", status: "have", verb: "get_window_size", milestone: "M12" },
+  { cua: "get_window_position", domain: "window", status: "have", verb: "get_window_position", milestone: "M12" },
+  // open/launch are COMPUTER_USE verbs (implemented; launch returns a pid).
+  { cua: "open(target)", domain: "input", status: "have", verb: "open", milestone: "M12" },
+  { cua: "launch(app,args)->pid", domain: "input", status: "have", verb: "launch", milestone: "M12" },
   // ── clipboard ───────────────────────────────────────────────────────────────
   { cua: "copy_to_clipboard", domain: "clipboard", status: "have", verb: "read" },
   { cua: "set_clipboard", domain: "clipboard", status: "have", verb: "write" },
   // ── filesystem / shell (gated/internal today) ───────────────────────────────
+  // Host file/shell route through the FILE / SHELL actions; sandbox guests get
+  // run_command + basic fs over the M13 RPC. Basic ops exist; the binary/dir
+  // transfer verbs below are genuine gaps (cua exposes them for guest I/O).
   {
-    cua: "filesystem verbs (exists/list/read/write/delete/mkdir/size)",
+    cua: "filesystem basic (exists/list/read_text/write_text/delete)",
     domain: "architecture",
     status: "partial",
-    milestone: "M12",
+    milestone: "M13",
   },
-  { cua: "run_command (CommandResult)", domain: "architecture", status: "partial", milestone: "M12" },
+  { cua: "run_command (CommandResult)", domain: "architecture", status: "partial", milestone: "M13" },
+  {
+    cua: "read_bytes/write_bytes (base64 binary), create_dir, directory_exists, get_file_size",
+    domain: "architecture",
+    status: "missing",
+    milestone: "M12/M13 — sandbox guest binary I/O",
+  },
+  // ── trycua blind spots — tracked decisions, not silent gaps (workflow audit) ──
+  { cua: "set_value (a11y element value write)", domain: "architecture", status: "missing", milestone: "a11y-write" },
+  { cua: "kill_app (process terminate)", domain: "architecture", status: "missing", milestone: "process-lifecycle" },
+  {
+    cua: "zoom (region magnify for grounding)",
+    domain: "architecture",
+    status: "partial",
+    milestone: "covered by M5 ROI + M9 Set-of-Marks",
+  },
+  {
+    cua: "screen recording / replay_trajectory (MP4)",
+    domain: "architecture",
+    status: "na",
+    na: "evidence concern owned by test:e2e:record + scenario-runner viewer, not an agent verb",
+  },
+  {
+    cua: "agent-cursor overlay (set_agent_cursor_*)",
+    domain: "architecture",
+    status: "na",
+    na: "UX overlay tied to cua's recording; no agent-decision value",
+  },
   // ── architecture ────────────────────────────────────────────────────────────
   { cua: "agent_loop_registry", domain: "architecture", status: "partial", milestone: "M10" },
   { cua: "predict_step/predict_click split", domain: "architecture", status: "partial", milestone: "M10" },
