@@ -29,11 +29,11 @@ import { syncElizaEnvAliases } from "../shared/src/utils/env.ts";
 import appConfig from "./app.config";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
+import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import {
   generateNodeBuiltinStub,
   nativeModuleStubPlugin,
 } from "./vite/native-module-stub-plugin.ts";
-import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { resolveViteDevServerRuntime } from "./vite-dev-origin.ts";
 
 const _require = createRequire(import.meta.url);
