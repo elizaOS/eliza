@@ -66,7 +66,7 @@ Legend: ✅ have · 🟡 partial · ❌ missing · ⛔ N/A (deliberately not cha
 | predict / ground split (cheap ground vs full predict) | 🟡 (M5) | `OcrCoordinateGroundingActor` + per-Scene grounding cache; no model-string registry yet |
 | accessibility-tree grounding tier | ✅ | scene `a11y-provider` (Win UIA / macOS AX / Linux AT-SPI) |
 | OmniParser/icon detection (GGUF, no ONNX) | 🟡 | `yolo-detector.ts` (YOLOv8n COCO GGUF via `native/yolo.cpp`) |
-| **Set-of-Marks (numbered overlay) grounding** | ❌ (M9) | no `plugin-vision/src/som.ts` yet |
+| **Set-of-Marks (numbered overlay) grounding** | ✅ (M9) | `plugin-vision/src/som.ts` + `set-of-marks-provider.ts`; registered via `registerSetOfMarksProvider` seam in `mobile/ocr-provider.ts` |
 
 ### Windows / files / process / shell
 | trycua capability | elizaOS status | Where |
@@ -147,23 +147,28 @@ from the action enum so a newly-added trycua verb that lacks a per-OS test fails
 ## 5. Remaining roadmap (prioritized)
 
 1. **M14 cross-platform real lanes** *(highest leverage for the stated goal)* —
-   Linux Xvfb + macOS headful real-driver lanes; enum-derived parity guard so every
-   verb has a per-OS test. Closes the "tests of every single thing they do, on all
-   platforms" requirement that the win32-only gate currently leaves open.
-2. **M9 Set-of-Marks** — `plugin-vision/src/som.ts` (GGUF YOLO + CoordOcr merge,
-   icon-over-text suppression, NMS dedup, 1-indexed numbered overlay) via
-   `registerCoordOcrProvider`.
-3. **M12 additive verbs** — window getters (`get_current_window_id`,
+   The enum-derived parity coverage guard (`cua-parity-coverage.test.ts`) is
+   **landed** and runs on all platforms in the default lane, and the real lane is
+   no longer win32-hardcoded. The remaining piece is the **Linux Xvfb + macOS
+   headful CI lanes** that actually invoke the real config (requires a
+   `.github/workflows/**` change / `workflow` token scope). Until those exist,
+   real-driver *actuation* is verified on Windows only.
+2. **M12 additive verbs** — window getters (`get_current_window_id`,
    `get_application_windows`, `get/set_window_size`, `get_window_position`),
    `open`/`launch`, and the filesystem/`run_command` verbs (wrap the existing
    internal `file-ops.ts`/`terminal.ts` as gated `COMPUTER_USE` verbs).
-4. **M10 agent-loop registry** + predict_step/predict_click split (extend the Actor
+3. **M10 agent-loop registry** + predict_step/predict_click split (extend the Actor
    registry; keep approval gating).
-5. **M11 callback middleware** — budget cap, image-retention (only-N-recent, aligns
+4. **M11 callback middleware** — budget cap, image-retention (only-N-recent, aligns
    with M3), operator-normalizer, trajectory.
-6. **M13 provider matrix + RPC seam** — Windows Sandbox (WSB) + QEMU behind a
+5. **M13 provider matrix + RPC seam** — Windows Sandbox (WSB) + QEMU behind a
    remote-guest `{command,params}→{success,result}` RPC over the route/WS seam.
-7. **AOSP `multitouch_gesture`** (MT-Protocol-B) + an optional MCP server seam.
+6. **AOSP `multitouch_gesture`** (MT-Protocol-B) + an optional MCP server seam.
+
+**Done since this audit was first written:** M9 Set-of-Marks (numbered-overlay
+grounding) landed — `plugin-vision/src/som.ts` + `set-of-marks-provider.ts`,
+registered via the `registerSetOfMarksProvider` seam; 23/23 unit tests green on
+Windows.
 
 > **Process note for contributors:** the `*.real.test.ts` lanes only execute on a
 > Windows host. Before trusting any newly-landed computeruse milestone, run its
