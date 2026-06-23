@@ -6,6 +6,7 @@
  * Opt-in: host calls startTaskScheduler(adapter); TaskService registers when daemon is present.
  */
 
+import { logger } from "../logger";
 import type { IDatabaseAdapter } from "../types/database";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
@@ -72,7 +73,12 @@ export function startTaskScheduler(adapterInstance: IDatabaseAdapter): void {
 	adapter = adapterInstance;
 	if (timer) return;
 	timer = setInterval(() => {
-		tick().catch(() => {});
+		// Surface batched getTasks/grouping failures so a DB outage or adapter bug
+		// is observable instead of the timer silently firing nothing. Per-agent
+		// runTick failures are already isolated + logged inside the loop above.
+		tick().catch((err) =>
+			logger.error({ err }, "[task-scheduler] tick failed"),
+		);
 	}, TICK_INTERVAL_MS) as ReturnType<typeof setInterval>;
 }
 
