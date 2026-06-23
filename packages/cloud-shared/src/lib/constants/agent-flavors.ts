@@ -35,7 +35,7 @@ export interface AgentFlavor {
  *   2. `process.env.ENVIRONMENT` — Worker `[vars]` binding from wrangler.toml.
  *   3. `process.env.NODE_ENV === "production"` — last-resort fallback.
  *
- * Wire `VITE_ENVIRONMENT` per env in `packages/cloud-frontend/wrangler.toml`
+ * Wire `VITE_ENVIRONMENT` per env in `packages/app/wrangler.toml`
  * and the cloud-cf-deploy workflow build step so staging and prod SPAs each
  * see the correct mode.
  */
