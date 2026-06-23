@@ -2,24 +2,23 @@
 // Build-time gate against the recurring Rolldown crypto-chunk crash
 // ("Class constructor u cannot be invoked without 'new'" at Buffer.allocUnsafe).
 //
-// Root cause (see the vendor-crypto branch in vite.config.ts's
-// resolveManualChunk): Rolldown can non-deterministically fold the bn.js /
-// crypto graph into an EAGERLY-initialized chunk (the i18n locale chunk or the
-// entry). bn.js runs `Buffer.allocUnsafe` at module-init, which throws before
-// the bundled Buffer wrapper is ready and kills the whole React tree on every
-// route. The fix keeps that graph in a dedicated LAZY `vendor-crypto` chunk —
-// but the fix has been silently dropped twice (history squashes) and a bad
-// build shipped to prod.
+// History: the apex (elizacloud.ai) moved from packages/cloud-frontend to
+// packages/app (#9093). cloud-frontend shipped this gate + a `vendor-crypto`
+// chunk group; the cutover dropped both, leaving packages/app — which ships the
+// same wallet/crypto/bn.js graph — with no protection (#9150). This restores it.
 //
-// packages/app mounts the cloud UI via @elizaos/ui, which pulls the same
-// wallet/crypto graph (@solana/*, wagmi, viem, @walletconnect, bn.js, …) that
-// the deleted packages/cloud-frontend gate guarded. This script is the ported
-// gate for the packages/app `build:web` output (build.outDir = ./dist, so the
-// assets live in ./dist/assets when run from the packages/app cwd).
+// Root cause (see resolveManualChunk's vendor-crypto group in vite.config.ts):
+// Rolldown can non-deterministically fold the bn.js / crypto graph into an
+// EAGERLY-initialized chunk (an i18n locale chunk or the entry). bn.js runs
+// `Buffer.allocUnsafe` at module-init, which throws before the bundled Buffer
+// wrapper is ready and kills the whole React tree on every route. The fix keeps
+// that graph in a dedicated LAZY `vendor-crypto` chunk — but the fix has been
+// silently dropped multiple times (history squashes / a package cutover) and a
+// bad build shipped to prod each time.
 //
 // This gate fails the build whenever the bn.js marker (`toArrayLike`) lands in
 // any chunk that is NOT one of the intended lazy `vendor-*` vendor chunks, so a
-// regressed bundle can never deploy. Run after `build:web`, before deploy.
+// regressed bundle can never deploy. Run after `vite build`, before deploy.
 
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -32,7 +31,8 @@ const CRYPTO_MARKER = "toArrayLike";
 
 // The crypto graph is allowed to live ONLY in these lazily-loaded vendor
 // chunks (loaded on demand by wallet/crypto routes), never in the eager entry
-// or locale chunks.
+// or locale chunks. Matches the `vendor-crypto` / `vendor-wallet` /
+// `vendor-solana` groups in vite.config.ts's resolveManualChunk.
 const ALLOWED = /^vendor-(crypto|solana|wallet)-/;
 
 let files;
@@ -66,9 +66,9 @@ if (offenders.length > 0) {
   for (const f of offenders) console.error(`  - ${f}`);
   console.error(
     "\nThis is the Rolldown crypto-chunk crash (Buffer.allocUnsafe at module-init).\n" +
-      "The `vendor-crypto` branch in vite.config.ts's resolveManualChunk must keep\n" +
-      "the bn.js graph in a lazy vendor chunk. Do NOT deploy this bundle — it\n" +
-      "crashes the whole React tree on every route. Re-check resolveManualChunk.",
+      "The `vendor-crypto` group in vite.config.ts's resolveManualChunk must keep the\n" +
+      "bn.js graph in a lazy vendor chunk. Do NOT deploy this bundle — it crashes\n" +
+      "the whole React tree on every route. Re-check the resolveManualChunk groups.",
   );
   process.exit(1);
 }
