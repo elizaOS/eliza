@@ -232,7 +232,6 @@
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
         "@elizaos/plugin-background-runner": "workspace:*",
         "@elizaos/plugin-blocker": "workspace:*",
-        "@elizaos/plugin-clawville": "workspace:*",
         "@elizaos/plugin-companion": "workspace:*",
         "@elizaos/plugin-contacts": "workspace:*",
         "@elizaos/plugin-device-settings": "workspace:*",
@@ -3203,24 +3202,6 @@
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
-      },
-    },
-    "plugins/plugin-clawville": {
-      "name": "@elizaos/plugin-clawville",
-      "version": "2.0.3-beta.2",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/node": "^25.0.3",
-        "tsup": "^8.5.1",
-        "typescript": "^6.0.3",
-        "vite": "^8.0.0",
-      },
-      "peerDependencies": {
-        "react": "^19.0.0",
       },
     },
     "plugins/plugin-cli": {
@@ -6597,8 +6578,6 @@
     "@elizaos/plugin-calendly": ["@elizaos/plugin-calendly@workspace:plugins/plugin-calendly"],
 
     "@elizaos/plugin-capacitor-bridge": ["@elizaos/plugin-capacitor-bridge@workspace:plugins/plugin-capacitor-bridge"],
-
-    "@elizaos/plugin-clawville": ["@elizaos/plugin-clawville@workspace:plugins/plugin-clawville"],
 
     "@elizaos/plugin-cli": ["@elizaos/plugin-cli@workspace:plugins/plugin-cli"],
 

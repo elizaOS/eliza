@@ -49,33 +49,31 @@ describe("mergeViewCatalog", () => {
       views: [makeView("chat", { pluginName: "@elizaos/builtin" })],
       catalog: [
         makeApp({
-          name: "@elizaos/plugin-clawville",
-          displayName: "ClawVille",
+          name: "@elizaos/plugin-feed",
+          displayName: "Feed",
           category: "game",
-          heroImage: "/api/apps/hero/clawville",
+          heroImage: "/api/apps/hero/feed",
         }),
       ],
     });
     const chat = entries.find((e) => e.id === "chat");
-    const claw = entries.find((e) => e.appName === "@elizaos/plugin-clawville");
+    const claw = entries.find((e) => e.appName === "@elizaos/plugin-feed");
     expect(chat?.state).toBe("loaded");
     expect(chat?.kind).toBe("view");
     expect(claw?.state).toBe("available");
     expect(claw?.kind).toBe("app");
-    expect(claw?.label).toBe("ClawVille");
-    expect(claw?.heroUrl).toBe("/api/apps/hero/clawville");
+    expect(claw?.label).toBe("Feed");
+    expect(claw?.heroUrl).toBe("/api/apps/hero/feed");
     expect(claw?.hasHero).toBe(true);
   });
 
   it("dedupes: a catalog app whose plugin is already a loaded view is not shown twice", () => {
     const entries = merge({
-      views: [
-        makeView("clawville", { pluginName: "@elizaos/plugin-clawville" }),
-      ],
+      views: [makeView("feed", { pluginName: "@elizaos/plugin-feed" })],
       catalog: [
         makeApp({
-          name: "@elizaos/plugin-clawville",
-          displayName: "ClawVille",
+          name: "@elizaos/plugin-feed",
+          displayName: "Feed",
         }),
       ],
     });
@@ -155,7 +153,7 @@ describe("mergeViewCatalog", () => {
         makeView("spatial", { viewType: "xr" }),
         makeView("chat", { viewType: "gui" }),
       ],
-      catalog: [makeApp({ name: "@elizaos/plugin-clawville" })],
+      catalog: [makeApp({ name: "@elizaos/plugin-feed" })],
     });
     expect(entries.map((e) => e.id)).toEqual(["spatial"]);
   });

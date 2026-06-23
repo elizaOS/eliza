@@ -159,10 +159,6 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
     manifestPath: "plugins/plugin-app-control/src/index.ts",
   },
   {
-    pluginDir: "plugins/plugin-clawville",
-    manifestPath: "plugins/plugin-clawville/src/index.ts",
-  },
-  {
     pluginDir: "plugins/plugin-screenshare",
     manifestPath: "plugins/plugin-screenshare/src/index.ts",
   },

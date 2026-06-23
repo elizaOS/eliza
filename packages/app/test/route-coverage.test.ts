@@ -99,7 +99,6 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-vector-browser/src/plugin.ts",
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
-  "plugins/plugin-clawville/src/index.ts",
   "plugins/plugin-screenshare/src/index.ts",
   "plugins/plugin-social-alpha/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
@@ -144,7 +143,6 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
 
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/app-core": null,
-  "@elizaos/plugin-clawville": "plugins/plugin-clawville/src/index.ts",
   "@elizaos/plugin-companion/components/companion/CompanionShell":
     "plugins/plugin-companion/src/plugin.ts",
   "@elizaos/plugin-companion/components/companion/GlobalEmoteOverlay":
@@ -285,12 +283,6 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     path: "/views",
   },
   {
-    manifestPath: "plugins/plugin-clawville/src/index.ts",
-    id: "clawville",
-    viewType: "xr",
-    path: "/clawville",
-  },
-  {
     manifestPath: "plugins/plugin-screenshare/src/index.ts",
     id: "screenshare",
     viewType: "xr",
@@ -410,13 +402,6 @@ const ALL_MODALITIES: ReadonlyArray<"gui" | "tui" | "xr"> = [
 
 const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
   [
-    {
-      manifestPath: "plugins/plugin-clawville/src/index.ts",
-      id: "clawville",
-      modalities: ALL_MODALITIES,
-      path: "/clawville",
-      componentExport: "ClawvilleView",
-    },
     {
       manifestPath: "plugins/plugin-feed/src/index.ts",
       id: "feed",

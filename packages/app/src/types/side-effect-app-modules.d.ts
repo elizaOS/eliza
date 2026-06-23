@@ -1,5 +1,4 @@
 declare module "@elizaos/plugin-feed";
-declare module "@elizaos/plugin-clawville";
 declare module "@elizaos/plugin-trajectory-logger";
 declare module "@elizaos/plugin-shopify-ui";
 declare module "@elizaos/plugin-hyperliquid-app";

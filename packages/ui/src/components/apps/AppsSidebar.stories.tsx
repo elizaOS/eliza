@@ -50,11 +50,6 @@ const apps: RegistryAppInfo[] = [
     category: "game",
   }),
   makeApp({
-    name: "@elizaos/plugin-clawville",
-    displayName: "Clawville",
-    category: "game",
-  }),
-  makeApp({
     name: "@elizaos/plugin-hyperliquid-app",
     displayName: "Hyperliquid",
     category: "platform",

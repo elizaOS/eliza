@@ -251,7 +251,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
 
 const managerVisibleViewTileCases = [
   { viewId: "calendar", path: "/calendar" },
-  { viewId: "clawville", path: "/clawville" },
   { viewId: "companion", path: "/companion" },
   { viewId: "contacts", path: "/contacts" },
   { viewId: "documents", path: "/documents" },

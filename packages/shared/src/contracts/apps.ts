@@ -740,11 +740,6 @@ export const ELIZA_CURATED_APP_DEFINITIONS: readonly ElizaCuratedAppDefinition[]
       aliases: [],
     },
     {
-      slug: "clawville",
-      canonicalName: "@elizaos/plugin-clawville",
-      aliases: [],
-    },
-    {
       slug: "trajectory-logger",
       canonicalName: "@elizaos/plugin-trajectory-logger",
       aliases: [],

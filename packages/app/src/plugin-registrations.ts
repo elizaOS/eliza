@@ -10,10 +10,6 @@ export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[
       load: () => import("@elizaos/plugin-feed"),
     },
     {
-      key: "@elizaos/plugin-clawville",
-      load: () => import("@elizaos/plugin-clawville"),
-    },
-    {
       key: "@elizaos/plugin-trajectory-logger",
       load: () => import("@elizaos/plugin-trajectory-logger"),
     },

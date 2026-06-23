@@ -232,13 +232,6 @@ const PLUGIN_REGISTRY: Array<{
     requiredTerms: ["ViewManagerView", "useState"],
   },
   {
-    pluginDir: "plugins/plugin-clawville",
-    manifestPath: "plugins/plugin-clawville/src/index.ts",
-    xrComponentSrc:
-      "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx",
-    requiredTerms: ["ClawvilleOperatorSurface", "useState"],
-  },
-  {
     pluginDir: "plugins/plugin-screenshare",
     manifestPath: "plugins/plugin-screenshare/src/index.ts",
     xrComponentSrc:
@@ -312,11 +305,6 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
   "plugins/plugin-feed": {
     srcFile: "plugins/plugin-feed/src/ui/FeedOperatorSurface.interact.ts",
     capabilities: ["get-state", "refresh-agent-status"],
-  },
-  "plugins/plugin-clawville": {
-    srcFile:
-      "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.interact.ts",
-    capabilities: ["terminal-clawville-state", "terminal-clawville-command"],
   },
   "plugins/plugin-screenshare": {
     srcFile:
