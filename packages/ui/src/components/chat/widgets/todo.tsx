@@ -1,5 +1,5 @@
 import { ListTodo } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api";
 import type { WorkbenchTodo } from "../../../api/client-types-config";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
@@ -152,25 +152,40 @@ function TodoSidebarWidget({ slot }: ChatSidebarWidgetProps) {
   );
   const [todosLoading, setTodosLoading] = useState(false);
 
+  // The async todo fetch can resolve after the widget unmounts; guard the
+  // post-await state writes so a late `finally` doesn't setState on an
+  // unmounted component (which throws once the host environment is gone).
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   useEffect(() => {
     setTodos(dedupeTodos(workbench?.todos ?? []));
   }, [workbench?.todos]);
 
   const loadTodos = useCallback(
     async (silent = false) => {
-      if (!silent) {
+      if (!silent && mountedRef.current) {
         setTodosLoading(true);
       }
 
       try {
         const result = await client.listWorkbenchTodos();
-        setTodos(dedupeTodos(result.todos));
+        if (mountedRef.current) {
+          setTodos(dedupeTodos(result.todos));
+        }
       } catch {
-        if ((workbench?.todos?.length ?? 0) > 0) {
+        if (mountedRef.current && (workbench?.todos?.length ?? 0) > 0) {
           setTodos(dedupeTodos(workbench?.todos ?? []));
         }
       } finally {
-        setTodosLoading(false);
+        if (mountedRef.current) {
+          setTodosLoading(false);
+        }
       }
     },
     [workbench?.todos],
