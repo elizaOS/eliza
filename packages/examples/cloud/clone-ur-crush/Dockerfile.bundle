@@ -1,0 +1,34 @@
+# Showcase image for the Clone Ur Crush example app
+# (ghcr.io/elizaos/example-clone-ur-crush).
+#
+# Unlike ./edad (a single bundled Bun server), clone-ur-crush is a Next.js app,
+# so the showcase image ships Next's `output: "standalone"` bundle: a minimal
+# server.js with its node_modules traced in — no `next build` / `bun install`
+# in-image.
+#
+# Because next.config sets outputFileTracingRoot to the monorepo root, the
+# standalone server lands at the repo-relative path inside the bundle:
+#   .next/standalone/packages/examples/cloud/clone-ur-crush/server.js
+# Next does NOT copy .next/static or public into standalone — the workflow
+# injects them next to server.js before this image is built.
+#
+# Build context: packages/examples/cloud/clone-ur-crush/.next/standalone
+# (after `bun run build` + the static/public copy the workflow performs).
+FROM node:22-alpine
+
+WORKDIR /app
+
+# node_modules/, package.json, packages/.../server.js, and the injected
+# .next/static + public all come from the standalone bundle context.
+COPY . ./
+
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+ENV NODE_ENV=production
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/ || exit 1
+
+CMD ["node", "packages/examples/cloud/clone-ur-crush/server.js"]
