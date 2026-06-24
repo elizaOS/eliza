@@ -164,7 +164,15 @@ function proxyFrontendAliasRequest(
   if (!targetUrl) return null;
 
   const headers = new Headers(request.headers);
+  const connectingIp = request.headers.get("cf-connecting-ip");
   headers.delete("host");
+  headers.delete("forwarded");
+  headers.delete("x-forwarded-for");
+  headers.delete("x-real-ip");
+  if (connectingIp) {
+    headers.set("x-forwarded-for", connectingIp);
+    headers.set("x-real-ip", connectingIp);
+  }
   headers.set("x-forwarded-host", url.host);
   headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
 
