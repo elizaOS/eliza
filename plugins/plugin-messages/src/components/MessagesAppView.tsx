@@ -527,7 +527,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
         >
           {loading && threads.length === 0 ? (
             <div className="flex flex-1 items-center justify-center px-4 text-sm text-muted">
-              {t("messages.loading", { defaultValue: "Loading messages…" })}
+              {t("messages.loading", { defaultValue: "Loading" })}
             </div>
           ) : threads.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center px-6 pb-32 text-center">
@@ -535,7 +535,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                 <ChatBubblesMotif />
               </span>
               <h2 className="mt-5 text-base font-semibold text-txt">
-                {t("messages.empty.title", { defaultValue: "No messages" })}
+                {t("messages.empty.title", { defaultValue: "None" })}
               </h2>
               <p className="sr-only mt-1 max-w-xs text-sm text-muted">
                 {t("messages.empty.body", {

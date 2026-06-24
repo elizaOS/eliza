@@ -377,7 +377,7 @@ function ContactList({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-sm text-muted">
-        {t("contacts.loading", { defaultValue: "Loading contacts…" })}
+        {t("contacts.loading", { defaultValue: "Loading" })}
       </div>
     );
   }
@@ -392,7 +392,7 @@ function ContactList({
           <AddressBookMotif />
         </span>
         <div className="mt-2 text-base font-semibold text-txt">
-          {t("contacts.empty.title", { defaultValue: "No contacts" })}
+          {t("contacts.empty.title", { defaultValue: "None" })}
         </div>
         <p className="sr-only">
           {t("contacts.empty.body", {
@@ -590,7 +590,7 @@ function ContactDetail({ contact, t }: { contact: ContactSummary; t: TFn }) {
           <ContactPhoneRow value={value} contactId={contact.id} t={t} />
         )}
         emptyLabel={t("contacts.noPhones", {
-          defaultValue: "No phone numbers",
+          defaultValue: "None",
         })}
       />
 
@@ -607,7 +607,7 @@ function ContactDetail({ contact, t }: { contact: ContactSummary; t: TFn }) {
           </a>
         )}
         emptyLabel={t("contacts.noEmails", {
-          defaultValue: "No email addresses",
+          defaultValue: "None",
         })}
       />
 

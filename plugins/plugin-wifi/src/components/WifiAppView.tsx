@@ -339,9 +339,7 @@ export function WifiAppView(props: OverlayAppContext) {
           {sortedNetworks.length === 0 && !scanning ? (
             <div className="px-4 py-8 text-center">
               <WifiOff className="mx-auto h-9 w-9 text-muted" />
-              <div className="mt-3 text-sm font-medium text-txt">
-                No networks
-              </div>
+              <div className="mt-3 text-sm font-medium text-txt">None</div>
               <div className="sr-only">Check Wi-Fi and location access.</div>
               <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
                 <Button

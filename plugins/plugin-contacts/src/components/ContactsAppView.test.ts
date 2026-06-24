@@ -226,7 +226,7 @@ describe("ContactsAppView — list → detail navigation", () => {
     await renderView();
 
     fireEvent.click(screen.getByText("Grace Hopper")); // phone only, no email
-    expect(screen.getByText("No email addresses")).toBeTruthy();
+    expect(screen.getByText("None")).toBeTruthy();
     // The phone it does have renders as in-app Call/Text controls.
     expect(screen.getByText("+15550200")).toBeTruthy();
     expect(screen.getByTestId("contacts-detail-call")).toBeTruthy();
@@ -357,7 +357,7 @@ describe("ContactsAppView — vCard import", () => {
     const { container } = render(
       React.createElement(ContactsAppView, overlayCtx()),
     );
-    await screen.findByText("No contacts");
+    await screen.findByText("None");
     expect(screen.getByRole("button", { name: "Import vCard" })).toBeTruthy();
 
     const fileInput = container.querySelector(
@@ -399,7 +399,7 @@ describe("ContactsAppView — error + non-native gate", () => {
     platform.isNative = false;
     render(React.createElement(ContactsAppView, overlayCtx()));
 
-    await screen.findByText("No contacts");
+    await screen.findByText("None");
     expect(contactsBridge.listContacts).not.toHaveBeenCalled();
     expect(screen.queryByRole("alert")).toBeNull();
   });

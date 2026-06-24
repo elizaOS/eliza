@@ -184,7 +184,7 @@ function ContactsListBody({
       <Divider label="address book" />
       {snapshot.contacts.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          {snapshot.loading ? "Loading contacts" : "No contacts"}
+          {snapshot.loading ? "Loading" : "None"}
         </Text>
       ) : (
         <List gap={0}>
@@ -252,7 +252,7 @@ function ContactsDetailBody({
       <Divider label="phone" />
       {phones.length === 0 ? (
         <Text tone="muted" style="caption">
-          No phone numbers
+          None
         </Text>
       ) : (
         <List gap={0}>
@@ -283,7 +283,7 @@ function ContactsDetailBody({
       <Divider label="email" />
       {emails.length === 0 ? (
         <Text tone="muted" style="caption">
-          No email addresses
+          None
         </Text>
       ) : (
         <List gap={0}>

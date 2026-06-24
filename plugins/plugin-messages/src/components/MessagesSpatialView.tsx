@@ -125,7 +125,7 @@ export function MessagesSpatialView({
       <Divider label="threads" />
       {snapshot.threads.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No SMS threads
+          None
         </Text>
       ) : (
         <List gap={0}>
