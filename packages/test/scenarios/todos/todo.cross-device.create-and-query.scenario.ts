@@ -55,5 +55,16 @@ export default scenario({
       status: "success",
       minCount: 3,
     },
+    {
+      type: "definitionCountDelta",
+      title: "Pick up dry cleaning",
+      titleAliases: [
+        "pick up dry cleaning",
+        "Pick up dry cleaning tomorrow",
+        "Dry cleaning",
+      ],
+      delta: 1,
+      cadenceKind: "once",
+    },
   ],
 });
