@@ -33,7 +33,11 @@ again during teardown; it did not fail the run.
 
 ## Full verify
 
-Deferred until the branch is rebased and all issue-scope commits are staged.
+```bash
+bun run verify
+```
+
+Result: passed, 509 Turbo tasks.
 
 ## Evidence notes
 
