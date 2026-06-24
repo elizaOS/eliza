@@ -5,22 +5,14 @@
   "npmName": "@elizaos/plugin-lens",
   "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": [
-    "connector",
-    "social",
-    "messaging",
-    "lens"
-  ],
+  "tags": ["connector", "social", "messaging", "lens"],
   "config": {},
   "render": {
     "visible": true,
     "pinTo": [],
     "style": "card",
     "group": "connectors",
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://elizaos.ai",
@@ -29,7 +21,5 @@
   "dependsOn": [],
   "kind": "connector",
   "subtype": "social",
-  "channels": [
-    "lens"
-  ]
+  "channels": ["lens"]
 }

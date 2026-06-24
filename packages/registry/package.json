@@ -11,7 +11,11 @@
     "url": "git+https://github.com/elizaOS/eliza.git",
     "directory": "packages/registry"
   },
-  "keywords": ["elizaos", "registry", "plugins"],
+  "keywords": [
+    "elizaos",
+    "registry",
+    "plugins"
+  ],
   "engines": {
     "node": ">=24.0.0"
   },

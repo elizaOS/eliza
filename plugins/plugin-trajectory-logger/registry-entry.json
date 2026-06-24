@@ -21,10 +21,7 @@
     "icon": "TrendingDown",
     "group": "storage",
     "groupOrder": 10,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://elizaos.ai",

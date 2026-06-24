@@ -5,10 +5,7 @@
   "npmName": "@elizaos/plugin-screenshare",
   "version": "2.0.3-beta.2",
   "source": "bundled",
-  "tags": [
-    "device",
-    "screenshare"
-  ],
+  "tags": ["device", "screenshare"],
   "config": {},
   "render": {
     "visible": true,
@@ -16,9 +13,7 @@
     "style": "card",
     "icon": "ScreenShare",
     "group": "device",
-    "actions": [
-      "enable"
-    ]
+    "actions": ["enable"]
   },
   "resources": {
     "homepage": "https://elizaos.ai",
