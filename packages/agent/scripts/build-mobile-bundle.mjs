@@ -1838,7 +1838,11 @@ const manifest = {
     },
   },
   plugins: {
-    core: ["@elizaos/plugin-sql", "@elizaos/plugin-background-runner"],
+    core: [
+      "@elizaos/plugin-sql",
+      "@elizaos/plugin-background-runner",
+      "@elizaos/plugin-vision",
+    ],
     aospOnly: [
       "@elizaos/plugin-wifi",
       "@elizaos/plugin-contacts",

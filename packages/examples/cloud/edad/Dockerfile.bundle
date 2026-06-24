@@ -1,0 +1,37 @@
+# Showcase image for the EDAD example app (ghcr.io/elizaos/example-edad).
+#
+# Why this is separate from ./Dockerfile:
+#   The committed ./Dockerfile runs `bun run server.ts` directly, which imports
+#   `@elizaos/cloud-sdk` (a `workspace:*` dep). That only resolves inside the
+#   monorepo — a standalone build context has no workspace symlink and the
+#   SDK's `dist/` is gitignored, so a from-scratch image build of ./Dockerfile
+#   would crash at boot with "Cannot find package '@elizaos/cloud-sdk'".
+#
+#   The CI workflow (build-example-app-images.yml) sidesteps that: it runs
+#   `bun build server.ts` on the runner — where the workspace IS resolvable —
+#   producing a single self-contained `server.js` with the SDK inlined and zero
+#   remaining workspace dep. This Dockerfile just ships that bundle, so the
+#   build context is the tiny bundle dir (server.js + public/) instead of the
+#   29G monorepo. No `bun install` in-image, no workspace coupling.
+#
+# Build context: the ./dist bundle dir prepared by the workflow, containing:
+#   server.js   (self-contained, SDK inlined)
+#   public/     (static assets served by the bundle via import.meta.dir)
+ARG BUN_BASE=oven/bun:canary-alpine
+
+FROM ${BUN_BASE}
+
+WORKDIR /app
+
+COPY server.js ./
+COPY public ./public
+
+ENV PORT=3000
+ENV NODE_ENV=production
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/health || exit 1
+
+CMD ["bun", "run", "server.js"]

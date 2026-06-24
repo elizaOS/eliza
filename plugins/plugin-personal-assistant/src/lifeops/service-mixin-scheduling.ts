@@ -5,6 +5,10 @@ import {
   type LifeOpsSchedulingProposal,
 } from "@elizaos/shared";
 import {
+  contactEdgeId,
+  lifeOpsRelationshipFromEntity,
+} from "./relationships/mapping.js";
+import {
   inspectLifeOpsSchedule,
   type LifeOpsScheduleInspection,
   type LifeOpsScheduleSummary,
@@ -168,16 +172,21 @@ export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
       if (!negotiation.relationshipId) {
         return null;
       }
-      const relationship = await this.repository.getRelationship(
-        this.agentId(),
-        negotiation.relationshipId,
-      );
-      if (!relationship) {
+      const agentId = this.agentId();
+      const entityStore = await this.repository.entityStore(agentId);
+      const entity = await entityStore.get(negotiation.relationshipId);
+      if (!entity) {
         fail(
           404,
           `SCHEDULING_NO_COUNTERPARTY_CONTACT: relationship ${negotiation.relationshipId} not found for negotiation ${negotiation.id}`,
         );
       }
+      const relationshipStore =
+        await this.repository.relationshipStore(agentId);
+      const edge = await relationshipStore.get(
+        contactEdgeId(negotiation.relationshipId),
+      );
+      const relationship = lifeOpsRelationshipFromEntity(agentId, entity, edge);
 
       const primaryChannel = normalizeChannel(relationship.primaryChannel);
       const primaryHandle =

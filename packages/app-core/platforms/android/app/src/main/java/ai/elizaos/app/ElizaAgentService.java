@@ -1115,7 +1115,56 @@ public class ElizaAgentService extends Service {
 
     // ── Process lifecycle ────────────────────────────────────────────────
 
+    /**
+     * Start the in-process bionic inference host whenever the fused native lib
+     * AND a local voice bundle (kokoro) are present — independent of the LLM
+     * runtime mode and of whether the agent process spawns fresh or adopts a
+     * surviving one.
+     *
+     * <p>Previously the host was started ONLY inside {@link #startAgentProcess()}'s
+     * fresh-spawn {@code delegateToBionicHost} block, so after a process restart
+     * that adopts a surviving agent (or when the agent runs cloud-routed) the
+     * host never bound its abstract UDS, and {@code TalkMode}'s local Kokoro TTS
+     * silently fell back to the system (Google) TTS. The voice host serves Kokoro
+     * from {@code libelizainference} + the staged bundle and needs no LLM, so its
+     * lifecycle is decoupled from agent inference here.
+     *
+     * <p>{@link ElizaBionicInferenceServer#start()} is idempotent and never throws
+     * (it logs + returns on lib-load / socket-bind failure), so this is purely
+     * additive: worst case the host stays down and TalkMode falls back to system
+     * TTS exactly as before — it cannot affect agent startup.
+     */
+    private synchronized void ensureBionicVoiceHost() {
+        if (bionicInferenceServer != null) {
+            return;
+        }
+        File fusedLib = new File(nativeLibraryDir(), "libelizainference.so");
+        if (!fusedLib.isFile()) {
+            return;
+        }
+        File kokoroVoice = new File(getFilesDir(), "eliza-1/bundle/tts/kokoro");
+        if (!kokoroVoice.isDirectory()) {
+            return;
+        }
+        try {
+            String defaultBundleDir =
+                new File(getFilesDir(), "eliza-1/bundle").getAbsolutePath();
+            ElizaBionicInferenceServer host =
+                new ElizaBionicInferenceServer(BIONIC_INFERENCE_SOCKET_NAME, defaultBundleDir);
+            host.start();
+            bionicInferenceServer = host;
+            Log.i(TAG, "ensureBionicVoiceHost: local voice host started"
+                + " (kokoro bundle present, independent of LLM mode)");
+        } catch (Throwable t) {
+            Log.w(TAG, "ensureBionicVoiceHost: could not start local voice host", t);
+        }
+    }
+
     private void requestAgentStart(boolean restartFirst) {
+        // Bring up the local-voice (Kokoro TTS) bionic host on every service
+        // start, before the agent-already-running guards below — so it binds
+        // even when the agent is adopted rather than freshly spawned.
+        ensureBionicVoiceHost();
         synchronized (processLock) {
             if (!restartFirst && agentProcess != null && agentProcess.isAlive()) {
                 return;

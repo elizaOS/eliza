@@ -82,7 +82,12 @@ function isTruthyFlag(value: string | undefined): boolean {
 
 async function isCliInstalled(name: string): Promise<boolean> {
   try {
-    const proc = Bun.spawn(["which", name], {
+    // `which` does not exist on Windows — use `where`. Without this, every CLI
+    // probe (claude, gh, ollama, codex, gemini, gcloud …) spawns a missing
+    // binary, returns false, and the desktop app reports installed CLIs as
+    // absent on Windows.
+    const probe = process.platform === "win32" ? "where" : "which";
+    const proc = Bun.spawn([probe, name], {
       stdout: "pipe",
       stderr: "ignore",
     });

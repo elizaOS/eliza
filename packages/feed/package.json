@@ -123,8 +123,8 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.0",
     "@fal-ai/client": "^1.9.5",
-    "@intellectronica/ruler": "0.3.42",
-    "@playwright/test": "1.61.0",
+    "@intellectronica/ruler": "0.3.43",
+    "@playwright/test": "1.61.1",
     "@prb/math": "^4.1.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "24.12.0",

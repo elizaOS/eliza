@@ -1271,21 +1271,39 @@ function shouldAutoRecoverPgliteFailure(line: string): boolean {
  * Set ELIZA_AGENT_RECLAIM_STALE_PORT=1 to restore the old "take over default
  * port" behavior.
  */
+/**
+ * PIDs listening on `port`. POSIX uses `lsof`; Windows uses
+ * `Get-NetTCPConnection` (locale-independent and returns the owning PID
+ * directly — `lsof` does not exist on Windows, so the reclaim was a silent
+ * no-op there before).
+ */
+function listListeningPids(port: number): number[] {
+  const result =
+    process.platform === "win32"
+      ? Bun.spawnSync([
+          "powershell.exe",
+          "-NoProfile",
+          "-Command",
+          `(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue).OwningProcess`,
+        ])
+      : Bun.spawnSync(["lsof", "-ti", `tcp:${port}`]);
+  return new TextDecoder()
+    .decode(result.stdout)
+    .trim()
+    .split(/\r?\n/)
+    .map((p) => parseInt(p.trim(), 10))
+    .filter((n) => !Number.isNaN(n));
+}
+
 async function maybeReclaimPortWithSigkill(port: number): Promise<void> {
   const raw = process.env.ELIZA_AGENT_RECLAIM_STALE_PORT?.trim().toLowerCase();
   if (raw !== "1" && raw !== "true" && raw !== "yes") {
     return;
   }
   try {
-    const lsofResult = Bun.spawnSync(["lsof", "-ti", `tcp:${port}`]);
-    const pids = new TextDecoder()
-      .decode(lsofResult.stdout)
-      .trim()
-      .split("\n")
-      .filter(Boolean);
-    for (const pid of pids) {
-      const numPid = parseInt(pid, 10);
-      if (!Number.isNaN(numPid) && numPid !== process.pid) {
+    const pids = listListeningPids(port);
+    for (const numPid of pids) {
+      if (numPid !== process.pid) {
         diagnosticLog(
           `[Agent] Reclaim: killing process ${numPid} on port ${port} (ELIZA_AGENT_RECLAIM_STALE_PORT)`,
         );
@@ -1300,7 +1318,7 @@ async function maybeReclaimPortWithSigkill(port: number): Promise<void> {
       await new Promise((r) => setTimeout(r, 500));
     }
   } catch {
-    // lsof missing — ignore
+    // port-listing tool missing — ignore
   }
 }
 

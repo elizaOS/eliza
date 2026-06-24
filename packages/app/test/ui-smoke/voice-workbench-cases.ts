@@ -174,6 +174,8 @@ interface WorkbenchReport {
   turns: Array<{
     index: number;
     speaker: string;
+    expectedSpeakerLabel: string;
+    predictedSpeakerLabel: string | null;
     status: string;
     responded: boolean;
     expectRespond: boolean;
@@ -182,6 +184,14 @@ interface WorkbenchReport {
     error?: string;
     detail?: Record<string, unknown>;
   }>;
+  diarization: {
+    total: number;
+    der: number;
+    confusions: number;
+    misses: number;
+    maxDer: number;
+    passed: boolean;
+  };
 }
 
 /**
@@ -231,17 +241,38 @@ export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
     ).toBe("pass");
     expect(report.scenarioId).toBe(scenario.id);
     expect(report.turns).toHaveLength(scenario.turns.length);
+    expect(report.diarization.passed, "diarization DER gate").toBe(true);
+    expect(report.diarization.der, "diarization DER").toBeLessThanOrEqual(
+      report.diarization.maxDer,
+    );
 
-    // Every turn's respond decision must match ground truth and no turn failed.
+    // Every turn's respond + speaker-label decisions must match ground truth
+    // and no turn failed. This keeps the headful lane honest for #9147: a
+    // scenario that declares expectedSpeakerLabel must have it carried into the
+    // report and enforced by the player, not merely mentioned in comments.
     for (let i = 0; i < scenario.turns.length; i += 1) {
       const turn = report.turns[i];
       const expected = scenario.turns[i];
+      const expectedSpeakerLabel =
+        expected.expectedSpeakerLabel ?? expected.speaker;
       expect(turn.status, `turn ${i} (${turn.error ?? "no error"})`).toBe(
         "pass",
       );
       expect(turn.responded, `turn ${i} respond decision`).toBe(
         expected.expectRespond,
       );
+      expect(
+        turn.expectedSpeakerLabel,
+        `turn ${i} expected speaker label`,
+      ).toBe(expectedSpeakerLabel);
+      expect(
+        turn.predictedSpeakerLabel,
+        `turn ${i} predicted speaker label`,
+      ).toBe(expectedSpeakerLabel);
+      expect(
+        turn.detail?.speakerLabelOk,
+        `turn ${i} speaker label verdict`,
+      ).toBe(true);
     }
 
     // DOM mirror: per-turn elements carry the verdict for a non-JS scraper.
@@ -250,12 +281,24 @@ export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
       await expect(turnEl).toBeVisible();
       const status = await turnEl.getAttribute("data-status");
       expect(status, `turn ${i} DOM status`).toBe("pass");
+      await expect(turnEl).toHaveAttribute(
+        "data-expected-speaker-label",
+        scenario.turns[i].expectedSpeakerLabel ?? scenario.turns[i].speaker,
+      );
+      await expect(turnEl).toHaveAttribute(
+        "data-predicted-speaker-label",
+        scenario.turns[i].expectedSpeakerLabel ?? scenario.turns[i].speaker,
+      );
     }
 
     // Overall DOM verdict reflects the report.
     await expect(page.getByTestId("voice-workbench-overall")).toHaveAttribute(
       "data-overall",
       report.overall,
+    );
+    await expect(page.getByTestId("voice-workbench-overall")).toHaveAttribute(
+      "data-der",
+      String(report.diarization.der),
     );
   });
 }

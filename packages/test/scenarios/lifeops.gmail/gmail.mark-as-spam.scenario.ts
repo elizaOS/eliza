@@ -67,7 +67,7 @@ export default scenario({
     {
       type: "gmailBatchModify",
       body: {
-        addLabelIds: "MESSAGE",
+        addLabelIds: "SPAM",
       },
     },
     {

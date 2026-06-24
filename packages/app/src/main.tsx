@@ -4,6 +4,9 @@ import "@elizaos/ui/styles";
 // they load from the view catalog on iOS/Android (where DynamicViewLoader is
 // disabled). No-op off-device.
 import "./mobile-plugin-views";
+// Surfaces the renderer build stamp on window.__ELIZA_RENDERER_BUILD__ so the
+// running build's identity is observable in-app and assertable on-device (#9309).
+import "./renderer-build-stamp";
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { BackgroundRunner } from "@capacitor/background-runner";
@@ -112,6 +115,7 @@ import {
   loadUiThemeMode,
   resolveUiTheme,
 } from "@elizaos/ui/state/persistence";
+import { initScreenCaptureBridge } from "@elizaos/ui/state/screen-capture-bridge";
 import { ELIZA_DEFAULT_THEME } from "@elizaos/ui/themes";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
@@ -2545,9 +2549,19 @@ async function main(): Promise<void> {
     initializeCapacitorBridge();
     installIosLocalAgentNativeRequestBridge();
     installIosLocalAgentFetchBridge();
+    // Renderer-pulled screen-capture bridge (#9105): poll the agent for
+    // capture requests and serve frames via the Capacitor ScreenCapture
+    // plugin. Idempotent + native-gated; runs only after the local-agent
+    // fetch bridge is installed so `/api/...` routes resolve to the agent.
+    initScreenCaptureBridge();
   } else if (isAndroid) {
     initializeCapacitorBridge();
     installAndroidNativeAgentFetchBridge();
+    // Renderer-pulled screen-capture bridge (#9105): poll the agent for
+    // capture requests and serve frames via the Capacitor ScreenCapture
+    // plugin. Idempotent + native-gated; runs only after the Android fetch
+    // bridge is installed so `/api/...` routes resolve to the agent.
+    initScreenCaptureBridge();
     // Expose window.__diarizationPump (WebView→bun-agent PCM pump) and
     // window.__jniVoice (the in-process JNI voice pipeline — the four fused
     // voice classifiers running IN the bionic app process via the ElizaVoice

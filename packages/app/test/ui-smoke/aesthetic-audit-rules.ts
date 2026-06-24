@@ -75,7 +75,20 @@ export function parseRgb(
   ];
 }
 
-/** Bucket a CSS color into a coarse brand category. */
+/**
+ * Bucket a CSS color into a coarse brand category.
+ *
+ * Chromatic classification is HUE-based, not raw-channel-threshold based. The
+ * old `r>200 && g>90 && g<200 && b<100` orange test silently failed the SHIPPED
+ * brand accent `--accent-rgb: 255,88,0` (g=88 < 90 → fell through to neutral),
+ * so the no-blue / orange-hover detectors skipped the real brand button. Hue is
+ * the correct axis: orange/amber lives at ~10–50°, blue/indigo at ~200–270°,
+ * regardless of channel magnitudes.
+ *
+ * The blue test also runs BEFORE the low-luminance black fall-through, so a
+ * saturated dark navy (`rgb(10,10,40)`) is reported as a brand violation instead
+ * of escaping as "black".
+ */
 export function bucket(color: string): Bucket {
   const rgb = parseRgb(color);
   if (!rgb) return "neutral";
@@ -83,13 +96,30 @@ export function bucket(color: string): Bucket {
   if (a === 0) return "transparent";
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
+  const chroma = max - min;
   const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  const saturation = max === 0 ? 0 : (max - min) / max;
-  if (lum < 0.08) return "black";
+  const saturation = max === 0 ? 0 : chroma / max;
+
+  // Very light + near-achromatic = white.
   if (lum > 0.95 && saturation < 0.05) return "white";
-  if (saturation < 0.15) return "neutral";
-  if (r > 200 && g > 90 && g < 200 && b < 100) return "orange";
-  if (b > r + 20 && b > g + 10) return "blue";
+  // Achromatic (gray scale): neutral, or black only when genuinely dark.
+  if (saturation < 0.15) return lum < 0.08 ? "black" : "neutral";
+
+  // Chromatic — classify by hue (degrees, 0–360).
+  let hue = 0;
+  if (chroma > 0) {
+    if (max === r) hue = ((g - b) / chroma) % 6;
+    else if (max === g) hue = (b - r) / chroma + 2;
+    else hue = (r - g) / chroma + 4;
+    hue *= 60;
+    if (hue < 0) hue += 360;
+  }
+  // Blue band first, so a dark-but-saturated navy is caught (not bucketed black).
+  if (hue >= 200 && hue <= 270) return "blue";
+  // Orange / amber band — covers #ff5800 (~21°) through brand gold #f0b90b (~46°).
+  if (hue >= 10 && hue <= 50) return "orange";
+  // Any other chromatic color that is very dark reads as black.
+  if (lum < 0.08) return "black";
   return "neutral";
 }
 

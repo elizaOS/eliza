@@ -10,6 +10,26 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 const TASK_CREATE_ACTIONS = ["CREATE_TASK", "LIFE"];
+const TODO_TITLE = "do 50 push-ups";
+const BLOCKED_WEBSITES = ["x.com", "instagram.com", "reddit.com"];
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function actionResultWebsites(action: {
+  result?: { data?: unknown };
+}): string[] {
+  const data = toRecord(action.result?.data);
+  const websites = data?.websites;
+  return Array.isArray(websites)
+    ? websites
+        .filter((website): website is string => typeof website === "string")
+        .map((website) => website.toLowerCase())
+    : [];
+}
 
 export default scenario({
   lane: "live-only",
@@ -36,7 +56,7 @@ export default scenario({
       kind: "message",
       name: "create-todo",
       room: "main",
-      text: "Create a todo: 'do 50 push-ups'",
+      text: `Create a todo: '${TODO_TITLE}'`,
       assertTurn: (turn) => {
         const hit = turn.actionsCalled.find((a) =>
           TASK_CREATE_ACTIONS.includes(a.actionName),
@@ -66,6 +86,13 @@ export default scenario({
             turn.actionsCalled.map((a) => a.actionName).join(", ") || "(none)";
           return `Expected WEBSITE_BLOCK action but got: ${fired}`;
         }
+        const websites = actionResultWebsites(blocked);
+        const missing = BLOCKED_WEBSITES.filter(
+          (website) => !websites.includes(website),
+        );
+        if (missing.length > 0) {
+          return `Expected WEBSITE_BLOCK result data to include [${BLOCKED_WEBSITES.join(", ")}]; missing [${missing.join(", ")}]. Saw: ${JSON.stringify(blocked.result?.data ?? null)}`;
+        }
       },
     },
   ],
@@ -75,6 +102,12 @@ export default scenario({
       type: "actionCalled",
       actionName: "WEBSITE_BLOCK",
       minCount: 1,
+    },
+    {
+      type: "definitionCountDelta",
+      title: TODO_TITLE,
+      titleAliases: ["50 push-ups", "do 50 push ups", "Push-ups"],
+      delta: 1,
     },
   ],
 });
