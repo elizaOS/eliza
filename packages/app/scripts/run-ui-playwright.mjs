@@ -25,8 +25,8 @@ function resolvePlaywrightCommand() {
       ? ["playwright.exe", "playwright.cmd"]
       : ["playwright"];
   for (const dir of [
-    path.join(repoRoot, "node_modules", ".bin"),
     path.join(appDir, "node_modules", ".bin"),
+    path.join(repoRoot, "node_modules", ".bin"),
     path.join(workspaceRoot, "node_modules", ".bin"),
   ]) {
     for (const binaryName of binaryNames) {
