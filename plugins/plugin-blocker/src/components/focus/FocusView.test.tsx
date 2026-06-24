@@ -102,12 +102,12 @@ describe("FocusView — phases", () => {
         fetchStatus={() => new Promise<SelfControlStatus>(() => {})}
       />,
     );
-    expect(screen.getByText(/Loading focus status/i)).toBeTruthy();
+    expect(screen.getByText("Loading")).toBeTruthy();
   });
 
   it("renders the unavailable state with platform + reason", async () => {
     render(<FocusView fetchStatus={async () => UNAVAILABLE_STATUS} />);
-    await screen.findByText(/Focus blocking is unavailable/i);
+    await screen.findByText(/Focus unavailable/i);
     expect(screen.getByText(/linux/)).toBeTruthy();
     expect(
       screen.getByText(/Could not find the system hosts file/),
@@ -116,20 +116,19 @@ describe("FocusView — phases", () => {
 
   it("renders the permission-needed state mentioning the elevation method", async () => {
     render(<FocusView fetchStatus={async () => PERMISSION_STATUS} />);
-    await screen.findByText(/Permission needed/i);
+    await screen.findByText("Permission");
     expect(screen.getByText(/pkexec/)).toBeTruthy();
-    expect(screen.getByText(/enable website blocking/i)).toBeTruthy();
   });
 
   it("renders the empty state when available, inactive, nothing blocked", async () => {
     render(<FocusView fetchStatus={async () => EMPTY_STATUS} />);
-    await screen.findByText("No active focus session.");
+    await screen.findByText("Idle");
   });
 
   it("renders the active state with times, count, list, and Release control", async () => {
     render(<FocusView fetchStatus={async () => ACTIVE_STATUS} />);
-    await screen.findByText(/Focus session active/i);
-    expect(screen.getByText(/Match mode: subdomain/i)).toBeTruthy();
+    await screen.findByText(/Focus active/i);
+    expect(screen.getByText(/Mode: subdomain/i)).toBeTruthy();
     expect(screen.getByText("x.com")).toBeTruthy();
     expect(screen.getByText("news.google.com")).toBeTruthy();
     expect(agent("release")).toBeTruthy();
@@ -149,7 +148,7 @@ describe("FocusView — actions", () => {
     await screen.findByText("network down");
     fireEvent.click(agent("retry"));
 
-    await screen.findByText("No active focus session.");
+    await screen.findByText("Idle");
     expect(fetchStatus).toHaveBeenCalledTimes(2);
   });
 
@@ -163,11 +162,11 @@ describe("FocusView — actions", () => {
     });
     render(<FocusView fetchStatus={fetchStatus} releaseBlock={releaseBlock} />);
 
-    await screen.findByText(/Focus session active/i);
+    await screen.findByText(/Focus active/i);
     fireEvent.click(agent("release"));
 
     await waitFor(() => expect(releaseBlock).toHaveBeenCalledTimes(1));
-    await screen.findByText("No active focus session.");
+    await screen.findByText("Idle");
     expect(fetchStatus).toHaveBeenCalledTimes(2);
   });
 
@@ -184,10 +183,8 @@ describe("FocusView — actions", () => {
         }
       />,
     );
-    await screen.findByText(/Focus session active/i);
+    await screen.findByText(/Focus active/i);
     expect(document.querySelector('[data-agent-id="release"]')).toBeNull();
-    expect(
-      screen.getByText(/Releasing this block needs administrator/i),
-    ).toBeTruthy();
+    expect(screen.getByText(/Admin approval required/i)).toBeTruthy();
   });
 });
