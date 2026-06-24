@@ -220,13 +220,7 @@ export function OrdersPanel({
       ) : orders.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           <ShoppingCart className="h-8 w-8 text-muted/40" />
-          <div className="text-sm text-muted">
-            {activeTab === "unfulfilled"
-              ? "No unfulfilled orders."
-              : activeTab === "fulfilled"
-                ? "No fulfilled orders."
-                : "No orders found."}
-          </div>
+          <div className="text-sm text-muted">None</div>
         </div>
       ) : (
         <div className="space-y-1.5">

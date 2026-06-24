@@ -321,7 +321,6 @@ export function ProductsPanel({
   page,
   loading,
   error,
-  search,
   onPageChange,
 }: ProductsPanelProps) {
   const [createOpen, setCreateOpen] = useState(false);
@@ -386,9 +385,7 @@ export function ProductsPanel({
       ) : products.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           <Package className="h-8 w-8 text-muted/40" />
-          <div className="text-sm text-muted">
-            {search ? "No products match your search." : "No products found."}
-          </div>
+          <div className="text-sm text-muted">None</div>
         </div>
       ) : (
         <div className="space-y-1.5">

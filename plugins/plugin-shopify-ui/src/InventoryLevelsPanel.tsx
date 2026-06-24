@@ -221,11 +221,7 @@ export function InventoryLevelsPanel({
       ) : displayedItems.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           <Package className="h-8 w-8 text-muted/40" />
-          <div className="text-sm text-muted">
-            {selectedLocation === "all"
-              ? "No inventory items found."
-              : `No items at ${selectedLocation}.`}
-          </div>
+          <div className="text-sm text-muted">None</div>
         </div>
       ) : (
         <div className="space-y-1.5">

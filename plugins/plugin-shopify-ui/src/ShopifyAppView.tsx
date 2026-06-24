@@ -577,9 +577,7 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                           ))
                         )}
                         {orders.length === 0 && !ordersLoading ? (
-                          <p className="text-xs text-muted">
-                            No recent orders.
-                          </p>
+                          <p className="text-xs text-muted">None</p>
                         ) : null}
                       </div>
                     </div>

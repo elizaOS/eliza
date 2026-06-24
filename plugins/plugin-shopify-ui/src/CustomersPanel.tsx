@@ -66,7 +66,6 @@ export function CustomersPanel({
   total,
   loading,
   error,
-  search,
 }: CustomersPanelProps) {
   return (
     <div className="space-y-3">
@@ -97,9 +96,7 @@ export function CustomersPanel({
       ) : customers.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           <Users className="h-8 w-8 text-muted/40" />
-          <div className="text-sm text-muted">
-            {search ? "No customers match your search." : "No customers found."}
-          </div>
+          <div className="text-sm text-muted">None</div>
         </div>
       ) : (
         <div className="space-y-1.5">

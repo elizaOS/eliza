@@ -179,7 +179,7 @@ function OverviewSection({
       <Divider label="recent orders" />
       {snapshot.orders.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No recent orders
+          None
         </Text>
       ) : (
         <List gap={0} width="100%">
@@ -276,7 +276,7 @@ function ProductsSection({
       </Text>
       {snapshot.products.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No products
+          None
         </Text>
       ) : (
         <List gap={0} width="100%">
@@ -369,7 +369,7 @@ function OrdersSection({
       </Text>
       {snapshot.orders.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No orders
+          None
         </Text>
       ) : (
         <List gap={0} width="100%">
@@ -406,7 +406,7 @@ function InventorySection({ snapshot }: { snapshot: ShopifySnapshot }) {
       </Text>
       {snapshot.inventoryItems.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No inventory
+          None
         </Text>
       ) : (
         <List gap={0} width="100%">
@@ -464,7 +464,7 @@ function CustomersSection({
       </Text>
       {snapshot.customers.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No customers
+          None
         </Text>
       ) : (
         <List gap={0} width="100%">
