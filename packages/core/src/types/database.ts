@@ -13,6 +13,7 @@ import type {
 	PairingChannel,
 	PairingRequest,
 } from "./pairing";
+import type { AccessContext } from "./access-context";
 import type { JsonValue, Metadata, UUID } from "./primitives";
 import type { Task } from "./task";
 
@@ -925,6 +926,11 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		 * embeddings as before.
 		 */
 		includeEmbedding?: boolean;
+		/**
+		 * Requester identity to scope retrieval to. When omitted, no
+		 * access-context filtering is applied (single-tenant behavior).
+		 */
+		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
 
 	getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>;
@@ -933,6 +939,11 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		tableName: string;
 		roomIds: UUID[];
 		limit?: number;
+		/**
+		 * Requester identity to scope retrieval to. When omitted, no
+		 * access-context filtering is applied (single-tenant behavior).
+		 */
+		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
 
 	getCachedEmbeddings(params: {
@@ -1013,6 +1024,11 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		roomId?: UUID;
 		worldId?: UUID;
 		entityId?: UUID;
+		/**
+		 * Requester identity to scope retrieval to. When omitted, no
+		 * access-context filtering is applied (single-tenant behavior).
+		 */
+		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
 
 	// ── Memory CRUD (batch-only) ─────────────────────────────────────────
