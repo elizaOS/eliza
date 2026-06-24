@@ -78,6 +78,7 @@ import {
 } from "./pipeline-impls";
 import type { VoiceProfileStore } from "./profile-store";
 import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
+import { AgentSelfVoiceImprint } from "./self-voice-imprint";
 import {
 	type MmapRegionHandle,
 	SharedResourceRegistry,
@@ -960,6 +961,7 @@ export class EngineVoiceBridge {
 		asrAvailable: boolean,
 		phraseCache: PhraseCache,
 		attributionPipeline: VoiceAttributionPipeline | null = null,
+		private readonly selfVoiceImprint: AgentSelfVoiceImprint | null = null,
 		cancellationCoordinator: VoiceCancellationCoordinator | null = null,
 		optimisticGenerationPolicy: OptimisticGenerationPolicy | null = null,
 		eventRuntime: IAgentRuntime | null = null,
@@ -1147,12 +1149,30 @@ export class EngineVoiceBridge {
 		};
 
 		const sinkOverride = opts.sink;
+		let selfVoiceImprint: AgentSelfVoiceImprint | null = null;
+		const schedulerEvents: SchedulerEvents = {
+			...(opts.events ?? {}),
+			onAudio(chunk) {
+				opts.events?.onAudio?.(chunk);
+				if (!selfVoiceImprint) return;
+				void selfVoiceImprint
+					.observeAudio(chunk.pcm, chunk.sampleRate)
+					.catch((err: unknown) => {
+						logger.warn(
+							{
+								error: err instanceof Error ? err.message : String(err),
+							},
+							"[voice-bridge] agent self-voice imprint update failed",
+						);
+					});
+			},
+		};
 		const scheduler = new VoiceScheduler(
 			config,
 			sinkOverride
 				? { backend, sink: sinkOverride, phraseCache }
 				: { backend, phraseCache },
-			opts.events ?? {},
+			schedulerEvents,
 		);
 
 		// Wire the voice lifecycle. The lifecycle starts in `voice-off` —
@@ -1222,6 +1242,9 @@ export class EngineVoiceBridge {
 					await resolvedEncoder?.dispose();
 				},
 			};
+			selfVoiceImprint = new AgentSelfVoiceImprint({
+				encoder: lazyEncoder,
+			});
 			// Fused diarizer (optional). When the build does not advertise the
 			// diarizer ABI, attribution runs without it — a single-speaker turn
 			// collapses to one segment (the attribution-pipeline localSpeakerId=0
@@ -1279,6 +1302,7 @@ export class EngineVoiceBridge {
 			asrAvailable,
 			phraseCache,
 			attributionPipeline,
+			selfVoiceImprint,
 			wiring?.coordinator ?? null,
 			wiring?.policy ?? null,
 			isEventRuntime(opts.runtime) ? opts.runtime : null,
@@ -1373,6 +1397,7 @@ export class EngineVoiceBridge {
 			false, // ASR is not served from this path
 			phraseCache,
 			null, // no profile store on Kokoro-only
+			null, // no self-voice imprint without live attribution
 			wiring?.coordinator ?? null,
 			wiring?.policy ?? null,
 		);
@@ -1897,11 +1922,19 @@ export class EngineVoiceBridge {
 						const { handleLiveVoiceAttribution } = await import(
 							"../../runtime/voice-entity-binding.js"
 						);
-						await handleLiveVoiceAttribution(
-							eventRuntime,
-							output,
-							resolveLiveAttributionOptions(liveAttribution, transcript),
-						);
+						const selfVoiceSimilarity =
+							output.observation?.embedding && this.selfVoiceImprint
+								? await this.selfVoiceImprint.similarity(
+										output.observation.embedding,
+									)
+								: null;
+						await handleLiveVoiceAttribution(eventRuntime, output, {
+							...resolveLiveAttributionOptions(liveAttribution, transcript),
+							agentSpeaking: this.scheduler.bargeIn.isAgentSpeaking,
+							...(typeof selfVoiceSimilarity === "number"
+								? { selfVoiceSimilarity }
+								: {}),
+						});
 					}
 					onAttribution?.(output);
 				})
