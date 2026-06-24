@@ -814,7 +814,7 @@ function createImageDescriptionHandler() {
 			markEliza1VisionHandlerPresent(runtime);
 			const modelKeyCandidate =
 				typeof params === "object"
-					? (params as unknown as { modelKey?: unknown }).modelKey
+					? (params as { modelKey?: unknown }).modelKey
 					: undefined;
 			const modelKey =
 				typeof modelKeyCandidate === "string" && modelKeyCandidate

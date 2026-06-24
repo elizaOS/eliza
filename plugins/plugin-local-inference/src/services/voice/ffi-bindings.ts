@@ -1158,8 +1158,8 @@ interface BunFfiModule {
 		byteOffset?: number,
 		byteLength?: number,
 	): ArrayBuffer;
-	JSCallback: new (
-		fn: (...args: never[]) => unknown,
+	JSCallback: new <F extends (...args: never[]) => unknown>(
+		fn: F,
 		def: { args: number[]; returns: number },
 	) => BunFfiJSCallback;
 }
@@ -2113,7 +2113,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			const speakerArg = cstr(speakerPresetId);
 			// (pcm: ptr, n_samples: usize, is_final: i32, user_data: ptr) -> i32
 			const cb = new ffi.JSCallback(
-				((pcmPtr: bigint, nSamples: bigint, isFinal: number) => {
+				(pcmPtr: bigint, nSamples: bigint, isFinal: number) => {
 					const n = Number(nSamples);
 					// Bun delivers the C pointer as a bigint; copy the floats out
 					// before returning — the buffer is the library's, valid only
@@ -2124,7 +2124,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 							: new Float32Array(0);
 					const requestCancel = onChunk({ pcm, isFinal: isFinal !== 0 });
 					return requestCancel === true ? 1 : 0;
-				}) as unknown as (...args: never[]) => unknown,
+				},
 				{
 					args: [T.ptr, T.usize, T.i32, T.ptr],
 					returns: T.i32,
@@ -2260,9 +2260,9 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			}
 			// (ev: ptr to EliVerifierEvent, user_data: ptr) -> void
 			const cb = new ffi.JSCallback(
-				((evPtr: bigint) => {
+				(evPtr: bigint) => {
 					cbFn(readVerifierEvent(evPtr, ffi));
-				}) as unknown as (...args: never[]) => unknown,
+				},
 				{ args: [T.ptr, T.ptr], returns: T.void },
 			);
 			const rc = loadedLib.symbols.eliza_inference_set_verifier_callback(
@@ -3262,7 +3262,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		if (typeof value === "bigint") return value;
 		if (typeof value === "number") return BigInt(value);
 		// Bun returns its internal pointer object that coerces to bigint.
-		return BigInt(value as unknown as number);
+		return BigInt(value as number);
 	}
 
 	/**

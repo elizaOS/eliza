@@ -37,7 +37,7 @@ let session: LiveDiarizationSession | null = null;
 
 /** Lazily own one session per agent process, bound to the live runtime. */
 function getSession(state: CompatRuntimeState): LiveDiarizationSession | null {
-	const runtime = state.current as unknown as RuntimeEventSink | null;
+	const runtime = state.current as RuntimeEventSink | null;
 	if (!runtime || typeof runtime.emitEvent !== "function") return null;
 	if (!session) session = new LiveDiarizationSession(runtime);
 	return session;

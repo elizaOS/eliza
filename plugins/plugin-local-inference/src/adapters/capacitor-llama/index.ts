@@ -294,12 +294,12 @@ async function tryLocalInferenceModel<T>(
 function buildNativeResult(
 	result: LocalGenerationResult,
 ): LocalNativeTextModelResult {
-	const nativeResult = {
+	const nativeResult = Object.assign(new String(result.text), {
 		text: result.text,
 		toolCalls: result.toolCalls,
 		...(result.finishReason ? { finishReason: result.finishReason } : {}),
-	};
-	return nativeResult as unknown as LocalNativeTextModelResult;
+	});
+	return nativeResult as LocalNativeTextModelResult;
 }
 
 function getLocalModelLabel(
