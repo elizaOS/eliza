@@ -26,7 +26,8 @@ import type {
 	GeneratedVoiceCorpus,
 } from "./corpus-generator";
 import {
-	scoreDiarization,
+	type DiarizationTurnSample,
+	scoreDiarizationTimeline,
 	scoreEchoRejection,
 	scoreEntityExtraction,
 	scoreEotDecision,
@@ -191,10 +192,7 @@ export async function runVoiceScenarioHeadless(
 		expected: boolean;
 		latencyMs?: number;
 	}> = [];
-	const diarSamples: Array<{
-		predictedLabel: string | null;
-		expectedLabel: string;
-	}> = [];
+	const diarTurns: DiarizationTurnSample[] = [];
 	const respondSamples: Array<{ responded: boolean; expectRespond: boolean }> =
 		[];
 	const voiceEntitySamples: Array<{
@@ -256,10 +254,17 @@ export async function runVoiceScenarioHeadless(
 				? { latencyMs: obs.eotLatencyMs }
 				: {}),
 		});
-		diarSamples.push({
-			predictedLabel: obs.predictedSpeakerLabel,
-			expectedLabel: label.speaker,
-		});
+		// Diarization scores REAL speaker turns only — an agent-echo turn is the
+		// agent's own voice bleeding back, not a speaker to attribute, so it is
+		// handled by the echo-rejection scorer instead.
+		if (!label.isAgentEcho) {
+			diarTurns.push({
+				predictedLabel: obs.predictedSpeakerLabel,
+				expectedLabel: label.speaker,
+				startMs: (label.speechStartSample / corpus.sampleRate) * 1000,
+				endMs: (label.speechEndSample / corpus.sampleRate) * 1000,
+			});
+		}
 		respondSamples.push({
 			responded: obs.responded,
 			expectRespond: label.expectRespond,
@@ -303,11 +308,15 @@ export async function runVoiceScenarioHeadless(
 				: {}),
 		}),
 	);
-	cases.push(
-		scoreDiarization(diarSamples, {
-			...(assertions.maxDer !== undefined ? { maxDer: assertions.maxDer } : {}),
-		}),
-	);
+	if (diarTurns.length > 0) {
+		cases.push(
+			scoreDiarizationTimeline(diarTurns, {
+				...(assertions.maxDer !== undefined
+					? { maxDer: assertions.maxDer }
+					: {}),
+			}),
+		);
+	}
 	cases.push(
 		scoreRespondDecision(respondSamples, {
 			...(assertions.minRespondAccuracy !== undefined

@@ -13,6 +13,10 @@
 export { normalizeWerText, wordErrorRate } from "@elizaos/shared/voice-wer";
 
 import { normalizeWerText, wordErrorRate } from "@elizaos/shared/voice-wer";
+import {
+	computeDiarizationErrorRate,
+	type DiarizationSegment,
+} from "./diarization-error-rate";
 import { percentile, round1, round4 } from "./metric-math";
 
 export type VoiceE2eHarnessErrorCode =
@@ -570,6 +574,66 @@ export function scoreDiarization(
 		misses,
 		maxDer,
 		passed: total > 0 && der <= maxDer,
+	};
+}
+
+/** One scored turn for timeline DER: its speech span + predicted/true speaker. */
+export interface DiarizationTurnSample {
+	/** Ground-truth speaker label (the diarization reference). */
+	expectedLabel: string;
+	/** Predicted speaker label from a real attributor, or null when it missed. */
+	predictedLabel: string | null;
+	/** Speech-region start of this turn (ms into the stream). */
+	startMs: number;
+	/** Speech-region end of this turn (ms; must be ≥ startMs). */
+	endMs: number;
+}
+
+/**
+ * Score diarization with the frame-based, label-agnostic {@link
+ * computeDiarizationErrorRate} (#9147) rather than a per-turn string compare.
+ * The predicted labels are an arbitrary cluster-id space (the attributor never
+ * knows the ground-truth names) — DER finds the optimal cluster→speaker mapping,
+ * so a correct partition scores 0 no matter how clusters are named, and a merged
+ * or swapped speaker shows up as real error. `confusions`/`misses` are turn-level
+ * tallies derived from that optimal mapping, for the report.
+ */
+export function scoreDiarizationTimeline(
+	turns: ReadonlyArray<DiarizationTurnSample>,
+	opts: { maxDer?: number } = {},
+): DiarizationResult {
+	const maxDer = opts.maxDer ?? 0.2;
+	const reference: DiarizationSegment[] = turns.map((t) => ({
+		speaker: t.expectedLabel,
+		startMs: t.startMs,
+		endMs: t.endMs,
+	}));
+	const hypothesis: DiarizationSegment[] = turns
+		.filter((t) => t.predictedLabel !== null)
+		.map((t) => ({
+			speaker: t.predictedLabel as string,
+			startMs: t.startMs,
+			endMs: t.endMs,
+		}));
+	const result = computeDiarizationErrorRate(reference, hypothesis);
+	// Turn-level tallies under the optimal mapping (the report's headline is `der`).
+	let confusions = 0;
+	let misses = 0;
+	for (const t of turns) {
+		if (t.predictedLabel === null) {
+			misses += 1;
+		} else if (result.mapping[t.predictedLabel] !== t.expectedLabel) {
+			confusions += 1;
+		}
+	}
+	return {
+		kind: "diarization",
+		total: turns.length,
+		der: round4(result.der),
+		confusions,
+		misses,
+		maxDer,
+		passed: turns.length > 0 && result.der <= maxDer,
 	};
 }
 

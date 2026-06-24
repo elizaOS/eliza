@@ -21,7 +21,12 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { makeSpeechWithSilenceFixture } from "./__test-helpers__/synthetic-speech";
+import {
+	AGENT_VOICE_TIMBRE,
+	makeSpeechWithSilenceFixture,
+	type SpeakerTimbre,
+	speakerTimbreForIndex,
+} from "./__test-helpers__/synthetic-speech";
 import {
 	type AugmentationSpec,
 	augmentPcm,
@@ -207,6 +212,15 @@ export async function generateVoiceCorpus(
 	const participantByLabel = new Map(
 		scenario.participants.map((p) => [p.label, p]),
 	);
+	// Each participant gets a distinct voice colour, spread evenly across the
+	// timbre range so a blind acoustic diarizer can tell co-present speakers apart
+	// from the audio alone (#9427).
+	const timbreByLabel = new Map<string, SpeakerTimbre>(
+		scenario.participants.map((p, i) => [
+			p.label,
+			speakerTimbreForIndex(i, scenario.participants.length),
+		]),
+	);
 
 	const segments: Float32Array[] = [];
 	const labels: CorpusTurnLabel[] = [];
@@ -248,12 +262,19 @@ export async function generateVoiceCorpus(
 				MAX_SPEECH_SEC,
 				Math.max(MIN_SPEECH_SEC, text.length / charsPerSecond),
 			);
+			// An agent-echo turn is the agent's OWN TTS bleeding back through the
+			// mic, so it carries the agent's voice — not the labelled speaker's. Real
+			// speaker turns get their distinct per-speaker timbre (#9427).
+			const timbre = turn.isAgentEcho
+				? AGENT_VOICE_TIMBRE
+				: (timbreByLabel.get(turn.speaker) ?? AGENT_VOICE_TIMBRE);
 			const fixture = makeSpeechWithSilenceFixture({
 				sampleRate,
 				leadSilenceSec: SYNTHETIC_LEAD_SILENCE_SEC,
 				speechSec,
 				tailSilenceSec: SYNTHETIC_TAIL_SILENCE_SEC,
-				seed: labelSeed(turn.speaker),
+				seed: labelSeed(turn.isAgentEcho ? "__agent__" : turn.speaker),
+				timbre,
 			});
 			speech = fixture.pcm;
 			speechStartOffset = fixture.speechStartSample;

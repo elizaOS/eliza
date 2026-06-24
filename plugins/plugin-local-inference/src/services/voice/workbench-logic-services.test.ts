@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { generateVoiceCorpus } from "./corpus-generator";
+import type { VoiceScenario } from "./voice-scenario";
 import { buildVoiceWorkbenchReport } from "./voice-workbench-report";
 import { runVoiceScenarioHeadless } from "./workbench-headless-runner";
 import { realDecisionLogicServices } from "./workbench-logic-services";
@@ -21,6 +22,85 @@ describe("realDecisionLogicServices over the built-in scenario matrix", () => {
 		).toEqual([]);
 		expect(report.overall).toBe("pass");
 		expect(report.scenariosRan).toBe(VOICE_WORKBENCH_SCENARIOS.length);
+	});
+
+	it("attributes the multi-speaker scenarios from AUDIO, scoring DER 0", async () => {
+		// The real diarization gate: blind acoustic clustering must partition the
+		// distinct voices correctly — proving `predictedSpeakerLabel` is derived,
+		// not copied from the ground-truth label (#9427).
+		const services = realDecisionLogicServices();
+		for (const id of ["multi-voice-greeting", "multi-speaker-name-capture"]) {
+			const scenario = VOICE_WORKBENCH_SCENARIOS.find((s) => s.id === id);
+			if (!scenario) throw new Error(`scenario ${id} missing`);
+			const corpus = await generateVoiceCorpus(scenario);
+			const run = await runVoiceScenarioHeadless({
+				scenario,
+				corpus,
+				services,
+			});
+			const diar = run.cases.find((c) => c.kind === "diarization");
+			expect(diar, `${id} has a diarization case`).toBeDefined();
+			expect(diar?.kind === "diarization" && diar.der).toBe(0);
+			expect(diar?.passed).toBe(true);
+		}
+	});
+
+	it("the DER gate FAILS on a real misattribution — not a tautology (#9427)", async () => {
+		// Two participants, SAME words so their speech regions are the same length.
+		const scenario: VoiceScenario = {
+			id: "diar-divergence-probe",
+			classes: ["diarization", "multi-speaker"],
+			participants: [
+				{ label: "alice", entityId: "entity-alice" },
+				{ label: "bob", entityId: "entity-bob" },
+			],
+			turns: [
+				{
+					speaker: "alice",
+					text: "eliza what time is it now",
+					expectRespond: true,
+				},
+				{
+					speaker: "bob",
+					text: "eliza what time is it now",
+					expectRespond: true,
+				},
+			],
+			assertions: { maxDer: 0.2 },
+		};
+		const corpus = await generateVoiceCorpus(scenario);
+
+		// Honest: the two distinct voices cluster apart → DER 0, gate passes.
+		const honest = await runVoiceScenarioHeadless({
+			scenario,
+			corpus,
+			services: realDecisionLogicServices(),
+		});
+		const honestDer = honest.cases.find((c) => c.kind === "diarization");
+		expect(honestDer?.der).toBe(0);
+		expect(honestDer?.passed).toBe(true);
+
+		// Tamper ONLY the audio: overwrite bob's speech with alice's voice. Ground
+		// truth still labels the turns alice/bob, so a tautological gate would keep
+		// passing — but the real acoustic clusterer hears one voice, merges the
+		// turns, and the DER gate trips.
+		const [aliceTurn, bobTurn] = corpus.groundTruth.turns;
+		const tamperedPcm = corpus.pcm.slice();
+		tamperedPcm.set(
+			corpus.pcm.subarray(
+				aliceTurn.speechStartSample,
+				aliceTurn.speechEndSample,
+			),
+			bobTurn.speechStartSample,
+		);
+		const tampered = await runVoiceScenarioHeadless({
+			scenario,
+			corpus: { ...corpus, pcm: tamperedPcm },
+			services: realDecisionLogicServices(),
+		});
+		const tamperedDer = tampered.cases.find((c) => c.kind === "diarization");
+		expect(tamperedDer?.der).toBeGreaterThan(0.2);
+		expect(tamperedDer?.passed).toBe(false);
 	});
 
 	it("genuinely SUPPRESSES a confident bystander (not just echoing ground truth)", async () => {

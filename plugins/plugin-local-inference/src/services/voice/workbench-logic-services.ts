@@ -1,5 +1,5 @@
 /**
- * Voice Workbench real-decision-logic services adapter (#8785).
+ * Voice Workbench real-decision-logic services adapter (#8785, #9427).
  *
  * The ground-truth mock (`groundTruthMockServices`) echoes the corpus labels —
  * it proves the runner → scorers → report wiring, but it can never catch a
@@ -9,15 +9,21 @@
  *   - end-of-turn:        `scoreEndOfTurnHeuristic` (`@elizaos/shared/voice-eot`)
  *   - respond / echo /    `buildVoiceTurnSignal` (`@elizaos/shared/voice/respond-gate`)
  *     bystander / wake-word   — the SAME gate the UI client ships
+ *   - diarization:        `OnlineSpeakerClusterer` clusters each turn BY ITS
+ *                         AUDIO (blind to the ground-truth label), so the DER
+ *                         gate measures a real attribution and can actually fail
+ *                         on a misattribution (#9427).
+ *   - acoustic self-voice: `selfVoiceSimilarity` measures the turn audio against
+ *                         the agent's TTS imprint — the real value the echo gate
+ *                         consumes (no more hardcoded `0.9`).
  *   - name extraction:    the inline patterns below (mirrors IDENTIFY_SPEAKER)
  *
  * — so the workbench catches a regression in the gate the moment it lands. It is
- * CI-runnable with NO models or network: it makes the perfect-ASR /
- * perfect-diarization assumption (transcript + speaker label come from ground
- * truth), so it does NOT measure ASR WER, diarization DER, EOT latency, or
- * acoustic speaker verification — those need the real model lane. What it DOES
- * measure is genuine: EOT decisions, the respond/echo/bystander/wake-word
- * decision, and name extraction.
+ * CI-runnable with NO models or network: it keeps only the perfect-ASR
+ * assumption (the transcript comes from ground truth), so it does NOT measure
+ * ASR WER or EOT latency — those need the real model lane. Everything else is
+ * genuine: EOT decisions, respond/echo/bystander/wake-word, blind speaker
+ * clustering, acoustic self-voice, and name extraction.
  */
 
 import {
@@ -26,6 +32,10 @@ import {
 } from "@elizaos/shared/voice/owner-inference";
 import { buildVoiceTurnSignal } from "@elizaos/shared/voice/respond-gate";
 import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
+import {
+	OnlineSpeakerClusterer,
+	selfVoiceSimilarity,
+} from "./acoustic-speaker-attribution";
 import type { CorpusGroundTruth } from "./corpus-generator";
 import type {
 	VoiceTurnObservation,
@@ -75,21 +85,31 @@ export function realDecisionLogicServices(): VoiceWorkbenchServices {
 	let scenarioId: string | null = null;
 	let lastAgentReply: string | undefined;
 	let ownerObservations: OwnerObservation[] = [];
+	let clusterer = new OnlineSpeakerClusterer();
 
 	return {
-		async observeTurn({ label, groundTruth }): Promise<VoiceTurnObservation> {
-			// New scenario → drop carried-over reply state (the runner reuses one
-			// services instance across the whole matrix).
+		async observeTurn({
+			audio,
+			sampleRate,
+			label,
+			groundTruth,
+		}): Promise<VoiceTurnObservation> {
+			// New scenario → drop carried-over reply state and start a fresh speaker
+			// clustering (the runner reuses one services instance across the matrix).
 			if (groundTruth.scenarioId !== scenarioId || label.index === 0) {
 				scenarioId = groundTruth.scenarioId;
 				lastAgentReply = undefined;
 				ownerObservations = [];
+				clusterer = new OnlineSpeakerClusterer();
 			}
 
-			// Perfect-ASR / perfect-diarization assumption: the transcript and the
-			// speaker identity come from ground truth so the DECISION logic — not
-			// the acoustic models — is what we score here.
+			// Perfect-ASR assumption: the transcript comes from ground truth so the
+			// DECISION logic — not a real ASR model — is what we score here.
 			const transcript = label.referenceTranscript;
+			// Diarization + acoustic self-voice are measured for real, from THIS
+			// turn's audio — never from the ground-truth speaker label (#9427).
+			const predictedSpeakerLabel = clusterer.assignAudio(audio, sampleRate);
+			const selfVoiceSim = selfVoiceSimilarity(audio, sampleRate);
 			const wakeWordActive = WAKE_WORD.test(transcript);
 			const known = knownSpeakerIds(groundTruth);
 
@@ -104,13 +124,12 @@ export function realDecisionLogicServices(): VoiceWorkbenchServices {
 				},
 				wakeWordActive,
 				knownSpeakerEntityIds: known,
-				// Explicitly de-scoped fixture (#9427): in this headless lane no
-				// real speaker-embedding similarity is computed, so an agent-echo
-				// turn is fed a fixed above-threshold value purely to exercise the
-				// downstream self-voice gate's PLUMBING (that it consumes the
-				// signal), NOT to validate acoustic self-voice matching — that
-				// needs a live speaker encoder and belongs to the real-audio lane.
-				...(label.isAgentEcho ? { selfVoiceSimilarity: 0.9 } : {}),
+				// Real acoustic self-voice signal, measured every turn against the
+				// agent's TTS imprint. It clears the gate's threshold only when the
+				// audio actually IS the agent (an echo bleeding back) — this is what
+				// catches a mis-transcribed echo the transcript word-overlap guard
+				// alone would miss, and it is a measurement now, not a constant.
+				selfVoiceSimilarity: selfVoiceSim,
 			});
 			// The server gate suppresses unless `nextSpeaker === "agent"`, which folds
 			// in BOTH the respond/bystander/echo decision AND the EOT gate (a turn that
@@ -152,7 +171,7 @@ export function realDecisionLogicServices(): VoiceWorkbenchServices {
 
 			return {
 				hypothesisTranscript: transcript,
-				predictedSpeakerLabel: label.speaker,
+				predictedSpeakerLabel,
 				eotDecided,
 				responded,
 				inferredEntities,
