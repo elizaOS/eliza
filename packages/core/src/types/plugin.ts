@@ -424,17 +424,7 @@ export interface PluginWidgetDeclaration {
 	/** Owning plugin ID. */
 	pluginId: string;
 	/** Where this widget renders. */
-	slot:
-		| "chat-sidebar"
-		| "chat-inline"
-		| "wallet"
-		| "browser"
-		| "heartbeats"
-		| "character"
-		| "settings"
-		| "nav-page"
-		| "automations"
-		| "home";
+	slot: "chat-sidebar" | "character" | "nav-page" | "home";
 	/** Human-readable label. */
 	label: string;
 	/** Lucide icon name. */
