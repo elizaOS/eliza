@@ -149,6 +149,7 @@ export type ScenarioTurn = {
   path?: string;
   body?: unknown;
   expectedStatus?: number;
+  durationMs?: number;
   worker?: string;
   now?: string;
   options?: Record<string, unknown>;

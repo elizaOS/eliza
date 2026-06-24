@@ -28,6 +28,96 @@ function createRuntime(
   } as unknown as AgentRuntime;
 }
 
+describe("scenario executor wait turns", () => {
+  it("waits for the requested duration without sending a message", async () => {
+    const handleMessage = vi.fn();
+    const runtime = {
+      ...createRuntime([], {
+        useModel: vi.fn() as AgentRuntime["useModel"],
+      }),
+      messageService: { handleMessage },
+    } as unknown as AgentRuntime;
+
+    const report = await runScenario(
+      {
+        id: "wait-turn",
+        title: "Wait turn",
+        domain: "executor",
+        turns: [
+          {
+            kind: "wait",
+            name: "settle",
+            durationMs: 5,
+            expectedStatus: 200,
+            assertResponse(status, body) {
+              if (status !== 200) {
+                return `expected status 200, saw ${status}`;
+              }
+              if (
+                !body ||
+                typeof body !== "object" ||
+                (body as { durationMs?: unknown }).durationMs !== 5
+              ) {
+                return "expected wait response body to include durationMs";
+              }
+              return undefined;
+            },
+            assertTurn(turn) {
+              if (turn.statusCode !== 200) {
+                return `expected statusCode 200, saw ${turn.statusCode}`;
+              }
+              return undefined;
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(runtime.useModel).not.toHaveBeenCalled();
+    expect(report.turns[0]).toMatchObject({
+      kind: "wait",
+      responseText: '{"success":true,"durationMs":5}',
+      actionsCalled: [],
+      failedAssertions: [],
+    });
+    expect(report.turns[0]?.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("fails wait turns without a non-negative durationMs", async () => {
+    const report = await runScenario(
+      {
+        id: "invalid-wait-turn",
+        title: "Invalid wait turn",
+        domain: "executor",
+        turns: [
+          {
+            kind: "wait",
+            name: "bad wait",
+            durationMs: -1,
+          },
+        ],
+      },
+      createRuntime([]),
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.error).toContain("requires non-negative durationMs");
+  });
+});
+
 describe("scenario executor action turns", () => {
   it("executes a registered action turn with real options and captures its trace", async () => {
     const validate = vi.fn(async () => true);
