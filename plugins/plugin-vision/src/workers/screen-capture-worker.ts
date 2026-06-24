@@ -147,7 +147,7 @@ class ScreenCaptureWorker {
           "wmic path Win32_DesktopMonitor get DeviceID,ScreenWidth,ScreenHeight /format:csv",
         );
         const displays: DisplayInfo[] = [];
-        const lines = stdout.trim().split("\n").slice(2); // Skip headers
+        const lines = stdout.trim().split(/\r?\n/u).slice(2); // Skip headers
 
         lines.forEach((line, index) => {
           const parts = line.split(",");
