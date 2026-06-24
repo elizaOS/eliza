@@ -74,6 +74,24 @@ describe("inferBackgroundPlan", () => {
 		).not.toThrow();
 	});
 
+	it("does not generate when attachment intent has no usable image URL", () => {
+		expect(
+			inferBackgroundPlan("set the background from this attachment", [
+				{ contentType: "image" } as Media,
+			]),
+		).toBeNull();
+		expect(
+			inferBackgroundPlan("use this uploaded file as my background", [
+				{ url: null, contentType: "image" } as unknown as Media,
+			]),
+		).toBeNull();
+		expect(
+			inferBackgroundPlan("put that file on the background", [
+				{ url: 123, contentType: "image" } as unknown as Media,
+			]),
+		).toBeNull();
+	});
+
 	it("generates from a description when no color resolves", () => {
 		const plan = inferBackgroundPlan(
 			"generate a misty forest background",
@@ -147,6 +165,29 @@ describe("BACKGROUND action handler", () => {
 			{ op: "set", mode: "image", imageUrl: "/api/media/generated.png" },
 		]);
 		expect(replies[0].toLowerCase()).toContain("calm beach");
+	});
+
+	it("does not generate from unusable attachment intent", async () => {
+		const emitted: BackgroundApplyPayload[] = [];
+		const generateImage = vi.fn(async () => "/api/media/generated.png");
+		const action = createBackgroundAction({
+			emit: async (payload) => {
+				emitted.push(payload);
+			},
+			generateImage,
+		});
+		const result = await action.handler(
+			runtime,
+			message("set the background from this attachment", [
+				{ contentType: "image" } as Media,
+			]),
+			undefined,
+			undefined,
+			vi.fn(),
+		);
+		expect(result.success).toBe(false);
+		expect(generateImage).not.toHaveBeenCalled();
+		expect(emitted).toEqual([]);
 	});
 
 	it("broadcasts undo", async () => {

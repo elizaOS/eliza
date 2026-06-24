@@ -67,6 +67,11 @@ const RESET_RE = /\b(reset|restore (?:the )?default|default|factory)\b/i;
 const SET_RE = /\b(set|make|change|use|turn|switch|give me|apply|put)\b/i;
 // Explicit ask for a generated image rather than a flat color.
 const GENERATE_RE = /\b(generate|create|paint|draw|design|render|imagine)\b/i;
+// References to an attachment-like object. If these are present with unusable
+// attachment records, do not reinterpret the request as an image-generation
+// prompt like "from this attachment".
+const ATTACHMENT_REFERENCE_RE =
+	/\b(this|that|these|those|attached|attachment|upload(?:ed)?|file)\b/i;
 
 /**
  * Curated color-name → hex map. Multi-word keys are listed first so "light
@@ -228,6 +233,13 @@ export function inferBackgroundPlan(
 	const image = firstImageAttachment(attachments);
 	if (image && (SET_RE.test(trimmed) || GENERATE_RE.test(trimmed))) {
 		return { op: "set", mode: "image", imageUrl: image.url };
+	}
+	if (
+		attachments?.length &&
+		ATTACHMENT_REFERENCE_RE.test(trimmed) &&
+		SET_RE.test(trimmed)
+	) {
+		return null;
 	}
 
 	// A described background to generate.
