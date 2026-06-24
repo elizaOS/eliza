@@ -124,6 +124,48 @@ export function usePullGesture(
   // Which axis the gesture committed to, once it crossed AXIS_COMMIT_SLOP.
   const axis = React.useRef<"x" | "y" | null>(null);
 
+  // Coalesce the continuous drag updates to at most one per animation frame.
+  // A trackpad/touch panel emits pointermove well above the display refresh
+  // (up to ~1000Hz), and each call fans out to MotionValue subscribers (vertical
+  // sheet) or a React setState (horizontal swipe `onDragX`) — running that more
+  // than once per painted frame is pure waste (only the last value is shown).
+  // rAF-pacing matches the work to the frame the user actually sees.
+  const pendingDrag = React.useRef<{ axis: "x" | "y"; value: number } | null>(
+    null,
+  );
+  const dragRaf = React.useRef(0);
+  const onDragRef = React.useRef(onDrag);
+  const onDragXRef = React.useRef(onDragX);
+  onDragRef.current = onDrag;
+  onDragXRef.current = onDragX;
+  const flushDrag = React.useCallback(() => {
+    dragRaf.current = 0;
+    const pending = pendingDrag.current;
+    pendingDrag.current = null;
+    if (!pending) return;
+    if (pending.axis === "x") onDragXRef.current?.(pending.value);
+    else onDragRef.current?.(pending.value);
+  }, []);
+  const scheduleDrag = React.useCallback(
+    (nextAxis: "x" | "y", value: number) => {
+      pendingDrag.current = { axis: nextAxis, value };
+      if (
+        dragRaf.current === 0 &&
+        typeof requestAnimationFrame === "function"
+      ) {
+        dragRaf.current = requestAnimationFrame(flushDrag);
+      }
+    },
+    [flushDrag],
+  );
+  const cancelDrag = React.useCallback(() => {
+    if (dragRaf.current !== 0 && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(dragRaf.current);
+    }
+    dragRaf.current = 0;
+    pendingDrag.current = null;
+  }, []);
+
   const onPointerDown = React.useCallback(
     (event: React.PointerEvent) => {
       start.current = {
@@ -167,21 +209,26 @@ export function usePullGesture(
             }
           }
           // Reset the other axis's live offset to 0 so the committed axis owns
-          // the visual.
+          // the visual. Drop any pending pre-commit frame first so it can't
+          // override the reset on the next tick.
+          cancelDrag();
           if (axis.current === "x") onDrag?.(0);
           else onDragX?.(0);
         }
       }
 
-      if (axis.current === "x") onDragX?.(dx);
-      else if (axis.current === "y") onDrag?.(dy);
-      else onDrag?.(dy); // pre-commit: drive the vertical sheet for responsiveness
+      if (axis.current === "x") scheduleDrag("x", dx);
+      else if (axis.current === "y") scheduleDrag("y", dy);
+      else scheduleDrag("y", dy); // pre-commit: drive the vertical sheet
     },
-    [hasSwipe, onDrag, onDragX],
+    [hasSwipe, onDrag, onDragX, scheduleDrag, cancelDrag],
   );
 
   const finish = React.useCallback(
     (event: React.PointerEvent) => {
+      // Drop any pending coalesced drag frame so a stale value can't fire after
+      // the settle below and fight the snap.
+      cancelDrag();
       const s = start.current;
       const committedAxis = axis.current;
       start.current = null;
@@ -238,6 +285,7 @@ export function usePullGesture(
       }
     },
     [
+      cancelDrag,
       onDrag,
       onDragX,
       onPullUp,
@@ -252,6 +300,9 @@ export function usePullGesture(
       velocityThresholdX,
     ],
   );
+
+  // Cancel any in-flight coalesced frame if the consumer unmounts mid-gesture.
+  React.useEffect(() => cancelDrag, [cancelDrag]);
 
   return {
     onPointerDown,
