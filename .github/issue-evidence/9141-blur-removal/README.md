@@ -29,8 +29,10 @@ decorative box/drop shadows are removed app-wide.
 ## Regression gate
 
 `packages/ui/src/no-backdrop-blur-gate.test.ts` fails the build if any
-`backdrop-filter` / `backdrop-blur` / `supports-[backdrop-filter]` creeps back,
-so the battery win can't silently regress.
+`backdrop-filter` / `backdrop-blur` / `supports-[backdrop-filter]` creeps back
+in authored `packages/ui/src` or `packages/app/src` UI source, so the battery win
+can't silently regress. The standalone model tester entrypoint was included in
+that scan and now uses a solid sticky header instead of `backdrop-filter`.
 
 `packages/ui/src/no-focus-ring-gate.test.ts` fails if authored UI source adds
 Tailwind `ring-*` utilities or focus-state visual classes back.
