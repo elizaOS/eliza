@@ -112,14 +112,8 @@ class WidgetErrorBoundary extends Component<
 const HOME_RENDER_CAP = 12;
 const WIDGET_SLOTS: ReadonlySet<string> = new Set<WidgetSlot>([
   "chat-sidebar",
-  "chat-inline",
-  "wallet",
-  "browser",
-  "heartbeats",
   "character",
-  "settings",
   "nav-page",
-  "automations",
   "home",
 ]);
 
