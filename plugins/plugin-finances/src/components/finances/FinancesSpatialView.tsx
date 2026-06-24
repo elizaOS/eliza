@@ -16,15 +16,7 @@
  * or runs financial math. It displays the snapshot and dispatches actions.
  */
 
-import {
-  Button,
-  Card,
-  Divider,
-  HStack,
-  List,
-  Text,
-  VStack,
-} from "@elizaos/ui/spatial";
+import { Button, Card, HStack, List, Text, VStack } from "@elizaos/ui/spatial";
 
 /** Which render state the dashboard is in. */
 export type FinancesViewState = "loading" | "error" | "empty" | "ready";
@@ -115,11 +107,7 @@ export function FinancesSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card title="Finances" gap={1} padding={1}>
-      <Text style="caption" tone="muted">
-        Balance, recent activity, and recurring charges.
-      </Text>
-
+    <Card gap={1} padding={1}>
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
           Loading finances
@@ -144,7 +132,6 @@ function FinancesErrorBody({
 }) {
   return (
     <>
-      <Divider label="error" />
       <Text bold>Could not load finances</Text>
       <Text tone="danger" style="caption">
         {snapshot.error ?? "Could not load finances."}
@@ -165,16 +152,10 @@ function FinancesEmptyBody({
 }) {
   return (
     <>
-      <Divider label="no sources" />
       <Text bold>No money sources connected</Text>
-      <Text tone="muted" style="caption">
-        Connect a bank, PayPal, or CSV so Eliza can track your balance,
-        transactions, and recurring charges. Nothing is shown until a source is
-        linked.
-      </Text>
       <HStack gap={1}>
         <Button agent="connect" onPress={dispatch("connect")}>
-          Connect a source
+          Connect
         </Button>
       </HStack>
     </>
@@ -208,7 +189,9 @@ function FinancesReadyBody({
 function BalanceSection({ balance }: { balance: FinanceBalanceCard }) {
   return (
     <>
-      <Divider label="Balance" />
+      <Text style="caption" tone="muted">
+        Balance
+      </Text>
       <Text bold tone={balance.negative ? "danger" : "primary"} wrap={false}>
         {balance.net}
       </Text>
@@ -238,10 +221,12 @@ function TransactionsSection({
 }) {
   return (
     <>
-      <Divider label={`Transactions (${transactions.length})`} />
+      <Text style="caption" tone="muted">
+        Transactions ({transactions.length})
+      </Text>
       {transactions.length === 0 ? (
         <Text tone="muted" style="caption">
-          No transactions in this window.
+          No transactions
         </Text>
       ) : (
         <List gap={0}>
@@ -287,10 +272,12 @@ function RecurringSection({
 }) {
   return (
     <>
-      <Divider label={`Recurring (${recurring.length})`} />
+      <Text style="caption" tone="muted">
+        Recurring ({recurring.length})
+      </Text>
       {recurring.length === 0 ? (
         <Text tone="muted" style="caption">
-          No recurring charges detected.
+          No recurring
         </Text>
       ) : (
         <List gap={0}>

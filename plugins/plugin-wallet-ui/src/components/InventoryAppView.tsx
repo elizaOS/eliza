@@ -42,8 +42,8 @@ import {
   Wallet,
 } from "lucide-react";
 import {
-  type ReactNode,
   memo,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -707,11 +707,13 @@ function EmptyState({
   body?: string;
 }) {
   return (
-    <div className="flex min-h-[8rem] flex-col items-center justify-center rounded-2xl bg-bg/30 px-4 py-6 text-center">
+    <div className="flex min-h-[8rem] flex-col items-center justify-center px-4 py-6 text-center">
       <Icon className="mb-3 h-5 w-5 text-muted" />
       <div className="text-sm font-semibold text-txt">{title}</div>
       {body ? (
-        <div className="mt-1 max-w-sm text-xs-tight text-muted">{body}</div>
+        <div className="sr-only mt-1 max-w-sm text-xs-tight text-muted">
+          {body}
+        </div>
       ) : null}
     </div>
   );
@@ -729,14 +731,14 @@ function MarketAvatar({
       <img
         src={imageUrl}
         alt={label}
-        className="h-11 w-11 shrink-0 rounded-2xl object-cover"
+        className="h-11 w-11 shrink-0 object-cover"
         loading="lazy"
       />
     );
   }
 
   return (
-    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-bg/65 text-sm font-semibold text-txt">
+    <div className="flex h-11 w-11 shrink-0 items-center justify-center text-sm font-semibold text-txt">
       {label.slice(0, 1).toUpperCase()}
     </div>
   );
@@ -781,7 +783,7 @@ function MarketDataUnavailable({
   source: WalletMarketOverviewSource;
 }) {
   return (
-    <div className="rounded-2xl border border-warn/20 bg-warn/10 px-4 py-3">
+    <div className="px-1 py-2">
       <div className="text-sm font-semibold text-warn">{title} unavailable</div>
       <div className="mt-1 text-xs text-muted">
         {source.error ?? `${source.providerName} did not return live data.`}
@@ -794,11 +796,13 @@ function MajorPriceCard({ snapshot }: { snapshot: WalletMarketPriceSnapshot }) {
   const isPositive = snapshot.change24hPct >= 0;
 
   return (
-    <div className="min-w-0 rounded-[26px] bg-bg/40 p-4">
+    <div className="min-w-0 p-2">
       <div className="flex items-center gap-3">
         <MarketAvatar imageUrl={snapshot.imageUrl} label={snapshot.symbol} />
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-txt">{snapshot.symbol}</div>
+          <div className="text-sm font-semibold text-txt">
+            {snapshot.symbol}
+          </div>
           <div className="truncate text-xs-tight text-muted">
             {snapshot.name}
           </div>
@@ -958,7 +962,7 @@ function WalletEmptyHero({
   onConfigureKeys: () => void;
 }) {
   return (
-    <div className="flex flex-col items-center gap-4 rounded-[28px] border border-border/30 bg-bg/30 px-6 py-12 text-center">
+    <div className="flex flex-col items-center gap-4 px-6 py-10 text-center">
       <WalletMotif />
       <div className="text-base font-semibold text-txt">
         {hasKeys ? "No assets yet" : "Wallet not configured"}
@@ -1023,10 +1027,7 @@ function MarketPulseHero({
       ) : loading ? (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-3">
           {["btc", "eth", "sol"].map((loadingCardId) => (
-            <div
-              key={loadingCardId}
-              className="h-28 animate-pulse rounded-[26px] border border-border/30 bg-bg/35"
-            />
+            <div key={loadingCardId} className="h-28 animate-pulse bg-bg/20" />
           ))}
         </div>
       ) : null}
@@ -1106,7 +1107,7 @@ function PnlChart({
 
   if (values.length < 2) {
     return (
-      <div className="flex h-40 items-center justify-center rounded-3xl bg-bg/30 text-xs text-muted">
+      <div className="flex h-40 items-center justify-center text-xs text-muted">
         No realized P&L yet
       </div>
     );
@@ -1127,7 +1128,7 @@ function PnlChart({
 
   return (
     <svg
-      className="h-40 w-full rounded-3xl bg-bg/30"
+      className="h-40 w-full"
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
       aria-label="Trade P&L chart"
@@ -1159,7 +1160,7 @@ function SummaryChip({
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-2 rounded-full bg-bg/45 px-3 py-1.5 text-sm font-medium",
+        "inline-flex items-center gap-2 px-1 py-1.5 text-sm font-medium",
         tone === "loss" ? "text-danger" : "text-txt",
       )}
       title={title}
@@ -1211,8 +1212,8 @@ function WalletRailAddress({
       ref={ref}
       type="button"
       className={cn(
-        "group inline-flex min-w-0 items-center gap-2 rounded-full px-2.5 py-1.5 text-left transition-colors",
-        address ? "text-txt hover:bg-bg/55" : "text-muted",
+        "group inline-flex min-w-0 items-center gap-2 px-1 py-1.5 text-left transition-colors",
+        address ? "text-txt hover:text-accent" : "text-muted",
       )}
       onClick={handleCopy}
       disabled={!address}
@@ -1367,7 +1368,7 @@ function WalletRailRpcButton({
     <button
       ref={ref}
       type="button"
-      className="inline-flex h-9 items-center gap-2 rounded-full bg-bg/45 px-3 text-xs font-semibold text-txt transition-colors hover:bg-bg/65"
+      className="inline-flex h-9 items-center gap-2 px-2 text-xs font-semibold text-txt transition-colors hover:text-accent"
       onClick={onOpenSettings}
       title={`RPC providers: EVM ${evmProvider}, Solana ${solanaProvider}`}
       aria-label="Open RPC settings"
@@ -1395,7 +1396,7 @@ function WalletRailAccount({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start gap-4">
-        <div className="relative flex h-16 w-16 items-center justify-center rounded-[24px] bg-bg/55">
+        <div className="relative flex h-16 w-16 items-center justify-center">
           <Wallet className="h-7 w-7 text-accent" />
         </div>
         <div className="min-w-0 flex-1 basis-64">
@@ -1444,8 +1445,8 @@ function WalletRailTabButton({
       ref={ref}
       type="button"
       className={cn(
-        "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[calc(var(--radius-lg)_-_4px)] px-3 py-2 text-sm font-semibold transition-colors",
-        active ? "bg-bg text-txt" : "text-muted hover:text-txt",
+        "inline-flex min-w-0 items-center justify-center gap-1.5 px-2 py-2 text-sm font-semibold transition-colors",
+        active ? "text-txt" : "text-muted hover:text-txt",
       )}
       onClick={() => onSelect(tab.id)}
       aria-label={tab.label}
@@ -1456,10 +1457,7 @@ function WalletRailTabButton({
       <tab.icon className="h-3.5 w-3.5 shrink-0" />
       <span className="truncate">{tab.label}</span>
       <span
-        className={cn(
-          "ml-0.5 rounded-full px-1.5 py-0.5 font-mono text-[0.62rem]",
-          active ? "bg-bg/60 text-muted" : "bg-bg/35 text-muted",
-        )}
+        className={cn("ml-0.5 px-1 py-0.5 font-mono text-[0.62rem] text-muted")}
       >
         {tab.count}
       </span>
@@ -1508,7 +1506,7 @@ function TokenRailRowImpl({
       description: `Hide the ${row.symbol} token from the list`,
     });
   return (
-    <div className="group flex min-w-0 items-center gap-3 rounded-2xl px-2.5 py-2.5 transition-colors hover:bg-bg/55">
+    <div className="group flex min-w-0 items-center gap-3 px-2 py-2 transition-colors hover:bg-bg-muted/20">
       <TokenIdentityIcon row={row} size={46} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-txt">
@@ -1529,7 +1527,7 @@ function TokenRailRowImpl({
           <button
             ref={hideRef}
             type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-bg/65 text-muted transition-colors hover:text-danger"
+            className="flex h-7 w-7 items-center justify-center text-muted transition-colors hover:text-danger"
             onClick={() => onHideToken(row)}
             aria-label={`Hide ${row.symbol}`}
             title={`Hide ${row.symbol}`}
@@ -1574,17 +1572,17 @@ function RailNftList({ nfts }: { nfts: NftItem[] }) {
       {nfts.slice(0, 20).map((nft) => (
         <div
           key={`${nft.chain}:${nft.collectionName}:${nft.name}:${nft.imageUrl}`}
-          className="flex min-w-0 items-center gap-3 rounded-2xl px-2.5 py-2.5 transition-colors hover:bg-bg/55"
+          className="flex min-w-0 items-center gap-3 px-2 py-2 transition-colors hover:bg-bg-muted/20"
         >
           {nft.imageUrl ? (
             <img
               src={nft.imageUrl}
               alt={nft.name}
-              className="h-11 w-11 shrink-0 rounded-2xl object-cover"
+              className="h-11 w-11 shrink-0 object-cover"
               loading="lazy"
             />
           ) : (
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-bg/65">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center">
               <ImageIcon className="h-4 w-4 text-muted" />
             </div>
           )}
@@ -1616,17 +1614,17 @@ function RailPositionList({
       {positions.map((position) => (
         <div
           key={position.id}
-          className="flex min-w-0 items-center gap-3 rounded-2xl px-2.5 py-2.5 transition-colors hover:bg-bg/55"
+          className="flex min-w-0 items-center gap-3 px-2 py-2 transition-colors hover:bg-bg-muted/20"
         >
           {position.imageUrl ? (
             <img
               src={position.imageUrl}
               alt={position.label}
-              className="h-11 w-11 shrink-0 rounded-2xl object-cover"
+              className="h-11 w-11 shrink-0 object-cover"
               loading="lazy"
             />
           ) : (
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-bg/65">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center">
               <Layers3 className="h-4 w-4 text-muted" />
             </div>
           )}
@@ -1716,10 +1714,7 @@ function WalletHoldingsSection({
     });
 
   return (
-    <section
-      data-testid="wallets-sidebar"
-      className="rounded-[28px] bg-bg/40 px-5 py-5 md:px-6"
-    >
+    <section data-testid="wallets-sidebar" className="px-3 py-3 md:px-4">
       <WalletRailAccount
         addresses={addresses}
         portfolioValueUsd={totalUsd}
@@ -1734,7 +1729,7 @@ function WalletHoldingsSection({
         {walletEnabled === false ? (
           <Button
             ref={enableWalletRef}
-            className="w-full rounded-2xl"
+            className="w-full"
             onClick={onEnableWallet}
             {...enableWalletAgentProps}
           >
@@ -1742,7 +1737,7 @@ function WalletHoldingsSection({
           </Button>
         ) : null}
 
-        <div className="grid min-w-0 grid-cols-3 rounded-2xl bg-bg/45 p-1">
+        <div className="grid min-w-0 grid-cols-3 gap-1">
           {tabs.map((tab) => (
             <WalletRailTabButton
               key={tab.id}
@@ -1801,10 +1796,8 @@ function DashboardWindowButton({
       ref={ref}
       type="button"
       className={cn(
-        "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-        active
-          ? "bg-accent text-[color:var(--accent-foreground)]"
-          : "text-muted hover:text-txt",
+        "px-2 py-1.5 text-xs font-medium transition-colors",
+        active ? "text-accent" : "text-muted hover:text-txt",
       )}
       onClick={() => onSelect(window)}
       aria-current={active ? "true" : undefined}
@@ -1868,10 +1861,10 @@ function ActivityLog({
                 ? "bg-danger/10 text-danger"
                 : "bg-bg/55 text-muted";
         const body = (
-          <div className="flex min-w-0 items-center gap-3 rounded-2xl px-2.5 py-2.5 text-sm transition-colors hover:bg-bg/55">
+          <div className="flex min-w-0 items-center gap-3 px-2 py-2 text-sm transition-colors hover:bg-bg-muted/20">
             <span
               className={cn(
-                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+                "flex h-8 w-8 shrink-0 items-center justify-center",
                 toneClass,
               )}
             >
@@ -1924,7 +1917,7 @@ function NftPreview({ nfts }: { nfts: NftItem[] }) {
       {visible.map((nft) => (
         <div
           key={`${nft.chain}:${nft.collectionName}:${nft.name}:${nft.imageUrl}`}
-          className="overflow-hidden rounded-2xl bg-bg/35"
+          className="overflow-hidden"
         >
           {nft.imageUrl ? (
             <img
@@ -1934,7 +1927,7 @@ function NftPreview({ nfts }: { nfts: NftItem[] }) {
               loading="lazy"
             />
           ) : (
-            <div className="flex aspect-square items-center justify-center bg-bg/50">
+            <div className="flex aspect-square items-center justify-center">
               <ImageIcon className="h-5 w-5 text-muted" />
             </div>
           )}
@@ -1966,17 +1959,17 @@ function LpPositionsPanel({
       {positions.map((position) => (
         <div
           key={position.id}
-          className="flex min-w-0 items-center gap-3 rounded-2xl px-2.5 py-2.5 transition-colors hover:bg-bg/55"
+          className="flex min-w-0 items-center gap-3 px-2 py-2 transition-colors hover:bg-bg-muted/20"
         >
           {position.imageUrl ? (
             <img
               src={position.imageUrl}
               alt={position.label}
-              className="h-10 w-10 shrink-0 rounded-2xl object-cover"
+              className="h-10 w-10 shrink-0 object-cover"
               loading="lazy"
             />
           ) : (
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-bg/50">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center">
               {position.kind === "nft" ? (
                 <ImageIcon className="h-4 w-4 text-muted" />
               ) : (
@@ -2227,9 +2220,7 @@ export function InventoryAppView() {
     >
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-5 pt-6 pb-28">
         {walletError ? (
-          <div className="rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
-            {walletError}
-          </div>
+          <div className="px-1 py-2 text-sm text-danger">{walletError}</div>
         ) : null}
 
         <WalletHoldingsSection
@@ -2263,7 +2254,7 @@ export function InventoryAppView() {
               title="P&L"
               icon={BarChart3}
               action={
-                <div className="flex rounded-full bg-bg/40 p-1">
+                <div className="flex gap-1">
                   {DASHBOARD_WINDOWS.map((window) => (
                     <DashboardWindowButton
                       key={window}
@@ -2326,4 +2317,3 @@ export function InventoryAppView() {
     </main>
   );
 }
-

@@ -70,7 +70,6 @@ describe("FinancesSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Finances");
       expect(flat).toContain("Balance");
       expect(flat).toContain("Transactions");
       expect(flat).toContain("Recurring");

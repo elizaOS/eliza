@@ -22,7 +22,6 @@
 import {
   Button,
   Card,
-  Divider,
   HStack,
   List,
   Text,
@@ -98,11 +97,7 @@ export function RelationshipsSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card title="Relationships" gap={1} padding={1}>
-      <Text style="caption" tone="muted">
-        People, organizations, and the edges between them.
-      </Text>
-
+    <Card gap={1} padding={1}>
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
           Loading relationships
@@ -127,7 +122,6 @@ function RelationshipsErrorBody({
 }) {
   return (
     <>
-      <Divider label="error" />
       <Text bold>Could not load relationships</Text>
       <Text tone="danger" style="caption">
         {snapshot.error ?? "Could not load relationships."}
@@ -148,12 +142,7 @@ function RelationshipsEmptyBody({
 }) {
   return (
     <>
-      <Divider label="empty" />
       <Text bold>No people yet</Text>
-      <Text tone="muted" style="caption">
-        Eliza has not learned about anyone in your network yet. Tell her about
-        the people you work with and she will start mapping them.
-      </Text>
       <HStack gap={1}>
         <Button agent="add" onPress={dispatch("add")}>
           Add someone
@@ -189,10 +178,12 @@ function RelationshipsReadyBody({
           onSelect={setActiveKind}
         />
       ) : null}
-      <Divider label={`Graph (${visible.length})`} />
+      <Text style="caption" tone="muted">
+        Graph ({visible.length})
+      </Text>
       {visible.length === 0 ? (
         <Text tone="muted" style="caption">
-          No entities match that filter.
+          No matches
         </Text>
       ) : (
         <List gap={1}>
@@ -259,7 +250,7 @@ function EntityNodeBlock({
           agent={`open-${node.id}`}
           onPress={() => onAction?.(`open:${node.id}`)}
         >
-          Open
+          ›
         </Button>
       </HStack>
       {node.identityLine ? (
@@ -267,25 +258,21 @@ function EntityNodeBlock({
           {node.identityLine}
         </Text>
       ) : null}
-      {node.edges.length === 0 ? (
-        <Text style="caption" tone="muted">
-          No relationships recorded yet.
-        </Text>
-      ) : (
-        node.edges.map((edge) => (
-          <HStack key={edge.id} gap={1} align="center">
-            <Text tone="muted" wrap={false}>
-              ›
-            </Text>
-            <VStack gap={0} grow={1}>
-              <Text wrap={false}>{edge.toName}</Text>
-            </VStack>
-            <Text style="caption" tone="muted" wrap={false}>
-              {edge.meta}
-            </Text>
-          </HStack>
-        ))
-      )}
+      {node.edges.length > 0
+        ? node.edges.map((edge) => (
+            <HStack key={edge.id} gap={1} align="center">
+              <Text tone="muted" wrap={false}>
+                ›
+              </Text>
+              <VStack gap={0} grow={1}>
+                <Text wrap={false}>{edge.toName}</Text>
+              </VStack>
+              <Text style="caption" tone="muted" wrap={false}>
+                {edge.meta}
+              </Text>
+            </HStack>
+          ))
+        : null}
     </VStack>
   );
 }

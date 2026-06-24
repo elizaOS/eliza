@@ -44,7 +44,6 @@ describe("TodosSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Todos");
       expect(flat).toContain("Today");
       expect(flat).toContain("Upcoming");
       expect(flat).toContain("Someday");
