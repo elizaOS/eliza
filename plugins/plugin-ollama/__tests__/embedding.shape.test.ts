@@ -84,9 +84,9 @@ describe("Ollama embeddings", () => {
     embedMock.mockRejectedValue(new Error("provider unavailable"));
     const { runtime, events } = createRuntime();
 
-    await expect(
-      handleTextEmbedding(runtime, "hostile payload"),
-    ).rejects.toThrow("provider unavailable");
+    await expect(handleTextEmbedding(runtime, "hostile payload")).rejects.toThrow(
+      "provider unavailable"
+    );
     expect(events).toHaveLength(0);
   });
 });

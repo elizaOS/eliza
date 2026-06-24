@@ -27,9 +27,9 @@ describe("OpenRouter embedding edge cases", () => {
     const { handleTextEmbedding } = await import("../models/embedding");
     const runtime = createRuntime();
 
-    await expect(
-      handleTextEmbedding(runtime, { text: "" } as never)
-    ).rejects.toThrow("Invalid input format for embedding");
+    await expect(handleTextEmbedding(runtime, { text: "" } as never)).rejects.toThrow(
+      "Invalid input format for embedding"
+    );
     await expect(handleTextEmbedding(runtime, " \n\t ")).rejects.toThrow(
       "Empty text for embedding"
     );
