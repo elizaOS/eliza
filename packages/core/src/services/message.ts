@@ -4341,14 +4341,13 @@ function synthesizeSimpleReplyFromPlainText(
 function isEmptyStage1Result(raw: string | GenerateTextResult): boolean {
 	if (typeof raw === "string") return raw.trim().length === 0;
 	if (!raw || typeof raw !== "object") return true;
-	const obj = raw as unknown as Record<string, unknown>;
-	const text = typeof obj.text === "string" ? obj.text.trim() : "";
+	// `raw` is narrowed to GenerateTextResult here; read its typed fields
+	// directly (the defensive `typeof` guards still cover non-conforming
+	// provider output) instead of laundering it through `as unknown as`.
+	const text = typeof raw.text === "string" ? raw.text.trim() : "";
 	if (text.length > 0) return false;
-	const toolCalls = obj.toolCalls;
-	if (Array.isArray(toolCalls) && toolCalls.length > 0) return false;
-	const contentText = extractGenerateTextContentText(
-		raw as unknown as GenerateTextResult,
-	);
+	if (Array.isArray(raw.toolCalls) && raw.toolCalls.length > 0) return false;
+	const contentText = extractGenerateTextContentText(raw);
 	if (contentText.trim().length > 0) return false;
 	return true;
 }
