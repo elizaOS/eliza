@@ -400,7 +400,7 @@ const HEALTH_CHECK_POLL_INTERVAL_MS = 3_000;
 const HEALTH_CHECK_TIMEOUT_MS = 360_000;
 
 /** SSH command timeout for docker pull (can be slow on first pull). */
-const PULL_TIMEOUT_MS = 300_000; // 5 min
+export const PULL_TIMEOUT_MS = 300_000; // 5 min
 
 /** SSH command timeout for docker run / stop / rm. */
 const DOCKER_CMD_TIMEOUT_MS = 60_000;
