@@ -4,6 +4,9 @@ import "@elizaos/ui/styles";
 // they load from the view catalog on iOS/Android (where DynamicViewLoader is
 // disabled). No-op off-device.
 import "./mobile-plugin-views";
+// Surfaces the renderer build stamp on window.__ELIZA_RENDERER_BUILD__ so the
+// running build's identity is observable in-app and assertable on-device (#9309).
+import "./renderer-build-stamp";
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { BackgroundRunner } from "@capacitor/background-runner";

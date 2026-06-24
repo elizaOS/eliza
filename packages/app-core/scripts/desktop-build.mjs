@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.mjs";
+import { maxMtimeUnder } from "./lib/artifact-staleness.mjs";
 import {
   buildWindowsRepairSteps,
   classifyElectrobunViewFailure,
@@ -832,10 +833,7 @@ function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
   });
 }
 
-function workspaceRuntimePackageLooksBuilt(packageName, packageDir) {
-  const distDir = path.join(packageDir, "dist");
-  if (!fs.existsSync(distDir)) return false;
-
+function workspaceRuntimePackageMarkersPresent(packageName, distDir) {
   if (packageName === "@elizaos/core") {
     return (
       fs.existsSync(path.join(distDir, "node", "index.node.js")) &&
@@ -852,6 +850,31 @@ function workspaceRuntimePackageLooksBuilt(packageName, packageDir) {
     );
   }
 
+  return true;
+}
+
+function workspaceRuntimePackageLooksBuilt(packageName, packageDir) {
+  const distDir = path.join(packageDir, "dist");
+  if (!fs.existsSync(distDir)) return false;
+  if (!workspaceRuntimePackageMarkersPresent(packageName, distDir))
+    return false;
+
+  // Presence of the marker files isn't enough — a dist built from older sources
+  // would silently reuse stale runtime code (issue #9309). Reuse only when the
+  // dist is at least as new as the package's src. ELIZA_DESKTOP_TRUST_RUNTIME_-
+  // PACKAGE_DIST=1 bypasses the mtime check for environments where checkout
+  // mtimes are unreliable.
+  if (process.env.ELIZA_DESKTOP_TRUST_RUNTIME_PACKAGE_DIST === "1") return true;
+  const srcDir = path.join(packageDir, "src");
+  if (!fs.existsSync(srcDir)) return true;
+  const srcMtime = maxMtimeUnder(srcDir);
+  const distMtime = maxMtimeUnder(distDir);
+  if (srcMtime > distMtime) {
+    console.log(
+      `[desktop-build] ${packageName} dist is stale (src newer than dist) — rebuilding`,
+    );
+    return false;
+  }
   return true;
 }
 

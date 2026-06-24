@@ -133,6 +133,20 @@ jobs:
               ;;
           esac
 
+      - name: Verify staged renderer is the freshly built one (no stale UI, #9309)
+        run: |
+          # The staged iOS public/ must carry exactly the renderer just built in
+          # packages/app/dist (build stamp match). Fails loudly on stale/missing UI.
+          node packages/app-core/scripts/verify-ondevice-artifact.mjs --platform ios
+          # The renderer build stamp must also be baked into the built .app bundle.
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "App.app" -path "*/Debug-iphonesimulator/*" | head -1)
+          if [ ! -f "$APP_PATH/public/eliza-renderer-build.json" ]; then
+            echo "ERROR: built .app is missing the renderer build stamp at public/eliza-renderer-build.json"
+            exit 1
+          fi
+          echo "Renderer build stamp present in built .app:"
+          cat "$APP_PATH/public/eliza-renderer-build.json"
+
       - name: Verify required Info.plist keys for background HealthKit
         # Background HealthKit + BGTaskScheduler integration is in
         # progress: no plist generator is configured yet (no
