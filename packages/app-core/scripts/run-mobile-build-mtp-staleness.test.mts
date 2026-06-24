@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  MTP_FORK_SRC_CANDIDATES,
   mtpForceRebuildRequested,
   mtpSliceReuse,
 } from "./run-mobile-build.mjs";
@@ -91,6 +92,55 @@ describe("mtpSliceReuse", () => {
     // and the fresh mtime keeps the slice reusable rather than rebuilding blindly.
     const result = mtpSliceReuse(caps, fork, null);
     expect(result.reusable).toBe(true);
+  });
+
+  it("does NOT spuriously rebuild when the recorded revision is the 'unknown' sentinel", () => {
+    const fork = makeForkSrc(OLDER_SOURCE);
+    // Slice built when git was unavailable → recorded "unknown"; now git works
+    // and returns a real SHA. The "unknown" sentinel must normalize to null so
+    // it falls through to the (fresh) mtime check instead of rebuilding.
+    const caps = writeCapabilities("unknown", FUTURE_ARTIFACT);
+    const result = mtpSliceReuse(caps, fork, "v1.2.3-real-sha");
+    expect(result.reusable).toBe(true);
+  });
+
+  it("still catches a stale slice even when the recorded revision is 'unknown'", () => {
+    const fork = makeForkSrc(NEWER_SOURCE);
+    const caps = writeCapabilities("unknown", FUTURE_ARTIFACT);
+    const result = mtpSliceReuse(caps, fork, "v1.2.3-real-sha");
+    expect(result.reusable).toBe(false);
+    expect(result.reason).toMatch(/source newer than artifact/);
+  });
+});
+
+describe("MTP_FORK_SRC_CANDIDATES (no drift vs the builder)", () => {
+  it("mirrors build-llama-cpp-mtp.mjs: the in-repo fork + the ios-deps fallback, and nothing divergent", () => {
+    const forkSuffix = path.join(
+      "plugins",
+      "plugin-local-inference",
+      "native",
+      "llama.cpp",
+    );
+    const iosDepsSuffix = path.join(
+      "packages",
+      "native",
+      "ios-deps",
+      "llama.cpp",
+      "src",
+    );
+    expect(MTP_FORK_SRC_CANDIDATES.some((c) => c.endsWith(forkSuffix))).toBe(
+      true,
+    );
+    expect(MTP_FORK_SRC_CANDIDATES.some((c) => c.endsWith(iosDepsSuffix))).toBe(
+      true,
+    );
+    // The previously-divergent `eliza/plugins` candidate (absent from the
+    // builder) must NOT reappear — that was the drift the builder never had.
+    expect(
+      MTP_FORK_SRC_CANDIDATES.some((c) =>
+        c.includes(path.join("eliza", "plugins", "plugin-local-inference")),
+      ),
+    ).toBe(false);
   });
 });
 

@@ -4943,32 +4943,31 @@ function mtpTargetOutDir(target) {
 // so the staleness gate keys off the SAME source tree the builder compiles —
 // otherwise an ELIZA_MTP_LLAMA_CPP_SRC override would make the gate check a
 // different fork than the one being built.
-const MTP_FORK_SRC_CANDIDATES = [
+//
+// MUST mirror build-llama-cpp-mtp.mjs FORK_SRC_CANDIDATES EXACTLY (same order,
+// same paths) so the gate keys off the SAME tree the builder compiles. The
+// builder derives its repo root from its own file location
+// (packages/app-core/scripts → repo root), NOT from run-mobile-build's
+// configurable repoRoot, so we derive the identical base here — otherwise a
+// nested-monorepo layout would make the two lists diverge.
+const mtpBuilderRepoRoot = path.resolve(__dirname, "..", "..", "..");
+export const MTP_FORK_SRC_CANDIDATES = [
   process.env.ELIZA_MTP_LLAMA_CPP_SRC?.trim(),
   path.join(
-    repoRoot,
+    mtpBuilderRepoRoot,
     "plugins",
     "plugin-local-inference",
     "native",
     "llama.cpp",
   ),
   path.join(
-    packagesRoot,
-    "..",
-    "plugins",
-    "plugin-local-inference",
+    mtpBuilderRepoRoot,
+    "packages",
     "native",
+    "ios-deps",
     "llama.cpp",
+    "src",
   ),
-  path.join(
-    repoRoot,
-    "eliza",
-    "plugins",
-    "plugin-local-inference",
-    "native",
-    "llama.cpp",
-  ),
-  path.join(repoRoot, "packages", "native", "ios-deps", "llama.cpp", "src"),
 ].filter(Boolean);
 
 function resolveMtpForkSrc() {
@@ -5008,6 +5007,11 @@ export function mtpSliceReuse(capabilitiesPath, forkSrc, currentRevision) {
   } catch {
     return { reusable: false, reason: "unreadable CAPABILITIES.json" };
   }
+  // The builder records the literal "unknown" when git is unavailable at build
+  // time; the gate returns null in the same case. Normalize both to "revision
+  // unknown" so a later build with working git doesn't spuriously rebuild on an
+  // "unknown" vs real-SHA mismatch — fall through to the mtime check instead.
+  if (recordedRevision === "unknown") recordedRevision = null;
   // Only treat a revision change as decisive when BOTH are known (CI without
   // git still falls back to the mtime check below rather than rebuilding blindly).
   if (
