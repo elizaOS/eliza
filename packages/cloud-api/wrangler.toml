@@ -340,6 +340,14 @@ id = "f7e24faaff734e7c8cd8e12b093c3571"
 [env.production]
 name = "eliza-cloud-api-prod"
 workers_dev = false
+# The `*.elizacloud.ai/*` wildcard makes this Worker the default origin for
+# EVERY elizacloud.ai subdomain. Surfaces served by a different origin (e.g. the
+# Feed app on Railway at feed.elizacloud.ai) MUST be carved out of this wildcard
+# or they hit cloud-api instead of their real backend. The carve-out is a
+# Cloudflare dashboard action (a Worker cannot opt a host out of its own route):
+# add a more-specific Workers route `feed.elizacloud.ai/*` with Worker = None,
+# or set the `feed` DNS record to DNS-only. See packages/feed/RAILWAY.md,
+# "Canonical host: feed.elizacloud.ai".
 routes = [
   { pattern = "api.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "x402.elizacloud.ai/*", zone_name = "elizacloud.ai" },
