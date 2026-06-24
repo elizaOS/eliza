@@ -15,9 +15,10 @@
 > is the original pre-port plan, kept for reference.
 
 
-**Status (2026-06-23):** the drafter is **validated working on upstream**; the fork
-integration is scoped here. This doc is the AGENTS.md-required "concrete porting
-plan in the repo docs" that must exist before the upstream rebase / targeted port.
+**Historical status (before the fork port):** the drafter was validated working
+on upstream and the fork integration was scoped here. This document is retained
+as the concrete porting plan and rationale; the update above records the current
+post-port status.
 
 ## What's proven
 
@@ -30,11 +31,12 @@ llama-cli -m <eliza-1 gemma-4-E2B> -md <amaranus> -fa on --spec-type draft-mtp
   baseline 105.5 t/s → draft-mtp 136.2 t/s  =  1.29× on Apple M4 Max Metal
 ```
 
-So the runtime + the drafter exist; the only gap is bringing the arch into the
-fork. **No H200, no distillation** is needed for a working drafter (a bigger,
-uniform all-tier speedup is a separate optimization — see the drafter runbook).
+So the runtime + the drafter existed before the fork port; the only gap at that
+point was bringing the arch into the fork. **No H200, no distillation** was
+needed for a working drafter (a bigger, uniform all-tier speedup is a separate
+optimization — see the drafter runbook).
 
-## Why this is a rebase-class change, not an additive port
+## Original risk assessment: why this looked rebase-class
 
 The arch *model* (`src/models/gemma4-assistant.cpp`, 204 lines) ports cleanly —
 the fork's `llm_graph` API (`build_attn_inp_kv_iswa`, `build_attn`, `build_ffn`,
@@ -51,8 +53,8 @@ const auto * model_other = llama_get_model(cparams.ctx_other);   // line 112
 ggml_tensor * x = ggml_get_rows(ctx0, model_other->tok_embd, inp_tokens);
 ```
 
-This requires the upstream **`ctx_other` + shared-KV (`mem_other`/`share`)**
-infrastructure, which the fork (v1.2.0-eliza) does **not** have:
+This required the upstream **`ctx_other` + shared-KV (`mem_other`/`share`)**
+infrastructure, which the fork (`v1.2.0-eliza`) did **not** have:
 
 - `llama_kv_cache_iswa` ctor: fork lacks the `mem_other` + `layer_share_cb share`
   params (upstream `src/llama-kv-cache-iswa.h`).
@@ -70,7 +72,7 @@ Surface: **13 upstream files** touch `mem_other` / `ctx_other` / `layer_share_cb
 `llama-model.cpp`, `common/speculative.cpp`, `models/eagle3.cpp`,
 `models/gemma4-assistant.cpp`).
 
-## Recommended path: the upstream rebase
+## Original recommended path: the upstream rebase
 
 The clean integration is the AGENTS.md-deferred **rebase of the fork onto recent
 upstream**, which reconciles the KV-cache divergence holistically and brings

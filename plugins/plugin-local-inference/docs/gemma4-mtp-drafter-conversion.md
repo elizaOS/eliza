@@ -159,20 +159,21 @@ ships with `google/gemma-4-E2B-it-assistant`, converted to GGUF:
 | Arch | `gemma4-assistant`: 4-block drafter, `embedding_length 256`, head_count 4 / kv 1, `key_length 512`(global)/`256`(swa), SWA window 512, pattern `[T,T,T,F]`, `nextn_predict_layers 4`, `embedding_length_out 1536` (the E2B hidden). Tokenizer `gemma4`, vocab 262144 — **matches gemma-4-E2B**. |
 | Tensors | per block `attn_norm / attn_q(+q_norm) / attn_output / ffn_{norm,gate,up,down} / post_attention_norm / post_ffw_norm / layer_output_scale`; top-level `token_embd`, `output_norm`, `nextn.pre_projection [3072,256]`, `nextn.post_projection [256,1536]`. (Q+O attention only; distinct from milady `dflash-draft`, which uses `wk`/`wv` + `dflash_fc`.) |
 
-**The only gap is fork arch support.** The fork (`v1.2.0-eliza`) does not yet
-recognize `gemma4-assistant` (`grep` empty in `src/`). Running this drafter needs
-that arch ported in — either (1) **rebase/cherry-pick** the upstream llama.cpp
-gemma-4-MTP / `gemma4-assistant` support onto the fork (the AGENTS.md "rebase onto
-recent upstream" follow-up), then load + drive via `--spec-type draft-mtp`; or
-(2) add `LLM_ARCH_GEMMA4_ASSISTANT` directly — the hparams + 49-tensor schema +
-the `nextn.pre/post_projection` head are fully specified by the GGUF above; reuse
-the `gemma4` block graph + a NextN projection.
+**Current fork status.** The original gap was fork arch support: older
+`v1.2.0-eliza` builds did not recognize `gemma4-assistant`, so the drafter needed
+either an upstream rebase/cherry-pick or a targeted `LLM_ARCH_GEMMA4_ASSISTANT`
+port. That targeted port has now been completed and validated in the elizaOS
+llama.cpp fork (see `gemma4-assistant-fork-port-plan.md` and
+`native/verify/evidence/platform/gemma4-assistant-fork-draft-mtp.log`). The
+remaining product work is packaging and policy: ship the GGUF as
+`mtp/drafter-2b.gguf` under the existing `mtp: "separate-drafter"` manifest
+contract, choose where draft-MTP is beneficial by tier, and keep the Q4-target
+regression caveat below visible.
 
-This replaces the H200 path: the trained weights already exist (Google's, QAT'd),
-so the remaining work is bounded **C++ arch support in the fork**, not training.
-The `mtp: "separate-drafter"` manifest + `mtp/drafter-<tier>.gguf` contract (PR
-#9172) stays as-is; this GGUF becomes `mtp/drafter-2b.gguf` once the arch loads.
-Staged locally at `~/.local/state/eliza/models/drafts/gemma-4-E2B-mtp-amaranus.gguf`.
+This replaces the H200 path for a working drafter: the trained weights already
+exist (Google's, QAT'd), and the fork can now load the arch. A from-scratch H200
+distillation remains only a possible optimization for a higher-acceptance,
+all-tier drafter.
 
 ### VALIDATED on Metal via upstream llama.cpp (2026-06-23)
 
@@ -208,21 +209,9 @@ and helps the larger/Q8 tiers; a **bigger, uniform speedup across all tiers**
 only place H200 spend is still justified, and it is an optimization, not a
 blocker.
 
-**Integration into eliza = bring `gemma4-assistant` into the fork.** Two options,
-both bounded (no training):
-1. **Rebase the fork onto recent upstream** (the AGENTS.md "deferred rebase"),
-   which brings `gemma4-assistant` + the upstream `draft-mtp`/`ctx_other` engine
-   wholesale. Cleanest; also lands the other upstream gemma-4 fixes.
-2. **Targeted port**: copy `src/models/gemma4-assistant.cpp`, the
-   `LLM_ARCH_GEMMA4_ASSISTANT` enum + `LLM_TENSOR_NEXTN_PROJ_{PRE,POST}` +
-   `nextn_predict_layers`/`*_length_swa` hparams, and the `ctx_other` draft-mtp
-   link, adapting to the fork's `llm_graph` API. Note the fork's current
-   `draft-mtp` is the `dflash-draft` (cross-attention) design, distinct from the
-   upstream `ctx_other` NextN design, so the speculative-engine link is the part
-   that needs care.
-
-Once the fork loads `gemma4-assistant`, the amaranus GGUF becomes
-`mtp/drafter-2b.gguf` and the `mtp: "separate-drafter"` manifest (PR #9172) ships
-release-shaped — no H200, no in-house distillation.
+**Integration into eliza = packaging and tier policy now.** The targeted fork
+port is done, so the amaranus GGUF can become `mtp/drafter-2b.gguf` under the
+`mtp: "separate-drafter"` manifest (PR #9172). No H200 or in-house distillation
+is required for the release-shaped path; H200 work would be for a better
+all-tier optimization, not for first functionality.
 Evidence: `native/verify/evidence/platform/amaranus-draft-mtp-metal.log`.
-
