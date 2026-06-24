@@ -121,6 +121,8 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
 
   app.use("*", async (c, next) => {
     if (c.req.path === "/health") return next();
+    // Mock production app URLs are externally reachable, unlike control-plane APIs.
+    if (c.req.path.startsWith("/mock/apps/")) return next();
     // Admin endpoints use their own token, validated per-route.
     if (c.req.path.startsWith("/api/v1/admin/")) return next();
     // Compat endpoints are public stubs.
@@ -159,6 +161,10 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     return value;
   }
 
+  function appUrl(origin: string, containerId: string): string {
+    return `${origin}/mock/apps/${encodeURIComponent(containerId)}`;
+  }
+
   async function processDbBackedJobs(
     databaseUrl: string,
     origin: string,
@@ -171,11 +177,15 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   }> {
     const [
       { agentSandboxesRepository },
+      { appsRepository },
+      { containersRepository },
       { jobsRepository },
       { runWithCloudBindingsAsync },
       { JOB_TYPES },
     ] = await Promise.all([
       import("@elizaos/cloud-shared/db/repositories/agent-sandboxes.ts"),
+      import("@elizaos/cloud-shared/db/repositories/apps.ts"),
+      import("@elizaos/cloud-shared/db/repositories/containers.ts"),
       import("@elizaos/cloud-shared/db/repositories/jobs.ts"),
       import("@elizaos/cloud-shared/lib/runtime/cloud-bindings.ts"),
       import("@elizaos/cloud-shared/lib/services/provisioning-job-types.ts"),
@@ -204,6 +214,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
         const sleepJobs = await claim(JOB_TYPES.AGENT_SLEEP);
         const wakeJobs = await claim(JOB_TYPES.AGENT_WAKE);
         const snapshotJobs = await claim(JOB_TYPES.AGENT_SNAPSHOT);
+        const appDeployJobs = await claim(JOB_TYPES.APP_DEPLOY);
 
         for (const job of [
           ...provisionJobs,
@@ -213,9 +224,58 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
           ...sleepJobs,
           ...wakeJobs,
           ...snapshotJobs,
+          ...appDeployJobs,
         ]) {
           result.claimed += 1;
           try {
+            if (job.type === JOB_TYPES.APP_DEPLOY) {
+              const appId = readJobString(job, "appId");
+              const appRow = await appsRepository.findById(appId);
+              if (!appRow) {
+                throw new Error(`App not found for APP_DEPLOY: ${appId}`);
+              }
+
+              const container = await containersRepository.create({
+                name: `app-${appId.replace(/-/g, "").slice(0, 12)}`,
+                project_name: appId,
+                organization_id: appRow.organization_id,
+                user_id: appRow.created_by_user_id,
+                image_tag:
+                  process.env.APP_DEFAULT_IMAGE ??
+                  "ghcr.io/elizaos/eliza:e2e-app",
+                port: 3000,
+                environment_vars: {},
+                metadata: { appId, mockDeployed: true },
+                status: "running",
+                last_deployed_at: now(),
+              });
+
+              const productionUrl = appUrl(origin, container.id);
+              await appsRepository.update(appId, {
+                metadata: {
+                  ...((appRow.metadata as Record<string, unknown> | null) ??
+                    {}),
+                  containerId: container.id,
+                },
+                deployment_status: "deployed",
+                production_url: productionUrl,
+                last_deployed_at: now(),
+              });
+              await containersRepository.update(
+                container.id,
+                appRow.organization_id,
+                {
+                  load_balancer_url: productionUrl,
+                },
+              );
+              await jobsRepository.updateStatus(job.id, "completed", {
+                result: { appId, containerId: container.id, productionUrl },
+                completed_at: now(),
+              });
+              result.succeeded += 1;
+              continue;
+            }
+
             if (job.type === JOB_TYPES.AGENT_DELETE) {
               const agentId = readJobString(job, "agentId");
               const organizationId = readJobString(job, "organizationId");
@@ -561,7 +621,9 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     const parsed =
       rawLimit !== undefined ? Number.parseInt(rawLimit, 10) : Number.NaN;
     const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 1000;
-    const databaseUrl = c.req.header("x-eliza-cloud-database-url")?.trim();
+    const databaseUrl =
+      c.req.header("x-eliza-cloud-database-url")?.trim() ??
+      process.env.DATABASE_URL;
     const result = databaseUrl
       ? await processDbBackedJobs(databaseUrl, new URL(c.req.url).origin, limit)
       : await tick(limit);
@@ -819,6 +881,47 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
         timestamp: now().toISOString(),
       },
     });
+  });
+
+  app.get("/mock/apps/:containerId", async (c) => {
+    await latency();
+    const containerId = c.req.param("containerId");
+    const databaseUrl =
+      c.req.header("x-eliza-cloud-database-url")?.trim() ??
+      process.env.DATABASE_URL;
+    if (databaseUrl) {
+      const [{ containersRepository }, { runWithCloudBindingsAsync }] =
+        await Promise.all([
+          import("@elizaos/cloud-shared/db/repositories/containers.ts"),
+          import("@elizaos/cloud-shared/lib/runtime/cloud-bindings.ts"),
+        ]);
+      const rows = await runWithCloudBindingsAsync(
+        { DATABASE_URL: databaseUrl },
+        () => containersRepository.listForAdminInfrastructure(500),
+      );
+      const row = rows.find((candidate) => candidate.id === containerId);
+      if (row && row.status !== "deleted") {
+        return c.json({
+          success: true,
+          appId: row.project_name,
+          containerId,
+          status: row.status,
+          runtime: "mock-app-container",
+        });
+      }
+    }
+
+    const container = store.getContainer(containerId);
+    if (container && container.status !== "deleted") {
+      return c.json({
+        success: true,
+        appId: container.projectName,
+        containerId,
+        status: container.status,
+        runtime: "mock-app-container",
+      });
+    }
+    return c.json({ success: false, error: "App container not found" }, 404);
   });
 
   // ── JSON-RPC bridge + SSE ────────────────────────────────────────────

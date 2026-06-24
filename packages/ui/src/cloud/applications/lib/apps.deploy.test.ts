@@ -12,6 +12,7 @@ const {
   createApp,
   deleteApp,
   deployApp,
+  getLatestAppDeployment,
   regenerateAppApiKey,
   updateApp,
 } = await import("./apps");
@@ -22,17 +23,34 @@ afterEach(() => {
 
 describe("deployApp (#9145)", () => {
   it("POSTs to /api/v1/apps/:id/deploy and returns the deployment record", async () => {
-    apiMock.mockResolvedValue({ deploymentId: "dep_1", status: "building" });
+    apiMock.mockResolvedValue({ deploymentId: "dep_1", status: "BUILDING" });
     const result = await deployApp("app_42");
     expect(apiMock).toHaveBeenCalledWith("/api/v1/apps/app_42/deploy", {
       method: "POST",
     });
-    expect(result).toEqual({ deploymentId: "dep_1", status: "building" });
+    expect(result).toEqual({ deploymentId: "dep_1", status: "BUILDING" });
   });
 
   it("propagates the gated apps_deploy_disabled error to the caller", async () => {
     apiMock.mockRejectedValue(new Error("apps_deploy_disabled"));
     await expect(deployApp("app_42")).rejects.toThrow("apps_deploy_disabled");
+  });
+
+  it("GETs /api/v1/apps/:id/deploy/status for dashboard polling", async () => {
+    apiMock.mockResolvedValue({
+      success: true,
+      deploymentId: "dep_1",
+      status: "READY",
+      vercelUrl: "https://app.example.test",
+      error: null,
+      startedAt: "2026-06-24T12:00:00.000Z",
+    });
+
+    const result = await getLatestAppDeployment("app_42");
+
+    expect(apiMock).toHaveBeenCalledWith("/api/v1/apps/app_42/deploy/status");
+    expect(result.status).toBe("READY");
+    expect(result.vercelUrl).toBe("https://app.example.test");
   });
 });
 

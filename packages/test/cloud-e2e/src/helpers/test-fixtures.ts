@@ -9,7 +9,11 @@ import crypto from "node:crypto";
 import { test as base, expect, type Page } from "@playwright/test";
 import { PLAYWRIGHT_TEST_AUTH_SECRET } from "../fixtures/env";
 import { type SeededUser, seedTestUser } from "../fixtures/seed";
-import { type StackHandle, startCloudStack } from "../fixtures/stack";
+import {
+  type StackHandle,
+  type StartCloudStackOptions,
+  startCloudStack,
+} from "../fixtures/stack";
 
 function buildPlaywrightSessionToken(
   userId: string,
@@ -30,6 +34,7 @@ function buildPlaywrightSessionToken(
 
 export interface CloudStackFixtures {
   stack: StackHandle;
+  stackOptions: StartCloudStackOptions;
 }
 
 export interface CloudTestFixtures {
@@ -38,9 +43,11 @@ export interface CloudTestFixtures {
 }
 
 export const test = base.extend<CloudTestFixtures, CloudStackFixtures>({
+  stackOptions: [{}, { scope: "worker", option: true }],
+
   stack: [
-    async ({}, use) => {
-      const handle = await startCloudStack();
+    async ({ stackOptions }, use) => {
+      const handle = await startCloudStack(stackOptions);
       try {
         await use(handle);
       } finally {

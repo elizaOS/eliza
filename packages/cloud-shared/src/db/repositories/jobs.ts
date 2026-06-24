@@ -21,7 +21,7 @@ function hasPayloadUpdates(updates: Partial<Job> | Partial<NewJob>): boolean {
 
 function stringField(
   data: Record<string, unknown>,
-  field: "agentId" | "agentName" | "characterId" | "organizationId" | "userId",
+  field: "agentId" | "agentName" | "appId" | "characterId" | "organizationId" | "userId",
 ): string | null {
   const value = data[field];
   return typeof value === "string" && value.length > 0 ? value : null;
@@ -39,6 +39,7 @@ function inlineJobData(data: Record<string, unknown>): Record<string, unknown> {
   for (const field of [
     "agentId",
     "agentName",
+    "appId",
     "characterId",
     "organizationId",
     "userId",
