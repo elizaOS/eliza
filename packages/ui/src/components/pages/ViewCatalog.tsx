@@ -41,10 +41,11 @@ import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { readRecentViewIds, recordRecentViewId } from "../../view-recents";
+import { emitViewInteraction } from "../../view-telemetry";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
-import { ViewIcon } from "../views/ViewIcon";
+import { ViewTileImage } from "../views/ViewTileImage";
 import { Springboard } from "./Springboard";
 
 const VIEW_LOADING_SKELETON_KEYS = [
@@ -85,42 +86,6 @@ function SectionLabel({
     >
       {children}
     </h2>
-  );
-}
-
-function ViewVisual({
-  id,
-  icon,
-  label,
-  heroUrl,
-  showHero,
-}: {
-  id: string;
-  icon?: string | null;
-  label: string;
-  heroUrl?: string | null;
-  showHero: boolean;
-}) {
-  if (showHero && heroUrl) {
-    return (
-      <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-bg-accent">
-        <img
-          src={heroUrl}
-          alt=""
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent-subtle text-accent transition-colors group-hover:bg-accent group-hover:text-accent-foreground"
-      data-view-visual={id}
-    >
-      <ViewIcon icon={icon} label={label} id={id} className="h-6 w-6" />
-    </div>
   );
 }
 
@@ -261,7 +226,6 @@ function CatalogGetCard({
   onGet: (entry: ViewEntry) => void;
 }) {
   const { t } = useTranslation();
-  const showHero = Boolean(entry.hasHero && entry.heroUrl);
   const busy = entry.state === "installing";
   const errored = entry.state === "error";
   const actionLabel = busy
@@ -281,12 +245,11 @@ function CatalogGetCard({
       })}
       className="group flex flex-col items-center gap-2 rounded-2xl px-2 py-4 text-center transition-colors hover:bg-bg-accent/70  disabled:cursor-not-allowed"
     >
-      <ViewVisual
-        id={entry.id}
-        icon={entry.icon}
-        label={entry.label}
-        heroUrl={entry.heroUrl}
-        showHero={showHero}
+      <ViewTileImage
+        entry={entry}
+        source="view-catalog"
+        containerClassName="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-accent-subtle text-accent transition-colors group-hover:bg-accent group-hover:text-accent-foreground"
+        glyphClassName="h-6 w-6"
       />
       <span className="line-clamp-2 max-w-full text-xs font-medium leading-4 text-txt">
         {entry.label}
@@ -465,6 +428,12 @@ export function ViewCatalog() {
       try {
         const results = await fetchSearchResults(q, 10, activeModality);
         setSearchResults(results);
+        emitViewInteraction({
+          source: "view-catalog",
+          action: results.length === 0 ? "search-zero-results" : "search",
+          query: q,
+          count: results.length,
+        });
       } catch {
         // Semantic search unavailable — fall back to client-side filtering.
         setSearchResults(null);
@@ -573,12 +542,26 @@ export function ViewCatalog() {
 
   function handleSpringboardEdit(id: string) {
     const view = viewById.get(id);
-    if (view) fillManagementForm(view);
+    if (view) {
+      emitViewInteraction({
+        source: "view-catalog",
+        action: "dynamic-view-edit",
+        viewId: id,
+      });
+      fillManagementForm(view);
+    }
   }
 
   function handleSpringboardDelete(id: string) {
     const view = viewById.get(id);
-    if (view) void handleDeleteView(view);
+    if (view) {
+      emitViewInteraction({
+        source: "view-catalog",
+        action: "dynamic-view-delete",
+        viewId: id,
+      });
+      void handleDeleteView(view);
+    }
   }
 
   function handleViewClick(view: ViewRegistryEntry) {

@@ -138,7 +138,10 @@ export function reconcileLayout(
 ): SpringboardLayout {
   const available = new Set(availableIds);
 
-  const favorites = layout.favorites
+  // Dedupe defensively: toggleFavorite never adds a duplicate, but a corrupted
+  // or hand-edited localStorage payload could, and a duplicated favorite would
+  // otherwise render twice in the dock.
+  const favorites = [...new Set(layout.favorites)]
     .filter((id) => available.has(id))
     .slice(0, SPRINGBOARD_DOCK_LIMIT);
   const favoriteSet = new Set(favorites);
@@ -184,6 +187,12 @@ export function toggleFavorite(
  * Move an icon to a target page at a target index, repacking the flattened
  * page order so the move never leaves holes or duplicates. The id is removed
  * from the dock if it was a favorite (an icon lives in exactly one surface).
+ *
+ * NOTE: cross-page moves (`targetPage > 0`) are fully supported by this model,
+ * but the Springboard's current drag gesture is `axis="y"` within the active
+ * page only — so cross-page reorder is exercised by tests and available to
+ * callers, not by a user gesture today. Do not build cross-page drag UI unless
+ * product asks; this capability exists so paging stays correct under repack.
  */
 export function moveIcon(
   layout: SpringboardLayout,
