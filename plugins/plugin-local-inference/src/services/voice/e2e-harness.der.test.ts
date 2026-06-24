@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	type DiarizationSample,
-	scoreDiarization,
-} from "./e2e-harness";
+import { type DiarizationSample, scoreDiarization } from "./e2e-harness";
 
 // #9147 — diarization error rate (DER) is the third heavy voice case the issue
 // flags as having a scorer that "does not run anywhere that gates merges". Like

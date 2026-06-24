@@ -1047,7 +1047,9 @@ async function imageRequestToBase64(image: {
 		}
 		return Buffer.from(await resp.arrayBuffer()).toString("base64");
 	}
-	throw new Error("[local-inference] IMAGE_DESCRIPTION could not resolve image bytes");
+	throw new Error(
+		"[local-inference] IMAGE_DESCRIPTION could not resolve image bytes",
+	);
 }
 
 function makeBionicTranscriptionHandler(): TranscriptionHandler {
