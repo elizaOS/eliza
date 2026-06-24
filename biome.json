@@ -140,6 +140,24 @@
           }
         }
       }
+    },
+    {
+      "includes": [
+        "plugins/plugin-task-coordinator/src/**/*.ts",
+        "plugins/plugin-calendar/src/**/*.ts",
+        "plugins/plugin-scheduling/src/**/*.ts",
+        "plugins/plugin-blocker/src/**/*.ts",
+        "plugins/plugin-relationships/src/**/*.ts",
+        "plugins/plugin-health/src/**/*.ts",
+        "plugins/plugin-sql/src/**/*.ts"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "error"
+          }
+        }
+      }
     }
   ],
   "formatter": {
