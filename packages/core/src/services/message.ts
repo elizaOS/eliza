@@ -3282,17 +3282,15 @@ export async function renderMessageHandlerStablePrefix(
 
 function parseToolArguments(value: unknown): Record<string, unknown> | null {
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		if (typeof value !== "string") {
-			return null;
-		}
-		try {
-			const parsed: unknown = JSON.parse(value);
-			return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-				? (parsed as Record<string, unknown>)
-				: null;
-		} catch {
-			return null;
-		}
+		// String args are usually one JSON object, but a weak streaming model
+		// (cerebras gpt-oss double-emits the tool call on one delta index) can
+		// produce two concatenated objects (`{…}{…}`) that fail a plain
+		// JSON.parse. parseJsonObject recovers the FIRST balanced object, so the
+		// doubled emit parses on attempt 1 instead of failing as a "malformed
+		// HANDLE_RESPONSE tool call" and forcing the Stage-1 retry+planner path.
+		return typeof value === "string"
+			? parseJsonObject<Record<string, unknown>>(value)
+			: null;
 	}
 	return value as Record<string, unknown>;
 }
@@ -4300,7 +4298,7 @@ function isEmptyStage1Result(raw: string | GenerateTextResult): boolean {
 	return true;
 }
 
-function getStage1RetryReason(
+export function getStage1RetryReason(
 	raw: string | GenerateTextResult,
 ): "empty completion" | "malformed HANDLE_RESPONSE tool call" | null {
 	if (isEmptyStage1Result(raw)) {
