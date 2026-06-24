@@ -143,7 +143,7 @@ app.post("/", async (c) => {
       }
     }
 
-    const agent = await elizaSandboxService.createAgent({
+    const { agent, idempotent } = await elizaSandboxService.createAgent({
       organizationId: user.organization_id,
       userId: user.id,
       agentName: parsed.data.agentName,
@@ -151,10 +151,13 @@ app.post("/", async (c) => {
       environmentVars: parsed.data.environmentVars,
     });
 
-    logger.info("[compat] Agent created", {
-      agentId: agent.id,
-      orgId: user.organization_id,
-    });
+    logger.info(
+      idempotent ? "[compat] Reusing existing agent" : "[compat] Agent created",
+      {
+        agentId: agent.id,
+        orgId: user.organization_id,
+      },
+    );
 
     let provisioningJobId: string | undefined;
     if (autoProvision) {

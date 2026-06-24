@@ -92,24 +92,34 @@ export async function ensureElizaAppProvisioning(params: {
     return existing;
   }
 
-  const sandbox = await elizaSandboxService.createAgent({
+  const { agent: sandbox, idempotent } = await elizaSandboxService.createAgent({
     organizationId: params.organizationId,
     userId: params.userId,
     agentName: DEFAULT_AGENT_NAME,
     dockerImage: DEFAULT_DOCKER_IMAGE,
+    reuseExistingNonTerminal: true,
   });
 
-  await provisioningJobService.enqueueAgentProvision({
-    agentId: sandbox.id,
-    organizationId: params.organizationId,
-    userId: params.userId,
-    agentName: DEFAULT_AGENT_NAME,
-  });
+  // The org-scoped guard reused an in-flight sandbox; its provision job is
+  // already queued, so don't enqueue a second one.
+  if (!idempotent) {
+    await provisioningJobService.enqueueAgentProvision({
+      agentId: sandbox.id,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      agentName: DEFAULT_AGENT_NAME,
+    });
+  }
 
-  logger.info("[eliza-app provisioning] Provisioning kicked off", {
-    agentId: sandbox.id,
-    orgId: params.organizationId,
-  });
+  logger.info(
+    idempotent
+      ? "[eliza-app provisioning] Reusing in-flight sandbox"
+      : "[eliza-app provisioning] Provisioning kicked off",
+    {
+      agentId: sandbox.id,
+      orgId: params.organizationId,
+    },
+  );
 
   return toElizaAppProvisioningStatus(sandbox);
 }

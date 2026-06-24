@@ -57,6 +57,7 @@ import {
   withReusedElizaCharacterOwnership,
 } from "./eliza-agent-config";
 import {
+  elizaAgentCreateAdvisoryLockSql,
   elizaCodingContainerImageAdvisoryLockSql,
   elizaProvisionAdvisoryLockSql,
 } from "./eliza-provision-lock";
@@ -82,6 +83,19 @@ export interface CreateAgentParams {
   characterId?: string;
   dockerImage?: string;
   executionTier?: AgentExecutionTier;
+  /**
+   * Opt-in idempotency for single-agent-per-org flows (e.g. the onboarding
+   * `POST /api/v1/eliza/agents` path and the eliza-app provisioner). When set,
+   * createAgent takes an org-scoped advisory lock and reuses the org's existing
+   * non-terminal agent instead of minting a duplicate — so a retry, an SDK
+   * double-call, or a provision flap can't strand the org with N agents (each =
+   * a container + per-tenant DB + ingress).
+   *
+   * Left unset by multi-agent-per-org service paths (waifu token launches, the
+   * compat create endpoint) that legitimately create several distinct agents
+   * for one org and must NOT collapse them.
+   */
+  reuseExistingNonTerminal?: boolean;
 }
 
 export type ProvisionResult =
@@ -600,13 +614,55 @@ export class ElizaSandboxService {
     };
   }
 
-  async createAgent(params: CreateAgentParams): Promise<AgentSandbox> {
+  async createAgent(params: CreateAgentParams): Promise<{
+    agent: AgentSandbox;
+    idempotent: boolean;
+  }> {
     logger.info("[agent-sandbox] Creating agent", {
       orgId: params.organizationId,
       name: params.agentName,
+      reuse: params.reuseExistingNonTerminal ?? false,
     });
 
-    return agentSandboxesRepository.create(this.buildAgentInsertData(params));
+    // Multi-agent-per-org callers (waifu launches, compat) leave the flag unset
+    // and keep the plain insert — they legitimately mint several agents per org.
+    if (!params.reuseExistingNonTerminal) {
+      const created = await agentSandboxesRepository.create(this.buildAgentInsertData(params));
+      return { agent: created, idempotent: false };
+    }
+
+    // Mirrors createCodingContainerAgent: an org-scoped advisory lock + a
+    // FOR UPDATE reuse guard serialize concurrent creates so a retry / SDK
+    // double-call / provision flap can't strand the org with N agents (each =
+    // a container + per-tenant DB + ingress).
+    return dbWrite.transaction(async (tx) => {
+      await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
+
+      const [existing] = await tx
+        .select()
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.organization_id, params.organizationId),
+            sql`${agentSandboxes.pool_status} IS NULL`,
+            sql`${agentSandboxes.status} IN ('pending', 'provisioning', 'running')`,
+          ),
+        )
+        .orderBy(desc(agentSandboxes.created_at))
+        .for("update")
+        .limit(1);
+
+      if (existing) {
+        return { agent: existing, idempotent: true };
+      }
+
+      const [created] = await tx
+        .insert(agentSandboxes)
+        .values(this.buildAgentInsertData(params))
+        .returning();
+      if (!created) throw new Error("Failed to create agent record");
+      return { agent: created, idempotent: false };
+    });
   }
 
   async createCodingContainerAgent(params: CreateAgentParams & { dockerImage: string }): Promise<{

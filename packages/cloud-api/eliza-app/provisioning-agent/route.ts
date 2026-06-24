@@ -94,24 +94,35 @@ app.post("/", async (c) => {
     }
 
     // No sandbox yet — create one and enqueue provisioning.
-    const sandbox = await elizaSandboxService.createAgent({
-      organizationId: session.organizationId,
-      userId: session.userId,
-      agentName: DEFAULT_AGENT_NAME,
-      dockerImage: DEFAULT_DOCKER_IMAGE,
-    });
+    const { agent: sandbox, idempotent } =
+      await elizaSandboxService.createAgent({
+        organizationId: session.organizationId,
+        userId: session.userId,
+        agentName: DEFAULT_AGENT_NAME,
+        dockerImage: DEFAULT_DOCKER_IMAGE,
+        reuseExistingNonTerminal: true,
+      });
 
-    await provisioningJobService.enqueueAgentProvision({
-      agentId: sandbox.id,
-      organizationId: session.organizationId,
-      userId: session.userId,
-      agentName: DEFAULT_AGENT_NAME,
-    });
+    // The org-scoped guard reused an in-flight sandbox; its provision job is
+    // already queued, so don't enqueue a second one.
+    if (!idempotent) {
+      await provisioningJobService.enqueueAgentProvision({
+        agentId: sandbox.id,
+        organizationId: session.organizationId,
+        userId: session.userId,
+        agentName: DEFAULT_AGENT_NAME,
+      });
+    }
 
-    logger.info("[eliza-app provisioning-agent] Provisioning kicked off", {
-      agentId: sandbox.id,
-      orgId: session.organizationId,
-    });
+    logger.info(
+      idempotent
+        ? "[eliza-app provisioning-agent] Reusing in-flight sandbox"
+        : "[eliza-app provisioning-agent] Provisioning kicked off",
+      {
+        agentId: sandbox.id,
+        orgId: session.organizationId,
+      },
+    );
 
     return c.json({
       success: true,

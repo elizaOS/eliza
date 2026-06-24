@@ -305,7 +305,9 @@ app.post("/", async (c) => {
 
     let initialCreditsGranted = false;
     let initialFreeCreditsUsd = 0;
-    let agent: Awaited<ReturnType<typeof elizaSandboxService.createAgent>>;
+    let agent: Awaited<
+      ReturnType<typeof elizaSandboxService.createAgent>
+    >["agent"];
     try {
       if (walletAccount?.isNewAccount && p.account?.primaryWalletAddress) {
         const creditGrant = await grantInitialCreditsToWalletAccount({
@@ -345,7 +347,7 @@ app.post("/", async (c) => {
         );
       }
 
-      agent = await elizaSandboxService.createAgent({
+      ({ agent } = await elizaSandboxService.createAgent({
         organizationId: ownerOrganizationId,
         userId: ownerUserId,
         agentName,
@@ -443,7 +445,7 @@ app.post("/", async (c) => {
           ELIZA_UI_ENABLE: "true",
         },
         dockerImage: p.container?.image,
-      });
+      }));
     } catch (createErr) {
       try {
         await charactersService.delete(character.id);
