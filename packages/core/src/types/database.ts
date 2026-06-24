@@ -1,3 +1,4 @@
+import type { AccessContext } from "./access-context";
 import type { Agent } from "./agent";
 import type {
 	Component,
@@ -13,7 +14,6 @@ import type {
 	PairingChannel,
 	PairingRequest,
 } from "./pairing";
-import type { AccessContext } from "./access-context";
 import type { JsonValue, Metadata, UUID } from "./primitives";
 import type { Task } from "./task";
 
