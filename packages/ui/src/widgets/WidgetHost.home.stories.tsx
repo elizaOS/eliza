@@ -79,6 +79,16 @@ const EVENTS: ActivityEvent[] = [
   } as ActivityEvent,
 ];
 
+// Mirror the runtime i18n contract: honor a caller's `defaultValue`, else
+// humanize the key's last segment — so the cards read like the shipped app
+// instead of showing raw i18n keys.
+function t(key: string, opts?: { defaultValue?: string }): string {
+  if (opts && typeof opts.defaultValue === "string") return opts.defaultValue;
+  const tail = key.split(".").pop() ?? key;
+  const spaced = tail.replace(/([a-z])([A-Z])/g, "$1 $2");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 function HomeWidgetsHarness() {
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -86,13 +96,22 @@ function HomeWidgetsHarness() {
     __setAppValueForTests({
       plugins: [{ id: "agent-orchestrator", enabled: true, isActive: true }],
       conversations: CONVERSATIONS,
-      t: (k: string) => k,
+      t,
       // biome-ignore lint/suspicious/noExplicitAny: partial seed — widgets read only the fields above
     } as any);
     __resetNotificationStoreForTests();
     for (const n of NOTIFICATIONS) __ingestNotificationForTests(n);
+    // No backend in storybook: the API-polled cards (apps, lifeops) get an empty
+    // payload so they self-hide cleanly instead of showing a fetch error.
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      new Response("[]", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
     setReady(true);
     return () => {
+      globalThis.fetch = realFetch;
       __resetNotificationStoreForTests();
       __setAppValueForTests(null);
     };
