@@ -786,8 +786,8 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         }
         const conversation = rawConversation;
         // Bail if the user navigated away while the conversation was being
-        // created (soft-undo / manual switch): switching now would override
-        // their restored conversation with this throwaway fresh thread. The
+        // created: switching now would override their selected conversation
+        // with this throwaway fresh thread. The
         // orphaned empty conversation is reaped by cleanupEmptyConversations.
         if (conversationHydrationEpochRef.current !== creationEpoch) {
           return;
@@ -819,14 +819,15 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         }
 
         // The greeting may have been fetched across an `await`; if the user
-        // navigated away meanwhile (e.g. the soft-undo toast restored the
-        // previous conversation, #8929), do NOT clobber their current thread
-        // with this fresh conversation's greeting.
+        // navigated away meanwhile, do not clobber their current thread or run
+        // follow-up side effects for this fresh conversation.
         const stillOnNewConversation =
-          activeConversationIdRef.current === conversation.id;
+          activeConversationIdRef.current === conversation.id &&
+          conversationHydrationEpochRef.current === creationEpoch;
         if (!stillOnNewConversation) {
-          // Navigated away during creation/greeting — leave the active thread as-is.
-        } else if (greetingText) {
+          return;
+        }
+        if (greetingText) {
           greetingFiredRef.current = true;
           const initMessages: ConversationMessage[] = [
             {
@@ -950,10 +951,9 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     async (id: string) => {
       conversationHydrationEpochRef.current += 1;
       // Read the LIVE active id from the ref, not the closure: callers can hold
-      // a stale `handleSelectConversation` (e.g. the soft-undo toast captures it
-      // at reset time, when `activeConversationId` was still the previous
-      // conversation). Using the closure here made restoring to that previous
-      // conversation hit this early-return and silently no-op (#8929).
+      // a stale `handleSelectConversation` captured before another navigation
+      // changes `activeConversationId`. Using the closure here made selecting
+      // that previous conversation hit this early-return and silently no-op.
       const currentActiveId = activeConversationIdRef.current;
       if (id === currentActiveId && conversationMessagesRef.current.length > 0)
         return;

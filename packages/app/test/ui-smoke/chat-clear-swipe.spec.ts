@@ -178,8 +178,12 @@ async function installConversationStore(
     });
   });
 
-  // GET greeting fallback (used when the inline greeting is absent).
+  // Greeting fallback (used when the inline greeting is absent).
   await page.route("**/api/conversations/*/greeting**", async (route) => {
+    if (!["GET", "POST"].includes(route.request().method())) {
+      await route.fallback();
+      return;
+    }
     const url = new URL(route.request().url());
     const id = url.pathname.split("/").slice(-2, -1)[0];
     const text = store.messages[id]?.[0]?.text ?? "Hi — how can I help?";

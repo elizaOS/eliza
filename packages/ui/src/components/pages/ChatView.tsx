@@ -822,8 +822,8 @@ export function ChatView({
 
   // Reset-to-fresh-thread control for the main ChatView header row (#8930).
   // Visible only when there are messages to clear; routes through the shared
-  // reset path which also surfaces the soft-undo toast. Neutral resting →
-  // neutral-with-opacity hover (no orange, no blue), matching nearby controls.
+  // reset path. Neutral resting -> neutral-with-opacity hover (no orange, no
+  // blue), matching nearby controls.
   const resetConversationButton =
     visibleMsgs.length > 0 ? (
       <button
