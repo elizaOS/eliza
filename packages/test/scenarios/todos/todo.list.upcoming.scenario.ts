@@ -40,12 +40,12 @@ export default scenario({
     {
       type: "todo",
       name: "Team review",
-      dueIso: "{{now+6h}}",
+      dueIso: "{{now+2d}}",
     },
     {
       type: "todo",
       name: "Finalize slides",
-      dueIso: "{{now+10h}}",
+      dueIso: "{{now+4d}}",
     },
   ],
   turns: [

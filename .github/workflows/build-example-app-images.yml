@@ -144,10 +144,9 @@ jobs:
         # The deploy puller pulls anonymously; keep the package public.
         # Idempotent — patching to public when already public is a no-op.
         run: |
-          curl \
+          curl --fail-with-body --show-error --silent \
             -X PATCH \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/orgs/elizaOS/packages/container/example-edad/visibility \
-            -d '{"visibility":"public"}' || \
-          echo "::warning::Could not set package visibility to public — set it once manually in the GHCR package settings"
+            -d '{"visibility":"public"}'

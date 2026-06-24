@@ -39,15 +39,20 @@ describe("Ollama embeddings", () => {
     embedMock.mockReset();
   });
 
-  it("returns a marker vector for null initialization probes without calling the provider", async () => {
+  it("uses the configured provider for null initialization probes", async () => {
+    embedMock.mockResolvedValue({
+      embedding: [0.1, 0.2, 0.3, 0.4],
+      usage: { inputTokens: 2 },
+    });
     const { runtime, events } = createRuntime({ OLLAMA_EMBEDDING_MODEL: " embed-model " });
 
     const embedding = await handleTextEmbedding(runtime, null);
 
-    expect(embedding).toHaveLength(1536);
-    expect(embedding[0]).toBe(0.1);
-    expect(embedding.slice(1).every((value) => value === 0)).toBe(true);
-    expect(embedMock).not.toHaveBeenCalled();
+    expect(embedding).toEqual([0.1, 0.2, 0.3, 0.4]);
+    expect(embedMock).toHaveBeenCalledWith({
+      model: { model: "embed-model" },
+      value: "dimension probe",
+    });
     expect(events).toHaveLength(0);
   });
 
