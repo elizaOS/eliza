@@ -150,6 +150,99 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function captureUserSideEffects(
+  userId: string,
+): Promise<UserSideEffectSnapshot> {
+  const [
+    notificationRows,
+    pointsTransactionRows,
+    userAchievementRows,
+    userChallengeProgressRows,
+  ] = await Promise.all([
+    db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(eq(notifications.userId, userId)),
+    db
+      .select({ id: pointsTransactions.id })
+      .from(pointsTransactions)
+      .where(eq(pointsTransactions.userId, userId)),
+    db
+      .select({ id: userAchievements.id })
+      .from(userAchievements)
+      .where(eq(userAchievements.userId, userId)),
+    db
+      .select({ id: userChallengeProgress.id })
+      .from(userChallengeProgress)
+      .where(eq(userChallengeProgress.userId, userId)),
+  ]);
+
+  return {
+    notificationIds: notificationRows.map((row) => row.id),
+    pointsTransactionIds: pointsTransactionRows.map((row) => row.id),
+    userAchievementIds: userAchievementRows.map((row) => row.id),
+    userChallengeProgressIds: userChallengeProgressRows.map((row) => row.id),
+  };
+}
+
+async function waitForAsyncSideEffects(userId: string): Promise<void> {
+  const deadline = Date.now() + 1_500;
+
+  while (Date.now() < deadline) {
+    const checks: Promise<unknown[]>[] = [];
+
+    if (buyPlaced) {
+      checks.push(
+        db
+          .select({ id: predictionPriceHistories.id })
+          .from(predictionPriceHistories)
+          .where(eq(predictionPriceHistories.marketId, seeded.marketId))
+          .limit(1),
+      );
+      checks.push(
+        db
+          .select({ id: userAchievements.id })
+          .from(userAchievements)
+          .where(eq(userAchievements.userId, userId))
+          .limit(1),
+      );
+    }
+
+    if (marketResolved) {
+      checks.push(
+        db
+          .select({ id: adminAuditLogs.id })
+          .from(adminAuditLogs)
+          .where(eq(adminAuditLogs.resourceId, seeded.marketId))
+          .limit(1),
+      );
+      checks.push(
+        db
+          .select({ id: notifications.id })
+          .from(notifications)
+          .where(
+            and(
+              eq(notifications.type, "market_resolved"),
+              sql`${notifications.data}->>'marketId' = ${seeded.marketId}`,
+            ),
+          )
+          .limit(1),
+      );
+    }
+
+    if (checks.length === 0) {
+      return;
+    }
+
+    const results = await Promise.all(checks);
+    if (results.every((result) => result.length > 0)) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 // ---- Response shapes (verified against the live route source) ----
 
 /** POST /api/markets/predictions/[id]/buy -> successResponse(..., 201) */
@@ -261,10 +354,16 @@ async function seedFixtures(userId: string): Promise<void> {
     .select({
       virtualBalance: users.virtualBalance,
       totalDeposited: users.totalDeposited,
+      totalWithdrawn: users.totalWithdrawn,
       lifetimePnL: users.lifetimePnL,
+      invitePoints: users.invitePoints,
       earnedPoints: users.earnedPoints,
-      reputationPoints: users.reputationPoints,
       bonusPoints: users.bonusPoints,
+      reputationPoints: users.reputationPoints,
+      referralCode: users.referralCode,
+      referralCount: users.referralCount,
+      referredBy: users.referredBy,
+      totalFeesEarned: users.totalFeesEarned,
       totalFeesPaid: users.totalFeesPaid,
     })
     .from(users)
@@ -276,19 +375,29 @@ async function seedFixtures(userId: string): Promise<void> {
   originalUserWallet = {
     virtualBalance: String(userBeforeTest.virtualBalance),
     totalDeposited: String(userBeforeTest.totalDeposited),
+    totalWithdrawn: String(userBeforeTest.totalWithdrawn),
     lifetimePnL: String(userBeforeTest.lifetimePnL),
+    invitePoints: userBeforeTest.invitePoints,
     earnedPoints: userBeforeTest.earnedPoints,
-    reputationPoints: userBeforeTest.reputationPoints,
     bonusPoints: userBeforeTest.bonusPoints,
+    reputationPoints: userBeforeTest.reputationPoints,
+    referralCode: userBeforeTest.referralCode,
+    referralCount: userBeforeTest.referralCount,
+    referredBy: userBeforeTest.referredBy,
+    totalFeesEarned: String(userBeforeTest.totalFeesEarned),
     totalFeesPaid: String(userBeforeTest.totalFeesPaid),
   };
+  originalUserSideEffects = await captureUserSideEffects(userId);
 
   // Fund the trading user. WalletService reads users.virtualBalance.
+  // Clear referredBy during the spec so FeeService cannot credit a real
+  // referrer; teardown restores the user's referral fields from the snapshot.
   await db
     .update(users)
     .set({
       virtualBalance: String(STARTING_BALANCE),
       totalDeposited: String(STARTING_BALANCE),
+      referredBy: null,
       updatedAt: now,
     })
     .where(eq(users.id, userId));
