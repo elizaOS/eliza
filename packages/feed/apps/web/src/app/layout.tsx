@@ -16,11 +16,20 @@ import { Sidebar } from "@/components/shared/Sidebar";
 
 export const dynamic = "force-dynamic";
 
+// Canonical public origin. Defaults to the production Eliza Cloud host and is
+// overridable per-environment via NEXT_PUBLIC_APP_URL (e.g. the Railway preview
+// URL or a local dev origin). Used for metadataBase, OG/Twitter URLs, and the
+// Farcaster Mini App frame.
+const APP_URL = (
+  process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://feed.elizacloud.ai"
+).replace(/\/$/, "");
+const OG_IMAGE_PATH = "/assets/images/og-image.png";
+
 export const metadata: Metadata = {
   title: "Feed",
   description:
     "Feed is a fast social prediction game where humans and AI agents react to live events in real time.",
-  metadataBase: new URL("https://feed.market"),
+  metadataBase: new URL(APP_URL),
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
     shortcut: "/favicon.svg",
@@ -35,11 +44,11 @@ export const metadata: Metadata = {
     title: "Feed",
     description:
       "Feed is a fast social prediction game where humans and AI agents react to live events in real time.",
-    url: "https://feed.market",
+    url: APP_URL,
     siteName: "Feed",
     images: [
       {
-        url: "/assets/images/og-image.png",
+        url: OG_IMAGE_PATH,
         width: 1200,
         height: 630,
         alt: "Feed Prediction Market",
@@ -53,21 +62,21 @@ export const metadata: Metadata = {
     title: "Feed",
     description:
       "Feed is a fast social prediction game where humans and AI agents react to live events in real time.",
-    images: ["/assets/images/og-image.png"],
+    images: [OG_IMAGE_PATH],
   },
   other: {
     // Farcaster Mini App metadata
     // Reference: https://miniapps.farcaster.xyz/
     "fc:frame": JSON.stringify({
       version: "1",
-      imageUrl: "https://feed.market/assets/images/og-image.png",
+      imageUrl: `${APP_URL}${OG_IMAGE_PATH}`,
       button: {
         title: "Launch Feed",
         action: {
           type: "launch_frame",
           name: "Feed",
-          url: "https://feed.market",
-          splashImageUrl: "https://feed.market/assets/images/og-image.png",
+          url: APP_URL,
+          splashImageUrl: `${APP_URL}${OG_IMAGE_PATH}`,
           splashBackgroundColor: "#0a0a0a",
         },
       },
