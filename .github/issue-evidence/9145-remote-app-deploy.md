@@ -71,7 +71,7 @@ again during teardown; it did not fail the run.
 PATH="/Users/shawwalters/.bun/bin:$PATH" /Users/shawwalters/.bun/bin/bun run verify
 ```
 
-Result: passed after rebasing onto `origin/develop`, 509 successful tasks out of 509 total in 5m1.293s.
+Result: passed, 509 successful tasks.
 
 ## Evidence notes
 
