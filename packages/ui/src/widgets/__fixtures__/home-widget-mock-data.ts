@@ -319,11 +319,13 @@ function routeTable(): RouteMatch[] {
 }
 
 function jsonResponse(body: unknown): Response {
-  return {
-    ok: true,
+  // A real Response (not a hand-rolled object) so it satisfies BOTH the widgets'
+  // raw `window.fetch(...).ok / .json()` and the typed `client.fetch` path
+  // (which also reads `.headers`, `.text()`, `.clone()`).
+  return new Response(JSON.stringify(body), {
     status: 200,
-    json: async () => body,
-  } as Response;
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 /**

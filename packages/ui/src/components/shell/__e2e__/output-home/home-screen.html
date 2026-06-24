@@ -13833,11 +13833,10 @@
     ];
   }
   function jsonResponse(body) {
-    return {
-      ok: true,
+    return new Response(JSON.stringify(body), {
       status: 200,
-      json: async () => body
-    };
+      headers: { "Content-Type": "application/json" }
+    });
   }
   function installHomeWidgetFetchMock() {
     if (typeof window === "undefined") return () => {
