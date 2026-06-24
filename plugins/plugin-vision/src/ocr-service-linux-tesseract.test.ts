@@ -7,11 +7,16 @@
  * host with `tesseract-ocr` present, so we don't exercise it here.
  */
 
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  _resetTesseractAvailabilityForTests,
   LinuxTesseractOcrService,
   mapTesseractTsvToResult,
   parseTesseractTsv,
+  resolveTesseract,
 } from "./ocr-service-linux-tesseract.js";
 
 // A realistic `tesseract <img> stdout --psm 11 tsv` fixture. Columns:
@@ -126,5 +131,73 @@ describe("LinuxTesseractOcrService", () => {
       // way the probe must return a boolean and never throw.
       expect(typeof LinuxTesseractOcrService.isAvailable()).toBe("boolean");
     }
+  });
+});
+
+// #9105: the provider must resolve a SHIPPED tesseract (no host install) so OCR
+// "just works" on a packaged desktop app — verified by exercising the env
+// precedence + the bundled-layout resolution.
+describe("resolveTesseract — ships without a host install", () => {
+  const saved = {
+    bin: process.env.ELIZA_TESSERACT_BIN,
+    vendor: process.env.ELIZA_VISION_VENDOR_DIR,
+    ld: process.env.LD_LIBRARY_PATH,
+  };
+  beforeEach(() => {
+    delete process.env.ELIZA_TESSERACT_BIN;
+    delete process.env.ELIZA_VISION_VENDOR_DIR;
+    _resetTesseractAvailabilityForTests();
+  });
+  afterEach(() => {
+    for (const [k, v] of [
+      ["ELIZA_TESSERACT_BIN", saved.bin],
+      ["ELIZA_VISION_VENDOR_DIR", saved.vendor],
+      ["LD_LIBRARY_PATH", saved.ld],
+    ] as const) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    _resetTesseractAvailabilityForTests();
+  });
+
+  it("falls back to PATH `tesseract` with no env (legacy system install)", () => {
+    expect(resolveTesseract()).toEqual({ bin: "tesseract", env: {} });
+  });
+
+  it("honors an explicit ELIZA_TESSERACT_BIN override", () => {
+    process.env.ELIZA_TESSERACT_BIN = "/opt/custom/tesseract";
+    expect(resolveTesseract()).toEqual({
+      bin: "/opt/custom/tesseract",
+      env: {},
+    });
+  });
+
+  it("resolves a bundled tesseract (bin + LD_LIBRARY_PATH + TESSDATA_PREFIX) from the vendor dir", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vendor-tess-"));
+    const root = join(dir, "tesseract");
+    mkdirSync(join(root, "bin"), { recursive: true });
+    writeFileSync(join(root, "bin", "tesseract"), "#!/bin/sh\n");
+    process.env.ELIZA_VISION_VENDOR_DIR = dir;
+    process.env.LD_LIBRARY_PATH = "/pre/existing";
+    const r = resolveTesseract();
+    expect(r.bin).toBe(join(root, "bin", "tesseract"));
+    expect(r.env.TESSDATA_PREFIX).toBe(join(root, "tessdata"));
+    // Bundle lib dir is PREPENDED so the shipped libtesseract/liblept win.
+    expect(r.env.LD_LIBRARY_PATH).toBe(`${join(root, "lib")}:/pre/existing`);
+  });
+
+  it("falls back to PATH when the vendor dir has no bundled binary", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vendor-empty-"));
+    process.env.ELIZA_VISION_VENDOR_DIR = dir;
+    expect(resolveTesseract()).toEqual({ bin: "tesseract", env: {} });
+  });
+
+  it("the explicit binary override wins over a vendor dir", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vendor-tess-"));
+    mkdirSync(join(dir, "tesseract", "bin"), { recursive: true });
+    writeFileSync(join(dir, "tesseract", "bin", "tesseract"), "#!/bin/sh\n");
+    process.env.ELIZA_VISION_VENDOR_DIR = dir;
+    process.env.ELIZA_TESSERACT_BIN = "/explicit/tesseract";
+    expect(resolveTesseract()).toEqual({ bin: "/explicit/tesseract", env: {} });
   });
 });
