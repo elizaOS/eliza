@@ -1,12 +1,31 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WidgetHost } from "./WidgetHost";
 import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
 
+const { resolveWidgetsForSlotMock } = vi.hoisted(() => ({
+  resolveWidgetsForSlotMock: vi.fn(),
+}));
+
 const mockAppState = {
-  plugins: [{ id: "spec-plugin", enabled: true, isActive: true }],
+  plugins: [
+    {
+      id: "spec-plugin",
+      enabled: true,
+      isActive: true,
+      widgets: [
+        {
+          id: "server-home",
+          pluginId: "spec-plugin",
+          slot: "home",
+          label: "Server Home",
+          defaultWidget: "activity" as const,
+        },
+      ],
+    },
+  ],
   t: (key: string) => key,
 };
 
@@ -23,7 +42,11 @@ vi.mock("../state/useDeveloperMode", () => ({
 }));
 
 vi.mock("./registry", () => ({
-  resolveWidgetsForSlot: () => [
+  resolveWidgetsForSlot: resolveWidgetsForSlotMock,
+}));
+
+beforeEach(() => {
+  resolveWidgetsForSlotMock.mockReturnValue([
     {
       declaration: {
         id: "overview",
@@ -60,8 +83,8 @@ vi.mock("./registry", () => ({
       },
       Component: null,
     },
-  ],
-}));
+  ]);
+});
 
 afterEach(() => {
   cleanup();
@@ -103,5 +126,23 @@ describe("WidgetHost", () => {
         params: { value: "ok" },
       },
     ]);
+  });
+
+  it("passes server-declared plugin widgets into the registry resolver", () => {
+    render(<WidgetHost slot="home" />);
+
+    expect(resolveWidgetsForSlotMock).toHaveBeenCalledWith(
+      "home",
+      mockAppState.plugins,
+      [
+        {
+          id: "server-home",
+          pluginId: "spec-plugin",
+          slot: "home",
+          label: "Server Home",
+          defaultWidget: "activity",
+        },
+      ],
+    );
   });
 });

@@ -11,8 +11,7 @@
  *     pr-deterministic lane is the merge-blocking PR gate; a vacuous scenario
  *     there is false confidence on every PR. "Enforceable" means a non-empty
  *     `finalChecks` array OR a per-turn assertion the executor actually runs
- *     (`assertResponse` / `responseIncludesAny` / `responseIncludesAll` /
- *     `assertResponse` / `expectedActions` / `responseIncludesAny` /
+ *     (`assertResponse` / `expectedActions` / `responseIncludesAny` /
  *     `responseIncludesAll` / `responseExcludes` / `forbiddenActions` /
  *     `plannerIncludesAll` / `plannerIncludesAny` / `plannerExcludes` /
  *     `responseJudge` / `assertTurn`).

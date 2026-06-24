@@ -13,8 +13,9 @@
  * an open-ended lookup through a coding sub-agent is slow, re-spawns, and risks
  * leaking the weak model's tool-call markup — this answers it in one hop.
  *
- * Enabled by default; `validate` honors `ELIZA_WEB_SEARCH=0|false|off`. The POST
- * is SSRF-guarded and only ever targets the two fixed public search endpoints.
+ * Inline search is independently controlled by `ELIZA_INLINE_WEB_SEARCH`.
+ * `ELIZA_WEB_SEARCH=0|false|off` remains a legacy master kill switch for all
+ * web-search surfaces.
  *
  * @module runtime/actions/web-search
  */
@@ -46,13 +47,33 @@ const WEB_SEARCH_READ_CHARS = 262_144;
 const WEB_SEARCH_RESULT_CHARS = 4_000;
 const DEFAULT_NUM_RESULTS = 6;
 
+function readBooleanEnv(name: string): boolean | undefined {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (raw === undefined || raw.length === 0) return undefined;
+  if (raw === "0" || raw === "false" || raw === "off" || raw === "no") {
+    return false;
+  }
+  if (raw === "1" || raw === "true" || raw === "on" || raw === "yes") {
+    return true;
+  }
+  return undefined;
+}
+
 /**
- * Capability gate: WEB_SEARCH is enabled by default and opted out with
- * `ELIZA_WEB_SEARCH=0|false|off`, mirroring the `ELIZA_WEB_FETCH` convention.
+ * Capability gate for the INLINE keyless web-search action. Provider-native
+ * server-side web search is the default surface; inline WEB_SEARCH is opt-in
+ * unless the native surface was explicitly disabled with
+ * `ELIZA_SERVER_WEB_SEARCH=0|false|off`. This prevents both search surfaces from
+ * being live by default while keeping them independently switchable.
  */
 export function isWebSearchEnabled(): boolean {
-  const raw = process.env.ELIZA_WEB_SEARCH?.toLowerCase();
-  return !(raw === "0" || raw === "false" || raw === "off");
+  const master = readBooleanEnv("ELIZA_WEB_SEARCH");
+  if (master === false) return false;
+
+  const inline = readBooleanEnv("ELIZA_INLINE_WEB_SEARCH");
+  if (inline !== undefined) return inline;
+
+  return readBooleanEnv("ELIZA_SERVER_WEB_SEARCH") === false;
 }
 
 interface WebSearchParams {

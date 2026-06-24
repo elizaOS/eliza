@@ -4564,7 +4564,7 @@ export async function startEliza(
       );
       if (!isWebSearchEnabled()) {
         logger.info(
-          "[eliza] WEB_SEARCH action disabled via ELIZA_WEB_SEARCH=0|false|off",
+          "[eliza] WEB_SEARCH action disabled; set ELIZA_INLINE_WEB_SEARCH=1 to enable inline search, or ELIZA_SERVER_WEB_SEARCH=0 to use it as the default search surface",
         );
         return;
       }

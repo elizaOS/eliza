@@ -18,7 +18,8 @@
  * OpenAI, which is what makes the `openai.responses` branch fire.
  *
  * Controlled by:
- *   ELIZA_WEB_SEARCH=0|false|off  — disable (default: enabled)
+ *   ELIZA_WEB_SEARCH=0|false|off         — disable every web-search surface
+ *   ELIZA_SERVER_WEB_SEARCH=0|false|off  — disable provider-native injection only
  */
 
 import { createRequire } from "node:module";
@@ -26,10 +27,22 @@ import { logger } from "@elizaos/core";
 
 const require = createRequire(import.meta.url);
 
-const ENABLED = (() => {
-  const raw = process.env.ELIZA_WEB_SEARCH?.toLowerCase();
-  return !(raw === "0" || raw === "false" || raw === "off");
-})();
+function readBooleanEnv(name: string): boolean | undefined {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (raw === undefined || raw.length === 0) return undefined;
+  if (raw === "0" || raw === "false" || raw === "off" || raw === "no") {
+    return false;
+  }
+  if (raw === "1" || raw === "true" || raw === "on" || raw === "yes") {
+    return true;
+  }
+  return undefined;
+}
+
+export function isServerSideWebSearchEnabled(): boolean {
+  if (readBooleanEnv("ELIZA_WEB_SEARCH") === false) return false;
+  return readBooleanEnv("ELIZA_SERVER_WEB_SEARCH") ?? true;
+}
 
 // ---------------------------------------------------------------------------
 // Provider registry
@@ -205,8 +218,10 @@ function patchAiSdk(): void {
  * and every provider on the runtime. Call after plugins are registered.
  */
 export function installServerSideWebSearch(): void {
-  if (!ENABLED) {
-    logger.info("[web-search] Disabled via ELIZA_WEB_SEARCH env var");
+  if (!isServerSideWebSearchEnabled()) {
+    logger.info(
+      "[web-search] Disabled via ELIZA_WEB_SEARCH or ELIZA_SERVER_WEB_SEARCH env var",
+    );
     return;
   }
   patchAiSdk();

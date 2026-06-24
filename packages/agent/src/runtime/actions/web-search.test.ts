@@ -80,22 +80,49 @@ async function runHandler(parameters: ActionParameters): Promise<{
 
 describe("WEB_SEARCH action", () => {
   const original = process.env.ELIZA_WEB_SEARCH;
+  const originalInline = process.env.ELIZA_INLINE_WEB_SEARCH;
+  const originalServer = process.env.ELIZA_SERVER_WEB_SEARCH;
 
   afterEach(() => {
     __setPinnedFetchImplForTests(null);
     __setDnsLookupImplForTests(null);
     if (original === undefined) delete process.env.ELIZA_WEB_SEARCH;
     else process.env.ELIZA_WEB_SEARCH = original;
+    if (originalInline === undefined)
+      delete process.env.ELIZA_INLINE_WEB_SEARCH;
+    else process.env.ELIZA_INLINE_WEB_SEARCH = originalInline;
+    if (originalServer === undefined)
+      delete process.env.ELIZA_SERVER_WEB_SEARCH;
+    else process.env.ELIZA_SERVER_WEB_SEARCH = originalServer;
   });
 
-  it("is available by default (no key/service required)", async () => {
+  it("is disabled by default when provider-native server search is the default surface", async () => {
     delete process.env.ELIZA_WEB_SEARCH;
+    delete process.env.ELIZA_INLINE_WEB_SEARCH;
+    delete process.env.ELIZA_SERVER_WEB_SEARCH;
+    expect(await webSearch.validate({} as IAgentRuntime, {} as Memory)).toBe(
+      false,
+    );
+  });
+
+  it("is available when inline search is explicitly enabled", async () => {
+    process.env.ELIZA_INLINE_WEB_SEARCH = "1";
     expect(await webSearch.validate({} as IAgentRuntime, {} as Memory)).toBe(
       true,
     );
   });
 
-  it("is gated off when ELIZA_WEB_SEARCH disables the capability", async () => {
+  it("is available by default when provider-native server search is explicitly disabled", async () => {
+    delete process.env.ELIZA_INLINE_WEB_SEARCH;
+    process.env.ELIZA_SERVER_WEB_SEARCH = "0";
+    expect(await webSearch.validate({} as IAgentRuntime, {} as Memory)).toBe(
+      true,
+    );
+  });
+
+  it("is gated off when ELIZA_WEB_SEARCH disables all web-search surfaces", async () => {
+    process.env.ELIZA_INLINE_WEB_SEARCH = "1";
+    process.env.ELIZA_SERVER_WEB_SEARCH = "0";
     for (const value of ["0", "false", "off"]) {
       process.env.ELIZA_WEB_SEARCH = value;
       expect(await webSearch.validate({} as IAgentRuntime, {} as Memory)).toBe(

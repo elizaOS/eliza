@@ -103,6 +103,22 @@ class WidgetErrorBoundary extends Component<
  * small. This cap is just a guard against a pathological all-active state.
  */
 const HOME_RENDER_CAP = 12;
+const WIDGET_SLOTS: ReadonlySet<string> = new Set<WidgetSlot>([
+  "chat-sidebar",
+  "chat-inline",
+  "wallet",
+  "browser",
+  "heartbeats",
+  "character",
+  "settings",
+  "nav-page",
+  "automations",
+  "home",
+]);
+
+function isWidgetSlot(value: string): value is WidgetSlot {
+  return WIDGET_SLOTS.has(value);
+}
 
 export interface WidgetHostProps {
   /** Which slot to render widgets for. */
@@ -145,13 +161,28 @@ export function WidgetHost({
   const selfAttention = useHomeAttentionSignals();
   const now = useNow();
 
+  const serverDeclarations = useMemo<PluginWidgetDeclaration[]>(() => {
+    return (plugins ?? []).flatMap((plugin) =>
+      (plugin.widgets ?? []).flatMap((widget) => {
+        if (!isWidgetSlot(widget.slot)) return [];
+        return [
+          {
+            ...widget,
+            pluginId: widget.pluginId || plugin.id,
+            slot: widget.slot,
+          } satisfies PluginWidgetDeclaration,
+        ];
+      }),
+    );
+  }, [plugins]);
+
   const resolved = useMemo(() => {
-    const all = resolveWidgetsForSlot(slot, plugins ?? []);
+    const all = resolveWidgetsForSlot(slot, plugins ?? [], serverDeclarations);
     const gated = all.filter((entry) =>
       isViewVisible(entry.declaration, enabledKinds),
     );
     return filter ? gated.filter((entry) => filter(entry.declaration)) : gated;
-  }, [slot, plugins, filter, enabledKinds]);
+  }, [slot, plugins, serverDeclarations, filter, enabledKinds]);
 
   // The home surface ranks every declared widget by current importance and
   // renders them in that order; each widget self-hides (renders `null`) when it
