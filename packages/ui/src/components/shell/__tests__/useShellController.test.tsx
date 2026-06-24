@@ -76,12 +76,18 @@ const appMock = vi.hoisted(() => ({
   serverTurnStatus: null as { kind: string } | null,
 }));
 
+// Mirror the real store selector by applying the selector to the mock value
+// (useShellController reads via useAppSelectorShallow, #9141). Hoisted so both
+// the barrel and the deep app-store mock factories below can reference it.
+const { useAppSelectorShallowMock } = vi.hoisted(() => ({
+  useAppSelectorShallowMock: (
+    selector: (value: typeof appMock.value) => unknown,
+  ) => selector(appMock.value),
+}));
+
 vi.mock("../../../state", () => ({
   useApp: () => appMock.value,
-  // Mirror the real store selector by applying the selector to the mock value
-  // (useShellController + others now read via useAppSelectorShallow, #9141).
-  useAppSelectorShallow: (selector: (value: typeof appMock.value) => unknown) =>
-    selector(appMock.value),
+  useAppSelectorShallow: useAppSelectorShallowMock,
   useConversationMessages: () => ({
     conversationMessages: appMock.value.conversationMessages,
     removeConversationMessage: vi.fn(),
@@ -90,6 +96,14 @@ vi.mock("../../../state", () => ({
     serverTurnStatus: appMock.serverTurnStatus,
     setServerTurnStatus: vi.fn(),
   }),
+}));
+
+// useShellController imports useAppSelectorShallow from the deep app-store path
+// (not the ../../state barrel) so the selector hook stays decoupled from the
+// barrel's transitive shell imports (#9141/#9249). Mock that exact specifier or
+// the controller reads the real empty store instead of appMock.value.
+vi.mock("../../../state/app-store", () => ({
+  useAppSelectorShallow: useAppSelectorShallowMock,
 }));
 
 vi.mock("../../local-inference/useHomeModelStatus", () => ({
