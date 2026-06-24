@@ -122,10 +122,12 @@ export function detectPlatformCapabilities(
       caps.screenshot = { available: true, tool: "scrot" };
     } else if (options.commandExists("gnome-screenshot")) {
       caps.screenshot = { available: true, tool: "gnome-screenshot" };
+    } else if (options.commandExists("ffmpeg")) {
+      caps.screenshot = { available: true, tool: "ffmpeg x11grab" };
     } else {
       caps.screenshot = {
         available: false,
-        tool: "none (install ImageMagick, scrot, or gnome-screenshot)",
+        tool: "none (install ImageMagick, scrot, gnome-screenshot, or ffmpeg)",
       };
     }
 
