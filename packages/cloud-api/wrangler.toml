@@ -377,6 +377,7 @@ NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://elizacloud.ai"
 ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+FEED_ORIGIN_HOST = "feed-web-production.up.railway.app"
 # Pin the prod Steward tenant explicitly instead of leaning on the implicit
 # DEFAULT_STEWARD_TENANT_ID ("elizacloud") in steward-tenant-config.ts. That
 # implicit fallback is what the prod magic-link bug hinged on — make it explicit
