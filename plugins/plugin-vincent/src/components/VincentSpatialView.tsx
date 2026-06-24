@@ -274,7 +274,7 @@ export function VincentSpatialView({
         </VStack>
       ) : (
         <Text tone="muted" align="center" style="caption">
-          No strategy
+          None
         </Text>
       )}
     </Card>

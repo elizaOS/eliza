@@ -124,7 +124,7 @@ export function VectorBrowserSpatialView({
       <Divider label="points" />
       {points.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No vectors
+          None
         </Text>
       ) : (
         <List gap={1}>

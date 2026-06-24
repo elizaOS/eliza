@@ -46,10 +46,7 @@ export const TradingProfileCard = memo(function TradingProfileCard({
       <div className="px-1 py-3">
         <div className="flex items-center justify-between gap-3">
           <TrendingUp className="h-4 w-4 text-muted/50" />
-          <span
-            className="h-2 w-2 rounded-full bg-muted/50"
-            title="No analytics"
-          />
+          <span className="h-2 w-2 rounded-full bg-muted/50" title="None" />
         </div>
       </div>
     );

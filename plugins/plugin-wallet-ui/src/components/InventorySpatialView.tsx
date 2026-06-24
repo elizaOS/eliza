@@ -230,7 +230,7 @@ export function InventorySpatialView({
       <Divider label="tokens" />
       {tokenRows.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No tokens
+          None
         </Text>
       ) : (
         <List gap={0}>

@@ -325,7 +325,7 @@ export function FeedOperatorSurface({
         <GameSurfaceShell>
           <GameSurfaceHero
             title="Feed"
-            statusLabel="No session yet"
+            statusLabel="None"
             statusState="pending"
             cta={<HeroCta label="Spawn agent" accent={FEED_ACCENT} disabled />}
           />

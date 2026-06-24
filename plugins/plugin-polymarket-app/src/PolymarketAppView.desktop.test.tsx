@@ -358,7 +358,7 @@ describe("PolymarketAppView (desktop/xr)", () => {
     const { container } = render(
       React.createElement(PolymarketAppView, overlayContext),
     );
-    await waitForText(container, "No markets");
+    await waitForText(container, "None");
 
     const text = container.textContent ?? "";
     expect(text).not.toContain("Unavailable");
@@ -382,6 +382,6 @@ describe("PolymarketAppView (desktop/xr)", () => {
     expect(container.textContent).toContain(
       "Couldn't reach Polymarket right now.",
     );
-    expect(container.textContent).not.toContain("No markets");
+    expect(container.textContent).not.toContain("None");
   });
 });

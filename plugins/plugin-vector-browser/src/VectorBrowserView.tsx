@@ -1494,10 +1494,10 @@ export function VectorBrowserView({
         <div className="px-4 py-10 text-center text-sm text-muted">
           {search
             ? t("vectorbrowserview.NoRecordsMatchSearchQuery", {
-                defaultValue: "No records match your search query.",
+                defaultValue: "None",
               })
             : t("vectorbrowserview.NoMemoryRecordsDetected", {
-                defaultValue: "No records.",
+                defaultValue: "None",
               })}
         </div>
       ) : (

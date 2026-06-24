@@ -173,7 +173,7 @@ function HyperliquidReady({
         />
         <StatusItem
           icon={Shield}
-          label={status?.account.address ? "Account" : "No account"}
+          label="Account"
           ready={Boolean(status?.account.address)}
         />
       </section>
@@ -198,7 +198,7 @@ function HyperliquidReady({
       {loading && !markets ? (
         <div className="flex items-center justify-center py-16 text-sm text-muted">
           <Spinner className="mr-3 h-5 w-5" />
-          Loading Hyperliquid state
+          Loading
         </div>
       ) : (
         <div className="space-y-4">

@@ -454,8 +454,8 @@ describe("FeedOperatorSurface (gui/xr) — populated data", () => {
 
     const text = container.textContent ?? "";
 
-    // Hero title (live variant) + status label "<status> · <health.state>".
-    expect(text).toContain("Feed Live Dashboard");
+    // Hero title + status label "<status> · <health.state>".
+    expect(text).toContain("Feed");
     expect(text).toContain("running · healthy");
 
     // Live StatChip strip.
@@ -638,8 +638,8 @@ describe("FeedOperatorSurface (gui/xr) — no-run waiting state", () => {
     expect(text).toContain("Portfolio");
     expect(text).toContain("Markets");
     expect(text).toContain("Wallet");
-    // WaitingForSession copy.
-    expect(text).toContain("Waiting for a Feed session");
+    // Compact pending status.
+    expect(text).toContain("None");
 
     // Spawn agent CTA present and disabled.
     const spawn = clickByText(container, "Spawn agent") as HTMLButtonElement;

@@ -147,7 +147,7 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
     return (
       <Card gap={1} padding={1}>
         <Text style="caption" tone="warning">
-          No session
+          None
         </Text>
         <Button
           grow={1}
@@ -223,7 +223,7 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
         </VStack>
       ) : (
         <Text tone="muted" style="caption">
-          No portfolio
+          None
         </Text>
       )}
 
@@ -242,7 +242,7 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
 
       {predictionMarkets.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No markets
+          None
         </Text>
       ) : (
         <List gap={0}>
@@ -264,7 +264,7 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
 
       {recentTrades.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No trades
+          None
         </Text>
       ) : (
         <List gap={0}>
@@ -328,9 +328,7 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
       ) : null}
 
       <HStack gap={1} align="center">
-        <Text grow={1}>
-          {wallet ? formatCurrency(wallet.balance) : "No wallet"}
-        </Text>
+        <Text grow={1}>{wallet ? formatCurrency(wallet.balance) : "None"}</Text>
         <Text style="caption" tone="muted">
           {`trading ${formatCurrency(tradingBalance)}`}
         </Text>
