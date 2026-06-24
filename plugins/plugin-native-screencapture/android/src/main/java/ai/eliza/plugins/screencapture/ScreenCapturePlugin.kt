@@ -822,7 +822,21 @@ class ScreenCapturePlugin : Plugin() {
         mediaProjection = null
     }
 
-    // ── Destroy ─────────────────────────────────────────────────────────
+    // ── Lifecycle ───────────────────────────────────────────────────────
+
+    override fun handleOnStop() {
+        super.handleOnStop()
+        // Release the warm screenshot MediaProjection when the app is no longer
+        // visible. A backgrounded app must not hold a live screen-capture
+        // session — it drains battery, keeps the system cast/record indicator
+        // up, and is a privacy concern. (handleOnStop fires on full background,
+        // not the transient pause the consent dialog causes, so it won't tear
+        // down a projection mid-acquisition.) Recording owns its own projection
+        // lifecycle, so leave it alone while a recording is active.
+        if (!isRecording) {
+            releaseProjection()
+        }
+    }
 
     override fun handleOnDestroy() {
         super.handleOnDestroy()

@@ -1593,6 +1593,77 @@ export async function attachMobileDeviceBridgeToServer(
 	await mobileDeviceBridge.attachToHttpServer(server);
 }
 
+/** Resolve a data:/http(s)/file image URL to base64 image bytes for the host. */
+async function imageUrlToBase64(url: string): Promise<string> {
+	if (url.startsWith("data:")) {
+		const comma = url.indexOf(",");
+		return comma >= 0 ? url.slice(comma + 1) : url;
+	}
+	const resp = await fetch(url);
+	if (!resp.ok) {
+		throw new Error(
+			`[mobile-device-bridge] IMAGE_DESCRIPTION failed to fetch ${url}: ${resp.status}`,
+		);
+	}
+	return Buffer.from(await resp.arrayBuffer()).toString("base64");
+}
+
+/**
+ * On-device IMAGE_DESCRIPTION via the bionic host (op="image"). The EPIC #9105
+ * GET_SCREEN describe loop — and any agent vision-describe — routes here on a
+ * bionic-delegated phone: the image bytes go to the in-process GPU host's mmproj
+ * describe (`eliza_inference_describe_image`) and come back as text. Without
+ * this the mobile build registered NO on-device IMAGE_DESCRIPTION provider
+ * (PR #9219's handler lives in `ensureLocalInferenceHandler`, which the mobile
+ * agent bundle never reaches), so vision-describe silently fell through to the
+ * cloud handler. bundleDir is "" so the host uses its own default bundle (which
+ * owns `vision/<mmproj>.gguf` + the resident text model).
+ */
+function makeBionicImageDescriptionHandler() {
+	return async (
+		_runtime: IAgentRuntime,
+		params: string | { imageUrl?: string; prompt?: string },
+	) => {
+		const socketName = bionicSocketName();
+		if (!socketName) {
+			throw new Error(
+				"[mobile-device-bridge] IMAGE_DESCRIPTION requires the bionic host (ELIZA_BIONIC_HOST_DELEGATED=1)",
+			);
+		}
+		const url = typeof params === "string" ? params : params?.imageUrl;
+		if (typeof url !== "string" || url.length === 0) {
+			throw new Error(
+				"[mobile-device-bridge] IMAGE_DESCRIPTION requires a non-empty imageUrl",
+			);
+		}
+		const prompt =
+			typeof params === "object" && params ? params.prompt : undefined;
+		const imageBase64 = await imageUrlToBase64(url);
+		const res = await bionicHostGenerate(socketName, {
+			op: "image",
+			bundleDir: "",
+			imageBase64,
+			mmprojPath: "",
+			prompt: prompt ?? "",
+		});
+		if (!res.ok) {
+			throw new Error(
+				`[mobile-device-bridge] bionic image describe failed: ${res.error ?? "unknown error"}`,
+			);
+		}
+		const description = (res.text ?? "").trim();
+		if (!description) {
+			throw new Error(
+				"[mobile-device-bridge] bionic image describe returned empty text",
+			);
+		}
+		return {
+			title: description.split(/[.!?]/, 1)[0]?.trim() || "Image",
+			description,
+		};
+	};
+}
+
 export async function ensureMobileDeviceBridgeInferenceHandlers(
 	runtime: AgentRuntime,
 ): Promise<boolean> {
@@ -1654,6 +1725,23 @@ export async function ensureMobileDeviceBridgeInferenceHandlers(
 		PROVIDER,
 		LOCAL_INFERENCE_PRIORITY,
 	);
+	// On-device vision describe (EPIC #9105): route IMAGE_DESCRIPTION to the
+	// bionic host op="image" so the GET_SCREEN describe loop runs on the GPU
+	// instead of degrading to the cloud handler. Only meaningful when bionic
+	// delegation is active; the handler self-checks the socket and throws
+	// cleanly otherwise (so a non-bionic build just falls through to the next
+	// registered provider).
+	if (bionicSocketName()) {
+		runtimeWithRegistration.registerModel(
+			ModelType.IMAGE_DESCRIPTION,
+			makeBionicImageDescriptionHandler(),
+			PROVIDER,
+			LOCAL_INFERENCE_PRIORITY,
+		);
+		logger.info(
+			"[mobile-device-bridge] Registered bionic IMAGE_DESCRIPTION handler (op=image)",
+		);
+	}
 	const embeddingModelPath = resolveLocalModelPath("TEXT_EMBEDDING");
 	if (
 		!embeddingModelPath &&
