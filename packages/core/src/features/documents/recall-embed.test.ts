@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import type { IAgentRuntime } from "../../types";
 import { ModelType } from "../../types";
-import { embedRecallQuery, RECALL_EMBED_TIMEOUT_MS } from "./recall-embed.ts";
+import { embedRecallQuery } from "./recall-embed.ts";
 
 const RUN_A = "11111111-1111-1111-1111-111111111111";
 const RUN_B = "22222222-2222-2222-2222-222222222222";
@@ -29,15 +29,8 @@ function makeRuntime(opts: RuntimeMockOpts): {
 	return { runtime, calls };
 }
 
-describe("embedRecallQuery — timeout / fail-open (item 1)", () => {
-	beforeEach(() => {
-		vi.useFakeTimers();
-	});
-	afterEach(() => {
-		vi.useRealTimers();
-	});
-
-	test("returns the vector when the embed resolves before the timeout", async () => {
+describe("embedRecallQuery — resolve / fail-open", () => {
+	test("returns the vector when the embed resolves", async () => {
 		const { runtime } = makeRuntime({
 			embed: async () => [0.1, 0.2, 0.3],
 		});
@@ -45,18 +38,19 @@ describe("embedRecallQuery — timeout / fail-open (item 1)", () => {
 		expect(vec).toEqual([0.1, 0.2, 0.3]);
 	});
 
-	test("a slow embed exceeding the timeout fails open (returns null) — caller falls back to BM25, reply not blocked", async () => {
+	test("awaits the full embed — a slow-but-resolving embed returns its real vector (no app-level race truncates it to a silent BM25 fallback)", async () => {
 		const { runtime } = makeRuntime({
-			// Never resolves within the timeout window.
 			embed: () =>
 				new Promise((resolve) => {
-					setTimeout(() => resolve([1, 2, 3]), RECALL_EMBED_TIMEOUT_MS * 10);
+					setTimeout(() => resolve([1, 2, 3]), 50);
 				}),
 		});
-		const promise = embedRecallQuery(runtime, "slow query");
-		// Advance past the recall-embed timeout; the race should resolve to null.
-		await vi.advanceTimersByTimeAsync(RECALL_EMBED_TIMEOUT_MS + 1);
-		await expect(promise).resolves.toBeNull();
+		// Recall richness is preserved: the vector is returned, not degraded to
+		// keyword-only by an arbitrary timeout. A hung request is bounded by the
+		// embedding model handler's own request timeout (which rejects → catch).
+		await expect(embedRecallQuery(runtime, "slow query")).resolves.toEqual([
+			1, 2, 3,
+		]);
 	});
 
 	test("an embed error fails open (returns null), never throwing onto the reply path", async () => {
@@ -105,6 +99,42 @@ describe("embedRecallQuery — per-turn cache + dedupe (item 2)", () => {
 		const [r1, r2] = await Promise.all([p1, p2]);
 		expect(r1).toEqual([7, 8, 9]);
 		expect(r2).toEqual([7, 8, 9]);
+		expect(calls.count).toBe(1);
+	});
+
+	test("two DIFFERENT recall providers sharing one runtime + runId + text issue ONE underlying embed (cross-provider dedupe)", async () => {
+		let resolveEmbed: ((v: number[]) => void) | undefined;
+		const { runtime, calls } = makeRuntime({
+			embed: () =>
+				new Promise<number[]>((resolve) => {
+					resolveEmbed = resolve;
+				}),
+		});
+
+		// Simulate three providers (document recall, experience recall,
+		// relevant-conversations) all embedding the same query in the same turn.
+		// The first two race concurrently (in-flight dedupe); the third arrives
+		// after the shared embed resolves (result-cache dedupe). Whitespace/casing
+		// differences must still collapse to one normalized key.
+		const documentRecall = embedRecallQuery(runtime, "What is the SLA?");
+		const experienceRecall = embedRecallQuery(runtime, "what is the   sla?");
+		expect(calls.count).toBe(1);
+
+		resolveEmbed?.([0.4, 0.5, 0.6]);
+		const [docVec, expVec] = await Promise.all([
+			documentRecall,
+			experienceRecall,
+		]);
+
+		const relevantConversations = await embedRecallQuery(
+			runtime,
+			"  WHAT IS THE SLA? ",
+		);
+
+		expect(docVec).toEqual([0.4, 0.5, 0.6]);
+		expect(expVec).toEqual([0.4, 0.5, 0.6]);
+		expect(relevantConversations).toEqual([0.4, 0.5, 0.6]);
+		// One round-trip served all three providers for the turn.
 		expect(calls.count).toBe(1);
 	});
 

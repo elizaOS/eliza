@@ -6,7 +6,7 @@ import type {
   Room,
   State,
 } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { embedRecallQuery, logger } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
@@ -61,16 +61,13 @@ export const relevantConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
-      // Embed the current message for semantic search
-      const embeddingResult = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-        text,
-      });
-
-      const embedding = Array.isArray(embeddingResult)
-        ? embeddingResult
-        : (embeddingResult as { embedding?: number[] })?.embedding;
-
-      if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
+      // Embed the current message for semantic search. Routes through the one
+      // shared per-turn recall-query embed so this provider, document recall, and
+      // experience recall reuse a single embed round-trip per turn. `null` means
+      // the embed timed out/failed — fail open with no relevant-conversation
+      // context (recall richness lost, reply latency unaffected).
+      const embedding = await embedRecallQuery(runtime, text);
+      if (!embedding || embedding.length === 0) {
         return { text: "", values: {}, data: {} };
       }
 

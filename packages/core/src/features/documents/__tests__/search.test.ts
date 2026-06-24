@@ -398,39 +398,32 @@ describe("DocumentService.searchDocuments", () => {
 			return rt;
 		}
 
-		it("hybrid falls open to keyword (getMemories) when the embed exceeds the timeout", async () => {
-			vi.useFakeTimers();
-			try {
-				const fragments = [
-					makeFragment("frag-k", "typescript strongly typed language"),
-					makeFragment("frag-o", "cooking pasta recipe"),
-				];
-				const rt = buildSlowEmbedRuntime({
-					fragments,
-					// Never resolves before the recall-embed timeout fires.
-					embed: () =>
-						new Promise<number[]>((resolve) => {
-							setTimeout(() => resolve([0.1]), 60_000);
-						}),
-				});
-				const svc = buildService(rt);
+		it("hybrid falls open to keyword (getMemories) when the embed fails", async () => {
+			const fragments = [
+				makeFragment("frag-k", "typescript strongly typed language"),
+				makeFragment("frag-o", "cooking pasta recipe"),
+			];
+			const rt = buildSlowEmbedRuntime({
+				fragments,
+				// A failed recall embed (e.g. the model handler's own request timeout
+				// aborts, or the provider errors) → embedRecallQuery returns null →
+				// hybrid fails open to keyword/BM25, reply never blocked.
+				embed: async () => {
+					throw new Error("embeddings endpoint 500");
+				},
+			});
+			const svc = buildService(rt);
 
-				const promise = svc.searchDocuments(
-					makeMessage("typescript"),
-					undefined,
-					"hybrid",
-				);
-				// Advance past RECALL_EMBED_TIMEOUT_MS so the embed race resolves null.
-				await vi.advanceTimersByTimeAsync(2_000);
-				const results = await promise;
+			const results = await svc.searchDocuments(
+				makeMessage("typescript"),
+				undefined,
+				"hybrid",
+			);
 
-				// Failed open: keyword path (getMemories), NOT the vector path.
-				expect(rt.searchMemories).not.toHaveBeenCalled();
-				expect(rt.getMemories).toHaveBeenCalled();
-				expect(results[0].id).toBe("frag-k");
-			} finally {
-				vi.useRealTimers();
-			}
+			// Failed open: keyword path (getMemories), NOT the vector path.
+			expect(rt.searchMemories).not.toHaveBeenCalled();
+			expect(rt.getMemories).toHaveBeenCalled();
+			expect(results[0].id).toBe("frag-k");
 		});
 
 		it("vector falls open to keyword when the embed throws (reply never blocked)", async () => {
