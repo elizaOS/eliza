@@ -465,7 +465,73 @@ describe("scenario executor action turns", () => {
     expect(report.failedAssertions).toContainEqual({
       label: "actionCalled",
       detail:
-        'actionCalled: expected at least one VIEWS call with result.success=true, saw {"actionName":"VIEWS","parameters":{"action":"pin","view":"remote-ledger"},"result":{"success":false,"text":"failed to open remote ledger","data":{"reason":"view missing"}}}',
+        'actionCalled: expected 1 successful VIEWS call(s) with result.success=true, saw 0. Calls: {"actionName":"VIEWS","parameters":{"action":"pin","view":"remote-ledger"},"result":{"success":false,"text":"failed to open remote ledger","data":{"reason":"view missing"}}}',
+    });
+  });
+
+  it("requires minCount successful actionCalled results when status is success", async () => {
+    const handler = vi
+      .fn()
+      .mockResolvedValueOnce({
+        success: false,
+        text: "first attempt failed",
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        text: "second attempt worked",
+      });
+    const runtime = createRuntime([
+      {
+        name: "VIEWS",
+        description: "test action",
+        validate: vi.fn(async () => true),
+        handler,
+      } as unknown as Action,
+    ]);
+
+    const report = await runScenario(
+      {
+        id: "action-called-success-min-count",
+        title: "Action called success min count",
+        domain: "executor",
+        rooms: [{ id: "main", source: "telegram", title: "Action User" }],
+        turns: [
+          {
+            kind: "action",
+            name: "open view first",
+            actionName: "VIEWS",
+            options: { action: "pin", view: "remote-ledger" },
+          },
+          {
+            kind: "action",
+            name: "open view second",
+            actionName: "VIEWS",
+            options: { action: "pin", view: "settings" },
+          },
+        ],
+        finalChecks: [
+          {
+            type: "actionCalled",
+            actionName: "VIEWS",
+            status: "success",
+            minCount: 2,
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(report.failedAssertions).toContainEqual({
+      label: "actionCalled",
+      detail:
+        'actionCalled: expected 2 successful VIEWS call(s) with result.success=true, saw 1. Calls: {"actionName":"VIEWS","parameters":{"action":"pin","view":"remote-ledger"},"result":{"success":false,"text":"first attempt failed"}} | {"actionName":"VIEWS","parameters":{"action":"pin","view":"settings"},"result":{"success":true,"text":"second attempt worked"}}',
     });
   });
 });

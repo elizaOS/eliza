@@ -411,21 +411,25 @@ registerFinalCheckHandler("actionCalled", (check, { ctx }) => {
     (a) => a.actionName === actionName && !isSynthesizedReply(a),
   );
   const min = typeof minCount === "number" ? minCount : 1;
+  if (status === "success") {
+    const successfulCalls = calls.filter((c) => c.result?.success === true);
+    if (successfulCalls.length < min) {
+      const actual = calls.map(actionCallSummary).join(" | ") || "(none)";
+      return {
+        status: "failed",
+        detail: `actionCalled: expected ${min} successful ${actionName} call(s) with result.success=true, saw ${successfulCalls.length}. Calls: ${actual}`,
+      };
+    }
+    return {
+      status: "passed",
+      detail: `${actionName} succeeded ${successfulCalls.length}x (${calls.length} total call(s))`,
+    };
+  }
   if (calls.length < min) {
     return {
       status: "failed",
       detail: `expected ${min} call(s) to ${actionName}, saw ${calls.length}. Called: ${ctx.actionsCalled.map((a) => a.actionName).join(",") || "(none)"}`,
     };
-  }
-  if (status === "success") {
-    const ok = calls.some((c) => c.result?.success === true);
-    if (!ok) {
-      const actual = calls.map(actionCallSummary).join(" | ") || "(none)";
-      return {
-        status: "failed",
-        detail: `actionCalled: expected at least one ${actionName} call with result.success=true, saw ${actual}`,
-      };
-    }
   }
   return { status: "passed", detail: `${actionName} called ${calls.length}x` };
 });
