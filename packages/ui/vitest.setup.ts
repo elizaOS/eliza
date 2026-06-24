@@ -46,23 +46,6 @@ if (typeof Element !== "undefined") {
 (globalThis as unknown as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT =
   true;
 
-// jsdom does not implement element scroll methods. Views (e.g. ChatView's
-// scroll-to-bottom effect) call el.scrollTo()/scrollIntoView() during layout
-// effects, so rendering them in jsdom-based tests (the page-story smoke suite,
-// etc.) throws "scrollTo is not a function". Provide no-op polyfills; real
-// browsers implement these natively. Guarded so node-environment tests (no DOM)
-// are untouched.
-if (typeof Element !== "undefined") {
-  const noopScroll = function () {} as () => void;
-  if (typeof Element.prototype.scrollTo !== "function") {
-    Element.prototype.scrollTo = noopScroll as typeof Element.prototype.scrollTo;
-  }
-  if (typeof Element.prototype.scrollIntoView !== "function") {
-    Element.prototype.scrollIntoView =
-      noopScroll as typeof Element.prototype.scrollIntoView;
-  }
-}
-
 class VitestTextEncoder {
   encode(input = ""): Uint8Array {
     return new Uint8Array(Buffer.from(input));
