@@ -7243,13 +7243,21 @@ function findRuntimeActionByNames(
 	runtime: Pick<IAgentRuntime, "actions">,
 	names: string[],
 ): Action | undefined {
-	const wanted = new Set(names.map(normalizeActionIdentifier));
-	return (runtime.actions ?? []).find((action) => {
-		const candidates = [action.name, ...(action.similes ?? [])]
-			.filter((value): value is string => typeof value === "string")
-			.map(normalizeActionIdentifier);
-		return candidates.some((candidate) => wanted.has(candidate));
-	});
+	// Resolve in `names` PRIORITY order, not action-registration order, so the
+	// leading preference wins (mirrors findAvailableActionName in
+	// direct-action-heuristics.ts).
+	const actions = runtime.actions ?? [];
+	for (const want of names) {
+		const wanted = normalizeActionIdentifier(want);
+		const match = actions.find((action) => {
+			const candidates = [action.name, ...(action.similes ?? [])]
+				.filter((value): value is string => typeof value === "string")
+				.map(normalizeActionIdentifier);
+			return candidates.includes(wanted);
+		});
+		if (match) return match;
+	}
+	return undefined;
 }
 
 function looksLikeActionExplanationRequest(text: string): boolean {

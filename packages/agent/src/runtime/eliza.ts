@@ -4557,6 +4557,26 @@ export async function startEliza(
     }
   };
 
+  const registerWebSearchActionIfEnabled = async (): Promise<void> => {
+    try {
+      const { webSearch, isWebSearchEnabled } = await import(
+        "./actions/web-search.ts"
+      );
+      if (!isWebSearchEnabled()) {
+        logger.info(
+          "[eliza] WEB_SEARCH action disabled via ELIZA_WEB_SEARCH=0|false|off",
+        );
+        return;
+      }
+      runtime.registerAction(webSearch);
+      logger.info("[eliza] Registered keyless WEB_SEARCH action");
+    } catch (err) {
+      logger.debug(
+        `[eliza] WEB_SEARCH action registration skipped: ${formatError(err)}`,
+      );
+    }
+  };
+
   const isAutonomyEnabled = (): boolean =>
     ["true", "1"].includes((process.env.ENABLE_AUTONOMY ?? "").toLowerCase());
 
@@ -4951,6 +4971,7 @@ export async function startEliza(
     await runStewardEvmPostBoot();
     await installServerSideWebSearchIfAvailable();
     await registerWebFetchActionIfEnabled();
+    await registerWebSearchActionIfEnabled();
     bootTimer.lap("deferred:post-init");
 
     const autonomyLoopEnabled = isAutonomyEnabled();
