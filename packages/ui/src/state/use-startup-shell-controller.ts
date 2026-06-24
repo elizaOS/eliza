@@ -5,8 +5,8 @@ import { CONNECT_EVENT } from "../events";
 import { ensureStoreBuildWorkspaceFolder } from "../first-run/ensure-store-build-workspace-folder";
 import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-runtime-mode";
 import { applyLaunchConnection } from "../platform";
+import { useAppSelectorShallow } from "./app-store";
 import type { StartupErrorReason, StartupErrorState } from "./types";
-import { useApp } from "./useApp";
 
 function phaseToStatusKey(phase: string): string {
   switch (phase) {
@@ -42,6 +42,9 @@ export interface StartupShellController {
 }
 
 export function useStartupShellController(): StartupShellController {
+  // Granular shallow selector instead of useApp() so the startup controller
+  // re-renders only when one of the eight fields it reads changes, not on every
+  // app-store field update (#9141 gap 2 — useApp() → useAppSelector migration).
   const {
     startupCoordinator,
     startupError,
@@ -51,7 +54,16 @@ export function useStartupShellController(): StartupShellController {
     setActionNotice,
     setState,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    startupCoordinator: s.startupCoordinator,
+    startupError: s.startupError,
+    firstRunComplete: s.firstRunComplete,
+    firstRunCloudProvisionedContainer: s.firstRunCloudProvisionedContainer,
+    retryStartup: s.retryStartup,
+    setActionNotice: s.setActionNotice,
+    setState: s.setState,
+    t: s.t,
+  }));
   const phase = startupCoordinator.phase;
   const [showBootstrap, setShowBootstrap] = useState(false);
   const cloudSkipProbeStartedRef = useRef(false);
