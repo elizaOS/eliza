@@ -57,6 +57,24 @@ just app icons.
 above). Read your own store/API in the component; it receives `WidgetProps`
 (`pluginId`, `events?`, …). Keep it compact — the home is a summary surface.
 
+If a plugin has live state but no bundled React card, opt into a shared default
+sink instead of shipping a component:
+
+```ts
+{
+  id: "my-plugin.default-home",
+  pluginId: "my-plugin",
+  slot: "home",
+  label: "My Plugin",
+  defaultWidget: "activity", // "notifications" | "messages" | "activity"
+  signalKinds: ["workflow", "activity"],
+}
+```
+
+Default-sink declarations are participation records: the shared
+Notifications/Messages/Activity cards render once and aggregate the sink data,
+while the declaration lets coverage prove the plugin is frontpage-aware.
+
 The home is **priority-ranked**, not all-or-nothing: `home-priority.ts`
 (`rankHomeWidgets`) scores each home widget by base `order` plus decayed
 attention signals and returns the top-N, so the most important widgets bubble up

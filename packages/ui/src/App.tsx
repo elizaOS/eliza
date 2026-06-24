@@ -3,6 +3,7 @@
  */
 
 import {
+  type AppShellBackgroundPolicy,
   type EnabledViewKinds,
   isViewVisible,
   type ViewKind,
@@ -500,6 +501,7 @@ interface ResolvedDynamicPage {
   pluginId: string;
   developerOnly: boolean;
   viewKind?: ViewKind;
+  backgroundPolicy?: AppShellBackgroundPolicy;
   registration?: AppShellPageRegistration;
   componentExport?: string;
 }
@@ -530,6 +532,7 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
         pluginId: registered.pluginId,
         developerOnly: registered.developerOnly === true,
         viewKind: registered.viewKind,
+        backgroundPolicy: registered.backgroundPolicy,
         registration: registered,
       };
     }
@@ -548,6 +551,7 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
             plugin.app?.developerOnly === true || navTab.developerOnly === true,
           // A nav tab's own kind wins; otherwise inherit the app's kind.
           viewKind: navTab.viewKind ?? plugin.app?.viewKind,
+          backgroundPolicy: navTab.backgroundPolicy,
           registration: reg,
           componentExport: navTab.componentExport,
         };
@@ -678,6 +682,122 @@ function useTabIsFullBleed(tab: string): boolean {
       (entry) => entry.id === tab && entry.fullBleed === true,
     );
   }, [registryVersion, tab]);
+}
+
+function useCurrentNavigationPath(): string {
+  const [navigationPath, setNavigationPath] = useState(() =>
+    typeof window === "undefined" ? "/" : getWindowNavigationPath(),
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleNavigationChange = () => {
+      setNavigationPath(getWindowNavigationPath());
+    };
+    window.addEventListener("hashchange", handleNavigationChange);
+    window.addEventListener("popstate", handleNavigationChange);
+    return () => {
+      window.removeEventListener("hashchange", handleNavigationChange);
+      window.removeEventListener("popstate", handleNavigationChange);
+    };
+  }, []);
+
+  return navigationPath;
+}
+
+function normalizeBackgroundPolicy(
+  policy: AppShellBackgroundPolicy | undefined,
+): AppShellBackgroundPolicy {
+  return policy === "shared" ? "shared" : "opaque";
+}
+
+function builtinRouteBackgroundPolicy(
+  tab: string,
+  navigationPath: string,
+): AppShellBackgroundPolicy | null {
+  const normalizedPath = trimmedNavigationPath(navigationPath);
+  if (tab === "chat" || tab === "background") return "shared";
+  if (tab === "settings" || tab === "voice") return "shared";
+  if (tab === "views" && normalizedPath === "/views") return "shared";
+  if (tab === "apps" && normalizedPath === "/apps") return "shared";
+  return null;
+}
+
+function resolveActiveScreenBackgroundPolicy({
+  tab,
+  navigationPath,
+  availableViews,
+  viewLayout,
+}: {
+  tab: string;
+  navigationPath: string;
+  availableViews: ViewRegistryEntry[];
+  viewLayout: ActiveViewLayout | null;
+}): AppShellBackgroundPolicy {
+  if (viewLayout) return "opaque";
+
+  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
+  if (appShellPageForRoute) {
+    return normalizeBackgroundPolicy(appShellPageForRoute.backgroundPolicy);
+  }
+
+  const appSlug =
+    tab === "apps" || tab === "views"
+      ? getAppSlugFromPath(navigationPath)
+      : null;
+  const remoteView = findRemoteViewForRoute(
+    availableViews,
+    navigationPath,
+    tab,
+    appSlug,
+  );
+  if (remoteView) return normalizeBackgroundPolicy(remoteView.backgroundPolicy);
+
+  const appShellPageForTab = listAppShellPages().find(
+    (entry) => entry.id === tab,
+  );
+  if (appShellPageForTab) {
+    return normalizeBackgroundPolicy(appShellPageForTab.backgroundPolicy);
+  }
+
+  const builtinPolicy = builtinRouteBackgroundPolicy(tab, navigationPath);
+  if (builtinPolicy) return builtinPolicy;
+
+  const registeredView = availableViews.find(
+    (view) =>
+      view.builtin !== true &&
+      (view.id === tab ||
+        view.path === navigationPath ||
+        view.path === trimmedNavigationPath(navigationPath)),
+  );
+  if (registeredView) {
+    return normalizeBackgroundPolicy(registeredView.backgroundPolicy);
+  }
+
+  return "opaque";
+}
+
+function useActiveScreenBackgroundPolicy({
+  tab,
+  navigationPath,
+  availableViews,
+  viewLayout,
+}: {
+  tab: string;
+  navigationPath: string;
+  availableViews: ViewRegistryEntry[];
+  viewLayout: ActiveViewLayout | null;
+}): AppShellBackgroundPolicy {
+  const registryVersion = useAppShellPageRegistryVersion();
+  return useMemo(() => {
+    void registryVersion;
+    return resolveActiveScreenBackgroundPolicy({
+      tab,
+      navigationPath,
+      availableViews,
+      viewLayout,
+    });
+  }, [availableViews, navigationPath, registryVersion, tab, viewLayout]);
 }
 
 function trimmedNavigationPath(navigationPath: string): string {
@@ -1227,6 +1347,7 @@ type ShellContentProps = {
   isChat: boolean;
   isCompanionTab: boolean;
   isFullBleed: boolean;
+  screenBackgroundPolicy: AppShellBackgroundPolicy;
   setCustomActionsEditorOpen: (open: boolean) => void;
   setCustomActionsPanelOpen: (open: boolean) => void;
   setEditingAction: (action: import("./api").CustomActionDef | null) => void;
@@ -1297,18 +1418,12 @@ function routedShellMainClass(tab: string): string {
  * per-view.
  */
 function RoutedShellContent(props: ShellContentProps): ReactNode {
-  // Springboard, the Background view, and Settings share the unified app
-  // background (mounted once at the shell root), so their shell is transparent
-  // and the wallpaper shows through seamlessly — including the status-bar safe
-  // area. An opaque `bg-bg` shell would paint only the content box below the
-  // safe area, leaving the unified background peeking through the top strip
-  // (the seam #9143 follow-up fixes for Settings). Every other routed view
-  // keeps its own opaque shell.
+  // Routes with `backgroundPolicy: "shared"` intentionally sit on the unified
+  // Home/Springboard background. Every other route is opaque; the shell root
+  // also paints a full-window underlay so status/home-indicator safe areas do
+  // not expose the shared background around app views.
   const shellClass =
-    props.tab === "views" ||
-    props.tab === "apps" ||
-    props.tab === "background" ||
-    props.tab === "settings"
+    props.screenBackgroundPolicy === "shared"
       ? APP_SHELL_CLASS_TRANSPARENT
       : APP_SHELL_CLASS;
   return (
@@ -1529,6 +1644,7 @@ export function App() {
     overlayAppActive && activeOverlayApp
       ? getOverlayApp(activeOverlayApp)
       : undefined;
+  const overlayAppSurfaceActive = Boolean(resolvedOverlayApp);
   const contextMenu = useContextMenu();
 
   useSecretsManagerShortcut();
@@ -1622,6 +1738,17 @@ export function App() {
   );
   const { views: availableViewsForDesktopTabs } = useRoutableViews();
   const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(null);
+  const navigationPath = useCurrentNavigationPath();
+  const screenBackgroundPolicy = useActiveScreenBackgroundPolicy({
+    tab,
+    navigationPath,
+    availableViews: availableViewsForDesktopTabs,
+    viewLayout,
+  });
+  const renderSharedAppBackground =
+    screenBackgroundPolicy === "shared" && !overlayAppSurfaceActive;
+  const renderOpaqueAppBackground =
+    screenBackgroundPolicy === "opaque" || overlayAppSurfaceActive;
 
   const [editingAction, setEditingAction] = useState<
     import("./api").CustomActionDef | null
@@ -1839,6 +1966,7 @@ export function App() {
         isChat={isChat}
         isCompanionTab={isCompanionTab}
         isFullBleed={isFullBleed}
+        screenBackgroundPolicy={screenBackgroundPolicy}
         setCustomActionsEditorOpen={setCustomActionsEditorOpen}
         setCustomActionsPanelOpen={setCustomActionsPanelOpen}
         setEditingAction={setEditingAction}
@@ -1857,6 +1985,7 @@ export function App() {
       actionNotice,
       isChat,
       isFullBleed,
+      screenBackgroundPolicy,
       customActionsPanelOpen,
       settingsInitialSection,
       desktopTabBar,
@@ -1992,23 +2121,27 @@ export function App() {
           style={{ paddingTop: "var(--safe-area-top, 0px)" }}
         >
           {/* The unified app background, mounted once here so it persists
-              seamlessly across the home and every view (never remounts on
-              navigation). It is fixed + z-0; the content layer below sits at
-              z-10 so opaque views paint over it and transparent ones (home,
-              Views) let it show through. */}
-          <AppBackground />
-          {/* Readability scrim for text-dense views that opt into the unified
-              wallpaper (Settings). A full-viewport translucent frosted layer
-              between the wallpaper (z-0) and the content (z-10): it covers the
-              status-bar safe area too (it's `fixed inset-0`, outside the root's
-              safe-area padding), so the wallpaper reads through seamlessly while
-              the flat, card-less Settings text stays legible over any wallpaper.
-              Sparse views (springboard/Views) need no scrim and don't get one. */}
-          {isSettingsPage ? (
+              seamlessly across shared-background routes. It keeps the
+              background event channel mounted for the whole session, but only
+              renders the visual wallpaper when the active route opts into the
+              Home/Springboard background. */}
+          <AppBackground visible={renderSharedAppBackground} />
+          {/* Readability scrim for text-dense shared-background views. It sits
+              between the wallpaper (z-0) and content (z-10) and covers safe
+              areas too. Opaque or overlay-app routes use the plain underlay
+              instead, so the wallpaper cannot leak through. */}
+          {renderSharedAppBackground && isSettingsPage ? (
             <div
               aria-hidden="true"
               data-testid="app-background-scrim"
               className="pointer-events-none fixed inset-0 z-[1] bg-bg/55 backdrop-blur-md"
+            />
+          ) : null}
+          {renderOpaqueAppBackground ? (
+            <div
+              aria-hidden="true"
+              data-testid="app-opaque-background"
+              className="pointer-events-none fixed inset-0 z-0 bg-bg"
             />
           ) : null}
           <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">

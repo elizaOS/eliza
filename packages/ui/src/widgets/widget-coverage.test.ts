@@ -1,68 +1,191 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { resolveWidgetsForSlot, type WidgetPluginState } from "./registry";
+import {
+  BUILTIN_WIDGET_DECLARATIONS,
+  resolveWidgetsForSlot,
+  type WidgetPluginState,
+} from "./registry";
+import type { PluginWidgetDeclaration } from "./types";
 
 // #9143 — per-plugin home-widget coverage gate.
 //
-// The contract: every manifest plugin opted onto the frontpage resolves at
-// least one `home`-slot widget (its own bundled component OR a shared
-// `defaultWidget` sink) via `resolveWidgetsForSlot`. This enumerates the
-// opted-in batch and asserts each resolves a rendered component, so a future
-// edit that drops a declaration (or its sink mapping) fails CI here.
+// The contract: every plugin with an `elizaos.app` manifest resolves at least
+// one `home`-slot widget (its own bundled component OR a shared `defaultWidget`
+// sink) via `resolveWidgetsForSlot`. This enumerates the manifests directly
+// instead of keeping a hand-written short list, so a future app plugin without
+// a frontpage widget fails CI here.
 //
-// IDs are the runtime plugin IDs (package name with `@elizaos/plugin-`
-// stripped — see plugin-discovery-helpers `workspacePluginIdFromPackageName`),
-// which is exactly what `PluginInfo.id` carries in the live plugin snapshot.
-// Every per-plugin home card ships its own bundled component (the generic
-// default-widget sinks were replaced). `todos` surfaces via the workbench
-// `todo.items` widget (pluginId "todo", the fallback set) rather than a
-// "todos"-keyed declaration, so it isn't enumerated here.
-const HOME_WIDGET_PLUGIN_IDS = [
-  "inbox",
-  "calendar",
-  "goals",
-  "finances",
-  "health",
-  "relationships",
-] as const;
+// IDs match the plugin list's normalization: strip the npm scope, then strip
+// either `plugin-` or legacy `app-` prefixes.
 
 function enabled(id: string): WidgetPluginState {
   return { id, enabled: true, isActive: true };
 }
 
-describe("home-widget per-plugin coverage gate (#9143)", () => {
-  for (const pluginId of HOME_WIDGET_PLUGIN_IDS) {
-    it(`resolves >=1 home widget with a rendered component for "${pluginId}"`, () => {
-      const resolved = resolveWidgetsForSlot("home", [enabled(pluginId)]);
-      const own = resolved.filter((r) => r.declaration.pluginId === pluginId);
-      expect(own.length).toBeGreaterThanOrEqual(1);
-      // Every opted-in declaration must render something (own component or the
-      // shared sink it opted into) — a declaration that resolves no component
-      // is a broken pipeline, not coverage.
-      for (const entry of own) {
-        expect(entry.Component).toBeTruthy();
-      }
-    });
-  }
+interface AppManifestPlugin {
+  id: string;
+  packageName: string;
+  packageDir: string;
+}
 
-  it("enumerates every opted-in plugin (count check, fails if the batch shrinks)", () => {
-    const covered = HOME_WIDGET_PLUGIN_IDS.filter((pluginId) => {
-      const resolved = resolveWidgetsForSlot("home", [enabled(pluginId)]);
-      return resolved.some(
-        (r) => r.declaration.pluginId === pluginId && r.Component !== null,
-      );
-    });
-    expect(covered).toEqual([...HOME_WIDGET_PLUGIN_IDS]);
+function repoRoot(): string {
+  return path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../../..",
+  );
+}
+
+function pluginIdFromPackageName(packageName: string): string {
+  const withoutScope = packageName.startsWith("@")
+    ? (packageName.split("/")[1] ?? packageName)
+    : packageName;
+  if (withoutScope.startsWith("plugin-")) {
+    return withoutScope.slice("plugin-".length);
+  }
+  if (withoutScope.startsWith("app-")) {
+    return withoutScope.slice("app-".length);
+  }
+  return withoutScope;
+}
+
+function readAppManifestPlugins(): AppManifestPlugin[] {
+  const pluginsDir = path.join(repoRoot(), "plugins");
+  return readdirSync(pluginsDir)
+    .flatMap((packageDir): AppManifestPlugin[] => {
+      const packageJsonPath = path.join(pluginsDir, packageDir, "package.json");
+      if (!existsSync(packageJsonPath)) return [];
+      const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+        name?: string;
+        elizaos?: { app?: unknown };
+      };
+      if (!pkg.name || !pkg.elizaos?.app) return [];
+      return [
+        {
+          id: pluginIdFromPackageName(pkg.name),
+          packageName: pkg.name,
+          packageDir,
+        },
+      ];
+    })
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function withTempDeclaration<T>(decl: PluginWidgetDeclaration, fn: () => T): T {
+  BUILTIN_WIDGET_DECLARATIONS.push(decl);
+  try {
+    return fn();
+  } finally {
+    const i = BUILTIN_WIDGET_DECLARATIONS.indexOf(decl);
+    if (i >= 0) BUILTIN_WIDGET_DECLARATIONS.splice(i, 1);
+  }
+}
+
+describe("home-widget per-plugin coverage gate (#9143)", () => {
+  const appManifestPlugins = readAppManifestPlugins();
+
+  it("discovers app-manifest plugins from package.json", () => {
+    expect(appManifestPlugins.length).toBeGreaterThanOrEqual(32);
   });
 
-  // Negative control (red-then-green proof): a manifest plugin that has NOT
-  // opted into a home widget resolves none. This is the failure the gate
-  // catches — opting it in (a `home` declaration) is what turns it green.
-  // `scheduling` is deliberately left un-opted here (it surfaces attention via
-  // the notification rail, not a home card).
-  it("does NOT resolve a home widget for a plugin with no opt-in", () => {
-    const resolved = resolveWidgetsForSlot("home", [enabled("scheduling")]);
-    expect(resolved.some((r) => r.declaration.pluginId === "scheduling")).toBe(
-      false,
+  it("resolves >=1 home widget for every app-manifest plugin", () => {
+    const missing: string[] = [];
+
+    for (const plugin of appManifestPlugins) {
+      const own = resolveWidgetsForSlot("home", [enabled(plugin.id)]).filter(
+        (r) => r.declaration.pluginId === plugin.id,
+      );
+      const rendered = own.filter((entry) => entry.Component !== null);
+      if (rendered.length === 0) {
+        missing.push(
+          `${plugin.id} (${plugin.packageName}, ${plugin.packageDir})`,
+        );
+      }
+    }
+
+    expect(missing).toEqual([]);
+  });
+
+  it("reports the current own-widget/default-sink split", () => {
+    const coverage = appManifestPlugins.map((plugin) => {
+      const entries = resolveWidgetsForSlot("home", [
+        enabled(plugin.id),
+      ]).filter(
+        (r) => r.declaration.pluginId === plugin.id && r.Component !== null,
+      );
+      return {
+        id: plugin.id,
+        own: entries.some((entry) => !entry.defaultWidgetSink),
+        defaultSink: entries.some((entry) => Boolean(entry.defaultWidgetSink)),
+      };
+    });
+
+    const ownWidget = coverage.filter((entry) => entry.own).length;
+    const defaultSink = coverage.filter(
+      (entry) => !entry.own && entry.defaultSink,
+    ).length;
+
+    expect(ownWidget + defaultSink).toBe(appManifestPlugins.length);
+    expect(ownWidget).toBeGreaterThanOrEqual(6);
+  });
+
+  it("red/green control: no declaration fails, default-sink opt-in passes", () => {
+    const pluginId = "coverage-red-control";
+    expect(
+      resolveWidgetsForSlot("home", [enabled(pluginId)]).some(
+        (r) => r.declaration.pluginId === pluginId,
+      ),
+    ).toBe(false);
+
+    withTempDeclaration(
+      {
+        id: `${pluginId}.default-home`,
+        pluginId,
+        slot: "home",
+        label: "Coverage Red Control",
+        defaultWidget: "activity",
+      },
+      () => {
+        const resolved = resolveWidgetsForSlot("home", [enabled(pluginId)]);
+        const entry = resolved.find((r) => r.declaration.pluginId === pluginId);
+        expect(entry?.Component).toBeTruthy();
+        expect(entry?.defaultWidgetSink).toBe("activity");
+      },
     );
+  });
+});
+
+// #9304 — chat-sidebar slot coverage gate.
+//
+// The right-rail chat-sidebar widgets are bundled (not auto-discovered from
+// manifests), so a refactor that drops one of their declarations would silently
+// remove it from the live chat surface with no failing test. This gate pins the
+// expected set: every id must resolve with a rendered Component. Dropping one
+// fails CI here.
+describe("chat-sidebar slot coverage gate (#9304)", () => {
+  // The bundled plugins whose widgets target the chat-sidebar rail.
+  const SIDEBAR_PLUGINS: WidgetPluginState[] = [
+    enabled("agent-orchestrator"),
+    enabled("browser-workspace"),
+    enabled("music-player"),
+  ];
+  // Every chat-sidebar widget id that must remain wired.
+  const EXPECTED_SIDEBAR_WIDGET_IDS = [
+    "agent-orchestrator.apps",
+    "agent-orchestrator.activity",
+    "browser.status",
+    "music-player.stream",
+  ] as const;
+
+  it("resolves every expected chat-sidebar widget with a rendered component", () => {
+    const resolved = resolveWidgetsForSlot("chat-sidebar", SIDEBAR_PLUGINS);
+    const rendered = new Set(
+      resolved.filter((r) => r.Component !== null).map((r) => r.declaration.id),
+    );
+    const missing = EXPECTED_SIDEBAR_WIDGET_IDS.filter(
+      (id) => !rendered.has(id),
+    );
+    expect(missing).toEqual([]);
   });
 });

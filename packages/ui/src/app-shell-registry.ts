@@ -1,4 +1,4 @@
-import type { ViewKind } from "@elizaos/core";
+import type { AppShellBackgroundPolicy, ViewKind } from "@elizaos/core";
 import type { ComponentType } from "react";
 
 export type AppShellPageLoader = () => Promise<{
@@ -42,6 +42,8 @@ export interface AppShellPageRegistration {
    * orchestrator workbench.
    */
   fullBleed?: boolean;
+  /** Screen background policy for this page. Defaults to `"opaque"`. */
+  backgroundPolicy?: AppShellBackgroundPolicy;
   /**
    * The React component the shell mounts when this page is active.
    * Prefer `loader` for heavy pages so boot only pays metadata cost.

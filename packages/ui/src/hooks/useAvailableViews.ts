@@ -10,7 +10,7 @@
  * plugins are installed or uninstalled at runtime.
  */
 
-import type { ViewKind } from "@elizaos/core";
+import type { AppShellBackgroundPolicy, ViewKind } from "@elizaos/core";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { fetchWithCsrf } from "../api/csrf-client";
 import {
@@ -54,6 +54,8 @@ export interface ViewRegistryEntry {
   hasHeroImage?: boolean;
   /** Whether the view is currently loadable. */
   available: boolean;
+  /** Screen background policy for this view. Defaults to `"opaque"`. */
+  backgroundPolicy?: AppShellBackgroundPolicy;
   /** The plugin that provides this view. */
   pluginName: string;
   /** Freeform tags used for search and filtering. */
@@ -193,6 +195,7 @@ function appShellPageToViewEntry(
     pluginName: page.pluginId,
     developerOnly: page.developerOnly,
     viewKind: page.viewKind,
+    backgroundPolicy: page.backgroundPolicy,
     visibleInManager: true,
     builtin: false,
   };

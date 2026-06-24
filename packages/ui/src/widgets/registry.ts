@@ -17,6 +17,10 @@ import {
 } from "./registry-store";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 
+type DefaultHomeWidgetSink = NonNullable<
+  PluginWidgetDeclaration["defaultWidget"]
+>;
+
 export {
   getWidgetComponent,
   registerBuiltinWidgets,
@@ -77,6 +81,199 @@ for (const w of [
 ]) {
   registerWidgetComponent(w.pluginId, w.id, w.Component);
 }
+
+const APP_HOME_DEFAULT_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = (
+  [
+    {
+      pluginId: "blocker",
+      label: "Focus",
+      icon: "Shield",
+      defaultWidget: "notifications",
+      signalKinds: ["blocked", "reminder", "notification"],
+    },
+    {
+      pluginId: "companion",
+      label: "Companion",
+      icon: "Sparkles",
+      defaultWidget: "activity",
+      signalKinds: ["check-in", "nudge", "activity"],
+    },
+    {
+      pluginId: "contacts",
+      label: "Contacts",
+      icon: "Contact",
+      defaultWidget: "activity",
+      signalKinds: ["nudge", "activity"],
+    },
+    {
+      pluginId: "device-settings",
+      label: "Device Settings",
+      icon: "Settings",
+      defaultWidget: "notifications",
+      signalKinds: ["notification", "activity"],
+    },
+    {
+      pluginId: "documents",
+      label: "Documents",
+      icon: "FileText",
+      defaultWidget: "activity",
+      signalKinds: ["approval", "workflow", "activity"],
+    },
+    {
+      pluginId: "elizamaker",
+      label: "Elizamaker",
+      icon: "Bot",
+      defaultWidget: "activity",
+      signalKinds: ["workflow", "activity"],
+    },
+    {
+      pluginId: "feed",
+      label: "Feed",
+      icon: "Rss",
+      defaultWidget: "messages",
+      signalKinds: ["message", "activity"],
+    },
+    {
+      pluginId: "form",
+      label: "Forms",
+      icon: "ClipboardList",
+      defaultWidget: "activity",
+      signalKinds: ["approval", "workflow", "activity"],
+    },
+    {
+      pluginId: "hyperliquid-app",
+      label: "Hyperliquid",
+      icon: "ChartCandlestick",
+      defaultWidget: "notifications",
+      signalKinds: ["escalation", "notification", "activity"],
+    },
+    {
+      pluginId: "model-tester",
+      label: "Model Tester",
+      icon: "Gauge",
+      defaultWidget: "activity",
+      signalKinds: ["workflow", "activity"],
+    },
+    {
+      pluginId: "personal-assistant",
+      label: "Personal Assistant",
+      icon: "Sparkles",
+      defaultWidget: "notifications",
+      signalKinds: ["reminder", "check-in", "notification"],
+    },
+    {
+      pluginId: "phone",
+      label: "Phone",
+      icon: "Phone",
+      defaultWidget: "messages",
+      signalKinds: ["message", "notification"],
+    },
+    {
+      pluginId: "polymarket-app",
+      label: "Polymarket",
+      icon: "ChartNoAxesCombined",
+      defaultWidget: "notifications",
+      signalKinds: ["escalation", "notification", "activity"],
+    },
+    {
+      pluginId: "screenshare",
+      label: "Screen Share",
+      icon: "MonitorUp",
+      defaultWidget: "activity",
+      signalKinds: ["workflow", "activity"],
+    },
+    {
+      pluginId: "shopify-ui",
+      label: "Shopify",
+      icon: "ShoppingBag",
+      defaultWidget: "notifications",
+      signalKinds: ["approval", "notification", "activity"],
+    },
+    {
+      pluginId: "steward-app",
+      label: "Steward",
+      icon: "ShieldCheck",
+      defaultWidget: "notifications",
+      signalKinds: ["approval", "escalation", "notification"],
+    },
+    {
+      pluginId: "task-coordinator",
+      label: "Task Coordinator",
+      icon: "ListChecks",
+      defaultWidget: "activity",
+      signalKinds: ["blocked", "workflow", "activity"],
+    },
+    {
+      pluginId: "todos",
+      label: "Todos",
+      icon: "ListTodo",
+      defaultWidget: "activity",
+      signalKinds: ["reminder", "check-in", "nudge"],
+    },
+    {
+      pluginId: "training",
+      label: "Fine Tuning",
+      icon: "Brain",
+      defaultWidget: "activity",
+      signalKinds: ["workflow", "activity"],
+    },
+    {
+      pluginId: "trajectory-logger",
+      label: "Trajectory Logger",
+      icon: "Route",
+      defaultWidget: "activity",
+      signalKinds: ["workflow", "activity"],
+    },
+    {
+      pluginId: "vector-browser",
+      label: "Vector Browser",
+      icon: "Search",
+      defaultWidget: "activity",
+      signalKinds: ["workflow", "activity"],
+    },
+    {
+      pluginId: "vincent",
+      label: "Vincent",
+      icon: "KeyRound",
+      defaultWidget: "notifications",
+      signalKinds: ["approval", "notification"],
+    },
+    {
+      pluginId: "waifu-imagegen-app",
+      label: "Image Generation",
+      icon: "Image",
+      defaultWidget: "activity",
+      signalKinds: ["workflow", "activity"],
+    },
+    {
+      pluginId: "waifu-swap-app",
+      label: "Swap",
+      icon: "RefreshCcw",
+      defaultWidget: "activity",
+      signalKinds: ["workflow", "activity"],
+    },
+    {
+      pluginId: "wallet-ui",
+      label: "Wallet",
+      icon: "Wallet",
+      defaultWidget: "notifications",
+      signalKinds: ["approval", "escalation", "notification"],
+    },
+    {
+      pluginId: "wifi",
+      label: "WiFi",
+      icon: "Wifi",
+      defaultWidget: "notifications",
+      signalKinds: ["notification", "activity"],
+    },
+  ] as const
+).map((declaration, index) => ({
+  id: `${declaration.pluginId}.default-home`,
+  slot: "home" as const,
+  order: 300 + index,
+  defaultEnabled: true,
+  ...declaration,
+}));
 
 /**
  * Public API for plugins outside app-core to append widget declarations to the
@@ -250,6 +447,12 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     defaultEnabled: true,
     signalKinds: HEALTH_HOME_WIDGET.signalKinds,
   },
+  // App-manifest plugins that do not ship an owned home card opt into one of
+  // the shared default sinks (#9143). These declarations are contract entries:
+  // they prove the plugin participates in the frontpage widget system, while
+  // the shared notifications/messages/activity cards above remain the single
+  // visible aggregate surfaces for their sink kind.
+  ...APP_HOME_DEFAULT_WIDGET_DECLARATIONS,
   // Browser workspace status — surfaces /browser state in the right rail.
   {
     id: BROWSER_STATUS_WIDGET.id,
@@ -314,9 +517,10 @@ const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set([
   "messages",
 ]);
 
-interface ResolvedWidget {
+export interface ResolvedWidget {
   declaration: PluginWidgetDeclaration;
   Component: React.ComponentType<WidgetProps> | null;
+  defaultWidgetSink?: DefaultHomeWidgetSink;
 }
 
 type WidgetDeclarationSource = "builtin" | "server";
@@ -366,11 +570,8 @@ function isWidgetEnabled(
  * `registerWidgetComponent`). A `home`-slot plugin with no own component renders
  * one of these shared widgets instead of shipping its own.
  */
-const DEFAULT_WIDGET_SINK_COMPONENT: Readonly<
-  Record<
-    NonNullable<PluginWidgetDeclaration["defaultWidget"]>,
-    { pluginId: string; id: string }
-  >
+export const DEFAULT_WIDGET_SINK_COMPONENT: Readonly<
+  Record<DefaultHomeWidgetSink, { pluginId: string; id: string }>
 > = {
   notifications: { pluginId: "notifications", id: "notifications.recent" },
   messages: { pluginId: "messages", id: "messages.recent" },
@@ -420,6 +621,7 @@ export function resolveWidgetsForSlot(
     if (!isWidgetEnabled(declaration, plugins, source)) continue;
 
     let Component = getWidgetComponent(declaration.pluginId, declaration.id);
+    let defaultWidgetSink: DefaultHomeWidgetSink | undefined;
 
     // Home-slot opt-in sink (#9143): a plugin with no own component but a
     // `defaultWidget` renders the shared sink component for that kind. Borrows
@@ -433,11 +635,18 @@ export function resolveWidgetsForSlot(
     ) {
       const sink = DEFAULT_WIDGET_SINK_COMPONENT[declaration.defaultWidget];
       Component = getWidgetComponent(sink.pluginId, sink.id);
+      if (Component) {
+        defaultWidgetSink = declaration.defaultWidget;
+      }
     }
 
     // Include if we have a React component OR a uiSpec fallback
     if (Component || declaration.uiSpec) {
-      results.push({ declaration, Component: Component ?? null });
+      results.push({
+        declaration,
+        Component: Component ?? null,
+        ...(defaultWidgetSink ? { defaultWidgetSink } : {}),
+      });
     }
   }
 

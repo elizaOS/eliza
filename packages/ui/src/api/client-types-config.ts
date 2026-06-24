@@ -3,7 +3,7 @@
 // Update*, Extension*, Workbench*, Character*, Voice*, Skill*
 // ---------------------------------------------------------------------------
 
-import type { ViewKind } from "@elizaos/core";
+import type { AppShellBackgroundPolicy, ViewKind } from "@elizaos/core";
 import type { MessageExampleContent, PluginParamDef } from "@elizaos/shared";
 import type { ConfigUiHint } from "../types";
 import type {
@@ -171,6 +171,8 @@ export interface PluginInfo {
     developerOnly?: boolean;
     viewKind?: ViewKind;
     componentExport?: string;
+    defaultWidget?: "notifications" | "messages" | "activity";
+    signalKinds?: readonly string[];
   }>;
   /**
    * App metadata declared by the plugin (`Plugin.app`). Surfaces nav-tab
@@ -193,6 +195,7 @@ export interface PluginInfo {
       developerOnly?: boolean;
       viewKind?: ViewKind;
       group?: string;
+      backgroundPolicy?: AppShellBackgroundPolicy;
       componentExport?: string;
     }>;
   };

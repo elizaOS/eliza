@@ -4,8 +4,11 @@ import {
   applyChatSidebarVisibility,
   isWidgetVisible,
   loadChatSidebarVisibility,
+  loadWidgetVisibility,
   saveChatSidebarVisibility,
+  saveWidgetVisibility,
   widgetVisibilityKey,
+  widgetVisibilityStorageKey,
 } from "./visibility.js";
 
 // #9143 — the per-user chat-sidebar widget visibility override layer. Pin the
@@ -67,5 +70,27 @@ describe("loadChatSidebarVisibility + saveChatSidebarVisibility", () => {
       '{"p/w": "yes", "x": true}',
     );
     expect(loadChatSidebarVisibility()).toEqual({ overrides: { x: true } });
+  });
+});
+
+describe("loadWidgetVisibility + saveWidgetVisibility", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("keeps home widget visibility isolated from the legacy chat-sidebar key", () => {
+    saveChatSidebarVisibility({ overrides: { "chat/a": false } });
+    saveWidgetVisibility({ overrides: { "home/b": false } }, "home");
+
+    expect(widgetVisibilityStorageKey("chat-sidebar")).toBe(
+      "eliza:chat-sidebar:visibility",
+    );
+    expect(widgetVisibilityStorageKey("home")).toBe(
+      "eliza:widget-visibility:home",
+    );
+    expect(loadChatSidebarVisibility()).toEqual({
+      overrides: { "chat/a": false },
+    });
+    expect(loadWidgetVisibility("home")).toEqual({
+      overrides: { "home/b": false },
+    });
   });
 });

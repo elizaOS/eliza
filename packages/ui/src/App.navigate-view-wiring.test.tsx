@@ -103,6 +103,17 @@ const calendarView = {
   viewType: "gui" as const,
 };
 
+const sharedCanvasView = {
+  id: "shared-canvas",
+  label: "Shared Canvas",
+  available: true,
+  pluginName: "@elizaos/plugin-shared-canvas",
+  path: "/shared-canvas",
+  bundleUrl: "/api/views/shared-canvas/bundle.js",
+  viewType: "gui" as const,
+  backgroundPolicy: "shared" as const,
+};
+
 const documentsView = {
   id: "documents",
   label: "Knowledge",
@@ -119,6 +130,7 @@ const mockAvailableViews = [
   viewsManagerTuiView,
   notesView,
   calendarView,
+  sharedCanvasView,
   documentsView,
 ];
 
@@ -416,7 +428,7 @@ describe("App navigate-view event wiring", () => {
     appState.tab = "apps";
     window.history.replaceState(null, "", "/apps/remote-ledger");
 
-    const { container, getByTestId } = render(<App />);
+    const { container, getByTestId, queryByTestId } = render(<App />);
 
     await waitFor(() => {
       expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
@@ -440,6 +452,28 @@ describe("App navigate-view event wiring", () => {
         .querySelector('[data-shell-content-region="true"]')
         ?.className.includes("pb-[var(--eliza-continuous-chat-clearance"),
     ).toBe(true);
+    expect(getByTestId("app-opaque-background")).toBeTruthy();
+    expect(queryByTestId("app-background-shader")).toBeNull();
+  });
+
+  it("lets a view explicitly share the Home/Springboard background", async () => {
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/shared-canvas");
+
+    const { getByTestId, queryByTestId } = render(<App />);
+
+    await waitFor(() => {
+      expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bundleUrl: "/api/views/shared-canvas/bundle.js",
+          viewId: "shared-canvas",
+        }),
+        undefined,
+      );
+    });
+
+    expect(getByTestId("app-background-shader")).toBeTruthy();
+    expect(queryByTestId("app-opaque-background")).toBeNull();
   });
 
   it("reports user desktop-tab clicks to the agent without a navigation echo", async () => {
@@ -570,5 +604,7 @@ describe("App navigate-view event wiring", () => {
     });
     expect(queryByTestId("dynamic-view-loader")).toBeNull();
     expect(dynamicViewLoaderMock.render).not.toHaveBeenCalled();
+    expect(getByTestId("app-background-shader")).toBeTruthy();
+    expect(queryByTestId("app-opaque-background")).toBeNull();
   });
 });
