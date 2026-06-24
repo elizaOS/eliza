@@ -674,7 +674,13 @@ async function handleTextWithModelType(
       endpoint,
       error
     );
-    return "Error generating text. Please try again later.";
+    // Throw, never fabricate a reply. A hardcoded "Error generating text…" string
+    // would be persisted to memory and sent to the user as the agent's response —
+    // in the wrong language/voice — and would bypass core's grounded failure-reply
+    // path (buildFailureReplyPrompt). The canonical providers (openai, anthropic,
+    // google-genai, elizacloud, openrouter) all throw here; the message pipeline
+    // handles it.
+    throw error;
   }
 }
 
