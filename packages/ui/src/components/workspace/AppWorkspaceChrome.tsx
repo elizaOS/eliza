@@ -39,7 +39,7 @@ function MobileWorkspaceSidebarSwitcher({
         title={sidebarOpen ? "Hide left sidebar" : "Show left sidebar"}
         data-testid="app-workspace-mobile-pane-left"
         onClick={sidebarOpen ? onCloseSidebar : onSidebar}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted transition-colors hover:text-txt    "
       >
         {sidebarOpen ? (
           <PanelLeftClose className="h-4 w-4" aria-hidden />

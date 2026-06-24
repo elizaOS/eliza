@@ -79,7 +79,7 @@ function TitledTopicGroup({
           className={cn(
             "my-2 flex w-full touch-pan-y items-center gap-2 rounded-full px-3 py-1.5 text-left transition-colors",
             "border border-white/15 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+            "  ",
           )}
         >
           <span
@@ -102,7 +102,7 @@ function TitledTopicGroup({
           className={cn(
             "sticky top-0 z-[1] mb-1 mt-3 flex w-full touch-pan-y items-center gap-2 py-1 text-left",
             "text-white/45 transition-colors hover:text-white/70",
-            "focus-visible:outline-none",
+            "",
           )}
         >
           <span className="h-px flex-1 bg-white/10" aria-hidden />

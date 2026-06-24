@@ -15,7 +15,8 @@ const SRC_ROOT = import.meta.dirname;
 
 // Match the Tailwind blur utilities, their arbitrary forms, the `supports-`
 // modifier, and the raw CSS / inline-style property spellings.
-const BACKDROP_FILTER = /backdrop-blur|backdrop-saturate|backdrop-brightness|backdrop-contrast|backdrop-filter|backdropFilter|WebkitBackdropFilter|supports-\[backdrop-filter\]/;
+const BACKDROP_FILTER =
+  /backdrop-blur|backdrop-saturate|backdrop-brightness|backdrop-contrast|backdrop-filter|backdropFilter|WebkitBackdropFilter|supports-\[backdrop-filter\]/;
 
 function collectSourceFiles(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

@@ -71,9 +71,9 @@ function ApplicationsEntry(): React.JSX.Element {
     <button
       type="button"
       onClick={open}
-      className="group flex w-full items-center gap-3 rounded-lg border border-border bg-card px-4 py-4 text-left transition-colors hover:border-accent/40 hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+      className="group flex w-full items-center gap-3 rounded-lg border border-border bg-card px-4 py-4 text-left transition-colors hover:border-accent/40 hover:bg-surface   "
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-accent/12 text-accent ring-1 ring-accent/20">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-accent/12 text-accent  ">
         <Grid3x3 className="h-[18px] w-[18px]" aria-hidden />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">

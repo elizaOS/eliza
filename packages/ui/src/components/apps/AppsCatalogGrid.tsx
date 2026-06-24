@@ -305,7 +305,7 @@ const AppCard = memo(function AppCard({
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-sm border bg-card/72 transition-all hover:border-accent/45 focus-within:ring-2 focus-within:ring-accent/35 ${
+      className={`group relative overflow-hidden rounded-sm border bg-card/72 transition-all hover:border-accent/45   ${
         isActive ? "border-ok/45 " : "border-border/35 "
       }`}
     >
@@ -314,7 +314,7 @@ const AppCard = memo(function AppCard({
         data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
         title={displayName}
         aria-label={displayName}
-        className="block w-full text-left focus-visible:outline-none"
+        className="block w-full text-left "
         onClick={() => onLaunch(app)}
       >
         <AppHero
@@ -364,7 +364,7 @@ const AppCard = memo(function AppCard({
         className={`absolute bottom-3 right-3 rounded-full p-1.5 text-white transition-all ${
           isFavorite
             ? "bg-black/70 text-warn"
-            : "bg-black/70 text-white/70 hover:text-warn focus-visible:text-warn"
+            : "bg-black/70 text-white/70 hover:text-warn "
         }`}
         onClick={(event: MouseEvent<HTMLButtonElement>) => {
           event.stopPropagation();

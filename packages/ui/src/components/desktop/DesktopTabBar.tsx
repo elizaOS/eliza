@@ -51,7 +51,7 @@ function TabButton({
         type="button"
         title={tab.label}
         onClick={onClick}
-        className="min-w-0 truncate leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="min-w-0 truncate leading-none    "
       >
         {tab.label}
       </button>
@@ -62,7 +62,7 @@ function TabButton({
           e.stopPropagation();
           onClose();
         }}
-        className="ml-0.5 shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-border/40 group-hover:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="ml-0.5 shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-border/40 group-hover:opacity-100     "
         aria-label={`Close ${tab.label}`}
       >
         <X className="h-2.5 w-2.5" />
@@ -104,7 +104,7 @@ export function DesktopTabBar({
         type="button"
         title="Open View Manager"
         onClick={onOpenViewManager}
-        className="ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border border-border/40 bg-card/40 text-muted transition-colors hover:border-border hover:text-txt focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border border-border/40 bg-card/40 text-muted transition-colors hover:border-border hover:text-txt   "
         aria-label="Open View Manager to pin new tabs"
       >
         <Plus className="h-3 w-3" />

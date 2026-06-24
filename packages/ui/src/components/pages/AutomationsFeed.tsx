@@ -743,7 +743,7 @@ function FeedRowItem({
             defaultValue: "Run {{name}} now",
           })}
           onClick={onRunNow}
-          className="rounded-sm border border-border/40 p-1.5 text-muted-strong transition-colors hover:border-border hover:bg-bg-accent focus:bg-bg-accent"
+          className="rounded-sm border border-border/40 p-1.5 text-muted-strong transition-colors hover:border-border hover:bg-bg-accent "
           {...runAction.agentProps}
         >
           <PlayCircle className="h-3.5 w-3.5" aria-hidden />

@@ -544,10 +544,8 @@ function BrowserTabRow({
           type="button"
           aria-label={`${closeTabLabel} ${label}`}
           title={`${closeTabLabel}: ${label}`}
-          className={`absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger focus-visible:opacity-100 ${
-            active
-              ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+          className={`absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger  ${
+            active ? "opacity-100" : "opacity-0 group-hover:opacity-100 "
           }`}
           onClick={(event) => {
             event.preventDefault();

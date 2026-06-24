@@ -444,7 +444,7 @@ function ExperienceGraphNode({
       type="button"
       aria-label={`Select experience: ${nodeLabel}`}
       data-testid={`experience-graph-node-${experience.id}`}
-      className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full outline-none transition duration-200 hover:scale-125 focus-visible:ring-2 focus-visible:ring-accent"
+      className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full outline-none transition duration-200 hover:scale-125  "
       style={{
         left: `${position.x}%`,
         top: `${position.y}%`,

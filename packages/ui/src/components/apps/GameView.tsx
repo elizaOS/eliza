@@ -1727,7 +1727,7 @@ export function GameView() {
               }
             }}
             placeholder={t("game.chatPlaceholder")}
-            className="flex-1 h-8 text-xs bg-bg focus-visible:ring-accent"
+            className="flex-1 h-8 text-xs bg-bg "
             disabled={sendingChat}
           />
           <Button

@@ -299,7 +299,7 @@ function SoftButton({
         // 44×44 hit target (WCAG 2.5.5) — comfortably thumb-tappable without
         // crowding the bar (split the difference back down from 48).
         "grid h-11 w-11 shrink-0 place-items-center rounded-full border transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+        "  ",
         active
           ? "border-white/40 bg-white/85 text-black"
           : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
@@ -344,7 +344,7 @@ function HeaderButton({
       onClick={onClick}
       className={cn(
         "grid h-9 w-9 shrink-0 place-items-center rounded-full border transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+        "  ",
         disabled
           ? // On the view it targets: shown but inert + dimmed (we disable, not hide).
             "cursor-default border-white/10 bg-white/[0.05] text-white/35"
@@ -474,7 +474,7 @@ function SheetGrabber({
         // on the textarea and raises the keyboard (a programmatic focus from the
         // handle wouldn't). Pull gestures start from the bar / the upward zone.
         "before:absolute before:-inset-x-6 before:-top-16 before:bottom-0 before:content-['']",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full",
+        "   ",
       )}
     >
       <span
@@ -543,7 +543,7 @@ function PillHandle({
         // let taps fall through to the composer textarea below it — otherwise its
         // tall hit zone steals the tap and the keyboard never opens.
         pilled ? "pointer-events-auto" : "pointer-events-none",
-        "focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50",
+        "   ",
       )}
     >
       <span
@@ -875,7 +875,7 @@ const ThreadLine = React.memo(function ThreadLine({
             type="button"
             data-testid="chat-no-provider-settings"
             onClick={() => onOpenSettings?.()}
-            className="rounded-full border border-white/20 bg-white/15 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+            className="rounded-full border border-white/20 bg-white/15 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-white/25   "
           >
             Open Settings
           </button>
@@ -2850,7 +2850,7 @@ export function ContinuousChatOverlay({
             className={cn(
               "pointer-events-auto inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
               "border-warn/40 bg-warn/15 text-warn hover:bg-warn/25",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/70",
+              "  ",
               FLOAT_SHADOW,
             )}
           >
@@ -2919,7 +2919,7 @@ export function ContinuousChatOverlay({
                 "max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3 py-1.5",
                 "text-[12px] text-white/80 transition-colors",
                 "hover:border-white/30 hover:bg-white/15 hover:text-white",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+                "  ",
               )}
             >
               {s}
@@ -3215,7 +3215,7 @@ export function ContinuousChatOverlay({
                   // Horizontal-swipe navigation between conversations, sheet-open
                   // only (#8929). Deferred capture keeps vertical scroll native.
                   {...(sheetOpen ? conversationSwipe : {})}
-                  className="relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none] focus-visible:outline-none [&::-webkit-scrollbar]:hidden"
+                  className="relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none]  [&::-webkit-scrollbar]:hidden"
                 >
                   {/* Topic chips bar (#8928): the channel's current topics,
                       sticky above the scrolling transcript. Tap a chip to jump

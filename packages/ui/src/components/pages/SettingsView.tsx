@@ -93,7 +93,7 @@ function sectionChip(
 
 function Chip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-accent/12 px-2 py-0.5 text-[11px] font-medium text-accent ring-1 ring-accent/20">
+    <span className="inline-flex items-center rounded-full bg-accent/12 px-2 py-0.5 text-[11px] font-medium text-accent  ">
       {children}
     </span>
   );
@@ -182,7 +182,7 @@ function SectionBackButton({ onBack }: { onBack: () => void }) {
       ref={ref}
       type="button"
       onClick={onBack}
-      className="-mx-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+      className="-mx-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted transition-colors hover:text-accent   "
       {...agentProps}
     >
       <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
@@ -272,7 +272,7 @@ function SettingsSectionFallback({
       <button
         type="button"
         onClick={onRetry}
-        className="mt-1 inline-flex h-9 items-center rounded-md border border-border bg-card px-3 text-xs font-medium text-txt transition-colors hover:border-accent hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+        className="mt-1 inline-flex h-9 items-center rounded-md border border-border bg-card px-3 text-xs font-medium text-txt transition-colors hover:border-accent hover:text-accent   "
       >
         {t("settings.sectionRetry", { defaultValue: "Retry" })}
       </button>

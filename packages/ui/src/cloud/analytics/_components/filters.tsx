@@ -117,7 +117,7 @@ export function AnalyticsFilters() {
             value={timeRange}
             onValueChange={(value) => updateFilters({ timeRange: value })}
           >
-            <SelectTrigger className="w-[160px] rounded-sm border-white/10 bg-black/40 text-white focus:ring-1 focus:ring-[#FF5800]">
+            <SelectTrigger className="w-[160px] rounded-sm border-white/10 bg-black/40 text-white  ">
               <SelectValue>{rangeLabels[timeRange]}</SelectValue>
             </SelectTrigger>
             <SelectContent className="rounded-sm border-white/10 bg-black/90">
@@ -125,7 +125,7 @@ export function AnalyticsFilters() {
                 <SelectItem
                   key={value}
                   value={value}
-                  className="rounded-sm text-white hover:bg-white/10 focus:bg-white/10"
+                  className="rounded-sm text-white hover:bg-white/10 "
                 >
                   {rangeLabels[value]}
                 </SelectItem>

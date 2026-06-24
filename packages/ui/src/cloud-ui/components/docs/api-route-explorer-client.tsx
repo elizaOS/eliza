@@ -217,7 +217,7 @@ export function ApiRouteExplorerClient({
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search endpoints..."
-                  className="w-full pl-10 pr-4 py-2.5 rounded-none border border-white/10 bg-black/40 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-[#ff5800] focus:border-[#ff5800] transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-none border border-white/10 bg-black/40 text-sm text-white placeholder:text-white/30     transition-all"
                 />
               </div>
 

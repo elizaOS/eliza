@@ -214,7 +214,7 @@ export function DocumentViewer({
   };
 
   return (
-    <PagePanel className="flex flex-col overflow-hidden !rounded-none !border-0 !bg-transparent !shadow-none !ring-0">
+    <PagePanel className="flex flex-col overflow-hidden !rounded-none !border-0 !bg-transparent !shadow-none ">
       <div className="custom-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4">
         {loading && (
           <div className="py-10 text-center font-bold tracking-wide text-muted animate-pulse">
@@ -232,7 +232,7 @@ export function DocumentViewer({
         {!loading && !error && !doc && (
           <PagePanel.Empty
             variant="inset"
-            className="px-0 py-12 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+            className="px-0 py-12 !rounded-none !border-0 !bg-transparent !shadow-none "
             description={t("documentsview.NoDocumentSelectedDesc", {
               defaultValue:
                 "Select a document from the list to view its fragments and metadata.",
@@ -386,7 +386,7 @@ export function DocumentViewer({
 
             <PagePanel
               variant="inset"
-              className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+              className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none "
             >
               <div className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted/70">
                 {t("common.preview", { defaultValue: "Preview" })}
@@ -413,7 +413,7 @@ export function DocumentViewer({
 
             <PagePanel
               variant="inset"
-              className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+              className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none "
             >
               <div className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted/70">
                 {t("documentsview.FragmentsLabel", {
@@ -478,7 +478,7 @@ export function DocumentViewer({
                 {fragments.length === 0 && (
                   <PagePanel.Empty
                     variant="inset"
-                    className="min-h-[8rem] py-8 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+                    className="min-h-[8rem] py-8 !rounded-none !border-0 !bg-transparent !shadow-none "
                     title={t("documentsview.NoFragmentsFound")}
                   />
                 )}

@@ -146,7 +146,7 @@ export function AppIdentityTile({
 
   return (
     <div
-      className={`relative shrink-0 overflow-hidden border border-white/10 ring-1 ring-black/5 ${outerSize} ${className}`}
+      className={`relative shrink-0 overflow-hidden border border-white/10   ${outerSize} ${className}`}
       style={
         {
           backgroundImage: `linear-gradient(135deg, ${palette[0]} 0%, ${palette[1]} 100%)`,
