@@ -78,11 +78,21 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
   "@elizaos/plugin-coding-tools": ["FILE", "SHELL", "WORKTREE"],
   "@elizaos/plugin-commands": [
     "COMMANDS_COMMAND",
+    "COMPACT_COMMAND",
     "CONTEXT_COMMAND",
+    "ELEVATED_COMMAND",
     "HELP_COMMAND",
     "MODELS_COMMAND",
+    "MODEL_COMMAND",
+    "NEW_COMMAND",
+    "QUEUE_COMMAND",
+    "REASONING_COMMAND",
+    "RESET_COMMAND",
     "STATUS_COMMAND",
+    "THINK_COMMAND",
+    "TTS_COMMAND",
     "USAGE_COMMAND",
+    "VERBOSE_COMMAND",
     "WHOAMI_COMMAND",
   ],
   "@elizaos/plugin-agent-skills": [
@@ -194,15 +204,26 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "STOP_TRANSCRIPTION",
   // New workflow code-eval action (#8914); no deterministic keyless scenario yet.
   "EVAL_CODE",
-  // plugin-commands slash-command actions (/help, /status, /models, …) are
-  // dispatched through the command palette, not the keyless scenario pipeline,
-  // so they have no deterministic scenario yet.
+  // plugin-commands slash-command actions (/help, /status, /models, /reset,
+  // /compact, /think, /model, /tts, …) are dispatched through the command
+  // palette, not the keyless scenario pipeline, so they have no deterministic
+  // scenario yet.
   "COMMANDS_COMMAND",
+  "COMPACT_COMMAND",
   "CONTEXT_COMMAND",
+  "ELEVATED_COMMAND",
   "HELP_COMMAND",
   "MODELS_COMMAND",
+  "MODEL_COMMAND",
+  "NEW_COMMAND",
+  "QUEUE_COMMAND",
+  "REASONING_COMMAND",
+  "RESET_COMMAND",
   "STATUS_COMMAND",
+  "THINK_COMMAND",
+  "TTS_COMMAND",
   "USAGE_COMMAND",
+  "VERBOSE_COMMAND",
   "WHOAMI_COMMAND",
 ];
 
