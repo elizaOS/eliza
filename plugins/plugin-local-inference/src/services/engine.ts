@@ -636,6 +636,9 @@ export class LocalInferenceEngine {
 		maxTokens?: number;
 		temperature?: number;
 		signal?: AbortSignal;
+		/** Per-token callback for streaming vision describe (ABI v13). */
+		onTextChunk?: (chunk: string) => void | Promise<void>;
+		maxTokensPerStep?: number;
 	}): Promise<{
 		text: string;
 		projectorMs?: number;
