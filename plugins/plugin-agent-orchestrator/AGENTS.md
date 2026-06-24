@@ -84,6 +84,44 @@ All under the elizaOS runtime HTTP server:
 - Emits `TASK_AUDIT_EVENT` to persist append-only audit log entries.
 - Wraps `runtime.sendMessageToTarget` to redirect planner replies into the per-task thread when thread support is available.
 
+## Device × backend × auth-mode support matrix
+
+Coding-agent orchestration is gated per device by the same pure classifier the
+runtime uses (`classifyTerminalSupport` / `detectOrchestratorTerminalSupport` in
+`services/terminal-capabilities.ts`). The checked-in source of truth is
+`ORCHESTRATOR_DEVICE_SUPPORT_MATRIX` (`services/orchestrator-device-support-matrix.ts`),
+computed *through that classifier* so it cannot silently drift from the gate — a
+gating change that affects any documented profile fails this package's tests
+(`orchestrator-device-support-matrix.test.ts`). Do not hand-edit the matrix to
+disagree with the classifier; change the classifier and let the matrix follow.
+See issue #9146.
+
+| Device profile | Supported? | Reason | Coding backends |
+|---|---|---|---|
+| Desktop / server (Node, non-store) | ✅ | — | all 5 |
+| Android direct/AOSP local-yolo (staged shell) | ✅ | — | all 5 |
+| iOS (vanilla mobile runtime) | ❌ | `vanilla_mobile` | none — stub action only |
+| Store build (sandboxed distribution) | ❌ | `store_build` | none — stub action only |
+| Android Play/store build (not local-yolo) | ❌ | `not_local_yolo` | none — stub action only |
+
+Classifier precedence: `store_build` > `vanilla_mobile` (iOS) > `not_local_yolo`
+(Android non-yolo) > missing staged shell. When a device is supported every
+backend below is reachable; when unsupported only the stub action registers
+(see "Gated by `isLocalCodeExecutionAllowed()` AND terminal support" below).
+
+Backend → auth-mode reach (`ORCHESTRATOR_BACKEND_AUTH`, mirroring
+`AGENT_PROVIDER_CANDIDATES` in
+`packages/app-core/src/services/coding-account-bridge.ts`; subscription is
+preferred over API key):
+
+| Backend | Auth modes (preferred → fallback) |
+|---|---|
+| `elizaos` | runtime-routed |
+| `pi-agent` | runtime-routed |
+| `claude` | anthropic-subscription → anthropic-api |
+| `codex` | openai-codex → openai-api |
+| `opencode` | cerebras-api |
+
 ## Layout
 
 ```

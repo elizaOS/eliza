@@ -32,7 +32,6 @@ import {
   saveContinuousChatMode,
 } from "../../state/persistence";
 import { deriveAgentReady } from "../../state/types";
-import { useApp } from "../../state/useApp";
 import { getVrmPreviewUrl } from "../../state/vrm";
 import type { TranslateFn } from "../../types";
 import {
@@ -1111,8 +1110,15 @@ function InboxChatPanel({
   };
   variant: ChatViewVariant;
 }) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
+  // Granular shallow selection instead of useApp() so this inbox panel only
+  // re-renders on changes to the two fields it reads (#9141 gap 2). InboxChatPanel
+  // is only ever rendered inside ChatView (always within AppProvider), so the
+  // previous defensive `| undefined` was vestigial.
+  const app = useAppSelectorShallow((s) => ({
+    t: s.t,
+    setActionNotice: s.setActionNotice,
+  }));
+  const t = app.t ?? fallbackTranslate;
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1216,7 +1222,7 @@ function InboxChatPanel({
     ],
   );
   const connectorSendAs = useConnectorSendAsAccount(sendAsContext, {
-    setActionNotice: app?.setActionNotice,
+    setActionNotice: app.setActionNotice,
   });
   const {
     accountRequired,

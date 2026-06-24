@@ -12,6 +12,7 @@
 //   bun run --cwd packages/registry generate:first-party   # rewrite generated.json
 //   bun run --cwd packages/registry generate:first-party --check   # CI drift gate
 
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   readdirSync,
@@ -19,9 +20,28 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type RegistryEntry, registryEntrySchema } from "./schema";
+
+const localRequire = createRequire(import.meta.url);
+
+// `JSON.stringify(…, null, 2)` puts every array element on its own line, but
+// biome — the repo's format gate (`bun run format:check`) — collapses arrays
+// that fit onto a single line. Without reconciling the two, the committed
+// artifacts can only satisfy one gate at a time, and a later `registry build`
+// (which re-runs this generator) silently re-breaks the biome gate. Piping each
+// artifact through biome makes the generator emit exactly what `format:check`
+// expects, so generator output, committed files, and the format gate all agree.
+function biomeFormatJson(content: string, filePath: string): string {
+  const biomeBin = localRequire.resolve("@biomejs/biome/bin/biome");
+  return execFileSync(
+    process.execPath,
+    [biomeBin, "format", `--stdin-file-path=${filePath}`],
+    { input: content, encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 },
+  );
+}
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..", "..");
@@ -163,9 +183,9 @@ function main(): void {
   const check = process.argv.includes("--check");
   const next = generateFirstPartyRegistry();
   const artifacts: [string, string][] = [
-    [GENERATED_PATH, next.full],
-    [CURATED_DEFS_PATH, next.curated],
-    [CHANNEL_MAP_PATH, next.channels],
+    [GENERATED_PATH, biomeFormatJson(next.full, GENERATED_PATH)],
+    [CURATED_DEFS_PATH, biomeFormatJson(next.curated, CURATED_DEFS_PATH)],
+    [CHANNEL_MAP_PATH, biomeFormatJson(next.channels, CHANNEL_MAP_PATH)],
   ];
   if (check) {
     for (const [path, expected] of artifacts) {

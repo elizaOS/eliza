@@ -12,6 +12,11 @@ import { apps } from "../../db/schemas/apps";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
+import {
+  computeInferenceCharge,
+  computePurchaseSplit,
+  computeReconciliation,
+} from "./app-credit-math";
 import { creditsService } from "./credits";
 import { redeemableEarningsService } from "./redeemable-earnings";
 
@@ -216,17 +221,14 @@ export class AppCreditsService {
       }
     }
 
-    // Only apply platform offset and creator share if monetization is enabled
-    // Users always get full credits for their purchase
-    const platformOffset = app.monetization_enabled
-      ? Math.min(Number(app.platform_offset_amount), purchaseAmount)
-      : 0;
-    const amountAfterOffset = purchaseAmount - platformOffset;
-    const creatorSharePercentage = app.monetization_enabled
-      ? Number(app.purchase_share_percentage) / 100
-      : 0;
-    const creatorEarnings = amountAfterOffset * creatorSharePercentage;
-    const creditsToAdd = purchaseAmount;
+    // Only apply platform offset and creator share if monetization is enabled;
+    // users always get full credits for their purchase. Math in app-credit-math.ts.
+    const { platformOffset, creatorEarnings, creditsToAdd } = computePurchaseSplit(purchaseAmount, {
+      monetizationEnabled: app.monetization_enabled,
+      platformOffsetAmount: Number(app.platform_offset_amount),
+      purchaseSharePercentage: Number(app.purchase_share_percentage),
+      inferenceMarkupPercentage: Number(app.inference_markup_percentage),
+    });
 
     logger.info("[AppCredits] Processing purchase", {
       appId,
@@ -343,11 +345,14 @@ export class AppCreditsService {
       };
     }
 
-    // Only apply markup if monetization is enabled
-    // Otherwise, users pay base cost only and creator earns nothing
-    const markupPercentage = app.monetization_enabled ? Number(app.inference_markup_percentage) : 0;
-    const creatorMarkup = baseCost * (markupPercentage / 100);
-    const totalCost = baseCost + creatorMarkup;
+    // Only apply markup if monetization is enabled; otherwise users pay base
+    // cost only and the creator earns nothing. Math in app-credit-math.ts.
+    const { markupPercentage, creatorMarkup, totalCost } = computeInferenceCharge(baseCost, {
+      monetizationEnabled: app.monetization_enabled,
+      platformOffsetAmount: Number(app.platform_offset_amount),
+      purchaseSharePercentage: Number(app.purchase_share_percentage),
+      inferenceMarkupPercentage: Number(app.inference_markup_percentage),
+    });
 
     // Debit from the user's organization credit balance. Atomic via row-lock.
     // Switched from `app_credit_balances` (per-app pre-purchased pool) to the
@@ -543,11 +548,14 @@ export class AppCreditsService {
       };
     }
 
-    // Calculate the total cost difference including markup
-    const markupPercentage = app.monetization_enabled ? Number(app.inference_markup_percentage) : 0;
-    const markupMultiplier = 1 + markupPercentage / 100;
-    const totalCostDifference = baseCostDifference * markupMultiplier;
-    const creatorMarkupDifference = baseCostDifference * (markupPercentage / 100);
+    // Calculate the total cost difference including markup. Math in app-credit-math.ts.
+    const { markupPercentage, totalCostDifference, creatorMarkupDifference } =
+      computeReconciliation(baseCostDifference, {
+        monetizationEnabled: app.monetization_enabled,
+        platformOffsetAmount: Number(app.platform_offset_amount),
+        purchaseSharePercentage: Number(app.purchase_share_percentage),
+        inferenceMarkupPercentage: Number(app.inference_markup_percentage),
+      });
 
     if (baseCostDifference < 0) {
       // REFUND: Actual was less than estimated. Add credit back to the org

@@ -475,6 +475,21 @@ export {
   setRenderTelemetrySink,
   useRenderGuard,
 } from "./hooks/useRenderGuard";
+export {
+  type FrameBudget,
+  type FrameBudgetSummary,
+  type FrameBudgetTelemetryEvent,
+  DEFAULT_FRAME_BUDGET,
+  frameBudgetMs,
+  shouldReportFrameBudget,
+  summarizeFrameSamples,
+} from "./hooks/frame-budget";
+export {
+  type FrameBudgetMonitorOptions,
+  isPerfHudEnabled,
+  startFrameBudgetMonitor,
+  useFrameBudgetMonitor,
+} from "./hooks/useFrameBudgetMonitor";
 export { useTimeout } from "./hooks/useTimeout";
 export type { UiLanguage } from "./i18n/index";
 export * from "./i18n/index";

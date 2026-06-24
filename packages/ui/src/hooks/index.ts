@@ -17,6 +17,8 @@ export * from "./useLinkedSidebarSelection";
 export * from "./useMediaQuery";
 export * from "./useModalState";
 export * from "./useRenderGuard";
+export * from "./frame-budget";
+export * from "./useFrameBudgetMonitor";
 export * from "./useRuntimeMode";
 export * from "./useSignalPairing";
 export * from "./useTimeout";
