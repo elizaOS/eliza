@@ -164,7 +164,7 @@ type HealthLlmPlan = {
  * request/intent/params/conversation tail is appended per call. Extracted as a
  * module constant so it can serve as the `health_checkin` OptimizedPromptService
  * baseline (#8795). */
-const HEALTH_PLAN_INSTRUCTIONS = [
+export const HEALTH_PLAN_INSTRUCTIONS = [
   "Plan the HEALTH action for this request.",
   "The user may speak in any language.",
   "Return JSON only as a single object with exactly these fields:",

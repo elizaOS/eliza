@@ -234,6 +234,7 @@ async function loadCalendarFromLifeOps(args: {
     const events = Array.isArray(feed.events) ? feed.events : [];
     return events.map((event) => {
       const record = asRecord(event);
+      const location = readString(record, "location");
       return {
         id: readString(record, "id") ?? "calendar-event",
         title: readString(record, "title") ?? "Untitled event",
@@ -245,9 +246,7 @@ async function loadCalendarFromLifeOps(args: {
           readString(record, "endAt") ??
           readString(record, "end") ??
           end.toISOString(),
-        ...(readString(record, "location")
-          ? { location: readString(record, "location")! }
-          : {}),
+        ...(location ? { location } : {}),
       };
     });
   } catch (error) {
@@ -453,7 +452,7 @@ function newBriefingId(): string {
 // artifact, when present, replaces it; otherwise this inline baseline is used,
 // so the absence of an artifact is a no-op. The dynamic header line and the data
 // payload are composed around the resolved instructions, never optimized away.
-const BRIEF_NARRATIVE_INSTRUCTIONS = `Render a concise narrative paragraph (2-5 sentences). Lead with the
+export const BRIEF_NARRATIVE_INSTRUCTIONS = `Render a concise narrative paragraph (2-5 sentences). Lead with the
 schedule-changing or reply-needed items first. Mention each non-empty domain
 once. If a domain is empty, omit it rather than saying "nothing to report".
 No invented facts; only describe items in the data below.`;
@@ -505,9 +504,8 @@ async function composeNarrative(args: {
   });
   // Tag the trajectory with the `morning_brief` LifeOps task so the call buckets
   // into its per-capability dataset for the GEPA loop (#8795).
-  const raw = await runWithTrajectoryContext(
-    { purpose: "morning_brief" },
-    () => args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
+  const raw = await runWithTrajectoryContext({ purpose: "morning_brief" }, () =>
+    args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
   );
   return typeof raw === "string" ? raw.trim() : undefined;
 }

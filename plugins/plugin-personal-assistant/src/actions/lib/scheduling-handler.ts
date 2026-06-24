@@ -61,7 +61,7 @@ async function loadLifeOpsServiceModule() {
   return import("../../lifeops/service.js");
 }
 
-const SCHEDULE_PLAN_INSTRUCTIONS = [
+export const SCHEDULE_PLAN_INSTRUCTIONS = [
   "Plan the scheduling negotiation action for this request.",
   "The user may speak in any language.",
   "Use the current request, the structured parameters, and recent conversation context.",

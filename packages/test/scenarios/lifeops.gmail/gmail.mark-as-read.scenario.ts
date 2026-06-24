@@ -55,7 +55,7 @@ export default scenario({
     {
       type: "gmailBatchModify",
       body: {
-        removeLabelIds: "MESSAGE",
+        removeLabelIds: "UNREAD",
       },
     },
     {

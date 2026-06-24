@@ -409,7 +409,7 @@ function buildCalendarPlanRepairPrompt(args: {
   ].join("\n");
 }
 
-const CALENDAR_PLAN_INSTRUCTIONS = [
+export const CALENDAR_PLAN_INSTRUCTIONS = [
   "Plan the calendar action for this request.",
   "The user may speak in any language.",
   "Use the current request plus recent conversation context.",

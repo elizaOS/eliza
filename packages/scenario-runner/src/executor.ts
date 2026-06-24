@@ -1505,6 +1505,46 @@ async function executeTickTurn(args: {
   };
 }
 
+async function executeWaitTurn(
+  turn: ScenarioTurn,
+  turnTimeoutMs: number,
+): Promise<{
+  statusCode: number;
+  responseBody: unknown;
+  responseText: string;
+  durationMs: number;
+}> {
+  const durationMs = (turn as { durationMs?: unknown }).durationMs;
+  if (
+    typeof durationMs !== "number" ||
+    !Number.isFinite(durationMs) ||
+    durationMs < 0
+  ) {
+    throw new Error(
+      `[executor] wait turn '${turn.name}' requires non-negative durationMs`,
+    );
+  }
+  const timeoutMs =
+    typeof turn.timeoutMs === "number" ? turn.timeoutMs : turnTimeoutMs;
+  const startedAt = Date.now();
+  await withTimeout(
+    new Promise((resolve) => setTimeout(resolve, durationMs)),
+    timeoutMs,
+    `wait(${turn.name})`,
+  );
+  const responseBody = { success: true, durationMs };
+  return {
+    statusCode: 200,
+    responseBody,
+    responseText: JSON.stringify(responseBody),
+    durationMs: Date.now() - startedAt,
+  };
+}
+
+function turnUsesStatusResponse(turnKind: string): boolean {
+  return turnKind === "api" || turnKind === "tick" || turnKind === "wait";
+}
+
 async function runTurnAssertions(
   turn: ScenarioTurn,
   execution: ExecutedTurn,
@@ -1515,20 +1555,19 @@ async function runTurnAssertions(
   const kind = typeof turn.kind === "string" ? turn.kind : "message";
 
   if (typeof turn.assertResponse === "function") {
-    const result =
-      kind === "api" || kind === "tick"
-        ? await (
-            turn.assertResponse as (status: number, body: unknown) => unknown
-          )(execution.statusCode ?? 0, execution.responseBody)
-        : await (turn.assertResponse as (text: string) => unknown)(
-            execution.responseText ?? "",
-          );
+    const result = turnUsesStatusResponse(kind)
+      ? await (
+          turn.assertResponse as (status: number, body: unknown) => unknown
+        )(execution.statusCode ?? 0, execution.responseBody)
+      : await (turn.assertResponse as (text: string) => unknown)(
+          execution.responseText ?? "",
+        );
     if (typeof result === "string" && result.length > 0) {
       failures.push(`assertResponse: ${result}`);
     }
   }
 
-  if (kind === "api" || kind === "tick") {
+  if (turnUsesStatusResponse(kind)) {
     const expectedStatus = (turn as { expectedStatus: number }).expectedStatus;
     if (
       typeof expectedStatus === "number" &&
@@ -1897,6 +1936,7 @@ export async function runScenario(
         kind !== "action" &&
         kind !== "api" &&
         kind !== "tick" &&
+        kind !== "wait" &&
         kind !== "voice"
       ) {
         report.turns.push({
@@ -1954,16 +1994,24 @@ export async function runScenario(
                       opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
                     )),
                   }
-                : {
-                    actionsCalled: [],
-                    ...(await executeMessageTurn(
-                      runtime,
-                      turn,
-                      resolveTurnRoom(turn, rooms),
-                      logicalNow,
-                      opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
-                    )),
-                  };
+                : kind === "wait"
+                  ? {
+                      actionsCalled: [],
+                      ...(await executeWaitTurn(
+                        turn,
+                        opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                      )),
+                    }
+                  : {
+                      actionsCalled: [],
+                      ...(await executeMessageTurn(
+                        runtime,
+                        turn,
+                        resolveTurnRoom(turn, rooms),
+                        logicalNow,
+                        opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                      )),
+                    };
       let actionsThisTurn = interceptor.actions.slice(actionsBefore);
       // Synthesize an implicit REPLY capture when the runtime emitted text
       // via the message callback but the LLM failed to select REPLY in its

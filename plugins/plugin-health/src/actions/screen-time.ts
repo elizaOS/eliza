@@ -18,6 +18,16 @@ const ACTION_NAME = "SCREEN_TIME";
 const DEFAULT_WINDOW_HOURS = 24;
 const MAX_WINDOW_HOURS = 24 * 30;
 
+export const SCREENTIME_RECAP_INSTRUCTIONS = `Summarize the owner's screen-time and propose one focus adjustment.
+
+Rules:
+- highlight the largest changes vs. the prior period, not raw totals alone
+- tie any suggestion to an actual usage pattern in the data
+- propose at most one concrete blocker or focus change
+- keep the tone factual and non-clinical
+
+Return JSON object only: { recap, topApps: [{ app, minutes }], suggestion }.`;
+
 type Subaction =
   | "summary"
   | "today"

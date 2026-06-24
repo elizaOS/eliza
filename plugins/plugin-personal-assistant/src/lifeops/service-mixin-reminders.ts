@@ -547,7 +547,7 @@ function normalizeOptionalScheduleObservationSnapshot(
  *  hammering a flaky connector while still retrying within the same turn. */
 const REMINDER_DELIVERY_RETRY_DELAY_MS = 2_000;
 
-const REMINDER_DISPATCH_INSTRUCTIONS = [
+export const REMINDER_DISPATCH_INSTRUCTIONS = [
   "Write a short reminder nudge in the assistant's voice.",
   "This is a real follow-up or reminder delivery, not a system log.",
   "",

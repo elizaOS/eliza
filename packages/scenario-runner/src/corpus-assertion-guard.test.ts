@@ -64,9 +64,12 @@ interface ScenarioFacts {
   hasPerTurnAssert: boolean;
   hasPersonalityExpect: boolean;
   hasExpectedActionParams: boolean;
+  hasMessageAsGmailLabelExpectation: boolean;
 }
 
 const DEAD_EXPECTED_ACTION_PARAMS = /\bexpectedActionParams\s*:/;
+const MESSAGE_AS_GMAIL_LABEL_EXPECTATION =
+  /\b(?:addLabelIds|removeLabelIds)\s*:\s*(?:(["'])MESSAGE\1|\[[^\]]*(["'])MESSAGE\2[^\]]*\])/;
 
 const PER_TURN_ASSERT =
   /\b(assertResponse|expectedActions|responseIncludesAny|responseIncludesAll|responseExcludes|forbiddenActions|plannerIncludesAll|plannerIncludesAny|plannerExcludes|responseJudge|assertTurn)\b/;
@@ -84,6 +87,8 @@ function analyze(file: string): ScenarioFacts {
     hasPerTurnAssert: PER_TURN_ASSERT.test(src),
     hasPersonalityExpect: /\bpersonalityExpect\s*:/.test(src),
     hasExpectedActionParams: DEAD_EXPECTED_ACTION_PARAMS.test(src),
+    hasMessageAsGmailLabelExpectation:
+      MESSAGE_AS_GMAIL_LABEL_EXPECTATION.test(src),
   };
 }
 
@@ -121,6 +126,14 @@ describe("scenario corpus assertion guard", () => {
   it("does not use dead expectedActionParams turn assertions", () => {
     const offenders = facts
       .filter((f) => f.hasExpectedActionParams)
+      .map(rel)
+      .sort();
+    expect(offenders).toEqual([]);
+  });
+
+  it('does not use action name "MESSAGE" as a Gmail label expectation', () => {
+    const offenders = facts
+      .filter((f) => f.hasMessageAsGmailLabelExpectation)
       .map(rel)
       .sort();
     expect(offenders).toEqual([]);
