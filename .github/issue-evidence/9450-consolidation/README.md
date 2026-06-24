@@ -7,8 +7,8 @@ Evidence that the cleanup + consolidation + proof pass is complete on `develop`.
 - `home-mobile.png`, `home-desktop.png` — Home at mobile + desktop (icon-first, single canonical `HomeScreen`).
 - `springboard-mobile.png`, `springboard-desktop.png`, `springboard-edit-mode.png`, `springboard-page2.png` — the single canonical `Springboard` launcher (rest / edit / page 2) at both breakpoints.
 - `springboard-interactions-walkthrough.webm` — tap-launch · long-press-to-edit · favorite · dot-paging · **real swipe-drag** gesture.
-- `springboard-e2e.log` — `test:springboard-e2e`: all interactions pass incl. "swipe-drag gesture commits a page flip (page-swipe telemetry 0→2)", 0 page errors.
-- `home-screen-e2e.log` — `test:home-screen-e2e`: home↔springboard swipe-left/right, ranked widgets, layout-stable (CLS 0.0), 0 page errors.
+- `springboard-e2e.txt` — `test:springboard-e2e`: all interactions pass incl. "swipe-drag gesture commits a page flip (page-swipe telemetry 0→2)", 0 page errors.
+- `home-screen-e2e.txt` — `test:home-screen-e2e`: home↔springboard swipe-left/right, ranked widgets, layout-stable (CLS 0.0), 0 page errors.
 
 ## Definition of Done → evidence
 | AC | Status | Proof |
