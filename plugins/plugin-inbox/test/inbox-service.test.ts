@@ -35,6 +35,9 @@ function makeRuntime(opts: {
     agentId: "22222222-2222-2222-2222-222222222222" as UUID,
     character: { name: "Eliza" },
     useModel,
+    // No NotificationService registered — triage's best-effort home-attention
+    // notify must be a clean no-op (it never blocks/affects persistence).
+    getService: () => null,
     adapter: {
       db: {
         execute: async (query: {

@@ -53,6 +53,7 @@ function triageRow(
 function makeRuntime(rowsFor: (sql: string) => unknown): IAgentRuntime {
   return {
     agentId: "33333333-3333-3333-3333-333333333333" as UUID,
+    getService: () => null,
     adapter: {
       db: {
         execute: async (query: {
