@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useApp } from "../../state/useApp";
+import { useAppSelectorShallow } from "../../state";
 import { requestConversationResetUndo } from "./conversation-undo-store";
 
 /**
@@ -16,12 +16,20 @@ import { requestConversationResetUndo } from "./conversation-undo-store";
  * `requestConversationResetUndo` so the affordance is identical everywhere.
  */
 export function useConversationReset(): () => void {
+  // Granular shallow selector instead of useApp() so this hook only re-renders
+  // when one of the four fields it actually reads changes, not on every
+  // app-store field update (#9141 gap 2 — useApp() → useAppSelector migration).
   const {
     handleNewConversation,
     handleSelectConversation,
     activeConversationId,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    handleNewConversation: s.handleNewConversation,
+    handleSelectConversation: s.handleSelectConversation,
+    activeConversationId: s.activeConversationId,
+    t: s.t,
+  }));
 
   return React.useCallback(() => {
     const previousConversationId = activeConversationId;
