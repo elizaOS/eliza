@@ -95,7 +95,10 @@ describe("springboard-layout moveIcon", () => {
   });
 
   it("marks the layout manual so the drag order is preserved", () => {
-    const layout: SpringboardLayout = { favorites: [], pages: [["a", "b", "c"]] };
+    const layout: SpringboardLayout = {
+      favorites: [],
+      pages: [["a", "b", "c"]],
+    };
     expect(layout.manual).toBeUndefined();
     const out = moveIcon(layout, "c", 0, 0, 4);
     expect(out.manual).toBe(true);
