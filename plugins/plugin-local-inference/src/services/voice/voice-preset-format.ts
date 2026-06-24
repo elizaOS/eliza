@@ -133,7 +133,8 @@ export class VoicePresetFormatError extends Error {
 			| "bad-phrase-record"
 			| "bad-embedding-length"
 			| "bad-ref-tokens"
-			| "bad-metadata",
+			| "bad-metadata"
+			| "bad-utf8",
 	) {
 		super(message);
 		this.name = "VoicePresetFormatError";
@@ -349,10 +350,23 @@ function readRefAudioTokens(
 	return { K, refT, tokens };
 }
 
+/** Strict UTF-8 decode that surfaces invalid bytes as the format's own error
+ * rather than leaking a raw TextDecoder TypeError past the defensive boundary. */
+function decodeUtf8Strict(bytes: Uint8Array): string {
+	try {
+		return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+	} catch {
+		throw new VoicePresetFormatError(
+			"voice preset contains invalid UTF-8 text",
+			"bad-utf8",
+		);
+	}
+}
+
 function readUtf8(bytes: Uint8Array, sec: SectionView): string {
 	if (sec.length === 0) return "";
 	const slice = bytes.subarray(sec.offset, sec.offset + sec.length);
-	return new TextDecoder("utf-8", { fatal: true }).decode(slice);
+	return decodeUtf8Strict(slice);
 }
 
 function readMetadata(
@@ -389,7 +403,6 @@ function readPhrases(
 		bytes.byteOffset + sec.offset,
 		sec.length,
 	);
-	const decoder = new TextDecoder("utf-8", { fatal: true });
 	let pos = 0;
 	if (sec.length < 4) {
 		throw new VoicePresetFormatError(
@@ -420,7 +433,7 @@ function readPhrases(
 			bytes.byteOffset + sec.offset + pos,
 			textLen,
 		);
-		const text = decoder.decode(textBytes);
+		const text = decodeUtf8Strict(textBytes);
 		pos += textLen;
 		if (pos + 8 > sec.length) {
 			throw new VoicePresetFormatError(
