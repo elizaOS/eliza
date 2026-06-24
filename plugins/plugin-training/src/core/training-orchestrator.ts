@@ -425,6 +425,80 @@ function firstStringExport(
     if (typeof value === "string" && value.trim().length > 0) {
       return value;
     }
+    if (
+      Array.isArray(value) &&
+      value.every((entry) => typeof entry === "string")
+    ) {
+      const joined = value.join("\n").trim();
+      if (joined.length > 0) {
+        return joined;
+      }
+    }
+  }
+  return null;
+}
+
+function decodeSourceString(quote: string, body: string): string {
+  if (quote === '"') {
+    try {
+      return JSON.parse(`${quote}${body}${quote}`) as string;
+    } catch {
+      // Fall through to the conservative escape handling below.
+    }
+  }
+  return body
+    .replaceAll("\\n", "\n")
+    .replaceAll("\\t", "\t")
+    .replaceAll(`\\${quote}`, quote)
+    .replaceAll("\\\\", "\\");
+}
+
+function extractPromptConstantFromSource(
+  source: string,
+  name: string,
+): string | null {
+  const declaration = new RegExp(
+    `export\\s+const\\s+${name}\\s*=\\s*([\\s\\S]*?);`,
+    "u",
+  ).exec(source)?.[1];
+  if (!declaration) return null;
+  const trimmed = declaration.trim();
+
+  const literal = /^(["'`])([\s\S]*)\1$/u.exec(trimmed);
+  if (literal?.[1] && literal[2] !== undefined) {
+    return decodeSourceString(literal[1], literal[2]).trim();
+  }
+
+  const arrayBody = /^\[([\s\S]*?)\](?:\.join\((["'`])\\n\2\))?$/u.exec(
+    trimmed,
+  )?.[1];
+  if (!arrayBody) return null;
+
+  const lines: string[] = [];
+  const literalPattern = /(["'`])((?:\\[\s\S]|(?!\1)[\s\S])*?)\1/gu;
+  for (const match of arrayBody.matchAll(literalPattern)) {
+    const quote = match[1];
+    const body = match[2];
+    if (!quote || body === undefined) continue;
+    lines.push(decodeSourceString(quote, body));
+  }
+  const joined = lines.join("\n").trim();
+  return joined.length > 0 ? joined : null;
+}
+
+async function loadFirstSourceStringExport(
+  sourceUrl: URL,
+  names: readonly string[],
+): Promise<string | null> {
+  let source: string;
+  try {
+    source = await readFile(sourceUrl, "utf8");
+  } catch {
+    return null;
+  }
+  for (const name of names) {
+    const value = extractPromptConstantFromSource(source, name);
+    if (value) return value;
   }
   return null;
 }
@@ -443,7 +517,25 @@ async function importOptionalModule(
 async function loadFirstStringExport(
   specifier: string,
   names: readonly string[],
+  sourceSpecifier?: string,
 ): Promise<string | null> {
+  if (sourceSpecifier) {
+    const sourceUrl = new URL(sourceSpecifier, import.meta.url);
+    const sourceModule = await importOptionalModule(sourceUrl.href);
+    const sourceExported = sourceModule
+      ? firstStringExport(sourceModule, names)
+      : null;
+    if (sourceExported) {
+      return sourceExported;
+    }
+    const sourceTextExported = await loadFirstSourceStringExport(
+      sourceUrl,
+      names,
+    );
+    if (sourceTextExported) {
+      return sourceTextExported;
+    }
+  }
   const promptModule = await importOptionalModule(specifier);
   return promptModule ? firstStringExport(promptModule, names) : null;
 }
@@ -456,40 +548,49 @@ async function loadLiveLifeOpsBaseline(
       return loadFirstStringExport(
         "@elizaos/plugin-calendar/actions/calendar-handler",
         ["CALENDAR_PLAN_INSTRUCTIONS"],
+        "../../../plugin-calendar/src/actions/calendar-handler.ts",
       );
     case "schedule_plan":
       return loadFirstStringExport(
         "@elizaos/plugin-personal-assistant/actions/lib/scheduling-handler",
         ["SCHEDULE_PLAN_INSTRUCTIONS"],
+        "../../../plugin-personal-assistant/src/actions/lib/scheduling-handler.ts",
       );
     case "reminder_dispatch":
       return loadFirstStringExport(
         "@elizaos/plugin-personal-assistant/lifeops/service-mixin-reminders",
         ["REMINDER_DISPATCH_INSTRUCTIONS"],
+        "../../../plugin-personal-assistant/src/lifeops/service-mixin-reminders.ts",
       );
     case "inbox_triage":
       return loadFirstStringExport(
         "@elizaos/plugin-personal-assistant/lifeops/llm/extract-gmail-plan",
         ["GMAIL_PLAN_INSTRUCTIONS"],
+        "../../../plugin-personal-assistant/src/lifeops/llm/extract-gmail-plan.ts",
       );
     case "meeting_prep":
       return loadFirstStringExport(
         "@elizaos/plugin-personal-assistant/default-packs/executive-assistant",
         ["MEETING_PREP_INSTRUCTIONS"],
+        "../../../plugin-personal-assistant/src/default-packs/executive-assistant.ts",
       );
     case "morning_brief":
       return loadFirstStringExport(
         "@elizaos/plugin-personal-assistant/actions/brief",
         ["BRIEF_NARRATIVE_INSTRUCTIONS"],
+        "../../../plugin-personal-assistant/src/actions/brief.ts",
       );
     case "health_checkin":
-      return loadFirstStringExport("@elizaos/plugin-health/actions/health", [
-        "HEALTH_PLAN_INSTRUCTIONS",
-      ]);
+      return loadFirstStringExport(
+        "@elizaos/plugin-health/actions/health",
+        ["HEALTH_PLAN_INSTRUCTIONS"],
+        "../../../plugin-health/src/actions/health.ts",
+      );
     case "screentime_recap":
       return loadFirstStringExport(
         "@elizaos/plugin-health/actions/screen-time",
         ["SCREENTIME_RECAP_INSTRUCTIONS"],
+        "../../../plugin-health/src/actions/screen-time.ts",
       );
     default:
       return null;

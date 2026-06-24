@@ -3295,7 +3295,7 @@ function canonicalJsonValue(value: unknown): string {
 			)
 			.join(",")}}`;
 	}
-	return JSON.stringify(value);
+	return JSON.stringify(value) ?? "undefined";
 }
 
 function parseToolArgumentsString(
