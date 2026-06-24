@@ -8,10 +8,10 @@
  * first screen when there is data, and that they self-hide (the #9143 clean-home
  * design) when there is none.
  *
- * Notifications are the guaranteed home card; messages stay in the always-
- * present floating chat overlay/default widget sink rather than occupying the
- * launch grid. Per-plugin lifeops cards are API-polled and self-hide without a
- * backend, which is the correct fresh-launch behavior.
+ * Notifications are guaranteed on the cold home card. Plugin-scoped default
+ * sinks such as messages are contract entries, but the shared aggregate cards
+ * remain the visible surfaces. The per-plugin lifeops cards are API-polled and
+ * self-hide without a backend, which is the correct fresh-launch behavior.
  */
 
 import type { AgentNotification } from "@elizaos/core";

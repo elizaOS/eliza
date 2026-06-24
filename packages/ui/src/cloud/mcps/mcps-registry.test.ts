@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("./McpsRoute", () => ({
+  default: () => null,
+  McpsSurface: () => null,
+}));
+
+vi.mock("./McpsSection", () => ({
+  McpsSection: () => null,
+}));
+
 // Mock the shared cloud API client so the connection-test logic runs against
 // controlled responses (no network). The real `ApiError` is preserved so the
 // status-based branching in test-connection.ts behaves exactly as in prod.

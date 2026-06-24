@@ -72,13 +72,6 @@ function readAppManifestPlugins(): AppManifestPlugin[] {
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
-const HOME_WIDGET_EXEMPT_PLUGIN_IDS = new Set([
-  // The messages plugin is intentionally owned by the always-present chat
-  // overlay. Rendering it as an always-visible launch-grid card duplicated the
-  // primary chat surface, so `messages.recent` was removed from the home slot.
-  "messages",
-]);
-
 function withTempDeclaration<T>(decl: PluginWidgetDeclaration, fn: () => T): T {
   BUILTIN_WIDGET_DECLARATIONS.push(decl);
   try {
@@ -91,9 +84,6 @@ function withTempDeclaration<T>(decl: PluginWidgetDeclaration, fn: () => T): T {
 
 describe("home-widget per-plugin coverage gate (#9143)", () => {
   const appManifestPlugins = readAppManifestPlugins();
-  const homeCoveragePlugins = appManifestPlugins.filter(
-    (plugin) => !HOME_WIDGET_EXEMPT_PLUGIN_IDS.has(plugin.id),
-  );
 
   it("discovers app-manifest plugins from package.json", () => {
     expect(appManifestPlugins.length).toBeGreaterThanOrEqual(32);
@@ -102,7 +92,7 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
   it("resolves >=1 home widget for every app-manifest plugin", () => {
     const missing: string[] = [];
 
-    for (const plugin of homeCoveragePlugins) {
+    for (const plugin of appManifestPlugins) {
       const own = resolveWidgetsForSlot("home", [enabled(plugin.id)]).filter(
         (r) => r.declaration.pluginId === plugin.id,
       );
@@ -118,7 +108,7 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
   });
 
   it("reports the current own-widget/default-sink split", () => {
-    const coverage = homeCoveragePlugins.map((plugin) => {
+    const coverage = appManifestPlugins.map((plugin) => {
       const entries = resolveWidgetsForSlot("home", [
         enabled(plugin.id),
       ]).filter(
@@ -136,7 +126,7 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
       (entry) => !entry.own && entry.defaultSink,
     ).length;
 
-    expect(ownWidget + defaultSink).toBe(homeCoveragePlugins.length);
+    expect(ownWidget + defaultSink).toBe(appManifestPlugins.length);
     expect(ownWidget).toBeGreaterThanOrEqual(5);
   });
 
