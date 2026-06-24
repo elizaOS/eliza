@@ -46,7 +46,7 @@ import {
   WEBUI_PORT_MIN,
 } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
-import { headscaleIntegration } from "./headscale-integration";
+import { DEFAULT_REGISTRATION_TIMEOUT_MS, headscaleIntegration } from "./headscale-integration";
 import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
 import {
   ensureStewardTenant,
@@ -1363,7 +1363,12 @@ export class DockerSandboxProvider implements SandboxProvider {
         // "timed out" registering despite being online.
         headscaleIp = await headscaleIntegration.waitForVPNRegistration(
           vpnEnvVars.TS_HOSTNAME ?? agentId,
-          60_000,
+          // 180s default (env-overridable via VPN_REGISTRATION_TIMEOUT_MS), not
+          // a hardcoded 60s: a cold container needs >1 min to boot + register,
+          // so 60s expired before the node appeared → "continuing without VPN"
+          // → 404 despite running. Single source of truth lives in
+          // headscale-integration so the constant and this call agree.
+          DEFAULT_REGISTRATION_TIMEOUT_MS,
         );
         if (headscaleIp) {
           logger.info(
