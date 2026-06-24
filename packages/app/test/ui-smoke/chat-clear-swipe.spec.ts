@@ -18,7 +18,9 @@
 
 import { expect, test } from "@playwright/test";
 import {
+  expectNoPageDiagnostics,
   installDefaultAppRoutes,
+  installPageDiagnosticsGuard,
   openAppPath,
   seedAppStorage,
 } from "./helpers";
@@ -247,6 +249,7 @@ let store: Store;
 
 test.beforeEach(async ({ page }) => {
   store = makeStore();
+  installPageDiagnosticsGuard(page);
   // Skip the first-run tour so its spotlight never covers the chat.
   await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
   await installDefaultAppRoutes(page);
@@ -255,7 +258,7 @@ test.beforeEach(async ({ page }) => {
 
 test("swipe navigates conversations; clear lands on a fresh greeted chat with no undo toast", async ({
   page,
-}) => {
+}, testInfo) => {
   await openAppPath(page, "/chat");
   const overlay = page.getByTestId("continuous-chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
@@ -316,11 +319,12 @@ test("swipe navigates conversations; clear lands on a fresh greeted chat with no
   await pointerDrag(page, "#continuous-thread", -160, 0, 12);
   await expect(thread).toContainText("BILLING", { timeout: 15_000 });
   await dwell();
+  await expectNoPageDiagnostics(page, testInfo.title);
 });
 
 test("clearing an empty draft replaces it instead of piling up orphan conversations", async ({
   page,
-}) => {
+}, testInfo) => {
   await openAppPath(page, "/chat");
   const overlay = page.getByTestId("continuous-chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
@@ -347,4 +351,5 @@ test("clearing an empty draft replaces it instead of piling up orphan conversati
     .toBe(true);
   // No undo toast on this path either.
   await expect(page.getByTestId("conversation-undo-toast")).toHaveCount(0);
+  await expectNoPageDiagnostics(page, testInfo.title);
 });
