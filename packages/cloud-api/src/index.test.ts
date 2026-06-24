@@ -92,6 +92,29 @@ describe("cloud-api worker entrypoint", () => {
     );
   });
 
+  test("accepts a full feed origin URL and preserves an explicit port", () => {
+    const target = getFrontendAliasProxyTarget(
+      new URL("https://feed.elizacloud.ai/markets"),
+      { FEED_ORIGIN_HOST: "https://feed-web-production.up.railway.app:8443" },
+    );
+
+    expect(target?.toString()).toBe(
+      "https://feed-web-production.up.railway.app:8443/markets",
+    );
+  });
+
+  test("rejects pathful feed origin configuration instead of proxying broadly", () => {
+    const target = getFrontendAliasProxyTarget(
+      new URL("https://feed.elizacloud.ai/markets"),
+      {
+        FEED_ORIGIN_HOST:
+          "https://feed-web-production.up.railway.app/feed-prefix",
+      },
+    );
+
+    expect(target).toBeNull();
+  });
+
   test("proxies feed /api/* to the SAME Railway origin (single origin, no app/api split)", () => {
     const target = getFrontendAliasProxyTarget(
       new URL("https://feed.elizacloud.ai/api/health"),
