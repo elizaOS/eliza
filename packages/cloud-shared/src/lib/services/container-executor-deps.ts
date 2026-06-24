@@ -19,6 +19,7 @@
 import { Buffer } from "node:buffer";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
+import { isValidUUID } from "../utils/validation";
 import { decideBuilderArming, selectBuilderHost } from "./app-builder-host";
 import { AppContainerProvider, type AppContainerSsh } from "./app-container-provider";
 import { appContainerStore } from "./app-container-store";
@@ -219,7 +220,7 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
     markAppDeployed: async (appId, productionUrl) => {
       // App ids are UUIDs; a non-UUID project_name (a plain /v1/containers row,
       // which is not an app) is skipped so this never mis-updates or UUID-casts.
-      if (!/^[0-9a-f-]{36}$/i.test(appId)) return;
+      if (!isValidUUID(appId)) return;
       await appsService.update(appId, {
         deployment_status: "deployed",
         production_url: productionUrl,

@@ -97,9 +97,7 @@ app.post("/", async (c) => {
       return c.json(
         {
           success: false,
-          error:
-            quota.error ??
-            `Container quota exceeded (${quota.current}/${quota.max})`,
+          error: quota.error,
         },
         409,
       );
