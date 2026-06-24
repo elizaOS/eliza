@@ -1291,11 +1291,11 @@
       "tags": ["device", "contacts"],
       "config": {},
       "render": {
-        "visible": true,
-        "pinTo": [],
+        "visible": false,
+        "pinTo": ["os-shell"],
         "style": "card",
         "icon": "Contact",
-        "group": "device",
+        "group": "system",
         "actions": ["enable"]
       },
       "resources": {
@@ -5799,11 +5799,11 @@
       "tags": ["device", "phone"],
       "config": {},
       "render": {
-        "visible": true,
-        "pinTo": [],
+        "visible": false,
+        "pinTo": ["os-shell"],
         "style": "card",
         "icon": "Phone",
-        "group": "device",
+        "group": "system",
         "actions": ["enable"]
       },
       "resources": {
@@ -6302,11 +6302,11 @@
       "tags": ["device", "screenshare"],
       "config": {},
       "render": {
-        "visible": true,
+        "visible": false,
         "pinTo": [],
         "style": "card",
         "icon": "ScreenShare",
-        "group": "device",
+        "group": "system",
         "actions": ["enable"]
       },
       "resources": {
@@ -8057,11 +8057,11 @@
       "tags": ["device", "wifi"],
       "config": {},
       "render": {
-        "visible": true,
-        "pinTo": [],
+        "visible": false,
+        "pinTo": ["os-shell"],
         "style": "card",
         "icon": "Wifi",
-        "group": "device",
+        "group": "system",
         "actions": ["enable"]
       },
       "resources": {

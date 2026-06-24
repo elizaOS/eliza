@@ -5,15 +5,22 @@
   "npmName": "@elizaos/plugin-wifi",
   "version": "2.0.3-beta.2",
   "source": "bundled",
-  "tags": ["device", "wifi"],
+  "tags": [
+    "device",
+    "wifi"
+  ],
   "config": {},
   "render": {
-    "visible": true,
-    "pinTo": [],
+    "visible": false,
+    "pinTo": [
+      "os-shell"
+    ],
     "style": "card",
     "icon": "Wifi",
-    "group": "device",
-    "actions": ["enable"]
+    "group": "system",
+    "actions": [
+      "enable"
+    ]
   },
   "resources": {
     "homepage": "https://elizaos.ai",
