@@ -11,7 +11,7 @@ import {
 } from "../../events";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import {
-  useApp,
+  useAppSelectorShallow,
   useChatTurnStatus,
   useConversationMessages,
 } from "../../state";
@@ -224,7 +224,9 @@ function sameStringList(a?: string[], b?: string[]): boolean {
 }
 
 export function useShellController(): ShellController {
-  const app = useApp();
+  // Granular shallow selector instead of useApp() so the shell controller
+  // re-renders only when one of the fields it actually reads changes, not on
+  // every app-store field update (#9141 gap 2 — useApp() → useAppSelector).
   const {
     chatSending,
     chatFirstTokenReceived,
@@ -239,7 +241,23 @@ export function useShellController(): ShellController {
     setTab,
     handleChatStop,
     t,
-  } = app;
+    tab,
+  } = useAppSelectorShallow((s) => ({
+    chatSending: s.chatSending,
+    chatFirstTokenReceived: s.chatFirstTokenReceived,
+    sendChatText: s.sendChatText,
+    agentStatus: s.agentStatus,
+    uiLanguage: s.uiLanguage,
+    elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
+    handleNewConversation: s.handleNewConversation,
+    handleSelectConversation: s.handleSelectConversation,
+    activeConversationId: s.activeConversationId,
+    conversations: s.conversations,
+    setTab: s.setTab,
+    handleChatStop: s.handleChatStop,
+    t: s.t,
+    tab: s.tab,
+  }));
   // Read per-token streaming messages from the isolated context so token updates
   // don't depend on the giant AppContext value identity.
   const { conversationMessages } = useConversationMessages();
@@ -1067,7 +1085,7 @@ export function useShellController(): ShellController {
     openSettings,
     navigateHome,
     navigateToViews,
-    currentTab: app.tab,
+    currentTab: tab,
     stop: stopTurn,
     conversationNav,
   };
