@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   MTP_FORK_SRC_CANDIDATES,
+  mtpBuilderRepoRoot,
   mtpForceRebuildRequested,
   mtpSliceReuse,
 } from "./run-mobile-build.mjs";
@@ -136,9 +137,15 @@ describe("MTP_FORK_SRC_CANDIDATES (no drift vs the builder)", () => {
     );
     // The previously-divergent `eliza/plugins` candidate (absent from the
     // builder) must NOT reappear — that was the drift the builder never had.
+    // Check the path RELATIVE to the repo root: the legit candidate resolves to
+    // `plugins/plugin-local-inference/…`; the old divergent one resolved to a
+    // nested `eliza/plugins/plugin-local-inference/…`. (An absolute substring
+    // check false-positives because the repo root itself is named `eliza`.)
     expect(
       MTP_FORK_SRC_CANDIDATES.some((c) =>
-        c.includes(path.join("eliza", "plugins", "plugin-local-inference")),
+        path
+          .relative(mtpBuilderRepoRoot, c)
+          .includes(path.join("eliza", "plugins", "plugin-local-inference")),
       ),
     ).toBe(false);
   });

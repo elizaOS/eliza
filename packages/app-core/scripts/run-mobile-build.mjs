@@ -4968,7 +4968,7 @@ function mtpTargetOutDir(target) {
 // (packages/app-core/scripts → repo root), NOT from run-mobile-build's
 // configurable repoRoot, so we derive the identical base here — otherwise a
 // nested-monorepo layout would make the two lists diverge.
-const mtpBuilderRepoRoot = path.resolve(__dirname, "..", "..", "..");
+export const mtpBuilderRepoRoot = path.resolve(__dirname, "..", "..", "..");
 export const MTP_FORK_SRC_CANDIDATES = [
   process.env.ELIZA_MTP_LLAMA_CPP_SRC?.trim(),
   path.join(
