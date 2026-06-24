@@ -1093,20 +1093,28 @@ function writeFusedLibSidecar() {
 }
 
 /**
- * True only when a staged lib exists AND its provenance sidecar confirms it was
- * built for the variant + platform this build targets. A staged lib with no
- * sidecar (pre-provenance) or a mismatched one is NOT reusable — we cannot
- * confirm it is the right backend, so we must rebuild rather than risk shipping
- * a wrong-variant native lib that crashes on the device.
+ * A staged lib whose provenance sidecar names a DIFFERENT variant/platform than
+ * this build targets — a confirmed wrong-variant lib we must not ship.
  */
-function fusedLibStagedForCurrentVariant() {
+function fusedLibStagedVariantMismatch() {
   if (!fusedLibAlreadyStaged()) return false;
   const sidecar = readFusedLibSidecar();
-  if (!sidecar) return false;
+  if (!sidecar) return false; // no provenance ≠ wrong provenance
   return (
-    sidecar.variant === FUSED_LIB_VARIANT &&
-    sidecar.platform === process.platform
+    sidecar.variant !== FUSED_LIB_VARIANT ||
+    sidecar.platform !== process.platform
   );
+}
+
+/**
+ * Whether a staged lib can be reused. A lib with a matching sidecar is reused; a
+ * sidecar-less lib (e.g. a prebuilt artifact a CI step dropped into
+ * dist/local-inference/lib) is TRUSTED and reused — we can't confirm its variant
+ * but it was deliberately staged. Only a sidecar that names a different
+ * variant/platform forces a rebuild.
+ */
+function fusedLibStagedForCurrentVariant() {
+  return fusedLibAlreadyStaged() && !fusedLibStagedVariantMismatch();
 }
 
 const FUSED_LIB_FORK_DIR = path.join(
@@ -1182,21 +1190,22 @@ function stageDesktopFusedLib() {
     return;
   }
 
-  // A staged lib whose provenance does not match this build (different variant
-  // or platform, or no sidecar) must never be silently reused.
-  const mismatchedStaged = fusedLibAlreadyStaged();
-  if (mismatchedStaged) {
+  // A staged lib whose sidecar names a DIFFERENT variant/platform is a confirmed
+  // wrong-variant lib — never silently reused. (A sidecar-less drop-in is trusted
+  // and was already reused above.)
+  const variantMismatch = fusedLibStagedVariantMismatch();
+  if (variantMismatch) {
     const sidecar = readFusedLibSidecar();
     console.warn(
       `[desktop-build] Staged fused lib does not match this build ` +
         `(want variant=${FUSED_LIB_VARIANT}/${process.platform}, found ` +
-        `${sidecar ? `${sidecar.variant}/${sidecar.platform}` : "no provenance sidecar"}). ` +
+        `${sidecar.variant}/${sidecar.platform}). ` +
         `It will be rebuilt to avoid shipping a wrong-variant native lib.`,
     );
   }
 
   if (!shouldBuild) {
-    if (mismatchedStaged) {
+    if (variantMismatch) {
       // Can't rebuild here (no toolchain requested) and the staged lib is the
       // wrong variant — drop it so the app cleanly falls back to cloud inference
       // instead of dlopen()-ing a mismatched backend on the device.

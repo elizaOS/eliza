@@ -3,7 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { mtpSliceReuse } from "./run-mobile-build.mjs";
+import {
+  mtpForceRebuildRequested,
+  mtpSliceReuse,
+} from "./run-mobile-build.mjs";
 
 // Far-future mtimes keep these tests independent of the checkout's own file
 // timestamps (the worktree stamps every file at checkout time, including the
@@ -88,5 +91,26 @@ describe("mtpSliceReuse", () => {
     // and the fresh mtime keeps the slice reusable rather than rebuilding blindly.
     const result = mtpSliceReuse(caps, fork, null);
     expect(result.reusable).toBe(true);
+  });
+});
+
+describe("mtpForceRebuildRequested", () => {
+  it("does NOT force a rebuild for a fresh, reusable slice", () => {
+    expect(mtpForceRebuildRequested({ reusable: true }, {})).toBe(false);
+  });
+
+  it("forces a rebuild when the slice is stale (so the child does not reuse it)", () => {
+    expect(
+      mtpForceRebuildRequested({ reusable: false, reason: "stale" }, {}),
+    ).toBe(true);
+  });
+
+  it("forces a rebuild when the operator override is set, even if reusable", () => {
+    expect(
+      mtpForceRebuildRequested(
+        { reusable: true },
+        { ELIZA_IOS_REBUILD_MTP: "1" },
+      ),
+    ).toBe(true);
   });
 });

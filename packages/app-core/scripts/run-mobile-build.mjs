@@ -4939,19 +4939,22 @@ function mtpTargetOutDir(target) {
 }
 
 // The llama.cpp fork the MTP slice is compiled from. Mirrors
-// build-llama-cpp-mtp.mjs' FORK_SRC_CANDIDATES so the staleness gate keys off
-// the same source tree the builder uses.
+// build-llama-cpp-mtp.mjs' FORK_SRC_CANDIDATES (same order, env override first)
+// so the staleness gate keys off the SAME source tree the builder compiles —
+// otherwise an ELIZA_MTP_LLAMA_CPP_SRC override would make the gate check a
+// different fork than the one being built.
 const MTP_FORK_SRC_CANDIDATES = [
+  process.env.ELIZA_MTP_LLAMA_CPP_SRC?.trim(),
   path.join(
-    packagesRoot,
-    "..",
+    repoRoot,
     "plugins",
     "plugin-local-inference",
     "native",
     "llama.cpp",
   ),
   path.join(
-    repoRoot,
+    packagesRoot,
+    "..",
     "plugins",
     "plugin-local-inference",
     "native",
@@ -4965,8 +4968,8 @@ const MTP_FORK_SRC_CANDIDATES = [
     "native",
     "llama.cpp",
   ),
-  path.join(packagesRoot, "native", "ios-deps", "llama.cpp", "src"),
-];
+  path.join(repoRoot, "packages", "native", "ios-deps", "llama.cpp", "src"),
+].filter(Boolean);
 
 function resolveMtpForkSrc() {
   for (const candidate of MTP_FORK_SRC_CANDIDATES) {
@@ -5033,6 +5036,15 @@ export function mtpSliceReuse(capabilitiesPath, forkSrc, currentRevision) {
   return { reusable: true, reason: "fresh" };
 }
 
+/**
+ * Whether ensureMtpIosTarget must FORCE the child builder to rebuild: when the
+ * slice is stale, or when the operator override is set. Pure + exported so the
+ * decision is unit-testable.
+ */
+export function mtpForceRebuildRequested(reuse, env = process.env) {
+  return env.ELIZA_IOS_REBUILD_MTP === "1" || !reuse.reusable;
+}
+
 async function ensureMtpIosTarget(target) {
   const outDir = mtpTargetOutDir(target);
   const capabilities = path.join(outDir, "CAPABILITIES.json");
@@ -5042,7 +5054,8 @@ async function ensureMtpIosTarget(target) {
     forkSrc,
     currentMtpForkRevision(forkSrc),
   );
-  if (reuse.reusable && process.env.ELIZA_IOS_REBUILD_MTP !== "1") {
+  const forceRebuild = mtpForceRebuildRequested(reuse, process.env);
+  if (!forceRebuild) {
     console.log(
       `[mobile-build] Reusing fresh mtp artifact for ${target} at ${outDir}`,
     );
@@ -5055,7 +5068,13 @@ async function ensureMtpIosTarget(target) {
   } else {
     console.log(`[mobile-build] Building mtp artifact for ${target}`);
   }
-  await run("node", [MTP_BUILD_SCRIPT, "--target", target]);
+  // The child builder (build-llama-cpp-mtp.mjs) has its OWN presence-only reuse
+  // gate keyed on ELIZA_MTP_FORCE_REBUILD. Without propagating it, the child
+  // would see the stale CAPABILITIES.json and reuse it — turning this staleness
+  // gate into a no-op. Force the child to actually rebuild (#9309).
+  await run("node", [MTP_BUILD_SCRIPT, "--target", target], {
+    env: { ...process.env, ELIZA_MTP_FORCE_REBUILD: "1" },
+  });
   if (!fs.existsSync(capabilities)) {
     throw new Error(
       `[mobile-build] mtp build for ${target} did not produce CAPABILITIES.json at ${capabilities}. ` +
