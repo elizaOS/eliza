@@ -5,7 +5,7 @@ export default scenario({
   id: "brush-teeth-french",
   title: "Brush teeth from polite French phrasing (vous)",
   domain: "tasks",
-  tags: ["lifeops", "tasks"],
+  tags: ["lifeops", "tasks", "smoke"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

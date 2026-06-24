@@ -5,7 +5,7 @@ export default scenario({
   id: "brush-teeth-formal-english",
   title: "Brush teeth from formal executive-register English phrasing",
   domain: "tasks",
-  tags: ["lifeops", "tasks"],
+  tags: ["lifeops", "tasks", "smoke"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
