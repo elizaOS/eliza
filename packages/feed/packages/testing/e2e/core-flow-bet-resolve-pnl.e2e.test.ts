@@ -42,7 +42,6 @@ import {
   tradingFees,
   users,
 } from "@feed/db";
-import { generateSnowflakeId } from "@feed/shared";
 import { expect, test } from "@playwright/test";
 import {
   type BrowserDevAuthSession,
@@ -59,6 +58,9 @@ const STARTING_BALANCE = 100_000;
 /** A losing NO stake (deposited directly as a Position) so YES wins strictly. */
 const LOSER_NO_SHARES = 200;
 const LOSER_NO_AVG_PRICE = 0.5;
+const SNOWFLAKE_EPOCH = 1_704_067_200_000n;
+const E2E_WORKER_ID = 911n;
+let e2eSnowflakeSequence = 0n;
 
 let serverAvailable = false;
 let authSession: BrowserDevAuthSession | null = null;
@@ -82,6 +84,16 @@ type UserWalletSnapshot = {
 };
 
 let originalUserWallet: UserWalletSnapshot | null = null;
+
+async function generateE2eSnowflakeId(): Promise<string> {
+  e2eSnowflakeSequence = (e2eSnowflakeSequence + 1n) & 4095n;
+  const timestamp = BigInt(Date.now()) - SNOWFLAKE_EPOCH;
+  return (
+    (timestamp << 22n) |
+    (E2E_WORKER_ID << 12n) |
+    e2eSnowflakeSequence
+  ).toString();
+}
 
 async function apiGet<T>(path: string): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
@@ -215,10 +227,10 @@ async function seedFixtures(userId: string): Promise<void> {
   const now = new Date();
   const endDate = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 1 day out
 
-  seeded.marketId = await generateSnowflakeId();
+  seeded.marketId = await generateE2eSnowflakeId();
   seeded.questionId = seeded.marketId; // shared id convention
-  seeded.loserUserId = await generateSnowflakeId();
-  seeded.loserPositionId = await generateSnowflakeId();
+  seeded.loserUserId = await generateE2eSnowflakeId();
+  seeded.loserPositionId = await generateE2eSnowflakeId();
 
   const [userBeforeTest] = await db
     .select({
@@ -337,9 +349,11 @@ async function teardownFixtures(userId: string): Promise<void> {
     await db
       .delete(tradingFees)
       .where(eq(tradingFees.marketId, seeded.marketId));
-    await db.delete(pointsTransactions).where(
-      sql`${pointsTransactions.metadata} LIKE ${`%"relatedId":"${seeded.marketId}"%`}`,
-    );
+    await db
+      .delete(pointsTransactions)
+      .where(
+        sql`${pointsTransactions.metadata} LIKE ${`%"relatedId":"${seeded.marketId}"%`}`,
+      );
   }
 
   // Positions first (FK-free but logically owned by market + users).
@@ -446,7 +460,10 @@ test.describe("Core loop: bet -> resolve -> PnL", () => {
     const open = snapshot.predictions.positions.find(
       (p) => p.marketId === seeded.marketId,
     );
-    expect(open, "seeded YES position should be in open portfolio").toBeTruthy();
+    expect(
+      open,
+      "seeded YES position should be in open portfolio",
+    ).toBeTruthy();
     if (!open) throw new Error("unreachable");
     expect(open.side).toBe("YES");
     expect(open.shares).toBeGreaterThan(0);

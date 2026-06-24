@@ -242,10 +242,6 @@ task copyForkLlamaLib {
             println "[copyForkLlamaLib] skipped for cloud build"
             return
         }
-        if (project.findProperty('elizaSkipForkLlamaLib') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {
-            println "[copyForkLlamaLib] skipped by explicit native-lib opt-out"
-            return
-        }
         boolean stagedArm64 = false
         int totalCopied = 0
         boolean stagedKernels = false
