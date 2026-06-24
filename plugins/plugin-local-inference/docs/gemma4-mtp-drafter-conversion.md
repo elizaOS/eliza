@@ -144,3 +144,33 @@ explicitly logs *"--spec-type=draft-eagle3 is not yet implemented in this build"
 (`common/speculative.cpp`). So today every drafter path — DFlash distillation,
 the Google LiteRT extraction, and EAGLE3 — is either training- or publish-gated.
 None is blocked by the runtime, which is fully built and Metal-validated above.
+
+## A published Gemma-4-E2B MTP drafter DOES exist (2026-06-23 update)
+
+Correcting the section above: a real, ready-to-use Gemma-4-E2B MTP drafter is on
+HuggingFace — **no H200 training required**. It is the official MTP head Google
+ships with `google/gemma-4-E2B-it-assistant`, converted to GGUF:
+
+| Item | Value |
+|---|---|
+| GGUF | `amaranus/Gemma-4-E2B-it-qat-assistant-MTP-Q8_0-GGUF` (mirror `NicklausCairns/...`) — **93 MB**, 49 tensors, Q8_0 QAT |
+| LiteRT mirrors | `metricspace/gemma4-E2B-it-litert-128k-mtp`, `MichaelWelsch/gemma-4-E2B-it-litert-community-128k-mtp` |
+| Base | `google/gemma-4-E2B-it-assistant`, apache-2.0 |
+| Arch | `gemma4-assistant`: 4-block drafter, `embedding_length 256`, head_count 4 / kv 1, `key_length 512`(global)/`256`(swa), SWA window 512, pattern `[T,T,T,F]`, `nextn_predict_layers 4`, `embedding_length_out 1536` (the E2B hidden). Tokenizer `gemma4`, vocab 262144 — **matches gemma-4-E2B**. |
+| Tensors | per block `attn_norm / attn_q(+q_norm) / attn_output / ffn_{norm,gate,up,down} / post_attention_norm / post_ffw_norm / layer_output_scale`; top-level `token_embd`, `output_norm`, `nextn.pre_projection [3072,256]`, `nextn.post_projection [256,1536]`. (Q+O attention only; distinct from milady `dflash-draft`, which uses `wk`/`wv` + `dflash_fc`.) |
+
+**The only gap is fork arch support.** The fork (`v1.2.0-eliza`) does not yet
+recognize `gemma4-assistant` (`grep` empty in `src/`). Running this drafter needs
+that arch ported in — either (1) **rebase/cherry-pick** the upstream llama.cpp
+gemma-4-MTP / `gemma4-assistant` support onto the fork (the AGENTS.md "rebase onto
+recent upstream" follow-up), then load + drive via `--spec-type draft-mtp`; or
+(2) add `LLM_ARCH_GEMMA4_ASSISTANT` directly — the hparams + 49-tensor schema +
+the `nextn.pre/post_projection` head are fully specified by the GGUF above; reuse
+the `gemma4` block graph + a NextN projection.
+
+This replaces the H200 path: the trained weights already exist (Google's, QAT'd),
+so the remaining work is bounded **C++ arch support in the fork**, not training.
+The `mtp: "separate-drafter"` manifest + `mtp/drafter-<tier>.gguf` contract (PR
+#9172) stays as-is; this GGUF becomes `mtp/drafter-2b.gguf` once the arch loads.
+Staged locally at `~/.local/state/eliza/models/drafts/gemma-4-E2B-mtp-amaranus.gguf`.
+
