@@ -207,9 +207,9 @@ describe("ScreenshareOperatorSurface — populated data", () => {
     // Platform value comes from capabilities.platform.
     expect(screen.getByLabelText("Platform: linux")).toBeTruthy();
     // GUI tile value is the literal "GUI" string; the icon is driven by
-    // headfulGui.available. We assert the active class on the tile container.
+    // headfulGui.available without adding frame chrome.
     const guiTile = screen.getByLabelText("GUI: GUI");
-    expect(guiTile.className).toContain("border-ok/35");
+    expect(guiTile.className).not.toContain("border-ok/35");
 
     // Capabilities section renders one tile per REAL capability key.
     const capsSection = screen.getByRole("region", { name: "Capabilities" });
@@ -242,11 +242,7 @@ describe("ScreenshareOperatorSurface — populated data", () => {
       }),
     );
 
-    expect(
-      screen.getByText(
-        "Screen Share Remote desktop control is available from the actions surface.",
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText("Screen Share")).toBeTruthy();
     // No host controls in the chat branch.
     expect(screen.queryByText("Start session")).toBeNull();
   });

@@ -24,13 +24,7 @@
  * timers below) — there is no manual refresh control.
  */
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -126,7 +120,7 @@ describe("TodosView — states", () => {
         fetchers: makeFetchers({ fetchTodos: () => never }),
       }),
     );
-    expect(screen.getByText("Loading todos")).toBeTruthy();
+    expect(screen.getByText("Loading")).toBeTruthy();
   });
 
   it("renders the populated three-lane board", async () => {
@@ -135,7 +129,9 @@ describe("TodosView — states", () => {
     expect(screen.getByText("Today (2)")).toBeTruthy();
     expect(screen.getByText("Upcoming (1)")).toBeTruthy();
     expect(screen.getByText("Someday (1)")).toBeTruthy();
-    expect(screen.getByText("Three lanes: Today, Upcoming, Someday.")).toBeTruthy();
+    expect(
+      screen.queryByText("Three lanes: Today, Upcoming, Someday."),
+    ).toBeNull();
   });
 
   it("shows the empty state when the route returns no active todos", async () => {
@@ -144,7 +140,7 @@ describe("TodosView — states", () => {
         fetchers: makeFetchers({ fetchTodos: async () => ({ todos: [] }) }),
       }),
     );
-    await screen.findByText("No todos");
+    await screen.findByText("None");
     expect(screen.queryByText("Overdue task")).toBeNull();
   });
 
@@ -158,7 +154,7 @@ describe("TodosView — states", () => {
         }),
       }),
     );
-    await screen.findByText("No todos");
+    await screen.findByText("None");
     expect(screen.queryByText("Done")).toBeNull();
   });
 
@@ -168,7 +164,7 @@ describe("TodosView — states", () => {
         fetchers: makeFetchers({ fetchTodos: async () => ({ todos: [] }) }),
       }),
     );
-    await screen.findByText("No todos");
+    await screen.findByText("None");
     fireEvent.click(agent("add"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
@@ -229,7 +225,7 @@ describe("TodosView — lane assignment + filtering", () => {
     expect(screen.getByText("Someday (1)")).toBeTruthy();
   });
 
-  it("shows 'Nothing here.' in lanes with no active items", async () => {
+  it("keeps empty lanes compact", async () => {
     render(
       React.createElement(TodosView, {
         fetchers: makeFetchers({
@@ -246,7 +242,9 @@ describe("TodosView — lane assignment + filtering", () => {
     );
     await screen.findByText("Only today");
     // Today has the item, Upcoming + Someday are empty.
-    expect(screen.getAllByText("Nothing here.").length).toBe(2);
+    expect(screen.queryByText("Nothing here.")).toBeNull();
+    expect(screen.getByText("Upcoming (0)")).toBeTruthy();
+    expect(screen.getByText("Someday (0)")).toBeTruthy();
   });
 });
 

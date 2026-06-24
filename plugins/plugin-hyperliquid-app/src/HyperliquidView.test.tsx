@@ -43,8 +43,8 @@ vi.mock("@elizaos/app-core", () => ({ client: hyperliquidClient }));
 vi.mock("@elizaos/ui", () => ({ ApiError }));
 vi.mock("./client", () => ({}));
 
-import { HyperliquidView } from "./HyperliquidView";
 import { interact } from "./HyperliquidAppView.interact";
+import { HyperliquidView } from "./HyperliquidView";
 
 const sampleStatus = {
   publicReadReady: true,
@@ -311,7 +311,7 @@ describe("HyperliquidView — error + unavailable paths", () => {
   it("degrades to the unavailable state on a 404/503 ApiError (routes not mounted)", async () => {
     hyperliquidClient.hyperliquidStatus.mockRejectedValue(new ApiError(404));
     render(React.createElement(HyperliquidView));
-    await screen.findByText("Unavailable on this device");
+    await screen.findByText("Unavailable");
     // The Back control is still reachable in the unavailable state.
     expect(agent("back")).toBeTruthy();
   });

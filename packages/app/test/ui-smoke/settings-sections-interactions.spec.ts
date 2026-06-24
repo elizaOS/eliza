@@ -71,6 +71,23 @@ test("appearance settings: selecting a language tile marks it active", async ({
   await expect(english).not.toHaveAttribute("aria-current", "true");
 });
 
+test("appearance settings: background controls update the shared wallpaper", async ({
+  page,
+}) => {
+  await openAppPath(page, "/settings");
+  await openSettingsSection(page, /Appearance/);
+  await expect(page.locator("#appearance")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByLabel("Set background to Blue").click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.localStorage.getItem("eliza:ui-background") ?? "",
+      ),
+    )
+    .toContain("#2563eb");
+});
+
 test("app-permissions settings: Refresh re-queries the app permissions", async ({
   page,
 }) => {

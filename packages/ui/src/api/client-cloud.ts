@@ -2839,9 +2839,25 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   // path only runs when the user has no agent yet.
   if (!forceCreate) {
     onProgress?.("creating", "Finding your agents...");
-    const list = await this.getCloudCompatAgents().catch(() => null);
-    const agents = list?.success ? list.data : [];
-    const chosen = pickPreferredCloudAgent(agents, preferAgentId);
+    // A failed agent-list lookup must NOT fall through to provisioning. A
+    // transient error (expired token, network blip, or a success:false body)
+    // previously collapsed to an empty list and minted a brand-new billed agent
+    // even though the user already had one — the root of the "it creates
+    // multiple agents" report. Only an authoritative success list may conclude
+    // the user has no agent to reuse; otherwise surface the error so the caller
+    // can retry rather than duplicate.
+    const list = await this.getCloudCompatAgents().catch((cause) => ({
+      success: false as const,
+      data: [] as CloudCompatAgent[],
+      error: cause instanceof Error ? cause.message : undefined,
+    }));
+    if (!list.success) {
+      throw new Error(
+        list.error ||
+          "Couldn't reach Eliza Cloud to find your agents. Check your connection and try again.",
+      );
+    }
+    const chosen = pickPreferredCloudAgent(list.data, preferAgentId);
     if (chosen) {
       const apiBase = resolveCloudAgentApiBase({
         bridgeUrl: chosen.bridge_url,

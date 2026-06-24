@@ -41,6 +41,7 @@ export default scenario({
     {
       type: "definitionCountDelta",
       title: "Workout",
+      titleAliases: ["Rutina de ejercicio", "Ejercicio", "Entrenamiento"],
       delta: 1,
       cadenceKind: "daily",
       requiredWindows: ["afternoon"],

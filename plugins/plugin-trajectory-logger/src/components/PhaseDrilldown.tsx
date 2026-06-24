@@ -22,10 +22,10 @@ export function PhaseDrilldown({ phase }: { phase: PhaseSummary }) {
 }
 
 const STATUS_BORDER: Record<"ok" | "error" | "running" | "skipped", string> = {
-  ok: "border-green-500/40",
-  error: "border-red-500/40",
-  running: "border-blue-500/40 animate-pulse",
-  skipped: "border-yellow-500/40",
+  ok: "text-green-500",
+  error: "text-red-500",
+  running: "text-blue-500 animate-pulse",
+  skipped: "text-yellow-500",
 };
 
 function jsonBlock(value: unknown): string {
@@ -68,10 +68,7 @@ function HandleBody({
       {providers.length > 0 ? (
         <div className="flex flex-wrap gap-1">
           {providers.map((n) => (
-            <span
-              key={n}
-              className="rounded-full border border-border/24 bg-card/40 px-1.5 py-0.5 text-2xs text-txt"
-            >
+            <span key={n} className="px-1 py-0.5 text-2xs text-txt">
               {n}
             </span>
           ))}
@@ -91,7 +88,7 @@ function PlanBody({ calls }: { calls: UILlmCall[] }) {
         <div className="font-mono text-txt">{last.actionType}</div>
       ) : null}
       {text ? (
-        <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border/24 bg-bg/40 p-2 text-2xs text-muted">
+        <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words bg-transparent p-1 text-2xs text-muted">
           {text}
         </pre>
       ) : null}
@@ -120,10 +117,8 @@ function ActionBody({ events }: { events: UIToolEvent[] }) {
         return (
           <div
             key={e.id}
-            className={[
-              "rounded border-l-2 bg-card/30 p-2",
-              STATUS_BORDER[status],
-            ].join(" ")}
+            data-phase-status={status}
+            className={["p-1.5", STATUS_BORDER[status]].join(" ")}
           >
             <div className="flex items-baseline justify-between gap-2">
               <span className="font-mono text-txt">{name}</span>
@@ -135,12 +130,12 @@ function ActionBody({ events }: { events: UIToolEvent[] }) {
               <div className="mt-1 text-2xs text-red-400">{e.error}</div>
             ) : null}
             {args && Object.keys(args).length > 0 ? (
-              <pre className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap break-words rounded bg-bg/40 p-1 text-2xs text-muted">
+              <pre className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap break-words bg-transparent p-1 text-2xs text-muted">
                 {jsonBlock(args)}
               </pre>
             ) : null}
             {result !== null && result !== undefined ? (
-              <pre className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap break-words rounded bg-bg/40 p-1 text-2xs text-muted">
+              <pre className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap break-words bg-transparent p-1 text-2xs text-muted">
                 {jsonBlock(result)}
               </pre>
             ) : null}
@@ -174,10 +169,8 @@ function EvaluateBody({
         return (
           <div
             key={e.id}
-            className={[
-              "rounded border-l-2 bg-card/30 p-2",
-              STATUS_BORDER[status],
-            ].join(" ")}
+            data-phase-status={status}
+            className={["p-1.5", STATUS_BORDER[status]].join(" ")}
           >
             <div className="flex items-baseline justify-between gap-2">
               <span className="font-mono text-txt">{name}</span>

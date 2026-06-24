@@ -75,10 +75,12 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-app-control": "workspace:*",
     "@elizaos/plugin-blocker": "workspace:*",
+    "@elizaos/plugin-capacitor-bridge": "workspace:*",
     "@elizaos/plugin-coding-tools": "workspace:*",
     "@elizaos/plugin-commands": "workspace:*",
     "@elizaos/plugin-device-filesystem": "workspace:*",
@@ -88,6 +90,7 @@
     "@elizaos/plugin-personal-assistant": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
+    "@elizaos/plugin-remote-manifest": "workspace:*",
     "@elizaos/plugin-shell": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",
     "@elizaos/plugin-streaming": "workspace:*",

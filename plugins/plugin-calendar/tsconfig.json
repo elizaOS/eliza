@@ -26,6 +26,8 @@
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/plugin-google": ["../plugin-google/src/index.ts"],
       "@elizaos/plugin-google/*": ["../plugin-google/src/*"],
+      "@elizaos/plugin-sql": ["../plugin-sql/src/index.node.ts"],
+      "@elizaos/plugin-sql/*": ["../plugin-sql/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],

@@ -82,19 +82,18 @@ describe("FacewearAppView (facewear overlay dashboard)", () => {
     expect(screen.getAllByText("WebXR")).toHaveLength(3);
     expect(screen.getByText("Bluetooth BLE")).toBeTruthy();
 
-    // Descriptions
-    expect(screen.getByText("Passthrough AR/VR")).toBeTruthy();
-    expect(screen.getByText("OLED display and mic")).toBeTruthy();
+    expect(screen.queryByText("Passthrough AR/VR")).toBeNull();
+    expect(screen.queryByText("OLED display and mic")).toBeNull();
   });
 
   it("shows the empty header pill when no devices are connected", async () => {
     stubFetch({ connected: false, devices: [] });
     await renderResolved();
 
-    expect(screen.getByText("No devices connected")).toBeTruthy();
-    // Every card resting state -> Disconnected + a "Connect <name>" button.
+    expect(screen.getByText("0 on")).toBeTruthy();
+    // Every card resting state -> Off + a "Connect <name>" button.
     // (The "Connect" quick-action is an <a>, so scope to card buttons by label.)
-    expect(screen.getAllByText("Disconnected")).toHaveLength(4);
+    expect(screen.getAllByText("Off")).toHaveLength(4);
     expect(screen.getAllByRole("button", { name: /^Connect / })).toHaveLength(
       4,
     );
@@ -124,9 +123,9 @@ describe("FacewearAppView (facewear overlay dashboard)", () => {
     // present (the rule matches profile.connectionType === "WebXR" && d.kind === "xr").
     // So meta-quest, xreal, apple-vision-pro all read Connected; even-realities
     // reads Connected via the smartglasses rule. => all 4 connected.
-    expect(screen.getAllByText("Connected")).toHaveLength(4);
+    expect(screen.getAllByText("On")).toHaveLength(4);
     expect(screen.getAllByText("Manage")).toHaveLength(4);
-    expect(screen.queryByText("Disconnected")).toBeNull();
+    expect(screen.queryByText("Off")).toBeNull();
   });
 
   it("connects only smartglasses-rule cards when the device list has no xr-kind device", async () => {
@@ -140,10 +139,10 @@ describe("FacewearAppView (facewear overlay dashboard)", () => {
     });
     await renderResolved();
 
-    // even-realities card -> Connected/Manage; the 3 WebXR cards -> Disconnected/Connect.
-    expect(screen.getAllByText("Connected")).toHaveLength(1);
+    // even-realities card -> On/Manage; the 3 WebXR cards -> Off/Connect.
+    expect(screen.getAllByText("On")).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: /^Manage / })).toHaveLength(1);
-    expect(screen.getAllByText("Disconnected")).toHaveLength(3);
+    expect(screen.getAllByText("Off")).toHaveLength(3);
     expect(screen.getAllByRole("button", { name: /^Connect / })).toHaveLength(
       3,
     );
@@ -159,7 +158,7 @@ describe("FacewearAppView (facewear overlay dashboard)", () => {
     });
     await renderResolved();
 
-    expect(screen.getByText("2 devices connected")).toBeTruthy();
+    expect(screen.getByText("2 on")).toBeTruthy();
     // Active-device chips show device.deviceType for each (within the chip row).
     expect(screen.getByText("meta-quest")).toBeTruthy();
     expect(screen.getByText("xreal")).toBeTruthy();
@@ -172,7 +171,7 @@ describe("FacewearAppView (facewear overlay dashboard)", () => {
     });
     await renderResolved();
 
-    expect(screen.getByText("1 device connected")).toBeTruthy();
+    expect(screen.getByText("1 on")).toBeTruthy();
     expect(screen.queryByText(/devices connected/)).toBeNull();
   });
 
@@ -190,7 +189,7 @@ describe("FacewearAppView (facewear overlay dashboard)", () => {
     });
     await renderResolved();
 
-    expect(screen.getByText("6 devices connected")).toBeTruthy();
+    expect(screen.getByText("6 on")).toBeTruthy();
     // Overflow chip shows +2 (6 devices - 4 visible).
     expect(screen.getByText("+2")).toBeTruthy();
   });

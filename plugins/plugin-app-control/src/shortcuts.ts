@@ -2,8 +2,8 @@
  * Natural-language pre-LLM shortcuts for explicit view navigation (#8791).
  *
  * These are intentionally narrow: they only match direct navigation phrases
- * such as "open settings" or "show me my calendar". The global runtime flag
- * (`ELIZA_SHORTCUTS_NL=1`) still controls whether natural shortcuts can fire.
+ * such as "open settings" or "show me my calendar"; the runtime's confidence
+ * floor and ambiguity checks decide whether they can fire.
  */
 
 import type { ShortcutDefinition } from "@elizaos/core";

@@ -164,19 +164,12 @@ function renderView(exitToApps = vi.fn()) {
 
 // Returns the card <div> wrapping a volume slider, for scoped label/icon asserts.
 function volumeCard(stream: string): HTMLElement {
-  const slider = screen.getByTestId(`device-settings-volume-${stream}`);
-  // input -> flex row -> mt-3 wrapper's parent is the card div.
-  const card = slider.closest("div.rounded-lg") as HTMLElement | null;
-  if (!card) throw new Error(`volume card not found for ${stream}`);
-  return card;
+  return screen.getByTestId(`device-settings-volume-card-${stream}`);
 }
 
 // Returns the card <div> wrapping a role action button.
 function roleCard(role: string): HTMLElement {
-  const button = screen.getByTestId(`device-settings-request-role-${role}`);
-  const card = button.closest("div.rounded-lg") as HTMLElement | null;
-  if (!card) throw new Error(`role card not found for ${role}`);
-  return card;
+  return screen.getByTestId(`device-settings-role-card-${role}`);
 }
 
 afterEach(() => {
@@ -189,9 +182,7 @@ describe("DeviceSettingsAppView — populated data display", () => {
     mockBridgeFull();
     renderView();
 
-    expect(
-      await screen.findByRole("heading", { name: "Device Settings" }),
-    ).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Device" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Back" })).toBeTruthy();
     expect(screen.getByTestId("device-settings-refresh")).toBeTruthy();
   });
@@ -564,14 +555,7 @@ describe("DeviceSettingsAppView — interactions", () => {
     });
     renderView();
 
-    expect(
-      await screen.findByText(
-        "Volume streams are not available in this runtime.",
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.getByText("Android role status is not available in this runtime."),
-    ).toBeTruthy();
+    expect(await screen.findAllByText("Unavailable")).toHaveLength(2);
     expect(screen.getByText("0 streams")).toBeTruthy();
     expect(screen.getByText("0 roles")).toBeTruthy();
   });

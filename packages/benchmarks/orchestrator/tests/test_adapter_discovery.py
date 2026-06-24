@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 import types
 from pathlib import Path
 
@@ -80,6 +81,8 @@ def test_discovery_covers_all_real_benchmark_directories() -> None:
 
     assert set(discovery.all_directories) - covered_dirs == set()
     assert ".pytest_cache" not in discovery.all_directories
+    assert "memperf" not in discovery.all_directories
+    assert "mobile-resource" not in discovery.all_directories
     assert "swe-bench-pro" not in discovery.all_directories
     assert "swe-bench-workspace" not in discovery.all_directories
     assert not any("gaia" in name.lower() for name in discovery.all_directories)
@@ -87,7 +90,8 @@ def test_discovery_covers_all_real_benchmark_directories() -> None:
 
 
 def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> None:
-    adapters = discover_adapters(_workspace_root()).adapters
+    discovery = discover_adapters(_workspace_root())
+    adapters = discovery.adapters
 
     assert adapters["app-eval"].directory == "app-eval"
     assert adapters["openclaw_bench"].directory == "openclaw-benchmark"
@@ -98,7 +102,8 @@ def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> No
     assert adapters["mmau"].directory == "mmau-audio"
     assert adapters["voicebench_quality"].directory == "voicebench-quality"
     assert adapters["voiceagentbench"].directory == "voiceagentbench"
-    assert "elizaos_mmau" not in discover_adapters(_workspace_root()).all_directories
+    assert "mmau" not in discovery.all_directories
+    assert "elizaos_mmau" not in discovery.all_directories
 
 
 def test_voice_audio_defaults_do_not_publish_mock_fixture_runs(
@@ -1158,20 +1163,42 @@ def test_eliza_1_score_rejects_all_adapter_errors(tmp_path: Path) -> None:
         _score_from_eliza_1(result_path)
 
 
-def test_mmau_legacy_module_shims_find_renamed_audio_package(tmp_path: Path) -> None:
+def test_mmau_uses_canonical_audio_package_without_legacy_shims(tmp_path: Path) -> None:
+    benchmarks_root = _workspace_root() / "benchmarks"
+    assert not (benchmarks_root / "mmau").exists()
+    assert not (benchmarks_root / "elizaos_mmau").exists()
+
+    importlib.invalidate_caches()
+    benchmarks_package = importlib.import_module("benchmarks")
+    assert importlib.machinery.PathFinder.find_spec(
+        "benchmarks.mmau", list(benchmarks_package.__path__)
+    ) is None
+    assert (
+        importlib.machinery.PathFinder.find_spec("elizaos_mmau", [str(benchmarks_root)])
+        is None
+    )
+
+    pyproject = tomllib.loads(
+        (benchmarks_root / "mmau-audio" / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    assert pyproject["project"]["scripts"] == {
+        "mmau-audio": "elizaos_mmau_audio.cli:main",
+        "elizaos-mmau-audio": "elizaos_mmau_audio.cli:main",
+    }
+
     env = dict(os.environ)
-    env["PYTHONPATH"] = str(_workspace_root() / "packages")
+    env["PYTHONPATH"] = str(benchmarks_root / "mmau-audio")
 
     result = subprocess.run(
         [
             sys.executable,
             "-m",
-            "benchmarks.mmau",
+            "elizaos_mmau_audio",
             "--mock",
             "--limit",
             "1",
             "--output",
-            str(tmp_path / "mmau-legacy"),
+            str(tmp_path / "mmau-canonical"),
             "--json",
         ],
         cwd=_workspace_root(),
@@ -1182,7 +1209,7 @@ def test_mmau_legacy_module_shims_find_renamed_audio_package(tmp_path: Path) -> 
     )
 
     assert result.returncode == 0, result.stderr
-    assert (tmp_path / "mmau-legacy" / "mmau-results.json").exists()
+    assert (tmp_path / "mmau-canonical" / "mmau-results.json").exists()
 
 
 def test_hermes_native_envs_publish_real_harness_rows(

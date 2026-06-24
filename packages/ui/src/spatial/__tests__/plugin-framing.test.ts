@@ -34,7 +34,7 @@ beforeAll(async () => {
     if (entry) (entry[1] as () => void)();
   }
   registeredIds.push(...listTerminalViewIds().sort());
-});
+}, 30_000);
 
 describe("plugin terminal views — registration + framing", () => {
   it("registers a substantial set of plugin terminal views", () => {

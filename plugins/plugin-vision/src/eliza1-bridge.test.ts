@@ -55,6 +55,49 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
         prompt: expect.any(String),
       }),
     );
+    const prompt = JSON.parse(
+      (useModel.mock.calls[0]?.[1] as { prompt: string }).prompt,
+    ) as Record<string, unknown>;
+    expect(prompt.detectedText).toBeUndefined();
+  });
+
+  it("adds current OCR text to the scene description prompt", async () => {
+    const { runtime, useModel } = createRuntime({
+      imageDescriptionResult: { description: "The settings panel is open." },
+    });
+    const service = new VisionService(runtime);
+    Object.defineProperty(service, "lastEnhancedScene", {
+      configurable: true,
+      value: {
+        timestamp: Date.now(),
+        description: "",
+        objects: [],
+        people: [],
+        sceneChanged: true,
+        changePercentage: 0,
+        screenAnalysis: {
+          fullScreenOCR: "Save\nSave\n  Project   settings\n\nDeploy now",
+          activeTile: {
+            timestamp: Date.now(),
+            text: "Deploy now",
+          },
+        },
+      },
+    });
+
+    const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
+      imageUrl: string,
+    ) => Promise<string>;
+    const result = await describeFn.call(
+      service,
+      `data:image/jpeg;base64,${Buffer.from("img").toString("base64")}`,
+    );
+
+    expect(result).toBe("The settings panel is open.");
+    const prompt = JSON.parse(
+      (useModel.mock.calls[0]?.[1] as { prompt: string }).prompt,
+    ) as { detectedText?: string };
+    expect(prompt.detectedText).toBe("Save\nProject settings\nDeploy now");
   });
 
   it("falls through to detected-objects synthesis when IMAGE_DESCRIPTION returns the unhelpful sentinel", async () => {

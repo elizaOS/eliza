@@ -317,6 +317,16 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
   // one tap away in chat), and being ALWAYS_VISIBLE it was the only card on a
   // fresh home. The MessagesWidget component stays registered for the
   // `defaultWidget: "messages"` sink; it just no longer occupies the home slot.
+  {
+    id: "messages.default-home",
+    pluginId: "messages",
+    slot: "home",
+    label: "Messages",
+    icon: "MessageSquare",
+    order: 55,
+    defaultWidget: "messages",
+    signalKinds: ["message"],
+  },
   // Agent Orchestrator — app runs
   {
     id: "agent-orchestrator.apps",

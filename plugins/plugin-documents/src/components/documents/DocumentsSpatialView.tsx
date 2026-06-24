@@ -20,7 +20,6 @@
 import {
   Button,
   Card,
-  Divider,
   Field,
   HStack,
   List,
@@ -99,14 +98,10 @@ export function DocumentsSpatialView({
   onAction,
 }: DocumentsSpatialViewProps) {
   return (
-    <Card title="Documents" gap={1} padding={1}>
-      <Text style="caption" tone="muted">
-        Browse and search the document store.
-      </Text>
-
+    <Card gap={1} padding={1}>
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
-          Loading documents
+          Loading
         </Text>
       ) : snapshot.state === "error" ? (
         <DocumentsErrorBody snapshot={snapshot} onAction={onAction} />
@@ -128,7 +123,6 @@ function DocumentsErrorBody({
 }) {
   return (
     <>
-      <Divider label="error" />
       <Text bold>Could not load documents</Text>
       <Text tone="danger" style="caption">
         {snapshot.error ?? "Could not load documents."}
@@ -143,16 +137,7 @@ function DocumentsErrorBody({
 }
 
 function DocumentsEmptyBody() {
-  return (
-    <>
-      <Divider label="empty" />
-      <Text bold>No documents yet</Text>
-      <Text tone="muted" style="caption">
-        Upload a file or ingest a URL so Eliza can read, search, and answer from
-        your documents. Nothing is shown until a document is added.
-      </Text>
-    </>
-  );
+  return <Text bold>None</Text>;
 }
 
 function DocumentsReadyBody({
@@ -180,10 +165,12 @@ function DocumentsReadyBody({
 
       <DocumentsSearchBody search={snapshot.search} onAction={onAction} />
 
-      <Divider label={`Documents (${snapshot.documents.length})`} />
+      <Text style="caption" tone="muted">
+        Documents ({snapshot.documents.length})
+      </Text>
       {snapshot.documents.length === 0 ? (
         <Text tone="muted" style="caption">
-          Nothing here.
+          None
         </Text>
       ) : (
         <List gap={0}>
@@ -228,7 +215,7 @@ function DocumentRow({
           agent={`open:${doc.id}`}
           onPress={() => onAction?.(`open:${doc.id}`)}
         >
-          Open
+          ›
         </Button>
       </HStack>
     </VStack>
@@ -246,25 +233,24 @@ function DocumentsSearchBody({
 
   if (search.kind === "searching") {
     return (
-      <>
-        <Divider label="search" />
-        <Text tone="muted" style="caption" wrap={false}>
-          Searching for {search.query}
-        </Text>
-      </>
+      <Text tone="muted" style="caption" wrap={false}>
+        Searching for {search.query}
+      </Text>
     );
   }
 
   if (search.kind === "error") {
     return (
       <>
-        <Divider label="search" />
         <Text bold>Search failed</Text>
         <Text tone="danger" style="caption">
           {search.message}
         </Text>
         <HStack gap={1}>
-          <Button agent="clear-search" onPress={() => onAction?.("clear-search")}>
+          <Button
+            agent="clear-search"
+            onPress={() => onAction?.("clear-search")}
+          >
             Clear
           </Button>
         </HStack>
@@ -274,10 +260,12 @@ function DocumentsSearchBody({
 
   return (
     <>
-      <Divider label={`Results (${search.hits.length})`} />
+      <Text style="caption" tone="muted">
+        Results ({search.hits.length})
+      </Text>
       {search.hits.length === 0 ? (
         <Text tone="muted" style="caption" wrap={false}>
-          No matches for {search.query}
+          None
         </Text>
       ) : (
         <List gap={0}>
@@ -327,7 +315,7 @@ function SearchResultRow({
           agent={`open:${hit.id}`}
           onPress={() => onAction?.(`open:${hit.id}`)}
         >
-          Open
+          ›
         </Button>
       </HStack>
     </VStack>

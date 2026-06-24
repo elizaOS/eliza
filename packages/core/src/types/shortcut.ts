@@ -8,8 +8,8 @@
  * and an ASR transcript are both just `Memory.content.text`.
  *
  * Explicit shortcuts (slash/`!`) are unambiguous and always eligible. Natural
- * shortcuts are gated behind a flag and a confidence floor, and defer to the
- * LLM on ambiguity — they never guess.
+ * shortcuts are caller-enabled, confidence-floored, and defer to the LLM on
+ * ambiguity — they never guess.
  */
 
 /** Where a matched shortcut resolves to. */
@@ -26,7 +26,8 @@ export type ShortcutTarget =
 
 /**
  * `explicit` = a slash/`!` prefix command (an unambiguous invocation, always
- * eligible). `natural` = a natural-language phrase (flag-gated, confidence-floored).
+ * eligible). `natural` = a natural-language phrase (caller-enabled,
+ * confidence-floored).
  */
 export type ShortcutKind = "explicit" | "natural";
 
@@ -88,7 +89,7 @@ export interface ShortcutMatchContext {
 	view?: string | null;
 	/**
 	 * Whether natural-language shortcuts are eligible this turn. Explicit
-	 * (slash/`!`) shortcuts are always eligible regardless of this flag.
+	 * (slash/`!`) shortcuts are always eligible regardless of this setting.
 	 */
 	allowNatural?: boolean;
 	/** Sender trust — gates `requiresAuth`/`requiresElevated` shortcuts. */

@@ -467,6 +467,14 @@
       "dependsOn": ["@elizaos/plugin-sql#build"],
       "outputs": []
     },
+    "@elizaos/example-bluesky#typecheck": {
+      "dependsOn": ["@elizaos/plugin-sql#build"],
+      "outputs": []
+    },
+    "@elizaos/example-chat#typecheck": {
+      "dependsOn": ["@elizaos/plugin-sql#build"],
+      "outputs": []
+    },
     "@elizaos/gcp-examples#typecheck": {
       "dependsOn": [
         "@elizaos/core#build",

@@ -91,7 +91,7 @@ describe("ModelTesterView — unified GUI/XR/TUI wrapper", () => {
 
   it("renders inside a spatial surface and shows the probe rows after the status fetch", async () => {
     render(React.createElement(ModelTesterView));
-    await screen.findByText("Model Tester");
+    await screen.findByText("6 ready");
     // Each probe row renders its label.
     expect(screen.getByText("Text")).toBeTruthy();
     expect(screen.getByText("Activity")).toBeTruthy();
@@ -101,7 +101,7 @@ describe("ModelTesterView — unified GUI/XR/TUI wrapper", () => {
   it("fetches status once on mount and again on refresh-status", async () => {
     const { calls } = installFetch();
     render(React.createElement(ModelTesterView));
-    await screen.findByText("Model Tester");
+    await screen.findByText("6 ready");
 
     const statusCalls = () =>
       calls.filter((c) => c.url === "/api/model-tester/status").length;
@@ -114,7 +114,7 @@ describe("ModelTesterView — unified GUI/XR/TUI wrapper", () => {
   it("run-all posts every probe in order with the active prompt", async () => {
     const { calls } = installFetch();
     render(React.createElement(ModelTesterView));
-    await screen.findByText("Model Tester");
+    await screen.findByText("6 ready");
 
     fireEvent.click(button("run-all"));
     await waitFor(() => {
@@ -128,7 +128,7 @@ describe("ModelTesterView — unified GUI/XR/TUI wrapper", () => {
   it("selecting the Vision preset sends that prompt on the next run", async () => {
     const { calls } = installFetch();
     render(React.createElement(ModelTesterView));
-    await screen.findByText("Model Tester");
+    await screen.findByText("6 ready");
 
     fireEvent.click(button("preset-vision"));
     fireEvent.click(button("run-text-small"));
@@ -145,7 +145,7 @@ describe("ModelTesterView — unified GUI/XR/TUI wrapper", () => {
     installFetch();
     const exitToApps = vi.fn();
     render(<ModelTesterView exitToApps={exitToApps} />);
-    await screen.findByText("Model Tester");
+    await screen.findByText("6 ready");
 
     fireEvent.click(button("back"));
     expect(exitToApps).toHaveBeenCalledTimes(1);
@@ -154,7 +154,7 @@ describe("ModelTesterView — unified GUI/XR/TUI wrapper", () => {
   it("Back without exitToApps dispatches the eliza:navigate:view bus", async () => {
     installFetch();
     render(React.createElement(ModelTesterView));
-    await screen.findByText("Model Tester");
+    await screen.findByText("6 ready");
 
     const events: CustomEvent[] = [];
     const listener = (e: Event) => events.push(e as CustomEvent);

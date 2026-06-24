@@ -20,8 +20,11 @@ import {
 } from "../../platform/mobile-permissions-client";
 import { useAppSelectorShallow } from "../../state";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
-import { PermissionCard } from "../composites/chat/permission-card";
-import { createClientPermissionsRegistry } from "../composites/chat/permission-card.helpers";
+import {
+  createClientPermissionsRegistry,
+  type PermissionCardPayload,
+} from "../composites/chat/permission-card.helpers";
+import { renderPermissionCardFromPayload } from "../composites/chat/permission-card.render";
 import { ConfigRenderer } from "../config-ui/config-renderer";
 import { defaultRegistry } from "../config-ui/config-renderer.helpers";
 import { UiRenderer } from "../config-ui/ui-renderer";
@@ -112,7 +115,11 @@ function MessageTextBody({
 
 // ── InlinePluginConfig ──────────────────────────────────────────────
 
-function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
+export function InlinePluginConfig({
+  pluginId: rawPluginId,
+}: {
+  pluginId: string;
+}) {
   const pluginId = normalizePluginId(rawPluginId);
   const [plugin, setPlugin] = useState<PluginInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -420,7 +427,13 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
 
 // ── UiSpec block ────────────────────────────────────────────────────
 
-function UiSpecBlock({ spec, raw }: { spec: UiSpec; raw: string }) {
+export function MessageUiSpecBlock({
+  spec,
+  raw,
+}: {
+  spec: UiSpec;
+  raw: string;
+}) {
   const { t, sendActionMessage } = useAppSelectorShallow((s) => ({
     t: s.t,
     sendActionMessage: s.sendActionMessage,
@@ -752,6 +765,57 @@ export function SensitiveRequestBlock({
   );
 }
 
+export function MessagePermissionCard({
+  payload,
+}: {
+  payload: PermissionCardPayload;
+}) {
+  const { sendActionMessage } = useAppSelectorShallow((s) => ({
+    sendActionMessage: s.sendActionMessage,
+  }));
+
+  const permissionRegistry = useMemo(
+    () =>
+      isNative && !isDesktopPlatform()
+        ? createMobileSignalsPermissionsRegistry(undefined, client)
+        : createClientPermissionsRegistry(client),
+    [],
+  );
+
+  const handlePermissionFallback = useCallback(
+    (feature: string, permission: string) => {
+      void sendActionMessage(
+        `__permission_card__:use_fallback feature=${feature} permission=${permission}`,
+      );
+    },
+    [sendActionMessage],
+  );
+
+  const handlePermissionGranted = useCallback(
+    (feature: string, permission: string) => {
+      void sendActionMessage(
+        `__permission_card__:granted feature=${feature} permission=${permission}`,
+      );
+    },
+    [sendActionMessage],
+  );
+
+  return renderPermissionCardFromPayload(payload, {
+    registry: permissionRegistry,
+    onOpenSettings: async (permission) => {
+      if (isNative && !isDesktopPlatform()) {
+        await openMobilePermissionSettings(permission);
+        return;
+      }
+      await client.openPermissionSettings(permission);
+    },
+    onFallback: ({ feature, permission }) =>
+      handlePermissionFallback(feature, permission),
+    onGranted: () =>
+      handlePermissionGranted(payload.feature, payload.permission),
+  });
+}
+
 function OAuthRequestPanel({
   form,
   authorizing,
@@ -828,32 +892,6 @@ export function MessageContent({
   const inlineWidgetCtx = useInlineWidgetContext(
     sendActionMessage,
     setChatInput,
-  );
-
-  const permissionRegistry = useMemo(
-    () =>
-      isNative && !isDesktopPlatform()
-        ? createMobileSignalsPermissionsRegistry(undefined, client)
-        : createClientPermissionsRegistry(client),
-    [],
-  );
-
-  const handlePermissionFallback = useCallback(
-    (feature: string, permission: string) => {
-      void sendActionMessage(
-        `__permission_card__:use_fallback feature=${feature} permission=${permission}`,
-      );
-    },
-    [sendActionMessage],
-  );
-
-  const handlePermissionGranted = useCallback(
-    (feature: string, permission: string) => {
-      void sendActionMessage(
-        `__permission_card__:granted feature=${feature} permission=${permission}`,
-      );
-    },
-    [sendActionMessage],
   );
 
   const handleOpenSettings = useCallback(() => {
@@ -1063,7 +1101,11 @@ export function MessageContent({
               );
             case "ui-spec":
               return (
-                <UiSpecBlock key={segmentKey} spec={seg.spec} raw={seg.raw} />
+                <MessageUiSpecBlock
+                  key={segmentKey}
+                  spec={seg.spec}
+                  raw={seg.raw}
+                />
               );
             case "widget": {
               const widget = getInlineWidget(seg.widgetKind);
@@ -1073,31 +1115,7 @@ export function MessageContent({
             }
             case "permission":
               return (
-                <PermissionCard
-                  key={segmentKey}
-                  permission={seg.payload.permission}
-                  reason={seg.payload.reason}
-                  feature={seg.payload.feature}
-                  fallbackOffered={seg.payload.fallbackOffered}
-                  fallbackLabel={seg.payload.fallbackLabel}
-                  registry={permissionRegistry}
-                  onOpenSettings={async (permission) => {
-                    if (isNative && !isDesktopPlatform()) {
-                      await openMobilePermissionSettings(permission);
-                      return;
-                    }
-                    await client.openPermissionSettings(permission);
-                  }}
-                  onFallback={({ feature, permission }) =>
-                    handlePermissionFallback(feature, permission)
-                  }
-                  onGranted={() =>
-                    handlePermissionGranted(
-                      seg.payload.feature,
-                      seg.payload.permission,
-                    )
-                  }
-                />
+                <MessagePermissionCard key={segmentKey} payload={seg.payload} />
               );
             default:
               return null;

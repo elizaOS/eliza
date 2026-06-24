@@ -46,12 +46,10 @@ describe("SocialAlphaSpatialView one source, three modalities", () => {
 			const lines = renderViewToLines(view, width);
 			for (const line of lines) expect(visibleWidth(line)).toBe(width);
 			const flat = lines.join("\n");
-			expect(flat).toContain("Alpha Leaderboard");
 			expect(flat).toContain("alice");
 			expect(flat).toContain("12.50");
 			expect(flat).toContain("carol");
 			expect(flat).toContain("leading");
-			expect(flat).toContain("callers");
 		}
 	});
 
@@ -113,7 +111,7 @@ describe("SocialAlphaSpatialView one source, three modalities", () => {
 			54,
 		);
 		for (const line of lines) expect(visibleWidth(line)).toBe(54);
-		expect(lines.join("\n")).toContain("No callers yet");
+		expect(lines.join("\n")).toContain("None");
 	});
 
 	it("error state renders the message and a Retry control", () => {

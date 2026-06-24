@@ -7,15 +7,18 @@
  * and screen-time scenarios remain in `@elizaos/plugin-health`.
  */
 
+import { MEETING_PREP_INSTRUCTIONS } from "../lifeops/optimized-prompt-instructions.js";
 import type { DefaultPack } from "./registry-types.js";
 import {
-  compileTaskDefinitions,
   type CheckInTaskDefinition,
+  compileTaskDefinitions,
   type RecapTaskDefinition,
   type ReminderTaskDefinition,
   type TaskDefinition,
   type WatcherTaskDefinition,
 } from "./task-definitions.js";
+
+export { MEETING_PREP_INSTRUCTIONS } from "../lifeops/optimized-prompt-instructions.js";
 
 export const EXECUTIVE_ASSISTANT_PACK_KEY = "executive-assistant";
 
@@ -99,8 +102,7 @@ const dailyCommandBrief: RecapTaskDefinition = {
 const meetingPrep: ReminderTaskDefinition = {
   ...base,
   definitionKind: "reminder",
-  promptInstructions:
-    "Prepare the next working block: scan upcoming calendar events, related threads, docs, blockers, and people context. Surface missing agenda, location, dial-in, prep document, decision owner, and likely follow-up. Keep the owner-facing result compact.",
+  promptInstructions: MEETING_PREP_INSTRUCTIONS,
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
     includeRecentTaskStates: { limit: 10 },

@@ -72,9 +72,7 @@ function ScreenshareMetric({
 }) {
   return (
     <div
-      className={`flex min-h-16 flex-col items-center justify-center gap-1.5 px-3 py-2 ${
-        active ? "border-ok/35" : ""
-      }`}
+      className="flex min-h-16 flex-col items-center justify-center gap-1.5 px-3 py-2"
       title={label}
       role="status"
       aria-label={`${label}: ${value}`}
@@ -322,12 +320,7 @@ export function ScreenshareOperatorSurface({
       : null;
 
   if (focus === "chat") {
-    return (
-      <SurfaceEmptyState
-        title="Screen Share"
-        body="Remote desktop control is available from the actions surface."
-      />
-    );
+    return <SurfaceEmptyState title="Screen Share" body="" />;
   }
 
   return (
@@ -469,7 +462,7 @@ export function ScreenshareOperatorSurface({
             value={remoteBase}
             onChange={(event) => setRemoteBase(event.target.value)}
             placeholder="Server URL"
-            className="h-9 rounded-lg border-border/45 bg-bg/60 text-xs"
+            className="h-9 border-0 bg-transparent text-xs"
           />
           <ScreenshareField
             agentId="input-remote-session"
@@ -479,7 +472,7 @@ export function ScreenshareOperatorSurface({
             value={remoteSessionId}
             onChange={(event) => setRemoteSessionId(event.target.value)}
             placeholder="Session"
-            className="h-9 rounded-lg border-border/45 bg-bg/60 text-xs"
+            className="h-9 border-0 bg-transparent text-xs"
           />
           <ScreenshareField
             agentId="input-remote-token"
@@ -489,7 +482,7 @@ export function ScreenshareOperatorSurface({
             value={remoteToken}
             onChange={(event) => setRemoteToken(event.target.value)}
             placeholder="Token"
-            className="h-9 rounded-lg border-border/45 bg-bg/60 text-xs"
+            className="h-9 border-0 bg-transparent text-xs"
           />
         </div>
         <div className="mt-3 flex gap-2">
@@ -632,12 +625,9 @@ export function ScreenshareTuiView() {
         padding: 20,
       }}
     >
-      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
-        elizaos://screenshare --type=tui
-      </div>
       <div
         data-status={loading ? "loading" : "ready"}
-        style={{ color: "#475569", marginBottom: 16 }}
+        style={{ color: "#94a3b8", marginBottom: 16 }}
       >
         {loading ? "loading" : (state?.capabilities.platform ?? "unknown")} |{" "}
         {activeSessions.length} active sessions | {lastAction}
@@ -653,10 +643,7 @@ export function ScreenshareTuiView() {
         <section
           aria-label="Screen share sessions"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
-            borderRadius: 6,
-            padding: 16,
-            minHeight: 420,
+            padding: "8px 0",
           }}
         >
           <div
@@ -677,8 +664,7 @@ export function ScreenshareTuiView() {
               style={{
                 background: "transparent",
                 color: "#a7f3d0",
-                border: "1px solid rgba(167,243,208,0.45)",
-                borderRadius: 4,
+                border: 0,
                 padding: "4px 8px",
                 cursor: loading ? "not-allowed" : "pointer",
                 fontFamily: "inherit",
@@ -693,7 +679,6 @@ export function ScreenshareTuiView() {
             <div
               key={session.id}
               style={{
-                borderTop: "1px solid rgba(125,211,252,0.14)",
                 padding: "8px 0",
               }}
             >
@@ -715,10 +700,7 @@ export function ScreenshareTuiView() {
         <section
           aria-label="Screen share capabilities"
           style={{
-            border: "1px solid rgba(125,211,252,0.3)",
-            borderRadius: 6,
-            padding: 16,
-            minHeight: 420,
+            padding: "8px 0",
           }}
         >
           <strong style={{ color: "#e2e8f0" }}>capabilities</strong>

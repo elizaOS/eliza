@@ -15,9 +15,9 @@
  */
 
 import { spawn } from "node:child_process";
-import { rename, readdir } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import { readdir, rename } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 
 const OUT = path.dirname(fileURLToPath(import.meta.url));
@@ -33,7 +33,8 @@ function waitForPort(url, timeoutMs = 240_000) {
         const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
         if (res.status < 500) return resolve(true);
       } catch {}
-      if (Date.now() - start > timeoutMs) return reject(new Error(`timeout ${url}`));
+      if (Date.now() - start > timeoutMs)
+        return reject(new Error(`timeout ${url}`));
       setTimeout(tick, 1000);
     };
     tick();
@@ -42,7 +43,13 @@ function waitForPort(url, timeoutMs = 240_000) {
 
 const procs = [];
 function boot(cmd, args, env = {}) {
-  procs.push(spawn(cmd, args, { cwd: REPO, env: { ...process.env, ...env }, stdio: "inherit" }));
+  procs.push(
+    spawn(cmd, args, {
+      cwd: REPO,
+      env: { ...process.env, ...env },
+      stdio: "inherit",
+    }),
+  );
 }
 
 /** Record one journey to <name>.webm. */
@@ -67,22 +74,34 @@ async function record(browser, name, journey) {
     const { statSync } = await import("node:fs");
     webms.sort(
       (a, b) =>
-        statSync(path.join(OUT, b.f)).mtimeMs - statSync(path.join(OUT, a.f)).mtimeMs,
+        statSync(path.join(OUT, b.f)).mtimeMs -
+        statSync(path.join(OUT, a.f)).mtimeMs,
     );
     await rename(path.join(OUT, webms[0].f), path.join(OUT, `${name}.webm`));
     console.log(`recorded ${name}.webm`);
+    return;
   }
+  throw new Error(`Playwright did not create a video for ${name}`);
 }
 
 async function main() {
-  boot("bun", ["run", "packages/examples/cloud/edad/server.ts"], { PORT: String(EDAD_PORT) });
-  boot("bun", ["run", "--cwd", "packages/examples/cloud/clone-ur-crush", "dev"]);
+  boot("bun", ["run", "packages/examples/cloud/edad/server.ts"], {
+    PORT: String(EDAD_PORT),
+  });
+  boot("bun", [
+    "run",
+    "--cwd",
+    "packages/examples/cloud/clone-ur-crush",
+    "dev",
+  ]);
   await waitForPort(`http://127.0.0.1:${EDAD_PORT}/health`);
 
   const browser = await chromium.launch();
 
   await record(browser, "edad-journey", async (page) => {
-    await page.goto(`http://127.0.0.1:${EDAD_PORT}/`, { waitUntil: "networkidle" });
+    await page.goto(`http://127.0.0.1:${EDAD_PORT}/`, {
+      waitUntil: "networkidle",
+    });
     await page.waitForTimeout(1200);
     await page.fill("#input", "dad, how do I file my taxes?");
     await page.waitForTimeout(600);
@@ -90,20 +109,21 @@ async function main() {
     await page.waitForTimeout(2000);
   });
 
-  try {
-    await waitForPort(`http://127.0.0.1:${CRUSH_PORT}`, 240_000);
-    await record(browser, "clone-ur-crush-journey", async (page) => {
-      await page.goto(`http://127.0.0.1:${CRUSH_PORT}/`, { waitUntil: "networkidle" });
-      await page.waitForTimeout(2000);
-      await page.fill("input", "Ashley");
-      await page.waitForTimeout(700);
-      const next = page.getByRole("button", { name: /next/i });
-      if (await next.count()) await next.first().click();
-      await page.waitForTimeout(2000);
+  await waitForPort(`http://127.0.0.1:${CRUSH_PORT}`, 240_000);
+  await record(browser, "clone-ur-crush-journey", async (page) => {
+    await page.goto(`http://127.0.0.1:${CRUSH_PORT}/`, {
+      waitUntil: "networkidle",
     });
-  } catch (err) {
-    console.error(`[clone-ur-crush video skipped] ${err?.message ?? err}`);
-  }
+    await page.waitForTimeout(2000);
+    await page.fill("input", "Ashley");
+    await page.waitForTimeout(700);
+    const next = page.getByRole("button", { name: /next/i });
+    if ((await next.count()) === 0) {
+      throw new Error("clone-ur-crush Next button not found");
+    }
+    await next.first().click();
+    await page.waitForTimeout(2000);
+  });
 
   await browser.close();
 }

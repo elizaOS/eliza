@@ -367,7 +367,7 @@ describe("CodingAgentTasksPanel — list", () => {
     listCodingAgentTaskThreads.mockResolvedValue([]);
     render(<CodingAgentTasksPanel />);
     expect(await screen.findByTestId("task-empty-state")).toBeTruthy();
-    expect(screen.getByText("No coding tasks yet")).toBeTruthy();
+    expect(screen.getByText("None")).toBeTruthy();
   });
 });
 

@@ -2134,7 +2134,7 @@ export function App() {
             <div
               aria-hidden="true"
               data-testid="app-background-scrim"
-              className="pointer-events-none fixed inset-0 z-[1] bg-bg/55"
+              className="pointer-events-none fixed inset-0 z-[1] bg-bg/55 backdrop-blur-md"
             />
           ) : null}
           {renderOpaqueAppBackground ? (

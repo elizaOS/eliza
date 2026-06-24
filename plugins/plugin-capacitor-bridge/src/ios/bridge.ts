@@ -3018,6 +3018,45 @@ async function handleDirectCoreRoute(
 		});
 	}
 
+	if (method === "GET" && pathname === "/api/status") {
+		// The startup readiness poll (runStartingRuntime → client.getStatus) gates
+		// on `state === "running"` from /api/status, then dispatches AGENT_RUNNING.
+		// The agent's real /api/status (health-routes.ts) is NOT wired into
+		// dispatchRoute — same reason /api/health is shimmed above — so without this
+		// the poll 404s ("No iOS local route for GET /api/status") and the app shows
+		// "Startup failed: Agent Timeout" even though the in-process agent is up.
+		// The full-Bun in-process runtime is booted before routes are served here,
+		// so report it running + able to respond.
+		return jsonResponse(200, {
+			state: "running",
+			agentName: runtimeAgentName(backend.runtime),
+			model: null,
+			canRespond: true,
+			startedAt: null,
+			uptime: 0,
+			startup: { phase: "running", runtimePhase: "running" },
+			cloud: {
+				connectionStatus: "disconnected",
+				activeAgentId: null,
+				cloudProvisioned: false,
+				hasApiKey: false,
+			},
+			pendingRestart: false,
+			pendingRestartReasons: [],
+			iosBridge: "bun",
+		});
+	}
+
+	if (method === "GET" && pathname === "/api/apps/runs") {
+		// The home orchestrator widget polls /api/apps/runs (page-scoped-context
+		// provider). It is not served by dispatchRoute on the in-process iOS
+		// runtime, so without this shim the home surfaces a raw error toast
+		// ("No iOS local route for GET /api/apps/runs"). No app runs exist on a
+		// fresh local agent — return an empty list so the widget renders its empty
+		// state cleanly instead of an error.
+		return jsonResponse(200, []);
+	}
+
 	if (method === "GET" && pathname === "/api/first-run/status") {
 		// The full-Bun in-process agent is already provisioned and running, so
 		// first-run is complete from the backend's perspective (onboarding is a

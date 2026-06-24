@@ -77,8 +77,8 @@ export default scenario({
         }
         const definition = updated.definition as Record<string, unknown>;
         const priority = definition.priority;
-        if (typeof priority !== "number" || priority <= 3) {
-          return `expected "Finish tax forms" priority to be raised above 3; got ${String(priority ?? "(missing)")}`;
+        if (typeof priority !== "number" || priority >= 3) {
+          return `expected "Finish tax forms" priority to be raised to high priority (2 or lower); got ${String(priority ?? "(missing)")}`;
         }
       },
     },

@@ -1,9 +1,13 @@
+import {
+  readPhase3SmokeTestEnv,
+  TEST_ENV_NAMES,
+} from "../../../../../../../shared/src/test-env-config.ts";
 import { ElizaRuntimeApiClient } from "../bun/api-client.ts";
 import { serializeError } from "../bun/errors.ts";
 import { RuntimeLogBuffer } from "../bun/log-buffer.ts";
+import type { AgentMessageStreamEvent } from "../bun/protocol.ts";
 import { ElizaRuntimeManager } from "../bun/runtime-manager.ts";
 import { AgentStreamManager } from "../bun/stream-manager.ts";
-import type { AgentMessageStreamEvent } from "../bun/protocol.ts";
 
 function writeJson(label: string, value: unknown): void {
   process.stdout.write(`${JSON.stringify({ label, value }, null, 2)}\n`);
@@ -26,12 +30,6 @@ async function capture(
     writeJson(label, { ok: false, error: serialized });
     return serialized;
   }
-}
-
-function parsePositiveInt(value: string | undefined): number | null {
-  if (value === undefined || value.trim().length === 0) return null;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 const logBuffer = new RuntimeLogBuffer();
@@ -59,6 +57,7 @@ const streamManager = new AgentStreamManager({
   },
   log: (line) => logBuffer.push("system", line),
 });
+const phase3Env = readPhase3SmokeTestEnv(process.env);
 
 writeJson("initialStatus", manager.status());
 
@@ -85,7 +84,7 @@ if (
   writeJson("streamingRoutes", discovery.streamingRoutes);
 }
 
-if (process.env.ELIZA_PHASE3_SEND_STREAM_MESSAGE === "1") {
+if (phase3Env.sendStreamMessage) {
   const startResult = await capture("agent.message.stream", () =>
     streamManager.startMessageStream({
       text: "Phase 3 ElizaLaunch streaming bridge smoke test. Reply briefly.",
@@ -98,9 +97,7 @@ if (process.env.ELIZA_PHASE3_SEND_STREAM_MESSAGE === "1") {
     typeof startResult.streamId === "string"
   ) {
     const streamId = startResult.streamId;
-    const cancelAfterMs = parsePositiveInt(
-      process.env.ELIZA_PHASE3_CANCEL_AFTER_MS,
-    );
+    const cancelAfterMs = phase3Env.cancelAfterMs;
     if (cancelAfterMs !== null) {
       setTimeout(() => {
         void capture("agent.message.stream.cancel", () =>
@@ -122,19 +119,18 @@ if (process.env.ELIZA_PHASE3_SEND_STREAM_MESSAGE === "1") {
 } else {
   writeJson("agent.message.stream", {
     ok: true,
-    skipped:
-      "Set ELIZA_PHASE3_SEND_STREAM_MESSAGE=1 to send a real streaming message.",
+    skipped: `Set ${TEST_ENV_NAMES.phase3.sendStreamMessage}=1 to send a real streaming message.`,
   });
 }
 
 writeJson("logsTail", manager.logsTail(20));
 
-if (process.env.ELIZA_PHASE3_STOP_AFTER === "1") {
+if (phase3Env.stopAfter) {
   await capture("runtimeStop", () => manager.stop());
 } else {
   writeJson("runtimeStop", {
     ok: true,
-    skipped: "Set ELIZA_PHASE3_STOP_AFTER=1 to stop after the smoke run.",
+    skipped: `Set ${TEST_ENV_NAMES.phase3.stopAfter}=1 to stop after the smoke run.`,
   });
 }
 

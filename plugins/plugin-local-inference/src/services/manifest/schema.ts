@@ -30,7 +30,7 @@
 //   auto-updater walks.
 
 import type { LocalRuntimeKernel } from "@elizaos/shared";
-import { z } from "zod";
+import z from "zod";
 
 export const ELIZA_1_MANIFEST_SCHEMA_VERSION = "1" as const;
 export const ELIZA_1_MANIFEST_SCHEMA_URL =

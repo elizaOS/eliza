@@ -476,7 +476,7 @@ function resolveSectionSlot(
 }
 
 /**
- * Resolve flag-gated natural-language client shortcuts (e.g. "open settings",
+ * Resolve caller-enabled natural-language client shortcuts (e.g. "open settings",
  * "show me my calendar", "clear chat") into the same execution objects as
  * slash commands. Agent-targeted commands deliberately fall through to normal
  * chat; only deterministic navigate/client commands are eligible here.

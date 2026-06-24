@@ -1,8 +1,12 @@
+import {
+  readPhase2SmokeTestEnv,
+  TEST_ENV_NAMES,
+} from "../../../../../../../shared/src/test-env-config.ts";
 import { ElizaRuntimeApiClient } from "../bun/api-client.ts";
 import { serializeError } from "../bun/errors.ts";
 import { RuntimeLogBuffer } from "../bun/log-buffer.ts";
-import { ElizaRuntimeManager } from "../bun/runtime-manager.ts";
 import type { AgentMessageParams } from "../bun/protocol.ts";
+import { ElizaRuntimeManager } from "../bun/runtime-manager.ts";
 
 function writeJson(label: string, value: unknown): void {
   process.stdout.write(`${JSON.stringify({ label, value }, null, 2)}\n`);
@@ -34,6 +38,7 @@ const apiClient = new ElizaRuntimeApiClient({
   getAuthToken: () =>
     process.env.ELIZA_RUNTIME_API_TOKEN ?? process.env.ELIZA_API_TOKEN ?? null,
 });
+const phase2Env = readPhase2SmokeTestEnv(process.env);
 
 writeJson("initialStatus", manager.status());
 
@@ -60,7 +65,7 @@ await capture("memory.search", () =>
   apiClient.searchMemory({ query: "test", limit: 5 }),
 );
 
-if (process.env.ELIZA_PHASE2_SEND_TEST_MESSAGE === "1") {
+if (phase2Env.sendTestMessage) {
   const message: AgentMessageParams = {
     text: "Phase 2 ElizaLaunch API bridge smoke test. Reply briefly.",
   };
@@ -68,18 +73,18 @@ if (process.env.ELIZA_PHASE2_SEND_TEST_MESSAGE === "1") {
 } else {
   writeJson("agent.message", {
     ok: true,
-    skipped: "Set ELIZA_PHASE2_SEND_TEST_MESSAGE=1 to send a real message.",
+    skipped: `Set ${TEST_ENV_NAMES.phase2.sendTestMessage}=1 to send a real message.`,
   });
 }
 
 writeJson("logsTail", manager.logsTail(20));
 
-if (process.env.ELIZA_PHASE2_STOP_AFTER === "1") {
+if (phase2Env.stopAfter) {
   await capture("runtimeStop", () => manager.stop());
 } else {
   writeJson("runtimeStop", {
     ok: true,
-    skipped: "Set ELIZA_PHASE2_STOP_AFTER=1 to stop after the smoke run.",
+    skipped: `Set ${TEST_ENV_NAMES.phase2.stopAfter}=1 to stop after the smoke run.`,
   });
 }
 

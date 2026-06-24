@@ -106,7 +106,7 @@ class MMAUDataset:
         except ImportError as exc:
             raise RuntimeError(
                 "Hugging Face loading requires the optional 'datasets' package. "
-                "Install elizaos-mmau[hf] or pass --fixture."
+                "Install elizaos-mmau-audio[hf] or pass --fixture."
             ) from exc
 
         # Bounded benchmark cells should materialise the parquet shard instead

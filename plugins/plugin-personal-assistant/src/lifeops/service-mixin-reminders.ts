@@ -99,6 +99,7 @@ import {
   windowPolicyMatchesDefaults,
 } from "./defaults.js";
 import { materializeDefinitionOccurrences } from "./engine.js";
+import { REMINDER_DISPATCH_INSTRUCTIONS } from "./optimized-prompt-instructions.js";
 import { refreshLifeOpsRelativeTime } from "./relative-time.js";
 import {
   createLifeOpsActivitySignal,
@@ -210,6 +211,8 @@ import {
   runTelemetryRetention,
 } from "./telemetry-retention.js";
 import { addMinutes, getZonedDateParts } from "./time.js";
+
+export { REMINDER_DISPATCH_INSTRUCTIONS } from "./optimized-prompt-instructions.js";
 
 const LIFEOPS_SCHEDULE_DEVICE_KINDS = [
   "iphone",
@@ -546,21 +549,6 @@ function normalizeOptionalScheduleObservationSnapshot(
  *  runtime returns a transient send failure. Keeps the dispatcher from
  *  hammering a flaky connector while still retrying within the same turn. */
 const REMINDER_DELIVERY_RETRY_DELAY_MS = 2_000;
-
-const REMINDER_DISPATCH_INSTRUCTIONS = [
-  "Write a short reminder nudge in the assistant's voice.",
-  "This is a real follow-up or reminder delivery, not a system log.",
-  "",
-  "Rules:",
-  "- Return only the reminder text.",
-  "- Sound natural and in character.",
-  "- Do not start with 'Reminder' or 'Follow-up reminder'.",
-  "- Do not use ISO timestamps.",
-  "- Keep it concise: one or two short sentences.",
-  "- You may mention nearby reminders briefly if it helps.",
-  "- For escalation, sound a little firmer but still human.",
-  "- No markdown, bullets, quotes, labels, or emoji.",
-].join("\n");
 
 function isDeliveredReminderOutcome(
   outcome: LifeOpsReminderAttemptOutcome,

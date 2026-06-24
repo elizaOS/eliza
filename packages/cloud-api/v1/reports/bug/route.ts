@@ -1,3 +1,4 @@
+import { escapeHtml } from "@elizaos/cloud-shared/lib/utils/html";
 /**
  * POST /api/v1/reports/bug
  * Receives structured bug reports from clients (Agent) and forwards them
@@ -40,15 +41,6 @@ const bugReportSchema = z.object({
     })
     .optional(),
 });
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
 
 function section(title: string, content?: string) {
   if (!content) return "";

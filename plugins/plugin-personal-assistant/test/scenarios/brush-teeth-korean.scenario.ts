@@ -43,6 +43,9 @@ export default scenario({
       type: "definitionCountDelta",
       title: "Brush teeth",
       titleAliases: [
+        "양치",
+        "양치하기",
+        "양치 루틴",
         "Brush Teeth 8 + 9 Pm",
         "Brush teeth 8 + 9 pm",
         "Brush teeth 8 am & 9 pm",

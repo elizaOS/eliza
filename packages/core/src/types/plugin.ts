@@ -424,17 +424,7 @@ export interface PluginWidgetDeclaration {
 	/** Owning plugin ID. */
 	pluginId: string;
 	/** Where this widget renders. */
-	slot:
-		| "chat-sidebar"
-		| "chat-inline"
-		| "wallet"
-		| "browser"
-		| "heartbeats"
-		| "character"
-		| "settings"
-		| "nav-page"
-		| "automations"
-		| "home";
+	slot: "chat-sidebar" | "character" | "nav-page" | "home";
 	/** Human-readable label. */
 	label: string;
 	/** Lucide icon name. */
@@ -1082,8 +1072,8 @@ export interface Plugin {
 	providers?: Provider[];
 	/**
 	 * Pre-LLM action shortcuts (#8791): deterministic slash/`!` commands and
-	 * (flag-gated) natural-language phrases that resolve to a target before the
-	 * first model call. Registered into the runtime's `ShortcutRegistry`.
+	 * confidence-floored natural-language phrases that resolve to a target before
+	 * the first model call. Registered into the runtime's `ShortcutRegistry`.
 	 */
 	shortcuts?: ShortcutDefinition[];
 	evaluators?: RegisteredEvaluator[];

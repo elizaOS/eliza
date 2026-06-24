@@ -174,6 +174,56 @@ async function swipeLeft(locator) {
   await locator.page().mouse.move(endX, y, { steps: 8 });
   await locator.page().mouse.up();
 }
+async function swipeRight(locator) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("missing swipe target bounds");
+  const y = box.y + box.height * 0.45;
+  const startX = box.x + box.width * 0.22;
+  const endX = box.x + box.width * 0.78;
+  await locator.page().mouse.move(startX, y);
+  await locator.page().mouse.down();
+  await locator.page().mouse.move(endX, y, { steps: 8 });
+  await locator.page().mouse.up();
+}
+// Press a tile and PAN past the slop while HOLDING past the long-press window:
+// a real swipe-back that starts on a tile. It must NOT ghost-fire edit mode.
+async function longPressPan(page, tileTestId) {
+  const btn = page.getByTestId(tileTestId).locator("button").first();
+  const box = await btn.boundingBox();
+  if (!box) throw new Error(`missing tile bounds: ${tileTestId}`);
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx + 32, cy + 2, { steps: 4 }); // pan past the slop
+  await page.waitForTimeout(600); // hold past LONG_PRESS_MS (450) while panned
+  await page.mouse.up();
+}
+async function waitForSurfacePageSettled(p, pageName) {
+  await p.waitForFunction((expectedPage) => {
+    const surface = document.querySelector(
+      '[data-testid="home-springboard-surface"]',
+    );
+    const rail = document.querySelector(
+      '[data-testid="home-springboard-rail"]',
+    );
+    if (!(surface instanceof HTMLElement) || !(rail instanceof HTMLElement)) {
+      return false;
+    }
+    if (surface.getAttribute("data-page") !== expectedPage) return false;
+    const surfaceRect = surface.getBoundingClientRect();
+    const railRect = rail.getBoundingClientRect();
+    const expectedLeft =
+      expectedPage === "springboard"
+        ? surfaceRect.left - surfaceRect.width
+        : surfaceRect.left;
+    const railSettled = Math.abs(railRect.left - expectedLeft) < 1;
+    const transitionsDone = rail
+      .getAnimations()
+      .every((animation) => animation.playState === "finished");
+    return railSettled && transitionsDone;
+  }, pageName);
+}
 try {
   // Mobile (Pixel-ish) — the primary target.
   const mobileContext = await browser.newContext({
@@ -286,12 +336,7 @@ try {
   );
 
   await swipeLeft(mobile.getByTestId("home-springboard-home-page"));
-  await mobile.waitForFunction(
-    () =>
-      document
-        .querySelector('[data-testid="home-springboard-surface"]')
-        ?.getAttribute("data-page") === "springboard",
-  );
+  await waitForSurfacePageSettled(mobile, "springboard");
   assert(
     await mobile.getByTestId("springboard-tile-settings").isVisible(),
     "Settings renders inside Springboard favorites",
@@ -305,6 +350,96 @@ try {
     "Views self-link is absent from Springboard",
   );
   await snap(mobile, "mobile-springboard");
+
+  // ── ONE page indicator — the doubled-dots regression (#4) ────────────────
+  // The springboard has 2 pages here, so the OLD bug rendered the inner
+  // Springboard dot strip stacked under the rail's home/springboard dots. The
+  // rail now owns the single indicator; the inner strip must be gone.
+  assert(
+    (await mobile.locator('[data-testid="home-springboard-indicator"]').count()) ===
+      1,
+    "exactly one page-indicator strip is rendered",
+  );
+  assert(
+    (await mobile.locator('[aria-label^="Page "]').count()) === 0,
+    "the inner Springboard dot strip is NOT stacked under the rail dots",
+  );
+  assert(
+    (await mobile
+      .locator('[data-testid="home-springboard-indicator"] button')
+      .count()) === 3,
+    "the single indicator shows Home + 2 springboard-page dots",
+  );
+
+  // ── Distinct per-view icons — the placeholder-icon regression (#5) ───────
+  const glyphClasses = await mobile.$$eval("[data-view-visual] svg", (svgs) =>
+    Array.from(
+      new Set(
+        svgs
+          .map((s) =>
+            Array.from(s.classList).find((c) => c.startsWith("lucide-")),
+          )
+          .filter(Boolean),
+      ),
+    ),
+  );
+  assert(
+    glyphClasses.length >= 5,
+    `springboard tiles render varied glyphs, not one placeholder (${glyphClasses.length} distinct)`,
+  );
+  assert(
+    !(glyphClasses.length === 1 && glyphClasses[0] === "lucide-layout-grid"),
+    "tiles are not all the generic layout-grid placeholder",
+  );
+
+  // ── A swipe that starts ON a tile never ghost-fires edit mode (#3) ───────
+  await longPressPan(mobile, "springboard-tile-app0");
+  assert(
+    (await mobile.getByRole("button", { name: "Done", exact: true }).count()) ===
+      0,
+    "a pan/swipe that starts on a tile does NOT enter edit mode",
+  );
+
+  // ── Edit → swipe back → HOME, with edit mode RESET (#3) ──────────────────
+  await mobile.getByRole("button", { name: "Edit", exact: true }).click();
+  await mobile.waitForTimeout(150);
+  assert(
+    (await mobile.getByRole("button", { name: "Done", exact: true }).count()) ===
+      1,
+    "the Edit button enters edit mode (Done shown)",
+  );
+  await snap(mobile, "mobile-springboard-edit");
+  await swipeRight(mobile.getByTestId("home-springboard-springboard-page"));
+  await waitForSurfacePageSettled(mobile, "home");
+  assert(
+    (await mobile
+      .getByTestId("home-springboard-surface")
+      .getAttribute("data-page")) === "home",
+    "swipe-back FROM edit mode returns HOME (never stranded in jiggle mode)",
+  );
+  // Re-open: a clean launch view, NOT stale edit mode.
+  await swipeLeft(mobile.getByTestId("home-springboard-home-page"));
+  await waitForSurfacePageSettled(mobile, "springboard");
+  assert(
+    (await mobile.getByRole("button", { name: "Edit", exact: true }).count()) ===
+      1 &&
+      (await mobile
+        .getByRole("button", { name: "Done", exact: true })
+        .count()) === 0,
+    "re-opening the springboard is a clean launch view (edit mode auto-reset)",
+  );
+
+  // ── Tapping a rail dot jumps directly to that page ───────────────────────
+  await mobile.getByLabel("Apps page 2", { exact: true }).click();
+  await mobile.waitForTimeout(200);
+  assert(
+    (await mobile
+      .getByLabel("Apps page 2", { exact: true })
+      .getAttribute("aria-current")) === "true",
+    "tapping the page-2 dot jumps to springboard page 2",
+  );
+  await snap(mobile, "mobile-springboard-page2");
+
   // The home is a clean, action-driven dashboard: no Edit chrome, no "Pinned"
   // label (edit-dashboard is an agent action, not a button).
   assert(
@@ -343,12 +478,7 @@ try {
   );
   await snap(desktop, "desktop-home");
   await swipeLeft(desktop.getByTestId("home-springboard-home-page"));
-  await desktop.waitForFunction(
-    () =>
-      document
-        .querySelector('[data-testid="home-springboard-surface"]')
-        ?.getAttribute("data-page") === "springboard",
-  );
+  await waitForSurfacePageSettled(desktop, "springboard");
   await snap(desktop, "desktop-springboard");
   await desktop.close();
 } finally {

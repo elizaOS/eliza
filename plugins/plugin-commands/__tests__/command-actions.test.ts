@@ -269,7 +269,7 @@ describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
 	it("every shortcut targets a registered command action", () => {
 		const actionNames = new Set(commandActions.map((a) => a.name));
 		expect(commandShortcuts.length).toBeGreaterThan(0);
-		// commandShortcuts = explicit slash shortcuts + flag-gated natural ones.
+		// commandShortcuts = explicit slash shortcuts + narrow natural ones.
 		expect(commandShortcuts).toEqual([
 			...explicitCommandShortcuts,
 			...naturalShortcuts,
@@ -293,7 +293,7 @@ describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
 		}
 	});
 
-	it("natural shortcuts carry no slash aliases (flag-gated, anchored patterns)", () => {
+	it("natural shortcuts carry no slash aliases (anchored patterns)", () => {
 		for (const shortcut of naturalShortcuts) {
 			expect(shortcut.kind).toBe("natural");
 			expect(shortcut.aliases ?? []).toHaveLength(0);

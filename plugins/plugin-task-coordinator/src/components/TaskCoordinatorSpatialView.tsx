@@ -187,7 +187,7 @@ function TaskList({
   const activeCount = threads.filter((t) => t.status === "active").length;
   const doneCount = threads.filter((t) => t.status === "done").length;
   return (
-    <Card title="Coding Tasks" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center" wrap>
         <Text style="caption" tone="muted" grow={1}>
           {loading ? "loading" : `${threads.length} total`}
@@ -239,7 +239,7 @@ function TaskList({
       <Divider label="tasks" />
       {threads.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          {loading ? "Loading tasks…" : "No coding tasks yet"}
+          {loading ? "Loading" : "None"}
         </Text>
       ) : (
         <List gap={1}>
@@ -310,7 +310,7 @@ function TaskDetail({
   onAction?: (action: string) => void;
 }) {
   return (
-    <Card title="Task" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Button
           variant="ghost"
@@ -397,7 +397,7 @@ function SessionsSection({
       <Divider label={`sessions (${sessions.length})`} />
       {sessions.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No sessions recorded
+          None
         </Text>
       ) : (
         <List gap={0}>

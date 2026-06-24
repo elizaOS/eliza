@@ -14,11 +14,7 @@ import { getBaseURL, getEmbeddingModel } from "../utils/config";
 import { emitModelUsed, estimateEmbeddingUsage, normalizeTokenUsage } from "../utils/modelUsage";
 import { ensureModelAvailable } from "./availability";
 
-function createInitProbeVector(): number[] {
-  const vector = Array(1536).fill(0);
-  vector[0] = 0.1;
-  return vector;
-}
+const INIT_PROBE_TEXT = "dimension probe";
 
 function extractText(params: TextEmbeddingParams | string | null): string | null {
   if (params === null) {
@@ -38,12 +34,9 @@ export async function handleTextEmbedding(
   params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
   const text = extractText(params);
-  if (text === null) {
-    logger.debug("[Ollama] Creating test embedding for initialization");
-    return createInitProbeVector();
-  }
+  const isInitProbe = text === null;
 
-  if (!text.trim()) {
+  if (!isInitProbe && !text.trim()) {
     throw new Error("Cannot generate embedding for empty text");
   }
 
@@ -61,12 +54,12 @@ export async function handleTextEmbedding(
 
     // Truncate to stay within embedding model token limits (~4 chars per token)
     const maxChars = 8_000 * 4;
-    let embeddingText = text;
-    if (text.length > maxChars) {
+    let embeddingText = isInitProbe ? INIT_PROBE_TEXT : text;
+    if (embeddingText.length > maxChars) {
       logger.warn(
-        `[Ollama] Embedding input too long (~${Math.ceil(text.length / 4)} tokens), truncating to ~8000 tokens`
+        `[Ollama] Embedding input too long (~${Math.ceil(embeddingText.length / 4)} tokens), truncating to ~8000 tokens`
       );
-      embeddingText = text.slice(0, maxChars);
+      embeddingText = embeddingText.slice(0, maxChars);
     }
 
     const embedParams = {
@@ -75,12 +68,14 @@ export async function handleTextEmbedding(
     };
 
     const { embedding, usage } = await embed(embedParams);
-    emitModelUsed(
-      runtime,
-      ModelType.TEXT_EMBEDDING,
-      modelName,
-      normalizeTokenUsage(usage) ?? estimateEmbeddingUsage(embeddingText)
-    );
+    if (!isInitProbe) {
+      emitModelUsed(
+        runtime,
+        ModelType.TEXT_EMBEDDING,
+        modelName,
+        normalizeTokenUsage(usage) ?? estimateEmbeddingUsage(embeddingText)
+      );
+    }
     return embedding;
   } catch (error) {
     logger.error({ error }, "Error in TEXT_EMBEDDING model");

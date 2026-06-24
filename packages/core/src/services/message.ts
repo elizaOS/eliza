@@ -78,6 +78,7 @@ import {
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
 import {
+	extractJsonObjects,
 	parseJsonObject,
 	stripJsonStructuralJunkReply,
 } from "../runtime/json-output";
@@ -3277,17 +3278,74 @@ export async function renderMessageHandlerStablePrefix(
 		.join("\n\n");
 }
 
+function canonicalJsonValue(value: unknown): string {
+	if (Array.isArray(value)) {
+		return `[${value.map(canonicalJsonValue).join(",")}]`;
+	}
+	if (value && typeof value === "object") {
+		const entries = Object.entries(value as Record<string, unknown>).sort(
+			([left], [right]) => left.localeCompare(right),
+		);
+		return `{${entries
+			.map(
+				([key, entry]) => `${JSON.stringify(key)}:${canonicalJsonValue(entry)}`,
+			)
+			.join(",")}}`;
+	}
+	return JSON.stringify(value) ?? "undefined";
+}
+
+function parseToolArgumentsString(
+	value: string,
+): Record<string, unknown> | null {
+	const trimmed = value.trim();
+	if (!trimmed) return null;
+
+	try {
+		const parsed: unknown = JSON.parse(trimmed);
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? (parsed as Record<string, unknown>)
+			: null;
+	} catch {
+		// Continue to the duplicated-streaming recovery below.
+	}
+
+	const objects = extractJsonObjects(trimmed);
+	if (objects.length === 0) return null;
+
+	let remainder = trimmed;
+	for (const objectText of objects) {
+		remainder = remainder.replace(objectText, "");
+	}
+	if (remainder.replace(/\0/g, "").trim().length > 0) {
+		return null;
+	}
+
+	const parsedObjects = objects.map((objectText) => {
+		try {
+			const parsed: unknown = JSON.parse(objectText);
+			return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+				? (parsed as Record<string, unknown>)
+				: null;
+		} catch {
+			return null;
+		}
+	});
+	if (parsedObjects.some((parsed) => !parsed)) {
+		return null;
+	}
+
+	const [first, ...rest] = parsedObjects as Record<string, unknown>[];
+	const canonical = canonicalJsonValue(first);
+	if (rest.some((entry) => canonicalJsonValue(entry) !== canonical)) {
+		return null;
+	}
+	return first;
+}
+
 function parseToolArguments(value: unknown): Record<string, unknown> | null {
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		// String args are usually one JSON object, but a weak streaming model
-		// (cerebras gpt-oss double-emits the tool call on one delta index) can
-		// produce two concatenated objects (`{…}{…}`) that fail a plain
-		// JSON.parse. parseJsonObject recovers the FIRST balanced object, so the
-		// doubled emit parses on attempt 1 instead of failing as a "malformed
-		// HANDLE_RESPONSE tool call" and forcing the Stage-1 retry+planner path.
-		return typeof value === "string"
-			? parseJsonObject<Record<string, unknown>>(value)
-			: null;
+		return typeof value === "string" ? parseToolArgumentsString(value) : null;
 	}
 	return value as Record<string, unknown>;
 }
@@ -4283,14 +4341,13 @@ function synthesizeSimpleReplyFromPlainText(
 function isEmptyStage1Result(raw: string | GenerateTextResult): boolean {
 	if (typeof raw === "string") return raw.trim().length === 0;
 	if (!raw || typeof raw !== "object") return true;
-	const obj = raw as unknown as Record<string, unknown>;
-	const text = typeof obj.text === "string" ? obj.text.trim() : "";
+	// `raw` is narrowed to GenerateTextResult here; read its typed fields
+	// directly (the defensive `typeof` guards still cover non-conforming
+	// provider output) instead of laundering it through `as unknown as`.
+	const text = typeof raw.text === "string" ? raw.text.trim() : "";
 	if (text.length > 0) return false;
-	const toolCalls = obj.toolCalls;
-	if (Array.isArray(toolCalls) && toolCalls.length > 0) return false;
-	const contentText = extractGenerateTextContentText(
-		raw as unknown as GenerateTextResult,
-	);
+	if (Array.isArray(raw.toolCalls) && raw.toolCalls.length > 0) return false;
+	const contentText = extractGenerateTextContentText(raw);
 	if (contentText.trim().length > 0) return false;
 	return true;
 }
@@ -4308,9 +4365,6 @@ export function getStage1RetryReason(
 		return null;
 	}
 	if (extractHandleResponseToolArguments(raw)) {
-		return null;
-	}
-	if (parseMessageHandlerOutput(getV5ModelText(raw))) {
 		return null;
 	}
 	return "malformed HANDLE_RESPONSE tool call";
@@ -5110,8 +5164,8 @@ function collectPreviousActionResults(
  *
  * Matches the user's text against the runtime's `ShortcutRegistry` BEFORE any
  * model call. Explicit slash/`!` commands are always eligible (this is what
- * makes slash commands deterministic per #8790); natural-language shortcuts are
- * gated behind `ELIZA_SHORTCUTS_NL=1`. On a confident `action`-target match the
+ * makes slash commands deterministic per #8790); natural-language shortcuts use
+ * narrow/confidence-floored patterns. On a confident `action`-target match the
  * matched action runs and its reply is returned as a `direct_reply` — emitting
  * ZERO `RESPONSE_HANDLER` tokens. Navigate/client targets are resolved on the
  * client (the slash menu already runs them locally) so the gate ignores them.
@@ -5137,7 +5191,7 @@ export async function runShortcutGate(args: {
 	const authorized = args.senderRole === "OWNER" || args.senderRole === "ADMIN";
 	const match = registry.match(text, {
 		actions: args.runtime.actions.map((action) => action.name),
-		allowNatural: process.env.ELIZA_SHORTCUTS_NL === "1",
+		allowNatural: true,
 		isAuthorized: authorized,
 		isElevated: args.senderRole === "OWNER",
 	});
@@ -7170,18 +7224,19 @@ function findDirectOwnedActionSuggestion(
 	messageText: string,
 ): ActionOwnershipSuggestion | null {
 	if (looksLikeLocalShellRequest(messageText)) {
-		const shellName = findAvailableActionName(runtime.actions ?? [], [
+		const shellAction = findRuntimeActionByNames(runtime, [
 			"SHELL",
 			"RUN_IN_TERMINAL",
 			"RUN_COMMAND",
 			"EXECUTE_COMMAND",
 			"TERMINAL",
+			"SHELL",
 			"RUN_SHELL",
 			"EXEC",
 		]);
-		if (shellName) {
+		if (shellAction) {
 			return {
-				actionName: shellName,
+				actionName: shellAction.name,
 				score: 100,
 				secondBestScore: 0,
 				reasons: ["direct:local-shell-check"],
@@ -7190,10 +7245,19 @@ function findDirectOwnedActionSuggestion(
 	}
 
 	if (looksLikeWebSearchRequest(messageText)) {
-		const searchName = findWebLookupActionName(runtime.actions ?? []);
-		if (searchName) {
+		const searchAction = findRuntimeActionByNames(runtime, [
+			"SEARCH",
+			"WEB_SEARCH",
+			"SEARCH_WEB",
+			"BRAVE_SEARCH",
+			"INTERNET_SEARCH",
+			"SEARCH_INTERNET",
+			"LOOKUP_WEB",
+			"GOOGLE",
+		]);
+		if (searchAction) {
 			return {
-				actionName: searchName,
+				actionName: searchAction.name,
 				score: 100,
 				secondBestScore: 0,
 				reasons: ["direct:web-search"],
@@ -7222,6 +7286,27 @@ function findDirectOwnedActionSuggestion(
 	}
 
 	return null;
+}
+
+function findRuntimeActionByNames(
+	runtime: Pick<IAgentRuntime, "actions">,
+	names: string[],
+): Action | undefined {
+	// Resolve in `names` PRIORITY order, not action-registration order, so the
+	// leading preference wins (mirrors findAvailableActionName in
+	// direct-action-heuristics.ts).
+	const actions = runtime.actions ?? [];
+	for (const want of names) {
+		const wanted = normalizeActionIdentifier(want);
+		const match = actions.find((action) => {
+			const candidates = [action.name, ...(action.similes ?? [])]
+				.filter((value): value is string => typeof value === "string")
+				.map(normalizeActionIdentifier);
+			return candidates.includes(wanted);
+		});
+		if (match) return match;
+	}
+	return undefined;
 }
 
 function looksLikeActionExplanationRequest(text: string): boolean {
@@ -9778,7 +9863,7 @@ export class DefaultMessageService implements IMessageService {
 
 		// #8791: pre-LLM action shortcut gate runs FIRST — before any direct hook,
 		// planner, or model call. An explicit slash/`!` command (always-on) or a
-		// flag-gated natural-language shortcut resolves to a deterministic action
+		// confident natural-language shortcut resolves to a deterministic action
 		// reply with zero inference. Placed here (ahead of the LifeOps/workflow
 		// direct hooks and the conditional v5 stage) so a slash command can never
 		// be pre-empted by another handler.

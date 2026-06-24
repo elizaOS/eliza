@@ -50,6 +50,11 @@ export default scenario({
     {
       type: "goalCountDelta",
       title: "Stabilize Sleep Schedule",
+      titleAliases: [
+        "Stabiliser mon rythme de sommeil",
+        "Stabiliser le rythme de sommeil",
+        "Objectif sommeil",
+      ],
       delta: 1,
       expectedStatus: "active",
       expectedReviewState: "idle",

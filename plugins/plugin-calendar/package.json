@@ -96,6 +96,7 @@
     "vite": "^8.0.0"
   },
   "peerDependencies": {
+    "@elizaos/plugin-sql": "workspace:*",
     "react": "*",
     "react-dom": "*"
   },

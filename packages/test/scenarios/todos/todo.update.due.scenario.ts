@@ -1,5 +1,9 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
+function localDateKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
 export default scenario({
   lane: "live-only",
   id: "todo.update.due",
@@ -98,9 +102,11 @@ export default scenario({
         if (!Number.isFinite(scenarioNowMs)) {
           return `expected scenario clock to be available; got ${String(ctx.now ?? "(missing)")}`;
         }
-        const seededDueAtMs = scenarioNowMs + 2 * 60 * 60_000;
-        if (dueAtMs <= seededDueAtMs) {
-          return `expected "Renew passport" dueAt to move after seeded due time ${new Date(seededDueAtMs).toISOString()}; got ${cadence.dueAt}`;
+        const dueAt = new Date(dueAtMs);
+        const tomorrow = new Date(scenarioNowMs);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        if (localDateKey(dueAt) !== localDateKey(tomorrow)) {
+          return `expected "Renew passport" dueAt to move to tomorrow (${localDateKey(tomorrow)}); got ${cadence.dueAt}`;
         }
       },
     },

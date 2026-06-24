@@ -415,9 +415,7 @@ function DayColumnHeader({ day, isFirst }: { day: Date; isFirst: boolean }) {
       }`}
       style={{ height: `${HEADER_ROW_HEIGHT_REM}rem` }}
     >
-      <span
-        className={`uppercase tracking-wide ${isToday ? "text-accent" : "text-muted"}`}
-      >
+      <span className={isToday ? "text-accent" : "text-muted"}>
         {formatWeekdayShort(day)}
       </span>
       <span
@@ -461,7 +459,7 @@ function AllDayBandCell({
               mouseEvent.preventDefault();
               onSelectEvent(event);
             }}
-            className="block w-full truncate rounded-md px-1.5 py-0.5 text-left text-[10px] font-medium"
+            className="block w-full truncate px-1.5 py-0.5 text-left text-[10px] font-medium"
             style={{
               background: selected ? color.bg : color.softBg,
               color: selected ? color.text : color.softText,
@@ -573,7 +571,7 @@ function DayColumnGrid({
               onSelectEvent(event);
             }}
             aria-pressed={isSelected}
-            className={`group absolute overflow-hidden rounded-md border px-1.5 py-1 text-left transition-transform ${isSelected ? "ring-2 ring-accent z-10" : "hover:translate-y-[-1px]"}`}
+            className={`group absolute overflow-hidden border px-1.5 py-1 text-left transition-transform ${isSelected ? "ring-2 ring-accent z-10" : "hover:translate-y-[-1px]"}`}
             style={{
               top: `calc(${position.topPct}% + 0.1rem)`,
               height: `calc(${position.heightPct}% - 0.2rem)`,
@@ -646,7 +644,7 @@ function TimeGrid({
   const gridTemplateColumns = `${RAIL_WIDTH_REM}rem repeat(${days.length}, minmax(0, 1fr))`;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border/12 bg-bg/20">
+    <div className="overflow-hidden">
       {/* Header row: empty cell above rail, then weekday + date per column */}
       <div
         className="grid border-b border-border/12"
@@ -670,7 +668,7 @@ function TimeGrid({
         >
           <div
             aria-hidden
-            className="flex items-center justify-end px-2 text-[10px] font-semibold uppercase tracking-wide text-muted/70"
+            className="flex items-center justify-end px-2 text-[10px] font-medium text-muted/70"
           >
             all-day
           </div>
@@ -695,7 +693,7 @@ function TimeGrid({
           {hours.map(({ hour, label }) => (
             <div
               key={hour}
-              className="absolute right-2 text-[10px] font-medium uppercase tracking-wide text-muted/70"
+              className="absolute right-2 text-[10px] font-medium text-muted/70"
               style={{
                 top: `${(hour - DAY_START_HOUR) * HOUR_HEIGHT_PX - 6}px`,
               }}
@@ -767,8 +765,8 @@ function MonthGrid({
   );
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border/12 bg-bg/20">
-      <div className="grid grid-cols-7 border-b border-border/12 bg-bg-muted/20 text-[10px] font-semibold uppercase tracking-wide text-muted">
+    <div className="overflow-hidden">
+      <div className="grid grid-cols-7 border-b border-border/12 text-[10px] font-medium text-muted">
         {weekdayLabels.map((label) => (
           <div key={label} className="px-2 py-1.5 text-center">
             {label}
@@ -784,7 +782,7 @@ function MonthGrid({
           return (
             <div
               key={key}
-              className={`flex min-h-24 flex-col gap-1 bg-bg/40 p-1.5 text-left ${
+              className={`flex min-h-24 flex-col gap-1 bg-bg p-1.5 text-left ${
                 inMonth ? "" : "opacity-55"
               }`}
             >
@@ -812,7 +810,7 @@ function MonthGrid({
                         mouseEvent.preventDefault();
                         onSelectEvent(event);
                       }}
-                      className="flex min-w-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-left text-[10px] font-medium"
+                      className="flex min-w-0 items-center gap-1 px-1.5 py-0.5 text-left text-[10px] font-medium"
                       style={{
                         background: isSelected ? color.bg : color.softBg,
                         color: isSelected ? color.text : color.softText,
@@ -836,7 +834,7 @@ function MonthGrid({
                     <PopoverTrigger asChild>
                       <button
                         type="button"
-                        className="rounded-sm px-1 text-left text-[10px] font-medium text-muted hover:bg-bg-hover/40 hover:text-txt"
+                        className="px-1 text-left text-[10px] font-medium text-muted hover:text-txt"
                       >
                         +{dayEvents.length - 3} more
                       </button>
@@ -846,7 +844,7 @@ function MonthGrid({
                       className="w-64 p-0"
                       data-testid="lifeops-calendar-day-overflow"
                     >
-                      <div className="border-b border-border/12 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                      <div className="px-3 py-2 text-[11px] font-medium text-muted">
                         {formatAgendaDayLabel(day)}
                       </div>
                       <div className="max-h-72 overflow-y-auto py-1">
@@ -975,7 +973,7 @@ function AgendaView({
   return (
     <div className="space-y-5">
       {sections.map((section) => (
-        <div key={section.key} className="border-t border-border/12 pt-3">
+        <div key={section.key} className="pt-3">
           <div className="px-2 pb-1 text-xs font-semibold text-muted">
             {formatAgendaDayLabel(section.day)}
           </div>
@@ -1162,11 +1160,11 @@ export function CalendarSection({
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="flex overflow-hidden rounded-xl border border-border/16 bg-card/22">
+            <div className="flex overflow-hidden">
               <button
                 ref={prevNav.ref}
                 type="button"
-                className="flex h-8 w-8 items-center justify-center text-muted hover:bg-bg-muted/40 hover:text-txt"
+                className="flex h-8 w-8 items-center justify-center text-muted hover:text-txt"
                 aria-label={t("lifeopsCalendar.previous", {
                   defaultValue: "Previous",
                 })}
@@ -1178,7 +1176,7 @@ export function CalendarSection({
               <button
                 ref={todayNav.ref}
                 type="button"
-                className="h-8 px-2.5 text-xs font-medium text-txt hover:bg-bg-muted/40"
+                className="h-8 px-2.5 text-xs font-medium text-txt hover:text-accent"
                 onClick={calendar.goToToday}
                 {...todayNav.agentProps}
               >
@@ -1187,7 +1185,7 @@ export function CalendarSection({
               <button
                 ref={nextNav.ref}
                 type="button"
-                className="flex h-8 w-8 items-center justify-center text-muted hover:bg-bg-muted/40 hover:text-txt"
+                className="flex h-8 w-8 items-center justify-center text-muted hover:text-txt"
                 aria-label={t("lifeopsCalendar.next", {
                   defaultValue: "Next",
                 })}
@@ -1197,7 +1195,7 @@ export function CalendarSection({
                 <ChevronRight className="h-4 w-4" aria-hidden />
               </button>
             </div>
-            <h2 className="min-w-0 text-sm font-semibold tracking-tight text-txt sm:text-base">
+            <h2 className="min-w-0 text-sm font-semibold text-txt sm:text-base">
               {rangeLabel}
             </h2>
           </div>
@@ -1210,14 +1208,14 @@ export function CalendarSection({
               value={calendar.viewMode}
               onValueChange={calendar.setViewMode}
               items={VIEW_ITEMS}
-              className="w-full border-border/24 bg-card/24 p-0.5"
+              className="w-full border-0 bg-transparent p-0.5"
               buttonClassName="min-h-8 flex-1 px-3 py-1 text-xs"
               {...viewMode.agentProps}
             />
             <Button
               ref={newEvent.ref}
               size="sm"
-              className="h-8 shrink-0 gap-1 rounded-xl px-3 text-xs font-semibold"
+              className="h-8 shrink-0 gap-1 px-2 text-xs font-semibold"
               onClick={() => {
                 setCreateDefaultDate(new Date(calendar.windowStart));
                 setCreateOpen(true);
@@ -1242,12 +1240,8 @@ export function CalendarSection({
 
         {calendar.error ? (
           <div
-            className="rounded-2xl border px-3 py-2 text-xs"
+            className="px-1 py-1 text-xs"
             style={{
-              borderColor:
-                "color-mix(in srgb, var(--danger, #e5484d) 30%, transparent)",
-              background:
-                "color-mix(in srgb, var(--danger, #e5484d) 10%, transparent)",
               color: "color-mix(in srgb, var(--danger, #e5484d) 70%, white)",
             }}
           >
@@ -1259,7 +1253,7 @@ export function CalendarSection({
           <CalendarStatusIcon
             loading
             label={t("lifeopsCalendar.loading", {
-              defaultValue: "Calendar loading",
+              defaultValue: "Loading",
             })}
           />
         ) : compactLayout ? (
@@ -1269,7 +1263,7 @@ export function CalendarSection({
             selectedEventId={selectedEventId}
             onSelectEvent={handleSelectEvent}
             emptyLabel={t("lifeopsCalendar.empty", {
-              defaultValue: "Calendar clear",
+              defaultValue: "Clear",
             })}
           />
         ) : calendar.viewMode === "month" ? (

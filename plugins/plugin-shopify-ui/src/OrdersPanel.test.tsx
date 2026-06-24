@@ -200,7 +200,7 @@ describe("OrdersPanel", () => {
         onStatusFilterChange: vi.fn(),
       }),
     );
-    expect(screen.getByText("No orders found.")).toBeTruthy();
+    expect(screen.getByText("None")).toBeTruthy();
 
     rerender(
       React.createElement(OrdersPanel, {
@@ -212,7 +212,7 @@ describe("OrdersPanel", () => {
         onStatusFilterChange: vi.fn(),
       }),
     );
-    expect(screen.getByText("No unfulfilled orders.")).toBeTruthy();
+    expect(screen.getByText("None")).toBeTruthy();
 
     rerender(
       React.createElement(OrdersPanel, {
@@ -224,6 +224,6 @@ describe("OrdersPanel", () => {
         onStatusFilterChange: vi.fn(),
       }),
     );
-    expect(screen.getByText("No fulfilled orders.")).toBeTruthy();
+    expect(screen.getByText("None")).toBeTruthy();
   });
 });

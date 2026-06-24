@@ -1,7 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-const SEEDED_PRIORITY = 4;
-const LOW_PRIORITY_CEILING = 2;
+const SEEDED_PRIORITY = 2;
+const LOW_PRIORITY_FLOOR = 4;
 
 export default scenario({
   lane: "live-only",
@@ -85,8 +85,8 @@ export default scenario({
         }
         const definition = updated.definition as Record<string, unknown>;
         const priority = definition.priority;
-        if (typeof priority !== "number" || priority > LOW_PRIORITY_CEILING) {
-          return `expected "Reorganize closet" priority to be lowered from ${SEEDED_PRIORITY} to ${LOW_PRIORITY_CEILING} or below; got ${String(priority ?? "(missing)")}`;
+        if (typeof priority !== "number" || priority < LOW_PRIORITY_FLOOR) {
+          return `expected "Reorganize closet" priority to be lowered from ${SEEDED_PRIORITY} to ${LOW_PRIORITY_FLOOR} or higher; got ${String(priority ?? "(missing)")}`;
         }
       },
     },

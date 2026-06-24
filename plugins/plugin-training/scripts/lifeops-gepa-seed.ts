@@ -7,11 +7,12 @@
  * carries a small, hand-curated seed dataset so the GEPA loop can run before
  * any trajectories have been captured. It reuses the real building blocks:
  *   - the GEPA optimizer (`runGepa`) + LifeOps scorer (`scoreLifeOpsTask`),
- *   - the existing Cerebras gpt-oss-120b client (`getTrainingUseModelAdapter`),
+ *   - plugin-training's Cerebras client (`getTrainingUseModelAdapter`),
  *   - the standard optimized-prompt store (`OptimizedPromptService.setPrompt`),
  *     so the artifact auto-loads at boot.
  *
- * It prints the measured before/after score and persists the optimized prompt.
+ * It prints the measured before/after score and persists the optimized prompt
+ * only when `--apply` is passed and the optimized prompt beats the baseline.
  *
  *   TRAIN_MODEL_PROVIDER=cerebras CEREBRAS_API_KEY=... \
  *     bun run --cwd plugins/plugin-training scripts/lifeops-gepa-seed.ts \
@@ -20,134 +21,450 @@
  * Without `--apply` it runs the optimization and reports metrics but does not
  * persist (dry run).
  */
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import {
   type OptimizedPromptArtifact,
   OptimizedPromptService,
   type OptimizedPromptTask,
 } from "@elizaos/core";
-// Use the in-package training model client. plugin-training ships its own
-// Cerebras/Anthropic adapter precisely so scripts here never import across
-// another package's `test/` boundary (see src/core/cerebras-eval-model.ts).
+import { CALENDAR_PLAN_INSTRUCTIONS } from "../../plugin-calendar/src/actions/optimized-prompt-instructions.ts";
+import { GMAIL_PLAN_INSTRUCTIONS } from "../../plugin-personal-assistant/src/lifeops/optimized-prompt-instructions.ts";
 import { getTrainingUseModelAdapter } from "../src/core/cerebras-eval-model.ts";
 import {
   createPromptScorer,
   createRuntimeAdapter,
   type OptimizationExample,
+  type OptimizerResult,
   runGepa,
   scoreLifeOpsTask,
 } from "../src/optimizers/index.ts";
 
-interface SeedTask {
+const DEFAULT_GENERATIONS = 2;
+const DEFAULT_POPULATION = 4;
+const MAX_GENERATIONS = 20;
+const MAX_POPULATION = 50;
+const MIN_PERSIST_DELTA = 0.0001;
+
+export interface SeedTask {
   task: OptimizedPromptTask;
   baseline: string;
   dataset: OptimizationExample[];
 }
 
-// The optimized `calendar_extract` prompt AUTO-LOADS into the live calendar
-// planner (plugin-calendar calendar-handler.ts → resolveOptimizedPromptForRuntime
-// (runtime, "calendar_extract", CALENDAR_PLAN_INSTRUCTIONS)), whose output is
-// parsed into a CalendarLlmPlan: { subaction, shouldAct, response, queries,
-// title, tripLocation, timeMin, timeMax, windowLabel }. The seed dataset MUST
-// therefore optimize for that PLAN shape — not a free-form event record — or an
-// --apply'd artifact would emit fields the planner cannot parse and break it.
-//
-// Scoring (scoreStructuredFields) credits the keys present in expectedOutput.
-// We score the deterministic, language-independent ROUTING decision the planner
-// most needs to get right — `subaction` + `shouldAct` — and deliberately omit
-// fields that aren't deterministic from the input alone (timeMin/timeMax need
-// the runtime's date anchors; queries/windowLabel are free-form).
-const CALENDAR_PLAN_FIELDS = [
-  "subaction (one of: feed, next_event, search_events, create_event, update_event, delete_event, trip_window; or null for reply-only)",
-  "shouldAct (boolean; false when the request is too vague to act on)",
-  "response (short natural reply when shouldAct is false, else null)",
-  "queries (array of up to 3 search strings)",
-  "title (optional event title)",
-  "tripLocation (optional place for trip_window)",
-  "timeMin / timeMax (optional ISO 8601 window)",
-  "windowLabel (optional natural-language window label)",
-].join("; ");
+interface CalendarPlannerInputArgs {
+  currentMessage: string;
+  intent?: string;
+  recentConversation?: string;
+}
 
-const SEED_TASKS: Record<string, SeedTask> = {
-  // calendar_extract — natural-language request → calendar PLAN (CalendarLlmPlan).
-  // Examples cover the full subaction taxonomy + the shouldAct=false clarify
-  // case, across languages. Scored on subaction + shouldAct.
+function calendarPlannerInput(args: CalendarPlannerInputArgs): string {
+  const intent = args.intent ?? args.currentMessage;
+  return [
+    "Current timezone: America/Los_Angeles",
+    "LOCAL DATE ANCHORS (authoritative - IGNORE UTC day for date arithmetic): yesterday = 2026-06-23, today = 2026-06-24, tomorrow = 2026-06-25.",
+    "Current local datetime: Wednesday, June 24, 2026 at 9:00:00 AM PDT",
+    "Current ISO datetime (informational only - do NOT use for 'today/tomorrow/yesterday'): 2026-06-24T16:00:00.000Z",
+    "When the user says 'today', 'tomorrow', 'yesterday', or similar, resolve the calendar day from the LOCAL DATE ANCHORS above (not from the UTC datetime) and build timeMin/timeMax as a full local-day window in the current timezone.",
+    "",
+    `Current request:\n${args.currentMessage}`,
+    `Resolved intent:\n${intent}`,
+    `Recent conversation:\n${args.recentConversation ?? "(none)"}`,
+  ].join("\n");
+}
+
+function expectedCalendarPlan(fields: Record<string, unknown>): string {
+  return JSON.stringify(fields);
+}
+
+function gmailPlannerInput(currentMessage: string): string {
+  return ["Current request:", currentMessage.trim() || "(empty)"].join("\n");
+}
+
+function expectedGmailPlan(fields: Record<string, unknown>): string {
+  return Object.entries(fields)
+    .map(([key, value]) => {
+      if (Array.isArray(value)) {
+        return `${key}: ${value.join(" || ")}`;
+      }
+      return `${key}: ${value === null ? "null" : String(value)}`;
+    })
+    .join("\n");
+}
+
+export const SEED_TASKS: Record<string, SeedTask> = {
+  // calendar_extract is the live calendar action planner, not the later
+  // create-event field extractor. Keep the baseline and rows aligned with
+  // CALENDAR_PLAN_INSTRUCTIONS and CalendarLlmPlan.
   calendar_extract: {
     task: "calendar_extract",
-    baseline: `Plan the calendar action for the user's request. Return a single JSON object only, with these fields: ${CALENDAR_PLAN_FIELDS}.`,
+    baseline: CALENDAR_PLAN_INSTRUCTIONS,
     dataset: [
       {
-        input: { user: "What's on my calendar tomorrow?" },
-        expectedOutput: JSON.stringify({ subaction: "feed", shouldAct: true }),
+        input: {
+          user: calendarPlannerInput({
+            currentMessage: "What's on my calendar today?",
+          }),
+        },
+        expectedOutput: expectedCalendarPlan({
+          subaction: "feed",
+          shouldAct: true,
+          queries: [],
+          timeMin: "2026-06-24T00:00:00-07:00",
+          timeMax: "2026-06-25T00:00:00-07:00",
+          windowLabel: "today",
+        }),
       },
       {
-        input: { user: "What's my next meeting?" },
-        expectedOutput: JSON.stringify({
+        input: {
+          user: calendarPlannerInput({
+            currentMessage: "What's my next meeting?",
+          }),
+        },
+        expectedOutput: expectedCalendarPlan({
           subaction: "next_event",
           shouldAct: true,
+          queries: [],
         }),
       },
       {
-        input: { user: "Find my flight to Denver." },
-        expectedOutput: JSON.stringify({
+        input: {
+          user: calendarPlannerInput({
+            currentMessage: "Find my return flight to Denver.",
+          }),
+        },
+        expectedOutput: expectedCalendarPlan({
           subaction: "search_events",
           shouldAct: true,
+          queries: ["return flight to denver", "denver"],
         }),
       },
       {
         input: {
-          user: "Set up a dentist appointment on March 3rd at 9am at Downtown Dental.",
+          user: calendarPlannerInput({
+            currentMessage:
+              "Set up a dentist appointment on March 3rd at 9am for 30 minutes at Downtown Dental.",
+          }),
         },
-        expectedOutput: JSON.stringify({
+        expectedOutput: expectedCalendarPlan({
           subaction: "create_event",
           shouldAct: true,
+          title: "dentist appointment",
         }),
       },
       {
-        input: { user: "Rename my 2pm standup to sprint sync." },
-        expectedOutput: JSON.stringify({
+        input: {
+          user: calendarPlannerInput({
+            currentMessage:
+              "Block 2-3pm tomorrow for a 1:1 with Priya in the small conference room.",
+          }),
+        },
+        expectedOutput: expectedCalendarPlan({
+          subaction: "create_event",
+          shouldAct: true,
+          title: "1:1 with Priya",
+        }),
+      },
+      {
+        input: {
+          user: calendarPlannerInput({
+            currentMessage: "Move the dentist appointment to Friday afternoon.",
+          }),
+        },
+        expectedOutput: expectedCalendarPlan({
           subaction: "update_event",
           shouldAct: true,
+          queries: ["dentist appointment"],
+          windowLabel: "Friday afternoon",
         }),
-      },
-      {
-        input: { user: "Cancel my lunch on Friday." },
-        expectedOutput: JSON.stringify({
-          subaction: "delete_event",
-          shouldAct: true,
-        }),
-      },
-      {
-        input: { user: "What's happening while I'm in Tokyo next month?" },
-        expectedOutput: JSON.stringify({
-          subaction: "trip_window",
-          shouldAct: true,
-        }),
-      },
-      {
-        input: { user: "Can you help me with my calendar?" },
-        expectedOutput: JSON.stringify({ subaction: null, shouldAct: false }),
       },
       {
         input: {
-          user: "Réserve un rendez-vous chez le médecin mardi à 10h à la clinique du centre.",
+          user: calendarPlannerInput({
+            currentMessage: "Cancel the team meeting tomorrow.",
+          }),
         },
-        expectedOutput: JSON.stringify({
+        expectedOutput: expectedCalendarPlan({
+          subaction: "delete_event",
+          shouldAct: true,
+          queries: ["team meeting"],
+          timeMin: "2026-06-25T00:00:00-07:00",
+          timeMax: "2026-06-26T00:00:00-07:00",
+          windowLabel: "tomorrow",
+        }),
+      },
+      {
+        input: {
+          user: calendarPlannerInput({
+            currentMessage: "What do I have while I'm in Tokyo?",
+          }),
+        },
+        expectedOutput: expectedCalendarPlan({
+          subaction: "trip_window",
+          shouldAct: true,
+          queries: ["tokyo"],
+          tripLocation: "Tokyo",
+        }),
+      },
+      {
+        input: {
+          user: calendarPlannerInput({
+            currentMessage:
+              "Réserve un rendez-vous chez le médecin mardi à 10h pour une heure à la clinique du centre.",
+          }),
+        },
+        expectedOutput: expectedCalendarPlan({
           subaction: "create_event",
+          shouldAct: true,
+          title: "rendez-vous médecin",
+        }),
+      },
+      {
+        input: {
+          user: calendarPlannerInput({
+            currentMessage:
+              "Termin beim Friseur am Samstag um 14 Uhr, eine halbe Stunde, im Salon Schmidt.",
+          }),
+        },
+        expectedOutput: expectedCalendarPlan({
+          subaction: "create_event",
+          shouldAct: true,
+          title: "Friseurtermin",
+        }),
+      },
+      {
+        input: {
+          user: calendarPlannerInput({
+            currentMessage: "Can you help me with my calendar?",
+          }),
+        },
+        expectedOutput: expectedCalendarPlan({
+          subaction: null,
+          shouldAct: false,
+        }),
+      },
+    ],
+  },
+  // inbox_triage is the live Gmail/inbox planner. The baseline returns
+  // line-based fields (not JSON), so the seed expectations mirror that wire
+  // format and the scorer accepts structured `key: value` output.
+  inbox_triage: {
+    task: "inbox_triage",
+    baseline: GMAIL_PLAN_INSTRUCTIONS,
+    dataset: [
+      {
+        input: {
+          user: gmailPlannerInput(
+            "Clean up my inbox and show me anything urgent first.",
+          ),
+        },
+        expectedOutput: expectedGmailPlan({
+          subaction: "triage",
           shouldAct: true,
         }),
       },
       {
-        input: { user: "Was steht morgen in meinem Kalender?" },
-        expectedOutput: JSON.stringify({ subaction: "feed", shouldAct: true }),
+        input: {
+          user: gmailPlannerInput(
+            "Tell me which legal or finance threads still need a reply today.",
+          ),
+        },
+        expectedOutput: expectedGmailPlan({
+          subaction: "needs_response",
+          shouldAct: true,
+          queries: ["legal", "finance"],
+        }),
+      },
+      {
+        input: {
+          user: gmailPlannerInput(
+            "Find the vendor renewal invoice email from Northstar.",
+          ),
+        },
+        expectedOutput: expectedGmailPlan({
+          subaction: "search",
+          shouldAct: true,
+          queries: ["vendor renewal invoice Northstar", "Northstar invoice"],
+        }),
+      },
+      {
+        input: {
+          user: gmailPlannerInput(
+            "Read me Taylor's boarding pass email for the Denver flight.",
+          ),
+        },
+        expectedOutput: expectedGmailPlan({
+          subaction: "read",
+          shouldAct: true,
+          queries: [
+            "Taylor boarding pass Denver",
+            "Denver flight boarding pass",
+          ],
+        }),
+      },
+      {
+        input: {
+          user: gmailPlannerInput(
+            "Draft a reply to Mia saying I can meet at 2pm and asking her to send the deck.",
+          ),
+        },
+        expectedOutput: expectedGmailPlan({
+          subaction: "draft_reply",
+          shouldAct: true,
+          queries: ["Mia deck meeting 2pm", "from:Mia deck"],
+        }),
+      },
+      {
+        input: {
+          user: gmailPlannerInput(
+            "Reply to Alex that I approved the contractor quote, but do not mention budget details.",
+          ),
+        },
+        expectedOutput: expectedGmailPlan({
+          subaction: "send_reply",
+          shouldAct: true,
+          queries: ["Alex contractor quote", "from:Alex quote"],
+        }),
+      },
+      {
+        input: {
+          user: gmailPlannerInput(
+            "Busca el correo de Ana sobre la factura de renovación y dime si necesita respuesta.",
+          ),
+        },
+        expectedOutput: expectedGmailPlan({
+          subaction: "needs_response",
+          shouldAct: true,
+          queries: ["Ana factura renovación", "Ana renewal invoice"],
+        }),
+      },
+      {
+        input: {
+          user: gmailPlannerInput("Can you do something with my email?"),
+        },
+        expectedOutput: expectedGmailPlan({
+          shouldAct: false,
+        }),
       },
     ],
   },
 };
 
-async function main(): Promise<number> {
+export function parseBoundedIntegerArg(
+  name: string,
+  value: string | undefined,
+  defaults: { defaultValue: number; min: number; max: number },
+): number {
+  const raw = value?.trim();
+  if (!raw) {
+    return defaults.defaultValue;
+  }
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(
+      `--${name} must be an integer between ${defaults.min} and ${defaults.max}`,
+    );
+  }
+  const parsed = Number(raw);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < defaults.min ||
+    parsed > defaults.max
+  ) {
+    throw new Error(
+      `--${name} must be an integer between ${defaults.min} and ${defaults.max}`,
+    );
+  }
+  return parsed;
+}
+
+function resolveTrainingProvider(): string | undefined {
+  return (
+    process.env.TRAIN_MODEL_PROVIDER?.trim() ??
+    process.env.TRAINING_PROVIDER?.trim()
+  )?.toLowerCase();
+}
+
+function resolveTrainingModelLabel(): string {
+  return (
+    process.env.TRAIN_MODEL?.trim() ??
+    process.env.TRAINING_MODEL?.trim() ??
+    process.env.TRAIN_MODEL_NAME?.trim() ??
+    process.env.CEREBRAS_MODEL?.trim() ??
+    "gpt-oss-120b"
+  );
+}
+
+function resolveStateDir(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? resolve(process.cwd(), trimmed) : undefined;
+}
+
+function validateOptimizedPromptForTask(
+  task: OptimizedPromptTask,
+  prompt: string,
+): string[] {
+  const requiredFragmentsByTask: Partial<
+    Record<OptimizedPromptTask, string[]>
+  > = {
+    calendar_extract: [
+      "subaction",
+      "shouldAct",
+      "queries",
+      "title",
+      "timeMin",
+      "timeMax",
+      "feed",
+      "next_event",
+      "search_events",
+      "create_event",
+      "update_event",
+      "delete_event",
+      "trip_window",
+    ],
+    inbox_triage: [
+      "subaction",
+      "shouldAct",
+      "queries",
+      "triage",
+      "needs_response",
+      "search",
+      "read",
+      "draft_reply",
+      "send_reply",
+    ],
+  };
+  const requiredFragments = requiredFragmentsByTask[task] ?? [];
+  const normalized = prompt.toLowerCase();
+  return requiredFragments
+    .filter((fragment) => !normalized.includes(fragment.toLowerCase()))
+    .map((fragment) => `optimized prompt is missing "${fragment}"`);
+}
+
+export function validatePersistableResult(
+  seed: SeedTask,
+  result: OptimizerResult,
+): string[] {
+  const reasons: string[] = [];
+  if (!Number.isFinite(result.baseline) || !Number.isFinite(result.score)) {
+    reasons.push("optimizer returned a non-finite score");
+  }
+  if (result.score - result.baseline < MIN_PERSIST_DELTA) {
+    reasons.push(
+      `optimized score must beat baseline by at least ${MIN_PERSIST_DELTA.toFixed(4)} (baseline=${result.baseline.toFixed(3)}, optimized=${result.score.toFixed(3)})`,
+    );
+  }
+  const prompt = result.optimizedPrompt.trim();
+  if (prompt.length === 0) {
+    reasons.push("optimized prompt is empty");
+  }
+  reasons.push(...validateOptimizedPromptForTask(seed.task, prompt));
+  return reasons;
+}
+
+export async function main(argv = process.argv.slice(2)): Promise<number> {
   const { values } = parseArgs({
-    args: process.argv.slice(2),
+    args: argv,
     options: {
       task: { type: "string" },
       apply: { type: "boolean" },
@@ -161,21 +478,37 @@ async function main(): Promise<number> {
   const taskName = (values.task ?? "calendar_extract").trim();
   const seed = SEED_TASKS[taskName];
   if (!seed) {
-    console.error(
-      `[gepa-seed] unknown --task "${taskName}". Available: ${Object.keys(SEED_TASKS).join(", ")}`,
+    process.stderr.write(
+      `[gepa-seed] unknown --task "${taskName}". Available: ${Object.keys(SEED_TASKS).join(", ")}\n`,
     );
     return 1;
   }
-  if (values["state-dir"]) {
-    process.env.ELIZA_STATE_DIR = values["state-dir"];
+
+  const resolvedStateDir = resolveStateDir(values["state-dir"]);
+  if (resolvedStateDir) {
+    process.env.TRAINING_STATE_DIR = resolvedStateDir;
+    process.env.ELIZA_STATE_DIR = resolvedStateDir;
   }
 
-  const provider =
-    process.env.TRAIN_MODEL_PROVIDER?.trim() ??
-    process.env.TRAINING_PROVIDER?.trim();
+  const generations = parseBoundedIntegerArg(
+    "generations",
+    values.generations,
+    {
+      defaultValue: DEFAULT_GENERATIONS,
+      min: 1,
+      max: MAX_GENERATIONS,
+    },
+  );
+  const population = parseBoundedIntegerArg("population", values.population, {
+    defaultValue: DEFAULT_POPULATION,
+    min: 2,
+    max: MAX_POPULATION,
+  });
+
+  const provider = resolveTrainingProvider();
   if (provider !== "cerebras") {
-    console.error(
-      "[gepa-seed] TRAIN_MODEL_PROVIDER=cerebras is required (gpt-oss-120b on Cerebras).",
+    process.stderr.write(
+      "[gepa-seed] TRAIN_MODEL_PROVIDER=cerebras (or TRAINING_PROVIDER=cerebras) is required.\n",
     );
     return 1;
   }
@@ -187,25 +520,11 @@ async function main(): Promise<number> {
     compare: (actual, expected) =>
       scoreLifeOpsTask(seed.task, actual, expected),
   });
+  const modelLabel = resolveTrainingModelLabel();
 
-  const generations = Number.parseInt(values.generations ?? "2", 10);
-  const population = Number.parseInt(values.population ?? "4", 10);
-  if (!Number.isInteger(generations) || generations < 1) {
-    console.error(
-      `[gepa-seed] --generations must be a positive integer (got "${values.generations}").`,
-    );
-    return 1;
-  }
-  if (!Number.isInteger(population) || population < 1) {
-    console.error(
-      `[gepa-seed] --population must be a positive integer (got "${values.population}").`,
-    );
-    return 1;
-  }
-
-  console.log(
+  process.stdout.write(
     `[gepa-seed] task=${seed.task} dataset=${seed.dataset.length} ` +
-      `model=gpt-oss-120b (cerebras) generations=${generations} population=${population}`,
+      `model=${modelLabel} (cerebras) generations=${generations} population=${population}\n`,
   );
 
   const result = await runGepa({
@@ -222,29 +541,29 @@ async function main(): Promise<number> {
     },
   });
 
-  console.log(
+  process.stdout.write(
     `\n[gepa-seed] RESULT task=${seed.task} ` +
       `baseline=${result.baseline.toFixed(3)} optimized=${result.score.toFixed(3)} ` +
-      `delta=${(result.score - result.baseline).toFixed(3)}`,
+      `delta=${(result.score - result.baseline).toFixed(3)}\n`,
   );
-  console.log(`\n[gepa-seed] baseline prompt:\n${seed.baseline}`);
-  console.log(`\n[gepa-seed] optimized prompt:\n${result.optimizedPrompt}`);
+  process.stdout.write(`\n[gepa-seed] baseline prompt:\n${seed.baseline}\n`);
+  process.stdout.write(
+    `\n[gepa-seed] optimized prompt:\n${result.optimizedPrompt}\n`,
+  );
 
   if (!values.apply) {
-    console.log(
-      "\n[gepa-seed] dry run — pass --apply to persist to the optimized-prompt store.",
+    process.stdout.write(
+      "\n[gepa-seed] dry run - pass --apply to persist to the optimized-prompt store.\n",
     );
     return 0;
   }
 
-  // The persisted artifact auto-loads into the live runtime for this task, so
-  // never let --apply DEGRADE the production prompt: refuse to persist unless the
-  // optimized prompt actually beat the baseline on the seed set.
-  if (result.score <= result.baseline) {
-    console.error(
-      `\n[gepa-seed] refusing to persist: optimized score ${result.score.toFixed(3)} ` +
-        `did not beat baseline ${result.baseline.toFixed(3)}. The optimized prompt ` +
-        `auto-loads into the live runtime, so a non-improving artifact is not applied.`,
+  const persistBlockers = validatePersistableResult(seed, result);
+  if (persistBlockers.length > 0) {
+    process.stderr.write(
+      `\n[gepa-seed] refusing to persist ${seed.task} artifact:\n` +
+        persistBlockers.map((reason) => `- ${reason}`).join("\n") +
+        "\n",
     );
     return 1;
   }
@@ -267,17 +586,30 @@ async function main(): Promise<number> {
     })),
   };
 
-  // Service's runtime arg is optional and setPrompt() only touches the on-disk
-  // store root — no runtime needed (matches scripts/lifeops-gepa-loop.ts).
   const service = new OptimizedPromptService();
+  if (resolvedStateDir) {
+    service.setStoreRoot(join(resolvedStateDir, "optimized-prompts"));
+  }
   const path = await service.setPrompt(seed.task, artifact);
-  console.log(`\n[gepa-seed] persisted optimized artifact → ${path}`);
+  process.stdout.write(
+    `\n[gepa-seed] persisted optimized artifact -> ${path}\n`,
+  );
   return 0;
 }
 
-main()
-  .then((code) => process.exit(code))
-  .catch((err) => {
-    console.error("[gepa-seed] failed:", err);
-    process.exit(1);
-  });
+const entrypointUrl = process.argv[1]
+  ? pathToFileURL(resolve(process.argv[1])).href
+  : "";
+
+if (import.meta.url === entrypointUrl) {
+  main()
+    .then((code) => {
+      process.exitCode = code;
+    })
+    .catch((err) => {
+      process.stderr.write(
+        `[gepa-seed] failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exitCode = 1;
+    });
+}

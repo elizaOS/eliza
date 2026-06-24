@@ -147,7 +147,7 @@ describe("TransactionHistory — populated rows", () => {
         setActionNotice: vi.fn(),
       }),
     );
-    expect(await screen.findByText("No transactions yet")).toBeTruthy();
+    expect(await screen.findByText("None")).toBeTruthy();
   });
 
   it("renders an error notice when the fetch rejects", async () => {
@@ -304,7 +304,9 @@ describe("TransactionHistory — interactive controls", () => {
       await Promise.resolve();
     });
 
-    expect(getStewardHistory.mock.calls.length).toBeGreaterThan(callsAfterMount);
+    expect(getStewardHistory.mock.calls.length).toBeGreaterThan(
+      callsAfterMount,
+    );
 
     vi.useRealTimers();
   });

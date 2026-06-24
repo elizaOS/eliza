@@ -1,6 +1,4 @@
-export {
-  getAppBlockerStatus,
-} from "@elizaos/plugin-blocker/services/app-blocker/index";
+export { getAppBlockerStatus } from "@elizaos/plugin-blocker/services/app-blocker/index";
 export {
   buildSelfControlBlockPolicy,
   formatWebsiteList,
@@ -56,6 +54,14 @@ export {
 } from "./lifeops/approval-queue.js";
 export * from "./lifeops/index.js";
 export * from "./lifeops/messaging/index.js";
+export {
+  BRIEF_NARRATIVE_INSTRUCTIONS,
+  GMAIL_PLAN_INSTRUCTIONS,
+  GMAIL_QUERY_EXTRACTION_INSTRUCTIONS,
+  MEETING_PREP_INSTRUCTIONS,
+  REMINDER_DISPATCH_INSTRUCTIONS,
+  SCHEDULE_PLAN_INSTRUCTIONS,
+} from "./lifeops/optimized-prompt-instructions.js";
 export { LifeOpsRepository } from "./lifeops/repository.js";
 export { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.js";
 export * from "./platform/index.js";

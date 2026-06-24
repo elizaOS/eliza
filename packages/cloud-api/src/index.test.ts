@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
+import cloudApiWorker, {
   getFrontendAliasProxyTarget,
   getFrontendAliasSyntheticResponse,
   redirectFrontendHost,
@@ -96,6 +96,29 @@ describe("cloud-api worker entrypoint", () => {
     );
   });
 
+  test("accepts a full feed origin URL and preserves an explicit port", () => {
+    const target = getFrontendAliasProxyTarget(
+      new URL("https://feed.elizacloud.ai/markets"),
+      { FEED_ORIGIN_HOST: "https://feed-web-production.up.railway.app:8443" },
+    );
+
+    expect(target?.toString()).toBe(
+      "https://feed-web-production.up.railway.app:8443/markets",
+    );
+  });
+
+  test("rejects pathful feed origin configuration instead of proxying broadly", () => {
+    const target = getFrontendAliasProxyTarget(
+      new URL("https://feed.elizacloud.ai/markets"),
+      {
+        FEED_ORIGIN_HOST:
+          "https://feed-web-production.up.railway.app/feed-prefix",
+      },
+    );
+
+    expect(target).toBeNull();
+  });
+
   test("proxies feed /api/* to the SAME Railway origin (single origin, no app/api split)", () => {
     const target = getFrontendAliasProxyTarget(
       new URL("https://feed.elizacloud.ai/api/health"),
@@ -105,6 +128,50 @@ describe("cloud-api worker entrypoint", () => {
     expect(target?.toString()).toBe(
       "https://feed-web-production.up.railway.app/api/health",
     );
+  });
+
+  test("sanitizes spoofable forwarded IP headers before proxying feed", async () => {
+    const originalFetch = globalThis.fetch;
+    const proxiedRequests: Request[] = [];
+    globalThis.fetch = (async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      proxiedRequests.push(request);
+      return new Response("ok");
+    }) as typeof fetch;
+
+    try {
+      const response = await cloudApiWorker.fetch(
+        new Request("https://feed.elizacloud.ai/api/health", {
+          headers: {
+            "cf-connecting-ip": "203.0.113.10",
+            forwarded: "for=198.51.100.1",
+            host: "feed.elizacloud.ai",
+            "x-forwarded-for": "198.51.100.2",
+            "x-real-ip": "198.51.100.3",
+          },
+        }),
+        { FEED_ORIGIN_HOST: "feed-web-production.up.railway.app" } as never,
+        {} as ExecutionContext,
+      );
+
+      expect(response.status).toBe(200);
+      expect(proxiedRequests).toHaveLength(1);
+      const proxied = proxiedRequests[0];
+      expect(proxied.url).toBe(
+        "https://feed-web-production.up.railway.app/api/health",
+      );
+      expect(proxied.headers.get("forwarded")).toBeNull();
+      expect(proxied.headers.get("host")).toBeNull();
+      expect(proxied.headers.get("x-forwarded-for")).toBe("203.0.113.10");
+      expect(proxied.headers.get("x-real-ip")).toBe("203.0.113.10");
+      expect(proxied.headers.get("x-forwarded-host")).toBe(
+        "feed.elizacloud.ai",
+      );
+      expect(proxied.headers.get("x-forwarded-proto")).toBe("https");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   test("serves empty Feed observability scripts instead of proxying Vercel-only 404s", async () => {

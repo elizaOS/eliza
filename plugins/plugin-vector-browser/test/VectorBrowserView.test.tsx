@@ -415,9 +415,7 @@ describe("VectorBrowserView — populated list", () => {
     backend.total = 0;
     backend.memoryRows = () => [];
     render(<VectorBrowserView />);
-    expect(
-      await screen.findByText("No memory records detected in the database."),
-    ).toBeTruthy();
+    expect(await screen.findByText("No records.")).toBeTruthy();
   });
 
   it("falls back content to (empty) when content is blank", async () => {

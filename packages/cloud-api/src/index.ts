@@ -58,6 +58,27 @@ function normalizeHostname(hostname: string | undefined): string | null {
   return normalized || null;
 }
 
+function normalizeOriginHost(value: string | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+
+  try {
+    const origin = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    if (
+      origin.username ||
+      origin.password ||
+      origin.pathname !== "/" ||
+      origin.search ||
+      origin.hash
+    ) {
+      return null;
+    }
+    return normalizeHostname(origin.host);
+  } catch {
+    return null;
+  }
+}
+
 function getGeneratedAgentId(
   url: URL,
   env: AgentDomainBindings,
@@ -116,10 +137,10 @@ export function getFrontendAliasProxyTarget(
   // Config-gated Feed passthrough. Single origin for pages + API, so no app/api
   // split. Inert unless FEED_ORIGIN_HOST is set.
   if (hostname === FEED_ALIAS_HOST) {
-    const feedOrigin = normalizeHostname(env?.FEED_ORIGIN_HOST);
+    const feedOrigin = normalizeOriginHost(env?.FEED_ORIGIN_HOST);
     if (!feedOrigin) return null;
     const feedUrl = new URL(url);
-    feedUrl.hostname = feedOrigin;
+    feedUrl.host = feedOrigin;
     return feedUrl;
   }
 
@@ -175,7 +196,15 @@ function proxyFrontendAliasRequest(
   if (!targetUrl) return null;
 
   const headers = new Headers(request.headers);
+  const connectingIp = request.headers.get("cf-connecting-ip");
   headers.delete("host");
+  headers.delete("forwarded");
+  headers.delete("x-forwarded-for");
+  headers.delete("x-real-ip");
+  if (connectingIp) {
+    headers.set("x-forwarded-for", connectingIp);
+    headers.set("x-real-ip", connectingIp);
+  }
   headers.set("x-forwarded-host", url.host);
   headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
 

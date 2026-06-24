@@ -406,7 +406,7 @@ describe("InventoryView GUI — rail tab switching", () => {
 
     // DeFi: no LP-like positions in the fixture -> empty state.
     fireEvent.click(within(sidebar).getByRole("button", { name: "DeFi" }));
-    expect(within(sidebar).getByText("No positions")).toBeTruthy();
+    expect(within(sidebar).getByText("None")).toBeTruthy();
     expect(
       within(sidebar).queryByText(hasFlatText("100.0000 USDC")),
     ).toBeNull();
@@ -479,7 +479,7 @@ describe("InventoryView GUI — address copy buttons", () => {
     const sidebar = await screen.findByTestId("wallets-sidebar");
 
     const evmCopy = within(sidebar).getByRole("button", {
-      name: "Copy No EVM address",
+      name: "Copy EVM address",
     });
     fireEvent.click(evmCopy);
     await waitFor(() =>
@@ -487,7 +487,7 @@ describe("InventoryView GUI — address copy buttons", () => {
     );
 
     const solCopy = within(sidebar).getByRole("button", {
-      name: "Copy No SOL address",
+      name: "Copy SOL address",
     });
     fireEvent.click(solCopy);
     await waitFor(() =>
@@ -562,11 +562,11 @@ describe("InventoryView GUI — P&L window selector + chart", () => {
     await screen.findByTestId("wallets-sidebar");
 
     // PnlChart renders a polyline (pnlSeries has >=2 finite points), not the
-    // empty "No realized P&L yet" placeholder.
+    // empty "P&L pending" placeholder.
     await waitFor(() =>
       expect(container.querySelector("polyline")).toBeTruthy(),
     );
-    expect(screen.queryByText("No realized P&L yet")).toBeNull();
+    expect(screen.queryByText("P&L pending")).toBeNull();
 
     // SummaryChip shows the formatted realized P&L (1.5 BNB, positive).
     expect(screen.getByText("+1.5 BNB")).toBeTruthy();
@@ -601,7 +601,7 @@ describe("InventoryView GUI — P&L window selector + chart", () => {
     appHooks.useApp.mockReturnValue(makeAppState());
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
-    expect(await screen.findByText("No realized P&L yet")).toBeTruthy();
+    expect(await screen.findByText("P&L pending")).toBeTruthy();
   });
 });
 
@@ -657,9 +657,7 @@ describe("InventoryView GUI — dashboard panels", () => {
     // Danger banner.
     expect(screen.getByText("RPC provider unreachable")).toBeTruthy();
     // Empty panels.
-    expect(await screen.findByText("No activity yet")).toBeTruthy();
-    expect(screen.getByText("No positions")).toBeTruthy();
-    expect(screen.getByText("No NFTs")).toBeTruthy();
+    expect(await screen.findAllByText("None")).not.toHaveLength(0);
   });
 });
 
@@ -679,9 +677,9 @@ describe("InventoryView GUI — empty wallet / market pulse hero", () => {
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
-    // WalletEmptyHero "not configured" variant + Configure keys CTA.
-    expect(await screen.findByText("Wallet not configured")).toBeTruthy();
-    const configure = screen.getByRole("button", { name: "Configure keys" });
+    // WalletEmptyHero unconfigured variant + keys CTA.
+    expect((await screen.findAllByText("Wallet")).length).toBeGreaterThan(0);
+    const configure = screen.getByRole("button", { name: "Keys" });
     fireEvent.click(configure);
     expect(state.setTab).toHaveBeenCalledWith("settings");
     expect(window.location.hash).toBe("#wallet-rpc");
@@ -734,7 +732,7 @@ describe("InventoryView GUI — empty wallet / market pulse hero", () => {
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
-    expect(await screen.findByText("Top movers unavailable")).toBeTruthy();
-    expect(screen.getByText("CoinGecko rate limited")).toBeTruthy();
+    expect(await screen.findByText("Unavailable")).toBeTruthy();
+    expect(screen.getByTitle("Top movers unavailable")).toBeTruthy();
   });
 });

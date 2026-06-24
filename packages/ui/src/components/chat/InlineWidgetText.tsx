@@ -10,18 +10,26 @@
 // delegates to the SAME `parseSegments` parser instead of re-implementing a
 // partial one. It renders the prose, fenced code blocks, and the interactive
 // inline widgets (task card / choice buttons / inline form / suggestion chips).
-// The heavier full-surface affordances — plugin config card, UiSpec block,
-// permission card — need the host client/registry that this lightweight
-// pass-through surface intentionally does not carry, so they are omitted here;
-// their raw markers are stripped (not leaked) and the full ChatView still
-// renders them. Handlers come from the app + composer contexts, so callers just
-// render `<InlineWidgetText content={msg.content} />`.
+// The heavier affordances — plugin config card, UiSpec block, permission card —
+// reuse the same renderers as MessageContent. Handlers come from the app +
+// composer contexts, so callers just render
+// `<InlineWidgetText content={msg.content} />`.
 
 import { type ReactNode, useMemo } from "react";
 import { useAppSelectorShallow } from "../../state";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { CodeBlock } from "../ui/code-block";
-import { parseSegments, type Segment } from "./message-parser-helpers";
+import {
+  InlinePluginConfig,
+  MessagePermissionCard,
+  MessageUiSpecBlock,
+} from "./MessageContent";
+import {
+  isSafeNormalizedPluginId,
+  normalizePluginId,
+  parseSegments,
+  type Segment,
+} from "./message-parser-helpers";
 // Side effect: register the built-in inline widgets (choice/followups/form/task).
 import "./widgets/inline-builtins";
 import { getInlineWidget } from "./widgets/inline-registry";
@@ -97,9 +105,42 @@ export function InlineWidgetText({ content }: { content: string }): ReactNode {
         }
         break;
       }
-      // config / ui-spec / permission / analysis-xml: full-surface-only
-      // affordances handled by MessageContent. Omitted on this lightweight
-      // overlay, but their raw markers are stripped (not leaked) by parseSegments.
+      case "config": {
+        if (!isSafeNormalizedPluginId(normalizePluginId(seg.pluginId))) break;
+        nodes.push(
+          <div
+            key={nextKey(`config-${seg.pluginId}`)}
+            className="pointer-events-auto whitespace-normal text-txt [text-shadow:none]"
+          >
+            <InlinePluginConfig pluginId={seg.pluginId} />
+          </div>,
+        );
+        break;
+      }
+      case "ui-spec": {
+        nodes.push(
+          <div
+            key={nextKey("ui-spec")}
+            className="pointer-events-auto whitespace-normal text-txt [text-shadow:none]"
+          >
+            <MessageUiSpecBlock spec={seg.spec} raw={seg.raw} />
+          </div>,
+        );
+        break;
+      }
+      case "permission": {
+        nodes.push(
+          <div
+            key={nextKey(`permission-${seg.payload.feature}`)}
+            className="pointer-events-auto whitespace-normal text-txt [text-shadow:none]"
+          >
+            <MessagePermissionCard payload={seg.payload} />
+          </div>,
+        );
+        break;
+      }
+      // analysis-xml only appears in analysis mode. The overlay parses in
+      // display mode, so hidden reasoning/tool tags are stripped, not rendered.
       default:
         break;
     }

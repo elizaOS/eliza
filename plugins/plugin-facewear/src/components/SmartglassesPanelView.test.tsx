@@ -70,7 +70,6 @@ describe("SmartglassesPanelView — unified GUI/XR panel", () => {
     window.facewearSmartglassesReport = makeReport();
     render(<SmartglassesPanelView />);
 
-    expect(screen.getByText("Smartglasses")).toBeTruthy();
     expect(screen.getByText(/sn G1-AB12/)).toBeTruthy();
     // The connected report drives the status caption + lens marks.
     expect(screen.getAllByText(/connected/i).length).toBeGreaterThan(0);
@@ -78,7 +77,6 @@ describe("SmartglassesPanelView — unified GUI/XR panel", () => {
 
   it("falls back to the disconnected default report when none is published", () => {
     render(<SmartglassesPanelView />);
-    expect(screen.getByText("Smartglasses")).toBeTruthy();
     expect(screen.getByText("disconnected")).toBeTruthy();
   });
 
@@ -112,8 +110,6 @@ describe("SmartglassesPanelView — unified GUI/XR panel", () => {
       fireEvent.click(button("wifi-status"));
       await Promise.resolve();
     });
-    expect(
-      screen.getByText("No native smartglasses bridge is available"),
-    ).toBeTruthy();
+    expect(screen.getByText("Unavailable")).toBeTruthy();
   });
 });

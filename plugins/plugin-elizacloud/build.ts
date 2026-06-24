@@ -20,6 +20,7 @@ async function build() {
 
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-elizacloud for Node...");
+  await mkdir("dist/node", { recursive: true });
   const nodeResult = await Bun.build({
     entrypoints: ["src/index.node.ts"],
     outdir: "dist/node",
@@ -37,6 +38,7 @@ async function build() {
 
   const browserStart = Date.now();
   console.log("🌐 Building @elizaos/plugin-elizacloud for Browser...");
+  await mkdir("dist/browser", { recursive: true });
   const browserResult = await Bun.build({
     entrypoints: ["src/index.browser.ts"],
     outdir: "dist/browser",
@@ -54,6 +56,7 @@ async function build() {
 
   const cjsStart = Date.now();
   console.log("🧱 Building @elizaos/plugin-elizacloud for Node (CJS)...");
+  await mkdir("dist/cjs", { recursive: true });
   const cjsResult = await Bun.build({
     entrypoints: ["src/index.node.ts"],
     outdir: "dist/cjs",

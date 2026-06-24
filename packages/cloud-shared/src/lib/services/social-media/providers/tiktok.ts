@@ -327,7 +327,7 @@ export const tiktokProvider: SocialMediaProvider = {
         fetchedAt: new Date(),
       };
     } catch (error) {
-      logger.warn("[TikTok] getMetrics failed", {
+      logger.warn("[TikTok] getPostAnalytics failed", {
         error: extractErrorMessage(error),
       });
       return null;

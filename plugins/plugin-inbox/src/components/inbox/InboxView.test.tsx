@@ -156,7 +156,7 @@ describe("InboxView — empty states", () => {
         fetchers={makeFetchers({ fetchInbox: async () => emptyInbox(false) })}
       />,
     );
-    await screen.findByText(/No channels connected/i);
+    await screen.findByText("None");
     expect(agent("connect")).toBeTruthy();
   });
 
@@ -166,7 +166,7 @@ describe("InboxView — empty states", () => {
         fetchers={makeFetchers({ fetchInbox: async () => emptyInbox(false) })}
       />,
     );
-    await screen.findByText(/No channels connected/i);
+    await screen.findByText("None");
     fireEvent.click(agent("connect"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
@@ -178,7 +178,7 @@ describe("InboxView — empty states", () => {
       />,
     );
     await screen.findByText(/Inbox zero/i);
-    expect(screen.queryByText(/No channels connected/i)).toBeNull();
+    expect(screen.queryByText("None")).toBeNull();
   });
 });
 

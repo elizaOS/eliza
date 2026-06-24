@@ -122,7 +122,6 @@ describe("FeedSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Feed Operator");
       expect(flat).toContain("Quantum Trader");
       expect(flat).toContain("autonomous");
       expect(flat).toContain("Pause"); // control action button (autonomy active)
@@ -140,7 +139,6 @@ describe("FeedSpatialView one source, three modalities", () => {
     expect(xr).toContain('data-spatial-surface="xr"');
     for (const html of [gui, xr]) {
       expect(html).toContain("Quantum Trader");
-      expect(html).toContain("Feed Operator");
       expect(html).toContain('data-agent-id="toggle-autonomy"');
     }
   });

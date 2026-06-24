@@ -118,8 +118,8 @@ describe("blocker settings cards", () => {
     expect(screen.getByText("Website Blocking")).toBeTruthy();
     expect(screen.getByText("Desktop only")).toBeTruthy();
     expect(
-      screen.getByText("Install the desktop build to manage blocked sites."),
-    ).toBeTruthy();
+      screen.queryByText("Install the desktop build to manage blocked sites."),
+    ).toBeNull();
     expect(
       screen.queryByText(/system hosts file is a desktop feature/i),
     ).toBeNull();

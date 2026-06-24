@@ -16,15 +16,7 @@
  * displays the snapshot and dispatches actions.
  */
 
-import {
-	Button,
-	Card,
-	Divider,
-	HStack,
-	List,
-	Text,
-	VStack,
-} from "@elizaos/ui/spatial";
+import { Button, Card, HStack, List, Text, VStack } from "@elizaos/ui/spatial";
 
 /** A single leaderboard caller, already projected to display shape. */
 export interface LeaderRow {
@@ -80,11 +72,7 @@ export function SocialAlphaSpatialView({
 	const dispatch = (action: string) => () => onAction?.(action);
 
 	return (
-		<Card title="Alpha Leaderboard" gap={1} padding={1}>
-			<Text style="caption" tone="muted">
-				Top callers ranked by trust score.
-			</Text>
-
+		<Card gap={1} padding={1}>
 			{snapshot.state === "loading" ? (
 				<Text tone="muted" align="center" style="caption">
 					Loading leaderboard
@@ -109,15 +97,10 @@ function WalletRequiredBody({
 }) {
 	return (
 		<>
-			<Divider label="wallet" />
 			<Text bold>Wallet required</Text>
-			<Text tone="muted" style="caption">
-				Social Alpha tracks token calls against on-chain outcomes. Configure the
-				agent wallet to enable it.
-			</Text>
 			<HStack gap={1}>
 				<Button agent="connect-wallet" onPress={dispatch("connect-wallet")}>
-					Connect wallet
+					Wallet
 				</Button>
 			</HStack>
 		</>
@@ -133,7 +116,6 @@ function ErrorBody({
 }) {
 	return (
 		<>
-			<Divider label="error" />
 			<Text bold>Could not load leaderboard</Text>
 			<Text tone="danger" style="caption">
 				{snapshot.error ?? "Could not load leaderboard."}
@@ -148,16 +130,7 @@ function ErrorBody({
 }
 
 function EmptyBody() {
-	return (
-		<>
-			<Divider label="empty" />
-			<Text bold>No callers yet</Text>
-			<Text tone="muted" style="caption">
-				No leaderboard data available yet. Be the first to make a
-				recommendation.
-			</Text>
-		</>
-	);
+	return <Text bold>None</Text>;
 }
 
 function ReadyBody({
@@ -174,7 +147,6 @@ function ReadyBody({
 					{snapshot.leading}
 				</Text>
 			) : null}
-			<Divider label={`callers (${snapshot.rows.length})`} />
 			<List gap={0}>
 				{snapshot.rows.map((row) => (
 					<LeaderRowView key={row.userId} row={row} dispatch={dispatch} />
@@ -213,7 +185,7 @@ function LeaderRowView({
 					variant="ghost"
 					onPress={dispatch(`open:${row.userId}`)}
 				>
-					Open
+					›
 				</Button>
 			</HStack>
 		</VStack>

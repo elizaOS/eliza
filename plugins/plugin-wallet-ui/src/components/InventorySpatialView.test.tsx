@@ -81,7 +81,6 @@ describe("InventorySpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Wallet");
       expect(flat).toContain("$1,235"); // portfolio value, rounded
       expect(flat).toContain("BNB");
       expect(flat).toContain("Agent NFT");
@@ -99,7 +98,6 @@ describe("InventorySpatialView one source, three modalities", () => {
     expect(gui).toContain('data-spatial-surface="gui"');
     expect(xr).toContain('data-spatial-surface="xr"');
     for (const html of [gui, xr]) {
-      expect(html).toContain("Wallet");
       expect(html).toContain("Agent NFT");
       expect(html).toContain('data-agent-id="refresh"');
     }

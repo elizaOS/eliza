@@ -143,7 +143,7 @@ type GmailFaultInjectionSeed = {
 };
 
 type GmailFaultInjectionConfig = {
-  mode: "auth_expired" | "rate_limit" | "server_error";
+  mode: "auth_expired" | "rate_limit" | "server_error" | "partial_failure";
   method: string;
   path: string;
   remaining?: number;
@@ -412,19 +412,16 @@ async function seedTodo(
   return undefined;
 }
 
-function normalizeContactHandles(value: unknown): Array<{
+type NormalizedContactHandle = {
   platform: string;
   identifier: string;
   displayLabel?: string;
   isPrimary?: boolean;
-}> {
+};
+
+function normalizeContactHandles(value: unknown): NormalizedContactHandle[] {
   if (!Array.isArray(value)) return [];
-  const handles: Array<{
-    platform: string;
-    identifier: string;
-    displayLabel?: string;
-    isPrimary?: boolean;
-  }> = [];
+  const handles: NormalizedContactHandle[] = [];
   for (const entry of value) {
     if (!entry || typeof entry !== "object") continue;
     const handle = entry as ContactSeedHandle;
@@ -444,25 +441,10 @@ function normalizeContactHandles(value: unknown): Array<{
 }
 
 function dedupeContactHandles(
-  handles: Array<{
-    platform: string;
-    identifier: string;
-    displayLabel?: string;
-    isPrimary?: boolean;
-  }>,
-): Array<{
-  platform: string;
-  identifier: string;
-  displayLabel?: string;
-  isPrimary?: boolean;
-}> {
+  handles: NormalizedContactHandle[],
+): NormalizedContactHandle[] {
   const seen = new Set<string>();
-  const deduped: Array<{
-    platform: string;
-    identifier: string;
-    displayLabel?: string;
-    isPrimary?: boolean;
-  }> = [];
+  const deduped: NormalizedContactHandle[] = [];
   for (const handle of handles) {
     const key = `${handle.platform}:${handle.identifier}`.toLowerCase();
     if (seen.has(key)) continue;
@@ -472,70 +454,69 @@ function dedupeContactHandles(
   return deduped;
 }
 
-function normalizeMergedEntityHandles(
+function normalizeEntityHandles(
   seed: MemoryContactSeed,
-): ReturnType<typeof normalizeContactHandles> {
+): NormalizedContactHandle[] {
   const handles = normalizeContactHandles(seed.handles);
+  const displayLabel =
+    readNonEmptyString(seed.displayName) ??
+    readNonEmptyString(seed.name) ??
+    undefined;
   const platform = readNonEmptyString(seed.platform);
-  const handle = readNonEmptyString(seed.handle);
-  if (platform && handle) {
-    handles.push({ platform, identifier: handle });
-  }
-  return dedupeContactHandles(handles);
-}
-
-function normalizeRolodexHandles(content: MemoryContactSeed): Array<{
-  platform: string;
-  identifier: string;
-  displayLabel?: string;
-  isPrimary?: boolean;
-}> {
-  const handles = normalizeContactHandles(content.handles);
-  const platform = readNonEmptyString(content.platform);
-  const displayName = readNonEmptyString(content.displayName);
   if (platform) {
+    const primaryHandle = readNonEmptyString(seed.handle);
     for (const identifier of [
-      readNonEmptyString(content.handle),
-      readNonEmptyString(content.newHandle),
-      readNonEmptyString(content.oldHandle),
+      primaryHandle,
+      readNonEmptyString(seed.newHandle),
+      readNonEmptyString(seed.oldHandle),
     ]) {
-      if (identifier) {
-        handles.push({
-          platform,
-          identifier,
-          displayLabel: displayName ?? undefined,
-          isPrimary: identifier === readNonEmptyString(content.handle),
-        });
-      }
+      if (!identifier) continue;
+      handles.push({
+        platform,
+        identifier,
+        displayLabel,
+        isPrimary: primaryHandle ? identifier === primaryHandle : undefined,
+      });
     }
   }
-  const telegramHandle = readNonEmptyString(content.telegramHandle);
+  const telegramHandle = readNonEmptyString(seed.telegramHandle);
   if (telegramHandle) {
     handles.push({
-      platform: readNonEmptyString(content.primaryChannel) ?? "telegram",
+      platform: readNonEmptyString(seed.primaryChannel) ?? "telegram",
       identifier: telegramHandle,
-      displayLabel:
-        displayName ?? readNonEmptyString(content.name) ?? undefined,
+      displayLabel,
       isPrimary: true,
     });
   }
   return dedupeContactHandles(handles);
 }
 
-function mergedEntityNotes(seed: MemoryContactSeed): string | undefined {
+function entityMemoryNotes(seed: MemoryContactSeed): string | undefined {
   const notes: string[] = [];
   const authoredNotes = readNonEmptyString(seed.notes);
-  if (authoredNotes) {
-    notes.push(authoredNotes);
-  }
+  if (authoredNotes) notes.push(authoredNotes);
   const scenarioEntityId = readNonEmptyString(seed.id);
-  if (scenarioEntityId) {
-    notes.push(`Scenario entity id: ${scenarioEntityId}`);
-  }
-  if (readOptionalBoolean(seed.mergedAccidentally) !== undefined) {
+  if (scenarioEntityId) notes.push(`Scenario entity id: ${scenarioEntityId}`);
+  const company = readNonEmptyString(seed.company);
+  if (company) notes.push(`Company: ${company}`);
+  const recentNews = readNonEmptyString(seed.recentNews);
+  if (recentNews) notes.push(`Recent news: ${recentNews}`);
+  const platformUserId = readNonEmptyString(seed.platformUserId);
+  if (platformUserId) notes.push(`Platform user ID: ${platformUserId}`);
+  const oldHandle = readNonEmptyString(seed.oldHandle);
+  const newHandle = readNonEmptyString(seed.newHandle);
+  if (oldHandle || newHandle) {
     notes.push(
-      `Merged accidentally: ${readOptionalBoolean(seed.mergedAccidentally)}`,
+      `Handle rename: ${oldHandle ?? "(unknown)"} -> ${newHandle ?? "(unknown)"}`,
     );
+  }
+  const renameConfirmed = readOptionalBoolean(seed.renameConfirmed);
+  if (renameConfirmed !== undefined) {
+    notes.push(`Rename confirmed: ${renameConfirmed}`);
+  }
+  const mergedAccidentally = readOptionalBoolean(seed.mergedAccidentally);
+  if (mergedAccidentally !== undefined) {
+    notes.push(`Merged accidentally: ${mergedAccidentally}`);
   }
   if (Array.isArray(seed.handles)) {
     for (const entry of seed.handles) {
@@ -554,62 +535,35 @@ function mergedEntityNotes(seed: MemoryContactSeed): string | undefined {
   return notes.length > 0 ? notes.join("\n") : undefined;
 }
 
-function mergedEntityToContactSeed(seed: MemoryContactSeed): ContactSeed {
-  const handles = normalizeMergedEntityHandles(seed);
-  const tags = readStringArray(seed.tags);
+function memoryEntityToContactSeed(
+  seed: MemoryContactSeed,
+  memoryType: string,
+): ContactSeed {
+  const handles = normalizeEntityHandles(seed);
+  const authoredTags = readStringArray(seed.tags);
+  const isMerged = memoryType === "merged-entity";
   return {
     type: "contact",
     name:
       readNonEmptyString(seed.displayName) ??
       readNonEmptyString(seed.name) ??
+      readNonEmptyString(seed.handle) ??
+      readNonEmptyString(seed.telegramHandle) ??
       handles[0]?.identifier ??
-      "Merged entity",
-    notes: mergedEntityNotes(seed),
-    categories: ["merged-entity"],
-    tags: tags.length > 0 ? tags : ["merged-entity"],
+      (isMerged ? "Merged entity" : "Rolodex entity"),
+    notes: entityMemoryNotes(seed),
+    categories: isMerged ? ["merged-entity"] : undefined,
+    tags:
+      authoredTags.length > 0
+        ? authoredTags
+        : isMerged
+          ? ["merged-entity"]
+          : undefined,
     handles,
     relationshipGoal: seed.relationshipGoal,
     followupThresholdDays: seed.followupThresholdDays,
     lastContactedAt: seed.lastContactedAt,
     relationshipStatus: seed.relationshipStatus,
-  };
-}
-
-function rolodexNotes(content: MemoryContactSeed): string | undefined {
-  const parts = [
-    readNonEmptyString(content.notes),
-    readNonEmptyString(content.company)
-      ? `Company: ${readNonEmptyString(content.company)}`
-      : null,
-    readNonEmptyString(content.recentNews)
-      ? `Recent news: ${readNonEmptyString(content.recentNews)}`
-      : null,
-    readNonEmptyString(content.platformUserId)
-      ? `Platform user ID: ${readNonEmptyString(content.platformUserId)}`
-      : null,
-    readNonEmptyString(content.id)
-      ? `Scenario rolodex id: ${readNonEmptyString(content.id)}`
-      : null,
-  ].filter((part): part is string => typeof part === "string");
-  return parts.length > 0 ? parts.join("\n") : undefined;
-}
-
-function rolodexEntityToContactSeed(content: MemoryContactSeed): ContactSeed {
-  return {
-    type: "contact",
-    name:
-      readNonEmptyString(content.displayName) ??
-      readNonEmptyString(content.name) ??
-      readNonEmptyString(content.handle) ??
-      readNonEmptyString(content.telegramHandle) ??
-      "Rolodex entity",
-    notes: rolodexNotes(content),
-    tags: content.tags,
-    handles: normalizeRolodexHandles(content),
-    relationshipGoal: content.relationshipGoal,
-    followupThresholdDays: content.followupThresholdDays,
-    lastContactedAt: content.lastContactedAt,
-    relationshipStatus: content.relationshipStatus,
   };
 }
 
@@ -728,22 +682,12 @@ async function seedMemory(
   }
   const memoryType =
     readNonEmptyString(content.kind) ?? readNonEmptyString(content.type);
-  if (memoryType === "contact") {
-    return seedContact(ctx, {
-      type: "contact",
-      name: content.name,
-      notes: content.notes,
-      relationshipGoal: content.relationshipGoal,
-      followupThresholdDays: content.followupThresholdDays,
-      lastContactedAt: content.lastContactedAt,
-      relationshipStatus: content.relationshipStatus,
-    });
-  }
-  if (memoryType === "rolodex-entity") {
-    return seedContact(ctx, rolodexEntityToContactSeed(content));
-  }
-  if (memoryType === "merged-entity") {
-    return seedContact(ctx, mergedEntityToContactSeed(content));
+  if (
+    memoryType === "contact" ||
+    memoryType === "rolodex-entity" ||
+    memoryType === "merged-entity"
+  ) {
+    return seedContact(ctx, memoryEntityToContactSeed(content, memoryType));
   }
   return undefined;
 }
@@ -795,11 +739,20 @@ function normalizeGmailFaultMode(
   if (
     mode === "auth_expired" ||
     mode === "rate_limit" ||
-    mode === "server_error"
+    mode === "server_error" ||
+    mode === "partial_failure"
   ) {
     return mode;
   }
   return null;
+}
+
+function defaultGmailFaultPath(
+  mode: GmailFaultInjectionConfig["mode"],
+): string {
+  return mode === "partial_failure"
+    ? "/gmail/v1/users/me/messages/batchModify"
+    : "/gmail/v1/users/me/messages";
 }
 
 function normalizeGmailFaultInjection(
@@ -814,7 +767,7 @@ function normalizeGmailFaultInjection(
   const seed = value as GmailFaultInjectionSeed;
   const mode = normalizeGmailFaultMode(seed.mode);
   if (!mode) {
-    return "gmailInbox faultInjection.mode must be auth_expired, rate_limit, or server_error";
+    return "gmailInbox faultInjection.mode must be auth_expired, rate_limit, server_error, or partial_failure";
   }
   const rawMethod = readNonEmptyString(seed.method);
   const rawPath =
@@ -823,7 +776,7 @@ function normalizeGmailFaultInjection(
     ? rawPath.startsWith("/")
       ? rawPath
       : `/${rawPath}`
-    : "/gmail/v1/users/me/messages";
+    : defaultGmailFaultPath(mode);
   let remaining: number | undefined;
   if (seed.limit !== undefined && seed.limit !== null) {
     if (
@@ -837,7 +790,9 @@ function normalizeGmailFaultInjection(
   }
   return {
     mode,
-    method: (rawMethod ?? "GET").toUpperCase(),
+    method: (
+      rawMethod ?? (mode === "partial_failure" ? "POST" : "GET")
+    ).toUpperCase(),
     path,
     ...(remaining !== undefined ? { remaining } : {}),
   };

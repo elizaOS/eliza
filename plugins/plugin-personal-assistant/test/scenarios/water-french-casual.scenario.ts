@@ -48,6 +48,11 @@ export default scenario({
     {
       type: "definitionCountDelta",
       title: "Drink water",
+      titleAliases: [
+        "Boire de l'eau",
+        "Penser à boire de l'eau",
+        "Hydratation",
+      ],
       delta: 1,
       cadenceKind: "interval",
       requiredEveryMinutes: 180,

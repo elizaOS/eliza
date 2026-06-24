@@ -25,6 +25,8 @@ export {
   createRuntimeAdapter,
   extractPlannerAction,
   extractPlannerView,
+  LIFEOPS_SCORER_TASKS,
+  LIFEOPS_STRUCTURED_SCORER_TASKS,
   scoreActionSet,
   scoreAgreement,
   scoreLifeOpsTask,

@@ -38,9 +38,9 @@
  *     `running` (initializing → running) within the action window.
  *   - domain debit: 1099¢ wholesale + ceil(1099*3600/10000)=396¢ margin =
  *     1495¢ → org balance 1000 - 14.95 = 985.05 (tolerance < $0.01).
- *   - charge: a $0.50 org debit lands AND a matching $0.50 creator earnings
- *     ledger entry is recorded (creator redeemable balance rises by exactly
- *     0.50).
+ *   - charge: the real per-app billing service computes markup from the app's
+ *     monetization settings, debits base+markup from the org, records the app
+ *     earning, and raises the creator redeemable balance by exactly the markup.
  *   - autoscale: node-autoscale cron tick counter increments AND the
  *     agent-hot-pool cron tick alone grows the warm pool to its target.
  *
@@ -49,8 +49,9 @@
  * running PGlite bridge before the direct cloud-shared service calls run.
  */
 
+import { appEarningsRepository } from "@elizaos/cloud-shared/db/repositories/app-earnings";
 import { stripeConnectAccountsRepository } from "@elizaos/cloud-shared/db/repositories/stripe-connect-accounts";
-import { creditsService } from "@elizaos/cloud-shared/lib/services/credits";
+import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
 import { redeemableEarningsService } from "@elizaos/cloud-shared/lib/services/redeemable-earnings";
 import {
   createConnectOnboarding,
@@ -82,8 +83,14 @@ interface AppMonetizationResponse {
   monetization?: { monetizationEnabled?: boolean };
 }
 
-/** The exact charge applied in step (f), in USD. */
-const CHARGE_USD = 0.5;
+/** apps.earnings GET (see cloud-api .../earnings/route.ts). */
+interface AppEarningsResponse {
+  success?: boolean;
+  earnings?: { summary?: { totalLifetimeEarnings?: number } | null };
+}
+
+/** The base inference cost used in step (f), before app monetization markup. */
+const BASE_INFERENCE_COST_USD = 0.5;
 
 test.describe("monetized full loop", () => {
   // The mock-stack loop below is the active per-PR coverage. The nightly
@@ -227,51 +234,63 @@ test.describe("monetized full loop", () => {
       "monetization must read back as enabled",
     ).toBe(true);
 
-    // ── f. Charge: simulate one paid inference's billing effects. ───────────
+    // ── f. Charge: run one deterministic paid inference billing pass. ───────
     // A real-LLM charge (end-user org debit + creator markup) is covered by
     // `creator-monetization-journey.spec.ts` behind CEREBRAS_API_KEY. Here we
-    // assert the deterministic ledger effects directly: the org is debited and
-    // the matching creator earning is recorded.
+    // still drive the REAL per-app billing service so markup is computed from
+    // the monetization config, not chosen by the test.
     const balanceBeforeCharge = afterBuy.json.balance;
+    const appEarnBefore = Number(
+      (await appEarningsRepository.findByAppId(appId))
+        ?.total_lifetime_earnings ?? 0,
+    );
     const earnBeforeCharge =
       (await redeemableEarningsService.getBalance(seededUser.userId))
         ?.availableBalance ?? 0;
 
-    const charge = await creditsService.deductCredits({
-      organizationId: seededUser.organizationId,
-      amount: CHARGE_USD,
-      description: "simulated monetized inference charge",
-      metadata: { appId },
-    });
-    expect(charge.success, "charge must debit the org").toBe(true);
-    expect(
-      Math.abs(charge.newBalance - (balanceBeforeCharge - CHARGE_USD)),
-      "charge debited exactly $0.50 from the org balance",
-    ).toBeLessThan(0.01);
-
-    const earn = await redeemableEarningsService.addEarnings({
+    const charge = await appCreditsService.deductCredits({
+      appId,
       userId: seededUser.userId,
-      amount: CHARGE_USD,
-      source: "app_owner_revenue_share",
-      sourceId: appId,
-      description: "creator markup from monetized inference charge",
-      metadata: { appId },
+      baseCost: BASE_INFERENCE_COST_USD,
+      description: "full-loop monetized inference",
+      metadata: { fullLoop: true },
     });
-    expect(earn.success, "creator earnings ledger entry must be recorded").toBe(
-      true,
-    );
+    expect(charge.success, "monetized charge must debit the org").toBe(true);
     expect(
-      earn.ledgerEntryId,
-      "earnings ledger entry id returned",
-    ).toBeTruthy();
+      charge.creatorMarkup,
+      "enabled monetization must compute a creator markup",
+    ).toBeGreaterThan(0);
+    expect(
+      Math.abs(
+        charge.totalCost - (BASE_INFERENCE_COST_USD + charge.creatorMarkup),
+      ),
+      "total charge equals base inference cost plus computed markup",
+    ).toBeLessThan(1e-6);
+    expect(
+      Math.abs(charge.newBalance - (balanceBeforeCharge - charge.totalCost)),
+      "org balance debited by exactly the computed total cost",
+    ).toBeLessThan(1e-6);
+
+    const appEarn = await authed<AppEarningsResponse>(
+      "GET",
+      `/api/v1/apps/${appId}/earnings`,
+    );
+    expect(appEarn.status, "app earnings endpoint must be reachable").toBe(200);
+    expect(
+      Math.abs(
+        (appEarn.json.earnings?.summary?.totalLifetimeEarnings ?? 0) -
+          (appEarnBefore + charge.creatorMarkup),
+      ),
+      "app-scoped earnings rose by exactly the computed markup",
+    ).toBeLessThan(1e-6);
 
     const earnAfterCharge =
       (await redeemableEarningsService.getBalance(seededUser.userId))
         ?.availableBalance ?? 0;
     expect(
-      Math.abs(earnAfterCharge - (earnBeforeCharge + CHARGE_USD)),
-      "creator redeemable balance rose by exactly the markup",
-    ).toBeLessThan(1e-9);
+      Math.abs(earnAfterCharge - earnBeforeCharge - charge.creatorMarkup),
+      "creator redeemable balance rose by exactly the computed markup",
+    ).toBeLessThan(1e-6);
 
     // ── g. Autoscale: the daemon-driven hot-pool cron grows the pool. ───────
     // #8920/#8921 landed the daemon path: `cloud:mock --with-daemon`
@@ -349,7 +368,7 @@ test.describe("monetized full loop", () => {
     expect(
       payoutReadyBalance,
       "creator has a positive redeemable (payout-ready) balance",
-    ).toBeGreaterThanOrEqual(CHARGE_USD);
+    ).toBeGreaterThanOrEqual(charge.creatorMarkup);
   });
 
   // Stripe Connect fiat payout (#8922) — the alternative to on-chain redemption.

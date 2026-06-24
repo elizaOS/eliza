@@ -12,6 +12,8 @@ const groundedActionReply = path.join(
   "actions",
   "grounded-action-reply.ts",
 );
+const pluginGoogleSrc = path.join(elizaRoot, "plugins", "plugin-google", "src");
+const uiSrc = path.join(elizaRoot, "packages", "ui", "src");
 
 /**
  * Unit-test config. UI / service suites that need inlined core/agent/ui or
@@ -51,8 +53,24 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^@elizaos\/plugin-google$/,
+        replacement: path.join(pluginGoogleSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-google\/(.+)$/,
+        replacement: path.join(pluginGoogleSrc, "$1"),
+      },
+      {
         find: /^@elizaos\/agent$/,
         replacement: groundedActionReply,
+      },
+      {
+        find: /^@elizaos\/ui$/,
+        replacement: path.join(uiSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: path.join(uiSrc, "$1"),
       },
     ],
   },

@@ -44,7 +44,6 @@ describe("TodosSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Todos");
       expect(flat).toContain("Today");
       expect(flat).toContain("Upcoming");
       expect(flat).toContain("Someday");
@@ -83,7 +82,7 @@ describe("TodosSpatialView one source, three modalities", () => {
       54,
     );
     for (const line of lines) expect(visibleWidth(line)).toBe(54);
-    expect(lines.join("\n")).toContain("Loading todos");
+    expect(lines.join("\n")).toContain("Loading");
   });
 
   it("empty state renders the add-a-todo affordance", () => {
@@ -97,7 +96,7 @@ describe("TodosSpatialView one source, three modalities", () => {
         <TodosSpatialView snapshot={empty} />
       </SpatialSurface>,
     );
-    expect(html).toContain("No todos");
+    expect(html).toContain("None");
     expect(html).toContain('data-agent-id="add"');
   });
 

@@ -3930,7 +3930,8 @@ function readGoogleGmailFaultMode(value: unknown): GoogleGmailFaultMode | null {
   if (
     value === "auth_expired" ||
     value === "rate_limit" ||
-    value === "server_error"
+    value === "server_error" ||
+    value === "partial_failure"
   ) {
     return value;
   }
@@ -3950,7 +3951,7 @@ function readGoogleGmailFaultInjection(
   if (!mode) {
     throw new MockHttpError(
       400,
-      "mode must be auth_expired, rate_limit, or server_error",
+      "mode must be auth_expired, rate_limit, server_error, or partial_failure",
     );
   }
   const method =

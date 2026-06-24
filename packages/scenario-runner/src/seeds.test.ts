@@ -93,7 +93,7 @@ async function startGmailSeedMock(): Promise<{
   };
 }
 
-const ctx: ScenarioContext = { actionsCalled: [] };
+const gmailSeedContext: ScenarioContext = { actionsCalled: [] };
 
 type ConnectorContributionForTest = {
   kind: string;
@@ -149,44 +149,6 @@ function createSeedContext() {
   return { runtime, ctx: { runtime } as ScenarioContext };
 }
 
-function baseConnector(
-  overrides: Partial<ConnectorContributionForTest> = {},
-): ConnectorContributionForTest {
-  return {
-    kind: "telegram",
-    capabilities: ["telegram.send"],
-    modes: ["local"],
-    describe: { label: "Telegram bridge" },
-    start: vi.fn(async () => undefined),
-    disconnect: vi.fn(async () => undefined),
-    verify: vi.fn(async () => true),
-    status: vi.fn(async () => ({
-      state: "ok" as const,
-      observedAt: "2026-01-01T00:00:00.000Z",
-    })),
-    send: vi.fn(async () => ({ ok: true, messageId: "sent-1" })),
-    ...overrides,
-  };
-}
-
-function createSeedRuntime() {
-  const relationships = {
-    getContact: vi.fn(async () => null),
-    addContact: vi.fn(async () => ({})),
-    updateContact: vi.fn(async () => ({})),
-    addHandle: vi.fn(async () => ({})),
-    recordInteraction: vi.fn(async () => ({})),
-    setRelationshipGoal: vi.fn(async () => ({})),
-  };
-  const runtime = {
-    agentId: "00000000-0000-0000-0000-000000000001" as UUID,
-    getService: vi.fn(() => relationships),
-    getEntityById: vi.fn(async () => null),
-    createEntity: vi.fn(async () => ({})),
-  } as unknown as AgentRuntime;
-  return { runtime, relationships };
-}
-
 function createSeedHarness() {
   const relationships = {
     getContact: vi.fn(async () => null),
@@ -211,11 +173,31 @@ function createSeedHarness() {
   };
 }
 
-describe("scenario seeds", () => {
-  it("maps rolodex-entity memory seeds into relationship contacts", async () => {
-    const { runtime, relationships } = createSeedRuntime();
+function baseConnector(
+  overrides: Partial<ConnectorContributionForTest> = {},
+): ConnectorContributionForTest {
+  return {
+    kind: "telegram",
+    capabilities: ["telegram.send"],
+    modes: ["local"],
+    describe: { label: "Telegram bridge" },
+    start: vi.fn(async () => undefined),
+    disconnect: vi.fn(async () => undefined),
+    verify: vi.fn(async () => true),
+    status: vi.fn(async () => ({
+      state: "ok" as const,
+      observedAt: "2026-01-01T00:00:00.000Z",
+    })),
+    send: vi.fn(async () => ({ ok: true, messageId: "sent-1" })),
+    ...overrides,
+  };
+}
 
-    const result = await applyScenarioSeedStep({ actionsCalled: [], runtime }, {
+describe("scenario memory seeds", () => {
+  it("maps rolodex-entity memory seeds into relationship contacts", async () => {
+    const { ctx, relationships, runtime } = createSeedHarness();
+
+    const result = await applyScenarioSeedStep(ctx, {
       type: "memory",
       content: {
         kind: "rolodex-entity",
@@ -257,9 +239,9 @@ describe("scenario seeds", () => {
   });
 
   it("maps direct rolodex platform handles and recent news", async () => {
-    const { runtime, relationships } = createSeedRuntime();
+    const { ctx, relationships } = createSeedHarness();
 
-    const result = await applyScenarioSeedStep({ actionsCalled: [], runtime }, {
+    const result = await applyScenarioSeedStep(ctx, {
       type: "memory",
       content: {
         kind: "rolodex-entity",
@@ -312,7 +294,7 @@ describe("scenario seeds", () => {
         ],
         mergedAccidentally: true,
       },
-    } as ScenarioSeedStep);
+    } satisfies ScenarioSeedStep);
 
     expect(result).toBeUndefined();
     expect(runtime.createEntity).toHaveBeenCalledWith(
@@ -374,7 +356,7 @@ describe("scenario seeds", () => {
         handle: "priyam#0042",
         tags: ["vip", "studio"],
       },
-    } as ScenarioSeedStep);
+    } satisfies ScenarioSeedStep);
 
     expect(relationships.addHandle).toHaveBeenCalledWith(
       expect.any(String),
@@ -391,15 +373,33 @@ describe("scenario seeds", () => {
     );
   });
 
-  it("forwards gmailInbox faultInjection to the loopback Google mock", async () => {
+  it("continues to ignore unsupported memory seed kinds", async () => {
+    const { ctx, relationships, runtime } = createSeedHarness();
+
+    const result = await applyScenarioSeedStep(ctx, {
+      type: "memory",
+      content: {
+        kind: "inbound-message",
+        text: "hello",
+      },
+    } satisfies ScenarioSeedStep);
+
+    expect(result).toBeUndefined();
+    expect(runtime.getService).not.toHaveBeenCalled();
+    expect(relationships.addContact).not.toHaveBeenCalled();
+  });
+});
+
+describe("scenario gmail seeds", () => {
+  it("forwards bounded gmailInbox faultInjection to the loopback Google mock", async () => {
     const { baseUrl, requests } = await startGmailSeedMock();
     process.env.ELIZA_MOCK_GOOGLE_BASE = baseUrl;
 
-    const result = await applyScenarioSeedStep(ctx, {
+    const result = await applyScenarioSeedStep(gmailSeedContext, {
       type: "gmailInbox",
       fixture: "default",
       faultInjection: { mode: "server_error", method: "GET", limit: 0 },
-    });
+    } satisfies ScenarioSeedStep);
 
     expect(result).toBeUndefined();
     expect(
@@ -420,44 +420,44 @@ describe("scenario seeds", () => {
     });
   });
 
-  it("rejects unsupported gmailInbox faultInjection modes", async () => {
-    const { baseUrl } = await startGmailSeedMock();
+  it("defaults partial_failure gmailInbox faults to batchModify", async () => {
+    const { baseUrl, requests } = await startGmailSeedMock();
     process.env.ELIZA_MOCK_GOOGLE_BASE = baseUrl;
 
-    const result = await applyScenarioSeedStep(ctx, {
+    const result = await applyScenarioSeedStep(gmailSeedContext, {
       type: "gmailInbox",
+      fixture: "default",
       faultInjection: { mode: "partial_failure" },
-    });
+    } satisfies ScenarioSeedStep);
 
-    expect(result).toContain("faultInjection.mode");
+    expect(result).toBeUndefined();
+    expect(
+      requests.map((request) => `${request.method} ${request.path}`),
+    ).toEqual([
+      "DELETE /__mock/google/gmail/fault",
+      "GET /gmail/v1/users/me/messages/msg-finance",
+      "GET /gmail/v1/users/me/messages/msg-sarah",
+      "GET /gmail/v1/users/me/messages/msg-newsletter",
+      "DELETE /__mock/requests",
+      "POST /__mock/google/gmail/fault",
+    ]);
+    expect(requests.at(-1)?.body).toEqual({
+      mode: "partial_failure",
+      method: "POST",
+      path: "/gmail/v1/users/me/messages/batchModify",
+    });
   });
 
   it("rejects invalid gmailInbox faultInjection limits", async () => {
     const { baseUrl } = await startGmailSeedMock();
     process.env.ELIZA_MOCK_GOOGLE_BASE = baseUrl;
 
-    const result = await applyScenarioSeedStep(ctx, {
+    const result = await applyScenarioSeedStep(gmailSeedContext, {
       type: "gmailInbox",
       faultInjection: { mode: "server_error", limit: -1 },
-    });
-
-    expect(result).toContain("faultInjection.limit");
-  });
-
-  it("continues to ignore unsupported memory seed kinds", async () => {
-    const { runtime, relationships } = createSeedRuntime();
-
-    const result = await applyScenarioSeedStep({ actionsCalled: [], runtime }, {
-      type: "memory",
-      content: {
-        kind: "inbound-message",
-        text: "hello",
-      },
     } satisfies ScenarioSeedStep);
 
-    expect(result).toBeUndefined();
-    expect(runtime.getService).not.toHaveBeenCalled();
-    expect(relationships.addContact).not.toHaveBeenCalled();
+    expect(result).toContain("faultInjection.limit");
   });
 });
 

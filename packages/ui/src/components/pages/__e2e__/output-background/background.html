@@ -13036,9 +13036,12 @@
 
   // packages/ui/src/backgrounds/AppBackground.tsx
   var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
-  function AppBackground() {
+  function AppBackground({
+    visible = true
+  } = {}) {
     const { backgroundConfig } = useBackgroundConfig();
     useBackgroundApplyChannel();
+    if (!visible) return null;
     const config = backgroundConfig && typeof backgroundConfig === "object" ? backgroundConfig : null;
     if (config?.mode === "image" && config.imageUrl) {
       return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ImageBackground, { imageUrl: config.imageUrl });

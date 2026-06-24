@@ -455,7 +455,8 @@ export interface GoogleMockState {
 export type GoogleGmailFaultMode =
   | "auth_expired"
   | "rate_limit"
-  | "server_error";
+  | "server_error"
+  | "partial_failure";
 
 export interface GoogleGmailFaultInjection {
   mode: GoogleGmailFaultMode;
@@ -1075,7 +1076,8 @@ function readGmailFaultMode(value: string | null): GoogleGmailFaultMode | null {
   if (
     value === "auth_expired" ||
     value === "rate_limit" ||
-    value === "server_error"
+    value === "server_error" ||
+    value === "partial_failure"
   ) {
     return value;
   }
@@ -1114,12 +1116,12 @@ function gmailFaultForRequest(
   pathname: string,
   searchParams: URLSearchParams,
   headers: http.IncomingHttpHeaders,
-): DynamicFixtureResponse | null {
+): GoogleGmailFaultMode | null {
   if (!pathname.startsWith("/gmail/v1/users/me/")) return null;
-  const mode =
+  return (
     headerOrQueryGmailFault(headers, searchParams) ??
-    configuredGmailFault(state, method, pathname);
-  return mode ? gmailFaultError(mode) : null;
+    configuredGmailFault(state, method, pathname)
+  );
 }
 
 function addHistoryRecord(
@@ -1668,7 +1670,9 @@ export function googleDynamicFixture(
     searchParams,
     headers,
   );
-  if (gmailFault) return gmailFault;
+  if (gmailFault && gmailFault !== "partial_failure") {
+    return gmailFaultError(gmailFault);
+  }
 
   const authFailure = enforceGoogleAuthIfPresent(
     state,
@@ -1748,6 +1752,39 @@ export function googleDynamicFixture(
       requestBody,
       "removeLabelIds",
     );
+    if (gmailFault === "partial_failure") {
+      const acceptedIds = ids.slice(0, Math.ceil(ids.length / 2));
+      const failedIds = ids.slice(acceptedIds.length);
+      const historyId =
+        acceptedIds.length > 0
+          ? modifyGmailMessages(
+              state,
+              acceptedIds,
+              addLabelIds,
+              removeLabelIds,
+              gmailSelection,
+            )
+          : String(state.gmailHistoryId);
+      ledgerEntry.gmail = {
+        action: "messages.batchModify",
+        batchIds: ids,
+        ids: acceptedIds,
+        ...(addLabelIds ? { addLabelIds } : {}),
+        ...(removeLabelIds ? { removeLabelIds } : {}),
+        historyId,
+        ...(ledgerEntry.runId ? { runId: ledgerEntry.runId } : {}),
+      };
+      return jsonFixture(
+        {
+          partialFailure: true,
+          requestedIds: ids,
+          succeededIds: acceptedIds,
+          failedIds,
+          message: `Partially modified ${acceptedIds.length} of ${ids.length} Gmail messages`,
+        },
+        207,
+      );
+    }
     const historyId = modifyGmailMessages(
       state,
       ids,

@@ -41,6 +41,25 @@ export interface SpringboardProps {
   canManageView?: (id: string) => boolean;
   onEditView?: (id: string) => void;
   onDeleteView?: (id: string) => void;
+  /**
+   * Controlled active page index. When provided the page is owned by the caller
+   * (the shell-surface store, via SpringboardSurface); when omitted it is local
+   * state so the component stays usable standalone (stories / isolated tests).
+   */
+  page?: number;
+  onPageChange?: (page: number) => void;
+  /** Fires with the rendered page count whenever it changes, so an outer surface
+   *  can size the unified page indicator. */
+  onPageCountChange?: (count: number) => void;
+  /** Controlled edit mode. When omitted, edit mode is local state. */
+  editing?: boolean;
+  onEditingChange?: (editing: boolean) => void;
+  /**
+   * Render the inner per-page dots. Off when an outer surface (the rail) owns
+   * the single unified indicator — this is what prevents two stacked dot strips
+   * (#4). Defaults to true for standalone usage.
+   */
+  showPageDots?: boolean;
   className?: string;
 }
 
@@ -57,6 +76,9 @@ interface IconTileProps {
 }
 
 const LONG_PRESS_MS = 450;
+/** Finger travel (px) that aborts a long-press — a pan/swipe is not a press, so
+ *  a horizontal swipe-back can never ghost-fire edit mode mid-gesture. */
+const LONG_PRESS_MOVE_SLOP = 10;
 /** Horizontal drag distance (px) needed to flip to the adjacent page. */
 const SWIPE_THRESHOLD = 60;
 
@@ -74,12 +96,14 @@ const IconTile = memo(function IconTile({
   onLongPress,
 }: IconTileProps) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressStart = useRef<{ x: number; y: number } | null>(null);
 
   const clear = () => {
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = null;
     }
+    pressStart.current = null;
   };
 
   return (
@@ -94,9 +118,24 @@ const IconTile = memo(function IconTile({
           onClick={() => {
             if (!editing) onLaunch(entry);
           }}
-          onPointerDown={() => {
+          onPointerDown={(event) => {
             clear();
+            pressStart.current = { x: event.clientX, y: event.clientY };
             timer.current = setTimeout(onLongPress, LONG_PRESS_MS);
+          }}
+          // A long-press requires a near-stationary finger: once movement passes
+          // LONG_PRESS_MOVE_SLOP the press is a pan/swipe, so cancel the timer.
+          // This is what stops a horizontal swipe-back (which keeps the pointer
+          // over the translating tile) from ghost-firing edit mode (#3).
+          onPointerMove={(event) => {
+            const start = pressStart.current;
+            if (!start) return;
+            if (
+              Math.hypot(event.clientX - start.x, event.clientY - start.y) >
+              LONG_PRESS_MOVE_SLOP
+            ) {
+              clear();
+            }
           }}
           onPointerUp={clear}
           onPointerLeave={clear}
@@ -191,6 +230,12 @@ export function Springboard({
   canManageView,
   onEditView,
   onDeleteView,
+  page: pageProp,
+  onPageChange,
+  onPageCountChange,
+  editing: editingProp,
+  onEditingChange,
+  showPageDots = true,
   className,
 }: SpringboardProps) {
   const availableIds = useMemo(() => entries.map((e) => e.id), [entries]);
@@ -209,8 +254,33 @@ export function Springboard({
       entries.map((e) => e.id),
     );
   });
-  const [page, setPage] = useState(0);
-  const [editing, setEditing] = useState(false);
+
+  // Active page index + edit mode are CONTROLLED when the caller (the
+  // shell-surface store, via SpringboardSurface) supplies them, and local
+  // otherwise — so the app has one source of truth (the store enforces the
+  // "leaving the springboard clears edit mode + page" invariant) while the
+  // component stays usable standalone (stories / isolated tests).
+  const pageControlled = pageProp !== undefined;
+  const [localPage, setLocalPage] = useState(0);
+  const activePage = pageProp ?? localPage;
+  const setActivePage = useCallback(
+    (next: number) => {
+      if (pageControlled) onPageChange?.(next);
+      else setLocalPage(next);
+    },
+    [pageControlled, onPageChange],
+  );
+
+  const editingControlled = editingProp !== undefined;
+  const [localEditing, setLocalEditing] = useState(false);
+  const editing = editingProp ?? localEditing;
+  const setEditingState = useCallback(
+    (next: boolean) => {
+      if (editingControlled) onEditingChange?.(next);
+      else setLocalEditing(next);
+    },
+    [editingControlled, onEditingChange],
+  );
 
   // Re-reconcile when the available views or controlled favorites change.
   useEffect(() => {
@@ -222,13 +292,14 @@ export function Springboard({
     );
   }, [availableIds, favorites]);
 
-  // Keep the active page index in range when pages shrink (views removed), so
-  // stale page state can't leak into later logic. clampedPage masks it for
-  // render, but the underlying `page` is reset here.
+  // Keep the LOCAL active page index in range when pages shrink (views removed).
+  // When controlled, the store clamps the page, so this only guards the
+  // standalone path.
   useEffect(() => {
+    if (pageControlled) return;
     const pageCount = layout.pages.length > 0 ? layout.pages.length : 1;
-    setPage((p) => (p > pageCount - 1 ? pageCount - 1 : p));
-  }, [layout.pages.length]);
+    setLocalPage((p) => (p > pageCount - 1 ? pageCount - 1 : p));
+  }, [layout.pages.length, pageControlled]);
 
   const commit = useCallback((next: SpringboardLayout) => {
     setLayout(next);
@@ -268,22 +339,28 @@ export function Springboard({
     if (!editing) {
       emitViewInteraction({ source: "springboard", action: "edit-mode-enter" });
     }
-    setEditing(true);
-  }, [editing]);
+    setEditingState(true);
+  }, [editing, setEditingState]);
 
   const toggleEditMode = useCallback(() => {
     emitViewInteraction({
       source: "springboard",
       action: editing ? "edit-mode-exit" : "edit-mode-enter",
     });
-    setEditing((e) => !e);
-  }, [editing]);
+    setEditingState(!editing);
+  }, [editing, setEditingState]);
 
   const pages = useMemo(
     () => (layout.pages.length > 0 ? layout.pages : [[]]),
     [layout.pages],
   );
-  const clampedPage = Math.min(page, pages.length - 1);
+
+  // Report the page count up so an outer surface (the rail) can size the single
+  // unified page indicator. Fires only on an actual count change.
+  useEffect(() => {
+    onPageCountChange?.(pages.length);
+  }, [pages.length, onPageCountChange]);
+  const clampedPage = Math.min(activePage, pages.length - 1);
   // Cap the rendered dock at SPRINGBOARD_DOCK_LIMIT in BOTH modes. The
   // uncontrolled path already enforces it via toggleFavorite; controlled
   // (desktop-tab) favorites are capped at the pinning source too, but clamp
@@ -364,6 +441,18 @@ export function Springboard({
         </button>
       </div>
 
+      {/* Featured / favorites row at the top of the springboard. */}
+      {favoriteEntries.length > 0 ? (
+        <div
+          data-testid="springboard-dock"
+          className="mx-3 mt-1 mb-2 flex items-center justify-center gap-3 rounded-3xl bg-bg-accent/90 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6"
+        >
+          {favoriteEntries.map((entry) => (
+            <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>
+          ))}
+        </div>
+      ) : null}
+
       {/* Swipeable pages. Swipe paging is active only outside edit mode, so it
           never fights the in-tile drag-to-reorder gesture. */}
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -385,14 +474,14 @@ export function Springboard({
               info.offset.x < -SWIPE_THRESHOLD &&
               clampedPage < pages.length - 1
             ) {
-              setPage(clampedPage + 1);
+              setActivePage(clampedPage + 1);
               emitViewInteraction({
                 source: "springboard",
                 action: "page-swipe",
                 count: clampedPage + 1,
               });
             } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage > 0) {
-              setPage(clampedPage - 1);
+              setActivePage(clampedPage - 1);
               emitViewInteraction({
                 source: "springboard",
                 action: "page-swipe",
@@ -442,8 +531,10 @@ export function Springboard({
           )}
         </motion.div>
 
-        {/* Page dots. */}
-        {pages.length > 1 ? (
+        {/* Page dots — rendered only for STANDALONE usage. When nested in the
+            home/springboard rail, `showPageDots` is false and the rail owns the
+            single unified indicator, so two dot strips never stack (#4). */}
+        {showPageDots && pages.length > 1 ? (
           <div className="flex items-center justify-center gap-2 pb-3">
             {pages.map((pageIds, index) => (
               <button
@@ -452,7 +543,7 @@ export function Springboard({
                 type="button"
                 aria-label={`Page ${index + 1}`}
                 aria-current={index === clampedPage}
-                onClick={() => setPage(index)}
+                onClick={() => setActivePage(index)}
                 className={cn(
                   "h-2 w-2 rounded-full transition-colors",
                   index === clampedPage ? "bg-accent" : "bg-border",
@@ -462,18 +553,6 @@ export function Springboard({
           </div>
         ) : null}
       </div>
-
-      {/* Favorites dock. */}
-      {favoriteEntries.length > 0 ? (
-        <div
-          data-testid="springboard-dock"
-          className="mx-4 mb-4 flex items-center justify-center gap-4 rounded-3xl bg-bg-accent/90 px-6 py-3"
-        >
-          {favoriteEntries.map((entry) => (
-            <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { escapeHtml } from "@elizaos/cloud-shared/lib/utils/html";
 /**
  * POST /api/feedback
  * Sends user feedback to the developer email.
@@ -18,15 +19,6 @@ const feedbackSchema = z.object({
   email: z.string().email("Invalid email address").optional().or(z.literal("")),
   comment: z.string().min(1, "Comment is required").max(5000),
 });
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
 
 const app = new Hono<AppEnv>();
 

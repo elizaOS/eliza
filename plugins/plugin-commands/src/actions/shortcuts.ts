@@ -44,11 +44,9 @@ export const explicitCommandShortcuts: ShortcutDefinition[] =
 /**
  * Natural-language shortcuts (#8791 C6).
  *
- * These are flag-gated (the server gate enables them only when
- * `ELIZA_SHORTCUTS_NL === "1"`) and confidence-floored, so the DEFAULT behavior
- * is byte-identical with them off. Each one targets an UNAMBIGUOUS deterministic
- * intent that maps onto a deterministic `*_COMMAND` action, so the pre-LLM gate can
- * fire it with zero inference.
+ * These are narrow, anchored, and confidence-floored. Each one targets an
+ * UNAMBIGUOUS deterministic intent that maps onto a deterministic `*_COMMAND`
+ * action, so the pre-LLM gate can fire it with zero inference.
  *
  * The sole production shortcut here is "what commands can I use" / "show me the
  * commands" / "list the available commands" → `COMMANDS_COMMAND`. The patterns
@@ -82,8 +80,8 @@ export const naturalShortcuts: ShortcutDefinition[] = [
 ];
 
 /**
- * All command shortcuts the plugin registers: the always-on explicit
- * slash-command shortcuts plus the flag-gated natural-language shortcuts.
+ * All command shortcuts the plugin registers: the explicit slash-command
+ * shortcuts plus the narrow natural-language shortcuts.
  */
 export const commandShortcuts: ShortcutDefinition[] = [
 	...explicitCommandShortcuts,

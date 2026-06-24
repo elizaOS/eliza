@@ -67,7 +67,6 @@ describe("HealthSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Health");
       expect(flat).toContain("Last sleep");
       expect(flat).toContain("Regularity");
       expect(flat).toContain("Baseline");
@@ -114,7 +113,7 @@ describe("HealthSpatialView one source, three modalities", () => {
       54,
     );
     for (const line of lines) expect(visibleWidth(line)).toBe(54);
-    expect(lines.join("\n")).toContain("Loading sleep data");
+    expect(lines.join("\n")).toContain("Loading");
   });
 
   it("empty state renders the connect-a-source body", () => {
@@ -128,8 +127,8 @@ describe("HealthSpatialView one source, three modalities", () => {
         <HealthSpatialView snapshot={empty} />
       </SpatialSurface>,
     );
-    expect(html).toContain("No sleep data yet");
-    expect(html).toContain("Nothing was recorded in the last 14 days.");
+    expect(html).toContain("None");
+    expect(html).not.toContain("Nothing was recorded in the last 14 days.");
   });
 
   it("error state renders the message and a Retry control", () => {

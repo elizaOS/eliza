@@ -127,7 +127,7 @@ describe("FinancesView — states", () => {
     render(
       <FinancesView fetchers={makeFetchers({ fetchDashboard: () => never })} />,
     );
-    expect(screen.getByText("Loading finances")).toBeTruthy();
+    expect(screen.getByText("Loading")).toBeTruthy();
   });
 
   it("renders the populated dashboard with balance, transactions and recurring charges", async () => {
@@ -236,7 +236,7 @@ describe("FinancesView — states", () => {
         })}
       />,
     );
-    await screen.findByText("No money sources connected");
+    await screen.findByText("None");
     expect(agent("connect")).toBeTruthy();
     // No fabricated balance surfaces in the disconnected state.
     expect(screen.queryByText("$2,765.50")).toBeNull();
@@ -250,7 +250,7 @@ describe("FinancesView — states", () => {
         })}
       />,
     );
-    await screen.findByText("No money sources connected");
+    await screen.findByText("None");
     fireEvent.click(agent("connect"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });

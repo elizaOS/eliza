@@ -199,6 +199,30 @@ vi.mock("@elizaos/ui", () => {
   };
 });
 
+vi.mock("@elizaos/ui/api", () => ({
+  client: uiClient,
+  ElizaClient: class {
+    fetch = vi.fn(async () => ({}));
+  },
+}));
+
+vi.mock("@elizaos/ui/components", async () => {
+  return await vi.importMock<Record<string, unknown>>("@elizaos/ui");
+});
+
+vi.mock("@elizaos/ui/state", async () => {
+  const ui = await vi.importMock<{
+    useApp: () => unknown;
+    useAppSelector: <T>(selector: (value: unknown) => T) => T;
+    useAppSelectorShallow: <T>(selector: (value: unknown) => T) => T;
+  }>("@elizaos/ui");
+  return {
+    useApp: ui.useApp,
+    useAppSelector: ui.useAppSelector,
+    useAppSelectorShallow: ui.useAppSelectorShallow,
+  };
+});
+
 vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
 }));

@@ -1,6 +1,6 @@
 import { Download, Share2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type QueryResult } from "../../api";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
@@ -276,6 +276,7 @@ export function MediaGalleryView({
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const mountedRef = useRef(true);
   const [filter, setFilter] = useState<MediaType>("all");
   const [search, setSearch] = useState("");
   const [selectedMediaUrl, setSelectedMediaUrl] = useState<string | null>(null);
@@ -347,8 +348,10 @@ export function MediaGalleryView({
         return b.createdAt.localeCompare(a.createdAt);
       });
 
+      if (!mountedRef.current) return;
       setMedia(allMedia);
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(
         t("mediagalleryview.LoadFailed", {
           message: err instanceof Error ? err.message : "error",
@@ -356,11 +359,17 @@ export function MediaGalleryView({
         }),
       );
     }
-    setLoading(false);
+    if (mountedRef.current) {
+      setLoading(false);
+    }
   }, [t]);
 
   useEffect(() => {
-    loadMedia();
+    mountedRef.current = true;
+    void loadMedia();
+    return () => {
+      mountedRef.current = false;
+    };
   }, [loadMedia]);
 
   const filtered = useMemo(

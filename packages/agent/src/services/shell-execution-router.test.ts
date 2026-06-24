@@ -82,6 +82,34 @@ describe("runShell", () => {
     expect(result.stdout).toBe("hello\n");
   });
 
+  it("strips dangerous spawn env vars from the host child, passes benign ones", async () => {
+    const result = await runShell({
+      command: process.execPath,
+      args: [
+        "-e",
+        "process.stdout.write(JSON.stringify({" +
+          "ld:process.env.LD_PRELOAD??null," +
+          "opt:process.env.NODE_OPTIONS??null," +
+          "npm:process.env.NPM_CONFIG_REGISTRY??null," +
+          "safe:process.env.SAFE_PASSTHROUGH??null}))",
+      ],
+      env: {
+        LD_PRELOAD: "/tmp/evil.so",
+        NODE_OPTIONS: "--max-old-space-size=128",
+        NPM_CONFIG_REGISTRY: "http://attacker.test",
+        SAFE_PASSTHROUGH: "ok",
+      },
+      toolName: "test:env-sanitize",
+      timeoutMs: 5_000,
+    });
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(parsed.ld).toBeNull(); // LD_PRELOAD stripped
+    expect(parsed.opt).toBeNull(); // NODE_OPTIONS stripped
+    expect(parsed.npm).toBeNull(); // NPM_CONFIG_* prefix stripped
+    expect(parsed.safe).toBe("ok"); // benign caller var passes through
+  });
+
   it("cloud rejects local shell execution with the documented error", async () => {
     process.env.ELIZA_RUNTIME_MODE = "cloud";
     await expect(

@@ -3,6 +3,7 @@
  * of recent entries for the chat widget rail.
  */
 
+import { activityEventToPlaintext } from "@elizaos/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import { parseProactiveMessageEvent } from "../state/parsers";
@@ -22,46 +23,6 @@ let nextEventId = 0;
 function makeEventId(): string {
   nextEventId += 1;
   return `evt-${nextEventId}-${Date.now()}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function summarizeAssistantActivityEvent(data: Record<string, unknown>): {
-  eventType: string;
-  summary: string;
-} | null {
-  if (data.type !== "agent_event" || data.stream !== "assistant") {
-    return null;
-  }
-  const payload = isRecord(data.payload) ? data.payload : null;
-  if (!payload) {
-    return null;
-  }
-
-  const source = typeof payload.source === "string" ? payload.source : "";
-  const text =
-    typeof payload.text === "string" ? payload.text.trim().slice(0, 120) : "";
-  if (!text) {
-    return null;
-  }
-
-  switch (source) {
-    case "reminder":
-      return { eventType: "reminder", summary: text };
-    case "workflow":
-      return { eventType: "workflow", summary: text };
-    case "proactive-gm":
-    case "proactive-gn":
-    case "proactive-goal-check-in":
-      return { eventType: "check-in", summary: text };
-    case "proactive-nudge":
-    case "proactive-social-overuse":
-      return { eventType: "nudge", summary: text };
-    default:
-      return null;
-  }
 }
 
 /**
@@ -108,37 +69,14 @@ export function useActivityEvents() {
     const unbindPty = client.onWsEvent(
       "pty-session-event",
       (data: Record<string, unknown>) => {
-        // Validate the WS boundary instead of casting: strings stay strings,
-        // anything else becomes undefined so a malformed event can't poison the rail.
-        const str = (v: unknown): string | undefined =>
-          typeof v === "string" ? v : undefined;
-        const eventType = str(data.eventType) ?? str(data.type) ?? "";
-        const sessionId = str(data.sessionId);
-        const d = isRecord(data.data) ? data.data : undefined;
-
-        let summary = eventType;
-        if (eventType === "task_registered") {
-          summary = `Task started: ${str(d?.label) ?? sessionId ?? "unknown"}`;
-        } else if (eventType === "task_complete" || eventType === "stopped") {
-          summary = `Task ${eventType === "task_complete" ? "completed" : "stopped"}`;
-        } else if (eventType === "tool_running") {
-          const tool = str(d?.description) ?? str(d?.toolName) ?? "tool";
-          summary = `Running ${tool}`.slice(0, 80);
-        } else if (eventType === "blocked") {
-          summary = "Waiting for input";
-        } else if (eventType === "blocked_auto_resolved") {
-          summary = "Decision auto-approved";
-        } else if (eventType === "escalation") {
-          summary = "Escalated — needs attention";
-        } else if (eventType === "error") {
-          summary = "Error occurred";
-        }
+        const activity = activityEventToPlaintext(data, { maxLength: 120 });
+        if (!activity) return;
 
         pushEvent({
           timestamp: Date.now(),
-          eventType,
-          sessionId: sessionId ?? undefined,
-          summary,
+          eventType: activity.eventType,
+          sessionId: activity.sessionId,
+          summary: activity.plaintext,
         });
       },
     );
@@ -154,10 +92,14 @@ export function useActivityEvents() {
         if (!parsed) return;
         const summary =
           parsed.message.text.trim().slice(0, 120) || "Proactive message";
+        const activity = activityEventToPlaintext(
+          { type: "proactive-message", message: { text: summary } },
+          { maxLength: 120 },
+        );
         pushEvent({
           timestamp: Date.now(),
-          eventType: "proactive-message",
-          summary,
+          eventType: activity?.eventType ?? "proactive-message",
+          summary: activity?.plaintext ?? summary,
         });
       },
     );
@@ -165,14 +107,14 @@ export function useActivityEvents() {
     const unbindAgent = client.onWsEvent(
       "agent_event",
       (data: Record<string, unknown>) => {
-        const activity = summarizeAssistantActivityEvent(data);
+        const activity = activityEventToPlaintext(data, { maxLength: 120 });
         if (!activity) {
           return;
         }
         pushEvent({
           timestamp: Date.now(),
           eventType: activity.eventType,
-          summary: activity.summary,
+          summary: activity.plaintext,
         });
       },
     );

@@ -115,10 +115,33 @@ jobs:
         # tag. Mirrors the local verification in DEPLOY_AND_VALIDATE.md.
         run: |
           set -euo pipefail
+          assert_asset() {
+            local asset_path="$1"
+            local expected_type="$2"
+            local min_bytes="$3"
+            local headers
+            local body
+            headers="$(mktemp)"
+            body="$(mktemp)"
+            curl -fsS -D "$headers" -o "$body" "http://127.0.0.1:3000/${asset_path}"
+            if ! grep -qi "content-type: ${expected_type}" "$headers"; then
+              echo "::error::${asset_path} content-type was not ${expected_type}" >&2
+              cat "$headers" >&2
+              exit 1
+            fi
+            local bytes
+            bytes="$(wc -c < "$body" | tr -d ' ')"
+            if [ "$bytes" -lt "$min_bytes" ]; then
+              echo "::error::${asset_path} was too small (${bytes} bytes)" >&2
+              exit 1
+            fi
+          }
+
           docker build --load -t edad-smoke:ci \
             -f packages/examples/cloud/edad/Dockerfile.bundle \
             packages/examples/cloud/edad/dist
           docker rm -f edad-smoke >/dev/null 2>&1 || true
+          trap 'docker rm -f edad-smoke >/dev/null 2>&1 || true' EXIT
           docker run -d --name edad-smoke -p 3000:3000 edad-smoke:ci
           ok=""
           for _ in $(seq 1 30); do
@@ -133,10 +156,20 @@ jobs:
           test "$(curl -fsS http://127.0.0.1:3000/health)" = "ok"
           curl -fsS http://127.0.0.1:3000/ | grep -q "eDad" \
             || { echo "::error::EDAD did not serve its UI" >&2; exit 1; }
+          curl -fsS http://127.0.0.1:3000/ | grep -q 'content="http://127.0.0.1:3000/og-image.png"' \
+            || { echo "::error::EDAD did not emit an absolute social image URL" >&2; exit 1; }
           curl -fsS http://127.0.0.1:3000/api/config | grep -q "cloud_url" \
             || { echo "::error::EDAD /api/config is broken" >&2; exit 1; }
+          assert_asset dad-portrait.svg image/svg+xml 4000
+          assert_asset dad-avatar.svg image/svg+xml 2000
+          assert_asset you-avatar.svg image/svg+xml 500
+          assert_asset favicon.svg image/svg+xml 500
+          assert_asset favicon.png image/png 1000
+          assert_asset apple-touch-icon.png image/png 4000
+          assert_asset og-image.png image/png 100000
           docker rm -f edad-smoke >/dev/null 2>&1 || true
-          echo "EDAD image smoke test passed: healthy + serves UI + /api/config."
+          trap - EXIT
+          echo "EDAD image smoke test passed: healthy + serves UI + /api/config + generated assets."
 
       - uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
         with:

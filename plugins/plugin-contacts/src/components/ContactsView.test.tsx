@@ -98,7 +98,7 @@ describe("ContactsView — populated list", () => {
   it("short-circuits to an empty list on non-native platforms without touching the bridge", async () => {
     platform.isNative = false;
     render(React.createElement(ContactsView));
-    await waitFor(() => expect(screen.getByText("No contacts")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("None")).toBeTruthy());
     expect(contactsBridge.listContacts).not.toHaveBeenCalled();
   });
 });

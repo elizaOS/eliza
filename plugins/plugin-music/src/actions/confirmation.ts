@@ -17,11 +17,6 @@ export function mergedOptions(options?: OptionsRecord): OptionsRecord {
   return { ...direct, ...parameters };
 }
 
-/** @deprecated LLM `confirmed` is never authoritative; use {@link gateMusicConfirmation}. */
-export function isConfirmed(_options?: OptionsRecord): boolean {
-  return false;
-}
-
 export async function gateMusicConfirmation(args: {
   runtime: IAgentRuntime;
   message: Memory;
@@ -39,17 +34,6 @@ export async function gateMusicConfirmation(args: {
     callback: args.callback,
   });
   return gate.status;
-}
-
-export function confirmationRequired(
-  preview: string,
-  data: OptionsRecord,
-): ActionResult {
-  return {
-    success: false,
-    text: preview,
-    data: { requiresConfirmation: true, preview, ...data },
-  };
 }
 
 export function confirmationCancelled(preview: string): ActionResult {

@@ -255,14 +255,14 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
         onChange={handleFileChange}
       />
 
-      <header className="flex shrink-0 items-center justify-between border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
+      <header className="flex shrink-0 items-center justify-between px-3 py-2">
         <div className="flex min-w-0 items-center gap-3">
           <Button
             ref={back.ref}
             {...back.agentProps}
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0 rounded-xl text-muted hover:text-txt"
+            className="h-9 w-9 shrink-0 text-muted hover:text-txt"
             onClick={mode === "list" ? exitToApps : handleBackToList}
             aria-label={backLabel}
           >
@@ -287,7 +287,7 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
             {...newEl.agentProps}
             variant="ghost"
             size="icon"
-            className="h-9 w-9 rounded-xl text-muted hover:text-txt"
+            className="h-9 w-9 text-muted hover:text-txt"
             onClick={handleOpenNew}
             aria-label={newLabel}
             data-testid="contacts-new"
@@ -298,10 +298,7 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
       </header>
 
       {mode === "list" && (
-        <p
-          data-testid="contacts-search-hint"
-          className="shrink-0 px-4 py-2 text-[13px] leading-relaxed text-txt/60"
-        >
+        <p data-testid="contacts-search-hint" className="sr-only">
           {t("contacts.searchHint", {
             defaultValue: "Search contacts by typing in the chat.",
           })}
@@ -380,7 +377,7 @@ function ContactList({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-sm text-muted">
-        {t("contacts.loading", { defaultValue: "Loading contacts…" })}
+        {t("contacts.loading", { defaultValue: "Loading" })}
       </div>
     );
   }
@@ -389,18 +386,17 @@ function ContactList({
     return (
       <div className="mx-auto flex max-w-sm flex-col items-center gap-3 px-4 py-16 text-center">
         <span
-          className="flex h-20 w-20 items-center justify-center rounded-3xl"
+          className="flex h-16 w-16 items-center justify-center"
           style={{ background: "var(--accent-subtle)" }}
         >
           <AddressBookMotif />
         </span>
         <div className="mt-2 text-base font-semibold text-txt">
-          {t("contacts.empty.title", { defaultValue: "No contacts yet" })}
+          {t("contacts.empty.title", { defaultValue: "None" })}
         </div>
-        <p className="max-w-xs text-sm text-muted">
+        <p className="sr-only">
           {t("contacts.empty.body", {
-            defaultValue:
-              "Import a vCard or add someone to start your address book.",
+            defaultValue: "Import vCard or add contact.",
           })}
         </p>
         <ImportVCardButton onImport={onImport} t={t} />
@@ -409,7 +405,7 @@ function ContactList({
   }
 
   return (
-    <ul className="divide-y divide-border/20">
+    <ul>
       {contacts.map((contact, index) => (
         <ContactListItem
           key={contact.id}
@@ -537,7 +533,7 @@ function ContactListItem({
         {...agentProps}
         type="button"
         onClick={() => onSelect(contact.id)}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-bg-accent/40 focus:bg-bg-accent/40 focus:outline-none"
+        className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-bg-accent/40 focus:bg-bg-accent/40 focus:outline-none"
       >
         <Avatar name={contact.displayName} photoUri={contact.photoUri} />
         <div className="min-w-0 flex-1">
@@ -594,7 +590,7 @@ function ContactDetail({ contact, t }: { contact: ContactSummary; t: TFn }) {
           <ContactPhoneRow value={value} contactId={contact.id} t={t} />
         )}
         emptyLabel={t("contacts.noPhones", {
-          defaultValue: "No phone numbers",
+          defaultValue: "None",
         })}
       />
 
@@ -611,11 +607,11 @@ function ContactDetail({ contact, t }: { contact: ContactSummary; t: TFn }) {
           </a>
         )}
         emptyLabel={t("contacts.noEmails", {
-          defaultValue: "No email addresses",
+          defaultValue: "None",
         })}
       />
 
-      <p className="text-xs text-muted">
+      <p className="sr-only">
         {t("contacts.detail.readOnlyNote", {
           defaultValue:
             "Editing existing contacts is unavailable on this device.",
@@ -697,10 +693,10 @@ function ContactFieldGroup({
   emptyLabel: string;
 }) {
   return (
-    <section className="flex flex-col gap-2 border-t border-border/20 pt-4">
+    <section className="flex flex-col gap-2 pt-2">
       <h3 className="text-sm font-medium text-muted">{label}</h3>
       {items.length === 0 ? (
-        <p className="text-sm text-muted">{emptyLabel}</p>
+        <p className="sr-only">{emptyLabel}</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {dedupePreservingOrder(items).map((value) => (
@@ -772,7 +768,7 @@ function NewContactForm({
   return (
     <form
       onSubmit={onSubmit}
-      className="mx-auto flex max-w-md flex-col gap-4 px-4 py-6"
+      className="mx-auto flex max-w-md flex-col gap-3 px-3 py-4"
     >
       <div className="flex flex-col gap-1.5">
         <label htmlFor={nameId} className="text-sm font-medium text-muted">
@@ -871,14 +867,14 @@ function Avatar({
       <img
         src={photoUri}
         alt=""
-        className={`${dimension} shrink-0 rounded-full object-cover`}
+        className={`${dimension} shrink-0 object-cover`}
       />
     );
   }
   return (
     <div
       aria-hidden="true"
-      className={`${dimension} flex shrink-0 items-center justify-center rounded-full bg-bg-accent font-semibold text-muted`}
+      className={`${dimension} flex shrink-0 items-center justify-center bg-bg-accent font-semibold text-muted`}
     >
       {getInitials(name)}
     </div>

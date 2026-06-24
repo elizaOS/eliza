@@ -120,4 +120,43 @@ describe("Google Gmail mock fault injection", () => {
     expect(healthy.response.status).toBe(200);
     expect(Array.isArray(healthy.body.messages)).toBe(true);
   });
+
+  it("returns 207 and records partial successes for batchModify partial_failure", async () => {
+    activeMocks = await startMocks({ envs: ["google"] });
+    const baseUrl = activeMocks.baseUrls.google;
+
+    const configured = await jsonRequest(
+      `${baseUrl}/__mock/google/gmail/fault`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          mode: "partial_failure",
+          method: "POST",
+          path: "/gmail/v1/users/me/messages/batchModify",
+        }),
+      },
+    );
+    expect(configured.response.status).toBe(200);
+
+    const modified = await jsonRequest(
+      `${baseUrl}/gmail/v1/users/me/messages/batchModify`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ids: ["msg-finance", "msg-sarah", "msg-newsletter"],
+          removeLabelIds: ["INBOX"],
+        }),
+      },
+    );
+
+    expect(modified.response.status).toBe(207);
+    expect(modified.body).toEqual(
+      expect.objectContaining({
+        partialFailure: true,
+        requestedIds: ["msg-finance", "msg-sarah", "msg-newsletter"],
+        succeededIds: ["msg-finance", "msg-sarah"],
+        failedIds: ["msg-newsletter"],
+      }),
+    );
+  });
 });

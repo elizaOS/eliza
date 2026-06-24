@@ -258,11 +258,10 @@ return:
 JSON object only with viewId (a registered view id or "none") and an optional reason.`;
 
 // -----------------------------------------------------------------------------
-// LifeOps per-capability baselines (#8795). Concrete starting prompts the
-// optimizer evolves. The live LifeOps prompt templates live in
-// @elizaos/plugin-personal-assistant / @elizaos/plugin-health, which training
-// must not import (layering), so these bundled baselines stand in until a
-// LifeOps call site registers its inline template as the baseline at run time.
+// LifeOps per-capability fallback baselines (#8795). The optimizer prefers the
+// live exported prompt template from the owning plugin via `loadBaselineForTask`
+// below; these strings remain as last-resort fallbacks for stripped-down
+// training installs where the LifeOps plugins are unavailable.
 // -----------------------------------------------------------------------------
 
 const CALENDAR_EXTRACT_BASELINE = `task: Extract a structured calendar event from a natural-language request.
@@ -426,8 +425,104 @@ function firstStringExport(
     if (typeof value === "string" && value.trim().length > 0) {
       return value;
     }
+    if (
+      Array.isArray(value) &&
+      value.every((entry) => typeof entry === "string")
+    ) {
+      const joined = value.join("\n").trim();
+      if (joined.length > 0) {
+        return joined;
+      }
+    }
   }
   return null;
+}
+
+async function importOptionalModule(
+  specifier: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const imported = await import(specifier);
+    return imported as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+async function loadFirstStringExport(
+  specifier: string,
+  names: readonly string[],
+  sourceSpecifier?: string,
+): Promise<string | null> {
+  if (sourceSpecifier) {
+    const sourceUrl = new URL(sourceSpecifier, import.meta.url);
+    const sourceModule = await importOptionalModule(sourceUrl.href);
+    const sourceExported = sourceModule
+      ? firstStringExport(sourceModule, names)
+      : null;
+    if (sourceExported) {
+      return sourceExported;
+    }
+  }
+  const promptModule = await importOptionalModule(specifier);
+  return promptModule ? firstStringExport(promptModule, names) : null;
+}
+
+async function loadLiveLifeOpsBaseline(
+  task: TrajectoryTrainingTask,
+): Promise<string | null> {
+  switch (task) {
+    case "calendar_extract":
+      return loadFirstStringExport(
+        "@elizaos/plugin-calendar/actions/optimized-prompt-instructions",
+        ["CALENDAR_PLAN_INSTRUCTIONS"],
+        "../../../plugin-calendar/src/actions/optimized-prompt-instructions.ts",
+      );
+    case "schedule_plan":
+      return loadFirstStringExport(
+        "@elizaos/plugin-personal-assistant/lifeops/optimized-prompt-instructions",
+        ["SCHEDULE_PLAN_INSTRUCTIONS"],
+        "../../../plugin-personal-assistant/src/lifeops/optimized-prompt-instructions.ts",
+      );
+    case "reminder_dispatch":
+      return loadFirstStringExport(
+        "@elizaos/plugin-personal-assistant/lifeops/optimized-prompt-instructions",
+        ["REMINDER_DISPATCH_INSTRUCTIONS"],
+        "../../../plugin-personal-assistant/src/lifeops/optimized-prompt-instructions.ts",
+      );
+    case "inbox_triage":
+      return loadFirstStringExport(
+        "@elizaos/plugin-personal-assistant/lifeops/optimized-prompt-instructions",
+        ["GMAIL_PLAN_INSTRUCTIONS"],
+        "../../../plugin-personal-assistant/src/lifeops/optimized-prompt-instructions.ts",
+      );
+    case "meeting_prep":
+      return loadFirstStringExport(
+        "@elizaos/plugin-personal-assistant/lifeops/optimized-prompt-instructions",
+        ["MEETING_PREP_INSTRUCTIONS"],
+        "../../../plugin-personal-assistant/src/lifeops/optimized-prompt-instructions.ts",
+      );
+    case "morning_brief":
+      return loadFirstStringExport(
+        "@elizaos/plugin-personal-assistant/lifeops/optimized-prompt-instructions",
+        ["BRIEF_NARRATIVE_INSTRUCTIONS"],
+        "../../../plugin-personal-assistant/src/lifeops/optimized-prompt-instructions.ts",
+      );
+    case "health_checkin":
+      return loadFirstStringExport(
+        "@elizaos/plugin-health/actions/optimized-prompt-instructions",
+        ["HEALTH_PLAN_INSTRUCTIONS"],
+        "../../../plugin-health/src/actions/optimized-prompt-instructions.ts",
+      );
+    case "screentime_recap":
+      return loadFirstStringExport(
+        "@elizaos/plugin-health/actions/optimized-prompt-instructions",
+        ["SCREENTIME_RECAP_INSTRUCTIONS"],
+        "../../../plugin-health/src/actions/optimized-prompt-instructions.ts",
+      );
+    default:
+      return null;
+  }
 }
 
 function pathForTask(
@@ -641,12 +736,10 @@ export async function loadBaselineForTask(
     case "meeting_prep":
     case "morning_brief":
     case "health_checkin":
-    case "screentime_recap":
-      // LifeOps templates live in @elizaos/plugin-personal-assistant /
-      // @elizaos/plugin-health, which training must not import (layering). The
-      // bundled baseline is the starting point; a LifeOps call site can pass
-      // its live inline template as the baseline when it drives optimization.
-      return defaultBaselineForTask(task);
+    case "screentime_recap": {
+      const liveBaseline = await loadLiveLifeOpsBaseline(task);
+      return liveBaseline ?? defaultBaselineForTask(task);
+    }
   }
 }
 

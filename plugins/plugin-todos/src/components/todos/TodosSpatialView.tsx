@@ -15,15 +15,7 @@
  * fetches or computes — it displays the snapshot and dispatches actions.
  */
 
-import {
-  Button,
-  Card,
-  Divider,
-  HStack,
-  List,
-  Text,
-  VStack,
-} from "@elizaos/ui/spatial";
+import { Button, Card, HStack, List, Text, VStack } from "@elizaos/ui/spatial";
 
 export type LaneId = "today" | "upcoming" | "someday";
 
@@ -74,18 +66,17 @@ export interface TodosSpatialViewProps {
   onAction?: (action: string) => void;
 }
 
-export function TodosSpatialView({ snapshot, onAction }: TodosSpatialViewProps) {
+export function TodosSpatialView({
+  snapshot,
+  onAction,
+}: TodosSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card title="Todos" gap={1} padding={1}>
-      <Text style="caption" tone="muted">
-        Three lanes: Today, Upcoming, Someday.
-      </Text>
-
+    <Card gap={1} padding={1}>
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
-          Loading todos
+          Loading
         </Text>
       ) : snapshot.state === "error" ? (
         <TodosErrorBody snapshot={snapshot} dispatch={dispatch} />
@@ -107,7 +98,6 @@ function TodosErrorBody({
 }) {
   return (
     <>
-      <Divider label="error" />
       <Text bold>Could not load todos</Text>
       <Text tone="danger" style="caption">
         {snapshot.error ?? "Could not load todos."}
@@ -128,15 +118,10 @@ function TodosEmptyBody({
 }) {
   return (
     <>
-      <Divider label="empty" />
-      <Text bold>No todos</Text>
-      <Text tone="muted" style="caption">
-        Nothing on the board yet. Ask Eliza to add one and she will track it for
-        you.
-      </Text>
+      <Text bold>None</Text>
       <HStack gap={1}>
         <Button agent="add" onPress={dispatch("add")}>
-          Add a todo
+          Add
         </Button>
       </HStack>
     </>
@@ -163,12 +148,10 @@ function TodosReadyBody({ snapshot }: { snapshot: TodosSnapshot }) {
 function Lane({ lane, todos }: { lane: LaneDef; todos: TodoCard[] }) {
   return (
     <>
-      <Divider label={`${lane.label} (${todos.length})`} />
-      {todos.length === 0 ? (
-        <Text tone="muted" style="caption">
-          Nothing here.
-        </Text>
-      ) : (
+      <Text style="caption" tone="muted">
+        {lane.label} ({todos.length})
+      </Text>
+      {todos.length > 0 ? (
         <List gap={0}>
           {todos.map((todo) => (
             <HStack
@@ -193,7 +176,7 @@ function Lane({ lane, todos }: { lane: LaneDef; todos: TodoCard[] }) {
             </HStack>
           ))}
         </List>
-      )}
+      ) : null}
     </>
   );
 }

@@ -19,6 +19,12 @@ describe("accessContext is a no-op on memory retrieval (PR 1)", () => {
 
   let adapter: InMemoryDatabaseAdapter;
 
+  const vector = (axis: number): number[] => {
+    const embedding = Array.from({ length: 384 }, () => 0);
+    embedding[axis] = 1;
+    return embedding;
+  };
+
   const sortById = (memories: Memory[]) =>
     [...memories].sort((a, b) => String(a.id).localeCompare(String(b.id)));
 
@@ -29,9 +35,27 @@ describe("accessContext is a no-op on memory retrieval (PR 1)", () => {
     await adapter.init();
 
     const seed: Memory[] = [
-      { entityId: ownerEntity, roomId: roomA, worldId, content: { text: "owner in A" } },
-      { entityId: userEntity, roomId: roomA, worldId, content: { text: "user in A" } },
-      { entityId: userEntity, roomId: roomB, worldId, content: { text: "user in B" } },
+      {
+        entityId: ownerEntity,
+        roomId: roomA,
+        worldId,
+        content: { text: "owner in A" },
+        embedding: vector(0),
+      },
+      {
+        entityId: userEntity,
+        roomId: roomA,
+        worldId,
+        content: { text: "user in A" },
+        embedding: vector(1),
+      },
+      {
+        entityId: userEntity,
+        roomId: roomB,
+        worldId,
+        content: { text: "user in B" },
+        embedding: vector(2),
+      },
     ];
     await adapter.createMemories(seed.map((memory) => ({ memory, tableName: "memories" })));
   });
@@ -66,6 +90,26 @@ describe("accessContext is a no-op on memory retrieval (PR 1)", () => {
     });
 
     expect(baseline).toHaveLength(2);
+    expect(sortById(scoped)).toEqual(sortById(baseline));
+  });
+
+  it("searchMemories returns identical rows with and without accessContext", async () => {
+    const query = vector(0);
+    const baseline = await adapter.searchMemories({
+      tableName: "memories",
+      embedding: query,
+      match_threshold: 0,
+      limit: 3,
+    });
+    const scoped = await adapter.searchMemories({
+      tableName: "memories",
+      embedding: query,
+      match_threshold: 0,
+      limit: 3,
+      accessContext: requesterCtx,
+    });
+
+    expect(baseline).toHaveLength(3);
     expect(sortById(scoped)).toEqual(sortById(baseline));
   });
 });

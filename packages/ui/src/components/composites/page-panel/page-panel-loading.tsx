@@ -14,7 +14,7 @@ export function PageLoadingState({
     return (
       <PagePanelRoot
         className={cn(
-          "flex min-h-[58vh] flex-col items-center justify-center px-6 py-10 text-center",
+          "flex min-h-[42vh] flex-col items-center justify-center px-4 py-8 text-center",
           className,
         )}
         {...props}
@@ -22,11 +22,7 @@ export function PageLoadingState({
         <Spinner className="h-5 w-5 text-muted" />
         <div className="mt-4 max-w-md space-y-2">
           <div className="text-base font-medium text-txt-strong">{heading}</div>
-          {description ? (
-            <div className="text-sm leading-relaxed text-muted">
-              {description}
-            </div>
-          ) : null}
+          {description ? <div className="sr-only">{description}</div> : null}
         </div>
       </PagePanelRoot>
     );
@@ -37,7 +33,7 @@ export function PageLoadingState({
       <PagePanelRoot
         variant="workspace"
         className={cn(
-          "items-center justify-center px-6 py-10 text-center",
+          "items-center justify-center px-4 py-8 text-center",
           className,
         )}
         {...props}
@@ -45,11 +41,7 @@ export function PageLoadingState({
         <Spinner className="h-5 w-5 text-muted" />
         <div className="mt-4 max-w-md space-y-2">
           <div className="text-base font-medium text-txt-strong">{heading}</div>
-          {description ? (
-            <div className="text-sm leading-relaxed text-muted">
-              {description}
-            </div>
-          ) : null}
+          {description ? <div className="sr-only">{description}</div> : null}
         </div>
       </PagePanelRoot>
     );
@@ -58,7 +50,7 @@ export function PageLoadingState({
   return (
     <div
       className={cn(
-        "flex min-h-[18rem] flex-col items-center justify-center rounded-sm border border-dashed border-border bg-card px-6 py-12 text-center ",
+        "flex min-h-[12rem] flex-col items-center justify-center px-4 py-8 text-center",
         className,
       )}
       {...props}
@@ -66,11 +58,7 @@ export function PageLoadingState({
       <Spinner className="h-5 w-5 text-muted" />
       <div className="mt-4 max-w-md space-y-2">
         <div className="text-base font-medium text-txt-strong">{heading}</div>
-        {description ? (
-          <div className="text-sm leading-relaxed text-muted">
-            {description}
-          </div>
-        ) : null}
+        {description ? <div className="sr-only">{description}</div> : null}
       </div>
     </div>
   );

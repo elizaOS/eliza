@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -8,7 +9,7 @@ import {
   mtpBuilderRepoRoot,
   mtpForceRebuildRequested,
   mtpSliceReuse,
-} from "./run-mobile-build.mjs";
+} from "./lib/mobile-build-decisions.mjs";
 
 // Far-future mtimes keep these tests independent of the checkout's own file
 // timestamps (the worktree stamps every file at checkout time, including the
@@ -116,6 +117,8 @@ describe("mtpSliceReuse", () => {
 
 describe("MTP_FORK_SRC_CANDIDATES (no drift vs the builder)", () => {
   it("mirrors build-llama-cpp-mtp.mjs: the in-repo fork + the ios-deps fallback, and nothing divergent", () => {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const repoRoot = path.resolve(here, "..", "..", "..");
     const forkSuffix = path.join(
       "plugins",
       "plugin-local-inference",
@@ -128,6 +131,28 @@ describe("MTP_FORK_SRC_CANDIDATES (no drift vs the builder)", () => {
       "ios-deps",
       "llama.cpp",
       "src",
+    );
+
+    expect(repoRoot).toBe(mtpBuilderRepoRoot);
+    expect(MTP_FORK_SRC_CANDIDATES).toEqual(
+      [
+        process.env.ELIZA_MTP_LLAMA_CPP_SRC?.trim(),
+        path.join(
+          repoRoot,
+          "plugins",
+          "plugin-local-inference",
+          "native",
+          "llama.cpp",
+        ),
+        path.join(
+          repoRoot,
+          "packages",
+          "native",
+          "ios-deps",
+          "llama.cpp",
+          "src",
+        ),
+      ].filter(Boolean),
     );
     expect(MTP_FORK_SRC_CANDIDATES.some((c) => c.endsWith(forkSuffix))).toBe(
       true,

@@ -70,7 +70,7 @@ describe("RelationshipsSpatialView one source, three modalities", () => {
     for (const width of [54, 32]) {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
-      expect(lines.join("\n")).toContain("Relationships");
+      expect(lines.join("\n")).not.toContain("Relationships");
     }
     const flat = renderViewToLines(view, 54).join("\n");
     expect(flat).toContain("Owner");
@@ -122,7 +122,7 @@ describe("RelationshipsSpatialView one source, three modalities", () => {
         <RelationshipsSpatialView snapshot={empty} />
       </SpatialSurface>,
     );
-    expect(html).toContain("No people yet");
+    expect(html).toContain("None");
     expect(html).toContain('data-agent-id="add"');
   });
 

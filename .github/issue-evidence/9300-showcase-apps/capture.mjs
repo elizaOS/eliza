@@ -14,8 +14,8 @@
  */
 
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 
 const OUT = path.dirname(fileURLToPath(import.meta.url));
@@ -34,7 +34,8 @@ function waitForPort(url, timeoutMs = 120_000) {
       } catch {
         // not up yet
       }
-      if (Date.now() - start > timeoutMs) return reject(new Error(`timeout waiting for ${url}`));
+      if (Date.now() - start > timeoutMs)
+        return reject(new Error(`timeout waiting for ${url}`));
       setTimeout(tick, 1000);
     };
     tick();
@@ -43,12 +44,11 @@ function waitForPort(url, timeoutMs = 120_000) {
 
 const procs = [];
 function boot(cmd, args, env) {
-  const p = spawn(cmd, args, { cwd: REPO, env: { ...process.env, ...env }, stdio: "inherit" });
-  procs.push(p);
-  return p;
-}
-function spawnIn(cwd, cmd, args, env = {}) {
-  const p = spawn(cmd, args, { cwd, env: { ...process.env, ...env }, stdio: "inherit" });
+  const p = spawn(cmd, args, {
+    cwd: REPO,
+    env: { ...process.env, ...env },
+    stdio: "inherit",
+  });
   procs.push(p);
   return p;
 }
@@ -66,9 +66,13 @@ async function main() {
   const page = await browser.newPage();
 
   // ── EDAD (standalone Bun server + static HTML) — reliable, capture first. ──
-  boot("bun", ["run", "packages/examples/cloud/edad/server.ts"], { PORT: String(EDAD_PORT) });
+  boot("bun", ["run", "packages/examples/cloud/edad/server.ts"], {
+    PORT: String(EDAD_PORT),
+  });
   await waitForPort(`http://127.0.0.1:${EDAD_PORT}/health`);
-  await page.goto(`http://127.0.0.1:${EDAD_PORT}/`, { waitUntil: "networkidle" });
+  await page.goto(`http://127.0.0.1:${EDAD_PORT}/`, {
+    waitUntil: "networkidle",
+  });
   await shot(page, "edad-desktop", { width: 1280, height: 900 });
   // login-gated send journey: type + send → graceful in-character error.
   await page.fill("#input", "dad, how do I file my taxes?");
@@ -77,27 +81,34 @@ async function main() {
   await shot(page, "edad-desktop-journey", { width: 1280, height: 900 });
   await shot(page, "edad-mobile", { width: 390, height: 844 });
 
-  // ── Clone Ur Crush (Next.js dev) — best-effort; its native `dev` script
-  // binds CRUSH_PORT. Never fail the whole run on its boot/compile flakiness. ──
-  try {
-    boot("bun", ["run", "--cwd", "packages/examples/cloud/clone-ur-crush", "dev"], {});
-    await waitForPort(`http://127.0.0.1:${CRUSH_PORT}`, 240_000);
-    await page.goto(`http://127.0.0.1:${CRUSH_PORT}/`, { waitUntil: "networkidle" });
-    await page.waitForTimeout(2000);
-    await shot(page, "clone-ur-crush-desktop", { width: 1280, height: 900 });
-    await page.fill("input", "Ashley");
-    const next = page.getByRole("button", { name: /next/i });
-    if (await next.count()) {
-      await next.first().click();
-      await page.waitForTimeout(900);
-      await shot(page, "clone-ur-crush-desktop-step2", { width: 1280, height: 900 });
-    }
-    await page.goto(`http://127.0.0.1:${CRUSH_PORT}/`, { waitUntil: "networkidle" });
-    await page.waitForTimeout(1500);
-    await shot(page, "clone-ur-crush-mobile", { width: 390, height: 844 });
-  } catch (err) {
-    console.error(`[clone-ur-crush capture skipped] ${err?.message ?? err}`);
+  // ── Clone Ur Crush (Next.js dev) — required evidence for #9300. ──
+  boot(
+    "bun",
+    ["run", "--cwd", "packages/examples/cloud/clone-ur-crush", "dev"],
+    {},
+  );
+  await waitForPort(`http://127.0.0.1:${CRUSH_PORT}`, 240_000);
+  await page.goto(`http://127.0.0.1:${CRUSH_PORT}/`, {
+    waitUntil: "networkidle",
+  });
+  await page.waitForTimeout(2000);
+  await shot(page, "clone-ur-crush-desktop", { width: 1280, height: 900 });
+  await page.fill("input", "Ashley");
+  const next = page.getByRole("button", { name: /next/i });
+  if ((await next.count()) === 0) {
+    throw new Error("clone-ur-crush Next button not found");
   }
+  await next.first().click();
+  await page.waitForTimeout(900);
+  await shot(page, "clone-ur-crush-desktop-step2", {
+    width: 1280,
+    height: 900,
+  });
+  await page.goto(`http://127.0.0.1:${CRUSH_PORT}/`, {
+    waitUntil: "networkidle",
+  });
+  await page.waitForTimeout(1500);
+  await shot(page, "clone-ur-crush-mobile", { width: 390, height: 844 });
 
   await browser.close();
 }

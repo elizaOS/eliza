@@ -1,5 +1,6 @@
 import { DatabaseAdapter } from "../database";
 import type {
+	AccessContext,
 	Agent,
 	AppendConnectorAccountAuditEventParams,
 	Component,
@@ -795,6 +796,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		roomId?: UUID;
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
+		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
 		const effectiveLimit = params.limit ?? params.count ?? Infinity;
 		const roomId = params.roomId ?? DEFAULT_UUID;
@@ -866,6 +868,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		tableName: string;
 		roomIds: UUID[];
 		limit?: number;
+		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
 		const limit = params.limit ?? 20;
 		const out: Memory[] = [];
@@ -967,7 +970,18 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		this.logs = this.logs.filter((l) => !idSet.has(String(l.id)));
 	}
 
-	async searchMemories(): Promise<Memory[]> {
+	async searchMemories(_params: {
+		tableName: string;
+		embedding: number[];
+		match_threshold?: number;
+		limit?: number;
+		unique?: boolean;
+		query?: string;
+		roomId?: UUID;
+		worldId?: UUID;
+		entityId?: UUID;
+		accessContext?: AccessContext;
+	}): Promise<Memory[]> {
 		return [];
 	}
 

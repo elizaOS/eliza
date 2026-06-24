@@ -77,7 +77,7 @@ export function CalendarSpatialView({
   const eventCount = snapshot.events.length;
 
   return (
-    <Card title="Calendar" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text style="subheading" bold grow={1} wrap={false}>
           {snapshot.periodLabel}
@@ -167,7 +167,7 @@ function CalendarAgendaBody({
   if (eventCount === 0) {
     return (
       <Text tone="muted" align="center" style="caption">
-        {snapshot.loading ? "Loading events" : "No upcoming events"}
+        {snapshot.loading ? "Loading" : "None"}
       </Text>
     );
   }
@@ -175,12 +175,7 @@ function CalendarAgendaBody({
   return (
     <List gap={0}>
       {snapshot.events.slice(0, 12).map((event) => (
-        <HStack
-          key={event.id}
-          gap={1}
-          align="center"
-          agent={`row-${event.id}`}
-        >
+        <HStack key={event.id} gap={1} align="center" agent={`row-${event.id}`}>
           <Text tone="muted" wrap={false}>
             {event.selected ? "›" : "•"}
           </Text>

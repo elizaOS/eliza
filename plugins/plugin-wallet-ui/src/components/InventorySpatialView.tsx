@@ -159,7 +159,7 @@ export function InventorySpatialView({
       : "default";
 
   return (
-    <Card title="Wallet" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text style="subheading" grow={1}>
           {formatUsd(portfolioValueUsd)}
@@ -200,7 +200,11 @@ export function InventorySpatialView({
       ) : null}
 
       {walletEnabled === false ? (
-        <Button grow={1} agent="enable-wallet" onPress={dispatch("enable-wallet")}>
+        <Button
+          grow={1}
+          agent="enable-wallet"
+          onPress={dispatch("enable-wallet")}
+        >
           Enable wallet
         </Button>
       ) : null}
@@ -226,7 +230,7 @@ export function InventorySpatialView({
       <Divider label="tokens" />
       {tokenRows.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No tokens
+          None
         </Text>
       ) : (
         <List gap={0}>
@@ -265,7 +269,7 @@ export function InventorySpatialView({
       <Divider label="movers" />
       {marketMovers.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No market data
+          —
         </Text>
       ) : (
         <List gap={0}>
@@ -312,7 +316,7 @@ export function InventorySpatialView({
       <Divider label="nfts" />
       {walletNfts.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No NFTs
+          None
         </Text>
       ) : (
         <List gap={0}>

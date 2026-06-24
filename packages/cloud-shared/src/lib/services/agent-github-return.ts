@@ -1,3 +1,4 @@
+import { escapeHtml } from "../utils/html";
 import type { ManagedAgentGithubMode } from "./eliza-agent-config";
 
 export const LIFEOPS_GITHUB_POST_MESSAGE_TYPE = "agent-lifeops-github-complete";
@@ -11,15 +12,6 @@ export interface LifeOpsGithubReturnDetail {
   bindingMode?: ManagedAgentGithubMode | null;
   message?: string | null;
   restarted?: boolean;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 function serializeInlineScriptValue(value: unknown): string {

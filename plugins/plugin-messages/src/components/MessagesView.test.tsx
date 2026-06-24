@@ -134,10 +134,10 @@ describe("MessagesView — unified GUI/XR thread list", () => {
     expect(screen.getByText("1")).toBeTruthy();
   });
 
-  it("shows the 'No SMS threads' empty line when the inbox is empty", async () => {
+  it("shows the compact empty line when the inbox is empty", async () => {
     bridge.listMessages.mockResolvedValue({ messages: [] });
     render(React.createElement(MessagesView));
-    await screen.findByText("No SMS threads");
+    await screen.findByText("None");
   });
 });
 

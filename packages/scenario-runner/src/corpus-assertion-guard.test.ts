@@ -2,7 +2,7 @@
  * Corpus assertion guard.
  *
  * The scenario-runner runs a scenario's turns and only fails when an assertion
- * fails. A scenario with no enforceable assertion therefore passes vacuously —
+ * fails. A scenario with no enforceable assertion therefore passes vacuously -
  * it proves nothing while counting as green coverage. This guard makes that
  * failure mode impossible to (re)introduce.
  *
@@ -11,13 +11,13 @@
  *     pr-deterministic lane is the merge-blocking PR gate; a vacuous scenario
  *     there is false confidence on every PR. "Enforceable" means a non-empty
  *     `finalChecks` array OR a per-turn assertion the executor actually runs
- *     (`assertResponse` / `responseIncludesAny` / `responseIncludesAll` /
- *     `responseJudge` / `assertTurn`). The `plannerIncludes*` / `plannerExcludes`
- *     fields are deliberately NOT counted: the executor does not consume them
- *     (they are dead assertion fields — tracked separately).
+ *     (`assertResponse` / `expectedActions` / `responseIncludesAny` /
+ *     `responseIncludesAll` / `responseExcludes` / `forbiddenActions` /
+ *     `plannerIncludesAll` / `plannerIncludesAny` / `plannerExcludes` /
+ *     `responseJudge` / `assertTurn`).
  *  2. `personalityExpect` scenarios must run `live-only`. Their behaviour
- *     (silence / held-style / trait-respected …) can only be exercised by a
- *     real model — the deterministic proxy always emits a reply, so the
+ *     (silence / held-style / trait-respected ...) can only be exercised by a
+ *     real model - the deterministic proxy always emits a reply, so the
  *     personality judge can never pass under the proxy. They are not valid
  *     deterministic PR coverage and must not claim the pr-deterministic lane.
  */
@@ -64,18 +64,14 @@ interface ScenarioFacts {
   hasFinalChecks: boolean;
   hasPerTurnAssert: boolean;
   hasPersonalityExpect: boolean;
-  hasDeadPlannerAssert: boolean;
-  hasMessageAsGmailLabelExpectation: boolean;
   hasExpectedActionParams: boolean;
+  hasMessageAsGmailLabelExpectation: boolean;
   deadTurnAssertionFields: string[];
 }
 
-// plannerIncludesAll / plannerIncludesAny / plannerExcludes are not in the
-// runner schema and are consumed by nothing in the repo — scenarios that use
-// them have silently-ignored "assertions". Tracked in #9310.
-const DEAD_PLANNER_ASSERT =
-  /\b(plannerIncludesAll|plannerIncludesAny|plannerExcludes)\s*:/;
 const DEAD_EXPECTED_ACTION_PARAMS = /\bexpectedActionParams\s*:/;
+const MESSAGE_AS_GMAIL_LABEL_EXPECTATION =
+  /\b(?:addLabelIds|removeLabelIds)\s*:\s*(?:(["'])MESSAGE\1|\[[^\]]*(["'])MESSAGE\2[^\]]*\])/;
 const DEAD_TURN_ASSERTION_FIELD_FIXES = {
   acceptedActions: "expectedActions",
   includesAny: "responseIncludesAny",
@@ -84,9 +80,7 @@ const DEAD_TURN_ASSERTION_FIELD_FIXES = {
 } as const;
 
 const PER_TURN_ASSERT =
-  /\b(assertResponse|responseIncludesAny|responseIncludesAll|responseJudge|assertTurn)\b/;
-const MESSAGE_AS_GMAIL_LABEL_EXPECTATION =
-  /\b(?:addLabelIds|removeLabelIds)\s*:\s*["']MESSAGE["']/;
+  /\b(assertResponse|expectedActions|responseIncludesAny|responseIncludesAll|responseExcludes|forbiddenActions|plannerIncludesAll|plannerIncludesAny|plannerExcludes|responseJudge|assertTurn)\b/;
 // A non-empty finalChecks array: `finalChecks: [` followed by a non-`]`,
 // non-whitespace char. `finalChecks: []` does not match.
 const NON_EMPTY_FINAL_CHECKS = /finalChecks\s*:\s*\[\s*[^\]\s]/;
@@ -149,10 +143,9 @@ function analyze(file: string): ScenarioFacts {
     hasFinalChecks: NON_EMPTY_FINAL_CHECKS.test(src),
     hasPerTurnAssert: PER_TURN_ASSERT.test(src),
     hasPersonalityExpect: /\bpersonalityExpect\s*:/.test(src),
-    hasDeadPlannerAssert: DEAD_PLANNER_ASSERT.test(src),
+    hasExpectedActionParams: DEAD_EXPECTED_ACTION_PARAMS.test(src),
     hasMessageAsGmailLabelExpectation:
       MESSAGE_AS_GMAIL_LABEL_EXPECTATION.test(src),
-    hasExpectedActionParams: DEAD_EXPECTED_ACTION_PARAMS.test(src),
     deadTurnAssertionFields: Object.keys(
       DEAD_TURN_ASSERTION_FIELD_FIXES,
     ).filter((field) => directTurnKeys.has(field)),
@@ -190,17 +183,17 @@ describe("scenario corpus assertion guard", () => {
     expect(misLaned).toEqual([]);
   });
 
-  it('does not use action name "MESSAGE" as a Gmail label expectation', () => {
+  it("does not use dead expectedActionParams turn assertions", () => {
     const offenders = facts
-      .filter((f) => f.hasMessageAsGmailLabelExpectation)
+      .filter((f) => f.hasExpectedActionParams)
       .map(rel)
       .sort();
     expect(offenders).toEqual([]);
   });
 
-  it("does not use dead expectedActionParams turn assertions", () => {
+  it('does not use action name "MESSAGE" as a Gmail label expectation', () => {
     const offenders = facts
-      .filter((f) => f.hasExpectedActionParams)
+      .filter((f) => f.hasMessageAsGmailLabelExpectation)
       .map(rel)
       .sort();
     expect(offenders).toEqual([]);
@@ -240,24 +233,13 @@ describe("scenario corpus assertion guard", () => {
     }
   });
 
-  // Ratchet against the dead plannerIncludes*/plannerExcludes fields. They are
-  // unenforced (#9310); this only prevents the count from growing while the
-  // backlog is migrated to enforced assertions (or the executor is taught to
-  // consume them). Lower this as scenarios are fixed; never raise it.
-  it("does not grow unenforced plannerIncludes*/plannerExcludes usage beyond 153", () => {
-    const DEAD_PLANNER_BASELINE = 153;
-    const users = facts
-      .filter((f) => f.hasDeadPlannerAssert)
-      .map(rel)
-      .sort();
-    if (users.length > DEAD_PLANNER_BASELINE) {
-      throw new Error(
-        `unenforced planner-assertion scenarios grew to ${users.length} ` +
-          `(baseline ${DEAD_PLANNER_BASELINE}). plannerIncludesAll/Any/Excludes are ` +
-          `silently ignored by the executor — assert via finalChecks or an enforced ` +
-          `per-turn field instead. New offenders:\n${users.slice(DEAD_PLANNER_BASELINE).join("\n")}`,
-      );
-    }
-    expect(users.length).toBeLessThanOrEqual(DEAD_PLANNER_BASELINE);
+  it("counts planner matchers as enforceable per-turn assertions", () => {
+    const plannerAsserted = facts.filter((f) =>
+      /\b(plannerIncludesAll|plannerIncludesAny|plannerExcludes)\s*:/.test(
+        readFileSync(f.file, "utf8"),
+      ),
+    );
+    expect(plannerAsserted.length).toBeGreaterThan(0);
+    expect(plannerAsserted.every((f) => f.hasPerTurnAssert)).toBe(true);
   });
 });

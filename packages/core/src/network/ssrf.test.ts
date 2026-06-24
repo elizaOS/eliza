@@ -153,3 +153,59 @@ describe("SSRF policy enforcement", () => {
 		expect(pinned.addresses).toEqual(["169.254.169.254"]);
 	});
 });
+
+describe("isPrivateIpAddress: non-canonical IPv4 encodings (SSRF bypass vectors)", () => {
+	// The OS resolver (inet_aton/getaddrinfo) accepts octal, hex, plain-decimal,
+	// and short-form IPv4. A literal-IP SSRF check must classify these the same
+	// way the connection would, or http://0177.0.0.1/ reaches localhost.
+	it("blocks octal / hex / decimal / short-form encodings of loopback", () => {
+		for (const addr of [
+			"0177.0.0.1", // octal 0177 = 127
+			"0x7f.0.0.1", // hex 0x7f = 127
+			"0x7f000001", // hex 32-bit 127.0.0.1
+			"2130706433", // decimal 32-bit 127.0.0.1
+			"127.1", // short form -> 127.0.0.1
+			"127.0.1", // 3-part short form
+			"::ffff:0177.0.0.1", // octal loopback inside an IPv4-mapped IPv6 literal
+		]) {
+			expect(isPrivateIpAddress(addr), addr).toBe(true);
+		}
+	});
+
+	it("blocks non-canonical encodings of other private ranges", () => {
+		expect(isPrivateIpAddress("0xa.0.0.1")).toBe(true); // 10.0.0.1
+		expect(isPrivateIpAddress("0300.0250.0.1")).toBe(true); // octal 192.168.0.1
+		expect(isPrivateIpAddress("3232235521")).toBe(true); // decimal 192.168.0.1
+		expect(isPrivateIpAddress("2852039166")).toBe(true); // decimal 169.254.169.254
+	});
+
+	it("does NOT over-block legitimate public addresses", () => {
+		for (const addr of [
+			"8.8.8.8",
+			"::ffff:8.8.8.8", // public IPv4-mapped IPv6 stays public
+			"1.1.1.1",
+			"203.0.113.10",
+			"172.15.0.1", // just below the 172.16/12 private range
+			"172.32.0.1", // just above it
+			"192.169.1.1", // not 192.168/16
+			"0xdeadbeef", // hex 222.173.190.239 (public)
+			"3221234342", // decimal 192.0.34.166 (public)
+		]) {
+			expect(isPrivateIpAddress(addr), addr).toBe(false);
+		}
+	});
+
+	it("returns false (not an IP) for non-numeric or malformed strings", () => {
+		for (const s of [
+			"example.com",
+			"0x1.example.com",
+			"1.2.3.4.5",
+			"999.1.1.1",
+			"8.8.8.08", // 08 is not a valid octal octet
+			"",
+			"...",
+		]) {
+			expect(isPrivateIpAddress(s), s).toBe(false);
+		}
+	});
+});

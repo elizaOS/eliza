@@ -8,7 +8,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLifeOpsPromptBenchmarkCases,
+  LIFEOPS_PROMPT_BENCHMARK_TASKS,
   PROMPT_BENCHMARK_VARIANT_IDS,
+  type PromptBenchmarkCase,
 } from "./helpers/lifeops-prompt-benchmark-cases.js";
 import {
   buildAxOptimizationRows,
@@ -26,12 +28,44 @@ function liveCaseLimit(): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 15;
 }
 
+function selectDirectCasesCoveringAllTasks(
+  cases: PromptBenchmarkCase[],
+  requestedLimit: number,
+): PromptBenchmarkCase[] {
+  const selected: PromptBenchmarkCase[] = [];
+  const seen = new Set<string>();
+  for (const task of LIFEOPS_PROMPT_BENCHMARK_TASKS) {
+    const match = cases.find((testCase) => testCase.optimizationTask === task);
+    if (!match) {
+      throw new Error(`Missing direct benchmark case for task ${task}`);
+    }
+    selected.push(match);
+    seen.add(match.caseId);
+  }
+
+  const limit = Math.max(LIFEOPS_PROMPT_BENCHMARK_TASKS.length, requestedLimit);
+  for (const testCase of cases) {
+    if (selected.length >= limit) break;
+    if (seen.has(testCase.caseId)) continue;
+    selected.push(testCase);
+    seen.add(testCase.caseId);
+  }
+  return selected;
+}
+
 describe("LifeOps prompt benchmark catalog", () => {
   it("loads benchmark cases across suites and variants", async () => {
     const cases = await buildLifeOpsPromptBenchmarkCases();
     expect(cases.length).toBeGreaterThan(0);
     expect(new Set(cases.map((testCase) => testCase.suiteId))).toEqual(
-      new Set(["lifeops-self-care", "lifeops-executive-assistant"]),
+      new Set([
+        "lifeops-self-care",
+        "lifeops-executive-assistant",
+        "lifeops-capability-coverage",
+      ]),
+    );
+    expect(new Set(cases.map((testCase) => testCase.optimizationTask))).toEqual(
+      new Set(LIFEOPS_PROMPT_BENCHMARK_TASKS),
     );
     for (const variantId of PROMPT_BENCHMARK_VARIANT_IDS) {
       expect(cases.some((testCase) => testCase.variantId === variantId)).toBe(
@@ -47,8 +81,14 @@ describe.skipIf(!LIVE)("LifeOps prompt benchmark live gate", () => {
     const directCases = allCases.filter(
       (testCase) => testCase.variantId === "direct",
     );
-    const cases = directCases.slice(0, liveCaseLimit());
+    const cases = selectDirectCasesCoveringAllTasks(
+      directCases,
+      liveCaseLimit(),
+    );
     expect(cases.length).toBeGreaterThan(0);
+    expect(new Set(cases.map((testCase) => testCase.optimizationTask))).toEqual(
+      new Set(LIFEOPS_PROMPT_BENCHMARK_TASKS),
+    );
 
     const report = await runLifeOpsPromptBenchmark({
       cases,

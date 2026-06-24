@@ -22,22 +22,6 @@ export function getActionOptions(options?: HandlerOptions): OptionsRecord {
   return mergedOptions(options);
 }
 
-/** @deprecated LLM `confirmed` is never authoritative. */
-export function isConfirmed(_options?: HandlerOptions): boolean {
-  return false;
-}
-
-export function confirmationRequired(
-  preview: string,
-  data: OptionsRecord,
-): ActionResult {
-  return {
-    success: false,
-    text: preview,
-    data: { requiresConfirmation: true, preview, ...data },
-  };
-}
-
 export async function requireShopifyConfirmation(args: {
   runtime: IAgentRuntime;
   message: Memory;

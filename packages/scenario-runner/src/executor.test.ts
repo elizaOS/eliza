@@ -464,7 +464,7 @@ describe("scenario executor action turns", () => {
     expect(runtime.useModel).not.toHaveBeenCalled();
   });
 
-  it("reports expected and actual response text for responseIncludesAll failures", async () => {
+  it("reports the missing patterns for responseIncludesAll failures", async () => {
     const runtime = createRuntime(
       [
         {
@@ -473,7 +473,7 @@ describe("scenario executor action turns", () => {
           validate: vi.fn(async () => true),
           handler: vi.fn(
             async (_runtime, _message, _state, _options, callback) => {
-              await callback?.({ text: "opened local-notes instead" });
+              await callback?.({ text: "opened remote-ledger" });
               return { success: true };
             },
           ),
@@ -492,9 +492,9 @@ describe("scenario executor action turns", () => {
         turns: [
           {
             kind: "action",
-            name: "open view",
+            name: "open and sync",
             actionName: "VIEWS",
-            responseIncludesAll: ["opened", "remote-ledger"],
+            responseIncludesAll: ["opened", "synced"],
           },
         ],
       },
@@ -509,7 +509,7 @@ describe("scenario executor action turns", () => {
     expect(report.status).toBe("failed");
     expect(runtime.useModel).not.toHaveBeenCalled();
     expect(report.turns[0]?.failedAssertions).toEqual([
-      'responseIncludesAll: expected response to include remote-ledger, saw "opened local-notes instead"',
+      'responseIncludesAll: expected response to include all of [opened,synced], missing [synced], saw "opened remote-ledger"',
     ]);
   });
 
@@ -652,7 +652,7 @@ describe("scenario executor action turns", () => {
             actionName: "VIEWS",
             options: { action: "pin", view: "remote-ledger" },
             plannerIncludesAll: ["VIEWS", "remote-ledger"],
-            plannerIncludesAny: ["finance", "dashboard"],
+            plannerIncludesAny: ["pin", "dashboard"],
             plannerExcludes: ["calendar_action"],
           },
         ],
@@ -679,7 +679,10 @@ describe("scenario executor action turns", () => {
           validate: vi.fn(async () => true),
           handler: vi.fn(async () => ({
             success: true,
-            text: "opened local notes",
+            text: "opened remote-ledger",
+            data: {
+              route: "finance",
+            },
           })),
         } as Action,
       ],
@@ -716,9 +719,9 @@ describe("scenario executor action turns", () => {
     expect(report.status).toBe("failed");
     expect(runtime.useModel).not.toHaveBeenCalled();
     expect(report.turns[0]?.failedAssertions).toEqual([
-      'plannerIncludesAll: expected planner trace to include remote-ledger, saw "VIEWS {\\"action\\":\\"pin\\",\\"view\\":\\"local-notes\\"} opened local notes"',
-      'plannerIncludesAny: expected planner trace to include any of [finance,remote-ledger], saw "VIEWS {\\"action\\":\\"pin\\",\\"view\\":\\"local-notes\\"} opened local notes"',
-      'plannerExcludes: expected planner trace to exclude [local-notes], saw "VIEWS {\\"action\\":\\"pin\\",\\"view\\":\\"local-notes\\"} opened local notes"',
+      'plannerIncludesAll: expected planner trace to include remote-ledger, saw "VIEWS {\\"action\\":\\"pin\\",\\"view\\":\\"local-notes\\"}"',
+      'plannerIncludesAny: expected planner trace to include any of [finance,remote-ledger], saw "VIEWS {\\"action\\":\\"pin\\",\\"view\\":\\"local-notes\\"}"',
+      'plannerExcludes: expected planner trace to exclude [local-notes], saw "VIEWS {\\"action\\":\\"pin\\",\\"view\\":\\"local-notes\\"}"',
     ]);
   });
 

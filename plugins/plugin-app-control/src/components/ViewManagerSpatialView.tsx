@@ -50,7 +50,7 @@ export function ViewManagerSpatialView({
 }: ViewManagerSpatialViewProps) {
 	const available = snapshot.views.filter((view) => view.available).length;
 	return (
-		<Card title="Views" gap={1} padding={1}>
+		<Card gap={1} padding={1}>
 			<HStack gap={1} align="center">
 				<Text style="caption" tone="success" grow={1}>
 					{snapshot.loading
@@ -58,7 +58,7 @@ export function ViewManagerSpatialView({
 						: `${available}/${snapshot.views.length} ready`}
 				</Text>
 				<Text style="caption" tone="muted">
-					registered views
+					views
 				</Text>
 			</HStack>
 
@@ -71,7 +71,7 @@ export function ViewManagerSpatialView({
 			<Divider label="views" />
 			{snapshot.views.length === 0 ? (
 				<Text tone="muted" align="center" style="caption">
-					No views registered
+					None
 				</Text>
 			) : (
 				<List gap={1}>

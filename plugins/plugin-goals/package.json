@@ -13,7 +13,7 @@
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
-    "build:types": "tsc --noCheck -p tsconfig.build.json"
+    "build:types": "tsc --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
   },
   "exports": {
     "./package.json": "./package.json",

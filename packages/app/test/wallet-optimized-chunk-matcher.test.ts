@@ -34,4 +34,12 @@ describe("wallet optimized-deps chunk matcher", () => {
       expect(VENDOR_OPTIMIZED_WALLET_TEST.test(dep), dep).toBe(true);
     }
   });
+
+  it("matches optimized wallet helpers that Rollup may otherwise chunk eagerly", () => {
+    expect(
+      VENDOR_OPTIMIZED_WALLET_TEST.test(
+        "/repo/node_modules/.vite/deps/useWalletModal.js?v=123",
+      ),
+    ).toBe(true);
+  });
 });

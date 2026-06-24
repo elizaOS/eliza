@@ -91,7 +91,7 @@ describe("CustomersPanel", () => {
         search: "zzz",
       }),
     );
-    expect(screen.getByText("No customers match your search.")).toBeTruthy();
+    expect(screen.getByText("None")).toBeTruthy();
   });
 
   it("shows the generic empty state with no query", () => {
@@ -104,7 +104,7 @@ describe("CustomersPanel", () => {
         search: "",
       }),
     );
-    expect(screen.getByText("No customers found.")).toBeTruthy();
+    expect(screen.getByText("None")).toBeTruthy();
   });
 
   it("renders loading skeletons while empty + loading", () => {

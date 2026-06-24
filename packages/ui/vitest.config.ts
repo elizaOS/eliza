@@ -9,6 +9,7 @@ const uiSrc = resolve(packageRoot, "src");
 const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
 const loggerSrc = resolve(monorepoRoot, "packages/logger/src");
+const tuiSrc = resolve(monorepoRoot, "packages/tui/src");
 const bunRuntimeSrc = resolve(
   monorepoRoot,
   "plugins/plugin-native-bun-runtime/src/index.ts",
@@ -83,6 +84,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/logger$/,
         replacement: resolve(loggerSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/tui$/,
+        replacement: resolve(tuiSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/tui\/(.+)$/,
+        replacement: resolve(tuiSrc, "$1"),
       },
       {
         find: /^@elizaos\/core$/,

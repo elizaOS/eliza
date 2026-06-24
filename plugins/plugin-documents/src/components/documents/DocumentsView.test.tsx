@@ -124,7 +124,7 @@ describe("DocumentsView — states", () => {
         fetchers: makeFetchers({ fetchDocuments: () => never }),
       }),
     );
-    expect(screen.getByText("Loading documents")).toBeTruthy();
+    expect(screen.getByText("Loading")).toBeTruthy();
   });
 
   it("renders the populated list with titles and the stats line", async () => {
@@ -146,7 +146,7 @@ describe("DocumentsView — states", () => {
         }),
       }),
     );
-    await screen.findByText("No documents yet");
+    await screen.findByText("None");
     expect(screen.queryByText("Quarterly Plan.md")).toBeNull();
   });
 

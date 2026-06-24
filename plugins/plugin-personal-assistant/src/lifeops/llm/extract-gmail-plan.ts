@@ -1,4 +1,20 @@
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type Memory,
+  ModelType,
+  resolveOptimizedPromptForRuntime,
+  runWithTrajectoryContext,
+  type State,
+} from "@elizaos/core";
+import {
+  GMAIL_PLAN_INSTRUCTIONS,
+  GMAIL_QUERY_EXTRACTION_INSTRUCTIONS,
+} from "../optimized-prompt-instructions.js";
+
+export {
+  GMAIL_PLAN_INSTRUCTIONS,
+  GMAIL_QUERY_EXTRACTION_INSTRUCTIONS,
+} from "../optimized-prompt-instructions.js";
 
 export type GmailPlanSubaction =
   | "triage"
@@ -14,6 +30,15 @@ export interface GmailPlan {
   response: string | null;
   queries: string[];
   replyNeededOnly?: boolean;
+}
+
+function buildGmailPlanPrompt(instructions: string, intent: string): string {
+  return [
+    instructions,
+    "",
+    "Current request:",
+    intent.trim() || "(empty)",
+  ].join("\n");
 }
 
 function parseList(value: string | undefined): string[] {
@@ -52,18 +77,32 @@ export async function extractGmailPlanWithLlm(
   _state: State | undefined,
   intent: string,
 ): Promise<GmailPlan> {
+  const instructions = resolveOptimizedPromptForRuntime(
+    runtime,
+    "inbox_triage",
+    GMAIL_PLAN_INSTRUCTIONS,
+  );
   const first = String(
-    await runtime.useModel("TEXT_SMALL", {
-      prompt: intent,
-    }),
+    await runWithTrajectoryContext({ purpose: "inbox_triage" }, () =>
+      runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt: buildGmailPlanPrompt(instructions, intent),
+      }),
+    ),
   );
   const plan = parseGmailPlan(first);
 
   if (plan.subaction === "search" && plan.queries.length === 0) {
+    const queryInstructions = resolveOptimizedPromptForRuntime(
+      runtime,
+      "inbox_triage",
+      GMAIL_QUERY_EXTRACTION_INSTRUCTIONS,
+    );
     const fallback = String(
-      await runtime.useModel("TEXT_SMALL", {
-        prompt: `Extract Gmail search queries for: ${intent}`,
-      }),
+      await runWithTrajectoryContext({ purpose: "inbox_triage" }, () =>
+        runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: buildGmailPlanPrompt(queryInstructions, intent),
+        }),
+      ),
     );
     plan.queries = parseGmailPlan(fallback).queries;
   }

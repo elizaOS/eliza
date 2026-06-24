@@ -192,11 +192,6 @@ function mergedOptions(options?: HandlerOptions): Record<string, unknown> {
   return { ...direct, ...parameters };
 }
 
-/** @deprecated LLM `confirmed` is never authoritative. */
-function isConfirmed(_params: Record<string, unknown>): boolean {
-  return false;
-}
-
 function readOp(params: Record<string, unknown>): CalendlyOp | null {
   const raw = params.op;
   if (raw === "book" || raw === "cancel") {

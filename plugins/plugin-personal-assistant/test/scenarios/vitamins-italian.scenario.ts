@@ -41,6 +41,11 @@ export default scenario({
     {
       type: "definitionCountDelta",
       title: "Take vitamins",
+      titleAliases: [
+        "Prendere le vitamine",
+        "Vitamine a pranzo",
+        "Routine delle vitamine",
+      ],
       delta: 1,
       cadenceKind: "daily",
       requiredWindows: ["afternoon"],

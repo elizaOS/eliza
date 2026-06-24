@@ -57,6 +57,22 @@ export interface ExecutorOptions {
 
 const DEFAULT_TURN_TIMEOUT_MS = 120_000;
 
+type TurnMatcher = string | RegExp;
+
+function responsePatternMatches(
+  pattern: unknown,
+  responseText: string,
+): boolean {
+  if (typeof pattern === "string") {
+    return responseText.toLowerCase().includes(pattern.toLowerCase());
+  }
+  if (pattern instanceof RegExp) {
+    pattern.lastIndex = 0;
+    return pattern.test(responseText);
+  }
+  return false;
+}
+
 function stringList(value: unknown): string[] {
   if (typeof value === "string" && value.length > 0) {
     return [value];
@@ -72,6 +88,67 @@ function isSynthesizedReplyAction(
 ): boolean {
   const data = toRecord(action.result?.data);
   return action.actionName === "REPLY" && data?.source === "synthesized-reply";
+}
+
+function stringifyForAssertion(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function isTurnMatcher(value: unknown): value is TurnMatcher {
+  return typeof value === "string" || value instanceof RegExp;
+}
+
+function toTurnMatcherArray(value: unknown): TurnMatcher[] {
+  if (isTurnMatcher(value)) {
+    return [value];
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isTurnMatcher);
+}
+
+function formatTurnMatcher(pattern: TurnMatcher): string {
+  return pattern instanceof RegExp ? pattern.toString() : pattern;
+}
+
+function formatTurnMatchers(patterns: readonly TurnMatcher[]): string {
+  return patterns.map(formatTurnMatcher).join(",");
+}
+
+function matchesTurnMatcher(value: string, pattern: TurnMatcher): boolean {
+  if (typeof pattern === "string") {
+    return value.toLowerCase().includes(pattern.toLowerCase());
+  }
+  pattern.lastIndex = 0;
+  return pattern.test(value);
+}
+
+function buildPlannerAssertionBlob(execution: ScenarioTurnExecution): string {
+  const parts: string[] = [];
+  if (
+    typeof execution.plannerText === "string" &&
+    execution.plannerText.trim().length > 0
+  ) {
+    parts.push(execution.plannerText);
+  }
+  for (const action of execution.actionsCalled) {
+    if (isSynthesizedReplyAction(action)) {
+      continue;
+    }
+    parts.push(action.actionName);
+    if (action.parameters !== undefined) {
+      parts.push(stringifyForAssertion(action.parameters));
+    }
+  }
+  return parts.join(" ");
 }
 
 type ScenarioRoomDefinition = {
@@ -123,8 +200,6 @@ type SeedRunResult = {
   error?: string;
 };
 
-type TurnMatcher = string | RegExp;
-
 function stringifyForJudge(value: unknown, maxLength = 1_200): string {
   try {
     const serialized = JSON.stringify(value);
@@ -135,86 +210,6 @@ function stringifyForJudge(value: unknown, maxLength = 1_200): string {
   } catch {
     return String(value);
   }
-}
-
-function stringifyForAssertion(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  try {
-    return JSON.stringify(value) ?? String(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function isTurnMatcher(value: unknown): value is TurnMatcher {
-  return typeof value === "string" || value instanceof RegExp;
-}
-
-function toTurnMatcherArray(value: unknown): TurnMatcher[] {
-  if (isTurnMatcher(value)) {
-    return [value];
-  }
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.filter(isTurnMatcher);
-}
-
-function formatTurnMatcher(pattern: TurnMatcher): string {
-  return pattern instanceof RegExp ? pattern.toString() : pattern;
-}
-
-function formatTurnMatchers(patterns: readonly TurnMatcher[]): string {
-  return patterns.map(formatTurnMatcher).join(",");
-}
-
-function matchesTurnMatcher(value: string, pattern: TurnMatcher): boolean {
-  if (typeof pattern === "string") {
-    return value.toLowerCase().includes(pattern.toLowerCase());
-  }
-  pattern.lastIndex = 0;
-  return pattern.test(value);
-}
-
-function isSynthesizedReply(action: CapturedAction): boolean {
-  return toRecord(action.result?.data)?.source === "synthesized-reply";
-}
-
-function buildPlannerAssertionBlob(execution: ScenarioTurnExecution): string {
-  const parts: string[] = [];
-  if (
-    typeof execution.plannerText === "string" &&
-    execution.plannerText.trim().length > 0
-  ) {
-    parts.push(execution.plannerText);
-  }
-  for (const action of execution.actionsCalled) {
-    if (isSynthesizedReply(action)) {
-      continue;
-    }
-    parts.push(action.actionName);
-    if (action.parameters !== undefined) {
-      parts.push(stringifyForAssertion(action.parameters));
-    }
-    if (action.result?.data !== undefined) {
-      parts.push(stringifyForAssertion(action.result.data));
-    }
-    if (action.result?.values !== undefined) {
-      parts.push(stringifyForAssertion(action.result.values));
-    }
-    if (action.result?.text) {
-      parts.push(action.result.text);
-    }
-    if (action.result?.message) {
-      parts.push(action.result.message);
-    }
-    if (action.error?.message) {
-      parts.push(action.error.message);
-    }
-  }
-  return parts.join(" ");
 }
 
 function resetScenarioLlmFixtures(runtime: AgentRuntime): void {
@@ -1630,48 +1625,50 @@ async function runTurnAssertions(
     }
   }
 
-  // Inline turn assertions.
-  const includesAny = toTurnMatcherArray(
-    (turn as { responseIncludesAny?: unknown }).responseIncludesAny,
-  );
-  if (includesAny.length > 0) {
+  // responseIncludesAny / responseIncludesAll / responseExcludes / forbiddenActions (inline)
+  const includesAny = (turn as { responseIncludesAny?: unknown })
+    .responseIncludesAny;
+  if (Array.isArray(includesAny) && includesAny.length > 0) {
     const text = execution.responseText ?? "";
-    const ok = includesAny.some((p) => matchesTurnMatcher(text, p));
+    const ok = includesAny.some((pattern) =>
+      responsePatternMatches(pattern, text),
+    );
     if (!ok) {
       failures.push(
-        `responseIncludesAny: expected response to include any of [${formatTurnMatchers(
-          includesAny,
-        )}], saw ${JSON.stringify(text)}`,
+        `responseIncludesAny: expected response to include any of [${includesAny.join(
+          ",",
+        )}], saw ${JSON.stringify(execution.responseText ?? "")}`,
       );
     }
   }
-  const includesAll = toTurnMatcherArray(
-    (turn as { responseIncludesAll?: unknown }).responseIncludesAll,
-  );
-  if (includesAll.length > 0) {
+  const includesAll = (turn as { responseIncludesAll?: unknown })
+    .responseIncludesAll;
+  if (Array.isArray(includesAll) && includesAll.length > 0) {
     const text = execution.responseText ?? "";
-    const missing = includesAll.filter((p) => !matchesTurnMatcher(text, p));
+    const missing = includesAll.filter(
+      (pattern) => !responsePatternMatches(pattern, text),
+    );
     if (missing.length > 0) {
       failures.push(
-        `responseIncludesAll: expected response to include ${formatTurnMatcher(
-          missing[0] as TurnMatcher,
-        )}, saw ${JSON.stringify(text)}`,
+        `responseIncludesAll: expected response to include all of [${includesAll.join(
+          ",",
+        )}], missing [${missing.join(",")}], saw ${JSON.stringify(
+          execution.responseText ?? "",
+        )}`,
       );
     }
   }
-  const excludes = toTurnMatcherArray(
-    (turn as { responseExcludes?: unknown }).responseExcludes,
-  );
-  if (excludes.length > 0) {
+  const excludes = (turn as { responseExcludes?: unknown }).responseExcludes;
+  if (Array.isArray(excludes) && excludes.length > 0) {
     const text = execution.responseText ?? "";
     const hits = excludes.filter((pattern) =>
-      matchesTurnMatcher(text, pattern),
+      responsePatternMatches(pattern, text),
     );
     if (hits.length > 0) {
       failures.push(
-        `responseExcludes: response included forbidden pattern(s) [${formatTurnMatchers(
-          hits,
-        )}], saw ${JSON.stringify(text)}`,
+        `responseExcludes: response included forbidden pattern(s) [${hits.join(
+          ",",
+        )}], saw ${JSON.stringify(execution.responseText ?? "")}`,
       );
     }
   }
@@ -1704,7 +1701,7 @@ async function runTurnAssertions(
     const plannerPreview = JSON.stringify(plannerBlob.slice(0, 500));
     if (plannerIncludesAll.length > 0) {
       const missing = plannerIncludesAll.filter(
-        (p) => !matchesTurnMatcher(plannerBlob, p),
+        (pattern) => !matchesTurnMatcher(plannerBlob, pattern),
       );
       if (missing.length > 0) {
         failures.push(
@@ -1715,8 +1712,8 @@ async function runTurnAssertions(
       }
     }
     if (plannerIncludesAny.length > 0) {
-      const ok = plannerIncludesAny.some((p) =>
-        matchesTurnMatcher(plannerBlob, p),
+      const ok = plannerIncludesAny.some((pattern) =>
+        matchesTurnMatcher(plannerBlob, pattern),
       );
       if (!ok) {
         failures.push(
@@ -1727,8 +1724,8 @@ async function runTurnAssertions(
       }
     }
     if (plannerExcludes.length > 0) {
-      const hits = plannerExcludes.filter((p) =>
-        matchesTurnMatcher(plannerBlob, p),
+      const hits = plannerExcludes.filter((pattern) =>
+        matchesTurnMatcher(plannerBlob, pattern),
       );
       if (hits.length > 0) {
         failures.push(

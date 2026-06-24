@@ -42,6 +42,7 @@ export default scenario({
     {
       type: "definitionCountDelta",
       title: "Drink water",
+      titleAliases: ["水を飲む", "水分補給", "こまめに水を飲む"],
       delta: 1,
       cadenceKind: "interval",
       requiredEveryMinutes: 180,

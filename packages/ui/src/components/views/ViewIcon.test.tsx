@@ -75,3 +75,55 @@ describe("ViewIcon keyword inference (no/unknown icon name)", () => {
     expect(container.querySelector("svg.lucide-layout-grid")).toBeTruthy();
   });
 });
+
+// Regression for #5: Settings / Files / Tasks all rendered the SAME generic
+// 4-square (layout-grid) placeholder because the builtin entries shipped no
+// icon and the keyword table matched none of them. Lock BOTH resolution paths.
+describe("ViewIcon system views render distinct glyphs (#5)", () => {
+  function glyphClass(node: Element | null): string | undefined {
+    return Array.from(node?.querySelector("svg")?.classList ?? []).find((c) =>
+      c.startsWith("lucide-"),
+    );
+  }
+
+  it("resolves explicit per-tab icon names to distinct, non-grid glyphs", () => {
+    const settings = render(<ViewIcon icon="Settings" />);
+    const files = render(<ViewIcon icon="FolderClosed" />);
+    const tasks = render(<ViewIcon icon="ListTodo" />);
+
+    expect(
+      settings.container.querySelector("svg.lucide-settings"),
+    ).toBeTruthy();
+    expect(
+      files.container.querySelector("svg.lucide-folder-closed"),
+    ).toBeTruthy();
+    expect(tasks.container.querySelector("svg.lucide-list-todo")).toBeTruthy();
+
+    const glyphs = [
+      glyphClass(settings.container),
+      glyphClass(files.container),
+      glyphClass(tasks.container),
+    ];
+    expect(new Set(glyphs).size).toBe(3); // all different
+    expect(glyphs).not.toContain("lucide-layout-grid"); // none is the placeholder
+  });
+
+  it("keyword fallback no longer collapses Settings/Files/Tasks onto the grid", () => {
+    // Even when a view ships NO icon name, the label keywords must diverge.
+    const settings = render(<ViewIcon label="Settings" id="settings" />);
+    const files = render(<ViewIcon label="Files" id="files" />);
+    const tasks = render(<ViewIcon label="Tasks" id="tasks" />);
+
+    const glyphs = [
+      glyphClass(settings.container),
+      glyphClass(files.container),
+      glyphClass(tasks.container),
+    ];
+    expect(glyphs).toEqual([
+      "lucide-settings",
+      "lucide-folder-closed",
+      "lucide-list-todo",
+    ]);
+    expect(glyphs).not.toContain("lucide-layout-grid");
+  });
+});

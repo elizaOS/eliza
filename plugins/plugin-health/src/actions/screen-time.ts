@@ -14,6 +14,8 @@ import type {
   LifeOpsScreenTimeSummary,
 } from "../contracts/lifeops.js";
 
+export { SCREENTIME_RECAP_INSTRUCTIONS } from "./optimized-prompt-instructions.js";
+
 const ACTION_NAME = "SCREEN_TIME";
 const DEFAULT_WINDOW_HOURS = 24;
 const MAX_WINDOW_HOURS = 24 * 30;

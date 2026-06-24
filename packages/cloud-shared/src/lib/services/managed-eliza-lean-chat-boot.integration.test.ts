@@ -81,7 +81,16 @@ describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
     const env = await buildManagedEnv();
     Object.assign(process.env, env);
     // The managed env never sets POSTGRES_URL/DATABASE_URL for a local-state
-    // agent. plugin-sql keys adapter choice on the resolved postgres url.
+    // agent. In the full `bun run test`, the harness sets a test POSTGRES_URL/
+    // DATABASE_URL for DB-backed packages; that ambient value leaks into this
+    // process (this suite passes in isolation, fails in-suite). Clear the
+    // ambient DB urls so the "no DATABASE_URL" path is tested deterministically;
+    // the `env.DATABASE_URL` check below still guards the #8783
+    // producer-strips-DATABASE_URL regression, and afterEach restores env.
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    delete process.env.ELIZA_MANAGED_DATABASE_URL;
+    // plugin-sql keys adapter choice on the resolved postgres url.
     const postgresUrl = process.env.POSTGRES_URL || env.DATABASE_URL;
     expect(postgresUrl).toBeFalsy();
 
