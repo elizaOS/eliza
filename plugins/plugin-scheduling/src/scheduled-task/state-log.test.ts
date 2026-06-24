@@ -103,9 +103,13 @@ describe("createInMemoryScheduledTaskLogStore — list", () => {
     ).toHaveLength(1);
 
     const rows = await store.list({ agentId: AGENT, taskId: "t1" });
-    rows[0]!.reason = "mutated";
+    const first = rows[0];
+    if (!first) {
+      throw new Error("Expected a raw state log row");
+    }
+    first.reason = "mutated";
     const again = await store.list({ agentId: AGENT, taskId: "t1" });
-    expect(again[0]!.reason).toBeUndefined(); // store row untouched
+    expect(again[0]?.reason).toBeUndefined(); // store row untouched
   });
 });
 
@@ -223,7 +227,7 @@ describe("createStateLogger", () => {
     });
     const rows = await store.list({ agentId: AGENT, taskId: "t1" });
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.logId).toBe("log-1");
+    expect(rows[0]?.logId).toBe("log-1");
   });
 
   it("exposes the documented default retention", () => {

@@ -38,7 +38,8 @@ describe("deploy-eliza-provisioning-worker reconcile loop", () => {
     // `sed -i "/^${key}=/d"` delete, so an empty secret short-circuits the loop
     // body instead of deleting (blanking) the existing key.
     const guardIdx = workflow.indexOf('[ -n "$val" ] || continue');
-    const deleteIdx = workflow.indexOf('sed -i "/^${key}=/d"');
+    const deleteCommand = 'sed -i "/^$' + '{key}=/d"';
+    const deleteIdx = workflow.indexOf(deleteCommand);
     expect(guardIdx).toBeGreaterThan(-1);
     expect(deleteIdx).toBeGreaterThan(-1);
     expect(guardIdx).toBeLessThan(deleteIdx);
