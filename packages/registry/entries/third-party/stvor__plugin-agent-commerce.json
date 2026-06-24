@@ -1,0 +1,17 @@
+{
+  "package": "@stvor/plugin-agent-commerce",
+  "repository": "github:stvor-hq/plugin-agent-commerce",
+  "kind": "plugin",
+  "description": "ERC-8183 agentic commerce for elizaOS: job lifecycle state machine, SHA-256 payload attestation, reputation gating, and prompt-injection protection.",
+  "homepage": "https://github.com/stvor-hq/plugin-agent-commerce",
+  "version": "0.2.0",
+  "tags": [
+    "commerce",
+    "erc8183",
+    "escrow",
+    "reputation",
+    "security",
+    "rate-limiting",
+    "prompt-injection"
+  ]
+}

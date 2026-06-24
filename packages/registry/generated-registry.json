@@ -138,6 +138,53 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@stvor/plugin-agent-commerce": {
+      "git": {
+        "repo": "stvor-hq/plugin-agent-commerce",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@stvor/plugin-agent-commerce",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "ERC-8183 agentic commerce for elizaOS: job lifecycle state machine, SHA-256 payload attestation, reputation gating, and prompt-injection protection.",
+      "homepage": "https://github.com/stvor-hq/plugin-agent-commerce",
+      "topics": [
+        "commerce",
+        "erc8183",
+        "escrow",
+        "reputation",
+        "security",
+        "rate-limiting",
+        "prompt-injection"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@thecolony/elizaos-plugin": {
       "git": {
         "repo": "TheColonyCC/elizaos-plugin",
