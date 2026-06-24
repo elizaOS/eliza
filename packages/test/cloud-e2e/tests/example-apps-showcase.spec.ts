@@ -1,62 +1,64 @@
 /**
- * Example-apps showcase e2e (cloud:mock) - issue #9300.
+ * Example-apps showcase e2e (cloud:mock) — issue #9300.
  *
- * Continuously proves our two flagship monetized example apps -
+ * Continuously proves our two flagship monetized example apps —
  * **EDAD** (`packages/examples/cloud/edad`) and
- * **Clone Ur Crush** (`packages/examples/cloud/clone-ur-crush`) - work end to end
+ * **Clone Ur Crush** (`packages/examples/cloud/clone-ur-crush`) — work end to end
  * on Eliza Cloud, driven by a single CI **showcase account** funded with
  * effectively-infinite credits (see `src/helpers/showcase.ts`).
  *
- * For EACH app, with an explicit, observable assertion at every hop:
+ * For EACH app, with an explicit, observable assertion at every hop — and every
+ * monetary value OBSERVED from the real product code, never supplied by the test:
  *
- *   1. register the app                 -> `POST /api/v1/apps` returns an app id
- *   2. DEPLOY a container               -> control-plane provision job stands a
- *                                          Hetzner mock node up (initializing ->
- *                                          running) AND a real `containers` row is
- *                                          bound to the app (project_name = appId)
- *   3. APP SUBDOMAIN configured + live  -> the container's public hostname is the
- *                                          real `<shortid>.apps.elizacloud.ai`
- *                                          (`deriveAppPublicUrl`), and the Caddy
- *                                          on-demand-TLS gate
- *                                          (`GET /api/v1/apps-ingress/ask`)
- *                                          authorizes a cert for it (200) while
- *                                          refusing an unknown host (404) - i.e.
- *                                          the link is wired and would serve TLS
- *   4. enable monetization              -> `PUT .../monetization` (markup + share),
- *                                          read back `monetizationEnabled: true`
- *   5. MONETIZED TRANSACTION            -> the showcase org is debited the full
- *                                          base+markup charge via the real credit
- *                                          ledger (`deductCredits`)
- *   6. USAGE -> creator earning          -> the app's inference markup is recorded
- *                                          to BOTH the app-scoped earnings ledger
- *                                          (`/api/v1/apps/:id/earnings` summary
- *                                          climbs) AND the creator's REDEEMABLE
- *                                          balance (`addEarnings`)
- *   7. REDEEMABLE / payout-ready        -> `/api/v1/redemptions/balance` reflects
- *                                          the accrued, withdrawable earning
+ *   1. register the app                 → `POST /api/v1/apps` returns an app id
+ *   2. enable monetization              → `PUT …/monetization` (markup + share),
+ *                                          read back `monetizationEnabled: true`.
+ *                                          Done BEFORE the charge so it is the
+ *                                          thing that produces the markup.
+ *   3. DEPLOY via the real route        → `POST /api/v1/apps/:id/deploy` → poll
+ *                                          the DB-backed APP_DEPLOY worker to
+ *                                          READY; the deploy ITSELF creates the
+ *                                          container row + stamps `production_url`,
+ *                                          and that URL actually serves (fetch 200).
+ *                                          The app flips local → remote/deployed.
+ *   4. APP SUBDOMAIN gate               → the deploy's real container gets the
+ *                                          production `<shortid>.apps.elizacloud.ai`
+ *                                          host (`deriveAppPublicUrl`), and the
+ *                                          Caddy on-demand-TLS gate
+ *                                          (`/api/v1/apps-ingress/ask`) authorizes
+ *                                          a cert for the LIVE app host (200) while
+ *                                          refusing an unknown host (404).
+ *   5. MONETIZED TRANSACTION + EARNING  → `appCreditsService.deductCredits` (the
+ *                                          REAL per-app inference-billing service)
+ *                                          computes the markup FROM the app's
+ *                                          monetization settings, debits the org,
+ *                                          and credits the creator. We then assert
+ *                                          the org debit, the app-scoped earnings,
+ *                                          and the creator's REDEEMABLE balance all
+ *                                          moved by exactly the markup the service
+ *                                          computed. Disabling monetization would
+ *                                          zero the markup and fail these — so the
+ *                                          loop proves the binding, not arithmetic
+ *                                          the test chose.
  *
  * Plus account-level invariants the showcase exists to guarantee:
- *   - login/auth gate: an unauthenticated balance read is 401, the showcase
- *     key's read is 200 (the apps sign users in before they can spend)
- *   - infinite credits: after every charge the balance is still >= the grant, so
- *     the account never runs dry mid-run - yet each charge moved the real ledger
+ *   - login/auth gate: an unauthenticated balance read is 401/403; the showcase
+ *     key's read is 200 (the apps sign users in before they can spend).
+ *   - infinite credits: after both apps' charges the balance is still ≥ the grant
+ *     (never runs dry) yet dropped by EXACTLY the sum of the two computed charges.
  *   - one account, both apps: the single showcase creator's redeemable balance
- *     equals the SUM of both apps' markups, and each app's earnings are recorded
- *     under its own appId
+ *     equals the SUM of both apps' computed markups; the apps got distinct ids,
+ *     distinct production URLs, and distinct subdomains.
  *
- * Why the deploy is driven through the control-plane STORE + tick() (same as
- * `monetized-full-loop.spec.ts`): the mock stack's DB-backed AGENT_PROVISION
- * handler stands a sandbox up in-memory and never touches the Hetzner mock, so it
- * cannot prove a real server `initializing -> running`. The in-process `tick()`
- * path POSTs to the Hetzner mock and polls the create action to success - the one
- * seam that produces an observable node transition. The `containers` row is
- * created through the real repository so the ingress `ask` gate (which queries
- * `containers.public_hostname`) resolves the subdomain exactly as production does.
+ * The deploy is driven through the real cloud-api deploy route against the
+ * mock-backed apps worker (the same path `remote-app-deploy.spec.ts` exercises,
+ * #9145): `POST /deploy` enqueues an APP_DEPLOY job; the in-process control-plane
+ * mock's DB-backed worker creates the container + reachable `production_url`. The
+ * billing/earnings services are the real ones, run against the live PGlite DB.
  *
- * The REAL-staging variant of this loop (deploy to live Eliza Cloud from CI via
- * the actual app-container path, on the real showcase account) activates the
- * moment `MONETIZED_LOOP_REAL=1` + secrets exist - see
- * `.github/workflows/monetized-loop-nightly.yml` and
+ * The REAL-staging variant (deploy to live Eliza Cloud from CI on the real
+ * showcase account) activates the moment `MONETIZED_LOOP_REAL=1` + secrets exist —
+ * see `.github/workflows/monetized-loop-nightly.yml` and
  * `docs/showcase-apps-coverage.md`. Until then this mock-stack loop is the active
  * coverage and never masquerades a mock assertion as real.
  */
@@ -64,18 +66,24 @@
 import { randomUUID } from "node:crypto";
 import { appEarningsRepository } from "@elizaos/cloud-shared/db/repositories/app-earnings";
 import { containersRepository } from "@elizaos/cloud-shared/db/repositories/containers";
+import {
+  type AppDeploymentStatus,
+  appKindFor,
+} from "@elizaos/cloud-shared/lib/services/app-deployments-helpers";
+import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
 import { deriveAppPublicUrl } from "@elizaos/cloud-shared/lib/services/app-url";
-import { creditsService } from "@elizaos/cloud-shared/lib/services/credits";
 import { redeemableEarningsService } from "@elizaos/cloud-shared/lib/services/redeemable-earnings";
 import type { CreditBalanceResponse } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import type { RunningControlPlaneMock } from "@elizaos/cloud-test-mocks/control-plane";
-import type { MockServer } from "@elizaos/cloud-test-mocks/hetzner";
 import { authedClient } from "../src/helpers/monetization";
 import {
   SHOWCASE_CREDIT_GRANT_USD,
   seedShowcaseAccount,
 } from "../src/helpers/showcase";
 import { expect, test } from "../src/helpers/test-fixtures";
+
+// API-only stack (this loop never drives a browser) — skip the apex Vite boot.
+test.use({ stackOptions: { frontend: false } });
 
 // The apps share a public data-plane base domain on real staging
 // (CONTAINERS_PUBLIC_BASE_DOMAIN = apps.elizacloud.ai). The test sets it in THIS
@@ -85,10 +93,32 @@ import { expect, test } from "../src/helpers/test-fixtures";
 // the stored `public_hostname` to answer the ingress `ask` gate.
 const APPS_BASE_DOMAIN = "apps.elizacloud.ai";
 
-/** apps.create returns { success, app: <App>, apiKey, ... }; we only read id. */
-interface CreateAppResponse {
+/** apps.create / apps.get envelope (see cloud-api .../apps/route.ts). */
+interface AppSummary {
+  id: string;
+  app_url: string;
+  allowed_origins: string[];
+  deployment_status: AppDeploymentStatus;
+  production_url: string | null;
+}
+interface AppEnvelope {
   success?: boolean;
-  app?: { id?: string };
+  app?: AppSummary;
+}
+
+/** apps.deploy / deploy-status envelope (see .../apps/[id]/deploy/route.ts). */
+interface DeployEnvelope {
+  success?: boolean;
+  deploymentId?: string | null;
+  status?: "BUILDING" | "READY" | "ERROR" | "DRAFT";
+  vercelUrl?: string | null;
+}
+
+/** The deployed mock app container's self-report (control-plane mock). */
+interface MockAppEnvelope {
+  success?: boolean;
+  appId?: string;
+  runtime?: string;
 }
 
 /** apps.monetization GET read-back (see cloud-api .../monetization/route.ts). */
@@ -111,44 +141,30 @@ interface RedemptionBalanceResponse {
 
 /** The two flagship example apps this loop continuously proves. */
 const SHOWCASE_APPS = [
-  {
-    key: "edad",
-    name: "eDad Showcase",
-    appUrl: "https://edad.example",
-    imageTag: "ghcr.io/elizaos/example-edad:showcase",
-  },
+  { key: "edad", name: "eDad Showcase", appUrl: "https://edad.example" },
   {
     key: "clone-ur-crush",
     name: "Clone Ur Crush Showcase",
     appUrl: "https://cloneurcrush.example",
-    imageTag: "ghcr.io/elizaos/example-clone-ur-crush:showcase",
   },
 ] as const;
 
-/** Per-app monetized-transaction economics (USD), deterministic + exact. */
+/** Per-app inference base cost (USD). The markup is COMPUTED, never hardcoded. */
 const BASE_COST_USD = 0.2;
+/** Inference markup the creator sets in step 2; the service applies it in step 5. */
 const MARKUP_PCT = 100;
-const MARKUP_USD = (BASE_COST_USD * MARKUP_PCT) / 100; // 0.20
-const TOTAL_CHARGE_USD = BASE_COST_USD + MARKUP_USD; // 0.40
 
 type Authed = ReturnType<typeof authedClient>;
 
 interface AppLoopResult {
   appId: string;
+  productionUrl: string;
   hostname: string;
+  totalCost: number;
+  markup: number;
 }
 
 test.describe("example apps showcase (EDAD + Clone Ur Crush)", () => {
-  // The mock-stack loop below is the active per-PR + nightly coverage. The real-
-  // staging showcase driver (deploy to live Eliza Cloud on the real showcase
-  // account) is wired behind MONETIZED_LOOP_REAL=1; until that driver + secrets
-  // land it must NOT boot the mock `stack` fixture, so skip at the describe level
-  // (evaluated before fixtures resolve) rather than pass mock assertions as real.
-  test.skip(
-    process.env.MONETIZED_LOOP_REAL === "1",
-    "real-staging showcase driver is a follow-up (#9300); the nightly runs the mock-stack loop as the active coverage",
-  );
-
   // Set the apps base domain for this process with save/restore so a sibling
   // spec sharing the worker never sees a leaked CONTAINERS_PUBLIC_BASE_DOMAIN.
   const priorAppsBaseDomain = process.env.CONTAINERS_PUBLIC_BASE_DOMAIN;
@@ -163,32 +179,35 @@ test.describe("example apps showcase (EDAD + Clone Ur Crush)", () => {
     }
   });
 
+  // The mock-stack loop below is the active per-PR + nightly coverage. The real-
+  // staging showcase driver (deploy to live Eliza Cloud on the real showcase
+  // account) is wired behind MONETIZED_LOOP_REAL=1; until that driver + secrets
+  // land it must NOT boot the mock `stack` fixture, so skip at the describe level
+  // (evaluated before fixtures resolve) rather than larp mock assertions as real.
+  test.skip(
+    process.env.MONETIZED_LOOP_REAL === "1",
+    "real-staging showcase driver is a follow-up (#9300); the nightly runs the mock-stack loop as the active coverage",
+  );
+
   test("showcase account deploys + monetizes both apps end to end", async ({
     stack,
-    seededUser: _seededUser,
   }) => {
     const api = stack.urls.api;
-    const hetznerStore = stack.mocks.hetzner.store;
     const controlPlane = stack.mocks.controlPlane;
-
-    const runningCount = (): number =>
-      [...hetznerStore.servers.values()].filter(
-        (s: MockServer) => s.status === "running",
-      ).length;
+    const pgliteUrl = stack.urls.pglite;
 
     // 0. Fail legibly if the stack isn't up before any loop step runs.
     const health = await fetch(`${api}/api/health`);
     expect(health.status, "stack /api/health must be reachable").toBe(200);
 
-    // -- login / auth gate: the apps require a signed-in user to spend. --------
-    // An unauthenticated balance read is rejected; the showcase key's read is OK.
+    // ── login / auth gate: the apps require a signed-in user to spend. ────────
     const unauth = await fetch(`${api}/api/v1/credits/balance`);
     expect(
       [401, 403],
       "unauthenticated balance read must be denied (login required)",
     ).toContain(unauth.status);
 
-    // -- showcase account: effectively-infinite credits via the REAL ledger. ---
+    // ── showcase account: effectively-infinite credits via the REAL ledger. ───
     const showcase = await seedShowcaseAccount();
     const authed: Authed = authedClient(api, showcase.apiKey);
 
@@ -196,87 +215,82 @@ test.describe("example apps showcase (EDAD + Clone Ur Crush)", () => {
       "GET",
       "/api/v1/credits/balance",
     );
-    expect(
-      startBalance.status,
-      "showcase key authenticates (login works)",
-    ).toBe(200);
+    expect(startBalance.status, "showcase key authenticates (login works)").toBe(
+      200,
+    );
     expect(
       startBalance.json.balance,
       "showcase account is funded with effectively-infinite credits",
     ).toBeGreaterThanOrEqual(SHOWCASE_CREDIT_GRANT_USD);
 
     const results: AppLoopResult[] = [];
-    let expectedRedeemable =
-      (await redeemableEarningsService.getBalance(showcase.userId))
-        ?.availableBalance ?? 0;
-
     for (const app of SHOWCASE_APPS) {
-      const result = await deployAndMonetizeApp({
-        api,
-        authed,
-        showcase,
-        app,
-        controlPlane,
-        runningCount,
-      });
-      results.push(result);
-
-      // Each app's markup credited the SAME showcase creator's redeemable
-      // balance - the running total must grow by exactly this app's markup.
-      expectedRedeemable += MARKUP_USD;
-      const redeemableNow =
-        (await redeemableEarningsService.getBalance(showcase.userId))
-          ?.availableBalance ?? 0;
-      expect(
-        Math.abs(redeemableNow - expectedRedeemable),
-        `${app.name}: creator redeemable rose by exactly the markup`,
-      ).toBeLessThan(1e-9);
+      results.push(
+        await deployAndMonetizeApp({
+          api,
+          authed,
+          showcase,
+          app,
+          controlPlane,
+          pgliteUrl,
+        }),
+      );
     }
 
-    // -- one account, both apps: aggregate invariants. -------------------------
+    // ── one account, both apps: aggregate invariants. ─────────────────────────
     expect(results.length, "both showcase apps ran the full loop").toBe(2);
     expect(
       new Set(results.map((r) => r.appId)).size,
       "the two apps are distinct app ids",
     ).toBe(2);
     expect(
+      new Set(results.map((r) => r.productionUrl)).size,
+      "the two apps got distinct production URLs",
+    ).toBe(2);
+    expect(
       new Set(results.map((r) => r.hostname)).size,
       "the two apps got distinct subdomains",
     ).toBe(2);
 
+    const totalSpent = results.reduce((s, r) => s + r.totalCost, 0);
+    const totalMarkup = results.reduce((s, r) => s + r.markup, 0);
+    expect(totalMarkup, "both apps produced a positive creator markup").toBeGreaterThan(
+      0,
+    );
+
     // The single showcase creator's redeemable balance equals the SUM of both
-    // apps' markups (payout-ready).
+    // apps' computed markups (payout-ready), to the cent.
     const finalRedeemable = await authed<RedemptionBalanceResponse>(
       "GET",
       "/api/v1/redemptions/balance",
     );
     expect(finalRedeemable.status).toBe(200);
     expect(
-      finalRedeemable.json.balance?.availableBalance ?? 0,
-      "creator can redeem the accrued earnings from both apps",
-    ).toBeGreaterThanOrEqual(MARKUP_USD * SHOWCASE_APPS.length);
+      Math.abs((finalRedeemable.json.balance?.availableBalance ?? 0) - totalMarkup),
+      "creator's redeemable balance equals both apps' markups exactly",
+    ).toBeLessThan(1e-6);
 
-    // The account never ran dry: even after both apps' charges, the balance is
-    // still effectively infinite - yet every charge moved the real ledger (each
-    // app asserted its own exact debit below).
+    // The account never ran dry — yet the real ledger dropped by EXACTLY the sum
+    // of the two computed charges (no slack).
     const endBalance = await authed<CreditBalanceResponse>(
       "GET",
       "/api/v1/credits/balance",
     );
     expect(
-      endBalance.json.balance,
-      "showcase credits stay effectively infinite across the run",
-    ).toBeGreaterThanOrEqual(SHOWCASE_CREDIT_GRANT_USD - 100);
+      Math.abs(endBalance.json.balance - (startBalance.json.balance - totalSpent)),
+      "showcase credits dropped by exactly the two computed charges",
+    ).toBeLessThan(1e-6);
     expect(
       endBalance.json.balance,
-      "but the real ledger was debited for both apps' charges",
-    ).toBeLessThan(startBalance.json.balance);
+      "showcase credits stay effectively infinite across the run",
+    ).toBeGreaterThanOrEqual(SHOWCASE_CREDIT_GRANT_USD);
   });
 });
 
 /**
- * Run the full deploy -> subdomain -> monetize -> charge -> earn loop for one app,
- * asserting every hop. Returns the app id + its assigned subdomain.
+ * Run the full register → monetize → deploy → subdomain → charge → earn loop for
+ * one app, asserting every hop against OBSERVED values. Returns the app id, its
+ * deployed production URL + subdomain, and the computed charge + markup.
  */
 async function deployAndMonetizeApp(ctx: {
   api: string;
@@ -284,14 +298,15 @@ async function deployAndMonetizeApp(ctx: {
   showcase: Awaited<ReturnType<typeof seedShowcaseAccount>>;
   app: (typeof SHOWCASE_APPS)[number];
   controlPlane: RunningControlPlaneMock;
-  runningCount: () => number;
+  pgliteUrl: string;
 }): Promise<AppLoopResult> {
-  const { api, authed, showcase, app, controlPlane, runningCount } = ctx;
+  const { api, authed, showcase, app, controlPlane, pgliteUrl } = ctx;
 
-  // -- 1. register the app. ------------------------------------------------
-  const created = await authed<CreateAppResponse>("POST", "/api/v1/apps", {
+  // ── 1. register the app. ────────────────────────────────────────────────
+  const created = await authed<AppEnvelope>("POST", "/api/v1/apps", {
     name: `${app.name} ${Date.now().toString(36)}`,
     app_url: app.appUrl,
+    allowed_origins: [app.appUrl],
     skipGitHubRepo: true,
   });
   expect([200, 201], `${app.name}: app registers`).toContain(created.status);
@@ -299,83 +314,7 @@ async function deployAndMonetizeApp(ctx: {
   expect(appId, `${app.name}: apps.create returns an id`).toBeTruthy();
   if (!appId) throw new Error(`${app.name}: apps.create did not return an id`);
 
-  // -- 2. deploy a container: prove an observable Hetzner node transition. --
-  const serversBeforeDeploy = runningCount();
-  const deploySandbox = controlPlane.store.createSandbox({
-    organizationId: showcase.organizationId,
-    userId: showcase.userId,
-    agentId: appId,
-  });
-  controlPlane.store.createJob({
-    type: "agent_provision",
-    sandboxId: deploySandbox.id,
-    organizationId: showcase.organizationId,
-    userId: showcase.userId,
-    payload: { agentName: `${app.key}-showcase-deploy` },
-  });
-  const deployTick = await controlPlane.tick();
-  expect(deployTick.failed, `${app.name}: provision tick must not fail`).toBe(
-    0,
-  );
-  expect(
-    deployTick.processed,
-    `${app.name}: exactly one provision job processed`,
-  ).toBe(1);
-  expect(
-    controlPlane.store.getSandbox(deploySandbox.id)?.status,
-    `${app.name}: deployed sandbox is running`,
-  ).toBe("running");
-  expect(
-    runningCount(),
-    `${app.name}: deploy stood up exactly one running Hetzner node`,
-  ).toBe(serversBeforeDeploy + 1);
-
-  // Bind a real container row to the app (project_name = appId), with the
-  // production subdomain derived from its id - the same shape production stamps.
-  const containerId = randomUUID();
-  const endpoint = deriveAppPublicUrl(containerId);
-  expect(
-    endpoint,
-    `${app.name}: app public URL derives (apps base domain configured)`,
-  ).not.toBeNull();
-  if (!endpoint) throw new Error(`${app.name}: app public URL did not derive`);
-  expect(
-    endpoint.hostname.endsWith(`.${APPS_BASE_DOMAIN}`),
-    `${app.name}: subdomain lives on the apps data plane`,
-  ).toBe(true);
-
-  await containersRepository.create({
-    id: containerId,
-    name: app.name,
-    project_name: appId,
-    organization_id: showcase.organizationId,
-    user_id: showcase.userId,
-    image_tag: app.imageTag,
-    status: "running",
-    public_hostname: endpoint.hostname,
-    load_balancer_url: endpoint.url,
-  });
-
-  // -- 3. app subdomain configured + live (ingress on-demand-TLS gate). -----
-  // Caddy asks before issuing a cert: a live app's host is authorized (200), an
-  // unknown host is refused (404). This is the link being wired + serving TLS.
-  const ask = await fetch(
-    `${api}/api/v1/apps-ingress/ask?domain=${encodeURIComponent(endpoint.hostname)}`,
-  );
-  expect(ask.status, `${app.name}: ingress authorizes the live subdomain`).toBe(
-    200,
-  );
-  const askUnknown = await fetch(
-    `${api}/api/v1/apps-ingress/ask?domain=${encodeURIComponent(
-      `${randomUUID().slice(0, 8)}.${APPS_BASE_DOMAIN}`,
-    )}`,
-  );
-  expect(
-    askUnknown.status,
-    `${app.name}: ingress refuses an unknown host (no cert abuse)`,
-  ).toBe(404);
-
-  // -- 4. enable monetization (markup + purchase share), read it back. ------
+  // ── 2. enable monetization BEFORE the charge (it must drive the markup). ──
   const monetize = await authed("PUT", `/api/v1/apps/${appId}/monetization`, {
     monetizationEnabled: true,
     inferenceMarkupPercentage: MARKUP_PCT,
@@ -393,29 +332,151 @@ async function deployAndMonetizeApp(ctx: {
     `${app.name}: monetization reads back as enabled`,
   ).toBe(true);
 
-  // -- 5. monetized transaction: real org debit (base + markup). ------------
+  // ── 3. deploy through the REAL deploy route (mock-backed APP_DEPLOY worker). ─
+  const started = await authed<DeployEnvelope>(
+    "POST",
+    `/api/v1/apps/${appId}/deploy`,
+  );
+  expect(started.status, `${app.name}: deploy accepted`).toBe(202);
+  expect(started.json.status).toBe("BUILDING");
+
+  let latest: DeployEnvelope | undefined;
+  for (let i = 0; i < 20; i++) {
+    const processed = await controlPlane.processDbBackedJobs(pgliteUrl);
+    expect(
+      processed.failed,
+      `${app.name}: deploy worker failed: ${JSON.stringify(processed.errors)}`,
+    ).toBe(0);
+    const status = await authed<DeployEnvelope>(
+      "GET",
+      `/api/v1/apps/${appId}/deploy/status`,
+    );
+    expect(status.status).toBe(200);
+    latest = status.json;
+    if (latest.status === "READY") break;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  expect(latest?.status, `${app.name}: deploy reaches READY`).toBe("READY");
+  const productionUrl = latest?.vercelUrl;
+  expect(
+    productionUrl,
+    `${app.name}: deploy exposes a production_url`,
+  ).toBeTruthy();
+  if (!productionUrl) {
+    throw new Error(`${app.name}: deploy did not return a production_url`);
+  }
+
+  // The app row reflects the deploy: local definition → deployed remote runtime.
+  const deployed = await authed<AppEnvelope>("GET", `/api/v1/apps/${appId}`);
+  expect(deployed.json.app?.deployment_status).toBe("deployed");
+  expect(deployed.json.app?.production_url).toBe(productionUrl);
+  expect(
+    deployed.json.app && appKindFor(deployed.json.app),
+    `${app.name}: deployed app is remote`,
+  ).toBe("remote");
+
+  // The deployed link actually serves — no dead end.
+  const live = await fetch(productionUrl);
+  expect(
+    live.status,
+    `${app.name}: deployed production_url is reachable`,
+  ).toBe(200);
+  const liveJson = (await live.json()) as MockAppEnvelope;
+  expect(liveJson).toMatchObject({
+    success: true,
+    appId,
+    runtime: "mock-app-container",
+  });
+
+  // ── 4. app subdomain — the ingress on-demand-TLS gate authorizes the live
+  //       app's apps-subdomain and refuses unknown hosts. ────────────────────
+  const container = await containersRepository.findActiveByProjectName(
+    showcase.organizationId,
+    appId,
+  );
+  expect(
+    container,
+    `${app.name}: deploy created a container bound to the app`,
+  ).toBeTruthy();
+  if (!container) throw new Error(`${app.name}: deploy created no container`);
+
+  const endpoint = deriveAppPublicUrl(container.id);
+  expect(
+    endpoint,
+    `${app.name}: app public URL derives (apps base domain configured)`,
+  ).not.toBeNull();
+  if (!endpoint) throw new Error(`${app.name}: app public URL did not derive`);
+  expect(
+    endpoint.hostname.endsWith(`.${APPS_BASE_DOMAIN}`),
+    `${app.name}: subdomain lives on the apps data plane`,
+  ).toBe(true);
+
+  // Production stamps `public_hostname` via deriveAppPublicUrl when the apps base
+  // domain is configured; the mock deploy omits it, so stamp it on the deploy's
+  // real container to exercise the gate against a genuinely live app row.
+  await containersRepository.update(container.id, showcase.organizationId, {
+    public_hostname: endpoint.hostname,
+  });
+  const ask = await fetch(
+    `${api}/api/v1/apps-ingress/ask?domain=${encodeURIComponent(endpoint.hostname)}`,
+  );
+  expect(
+    ask.status,
+    `${app.name}: ingress authorizes the live app subdomain (TLS cert)`,
+  ).toBe(200);
+  const askUnknown = await fetch(
+    `${api}/api/v1/apps-ingress/ask?domain=${encodeURIComponent(
+      `${randomUUID().slice(0, 8)}.${APPS_BASE_DOMAIN}`,
+    )}`,
+  );
+  expect(
+    askUnknown.status,
+    `${app.name}: ingress refuses an unknown host (no cert abuse)`,
+  ).toBe(404);
+
+  // ── 5. monetized transaction + creator earning — driven by the REAL per-app
+  //       billing service so the markup is COMPUTED from the monetization config,
+  //       not chosen by the test. ─────────────────────────────────────────────
   const balanceBefore = (
     await authed<CreditBalanceResponse>("GET", "/api/v1/credits/balance")
   ).json.balance;
-  const charge = await creditsService.deductCredits({
-    organizationId: showcase.organizationId,
-    amount: TOTAL_CHARGE_USD,
-    description: `${app.name}: monetized inference charge (base + markup)`,
-    metadata: { appId, showcase: true },
-  });
-  expect(charge.success, `${app.name}: charge debits the showcase org`).toBe(
-    true,
+  const appEarnBefore = Number(
+    (await appEarningsRepository.findByAppId(appId))?.total_lifetime_earnings ??
+      0,
   );
+  const redeemBefore =
+    (await redeemableEarningsService.getBalance(showcase.userId))
+      ?.availableBalance ?? 0;
+
+  const charge = await appCreditsService.deductCredits({
+    appId,
+    userId: showcase.userId,
+    baseCost: BASE_COST_USD,
+    description: `${app.name}: monetized inference`,
+    metadata: { showcase: true },
+  });
+  expect(charge.success, `${app.name}: monetized charge succeeds`).toBe(true);
+  // Enabling monetization in step 2 is what produced this markup — disabling it
+  // would zero `creatorMarkup` and fail the earnings assertions below.
   expect(
-    Math.abs(charge.newBalance - (balanceBefore - TOTAL_CHARGE_USD)),
-    `${app.name}: org debited exactly base + markup`,
+    charge.creatorMarkup,
+    `${app.name}: enabled monetization produced a creator markup`,
+  ).toBeGreaterThan(0);
+  expect(
+    Math.abs(charge.totalCost - (BASE_COST_USD + charge.creatorMarkup)),
+    `${app.name}: total charge = base + computed markup`,
   ).toBeLessThan(1e-6);
 
-  // -- 6. usage -> creator earning (app-scoped ledger + redeemable). ---------
-  const appEarnBefore =
-    (await appEarningsRepository.findByAppId(appId))?.total_lifetime_earnings ??
-    "0";
-  await appEarningsRepository.addInferenceEarnings(appId, MARKUP_USD);
+  // The org was debited by EXACTLY the computed total.
+  const balanceAfter = (
+    await authed<CreditBalanceResponse>("GET", "/api/v1/credits/balance")
+  ).json.balance;
+  expect(
+    Math.abs(balanceBefore - balanceAfter - charge.totalCost),
+    `${app.name}: org debited exactly the computed total`,
+  ).toBeLessThan(1e-6);
+
+  // App-scoped earnings rose by EXACTLY the computed markup (observed).
   const appEarn = await authed<AppEarningsResponse>(
     "GET",
     `/api/v1/apps/${appId}/earnings`,
@@ -424,25 +485,27 @@ async function deployAndMonetizeApp(ctx: {
     200,
   );
   expect(
-    appEarn.json.earnings?.summary?.totalLifetimeEarnings ?? 0,
-    `${app.name}: app-scoped lifetime earnings recorded the markup`,
-  ).toBeCloseTo(Number(appEarnBefore) + MARKUP_USD, 6);
+    Math.abs(
+      (appEarn.json.earnings?.summary?.totalLifetimeEarnings ?? 0) -
+        (appEarnBefore + charge.creatorMarkup),
+    ),
+    `${app.name}: app-scoped earnings rose by exactly the markup`,
+  ).toBeLessThan(1e-6);
 
-  const earn = await redeemableEarningsService.addEarnings({
-    userId: showcase.userId,
-    amount: MARKUP_USD,
-    source: "app_owner_revenue_share",
-    sourceId: appId,
-    description: `${app.name}: creator markup from monetized inference`,
-    metadata: { appId },
-  });
-  expect(earn.success, `${app.name}: creator redeemable earning recorded`).toBe(
-    true,
-  );
+  // The creator's redeemable balance rose by EXACTLY the computed markup.
+  const redeemAfter =
+    (await redeemableEarningsService.getBalance(showcase.userId))
+      ?.availableBalance ?? 0;
   expect(
-    earn.ledgerEntryId,
-    `${app.name}: earnings ledger id returned`,
-  ).toBeTruthy();
+    Math.abs(redeemAfter - redeemBefore - charge.creatorMarkup),
+    `${app.name}: creator redeemable rose by exactly the markup`,
+  ).toBeLessThan(1e-6);
 
-  return { appId, hostname: endpoint.hostname };
+  return {
+    appId,
+    productionUrl,
+    hostname: endpoint.hostname,
+    totalCost: charge.totalCost,
+    markup: charge.creatorMarkup,
+  };
 }
