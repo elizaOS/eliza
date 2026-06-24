@@ -7,6 +7,13 @@ const mocks = vi.hoisted(() => ({
   ensureCompatSensitiveRouteAuthorized: vi.fn(),
 }));
 
+// Mock under both module specifiers so the mock is matched on Windows too
+// (Vitest/Vite resolves the `.ts`-suffixed import id differently on win32).
+vi.mock("./auth", () => ({
+  ensureCompatSensitiveRouteAuthorized:
+    mocks.ensureCompatSensitiveRouteAuthorized,
+}));
+
 vi.mock("./auth.ts", () => ({
   ensureCompatSensitiveRouteAuthorized:
     mocks.ensureCompatSensitiveRouteAuthorized,
