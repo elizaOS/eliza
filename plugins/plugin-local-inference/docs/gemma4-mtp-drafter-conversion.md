@@ -191,9 +191,22 @@ llama-cli -m <eliza-1 gemma-4-E2B> -md <amaranus MTP-Q8_0> -ngl 99 -ngld 99 -fa 
 ```
 
 The drafter **loads, accepts draft tokens, and accelerates** — even though it is
-trained for `gemma-4-E2B-it-assistant` while drafting the eliza-1 *base* here (the
-matched `-it` target gives more). So "one working math" is proven: a real,
-released Gemma-4 MTP drafter works on Metal, no training.
+trained for `gemma-4-E2B-it-assistant` while drafting the eliza-1 *base* here.
+So "one working math" is proven: a real, released Gemma-4 MTP drafter works on
+Metal, no training.
+
+**Speedup is target-cost-dependent (honest caveat).** Re-running against the
+*matched* `google/gemma-4-E2B-it-qat-q4_0` target gave the opposite — baseline
+145 t/s vs draft-mtp 106 t/s (a regression): on a fast Q4 target the per-step
+drafter cost outweighs the acceptance benefit. The amaranus head is QAT-derived
+from INT4 weights, so its acceptance ceiling is modest (~the 35% the LiteRT
+extraction reports); it nets a win on a *slow* target (Q8 eliza-1: 1.29×) but not
+on the fast Q4 mobile entry tier. So: a working drafter exists today **for free**
+and helps the larger/Q8 tiers; a **bigger, uniform speedup across all tiers**
+(especially the Q4 2b) is where a from-scratch BF16-distilled drafter on an H200
+— or applying TurboQuant to a higher-acceptance head — would pay off. That is the
+only place H200 spend is still justified, and it is an optimization, not a
+blocker.
 
 **Integration into eliza = bring `gemma4-assistant` into the fork.** Two options,
 both bounded (no training):

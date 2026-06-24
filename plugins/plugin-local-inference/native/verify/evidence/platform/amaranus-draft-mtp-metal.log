@@ -10,3 +10,10 @@ Output coherent (target verifies every token).
 BASELINE (no drafter):       Generation 105.5 t/s
 SPEC (amaranus draft-mtp):   Generation 136.2 t/s   => 1.29x speedup on Metal
 (matched -it-assistant target gives more; amaranus is trained for gemma-4-E2B-it-assistant, here drafting the eliza-1 base.)
+
+# Matched target google/gemma-4-E2B-it-qat-q4_0 (the README pairing), same drafter:
+#   BASELINE (no drafter): 145.0 t/s  |  SPEC (draft-mtp): 106.1 t/s  => 0.73x (regression)
+# Interpretation: amaranus is QAT/INT4-derived (~35% acceptance ceiling). MTP nets a win on a SLOW
+# target (Q8 eliza-1, 1.29x) but the per-step drafter cost dominates on a FAST Q4 target. A working
+# drafter exists for free today (helps Q8+ tiers); a uniform all-tier speedup needs a higher-acceptance
+# (BF16-distilled / TurboQuant'd) head — the only remaining justification for H200 spend, as an optimization.
