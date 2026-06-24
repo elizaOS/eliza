@@ -134,6 +134,19 @@ export default defineConfig({
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(repoRoot, "packages/ui/src/$1"),
       },
+      // Resolve @elizaos/shared to its TS source like @elizaos/ui above: the
+      // built dist emits extensionless relative imports (e.g. device-fit.js →
+      // "./catalog") that vitest's ESM resolver cannot follow, so any test that
+      // transitively pulls a shared subpath fails to load. Source resolution
+      // sidesteps the dist entirely.
+      {
+        find: /^@elizaos\/shared$/,
+        replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/shared\/(.+)$/,
+        replacement: path.join(repoRoot, "packages/shared/src/$1"),
+      },
       {
         find: /^react$/,
         replacement: path.dirname(require.resolve("react/package.json")),
