@@ -61,9 +61,13 @@ export class VadUnavailableError extends Error {
 	}
 }
 
-/** Relative path of the fused Silero v5 GGML VAD model inside an Eliza-1
- *  bundle. The file is read by `libelizainference`'s native VAD ABI. */
+/** Relative paths of the fused Silero v5 model inside an Eliza-1 bundle. */
 const SILERO_VAD_GGML_REL_PATH = path.join("vad", "silero-vad-v5.1.2.ggml.bin");
+const SILERO_VAD_GGUF_REL_PATH = path.join("vad", "silero-vad-v5.gguf");
+const SILERO_VAD_REL_PATHS = [
+	SILERO_VAD_GGML_REL_PATH,
+	SILERO_VAD_GGUF_REL_PATH,
+] as const;
 
 /**
  * Resolve the fused-libelizainference Silero GGML VAD model on disk. An
@@ -71,7 +75,8 @@ const SILERO_VAD_GGML_REL_PATH = path.join("vad", "silero-vad-v5.1.2.ggml.bin");
  * result is `null` (no silent substitution of a different model). When
  * `modelPath` is not given the search order is:
  *   1. `<bundleRoot>/vad/silero-vad-v5.1.2.ggml.bin`
- *   2. `<state-dir>/local-inference/vad/silero-vad-v5.1.2.ggml.bin`
+ *   2. `<bundleRoot>/vad/silero-vad-v5.gguf`
+ *   3. `<state-dir>/local-inference/vad/<same filenames>`
  *   3. `$ELIZA_VAD_MODEL_PATH`
  * Returns `null` when none exist.
  */
@@ -83,10 +88,10 @@ export function resolveSileroVadPath(opts: {
 		return existsSync(opts.modelPath) ? path.resolve(opts.modelPath) : null;
 	}
 	const candidates: Array<string | undefined> = [
-		opts.bundleRoot
-			? path.join(opts.bundleRoot, SILERO_VAD_GGML_REL_PATH)
-			: undefined,
-		path.join(localInferenceRoot(), SILERO_VAD_GGML_REL_PATH),
+		...SILERO_VAD_REL_PATHS.map((rel) =>
+			opts.bundleRoot ? path.join(opts.bundleRoot, rel) : undefined,
+		),
+		...SILERO_VAD_REL_PATHS.map((rel) => path.join(localInferenceRoot(), rel)),
 		process.env.ELIZA_VAD_MODEL_PATH?.trim() || undefined,
 	];
 	for (const c of candidates) {
@@ -454,7 +459,7 @@ export async function resolveVadProvider(
 				if (!modelPath) {
 					throw new VadUnavailableError(
 						"model-missing",
-						`[voice] Fused Silero v5 GGML VAD model not found. Looked for ${SILERO_VAD_GGML_REL_PATH} in the Eliza-1 bundle and under ${localInferenceRoot()}, or set ELIZA_VAD_MODEL_PATH.`,
+						`[voice] Fused Silero v5 GGML/GGUF VAD model not found. Looked for ${SILERO_VAD_REL_PATHS.join(" or ")} in the Eliza-1 bundle and under ${localInferenceRoot()}, or set ELIZA_VAD_MODEL_PATH.`,
 					);
 				}
 				return {

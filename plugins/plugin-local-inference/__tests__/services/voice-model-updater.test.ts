@@ -166,24 +166,21 @@ describe("shouldAutoUpdateVoiceModel", () => {
 		expect(res).toEqual({ allow: false, reason: "unpublished" });
 	});
 
-	it("never selects the catalog's latest VAD while its revision is pending", () => {
-		// Regression guard for the real catalog: latestVoiceModelVersion("vad") is
-		// the newer v0.2.0 whose hfRevision is still "pending" (GGUF-only release
-		// not yet pinned), so the updater must not approve it for download.
+	it("selects the catalog's latest VAD now that its HF revision is pinned", () => {
+		// Regression guard for the real catalog: vad@0.2.0 is now published with
+		// a pinned HF revision and downloadable native assets, so the updater may
+		// approve it instead of treating it as an unpublished placeholder.
 		const latest = latestVoiceModelVersion("vad");
 		expect(latest).toBeDefined();
-		if (
-			latest &&
-			(latest.hfRevision === "pending" || latest.ggufAssets.length === 0)
-		) {
-			const res = shouldAutoUpdateVoiceModel({
-				installedVersion: "0.1.0",
-				candidate: latest,
-				bundleVersion: "1.0.0",
-				pinned: false,
-			});
-			expect(res).toEqual({ allow: false, reason: "unpublished" });
-		}
+		expect(latest?.hfRevision).not.toBe("pending");
+		expect(latest?.ggufAssets.length).toBeGreaterThan(0);
+		const res = shouldAutoUpdateVoiceModel({
+			installedVersion: "0.1.0",
+			candidate: latest!,
+			bundleVersion: "1.0.0",
+			pinned: false,
+		});
+		expect(res).toEqual({ allow: true, reason: "update-available" });
 	});
 
 	it("skips bundle gate when bundleVersion is empty string (UI listing)", () => {

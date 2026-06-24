@@ -477,4 +477,22 @@ describe("GgmlSileroVad", () => {
 			rmSync(dir, { recursive: true, force: true });
 		}
 	});
+
+	it("accepts the bundled silero-vad-v5.gguf alias used by published bundles", async () => {
+		const dir = mkdtempSync(path.join(os.tmpdir(), "fused-vad-gguf-"));
+		try {
+			const gguf = path.join(dir, "vad", "silero-vad-v5.gguf");
+			mkdirSync(path.dirname(gguf), { recursive: true });
+			writeFileSync(gguf, "");
+			const ffi = fakeFfi("x", { vadSupported: true, vadProbs: [0.1] });
+			const resolved = await resolveVadProvider({
+				ffi,
+				ctx: 1n,
+				bundleRoot: dir,
+			});
+			expect(resolved.id).toBe("silero-ggml");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
 });

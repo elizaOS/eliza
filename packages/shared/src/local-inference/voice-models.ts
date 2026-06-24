@@ -667,13 +667,20 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     parentVersion: "0.1.0",
     publishedToHfAt: "2026-05-19T00:00:00Z",
     hfRepo: "elizaos/eliza-1",
-    hfRevision: "pending",
+    hfRevision: "1dc9cf5467a6539a8d8289afefac63f28ce53f9c",
     // K7: VAD is fully native through silero-vad-cpp/libsilero_vad.
     // ONNX file removed from HF in this release.
     preferredBackend: "ffi",
     ggufAssets: [
       {
-        filename: "voice/vad/silero-vad-v5.gguf",
+        filename: "voice/vad/silero-vad-v5.1.2.ggml.bin",
+        sha256:
+          "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
+        sizeBytes: 885_098,
+        quant: "gguf-fp32",
+      },
+      {
+        filename: "bundles/0_8b/vad/silero-vad-v5.gguf",
         sha256:
           "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
         sizeBytes: 620_736,
