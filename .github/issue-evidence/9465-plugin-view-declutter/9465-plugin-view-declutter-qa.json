@@ -1,0 +1,18 @@
+{
+  "issue": 9465,
+  "beforeRepo": "/private/tmp/eliza-9465-plugin-view-base",
+  "beforeCommit": "329e348cf67634300765e31360ca30e5dd33dafb",
+  "afterRepo": "/private/tmp/eliza-9465-plugin-view-declutter",
+  "afterSourceCommit": "b217967abb937afafb63b663b3ebc81e45f3df1a",
+  "generatedAt": "2026-06-24T19:48:56.379Z",
+  "artifacts": [
+    "9465-plugin-view-declutter-before.png",
+    "9465-plugin-view-declutter-after.png",
+    "9465-plugin-view-declutter-after-walkthrough.webm"
+  ],
+  "consoleErrors": {
+    "before": [],
+    "after": []
+  },
+  "note": "Visual harness imports the real DeviceSettingsAppView and ShopifyAppView source files from each checkout. Native/system and Shopify APIs are deterministic fixture stubs matching the package tests."
+}
