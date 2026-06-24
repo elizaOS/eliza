@@ -1175,10 +1175,10 @@ function dynamicCommandActionDocs(filePath, name) {
   const handlersSrc = readText(
     path.join(pluginCommandsRoot, "src", "actions", "handlers.ts"),
   );
-  const gateSafeKeys = extractConstLiterals(handlersSrc).get(
-    "GATE_SAFE_COMMAND_KEYS",
+  const deterministicCommandKeys = extractConstLiterals(handlersSrc).get(
+    "DETERMINISTIC_COMMAND_KEYS",
   );
-  if (!Array.isArray(gateSafeKeys)) return [];
+  if (!Array.isArray(deterministicCommandKeys)) return [];
 
   const registrySrc = readText(
     path.join(pluginCommandsRoot, "src", "registry.ts"),
@@ -1194,7 +1194,7 @@ function dynamicCommandActionDocs(filePath, name) {
     }
   }
 
-  return gateSafeKeys
+  return deterministicCommandKeys
     .filter((key) => typeof key === "string")
     .map((key) => {
       const definition = definitionsByKey.get(key);

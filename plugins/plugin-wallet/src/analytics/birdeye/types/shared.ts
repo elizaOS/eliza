@@ -22,16 +22,6 @@ export interface ContractAddress extends BaseAddress {
   type: "contract";
 }
 
-/**
- * Represents a type that can be one of four values: "solana", "base", "ethereum", or "L1".
- */
-//export type TChain = 'solana' | 'base' | 'ethereum' | 'L1';
-/**
- * Type representing different data providers.
- * Possible values are "birdeye" and "coinmarketcap".
- */
-//export type TDataProvider = 'birdeye' | 'coinmarketcap';
-
 // Shape of what's stored in the cache
 export interface CacheWrapper<T> {
   data: T;

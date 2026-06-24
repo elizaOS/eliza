@@ -59,9 +59,6 @@ export const DETERMINISTIC_COMMAND_KEYS: readonly string[] = [
 	"tts",
 ];
 
-/** Back-compat export for callers compiled against the original name. */
-export const GATE_SAFE_COMMAND_KEYS = DETERMINISTIC_COMMAND_KEYS;
-
 const DETERMINISTIC_KEYS: ReadonlySet<string> = new Set(
 	DETERMINISTIC_COMMAND_KEYS,
 );
@@ -69,11 +66,6 @@ const DETERMINISTIC_KEYS: ReadonlySet<string> = new Set(
 /** Whether a command's whole effect is handled by this deterministic layer. */
 export function isDeterministicCommand(key: string): boolean {
 	return DETERMINISTIC_KEYS.has(key);
-}
-
-/** @deprecated Use `isDeterministicCommand`. */
-export function isGateSafeCommand(key: string): boolean {
-	return isDeterministicCommand(key);
 }
 
 const CATEGORY_ORDER: CommandCategory[] = [
