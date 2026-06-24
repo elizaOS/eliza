@@ -21,11 +21,12 @@ export class AuditLog {
       await fs.mkdir(dirname(this.path), { recursive: true });
       await fs.appendFile(this.path, line, { mode: 0o600 });
     } catch (err) {
-      // Audit failure must not block the caller, but it must be visible.
+      // A vault operation without its audit record is not complete.
       this.logger?.warn(
         `[vault] failed to append audit record to ${this.path}`,
         err,
       );
+      throw err;
     }
   }
 }

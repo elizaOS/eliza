@@ -88,6 +88,24 @@ describe("PgliteVaultImpl", () => {
     await expect(vault.remove("k")).resolves.toBeUndefined();
   });
 
+  it("rejects vault writes when the audit record cannot be written", async () => {
+    const auditPath = join(workDir, "audit-as-directory");
+    await mkdir(auditPath);
+    const auditedVault = new PgliteVaultImpl({
+      dataDir: join(workDir, ".vault-pglite-audit-fail"),
+      masterKey: inMemoryMasterKey(generateMasterKey()),
+      auditPath,
+    });
+
+    try {
+      await expect(auditedVault.set("k", "v")).rejects.toThrow(
+        /EISDIR|directory/i,
+      );
+    } finally {
+      await auditedVault.close();
+    }
+  });
+
   it("list returns all keys when no prefix", async () => {
     await vault.set("a", "1");
     await vault.set("b", "2");
