@@ -48,6 +48,7 @@ export interface WorkbenchParticipant {
 
 /** Structural mirror of `VoiceScenarioTurn` (@elizaos/plugin-local-inference). */
 export interface WorkbenchTurn {
+  /** Ground-truth speaker identity that synthesized this turn's audio. */
   speaker: string;
   text?: string;
   audioRef?: string;
@@ -56,6 +57,18 @@ export interface WorkbenchTurn {
   expectRespond: boolean;
   expectedTranscript?: string;
   expectedSpeakerLabel?: string;
+  /**
+   * The speaker label a diarizer/attribution model is expected to PREDICT for
+   * this turn — distinct from the ground-truth `speaker`. When no live
+   * attribution model runs (`VoiceWorkbenchOptions.resolvePredictedSpeakerLabel`
+   * absent), this drives the diarization gate, so a scenario can encode a
+   * deliberate misattribution (`predictedSpeakerLabel !== expectedSpeakerLabel`)
+   * and the gate will correctly fail. The player NEVER falls back to `speaker`
+   * for the prediction — that would make the DER gate compare ground truth to
+   * itself (tautological). Absent (and no live resolver) → the turn is
+   * UNATTRIBUTED: excluded from DER and the gate reports skipped, never a pass.
+   */
+  predictedSpeakerLabel?: string;
   expectedEntity?: string;
 }
 
@@ -104,11 +117,16 @@ export interface VoiceWorkbenchReport {
   finishedAt: string;
   turns: VoiceWorkbenchTurnReport[];
   diarization: {
+    /** Turns with a real attribution output (the DER denominator). */
     total: number;
     der: number;
     confusions: number;
-    misses: number;
+    /** Turns with no attribution output — no diarizer ran; excluded from DER. */
+    unattributed: number;
     maxDer: number;
+    /** Did any turn carry a real attribution output? When false the gate is
+     * SKIPPED (no diarizer on this host), distinct from a real DER failure. */
+    evaluated: boolean;
     passed: boolean;
   };
 }
@@ -123,6 +141,19 @@ export interface VoiceWorkbenchOptions {
    * throws and the turn is reported `skipped`, never `pass`.
    */
   resolveTurnWav: (turn: WorkbenchTurn, index: number) => Promise<Uint8Array>;
+  /**
+   * Resolve the PREDICTED speaker label for a turn from an actual
+   * diarization/speaker-attribution output. When provided, its result — NOT the
+   * scenario's ground-truth `speaker` — drives the diarization gate, so the gate
+   * fails on a real misattribution. Return `null` when the model can't attribute
+   * the turn (unattributed: excluded from DER, the gate reports skipped, never a
+   * pass). When absent, the player uses the turn's explicit
+   * `predictedSpeakerLabel`; it never falls back to `speaker`.
+   */
+  resolvePredictedSpeakerLabel?: (
+    turn: WorkbenchTurn,
+    index: number,
+  ) => Promise<string | null> | string | null;
   /** TTS route to exercise. local for desktop/android, cloud for web. */
   ttsRoute: "/api/tts/local-inference" | "/api/tts/cloud";
   /** Extra TTS body fields (e.g. voiceId/modelId for the cloud route). */
@@ -232,7 +263,13 @@ async function runTurn(
   const t0 = now();
   const expectedTranscript = turnReference(turn);
   const expectedSpeakerLabel = turnSpeakerLabel(turn);
-  const predictedSpeakerLabel = turn.speaker.trim() || null;
+  // Predicted label comes from an actual attribution output (live model hook or
+  // an explicit per-turn `predictedSpeakerLabel`), NEVER from the ground-truth
+  // `turn.speaker` — comparing ground truth to itself made this gate tautological
+  // (#9427). Absent prediction → null → scored as a miss, never a pass.
+  const predictedSpeakerLabel =
+    (await opts.resolvePredictedSpeakerLabel?.(turn, index)) ??
+    (turn.predictedSpeakerLabel?.trim() || null);
   const speakerLabelOk = predictedSpeakerLabel === expectedSpeakerLabel;
   const werTolerance = opts.werTolerance ?? 0.34;
 
@@ -399,27 +436,31 @@ async function runTurn(
   };
 }
 
-function scoreWorkbenchDiarization(
+export function scoreWorkbenchDiarization(
   turns: ReadonlyArray<VoiceWorkbenchTurnReport>,
   maxDer = 0.2,
 ): VoiceWorkbenchReport["diarization"] {
-  const scored = turns.filter((turn) => turn.status !== "skipped");
+  const ran = turns.filter((turn) => turn.status !== "skipped");
+  // A null prediction means no attribution model ran on this turn (no diarizer
+  // available on this host / scenario). Such turns are UNATTRIBUTED — excluded
+  // from DER, never scored as a confusion. The gate reports `skipped` (evaluated
+  // === false) when nothing was attributed, never a false pass and never a
+  // spurious failure that would block a diarizer-less host (#9147, #9427).
+  const attributed = ran.filter((turn) => turn.predictedSpeakerLabel !== null);
   let confusions = 0;
-  let misses = 0;
-  for (const turn of scored) {
-    if (turn.predictedSpeakerLabel === null) misses += 1;
-    else if (turn.predictedSpeakerLabel !== turn.expectedSpeakerLabel) {
+  for (const turn of attributed) {
+    if (turn.predictedSpeakerLabel !== turn.expectedSpeakerLabel)
       confusions += 1;
-    }
   }
-  const total = scored.length;
-  const der = total > 0 ? (confusions + misses) / total : 0;
+  const total = attributed.length;
+  const der = total > 0 ? confusions / total : 0;
   return {
     total,
     der: Number(der.toFixed(4)),
     confusions,
-    misses,
+    unattributed: ran.length - attributed.length,
     maxDer,
+    evaluated: total > 0,
     passed: total > 0 && der <= maxDer,
   };
 }

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import cloudApiWorker, {
   getFrontendAliasProxyTarget,
+  getFrontendAliasSyntheticResponse,
   redirectFrontendHost,
 } from "./index";
 
@@ -171,5 +172,36 @@ describe("cloud-api worker entrypoint", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  test("serves empty Feed observability scripts instead of proxying Vercel-only 404s", async () => {
+    const response = getFrontendAliasSyntheticResponse(
+      new URL("https://feed.elizacloud.ai/_vercel/insights/script.js"),
+    );
+
+    expect(response?.status).toBe(200);
+    expect(response?.headers.get("content-type")).toContain(
+      "application/javascript",
+    );
+    expect(await response?.text()).toBe("");
+  });
+
+  test("redirects missing Feed preset PFP assets to the bundled fallback image", () => {
+    const response = getFrontendAliasSyntheticResponse(
+      new URL("https://feed.elizacloud.ai/assets/user-pfps/pfp-041.png"),
+    );
+
+    expect(response?.status).toBe(302);
+    expect(response?.headers.get("location")).toBe(
+      "https://feed.elizacloud.ai/blankmonkey.png",
+    );
+  });
+
+  test("does not synthesize responses for non-Feed aliases", () => {
+    expect(
+      getFrontendAliasSyntheticResponse(
+        new URL("https://staging.elizacloud.ai/_vercel/insights/script.js"),
+      ),
+    ).toBeNull();
   });
 });

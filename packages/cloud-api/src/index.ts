@@ -121,6 +121,11 @@ export function redirectFrontendHost(
 // operator sets `FEED_ORIGIN_HOST` (the Railway host) this Worker reverse-proxies
 // the host to Railway; unset = inert (request falls through to cloud-api as before).
 const FEED_ALIAS_HOST = "feed.elizacloud.ai";
+const FEED_OBSERVABILITY_SCRIPT_PATHS = new Set([
+  "/_vercel/insights/script.js",
+  "/_vercel/speed-insights/script.js",
+]);
+const FEED_PRESET_PFP_PATTERN = /^\/assets\/user-pfps\/pfp-\d{3}\.png$/;
 
 export function getFrontendAliasProxyTarget(
   url: URL,
@@ -152,11 +157,38 @@ export function getFrontendAliasProxyTarget(
   return targetUrl;
 }
 
+export function getFrontendAliasSyntheticResponse(url: URL): Response | null {
+  const hostname = normalizeHostname(url.hostname);
+  if (hostname !== FEED_ALIAS_HOST) return null;
+
+  if (FEED_OBSERVABILITY_SCRIPT_PATHS.has(url.pathname)) {
+    return new Response("", {
+      status: 200,
+      headers: {
+        "content-type": "application/javascript; charset=utf-8",
+        "cache-control": "public, max-age=3600",
+      },
+    });
+  }
+
+  if (FEED_PRESET_PFP_PATTERN.test(url.pathname)) {
+    const fallbackUrl = new URL(url);
+    fallbackUrl.pathname = "/blankmonkey.png";
+    fallbackUrl.search = "";
+    return Response.redirect(fallbackUrl.toString(), 302);
+  }
+
+  return null;
+}
+
 function proxyFrontendAliasRequest(
   request: Request,
   url: URL,
   env: AppEnv["Bindings"],
 ): Promise<Response> | null {
+  const syntheticResponse = getFrontendAliasSyntheticResponse(url);
+  if (syntheticResponse) return Promise.resolve(syntheticResponse);
+
   const targetUrl = getFrontendAliasProxyTarget(
     url,
     env as { FEED_ORIGIN_HOST?: string },
