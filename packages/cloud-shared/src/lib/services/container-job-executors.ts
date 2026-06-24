@@ -52,16 +52,17 @@ export interface ContainerExecutorDeps {
   store: AppContainerStore;
   /**
    * Ingress hooks (optional). When set, the executor registers the per-app route
-   * `<shortid>.<base>` -> `nodeHost:hostPort` right after the container is marked
-   * running, and removes it on delete. add failures fail the deploy (so the user
-   * retries rather than a silent 502); remove failures are swallowed (a reconciler
-   * sweeps orphans). No-ops when unset (ingress not configured). `extraHostnames`
-   * carries the app's verified custom domains, host-matched on the same route.
+   * `<shortid>.<base>` -> `127.0.0.1:hostPort` (node-local Caddy) right after the
+   * container is marked running, and removes it on delete. add failures fail the
+   * deploy (so the user retries rather than a silent 502); remove failures are
+   * swallowed (a reconciler sweeps orphans). No-ops when unset (ingress not
+   * configured). `extraHostnames` carries the app's verified custom domains,
+   * host-matched on the same route. The route dials loopback (Caddy is co-located
+   * on the node), so the node host is not threaded through to the dial.
    */
   onRouteAdded?: (route: {
     hostname: string;
     extraHostnames?: string[];
-    nodeHost: string;
     hostPort: number;
   }) => Promise<void>;
   onRouteRemoved?: (route: { hostname: string }) => Promise<void>;
@@ -128,7 +129,6 @@ export async function executeContainerProvision(
       await deps.onRouteAdded({
         hostname: endpoint.hostname,
         extraHostnames,
-        nodeHost: result.nodeHost,
         hostPort: result.hostPort,
       });
     }
