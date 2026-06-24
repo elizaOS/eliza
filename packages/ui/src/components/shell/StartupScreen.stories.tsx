@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { withMockApp } from "../../storybook/mock-providers.helpers";
+import { mockApp, withMockApp } from "../../storybook/mock-providers.helpers";
 import { StartupScreen } from "./StartupScreen";
 import { StartupShell } from "./StartupShell";
 import type { StartupShellView } from "./startup-shell-types";
@@ -53,6 +53,19 @@ export const FirstRun: Story = {
 };
 
 export const Pairing: Story = {
+  // PairingView reads the pairing slice via useAppSelectorShallow — give it a
+  // concrete shape (an empty code, pairing enabled) so it renders the entry
+  // form. Without it the mock Proxy returns its `noop` fallback for the unset
+  // `pairingCodeInput` string, and `pairingCodeInput.trim()` throws.
+  decorators: [
+    mockApp({
+      pairingEnabled: true,
+      pairingExpiresAt: null,
+      pairingCodeInput: "",
+      pairingError: null,
+      pairingBusy: false,
+    }),
+  ],
   render: () => <ShellStory view={{ kind: "pairing" }} />,
 };
 
