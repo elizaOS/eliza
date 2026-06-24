@@ -78,6 +78,10 @@ const appMock = vi.hoisted(() => ({
 
 vi.mock("../../../state", () => ({
   useApp: () => appMock.value,
+  // Mirror the real store selector by applying the selector to the mock value
+  // (useShellController + others now read via useAppSelectorShallow, #9141).
+  useAppSelectorShallow: (selector: (value: typeof appMock.value) => unknown) =>
+    selector(appMock.value),
   useConversationMessages: () => ({
     conversationMessages: appMock.value.conversationMessages,
     removeConversationMessage: vi.fn(),
