@@ -110,6 +110,10 @@ type UserSideEffectSnapshot = {
 
 let originalUserSideEffects: UserSideEffectSnapshot | null = null;
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function generateE2eSnowflakeId(): Promise<string> {
   e2eSnowflakeSequence = (e2eSnowflakeSequence + 1n) & 4095n;
   const timestamp = BigInt(Date.now()) - SNOWFLAKE_EPOCH;
@@ -186,60 +190,54 @@ async function captureUserSideEffects(
 }
 
 async function waitForAsyncSideEffects(userId: string): Promise<void> {
+  await sleep(250);
+
   const deadline = Date.now() + 1_500;
 
   while (Date.now() < deadline) {
-    const checks: Promise<unknown[]>[] = [];
+    const observed: boolean[] = [];
 
     if (buyPlaced) {
-      checks.push(
-        db
-          .select({ id: predictionPriceHistories.id })
-          .from(predictionPriceHistories)
-          .where(eq(predictionPriceHistories.marketId, seeded.marketId))
-          .limit(1),
-      );
-      checks.push(
-        db
-          .select({ id: userAchievements.id })
-          .from(userAchievements)
-          .where(eq(userAchievements.userId, userId))
-          .limit(1),
-      );
+      const priceHistoryRows = await db
+        .select({ id: predictionPriceHistories.id })
+        .from(predictionPriceHistories)
+        .where(eq(predictionPriceHistories.marketId, seeded.marketId))
+        .limit(1);
+      const achievementRows = await db
+        .select({ id: userAchievements.id })
+        .from(userAchievements)
+        .where(eq(userAchievements.userId, userId))
+        .limit(1);
+      observed.push(priceHistoryRows.length > 0, achievementRows.length > 0);
     }
 
     if (marketResolved) {
-      checks.push(
-        db
-          .select({ id: adminAuditLogs.id })
-          .from(adminAuditLogs)
-          .where(eq(adminAuditLogs.resourceId, seeded.marketId))
-          .limit(1),
-      );
-      checks.push(
-        db
-          .select({ id: notifications.id })
-          .from(notifications)
-          .where(
-            and(
-              eq(notifications.type, "market_resolved"),
-              sql`${notifications.data}->>'marketId' = ${seeded.marketId}`,
-            ),
-          )
-          .limit(1),
+      const auditRows = await db
+        .select({ id: adminAuditLogs.id })
+        .from(adminAuditLogs)
+        .where(eq(adminAuditLogs.resourceId, seeded.marketId))
+        .limit(1);
+      const resolutionNotificationRows = await db
+        .select({ id: notifications.id })
+        .from(notifications)
+        .where(
+          and(
+            eq(notifications.type, "market_resolved"),
+            sql`${notifications.data}->>'marketId' = ${seeded.marketId}`,
+          ),
+        )
+        .limit(1);
+      observed.push(
+        auditRows.length > 0,
+        resolutionNotificationRows.length > 0,
       );
     }
 
-    if (checks.length === 0) {
+    if (observed.length === 0 || observed.every(Boolean)) {
       return;
     }
 
-    const results = await Promise.all(checks);
-    if (results.every((result) => result.length > 0)) {
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await sleep(100);
   }
 }
 
@@ -477,28 +475,88 @@ async function seedFixtures(userId: string): Promise<void> {
   });
 }
 
-async function teardownFixtures(userId: string): Promise<void> {
-  // Restore the SHARED dev-auth user's wallet FIRST. This is the only
-  // cross-run-pollution-critical step, so it must run even if a later
-  // disposable delete throws — leaking a seeded row (unique snowflake marketId,
-  // no collisions) is harmless; leaving the shared user mutated is not.
-  if (originalUserWallet) {
-    await db
-      .update(users)
-      .set({
-        virtualBalance: originalUserWallet.virtualBalance,
-        totalDeposited: originalUserWallet.totalDeposited,
-        lifetimePnL: originalUserWallet.lifetimePnL,
-        earnedPoints: originalUserWallet.earnedPoints,
-        reputationPoints: originalUserWallet.reputationPoints,
-        bonusPoints: originalUserWallet.bonusPoints,
-        totalFeesPaid: originalUserWallet.totalFeesPaid,
-        updatedAt: new Date(),
-      })
-      .where(eq(users.id, userId));
+async function deleteNewUserSideEffects(userId: string): Promise<void> {
+  const snapshot = originalUserSideEffects;
+  if (!snapshot) {
+    return;
   }
 
+  await db
+    .delete(notifications)
+    .where(
+      and(
+        eq(notifications.userId, userId),
+        inArray(notifications.type, [
+          "achievement_unlocked",
+          "challenge_completed",
+        ]),
+        snapshot.notificationIds.length > 0
+          ? notInArray(notifications.id, snapshot.notificationIds)
+          : sql`true`,
+      ),
+    );
+
+  await db
+    .delete(pointsTransactions)
+    .where(
+      and(
+        eq(pointsTransactions.userId, userId),
+        inArray(pointsTransactions.reason, [
+          "achievement_unlock",
+          "challenge_complete",
+        ]),
+        snapshot.pointsTransactionIds.length > 0
+          ? notInArray(pointsTransactions.id, snapshot.pointsTransactionIds)
+          : sql`true`,
+      ),
+    );
+
+  await db
+    .delete(userChallengeProgress)
+    .where(
+      and(
+        eq(userChallengeProgress.userId, userId),
+        snapshot.userChallengeProgressIds.length > 0
+          ? notInArray(
+              userChallengeProgress.id,
+              snapshot.userChallengeProgressIds,
+            )
+          : sql`true`,
+      ),
+    );
+
+  await db
+    .delete(userAchievements)
+    .where(
+      and(
+        eq(userAchievements.userId, userId),
+        snapshot.userAchievementIds.length > 0
+          ? notInArray(userAchievements.id, snapshot.userAchievementIds)
+          : sql`true`,
+      ),
+    );
+}
+
+async function teardownFixtures(userId: string): Promise<void> {
+  await waitForAsyncSideEffects(userId);
+
+  await deleteNewUserSideEffects(userId);
+
   if (seeded.marketId) {
+    await db
+      .delete(predictionPriceHistories)
+      .where(eq(predictionPriceHistories.marketId, seeded.marketId));
+    await db
+      .delete(notifications)
+      .where(
+        and(
+          eq(notifications.type, "market_resolved"),
+          sql`${notifications.data}->>'marketId' = ${seeded.marketId}`,
+        ),
+      );
+    await db
+      .delete(adminAuditLogs)
+      .where(eq(adminAuditLogs.resourceId, seeded.marketId));
     await db
       .delete(balanceTransactions)
       .where(eq(balanceTransactions.relatedId, seeded.marketId));
@@ -521,9 +579,41 @@ async function teardownFixtures(userId: string): Promise<void> {
     await db.delete(questions).where(eq(questions.id, seeded.questionId));
   }
   if (seeded.loserUserId) {
+    await db
+      .delete(notifications)
+      .where(eq(notifications.userId, seeded.loserUserId));
     await db.delete(positions).where(eq(positions.userId, seeded.loserUserId));
     await db.delete(actorState).where(eq(actorState.id, seeded.loserUserId));
     await db.delete(users).where(inArray(users.id, [seeded.loserUserId]));
+  }
+
+  // Achievement/challenge checks and admin audit writes are deliberately
+  // fire-and-forget in the API route. Give any late user-scoped writes one more
+  // short drain after market-specific cleanup, then restore the shared dev user
+  // last so leaked points/referral fields cannot survive teardown.
+  await sleep(250);
+  await deleteNewUserSideEffects(userId);
+
+  if (originalUserWallet) {
+    await db
+      .update(users)
+      .set({
+        virtualBalance: originalUserWallet.virtualBalance,
+        totalDeposited: originalUserWallet.totalDeposited,
+        totalWithdrawn: originalUserWallet.totalWithdrawn,
+        lifetimePnL: originalUserWallet.lifetimePnL,
+        invitePoints: originalUserWallet.invitePoints,
+        earnedPoints: originalUserWallet.earnedPoints,
+        bonusPoints: originalUserWallet.bonusPoints,
+        reputationPoints: originalUserWallet.reputationPoints,
+        referralCode: originalUserWallet.referralCode,
+        referralCount: originalUserWallet.referralCount,
+        referredBy: originalUserWallet.referredBy,
+        totalFeesEarned: originalUserWallet.totalFeesEarned,
+        totalFeesPaid: originalUserWallet.totalFeesPaid,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId));
   }
 }
 
@@ -572,6 +662,7 @@ test.describe("Core loop: bet -> resolve -> PnL", () => {
       `/api/markets/predictions/${seeded.marketId}/buy`,
       { side: "yes", amount: BET_AMOUNT },
     );
+    buyPlaced = true;
 
     expect(result.position).toBeDefined();
     expect(result.position.marketId).toBe(seeded.marketId);
@@ -635,6 +726,7 @@ test.describe("Core loop: bet -> resolve -> PnL", () => {
       `/api/admin/markets/${seeded.marketId}`,
       { action: "resolve", resolution: true },
     );
+    marketResolved = true;
 
     expect(result.error).toBeUndefined();
     expect(result.success).toBe(true);
