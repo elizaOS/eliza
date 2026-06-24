@@ -407,12 +407,12 @@ export function TranscriptViewerOverlay({
         type="button"
         aria-label="Close transcript"
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-black/85 backdrop-blur-sm"
+        className="absolute inset-0 cursor-default bg-black/85"
       />
       <div
         className={cn(
           "relative flex max-h-full w-full max-w-2xl flex-col overflow-hidden",
-          "rounded-2xl border border-white/15 bg-[rgb(22,22,28)] text-white shadow-2xl",
+          "rounded-2xl border border-white/15 bg-[rgb(22,22,28)] text-white",
         )}
       >
         {/* Header: title + close */}

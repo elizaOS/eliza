@@ -87,7 +87,7 @@ export function DesktopTabBar({
 
   return (
     <div
-      className="flex shrink-0 items-center gap-1 border-b border-border/50 bg-bg/80 px-2 py-1.5 backdrop-blur"
+      className="flex shrink-0 items-center gap-1 border-b border-border/50 bg-bg/80 px-2 py-1.5"
       role="tablist"
       aria-label="Desktop view tabs"
     >

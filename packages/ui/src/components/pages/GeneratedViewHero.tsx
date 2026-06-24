@@ -214,7 +214,7 @@ export function GeneratedViewHero({
       {/* Centered foreground glyph on a soft disc so it reads on any palette. */}
       <div className="absolute inset-0 flex items-center justify-center">
         <span
-          className={`flex items-center justify-center rounded-full bg-white/15 text-white shadow-[0_2px_8px_rgba(0,0,0,0.18)] ring-1 ring-white/25 backdrop-blur-[2px] ${
+          className={`flex items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/25 ${
             compact ? "h-10 w-10" : "h-14 w-14"
           }`}
         >

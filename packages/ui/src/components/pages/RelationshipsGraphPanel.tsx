@@ -678,7 +678,7 @@ function GraphTooltip({ state }: { state: TooltipState }) {
     return (
       <div
         style={style}
-        className="rounded-sm border border-border/40 bg-card/95 px-3 py-2.5 backdrop-blur-md"
+        className="rounded-sm border border-border/40 bg-card/95 px-3 py-2.5"
       >
         <div className="flex items-center gap-1.5 text-sm font-semibold text-txt">
           {person.isOwner ? (
@@ -714,7 +714,7 @@ function GraphTooltip({ state }: { state: TooltipState }) {
   return (
     <div
       style={style}
-      className="rounded-sm border border-border/40 bg-card/95 px-3 py-2.5 backdrop-blur-md"
+      className="rounded-sm border border-border/40 bg-card/95 px-3 py-2.5"
     >
       <div className="text-sm font-semibold text-txt">
         {edge.sourcePersonName} / {edge.targetPersonName}

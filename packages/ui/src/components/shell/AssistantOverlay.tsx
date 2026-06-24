@@ -132,7 +132,7 @@ export function AssistantOverlay({
         "h-[80vh]",
         // Surface
         "rounded-t-3xl sm:rounded-sm",
-        "bg-bg/95 backdrop-blur-xl",
+        "bg-bg/95",
         "border border-border/40",
         "",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg",

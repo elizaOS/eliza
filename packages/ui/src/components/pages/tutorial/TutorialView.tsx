@@ -37,10 +37,6 @@ export function TutorialView(): React.ReactElement {
       <div className="flex max-w-sm flex-col items-center">
         <div
           className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-subtle"
-          style={{
-            boxShadow:
-              "0 0 28px 4px color-mix(in srgb, var(--accent) 35%, transparent)",
-          }}
           aria-hidden
         >
           <Sparkles className="h-7 w-7 text-accent" />

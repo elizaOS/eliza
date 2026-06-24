@@ -181,7 +181,7 @@ export function BackgroundView() {
     <ShellViewAgentSurface viewId="background">
       <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center px-4 pb-28 pt-6">
         <h1 className="sr-only">Background</h1>
-        <div className="flex w-full max-w-sm flex-col items-center gap-5 rounded-3xl border border-border/40 bg-bg/55 p-6 shadow-xl backdrop-blur-2xl">
+        <div className="flex w-full max-w-sm flex-col items-center gap-5 rounded-3xl border border-border/40 bg-bg/95 p-6">
           {/* Shader colors */}
           <div className="flex flex-wrap items-center justify-center gap-2.5">
             {PRESET_COLORS.map((color) => (
@@ -204,7 +204,7 @@ export function BackgroundView() {
                   "conic-gradient(from 0deg, #ef5a1f, #f59e0b, #059669, #2563eb, #7c3aed, #e11d48, #ef5a1f)",
               }}
             >
-              <Pipette className="h-4 w-4 text-white drop-shadow" aria-hidden />
+              <Pipette className="h-4 w-4 text-white" aria-hidden />
             </button>
             <input
               ref={colorInputRef}

@@ -175,7 +175,7 @@ export function ElizaAgentBackupsPanel({
   );
 
   return (
-    <BrandCard className="relative shadow-lg shadow-black/50" cornerSize="sm">
+    <BrandCard className="relative" cornerSize="sm">
       <div className="relative z-10 space-y-6">
         <div className="flex flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
           <div>

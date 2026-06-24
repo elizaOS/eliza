@@ -11,7 +11,7 @@ const SIDEBAR_SYNC_STORAGE_PREFIX = "elizaos:ui:sidebar:";
 const PAGE_SIDEBAR_WIDTH_STORAGE_PREFIX = "eliza:page-sidebar:";
 
 const PAGE_SIDEBAR_ROOT_CLASS =
-  "!mt-0 !h-full !bg-none !bg-transparent !rounded-none !border-0 !border-r !border-r-border/30 !shadow-none !backdrop-blur-none !ring-0";
+  "!mt-0 !h-full !bg-none !bg-transparent !rounded-none !border-0 !border-r !border-r-border/30 !shadow-none !ring-0";
 
 const PAGE_SIDEBAR_FOOTER_CLASS = "!justify-stretch !px-2 !pt-1.5 !pb-2";
 const PAGE_SIDEBAR_COLLAPSE_BUTTON_CLASS =

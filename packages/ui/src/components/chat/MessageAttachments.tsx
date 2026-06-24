@@ -276,8 +276,8 @@ function TileButton({
 }): React.JSX.Element {
   const cls = cn(
     "inline-flex h-7 w-7 items-center justify-center rounded-full",
-    "bg-black/45 text-white/90 backdrop-blur-sm transition-colors",
-    "hover:bg-black/65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+    "bg-black/70 text-white/90 transition-colors",
+    "hover:bg-black/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
   );
   if (href) {
     return (
@@ -865,14 +865,14 @@ function Lightbox({
         type="button"
         aria-label="Close preview"
         onClick={onClose}
-        className="absolute inset-0 cursor-zoom-out bg-black/85 backdrop-blur-sm"
+        className="absolute inset-0 cursor-zoom-out bg-black/85"
       />
       <img
         src={src}
         alt={alt}
         // pointer-events fall through to the backdrop button, so clicking the
         // image closes too — standard lightbox behaviour.
-        className="pointer-events-none relative max-h-full max-w-full rounded-lg object-contain shadow-2xl"
+        className="pointer-events-none relative max-h-full max-w-full rounded-lg object-contain"
       />
       <div className="absolute right-4 top-4 flex gap-2">
         <TileButton label="Download image" href={src} download={downloadAs}>

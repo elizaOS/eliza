@@ -327,13 +327,13 @@ const AppCard = memo(function AppCard({
             title={provenanceLabels.title}
           >
             {provenanceLabels.originLabel ? (
-              <span className="rounded-sm border border-white/20 bg-black/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white backdrop-blur-sm">
+              <span className="rounded-sm border border-white/20 bg-black/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">
                 {provenanceLabels.originLabel}
               </span>
             ) : null}
             {provenanceLabels.supportLabel ? (
               <span
-                className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold uppercase backdrop-blur-sm ${
+                className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
                   provenanceLabels.supportLabel === "Community"
                     ? "border-warn/45 bg-black/40 text-warn"
                     : "border-accent/45 bg-black/40 text-white"
@@ -363,8 +363,8 @@ const AppCard = memo(function AppCard({
         aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
         className={`absolute bottom-3 right-3 rounded-full p-1.5 text-white transition-all ${
           isFavorite
-            ? "bg-black/30 text-warn backdrop-blur-sm"
-            : "bg-black/30 text-white/70 backdrop-blur-sm hover:text-warn focus-visible:text-warn"
+            ? "bg-black/70 text-warn"
+            : "bg-black/70 text-white/70 hover:text-warn focus-visible:text-warn"
         }`}
         onClick={(event: MouseEvent<HTMLButtonElement>) => {
           event.stopPropagation();
